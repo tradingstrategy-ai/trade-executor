@@ -73,6 +73,12 @@ Don't format code.
 
 - For string enums, both members and values must in snake_case
 
+### Pytest
+
+- Never use test classes in pytest
+- `pytest` tests should not have stdout output like `print`
+- Instead of manual float fuzzy comparison like `assert abs(aave_total_pnl - 96.6087) < 0.01` use `pytest.approx()`
+
 ### pyproject.toml
 
 - When adding or updating dependencies in `pyproject.toml`, always add a comment why this dependency is needed for this project

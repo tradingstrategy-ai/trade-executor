@@ -26,21 +26,41 @@ class FreqtradeDepositMethod(enum.StrEnum):
     orderly_vault = "orderly_vault"
 
 
-@dataclass(slots=True)
-class FreqtradeDepositConfig:
-    """Base configuration for depositing to a Freqtrade instance.
+class FreqtradeWithdrawalMethod(enum.StrEnum):
+    """How capital is withdrawn from Freqtrade."""
 
-    Use method-specific subclasses for actual deposits:
-    - OnChainTransferDepositConfig for simple ERC20 transfers
-    - AsterDepositConfig for Aster vault
-    - HyperliquidDepositConfig for Hyperliquid
-    - OrderlyDepositConfig for Orderly
+    #: Simple ERC20 transfer from a wallet address (for CEX or Lagoon vault integration)
+    on_chain_transfer = "on_chain_transfer"
+
+    #: Aster vault withdrawal on BSC
+    aster_vault = "aster_vault"
+
+    #: Hyperliquid withdrawal (SDK vault withdrawal + bridge transfer on Arbitrum)
+    hyperliquid = "hyperliquid"
+
+    #: Orderly vault withdrawal (vault.withdraw with hashed params)
+    orderly_vault = "orderly_vault"
+
+
+@dataclass(slots=True)
+class OnChainTransferExchangeConfig:
+    """Configuration for exchanges using simple on-chain transfers.
+
+    Typically used for Lagoon vault integration where the vault cannot sign
+    transactions directly, requiring a wallet-in-the-middle to delegate to.
+
+    Deposit flow:
+    1. ERC20.transfer(recipient_address, amount)
+
+    Withdrawal flow:
+    1. Withdrawal initiated externally (via CEX/exchange API)
+    2. ERC20.transfer arrives from recipient_address
     """
 
-    #: How deposits are made to Freqtrade
-    method: FreqtradeDepositMethod
+    #: Wallet address for transfers (e.g., CEX deposit address or delegate wallet)
+    recipient_address: str
 
-    #: Maximum fee variance allowed when confirming deposit (in reserve currency units)
+    #: Maximum fee variance allowed when confirming deposit/withdrawal (in reserve currency units)
     fee_tolerance: Decimal = Decimal("1.0")
 
     #: Seconds to wait for balance update after on-chain tx confirms
@@ -51,89 +71,109 @@ class FreqtradeDepositConfig:
 
 
 @dataclass(slots=True)
-class OnChainTransferDepositConfig(FreqtradeDepositConfig):
-    """Simple ERC20 transfer deposit configuration.
+class AsterExchangeConfig:
+    """Configuration for Aster vault deposits and withdrawals on BSC.
 
-    Used for Lagoon vault integration where the vault cannot sign
-    transactions directly, requiring a wallet-in-the-middle to delegate to.
-
-    Flow:
-    1. ERC20.transfer(recipient_address, amount)
-    """
-
-    #: Deposit method
-    method: FreqtradeDepositMethod = FreqtradeDepositMethod.on_chain_transfer
-
-    #: Wallet address to receive the transfer (e.g., CEX deposit address or delegate wallet)
-    recipient_address: str | None = None
-
-
-@dataclass(slots=True)
-class AsterDepositConfig(FreqtradeDepositConfig):
-    """Aster vault deposit configuration on BSC.
-
-    Flow:
+    Deposit flow:
     1. ERC20.approve(vault_address, amount)
     2. AstherusVault.deposit(token_address, amount, broker_id)
+
+    Withdrawal flow:
+    1. AstherusVault.withdraw() - requires signed message or validator signatures
+    Note: Withdrawal implementation deferred (requires signature infrastructure)
     """
 
-    #: Deposit method
-    method: FreqtradeDepositMethod = FreqtradeDepositMethod.aster_vault
-
     #: AstherusVault contract address on BSC
-    vault_address: str | None = None
+    vault_address: str
 
     #: Broker identifier for Aster (default 0)
     broker_id: int = 0
 
+    #: Maximum fee variance allowed when confirming deposit/withdrawal (in reserve currency units)
+    fee_tolerance: Decimal = Decimal("1.0")
+
+    #: Seconds to wait for balance update after on-chain tx confirms
+    confirmation_timeout: int = 600
+
+    #: Seconds between Freqtrade balance checks
+    poll_interval: int = 10
+
 
 @dataclass(slots=True)
-class HyperliquidDepositConfig(FreqtradeDepositConfig):
-    """Hyperliquid deposit configuration.
+class HyperliquidExchangeConfig:
+    """Configuration for Hyperliquid vault deposits and withdrawals.
 
-    Two-step flow:
+    Deposit flow:
     1. On-chain: ERC20 transfer to Hyperliquid bridge on Arbitrum
-    2. Off-chain: SDK vault_usd_transfer() to deposit into vault
+    2. Off-chain: SDK vault_usd_transfer(is_deposit=True) to deposit into vault
+
+    Withdrawal flow:
+    1. Off-chain: SDK vault_usd_transfer(is_deposit=False) to withdraw from vault
+    2. On-chain: funds arrive via bridge transfer
 
     Note: USDC only. Bridge address is hardcoded per network.
     """
 
-    #: Deposit method
-    method: FreqtradeDepositMethod = FreqtradeDepositMethod.hyperliquid
-
     #: Hyperliquid vault address
-    vault_address: str | None = None
+    vault_address: str
 
     #: Use mainnet (True) or testnet (False)
     is_mainnet: bool = True
 
+    #: Maximum fee variance allowed when confirming deposit/withdrawal (in reserve currency units)
+    fee_tolerance: Decimal = Decimal("1.0")
+
+    #: Seconds to wait for balance update after on-chain tx confirms
+    confirmation_timeout: int = 600
+
+    #: Seconds between Freqtrade balance checks
+    poll_interval: int = 10
+
 
 @dataclass(slots=True)
-class OrderlyDepositConfig(FreqtradeDepositConfig):
-    """Orderly vault deposit configuration.
+class OrderlyExchangeConfig:
+    """Configuration for Orderly vault deposits and withdrawals.
 
-    Flow:
+    Deposit flow:
     1. ERC20.approve(vault_address, amount)
     2. Vault.deposit((account_id, broker_hash, token_hash, amount))
+
+    Withdrawal flow:
+    1. Vault.withdraw((account_id, broker_hash, token_hash, amount))
 
     broker_hash = keccak256(broker_id)
     token_hash = keccak256(token_id)
     """
 
-    #: Deposit method
-    method: FreqtradeDepositMethod = FreqtradeDepositMethod.orderly_vault
-
     #: Orderly vault contract address
-    vault_address: str | None = None
+    vault_address: str
 
     #: Orderly account ID (32 bytes hex)
-    orderly_account_id: str | None = None
+    orderly_account_id: str
 
     #: Broker ID string (will be keccak256 hashed)
-    broker_id: str | None = None
+    broker_id: str
 
     #: Token ID string (will be keccak256 hashed)
     token_id: str | None = None
+
+    #: Maximum fee variance allowed when confirming deposit/withdrawal (in reserve currency units)
+    fee_tolerance: Decimal = Decimal("1.0")
+
+    #: Seconds to wait for balance update after on-chain tx confirms
+    confirmation_timeout: int = 600
+
+    #: Seconds between Freqtrade balance checks
+    poll_interval: int = 10
+
+
+#: Type alias for all exchange configurations
+FreqtradeExchangeConfig = (
+    OnChainTransferExchangeConfig
+    | AsterExchangeConfig
+    | HyperliquidExchangeConfig
+    | OrderlyExchangeConfig
+)
 
 
 @dataclass(slots=True)
@@ -160,11 +200,11 @@ class FreqtradeConfig:
     api_password: str
 
     #: Exchange name (e.g., "aster", "modetrade")
-    exchange: str
+    exchange_name: str
 
     #: Reserve currency token address (USDT, USDC contract address)
-    #: Used for on-chain deposits
+    #: Used for on-chain deposits and withdrawals
     reserve_currency: str
 
-    #: Deposit configuration (use method-specific config classes)
-    deposit: FreqtradeDepositConfig | None = None
+    #: Exchange configuration for deposits and withdrawals
+    exchange: FreqtradeExchangeConfig | None = None

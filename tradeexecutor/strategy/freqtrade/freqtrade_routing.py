@@ -19,12 +19,11 @@ from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.freqtrade.config import (
     FreqtradeConfig,
-    FreqtradeDepositConfig,
-    FreqtradeDepositMethod,
-    OnChainTransferDepositConfig,
-    AsterDepositConfig,
-    HyperliquidDepositConfig,
-    OrderlyDepositConfig,
+
+    OnChainTransferExchangeConfig,
+    AsterExchangeConfig,
+    HyperliquidExchangeConfig,
+    OrderlyExchangeConfig,
     HYPERLIQUID_BRIDGE_MAINNET,
     HYPERLIQUID_BRIDGE_TESTNET,
     USDC_ARBITRUM_MAINNET,
@@ -116,9 +115,9 @@ class FreqtradeRoutingModel(RoutingModel):
         rebroadcast: bool = False,
         **kwargs,
     ):
-        """Prepare deposit transactions.
+        """Prepare deposit or withdrawal transactions.
 
-        Dispatches to method-specific builders based on deposit config.
+        Dispatches to method-specific builders based on trade direction and exchange config.
 
         Args:
             state: Current portfolio state
@@ -131,40 +130,46 @@ class FreqtradeRoutingModel(RoutingModel):
         for trade in trades:
             freqtrade_id = trade.pair.other_data["freqtrade_id"]
             config = self.freqtrade_configs[freqtrade_id]
-            deposit_config = config.deposit
-            assert deposit_config
-            # amount = trade.planned_reserve if trade.planned_reserve else trade.planned_quantity
+            exchange_config = config.exchange
+            assert exchange_config, f"Exchange config required for {freqtrade_id}"
 
-            if deposit_config.method == FreqtradeDepositMethod.on_chain_transfer:
-                assert isinstance(deposit_config, OnChainTransferDepositConfig)
-                txs = self._build_on_chain_transfer_tx(trade, config, deposit_config, routing_state)
-                trade.blockchain_transactions = txs
-
-            elif deposit_config.method == FreqtradeDepositMethod.aster_vault:
-                assert isinstance(deposit_config, AsterDepositConfig)
-                txs = self._build_aster_deposit_tx(trade, config, deposit_config, routing_state)
-                trade.blockchain_transactions = txs
-
-            elif deposit_config.method == FreqtradeDepositMethod.hyperliquid:
-                assert isinstance(deposit_config, HyperliquidDepositConfig)
-                txs = self._build_hyperliquid_deposit_tx(trade, config, deposit_config, routing_state)
-                trade.blockchain_transactions = txs
-
-            elif deposit_config.method == FreqtradeDepositMethod.orderly_vault:
-                assert isinstance(deposit_config, OrderlyDepositConfig)
-                txs = self._build_orderly_deposit_tx(trade, config, deposit_config, routing_state)
-                trade.blockchain_transactions = txs
-
+            # Dispatch by trade direction and exchange config type
+            if trade.is_buy():
+                # Deposit flow
+                if isinstance(exchange_config, OnChainTransferExchangeConfig):
+                    txs = self._build_on_chain_transfer_deposit_tx(trade, config, exchange_config, routing_state)
+                elif isinstance(exchange_config, AsterExchangeConfig):
+                    txs = self._build_aster_deposit_tx(trade, config, exchange_config, routing_state)
+                elif isinstance(exchange_config, HyperliquidExchangeConfig):
+                    txs = self._build_hyperliquid_deposit_tx(trade, config, exchange_config, routing_state)
+                elif isinstance(exchange_config, OrderlyExchangeConfig):
+                    txs = self._build_orderly_deposit_tx(trade, config, exchange_config, routing_state)
+                else:
+                    raise NotImplementedError(
+                        f"Deposit for exchange config type {type(exchange_config).__name__} not implemented"
+                    )
             else:
-                raise NotImplementedError(
-                    f"Deposit method {deposit_config.method} not yet implemented"
-                )
+                # Withdrawal flow
+                if isinstance(exchange_config, OnChainTransferExchangeConfig):
+                    txs = self._build_on_chain_transfer_withdrawal_tx(trade, config, exchange_config, routing_state)
+                elif isinstance(exchange_config, AsterExchangeConfig):
+                    txs = self._build_aster_withdrawal_tx(trade, config, exchange_config, routing_state)
+                elif isinstance(exchange_config, HyperliquidExchangeConfig):
+                    txs = self._build_hyperliquid_withdrawal_tx(trade, config, exchange_config, routing_state)
+                elif isinstance(exchange_config, OrderlyExchangeConfig):
+                    txs = self._build_orderly_withdrawal_tx(trade, config, exchange_config, routing_state)
+                else:
+                    raise NotImplementedError(
+                        f"Withdrawal for exchange config type {type(exchange_config).__name__} not implemented"
+                    )
 
-    def _build_on_chain_transfer_tx(
+            trade.blockchain_transactions = txs
+
+    def _build_on_chain_transfer_deposit_tx(
         self,
         trade: TradeExecution,
         config: FreqtradeConfig,
-        deposit_config: OnChainTransferDepositConfig,
+        exchange_config: OnChainTransferExchangeConfig,
         routing_state: FreqtradeRoutingState,
     ) -> list[BlockchainTransaction]:
         """Build simple ERC20 transfer transaction.
@@ -187,7 +192,7 @@ class FreqtradeRoutingModel(RoutingModel):
         if routing_state.web3 is None:
             raise ValueError("web3 required for on_chain_transfer deposits")
 
-        if deposit_config.recipient_address is None:
+        if exchange_config.recipient_address is None:
             raise ValueError(f"deposit.recipient_address required for {config.freqtrade_id}")
 
         web3 = routing_state.web3
@@ -206,7 +211,7 @@ class FreqtradeRoutingModel(RoutingModel):
         token = fetch_erc20_details(web3, config.reserve_currency)
         amount_raw = token.convert_to_raw(amount)
 
-        recipient = Web3.to_checksum_address(deposit_config.recipient_address)
+        recipient = Web3.to_checksum_address(exchange_config.recipient_address)
 
         transfer_call = token.contract.functions.transfer(recipient, amount_raw)
         transfer_tx = routing_state.tx_builder.sign_transaction(
@@ -225,7 +230,7 @@ class FreqtradeRoutingModel(RoutingModel):
         self,
         trade: TradeExecution,
         config: FreqtradeConfig,
-        deposit_config: AsterDepositConfig,
+        exchange_config: AsterExchangeConfig,
         routing_state: FreqtradeRoutingState,
     ) -> list[BlockchainTransaction]:
         """Build Aster vault deposit transactions.
@@ -249,7 +254,7 @@ class FreqtradeRoutingModel(RoutingModel):
         if routing_state.web3 is None:
             raise ValueError("web3 required for aster_vault deposits")
 
-        if deposit_config.vault_address is None:
+        if exchange_config.vault_address is None:
             raise ValueError(f"deposit.vault_address required for {config.freqtrade_id}")
 
         web3 = routing_state.web3
@@ -268,7 +273,7 @@ class FreqtradeRoutingModel(RoutingModel):
         token = fetch_erc20_details(web3, config.reserve_currency)
         amount_raw = token.convert_to_raw(amount)
 
-        vault_address = Web3.to_checksum_address(deposit_config.vault_address)
+        vault_address = Web3.to_checksum_address(exchange_config.vault_address)
 
         # 1. Build approve transaction
         approve_call = token.contract.functions.approve(vault_address, amount_raw)
@@ -288,7 +293,7 @@ class FreqtradeRoutingModel(RoutingModel):
         deposit_call = vault.functions.deposit(
             Web3.to_checksum_address(config.reserve_currency),
             amount_raw,
-            deposit_config.broker_id,
+            exchange_config.broker_id,
         )
         deposit_tx = routing_state.tx_builder.sign_transaction(
             vault,
@@ -308,7 +313,7 @@ class FreqtradeRoutingModel(RoutingModel):
         self,
         trade: TradeExecution,
         config: FreqtradeConfig,
-        deposit_config: HyperliquidDepositConfig,
+        exchange_config: HyperliquidExchangeConfig,
         routing_state: FreqtradeRoutingState,
     ) -> list[BlockchainTransaction]:
         """Build Hyperliquid bridge transfer transaction.
@@ -331,7 +336,7 @@ class FreqtradeRoutingModel(RoutingModel):
         if routing_state.web3 is None:
             raise ValueError("web3 required for hyperliquid deposits")
 
-        if deposit_config.vault_address is None:
+        if exchange_config.vault_address is None:
             raise ValueError(f"deposit.vault_address required for {config.freqtrade_id}")
 
         web3 = routing_state.web3
@@ -344,11 +349,11 @@ class FreqtradeRoutingModel(RoutingModel):
         if trade.other_data is None:
             trade.other_data = {}
         trade.other_data["balance_before_deposit"] = str(balance_before)
-        trade.other_data["hyperliquid_vault_address"] = deposit_config.vault_address
-        trade.other_data["hyperliquid_is_mainnet"] = deposit_config.is_mainnet
+        trade.other_data["hyperliquid_vault_address"] = exchange_config.vault_address
+        trade.other_data["hyperliquid_is_mainnet"] = exchange_config.is_mainnet
 
         # Get bridge and USDC addresses based on network
-        if deposit_config.is_mainnet:
+        if exchange_config.is_mainnet:
             bridge_address = HYPERLIQUID_BRIDGE_MAINNET
             usdc_address = USDC_ARBITRUM_MAINNET
         else:
@@ -382,7 +387,7 @@ class FreqtradeRoutingModel(RoutingModel):
         self,
         trade: TradeExecution,
         config: FreqtradeConfig,
-        deposit_config: OrderlyDepositConfig,
+        exchange_config: OrderlyExchangeConfig,
         routing_state: FreqtradeRoutingState,
     ) -> list[BlockchainTransaction]:
         """Build Orderly vault deposit transactions.
@@ -406,13 +411,13 @@ class FreqtradeRoutingModel(RoutingModel):
         if routing_state.web3 is None:
             raise ValueError("web3 required for orderly_vault deposits")
 
-        if deposit_config.vault_address is None:
+        if exchange_config.vault_address is None:
             raise ValueError(f"deposit.vault_address required for {config.freqtrade_id}")
 
-        if deposit_config.orderly_account_id is None:
+        if exchange_config.orderly_account_id is None:
             raise ValueError(f"deposit.orderly_account_id required for {config.freqtrade_id}")
 
-        if deposit_config.broker_id is None:
+        if exchange_config.broker_id is None:
             raise ValueError(f"deposit.broker_id required for {config.freqtrade_id}")
 
         web3 = routing_state.web3
@@ -431,7 +436,7 @@ class FreqtradeRoutingModel(RoutingModel):
         token = fetch_erc20_details(web3, config.reserve_currency)
         amount_raw = token.convert_to_raw(amount)
 
-        vault_address = Web3.to_checksum_address(deposit_config.vault_address)
+        vault_address = Web3.to_checksum_address(exchange_config.vault_address)
 
         # 1. Build approve transaction
         approve_call = token.contract.functions.approve(vault_address, amount_raw)
@@ -443,12 +448,12 @@ class FreqtradeRoutingModel(RoutingModel):
         )
 
         # 2. Build vault.deposit transaction with hashed parameters
-        broker_hash = web3.keccak(text=deposit_config.broker_id)
-        token_hash = web3.keccak(text=deposit_config.token_id) if deposit_config.token_id else bytes(32)
+        broker_hash = web3.keccak(text=exchange_config.broker_id)
+        token_hash = web3.keccak(text=exchange_config.token_id) if exchange_config.token_id else bytes(32)
 
         # Build deposit input tuple
         deposit_input = (
-            bytes.fromhex(deposit_config.orderly_account_id[2:]),  # Remove 0x prefix
+            bytes.fromhex(exchange_config.orderly_account_id[2:]),  # Remove 0x prefix
             broker_hash,
             token_hash,
             amount_raw,
@@ -474,6 +479,189 @@ class FreqtradeRoutingModel(RoutingModel):
 
         return [approve_tx, deposit_tx]
 
+    def _build_on_chain_transfer_withdrawal_tx(
+        self,
+        trade: TradeExecution,
+        config: FreqtradeConfig,
+        exchange_config: OnChainTransferExchangeConfig,
+        routing_state: FreqtradeRoutingState,
+    ) -> list[BlockchainTransaction]:
+        """Build withdrawal placeholder for on-chain transfer.
+
+        For on-chain transfer withdrawals, no transaction is built because
+        the withdrawal is initiated externally (via CEX/exchange API).
+        We only wait for the balance decrease confirmation in settle_trade().
+
+        Args:
+            trade: Trade to build transaction for
+            config: Freqtrade configuration
+            exchange_config: On-chain transfer configuration
+            routing_state: Routing state with tx_builder
+
+        Returns:
+            Empty list (no transactions to broadcast)
+        """
+        # Get Freqtrade balance before withdrawal
+        client = routing_state.freqtrade_clients[config.freqtrade_id]
+        balance_before = Decimal(str(client.get_balance().get("total", 0)))
+
+        # Store balance_before in trade for later verification
+        if trade.other_data is None:
+            trade.other_data = {}
+        trade.other_data["balance_before_withdrawal"] = str(balance_before)
+
+        amount = trade.planned_reserve if trade.planned_reserve else abs(trade.planned_quantity)
+        recipient = exchange_config.recipient_address
+
+        trade.notes = f"On-chain transfer withdrawal: {amount} to {recipient}"
+        logger.info(f"Trade {trade.trade_id}: {trade.notes}")
+
+        return []
+
+    def _build_aster_withdrawal_tx(
+        self,
+        trade: TradeExecution,
+        config: FreqtradeConfig,
+        exchange_config: AsterExchangeConfig,
+        routing_state: FreqtradeRoutingState,
+    ) -> list[BlockchainTransaction]:
+        """Build Aster vault withdrawal transaction.
+
+        Aster vault withdrawals require signed messages or validator signatures,
+        which is not yet implemented. This is a placeholder that raises
+        NotImplementedError.
+
+        Args:
+            trade: Trade to build transaction for
+            config: Freqtrade configuration
+            exchange_config: Aster configuration
+            routing_state: Routing state with tx_builder
+
+        Raises:
+            NotImplementedError: Always raised as Aster withdrawal is not implemented
+        """
+        raise NotImplementedError(
+            "Aster vault withdrawal requires signed message or validator signatures - "
+            "signature infrastructure not yet implemented"
+        )
+
+    def _build_hyperliquid_withdrawal_tx(
+        self,
+        trade: TradeExecution,
+        config: FreqtradeConfig,
+        exchange_config: HyperliquidExchangeConfig,
+        routing_state: FreqtradeRoutingState,
+    ) -> list[BlockchainTransaction]:
+        """Build Hyperliquid withdrawal placeholder.
+
+        For Hyperliquid withdrawals, no on-chain transaction is built because
+        the SDK handles the off-chain withdrawal. The actual SDK call happens
+        in settle_trade() via _confirm_hyperliquid_withdrawal().
+
+        Args:
+            trade: Trade to build transaction for
+            config: Freqtrade configuration
+            exchange_config: Hyperliquid configuration
+            routing_state: Routing state with tx_builder
+
+        Returns:
+            Empty list (no transactions to broadcast)
+        """
+        # Get Freqtrade balance before withdrawal
+        client = routing_state.freqtrade_clients[config.freqtrade_id]
+        balance_before = Decimal(str(client.get_balance().get("total", 0)))
+
+        # Store balance_before and vault_address in trade for settle_trade
+        if trade.other_data is None:
+            trade.other_data = {}
+        trade.other_data["balance_before_withdrawal"] = str(balance_before)
+        trade.other_data["hyperliquid_vault_address"] = exchange_config.vault_address
+        trade.other_data["hyperliquid_is_mainnet"] = exchange_config.is_mainnet
+
+        amount = trade.planned_reserve if trade.planned_reserve else abs(trade.planned_quantity)
+
+        trade.notes = f"Hyperliquid withdrawal: {amount} USD from vault {exchange_config.vault_address}"
+        logger.info(f"Trade {trade.trade_id}: {trade.notes}")
+
+        return []
+
+    def _build_orderly_withdrawal_tx(
+        self,
+        trade: TradeExecution,
+        config: FreqtradeConfig,
+        exchange_config: OrderlyExchangeConfig,
+        routing_state: FreqtradeRoutingState,
+    ) -> list[BlockchainTransaction]:
+        """Build Orderly vault withdrawal transaction.
+
+        Flow:
+        1. Vault.withdraw((account_id, broker_hash, token_hash, amount))
+
+        Args:
+            trade: Trade to build transaction for
+            config: Freqtrade configuration
+            exchange_config: Orderly configuration
+            routing_state: Routing state with tx_builder
+
+        Returns:
+            List containing withdraw transaction
+        """
+        if routing_state.tx_builder is None:
+            raise ValueError("tx_builder required for orderly_vault withdrawals")
+
+        if routing_state.web3 is None:
+            raise ValueError("web3 required for orderly_vault withdrawals")
+
+        web3 = routing_state.web3
+
+        # Get Freqtrade balance before withdrawal
+        client = routing_state.freqtrade_clients[config.freqtrade_id]
+        balance_before = Decimal(str(client.get_balance().get("total", 0)))
+
+        # Store balance_before in trade for later verification
+        if trade.other_data is None:
+            trade.other_data = {}
+        trade.other_data["balance_before_withdrawal"] = str(balance_before)
+
+        # Get token details
+        amount = trade.planned_reserve if trade.planned_reserve else abs(trade.planned_quantity)
+        token = fetch_erc20_details(web3, config.reserve_currency)
+        amount_raw = token.convert_to_raw(amount)
+
+        vault_address = Web3.to_checksum_address(exchange_config.vault_address)
+
+        # Build vault.withdraw transaction with hashed parameters
+        broker_hash = web3.keccak(text=exchange_config.broker_id)
+        token_hash = web3.keccak(text=exchange_config.token_id) if exchange_config.token_id else bytes(32)
+
+        # Build withdraw input tuple (same structure as deposit)
+        withdraw_input = (
+            bytes.fromhex(exchange_config.orderly_account_id[2:]),  # Remove 0x prefix
+            broker_hash,
+            token_hash,
+            amount_raw,
+        )
+
+        vault = get_deployed_contract(
+            web3,
+            "orderly/Vault.json",
+            vault_address,
+        )
+        withdraw_call = vault.functions.withdraw(withdraw_input)
+        withdraw_tx = routing_state.tx_builder.sign_transaction(
+            vault,
+            withdraw_call,
+            gas_limit=200_000,
+            notes=f"Orderly vault withdrawal for {config.freqtrade_id}",
+        )
+
+        trade.notes = (
+            f"Orderly vault withdrawal: {amount} from {vault_address}"
+        )
+        logger.info(f"Trade {trade.trade_id}: {trade.notes}")
+
+        return [withdraw_tx]
+
     def settle_trade(
         self,
         web3: Web3,
@@ -485,8 +673,9 @@ class FreqtradeRoutingModel(RoutingModel):
     ):
         """Settle a trade after transaction broadcast.
 
-        For vault methods: polls Freqtrade balance until deposit confirmed.
-        For Hyperliquid: also performs SDK vault deposit after bridge transfer.
+        For deposits: polls Freqtrade balance until deposit confirmed.
+        For withdrawals: polls Freqtrade balance until withdrawal confirmed.
+        For Hyperliquid: also performs SDK vault transfer (deposit or withdrawal).
 
         Args:
             web3: Web3 instance
@@ -498,32 +687,46 @@ class FreqtradeRoutingModel(RoutingModel):
         """
         freqtrade_id = trade.pair.other_data["freqtrade_id"]
         config = self.freqtrade_configs[freqtrade_id]
-        deposit_config = config.deposit
-        assert deposit_config, f"deposit config required for {freqtrade_id}"
+        exchange_config = config.exchange
+        assert exchange_config, f"Exchange config required for {freqtrade_id}"
 
-        if deposit_config.method == FreqtradeDepositMethod.on_chain_transfer:
-            self._confirm_deposit(trade, config, deposit_config)
-
-        elif deposit_config.method == FreqtradeDepositMethod.aster_vault:
-            self._confirm_deposit(trade, config, deposit_config)
-
-        elif deposit_config.method == FreqtradeDepositMethod.hyperliquid:
-            assert isinstance(deposit_config, HyperliquidDepositConfig)
-            self._confirm_hyperliquid_deposit(trade, config, deposit_config, **kwargs)
-
-        elif deposit_config.method == FreqtradeDepositMethod.orderly_vault:
-            self._confirm_deposit(trade, config, deposit_config)
-
+        # Dispatch by trade direction and exchange config type
+        if trade.is_buy():
+            # Deposit confirmation
+            if isinstance(exchange_config, OnChainTransferExchangeConfig):
+                self._confirm_deposit(trade, config, exchange_config)
+            elif isinstance(exchange_config, AsterExchangeConfig):
+                self._confirm_deposit(trade, config, exchange_config)
+            elif isinstance(exchange_config, HyperliquidExchangeConfig):
+                self._confirm_hyperliquid_deposit(trade, config, exchange_config, **kwargs)
+            elif isinstance(exchange_config, OrderlyExchangeConfig):
+                self._confirm_deposit(trade, config, exchange_config)
+            else:
+                raise NotImplementedError(
+                    f"Deposit confirmation for {type(exchange_config).__name__} not implemented"
+                )
         else:
-            raise NotImplementedError(
-                f"Deposit method {deposit_config.method} not yet implemented"
-            )
+            # Withdrawal confirmation
+            if isinstance(exchange_config, OnChainTransferExchangeConfig):
+                self._confirm_withdrawal(trade, config, exchange_config)
+            elif isinstance(exchange_config, AsterExchangeConfig):
+                raise NotImplementedError(
+                    "Aster vault withdrawal requires signed message/validator signatures - not yet implemented"
+                )
+            elif isinstance(exchange_config, HyperliquidExchangeConfig):
+                self._confirm_hyperliquid_withdrawal(trade, config, exchange_config, **kwargs)
+            elif isinstance(exchange_config, OrderlyExchangeConfig):
+                self._confirm_withdrawal(trade, config, exchange_config)
+            else:
+                raise NotImplementedError(
+                    f"Withdrawal confirmation for {type(exchange_config).__name__} not implemented"
+                )
 
     def _confirm_deposit(
         self,
         trade: TradeExecution,
         config: FreqtradeConfig,
-        deposit_config: FreqtradeDepositConfig,
+        exchange_config: OnChainTransferExchangeConfig | AsterExchangeConfig | OrderlyExchangeConfig,
     ):
         """Poll Freqtrade balance until deposit is confirmed.
 
@@ -532,7 +735,7 @@ class FreqtradeRoutingModel(RoutingModel):
         Args:
             trade: Trade containing balance_before_deposit
             config: Freqtrade configuration
-            deposit_config: Deposit configuration with timeout settings
+            exchange_config: Exchange configuration with timeout settings
 
         Raises:
             Exception: If deposit not confirmed within timeout
@@ -545,9 +748,9 @@ class FreqtradeRoutingModel(RoutingModel):
 
         balance_before = Decimal(trade.other_data.get("balance_before_deposit", "0"))
         amount = trade.planned_reserve if trade.planned_reserve else trade.planned_quantity
-        expected_min = balance_before + amount - deposit_config.fee_tolerance
+        expected_min = balance_before + amount - exchange_config.fee_tolerance
 
-        deadline = time.time() + deposit_config.confirmation_timeout
+        deadline = time.time() + exchange_config.confirmation_timeout
 
         logger.info(
             f"Trade {trade.trade_id}: Waiting for deposit confirmation. "
@@ -572,10 +775,10 @@ class FreqtradeRoutingModel(RoutingModel):
             except Exception as e:
                 logger.warning(f"Trade {trade.trade_id}: Balance check failed: {e}")
 
-            time.sleep(deposit_config.poll_interval)
+            time.sleep(exchange_config.poll_interval)
 
         raise Exception(
-            f"Deposit not confirmed within {deposit_config.confirmation_timeout}s. "
+            f"Deposit not confirmed within {exchange_config.confirmation_timeout}s. "
             f"Expected balance >= {expected_min}, got {balance_after}"
         )
 
@@ -583,7 +786,7 @@ class FreqtradeRoutingModel(RoutingModel):
         self,
         trade: TradeExecution,
         config: FreqtradeConfig,
-        deposit_config: HyperliquidDepositConfig,
+        exchange_config: HyperliquidExchangeConfig,
         **kwargs,
     ):
         """Perform Hyperliquid SDK vault deposit and confirm.
@@ -595,7 +798,7 @@ class FreqtradeRoutingModel(RoutingModel):
         Args:
             trade: Trade containing vault info
             config: Freqtrade configuration
-            deposit_config: Hyperliquid deposit configuration
+            exchange_config: Hyperliquid exchange configuration
             **kwargs: May contain 'private_key' for SDK signing
 
         Raises:
@@ -644,4 +847,131 @@ class FreqtradeRoutingModel(RoutingModel):
         logger.info(f"Trade {trade.trade_id}: SDK vault deposit successful")
 
         # Now confirm via Freqtrade balance polling
-        self._confirm_deposit(trade, config, deposit_config)
+        self._confirm_deposit(trade, config, exchange_config)
+
+    def _confirm_withdrawal(
+        self,
+        trade: TradeExecution,
+        config: FreqtradeConfig,
+        exchange_config: OnChainTransferExchangeConfig | OrderlyExchangeConfig,
+    ):
+        """Poll Freqtrade balance until withdrawal is confirmed.
+
+        Works for on-chain transfer and Orderly vault withdrawals.
+
+        Args:
+            trade: Trade containing balance_before_withdrawal
+            config: Freqtrade configuration
+            exchange_config: Exchange configuration with timeout settings
+
+        Raises:
+            Exception: If withdrawal not confirmed within timeout
+        """
+        client = FreqtradeClient(
+            config.api_url,
+            config.api_username,
+            config.api_password,
+        )
+
+        balance_before = Decimal(trade.other_data.get("balance_before_withdrawal", "0"))
+        amount = trade.planned_reserve if trade.planned_reserve else abs(trade.planned_quantity)
+        expected_max = balance_before - amount + exchange_config.fee_tolerance
+
+        deadline = time.time() + exchange_config.confirmation_timeout
+
+        logger.info(
+            f"Trade {trade.trade_id}: Waiting for withdrawal confirmation. "
+            f"Expected balance <= {expected_max}"
+        )
+
+        balance_after = None
+        while time.time() < deadline:
+            try:
+                balance_after = Decimal(str(client.get_balance().get("total", 0)))
+
+                if balance_after <= expected_max:
+                    trade.notes = f"Withdrawal confirmed: {balance_before} -> {balance_after}"
+                    logger.info(f"Trade {trade.trade_id}: {trade.notes}")
+                    return
+
+                logger.debug(
+                    f"Trade {trade.trade_id}: Balance {balance_after}, "
+                    f"waiting for {expected_max}"
+                )
+
+            except Exception as e:
+                logger.warning(f"Trade {trade.trade_id}: Balance check failed: {e}")
+
+            time.sleep(exchange_config.poll_interval)
+
+        raise Exception(
+            f"Withdrawal not confirmed within {exchange_config.confirmation_timeout}s. "
+            f"Expected balance <= {expected_max}, got {balance_after}"
+        )
+
+    def _confirm_hyperliquid_withdrawal(
+        self,
+        trade: TradeExecution,
+        config: FreqtradeConfig,
+        exchange_config: HyperliquidExchangeConfig,
+        **kwargs,
+    ):
+        """Perform Hyperliquid SDK vault withdrawal and confirm.
+
+        This:
+        1. Calls SDK vault_usd_transfer(is_deposit=False) to withdraw from vault
+        2. Polls Freqtrade balance until confirmed
+
+        Args:
+            trade: Trade containing vault info
+            config: Freqtrade configuration
+            exchange_config: Hyperliquid exchange configuration
+            **kwargs: May contain 'private_key' for SDK signing
+
+        Raises:
+            Exception: If withdrawal not confirmed within timeout
+        """
+        try:
+            from eth_account import Account
+            from hyperliquid.exchange import Exchange
+            from hyperliquid.utils.constants import MAINNET_API_URL, TESTNET_API_URL
+        except ImportError:
+            raise ImportError(
+                "hyperliquid-py package required for Hyperliquid withdrawals. "
+                "Install with: pip install hyperliquid-py"
+            )
+
+        vault_address = trade.other_data.get("hyperliquid_vault_address")
+        is_mainnet = trade.other_data.get("hyperliquid_is_mainnet", True)
+
+        # Get private key for SDK signing
+        private_key = kwargs.get("private_key")
+        if private_key is None:
+            raise ValueError("private_key required for Hyperliquid SDK vault withdrawal")
+
+        # Perform SDK vault withdrawal
+        wallet = Account.from_key(private_key)
+        base_url = MAINNET_API_URL if is_mainnet else TESTNET_API_URL
+        exchange = Exchange(wallet=wallet, base_url=base_url)
+
+        amount = trade.planned_reserve if trade.planned_reserve else abs(trade.planned_quantity)
+        amount_int = int(amount * Decimal("1000000"))  # Convert to micro-USD
+
+        logger.info(
+            f"Trade {trade.trade_id}: Performing Hyperliquid SDK vault withdrawal. "
+            f"Vault: {vault_address}, Amount: {amount} USD"
+        )
+
+        result = exchange.vault_usd_transfer(
+            vault_address=vault_address,
+            is_deposit=False,  # Withdrawal
+            usd=amount_int,
+        )
+
+        if result.get("status") != "ok":
+            raise Exception(f"Hyperliquid vault withdrawal failed: {result}")
+
+        logger.info(f"Trade {trade.trade_id}: SDK vault withdrawal successful")
+
+        # Now confirm via Freqtrade balance polling
+        self._confirm_withdrawal(trade, config, exchange_config)
