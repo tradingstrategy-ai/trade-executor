@@ -73,6 +73,12 @@ Don't format code.
 
 - For string enums, both members and values must in snake_case
 
+### Pytest
+
+- Never use test classes in pytest
+- `pytest` tests should not have stdout output like `print`
+- Instead of manual float fuzzy comparison like `assert abs(aave_total_pnl - 96.6087) < 0.01` use `pytest.approx()`
+
 ### pyproject.toml
 
 - When adding or updating dependencies in `pyproject.toml`, always add a comment why this dependency is needed for this project
@@ -80,3 +86,10 @@ Don't format code.
 ## Python notebooks
 
 - Whenever possible, prefer table output instead of print(). Use Pandas DataFrame and notebook's built-in display() function to render tabular data.
+
+## Type Hints
+- Always prefer native Python types over importing from typing module
+- Use `dict`, `list`, `tuple`, `set` instead of `Dict`, `List`, `Tuple`, `Set`
+- Use `type | None` instead of `Optional[type]`
+- Use `str | int` instead of `Union[str, int]`
+- Only import from typing when necessary (e.g., `Any`, `Callable`, `TypeVar`)
