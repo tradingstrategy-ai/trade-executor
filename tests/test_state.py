@@ -1323,10 +1323,12 @@ def test_validate_state_with_too_large_int():
 
 
 def test_validate_state_with_nan():
-    """We have NaN."""
-    nan = {"foo": float('inf')}
-    with pytest.raises(BadStateData):
-        validate_nested_state_dict(nan)
+    """Infinity and NaN values are now allowed - they are encoded as null during JSON serialisation."""
+    inf_dict = {"foo": float('inf')}
+    nan_dict = {"bar": float('nan')}
+    # These should not raise - inf/NaN are now handled during serialisation
+    validate_nested_state_dict(inf_dict)
+    validate_nested_state_dict(nan_dict)
 
 
 def test_blockchain_transaction_params():
