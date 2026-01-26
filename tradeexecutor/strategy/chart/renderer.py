@@ -3,21 +3,24 @@ import datetime
 import io
 import traceback
 from dataclasses import dataclass
-from typing import Collection, Callable, Any
+from typing import Any, Callable, Collection
 
+import IPython.display
+import matplotlib.figure
 import pandas as pd
 from pandas.io.formats.style import Styler
 from plotly.graph_objects import Figure
-import IPython.display
-
-import matplotlib.figure
-
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.strategy.chart.definition import ChartRegistry, ChartParameters, ChartRenderingResult, ChartInput, ChartOutput
+from tradeexecutor.strategy.chart.definition import (ChartInput, ChartOutput,
+                                                     ChartParameters,
+                                                     ChartRegistry,
+                                                     ChartRenderingResult)
 from tradeexecutor.strategy.execution_context import notebook_execution_context
-from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
-from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
+from tradeexecutor.strategy.pandas_trader.strategy_input import \
+    StrategyInputIndicators
+from tradeexecutor.visual.image_output import \
+    render_plotly_figure_as_image_file
 
 
 @dataclass(slots=True, frozen=False)
@@ -239,11 +242,21 @@ class ChartBacktestRenderingSetup:
     def render(self, func: Callable, **kwargs) -> ChartOutput:
         """Render the chart using the provided function.
 
+        Example:
+
+        .. code-block:: python
+
+            fig = chart_renderer.render(signal_comparison)
+            fig.show()
+
         :param func:
             Python function object registered with ``ChartRegistry.register()``.
 
         :param kwargs:
             Extra arguments passed to the function
+
+        :return:
+            ChartOutput may contain different items (dataframes, charts, tuples) dependning on what the underlying function produces.
         """
 
         assert func in self.registry.by_function, f"Function {func} is not registered in the chart registry."

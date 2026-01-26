@@ -2,21 +2,22 @@
 import datetime
 import enum
 import typing
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import wraps
 from typing import Literal
 
 import pandas as pd
 import plotly.graph_objects as go
+from IPython.display import HTML
 from matplotlib.figure import Figure as MatplotlibFigure
 from pandas.io.formats.style import Styler
-from IPython.display import HTML
-
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import ExecutionContext
-from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.pandas_trader.strategy_input import \
+    StrategyInputIndicators
+from tradeexecutor.strategy.trading_strategy_universe import \
+    TradingStrategyUniverse
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 
 
@@ -98,6 +99,10 @@ class ChartInput:
                 return None
         else:
             return self.backtest_end_at
+        
+    def copy(self) -> "ChartInput":
+        """Create a shallow copy of the ChartInput."""
+        return replace(self)
 
 
 @dataclass(slots=True, frozen=False)

@@ -5,32 +5,35 @@ TODO: Clean txid and nonce references properly.
 import datetime
 from decimal import Decimal
 from typing import Tuple
+
 import numpy as np
 import pandas as pd
-
 import pytest
 from hexbytes import HexBytes
-
-from tradeexecutor.state.valuation import ValuationUpdate
-from tradeexecutor.strategy.trade_pricing import TradePricing
-from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
-from tradeexecutor.state.state import State, TradeType
-from tradeexecutor.state.portfolio import NotEnoughMoney, TooSmallTrade
-from tradeexecutor.state.portfolio import Portfolio
-from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.trade import TradeExecution, TradeStatus
-from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, solidity_arg_encoder
-from tradeexecutor.state.reserve import ReservePosition
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
-from tradeexecutor.state.validator import validate_nested_state_dict, BadStateData
-from tradeexecutor.statistics.core import update_statistics
-from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
-from tradeexecutor.strategy.valuation import revalue_state
-from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.types import USDollarAmount
-from tradeexecutor.strategy.execution_context import ExecutionMode
 
+from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
+from tradeexecutor.state.blockhain_transaction import (BlockchainTransaction,
+                                                       solidity_arg_encoder)
+from tradeexecutor.state.identifier import (AssetIdentifier,
+                                            TradingPairIdentifier)
+from tradeexecutor.state.portfolio import (NotEnoughMoney, Portfolio,
+                                           TooSmallTrade)
+from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.reserve import ReservePosition
+from tradeexecutor.state.state import State, TradeType
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.state.validator import (BadStateData,
+                                           validate_nested_state_dict)
+from tradeexecutor.state.valuation import ValuationUpdate
+from tradeexecutor.statistics.core import update_statistics
+from tradeexecutor.statistics.statistics_table import \
+    serialise_long_short_stats_as_json_table
+from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.trade_pricing import TradePricing
+from tradeexecutor.strategy.valuation import revalue_state
+from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 
 
 @pytest.fixture
@@ -1323,10 +1326,12 @@ def test_validate_state_with_too_large_int():
 
 
 def test_validate_state_with_nan():
-    """We have NaN."""
+    """We have NaN.
+    
+    - Now converted to null
+    """
     nan = {"foo": float('inf')}
-    with pytest.raises(BadStateData):
-        validate_nested_state_dict(nan)
+    validate_nested_state_dict(nan)
 
 
 def test_blockchain_transaction_params():
