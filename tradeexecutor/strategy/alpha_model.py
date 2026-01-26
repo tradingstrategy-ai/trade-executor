@@ -887,7 +887,7 @@ class AlphaModel:
 
         logger.info("Total %d positions to consider for size risk adjustment", len(remaining_weights))
 
-        while equity_left - epsilon_usd > 0 and len(remaining_weights) > 0:
+        while equity_left - epsilon_usd > 0 and len(remaining_weights) > 0 and positions_accepted < max_positions:
             # First calculate raw normals
             normalised = normalise_weights(remaining_weights)
 

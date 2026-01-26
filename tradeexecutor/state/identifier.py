@@ -639,7 +639,7 @@ class TradingPairIdentifier:
         assert chain_id != ChainId.anvil, f"Cannot use with anvil: {self}"
         return f"(ChainId.{chain_id.name}, {self.base.token_symbol}, {self.quote.token_symbol}, {self.fee})"
 
-    def get_chart_label(self) -> str:
+    def get_easy_label(self) -> str:
         """Get the short name used in charting for this pair.
 
         - Base token symbol if spot
@@ -648,6 +648,8 @@ class TradingPairIdentifier:
         if self.is_vault():
             return self.get_vault_name()
         return self.base.token_symbol
+
+    get_chart_label = get_easy_label
 
     def get_lending_protocol(self) -> LendingProtocolType | None:
         """Is this pair on a particular lending protocol."""
