@@ -4,12 +4,11 @@ import pytest
 from eth_defi.provider.anvil import fork_network_anvil
 from eth_defi.chain import install_chain_middleware
 from eth_defi.abi import get_deployed_contract
-from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_typing import HexAddress, HexStr
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
 
-from eth_defi.token import USDC_WHALE, USDCE_WHALE
+from eth_defi.token import USDCE_WHALE
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.testing.pytest_helpers import is_failed_test
