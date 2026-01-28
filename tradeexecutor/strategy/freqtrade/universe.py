@@ -8,7 +8,7 @@ def create_freqtrade_pair(
     api_url: str,
     exchange_name: str,
     reserve_currency: AssetIdentifier,
-    deposit_method: str,
+    transfer_method: str,
     recipient_address: str | None = None,
     vault_address: str | None = None,
     broker_id: int | None = None,
@@ -29,9 +29,9 @@ def create_freqtrade_pair(
         api_url: Freqtrade API URL (e.g., "http://localhost:8080")
         exchange_name: Exchange name (e.g., "binance", "aster")
         reserve_currency: Reserve currency asset (e.g., USDC, USDT)
-        deposit_method: One of: "on_chain_transfer", "aster_vault", "hyperliquid", "orderly_vault"
-        recipient_address: Wallet address for on_chain_transfer deposits
-        vault_address: Vault contract address for vault-based deposits
+        transfer_method: Capital transfer method. One of: "on_chain_transfer", "aster", "hyperliquid", "orderly_vault"
+        recipient_address: Wallet address for on_chain_transfer
+        vault_address: Vault contract address for vault-based transfers
         broker_id: Broker ID for Aster/Orderly
         orderly_account_id: Orderly account ID (32 bytes hex)
         token_id: Token ID for Orderly
@@ -59,7 +59,7 @@ def create_freqtrade_pair(
         ...     api_url="http://localhost:8080",
         ...     exchange_name="binance",
         ...     reserve_currency=usdc,
-        ...     deposit_method="on_chain_transfer",
+        ...     transfer_method="on_chain_transfer",
         ...     recipient_address="0xabcdef...",
         ... )
     """
@@ -81,7 +81,7 @@ def create_freqtrade_pair(
         "freqtrade_id": freqtrade_id,
         "freqtrade_api_url": api_url,
         "freqtrade_exchange": exchange_name,
-        "freqtrade_deposit_method": deposit_method,
+        "freqtrade_transfer_method": transfer_method,
     }
 
     # Add deposit-specific fields
@@ -95,7 +95,7 @@ def create_freqtrade_pair(
         other_data["freqtrade_orderly_account_id"] = orderly_account_id
     if token_id:
         other_data["freqtrade_token_id"] = token_id
-    if deposit_method == "hyperliquid":
+    if transfer_method == "hyperliquid":
         other_data["freqtrade_is_mainnet"] = is_mainnet
 
     # Add timeout/polling config
@@ -143,14 +143,14 @@ def load_freqtrade_bots(
         ...         "freqtrade_id": "momentum-bot",
         ...         "api_url": "http://localhost:8080",
         ...         "exchange_name": "binance",
-        ...         "deposit_method": "on_chain_transfer",
+        ...         "transfer_method": "on_chain_transfer",
         ...         "recipient_address": "0xabcdef...",
         ...     },
         ...     {
         ...         "freqtrade_id": "aster-bot",
         ...         "api_url": "http://localhost:8081",
         ...         "exchange_name": "aster",
-        ...         "deposit_method": "aster_vault",
+        ...         "transfer_method": "aster",
         ...         "vault_address": "0x123456...",
         ...         "broker_id": 0,
         ...     },
@@ -165,7 +165,7 @@ def load_freqtrade_bots(
             api_url=bot_config["api_url"],
             exchange_name=bot_config["exchange_name"],
             reserve_currency=reserve_currency,
-            deposit_method=bot_config["deposit_method"],
+            transfer_method=bot_config["transfer_method"],
             recipient_address=bot_config.get("recipient_address"),
             vault_address=bot_config.get("vault_address"),
             broker_id=bot_config.get("broker_id"),

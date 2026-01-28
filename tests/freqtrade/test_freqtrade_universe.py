@@ -24,13 +24,13 @@ def usdc_asset():
 
 
 def test_create_freqtrade_pair_on_chain_transfer(usdc_asset):
-    """Test creating a Freqtrade pair with on-chain transfer deposit method."""
+    """Test creating a Freqtrade pair with on-chain transfer method."""
     pair = create_freqtrade_pair(
         freqtrade_id="momentum-bot",
         api_url="http://localhost:8080",
         exchange_name="binance",
         reserve_currency=usdc_asset,
-        deposit_method="on_chain_transfer",
+        transfer_method="on_chain_transfer",
         recipient_address="0xabcdef0123456789abcdef0123456789abcdef01",
     )
 
@@ -45,59 +45,59 @@ def test_create_freqtrade_pair_on_chain_transfer(usdc_asset):
     assert pair.other_data["freqtrade_id"] == "momentum-bot"
     assert pair.other_data["freqtrade_api_url"] == "http://localhost:8080"
     assert pair.other_data["freqtrade_exchange"] == "binance"
-    assert pair.other_data["freqtrade_deposit_method"] == "on_chain_transfer"
+    assert pair.other_data["freqtrade_transfer_method"] == "on_chain_transfer"
     assert pair.other_data["freqtrade_recipient_address"] == "0xabcdef0123456789abcdef0123456789abcdef01"
 
     # Verify helper methods work
     assert pair.get_freqtrade_id() == "momentum-bot"
     assert pair.get_freqtrade_api_url() == "http://localhost:8080"
-    assert pair.get_freqtrade_deposit_method() == "on_chain_transfer"
+    assert pair.get_freqtrade_transfer_method() == "on_chain_transfer"
 
 
-def test_create_freqtrade_pair_aster_vault(usdc_asset):
-    """Test creating a Freqtrade pair with Aster vault deposit method."""
+def test_create_freqtrade_pair_aster(usdc_asset):
+    """Test creating a Freqtrade pair with Aster transfer method."""
     pair = create_freqtrade_pair(
         freqtrade_id="aster-bot",
         api_url="http://localhost:8081",
         exchange_name="aster",
         reserve_currency=usdc_asset,
-        deposit_method="aster_vault",
+        transfer_method="aster",
         vault_address="0x1234567890abcdef1234567890abcdef12345678",
         broker_id=5,
     )
 
     assert pair.kind == TradingPairKind.freqtrade
-    assert pair.other_data["freqtrade_deposit_method"] == "aster_vault"
+    assert pair.other_data["freqtrade_transfer_method"] == "aster"
     assert pair.other_data["freqtrade_vault_address"] == "0x1234567890abcdef1234567890abcdef12345678"
     assert pair.other_data["freqtrade_broker_id"] == 5
 
 
 def test_create_freqtrade_pair_hyperliquid(usdc_asset):
-    """Test creating a Freqtrade pair with Hyperliquid deposit method."""
+    """Test creating a Freqtrade pair with Hyperliquid transfer method."""
     pair = create_freqtrade_pair(
         freqtrade_id="hyperliquid-bot",
         api_url="http://localhost:8082",
         exchange_name="hyperliquid",
         reserve_currency=usdc_asset,
-        deposit_method="hyperliquid",
+        transfer_method="hyperliquid",
         vault_address="0xabcdef1234567890abcdef1234567890abcdef12",
         is_mainnet=True,
     )
 
     assert pair.kind == TradingPairKind.freqtrade
-    assert pair.other_data["freqtrade_deposit_method"] == "hyperliquid"
+    assert pair.other_data["freqtrade_transfer_method"] == "hyperliquid"
     assert pair.other_data["freqtrade_vault_address"] == "0xabcdef1234567890abcdef1234567890abcdef12"
     assert pair.other_data["freqtrade_is_mainnet"] is True
 
 
 def test_create_freqtrade_pair_orderly(usdc_asset):
-    """Test creating a Freqtrade pair with Orderly vault deposit method."""
+    """Test creating a Freqtrade pair with Orderly vault transfer method."""
     pair = create_freqtrade_pair(
         freqtrade_id="orderly-bot",
         api_url="http://localhost:8083",
         exchange_name="orderly",
         reserve_currency=usdc_asset,
-        deposit_method="orderly_vault",
+        transfer_method="orderly_vault",
         vault_address="0x9876543210fedcba9876543210fedcba98765432",
         orderly_account_id="0x1111111111111111111111111111111111111111111111111111111111111111",
         broker_id="woofi_pro",
@@ -105,7 +105,7 @@ def test_create_freqtrade_pair_orderly(usdc_asset):
     )
 
     assert pair.kind == TradingPairKind.freqtrade
-    assert pair.other_data["freqtrade_deposit_method"] == "orderly_vault"
+    assert pair.other_data["freqtrade_transfer_method"] == "orderly_vault"
     assert pair.other_data["freqtrade_vault_address"] == "0x9876543210fedcba9876543210fedcba98765432"
     assert pair.other_data["freqtrade_orderly_account_id"] == "0x1111111111111111111111111111111111111111111111111111111111111111"
     assert pair.other_data["freqtrade_broker_id"] == "woofi_pro"
@@ -124,7 +124,7 @@ def test_get_freqtrade_config_with_env_vars(usdc_asset):
             api_url="http://localhost:8080",
             exchange_name="binance",
             reserve_currency=usdc_asset,
-            deposit_method="on_chain_transfer",
+            transfer_method="on_chain_transfer",
             recipient_address="0xabcdef0123456789abcdef0123456789abcdef01",
         )
 
@@ -136,7 +136,7 @@ def test_get_freqtrade_config_with_env_vars(usdc_asset):
         assert config["api_username"] == "testuser"
         assert config["api_password"] == "testpass"
         assert config["exchange_name"] == "binance"
-        assert config["deposit_method"] == "on_chain_transfer"
+        assert config["transfer_method"] == "on_chain_transfer"
         assert config["recipient_address"] == "0xabcdef0123456789abcdef0123456789abcdef01"
 
     finally:
@@ -157,7 +157,7 @@ def test_get_freqtrade_config_missing_env_vars(usdc_asset):
         api_url="http://localhost:8080",
         exchange_name="binance",
         reserve_currency=usdc_asset,
-        deposit_method="on_chain_transfer",
+        transfer_method="on_chain_transfer",
         recipient_address="0xabcdef0123456789abcdef0123456789abcdef01",
     )
 
@@ -175,14 +175,14 @@ def test_load_freqtrade_bots(usdc_asset):
             "freqtrade_id": "momentum-bot",
             "api_url": "http://localhost:8080",
             "exchange_name": "binance",
-            "deposit_method": "on_chain_transfer",
+            "transfer_method": "on_chain_transfer",
             "recipient_address": "0xabcdef0123456789abcdef0123456789abcdef01",
         },
         {
             "freqtrade_id": "aster-bot",
             "api_url": "http://localhost:8081",
             "exchange_name": "aster",
-            "deposit_method": "aster_vault",
+            "transfer_method": "aster",
             "vault_address": "0x1234567890abcdef1234567890abcdef12345678",
             "broker_id": 0,
         },
@@ -194,12 +194,12 @@ def test_load_freqtrade_bots(usdc_asset):
 
     # Verify first pair (on-chain transfer)
     assert pairs[0].get_freqtrade_id() == "momentum-bot"
-    assert pairs[0].get_freqtrade_deposit_method() == "on_chain_transfer"
+    assert pairs[0].get_freqtrade_transfer_method() == "on_chain_transfer"
     assert pairs[0].other_data["freqtrade_recipient_address"] == "0xabcdef0123456789abcdef0123456789abcdef01"
 
-    # Verify second pair (Aster vault)
+    # Verify second pair (Aster)
     assert pairs[1].get_freqtrade_id() == "aster-bot"
-    assert pairs[1].get_freqtrade_deposit_method() == "aster_vault"
+    assert pairs[1].get_freqtrade_transfer_method() == "aster"
     assert pairs[1].other_data["freqtrade_vault_address"] == "0x1234567890abcdef1234567890abcdef12345678"
     assert pairs[1].other_data["freqtrade_broker_id"] == 0
 
@@ -211,7 +211,7 @@ def test_load_freqtrade_bots_with_custom_timeouts(usdc_asset):
             "freqtrade_id": "custom-bot",
             "api_url": "http://localhost:8080",
             "exchange_name": "binance",
-            "deposit_method": "on_chain_transfer",
+            "transfer_method": "on_chain_transfer",
             "recipient_address": "0xabcdef0123456789abcdef0123456789abcdef01",
             "fee_tolerance": "2.0",
             "confirmation_timeout": 300,

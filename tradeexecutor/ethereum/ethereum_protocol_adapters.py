@@ -403,10 +403,10 @@ def create_freqtrade_adapter(
                 )
 
             # Build exchange config from other_data
-            deposit_method = pair.other_data.get("freqtrade_deposit_method")
+            transfer_method = pair.other_data.get("freqtrade_transfer_method")
             exchange_config = None
 
-            if deposit_method == "on_chain_transfer":
+            if transfer_method == "on_chain_transfer":
                 recipient_address = pair.other_data.get("freqtrade_recipient_address")
                 if not recipient_address:
                     raise ValueError(f"on_chain_transfer requires freqtrade_recipient_address for {freqtrade_id}")
@@ -416,10 +416,10 @@ def create_freqtrade_adapter(
                     confirmation_timeout=pair.other_data.get("freqtrade_confirmation_timeout", 600),
                     poll_interval=pair.other_data.get("freqtrade_poll_interval", 10),
                 )
-            elif deposit_method == "aster_vault":
+            elif transfer_method == "aster":
                 vault_address = pair.other_data.get("freqtrade_vault_address")
                 if not vault_address:
-                    raise ValueError(f"aster_vault requires freqtrade_vault_address for {freqtrade_id}")
+                    raise ValueError(f"aster requires freqtrade_vault_address for {freqtrade_id}")
                 exchange_config = AsterExchangeConfig(
                     vault_address=vault_address,
                     broker_id=pair.other_data.get("freqtrade_broker_id", 0),
@@ -427,7 +427,7 @@ def create_freqtrade_adapter(
                     confirmation_timeout=pair.other_data.get("freqtrade_confirmation_timeout", 600),
                     poll_interval=pair.other_data.get("freqtrade_poll_interval", 10),
                 )
-            elif deposit_method == "hyperliquid":
+            elif transfer_method == "hyperliquid":
                 vault_address = pair.other_data.get("freqtrade_vault_address")
                 if not vault_address:
                     raise ValueError(f"hyperliquid requires freqtrade_vault_address for {freqtrade_id}")
@@ -438,7 +438,7 @@ def create_freqtrade_adapter(
                     confirmation_timeout=pair.other_data.get("freqtrade_confirmation_timeout", 600),
                     poll_interval=pair.other_data.get("freqtrade_poll_interval", 10),
                 )
-            elif deposit_method == "orderly_vault":
+            elif transfer_method == "orderly_vault":
                 vault_address = pair.other_data.get("freqtrade_vault_address")
                 orderly_account_id = pair.other_data.get("freqtrade_orderly_account_id")
                 broker_id = pair.other_data.get("freqtrade_broker_id")

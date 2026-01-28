@@ -36,7 +36,7 @@ def freqtrade_pair(usdc_asset):
         api_url="http://localhost:8080",
         exchange_name="binance",
         reserve_currency=usdc_asset,
-        deposit_method="on_chain_transfer",
+        transfer_method="on_chain_transfer",
         recipient_address="0xabcdef0123456789abcdef0123456789abcdef01",
     )
 

@@ -16,8 +16,8 @@ class FreqtradeDepositMethod(enum.StrEnum):
     #: Simple ERC20 transfer to a wallet address (for CEX or Lagoon vault integration)
     on_chain_transfer = "on_chain_transfer"
 
-    #: Aster vault deposit on BSC (approve + vault.deposit)
-    aster_vault = "aster_vault"
+    #: Aster deposit on BSC (approve + vault.deposit)
+    aster = "aster"
 
     #: Hyperliquid deposit (bridge transfer on Arbitrum + SDK vault deposit)
     hyperliquid = "hyperliquid"
@@ -32,8 +32,8 @@ class FreqtradeWithdrawalMethod(enum.StrEnum):
     #: Simple ERC20 transfer from a wallet address (for CEX or Lagoon vault integration)
     on_chain_transfer = "on_chain_transfer"
 
-    #: Aster vault withdrawal on BSC
-    aster_vault = "aster_vault"
+    #: Aster withdrawal on BSC
+    aster = "aster"
 
     #: Hyperliquid withdrawal (SDK vault withdrawal + bridge transfer on Arbitrum)
     hyperliquid = "hyperliquid"
@@ -72,7 +72,7 @@ class OnChainTransferExchangeConfig:
 
 @dataclass(slots=True)
 class AsterExchangeConfig:
-    """Configuration for Aster vault deposits and withdrawals on BSC.
+    """Configuration for Aster deposits and withdrawals on BSC.
 
     Deposit flow:
     1. ERC20.approve(vault_address, amount)

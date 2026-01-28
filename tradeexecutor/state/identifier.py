@@ -873,16 +873,16 @@ class TradingPairIdentifier:
             return None
         return self.other_data.get("freqtrade_api_url")
 
-    def get_freqtrade_deposit_method(self) -> str | None:
-        """Get the Freqtrade deposit method.
+    def get_freqtrade_transfer_method(self) -> str | None:
+        """Get the Freqtrade transfer method.
 
         - None if not a Freqtrade pair
 
-        Returns one of: "on_chain_transfer", "aster_vault", "hyperliquid", "orderly_vault"
+        Returns one of: "on_chain_transfer", "aster", "hyperliquid", "orderly_vault"
         """
         if not self.is_freqtrade():
             return None
-        return self.other_data.get("freqtrade_deposit_method")
+        return self.other_data.get("freqtrade_transfer_method")
 
     def get_freqtrade_config(self) -> dict | None:
         """Get full Freqtrade configuration from other_data.
@@ -917,7 +917,7 @@ class TradingPairIdentifier:
             "api_username": api_username,
             "api_password": api_password,
             "exchange_name": self.other_data.get("freqtrade_exchange"),
-            "deposit_method": self.get_freqtrade_deposit_method(),
+            "transfer_method": self.get_freqtrade_transfer_method(),
         }
 
         # Add deposit-specific fields
