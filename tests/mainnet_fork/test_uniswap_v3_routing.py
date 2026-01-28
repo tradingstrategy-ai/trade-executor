@@ -100,9 +100,10 @@ def hot_wallet(
     """
     account = Account.create()
     matic_amount = 15
-    web3.eth.send_transaction(
+    tx_hash = web3.eth.send_transaction(
         {"from": web3.eth.accounts[0], "to": account.address, "value": matic_amount * 10**18}
     )
+    wait_transactions_to_complete(web3, [tx_hash])
     tx_hash = usdc_token.functions.transfer(account.address, 10_000 * 10**6).transact(
         {"from": large_usdc_holder}
     )
