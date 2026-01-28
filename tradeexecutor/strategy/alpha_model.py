@@ -977,7 +977,125 @@ class AlphaModel:
         # Any remaining signal is set to zero
         for s in self.signals.values():
             if s.position_target is None:
-                s.position_target = 0.0                
+                s.position_target = 0.0  
+
+    def _normalise_weights_waterfall(
+        self,
+        max_positions: int,
+        max_weight=1.0,
+        investable_equity: USDollarAmount | None = None,
+        size_risk_model: SizeRiskModel | None = None,
+        epsilon_usd=5.0,
+    ):
+        """Normalises position weights between 0 and 1.
+
+        - Max allocate to the first entry, and keep going down until everything is allocated
+        """
+
+        assert type(max_weight) == float, f"Got {type(max_weight)} instead of float"
+        if investable_equity is not None:
+            assert type(investable_equity) == float, f"Got {type(investable_equity)} instead of float"
+
+        raw_weights = {s.pair.internal_id: s.raw_weight for s in self.signals.values()}
+
+        remaining_weights = Counter(raw_weights)
+        equity_left = investable_equity
+        total_accetable_investments = 0
+        total_missed_investments = 0
+        positions_accepted = 0
+        invested = 0
+        included_pair_ids = set()
+
+        # logging.getLogger().setLevel(logging.INFO)
+
+        logger.info("Total %d positions to consider for size risk adjustment", len(remaining_weights))
+
+        while equity_left - epsilon_usd > 0 and len(remaining_weights) > 0 and positions_accepted < max_positions:
+
+            # For each signal, check if it exceeds
+            # US dollar based size risk bsaed on the current market conditions
+            s: TradingPairSignal
+            pair_id, weight = remaining_weights.most_common()[0]
+
+            # NOTE: Here we might have a conflict between given normal weight
+            # and size risk, because size risk may overallocate to a position
+            # if all positions are size-risked down
+            s = self.signals[pair_id]
+
+            assert s.old_weight is not None, f"TradingSignal.old_weight is not available: {s} - remember to call AlphaModel.update_old_weights()"
+            assert s.raw_weight >= 0, "_normalise_weights_size_risk(): short or leverage not implemented"
+
+            asked_position_size = equity_left 
+            max_concentrion_capped_size = max_weight * investable_equity
+
+            if asked_position_size > max_concentrion_capped_size:
+                asked_position_size = max_concentrion_capped_size
+                s.flags.add(TradingPairSignalFlags.capped_by_concentration)
+
+            size_risk = size_risk_model.get_acceptable_size_for_position(
+                self.timestamp,
+                s.pair,
+                asked_position_size
+            )
+
+            if size_risk.capped:
+                s.flags.add(TradingPairSignalFlags.capped_by_pool_size)
+        
+            total_missed_investments += (size_risk.asked_size - size_risk.accepted_size)
+
+            s.position_size_risk = size_risk
+            s.position_target = size_risk.accepted_size
+            total_accetable_investments += size_risk.accepted_size
+
+            # Distribute the remaining equity to other positions
+            # in the rebalance if we could not fully allocate this one
+            equity_left -= size_risk.accepted_size
+            del remaining_weights[pair_id]
+
+            logger.info(
+                "Position size risk, pair: %s, asked: %s, accepted: %s, diagnostics: %s, equity left: %f, invested: %f",
+                s.pair.base.token_symbol,
+                size_risk.asked_size,
+                size_risk.accepted_size,
+                size_risk.diagnostics_data,
+                equity_left,
+                total_accetable_investments
+            )
+            positions_accepted += 1
+            included_pair_ids.add(pair_id)
+
+        # Store our risk adjusted sizes
+        self.investable_equity = investable_equity
+        self.accepted_investable_equity = total_accetable_investments
+        self.size_risk_discarded_value = total_missed_investments
+
+        logger.info(
+            "Positions accepted: %d out of %d requested, total accepted %f out of %f", 
+            positions_accepted, 
+            max_positions,
+            self.accepted_investable_equity,
+            self.investable_equity
+        )
+
+        # Recalculate normals based on size-risk adjusted USD values
+        clipped_weights = {}
+        for pair_id in included_pair_ids:
+            s = self.signals[pair_id]
+            clipped_weights[pair_id] = s.position_target / total_accetable_investments
+
+        # Make sure we sum to 1.0, not over,
+        # due to floating point issues
+        clipped_weights = clip_to_normalised(clipped_weights)
+
+        # Put clipped weights into the model
+        for pair_id, normal_weight in clipped_weights.items():
+            s = self.signals[pair_id]
+            s.normalised_weight = normal_weight
+
+        # Any remaining signal is set to zero
+        for s in self.signals.values():
+            if s.position_target is None:
+                s.position_target = 0.0                                
 
     def normalise_weights(
         self,
@@ -985,6 +1103,7 @@ class AlphaModel:
         investable_equity: USDollarAmount | None = None,
         size_risk_model: SizeRiskModel | None = None,
         max_positions: int | None = None,
+        waterfall=False,
     ):
         """Normalise weights to 0...1 scale.
 
@@ -1021,7 +1140,14 @@ class AlphaModel:
         else:
             # Thinking harder
 
-            if max_positions is not None:
+            if waterfall:
+                self._normalise_weights_waterfall(
+                    max_positions=max_positions,
+                    max_weight=max_weight,
+                    investable_equity=investable_equity,
+                    size_risk_model=size_risk_model,
+                )
+            elif max_positions is not None:
                 # Method 1: weights normalised after TVL-based adjustment
                 self._normalise_weights_size_risk_positions(
                     max_positions=max_positions,

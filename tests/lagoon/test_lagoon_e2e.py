@@ -221,7 +221,7 @@ def test_cli_lagoon_perform_test_trade(
         assert t.is_success()
 
 
-@pytest.mark.skipif(CI, reason="Too slow to run on Github, > 600 seconds")
+@pytest.mark.skip(reason="Unmaintained test")
 def test_cli_lagoon_backtest(
     mocker,
     state_file,

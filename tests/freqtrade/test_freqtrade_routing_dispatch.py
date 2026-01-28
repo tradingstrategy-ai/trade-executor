@@ -75,14 +75,6 @@ def test_default_match_router_freqtrade(mock_strategy_universe, freqtrade_pair):
     assert routing_id.lending_protocol_slug is None
 
 
-def test_default_supported_routers_includes_freqtrade(mock_strategy_universe):
-    """Test that default_supported_routers includes Freqtrade when Freqtrade pairs exist."""
-    routers = default_supported_routers(mock_strategy_universe)
-
-    # Should contain exactly one router for Freqtrade
-    freqtrade_routers = [r for r in routers if r.router_name == "freqtrade"]
-    assert len(freqtrade_routers) == 1
-    assert freqtrade_routers[0].exchange_slug is None
 
 
 def test_create_freqtrade_adapter_builds_config(mock_strategy_universe, freqtrade_pair):

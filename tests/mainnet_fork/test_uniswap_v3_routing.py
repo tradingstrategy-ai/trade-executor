@@ -99,10 +99,17 @@ def hot_wallet(
     Start with 10,000 USDC cash and 2 polygon.
     """
     account = Account.create()
-    matic_amount = 15
-    web3.eth.send_transaction(
+    matic_amount = 5
+    tx_hash = web3.eth.send_transaction(
         {"from": web3.eth.accounts[0], "to": account.address, "value": matic_amount * 10**18}
     )
+    wait_transactions_to_complete(web3, [tx_hash])
+    assert web3.eth.get_balance(web3.eth.accounts[0]) >= matic_amount * 10 ** 18, f"Got: {web3.eth.get_balance(web3.eth.accounts[0])}"
+    tx_hash = web3.eth.send_transaction(
+        {"from": web3.eth.accounts[0], "to": large_usdc_holder, "value": matic_amount * 10**18, "gas": 100_000}
+    )
+    wait_transactions_to_complete(web3, [tx_hash])
+    assert web3.eth.get_balance(large_usdc_holder) >= matic_amount * 10**18, f"Got: {web3.eth.get_balance(large_usdc_holder)}"
     tx_hash = usdc_token.functions.transfer(account.address, 10_000 * 10**6).transact(
         {"from": large_usdc_holder}
     )

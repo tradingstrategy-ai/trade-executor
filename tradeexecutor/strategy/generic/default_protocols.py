@@ -89,7 +89,6 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
     configs = set()
 
     vaults_done = False
-    freqtrade_done = False
 
     for xc in exchanges.exchanges.values():
         if xc.exchange_type == ExchangeType.erc_4626_vault:
@@ -109,19 +108,6 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
                     exchange_slug=xc.exchange_slug,
                 )
             )
-
-    # Check for Freqtrade pairs
-    if strategy_universe.data_universe.pairs:
-        for pair in strategy_universe.data_universe.pairs.iterate_pairs():
-            if pair.is_freqtrade() and not freqtrade_done:
-                configs.add(
-                    ProtocolRoutingId(
-                        router_name="freqtrade",
-                        exchange_slug=None,
-                    )
-                )
-                freqtrade_done = True
-                break
 
     # Enabled 1delta if lending candles are available
     if strategy_universe.data_universe.lending_candles:
