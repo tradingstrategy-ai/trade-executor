@@ -1,7 +1,7 @@
 """Freqtrade position integration tests.
 
 Tests full deposit, valuation, and withdrawal flows with fixture-based mocking.
-Covers on-chain transfer and Aster vault exchange types.
+Covers on-chain transfer and Aster exchange types.
 """
 
 import datetime
@@ -270,7 +270,7 @@ def test_on_chain_transfer_position_state_after_deposit(
 
 
 # =============================================================================
-# Aster vault integration tests
+# Aster integration tests
 # =============================================================================
 
 
@@ -280,7 +280,7 @@ def test_aster_deposit_flow(
     create_buy_trade,
     mock_token,
 ):
-    """Test full Aster vault deposit flow with approve + deposit transactions."""
+    """Test full Aster deposit flow with approve + deposit transactions."""
     model = FreqtradeRoutingModel(
         freqtrade_configs={"momentum-bot": aster_config}
     )
@@ -343,7 +343,7 @@ def test_aster_deposit_with_custom_broker_id(
     create_buy_trade,
     mock_token,
 ):
-    """Test Aster vault deposit with custom broker_id."""
+    """Test Aster deposit with custom broker_id."""
     custom_broker_config = FreqtradeConfig(
         freqtrade_id="momentum-bot",
         api_url="http://localhost:8080",
@@ -450,7 +450,7 @@ def test_aster_withdrawal_not_implemented(
     mock_routing_state_factory,
     create_sell_trade,
 ):
-    """Test that Aster vault withdrawal raises NotImplementedError."""
+    """Test that Aster withdrawal raises NotImplementedError."""
     model = FreqtradeRoutingModel(
         freqtrade_configs={"momentum-bot": aster_config}
     )

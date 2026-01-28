@@ -51,7 +51,7 @@ class FreqtradeRoutingModel(RoutingModel):
 
     Supports multiple deposit methods:
     - On-chain transfer: Simple ERC20 transfer (for Lagoon vault integration)
-    - Aster vault: ERC20 approve + AstherusVault.deposit() on BSC
+    - Aster: ERC20 approve + AstherusVault.deposit() on BSC
     - Hyperliquid: Bridge transfer on Arbitrum + SDK vault deposit
     - Orderly vault: ERC20 approve + Vault.deposit() with hashed params
     """
@@ -233,7 +233,7 @@ class FreqtradeRoutingModel(RoutingModel):
         exchange_config: AsterExchangeConfig,
         routing_state: FreqtradeRoutingState,
     ) -> list[BlockchainTransaction]:
-        """Build Aster vault deposit transactions.
+        """Build Aster deposit transactions.
 
         Flow:
         1. ERC20.approve(vault_address, amount)
@@ -249,10 +249,10 @@ class FreqtradeRoutingModel(RoutingModel):
             List of BlockchainTransactions (approve + deposit)
         """
         if routing_state.tx_builder is None:
-            raise ValueError("tx_builder required for aster_vault deposits")
+            raise ValueError("tx_builder required for aster deposits")
 
         if routing_state.web3 is None:
-            raise ValueError("web3 required for aster_vault deposits")
+            raise ValueError("web3 required for aster deposits")
 
         if exchange_config.vault_address is None:
             raise ValueError(f"deposit.vault_address required for {config.freqtrade_id}")
@@ -281,7 +281,7 @@ class FreqtradeRoutingModel(RoutingModel):
             token.contract,
             approve_call,
             gas_limit=100_000,
-            notes=f"Approve Aster vault for {config.freqtrade_id}",
+            notes=f"Approve Aster for {config.freqtrade_id}",
         )
 
         # 2. Build vault.deposit transaction
@@ -299,11 +299,11 @@ class FreqtradeRoutingModel(RoutingModel):
             vault,
             deposit_call,
             gas_limit=200_000,
-            notes=f"Aster vault deposit for {config.freqtrade_id}",
+            notes=f"Aster deposit for {config.freqtrade_id}",
         )
 
         trade.notes = (
-            f"Aster vault deposit: {amount} to {vault_address}"
+            f"Aster deposit: {amount} to {vault_address}"
         )
         logger.info(f"Trade {trade.trade_id}: {trade.notes}")
 
@@ -525,9 +525,9 @@ class FreqtradeRoutingModel(RoutingModel):
         exchange_config: AsterExchangeConfig,
         routing_state: FreqtradeRoutingState,
     ) -> list[BlockchainTransaction]:
-        """Build Aster vault withdrawal transaction.
+        """Build Aster withdrawal transaction.
 
-        Aster vault withdrawals require signed messages or validator signatures,
+        Aster withdrawals require signed messages or validator signatures,
         which is not yet implemented. This is a placeholder that raises
         NotImplementedError.
 
@@ -541,7 +541,7 @@ class FreqtradeRoutingModel(RoutingModel):
             NotImplementedError: Always raised as Aster withdrawal is not implemented
         """
         raise NotImplementedError(
-            "Aster vault withdrawal requires signed message or validator signatures - "
+            "Aster withdrawal requires signed message or validator signatures - "
             "signature infrastructure not yet implemented"
         )
 
@@ -711,7 +711,7 @@ class FreqtradeRoutingModel(RoutingModel):
                 self._confirm_withdrawal(trade, config, exchange_config)
             elif isinstance(exchange_config, AsterExchangeConfig):
                 raise NotImplementedError(
-                    "Aster vault withdrawal requires signed message/validator signatures - not yet implemented"
+                    "Aster withdrawal requires signed message/validator signatures - not yet implemented"
                 )
             elif isinstance(exchange_config, HyperliquidExchangeConfig):
                 self._confirm_hyperliquid_withdrawal(trade, config, exchange_config, **kwargs)

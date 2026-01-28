@@ -47,7 +47,7 @@ def freqtrade_config_on_chain_transfer():
 
 @pytest.fixture
 def freqtrade_config_aster():
-    """Create an Aster vault deposit Freqtrade config."""
+    """Create an Aster deposit Freqtrade config."""
     return FreqtradeConfig(
         freqtrade_id="momentum-bot",
         api_url="http://localhost:8080",
@@ -218,7 +218,7 @@ def test_on_chain_transfer_missing_recipient(mock_trade):
 
 
 def test_aster_missing_tx_builder(freqtrade_config_aster, mock_trade):
-    """Test that Aster vault deposits require tx_builder."""
+    """Test that Aster deposits require tx_builder."""
     model = FreqtradeRoutingModel(
         freqtrade_configs={"momentum-bot": freqtrade_config_aster}
     )
@@ -238,7 +238,7 @@ def test_aster_missing_tx_builder(freqtrade_config_aster, mock_trade):
 
 
 def test_aster_missing_vault_address(mock_trade):
-    """Test that Aster vault deposits require vault_address."""
+    """Test that Aster deposits require vault_address."""
     config = FreqtradeConfig(
         freqtrade_id="momentum-bot",
         api_url="http://localhost:8080",
@@ -391,7 +391,7 @@ def test_build_on_chain_transfer_tx(freqtrade_config_on_chain_transfer, mock_tra
 
 
 def test_build_aster_deposit_tx(freqtrade_config_aster, mock_trade):
-    """Test that Aster vault deposit builds approve + deposit transactions."""
+    """Test that Aster deposit builds approve + deposit transactions."""
     model = FreqtradeRoutingModel(
         freqtrade_configs={"momentum-bot": freqtrade_config_aster}
     )

@@ -855,6 +855,87 @@ class TradingPairIdentifier:
         """
         return self.other_data.get("vault_management_fee")
 
+    def get_freqtrade_id(self) -> str | None:
+        """Get the Freqtrade instance ID.
+
+        - None if not a Freqtrade pair
+        """
+        if not self.is_freqtrade():
+            return None
+        return self.other_data.get("freqtrade_id")
+
+    def get_freqtrade_api_url(self) -> str | None:
+        """Get the Freqtrade API URL.
+
+        - None if not a Freqtrade pair
+        """
+        if not self.is_freqtrade():
+            return None
+        return self.other_data.get("freqtrade_api_url")
+
+    def get_freqtrade_transfer_method(self) -> str | None:
+        """Get the Freqtrade transfer method.
+
+        - None if not a Freqtrade pair
+
+        Returns one of: "on_chain_transfer", "aster", "hyperliquid", "orderly_vault"
+        """
+        if not self.is_freqtrade():
+            return None
+        return self.other_data.get("freqtrade_transfer_method")
+
+    def get_freqtrade_config(self) -> dict | None:
+        """Get full Freqtrade configuration from other_data.
+
+        - Combines pair.other_data with environment variables for credentials
+
+        - Returns None if not a Freqtrade pair
+
+        Environment variables:
+        - FREQTRADE_{FREQTRADE_ID}_USERNAME
+        - FREQTRADE_{FREQTRADE_ID}_PASSWORD
+        """
+        if not self.is_freqtrade():
+            return None
+
+        import os
+
+        freqtrade_id = self.get_freqtrade_id()
+        if not freqtrade_id:
+            return None
+
+        # Get credentials from environment variables
+        username_key = f"FREQTRADE_{freqtrade_id.upper().replace('-', '_')}_USERNAME"
+        password_key = f"FREQTRADE_{freqtrade_id.upper().replace('-', '_')}_PASSWORD"
+
+        api_username = os.environ.get(username_key)
+        api_password = os.environ.get(password_key)
+
+        config = {
+            "freqtrade_id": freqtrade_id,
+            "api_url": self.get_freqtrade_api_url(),
+            "api_username": api_username,
+            "api_password": api_password,
+            "exchange_name": self.other_data.get("freqtrade_exchange"),
+            "transfer_method": self.get_freqtrade_transfer_method(),
+        }
+
+        # Add deposit-specific fields
+        if self.other_data.get("freqtrade_recipient_address"):
+            config["recipient_address"] = self.other_data["freqtrade_recipient_address"]
+        if self.other_data.get("freqtrade_vault_address"):
+            config["vault_address"] = self.other_data["freqtrade_vault_address"]
+        if self.other_data.get("freqtrade_broker_id") is not None:
+            config["broker_id"] = self.other_data["freqtrade_broker_id"]
+        if self.other_data.get("freqtrade_orderly_account_id"):
+            config["orderly_account_id"] = self.other_data["freqtrade_orderly_account_id"]
+        if self.other_data.get("freqtrade_token_id"):
+            config["token_id"] = self.other_data["freqtrade_token_id"]
+        if self.other_data.get("freqtrade_is_mainnet") is not None:
+            config["is_mainnet"] = self.other_data["freqtrade_is_mainnet"]
+
+        return config
+
     def has_complete_info(self) -> bool:
         """Check if the pair has good information.
 

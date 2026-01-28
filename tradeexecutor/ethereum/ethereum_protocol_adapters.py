@@ -338,6 +338,165 @@ def create_vault_adapter(
     )
 
 
+def create_freqtrade_adapter(
+    web3: Web3,
+    strategy_universe: TradingStrategyUniverse,
+    routing_id: ProtocolRoutingId,
+) -> ProtocolRoutingConfig:
+    """Create Freqtrade routing adapter.
+
+    Builds FreqtradeConfig for each Freqtrade pair by combining pair.other_data
+    with environment variables for sensitive credentials.
+
+    Environment variable naming: FREQTRADE_{FREQTRADE_ID}_USERNAME and _PASSWORD
+    """
+
+    # TODO: Avoid circular imports for now
+    from tradeexecutor.strategy.freqtrade.freqtrade_routing import FreqtradeRoutingModel
+    from tradeexecutor.strategy.freqtrade.freqtrade_pricing import FreqtradePricingModel
+    from tradeexecutor.strategy.freqtrade.freqtrade_valuation import FreqtradeValuator
+    from tradeexecutor.strategy.freqtrade.config import (
+        FreqtradeConfig,
+        OnChainTransferExchangeConfig,
+        AsterExchangeConfig,
+        HyperliquidExchangeConfig,
+        OrderlyExchangeConfig,
+    )
+    import os
+    from decimal import Decimal
+
+    logger.info("create_freqtrade_adapter(): %s", routing_id)
+
+    assert routing_id.router_name == "freqtrade"
+    assert len(strategy_universe.reserve_assets) == 1
+
+    reserve = strategy_universe.get_reserve_asset()
+    assert reserve.token_symbol in ("USDC", "USDT",)
+
+    # Collect all Freqtrade pairs and build configs
+    freqtrade_configs = {}
+
+    if strategy_universe.data_universe.pairs:
+        for pair in strategy_universe.data_universe.pairs.iterate_pairs():
+            if not pair.is_freqtrade():
+                continue
+
+            freqtrade_id = pair.other_data.get("freqtrade_id")
+            if not freqtrade_id:
+                raise ValueError(f"Freqtrade pair {pair} missing freqtrade_id in other_data")
+
+            # Skip if already configured (same bot used by multiple pairs)
+            if freqtrade_id in freqtrade_configs:
+                continue
+
+            # Get credentials from environment variables
+            username_key = f"FREQTRADE_{freqtrade_id.upper().replace('-', '_')}_USERNAME"
+            password_key = f"FREQTRADE_{freqtrade_id.upper().replace('-', '_')}_PASSWORD"
+
+            api_username = os.environ.get(username_key)
+            api_password = os.environ.get(password_key)
+
+            if not api_username or not api_password:
+                raise ValueError(
+                    f"Missing Freqtrade credentials for {freqtrade_id}. "
+                    f"Set {username_key} and {password_key} environment variables"
+                )
+
+            # Build exchange config from other_data
+            transfer_method = pair.other_data.get("freqtrade_transfer_method")
+            exchange_config = None
+
+            if transfer_method == "on_chain_transfer":
+                recipient_address = pair.other_data.get("freqtrade_recipient_address")
+                if not recipient_address:
+                    raise ValueError(f"on_chain_transfer requires freqtrade_recipient_address for {freqtrade_id}")
+                exchange_config = OnChainTransferExchangeConfig(
+                    recipient_address=recipient_address,
+                    fee_tolerance=Decimal(pair.other_data.get("freqtrade_fee_tolerance", "1.0")),
+                    confirmation_timeout=pair.other_data.get("freqtrade_confirmation_timeout", 600),
+                    poll_interval=pair.other_data.get("freqtrade_poll_interval", 10),
+                )
+            elif transfer_method == "aster":
+                vault_address = pair.other_data.get("freqtrade_vault_address")
+                if not vault_address:
+                    raise ValueError(f"aster requires freqtrade_vault_address for {freqtrade_id}")
+                exchange_config = AsterExchangeConfig(
+                    vault_address=vault_address,
+                    broker_id=pair.other_data.get("freqtrade_broker_id", 0),
+                    fee_tolerance=Decimal(pair.other_data.get("freqtrade_fee_tolerance", "1.0")),
+                    confirmation_timeout=pair.other_data.get("freqtrade_confirmation_timeout", 600),
+                    poll_interval=pair.other_data.get("freqtrade_poll_interval", 10),
+                )
+            elif transfer_method == "hyperliquid":
+                vault_address = pair.other_data.get("freqtrade_vault_address")
+                if not vault_address:
+                    raise ValueError(f"hyperliquid requires freqtrade_vault_address for {freqtrade_id}")
+                exchange_config = HyperliquidExchangeConfig(
+                    vault_address=vault_address,
+                    is_mainnet=pair.other_data.get("freqtrade_is_mainnet", True),
+                    fee_tolerance=Decimal(pair.other_data.get("freqtrade_fee_tolerance", "1.0")),
+                    confirmation_timeout=pair.other_data.get("freqtrade_confirmation_timeout", 600),
+                    poll_interval=pair.other_data.get("freqtrade_poll_interval", 10),
+                )
+            elif transfer_method == "orderly_vault":
+                vault_address = pair.other_data.get("freqtrade_vault_address")
+                orderly_account_id = pair.other_data.get("freqtrade_orderly_account_id")
+                broker_id = pair.other_data.get("freqtrade_broker_id")
+                if not vault_address or not orderly_account_id or not broker_id:
+                    raise ValueError(
+                        f"orderly_vault requires freqtrade_vault_address, "
+                        f"freqtrade_orderly_account_id, and freqtrade_broker_id for {freqtrade_id}"
+                    )
+                exchange_config = OrderlyExchangeConfig(
+                    vault_address=vault_address,
+                    orderly_account_id=orderly_account_id,
+                    broker_id=broker_id,
+                    token_id=pair.other_data.get("freqtrade_token_id"),
+                    fee_tolerance=Decimal(pair.other_data.get("freqtrade_fee_tolerance", "1.0")),
+                    confirmation_timeout=pair.other_data.get("freqtrade_confirmation_timeout", 600),
+                    poll_interval=pair.other_data.get("freqtrade_poll_interval", 10),
+                )
+
+            # Build FreqtradeConfig
+            config = FreqtradeConfig(
+                freqtrade_id=freqtrade_id,
+                api_url=pair.other_data["freqtrade_api_url"],
+                api_username=api_username,
+                api_password=api_password,
+                exchange_name=pair.other_data["freqtrade_exchange"],
+                reserve_currency=reserve.address,
+                exchange=exchange_config,
+            )
+
+            freqtrade_configs[freqtrade_id] = config
+
+    if not freqtrade_configs:
+        raise ValueError("No Freqtrade pairs found in universe")
+
+    # Create routing, pricing, and valuation models
+    routing_model = FreqtradeRoutingModel(freqtrade_configs)
+
+    # Create FreqtradeClients for pricing model
+    from tradeexecutor.strategy.freqtrade.freqtrade_client import FreqtradeClient
+    freqtrade_clients = {}
+    for freqtrade_id, config in freqtrade_configs.items():
+        freqtrade_clients[freqtrade_id] = FreqtradeClient(
+            config.api_url,
+            config.api_username,
+            config.api_password,
+        )
+
+    pricing_model = FreqtradePricingModel(freqtrade_clients)
+    valuation_model = FreqtradeValuator(pricing_model)
+
+    return ProtocolRoutingConfig(
+        routing_id=routing_id,
+        routing_model=routing_model,
+        pricing_model=pricing_model,
+        valuation_model=valuation_model,
+    )
+
+
 class EthereumPairConfigurator(PairConfigurator):
     """Set up routes for EVM trading pairs.
 
@@ -392,6 +551,8 @@ class EthereumPairConfigurator(PairConfigurator):
             return create_aave_v3_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "vault":
             return create_vault_adapter(self.web3, self.strategy_universe, routing_id)
+        elif routing_id.router_name == "freqtrade":
+            return create_freqtrade_adapter(self.web3, self.strategy_universe, routing_id)
         else:
             raise NotImplementedError(f"Cannot route exchange {routing_id}")
 
