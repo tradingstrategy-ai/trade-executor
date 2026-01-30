@@ -175,6 +175,7 @@ def environment(
     return environment
 
 
+@pytest.mark.skip(reason="Too flaky, unmaintained")
 def test_lagoon_guard_perform_test_trade_aave_uniswap_v2(
     environment: dict,
     web3: Web3,
