@@ -9,7 +9,7 @@ from tabulate import tabulate
 from typer import Option
 
 from .app import app
-from .shared_options import PositionType
+from .shared_options import PositionType, TradeType
 from ..bootstrap import prepare_executor_id, create_state_store
 from ...analysis.position import display_positions, display_transactions
 from ...state.state import State
@@ -37,6 +37,7 @@ def show_positions(
     state_file: Optional[Path] = shared_options.state_file,
     strategy_file: Optional[Path] = shared_options.optional_strategy_file,
     position_type: PositionType = shared_options.position_type,
+    trade_type: TradeType = Option("all", envvar="TRADE_TYPE", help="Which trades to list"),
     tx_type: TransactionType = Option("none", envvar="TX_TYPE", help="Which transactions to list"),
 ):
     """Display trading positions from a state file.
@@ -65,7 +66,7 @@ def show_positions(
     print(f"Trade flags: T = trade, B = buy, S = sell, SL = stop loss, R1 = repaired, R2 = repairing")
 
     print("Open positions")
-    df = display_positions(state.portfolio.open_positions.values())
+    df = display_positions(state.portfolio.open_positions.values(), trade_type=trade_type)
     # https://pypi.org/project/tabulate/
     # https://stackoverflow.com/a/31885295/315168
     if len(df) > 0:
@@ -76,7 +77,7 @@ def show_positions(
 
     if position_type in (PositionType.all, PositionType.open_and_frozen):
         print("Frozen positions")
-        df = display_positions(state.portfolio.frozen_positions.values())
+        df = display_positions(state.portfolio.frozen_positions.values(), trade_type=trade_type)
         if len(df) > 0:
             print(tabulate(df, headers='keys', tablefmt='fancy_grid'))
         else:
@@ -85,7 +86,7 @@ def show_positions(
 
     if position_type == PositionType.all:
         print("Closed positions")
-        df = display_positions(state.portfolio.closed_positions.values())
+        df = display_positions(state.portfolio.closed_positions.values(), trade_type=trade_type)
         print(tabulate(df, headers='keys', tablefmt='fancy_grid'))
 
     match tx_type:

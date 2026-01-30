@@ -29,49 +29,43 @@ import logging
 
 import pandas as pd
 import pandas_ta
-
-from eth_defi.token import USDC_NATIVE_TOKEN
-from eth_defi.token import WRAPPED_NATIVE_TOKEN
-
-from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.state.types import USDollarAmount
-from tradeexecutor.strategy.alpha_model import AlphaModel
-from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.execution_context import ExecutionContext
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorDependencyResolver
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSource
-from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
-from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
-from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.strategy.tag import StrategyTag
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.strategy.trading_strategy_universe import (
-    load_partial_data)
-from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
-from tradeexecutor.strategy.universe_model import UniverseOptions
-from tradeexecutor.strategy.weighting import weight_equal, weight_passthrouh
+from eth_defi.token import USDC_NATIVE_TOKEN, WRAPPED_NATIVE_TOKEN
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
+from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.transport.cache import OHLCVCandleType
 from tradingstrategy.utils.forward_fill import forward_fill
 from tradingstrategy.utils.groupeduniverse import resample_candles
 from tradingstrategy.utils.liquidity_filter import prefilter_pairs_with_tvl
-
-from tradingstrategy.utils.token_filter import add_base_quote_address_columns
-from tradingstrategy.utils.token_filter import filter_for_exchange_slugs
-from tradingstrategy.utils.token_filter import filter_pairs_default
 from tradingstrategy.utils.token_extra_data import load_token_metadata
-from tradingstrategy.utils.token_filter import filter_by_token_sniffer_score
-from tradingstrategy.utils.token_filter import deduplicate_pairs_by_volume
-
-from tradingstrategy.lending import LendingProtocolType
+from tradingstrategy.utils.token_filter import (add_base_quote_address_columns,
+                                                deduplicate_pairs_by_volume,
+                                                filter_by_token_sniffer_score,
+                                                filter_for_exchange_slugs,
+                                                filter_pairs_default)
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.strategy.alpha_model import AlphaModel
+from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.pandas_trader.indicator import (
+    IndicatorDependencyResolver, IndicatorSource)
+from tradeexecutor.strategy.pandas_trader.indicator_decorator import \
+    IndicatorRegistry
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.tag import StrategyTag
+from tradeexecutor.strategy.trading_strategy_universe import (
+    TradingStrategyUniverse, load_partial_data)
+from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
+from tradeexecutor.strategy.universe_model import UniverseOptions
+from tradeexecutor.strategy.weighting import weight_equal, weight_passthrouh
 from tradeexecutor.utils.dedent import dedent_any
-
 
 logger = logging.getLogger(__name__)
 
@@ -391,7 +385,8 @@ def decide_trades(
     # Calculate how much dollar value we want each individual position to be on this strategy cycle,
     # based on our total available equity
     portfolio = position_manager.get_current_portfolio()
-    portfolio_target_value = portfolio.get_total_equity() * parameters.allocation
+    # Force exit by reducing all positions
+    portfolio_target_value = 500 
 
     # Select max_assets_in_portfolio assets in which we are going to invest
     # Calculate a weight for ecah asset in the portfolio using 1/N method based on the raw signal

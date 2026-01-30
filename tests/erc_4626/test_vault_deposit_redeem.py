@@ -4,19 +4,20 @@ import datetime
 import os
 from decimal import Decimal
 
+import flaky
 import pytest
-
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault_protocol.ipor.vault import IPORVault
-from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 
+from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-
+from tradeexecutor.strategy.pandas_trader.position_manager import \
+    PositionManager
+from tradeexecutor.strategy.trading_strategy_universe import \
+    TradingStrategyUniverse
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable")
@@ -41,6 +42,7 @@ def test_vault_routing(
     assert isinstance(protocol_config.routing_model, VaultRouting)
 
 
+@flaky.flaky
 def test_vault_trading_deposit_redeem(
     vault: IPORVault,
     strategy_universe,

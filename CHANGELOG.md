@@ -5,5 +5,6 @@
 
 - Breaking API changes
 
+- Add `--trade-type` option to `show-positions` command to control trade display (2026-01-31)
 
 asdasd
