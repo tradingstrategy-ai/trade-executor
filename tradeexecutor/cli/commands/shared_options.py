@@ -26,6 +26,16 @@ class PositionType(enum.Enum):
     all = "all"
 
 
+class TradeType(enum.Enum):
+    """What trade output we want from show-positions command."""
+
+    #: Hide all trades
+    none = "none"
+
+    #: Show all trades
+    all = "all"
+
+
 
 def _gen_rpc_help(network_name: str):
     """Generate help text for RPC endpoint.

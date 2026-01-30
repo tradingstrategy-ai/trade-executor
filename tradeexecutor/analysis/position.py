@@ -5,6 +5,7 @@ from typing import Iterable
 
 import pandas as pd
 
+from tradeexecutor.cli.commands.shared_options import TradeType
 from tradeexecutor.ethereum.revert import clean_revert_reason_message
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
@@ -18,17 +19,24 @@ def _ftime(v: datetime.datetime) -> str:
     return v.strftime('%Y-%m-%d %H:%M')
 
 
-def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
+def display_positions(
+    positions: Iterable[TradingPosition],
+    trade_type: TradeType | None = None
+) -> pd.DataFrame:
     """Format trading positions for Jupyter Notebook table output.
 
     Display in one table
 
     - All positions
 
-    - Their underlying trades
+    - Their underlying trades (conditionally based on trade_type)
+
+    :param positions: Positions to display
+    :param trade_type: Controls whether trades are displayed. If None or TradeType.all,
+        trades are shown. If TradeType.none, trades are hidden.
 
     :return:
-        DataFrame containing positions and trades, values as string formatted
+        DataFrame containing positions and optionally trades, values as string formatted
     """
 
     items = []
@@ -64,46 +72,48 @@ def display_positions(positions: Iterable[TradingPosition]) -> pd.DataFrame:
             "Notes": notes,
         })
 
-        for t in p.trades.values():
-            idx.append(p.position_id)
+        # Only display trades if trade_type is not "none"
+        if trade_type is None or trade_type.value != "none":
+            for t in p.trades.values():
+                idx.append(p.position_id)
 
-            flags = []
+                flags = []
 
-            flags.append("T")
+                flags.append("T")
 
-            if t.is_buy():
-                flags.append("B")
+                if t.is_buy():
+                    flags.append("B")
 
-            if t.is_sell():
-                flags.append("S")
+                if t.is_sell():
+                    flags.append("S")
 
-            if t.is_stop_loss():
-                flags.append("SL")
+                if t.is_stop_loss():
+                    flags.append("SL")
 
-            if t.is_repair_trade():
-                flags.append("R2")
+                if t.is_repair_trade():
+                    flags.append("R2")
 
-            if t.is_repaired():
-                flags.append("R1")
+                if t.is_repaired():
+                    flags.append("R1")
 
-            text = []
-            if t.notes:
-                text.append(t.notes)
+                text = []
+                if t.notes:
+                    text.append(t.notes)
 
-            revert_reason = clean_revert_reason_message(t.get_revert_reason())
-            if revert_reason:
-                text.append(revert_reason)
+                revert_reason = clean_revert_reason_message(t.get_revert_reason())
+                if revert_reason:
+                    text.append(revert_reason)
 
-            items.append({
-                "Flags": ", ".join(flags),
-                "Ticker": "‎ ‎ ‎ ‎ ‎ ┗",
-                "Trade id": str(t.trade_id),  # Mixed NA/number column fix
-                "Price": f"{t.executed_price:.6f}" if t.executed_price else "-",
-                "Qty": f"{t.get_position_quantity():,.4f}",
-                "Opened": _ftime(t.opened_at),
-                "Executed": _ftime(t.executed_at),
-                "Notes": "\n".join(text)[0:20],
-            })
+                items.append({
+                    "Flags": ", ".join(flags),
+                    "Ticker": "‎ ‎ ‎ ‎ ‎ ┗",
+                    "Trade id": str(t.trade_id),  # Mixed NA/number column fix
+                    "Price": f"{t.executed_price:.6f}" if t.executed_price else "-",
+                    "Qty": f"{t.get_position_quantity():,.4f}",
+                    "Opened": _ftime(t.opened_at),
+                    "Executed": _ftime(t.executed_at),
+                    "Notes": "\n".join(text)[0:20],
+                })
 
     df = pd.DataFrame(items, index=idx)
     df = df.fillna("")
