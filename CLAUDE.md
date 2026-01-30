@@ -42,8 +42,8 @@ Always prefix pytest command with relevant source command,
 otherwise the test cannot find environment variables.
 
 - Avoid running the whole test suite as it takes several minutes
-- Only run specific test cases you need
-- If you need to run multiple tests, run them one by one to deal with timeout issues
+- Only run specific test cases you need and if you need to run multiple tests, run them one by one to deal with timeout issues
+- If you are running more than five tests in one command, you need to use `pytest -n auto` because the command will fail due to long test duration
 
 Timeouts
 
