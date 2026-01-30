@@ -93,8 +93,12 @@ class EthereumPoolRevaluator(ValuationModel):
             )
         
         elif position.is_credit_supply():
-            # The position should be valued in `sync_interests`
-            # so we just return the latest synced data here.
+            # The position value is calculated in sync_interests() which updates
+            # loan.collateral.last_usd_price and loan.collateral.last_pricing_at.
+            # We create a ValuationUpdate event here for consistency with spot positions,
+            # but the actual valuation data comes from the interest sync mechanism.
+            # Note: We do NOT call revalue_base_asset() because that would overwrite
+            # the interest-sync timestamps with the current timestamp.
             loan = position.loan
             if loan:
                 new_price = loan.collateral.last_usd_price
