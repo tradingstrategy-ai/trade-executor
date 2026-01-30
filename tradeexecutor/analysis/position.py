@@ -64,6 +64,7 @@ def display_positions(
         items.append({
             "Flags": ", ".join(flags),
             "Ticker": p.pair.get_ticker(),
+            "Value USD": f"${p.get_value():,.2f}",
             # f"Size": p.get_quantity(),
             # "Profit": p.get_realised_profit_percent() * 100 if p.is_closed() else "",
             "Opened": _ftime(p.opened_at),
