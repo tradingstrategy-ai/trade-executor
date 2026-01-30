@@ -1,4 +1,6 @@
-"""Test depositing and redeeming ERC-4626 vaults as a trade."""
+"""Test depositing and redeeming ERC-4626 vaults as a trade.
+
+"""
 
 import datetime
 import os
