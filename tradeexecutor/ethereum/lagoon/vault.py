@@ -1,38 +1,42 @@
 """Velvet vault integration."""
 
-import logging
 import datetime
+import logging
 from decimal import Decimal
 from pprint import pformat
 from types import NoneType
-from typing import Optional, Iterable
+from typing import Iterable, Optional
 
-from eth_typing import HexAddress, BlockIdentifier
-
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.confirmation import wait_and_broadcast_multiple_nodes_mev_blocker
+from eth_defi.erc_4626.vault_protocol.lagoon.analysis import \
+    analyse_vault_flow_in_settlement
+from eth_defi.erc_4626.vault_protocol.lagoon.vault import (
+    DEFAULT_LAGOON_POST_VALUATION_GAS, DEFAULT_LAGOON_SETTLE_GAS, LagoonVault)
 from eth_defi.hotwallet import HotWallet
-from eth_defi.erc_4626.vault_protocol.lagoon.analysis import analyse_vault_flow_in_settlement
-from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault, DEFAULT_LAGOON_POST_VALUATION_GAS, DEFAULT_LAGOON_SETTLE_GAS
 from eth_defi.provider.anvil import is_anvil
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_defi.provider.mev_blocker import MEVBlockerProvider
-
 from eth_defi.token import fetch_erc20_details
-from tradeexecutor.state.sync import BalanceEventRef
+from eth_typing import BlockIdentifier, HexAddress
 from tradingstrategy.chain import ChainId
+
 from tradeexecutor.ethereum.address_sync_model import AddressSyncModel
 from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
 from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
-from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdatePositionType, BalanceUpdateCause
+from tradeexecutor.state.balance_update import (BalanceUpdate,
+                                                BalanceUpdateCause,
+                                                BalanceUpdatePositionType)
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.state.types import JSONHexAddress, USDollarPrice, BlockNumber, Percent, USDollarAmount
+from tradeexecutor.state.sync import BalanceEventRef
+from tradeexecutor.state.types import (BlockNumber, JSONHexAddress, Percent,
+                                       USDollarAmount, USDollarPrice)
 from tradeexecutor.strategy.interest import sync_interests
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.sync_model import OnChainBalance
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-
-
+from tradeexecutor.strategy.trading_strategy_universe import \
+    TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +207,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         - Check that we do not use stale data
         """
 
-        now = datetime.datetime.now()
+        now = native_datetime_utc_now()
         for p in state.portfolio.get_open_and_frozen_positions():
             if p.get_quantity() != 0:
                 # Frozen positions may have quantity of 0 (failed open trades) and cannot have value
@@ -396,7 +400,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         ref = BalanceEventRef.from_balance_update_event(evt)
         treasury_sync.balance_update_refs.append(ref)
         treasury_sync.last_block_scanned = analysis.block_number
-        treasury_sync.last_updated_at = datetime.datetime.utcnow()
+        treasury_sync.last_updated_at = native_datetime_utc_now()
         treasury_sync.last_cycle_at = strategy_cycle_ts
         treasury_sync.pending_redemptions = float(analysis.pending_redemptions_underlying)
         treasury_sync.share_count = share_count

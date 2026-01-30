@@ -43,7 +43,8 @@ otherwise the test cannot find environment variables.
 
 - Avoid running the whole test suite as it takes several minutes
 - Only run specific test cases you need and if you need to run multiple tests, run them one by one to deal with timeout issues
-- If you are running more than five tests in one command, you need to use `pytest -n auto` because the command will fail due to long test duration
+- If you are running more than five tests in one command, you need to use `pytest -n auto` because the command will fail due to long test duration, use this also if you run a single test module with multiple slow test cases
+- Use `pytest --log-cli-level=info` when diagnosing failingtests
 
 Timeouts
 
