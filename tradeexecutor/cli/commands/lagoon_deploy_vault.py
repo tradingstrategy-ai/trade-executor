@@ -30,14 +30,28 @@ Example how to manually test:
     # Is Polygonscan.com API key, passed to Forge
     export ETHERSCAN_API_KEY=
 
-    trade-executor enzyme-deploy-vault
+    #
+    # Verifier configuration (optional)
+    #
+
+    # For Blockscout-based chains (e.g., Derive Chain):
+    # export VERIFIER=blockscout
+    # export VERIFIER_URL=https://explorer.derive.xyz/api
+
+    #
+    # Asset manager (optional, defaults to PRIVATE_KEY address)
+    #
+
+    # export ASSET_MANAGER=0x...
+
+    trade-executor lagoon-deploy-vault
 """
 
 import json
 import os.path
 import sys
 from pathlib import Path
-from typing import Optional, cast
+from typing import cast
 
 from typer import Option
 from web3 import Web3
@@ -71,43 +85,46 @@ from tradeexecutor.cli.log import setup_logging
 @app.command()
 def lagoon_deploy_vault(
     log_level: str = shared_options.log_level,
-    json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
-    json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
-    json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
-    json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
-    json_rpc_base: Optional[str] = shared_options.json_rpc_base,
-    json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
-    json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
+    json_rpc_binance: str | None = shared_options.json_rpc_binance,
+    json_rpc_polygon: str | None = shared_options.json_rpc_polygon,
+    json_rpc_avalanche: str | None = shared_options.json_rpc_avalanche,
+    json_rpc_ethereum: str | None = shared_options.json_rpc_ethereum,
+    json_rpc_base: str | None = shared_options.json_rpc_base,
+    json_rpc_arbitrum: str | None = shared_options.json_rpc_arbitrum,
+    json_rpc_anvil: str | None = shared_options.json_rpc_anvil,
     private_key: str = shared_options.private_key,
 
     # Vault options
-    vault_record_file: Optional[Path] = Option(..., envvar="VAULT_RECORD_FILE", help="Store vault data in this TXT file, paired with a JSON file."),
-    fund_name: Optional[str] = Option(None, envvar="FUND_NAME", help="On-chain name for the fund shares"),
-    fund_symbol: Optional[str] = Option(None, envvar="FUND_SYMBOL", help="On-chain token symbol for the fund shares"),
-    denomination_asset: Optional[str] = Option(None, envvar="DENOMINATION_ASSET", help="Stablecoin asset used for vault denomination"),
-    multisig_owners: Optional[str] = Option(None, callback=parse_comma_separated_list, envvar="MULTISIG_OWNERS", help="The list of acconts that are set to the cosigners of the Safe. The multisig threshold is number of cosigners - 1."),
-    # terms_of_service_address: Optional[str] = Option(None, envvar="TERMS_OF_SERVICE_ADDRESS", help="The address of the terms of service smart contract"),
-    whitelisted_assets: Optional[str] = Option(None, envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
-    any_asset: Optional[bool] = Option(False, envvar="ANY_ASSET", help="Allow trading of any ERC-20 on Uniswap (unsecure)."),
+    vault_record_file: Path = Option(..., envvar="VAULT_RECORD_FILE", help="Store vault data in this TXT file, paired with a JSON file."),
+    fund_name: str | None = Option(None, envvar="FUND_NAME", help="On-chain name for the fund shares"),
+    fund_symbol: str | None = Option(None, envvar="FUND_SYMBOL", help="On-chain token symbol for the fund shares"),
+    denomination_asset: str | None = Option(None, envvar="DENOMINATION_ASSET", help="Stablecoin asset used for vault denomination"),
+    multisig_owners: str | None = Option(None, callback=parse_comma_separated_list, envvar="MULTISIG_OWNERS", help="The list of acconts that are set to the cosigners of the Safe. The multisig threshold is number of cosigners - 1."),
+    # terms_of_service_address: str | None = Option(None, envvar="TERMS_OF_SERVICE_ADDRESS", help="The address of the terms of service smart contract"),
+    whitelisted_assets: str | None = Option(None, envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
+    any_asset: bool = Option(False, envvar="ANY_ASSET", help="Allow trading of any ERC-20 on Uniswap (unsecure)."),
 
     unit_testing: bool = shared_options.unit_testing,
     # production: bool = Option(False, envvar="PRODUCTION", help="Set production metadata flag true for the deployment."),
     simulate: bool = Option(False, envvar="SIMULATE", help="Simulate deployment using Anvil mainnet work, when doing manual deployment testing."),
-    etherscan_api_key: Optional[str] = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key need to verify the contracts on a production deployment."),
+    etherscan_api_key: str | None = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key needed to verify contracts on a production deployment."),
+    verifier: str = Option("etherscan", envvar="VERIFIER", help="Contract verifier to use: etherscan, blockscout, sourcify, oklink. Default: etherscan."),
+    verifier_url: str | None = Option(None, envvar="VERIFIER_URL", help="Verifier API URL for Blockscout or custom verifiers (e.g., https://explorer.derive.xyz/api). Required when verifier=blockscout."),
+    asset_manager_address: str | None = Option(None, envvar="ASSET_MANAGER", help="Address to use as vault asset manager. If not provided, uses the deployer address (derived from PRIVATE_KEY). Allows using a master deployer while assigning a different asset manager."),
     one_delta: bool = Option(False, envvar="ONE_DELTA", help="Whitelist 1delta interaction with GuardV0 smart contract."),
     aave: bool = Option(False, envvar="AAVE", help="Whitelist Aave aUSDC deposits"),
     uniswap_v2: bool = Option(False, envvar="UNISWAP_V2", help="Whitelist Uniswap v2"),
     uniswap_v3: bool = Option(False, envvar="UNISWAP_V3", help="Whitelist Uniswap v3"),
     cowswap: bool = Option(False, envvar="COWSWAP", help="Whitelist CoW Swap"),
-    erc_4626_vaults: str = Option(None, envvar="ERC_4626_VAULTS", help="Whitelist ERC-4626 vaults, a command separated list of addresses"),
+    erc_4626_vaults: str | None = Option(None, envvar="ERC_4626_VAULTS", help="Whitelist ERC-4626 vaults, a comma separated list of addresses"),
     verbose: bool = Option(False, envvar="VERBOSE", help="Extra verbosity with deploy commands"),
     performance_fee: int = Option(DEFAULT_PERFORMANCE_RATE, envvar="PERFORMANCE_FEE", help="Performance fee in BPS"),
     management_fee: int = Option(DEFAULT_MANAGEMENT_RATE, envvar="MANAGEMENT_FEE", help="Management fee in BPS"),
     guard_only: bool = Option(False, envvar="GUARD_ONLY", help="Deploys a new TradingStrategyModuleV0 guard with new settings. Lagoon multisig owners must then perform the transaction to enable this guard."),
-    existing_vault_address: str = Option(None, envvar="EXISTING_VAULT_ADDRESS", help="When deploying a guard only, get the existing vault address."),
-    existing_safe_address: str = Option(None, envvar="EXISTING_SAFE_ADDRESS", help="When deploying a guard only, get the existing safe address."),
+    existing_vault_address: str | None = Option(None, envvar="EXISTING_VAULT_ADDRESS", help="When deploying a guard only, get the existing vault address."),
+    existing_safe_address: str | None = Option(None, envvar="EXISTING_SAFE_ADDRESS", help="When deploying a guard only, get the existing safe address."),
     vault_adapter_address: str = shared_options.vault_adapter_address,
-    cache_path: Optional[Path] = shared_options.cache_path,
+    cache_path: Path | None = shared_options.cache_path,
 ):
     """Deploy a Lagoon vault or modify the vault deployment.
 
@@ -154,8 +171,11 @@ def lagoon_deploy_vault(
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")
     logger.info(f"  Latest block is {web3.eth.block_number:,}")
 
-    # TODO: Asset manager is now always the deployer
-    asset_manager = hot_wallet.address
+    # Asset manager defaults to deployer, but can be overridden
+    if asset_manager_address:
+        asset_manager = Web3.to_checksum_address(asset_manager_address)
+    else:
+        asset_manager = hot_wallet.address
 
     lagoon_chain_config = get_lagoon_chain_config(chain_id)
 
@@ -199,7 +219,11 @@ def lagoon_deploy_vault(
     if etherscan_api_key:
         logger.info("Etherscan API key: %s", etherscan_api_key)
     else:
-        logger.error("Etherscan API key: not provided")
+        logger.warning("Etherscan API key: not provided")
+
+    logger.info("Verifier: %s", verifier)
+    if verifier_url:
+        logger.info("Verifier URL: %s", verifier_url)
 
     if asset_manager != hot_wallet.address:
         logger.info("Asset manager is %s", asset_manager)
@@ -210,9 +234,11 @@ def lagoon_deploy_vault(
 
     if not (simulate or unit_testing):
 
-        # TODO: Move this bit somewhere else
-        if not etherscan_api_key:
-            raise RuntimeError("Etherscan API key needed for production deployments")
+        # Require API key for etherscan verifier, or verifier_url for blockscout
+        if verifier == "etherscan" and not etherscan_api_key:
+            raise RuntimeError("Etherscan API key needed for production deployments with etherscan verifier")
+        if verifier == "blockscout" and not verifier_url:
+            raise RuntimeError("Verifier URL needed for production deployments with blockscout verifier")
 
         confirm = input("Ok [y/n]? ")
         if not confirm.lower().startswith("y"):
@@ -299,6 +325,8 @@ def lagoon_deploy_vault(
         any_asset=True,
         use_forge=True,
         etherscan_api_key=etherscan_api_key,
+        verifier=verifier,
+        verifier_url=verifier_url,
         guard_only=guard_only,
         existing_vault_address=existing_vault_address,
         existing_safe_address=existing_safe_address,
