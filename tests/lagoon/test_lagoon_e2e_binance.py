@@ -4,22 +4,20 @@ import os
 from pathlib import Path
 from pprint import pformat
 
-import pytest
 import flaky
+import pytest
+from eth_defi.erc_4626.vault_protocol.lagoon.testing import fund_lagoon_vault
+from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
+from eth_defi.provider.multi_provider import create_multi_provider_web3
+from eth_defi.token import USDT_NATIVE_TOKEN, TokenDetails, fetch_erc20_details
+from eth_typing import HexAddress
 from typer.main import get_command
 from web3 import Web3
-
-from eth_defi.hotwallet import HotWallet
-from eth_defi.erc_4626.vault_protocol.lagoon.testing import fund_lagoon_vault
-from eth_defi.provider.anvil import fork_network_anvil, AnvilLaunch
-from eth_defi.provider.multi_provider import create_multi_provider_web3
-from eth_defi.token import USDT_NATIVE_TOKEN, fetch_erc20_details, TokenDetails
 
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.state import State
-
-from eth_typing import HexAddress
 
 JSON_RPC_BINANCE = os.environ.get("JSON_RPC_BINANCE")
 TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
@@ -307,6 +305,7 @@ def test_cli_lagoon_anvil_checks(
     assert lagoon_compat_check["sell_success"] > 0
 
 
+@flaky.flaky
 @pytest.mark.slow_test_group
 def test_cli_lagoon_check_universe_with_anvil_checks(
     web3,

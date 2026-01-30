@@ -38,6 +38,7 @@ def settle_vault(
     routing_state: RoutingState,
     valuation_model: ValuationModel,
     unit_testing=False,
+    sync_interest=True,
 ):
     """Settle vault logic"""
 
@@ -78,6 +79,18 @@ def settle_vault(
     # Use unit_testing flag so this code path is easier to check
     if sync_model.has_async_deposits() or unit_testing:
         logger.info("Vault must be revalued before proceeding, using: %s", sync_model.__class__.__name__)
+
+        # Sync interests before revaluation if requested (following loop.py:625-632 pattern)
+        if sync_interest and universe.has_lending_data():
+            logger.info("Syncing interests before revaluation")
+            interest_events = sync_model.sync_interests(
+                ts,
+                state,
+                universe,
+                pricing_model,
+            )
+            logger.info("Generated %d sync interest events", len(interest_events))
+
         update_position_valuations(
             timestamp=ts,
             state=state,

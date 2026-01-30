@@ -59,11 +59,13 @@ def lagoon_settle(
 
     unit_testing: bool = shared_options.unit_testing,
     simulate: bool = shared_options.simulate,
+    sync_interest: bool = True,
 ):
     """Settle the Lagoon vault NAV and deposits.
 
     - Updates vault NAV
     - Syncs the latest reserve deposits and redemptions
+    - Optionally syncs lending interest rates before valuation (default: True)
     """
     id = prepare_executor_id(id, strategy_file)
 
@@ -177,6 +179,7 @@ def lagoon_settle(
         routing_state=routing_state,
         unit_testing=unit_testing,
         valuation_model=valuation_model,
+        sync_interest=sync_interest,
         execution_context=execution_context,
     )
 
