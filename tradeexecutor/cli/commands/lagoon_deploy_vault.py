@@ -92,6 +92,7 @@ def lagoon_deploy_vault(
     json_rpc_base: str | None = shared_options.json_rpc_base,
     json_rpc_arbitrum: str | None = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: str | None = shared_options.json_rpc_anvil,
+    json_rpc_derive: str | None = shared_options.json_rpc_derive,
     private_key: str = shared_options.private_key,
 
     # Vault options
@@ -146,6 +147,7 @@ def lagoon_deploy_vault(
         json_rpc_base=json_rpc_base,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
+        json_rpc_derive=json_rpc_derive,
         simulate=simulate,
         mev_endpoint_disabled=True,
     )

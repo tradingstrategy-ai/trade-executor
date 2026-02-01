@@ -82,6 +82,7 @@ json_rpc_avalanche = Option(None, envvar="JSON_RPC_AVALANCHE", help=_gen_rpc_hel
 json_rpc_arbitrum = Option(None, envvar="JSON_RPC_ARBITRUM", help=_gen_rpc_help("RPC: Arbitrum One"))
 json_rpc_base = Option(None, envvar="JSON_RPC_BASE", help=_gen_rpc_help("RPC: Base"))
 json_rpc_anvil = Option(None, envvar="JSON_RPC_ANVIL", help="Anvil JSON-RPC url. Anvil from Foundry is only used in local development and is not a readl blockchain.")
+json_rpc_derive = Option(None, envvar="JSON_RPC_DERIVE", help=_gen_rpc_help("RPC: Derive"))
 
 state_file = Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json for live trade execution, state/{executor-id}-backtest.json for the backtest results.")
 

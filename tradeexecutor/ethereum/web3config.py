@@ -25,7 +25,8 @@ SUPPORTED_CHAINS = [
     ChainId.bsc,
     ChainId.arbitrum,
     ChainId.anvil,
-    ChainId.base
+    ChainId.base,
+    ChainId.derive,
 ]
 
 #: Funny chain ids used. e.g. with mainnet forks
