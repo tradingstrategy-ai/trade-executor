@@ -1,42 +1,40 @@
 """Enzyme end-to-end test."""
 import json
+import logging
 import os
 import secrets
 import tempfile
-import logging
-from _decimal import Decimal
-
 from pathlib import Path
 from unittest.mock import patch
 
 import flaky
 import pytest
+from _decimal import Decimal
 from click.testing import Result
 from eth_account import Account
-from typer.main import get_command
-from web3 import Web3
-
 from eth_defi.abi import get_deployed_contract
-from eth_defi.provider.anvil import AnvilLaunch
-from hexbytes import HexBytes
-from typer.testing import CliRunner
-from web3.contract import Contract
-from eth_typing import HexAddress
-
 from eth_defi.enzyme.deployment import EnzymeDeployment
 from eth_defi.enzyme.vault import Vault
 from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.anvil import AnvilLaunch
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
-from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
-
+from eth_typing import HexAddress
+from hexbytes import HexBytes
 from tradingstrategy.pair import PandasPairUniverse
+from typer.main import get_command
+from typer.testing import CliRunner
+from web3 import Web3
+from web3.contract import Contract
 
 from tradeexecutor.cli.main import app
+from tradeexecutor.monkeypatch.web3 import \
+    construct_sign_and_send_raw_middleware
 from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
-from tradeexecutor.state.trade import TradeType
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.identifier import (AssetIdentifier,
+                                            TradingPairIdentifier)
 from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeType
 
 CI = os.environ.get("CI") == "true"
 
@@ -486,6 +484,7 @@ def test_enzyme_live_trading_reinit(
         assert len(reserve_position.balance_updates) == 1
 
 
+@pytest.mark.skip(reason="Enzyme no longer maintained")
 def test_enzyme_correct_accounts(
     environment: dict,
     state_file: Path,
