@@ -53,33 +53,39 @@ import sys
 from pathlib import Path
 from typing import cast
 
-from typer import Option
-from web3 import Web3
-
 from eth_defi.aave_v3.constants import AAVE_V3_DEPLOYMENTS
+from eth_defi.aave_v3.deployment import \
+    fetch_deployment as fetch_aave_deployment
 from eth_defi.abi import ONE_ADDRESS_STR
 from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault import ERC4626Vault
+from eth_defi.erc_4626.vault_protocol.lagoon.config import \
+    get_lagoon_chain_config
+from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
+    DEFAULT_MANAGEMENT_RATE, DEFAULT_PERFORMANCE_RATE,
+    LagoonDeploymentParameters, deploy_automated_lagoon_vault)
 from eth_defi.hotwallet import HotWallet
-from eth_defi.erc_4626.vault_protocol.lagoon.config import get_lagoon_chain_config
-from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonDeploymentParameters, deploy_automated_lagoon_vault, DEFAULT_PERFORMANCE_RATE, DEFAULT_MANAGEMENT_RATE
 from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
-from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_deployment_uni_v3
-from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_deployment
-
-from tradeexecutor.cli.commands.shared_options import parse_comma_separated_list
-from tradeexecutor.ethereum.token_cache import get_default_token_cache
-from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
+from eth_defi.uniswap_v3.deployment import \
+    fetch_deployment as fetch_deployment_uni_v3
 from tradingstrategy.chain import ChainId
+from typer import Option
+from web3 import Web3
 
-from tradeexecutor.cli.bootstrap import create_web3_config, prepare_cache, prepare_token_cache
+from tradeexecutor.cli.bootstrap import (create_web3_config, prepare_cache,
+                                         prepare_token_cache)
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.commands.shared_options import \
+    parse_comma_separated_list
 from tradeexecutor.cli.log import setup_logging
+from tradeexecutor.ethereum.token_cache import get_default_token_cache
+from tradeexecutor.monkeypatch.web3 import \
+    construct_sign_and_send_raw_middleware
 
 
 @app.command()
