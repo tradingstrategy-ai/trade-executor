@@ -9,4 +9,4 @@
 
 - Add `--sync-interest` option to `lagoon-settle` command to fix credit supply position valuation timestamp issues (2026-01-31)
 
-asdasd
+- Make token cache configurable and persistent across all commands via `CACHE_PATH` environment variable (2026-02-02)

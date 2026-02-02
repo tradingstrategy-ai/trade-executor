@@ -95,6 +95,7 @@ def start(
     json_rpc_base: Optional[str] = shared_options.json_rpc_base,
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
+    json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
 
     gas_price_method: Optional[GasPriceMethod] = shared_options.gas_price_method,
     confirmation_block_count: int = shared_options.confirmation_block_count,
@@ -260,6 +261,7 @@ def start(
                 json_rpc_base=json_rpc_base,
                 json_rpc_anvil=json_rpc_anvil,
                 json_rpc_arbitrum=json_rpc_arbitrum,
+                json_rpc_derive=json_rpc_derive,
                 gas_price_method=gas_price_method,
                 unit_testing=unit_testing,
                 simulate=simulate,

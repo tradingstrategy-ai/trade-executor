@@ -59,6 +59,7 @@ def check_wallet(
     json_rpc_base: Optional[str] = shared_options.json_rpc_base,
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
+    json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
 
     log_level: Optional[str] = shared_options.log_level,
 
@@ -94,9 +95,11 @@ def check_wallet(
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base, 
+        json_rpc_ethereum=json_rpc_ethereum,
+        json_rpc_base=json_rpc_base,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
+        json_rpc_derive=json_rpc_derive,
         unit_testing=unit_testing,
     )
     assert web3config.has_chain_configured(), "No RPC endpoints given. A working JSON-RPC connection is needed for running this command. Check your JSON-RPC configuration."
