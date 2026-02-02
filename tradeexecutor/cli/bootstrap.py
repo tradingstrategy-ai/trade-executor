@@ -96,7 +96,7 @@ def create_web3_config(
     json_rpc_arbitrum,
     json_rpc_base,
     json_rpc_anvil,
-    json_rpc_derive,
+    json_rpc_derive=None,
     gas_price_method: Optional[GasPriceMethod] = None,
     unit_testing: bool=False,
     simulate: bool=False,
