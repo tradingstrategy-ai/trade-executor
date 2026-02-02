@@ -333,6 +333,49 @@ class LagoonVaultSyncModel(AddressSyncModel):
         )
 
         logger.info("Preparing to settle Lagoon")
+
+        # Check if there's enough liquid USDC to cover pending redemptions
+        block_number = web3.eth.block_number
+        pending_shares = vault.get_flow_manager().fetch_pending_redemption(block_number)
+
+        if pending_shares > 0:
+            # Calculate how much USDC is needed for redemptions
+            total_assets = vault.fetch_total_assets(block_number)
+            total_supply = vault.fetch_total_supply(block_number)
+
+            if total_supply > 0:
+                share_price = total_assets / total_supply
+                required_usdc = pending_shares * share_price
+
+                # Check actual USDC balance in the Safe
+                safe_usdc_balance = reserve_token.fetch_balance_of(vault.safe_address, block_number)
+
+                logger.info(
+                    "Redemption check: pending shares=%s, share price=%s, required USDC=%s, Safe balance=%s",
+                    pending_shares,
+                    share_price,
+                    required_usdc,
+                    safe_usdc_balance,
+                )
+
+                if required_usdc > safe_usdc_balance:
+                    deficit = required_usdc - safe_usdc_balance
+                    logger.warning(
+                        "⚠️  INSUFFICIENT LIQUID USDC FOR REDEMPTIONS ⚠️\n"
+                        "Pending redemptions: %s shares\n"
+                        "Current share price: %s USDC/share\n"
+                        "Required USDC: %s\n"
+                        "Available in Safe: %s\n"
+                        "Deficit: %s USDC\n"
+                        "Redemptions will NOT be processed in this settlement cycle.\n"
+                        "Consider redeeming from vault positions (IPOR/Morpho) before next settlement.",
+                        pending_shares,
+                        share_price,
+                        required_usdc,
+                        safe_usdc_balance,
+                        deficit,
+                    )
+
         bound_func = vault.settle_via_trading_strategy_module(valuation_decimal)
         signed_tx_2 = self.hot_wallet.sign_bound_call_with_new_nonce(
             bound_func,
@@ -355,6 +398,17 @@ class LagoonVaultSyncModel(AddressSyncModel):
             "Lagoon settled. Settle result is:\n%s",
             pformat(analysis.get_serialiable_diagnostics_data())
         )
+
+        # Post-settlement check: warn if redemptions were pending but not processed
+        if analysis.pending_redemptions_shares > 0 and analysis.redeem_events == 0:
+            logger.warning(
+                "⚠️  REDEMPTIONS WERE NOT PROCESSED ⚠️\n"
+                "Pending redemptions remain: %s shares (%s USDC)\n"
+                "This typically indicates insufficient liquid USDC in the Safe.\n"
+                "Redemption requests will remain pending until the next settlement cycle.",
+                analysis.pending_redemptions_shares,
+                analysis.pending_redemptions_underlying,
+            )
 
         delta = analysis.get_underlying_diff()
         event_id = portfolio.next_balance_update_id
