@@ -15,16 +15,24 @@ class NonSpotPosition(Exception):
     """Portfolio has non-spot position when spot-only is supported"""
 
 
-def fetch_token_as_asset(web3: Web3, contract_address: str) -> AssetIdentifier:
+def fetch_token_as_asset(
+    web3: Web3,
+    contract_address: str,
+    cache: "TokenDiskCache | None" = None,
+) -> AssetIdentifier:
     """Get ERC-20 token details suitable for persistent stroage.
 
     :param contract_address:
         Address of an ERC-20 contract
 
+    :param cache:
+        Optional token cache. If not provided, uses default (legacy behaviour)
+
     :return:
         Asset identifier that can be use with persistent storage.
     """
-    cache = get_default_token_cache()
+    if cache is None:
+        cache = get_default_token_cache()
     token = fetch_erc20_details(web3, contract_address, cache=cache)
     return translate_token_details(token)
 

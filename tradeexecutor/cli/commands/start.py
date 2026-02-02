@@ -23,7 +23,7 @@ from tradingstrategy.timebucket import TimeBucket
 
 from . import shared_options
 from .app import app
-from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
+from ..bootstrap import prepare_executor_id, prepare_cache, prepare_token_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_metadata, create_approval_model, create_client, configure_default_chain
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, setup_telegram_logging, setup_sentry_logging
 from ..loop import ExecutionLoop
@@ -249,6 +249,7 @@ def start(
                         os.remove(state_file)
 
         cache_path = prepare_cache(id, cache_path, unit_testing)
+        token_cache = prepare_token_cache(cache_path, unit_testing=unit_testing)
 
         if asset_management_mode.is_live_trading() or asset_management_mode == AssetManagementMode.dummy:
             web3config = create_web3_config(

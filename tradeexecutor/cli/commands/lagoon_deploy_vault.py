@@ -62,7 +62,7 @@ from tradeexecutor.ethereum.token_cache import get_default_token_cache
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
 
-from tradeexecutor.cli.bootstrap import create_web3_config, prepare_cache
+from tradeexecutor.cli.bootstrap import create_web3_config, prepare_cache, prepare_token_cache
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.log import setup_logging
@@ -120,6 +120,12 @@ def lagoon_deploy_vault(
     assert private_key, "PRIVATE_KEY not set"
 
     logger = setup_logging(log_level)
+
+    # Prepare cache for token metadata storage
+    # Use a fixed executor ID for this deployment command
+    executor_id = "lagoon-deploy"
+    cache_path = prepare_cache(executor_id, cache_path, unit_testing=unit_testing)
+    token_cache = prepare_token_cache(cache_path, unit_testing=unit_testing)
 
     web3config = create_web3_config(
         json_rpc_binance=json_rpc_binance,
@@ -273,7 +279,7 @@ def lagoon_deploy_vault(
         aave_v3_deployment = None
 
     # Scanning ERC-4626 vaults on a startup for token details takes a long time
-    token_cache = get_default_token_cache()
+    # Token cache already prepared at the start of the command
     logger.info("Using token cache at %s", token_cache.filename)
 
     if erc_4626_vaults:

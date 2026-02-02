@@ -356,10 +356,15 @@ class VaultRouting(RoutingModel):
 def get_vault_for_pair(
     web3: Web3,
     target_pair: TradingPairIdentifier,
+    token_cache: "TokenDiskCache | None" = None,
 ) -> ERC4626Vault:
     """Get a cached Vault instance based on a trading pair.
 
     - Instance has a web3 connection object
+
+    :param token_cache:
+        Token cache for caching ERC-20 token metadata.
+        If not provided, uses default cache.
     """
 
     assert target_pair.is_vault()
@@ -370,7 +375,8 @@ def get_vault_for_pair(
     cache_key = (vault_address, id(web3))
     cached = _vault_cache.get(cache_key)
 
-    token_cache = get_default_token_cache()
+    if token_cache is None:
+        token_cache = get_default_token_cache()
 
     if cached:
         return cached

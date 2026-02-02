@@ -346,6 +346,46 @@ def prepare_cache(
     return cache_path
 
 
+def prepare_token_cache(
+    cache_path: Path,
+    unit_testing: bool = False,
+) -> "TokenDiskCache":
+    """Prepare token cache for this trade-executor.
+
+    - Token cache stores ERC-20 token metadata (symbol, decimals, name) to avoid
+      repeated RPC calls when working with vaults and token contracts
+
+    - Uses SQLite for persistent storage across executor runs
+
+    - Stored as `{cache_path}/eth-defi-tokens.sqlite`
+
+    :param cache_path:
+        Cache directory path, already prepared by prepare_cache()
+
+    :param unit_testing:
+        Pass through to get_default_token_cache() to ensure consistent
+        cache location with tradingstrategy.Client in test fixtures
+
+    :return:
+        Initialised token disk cache instance
+    """
+
+    from tradeexecutor.ethereum.token_cache import get_default_token_cache
+
+    assert cache_path, "cache_path must be provided"
+    assert cache_path.exists(), f"Cache path {cache_path} does not exist - call prepare_cache() first"
+
+    token_cache = get_default_token_cache(cache_path, unit_testing=unit_testing)
+
+    logger.info(
+        "Token cache initialised at %s with %d entries",
+        token_cache.filename,
+        len(token_cache),
+    )
+
+    return token_cache
+
+
 def create_metadata(
     name,
     short_description,

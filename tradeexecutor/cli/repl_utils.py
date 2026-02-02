@@ -68,6 +68,7 @@ def _broadcast_tx(
 
 def list_vaults(
     console_context: dict,
+    token_cache: "TokenDiskCache | None" = None,
 ):
     """List all vaults in the strategy universe, table formatted.
 
@@ -78,6 +79,8 @@ def list_vaults(
         from tradeexecutor.cli.repl_utils import list_vaults
         list_vaults(locals())
 
+    :param token_cache:
+        Optional token cache. If not provided, uses default.
     """
     web3 = console_context["web3"]
     strategy_universe: TradingStrategyUniverse = console_context["strategy_universe"]
@@ -86,7 +89,8 @@ def list_vaults(
     # Prepare vault instances to whitelist, and check
     # we can raad onchain data of them and there are not broken vaults/addresses
 
-    token_cache = get_default_token_cache()
+    if token_cache is None:
+        token_cache = get_default_token_cache()
 
     vaults = []
     data = []

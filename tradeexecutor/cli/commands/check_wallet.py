@@ -16,7 +16,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from . import shared_options
 from .app import app
-from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_execution_and_sync_model
+from ..bootstrap import prepare_executor_id, prepare_cache, prepare_token_cache, create_web3_config, create_execution_and_sync_model
 from ..log import setup_logging
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
@@ -82,7 +82,7 @@ def check_wallet(
 
     mod = read_strategy_module(strategy_file)
 
-    cache_path = prepare_cache(id, cache_path)
+    cache_path = prepare_cache(id, cache_path, unit_testing=unit_testing)
 
     client = Client.create_live_client(
         trading_strategy_api_key,
@@ -192,8 +192,10 @@ def check_wallet(
 
     balances = fetch_erc20_balances_by_token_list(web3, reserve_address, tokens)
 
+    # Prepare token cache here, close to where it's used, to avoid SQLite connection issues with CliRunner
+    token_cache = prepare_token_cache(cache_path, unit_testing=unit_testing)
+
     for address, balance in balances.items():
-        token_cache = get_default_token_cache()
         details = fetch_erc20_details(web3, address, cache=token_cache)
         logger.info("  Balance of %s (%s): %s %s", details.name, details.address, details.convert_to_decimals(balance), details.symbol)
 
