@@ -68,7 +68,7 @@ def environment(
         "DERIVE_OWNER_PRIVATE_KEY": os.environ.get("DERIVE_OWNER_PRIVATE_KEY", ""),
         "DERIVE_SESSION_PRIVATE_KEY": os.environ.get("DERIVE_SESSION_PRIVATE_KEY", ""),
         "DERIVE_WALLET_ADDRESS": os.environ.get("DERIVE_WALLET_ADDRESS", ""),
-        "DERIVE_IS_TESTNET": "true",
+        "DERIVE_NETWORK": "testnet",
         # PATH needed for subprocess
         "PATH": os.environ.get("PATH", ""),
     }

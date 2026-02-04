@@ -5,11 +5,18 @@ from external perp DEXes like Derive or Hyperliquid.
 """
 
 import datetime
+import enum
 import sys
 from pathlib import Path
 from typing import Optional
 
 from typer import Option
+
+
+class DeriveNetwork(enum.Enum):
+    """Derive network selection."""
+    mainnet = "mainnet"
+    testnet = "testnet"
 
 from .app import app
 from ..bootstrap import prepare_executor_id, backup_state
@@ -36,7 +43,7 @@ def sync_exchange_account(
     derive_owner_private_key: Optional[str] = Option(None, envvar="DERIVE_OWNER_PRIVATE_KEY", help="Derive owner wallet private key"),
     derive_session_private_key: Optional[str] = Option(None, envvar="DERIVE_SESSION_PRIVATE_KEY", help="Derive session key private key"),
     derive_wallet_address: Optional[str] = Option(None, envvar="DERIVE_WALLET_ADDRESS", help="Derive wallet address (auto-derived if not provided)"),
-    derive_is_testnet: bool = Option(False, "--derive-testnet", envvar="DERIVE_IS_TESTNET", help="Use Derive testnet"),
+    derive_network: DeriveNetwork = Option(DeriveNetwork.mainnet, envvar="DERIVE_NETWORK", help="Derive network: mainnet or testnet"),
 ):
     """Sync exchange account positions with external perp DEX APIs.
 
@@ -103,7 +110,7 @@ def sync_exchange_account(
         derive_owner_private_key=derive_owner_private_key,
         derive_session_private_key=derive_session_private_key,
         derive_wallet_address=derive_wallet_address,
-        derive_is_testnet=derive_is_testnet,
+        derive_network=derive_network,
         logger=logger,
     )
 
@@ -140,7 +147,7 @@ def _create_account_value_func(
     derive_owner_private_key: str | None,
     derive_session_private_key: str | None,
     derive_wallet_address: str | None,
-    derive_is_testnet: bool,
+    derive_network: DeriveNetwork,
     logger,
 ):
     """Create account value function based on position protocols."""
@@ -167,18 +174,19 @@ def _create_account_value_func(
         from eth_defi.derive.account import fetch_subaccount_ids
         from eth_defi.derive.onboarding import fetch_derive_wallet_address
 
+        is_testnet = (derive_network == DeriveNetwork.testnet)
         owner_account = Account.from_key(derive_owner_private_key)
 
         if not derive_wallet_address:
             derive_wallet_address = fetch_derive_wallet_address(
                 owner_account.address,
-                is_testnet=derive_is_testnet,
+                is_testnet=is_testnet,
             )
 
         client = DeriveApiClient(
             owner_account=owner_account,
             derive_wallet_address=derive_wallet_address,
-            is_testnet=derive_is_testnet,
+            is_testnet=is_testnet,
             session_key_private=derive_session_private_key,
         )
 
@@ -195,7 +203,7 @@ def _create_account_value_func(
                     subaccount_client = DeriveApiClient(
                         owner_account=owner_account,
                         derive_wallet_address=derive_wallet_address,
-                        is_testnet=derive_is_testnet,
+                        is_testnet=is_testnet,
                         session_key_private=derive_session_private_key,
                     )
                     subaccount_client.subaccount_id = subaccount_id
