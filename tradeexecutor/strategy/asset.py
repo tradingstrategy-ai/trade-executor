@@ -163,6 +163,9 @@ def get_asset_amounts(p: TradingPosition) -> List[Tuple[AssetIdentifier, Decimal
         return [
             (p.pair.base, p.loan.get_collateral_quantity()),
         ]
+    elif p.is_exchange_account():
+        # Exchange account positions are not on-chain, skip them
+        return []
     else:
         raise NotImplementedError()
 
@@ -173,6 +176,9 @@ def get_onchain_assets(pair: TradingPairIdentifier) -> List[AssetIdentifier]:
         return [pair.base]
     elif pair.is_short():
         return [pair.base, pair.quote]
+    elif pair.is_exchange_account():
+        # Exchange account positions are not on-chain, no assets to check
+        return []
     else:
         raise NotImplementedError()
 

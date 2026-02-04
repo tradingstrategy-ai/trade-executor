@@ -42,6 +42,7 @@ CHAIN_ID = ChainId.ethereum
 
 class Parameters:
     """Strategy parameters for exchange account monitoring."""
+    chain_id = ChainId.ethereum
     initial_cash = 100_000
     cycle_duration = CycleDuration.cycle_1d
     routing = TradeRouting.ignore

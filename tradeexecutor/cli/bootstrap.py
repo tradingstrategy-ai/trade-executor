@@ -214,6 +214,13 @@ def create_execution_model(
         )
         valuation_model_factory = one_delta_valuation_factory
         pricing_model_factory = one_delta_live_pricing_factory
+    elif routing_hint == TradeRouting.ignore:
+        # For strategies that don't do any on-chain trading (e.g., exchange account monitoring)
+        # Use a dummy execution model with basic valuation
+        logger.info("Ignoring routing - no on-chain trading expected")
+        execution_model = DummyExecutionModel(sync_model.web3)
+        valuation_model_factory = GenericValuationModelFactory()
+        pricing_model_factory = EthereumGenericPricingFactory(sync_model.web3)
     else:
         raise RuntimeError(f"Does not know how to route: {routing_hint}")
 

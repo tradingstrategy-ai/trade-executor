@@ -1,16 +1,7 @@
-"""Test exchange account sync CLI command with real Derive API.
+"""Test correct-accounts CLI command with real Derive API.
 
-This test follows the CLI test pattern from tests/cli/test_cli_correct_account_price_missing.py:
-- Uses environment variables
-- Uses state file persistence
-- Invokes the sync-exchange-account CLI command via get_command(app)
-
-Required environment variables:
-- DERIVE_OWNER_PRIVATE_KEY: Owner wallet private key (from web UI wallet)
-- DERIVE_SESSION_PRIVATE_KEY: Session key private key (from testnet developer page)
-- DERIVE_WALLET_ADDRESS: Derive wallet address (optional, auto-derived from owner key)
-
-See tests/derive/derive-test-key-setup.md for detailed instructions.
+Following pattern from tests/cli/test_cli_correct_account_price_missing.py
+and tests/lagoon/test_lagoon_e2e.py.
 """
 
 import datetime
@@ -24,16 +15,17 @@ from unittest.mock import patch
 import pytest
 from typer.main import get_command
 
+from eth_defi.hotwallet import HotWallet
+
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
 
 logger = logging.getLogger(__name__)
 
-
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DERIVE_OWNER_PRIVATE_KEY") or not os.environ.get("DERIVE_SESSION_PRIVATE_KEY"),
-    reason="Set DERIVE_OWNER_PRIVATE_KEY and DERIVE_SESSION_PRIVATE_KEY for Derive tests. See tests/derive/derive-test-key-setup.md",
+    reason="Set DERIVE_OWNER_PRIVATE_KEY and DERIVE_SESSION_PRIVATE_KEY for Derive tests",
 )
 
 
@@ -46,28 +38,32 @@ def strategy_file() -> Path:
 @pytest.fixture()
 def state_file() -> Path:
     """Create a temporary state file path."""
-    return Path(tempfile.mkdtemp()) / "test-derive-sync-state.json"
+    return Path(tempfile.mkdtemp()) / "test-correct-accounts-derive.json"
 
 
 @pytest.fixture()
 def environment(
-    strategy_file: Path,
+    anvil,
+    hot_wallet: HotWallet,
     state_file: Path,
+    strategy_file: Path,
 ) -> dict:
-    """Set up environment vars for Derive CLI test.
+    """Set up environment vars for correct-accounts CLI command.
 
     Following pattern from tests/cli/test_cli_correct_account_price_missing.py
     """
     environment = {
-        "EXECUTOR_ID": "test_exchange_account_derive",
+        "EXECUTOR_ID": "test_correct_accounts_derive",
         "STRATEGY_FILE": strategy_file.as_posix(),
+        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
+        "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "UNIT_TESTING": "true",
-        "LOG_LEVEL": "info",
-        # Derive-specific environment variables
-        "DERIVE_OWNER_PRIVATE_KEY": os.environ.get("DERIVE_OWNER_PRIVATE_KEY", ""),
-        "DERIVE_SESSION_PRIVATE_KEY": os.environ.get("DERIVE_SESSION_PRIVATE_KEY", ""),
-        "DERIVE_WALLET_ADDRESS": os.environ.get("DERIVE_WALLET_ADDRESS", ""),
+        "TRADING_STRATEGY_API_KEY": os.environ.get("TRADING_STRATEGY_API_KEY", ""),
+        # Derive credentials from environment
+        "DERIVE_OWNER_PRIVATE_KEY": os.environ["DERIVE_OWNER_PRIVATE_KEY"],
+        "DERIVE_SESSION_PRIVATE_KEY": os.environ["DERIVE_SESSION_PRIVATE_KEY"],
         "DERIVE_NETWORK": "testnet",
         # PATH needed for subprocess
         "PATH": os.environ.get("PATH", ""),
@@ -75,23 +71,13 @@ def environment(
     return environment
 
 
-def test_sync_exchange_account_cli(
-    logger: logging.Logger,
-    environment: dict,
-    state_file: Path,
-):
-    """Test sync-exchange-account CLI command with real Derive API.
+def _create_test_state_with_derive_position(state_file: Path) -> tuple[State, Decimal]:
+    """Create test state with a Derive exchange account position.
 
-    This test follows the CLI test pattern:
-    1. Creates a state file with an exchange account position (tracked value 99% of actual)
-    2. Invokes sync-exchange-account CLI command
-    3. Verifies the state file was updated with balance correction
+    Creates a position with tracked value at 99% of actual Derive balance
+    so that correct-accounts will detect a difference.
 
-    The CLI command:
-    - Reads environment variables for Derive credentials
-    - Connects to Derive API and fetches actual account value
-    - Updates position balance to match actual value
-    - Saves the corrected state file
+    :return: Tuple of (state, actual_value from Derive API)
     """
     from eth_account import Account
     from eth_defi.derive.authentication import DeriveApiClient
@@ -107,40 +93,30 @@ def test_sync_exchange_account_cli(
     from tradeexecutor.state.position import TradingPosition
     from tradeexecutor.state.trade import TradeExecution, TradeType
 
-    # ==========================================================================
-    # Step 1: Set up Derive client to get actual value and subaccount ID
-    # ==========================================================================
-    owner_private_key = environment["DERIVE_OWNER_PRIVATE_KEY"]
-    session_private_key = environment["DERIVE_SESSION_PRIVATE_KEY"]
-    wallet_address = environment.get("DERIVE_WALLET_ADDRESS")
+    # Set up Derive client
+    owner_private_key = os.environ["DERIVE_OWNER_PRIVATE_KEY"]
+    session_private_key = os.environ["DERIVE_SESSION_PRIVATE_KEY"]
 
     owner_account = Account.from_key(owner_private_key)
-
-    if not wallet_address:
-        wallet_address = fetch_derive_wallet_address(owner_account.address, is_testnet=True)
+    derive_wallet_address = fetch_derive_wallet_address(owner_account.address, is_testnet=True)
 
     client = DeriveApiClient(
         owner_account=owner_account,
-        derive_wallet_address=wallet_address,
+        derive_wallet_address=derive_wallet_address,
         is_testnet=True,
         session_key_private=session_private_key,
     )
 
-    # Resolve subaccount ID from the API
     ids = fetch_subaccount_ids(client)
     if not ids:
         pytest.skip("Account has no subaccounts yet")
     client.subaccount_id = ids[0]
 
-    logger.info("Derive subaccount ID: %s", client.subaccount_id)
-
     # Get actual account value
     clients = {client.subaccount_id: client}
     account_value_func = create_derive_account_value_func(clients)
 
-    # ==========================================================================
-    # Step 2: Create exchange account pair
-    # ==========================================================================
+    # Create exchange account pair
     chain_id = 901  # Derive testnet chain ID
 
     usdc = AssetIdentifier(
@@ -174,11 +150,8 @@ def test_sync_exchange_account_cli(
 
     actual_value = account_value_func(exchange_account_pair)
     assert actual_value > 0, "Derive testnet account should have funds"
-    logger.info("Actual Derive account value: %s", actual_value)
 
-    # ==========================================================================
-    # Step 3: Create state file with position (tracked value 99% of actual)
-    # ==========================================================================
+    # Create position with 99% of actual value to trigger sync
     tracked_value = (actual_value * Decimal("0.99")).quantize(Decimal("0.01"))
 
     state = State()
@@ -223,33 +196,43 @@ def test_sync_exchange_account_cli(
     with state_file.open("wt") as f:
         f.write(state.to_json_safe())
 
-    logger.info("State file created at %s with tracked value %s", state_file, tracked_value)
+    return state, actual_value
 
-    # Verify initial state
-    initial_state = State.read_json_file(state_file)
-    assert initial_state.portfolio.open_positions[1].get_quantity() == tracked_value
 
-    # ==========================================================================
-    # Step 4: Invoke CLI command
-    # ==========================================================================
+def test_correct_accounts_derive(
+    logger: logging.Logger,
+    environment: dict,
+    state_file: Path,
+):
+    """Test correct-accounts syncs Derive exchange account positions.
+
+    Following pattern from test_cli_correct_account_price_missing.py:
+    1. Create state file with exchange account position (tracked value 99% of actual)
+    2. Invoke correct-accounts CLI command
+    3. Verify state file was updated with balance correction
+    """
+    # Create state with exchange account position
+    initial_state, actual_value = _create_test_state_with_derive_position(state_file)
+    initial_quantity = initial_state.portfolio.open_positions[1].get_quantity()
+
+    logger.info("Initial tracked value: %s, actual Derive value: %s", initial_quantity, actual_value)
+
+    # Invoke CLI command
     cli = get_command(app)
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
-            cli.main(args=["sync-exchange-account"])
+            cli.main(args=["correct-accounts"])
 
         assert e.value.code == 0, f"CLI command failed with exit code {e.value.code}"
 
-    # ==========================================================================
-    # Step 5: Verify state file was updated
-    # ==========================================================================
+    # Verify state was updated
     final_state = State.read_json_file(state_file)
     final_position = final_state.portfolio.open_positions[1]
-
-    # Position should now have actual value (within small tolerance for API timing)
     final_quantity = final_position.get_quantity()
+
     logger.info("Final quantity: %s (expected ~%s)", final_quantity, actual_value)
 
-    # Allow small tolerance for value changes during test execution
+    # Balance should have been corrected (within small tolerance for API timing)
     assert abs(float(final_quantity) - float(actual_value)) < float(actual_value) * 0.02, \
         f"Expected quantity ~{actual_value}, got {final_quantity}"
 
@@ -257,15 +240,15 @@ def test_sync_exchange_account_cli(
     assert len(final_position.balance_updates) == 1
     assert len(final_state.sync.accounting.balance_update_refs) == 1
 
-    logger.info("CLI sync-exchange-account test passed")
+    logger.info("correct-accounts Derive test passed")
 
 
-def test_sync_exchange_account_cli_no_change(
+def test_correct_accounts_derive_no_change(
     logger: logging.Logger,
     environment: dict,
     state_file: Path,
 ):
-    """Test sync-exchange-account CLI when account value matches tracked value.
+    """Test correct-accounts when Derive account value matches tracked value.
 
     When the tracked value equals the actual account value, no balance update
     should be created.
@@ -285,18 +268,15 @@ def test_sync_exchange_account_cli_no_change(
     from tradeexecutor.state.trade import TradeExecution, TradeType
 
     # Set up Derive client
-    owner_private_key = environment["DERIVE_OWNER_PRIVATE_KEY"]
-    session_private_key = environment["DERIVE_SESSION_PRIVATE_KEY"]
-    wallet_address = environment.get("DERIVE_WALLET_ADDRESS")
+    owner_private_key = os.environ["DERIVE_OWNER_PRIVATE_KEY"]
+    session_private_key = os.environ["DERIVE_SESSION_PRIVATE_KEY"]
 
     owner_account = Account.from_key(owner_private_key)
-
-    if not wallet_address:
-        wallet_address = fetch_derive_wallet_address(owner_account.address, is_testnet=True)
+    derive_wallet_address = fetch_derive_wallet_address(owner_account.address, is_testnet=True)
 
     client = DeriveApiClient(
         owner_account=owner_account,
-        derive_wallet_address=wallet_address,
+        derive_wallet_address=derive_wallet_address,
         is_testnet=True,
         session_key_private=session_private_key,
     )
@@ -389,7 +369,7 @@ def test_sync_exchange_account_cli_no_change(
     cli = get_command(app)
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
-            cli.main(args=["sync-exchange-account"])
+            cli.main(args=["correct-accounts"])
 
         assert e.value.code == 0
 
@@ -400,4 +380,4 @@ def test_sync_exchange_account_cli_no_change(
     # No balance updates should be recorded when value matches
     assert len(final_position.balance_updates) == 0
 
-    logger.info("CLI sync-exchange-account no-change test passed")
+    logger.info("correct-accounts Derive no-change test passed")

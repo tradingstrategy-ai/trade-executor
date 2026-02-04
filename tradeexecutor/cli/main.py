@@ -34,7 +34,6 @@ from .commands.lagoon_deploy_vault import lagoon_deploy_vault
 from .commands.show_valuation import show_valuation
 from .commands.blacklist import blacklist
 from .commands.prune import prune_state
-from .commands.sync_exchange_account import sync_exchange_account
 
 # Dummy export commands even though they are already registered
 # to make the linter happy
@@ -44,6 +43,6 @@ __all__ = [
     correct_accounts, deploy_guard, enzyme_asset_list, enzyme_deploy_vault,
     export, hello, init, lagoon_deploy_vault, lagoon_settle, perform_test_trade, prune_state,
     repair, reset, reset_deposits, retry, send_log_message, show_positions,
-    show_valuation, start, sync_exchange_account, token_cache, trading_pair,
+    show_valuation, start, token_cache, trading_pair,
     version, visualise, webapi
 ]
