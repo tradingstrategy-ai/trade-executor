@@ -6,12 +6,14 @@ Provides the account value function for Derive.xyz exchange accounts.
 import enum
 import logging
 from decimal import Decimal
-from typing import Callable
-
-from eth_defi.derive.authentication import DeriveApiClient
-from eth_defi.derive.account import fetch_account_summary
+from typing import TYPE_CHECKING, Callable
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
+
+# Lazy imports to avoid loading pyrate_limiter at module load time
+# (not installed in CI environment)
+if TYPE_CHECKING:
+    from eth_defi.derive.authentication import DeriveApiClient
 
 
 class DeriveNetwork(str, enum.Enum):
@@ -27,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_derive_account_value_func(
-    clients: dict[int, DeriveApiClient],
+    clients: "dict[int, DeriveApiClient]",
 ) -> Callable[[TradingPairIdentifier], Decimal]:
     """Create Derive-specific account value function.
 
@@ -81,6 +83,9 @@ def create_derive_account_value_func(
         :raises Exception:
             If API call fails
         """
+        # Lazy import to avoid loading pyrate_limiter at module load time
+        from eth_defi.derive.account import fetch_account_summary
+
         assert pair.is_exchange_account(), f"Not an exchange account pair: {pair}"
         assert pair.get_exchange_account_protocol() == "derive", \
             f"Not a Derive pair: {pair.get_exchange_account_protocol()}"
