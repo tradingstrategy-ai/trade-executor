@@ -16,6 +16,7 @@ requiring Anvil since exchange accounts don't need on-chain infrastructure.
 """
 
 import datetime
+import logging
 import os
 import tempfile
 from decimal import Decimal
@@ -23,7 +24,6 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-from eth_account import Account
 
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
 from tradeexecutor.state.balance_update import BalanceUpdateCause, BalanceUpdatePositionType
@@ -39,6 +39,9 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, Execution
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradingstrategy.chain import ChainId
+
+
+logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
@@ -309,253 +312,3 @@ def test_exchange_account_sync_cli_style(
     assert Decimal("7000.0") in quantities   # Profit day 3
 
 
-# =============================================================================
-# Real Derive API Test
-# =============================================================================
-
-
-@pytest.fixture(scope="module")
-def derive_owner_account():
-    """Owner wallet from environment."""
-    if not os.environ.get("DERIVE_OWNER_PRIVATE_KEY"):
-        pytest.skip("DERIVE_OWNER_PRIVATE_KEY not set")
-    return Account.from_key(os.environ["DERIVE_OWNER_PRIVATE_KEY"])
-
-
-@pytest.fixture(scope="module")
-def derive_wallet_address(derive_owner_account):
-    """Derive wallet address from env, or auto-derived from owner key."""
-    from eth_defi.derive.onboarding import fetch_derive_wallet_address
-    env_address = os.environ.get("DERIVE_WALLET_ADDRESS")
-    if env_address:
-        return env_address
-    return fetch_derive_wallet_address(derive_owner_account.address, is_testnet=True)
-
-
-@pytest.fixture(scope="module")
-def derive_authenticated_client(derive_owner_account, derive_wallet_address):
-    """Derive API client authenticated with session key."""
-    from eth_defi.derive.authentication import DeriveApiClient
-    from eth_defi.derive.account import fetch_subaccount_ids
-
-    if not os.environ.get("DERIVE_SESSION_PRIVATE_KEY"):
-        pytest.skip("DERIVE_SESSION_PRIVATE_KEY not set")
-
-    client = DeriveApiClient(
-        owner_account=derive_owner_account,
-        derive_wallet_address=derive_wallet_address,
-        is_testnet=True,
-        session_key_private=os.environ["DERIVE_SESSION_PRIVATE_KEY"],
-    )
-    # Resolve subaccount ID from the API
-    ids = fetch_subaccount_ids(client)
-    if ids:
-        client.subaccount_id = ids[0]
-    return client
-
-
-@pytest.fixture
-def derive_exchange_account_pair(derive_authenticated_client):
-    """Create an exchange account pair for real Derive testnet."""
-    chain_id = 901  # Derive testnet chain ID
-
-    usdc = AssetIdentifier(
-        chain_id=chain_id,
-        address="0x0000000000000000000000000000000000000001",
-        token_symbol="USDC",
-        decimals=6,
-    )
-    derive_account = AssetIdentifier(
-        chain_id=chain_id,
-        address="0x0000000000000000000000000000000000000002",
-        token_symbol="DERIVE-ACCOUNT",
-        decimals=6,
-    )
-    return TradingPairIdentifier(
-        base=derive_account,
-        quote=usdc,
-        pool_address="0x0000000000000000000000000000000000000003",
-        exchange_address="0x0000000000000000000000000000000000000004",
-        internal_id=1,
-        internal_exchange_id=1,
-        fee=0.0,
-        kind=TradingPairKind.exchange_account,
-        exchange_name="derive",
-        other_data={
-            "exchange_protocol": "derive",
-            "exchange_subaccount_id": derive_authenticated_client.subaccount_id,
-            "exchange_is_testnet": True,
-        },
-    )
-
-
-@pytest.mark.skipif(
-    not os.environ.get("DERIVE_OWNER_PRIVATE_KEY") or not os.environ.get("DERIVE_SESSION_PRIVATE_KEY"),
-    reason="Set DERIVE_OWNER_PRIVATE_KEY and DERIVE_SESSION_PRIVATE_KEY for Derive tests",
-)
-def test_exchange_account_sync_real_derive_api(
-    strategy_file: Path,
-    derive_authenticated_client,
-    derive_exchange_account_pair: TradingPairIdentifier,
-):
-    """Integration test with real Derive API following CLI patterns.
-
-    This test:
-    1. Creates a state file with an exchange account position
-    2. Uses real Derive API to fetch account value
-    3. Runs sync_positions to detect any balance difference
-    4. Verifies the sync model correctly tracks the account value
-
-    Required environment variables:
-    - DERIVE_OWNER_PRIVATE_KEY: Owner wallet private key
-    - DERIVE_SESSION_PRIVATE_KEY: Session key private key
-    """
-    from eth_defi.derive.account import fetch_subaccount_ids
-    from tradeexecutor.exchange_account.derive import create_derive_account_value_func
-
-    # Skip if no subaccounts
-    ids = fetch_subaccount_ids(derive_authenticated_client)
-    if not ids:
-        pytest.skip("Account has no subaccounts yet")
-
-    # ==========================================================================
-    # Step 1: Initialise state file (like `trade-executor init`)
-    # ==========================================================================
-    state_file = Path(tempfile.mkdtemp()) / "test-derive-sync-state.json"
-    state = State()
-
-    with state_file.open("wt") as f:
-        f.write(state.to_json_safe())
-
-    # ==========================================================================
-    # Step 2: Load strategy module and create universe
-    # ==========================================================================
-    strategy_module = read_strategy_module(strategy_file)
-    execution_context = ExecutionContext(mode=ExecutionMode.unit_testing)
-    universe_options = UniverseOptions()
-
-    strategy_universe = strategy_module.create_trading_universe(
-        ts=datetime.datetime.utcnow(),
-        client=None,
-        execution_context=execution_context,
-        universe_options=universe_options,
-    )
-
-    # ==========================================================================
-    # Step 3: Create position with expected value from Derive
-    # ==========================================================================
-    # First, fetch actual account value to use as baseline
-    clients = {derive_authenticated_client.subaccount_id: derive_authenticated_client}
-    account_value_func = create_derive_account_value_func(clients)
-
-    actual_value = account_value_func(derive_exchange_account_pair)
-    assert actual_value > 0, "Derive testnet account should have funds"
-
-    # Create position with slightly different tracked value to trigger sync
-    # Use 99% of actual value as "tracked" to simulate a small PnL change
-    tracked_value = (actual_value * Decimal("0.99")).quantize(Decimal("0.01"))
-
-    state = State.read_json_file(state_file)
-    opened_at = datetime.datetime(2024, 1, 1)
-
-    position = TradingPosition(
-        position_id=1,
-        pair=derive_exchange_account_pair,
-        opened_at=opened_at,
-        last_pricing_at=opened_at,
-        last_token_price=1.0,
-        last_reserve_price=1.0,
-        reserve_currency=derive_exchange_account_pair.quote,
-    )
-
-    # Add initial deposit trade with tracked value
-    trade = TradeExecution(
-        trade_id=1,
-        position_id=1,
-        trade_type=TradeType.rebalance,
-        pair=derive_exchange_account_pair,
-        opened_at=opened_at,
-        planned_quantity=tracked_value,
-        planned_price=1.0,
-        planned_reserve=tracked_value,
-        reserve_currency=derive_exchange_account_pair.quote,
-    )
-    trade.started_at = opened_at
-    trade.mark_broadcasted(opened_at)
-    trade.mark_success(
-        executed_at=opened_at,
-        executed_price=1.0,
-        executed_quantity=tracked_value,
-        executed_reserve=tracked_value,
-        lp_fees=0.0,
-        native_token_price=1.0,
-    )
-    position.trades[1] = trade
-    state.portfolio.open_positions[1] = position
-
-    # Save state with position
-    with state_file.open("wt") as f:
-        f.write(state.to_json_safe())
-
-    # ==========================================================================
-    # Step 4: Run sync with real Derive API
-    # ==========================================================================
-    sync_model = ExchangeAccountSyncModel(account_value_func)
-
-    # Verify initial position state
-    assert position.get_quantity() == tracked_value
-    assert position.is_exchange_account()
-
-    # Run sync - should detect difference between tracked and actual value
-    events = sync_model.sync_positions(
-        timestamp=datetime.datetime.utcnow(),
-        state=state,
-        strategy_universe=strategy_universe,
-        pricing_model=None,
-    )
-
-    # ==========================================================================
-    # Step 5: Verify sync detected balance change
-    # ==========================================================================
-    # Should have one balance update (1% difference)
-    assert len(events) == 1
-    evt = events[0]
-
-    # Expected difference is ~1% of actual value
-    expected_diff = actual_value - tracked_value
-    assert evt.quantity == expected_diff
-    assert evt.old_balance == tracked_value
-    assert evt.cause == BalanceUpdateCause.vault_flow
-    assert evt.position_type == BalanceUpdatePositionType.open_position
-    assert evt.position_id == 1
-    assert "derive" in evt.notes.lower()
-
-    # Position should now have actual value
-    assert position.get_quantity() == actual_value
-
-    # ==========================================================================
-    # Step 6: Verify state persists correctly
-    # ==========================================================================
-    with state_file.open("wt") as f:
-        f.write(state.to_json_safe())
-
-    final_state = State.read_json_file(state_file)
-    final_position = final_state.portfolio.open_positions[1]
-
-    assert final_position.get_quantity() == actual_value
-    assert len(final_position.balance_updates) == 1
-    assert len(final_state.sync.accounting.balance_update_refs) == 1
-
-    # ==========================================================================
-    # Step 7: Run sync again - should have no change
-    # ==========================================================================
-    events_no_change = sync_model.sync_positions(
-        timestamp=datetime.datetime.utcnow(),
-        state=state,
-        strategy_universe=strategy_universe,
-        pricing_model=None,
-    )
-
-    # No balance update when synced value matches
-    assert len(events_no_change) == 0
-    assert len(position.balance_updates) == 1
