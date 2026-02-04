@@ -40,7 +40,7 @@ from ...strategy.universe_model import UniverseOptions
 from ...utils.blockchain import get_block_timestamp
 
 
-class DeriveNetwork(enum.Enum):
+class DeriveNetwork(str, enum.Enum):
     """Derive network selection."""
     mainnet = "mainnet"
     testnet = "testnet"

@@ -61,6 +61,13 @@ def usdc(web3, deployer) -> Contract:
     return token
 
 
+@pytest.fixture()
+def dummy_token(web3, deployer) -> Contract:
+    """Mock dummy token for trading pair."""
+    token = create_token(web3, deployer, "Dummy Token", "DUMMY", 100_000_000 * 10**18, decimals=18)
+    return token
+
+
 @pytest.fixture
 def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
     """Create hot wallet for CLI tests.
