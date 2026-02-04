@@ -377,6 +377,12 @@ class TradingPairKind(enum.Enum):
     #: Capital allocated to an external Freqtrade bot instance.
     freqtrade = "freqtrade"
 
+    #: Exchange account position on external perp DEX.
+    #:
+    #: Capital allocated to an external trading account (Derive, Hyperliquid, etc.)
+    #: The position value is the total account value in USD from the exchange API.
+    exchange_account = "exchange_account"
+
     def is_interest_accruing(self) -> bool:
         """Do base or quote or both gain interest during when the position is open."""
         return self in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long, TradingPairKind.credit_supply)
@@ -413,6 +419,10 @@ class TradingPairKind(enum.Enum):
     def is_freqtrade(self):
         """This is a Freqtrade managed position."""
         return self == TradingPairKind.freqtrade
+
+    def is_exchange_account(self):
+        """This is an exchange account position (Derive, Hyperliquid, etc.)."""
+        return self == TradingPairKind.exchange_account
 
 
 _TRANSIENT_OTHER_DATA_KEYS = {
@@ -936,6 +946,38 @@ class TradingPairIdentifier:
 
         return config
 
+    def get_exchange_account_protocol(self) -> str | None:
+        """Get the exchange protocol name (e.g., 'derive', 'hyperliquid').
+
+        - None if not an exchange account pair
+        """
+        if not self.is_exchange_account():
+            return None
+        return self.other_data.get("exchange_protocol")
+
+    def get_exchange_account_id(self) -> int | None:
+        """Get the exchange subaccount/account ID.
+
+        - None if not an exchange account pair
+        """
+        if not self.is_exchange_account():
+            return None
+        return self.other_data.get("exchange_subaccount_id")
+
+    def get_exchange_account_config(self) -> dict | None:
+        """Get exchange account config from other_data.
+
+        Common fields stored in other_data:
+        - exchange_protocol: str (e.g., 'derive', 'hyperliquid')
+        - exchange_subaccount_id: int
+        - exchange_is_testnet: bool
+
+        Returns None if not an exchange account pair.
+        """
+        if not self.is_exchange_account():
+            return None
+        return dict(self.other_data)
+
     def has_complete_info(self) -> bool:
         """Check if the pair has good information.
 
@@ -1015,6 +1057,9 @@ class TradingPairIdentifier:
 
     def is_freqtrade(self) -> bool:
         return self.kind.is_freqtrade()
+
+    def is_exchange_account(self) -> bool:
+        return self.kind.is_exchange_account()
 
     def is_credit_supply(self) -> bool:
         return self.kind.is_credit_supply()

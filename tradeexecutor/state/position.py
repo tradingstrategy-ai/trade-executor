@@ -448,6 +448,10 @@ class TradingPosition(GenericPosition):
         """Is this a Freqtrade managed position."""
         return self.pair.is_freqtrade()
 
+    def is_exchange_account(self) -> bool:
+        """Is this an exchange account position (Derive, Hyperliquid, etc.)."""
+        return self.pair.is_exchange_account()
+
     def is_long(self) -> bool:
         """Is this position long on the underlying base asset.
 
@@ -455,9 +459,10 @@ class TradingPosition(GenericPosition):
 
         - This includes spot buy.
         - This includes holding vault shares
+        - This includes exchange account positions
         """
         assert len(self.trades) + len(self.pending_trades) > 0, "Cannot determine if position is long or short because there are no trades"
-        return self.pair.is_spot() or self.pair.is_long() or self.pair.is_vault()
+        return self.pair.is_spot() or self.pair.is_long() or self.pair.is_vault() or self.pair.is_exchange_account()
 
     def is_short(self) -> bool:
         """Is this position short on the underlying base asset."""
@@ -817,7 +822,7 @@ class TradingPosition(GenericPosition):
             return value
 
         match self.pair.kind:
-            case TradingPairKind.spot_market_hold | TradingPairKind.vault | TradingPairKind.freqtrade:
+            case TradingPairKind.spot_market_hold | TradingPairKind.vault | TradingPairKind.freqtrade | TradingPairKind.exchange_account:
 
                 value += self.calculate_value_using_price(
                     self.last_token_price,
