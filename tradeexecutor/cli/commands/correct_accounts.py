@@ -9,13 +9,13 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-from ipywidgets import interactive
 from tabulate import tabulate
 from typer import Option
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
+from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts, UnknownTokenPositionFix, check_state_internal_coherence
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_client, backup_state, create_execution_and_sync_model
@@ -30,6 +30,7 @@ from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.account_correction import calculate_account_corrections
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
+from ...strategy.default_routing_options import TradeRouting
 from ...strategy.execution_model import AssetManagementMode
 from . import shared_options
 from ...strategy.run_state import RunState
@@ -81,6 +82,12 @@ def correct_accounts(
     process_redemption_end_block_hint: int = Option(None, "--process-redemption-end-block-hint", envvar="PROCESS_REDEMPTION_END_BLOCK_HINT", help="Used in integration testing."),
     transfer_away: bool = Option(False, "--transfer-away", envvar="TRANSFER_AWAY", help="For tokens without assigned position, scoop them to the hot wallet instead of trying to construct a new position"),
     raise_on_unclean: bool = typer.Option(False, is_flag=True, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
+
+    # Derive exchange account options
+    derive_owner_private_key: Optional[str] = Option(None, envvar="DERIVE_OWNER_PRIVATE_KEY", help="Derive owner wallet private key"),
+    derive_session_private_key: Optional[str] = Option(None, envvar="DERIVE_SESSION_PRIVATE_KEY", help="Derive session key private key"),
+    derive_wallet_address: Optional[str] = Option(None, envvar="DERIVE_WALLET_ADDRESS", help="Derive wallet address (auto-derived if not provided)"),
+    derive_network: DeriveNetwork = Option(DeriveNetwork.mainnet, envvar="DERIVE_NETWORK", help="Derive network: mainnet or testnet"),
 ):
     """Correct accounting errors in the internal ledger of the trade executor.
 
@@ -223,7 +230,12 @@ def correct_accounts(
 
     runner = run_description.runner
     if mod.is_version_greater_or_equal_than(0, 5, 0):
-        routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
+        # Skip routing setup for strategies that don't do on-chain trading
+        if mod.trade_routing == TradeRouting.ignore:
+            routing_state = pricing_model = valuation_method = None
+            logger.info("Routing setup skipped - strategy uses TradeRouting.ignore")
+        else:
+            routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
     else:
         # Legacy unit test compatibility
         routing_state = pricing_model = valuation_method = None
@@ -270,14 +282,19 @@ def correct_accounts(
 
     block_timestamp = get_block_timestamp(web3, block_number)
 
-    corrections = calculate_account_corrections(
-        universe.data_universe.pairs,
-        universe.reserve_assets,
-        state,
-        sync_model,
-        block_identifier=block_number,
-    )
-    corrections = list(corrections)
+    # Skip on-chain accounting for strategies without on-chain trading
+    if mod.trade_routing == TradeRouting.ignore:
+        corrections = []
+        logger.info("On-chain account correction skipped - strategy uses TradeRouting.ignore")
+    else:
+        corrections = calculate_account_corrections(
+            universe.data_universe.pairs,
+            universe.reserve_assets,
+            state,
+            sync_model,
+            block_identifier=block_number,
+        )
+        corrections = list(corrections)
 
     if len(corrections) == 0:
         logger.info("No account corrections found")
@@ -321,6 +338,37 @@ def correct_accounts(
                 raise
     else:
         logger.info("Interest distribution skipped")
+
+    # Sync exchange account positions (Derive, Hyperliquid, etc.)
+    exchange_account_positions = [
+        p for p in state.portfolio.get_open_and_frozen_positions()
+        if p.is_exchange_account()
+    ]
+
+    if exchange_account_positions:
+        logger.info("Found %d exchange account position(s)", len(exchange_account_positions))
+        from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
+
+        account_value_func = _create_derive_account_value_func(
+            exchange_account_positions,
+            derive_owner_private_key,
+            derive_session_private_key,
+            derive_wallet_address,
+            derive_network,
+            logger,
+        )
+
+        if account_value_func:
+            exchange_sync_model = ExchangeAccountSyncModel(account_value_func)
+            exchange_events = exchange_sync_model.sync_positions(
+                timestamp=datetime.datetime.utcnow(),
+                state=state,
+                strategy_universe=universe,
+                pricing_model=pricing_model,
+            )
+            logger.info("Exchange account sync: %d balance update(s)", len(exchange_events))
+            for evt in exchange_events:
+                logger.info("  Position %d: %s (change: %s)", evt.position_id, evt.notes, evt.quantity)
 
     if process_redemption:
         timestamp = datetime.datetime.utcnow()
@@ -385,6 +433,12 @@ def correct_accounts(
 
     block_number = get_almost_latest_block_number(web3)
 
+    # Skip final on-chain account check for strategies without on-chain trading
+    if mod.trade_routing == TradeRouting.ignore:
+        logger.info("Final account check skipped - strategy uses TradeRouting.ignore")
+        logger.info("All ok")
+        sys.exit(0)
+
     clean, df = check_accounts(
         universe.data_universe.pairs,
         universe.reserve_assets,
@@ -408,3 +462,91 @@ def correct_accounts(
         if not raise_on_unclean:
             sys.exit(1)
         raise UncleanState(output)
+
+
+def _create_derive_account_value_func(
+    positions,
+    derive_owner_private_key: str | None,
+    derive_session_private_key: str | None,
+    derive_wallet_address: str | None,
+    derive_network: DeriveNetwork,
+    logger,
+):
+    """Create account value function for Derive exchange account positions.
+
+    :param positions: List of exchange account positions
+    :param derive_owner_private_key: Derive owner wallet private key
+    :param derive_session_private_key: Derive session key private key
+    :param derive_wallet_address: Derive wallet address (auto-derived if not provided)
+    :param derive_network: Derive network (mainnet or testnet)
+    :param logger: Logger instance
+    :return: Account value function or None if credentials not provided
+    """
+    # Check which protocols are needed
+    protocols = set()
+    for p in positions:
+        protocol = p.pair.get_exchange_account_protocol()
+        if protocol:
+            protocols.add(protocol)
+
+    logger.info("Exchange account protocols needed: %s", protocols)
+
+    # Set up Derive if needed
+    derive_clients = {}
+    if "derive" in protocols:
+        if not derive_owner_private_key or not derive_session_private_key:
+            logger.error("Derive credentials required: DERIVE_OWNER_PRIVATE_KEY and DERIVE_SESSION_PRIVATE_KEY")
+            return None
+
+        from eth_account import Account
+        from eth_defi.derive.authentication import DeriveApiClient
+        from eth_defi.derive.account import fetch_subaccount_ids
+        from eth_defi.derive.onboarding import fetch_derive_wallet_address
+
+        is_testnet = (derive_network == DeriveNetwork.testnet)
+        owner_account = Account.from_key(derive_owner_private_key)
+
+        if not derive_wallet_address:
+            derive_wallet_address = fetch_derive_wallet_address(
+                owner_account.address,
+                is_testnet=is_testnet,
+            )
+
+        client = DeriveApiClient(
+            owner_account=owner_account,
+            derive_wallet_address=derive_wallet_address,
+            is_testnet=is_testnet,
+            session_key_private=derive_session_private_key,
+        )
+
+        # Get all subaccounts
+        subaccount_ids = fetch_subaccount_ids(client)
+        logger.info("Found %d Derive subaccount(s)", len(subaccount_ids))
+
+        # Create client for each subaccount needed by positions
+        for p in positions:
+            if p.pair.get_exchange_account_protocol() == "derive":
+                subaccount_id = p.pair.get_exchange_account_id()
+                if subaccount_id in subaccount_ids:
+                    # Create a separate client for this subaccount
+                    subaccount_client = DeriveApiClient(
+                        owner_account=owner_account,
+                        derive_wallet_address=derive_wallet_address,
+                        is_testnet=is_testnet,
+                        session_key_private=derive_session_private_key,
+                    )
+                    subaccount_client.subaccount_id = subaccount_id
+                    derive_clients[subaccount_id] = subaccount_client
+                else:
+                    logger.warning("Subaccount %d not found in Derive account", subaccount_id)
+
+    # Create unified account value function
+    from tradeexecutor.exchange_account.derive import create_derive_account_value_func
+
+    if derive_clients:
+        return create_derive_account_value_func(derive_clients)
+
+    # TODO: Add support for other protocols (Hyperliquid, etc.)
+
+    logger.error("No valid exchange API clients created")
+    return None

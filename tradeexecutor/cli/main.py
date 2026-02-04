@@ -43,6 +43,6 @@ __all__ = [
     correct_accounts, deploy_guard, enzyme_asset_list, enzyme_deploy_vault,
     export, hello, init, lagoon_deploy_vault, lagoon_settle, perform_test_trade, prune_state,
     repair, reset, reset_deposits, retry, send_log_message, show_positions,
-    show_valuation, start, token_cache, trading_pair, version, visualise,
-    webapi
+    show_valuation, start, token_cache, trading_pair,
+    version, visualise, webapi
 ]

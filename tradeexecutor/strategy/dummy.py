@@ -105,3 +105,10 @@ class DummyExecutionModel(ExecutionModel):
         :return:
             List of fixed trades
         """
+
+    def create_default_routing_model(self, universe):
+        """Return None - no routing needed for dummy execution.
+
+        Used for exchange account strategies that don't do any on-chain trading.
+        """
+        return None
