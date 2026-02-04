@@ -2,7 +2,6 @@
 
 """
 import datetime
-import enum
 import sys
 import time
 from _decimal import Decimal
@@ -16,6 +15,7 @@ from typer import Option
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
+from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts, UnknownTokenPositionFix, check_state_internal_coherence
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_client, backup_state, create_execution_and_sync_model
@@ -38,12 +38,6 @@ from ...strategy.strategy_module import StrategyModuleInformation, read_strategy
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.blockchain import get_block_timestamp
-
-
-class DeriveNetwork(str, enum.Enum):
-    """Derive network selection."""
-    mainnet = "mainnet"
-    testnet = "testnet"
 
 
 @app.command()

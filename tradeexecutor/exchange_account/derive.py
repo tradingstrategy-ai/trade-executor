@@ -3,6 +3,7 @@
 Provides the account value function for Derive.xyz exchange accounts.
 """
 
+import enum
 import logging
 from decimal import Decimal
 from typing import Callable
@@ -11,6 +12,16 @@ from eth_defi.derive.authentication import DeriveApiClient
 from eth_defi.derive.account import fetch_account_summary
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
+
+
+class DeriveNetwork(str, enum.Enum):
+    """Derive network selection.
+
+    Used by CLI commands to specify mainnet or testnet.
+    Inherits from str for Typer/Click compatibility.
+    """
+    mainnet = "mainnet"
+    testnet = "testnet"
 
 logger = logging.getLogger(__name__)
 
