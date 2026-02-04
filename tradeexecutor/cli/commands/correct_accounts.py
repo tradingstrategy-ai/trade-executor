@@ -10,13 +10,6 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-
-
-class DeriveNetwork(enum.Enum):
-    """Derive network selection."""
-    mainnet = "mainnet"
-    testnet = "testnet"
-from ipywidgets import interactive
 from tabulate import tabulate
 from typer import Option
 
@@ -45,6 +38,12 @@ from ...strategy.strategy_module import StrategyModuleInformation, read_strategy
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.blockchain import get_block_timestamp
+
+
+class DeriveNetwork(enum.Enum):
+    """Derive network selection."""
+    mainnet = "mainnet"
+    testnet = "testnet"
 
 
 @app.command()
