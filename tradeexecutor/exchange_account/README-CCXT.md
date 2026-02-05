@@ -81,9 +81,10 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 trade_routing = TradeRouting.ignore
 ```
 
-### 3. Example strategy module
+### 3. Example strategy modules
 
-See `strategies/test_only/ccxt_exchange_account_strategy.py` for a complete example.
+- `strategies/test_only/ccxt_exchange_account_strategy.py` - Full exchange account strategy with Aster pair (uses `ChainId.ethereum`)
+- `strategies/test_only/minimal_ccxt_strategy.py` - Minimal strategy for CLI integration testing on Anvil chain
 
 ## CLI commands
 
@@ -177,6 +178,7 @@ account_value_func = create_ccxt_account_value_func(
 - `sync_model.py` - `ExchangeAccountSyncModel` for syncing position values
 - `pricing.py` - `ExchangeAccountPricingModel` for valuation
 - `valuation.py` - `ExchangeAccountValuationModel` for portfolio valuation
+- `tradeexecutor/cli/commands/correct_accounts.py` - CLI command with unified Derive/CCXT dispatcher
 
 ## Aster specifics
 
@@ -201,6 +203,31 @@ CCXT is an optional dependency. Install with:
 
 ```bash
 poetry install -E ccxt
+```
+
+## Testing
+
+### Environment variables
+
+Set these to run the Aster integration tests:
+
+| Variable | Description |
+|----------|-------------|
+| `ASTER_API_KEY` | Aster API key |
+| `ASTER_API_SECRET` | Aster API secret |
+
+Tests are skipped automatically when these variables are not set or when `ccxt` is not installed.
+
+### Test files
+
+- `tests/exchange_account/test_ccxt_aster_integration.py` - API-level integration tests with real Aster (2 tests: `test_aster_total_equity_returns_value`, `test_ccxt_account_value_func_with_real_aster`)
+- `tests/exchange_account/test_correct_accounts_ccxt.py` - CLI integration tests (`test_correct_accounts_aster`, `test_aster_cli_start`)
+
+### Running tests
+
+```bash
+source .local-test.env && poetry run pytest tests/exchange_account/test_ccxt_aster_integration.py -v
+source .local-test.env && poetry run pytest tests/exchange_account/test_correct_accounts_ccxt.py -v
 ```
 
 ## See also
