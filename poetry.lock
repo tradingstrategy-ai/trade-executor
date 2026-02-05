@@ -4,9 +4,10 @@
 name = "aiodns"
 version = "4.0.0"
 description = "Simple DNS resolver for asyncio"
-optional = false
+optional = true
 python-versions = ">=3.10"
 groups = ["main"]
+markers = "extra == \"freqtrade\" or extra == \"ccxt\""
 files = [
     {file = "aiodns-4.0.0-py3-none-any.whl", hash = "sha256:a188a75fb8b2b7862ac8f84811a231402fb74f5b4e6f10766dc8a4544b0cf989"},
     {file = "aiodns-4.0.0.tar.gz", hash = "sha256:17be26a936ba788c849ba5fd20e0ba69d8c46e6273e846eb5430eae2630ce5b1"},
@@ -19,9 +20,10 @@ pycares = ">=5.0.0,<6"
 name = "aiofiles"
 version = "25.1.0"
 description = "File support for asyncio."
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "aiofiles-25.1.0-py3-none-any.whl", hash = "sha256:abe311e527c862958650f9438e859c1fa7568a141b22abcd015e120e86a85695"},
     {file = "aiofiles-25.1.0.tar.gz", hash = "sha256:a8d728f0a29de45dc521f18f07297428d56992a742f0cd2701ba86e44d23d5b2"},
@@ -34,6 +36,7 @@ description = "Happy Eyeballs for asyncio"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\" or extra == \"ccxt\" or extra == \"execution\""
 files = [
     {file = "aiohappyeyeballs-2.6.1-py3-none-any.whl", hash = "sha256:f349ba8f4b75cb25c99c5c2d84e997e485204d2902a9597802b0371f09331fb8"},
     {file = "aiohappyeyeballs-2.6.1.tar.gz", hash = "sha256:c3f9d0113123803ccadfdf3f0faa505bc78e6a72d1cc4806cbd719826e943558"},
@@ -46,6 +49,7 @@ description = "Async http client/server framework (asyncio)"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\" or extra == \"ccxt\" or extra == \"execution\""
 files = [
     {file = "aiohttp-3.13.3-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:d5a372fd5afd301b3a89582817fdcdb6c34124787c70dbcc616f259013e7eef7"},
     {file = "aiohttp-3.13.3-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:147e422fd1223005c22b4fe080f5d93ced44460f5f9c105406b753612b587821"},
@@ -188,6 +192,7 @@ description = "aiosignal: a list of registered asynchronous callbacks"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\" or extra == \"ccxt\" or extra == \"execution\""
 files = [
     {file = "aiosignal-1.4.0-py3-none-any.whl", hash = "sha256:053243f8b92b990551949e63930a839ff0cf0b0ebbe0597b0f3fb19e1a0fe82e"},
     {file = "aiosignal-1.4.0.tar.gz", hash = "sha256:f47eecd9468083c2029cc99945502cb7708b082c232f9aca65da147157b251c7"},
@@ -201,9 +206,10 @@ typing-extensions = {version = ">=4.2", markers = "python_version < \"3.13\""}
 name = "annotated-doc"
 version = "0.0.4"
 description = "Document parameters, class attributes, return types, and variables inline, with Annotated."
-optional = false
+optional = true
 python-versions = ">=3.8"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "annotated_doc-0.0.4-py3-none-any.whl", hash = "sha256:571ac1dc6991c450b25a9c2d84a3705e2ae7a53467b5d111c24fa8baabbed320"},
     {file = "annotated_doc-0.0.4.tar.gz", hash = "sha256:fbcda96e87e9c92ad167c2e53839e57503ecfda18804ea28102353485033faa4"},
@@ -216,6 +222,7 @@ description = "Reusable constraint types to use with typing.Annotated"
 optional = false
 python-versions = ">=3.8"
 groups = ["main"]
+markers = "extra == \"execution\" or extra == \"freqtrade\""
 files = [
     {file = "annotated_types-0.7.0-py3-none-any.whl", hash = "sha256:1f02e8b43a8fbbc3f3e0d4f0f4bfc8131bcb4eebe8849b8e5c773f3a1c582a53"},
     {file = "annotated_types-0.7.0.tar.gz", hash = "sha256:aff07c09a53a08bc8cfccb9c85b05f1aa9a2a6f23728d790723543408344ce89"},
@@ -359,9 +366,10 @@ test = ["dateparser (==1.*)", "pre-commit", "pytest", "pytest-cov", "pytest-mock
 name = "ast-comments"
 version = "1.2.3"
 description = ""
-optional = false
+optional = true
 python-versions = "<4.0,>=3.8"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "ast_comments-1.2.3-py3-none-any.whl", hash = "sha256:2b2319312027a523dd4b30381a7662da8fdd16210786db3402d8e1b1df12a886"},
     {file = "ast_comments-1.2.3.tar.gz", hash = "sha256:f9d003e9608b54195bd822b1d359a18e24573d2d8beff0307d7dc6f9d0cd0ba6"},
@@ -730,9 +738,10 @@ files = [
 name = "build"
 version = "1.4.0"
 description = "A simple, correct Python build frontend"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "build-1.4.0-py3-none-any.whl", hash = "sha256:6a07c1b8eb6f2b311b96fcbdbce5dab5fe637ffda0fd83c9cac622e927501596"},
     {file = "build-1.4.0.tar.gz", hash = "sha256:f1b91b925aa322be454f8330c6fb48b465da993d1e7e7e6fa35027ec49f3c936"},
@@ -767,6 +776,7 @@ description = "Extensible memoizing collections and decorators"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
+markers = "extra == \"execution\" or extra == \"freqtrade\""
 files = [
     {file = "cachetools-7.0.0-py3-none-any.whl", hash = "sha256:d52fef60e6e964a1969cfb61ccf6242a801b432790fe520d78720d757c81cbd2"},
     {file = "cachetools-7.0.0.tar.gz", hash = "sha256:a9abf18ff3b86c7d05b27ead412e235e16ae045925e531fae38d5fada5ed5b08"},
@@ -842,9 +852,10 @@ safe-pysha3 = {version = ">=1.0.0", markers = "python_version >= \"3.9\""}
 name = "ccxt"
 version = "4.5.36"
 description = "A cryptocurrency trading API with more than 100 exchanges in JavaScript / TypeScript / Python / C# / PHP / Go"
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
+markers = "extra == \"freqtrade\" or extra == \"ccxt\""
 files = [
     {file = "ccxt-4.5.36-py2.py3-none-any.whl", hash = "sha256:6d289f49e21a11e3930dd55391094091a4d7c79b246676fbb0d14ec22c48fa74"},
     {file = "ccxt-4.5.36.tar.gz", hash = "sha256:902c9f7103226ada01e834379d742710472c7fea0cc0df4b07ad9f978b01059c"},
@@ -1216,6 +1227,7 @@ description = "Composable command line interface toolkit"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
+markers = "extra == \"execution\" or extra == \"freqtrade\" or extra == \"qstrader\""
 files = [
     {file = "click-8.1.8-py3-none-any.whl", hash = "sha256:63c132bbbed01578a06712a2d1f497bb62d9c1c0d329b7903a866228027263b2"},
     {file = "click-8.1.8.tar.gz", hash = "sha256:ed53c9d8990d83c2a27deae68e4ee337473f6330c040a31d4225c9574d16096a"},
@@ -1240,9 +1252,10 @@ files = [
 name = "coincurve"
 version = "21.0.0"
 description = "Safest and fastest Python library for secp256k1 elliptic curve operations"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\" or extra == \"ccxt\""
 files = [
     {file = "coincurve-21.0.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:986727bba6cf0c5670990358dc6af9a54f8d3e257979b992a9dbd50dd82fa0dc"},
     {file = "coincurve-21.0.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:c1c584059de61ed16c658e7eae87ee488e81438897dae8fabeec55ef408af474"},
@@ -1308,7 +1321,7 @@ files = [
     {file = "colorama-0.4.6-py2.py3-none-any.whl", hash = "sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"},
     {file = "colorama-0.4.6.tar.gz", hash = "sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44"},
 ]
-markers = {main = "platform_system == \"Windows\" or sys_platform == \"win32\" or os_name == \"nt\" or extra == \"execution\"", dev = "sys_platform == \"win32\" or extra == \"execution\""}
+markers = {main = "platform_system == \"Windows\" or sys_platform == \"win32\" or extra == \"freqtrade\" and os_name == \"nt\" or extra == \"execution\"", dev = "sys_platform == \"win32\" or extra == \"execution\""}
 
 [[package]]
 name = "coloredlogs"
@@ -1443,6 +1456,7 @@ description = "cryptography is a package which provides cryptographic recipes an
 optional = false
 python-versions = "!=3.9.0,!=3.9.1,>=3.8"
 groups = ["main"]
+markers = "extra == \"execution\" or extra == \"freqtrade\" or extra == \"ccxt\""
 files = [
     {file = "cryptography-46.0.4-cp311-abi3-macosx_10_9_universal2.whl", hash = "sha256:281526e865ed4166009e235afadf3a4c4cba6056f99336a99efba65336fd5485"},
     {file = "cryptography-46.0.4-cp311-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:5f14fba5bf6f4390d7ff8f086c566454bff0411f6d8aa7af79c88b6f9267aecc"},
@@ -2216,9 +2230,10 @@ testing = ["hatch", "pre-commit", "pytest", "tox"]
 name = "fastapi"
 version = "0.128.1"
 description = "FastAPI framework, high performance, easy to learn, fast to code, ready for production"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "fastapi-0.128.1-py3-none-any.whl", hash = "sha256:ee82146bbf91ea5bbf2bb8629e4c6e056c4fbd997ea6068501b11b15260b50fb"},
     {file = "fastapi-0.128.1.tar.gz", hash = "sha256:ce5be4fa26d4ce6f54debcc873d1fb8e0e248f5c48d7502ba6c61457ab2dc766"},
@@ -2390,9 +2405,10 @@ files = [
 name = "freqtrade"
 version = "2025.9.dev0"
 description = "Freqtrade - Crypto Trading Bot"
-optional = false
+optional = true
 python-versions = ">=3.11"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = []
 develop = true
 
@@ -2457,9 +2473,10 @@ url = "../freqtrade"
 name = "freqtrade-client"
 version = "2026.1"
 description = "Freqtrade - Client scripts"
-optional = false
+optional = true
 python-versions = ">=3.11"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "freqtrade_client-2026.1-py3-none-any.whl", hash = "sha256:6538f043fdfd50a39d3a5cf2204885fba38598c3e027d7b5b80c9c8a15103acb"},
     {file = "freqtrade_client-2026.1.tar.gz", hash = "sha256:1ab4b4d7aa6d8526052a219b43ece64530e81cdf7cab9c1d2b7b232ef3a03dbc"},
@@ -2577,6 +2594,7 @@ description = "A list-like structure which implements collections.abc.MutableSeq
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\" or extra == \"ccxt\" or extra == \"execution\""
 files = [
     {file = "frozenlist-1.8.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:b37f6d31b3dcea7deb5e9696e529a6aa4a898adc33db82da12e4c60a7c4d2011"},
     {file = "frozenlist-1.8.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:ef2b7b394f208233e471abc541cc6991f907ffd47dc72584acee3147899d6565"},
@@ -2983,10 +3001,10 @@ files = [
 name = "greenlet"
 version = "3.3.1"
 description = "Lightweight in-process concurrent programming"
-optional = false
+optional = true
 python-versions = ">=3.10"
 groups = ["main"]
-markers = "platform_machine == \"aarch64\" or platform_machine == \"ppc64le\" or platform_machine == \"x86_64\" or platform_machine == \"amd64\" or platform_machine == \"AMD64\" or platform_machine == \"win32\" or platform_machine == \"WIN32\""
+markers = "extra == \"freqtrade\" and (platform_machine == \"aarch64\" or platform_machine == \"ppc64le\" or platform_machine == \"x86_64\" or platform_machine == \"amd64\" or platform_machine == \"AMD64\" or platform_machine == \"win32\" or platform_machine == \"WIN32\")"
 files = [
     {file = "greenlet-3.3.1-cp310-cp310-macosx_11_0_universal2.whl", hash = "sha256:04bee4775f40ecefcdaa9d115ab44736cd4b9c5fba733575bfe9379419582e13"},
     {file = "greenlet-3.3.1-cp310-cp310-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:50e1457f4fed12a50e427988a07f0f9df53cf0ee8da23fab16e6732c2ec909d4"},
@@ -3259,9 +3277,10 @@ pyreadline3 = {version = "*", markers = "sys_platform == \"win32\" and python_ve
 name = "humanize"
 version = "4.15.0"
 description = "Python humanize utilities"
-optional = false
+optional = true
 python-versions = ">=3.10"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "humanize-4.15.0-py3-none-any.whl", hash = "sha256:b1186eb9f5a9749cd9cb8565aee77919dd7c8d076161cf44d70e59e3301e1769"},
     {file = "humanize-4.15.0.tar.gz", hash = "sha256:1dd098483eb1c7ee8e32eb2e99ad1910baefa4b75c3aff3a82f4d78688993b10"},
@@ -3456,9 +3475,10 @@ arrow = ">=0.15.0"
 name = "janus"
 version = "2.0.0"
 description = "Mixed sync-async queue to interoperate between asyncio tasks and classic threads"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "janus-2.0.0-py3-none-any.whl", hash = "sha256:7e6449d34eab04cd016befbd7d8c0d8acaaaab67cb59e076a69149f9031745f9"},
     {file = "janus-2.0.0.tar.gz", hash = "sha256:0970f38e0e725400496c834a368a67ee551dc3b5ad0a257e132f5b46f2e77770"},
@@ -4360,6 +4380,7 @@ description = "Python port of markdown-it. Markdown parsing, done right!"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
+markers = "extra == \"execution\" or extra == \"freqtrade\""
 files = [
     {file = "markdown_it_py-4.0.0-py3-none-any.whl", hash = "sha256:87327c59b172c5011896038353a81343b6754500a08cd7a4973bb48c6d578147"},
     {file = "markdown_it_py-4.0.0.tar.gz", hash = "sha256:cb0a2b4aa34f932c007117b194e945bd74e0ec24133ceb5bac59009cda1cb9f3"},
@@ -4600,6 +4621,7 @@ description = "Markdown URL utilities"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
+markers = "extra == \"execution\" or extra == \"freqtrade\""
 files = [
     {file = "mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8"},
     {file = "mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba"},
@@ -4727,6 +4749,7 @@ description = "multidict implementation"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\" or extra == \"ccxt\" or extra == \"execution\""
 files = [
     {file = "multidict-6.7.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:c93c3db7ea657dd4637d57e74ab73de31bccefe144d3d4ce370052035bc85fb5"},
     {file = "multidict-6.7.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:974e72a2474600827abaeda71af0c53d9ebbc3c2eb7da37b37d7829ae31232d8"},
@@ -5814,6 +5837,7 @@ description = "Accelerated property cache"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\" or extra == \"ccxt\" or extra == \"execution\""
 files = [
     {file = "propcache-0.4.1-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:7c2d1fa3201efaf55d730400d945b5b3ab6e672e100ba0f9a409d950ab25d7db"},
     {file = "propcache-0.4.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:1eb2994229cc8ce7fe9b3db88f5465f5fd8651672840b2e426b88cdb1a30aac8"},
@@ -6186,9 +6210,10 @@ pyasn1 = ">=0.6.1,<0.7.0"
 name = "pycares"
 version = "5.0.1"
 description = "Python interface for c-ares"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\" or extra == \"ccxt\""
 files = [
     {file = "pycares-5.0.1-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:adc592534a10fe24fd1a801173c46769f75b97c440c9162f5d402ee1ba3eaf51"},
     {file = "pycares-5.0.1-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:8848bbea6b5c2a0f7c9d0231ee455c3ce976c5c85904e014b2e9aa636a34140e"},
@@ -6287,9 +6312,10 @@ idna = ["idna (>=2.1)"]
 name = "pycoingecko"
 version = "3.2.0"
 description = "Python wrapper around the CoinGecko API"
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "pycoingecko-3.2.0-py3-none-any.whl", hash = "sha256:b4fec16e9420b3e2f1ae38ea95710b631c9809cf1bffbf0021cc6608e357925b"},
     {file = "pycoingecko-3.2.0.tar.gz", hash = "sha256:c48935d6e608efd9a798cbc4be30f1b43176cb680503dfef8f9352e038fc7605"},
@@ -6370,6 +6396,7 @@ description = "Data validation using Python type hints"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"execution\" or extra == \"freqtrade\""
 files = [
     {file = "pydantic-2.12.5-py3-none-any.whl", hash = "sha256:e561593fccf61e8a20fc46dfc2dfe075b8be7d0188df33f221ad1f0139180f9d"},
     {file = "pydantic-2.12.5.tar.gz", hash = "sha256:4d351024c75c0f085a9febbb665ce8c0c6ec5d30e903bdb6394b7ede26aebb49"},
@@ -6392,6 +6419,7 @@ description = "Core functionality for Pydantic validation and serialization"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"execution\" or extra == \"freqtrade\""
 files = [
     {file = "pydantic_core-2.41.5-cp310-cp310-macosx_10_12_x86_64.whl", hash = "sha256:77b63866ca88d804225eaa4af3e664c5faf3568cea95360d21f4725ab6e07146"},
     {file = "pydantic_core-2.41.5-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:dfa8a0c812ac681395907e71e1274819dec685fec28273a28905df579ef137e2"},
@@ -6563,9 +6591,10 @@ windows-terminal = ["colorama (>=0.4.6)"]
 name = "pyjwt"
 version = "2.11.0"
 description = "JSON Web Token implementation in Python"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "pyjwt-2.11.0-py3-none-any.whl", hash = "sha256:94a6bde30eb5c8e04fee991062b534071fd1439ef58d2adc9ccb823e7bcd0469"},
     {file = "pyjwt-2.11.0.tar.gz", hash = "sha256:35f95c1f0fbe5d5ba6e43f00271c275f7a1a4db1dab27bf708073b75318ea623"},
@@ -6596,9 +6625,10 @@ diagrams = ["jinja2", "railroad-diagrams"]
 name = "pyproject-hooks"
 version = "1.2.0"
 description = "Wrappers to call pyproject.toml-based build backend hooks."
-optional = false
+optional = true
 python-versions = ">=3.7"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "pyproject_hooks-1.2.0-py3-none-any.whl", hash = "sha256:9e5c6bfa8dcc30091c74b0cf803c81fdd29d94f01992a7707bc97babb1141913"},
     {file = "pyproject_hooks-1.2.0.tar.gz", hash = "sha256:1e859bd5c40fae9448642dd871adf459e5e2084186e8d2c2a79a824c970da1f8"},
@@ -6854,9 +6884,10 @@ files = [
 name = "python-rapidjson"
 version = "1.23"
 description = "Python wrapper around rapidjson"
-optional = false
+optional = true
 python-versions = ">=3.6"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "python_rapidjson-1.23-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:dbb0958c5132d3def9d2be178dee45a2c41071573558348091bc539fe2671cd2"},
     {file = "python_rapidjson-1.23-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:7f9314d155f342bc95912a0db9c1087a8d043ecceccaff33c21d257de4376f20"},
@@ -6954,9 +6985,10 @@ unidecode = ["Unidecode (>=1.1.1)"]
 name = "python-telegram-bot"
 version = "22.6"
 description = "We have made you a wrapper you can't refuse"
-optional = false
+optional = true
 python-versions = ">=3.10"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "python_telegram_bot-22.6-py3-none-any.whl", hash = "sha256:e598fe171c3dde2dfd0f001619ee9110eece66761a677b34719fb18934935ce0"},
     {file = "python_telegram_bot-22.6.tar.gz", hash = "sha256:50ae8cc10f8dff01445628687951020721f37956966b92a91df4c1bf2d113742"},
@@ -7266,9 +7298,10 @@ yfinance = ">=0.1.70"
 name = "questionary"
 version = "2.1.1"
 description = "Python library to build pretty command line user prompts ⭐️"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "questionary-2.1.1-py3-none-any.whl", hash = "sha256:a51af13f345f1cdea62347589fbb6df3b290306ab8930713bfae4d475a7d4a59"},
     {file = "questionary-2.1.1.tar.gz", hash = "sha256:3d7e980292bb0107abaa79c68dd3eee3c561b83a0f89ae482860b181c8bd412d"},
@@ -7546,6 +7579,7 @@ description = "Render rich text, tables, progress bars, syntax highlighting, mar
 optional = false
 python-versions = ">=3.8.0"
 groups = ["main"]
+markers = "extra == \"execution\" or extra == \"freqtrade\""
 files = [
     {file = "rich-14.3.2-py3-none-any.whl", hash = "sha256:08e67c3e90884651da3239ea668222d19bea7b589149d8014a21c633420dbb69"},
     {file = "rich-14.3.2.tar.gz", hash = "sha256:e712f11c1a562a11843306f5ed999475f09ac31ffb64281f73ab29ffdda8b3b8"},
@@ -7770,9 +7804,10 @@ files = [
 name = "schedule"
 version = "1.2.2"
 description = "Job scheduling for humans."
-optional = false
+optional = true
 python-versions = ">=3.7"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "schedule-1.2.2-py3-none-any.whl", hash = "sha256:5bef4a2a0183abf44046ae0d164cadcac21b1db011bdd8102e4a0c1e91e06a7d"},
     {file = "schedule-1.2.2.tar.gz", hash = "sha256:15fe9c75fe5fd9b9627f3f19cc0ef1420508f9f9a46f45cd0769ef75ede5f0b7"},
@@ -7951,9 +7986,10 @@ test = ["Cython", "array-api-strict (>=2.3.1)", "asv", "gmpy2", "hypothesis (>=6
 name = "sdnotify"
 version = "0.3.2"
 description = "A pure Python implementation of systemd's service notification protocol (sd_notify)"
-optional = false
+optional = true
 python-versions = "*"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "sdnotify-0.3.2.tar.gz", hash = "sha256:73977fc746b36cc41184dd43c3fe81323e7b8b06c2bb0826c4f59a20c56bb9f1"},
 ]
@@ -8283,9 +8319,10 @@ files = [
 name = "sqlalchemy"
 version = "2.0.46"
 description = "Database Abstraction Library"
-optional = false
+optional = true
 python-versions = ">=3.7"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "sqlalchemy-2.0.46-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:895296687ad06dc9b11a024cf68e8d9d3943aa0b4964278d2553b86f1b267735"},
     {file = "sqlalchemy-2.0.46-cp310-cp310-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ab65cb2885a9f80f979b85aa4e9c9165a31381ca322cbde7c638fe6eefd1ec39"},
@@ -8381,9 +8418,10 @@ sqlcipher = ["sqlcipher3_binary"]
 name = "starlette"
 version = "0.50.0"
 description = "The little ASGI library that shines."
-optional = false
+optional = true
 python-versions = ">=3.10"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "starlette-0.50.0-py3-none-any.whl", hash = "sha256:9e5391843ec9b6e472eed1365a78c8098cfceb7a74bfd4d6b1c0c0095efb3bca"},
     {file = "starlette-0.50.0.tar.gz", hash = "sha256:a2a17b22203254bcbc2e1f926d2d55f3f9497f769416b3190768befe598fa3ca"},
@@ -8474,9 +8512,10 @@ python-dateutil = ">=2.6.0"
 name = "ta-lib"
 version = "0.6.8"
 description = "Python wrapper for TA-Lib"
-optional = false
+optional = true
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "ta_lib-0.6.8-cp310-cp310-macosx_13_0_x86_64.whl", hash = "sha256:71506116eac0d3e3598d6325b4b818c3a0f6acb3222b24d30ad726e8c4bf7ea8"},
     {file = "ta_lib-0.6.8-cp310-cp310-macosx_14_0_arm64.whl", hash = "sha256:b3b017d9103e7a7372a146773be32b184ff7330bd708d40b1f56f06a686756ed"},
@@ -8570,9 +8609,10 @@ files = [
 name = "technical"
 version = "1.5.4"
 description = "Technical Indicators for Financial Analysis"
-optional = false
+optional = true
 python-versions = ">=3.11"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "technical-1.5.4-py3-none-any.whl", hash = "sha256:391ad96618b46bb532ca7b7120e0a1b57d53db1730011b5af6e33b25c741451f"},
     {file = "technical-1.5.4.tar.gz", hash = "sha256:d26341320feb89bbf6dc4a30631c65649649f75ebefe4d986534604c1ec4a982"},
@@ -8923,6 +8963,7 @@ description = "Runtime typing introspection tools"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"execution\" or extra == \"freqtrade\""
 files = [
     {file = "typing_inspection-0.4.2-py3-none-any.whl", hash = "sha256:4ed1cacbdc298c220f1bd249ed5287caa16f34d44ef4e9c3d0cbad5b521545e7"},
     {file = "typing_inspection-0.4.2.tar.gz", hash = "sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464"},
@@ -9093,9 +9134,10 @@ zstd = ["backports-zstd (>=1.0.0) ; python_version < \"3.14\""]
 name = "uvicorn"
 version = "0.40.0"
 description = "The lightning-fast ASGI server."
-optional = false
+optional = true
 python-versions = ">=3.10"
 groups = ["main"]
+markers = "extra == \"freqtrade\""
 files = [
     {file = "uvicorn-0.40.0-py3-none-any.whl", hash = "sha256:c6c8f55bc8bf13eb6fa9ff87ad62308bbbc33d0b67f84293151efe87e0d5f2ee"},
     {file = "uvicorn-0.40.0.tar.gz", hash = "sha256:839676675e87e73694518b5574fd0f24c9d97b46bea16df7b8c05ea1a51071ea"},
@@ -9499,6 +9541,7 @@ description = "Yet another URL library"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
+markers = "extra == \"freqtrade\" or extra == \"ccxt\" or extra == \"execution\""
 files = [
     {file = "yarl-1.22.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:c7bd6683587567e5a49ee6e336e0612bec8329be1b7d4c8af5687dcdeb67ee1e"},
     {file = "yarl-1.22.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:5cdac20da754f3a723cceea5b3448e1a2074866406adeb4ef35b469d089adb8f"},
@@ -9873,10 +9916,11 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 ccxt = ["ccxt"]
 demeter = ["zelos-demeter"]
 execution = ["beautifulsoup4", "click", "colorama", "coloredlogs", "prompt-toolkit", "python-dotenv", "python-logging-discord-handler", "python-logstash-tradingstrategy", "sentry-sdk", "telegram-bot-logger", "typer", "web3-ethereum-defi"]
+freqtrade = ["freqtrade"]
 qstrader = ["trading-strategy-qstrader"]
 web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitress"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.13"
-content-hash = "077329e43a863a02a5e344a6a70857e69eee2d8543a50221bac4975e0b0e0af6"
+content-hash = "c7753ca73fdfb3c405ec59d8e85037ce0b57be6737d2be57ad22f84c2ae6e4c4"

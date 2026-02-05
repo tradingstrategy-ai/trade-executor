@@ -29,8 +29,8 @@ tqdm-loggable = "^0.2"
 
 web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras = ["data", "test", "web3v6"]}
 
-# Freqtrade integration for CEX trading strategies
-freqtrade = {path = "../freqtrade", develop = true}
+# Freqtrade integration for CEX trading strategies (private, not available on CI)
+freqtrade = {path = "../freqtrade", develop = true, optional = true}
 
 # AttributeError: 'MathBlockParser' object has no attribute 'parse_axt_heading'
 # https://github.com/lepture/mistune/issues/403
@@ -160,6 +160,9 @@ demeter = [
 
 # CCXT for reading CEX exchange account balances
 ccxt = ["ccxt"]
+
+# Freqtrade integration (private, not available on CI)
+freqtrade = ["freqtrade"]
 
 [tool.poetry.group.dev.dependencies]
 flaky = "^3.7.0"
