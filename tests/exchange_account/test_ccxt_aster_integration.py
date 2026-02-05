@@ -1,6 +1,7 @@
 """Integration test for CCXT Aster exchange account.
 
-Requires real Aster API credentials. Skipped in CI.
+Requires real Aster API credentials and the ccxt package.
+Skipped in CI.
 
 Set ASTER_API_KEY and ASTER_API_SECRET environment variables to run.
 """
@@ -9,6 +10,8 @@ import os
 from decimal import Decimal
 
 import pytest
+
+ccxt = pytest.importorskip("ccxt", reason="ccxt package not installed")
 
 from tradeexecutor.exchange_account.ccxt_exchange import (
     create_ccxt_exchange,
