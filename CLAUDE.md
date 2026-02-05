@@ -80,6 +80,7 @@ Don't format code.
 - Never use test classes in pytest
 - `pytest` tests should not have stdout output like `print`
 - Instead of manual float fuzzy comparison like `assert abs(aave_total_pnl - 96.6087) < 0.01` use `pytest.approx()`
+- Don't use logger.info() or logger.debug() inside test and fixture function bodies unless specifically asked
 
 ### pyproject.toml
 
