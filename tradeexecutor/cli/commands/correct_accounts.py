@@ -88,6 +88,11 @@ def correct_accounts(
     derive_session_private_key: Optional[str] = Option(None, envvar="DERIVE_SESSION_PRIVATE_KEY", help="Derive session key private key"),
     derive_wallet_address: Optional[str] = Option(None, envvar="DERIVE_WALLET_ADDRESS", help="Derive wallet address (auto-derived if not provided)"),
     derive_network: DeriveNetwork = Option(DeriveNetwork.mainnet, envvar="DERIVE_NETWORK", help="Derive network: mainnet or testnet"),
+
+    # CCXT exchange account options
+    ccxt_exchange_id: Optional[str] = Option(None, envvar="CCXT_EXCHANGE_ID", help="CCXT exchange identifier (e.g. aster, binance, bybit)"),
+    ccxt_options: Optional[str] = Option(None, envvar="CCXT_OPTIONS", help="CCXT exchange constructor options as JSON string"),
+    ccxt_sandbox: bool = Option(False, envvar="CCXT_SANDBOX", help="Use CCXT exchange sandbox/testnet mode"),
 ):
     """Correct accounting errors in the internal ledger of the trade executor.
 
@@ -339,7 +344,7 @@ def correct_accounts(
     else:
         logger.info("Interest distribution skipped")
 
-    # Sync exchange account positions (Derive, Hyperliquid, etc.)
+    # Sync exchange account positions (Derive, CCXT, etc.)
     exchange_account_positions = [
         p for p in state.portfolio.get_open_and_frozen_positions()
         if p.is_exchange_account()
@@ -349,12 +354,15 @@ def correct_accounts(
         logger.info("Found %d exchange account position(s)", len(exchange_account_positions))
         from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
 
-        account_value_func = _create_derive_account_value_func(
+        account_value_func = _create_exchange_account_value_func(
             exchange_account_positions,
             derive_owner_private_key,
             derive_session_private_key,
             derive_wallet_address,
             derive_network,
+            ccxt_exchange_id,
+            ccxt_options,
+            ccxt_sandbox,
             logger,
         )
 
@@ -464,24 +472,36 @@ def correct_accounts(
         raise UncleanState(output)
 
 
-def _create_derive_account_value_func(
+def _create_exchange_account_value_func(
     positions,
     derive_owner_private_key: str | None,
     derive_session_private_key: str | None,
     derive_wallet_address: str | None,
     derive_network: DeriveNetwork,
+    ccxt_exchange_id: str | None,
+    ccxt_options: str | None,
+    ccxt_sandbox: bool,
     logger,
 ):
-    """Create account value function for Derive exchange account positions.
+    """Create account value function for exchange account positions.
+
+    Dispatches to the appropriate protocol (Derive, CCXT) based on
+    ``exchange_protocol`` in each position's ``other_data``.
 
     :param positions: List of exchange account positions
     :param derive_owner_private_key: Derive owner wallet private key
     :param derive_session_private_key: Derive session key private key
     :param derive_wallet_address: Derive wallet address (auto-derived if not provided)
     :param derive_network: Derive network (mainnet or testnet)
+    :param ccxt_exchange_id: CCXT exchange identifier (e.g. "aster")
+    :param ccxt_options: CCXT exchange constructor options as JSON string
+    :param ccxt_sandbox: Whether to use CCXT sandbox mode
     :param logger: Logger instance
     :return: Account value function or None if credentials not provided
     """
+    from decimal import Decimal
+    from tradeexecutor.state.identifier import TradingPairIdentifier
+
     # Check which protocols are needed
     protocols = set()
     for p in positions:
@@ -492,61 +512,110 @@ def _create_derive_account_value_func(
     logger.info("Exchange account protocols needed: %s", protocols)
 
     # Set up Derive if needed
-    derive_clients = {}
+    derive_value_func = None
     if "derive" in protocols:
         if not derive_owner_private_key or not derive_session_private_key:
             logger.error("Derive credentials required: DERIVE_OWNER_PRIVATE_KEY and DERIVE_SESSION_PRIVATE_KEY")
-            return None
+        else:
+            from eth_account import Account
+            from eth_defi.derive.authentication import DeriveApiClient
+            from eth_defi.derive.account import fetch_subaccount_ids
+            from eth_defi.derive.onboarding import fetch_derive_wallet_address
 
-        from eth_account import Account
-        from eth_defi.derive.authentication import DeriveApiClient
-        from eth_defi.derive.account import fetch_subaccount_ids
-        from eth_defi.derive.onboarding import fetch_derive_wallet_address
+            is_testnet = (derive_network == DeriveNetwork.testnet)
+            owner_account = Account.from_key(derive_owner_private_key)
 
-        is_testnet = (derive_network == DeriveNetwork.testnet)
-        owner_account = Account.from_key(derive_owner_private_key)
+            if not derive_wallet_address:
+                derive_wallet_address = fetch_derive_wallet_address(
+                    owner_account.address,
+                    is_testnet=is_testnet,
+                )
 
-        if not derive_wallet_address:
-            derive_wallet_address = fetch_derive_wallet_address(
-                owner_account.address,
+            client = DeriveApiClient(
+                owner_account=owner_account,
+                derive_wallet_address=derive_wallet_address,
                 is_testnet=is_testnet,
+                session_key_private=derive_session_private_key,
             )
 
-        client = DeriveApiClient(
-            owner_account=owner_account,
-            derive_wallet_address=derive_wallet_address,
-            is_testnet=is_testnet,
-            session_key_private=derive_session_private_key,
-        )
+            # Get all subaccounts
+            subaccount_ids = fetch_subaccount_ids(client)
+            logger.info("Found %d Derive subaccount(s)", len(subaccount_ids))
 
-        # Get all subaccounts
-        subaccount_ids = fetch_subaccount_ids(client)
-        logger.info("Found %d Derive subaccount(s)", len(subaccount_ids))
+            derive_clients = {}
+            # Create client for each subaccount needed by positions
+            for p in positions:
+                if p.pair.get_exchange_account_protocol() == "derive":
+                    subaccount_id = p.pair.get_exchange_account_id()
+                    if subaccount_id in subaccount_ids:
+                        # Create a separate client for this subaccount
+                        subaccount_client = DeriveApiClient(
+                            owner_account=owner_account,
+                            derive_wallet_address=derive_wallet_address,
+                            is_testnet=is_testnet,
+                            session_key_private=derive_session_private_key,
+                        )
+                        subaccount_client.subaccount_id = subaccount_id
+                        derive_clients[subaccount_id] = subaccount_client
+                    else:
+                        logger.warning("Subaccount %d not found in Derive account", subaccount_id)
 
-        # Create client for each subaccount needed by positions
-        for p in positions:
-            if p.pair.get_exchange_account_protocol() == "derive":
-                subaccount_id = p.pair.get_exchange_account_id()
-                if subaccount_id in subaccount_ids:
-                    # Create a separate client for this subaccount
-                    subaccount_client = DeriveApiClient(
-                        owner_account=owner_account,
-                        derive_wallet_address=derive_wallet_address,
-                        is_testnet=is_testnet,
-                        session_key_private=derive_session_private_key,
-                    )
-                    subaccount_client.subaccount_id = subaccount_id
-                    derive_clients[subaccount_id] = subaccount_client
-                else:
-                    logger.warning("Subaccount %d not found in Derive account", subaccount_id)
+            if derive_clients:
+                from tradeexecutor.exchange_account.derive import create_derive_account_value_func
+                derive_value_func = create_derive_account_value_func(derive_clients)
 
-    # Create unified account value function
-    from tradeexecutor.exchange_account.derive import create_derive_account_value_func
+    # Set up CCXT if needed
+    ccxt_value_func = None
+    if "ccxt" in protocols:
+        if not ccxt_exchange_id:
+            logger.error("CCXT exchange ID required: set CCXT_EXCHANGE_ID")
+        elif not ccxt_options:
+            logger.error("CCXT options required: set CCXT_OPTIONS (JSON string with apiKey, secret, etc.)")
+        else:
+            import json
+            from tradeexecutor.exchange_account.ccxt_exchange import (
+                create_ccxt_exchange,
+                create_ccxt_account_value_func,
+            )
 
-    if derive_clients:
-        return create_derive_account_value_func(derive_clients)
+            try:
+                options = json.loads(ccxt_options)
+            except json.JSONDecodeError as e:
+                logger.error("Failed to parse CCXT_OPTIONS as JSON: %s", e)
+                options = None
 
-    # TODO: Add support for other protocols (Hyperliquid, etc.)
+            if options:
+                exchange = create_ccxt_exchange(
+                    exchange_id=ccxt_exchange_id,
+                    options=options,
+                    sandbox=ccxt_sandbox,
+                )
+                logger.info("Created CCXT exchange: %s", ccxt_exchange_id)
+
+                # Map all CCXT positions to this exchange instance
+                exchanges = {}
+                for p in positions:
+                    if p.pair.get_exchange_account_protocol() == "ccxt":
+                        account_id = p.pair.other_data.get("ccxt_account_id")
+                        if account_id:
+                            exchanges[account_id] = exchange
+
+                if exchanges:
+                    ccxt_value_func = create_ccxt_account_value_func(exchanges)
+                    logger.info("Created CCXT account value function for %d account(s)", len(exchanges))
+
+    # Create unified dispatcher
+    if derive_value_func or ccxt_value_func:
+        def unified_account_value_func(pair: TradingPairIdentifier) -> Decimal:
+            protocol = pair.get_exchange_account_protocol()
+            if protocol == "derive" and derive_value_func:
+                return derive_value_func(pair)
+            elif protocol == "ccxt" and ccxt_value_func:
+                return ccxt_value_func(pair)
+            else:
+                raise ValueError(f"No account value function for protocol: {protocol}")
+
+        return unified_account_value_func
 
     logger.error("No valid exchange API clients created")
     return None

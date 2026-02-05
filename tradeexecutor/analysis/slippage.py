@@ -95,11 +95,11 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
         output = t.get_output_asset()
 
         # Start with all columns NaN
-        amount_in = np.NaN
-        amount_out = np.NaN
-        uniswap_price = np.NaN
-        enzyme_expected_amount = np.NaN
-        block_executed = np.NaN
+        amount_in = np.nan
+        amount_out = np.nan
+        uniswap_price = np.nan
+        enzyme_expected_amount = np.nan
+        block_executed = np.nan
 
         # Swap is always the last transaction
         if len(t.blockchain_transactions) > 0:
@@ -151,7 +151,7 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
             # tx_link = f"""<a href="https://polygonscan.io/tx/{tx_hash}>{tx_hash}</a>"""
             tx_link = tx_hash
 
-        block_decided = t.price_structure.block_number or np.NaN
+        block_decided = t.price_structure.block_number or np.nan
 
         items.append({
             "Flags": ", ".join(flags),
@@ -161,8 +161,8 @@ def display_slippage(trades: Iterable[TradeExecution]) -> pd.DataFrame:
             # "Started": _ftime(t.started_at),
             #"Executed": _ftime(t.executed_at),
             # "Block": f"{block_number:,}" if block_number else "",
-            "Lag": lag.total_seconds() if lag else np.NaN,
-            "Slippage tolerance": get_slippage_in_bps(t.slippage_tolerance) if t.slippage_tolerance else np.NaN,
+            "Lag": lag.total_seconds() if lag else np.nan,
+            "Slippage tolerance": get_slippage_in_bps(t.slippage_tolerance) if t.slippage_tolerance else np.nan,
             "amountIn": amount_in,
             "amountOut": amount_out,
             "Enzyme amountOut": enzyme_expected_amount,

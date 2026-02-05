@@ -57,9 +57,9 @@ def analyse_combination(
 
     def clean(x):
         if x == "-":
-            return np.NaN
+            return np.nan
         elif x == "":
-            return np.NaN
+            return np.nan
 
         if type(x) == int:
             return float(x)
@@ -97,7 +97,7 @@ def analyse_combination(
     if r.summary.total_positions < min_positions_threshold:
         for k in row.keys():
             if k != "Positions" and k not in param_names:
-                row[k] = np.NaN
+                row[k] = np.nan
 
     return row
 
