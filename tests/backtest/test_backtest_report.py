@@ -189,7 +189,8 @@ def test_generate_html_report(html_report: Path):
     assert os.path.exists(html_report), f"Did not create: {html_report}"
 
     # Check we injected CSS correctly
-    html_content = html_report.open("rt").read()
+    with html_report.open("rt") as f:
+        html_content = f.read()
     assert "/* trade-executor backtest report generator custom CSS */" in html_content
 
 

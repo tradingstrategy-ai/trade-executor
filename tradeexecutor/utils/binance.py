@@ -107,7 +107,7 @@ def fetch_binance_dataset(
         df, {symbol: pair for symbol, pair in zip(symbols, pairs)}
     )
 
-    candle_df["pair_id"] = candle_df["pair_id"].replace(spot_symbol_map)
+    candle_df["pair_id"] = candle_df["pair_id"].map(spot_symbol_map).fillna(candle_df["pair_id"])
 
     candle_universe, stop_loss_candle_universe = load_candle_universe_from_dataframe(
         df=candle_df,
@@ -118,7 +118,7 @@ def fetch_binance_dataset(
     exchange_universe = generate_exchange_universe_for_binance(pair_count=len(pairs))
 
     pairs_df = DEXPair.convert_to_dataframe(pairs)
-    pairs_df["pair_id"].replace(spot_symbol_map, inplace=True)
+    pairs_df["pair_id"] = pairs_df["pair_id"].map(spot_symbol_map).fillna(pairs_df["pair_id"])
 
     if include_lending:
         reserves = []

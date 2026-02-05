@@ -122,7 +122,7 @@ def _fix_nans(df: pd.DataFrame) -> pd.DataFrame:
     
     for column in df.columns:
         if column not in exclude_columns:
-            df[column].fillna(method='ffill', inplace=True)
+            df[column] = df[column].ffill()
 
     # TODO: Add NaN fixing logic here
     # https://stackoverflow.com/a/29530303/315168

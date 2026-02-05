@@ -145,7 +145,7 @@ def calculate_profitability(returns: pd.Series) -> Percent:
 
     """
     compounded = returns.add(1).cumprod().sub(1)
-    return compounded[-1]
+    return compounded.iloc[-1]
 
 
 def calculate_cagr(returns: pd.Series) -> Percent:

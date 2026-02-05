@@ -266,7 +266,7 @@ def test_calculate_realised_trading_profitability(backtest_result: State):
     assert isinstance(profitability.index, pd.DatetimeIndex)
 
     sized_profitability = calculate_size_relative_realised_trading_returns(state)
-    assert sized_profitability[0] == pytest.approx(profitability[0] / 10, rel=0.01)  # 10% position size is used
+    assert sized_profitability.iloc[0] == pytest.approx(profitability.iloc[0] / 10, rel=0.01)  # 10% position size is used
 
     compounded_profitability = calculate_compounding_realised_trading_profitability(state)
     assert isinstance(compounded_profitability, pd.Series)
