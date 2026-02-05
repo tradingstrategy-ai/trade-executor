@@ -5,7 +5,6 @@ and tests/lagoon/test_lagoon_e2e.py.
 """
 
 import datetime
-import logging
 import os
 import tempfile
 from decimal import Decimal
@@ -18,8 +17,6 @@ from typer.main import get_command
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
-
-logger = logging.getLogger(__name__)
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("DERIVE_OWNER_PRIVATE_KEY") or not os.environ.get("DERIVE_SESSION_PRIVATE_KEY"),
@@ -240,7 +237,6 @@ def _create_test_state_with_derive_position(state_file: Path) -> tuple[State, De
 
 
 def test_correct_accounts_derive(
-    logger: logging.Logger,
     environment: dict,
     state_file: Path,
 ):
@@ -251,13 +247,8 @@ def test_correct_accounts_derive(
     2. Invoke correct-accounts CLI command
     3. Verify state file was updated with balance correction
     """
-    # Create state with exchange account position
-    initial_state, actual_value = _create_test_state_with_derive_position(state_file)
-    initial_quantity = initial_state.portfolio.open_positions[1].get_quantity()
+    _, actual_value = _create_test_state_with_derive_position(state_file)
 
-    logger.info("Initial tracked value: %s, actual Derive value: %s", initial_quantity, actual_value)
-
-    # Invoke CLI command
     cli = get_command(app)
     with patch.dict(os.environ, environment, clear=True):
         with pytest.raises(SystemExit) as e:
@@ -270,8 +261,6 @@ def test_correct_accounts_derive(
     final_position = final_state.portfolio.open_positions[1]
     final_quantity = final_position.get_quantity()
 
-    logger.info("Final quantity: %s (expected ~%s)", final_quantity, actual_value)
-
     # Balance should have been corrected (within small tolerance for API timing)
     assert abs(float(final_quantity) - float(actual_value)) < float(actual_value) * 0.02, \
         f"Expected quantity ~{actual_value}, got {final_quantity}"
@@ -280,11 +269,8 @@ def test_correct_accounts_derive(
     assert len(final_position.balance_updates) == 1
     assert len(final_state.sync.accounting.balance_update_refs) == 1
 
-    logger.info("correct-accounts Derive test passed")
-
 
 def test_derive_cli_start(
-    logger: logging.Logger,
     environment_anvil: dict,
     state_file: Path,
 ):
@@ -299,7 +285,6 @@ def test_derive_cli_start(
     cli = get_command(app)
 
     with patch.dict(os.environ, environment_anvil, clear=True):
-        # Initialise state
         cli.main(args=["init"], standalone_mode=False)
 
     # Verify state was created
@@ -307,6 +292,4 @@ def test_derive_cli_start(
 
     assert state is not None
     assert state.sync is not None
-
-    logger.info("test_derive_cli_start passed")
 
