@@ -40,7 +40,7 @@ jobs:
         # We don't install -E qstrader and run legacy tests on CI as they
         # download too much data
         run: |          
-          poetry install --all-extras
+          poetry install -E execution -E web-server -E qstrader -E demeter
 
       # pnpm needed to compile Enzyme
       # We need version 7 to be exact.

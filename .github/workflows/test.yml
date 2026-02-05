@@ -59,7 +59,7 @@ jobs:
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
         run: |          
-          poetry install --no-interaction --all-extras
+          poetry install --no-interaction -E execution -E web-server -E qstrader -E demeter
 
       # Run testa parallel, do not run slow tests before Docker image build.
       # Note that we limit concurrency to 2 workers as 4 workers crashed without an error message on Github CI.

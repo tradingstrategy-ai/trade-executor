@@ -1558,7 +1558,7 @@ def pick_best_grid_search_result(
         # Check if this result matches all the parameters
         value = key(r)
 
-        if value in (None, np.NaN):
+        if value in (None, np.nan):
             # No result for this combination
             continue
 

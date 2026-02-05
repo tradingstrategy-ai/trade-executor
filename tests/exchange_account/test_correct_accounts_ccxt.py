@@ -1,7 +1,6 @@
-"""Test correct-accounts CLI command with real Derive API.
+"""Test correct-accounts CLI command with real Aster CCXT API.
 
-Following pattern from tests/cli/test_cli_correct_account_price_missing.py
-and tests/lagoon/test_lagoon_e2e.py.
+Following pattern from test_correct_accounts_derive.py.
 """
 
 import datetime
@@ -12,6 +11,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+ccxt = pytest.importorskip("ccxt", reason="ccxt package not installed")
+
 from eth_defi.hotwallet import HotWallet
 from typer.main import get_command
 
@@ -19,27 +21,27 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
 pytestmark = pytest.mark.skipif(
-    not os.environ.get("DERIVE_OWNER_PRIVATE_KEY") or not os.environ.get("DERIVE_SESSION_PRIVATE_KEY"),
-    reason="Set DERIVE_OWNER_PRIVATE_KEY and DERIVE_SESSION_PRIVATE_KEY for Derive tests",
+    not os.environ.get("ASTER_API_KEY") or not os.environ.get("ASTER_API_SECRET"),
+    reason="Set ASTER_API_KEY and ASTER_API_SECRET for Aster CCXT tests",
 )
 
 
 @pytest.fixture()
 def strategy_file() -> Path:
-    """Path to the exchange account strategy module."""
-    return Path(os.path.dirname(__file__)) / "../../strategies/test_only/exchange_account_strategy.py"
+    """Path to the CCXT exchange account strategy module."""
+    return Path(os.path.dirname(__file__)) / "../../strategies/test_only/ccxt_exchange_account_strategy.py"
 
 
 @pytest.fixture()
 def strategy_file_anvil() -> Path:
     """Path to the minimal strategy module for Anvil chain CLI testing."""
-    return Path(os.path.dirname(__file__)) / "../../strategies/test_only/minimal_derive_strategy.py"
+    return Path(os.path.dirname(__file__)) / "../../strategies/test_only/minimal_ccxt_strategy.py"
 
 
 @pytest.fixture()
 def state_file() -> Path:
     """Create a temporary state file path."""
-    return Path(tempfile.mkdtemp()) / "test-correct-accounts-derive.json"
+    return Path(tempfile.mkdtemp()) / "test-correct-accounts-ccxt.json"
 
 
 @pytest.fixture()
@@ -51,10 +53,16 @@ def environment(
 ) -> dict:
     """Set up environment vars for correct-accounts CLI command.
 
-    Following pattern from tests/cli/test_cli_correct_account_price_missing.py
+    Following pattern from test_correct_accounts_derive.py.
     """
+    import json
+    ccxt_options = json.dumps({
+        "apiKey": os.environ["ASTER_API_KEY"],
+        "secret": os.environ["ASTER_API_SECRET"],
+    })
+
     environment = {
-        "EXECUTOR_ID": "test_correct_accounts_derive",
+        "EXECUTOR_ID": "test_correct_accounts_ccxt",
         "STRATEGY_FILE": strategy_file.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
@@ -62,10 +70,9 @@ def environment(
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "UNIT_TESTING": "true",
         "TRADING_STRATEGY_API_KEY": os.environ.get("TRADING_STRATEGY_API_KEY", ""),
-        # Derive credentials from environment
-        "DERIVE_OWNER_PRIVATE_KEY": os.environ["DERIVE_OWNER_PRIVATE_KEY"],
-        "DERIVE_SESSION_PRIVATE_KEY": os.environ["DERIVE_SESSION_PRIVATE_KEY"],
-        "DERIVE_NETWORK": "testnet",
+        # CCXT credentials
+        "CCXT_EXCHANGE_ID": "aster",
+        "CCXT_OPTIONS": ccxt_options,
         # PATH needed for subprocess
         "PATH": os.environ.get("PATH", ""),
     }
@@ -81,12 +88,18 @@ def environment_anvil(
     usdc,
     dummy_token,
 ) -> dict:
-    """Set up environment vars for init/start CLI commands on Anvil chain.
+    """Set up environment vars for init CLI command on Anvil chain.
 
     Uses the anvil strategy which is configured for ChainId.anvil (31337).
     """
+    import json
+    ccxt_options = json.dumps({
+        "apiKey": os.environ["ASTER_API_KEY"],
+        "secret": os.environ["ASTER_API_SECRET"],
+    })
+
     environment = {
-        "EXECUTOR_ID": "test_derive_cli_start",
+        "EXECUTOR_ID": "test_ccxt_cli_start",
         "STRATEGY_FILE": strategy_file_anvil.as_posix(),
         "PRIVATE_KEY": hot_wallet.account.key.hex(),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
@@ -94,10 +107,9 @@ def environment_anvil(
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "UNIT_TESTING": "true",
         "TRADING_STRATEGY_API_KEY": os.environ.get("TRADING_STRATEGY_API_KEY", ""),
-        # Derive credentials from environment
-        "DERIVE_OWNER_PRIVATE_KEY": os.environ["DERIVE_OWNER_PRIVATE_KEY"],
-        "DERIVE_SESSION_PRIVATE_KEY": os.environ["DERIVE_SESSION_PRIVATE_KEY"],
-        "DERIVE_NETWORK": "testnet",
+        # CCXT credentials
+        "CCXT_EXCHANGE_ID": "aster",
+        "CCXT_OPTIONS": ccxt_options,
         # PATH needed for subprocess
         "PATH": os.environ.get("PATH", ""),
         # Token addresses for strategy to use
@@ -109,67 +121,47 @@ def environment_anvil(
     return environment
 
 
-def _create_test_state_with_derive_position(state_file: Path) -> tuple[State, Decimal]:
-    """Create test state with a Derive exchange account position.
+def _create_test_state_with_ccxt_position(state_file: Path) -> tuple[State, Decimal]:
+    """Create test state with an Aster CCXT exchange account position.
 
-    Creates a position with tracked value at 99% of actual Derive balance
+    Creates a position with tracked value at 99% of actual Aster balance
     so that correct-accounts will detect a difference.
 
-    :return: Tuple of (state, actual_value from Derive API)
+    :return: Tuple of (state, actual_value from Aster API)
     """
-    from eth_account import Account
-    from eth_defi.derive.account import fetch_subaccount_ids
-    from eth_defi.derive.authentication import DeriveApiClient
-    from eth_defi.derive.onboarding import fetch_derive_wallet_address
-
-    from tradeexecutor.exchange_account.derive import \
-        create_derive_account_value_func
-    from tradeexecutor.state.identifier import (AssetIdentifier,
-                                                TradingPairIdentifier,
-                                                TradingPairKind)
+    from tradeexecutor.exchange_account.ccxt_exchange import (
+        create_ccxt_exchange,
+        create_ccxt_account_value_func,
+    )
+    from tradeexecutor.state.identifier import (
+        AssetIdentifier,
+        TradingPairIdentifier,
+        TradingPairKind,
+    )
     from tradeexecutor.state.position import TradingPosition
     from tradeexecutor.state.trade import TradeExecution, TradeType
 
-    # Set up Derive client
-    owner_private_key = os.environ["DERIVE_OWNER_PRIVATE_KEY"]
-    session_private_key = os.environ["DERIVE_SESSION_PRIVATE_KEY"]
-
-    owner_account = Account.from_key(owner_private_key)
-    derive_wallet_address = fetch_derive_wallet_address(owner_account.address, is_testnet=True)
-
-    client = DeriveApiClient(
-        owner_account=owner_account,
-        derive_wallet_address=derive_wallet_address,
-        is_testnet=True,
-        session_key_private=session_private_key,
-    )
-
-    ids = fetch_subaccount_ids(client)
-    if not ids:
-        pytest.skip("Account has no subaccounts yet")
-    client.subaccount_id = ids[0]
-
-    # Get actual account value
-    clients = {client.subaccount_id: client}
-    account_value_func = create_derive_account_value_func(clients)
+    # Set up CCXT exchange
+    exchange = create_ccxt_exchange("aster", {
+        "apiKey": os.environ["ASTER_API_KEY"],
+        "secret": os.environ["ASTER_API_SECRET"],
+    })
 
     # Create exchange account pair
-    chain_id = 901  # Derive testnet chain ID
-
     usdc = AssetIdentifier(
-        chain_id=chain_id,
+        chain_id=1,
         address="0x0000000000000000000000000000000000000001",
         token_symbol="USDC",
         decimals=6,
     )
-    derive_account = AssetIdentifier(
-        chain_id=chain_id,
+    aster_account = AssetIdentifier(
+        chain_id=1,
         address="0x0000000000000000000000000000000000000002",
-        token_symbol="DERIVE-ACCOUNT",
+        token_symbol="ASTER-ACCOUNT",
         decimals=6,
     )
     exchange_account_pair = TradingPairIdentifier(
-        base=derive_account,
+        base=aster_account,
         quote=usdc,
         pool_address="0x0000000000000000000000000000000000000003",
         exchange_address="0x0000000000000000000000000000000000000004",
@@ -177,16 +169,20 @@ def _create_test_state_with_derive_position(state_file: Path) -> tuple[State, De
         internal_exchange_id=1,
         fee=0.0,
         kind=TradingPairKind.exchange_account,
-        exchange_name="derive",
+        exchange_name="ccxt_aster",
         other_data={
-            "exchange_protocol": "derive",
-            "exchange_subaccount_id": client.subaccount_id,
-            "exchange_is_testnet": True,
+            "exchange_protocol": "ccxt",
+            "ccxt_account_id": "aster_main",
+            "ccxt_exchange_id": "aster",
+            "exchange_is_testnet": False,
         },
     )
 
+    # Get actual account value
+    exchanges = {"aster_main": exchange}
+    account_value_func = create_ccxt_account_value_func(exchanges)
     actual_value = account_value_func(exchange_account_pair)
-    assert actual_value > 0, "Derive testnet account should have funds"
+    assert actual_value > 0, "Aster account should have funds"
 
     # Create position with 99% of actual value to trigger sync
     tracked_value = (actual_value * Decimal("0.99")).quantize(Decimal("0.01"))
@@ -204,7 +200,6 @@ def _create_test_state_with_derive_position(state_file: Path) -> tuple[State, De
         reserve_currency=exchange_account_pair.quote,
     )
 
-    # Add initial deposit trade with tracked value
     trade = TradeExecution(
         trade_id=1,
         position_id=1,
@@ -236,18 +231,17 @@ def _create_test_state_with_derive_position(state_file: Path) -> tuple[State, De
     return state, actual_value
 
 
-def test_correct_accounts_derive(
+def test_correct_accounts_aster(
     environment: dict,
     state_file: Path,
 ):
-    """Test correct-accounts syncs Derive exchange account positions.
+    """Test correct-accounts syncs Aster CCXT exchange account positions.
 
-    Following pattern from test_cli_correct_account_price_missing.py:
     1. Create state file with exchange account position (tracked value 99% of actual)
     2. Invoke correct-accounts CLI command
     3. Verify state file was updated with balance correction
     """
-    _, actual_value = _create_test_state_with_derive_position(state_file)
+    _, actual_value = _create_test_state_with_ccxt_position(state_file)
 
     cli = get_command(app)
     with patch.dict(os.environ, environment, clear=True):
@@ -270,17 +264,14 @@ def test_correct_accounts_derive(
     assert len(final_state.sync.accounting.balance_update_refs) == 1
 
 
-def test_derive_cli_start(
+def test_aster_cli_start(
     environment_anvil: dict,
     state_file: Path,
 ):
-    """Test init CLI command with Derive exchange account support.
+    """Test init CLI command with CCXT exchange account support.
 
-    Following pattern from tests/lagoon/test_lagoon_e2e.py test_cli_lagoon_start.
-    Tests that the strategy can be initialised with Derive environment variables.
-
-    Note: Full start command testing requires DEX routing infrastructure
-    which is complex to set up. This test verifies init works correctly.
+    Following pattern from test_derive_cli_start.
+    Tests that the strategy can be initialised with CCXT environment variables.
     """
     cli = get_command(app)
 
@@ -292,4 +283,3 @@ def test_derive_cli_start(
 
     assert state is not None
     assert state.sync is not None
-

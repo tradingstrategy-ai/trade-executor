@@ -12,3 +12,5 @@
 - Make token cache configurable and persistent across all commands via `CACHE_PATH` environment variable (2026-02-02)
 
 - Add exchange account position support for external perp DEXes like Derive (2026-02-04)
+
+- Add CCXT exchange account position support for tracking CEX account balances like Aster futures (2026-02-05)

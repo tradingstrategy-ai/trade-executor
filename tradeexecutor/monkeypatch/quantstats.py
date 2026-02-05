@@ -1,6 +1,10 @@
 import pandas as _pd
 import numpy as _np
 
+# numpy 2.x removed np.product; quantstats still uses it
+if not hasattr(_np, "product"):
+    _np.product = _np.prod
+
 from quantstats import utils as _utils
 from quantstats import stats as _stats
 from quantstats.stats import comp

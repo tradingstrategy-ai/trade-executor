@@ -63,6 +63,7 @@ Don't format code.
 - If the user ask to open a pull request as feature then start the PR title with "feat:" prefix and also add one line about the feature into `CHANGELOG.md`
 - Each changelog entry should follow the date of the PR in YYYY-MM-DD format. Example: Something was updated (2026-01-01).
 - Before opening or updating a pull request, format the code
+- When merging pull request, squash and merge commits and use the PR description as the commit message
 
 ### datetime
 
@@ -79,6 +80,7 @@ Don't format code.
 - Never use test classes in pytest
 - `pytest` tests should not have stdout output like `print`
 - Instead of manual float fuzzy comparison like `assert abs(aave_total_pnl - 96.6087) < 0.01` use `pytest.approx()`
+- Don't use logger.info() or logger.debug() inside test and fixture function bodies unless specifically asked
 
 ### pyproject.toml
 
