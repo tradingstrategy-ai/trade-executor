@@ -234,7 +234,7 @@ def _create_test_state_with_ccxt_position(state_file: Path) -> tuple[State, Deci
     return state, actual_value
 
 
-def test_correct_accounts_ccxt(
+def test_correct_accounts_aster(
     logger: logging.Logger,
     environment: dict,
     state_file: Path,
@@ -275,7 +275,7 @@ def test_correct_accounts_ccxt(
     logger.info("correct-accounts CCXT test passed")
 
 
-def test_ccxt_cli_start(
+def test_aster_cli_start(
     logger: logging.Logger,
     environment_anvil: dict,
     state_file: Path,
