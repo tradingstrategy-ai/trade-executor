@@ -162,11 +162,11 @@ class UnitTestTrader:
         return self.create_and_execute(pair, -quantity, price)
 
     def buy_with_price_data(self, pair, quantity, candle_universe: GroupedCandleUniverse) -> Tuple[TradingPosition, TradeExecution]:
-        price = candle_universe.get_closest_price(pair.internal_id, pd.Timestamp(self.ts))
+        price, _ = candle_universe.get_price_with_tolerance(pair.internal_id, pd.Timestamp(self.ts), tolerance=pd.Timedelta(days=7))
         return self.create_and_execute(pair, quantity, float(price))
 
     def sell_with_price_data(self, pair, quantity, candle_universe: GroupedCandleUniverse) -> Tuple[TradingPosition, TradeExecution]:
-        price = candle_universe.get_closest_price(pair.internal_id, pd.Timestamp(self.ts))
+        price, _ = candle_universe.get_price_with_tolerance(pair.internal_id, pd.Timestamp(self.ts), tolerance=pd.Timedelta(days=7))
         return self.create_and_execute(pair, -quantity, float(price))
 
     def open_short(self, pair, quantity, price, leverage=1) -> tuple[TradingPosition, TradeExecution]:

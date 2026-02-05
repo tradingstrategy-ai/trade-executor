@@ -650,7 +650,7 @@ def test_benchmark_synthetic_trading_portfolio(
     # Visualise performance
     fig = visualise_equity_curve_benchmark(
         state.name,
-        portfolio_statistics=state.stats.portfolio,
+        state=state,
         all_cash=100_000,
         buy_and_hold_asset_name="ETH",
         buy_and_hold_price_series=strategy_universe.data_universe.candles.get_single_pair_data()["close"],

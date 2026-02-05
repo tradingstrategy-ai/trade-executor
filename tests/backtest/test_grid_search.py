@@ -249,7 +249,7 @@ def test_perform_grid_search_single_thread(
 
     sample = pick_best_grid_search_result(
         results,
-        key=lambda r: r.metrics.loc["Max Drawdown"][0])
+        key=lambda r: r.metrics.loc["Max Drawdown"].iloc[0])
     assert sample is not None
 
     sample = pick_best_grid_search_result(results)
@@ -339,7 +339,7 @@ def test_perform_grid_search_threaded(
 
     # Check we got results back
     for r in results:
-        assert r.metrics.loc["Sharpe"][0] != 0
+        assert r.metrics.loc["Sharpe"].iloc[0] != 0
 
 
 def test_perform_grid_search_multiprocess(
@@ -368,7 +368,7 @@ def test_perform_grid_search_multiprocess(
 
     # Check we got results back
     for r in results:
-        assert r.metrics.loc["Sharpe"][0] != 0
+        assert r.metrics.loc["Sharpe"].iloc[0] != 0
         assert r.process_id > 1
 
 
@@ -430,7 +430,7 @@ def test_perform_grid_search_engine_v4(
 
     # Check we got results back
     for r in results:
-        assert r.metrics.loc["Sharpe"][0] != 0
+        assert r.metrics.loc["Sharpe"].iloc[0] != 0
         assert r.process_id > 1
 
     # See we can render the results
@@ -605,7 +605,7 @@ def test_perform_grid_search_engine_v5(
 
     # Check we got results back
     for r in results_2:
-        assert r.metrics.loc["Sharpe"][0] != 0
+        assert r.metrics.loc["Sharpe"].iloc[0] != 0
         assert r.process_id > 1
 
     # Single thread

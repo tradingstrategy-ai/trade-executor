@@ -317,9 +317,9 @@ def visualise_heatmap_2d(
 
     # Format percents inside the cells and mouse hovers
     if metric in PERCENT_COLS:
-        text = df.applymap(lambda x: f"{x * 100:,.2f}%")
+        text = df.map(lambda x: f"{x * 100:,.2f}%")
     else:
-        text = df.applymap(lambda x: f"{x:,.2f}")
+        text = df.map(lambda x: f"{x:,.2f}")
 
     fig = px.imshow(
         df,

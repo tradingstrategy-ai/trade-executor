@@ -1526,7 +1526,8 @@ def expand_timeline(
 
     # Get rid of NaN labels
     # https://stackoverflow.com/a/28390992/315168
-    applied_df.fillna('', inplace=True)
+    str_cols = applied_df.select_dtypes(include=["object"]).columns
+    applied_df[str_cols] = applied_df[str_cols].fillna('')
 
     styling = TimelineStyler(
         row_styling=row_styling_mode,
@@ -1588,7 +1589,8 @@ def expand_timeline_raw(
 
     # Get rid of NaN labels
     # https://stackoverflow.com/a/28390992/315168
-    applied_df.fillna('', inplace=True)
+    str_cols = applied_df.select_dtypes(include=["object"]).columns
+    applied_df[str_cols] = applied_df[str_cols].fillna('')
 
     return applied_df
 
