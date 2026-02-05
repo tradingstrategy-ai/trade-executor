@@ -24,7 +24,7 @@ pandas = "<3"
 requests = "^2.27.1"
 # https://github.com/tradingstrategy-ai/trade-executor/commit/52c5e9b1597c8f74ec2535b564f3b4d178780590
 ft-pandas-ta = "^0.3.15"
-numpy = "<2"  # https://stackoverflow.com/a/78638258/315168
+numpy = "<3"
 tqdm-loggable = "^0.2"
 
 web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras = ["data", "test", "web3v6"]}
