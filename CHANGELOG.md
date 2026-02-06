@@ -14,3 +14,5 @@
 - Add exchange account position support for external perp DEXes like Derive (2026-02-04)
 
 - Add CCXT exchange account position support for tracking CEX account balances like Aster futures (2026-02-05)
+
+- Add internal share price profit calculation method inspired by ERC-4626 vault mechanics (2026-02-06)

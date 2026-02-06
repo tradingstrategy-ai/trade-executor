@@ -3,6 +3,7 @@
 TODO: Clean txid and nonce references properly.
 """
 import datetime
+import os
 from decimal import Decimal
 from typing import Tuple
 
@@ -1429,3 +1430,405 @@ def test_trade_too_small(usdc, weth_usdc, start_ts: datetime.datetime):
 
     with pytest.raises(TooSmallTrade):
          trader.buy(weth_usdc, Decimal(0.000000001), 1700)
+
+
+def test_share_price_profit_single_buy_sell(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Calculate profit using share price method for a simple buy/sell."""
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Buy 1 ETH at $1700
+    position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+
+    # Check share price data while position is open
+    share_data = position.get_share_price_profit(
+        end_at=start_ts + datetime.timedelta(days=1),
+        mark_price=1700.0,
+    )
+    assert share_data.initial_share_price == 1.0
+    assert share_data.current_share_price == pytest.approx(1.0)
+    assert share_data.total_supply == pytest.approx(1700.0)
+    assert share_data.total_assets == pytest.approx(1700.0)
+    assert share_data.profit_pct == pytest.approx(0.0)
+
+    # Price goes up 10%
+    share_data = position.get_share_price_profit(
+        end_at=start_ts + datetime.timedelta(days=1),
+        mark_price=1870.0,
+    )
+    assert share_data.current_share_price == pytest.approx(1.1)
+    assert share_data.profit_pct == pytest.approx(0.1)
+
+    # Sell all at $1870 (10% profit)
+    position, trade = trader.sell(weth_usdc, Decimal("1.0"), 1870.0)
+    assert position.is_closed()
+
+    share_data = position.get_share_price_profit()
+    assert share_data.profit_pct == pytest.approx(0.1)
+    assert share_data.profit_usd == pytest.approx(170.0)
+
+
+def test_share_price_profit_multiple_buys(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Calculate profit using share price method with multiple buys at different prices.
+
+    The share price method mints shares at the current share price during each trade.
+    Between trades, share price is updated based on the trade execution price.
+    """
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Buy 1 ETH at $1000 - mints 1000 shares at share price 1.0
+    position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1000.0)
+
+    # Check share price with mark_price = $2000 (price doubled)
+    share_data = position.get_share_price_profit(
+        end_at=start_ts + datetime.timedelta(days=1),
+        mark_price=2000.0,
+    )
+    assert share_data.current_share_price == pytest.approx(2.0)
+    assert share_data.total_supply == pytest.approx(1000.0)
+    assert share_data.total_assets == pytest.approx(2000.0)
+    assert share_data.profit_pct == pytest.approx(1.0)  # 100% profit
+
+    # Buy another 1 ETH at $2000
+    # Share price at time of second buy is based on trade history, not mark_price
+    # After first buy at $1000: share_price = 1000/1000 = 1.0
+    # Second buy at $2000: mints 2000 shares at share_price 1.0
+    # Then share_price = (2 ETH * $2000) / 3000 shares = 4000/3000 = 1.333
+    position, trade = trader.buy(weth_usdc, Decimal("1.0"), 2000.0)
+
+    share_data = position.get_share_price_profit(
+        end_at=start_ts + datetime.timedelta(days=1),
+        mark_price=2000.0,
+    )
+    # Total supply = 1000 (first buy) + 2000 (second buy at share_price 1.0) = 3000
+    assert share_data.total_supply == pytest.approx(3000.0)
+    assert share_data.total_assets == pytest.approx(4000.0)  # 2 ETH * $2000
+    assert share_data.current_share_price == pytest.approx(4000.0 / 3000.0)
+    # Profit = (1.333 / 1.0) - 1 = 0.333 = 33.3%
+    assert share_data.profit_pct == pytest.approx(1.0 / 3.0)
+
+    # If ETH goes to $3000
+    share_data = position.get_share_price_profit(
+        end_at=start_ts + datetime.timedelta(days=1),
+        mark_price=3000.0,
+    )
+    assert share_data.total_assets == pytest.approx(6000.0)  # 2 ETH * $3000
+    assert share_data.current_share_price == pytest.approx(2.0)  # 6000 / 3000
+    assert share_data.profit_pct == pytest.approx(1.0)  # 100% from initial
+
+
+def test_share_price_profit_partial_sell(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Calculate profit using share price method with partial sells."""
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Buy 2 ETH at $1000
+    position, trade = trader.buy(weth_usdc, Decimal("2.0"), 1000.0)
+
+    # Sell 1 ETH at $1500 (50% profit on this portion)
+    position, trade = trader.sell(weth_usdc, Decimal("1.0"), 1500.0)
+
+    # Check share price - should reflect the 50% gain
+    share_data = position.get_share_price_profit(
+        end_at=start_ts + datetime.timedelta(days=1),
+        mark_price=1500.0,
+    )
+    assert share_data.profit_pct == pytest.approx(0.5)  # 50% profit
+    assert share_data.total_assets == pytest.approx(1500.0)  # 1 ETH * $1500
+
+
+def test_share_price_profit_matches_traditional(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Verify share price profit matches traditional calculation for simple case."""
+    from tradeexecutor.strategy.pnl import calculate_pnl
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Buy and sell with profit
+    position, _ = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+    position, _ = trader.sell(weth_usdc, Decimal("1.0"), 1850.0)
+
+    # Compare methods
+    share_data = position.get_share_price_profit()
+    traditional_data = calculate_pnl(position)
+
+    # Both should show same profit percentage
+    assert share_data.profit_pct == pytest.approx(traditional_data.profit_pct, rel=0.01)
+    assert share_data.profit_usd == pytest.approx(traditional_data.profit_usd, rel=0.01)
+
+
+def test_position_statistics_includes_share_price(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Verify PositionStatistics includes share price fields for spot positions."""
+    from tradeexecutor.statistics.core import calculate_position_statistics
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Buy 1 ETH at $1700
+    position, _ = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+
+    # Calculate statistics
+    stats = calculate_position_statistics(
+        clock=start_ts + datetime.timedelta(hours=1),
+        position=position,
+    )
+
+    # Verify share price fields are populated
+    assert stats.internal_share_price is not None
+    assert stats.internal_share_price == pytest.approx(1.0)
+    assert stats.internal_total_supply is not None
+    assert stats.internal_total_supply == pytest.approx(1700.0)
+
+    # Verify profit fields are populated
+    assert stats.internal_profit_pct is not None
+    assert stats.internal_profit_pct == pytest.approx(0.0)  # No price change yet
+    assert stats.internal_profit_usd is not None
+    assert stats.internal_profit_usd == pytest.approx(0.0)
+
+
+def test_share_price_state_incremental_update(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Verify share price state is updated incrementally on each trade."""
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # First buy
+    position, _ = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+
+    # Verify state was created
+    assert position.share_price_state is not None
+    assert position.share_price_state.total_supply == pytest.approx(1700.0)
+    assert position.share_price_state.current_share_price == pytest.approx(1.0)
+    assert position.share_price_state.cumulative_quantity == pytest.approx(1.0)
+
+    # Second buy - verify incremental update (not recalculated)
+    position, _ = trader.buy(weth_usdc, Decimal("1.0"), 1800.0)
+
+    assert position.share_price_state.total_supply == pytest.approx(3500.0)  # 1700 + 1800
+    assert position.share_price_state.cumulative_quantity == pytest.approx(2.0)
+    assert position.share_price_state.total_invested == pytest.approx(3500.0)
+
+
+def test_share_price_incremental_matches_full_calculation(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Verify incremental state produces same result as full recalculation."""
+    from tradeexecutor.strategy.pnl import calculate_share_price_pnl
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Multiple trades
+    position, _ = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+    position, _ = trader.buy(weth_usdc, Decimal("0.5"), 1800.0)
+    position, _ = trader.sell(weth_usdc, Decimal("0.5"), 1850.0)
+
+    # Get result from incremental state
+    incremental_result = position.get_share_price_profit(
+        end_at=start_ts + datetime.timedelta(hours=1),
+        mark_price=1900.0,
+    )
+
+    # Clear state and recalculate from scratch
+    position.share_price_state = None
+    full_result = calculate_share_price_pnl(
+        position=position,
+        end_at=start_ts + datetime.timedelta(hours=1),
+        mark_price=1900.0,
+    )
+
+    # Results should match
+    assert incremental_result.current_share_price == pytest.approx(full_result.current_share_price)
+    assert incremental_result.total_supply == pytest.approx(full_result.total_supply)
+    assert incremental_result.profit_pct == pytest.approx(full_result.profit_pct)
+    assert incremental_result.profit_usd == pytest.approx(full_result.profit_usd)
+
+
+def test_backfill_share_price_state(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Verify backfill_share_price_state migrates all positions."""
+    from tradeexecutor.strategy.position_internal_share_price import backfill_share_price_state
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Create a position
+    position, _ = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+
+    # Simulate a position created before share price tracking was added
+    position.share_price_state = None
+
+    # Run backfill
+    migrated = backfill_share_price_state(state)
+
+    # Verify migration occurred
+    assert migrated == 1
+    assert position.share_price_state is not None
+    assert position.share_price_state.total_supply == pytest.approx(1700.0)
+    assert position.share_price_state.current_share_price == pytest.approx(1.0)
+
+
+def test_backfill_share_price_state_skips_existing(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Verify backfill_share_price_state skips positions with existing state."""
+    from tradeexecutor.strategy.position_internal_share_price import backfill_share_price_state
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Create a position - it will have share_price_state already
+    position, _ = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+
+    # Verify it has state
+    assert position.share_price_state is not None
+
+    # Run backfill - should skip since state exists
+    migrated = backfill_share_price_state(state)
+
+    # Verify no migration occurred
+    assert migrated == 0
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_INTERNAL_SHARE_PRICE_TESTS") is None,
+    reason="Set RUN_INTERNAL_SHARE_PRICE_TESTS environment variable to run this test"
+)
+def test_backfill_share_price_state_from_legacy_file():
+    """Verify backfill_share_price_state migrates positions from a real legacy state file."""
+    from pathlib import Path
+    from tradeexecutor.strategy.position_internal_share_price import backfill_share_price_state
+
+    # Load a real state file that has no share_price_state
+    state_file = Path(__file__).parent / "cli" / "show-positions-long.json"
+    state = State.read_json_file(state_file)
+
+    # Verify positions don't have share_price_state
+    for position in state.portfolio.open_positions.values():
+        assert position.share_price_state is None
+
+    for position in state.portfolio.closed_positions.values():
+        assert position.share_price_state is None
+
+    # Run backfill
+    migrated = backfill_share_price_state(state)
+
+    # Verify migration occurred (5 positions: 3 open + 2 closed)
+    assert migrated == 5
+
+    # Verify all spot/vault positions now have share_price_state
+    for position in state.portfolio.open_positions.values():
+        if position.is_spot() or position.is_vault():
+            assert position.share_price_state is not None
+            assert position.share_price_state.total_supply > 0
+            assert position.share_price_state.current_share_price > 0
+
+    for position in state.portfolio.closed_positions.values():
+        if position.is_spot() or position.is_vault():
+            assert position.share_price_state is not None
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_INTERNAL_SHARE_PRICE_TESTS") is None,
+    reason="Set RUN_INTERNAL_SHARE_PRICE_TESTS environment variable to run this test"
+)
+def test_backfill_share_price_state_large_portfolio():
+    """Verify backfill works on a large portfolio with many closed positions."""
+    from pathlib import Path
+    from tradeexecutor.strategy.position_internal_share_price import backfill_share_price_state
+
+    # Load legacy state with 100 positions
+    state_file = Path(__file__).parent / "legacy" / "legacy-state-dump-2.json"
+    state = State.read_json_file(state_file)
+
+    # Run backfill
+    migrated = backfill_share_price_state(state)
+
+    # Verify migration occurred for applicable positions
+    assert migrated > 0
+
+    # Verify state was set on migrated positions
+    migrated_count = 0
+    for position in state.portfolio.open_positions.values():
+        if position.share_price_state is not None:
+            migrated_count += 1
+    for position in state.portfolio.closed_positions.values():
+        if position.share_price_state is not None:
+            migrated_count += 1
+
+    assert migrated_count == migrated
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_INTERNAL_SHARE_PRICE_TESTS") is None,
+    reason="Set RUN_INTERNAL_SHARE_PRICE_TESTS environment variable to run this test"
+)
+def test_backfill_share_price_state_calculates_correct_values():
+    """Verify backfilled share_price_state has correct calculated values."""
+    from pathlib import Path
+    from tradeexecutor.strategy.position_internal_share_price import backfill_share_price_state
+
+    state_file = Path(__file__).parent / "cli" / "show-positions-long.json"
+    state = State.read_json_file(state_file)
+
+    # Run backfill
+    backfill_share_price_state(state)
+
+    # For each position, verify the state makes sense
+    for position in state.portfolio.open_positions.values():
+        if position.share_price_state is None:
+            continue  # Non-spot positions
+
+        sps = position.share_price_state
+
+        # Initial share price should be 1.0
+        assert sps.initial_share_price == 1.0
+
+        # Total supply should equal total invested (at initial price of 1.0)
+        assert sps.total_supply == pytest.approx(sps.total_invested)
+
+        # Cumulative quantity should be non-negative
+        assert sps.cumulative_quantity >= 0
+
+        # Peak total supply should be >= current total supply
+        assert sps.peak_total_supply >= sps.total_supply
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_INTERNAL_SHARE_PRICE_TESTS") is None,
+    reason="Set RUN_INTERNAL_SHARE_PRICE_TESTS environment variable to run this test"
+)
+def test_backfill_share_price_state_idempotent():
+    """Verify running backfill twice doesn't change anything."""
+    from pathlib import Path
+    from tradeexecutor.strategy.position_internal_share_price import backfill_share_price_state
+
+    state_file = Path(__file__).parent / "cli" / "show-positions-long.json"
+    state = State.read_json_file(state_file)
+
+    # First backfill
+    migrated1 = backfill_share_price_state(state)
+    assert migrated1 > 0
+
+    # Capture state values
+    original_values = {}
+    for pos_id, position in state.portfolio.open_positions.items():
+        if position.share_price_state:
+            original_values[pos_id] = (
+                position.share_price_state.current_share_price,
+                position.share_price_state.total_supply,
+            )
+
+    # Second backfill - should skip all
+    migrated2 = backfill_share_price_state(state)
+    assert migrated2 == 0
+
+    # Verify values unchanged
+    for pos_id, position in state.portfolio.open_positions.items():
+        if pos_id in original_values:
+            assert position.share_price_state.current_share_price == original_values[pos_id][0]
+            assert position.share_price_state.total_supply == original_values[pos_id][1]

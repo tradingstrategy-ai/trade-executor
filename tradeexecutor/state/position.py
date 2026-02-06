@@ -21,6 +21,7 @@ from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateE
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
+from tradeexecutor.state.position_internal_share_price import SharePriceState
 from tradeexecutor.state.trade import TradeType, TradeFlag
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.trigger import Trigger
@@ -284,6 +285,15 @@ class TradingPosition(GenericPosition):
     #: this is ``None``.
     #:
     loan: Optional[Loan] = None
+
+    #: Running state for internal share price tracking.
+    #:
+    #: Updated incrementally on each trade execution rather than
+    #: recalculated from scratch. Follows the pattern of :py:attr:`loan`.
+    #:
+    #: See :py:class:`tradeexecutor.state.share_price.SharePriceState`.
+    #:
+    share_price_state: SharePriceState | None = None
 
     #: What is the liquidation price for this position.
     #: If the price goes below this, the position is liquidated.
@@ -2012,6 +2022,88 @@ class TradingPosition(GenericPosition):
             If the position made 1% profit returns 1.01.
         """
         return self.get_realised_profit_percent() * self.get_capital_tied_at_open_pct()
+
+    def get_share_price_profit(
+        self,
+        end_at: datetime.datetime = None,
+        mark_price: USDollarPrice = None,
+    ) -> "SharePriceData":
+        """Calculate profit using internal share price method.
+
+        This method tracks an internal share price inspired by ERC-4626 vault mechanics:
+
+        - Buys mint shares at current share price
+        - Sells burn shares at current share price
+        - PnL changes share price (total_assets changes, supply stays same between trades)
+
+        The share price naturally reflects accumulated returns independent of capital flows.
+
+        Uses cached :py:attr:`share_price_state` if available for O(1) lookup,
+        otherwise falls back to full recalculation via
+        :py:func:`tradeexecutor.strategy.pnl.calculate_share_price_pnl`.
+
+        :param end_at:
+            For non-closed positions, the timestamp to calculate PnL until.
+
+        :param mark_price:
+            For non-closed positions, the price to value remaining assets.
+
+        :return:
+            SharePriceData with current share price, total supply, total assets, and profit metrics.
+        """
+        from tradeexecutor.strategy.pnl import SharePriceData
+        from eth_defi.compat import native_datetime_utc_now
+
+        # Use incremental state if available (O(1) lookup)
+        if self.share_price_state is not None:
+            state = self.share_price_state
+
+            # Determine mark price for current value
+            if not mark_price:
+                mark_price = self.last_token_price
+
+            # Calculate current total assets
+            final_quantity = float(self.get_quantity())
+            total_assets = final_quantity * mark_price
+
+            # Calculate final share price
+            if state.total_supply > 0:
+                current_share_price = total_assets / state.total_supply
+            else:
+                current_share_price = state.current_share_price
+
+            # Calculate profit
+            profit_pct = (current_share_price / state.initial_share_price) - 1
+
+            if state.total_supply > 0:
+                profit_usd = total_assets - (state.total_supply * state.initial_share_price)
+            else:
+                total_sold = sum(t.get_value() for t in self.trades.values() if t.is_sell())
+                profit_usd = total_sold - state.total_invested
+
+            # Duration
+            if self.is_closed():
+                duration_end = self.closed_at
+            else:
+                duration_end = end_at or native_datetime_utc_now()
+
+            return SharePriceData(
+                initial_share_price=state.initial_share_price,
+                current_share_price=current_share_price,
+                total_supply=state.total_supply,
+                total_assets=total_assets,
+                profit_pct=profit_pct,
+                profit_usd=profit_usd,
+                duration=duration_end - self.opened_at,
+            )
+
+        # Fallback to full recalculation for positions without cached state
+        from tradeexecutor.strategy.pnl import calculate_share_price_pnl
+        return calculate_share_price_pnl(
+            position=self,
+            end_at=end_at,
+            mark_price=mark_price,
+        )
 
     def get_duration(
         self,
