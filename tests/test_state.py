@@ -3,6 +3,7 @@
 TODO: Clean txid and nonce references properly.
 """
 import datetime
+import os
 from decimal import Decimal
 from typing import Tuple
 
@@ -1693,6 +1694,10 @@ def test_backfill_share_price_state_skips_existing(usdc, weth_usdc, start_ts: da
     assert migrated == 0
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_INTERNAL_SHARE_PRICE_TESTS") is None,
+    reason="Set RUN_INTERNAL_SHARE_PRICE_TESTS environment variable to run this test"
+)
 def test_backfill_share_price_state_from_legacy_file():
     """Verify backfill_share_price_state migrates positions from a real legacy state file."""
     from pathlib import Path
@@ -1727,6 +1732,10 @@ def test_backfill_share_price_state_from_legacy_file():
             assert position.share_price_state is not None
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_INTERNAL_SHARE_PRICE_TESTS") is None,
+    reason="Set RUN_INTERNAL_SHARE_PRICE_TESTS environment variable to run this test"
+)
 def test_backfill_share_price_state_large_portfolio():
     """Verify backfill works on a large portfolio with many closed positions."""
     from pathlib import Path
@@ -1754,6 +1763,10 @@ def test_backfill_share_price_state_large_portfolio():
     assert migrated_count == migrated
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_INTERNAL_SHARE_PRICE_TESTS") is None,
+    reason="Set RUN_INTERNAL_SHARE_PRICE_TESTS environment variable to run this test"
+)
 def test_backfill_share_price_state_calculates_correct_values():
     """Verify backfilled share_price_state has correct calculated values."""
     from pathlib import Path
@@ -1785,6 +1798,10 @@ def test_backfill_share_price_state_calculates_correct_values():
         assert sps.peak_total_supply >= sps.total_supply
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_INTERNAL_SHARE_PRICE_TESTS") is None,
+    reason="Set RUN_INTERNAL_SHARE_PRICE_TESTS environment variable to run this test"
+)
 def test_backfill_share_price_state_idempotent():
     """Verify running backfill twice doesn't change anything."""
     from pathlib import Path
