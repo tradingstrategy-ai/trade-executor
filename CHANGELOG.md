@@ -15,6 +15,8 @@
 
 - Add CCXT exchange account position support for tracking CEX account balances like Aster futures (2026-02-05)
 
+- Add internal share price profit calculation method inspired by ERC-4626 vault mechanics (2026-02-06)
+
 - Add `print_vault_rebalance_status()` console utility for displaying vault allocations and cash balance (2026-02-08)
 
 - Add vault universe loading with full metadata from JSON blob in trading-strategy module (2026-02-08)
