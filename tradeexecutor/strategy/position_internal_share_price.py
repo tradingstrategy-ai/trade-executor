@@ -1,13 +1,13 @@
-"""Share price state management functions.
+"""Position internal share price state management functions.
 
 This module provides functions to create and update share price state
 incrementally on each trade execution.
 
-See :py:class:`tradeexecutor.state.share_price.SharePriceState`.
+See :py:class:`tradeexecutor.state.position_internal_share_price.SharePriceState`.
 """
 import datetime
 
-from tradeexecutor.state.share_price import SharePriceState
+from tradeexecutor.state.position_internal_share_price import SharePriceState
 from tradeexecutor.state.trade import TradeExecution
 
 
