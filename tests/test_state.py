@@ -1646,3 +1646,48 @@ def test_share_price_incremental_matches_full_calculation(usdc, weth_usdc, start
     assert incremental_result.total_supply == pytest.approx(full_result.total_supply)
     assert incremental_result.profit_pct == pytest.approx(full_result.profit_pct)
     assert incremental_result.profit_usd == pytest.approx(full_result.profit_usd)
+
+
+def test_backfill_share_price_state(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Verify backfill_share_price_state migrates all positions."""
+    from tradeexecutor.strategy.position_internal_share_price import backfill_share_price_state
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Create a position
+    position, _ = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+
+    # Simulate a position created before share price tracking was added
+    position.share_price_state = None
+
+    # Run backfill
+    migrated = backfill_share_price_state(state)
+
+    # Verify migration occurred
+    assert migrated == 1
+    assert position.share_price_state is not None
+    assert position.share_price_state.total_supply == pytest.approx(1700.0)
+    assert position.share_price_state.current_share_price == pytest.approx(1.0)
+
+
+def test_backfill_share_price_state_skips_existing(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Verify backfill_share_price_state skips positions with existing state."""
+    from tradeexecutor.strategy.position_internal_share_price import backfill_share_price_state
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Create a position - it will have share_price_state already
+    position, _ = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+
+    # Verify it has state
+    assert position.share_price_state is not None
+
+    # Run backfill - should skip since state exists
+    migrated = backfill_share_price_state(state)
+
+    # Verify no migration occurred
+    assert migrated == 0
