@@ -137,3 +137,63 @@ def migrate_share_price_state(position: "TradingPosition") -> None:
                 state = update_share_price_state(state, trade)
 
     position.share_price_state = state
+
+
+def backfill_share_price_state(
+    state: "State",
+    store: "JSONFileStore | None" = None,
+) -> int:
+    """Backfill share_price_state for all positions in the portfolio.
+
+    For positions created before incremental share price tracking was added,
+    this function rebuilds the state by replaying all successful trades.
+
+    Should be called after loading state to ensure all positions have
+    share price tracking data.
+
+    :param state:
+        The trading state containing all positions.
+
+    :param store:
+        Optional store to sync state periodically during large migrations.
+        If provided, state is saved every 100 positions.
+
+    :return:
+        Number of positions that were migrated.
+    """
+    import logging
+    from itertools import chain
+
+    logger = logging.getLogger(__name__)
+
+    portfolio = state.portfolio
+    migrated = 0
+
+    # Iterate all positions (open, closed, frozen)
+    all_positions = chain(
+        portfolio.open_positions.values(),
+        portfolio.closed_positions.values(),
+        portfolio.frozen_positions.values(),
+    )
+
+    for position in all_positions:
+        # Skip if already has state or not applicable
+        if position.share_price_state is not None:
+            continue
+
+        if not (position.is_spot() or position.is_vault()):
+            continue
+
+        # Migrate this position
+        migrate_share_price_state(position)
+        migrated += 1
+
+        # Periodic save for large portfolios
+        if store and migrated % 100 == 0:
+            logger.info("Migrated %d positions, saving state...", migrated)
+            store.sync(state)
+
+    if migrated > 0:
+        logger.info("Share price state backfilled for %d positions", migrated)
+
+    return migrated
