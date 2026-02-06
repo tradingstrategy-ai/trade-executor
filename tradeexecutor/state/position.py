@@ -2013,6 +2013,39 @@ class TradingPosition(GenericPosition):
         """
         return self.get_realised_profit_percent() * self.get_capital_tied_at_open_pct()
 
+    def get_share_price_profit(
+        self,
+        end_at: datetime.datetime = None,
+        mark_price: USDollarPrice = None,
+    ) -> "SharePriceData":
+        """Calculate profit using internal share price method.
+
+        This method tracks an internal share price inspired by ERC-4626 vault mechanics:
+
+        - Buys mint shares at current share price
+        - Sells burn shares at current share price
+        - PnL changes share price (total_assets changes, supply stays same between trades)
+
+        The share price naturally reflects accumulated returns independent of capital flows.
+
+        See :py:func:`tradeexecutor.strategy.pnl.calculate_share_price_pnl` for full details.
+
+        :param end_at:
+            For non-closed positions, the timestamp to calculate PnL until.
+
+        :param mark_price:
+            For non-closed positions, the price to value remaining assets.
+
+        :return:
+            SharePriceData with current share price, total supply, total assets, and profit metrics.
+        """
+        from tradeexecutor.strategy.pnl import calculate_share_price_pnl
+        return calculate_share_price_pnl(
+            position=self,
+            end_at=end_at,
+            mark_price=mark_price,
+        )
+
     def get_duration(
         self,
         partial=False,

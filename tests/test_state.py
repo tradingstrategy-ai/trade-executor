@@ -1429,3 +1429,133 @@ def test_trade_too_small(usdc, weth_usdc, start_ts: datetime.datetime):
 
     with pytest.raises(TooSmallTrade):
          trader.buy(weth_usdc, Decimal(0.000000001), 1700)
+
+
+def test_share_price_profit_single_buy_sell(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Calculate profit using share price method for a simple buy/sell."""
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Buy 1 ETH at $1700
+    position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+
+    # Check share price data while position is open
+    share_data = position.get_share_price_profit(
+        end_at=start_ts + datetime.timedelta(days=1),
+        mark_price=1700.0,
+    )
+    assert share_data.initial_share_price == 1.0
+    assert share_data.current_share_price == pytest.approx(1.0)
+    assert share_data.total_supply == pytest.approx(1700.0)
+    assert share_data.total_assets == pytest.approx(1700.0)
+    assert share_data.profit_pct == pytest.approx(0.0)
+
+    # Price goes up 10%
+    share_data = position.get_share_price_profit(
+        end_at=start_ts + datetime.timedelta(days=1),
+        mark_price=1870.0,
+    )
+    assert share_data.current_share_price == pytest.approx(1.1)
+    assert share_data.profit_pct == pytest.approx(0.1)
+
+    # Sell all at $1870 (10% profit)
+    position, trade = trader.sell(weth_usdc, Decimal("1.0"), 1870.0)
+    assert position.is_closed()
+
+    share_data = position.get_share_price_profit()
+    assert share_data.profit_pct == pytest.approx(0.1)
+    assert share_data.profit_usd == pytest.approx(170.0)
+
+
+def test_share_price_profit_multiple_buys(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Calculate profit using share price method with multiple buys at different prices.
+
+    The share price method mints shares at the current share price during each trade.
+    Between trades, share price is updated based on the trade execution price.
+    """
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Buy 1 ETH at $1000 - mints 1000 shares at share price 1.0
+    position, trade = trader.buy(weth_usdc, Decimal("1.0"), 1000.0)
+
+    # Check share price with mark_price = $2000 (price doubled)
+    share_data = position.get_share_price_profit(
+        end_at=start_ts + datetime.timedelta(days=1),
+        mark_price=2000.0,
+    )
+    assert share_data.current_share_price == pytest.approx(2.0)
+    assert share_data.total_supply == pytest.approx(1000.0)
+    assert share_data.total_assets == pytest.approx(2000.0)
+    assert share_data.profit_pct == pytest.approx(1.0)  # 100% profit
+
+    # Buy another 1 ETH at $2000
+    # Share price at time of second buy is based on trade history, not mark_price
+    # After first buy at $1000: share_price = 1000/1000 = 1.0
+    # Second buy at $2000: mints 2000 shares at share_price 1.0
+    # Then share_price = (2 ETH * $2000) / 3000 shares = 4000/3000 = 1.333
+    position, trade = trader.buy(weth_usdc, Decimal("1.0"), 2000.0)
+
+    share_data = position.get_share_price_profit(
+        end_at=start_ts + datetime.timedelta(days=1),
+        mark_price=2000.0,
+    )
+    # Total supply = 1000 (first buy) + 2000 (second buy at share_price 1.0) = 3000
+    assert share_data.total_supply == pytest.approx(3000.0)
+    assert share_data.total_assets == pytest.approx(4000.0)  # 2 ETH * $2000
+    assert share_data.current_share_price == pytest.approx(4000.0 / 3000.0)
+    # Profit = (1.333 / 1.0) - 1 = 0.333 = 33.3%
+    assert share_data.profit_pct == pytest.approx(1.0 / 3.0)
+
+    # If ETH goes to $3000
+    share_data = position.get_share_price_profit(
+        end_at=start_ts + datetime.timedelta(days=1),
+        mark_price=3000.0,
+    )
+    assert share_data.total_assets == pytest.approx(6000.0)  # 2 ETH * $3000
+    assert share_data.current_share_price == pytest.approx(2.0)  # 6000 / 3000
+    assert share_data.profit_pct == pytest.approx(1.0)  # 100% from initial
+
+
+def test_share_price_profit_partial_sell(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Calculate profit using share price method with partial sells."""
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Buy 2 ETH at $1000
+    position, trade = trader.buy(weth_usdc, Decimal("2.0"), 1000.0)
+
+    # Sell 1 ETH at $1500 (50% profit on this portion)
+    position, trade = trader.sell(weth_usdc, Decimal("1.0"), 1500.0)
+
+    # Check share price - should reflect the 50% gain
+    share_data = position.get_share_price_profit(
+        end_at=start_ts + datetime.timedelta(days=1),
+        mark_price=1500.0,
+    )
+    assert share_data.profit_pct == pytest.approx(0.5)  # 50% profit
+    assert share_data.total_assets == pytest.approx(1500.0)  # 1 ETH * $1500
+
+
+def test_share_price_profit_matches_traditional(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Verify share price profit matches traditional calculation for simple case."""
+    from tradeexecutor.strategy.pnl import calculate_pnl
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Buy and sell with profit
+    position, _ = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+    position, _ = trader.sell(weth_usdc, Decimal("1.0"), 1850.0)
+
+    # Compare methods
+    share_data = position.get_share_price_profit()
+    traditional_data = calculate_pnl(position)
+
+    # Both should show same profit percentage
+    assert share_data.profit_pct == pytest.approx(traditional_data.profit_pct, rel=0.01)
+    assert share_data.profit_usd == pytest.approx(traditional_data.profit_usd, rel=0.01)
