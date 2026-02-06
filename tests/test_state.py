@@ -1691,3 +1691,127 @@ def test_backfill_share_price_state_skips_existing(usdc, weth_usdc, start_ts: da
 
     # Verify no migration occurred
     assert migrated == 0
+
+
+def test_backfill_share_price_state_from_legacy_file():
+    """Verify backfill_share_price_state migrates positions from a real legacy state file."""
+    from pathlib import Path
+    from tradeexecutor.strategy.position_internal_share_price import backfill_share_price_state
+
+    # Load a real state file that has no share_price_state
+    state_file = Path(__file__).parent / "cli" / "show-positions-long.json"
+    state = State.read_json_file(state_file)
+
+    # Verify positions don't have share_price_state
+    for position in state.portfolio.open_positions.values():
+        assert position.share_price_state is None
+
+    for position in state.portfolio.closed_positions.values():
+        assert position.share_price_state is None
+
+    # Run backfill
+    migrated = backfill_share_price_state(state)
+
+    # Verify migration occurred (5 positions: 3 open + 2 closed)
+    assert migrated == 5
+
+    # Verify all spot/vault positions now have share_price_state
+    for position in state.portfolio.open_positions.values():
+        if position.is_spot() or position.is_vault():
+            assert position.share_price_state is not None
+            assert position.share_price_state.total_supply > 0
+            assert position.share_price_state.current_share_price > 0
+
+    for position in state.portfolio.closed_positions.values():
+        if position.is_spot() or position.is_vault():
+            assert position.share_price_state is not None
+
+
+def test_backfill_share_price_state_large_portfolio():
+    """Verify backfill works on a large portfolio with many closed positions."""
+    from pathlib import Path
+    from tradeexecutor.strategy.position_internal_share_price import backfill_share_price_state
+
+    # Load legacy state with 100 positions
+    state_file = Path(__file__).parent / "legacy" / "legacy-state-dump-2.json"
+    state = State.read_json_file(state_file)
+
+    # Run backfill
+    migrated = backfill_share_price_state(state)
+
+    # Verify migration occurred for applicable positions
+    assert migrated > 0
+
+    # Verify state was set on migrated positions
+    migrated_count = 0
+    for position in state.portfolio.open_positions.values():
+        if position.share_price_state is not None:
+            migrated_count += 1
+    for position in state.portfolio.closed_positions.values():
+        if position.share_price_state is not None:
+            migrated_count += 1
+
+    assert migrated_count == migrated
+
+
+def test_backfill_share_price_state_calculates_correct_values():
+    """Verify backfilled share_price_state has correct calculated values."""
+    from pathlib import Path
+    from tradeexecutor.strategy.position_internal_share_price import backfill_share_price_state
+
+    state_file = Path(__file__).parent / "cli" / "show-positions-long.json"
+    state = State.read_json_file(state_file)
+
+    # Run backfill
+    backfill_share_price_state(state)
+
+    # For each position, verify the state makes sense
+    for position in state.portfolio.open_positions.values():
+        if position.share_price_state is None:
+            continue  # Non-spot positions
+
+        sps = position.share_price_state
+
+        # Initial share price should be 1.0
+        assert sps.initial_share_price == 1.0
+
+        # Total supply should equal total invested (at initial price of 1.0)
+        assert sps.total_supply == pytest.approx(sps.total_invested)
+
+        # Cumulative quantity should be non-negative
+        assert sps.cumulative_quantity >= 0
+
+        # Peak total supply should be >= current total supply
+        assert sps.peak_total_supply >= sps.total_supply
+
+
+def test_backfill_share_price_state_idempotent():
+    """Verify running backfill twice doesn't change anything."""
+    from pathlib import Path
+    from tradeexecutor.strategy.position_internal_share_price import backfill_share_price_state
+
+    state_file = Path(__file__).parent / "cli" / "show-positions-long.json"
+    state = State.read_json_file(state_file)
+
+    # First backfill
+    migrated1 = backfill_share_price_state(state)
+    assert migrated1 > 0
+
+    # Capture state values
+    original_values = {}
+    for pos_id, position in state.portfolio.open_positions.items():
+        if position.share_price_state:
+            original_values[pos_id] = (
+                position.share_price_state.current_share_price,
+                position.share_price_state.total_supply,
+            )
+
+    # Second backfill - should skip all
+    migrated2 = backfill_share_price_state(state)
+    assert migrated2 == 0
+
+    # Verify values unchanged
+    for pos_id, position in state.portfolio.open_positions.items():
+        if pos_id in original_values:
+            assert position.share_price_state.current_share_price == original_values[pos_id][0]
+            assert position.share_price_state.total_supply == original_values[pos_id][1]
