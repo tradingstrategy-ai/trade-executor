@@ -1,4 +1,4 @@
-"""Running state for internal share price tracking.
+"""Running state for position internal share price tracking.
 
 This module provides data structures for tracking share price state
 incrementally on each trade, rather than recalculating from scratch.
@@ -17,8 +17,8 @@ class SharePriceState:
     Updated incrementally on each trade execution rather than
     recalculated from scratch. Follows the pattern of TradingPosition.loan.
 
-    See :py:func:`tradeexecutor.strategy.share_price.create_share_price_state`
-    and :py:func:`tradeexecutor.strategy.share_price.update_share_price_state`.
+    See :py:func:`tradeexecutor.strategy.position_internal_share_price.create_share_price_state`
+    and :py:func:`tradeexecutor.strategy.position_internal_share_price.update_share_price_state`.
     """
 
     #: Current share price (total_assets / total_supply)
