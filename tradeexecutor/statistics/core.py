@@ -63,6 +63,25 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
     #if value == 0:
     #        logger.warning(f"Position {position} reported value {value}. Last token price: {position.last_token_price}. Last reserve price: {position.last_reserve_price}")
 
+    # Calculate share price data for spot/vault positions
+    internal_share_price = None
+    internal_total_supply = None
+    internal_profit_pct = None
+    internal_profit_usd = None
+
+    if position.is_spot() or position.is_vault():
+        try:
+            share_data = position.get_share_price_profit(
+                end_at=clock,
+                mark_price=position.last_token_price,
+            )
+            internal_share_price = share_data.current_share_price
+            internal_total_supply = share_data.total_supply
+            internal_profit_pct = share_data.profit_pct
+            internal_profit_usd = share_data.profit_usd
+        except Exception:
+            # Fallback if share price calculation fails
+            pass
 
     if position.is_credit_supply():
         # Special path to calculate accured interest.
@@ -79,6 +98,10 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
         profit_usd=position.get_total_profit_usd(),
         quantity=float(position.get_quantity_old()),
         value=value,
+        internal_share_price=internal_share_price,
+        internal_total_supply=internal_total_supply,
+        internal_profit_pct=internal_profit_pct,
+        internal_profit_usd=internal_profit_usd,
     )
 
     return stats

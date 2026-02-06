@@ -846,6 +846,21 @@ class State:
 
             position.loan = trade.executed_loan_update
 
+        # Update share price running state for spot/vault positions
+        if position.is_spot() or position.is_vault():
+            from tradeexecutor.strategy.share_price import (
+                create_share_price_state,
+                update_share_price_state,
+            )
+
+            if position.share_price_state is None:
+                position.share_price_state = create_share_price_state(trade)
+            else:
+                position.share_price_state = update_share_price_state(
+                    position.share_price_state,
+                    trade,
+                )
+
         if trade.is_spot() and trade.is_sell():
             self.portfolio.return_capital_to_reserves(trade)
         elif trade.is_leverage():

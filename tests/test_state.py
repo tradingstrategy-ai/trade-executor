@@ -1559,3 +1559,90 @@ def test_share_price_profit_matches_traditional(usdc, weth_usdc, start_ts: datet
     # Both should show same profit percentage
     assert share_data.profit_pct == pytest.approx(traditional_data.profit_pct, rel=0.01)
     assert share_data.profit_usd == pytest.approx(traditional_data.profit_usd, rel=0.01)
+
+
+def test_position_statistics_includes_share_price(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Verify PositionStatistics includes share price fields for spot positions."""
+    from tradeexecutor.statistics.core import calculate_position_statistics
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Buy 1 ETH at $1700
+    position, _ = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+
+    # Calculate statistics
+    stats = calculate_position_statistics(
+        clock=start_ts + datetime.timedelta(hours=1),
+        position=position,
+    )
+
+    # Verify share price fields are populated
+    assert stats.internal_share_price is not None
+    assert stats.internal_share_price == pytest.approx(1.0)
+    assert stats.internal_total_supply is not None
+    assert stats.internal_total_supply == pytest.approx(1700.0)
+
+    # Verify profit fields are populated
+    assert stats.internal_profit_pct is not None
+    assert stats.internal_profit_pct == pytest.approx(0.0)  # No price change yet
+    assert stats.internal_profit_usd is not None
+    assert stats.internal_profit_usd == pytest.approx(0.0)
+
+
+def test_share_price_state_incremental_update(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Verify share price state is updated incrementally on each trade."""
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # First buy
+    position, _ = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+
+    # Verify state was created
+    assert position.share_price_state is not None
+    assert position.share_price_state.total_supply == pytest.approx(1700.0)
+    assert position.share_price_state.current_share_price == pytest.approx(1.0)
+    assert position.share_price_state.cumulative_quantity == pytest.approx(1.0)
+
+    # Second buy - verify incremental update (not recalculated)
+    position, _ = trader.buy(weth_usdc, Decimal("1.0"), 1800.0)
+
+    assert position.share_price_state.total_supply == pytest.approx(3500.0)  # 1700 + 1800
+    assert position.share_price_state.cumulative_quantity == pytest.approx(2.0)
+    assert position.share_price_state.total_invested == pytest.approx(3500.0)
+
+
+def test_share_price_incremental_matches_full_calculation(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Verify incremental state produces same result as full recalculation."""
+    from tradeexecutor.strategy.pnl import calculate_share_price_pnl
+
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+
+    # Multiple trades
+    position, _ = trader.buy(weth_usdc, Decimal("1.0"), 1700.0)
+    position, _ = trader.buy(weth_usdc, Decimal("0.5"), 1800.0)
+    position, _ = trader.sell(weth_usdc, Decimal("0.5"), 1850.0)
+
+    # Get result from incremental state
+    incremental_result = position.get_share_price_profit(
+        end_at=start_ts + datetime.timedelta(hours=1),
+        mark_price=1900.0,
+    )
+
+    # Clear state and recalculate from scratch
+    position.share_price_state = None
+    full_result = calculate_share_price_pnl(
+        position=position,
+        end_at=start_ts + datetime.timedelta(hours=1),
+        mark_price=1900.0,
+    )
+
+    # Results should match
+    assert incremental_result.current_share_price == pytest.approx(full_result.current_share_price)
+    assert incremental_result.total_supply == pytest.approx(full_result.total_supply)
+    assert incremental_result.profit_pct == pytest.approx(full_result.profit_pct)
+    assert incremental_result.profit_usd == pytest.approx(full_result.profit_usd)
