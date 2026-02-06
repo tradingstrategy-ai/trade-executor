@@ -59,6 +59,32 @@ class PositionStatistics:
     #:
     value: USDollarAmount
 
+    #: Internal share price for tracking position profit
+    #:
+    #: Only populated for spot/vault positions.
+    #: See :py:func:`tradeexecutor.strategy.pnl.calculate_share_price_pnl`
+    #:
+    internal_share_price: float | None = None
+
+    #: Total internal shares outstanding
+    #:
+    #: Only populated for spot/vault positions.
+    #:
+    internal_total_supply: float | None = None
+
+    #: Profit percentage calculated from internal share price
+    #:
+    #: This is (current_share_price / initial_share_price) - 1.
+    #: Only populated for spot/vault positions.
+    #:
+    internal_profit_pct: Percent | None = None
+
+    #: Profit in USD calculated from internal share price method
+    #:
+    #: Only populated for spot/vault positions.
+    #:
+    internal_profit_usd: USDollarAmount | None = None
+
     def __post_init__(self):
         assert isinstance(self.calculated_at, datetime.datetime)
         assert isinstance(self.last_valuation_at, datetime.datetime)
