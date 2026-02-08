@@ -66,6 +66,9 @@ def test_vault_rebalance_status_no_positions(
     assert "IPOR" in vault_row["Vault"]
     assert vault_row["Protocol"] == "ipor"
 
+    # 1M CAGR column should exist (may be None if not loaded from JSON blob)
+    assert "1M CAGR" in df.columns
+
     # Verify sorting - values should be in descending order
     values = df["Value USD"].tolist()
     assert values == sorted(values, reverse=True)
@@ -79,6 +82,7 @@ def test_vault_rebalance_status_no_positions(
     assert "IPOR" in output
     assert "$0.00" in output
     assert "0.00%" in output
+    assert "1M CAGR" in output  # Column header should be displayed
 
 
 def test_vault_rebalance_status_with_position(
@@ -168,3 +172,7 @@ def test_vault_rebalance_status_with_position(
     assert "Total portfolio value:" in output
     assert "Vault Allocations" in output
     assert "ipor" in output.lower()
+    assert "1M CAGR" in output  # Column header should be displayed
+
+    # 1M CAGR column should exist in DataFrame
+    assert "1M CAGR" in df.columns

@@ -363,8 +363,44 @@ Output includes:
   - Value in USD
   - Weight % of portfolio
   - Number of shares held
+  - 1M CAGR (one month CAGR, if available from vault metadata)
 
 Sorted by largest position first.
+
+## Loading vaults with metadata
+
+Use `load_vault_universe_with_metadata()` to load vaults from the JSON blob API with full performance metrics:
+
+```python
+from tradeexecutor.strategy.trading_strategy_universe import load_vault_universe_with_metadata
+from tradingstrategy.chain import ChainId
+
+# Load all vaults with metadata
+vault_universe = load_vault_universe_with_metadata(client)
+
+# Or limit to specific vaults
+vault_universe = load_vault_universe_with_metadata(
+    client,
+    vaults=[
+        (ChainId.base, "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216"),
+    ]
+)
+
+# Access metadata including 1-month CAGR
+for vault in vault_universe.iterate_vaults():
+    if vault.metadata:
+        print(f"{vault.name}: 1M CAGR = {vault.metadata.one_month_cagr}")
+```
+
+The VaultUniverse can then be passed to `load_partial_data()`:
+
+```python
+dataset = load_partial_data(
+    client=client,
+    vaults=vault_universe,  # Pass VaultUniverse with metadata
+    # ... other parameters
+)
+```
 
 ## Related source files
 

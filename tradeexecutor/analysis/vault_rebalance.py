@@ -40,6 +40,7 @@ def get_vault_rebalance_status(
         - Value USD: Current position value in USD
         - Weight %: Percentage of total portfolio value
         - Shares: Number of vault shares held
+        - 1M CAGR: One month CAGR if available from vault metadata
     """
 
     # Get current cash
@@ -76,6 +77,12 @@ def get_vault_rebalance_status(
             position_id = None
             weight = 0
 
+        # Get 1M CAGR from vault metadata if available
+        one_month_cagr = None
+        metadata = pair.get_vault_metadata()
+        if metadata:
+            one_month_cagr = metadata.one_month_cagr
+
         rows.append({
             "Vault": pair.get_vault_name() or pair.base.token_symbol,
             "Protocol": pair.get_vault_protocol() or "-",
@@ -85,6 +92,7 @@ def get_vault_rebalance_status(
             "Value USD": value,
             "Weight %": weight,
             "Shares": shares,
+            "1M CAGR": one_month_cagr,
         })
 
         # Remove from dict so we can track orphaned positions
@@ -97,6 +105,12 @@ def get_vault_rebalance_status(
         shares = position.get_quantity()
         weight = (value / total_portfolio_value * 100) if total_portfolio_value > 0 else 0
 
+        # Get 1M CAGR from vault metadata if available
+        one_month_cagr = None
+        metadata = position.pair.get_vault_metadata()
+        if metadata:
+            one_month_cagr = metadata.one_month_cagr
+
         rows.append({
             "Vault": position.pair.get_vault_name() or position.pair.base.token_symbol,
             "Protocol": position.pair.get_vault_protocol() or "-",
@@ -106,6 +120,7 @@ def get_vault_rebalance_status(
             "Value USD": value,
             "Weight %": weight,
             "Shares": shares,
+            "1M CAGR": one_month_cagr,
         })
 
     df = pd.DataFrame(rows)
@@ -190,6 +205,10 @@ def print_vault_rebalance_status(
         # Truncate address for display
         display_df["Address"] = display_df["Address"].apply(
             lambda x: f"{x[:10]}...{x[-8:]}" if x and len(x) > 20 else x
+        )
+        # Format 1M CAGR as percentage
+        display_df["1M CAGR"] = display_df["1M CAGR"].apply(
+            lambda x: f"{x * 100:.1f}%" if x is not None else "-"
         )
 
         printer("Vault Allocations (sorted by value, largest first):")
