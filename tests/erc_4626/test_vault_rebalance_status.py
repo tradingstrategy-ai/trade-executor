@@ -87,7 +87,7 @@ def test_vault_rebalance_status_no_positions(
     assert "1M CAGR" in output  # Column header should be displayed
 
 
-@flaky
+@flaky(max_runs=3)
 def test_vault_rebalance_status_with_position(
     vault: IPORVault,
     strategy_universe: TradingStrategyUniverse,
