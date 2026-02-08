@@ -59,7 +59,8 @@ RUN (cd deps/web3-ethereum-defi/contracts/lagoon-v0 && forge soldeer install --c
 # Speed up Python process startup
 RUN rm -rf ./tests
 RUN python -m compileall -q .
-RUN python -m compileall -q /usr/local/lib/python3.11
+# Exclude ccxt from compileall due to syntax errors in ccxt.static_dependencies.bip
+RUN python -m compileall -q -x 'ccxt/static_dependencies' /usr/local/lib/python3.11
 
 # trade-executor /api
 # Pyramid HTTP server for webhooks at port 3456
