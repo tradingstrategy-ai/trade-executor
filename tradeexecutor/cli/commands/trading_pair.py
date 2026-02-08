@@ -8,6 +8,8 @@ from typing import Optional
 from tabulate import tabulate
 from typer import Option
 
+from eth_defi.compat import native_datetime_utc_now
+
 from . import shared_options
 from .app import app
 from .shared_options import required_option

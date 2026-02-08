@@ -25,6 +25,7 @@ import pandas as pd
 import logging
 
 from dataclasses_json import dataclass_json
+from eth_defi.compat import native_datetime_utc_fromtimestamp
 from tradingstrategy.pair import DEXPair
 from tradingstrategy.types import PrimaryKey
 

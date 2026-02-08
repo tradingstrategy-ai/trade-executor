@@ -8,6 +8,8 @@ import logging
 
 import pandas as pd
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.cli.discord import post_logging_discord_image
 from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.statistics.in_memory_statistics import refresh_live_strategy_images

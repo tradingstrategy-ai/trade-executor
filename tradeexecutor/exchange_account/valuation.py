@@ -8,6 +8,8 @@ import datetime
 import logging
 from decimal import Decimal
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.valuation import ValuationModel

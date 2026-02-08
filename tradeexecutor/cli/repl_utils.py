@@ -11,6 +11,7 @@ from web3.contract.contract import ContractFunction
 from tqdm_loggable.auto import tqdm
 from tabulate import tabulate
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.confirmation import broadcast_and_wait_transactions_to_complete
 from eth_defi.cow.quote import fetch_quote
 from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect

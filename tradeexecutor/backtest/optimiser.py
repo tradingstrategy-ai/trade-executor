@@ -26,6 +26,7 @@ from skopt.space import Dimension
 
 from tqdm_loggable.auto import tqdm
 
+from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.backtest.grid_search import GridCombination, GridSearchDataRetention, GridSearchResult, save_disk_multiprocess_strategy_universe, initialise_multiprocess_strategy_universe_from_disk, run_grid_search_backtest, \
     get_grid_search_result_path, GridParameter

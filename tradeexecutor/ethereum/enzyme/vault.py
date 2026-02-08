@@ -8,6 +8,7 @@ from functools import partial
 from types import NoneType
 from typing import cast, List, Optional, Tuple, Iterable
 
+from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
 from eth_defi.event_reader.conversion import convert_jsonrpc_value_to_int
 from web3.types import BlockIdentifier
 

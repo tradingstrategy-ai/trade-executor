@@ -10,6 +10,8 @@ import logging
 import pandas as pd
 import numpy as np
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import Percent

@@ -4,6 +4,7 @@ import datetime
 from decimal import Decimal
 from typing import Tuple, List, Optional
 
+from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.pair import PandasPairUniverse
 from web3 import Web3
 

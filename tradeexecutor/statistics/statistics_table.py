@@ -1,12 +1,14 @@
-"""Module for statistics table. 
+"""Module for statistics table.
 
-This table can work with any table data that can be represented as a dictionary of key metrics. 
+This table can work with any table data that can be represented as a dictionary of key metrics.
 It is also used to help display statistics in the web frontend.
 """
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 import datetime
 from typing import Literal
+
+from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.analysis.trade_analyser import build_trade_analysis, calculate_annualised_return
 from tradeexecutor.strategy.summary import KeyMetricKind, KeyMetricSource, KeyMetric

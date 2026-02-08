@@ -26,6 +26,8 @@ from decimal import Decimal
 from itertools import chain
 from typing import List, TypedDict
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State

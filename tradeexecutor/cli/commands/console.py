@@ -28,6 +28,7 @@ import pandas as pd
 from eth.vm.logic.block import timestamp
 from typer import Option
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from tradingstrategy.chain import ChainId

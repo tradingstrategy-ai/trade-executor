@@ -7,6 +7,7 @@ import datetime
 from decimal import Decimal
 from typing import Optional, Dict
 
+from eth_defi.compat import native_datetime_utc_now
 from web3 import Web3
 from tradingstrategy.pair import PandasPairUniverse
 from eth_defi.provider.broken_provider import get_block_tip_latency

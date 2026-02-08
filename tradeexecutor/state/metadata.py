@@ -10,6 +10,7 @@ from typing import Optional, Dict, TypedDict, List, Set
 
 from dataclasses_json import dataclass_json
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.velvet.vault import VelvetVaultInfo
 from tradeexecutor.strategy.tag import StrategyTag
 from tradingstrategy.chain import ChainId

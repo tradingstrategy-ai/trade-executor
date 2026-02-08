@@ -3,6 +3,8 @@ import datetime
 from io import StringIO
 from typing import List, Iterable
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition

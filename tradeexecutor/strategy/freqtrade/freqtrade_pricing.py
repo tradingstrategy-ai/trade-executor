@@ -5,6 +5,8 @@ import logging
 from decimal import Decimal
 from typing import Optional
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing

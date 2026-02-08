@@ -4,6 +4,7 @@ import datetime
 from pathlib import Path
 from typing import Optional
 
+from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.cli.bootstrap import (
     prepare_executor_id, prepare_cache, create_web3_config, create_state_store,

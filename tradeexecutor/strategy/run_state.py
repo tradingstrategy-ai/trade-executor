@@ -10,6 +10,8 @@ from typing import Optional, TypedDict
 from dataclasses_json import dataclass_json
 from tblib import Traceback
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.cli.version_info import VersionInfo
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress

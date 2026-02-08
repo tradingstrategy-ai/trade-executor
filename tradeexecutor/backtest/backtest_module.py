@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.analysis.pair import display_strategy_universe
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe, BacktestResult
 from tradeexecutor.state.state import State

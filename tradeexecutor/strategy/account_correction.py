@@ -21,6 +21,7 @@ import pandas as pd
 from web3 import Web3
 from web3.types import BlockIdentifier
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation

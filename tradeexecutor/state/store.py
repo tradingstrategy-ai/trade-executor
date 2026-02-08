@@ -14,6 +14,8 @@ from typing import Union, Optional, Callable
 
 from dataclasses_json.core import _ExtendedEncoder
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.state import State
 from tradeexecutor.state.validator import validate_nested_state_dict
 from eth_defi.compat import native_datetime_utc_now

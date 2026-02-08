@@ -8,6 +8,8 @@ import logging
 from decimal import Decimal
 from typing import Literal
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.identifier import (
     AssetWithTrackedValue,
     AssetType,

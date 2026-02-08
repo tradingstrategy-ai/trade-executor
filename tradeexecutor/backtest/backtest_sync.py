@@ -7,6 +7,8 @@ from typing import List, Optional, Collection, Iterable
 
 from web3.types import BlockIdentifier
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent
 from tradeexecutor.state.balance_update import BalanceUpdate

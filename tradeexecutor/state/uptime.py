@@ -11,6 +11,8 @@ from typing import Dict, List, Optional
 from dataclasses_json import dataclass_json
 from eth_defi.compat import native_datetime_utc_now
 
+from eth_defi.compat import native_datetime_utc_now
+
 
 logger = logging.getLogger(__name__)
 

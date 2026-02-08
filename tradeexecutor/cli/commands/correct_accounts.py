@@ -12,6 +12,7 @@ import typer
 from tabulate import tabulate
 from typer import Option
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 

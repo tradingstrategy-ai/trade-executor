@@ -12,7 +12,7 @@ import joblib
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
 from tradeexecutor.backtest.simulated_wallet import OutOfSimulatedBalance
 # Enable pickle patch that allows multiprocessing in notebooks
-from tradeexecutor.monkeypatch import cloudpickle_patch  
+from tradeexecutor.monkeypatch import cloudpickle_patch
 
 import datetime
 import enum
@@ -36,6 +36,8 @@ from packaging import version
 import numpy as np
 import pandas as pd
 import futureproof
+
+from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from eth_defi.compat import native_datetime_utc_now

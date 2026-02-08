@@ -5,6 +5,7 @@ from decimal import Decimal
 
 from web3 import Web3
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.provider.anvil import is_anvil, mine
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradingstrategy.lending import LendingReserveDescription

@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Optional
 from typer import Option
 
+from eth_defi.compat import native_datetime_utc_now
+
 from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, create_state_store, create_execution_and_sync_model, prepare_cache, create_web3_config, create_client

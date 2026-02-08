@@ -12,6 +12,7 @@ import datetime
 import pickle
 import random
 
+from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
 from pathlib import Path
 from queue import Queue
 from typing import Optional, Callable, List, cast, Tuple

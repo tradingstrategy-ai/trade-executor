@@ -9,6 +9,7 @@ from decimal import Decimal
 from typing import List, Tuple, Optional
 import logging
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from hexbytes import HexBytes
 from web3 import Web3

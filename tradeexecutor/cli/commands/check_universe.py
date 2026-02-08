@@ -8,6 +8,7 @@ from typing import Optional
 
 import pandas as pd
 
+from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.chain import ChainId
 from .app import app
 from .shared_options import unit_testing

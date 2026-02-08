@@ -15,6 +15,7 @@ from hexbytes import HexBytes
 from web3 import Web3
 from web3.contract.contract import ContractFunction, Contract
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.gas import GasPriceSuggestion, apply_gas, estimate_gas_fees
 from eth_defi.hotwallet import HotWallet, SignedTransactionWithNonce
 from eth_defi.tx import AssetDelta
