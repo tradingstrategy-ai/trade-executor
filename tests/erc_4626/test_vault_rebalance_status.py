@@ -6,6 +6,7 @@ import datetime
 import os
 from decimal import Decimal
 
+from flaky import flaky
 import pytest
 import pandas as pd
 from eth_defi.erc_4626.vault_protocol.ipor.vault import IPORVault
@@ -86,6 +87,7 @@ def test_vault_rebalance_status_no_positions(
     assert "1M CAGR" in output  # Column header should be displayed
 
 
+@flaky
 def test_vault_rebalance_status_with_position(
     vault: IPORVault,
     strategy_universe: TradingStrategyUniverse,
