@@ -31,6 +31,103 @@ When you launch the console, these objects are automatically available:
 | `Decimal` | Python Decimal class |
 | `ChainId` | Chain ID enum |
 
+## Vault rebalance status
+
+Use `print_vault_rebalance_status()` to display all vaults in the universe with current allocations.
+
+### Console example
+
+```python
+from tradeexecutor.analysis.vault_rebalance import print_vault_rebalance_status
+
+# Print vault status to console
+df = print_vault_rebalance_status(state, strategy_universe)
+```
+
+Example output:
+
+```
+================================================================================
+VAULT REBALANCE STATUS
+================================================================================
+
+Current cash:           $45,230.50
+Total vault value:      $154,769.50
+Total portfolio value:  $200,000.00
+
+Vault Allocations (sorted by value, largest first):
+--------------------------------------------------------------------------------
+Vault                        Protocol   Address              Available  Position ID  Value USD     Weight %  Shares       1M CAGR
+---------------------------  ---------  -------------------  ---------  -----------  ------------  --------  -----------  -------
+IPOR USDC Lending Optimizer  ipor       0x45aa96f0...58216   Yes        1            $85,432.10    42.72%    82,543.2100  8.5%
+Morpho Blue USDC             morpho     0x8eB67A509...7b2c3  Yes        2            $69,337.40    34.67%    67,892.5000  6.2%
+Aave v3 USDC                 aave       0x4e65fE4D...a9f21   Yes        -            $0.00         0.00%     -            4.1%
+
+================================================================================
+```
+
+### Getting raw data
+
+```python
+from tradeexecutor.analysis.vault_rebalance import get_vault_rebalance_status
+
+# Get raw DataFrame without printing
+df, cash = get_vault_rebalance_status(state, strategy_universe)
+
+# Access specific columns
+for _, row in df.iterrows():
+    print(f"{row['Vault']}: ${row['Value USD']:,.2f} ({row['Weight %']:.1f}%)")
+```
+
+### Output columns
+
+- **Vault**: Vault name
+- **Protocol**: Vault protocol slug (ipor, morpho, aave, etc.)
+- **Address**: Vault contract address (truncated for display)
+- **Available**: Whether vault is in current trading universe
+- **Position ID**: Position ID if we have an open position, "-" otherwise
+- **Value USD**: Current position value in USD
+- **Weight %**: Percentage of total portfolio value
+- **Shares**: Number of vault shares held
+- **1M CAGR**: One month annualised return (requires vault metadata from JSON blob)
+
+Results are sorted by value (largest position first).
+
+## Loading vaults with metadata
+
+Use `load_vault_universe_with_metadata()` to load vaults from the JSON blob API with full performance metrics:
+
+```python
+from tradeexecutor.strategy.trading_strategy_universe import load_vault_universe_with_metadata
+from tradingstrategy.chain import ChainId
+
+# Load all vaults with metadata
+vault_universe = load_vault_universe_with_metadata(client)
+
+# Or limit to specific vaults
+vault_universe = load_vault_universe_with_metadata(
+    client,
+    vaults=[
+        (ChainId.base, "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216"),
+    ]
+)
+
+# Access metadata including 1-month CAGR
+for vault in vault_universe.iterate_vaults():
+    if vault.metadata:
+        print(f"{vault.name}: 1M CAGR = {vault.metadata.one_month_cagr}")
+```
+
+The VaultUniverse can then be passed to `load_partial_data()`:
+
+```python
+dataset = load_partial_data(
+    client=client,
+    vaults=vault_universe,  # Pass VaultUniverse with metadata
+    # ... other parameters
+)
+```
+
 ## Creating a position manager
 
 Before opening or closing positions, create a `PositionManager` instance:
@@ -338,103 +435,6 @@ For more examples, see these test files:
 - [test_rebalance_vault_yield.py](../../../tests/mainnet_fork/test_rebalance_vault_yield.py) - Vault rebalancing
 - [test_enzyme_credit_position.py](../../../tests/mainnet_fork/test_enzyme_credit_position.py) - Credit positions
 - [test_enzyme_guard_perform_test_trade.py](../../../tests/mainnet_fork/test_enzyme_guard_perform_test_trade.py) - Guard-protected trades
-
-## Vault rebalance status
-
-Use `print_vault_rebalance_status()` to display all vaults in the universe with current allocations.
-
-### Console example
-
-```python
-from tradeexecutor.analysis.vault_rebalance import print_vault_rebalance_status
-
-# Print vault status to console
-df = print_vault_rebalance_status(state, strategy_universe)
-```
-
-Example output:
-
-```
-================================================================================
-VAULT REBALANCE STATUS
-================================================================================
-
-Current cash:           $45,230.50
-Total vault value:      $154,769.50
-Total portfolio value:  $200,000.00
-
-Vault Allocations (sorted by value, largest first):
---------------------------------------------------------------------------------
-Vault                        Protocol   Address              Available  Position ID  Value USD     Weight %  Shares       1M CAGR
----------------------------  ---------  -------------------  ---------  -----------  ------------  --------  -----------  -------
-IPOR USDC Lending Optimizer  ipor       0x45aa96f0...58216   Yes        1            $85,432.10    42.72%    82,543.2100  8.5%
-Morpho Blue USDC             morpho     0x8eB67A509...7b2c3  Yes        2            $69,337.40    34.67%    67,892.5000  6.2%
-Aave v3 USDC                 aave       0x4e65fE4D...a9f21   Yes        -            $0.00         0.00%     -            4.1%
-
-================================================================================
-```
-
-### Getting raw data
-
-```python
-from tradeexecutor.analysis.vault_rebalance import get_vault_rebalance_status
-
-# Get raw DataFrame without printing
-df, cash = get_vault_rebalance_status(state, strategy_universe)
-
-# Access specific columns
-for _, row in df.iterrows():
-    print(f"{row['Vault']}: ${row['Value USD']:,.2f} ({row['Weight %']:.1f}%)")
-```
-
-### Output columns
-
-- **Vault**: Vault name
-- **Protocol**: Vault protocol slug (ipor, morpho, aave, etc.)
-- **Address**: Vault contract address (truncated for display)
-- **Available**: Whether vault is in current trading universe
-- **Position ID**: Position ID if we have an open position, "-" otherwise
-- **Value USD**: Current position value in USD
-- **Weight %**: Percentage of total portfolio value
-- **Shares**: Number of vault shares held
-- **1M CAGR**: One month annualised return (requires vault metadata from JSON blob)
-
-Results are sorted by value (largest position first).
-
-## Loading vaults with metadata
-
-Use `load_vault_universe_with_metadata()` to load vaults from the JSON blob API with full performance metrics:
-
-```python
-from tradeexecutor.strategy.trading_strategy_universe import load_vault_universe_with_metadata
-from tradingstrategy.chain import ChainId
-
-# Load all vaults with metadata
-vault_universe = load_vault_universe_with_metadata(client)
-
-# Or limit to specific vaults
-vault_universe = load_vault_universe_with_metadata(
-    client,
-    vaults=[
-        (ChainId.base, "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216"),
-    ]
-)
-
-# Access metadata including 1-month CAGR
-for vault in vault_universe.iterate_vaults():
-    if vault.metadata:
-        print(f"{vault.name}: 1M CAGR = {vault.metadata.one_month_cagr}")
-```
-
-The VaultUniverse can then be passed to `load_partial_data()`:
-
-```python
-dataset = load_partial_data(
-    client=client,
-    vaults=vault_universe,  # Pass VaultUniverse with metadata
-    # ... other parameters
-)
-```
 
 ## Related source files
 
