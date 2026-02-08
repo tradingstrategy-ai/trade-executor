@@ -31,11 +31,11 @@ profit_pct = (current_share_price / initial_share_price) - 1
 
 **`tradeexecutor/state/position_internal_share_price.py`**
 
-Contains `SharePriceState` - the running state stored on each position for incremental tracking:
+Contains `PositionInternalSharePriceState` - the running state stored on each position for incremental tracking:
 
 ```python
 @dataclass
-class SharePriceState:
+class PositionInternalSharePriceState:
     current_share_price: float      # Current share price
     total_supply: float             # Total shares outstanding
     cumulative_quantity: float      # Total quantity held
@@ -60,7 +60,7 @@ Functions for managing share price state:
 
 **`tradeexecutor/strategy/pnl.py`**
 
-- `SharePriceData` - Result dataclass with profit metrics
+- `PositionInternalSharePriceData` - Result dataclass with profit metrics
 - `calculate_share_price_pnl(position)` - Full recalculation from trade history
 
 ### Position method

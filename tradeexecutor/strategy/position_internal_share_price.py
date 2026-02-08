@@ -3,18 +3,18 @@
 This module provides functions to create and update share price state
 incrementally on each trade execution.
 
-See :py:class:`tradeexecutor.state.position_internal_share_price.SharePriceState`.
+See :py:class:`tradeexecutor.state.position_internal_share_price.PositionInternalSharePriceState`.
 """
 import datetime
 
-from tradeexecutor.state.position_internal_share_price import SharePriceState
+from tradeexecutor.state.position_internal_share_price import PositionInternalSharePriceState
 from tradeexecutor.state.trade import TradeExecution
 
 
 def create_share_price_state(
     trade: TradeExecution,
     initial_share_price: float = 1.0,
-) -> SharePriceState:
+) -> PositionInternalSharePriceState:
     """Create initial share price state from first trade.
 
     Called when a position's first trade is executed to initialise
@@ -27,12 +27,12 @@ def create_share_price_state(
         Starting share price, typically 1.0.
 
     :return:
-        New SharePriceState with initial values.
+        New PositionInternalSharePriceState with initial values.
     """
     trade_value = trade.get_value()
     shares_minted = trade_value / initial_share_price
 
-    return SharePriceState(
+    return PositionInternalSharePriceState(
         current_share_price=initial_share_price,
         total_supply=shares_minted,
         cumulative_quantity=float(trade.executed_quantity),
@@ -44,9 +44,9 @@ def create_share_price_state(
 
 
 def update_share_price_state(
-    state: SharePriceState,
+    state: PositionInternalSharePriceState,
     trade: TradeExecution,
-) -> SharePriceState:
+) -> PositionInternalSharePriceState:
     """Update share price state with a new trade.
 
     For buys: mint shares at current share price.
@@ -59,7 +59,7 @@ def update_share_price_state(
         The newly executed trade.
 
     :return:
-        New SharePriceState with updated values.
+        New PositionInternalSharePriceState with updated values.
     """
     delta = float(trade.executed_quantity or 0)
     trade_value = trade.get_value()
@@ -69,7 +69,7 @@ def update_share_price_state(
         shares_to_mint = trade_value / state.current_share_price
         new_total_supply = state.total_supply + shares_to_mint
 
-        return SharePriceState(
+        return PositionInternalSharePriceState(
             current_share_price=state.current_share_price,  # Unchanged on buy
             total_supply=new_total_supply,
             cumulative_quantity=state.cumulative_quantity + delta,
@@ -98,7 +98,7 @@ def update_share_price_state(
             shares_to_burn = state.total_supply * proportion_sold
             new_total_supply = max(0.0, state.total_supply - shares_to_burn)
 
-            return SharePriceState(
+            return PositionInternalSharePriceState(
                 current_share_price=new_share_price,
                 total_supply=new_total_supply,
                 cumulative_quantity=state.cumulative_quantity - sell_quantity,

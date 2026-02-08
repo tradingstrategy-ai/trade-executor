@@ -11,7 +11,7 @@ from dataclasses_json import dataclass_json
 
 @dataclass_json
 @dataclass(slots=True)
-class SharePriceState:
+class PositionInternalSharePriceState:
     """Running state for internal share price tracking.
 
     Updated incrementally on each trade execution rather than

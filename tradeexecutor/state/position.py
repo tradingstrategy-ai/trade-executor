@@ -23,7 +23,7 @@ from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateE
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind
 from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
-from tradeexecutor.state.position_internal_share_price import SharePriceState
+from tradeexecutor.state.position_internal_share_price import PositionInternalSharePriceState
 from tradeexecutor.state.trade import TradeType, TradeFlag
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.trigger import Trigger
@@ -294,9 +294,9 @@ class TradingPosition(GenericPosition):
     #: Updated incrementally on each trade execution rather than
     #: recalculated from scratch. Follows the pattern of :py:attr:`loan`.
     #:
-    #: See :py:class:`tradeexecutor.state.share_price.SharePriceState`.
+    #: See :py:class:`tradeexecutor.state.position_internal_share_price.PositionInternalSharePriceState`.
     #:
-    share_price_state: SharePriceState | None = None
+    share_price_state: PositionInternalSharePriceState | None = None
 
     #: What is the liquidation price for this position.
     #: If the price goes below this, the position is liquidated.
@@ -2030,7 +2030,7 @@ class TradingPosition(GenericPosition):
         self,
         end_at: datetime.datetime = None,
         mark_price: USDollarPrice = None,
-    ) -> "SharePriceData":
+    ) -> "PositionInternalSharePriceData":
         """Calculate profit using internal share price method.
 
         This method tracks an internal share price inspired by ERC-4626 vault mechanics:
@@ -2052,9 +2052,9 @@ class TradingPosition(GenericPosition):
             For non-closed positions, the price to value remaining assets.
 
         :return:
-            SharePriceData with current share price, total supply, total assets, and profit metrics.
+            PositionInternalSharePriceData with current share price, total supply, total assets, and profit metrics.
         """
-        from tradeexecutor.strategy.pnl import SharePriceData
+        from tradeexecutor.strategy.pnl import PositionInternalSharePriceData
         from eth_defi.compat import native_datetime_utc_now
 
         # Use incremental state if available (O(1) lookup)
@@ -2090,7 +2090,7 @@ class TradingPosition(GenericPosition):
             else:
                 duration_end = end_at or native_datetime_utc_now()
 
-            return SharePriceData(
+            return PositionInternalSharePriceData(
                 initial_share_price=state.initial_share_price,
                 current_share_price=current_share_price,
                 total_supply=state.total_supply,

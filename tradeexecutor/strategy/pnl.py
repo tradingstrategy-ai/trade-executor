@@ -25,7 +25,7 @@ class ProfitData:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class SharePriceData:
+class PositionInternalSharePriceData:
     """Profit calculation using internal share price method.
 
     Inspired by ERC-4626 vault mechanics where:
@@ -170,7 +170,7 @@ def calculate_share_price_pnl(
     end_at: datetime.datetime = None,
     mark_price: USDollarPrice = None,
     initial_share_price: float = 1.0,
-) -> SharePriceData:
+) -> PositionInternalSharePriceData:
     """Calculate PnL using internal share price method.
 
     This method tracks an internal share price inspired by ERC-4626 vault mechanics:
@@ -204,7 +204,7 @@ def calculate_share_price_pnl(
         Starting share price, default 1.0.
 
     :return:
-        SharePriceData with current share price, total supply, total assets, and profit metrics.
+        PositionInternalSharePriceData with current share price, total supply, total assets, and profit metrics.
     """
 
     assert position.is_spot() or position.is_vault(), \
@@ -289,7 +289,7 @@ def calculate_share_price_pnl(
     assert duration > datetime.timedelta(0), \
         f"Position {position} has non-positive duration: {duration}"
 
-    return SharePriceData(
+    return PositionInternalSharePriceData(
         initial_share_price=initial_share_price,
         current_share_price=current_share_price,
         total_supply=total_supply,
