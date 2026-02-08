@@ -3,6 +3,7 @@ import datetime
 from pathlib import Path
 from typing import Optional
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
 
 from tradeexecutor.strategy.account_correction import check_accounts as _check_accounts

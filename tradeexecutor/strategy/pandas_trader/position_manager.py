@@ -10,6 +10,7 @@ import logging
 import cachetools
 import pandas as pd
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.token_analysis.blacklist import is_blacklisted_address
 from tradeexecutor.strategy.routing import PositionAvailabilityResponse, RoutingModel, RoutingState
 from tradingstrategy.candle import CandleSampleUnavailable

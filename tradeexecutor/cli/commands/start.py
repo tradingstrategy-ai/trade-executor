@@ -16,6 +16,7 @@ from typing import Optional
 
 import typer
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.confirmation import ConfirmationTimedOut
 from eth_defi.gas import GasPriceMethod
 from tradingstrategy.chain import ChainId

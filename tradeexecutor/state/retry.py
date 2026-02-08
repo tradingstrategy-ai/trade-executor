@@ -3,6 +3,8 @@
 import datetime
 import logging
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeType, TradeStatus
 from tradeexecutor.strategy.execution_model import ExecutionModel

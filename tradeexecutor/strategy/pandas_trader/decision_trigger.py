@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from typing import Set, Optional, Dict
 
 import pandas as pd
+
+from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.candle import GroupedCandleUniverse, TradingPairDataAvailability
 
 from tradingstrategy.client import Client

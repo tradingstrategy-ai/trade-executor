@@ -9,6 +9,7 @@ import typer
 from web3 import Web3
 
 from eth_defi.balances import fetch_erc20_balances_by_token_list
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details

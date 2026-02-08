@@ -6,6 +6,8 @@ from decimal import Decimal
 
 from dataclasses_json import dataclass_json
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.utils.accuracy import ZERO_DECIMAL, INTEREST_QUANTITY_EPSILON
 from eth_defi.compat import native_datetime_utc_now

@@ -11,6 +11,7 @@ from typing import Dict, Iterable, Optional, Tuple, List, Set
 
 from dataclasses_json import dataclass_json
 
+from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.types import PrimaryKey
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, AssetFriendlyId
 from tradeexecutor.state.loan import Loan

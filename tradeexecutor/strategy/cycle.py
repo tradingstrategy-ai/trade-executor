@@ -7,6 +7,8 @@ import enum
 from typing import Optional
 
 import pandas as pd
+
+from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.timebucket import TimeBucket
 from eth_defi.compat import native_datetime_utc_now
 

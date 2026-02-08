@@ -3,6 +3,8 @@
 import datetime
 from decimal import Decimal
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier

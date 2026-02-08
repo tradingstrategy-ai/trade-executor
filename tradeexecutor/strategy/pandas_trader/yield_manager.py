@@ -8,6 +8,8 @@ import dataclasses
 from pprint import pformat
 
 from dataclasses_json import dataclass_json
+
+from eth_defi.compat import native_datetime_utc_now
 from fontTools.misc.bezierTools import epsilon
 from tabulate import tabulate
 

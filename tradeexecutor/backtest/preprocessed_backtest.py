@@ -50,6 +50,7 @@ from nbconvert import HTMLExporter
 from nbconvert.preprocessors import ExecutePreprocessor
 import nbformat
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.token import USDT_NATIVE_TOKEN, USDC_NATIVE_TOKEN
 from tradeexecutor.backtest.tearsheet import BacktestReportRunFailed, DEFAULT_CUSTOM_CSS, _inject_custom_css_and_js, DEFAULT_CUSTOM_JS
 from tradeexecutor.strategy.execution_context import python_script_execution_context

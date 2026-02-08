@@ -9,6 +9,7 @@ from typing import Callable, List, Optional, Iterable, Collection
 
 from web3.types import BlockIdentifier
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.wallet import ReserveUpdateEvent

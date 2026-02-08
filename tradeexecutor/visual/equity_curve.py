@@ -9,6 +9,9 @@ from typing import List
 import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
+
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.analysis.curve import DEFAULT_BENCHMARK_COLOURS, CurveType
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition

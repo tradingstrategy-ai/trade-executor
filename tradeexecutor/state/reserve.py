@@ -7,6 +7,8 @@ from typing import Optional, Dict, List, Iterable, Tuple
 
 from dataclasses_json import dataclass_json
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateEventAlreadyAdded
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind

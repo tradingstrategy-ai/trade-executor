@@ -4,6 +4,8 @@ import datetime
 import logging
 from typing import List, Tuple
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from eth_defi.compat import native_datetime_utc_now

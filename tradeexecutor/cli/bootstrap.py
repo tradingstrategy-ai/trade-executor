@@ -10,6 +10,7 @@ from typing import Optional, Tuple, Set, cast
 import pandas as pd
 from eth_typing import HexAddress
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.enzyme.vault import Vault
 from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
 from eth_defi.gas import GasPriceMethod

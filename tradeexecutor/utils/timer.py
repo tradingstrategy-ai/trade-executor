@@ -9,6 +9,8 @@ import logging
 from contextlib import contextmanager
 from eth_defi.compat import native_datetime_utc_now
 
+from eth_defi.compat import native_datetime_utc_now
+
 logger = logging.getLogger(__name__)
 
 

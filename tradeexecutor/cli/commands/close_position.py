@@ -14,6 +14,8 @@ from typing import Optional
 from tabulate import tabulate
 from typer import Option
 
+from eth_defi.compat import native_datetime_utc_now
+
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_client

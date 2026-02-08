@@ -8,6 +8,8 @@ import datetime
 from tabulate import tabulate
 from web3 import Web3
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.analysis.position import display_positions
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.strategy.execution_context import ExecutionContext

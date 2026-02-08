@@ -4,6 +4,8 @@ import datetime
 from decimal import Decimal
 from typing import Tuple, List, Optional
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import UniswapV2LivePricing
 from tradingstrategy.pair import PandasPairUniverse
 from web3 import Web3

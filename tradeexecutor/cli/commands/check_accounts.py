@@ -8,6 +8,7 @@ from typing import Optional
 
 import typer
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
 from tabulate import tabulate
 

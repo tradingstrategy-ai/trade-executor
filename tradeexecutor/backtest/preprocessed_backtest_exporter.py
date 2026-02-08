@@ -8,6 +8,8 @@ import os
 import sys
 from pathlib import Path
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.backtest.preprocessed_backtest import PREPACKAGED_SETS, prepare_dataset, ExportFormat
 from tradeexecutor.cli.log import setup_logging
 from tradingstrategy.client import Client

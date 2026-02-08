@@ -4,6 +4,8 @@ import logging
 
 import pandas as pd
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.liquidity import LiquidityDataUnavailable

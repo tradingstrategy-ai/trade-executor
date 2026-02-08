@@ -16,6 +16,8 @@ import pandas as pd
 from dataclasses_json import dataclass_json
 from jedi.inference.gradual.typing import TypedDict
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, DEFAULT_YEAR
 from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateEventAlreadyAdded
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, TradingPairKind

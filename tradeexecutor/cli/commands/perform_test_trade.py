@@ -17,6 +17,8 @@ from pathlib import Path
 from typing import Optional
 from typer import Option
 
+from eth_defi.compat import native_datetime_utc_now
+
 from .app import app
 from .pair_mapping import parse_pair_data, construct_identifier_from_pair
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \

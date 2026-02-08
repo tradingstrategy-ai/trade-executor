@@ -4,6 +4,7 @@ import datetime
 from decimal import Decimal
 from typing import Optional
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.estimate import estimate_4626_redeem, estimate_4626_deposit
 from eth_defi.erc_4626.vault import ERC4626Vault
 from web3 import Web3

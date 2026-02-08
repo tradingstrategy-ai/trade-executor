@@ -7,6 +7,8 @@ from eth_typing import HexStr
 from web3 import Web3
 from web3.exceptions import TransactionNotFound
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution

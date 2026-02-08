@@ -9,6 +9,8 @@ from typing import Dict, Tuple, Final
 
 import pandas as pd
 
+from eth_defi.compat import native_datetime_utc_now
+
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.candle import GroupedCandleUniverse
