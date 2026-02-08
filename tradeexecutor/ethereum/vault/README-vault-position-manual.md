@@ -341,31 +341,65 @@ For more examples, see these test files:
 
 ## Vault rebalance status
 
-Use `print_vault_rebalance_status()` to display all vaults in the universe with current allocations:
+Use `print_vault_rebalance_status()` to display all vaults in the universe with current allocations.
+
+### Console example
 
 ```python
 from tradeexecutor.analysis.vault_rebalance import print_vault_rebalance_status
 
 # Print vault status to console
 df = print_vault_rebalance_status(state, strategy_universe)
-
-# Or get raw data without printing
-from tradeexecutor.analysis.vault_rebalance import get_vault_rebalance_status
-df, cash = get_vault_rebalance_status(state, strategy_universe)
 ```
 
-Output includes:
-- Current cash balance
-- Total vault value and portfolio value
-- Table of all vaults with:
-  - Vault name and protocol
-  - Position ID (if allocated)
-  - Value in USD
-  - Weight % of portfolio
-  - Number of shares held
-  - 1M CAGR (one month CAGR, if available from vault metadata)
+Example output:
 
-Sorted by largest position first.
+```
+================================================================================
+VAULT REBALANCE STATUS
+================================================================================
+
+Current cash:           $45,230.50
+Total vault value:      $154,769.50
+Total portfolio value:  $200,000.00
+
+Vault Allocations (sorted by value, largest first):
+--------------------------------------------------------------------------------
+Vault                        Protocol   Address              Available  Position ID  Value USD     Weight %  Shares       1M CAGR
+---------------------------  ---------  -------------------  ---------  -----------  ------------  --------  -----------  -------
+IPOR USDC Lending Optimizer  ipor       0x45aa96f0...58216   Yes        1            $85,432.10    42.72%    82,543.2100  8.5%
+Morpho Blue USDC             morpho     0x8eB67A509...7b2c3  Yes        2            $69,337.40    34.67%    67,892.5000  6.2%
+Aave v3 USDC                 aave       0x4e65fE4D...a9f21   Yes        -            $0.00         0.00%     -            4.1%
+
+================================================================================
+```
+
+### Getting raw data
+
+```python
+from tradeexecutor.analysis.vault_rebalance import get_vault_rebalance_status
+
+# Get raw DataFrame without printing
+df, cash = get_vault_rebalance_status(state, strategy_universe)
+
+# Access specific columns
+for _, row in df.iterrows():
+    print(f"{row['Vault']}: ${row['Value USD']:,.2f} ({row['Weight %']:.1f}%)")
+```
+
+### Output columns
+
+- **Vault**: Vault name
+- **Protocol**: Vault protocol slug (ipor, morpho, aave, etc.)
+- **Address**: Vault contract address (truncated for display)
+- **Available**: Whether vault is in current trading universe
+- **Position ID**: Position ID if we have an open position, "-" otherwise
+- **Value USD**: Current position value in USD
+- **Weight %**: Percentage of total portfolio value
+- **Shares**: Number of vault shares held
+- **1M CAGR**: One month annualised return (requires vault metadata from JSON blob)
+
+Results are sorted by value (largest position first).
 
 ## Loading vaults with metadata
 
