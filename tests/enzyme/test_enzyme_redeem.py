@@ -28,6 +28,7 @@ from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
+from eth_defi.compat import native_datetime_utc_now
 
 
 CI = os.environ.get("CI") == "true"
@@ -89,7 +90,7 @@ def test_enzyme_redeem_reserve(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    sync_model.sync_treasury(native_datetime_utc_now(), state)
     assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
@@ -104,7 +105,7 @@ def test_enzyme_redeem_reserve(
     assert usdc.functions.balanceOf(tx_builder.get_erc_20_balance_address()).call() == 250 * 10**6
 
     # Strategy has its reserve balances updated
-    events = sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    events = sync_model.sync_treasury(native_datetime_utc_now(), state)
     assert len(events) == 1  # redemption detected
 
     # Event looks right
@@ -165,7 +166,7 @@ def test_enzyme_redeem_open_position(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    sync_model.sync_treasury(native_datetime_utc_now(), state)
     assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     # Create open WETH/USDC position worth of 100
@@ -204,7 +205,7 @@ def test_enzyme_redeem_open_position(
     assert weth.functions.balanceOf(tx_builder.get_erc_20_balance_address()).call() == pytest.approx(0.031140726347915564 * 10**18)
 
     # Strategy has its reserve balances updated
-    events = sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    events = sync_model.sync_treasury(native_datetime_utc_now(), state)
     assert len(events) == 2  # redemption detected for two assts
 
     # Events looks right

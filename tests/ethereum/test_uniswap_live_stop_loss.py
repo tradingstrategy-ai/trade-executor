@@ -41,6 +41,7 @@ from tradeexecutor.ethereum.universe import create_exchange_universe, create_pai
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_execution_loop_uniswap_v2
 from tradeexecutor.utils.blockchain import get_latest_block_timestamp
+from eth_defi.compat import native_datetime_utc_now
 
 
 #: How much values we allow to drift.
@@ -354,7 +355,7 @@ def test_live_stop_loss(
     weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
     pair = translate_trading_pair(weth_usdc)
 
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    price_structure = pricing_method.get_buy_price(native_datetime_utc_now(), pair, None)
     assert price_structure.price == pytest.approx(1705.12, rel=APPROX_REL)
 
     # Set up an execution loop we can step through
@@ -409,7 +410,7 @@ def test_live_stop_loss(
     prepared_swap_call.transact({"from": deployer})
 
     # ETH price is down $1700 -> $1000
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    price_structure = pricing_method.get_buy_price(native_datetime_utc_now(), pair, None)
     assert price_structure.price == pytest.approx(1009.6430522606291, rel=APPROX_REL)
 
     ts = get_latest_block_timestamp(web3)

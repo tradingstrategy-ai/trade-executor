@@ -14,6 +14,7 @@ from tradeexecutor.utils.timer import timed_task
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.timebucket import TimeBucket
+from eth_defi.compat import native_datetime_utc_now
 
 pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
@@ -75,7 +76,7 @@ def test_decision_trigger_ready_data(persistent_test_client):
         universe,
     )
 
-    assert updated_universe_result.ready_at <=  datetime.datetime.utcnow()
+    assert updated_universe_result.ready_at <=  native_datetime_utc_now()
     assert updated_universe_result.poll_cycles == 1
 
     pair = updated_universe_result.updated_universe.data_universe.pairs.get_single()
@@ -135,7 +136,7 @@ def test_decision_trigger_multipair(persistent_test_client):
         universe,
     )
 
-    assert updated_universe_result.ready_at <= datetime.datetime.utcnow()
+    assert updated_universe_result.ready_at <= native_datetime_utc_now()
     assert updated_universe_result.poll_cycles == 1
 
     for pair in universe.data_universe.pairs.iterate_pairs():
@@ -200,7 +201,7 @@ def test_decision_trigger_lending(persistent_test_client):
         universe,
     )
 
-    assert updated_universe_result.ready_at <=  datetime.datetime.utcnow()
+    assert updated_universe_result.ready_at <=  native_datetime_utc_now()
     assert updated_universe_result.poll_cycles == 1
 
     universe = updated_universe_result.updated_universe.data_universe

@@ -14,6 +14,7 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from eth_defi.compat import native_datetime_utc_now
 
 
 #: Detect Github Actions - disable
@@ -53,12 +54,12 @@ def state_with_starting_positions(
         reserve_token_price=1.0,
     )
     sync_model.sync_treasury(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         supported_reserves=state.portfolio.get_reserve_assets(),
     )
     sync_model.sync_positions(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         strategy_universe=strategy_universe,
         pricing_model=pricing_model,
@@ -88,19 +89,19 @@ def test_keycat_weth_price(
     weth = pair.quote
 
     weth_price = pricing_model.get_exchange_rate(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         weth,
     )
 
     assert 1000 < weth_price < 10_000
 
-    price = pricing_model.get_mid_price(datetime.datetime.utcnow(), pair)
+    price = pricing_model.get_mid_price(native_datetime_utc_now(), pair)
     assert 0.001 < price < 0.3
 
-    price_structure = pricing_model.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(1.0))
+    price_structure = pricing_model.get_buy_price(native_datetime_utc_now(), pair, Decimal(1.0))
     assert 0.001 < price_structure.price < 0.3
 
-    price_structure = pricing_model.get_sell_price(datetime.datetime.utcnow(), pair, Decimal(1.0))
+    price_structure = pricing_model.get_sell_price(native_datetime_utc_now(), pair, Decimal(1.0))
     assert 0.001 < price_structure.price < 0.3
 
 
@@ -129,7 +130,7 @@ def test_velvet_intent_based_open_position_uniswap_v2(
     routing_model = velvet_routing_model
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         universe=velvet_test_vault_strategy_universe,
         state=state,
         pricing_model=velvet_pricing_model,
@@ -153,7 +154,7 @@ def test_velvet_intent_based_open_position_uniswap_v2(
     execution_model.initialize()
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -190,7 +191,7 @@ def test_velvet_intent_based_reduce_position_uniswap_v3(
     routing_model = velvet_routing_model
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         universe=velvet_test_vault_strategy_universe,
         state=state,
         pricing_model=velvet_pricing_model,
@@ -218,7 +219,7 @@ def test_velvet_intent_based_reduce_position_uniswap_v3(
     execution_model.initialize()
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -251,7 +252,7 @@ def test_velvet_intent_based_close_position_uniswap_v3(
     routing_model = velvet_routing_model
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         universe=velvet_test_vault_strategy_universe,
         state=state,
         pricing_model=velvet_pricing_model,
@@ -270,7 +271,7 @@ def test_velvet_intent_based_close_position_uniswap_v3(
     execution_model.initialize()
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -309,7 +310,7 @@ def test_velvet_intent_based_increase_position_uniswap_v3(
     routing_model = velvet_routing_model
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         universe=velvet_test_vault_strategy_universe,
         state=state,
         pricing_model=velvet_pricing_model,
@@ -337,7 +338,7 @@ def test_velvet_intent_based_increase_position_uniswap_v3(
     execution_model.initialize()
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -370,7 +371,7 @@ def test_velvet_intent_based_open_position_many(
     routing_model = velvet_routing_model
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         universe=velvet_test_vault_strategy_universe,
         state=state,
         pricing_model=velvet_pricing_model,
@@ -398,7 +399,7 @@ def test_velvet_intent_based_open_position_many(
     execution_model.initialize()
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -435,7 +436,7 @@ def test_velvet_intent_based_open_many_close_one(
     routing_model = velvet_routing_model
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         universe=velvet_test_vault_strategy_universe,
         state=state,
         pricing_model=velvet_pricing_model,
@@ -463,7 +464,7 @@ def test_velvet_intent_based_open_many_close_one(
     execution_model.initialize()
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -484,7 +485,7 @@ def test_velvet_intent_based_open_many_close_one(
     position = position_manager.get_current_position_for_pair(pair)
     trades += position_manager.close_position(position)
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,

@@ -22,6 +22,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.ethereum.ethereumtrader import EthereumTrader
+from eth_defi.compat import native_datetime_utc_now
 
 
 class UniswapV3TestTrader(EthereumTrader):
@@ -159,7 +160,7 @@ class UniswapV3TestTrader(EthereumTrader):
             reserve_token_address=reserve_asset.address,
         )
 
-        state.start_execution_all(datetime.datetime.utcnow(), trades)
+        state.start_execution_all(native_datetime_utc_now(), trades)
         routing_state = UniswapV3RoutingState(pair_universe, tx_builder)
         routing_model.execute_trades_internal(pair_universe, routing_state, trades)
         
@@ -167,7 +168,7 @@ class UniswapV3TestTrader(EthereumTrader):
         execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=stop_on_execution_failure)
 
         # Clean up failed trades
-        freeze_position_on_failed_trade(datetime.datetime.utcnow(), state, trades)
+        freeze_position_on_failed_trade(native_datetime_utc_now(), state, trades)
 
         success = [t for t in trades if t.is_success()]
         failed = [t for t in trades if t.is_failed()]

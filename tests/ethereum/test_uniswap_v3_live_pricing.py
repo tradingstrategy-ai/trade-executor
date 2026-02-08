@@ -26,6 +26,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.exchange import ExchangeUniverse
+from eth_defi.compat import native_datetime_utc_now
 
 
 #: How much values we allow to drift.
@@ -296,12 +297,12 @@ def test_uniswap_v3_two_leg_buy_price_no_price_impact(
     pair = translate_trading_pair(weth_usdc)
 
     # Get price for "infinite" small trade amount
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    price_structure = pricing_method.get_buy_price(native_datetime_utc_now(), pair, None)
     assert price_structure.price == pytest.approx(1705.1154460381174, rel=APPROX_REL)
     assert price_structure.lp_fee == [0.0003000000000000003] # TODO address floating point errors
     assert price_structure.get_total_lp_fees() == pytest.approx(0.0003000000000000003, rel=APPROX_REL)
 
-    mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
+    mid_price = pricing_method.get_mid_price(native_datetime_utc_now(), pair)
     assert price_structure.price > mid_price
     assert mid_price == pytest.approx(1699.9232380190588, rel=APPROX_REL)
 
@@ -319,10 +320,10 @@ def test_uniswap_v3_two_leg_buy_price_with_price_impact(
     weth_usdc = pair_universe.get_one_pair_from_pandas_universe(exchange.exchange_id, "WETH", "USDC")
     pair = translate_trading_pair(weth_usdc)
 
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(50_000))
+    price_structure = pricing_method.get_buy_price(native_datetime_utc_now(), pair, Decimal(50_000))
     assert price_structure.price == pytest.approx(1755.115346038114, rel=APPROX_REL)
 
-    mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
+    mid_price = pricing_method.get_mid_price(native_datetime_utc_now(), pair)
     assert price_structure.price > mid_price
     assert mid_price == pytest.approx(1699.9232380190588, rel=APPROX_REL)
     
@@ -342,10 +343,10 @@ def test_uniswap_v3_two_leg_sell_price_no_price_impact(
     pair = translate_trading_pair(weth_usdc)
 
     # Get price for "infinite" small trade amount
-    price_structure = pricing_method.get_sell_price(datetime.datetime.utcnow(), pair, None)
+    price_structure = pricing_method.get_sell_price(native_datetime_utc_now(), pair, None)
     assert price_structure.price == pytest.approx(1694.73103, rel=APPROX_REL)
 
-    mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
+    mid_price = pricing_method.get_mid_price(native_datetime_utc_now(), pair)
     assert price_structure.price < mid_price
     assert mid_price == pytest.approx(1699.9232380190588, rel=APPROX_REL)
     
@@ -366,12 +367,12 @@ def test_uniswap_v3_two_leg_sell_price_with_price_impact(
     pair = translate_trading_pair(weth_usdc)
 
     # Sell 50 ETH
-    price_structure = pricing_method.get_sell_price(datetime.datetime.utcnow(), pair, Decimal(50))
+    price_structure = pricing_method.get_sell_price(native_datetime_utc_now(), pair, Decimal(50))
     assert price_structure.price == pytest.approx(1614.42110776, rel=APPROX_REL)
     
     assert price_structure.get_total_lp_fees() == pytest.approx(0.15000000000000013, rel=APPROX_REL)
 
-    mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
+    mid_price = pricing_method.get_mid_price(native_datetime_utc_now(), pair)
     assert price_structure.price < mid_price
     assert mid_price == pytest.approx(1699.9232380190588, rel=APPROX_REL)
 
@@ -429,13 +430,13 @@ def test_uniswap_v3_three_leg_buy_price_with_price_impact(
     )
 
     # Get price for 20_000 USDC
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(20_000))
+    price_structure = pricing_method.get_buy_price(native_datetime_utc_now(), pair, Decimal(20_000))
     assert price_structure.price == pytest.approx(350.0612529665224, rel=APPROX_REL)
     
     # makes sense 20_000 * 0.003 * 2 = 120
     assert price_structure.get_total_lp_fees() == pytest.approx(119.81999999999937, rel=APPROX_REL)
 
-    mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
+    mid_price = pricing_method.get_mid_price(native_datetime_utc_now(), pair)
     assert price_structure.price > mid_price
     assert mid_price == pytest.approx(339.9994284591918, rel=APPROX_REL)
 
@@ -460,13 +461,13 @@ def test_uniswap_v3_three_leg_sell_price_with_price_impact(
     pair = translate_trading_pair(aave_weth)
 
     # Get price for 500 AAVE
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, Decimal(500))
+    price_structure = pricing_method.get_buy_price(native_datetime_utc_now(), pair, Decimal(500))
     assert price_structure.price == pytest.approx(342.2495177609055, rel=APPROX_REL)
     
     # makes sense 500 * 0.003 * 2 = 3
     assert price_structure.get_total_lp_fees() == pytest.approx(2.9954999999999843, rel=APPROX_REL)
 
-    mid_price = pricing_method.get_mid_price(datetime.datetime.utcnow(), pair)
+    mid_price = pricing_method.get_mid_price(native_datetime_utc_now(), pair)
     assert price_structure.price > mid_price
     assert mid_price == pytest.approx(339.9994284591918, rel=APPROX_REL)
 

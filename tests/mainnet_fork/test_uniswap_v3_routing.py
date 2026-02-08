@@ -46,6 +46,7 @@ from tradeexecutor.strategy.trading_strategy_universe import (
 from tradeexecutor.testing.pairuniversetrader import PairUniverseTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
+from eth_defi.compat import native_datetime_utc_now
 
 
 pytestmark = pytest.mark.skipif(
@@ -216,7 +217,7 @@ def state(web3, hot_wallet, usdc_asset) -> State:
     state = State()
 
     events = sync_reserves(
-        web3, datetime.datetime.utcnow(), hot_wallet.address, [], [usdc_asset]
+        web3, native_datetime_utc_now(), hot_wallet.address, [], [usdc_asset]
     )
     assert len(events) > 0
     apply_reserve_update_events(state, events)
@@ -718,7 +719,7 @@ def test_stateful_routing_three_legs(
     assert t.reserve_currency == usdc_asset
     assert t.pair == eth_matic_trading_pair
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
@@ -745,7 +746,7 @@ def test_stateful_routing_three_legs(
     assert t.pair == eth_matic_trading_pair
     assert t.planned_quantity == -eth_position.get_quantity()
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
@@ -798,7 +799,7 @@ def test_stateful_routing_two_legs(
     assert t.reserve_currency == usdc_asset
     assert t.pair == eth_usdc_trading_pair
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
@@ -825,7 +826,7 @@ def test_stateful_routing_two_legs(
     assert t.pair == eth_usdc_trading_pair
     assert t.planned_quantity == -eth_position.get_quantity()
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
@@ -886,7 +887,7 @@ def test_stateful_routing_two_leg_multi_node_broadcast(
     assert t.reserve_currency == usdc_asset
     assert t.pair == eth_usdc_trading_pair
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
@@ -913,7 +914,7 @@ def test_stateful_routing_two_leg_multi_node_broadcast(
     assert t.pair == eth_usdc_trading_pair
     assert t.planned_quantity == -eth_position.get_quantity()
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
@@ -980,7 +981,7 @@ def test_stateful_routing_two_leg_multi_node_broadcast_force_mev_blocker(
     assert t.reserve_currency == usdc_asset
     assert t.pair == eth_usdc_trading_pair
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )
@@ -1007,7 +1008,7 @@ def test_stateful_routing_two_leg_multi_node_broadcast_force_mev_blocker(
     assert t.pair == eth_usdc_trading_pair
     assert t.planned_quantity == -eth_position.get_quantity()
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(
         pair_universe, routing_state, trades, check_balances=True
     )

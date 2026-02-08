@@ -49,6 +49,7 @@ from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.asset import build_expected_asset_map
 from tradeexecutor.strategy.sync_model import SyncModel
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -542,7 +543,7 @@ def apply_accounting_correction(
     # Bump our last updated date
     accounting = state.sync.accounting
     accounting.balance_update_refs.append(ref)
-    accounting.last_updated_at = datetime.datetime.utcnow()
+    accounting.last_updated_at = native_datetime_utc_now()
     accounting.last_block_scanned = evt.block_number
 
     return evt
@@ -824,7 +825,7 @@ def open_missing_spot_position(
 
     """
     logger.info("Open missing spot position for correction: %s", correction)
-    timestamp = datetime.datetime.utcnow()
+    timestamp = native_datetime_utc_now()
     return open_missing_spot_position_direct(
         strategy_universe,
         state,
@@ -871,7 +872,7 @@ def open_missing_credit_position(
 
     notes = f"Creating an account correction position for tokens that did not have open position: {correction}"
 
-    timestamp = datetime.datetime.utcnow()
+    timestamp = native_datetime_utc_now()
     position_manager = PositionManager(timestamp, strategy_universe, state, pricing_model)
     interest_rate = strategy_universe.get_latest_supply_apr(pair.quote, timestamp)
     value = float(quantity)  # Assume USD loan

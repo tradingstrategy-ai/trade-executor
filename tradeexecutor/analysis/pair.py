@@ -8,6 +8,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.liquidity import LiquidityDataUnavailable
 from tradingstrategy.timebucket import TimeBucket
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -89,7 +90,7 @@ def display_strategy_universe(
     pairs = []
 
     if not now_:
-        now_ = datetime.datetime.utcnow()
+        now_ = native_datetime_utc_now()
 
     if strategy_universe.data_universe.time_bucket != TimeBucket.not_applicable:
         candle_now = strategy_universe.data_universe.time_bucket.floor(pd.Timestamp(now_))

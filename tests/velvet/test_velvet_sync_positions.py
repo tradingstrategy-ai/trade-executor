@@ -25,6 +25,7 @@ from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
+from eth_defi.compat import native_datetime_utc_now
 
 #: Detect Github Actions
 CI = os.environ.get("CI", None) is not None
@@ -67,7 +68,7 @@ def test_check_price_on_base_uniswap_v3(
     # Read DogMeIn/USDC pool price
     # Note this pool lacks liquidity, so we do not care about the value
     mid_price = pricing_model.get_mid_price(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         pair,
     )
 
@@ -146,13 +147,13 @@ def test_velvet_sync_positions_initial(
         reserve_asset=base_usdc,
         reserve_token_price=1.0,
     )
-    cycle = datetime.datetime.utcnow()
+    cycle = native_datetime_utc_now()
     sync_model.sync_treasury(cycle, state)
     assert portfolio.get_cash() == pytest.approx(2.674828)
 
     # Sync DogInMe - creates initial position no event generated
     events = sync_model.sync_positions(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         strategy_universe=strategy_universe,
         pricing_model=pricing_model,
@@ -208,12 +209,12 @@ def test_velvet_sync_positions_deposit(
         reserve_token_price=1.0,
     )
     sync_model.sync_treasury(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         supported_reserves=state.portfolio.get_reserve_assets(),
     )
     sync_model.sync_positions(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         strategy_universe=strategy_universe,
         pricing_model=pricing_model,
@@ -255,7 +256,7 @@ def test_velvet_sync_positions_deposit(
 
     # Check USDC update
     events = sync_model.sync_treasury(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         supported_reserves=state.portfolio.get_reserve_assets(),
     )
@@ -273,7 +274,7 @@ def test_velvet_sync_positions_deposit(
     # Check DogInMe update,
     # quantity has increased
     events = sync_model.sync_positions(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         strategy_universe=strategy_universe,
         pricing_model=pricing_model,
@@ -331,12 +332,12 @@ def test_velvet_sync_positions_redeem(
         reserve_token_price=1.0,
     )
     sync_model.sync_treasury(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         supported_reserves=state.portfolio.get_reserve_assets(),
     )
     sync_model.sync_positions(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         strategy_universe=strategy_universe,
         pricing_model=pricing_model,
@@ -371,7 +372,7 @@ def test_velvet_sync_positions_redeem(
 
     # Check USDC update
     events = sync_model.sync_treasury(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         supported_reserves=state.portfolio.get_reserve_assets(),
     )
@@ -389,7 +390,7 @@ def test_velvet_sync_positions_redeem(
     # Check DogInMe update,
     # quantity has increased
     events = sync_model.sync_positions(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         strategy_universe=strategy_universe,
         pricing_model=pricing_model,

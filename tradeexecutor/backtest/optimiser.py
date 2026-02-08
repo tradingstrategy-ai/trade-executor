@@ -37,6 +37,7 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol4
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -605,7 +606,7 @@ def perform_optimisation(
     if log_level is not None:
         setup_notebook_logging(log_level)
 
-    start = datetime.datetime.utcnow()
+    start = native_datetime_utc_now()
 
     # Resolve CPU count
     if callable(max_workers):
@@ -679,7 +680,7 @@ def perform_optimisation(
     with tqdm(total=iterations, desc=f"Optimising {name}, search space is {len(search_space)} variables, using {max_workers} CPUs") as progress_bar:
         for i in range(0, iterations):
 
-            iteration_started = datetime.datetime.utcnow()
+            iteration_started = native_datetime_utc_now()
 
             with warnings.catch_warnings():
                 # Ignore warning when we too close to optimal:
@@ -712,12 +713,12 @@ def perform_optimisation(
             # and unpack our data structure
             optimizer.tell(x, filtered_y)
 
-            iteration_duration = datetime.datetime.utcnow() - iteration_started
+            iteration_duration = native_datetime_utc_now() - iteration_started
 
             result: OptimiserSearchResult
             for result in y:
                 result.hydrate()  # Load grid search result data from the disk
-                result.result.delivered_to_main_thread_at = datetime.datetime.utcnow()
+                result.result.delivered_to_main_thread_at = native_datetime_utc_now()
                 result.iteration_duration = iteration_duration
                 result.iteration = i
                 all_results.append(result)
@@ -737,7 +738,7 @@ def perform_optimisation(
     logger.info("The best result for the optimiser value was %s", best_so_far)
 
     all_results.sort()
-    duration = datetime.datetime.utcnow() - start
+    duration = native_datetime_utc_now() - start
     logger.info("Optimiser search finished in %s, calculated %d results", duration, len(all_results))
     return OptimiserResult(
         parameters=parameters,

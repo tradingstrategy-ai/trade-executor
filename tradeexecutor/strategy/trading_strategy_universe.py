@@ -49,6 +49,7 @@ from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import call_cr
 from tradeexecutor.strategy.parameters import StrategyParameters
 
 from tradeexecutor.strategy.dex_data_translation import translate_trading_pair, translate_credit_reserve, translate_token
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -2426,7 +2427,7 @@ def load_partial_data(
 
     # Where the data loading start can come from the hard backtesting range (start - end)
     # or how many days of historical data we ask for
-    data_load_start_at = start_at or (datetime.datetime.utcnow() - required_history_period)
+    data_load_start_at = start_at or (native_datetime_utc_now() - required_history_period)
 
     # Generate a rounded range of the latest data
     if round_start_end and execution_context.mode.is_live_trading():
@@ -2444,7 +2445,7 @@ def load_partial_data(
 
         start_at = data_load_start_at = floored_start
         if not end_at:
-            end_at = datetime.datetime.utcnow()
+            end_at = native_datetime_utc_now()
             floored_end = flooring_time_bucket.floor_datetime(end_at)
             logger.info(
                 "Floored end timestamp %s -> %s for bucket %s",
@@ -2843,7 +2844,7 @@ def load_pair_data_for_single_exchange(
 
         if required_history_period is not None:
             assert start_time is None, "You cannot give both start_time and required_history_period"
-            start_time = datetime.datetime.utcnow() - required_history_period
+            start_time = native_datetime_utc_now() - required_history_period
 
         candles = client.fetch_candles_by_pair_ids(
             our_pair_ids,
@@ -2978,7 +2979,7 @@ def load_trading_and_lending_data(
         pair = data_universe.pairs.get_pair_by_human_description(trading_pair)
         price_feed = data_universe.candles.get_candles_by_pair(pair.pair_id)
 
-        two_days_ago = pd.Timestamp(datetime.datetime.utcnow() - datetime.timedelta(days=2)).floor("D")
+        two_days_ago = pd.Timestamp(native_datetime_utc_now() - datetime.timedelta(days=2)).floor("D")
         assert rates["open"][two_days_ago] > 0
         assert rates["open"][two_days_ago] < 10  # Erdogan warnings
         assert price_feed["open"][two_days_ago] > 0

@@ -29,6 +29,7 @@ from ...strategy.run_state import RunState
 from ...strategy.strategy_module import StrategyModuleInformation, read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
+from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
@@ -149,7 +150,7 @@ def blacklist(
 
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
     strategy_universe = universe_model.construct_universe(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         execution_context.mode,
         UniverseOptions(history_period=mod.get_live_trading_history_period()),
     )

@@ -18,6 +18,7 @@ from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.webhook.server import create_webhook_server
+from eth_defi.compat import native_datetime_utc_now
 
 
 @pytest.fixture()
@@ -49,7 +50,7 @@ def server_url(store):
         "Short desc",
         "Long desc",
         None,
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         True,
         badges=Metadata.parse_badges_configuration("polygon, metamask, eth, usdc"),
         tags={StrategyTag.beta},

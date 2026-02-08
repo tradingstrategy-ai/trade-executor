@@ -12,6 +12,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ def rebroadcast_all(
             assert t.blockchain_transactions, f"Trade marked unfinished, did not have any txs: {t}"
             for tx in t.blockchain_transactions:
 
-                now = datetime.datetime.utcnow()
+                now = native_datetime_utc_now()
                 t.add_note(f"Rebroadcasting transaction at {now}")
 
                 # TODO: we should call make_trade_success() / failed here directly,
@@ -64,7 +65,7 @@ def rebroadcast_all(
     logger.info("%d unfinished trades, %d total trades", len(trades), len(all_trades))
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,

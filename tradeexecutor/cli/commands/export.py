@@ -9,6 +9,7 @@ from typer.core import TyperOption
 from typer.main import get_command_from_info
 
 from tradeexecutor.cli.commands.app import app
+from eth_defi.compat import native_datetime_utc_now
 
 
 def walk_all_typer_options(app: Typer) -> Iterable[TyperOption]:
@@ -47,7 +48,7 @@ def export():
 
     env_var_set = set()
 
-    print(f"# Trade executor settings export, created {datetime.datetime.utcnow()} UTC")
+    print(f"# Trade executor settings export, created {native_datetime_utc_now()} UTC")
     print("# ")
     print("# Save to a local file and then import with Bash source command")
     print("# ")

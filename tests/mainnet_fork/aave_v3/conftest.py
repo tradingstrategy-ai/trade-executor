@@ -29,6 +29,7 @@ from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import default_universe_options
 from tradeexecutor.state.identifier import AssetIdentifier
+from eth_defi.compat import native_datetime_utc_now
 
 
 
@@ -214,7 +215,7 @@ def generic_valuation_model(pair_configurator) -> GenericValuation:
 #     state = State()
 
 #     events = sync_reserves(
-#         web3, datetime.datetime.utcnow(), hot_wallet.address, [], [asset_usdc]
+#         web3, native_datetime_utc_now(), hot_wallet.address, [], [asset_usdc]
 #     )
 #     assert len(events) > 0
 #     apply_sync_events(state, events)

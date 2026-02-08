@@ -25,6 +25,7 @@ from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.runner import post_process_trade_decision
+from eth_defi.compat import native_datetime_utc_now
 
 
 pytestmark = pytest.mark.skipif(
@@ -75,7 +76,7 @@ def test_generic_routing_open_position_across_markets(
     sync_model.sync_initial(state)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state, supported_reserves=[asset_usdc])
+    sync_model.sync_treasury(native_datetime_utc_now(), state, supported_reserves=[asset_usdc])
 
     assert state.portfolio.get_reserve_position(asset_usdc).quantity == Decimal('10_000')
 
@@ -84,7 +85,7 @@ def test_generic_routing_open_position_across_markets(
     routing_state = routing_model.create_routing_state(strategy_universe, routing_state_details)
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         strategy_universe,
         state,
         generic_pricing_model
@@ -96,7 +97,7 @@ def test_generic_routing_open_position_across_markets(
         100.0,
     )
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -111,7 +112,7 @@ def test_generic_routing_open_position_across_markets(
         100.0,
     )
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -127,7 +128,7 @@ def test_generic_routing_open_position_across_markets(
         leverage=2.0,
     )
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -189,7 +190,7 @@ def test_generic_routing_close_position_across_markets(
     sync_model.sync_initial(state)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state, supported_reserves=[asset_usdc])
+    sync_model.sync_treasury(native_datetime_utc_now(), state, supported_reserves=[asset_usdc])
 
     assert state.portfolio.get_reserve_position(asset_usdc).quantity == Decimal('10_000')
 
@@ -199,7 +200,7 @@ def test_generic_routing_close_position_across_markets(
 
     # Open all positions
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         strategy_universe,
         state,
         generic_pricing_model
@@ -218,7 +219,7 @@ def test_generic_routing_close_position_across_markets(
         leverage=2.0,
     )
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -244,7 +245,7 @@ def test_generic_routing_close_position_across_markets(
 
     # Close all positions
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         strategy_universe,
         state,
         generic_pricing_model
@@ -267,7 +268,7 @@ def test_generic_routing_close_position_across_markets(
     assert short_close.executed_loan_update is None
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -349,7 +350,7 @@ def test_generic_routing_check_accounts(
     sync_model.sync_initial(state)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state, supported_reserves=[asset_usdc])
+    sync_model.sync_treasury(native_datetime_utc_now(), state, supported_reserves=[asset_usdc])
 
     assert state.portfolio.get_reserve_position(asset_usdc).quantity == Decimal('10_000')
 
@@ -358,7 +359,7 @@ def test_generic_routing_check_accounts(
     routing_state = routing_model.create_routing_state(strategy_universe, routing_state_details)
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         strategy_universe,
         state,
         generic_pricing_model
@@ -370,7 +371,7 @@ def test_generic_routing_check_accounts(
         100.0,
     )
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -386,7 +387,7 @@ def test_generic_routing_check_accounts(
         leverage=2.0,
     )
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,

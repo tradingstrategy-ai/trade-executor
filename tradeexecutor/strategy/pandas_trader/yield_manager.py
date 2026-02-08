@@ -20,6 +20,7 @@ from tradeexecutor.state.types import USDollarAmount, Percent
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.tvl_size_risk import BaseTVLSizeRiskModel
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -483,7 +484,7 @@ class YieldManager:
                 # Generate a size risk entry where there is no size risk at all
                 # because we need to dump the remaining money on this position
                 size_risk = SizeRisk(
-                    timestamp=datetime.datetime.utcnow(),
+                    timestamp=native_datetime_utc_now(),
                     pair=rule.pair,
                     sizing_type=SizingType.hold,
                     path=[rule.pair],

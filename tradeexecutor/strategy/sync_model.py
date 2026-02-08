@@ -22,6 +22,7 @@ from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import JSONHexAddress, BlockNumber
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.pricing_model import PricingModel
+from eth_defi.compat import native_datetime_utc_now
 
 # Prototype sync method that is not applicable to the future production usage
 SyncMethodV0 = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], List[ReserveUpdateEvent]]
@@ -277,11 +278,11 @@ class DummySyncModel(SyncModel):
     ) -> List[BalanceUpdate]:
         assert end_block is None, "Dummy does not understand end_block"
         if not self.fake_sync_done:
-            state.sync.treasury.last_updated_at = datetime.datetime.utcnow()
+            state.sync.treasury.last_updated_at = native_datetime_utc_now()
             state.sync.treasury.last_cycle_at = strategy_cycle_ts
             ref = BalanceEventRef(
                 0,
-                datetime.datetime.utcnow(),
+                native_datetime_utc_now(),
                 BalanceUpdateCause.deposit,
                 BalanceUpdatePositionType.open_position,
                 None,

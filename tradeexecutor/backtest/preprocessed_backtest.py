@@ -64,6 +64,7 @@ from tradingstrategy.types import USDollarAmount, Percent
 from tradingstrategy.utils.token_extra_data import load_token_metadata
 from tradingstrategy.utils.token_filter import filter_pairs_default, filter_by_token_sniffer_score, deduplicate_pairs_by_volume, add_base_quote_address_columns
 from tradingstrategy.utils.wrangle import fix_dex_price_data
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -294,7 +295,7 @@ def prepare_dataset(
     - Write to a parquet file
     """
 
-    started = datetime.datetime.utcnow()
+    started = native_datetime_utc_now()
 
     logger.info("Preparing dataset %s", dataset.slug)
 
@@ -601,7 +602,7 @@ def prepare_dataset(
             strategy_universe=strategy_universe,
         )
 
-    saved_dataset.duration = datetime.datetime.utcnow() - started
+    saved_dataset.duration = native_datetime_utc_now() - started
 
     pickle_file = output_folder / f"{dataset.slug}.dataset-pickle"
     with open(pickle_file, "wb") as f:

@@ -21,6 +21,7 @@ import pytest
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.cli.log import setup_pytest_logging
+from eth_defi.compat import native_datetime_utc_now
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON"), reason="Set POLYGON_JSON_RPC environment variable to run this test")
@@ -40,7 +41,7 @@ def logger(request):
 
 temp_disable = datetime.datetime(2025, 2, 15)
 
-@pytest.mark.skipif(datetime.datetime.utcnow() < temp_disable, reason="Temporary disabled, oracle server having an issue")
+@pytest.mark.skipif(native_datetime_utc_now() < temp_disable, reason="Temporary disabled, oracle server having an issue")
 @pytest.mark.skipif(os.environ.get("SKIP_SLOW_TEST"), reason="Slow tests skipping enabled")
 @pytest.mark.skipif(os.environ.get("CI") == "true", reason="Very slow and flaky, do not run on CI")
 @pytest.mark.slow_test_group

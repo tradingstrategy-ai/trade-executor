@@ -19,6 +19,7 @@ from tradeexecutor.strategy.asset import AssetToPositionsMapping
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.sync_model import OnChainBalance
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from eth_defi.compat import native_datetime_utc_now
 
 
 def apply_reserve_update_events(
@@ -109,7 +110,7 @@ def apply_reserve_update_events(
         balance_update_events.append(bu)
         treasury_sync.balance_update_refs.append(ref)
 
-    treasury_sync.last_updated_at = datetime.datetime.utcnow()
+    treasury_sync.last_updated_at = native_datetime_utc_now()
     return balance_update_events
 
 
@@ -240,7 +241,7 @@ def apply_balance_update_events(
 
     if block_number:
         accounting = state.sync.accounting
-        accounting.last_updated_at = datetime.datetime.utcnow()
+        accounting.last_updated_at = native_datetime_utc_now()
         accounting.last_block_scanned = block_number
 
     return events

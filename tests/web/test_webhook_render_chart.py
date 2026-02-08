@@ -32,6 +32,7 @@ from tradeexecutor.testing.synthetic_universe_data import create_synthetic_singl
 from tradeexecutor.webhook.server import create_webhook_server
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
+from eth_defi.compat import native_datetime_utc_now
 
 
 @pytest.fixture()
@@ -164,7 +165,7 @@ def server_url(store, chart_registry, strategy_input_indicators):
         "Short desc",
         "Long desc",
         None,
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         True,
         badges=Metadata.parse_badges_configuration("polygon, metamask, eth, usdc"),
         tags={StrategyTag.beta},

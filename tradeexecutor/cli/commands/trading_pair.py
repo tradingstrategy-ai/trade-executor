@@ -18,6 +18,7 @@ from ...state.identifier import TradingPairIdentifier
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.execution_context import console_command_execution_context
 from ...strategy.trading_strategy_universe import TradingStrategyUniverse
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ def trading_pair(
     universe_model = universe_init.universe_model
     universe_options = universe_init.universe_options
 
-    ts = datetime.datetime.utcnow()
+    ts = native_datetime_utc_now()
     logger.info("Performing universe data check for timestamp %s", ts)
     strategy_universe = universe_model.construct_universe(
         ts,

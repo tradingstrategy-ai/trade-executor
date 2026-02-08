@@ -37,7 +37,7 @@ def call_create_trading_universe(
         case 1:
             # Legacy path
             return create_trading_universe(
-                timestamp or pd.Timestamp.now(),
+                timestamp or pd.Timestamp.utcnow().tz_localize(None),
                 client,
                 execution_context,
                 universe_options=universe_options,
@@ -46,7 +46,7 @@ def call_create_trading_universe(
             # New path using extensible dataclass as args
             input = CreateTradingUniverseInput(
                 client=client,
-                timestamp=timestamp or pd.Timestamp.now(),
+                timestamp=timestamp or pd.Timestamp.utcnow().tz_localize(None),
                 parameters=strategy_parameters,
                 execution_context=execution_context,
                 execution_model=execution_model,

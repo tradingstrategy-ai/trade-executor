@@ -18,6 +18,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.statistics.core import calculate_statistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from eth_defi.compat import native_datetime_utc_now
 
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
@@ -60,7 +61,7 @@ def test_lagoon_treasury_initialise(
     assert reserve_position.asset.get_identifier() == "8453-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
 
     # No initial deposits
-    cycle = datetime.datetime.utcnow()
+    cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(cycle, state)
     assert len(events) == 0
     assert treasury.last_block_scanned is None
@@ -109,7 +110,7 @@ def test_lagoon_sync_deposit(
     assert usdc.fetch_balance_of(vault.silo_address) == pytest.approx(Decimal(9))
 
     # Process the initial deposits
-    cycle = datetime.datetime.utcnow()
+    cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(cycle, state, post_valuation=True)
     treasury = state.sync.treasury
     reserve_position = state.portfolio.get_default_reserve_position()
@@ -196,7 +197,7 @@ def test_lagoon_sync_redeem(
     assert usdc.fetch_balance_of(vault.silo_address) == pytest.approx(Decimal(9))
 
     # Process the initial deposits
-    cycle = datetime.datetime.utcnow()
+    cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(cycle, state, post_valuation=True)
     assert len(events) == 1
 

@@ -11,6 +11,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from eth_defi.compat import native_datetime_utc_now
 
 
 @pytest.fixture()
@@ -92,8 +93,8 @@ def test_vault_position_valuation(
     position = TradingPosition(
         position_id=1,
         pair=ipor_usdc,
-        opened_at=datetime.datetime.utcnow(),
-        last_pricing_at=datetime.datetime.utcnow(),
+        opened_at=native_datetime_utc_now(),
+        last_pricing_at=native_datetime_utc_now(),
         last_token_price=1.0,
         last_reserve_price=1.0,
         last_trade_at=1.0,
@@ -103,9 +104,9 @@ def test_vault_position_valuation(
                 trade_id=1,
                 position_id=1,
                 trade_type=TradeType.rebalance,
-                opened_at=datetime.datetime.utcnow(),
+                opened_at=native_datetime_utc_now(),
                 pair=ipor_usdc,
-                executed_at=datetime.datetime.utcnow(),
+                executed_at=native_datetime_utc_now(),
                 executed_quantity=Decimal(100),
                 planned_quantity=Decimal(100),
                 planned_reserve=Decimal(100),

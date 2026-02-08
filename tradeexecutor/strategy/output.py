@@ -8,6 +8,7 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount
+from eth_defi.compat import native_datetime_utc_now
 
 #: See setup_discord_logging()
 DISCORD_BREAK_CHAR = "…"
@@ -101,7 +102,7 @@ def format_position(
     if position.is_open():
         duration = position.get_duration()
     else:
-        duration = datetime.datetime.utcnow() - position.opened_at
+        duration = native_datetime_utc_now() - position.opened_at
 
     if duration:
         duration_str = f"age: {duration}",

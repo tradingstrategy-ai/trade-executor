@@ -12,6 +12,7 @@ from typing import Callable
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ class ExchangeAccountPricingModel(PricingModel):
             pair_fee=[0.0],
             side=True,  # Buy
             path=[pair],
-            read_at=datetime.datetime.utcnow(),
+            read_at=native_datetime_utc_now(),
             block_number=None,
             token_in=reserve,
             token_out=reserve,
@@ -123,7 +124,7 @@ class ExchangeAccountPricingModel(PricingModel):
             pair_fee=[0.0],
             side=False,  # Sell
             path=[pair],
-            read_at=datetime.datetime.utcnow(),
+            read_at=native_datetime_utc_now(),
             block_number=None,
             token_in=quantity,
             token_out=quantity,

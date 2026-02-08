@@ -16,6 +16,7 @@ from dataclasses_json.core import _ExtendedEncoder
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.validator import validate_nested_state_dict
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -103,7 +104,7 @@ class JSONFileStore(StateStore):
         temp = tempfile.NamedTemporaryFile(mode='wt', delete=False, dir=dirname)
         with temp as out:
 
-            state.last_updated_at = datetime.datetime.utcnow()
+            state.last_updated_at = native_datetime_utc_now()
 
             # Insert special validation logic here to have
             # friendly error messages for the JSON serialisation errors
@@ -183,7 +184,7 @@ class NoneStore(StateStore):
 
     def sync(self, state: State):
         """Do not persist anything."""
-        state.last_updated_at = datetime.datetime.utcnow()
+        state.last_updated_at = native_datetime_utc_now()
 
     def create(self) -> State:
         raise NotImplementedError("This should not be called for NoneStore.\n"

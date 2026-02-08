@@ -35,6 +35,7 @@ from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.state.trade import TradeExecution
 from tradingstrategy.universe import Universe
 from tradingstrategy.utils.groupeduniverse import resample_candles
+from eth_defi.compat import native_datetime_utc_now
 
 
 @pytest.fixture(scope="module")
@@ -290,7 +291,7 @@ def test_market_limit_take_profit_strategy_price_level(strategy_universe, tmp_pa
     calculate_summary_statistics(
         state,
         ExecutionMode.unit_testing_trading,
-        now_=datetime.datetime.utcnow(),
+        now_=native_datetime_utc_now(),
     )
 
 
@@ -329,6 +330,6 @@ def test_market_limit_take_profit_strategy_since_open(strategy_universe, tmp_pat
     calculate_summary_statistics(
         state,
         ExecutionMode.unit_testing_trading,
-        now_=datetime.datetime.utcnow(),
+        now_=native_datetime_utc_now(),
     )
 

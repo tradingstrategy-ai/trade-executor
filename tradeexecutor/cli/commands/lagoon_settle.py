@@ -22,6 +22,7 @@ from ...strategy.strategy_module import read_strategy_module, StrategyModuleInfo
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...utils.timer import timed_task
 from tradeexecutor.cli.settle_vault import settle_vault
+from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
@@ -158,7 +159,7 @@ def lagoon_settle(
 
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
-    ts = datetime.datetime.utcnow()
+    ts = native_datetime_utc_now()
     universe = universe_model.construct_universe(
         ts,
         execution_context.mode,

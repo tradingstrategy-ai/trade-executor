@@ -47,6 +47,7 @@ from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.utils.blockchain import get_latest_block_timestamp
 from tradeexecutor.visual.image_output import open_plotly_figure_in_browser, open_bytes_in_browser
 from tradeexecutor.statistics.summary import calculate_summary_statistics
+from eth_defi.compat import native_datetime_utc_now
 
 
 #: How much values we allow to drift.
@@ -391,7 +392,7 @@ def test_live_stop_loss(
     # Check that our preflight checks pass
     routing_model.perform_preflight_checks_and_logging(pair_universe)
 
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    price_structure = pricing_method.get_buy_price(native_datetime_utc_now(), pair, None)
     assert price_structure.price == pytest.approx(1705.12, rel=APPROX_REL)
 
     # Set up an execution loop we can step through
@@ -448,7 +449,7 @@ def test_live_stop_loss(
     prepared_swap_call.transact({"from": deployer})
 
     # ETH price is down $1700 -> $1000
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    price_structure = pricing_method.get_buy_price(native_datetime_utc_now(), pair, None)
     assert price_structure.price == pytest.approx(1011.2548284709007, rel=APPROX_REL)
 
     ts = get_latest_block_timestamp(web3)

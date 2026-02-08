@@ -22,6 +22,7 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.ethereum.ethereumtrader import EthereumTrader, get_base_quote_contracts
 from tradeexecutor.strategy.routing import RoutingModel
+from eth_defi.compat import native_datetime_utc_now
 
 
 class UniswapV2TestTrader(EthereumTrader):
@@ -86,7 +87,7 @@ class UniswapV2TestTrader(EthereumTrader):
         base_token, quote_token = get_base_quote_contracts(self.web3, pair)
 
         if self.pricing_model:
-            price_structure = self.pricing_model.get_buy_price(datetime.datetime.utcnow(), pair, amount_in_usd)
+            price_structure = self.pricing_model.get_buy_price(native_datetime_utc_now(), pair, amount_in_usd)
             assumed_price = price_structure.price
             estimated_lp_fees = price_structure.get_total_lp_fees()
             assumed_quantity = None
@@ -134,7 +135,7 @@ class UniswapV2TestTrader(EthereumTrader):
         base_token, quote_token = get_base_quote_contracts(self.web3, pair)
 
         if self.pricing_model:
-            price_structure = self.pricing_model.get_sell_price(datetime.datetime.utcnow(), pair, quantity)
+            price_structure = self.pricing_model.get_sell_price(native_datetime_utc_now(), pair, quantity)
             assumed_price = price_structure.price
             estimated_lp_fees = price_structure.get_total_lp_fees()
         else:
@@ -205,7 +206,7 @@ class UniswapV2TestTrader(EthereumTrader):
 
         routing_model = self.create_routing_model()
 
-        state.start_execution_all(datetime.datetime.utcnow(), trades)
+        state.start_execution_all(native_datetime_utc_now(), trades)
         routing_state = UniswapV2RoutingState(pair_universe, self.tx_builder)
         routing_model.execute_trades_internal(pair_universe, routing_state, trades)
 
@@ -223,7 +224,7 @@ class UniswapV2TestTrader(EthereumTrader):
         execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=stop_on_execution_failure)
 
         # Clean up failed trades
-        freeze_position_on_failed_trade(datetime.datetime.utcnow(), state, trades)
+        freeze_position_on_failed_trade(native_datetime_utc_now(), state, trades)
 
         success = [t for t in trades if t.is_success()]
         failed = [t for t in trades if t.is_failed()]

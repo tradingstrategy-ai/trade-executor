@@ -17,6 +17,7 @@ from tradeexecutor.strategy.chart.definition import ChartRegistry
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.summary import StrategySummaryStatistics
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from eth_defi.compat import native_datetime_utc_now
 
 
 class ExceptionData(TypedDict):
@@ -75,7 +76,7 @@ class LatestStateVisualisation:
         self.small_image_png = small_image_png
         self.large_image_png = large_image_png
 
-        self.last_refreshed_at = datetime.datetime.utcnow()
+        self.last_refreshed_at = native_datetime_utc_now()
 
 
 @dataclass_json
@@ -247,14 +248,14 @@ class RunState:
         generates as exceptino data for it so webhook can export it.
         """
         self.exception = self.serialise_exception()
-        self.last_refreshed_at = self.crashed_at = datetime.datetime.utcnow()
+        self.last_refreshed_at = self.crashed_at = native_datetime_utc_now()
         self.executor_running = False
 
     def update_complete_cycle(self, cycle: int):
         self.completed_cycle = cycle
 
     def bumb_refreshed(self):
-        self.last_refreshed_at = datetime.datetime.utcnow()
+        self.last_refreshed_at = native_datetime_utc_now()
 
     def make_exportable_copy(self) -> "RunState":
         """Make a JSON serializable copy.

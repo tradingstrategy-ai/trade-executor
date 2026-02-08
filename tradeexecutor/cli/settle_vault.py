@@ -21,6 +21,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ def settle_vault(
 
     assert isinstance(sync_model, LagoonVaultSyncModel), f"Only Lagoon vaults supported, got {sync_model}"
 
-    ts = datetime.datetime.utcnow()
+    ts = native_datetime_utc_now()
 
     # Sync nonce for the hot wallet
     execution_model.initialize()

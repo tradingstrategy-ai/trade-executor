@@ -12,6 +12,7 @@ from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateE
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.utils.accuracy import sum_decimal
+from eth_defi.compat import native_datetime_utc_now
 
 
 @dataclass_json
@@ -130,8 +131,8 @@ class ReservePosition(GenericPosition):
         quantity = self.get_base_token_balance_update_quantity()
         self.quantity = quantity
         self.reserve_token_price = exchange_rate
-        self.last_pricing_at = datetime.datetime.utcnow()
-        self.last_sync_at = datetime.datetime.utcnow()
+        self.last_pricing_at = native_datetime_utc_now()
+        self.last_sync_at = native_datetime_utc_now()
 
     def calculate_quantity_usd_value(self, quantity: Decimal) -> USDollarAmount:
         """Return the quantity

@@ -34,6 +34,7 @@ from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.valuation import revalue_state
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
+from eth_defi.compat import native_datetime_utc_now
 
 
 @pytest.fixture
@@ -451,7 +452,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
         state, None
     )
     
-    update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+    update_statistics(native_datetime_utc_now(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
     
     stats = state.stats
     portfolio_stats = stats.get_latest_portfolio_stats()
@@ -488,7 +489,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
         state, None
     )
     
-    update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+    update_statistics(native_datetime_utc_now(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     assert stats.get_latest_position_stats(1).value == pytest.approx(168.3)
     assert stats.get_latest_position_stats(2).value == pytest.approx(99.0)
@@ -503,7 +504,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
         state, None
     )
     
-    update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+    update_statistics(native_datetime_utc_now(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     stats = state.stats
     portfolio_stats = stats.get_latest_portfolio_stats()
@@ -562,7 +563,7 @@ def test_statistics(usdc, weth_usdc, aave_usdc, start_ts):
         state, None
     )
     
-    update_statistics(datetime.datetime.utcnow(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+    update_statistics(native_datetime_utc_now(), state.stats, portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
     
 
 def test_not_enough_cash(usdc, weth_usdc, start_ts):
@@ -1211,7 +1212,7 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     assert position.get_value() == pytest.approx(168.3)
     assert position.last_pricing_at == start_ts
 
-    update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading)
+    update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading)
 
     state.perform_integrity_check()
 
@@ -1256,11 +1257,11 @@ def test_state_summary_without_initial_cash(usdc, weth_usdc, start_ts: datetime.
 
     assert position.is_open()
     assert trade.is_success()
-    update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.unit_testing_trading)
+    update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.unit_testing_trading)
 
     trader.sell(weth_usdc, state.portfolio.get_equity_for_pair(weth_usdc), 1800)
 
-    update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.unit_testing_trading)
+    update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.unit_testing_trading)
 
     state.perform_integrity_check()
     summary = state.stats.get_latest_portfolio_stats().summary
@@ -1365,7 +1366,7 @@ def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     assert position.get_value() == pytest.approx(168.3)
     assert position.last_pricing_at == start_ts
 
-    update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.unit_testing_trading)
+    update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.unit_testing_trading)
 
     state.perform_integrity_check()
 

@@ -101,7 +101,7 @@ def test_fetch_tvl_base(
     strategy_input = StrategyInput(
         cycle=1,
         strategy_universe=strategy_universe,
-        timestamp=pd.Timestamp.utcnow(),
+        timestamp=pd.Timestamp.utcnow().tz_localize(None),
         parameters=StrategyParameters({}),
         state=None,
         indicators=None,

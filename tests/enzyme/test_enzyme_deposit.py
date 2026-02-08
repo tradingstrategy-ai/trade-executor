@@ -17,6 +17,7 @@ from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.balance_update import BalanceUpdatePositionType, BalanceUpdateCause
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
+from eth_defi.compat import native_datetime_utc_now
 
 
 
@@ -46,7 +47,7 @@ def test_enzyme_no_deposit(
     sync_model.sync_initial(state)
 
     # No events yet, because of no deposits
-    cycle = datetime.datetime.utcnow()
+    cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(cycle, state)
     assert len(events) == 0
 
@@ -91,7 +92,7 @@ def test_enzyme_single_deposit(
     sync_model.sync_initial(state)
 
     # No events yet, because of no deposits
-    cycle = datetime.datetime.utcnow()
+    cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(cycle, state)
     assert len(events) == 0
 
@@ -192,7 +193,7 @@ def test_enzyme_two_deposits(
     logger.info("Deposit scan")
 
     # One deposit detected
-    cycle = datetime.datetime.utcnow()
+    cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(cycle, state)
     assert len(events) == 2
 

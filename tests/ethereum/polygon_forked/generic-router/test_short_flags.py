@@ -26,6 +26,7 @@ from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.runner import post_process_trade_decision
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.universe_model import default_universe_options
+from eth_defi.compat import native_datetime_utc_now
 
 pytestmark = pytest.mark.skipif(
     (os.environ.get("JSON_RPC_POLYGON") is None) or (shutil.which("anvil") is None),
@@ -113,7 +114,7 @@ def test_short_flags(
     sync_model.sync_initial(state)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state, supported_reserves=[asset_usdc])
+    sync_model.sync_treasury(native_datetime_utc_now(), state, supported_reserves=[asset_usdc])
 
     assert state.portfolio.get_reserve_position(asset_usdc).quantity == Decimal('10_000')
 
@@ -122,7 +123,7 @@ def test_short_flags(
     routing_state = routing_model.create_routing_state(strategy_universe, routing_state_details)
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         strategy_universe,
         state,
         generic_pricing_model
@@ -143,7 +144,7 @@ def test_short_flags(
     assert TradeFlag.open in trades[0].flags
     assert TradeFlag.open in trades[1].flags
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -154,7 +155,7 @@ def test_short_flags(
 
     # Close all positions
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         strategy_universe,
         state,
         generic_pricing_model
@@ -170,7 +171,7 @@ def test_short_flags(
     assert TradeFlag.close_protocol_last in trades[1].flags
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,

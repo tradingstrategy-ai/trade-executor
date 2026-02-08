@@ -26,6 +26,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ def make_test_trade(
     assert type(max_slippage) == float
     assert max_slippage > 0, f"max_slippage not set"
 
-    ts = datetime.datetime.utcnow()
+    ts = native_datetime_utc_now()
 
     # Sync nonce for the hot wallet
     logger.info("make_test_trade() at %s", ts)
@@ -246,7 +247,7 @@ def make_test_trade(
             state, None
         )
         
-        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
     else:
         logger.info("Position %s is already open. No need to open it again.", position)
 
@@ -264,7 +265,7 @@ def make_test_trade(
 
         # Recreate the position manager for the new timestamp,
         # as time has passed
-        ts = datetime.datetime.utcnow()
+        ts = native_datetime_utc_now()
         position_manager = PositionManager(
             ts,
             universe,
@@ -308,12 +309,12 @@ def make_test_trade(
             state, None
         )
         
-        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     else:
         sell_trade = None
 
-    if pair and universe.has_any_lending_data() and universe.can_open_short(datetime.datetime.utcnow(), pair) and test_short:
+    if pair and universe.has_any_lending_data() and universe.can_open_short(native_datetime_utc_now(), pair) and test_short:
         short_pair = universe.get_shorting_pair(pair)
         position = state.portfolio.get_position_by_trading_pair(short_pair)
 
@@ -321,7 +322,7 @@ def make_test_trade(
 
             # Recreate the position manager for the new timestamp,
             # as time has passed
-            ts = datetime.datetime.utcnow()
+            ts = native_datetime_utc_now()
             position_manager = PositionManager(
                 ts,
                 universe,
@@ -383,13 +384,13 @@ def make_test_trade(
                 state, None
             )
 
-            update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+            update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
         # Close the short
 
         # Recreate the position manager for the new timestamp,
         # as time has passed
-        ts = datetime.datetime.utcnow()
+        ts = native_datetime_utc_now()
         position_manager = PositionManager(
             ts,
             universe,
@@ -447,7 +448,7 @@ def make_test_trade(
             state, None
         )
         
-        update_statistics(datetime.datetime.utcnow(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()

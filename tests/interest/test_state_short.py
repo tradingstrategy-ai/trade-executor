@@ -20,6 +20,7 @@ from tradeexecutor.strategy.interest import estimate_interest, update_leveraged_
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingProtocolType
+from eth_defi.compat import native_datetime_utc_now
 
 
 @pytest.fixture()
@@ -123,8 +124,8 @@ def state(usdc: AssetIdentifier):
         usdc,
         Decimal(10_000),
         reserve_token_price=1,
-        last_pricing_at=datetime.datetime.utcnow(),
-        last_sync_at=datetime.datetime.utcnow(),
+        last_pricing_at=native_datetime_utc_now(),
+        last_sync_at=native_datetime_utc_now(),
     )
     state.portfolio.reserves = {usdc.get_identifier(): reserve_position}
     return state
@@ -171,7 +172,7 @@ def test_open_short(
     # Take 1000 USDC reserves and open a ETH short using it.
     # We should get 800 USDC worth of ETH for this.
     short_position, trade, created = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_quantity=-Decimal(expected_eth_shorted_amount),
         collateral_quantity=Decimal(1000),
@@ -255,7 +256,7 @@ def test_short_unrealised_profit(
     # Take 1000 USDC reserves and open a ETH short using it.
     # We should get 800 USDC worth of ETH for this.
     short_position, trade, created = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_quantity=-Decimal(expected_eth_shorted_amount),
         collateral_quantity=Decimal(1000),
@@ -270,7 +271,7 @@ def test_short_unrealised_profit(
 
     # ETH price 1500 -> 1400
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1400.0,
     )
 
@@ -318,7 +319,7 @@ def test_short_unrealised_profit_partially_closed_keep_collateral(
     # We should get 800 USDC worth of ETH for this.
     # 800 USDC worth of ETH is
     short_position, trade, created = state.create_trade(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         quantity=-Decimal(expected_eth_shorted_amount),
         reserve=Decimal(1000),
@@ -344,7 +345,7 @@ def test_short_unrealised_profit_partially_closed_keep_collateral(
 
     # ETH price 1500 -> 1400
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1400.0,
     )
 
@@ -354,7 +355,7 @@ def test_short_unrealised_profit_partially_closed_keep_collateral(
     # Close 50% of the position
     #
     short_position_ref_2, trade_2, created = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         # Position quantity for short position means reduce the position
         borrowed_quantity=Decimal(expected_eth_shorted_amount / 2),  # Short position quantity is counted as negative. When we close the quantity goes towards zero from neagtive.
@@ -442,7 +443,7 @@ def test_short_unrealised_profit_partially_closed_release_collateral(
     # We should get 800 USDC worth of ETH for this.
     # 800 USDC worth of ETH is
     short_position, trade, created = state.create_trade(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         quantity=-Decimal(expected_eth_shorted_amount),
         reserve=Decimal(1000),
@@ -465,7 +466,7 @@ def test_short_unrealised_profit_partially_closed_release_collateral(
 
     # ETH price 1500 -> 1400
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1400.0,
     )
 
@@ -498,7 +499,7 @@ def test_short_unrealised_profit_partially_closed_release_collateral(
     collateral_adjustment = collateral_left_needed + expected_collateral_release - loan.collateral.quantity
 
     _, trade_2, _ = state.create_trade(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         quantity=Decimal(expected_eth_shorted_amount / 2),  # Short position quantity is counted as negative. When we close the quantity goes towards zero from neagtive.
         reserve=None,  # Reserve will be calculated generated from the released collateral
@@ -567,7 +568,7 @@ def test_short_close_fully_profitable(
     # We should get 800 USDC worth of ETH for this.
     # 800 USDC worth of ETH is
     short_position, trade, created = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_quantity=-Decimal(expected_eth_shorted_amount),
         collateral_quantity=Decimal(1000),
@@ -608,7 +609,7 @@ def test_short_close_fully_profitable(
 
     # ETH price 1500 -> 1400
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1400.0,
     )
 
@@ -619,7 +620,7 @@ def test_short_close_fully_profitable(
 
     _, trade_2, _ = state.trade_short(
         closing=True,
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_asset_price=float(1400),
         planned_mid_price=float(1400),
@@ -696,7 +697,7 @@ def test_short_close_fully_loss(
     # We should get 800 USDC worth of ETH for this.
     # 800 USDC worth of ETH is
     short_position, trade, created = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_quantity=-Decimal(expected_eth_shorted_amount),
         collateral_quantity=Decimal(1000),
@@ -723,7 +724,7 @@ def test_short_close_fully_loss(
 
     # ETH price 1500 -> 1600
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1600.0,
     )
 
@@ -733,7 +734,7 @@ def test_short_close_fully_loss(
 
     _, trade_2, _ = state.trade_short(
         closing=True,
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_asset_price=float(1600),
         planned_mid_price=float(1600),
@@ -814,7 +815,7 @@ def test_short_increase_leverage_and_close(
     # We should get 800 USDC worth of ETH for this.
     # 800 USDC worth of ETH is
     short_position, trade, created = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_quantity=-Decimal(expected_eth_shorted_amount),
         collateral_quantity=Decimal(1000),
@@ -837,7 +838,7 @@ def test_short_increase_leverage_and_close(
 
     # ETH price 1500 -> 1600
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1600.0,
     )
 
@@ -855,7 +856,7 @@ def test_short_increase_leverage_and_close(
     collateral_adjustment = target_collateral - loan.collateral.quantity
 
     _, trade_2, _ = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_quantity=Decimal(0),
         collateral_quantity=Decimal(0),
@@ -886,7 +887,7 @@ def test_short_increase_leverage_and_close(
     # Even more losses
     # ETH price 1600 -> 1700
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1700.0,
     )
 
@@ -898,7 +899,7 @@ def test_short_increase_leverage_and_close(
     # Close all
     _, trade_3, _ = state.trade_short(
         closing=True,
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_asset_price=loan.borrowed.last_usd_price,
         planned_mid_price=loan.borrowed.last_usd_price,
@@ -951,7 +952,7 @@ def test_short_unrealised_profit_leveraged(
     assert eth_quantity == pytest.approx(Decimal(2))
 
     short_position, trade, _ = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_quantity=-eth_quantity,
         collateral_quantity=start_collateral,
@@ -983,7 +984,7 @@ def test_short_unrealised_profit_leveraged(
 
     # ETH price 1500 -> 1400, make profit
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1400.0,
     )
 
@@ -993,7 +994,7 @@ def test_short_unrealised_profit_leveraged(
 
     _, trade_2, _ = state.trade_short(
         closing=True,
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_asset_price=loan.borrowed.last_usd_price,
         planned_mid_price=loan.borrowed.last_usd_price,
@@ -1039,7 +1040,7 @@ def test_short_unrealised_profit_no_leverage(
     # Take 1000 USDC reserves and open a ETH short using it.
     # We should get 800 USDC worth of ETH for this.
     short_position, trade, created = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_quantity=-Decimal(expected_eth_shorted_amount),
         collateral_quantity=Decimal(1000),
@@ -1054,7 +1055,7 @@ def test_short_unrealised_profit_no_leverage(
 
     # ETH price 1500 -> 1400
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1400.0,
     )
 
@@ -1113,7 +1114,7 @@ def test_short_unrealised_profit_leverage_all(
     eth_quantity = Decimal(eth_short_value / eth_price)
 
     short_position, trade, _ = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_quantity=-eth_quantity,
         collateral_quantity=start_collateral,
@@ -1142,7 +1143,7 @@ def test_short_unrealised_profit_leverage_all(
 
     # ETH price 1500 -> 1400, make profit
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1400.0,
     )
 
@@ -1154,7 +1155,7 @@ def test_short_unrealised_profit_leverage_all(
 
     _, trade_2, _ = state.trade_short(
         closing=True,
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_asset_price=loan.borrowed.last_usd_price,
         planned_mid_price=loan.borrowed.last_usd_price,
@@ -1220,7 +1221,7 @@ def test_short_unrealised_interest_and_profit(
 
     # ETH price 1500 -> 1400
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1400.0,
     )
 
@@ -1342,7 +1343,7 @@ def test_short_unrealised_interest_and_losses(
     # ETH price 1500 -> 1600,
     # cause short to go negative
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1600.0,
     )
 
@@ -1436,7 +1437,7 @@ def test_short_realised_interest_and_profit(
 
     # ETH price 1500 -> 1400
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1400.0,
     )
 
@@ -1519,7 +1520,7 @@ def test_short_realised_interest_and_profit(
 
     _, trade_2, _ = state.trade_short(
         closing=True,
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_asset_price=float(1400),
         planned_mid_price=float(1400),
@@ -1605,7 +1606,7 @@ def test_short_open_with_fee(
     assert estimate.lp_fees == pytest.approx(15)
 
     short_position, trade, _ = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier_5bps,
         borrowed_quantity=-estimate.borrowed_quantity,
         collateral_quantity=start_collateral,
@@ -1667,7 +1668,7 @@ def test_short_close_with_fee_no_price_movement(
     assert open_estimate.lp_fees == pytest.approx(15)
 
     short_position, trade, _ = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier_5bps,
         borrowed_quantity=-open_estimate.borrowed_quantity,
         collateral_quantity=open_estimate.starting_reserve,
@@ -1709,7 +1710,7 @@ def test_short_close_with_fee_no_price_movement(
     # Now close the position
     _, trade_2, _ = state.trade_short(
         closing=True,
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier_5bps,
         borrowed_asset_price=open_estimate.borrowed_asset_price,
         planned_mid_price=open_estimate.borrowed_asset_price,
@@ -1757,7 +1758,7 @@ def test_short_close_profit_with_fee(
     assert open_estimate.lp_fees == pytest.approx(15)
 
     short_position, trade, _ = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier_5bps,
         borrowed_quantity=-open_estimate.borrowed_quantity,
         collateral_quantity=open_estimate.starting_reserve,
@@ -1773,7 +1774,7 @@ def test_short_close_profit_with_fee(
 
     # ETH price 1500 -> 1400
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1400.0,
     )
 
@@ -1809,7 +1810,7 @@ def test_short_close_profit_with_fee(
     # Now close the position
     _, trade_2, _ = state.trade_short(
         closing=True,
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier_5bps,
         borrowed_asset_price=estimate.borrowed_asset_price,
         planned_mid_price=estimate.borrowed_asset_price,
@@ -1870,7 +1871,7 @@ def test_short_increase_size(
     # We should get 800 USDC worth of ETH for this.
     # 800 USDC worth of ETH is
     short_position, trade, created = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_quantity=-Decimal(expected_eth_shorted_amount),
         collateral_quantity=Decimal(1000),
@@ -1886,7 +1887,7 @@ def test_short_increase_size(
 
     # ETH price 1500 -> 1600
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1600.0,
     )
 
@@ -1925,7 +1926,7 @@ def test_short_increase_size(
     assert increase_borrowed_quantity + loan.borrowed.quantity == pytest.approx(Decimal(1.023809523571428343350194986))
 
     _, trade_2, _ = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_quantity=-increase_borrowed_quantity,
         collateral_quantity=collateral_adjustment,
@@ -2001,7 +2002,7 @@ def test_short_decrease_size(
     # We should get 800 USDC worth of ETH for this.
     # 800 USDC worth of ETH is
     short_position, trade, created = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_quantity=-Decimal(expected_eth_shorted_amount),
         collateral_quantity=Decimal(1000),
@@ -2017,7 +2018,7 @@ def test_short_decrease_size(
 
     # ETH price 1500 -> 1600
     short_position.revalue_base_asset(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         1600.0,
     )
 
@@ -2058,7 +2059,7 @@ def test_short_decrease_size(
     reserves_released = Decimal(500)
 
     _, trade_2, _ = state.trade_short(
-        strategy_cycle_at=datetime.datetime.utcnow(),
+        strategy_cycle_at=native_datetime_utc_now(),
         pair=weth_short_identifier,
         borrowed_quantity=decrease_borrow_quantity, # Buy back shorted tokens to decrease exposute
         collateral_quantity=0,  # Not used when releasing reserves

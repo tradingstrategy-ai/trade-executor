@@ -16,6 +16,7 @@ from tradeexecutor.statistics.key_metric import calculate_max_drawdown
 from tradeexecutor.visual.equity_curve import calculate_compounding_realised_trading_profitability, calculate_non_cumulative_daily_returns, \
     calculate_compounding_unrealised_trading_profitability
 from tradeexecutor.utils.summarydataframe import as_percent, format_value
+from eth_defi.compat import native_datetime_utc_now
 
 
 @dataclass_json
@@ -80,7 +81,7 @@ def serialise_live_long_short_stats(live_state: State) -> StatisticsTable:
     live_start_at, live_end_at = None, None
     if live_state:
         live_start_at = live_state.created_at
-        live_end_at = datetime.datetime.utcnow()
+        live_end_at = native_datetime_utc_now()
         
     live_stats = _serialise_long_short_stats_as_json_table(
         source_state=live_state,
@@ -123,7 +124,7 @@ def _serialise_long_short_stats_as_json_table(
     if not source_state:
         return StatisticsTable(
             columns=["All", "Long", "Short"],
-            created_at=datetime.datetime.utcnow(),
+            created_at=native_datetime_utc_now(),
             source=source,
             rows={},
         )

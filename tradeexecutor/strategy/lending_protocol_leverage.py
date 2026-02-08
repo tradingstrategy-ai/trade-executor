@@ -17,6 +17,7 @@ from tradeexecutor.state.loan import Loan, LiquidationRisked
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.utils.accuracy import COLLATERAL_EPSILON, CLOSE_POSITION_COLLATERAL_EPSILON
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -59,7 +60,7 @@ def create_credit_supply_loan(
     collateral = AssetWithTrackedValue(
         asset=pair.base,  # aUSDC token is the base pair for credit supply positions
         last_usd_price=trade.reserve_currency_exchange_rate,
-        last_pricing_at=datetime.datetime.utcnow(),
+        last_pricing_at=native_datetime_utc_now(),
         quantity=reserve_quantity,
     )
 
@@ -172,7 +173,7 @@ def create_short_loan(
     borrowed = AssetWithTrackedValue(
         asset=pair.base,
         last_usd_price=trade.planned_price,
-        last_pricing_at=datetime.datetime.utcnow(),
+        last_pricing_at=native_datetime_utc_now(),
         quantity=borrowed_quantity,
         created_strategy_cycle_at=trade.strategy_cycle_at,
     )
@@ -187,7 +188,7 @@ def create_short_loan(
     collateral = AssetWithTrackedValue(
         asset=pair.quote,
         last_usd_price=trade.reserve_currency_exchange_rate,
-        last_pricing_at=datetime.datetime.utcnow(),
+        last_pricing_at=native_datetime_utc_now(),
         quantity=collateral_quantity,
     )
 

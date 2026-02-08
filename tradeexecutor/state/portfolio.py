@@ -21,6 +21,7 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.strategy.trade_pricing import TradePricing
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -826,7 +827,7 @@ class Portfolio:
         .. code-block:: python
 
             p = state.portfolio.open_positions[11]
-            state.portfolio.close_position(p, datetime.datetime.utcnow())
+            state.portfolio.close_position(p, native_datetime_utc_now())
             print("Left open")
             for p in state.portfolio.open_positions.values():
                 print(p)
@@ -1162,7 +1163,7 @@ class Portfolio:
         #               f"Balance was updated {correction_amount} {position.pair.base.token_symbol}\n"
         #
         # trade.mark_success(
-        #     datetime.datetime.utcnow(),
+        #     native_datetime_utc_now(),
         #     trade.planned_price,
         #     trade.planned_quantity,
         #     trade.planned_reserve,

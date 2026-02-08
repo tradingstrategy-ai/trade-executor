@@ -7,6 +7,7 @@ from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.pricing_model import PricingModel
+from eth_defi.compat import native_datetime_utc_now
 
 
 class SimulatedTestTrader:
@@ -32,7 +33,7 @@ class SimulatedTestTrader:
         reserve_currency, exchange_rate = self.state.portfolio.get_default_reserve_asset()
 
         position, trade, created = self.state.create_trade(
-            strategy_cycle_at=datetime.datetime.utcnow(),
+            strategy_cycle_at=native_datetime_utc_now(),
             pair=pair,
             assumed_price=price,
             quantity=None,
@@ -51,7 +52,7 @@ class SimulatedTestTrader:
         reserve_currency, exchange_rate = self.state.portfolio.get_default_reserve_asset()
 
         position, trade, created = self.state.create_trade(
-            strategy_cycle_at=datetime.datetime.utcnow(),
+            strategy_cycle_at=native_datetime_utc_now(),
             pair=pair,
             assumed_price=1.0,
             quantity=-quantity,

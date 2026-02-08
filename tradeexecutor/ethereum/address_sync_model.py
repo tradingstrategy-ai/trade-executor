@@ -117,7 +117,7 @@ class AddressSyncModel(SyncModel):
         balance_update_events = apply_reserve_update_events(state, events)
 
         treasury = state.sync.treasury
-        treasury.last_updated_at = datetime.datetime.utcnow()
+        treasury.last_updated_at = native_datetime_utc_now()
         treasury.last_cycle_at = strategy_cycle_ts
         treasury.last_block_scanned = block_number
 
@@ -132,7 +132,7 @@ class AddressSyncModel(SyncModel):
         """
         self.init()
         self.sync_initial(state)
-        self.sync_treasury(datetime.datetime.utcnow(), state, supported_reserves)
+        self.sync_treasury(native_datetime_utc_now(), state, supported_reserves)
 
     def fetch_onchain_balances(
         self,

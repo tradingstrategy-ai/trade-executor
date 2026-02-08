@@ -17,6 +17,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.chain import ChainId
+from eth_defi.compat import native_datetime_utc_now
 
 
 CI = os.environ.get("CI") == "true"
@@ -62,7 +63,7 @@ def test_velvet_treasury_initialise(
     assert reserve_position.asset.get_identifier() == "8453-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
 
     # Process the initial deposits
-    cycle = datetime.datetime.utcnow()
+    cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(cycle, state)
     assert len(events) == 1
     assert treasury.last_block_scanned > 0
@@ -120,7 +121,7 @@ def test_velvet_sync_deposit(
     assert pair is not None
 
     # Process the initial deposits
-    cycle = datetime.datetime.utcnow()
+    cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(cycle, state)
     assert len(events) == 1
     assert portfolio.get_cash() == pytest.approx(2.674828)
@@ -158,7 +159,7 @@ def test_velvet_sync_deposit(
     #
 
     # Process the initial deposits
-    cycle = datetime.datetime.utcnow()
+    cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(cycle, state)
     assert len(events) == 1
     assert portfolio.get_cash() == pytest.approx(7.023765)
@@ -170,7 +171,7 @@ def test_velvet_sync_deposit(
     #
     # Check empty deposit cycle yields no events
     #
-    cycle = datetime.datetime.utcnow()
+    cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(cycle, state)
     assert len(events) == 0
     assert portfolio.get_cash() == pytest.approx(7.023765)

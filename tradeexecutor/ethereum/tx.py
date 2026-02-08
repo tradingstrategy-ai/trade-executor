@@ -25,6 +25,7 @@ from eth_defi.tx import decode_signed_transaction
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, JSONAssetDelta
 from tradeexecutor.state.pickle_over_json import encode_pickle_over_json
 from tradeexecutor.state.types import Percent
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ class TransactionBuilder(ABC):
             Transaction hash, or `tx_hash`
         """
         signed_tx = self.serialise_to_broadcast_format(tx)
-        tx.broadcasted_at = datetime.datetime.utcnow()
+        tx.broadcasted_at = native_datetime_utc_now()
         return broadcast_transactions(self.web3, [signed_tx])[0]
 
     @staticmethod
@@ -131,7 +132,7 @@ class TransactionBuilder(ABC):
 
         signed_txs = [HotWalletTransactionBuilder.serialise_to_broadcast_format(t) for t in txs]
 
-        now_ = datetime.datetime.utcnow()
+        now_ = native_datetime_utc_now()
         for tx in txs:
             tx.broadcasted_at = now_
 
@@ -143,7 +144,7 @@ class TransactionBuilder(ABC):
             max_timeout=max_timeout,
             poll_delay=poll_delay)
 
-        now_ = datetime.datetime.utcnow()
+        now_ = native_datetime_utc_now()
 
         # Update persistant status of transactions
         # based on the result read from the chain

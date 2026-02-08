@@ -52,6 +52,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
+from eth_defi.compat import native_datetime_utc_now
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("JSON_RPC_POLYGON") is None,
@@ -299,7 +300,7 @@ def state(web3, hot_wallet, usdc_asset, sync_model) -> State:
     """
     state = State()
     sync_model.sync_initial(state)
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state, supported_reserves=[usdc_asset])
+    sync_model.sync_treasury(native_datetime_utc_now(), state, supported_reserves=[usdc_asset])
     assert state.portfolio.get_default_reserve_position().get_value() == 200_000.0  # We are Anvil rich
     return state
 
@@ -345,7 +346,7 @@ def test_simple_routing_three_leg_live(
     """
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         strategy_universe,
         state,
         pricing_model,
@@ -369,7 +370,7 @@ def test_simple_routing_three_leg_live(
     )
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -415,7 +416,7 @@ def test_simple_routing_three_leg_live(
     )
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,

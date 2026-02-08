@@ -22,6 +22,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.ethereum.balance_update import apply_reserve_update_events
 from tradingstrategy.chain import ChainId
 from tradingstrategy.utils.time import ZERO_TIMEDELTA
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ class BacktestSyncModel(SyncModel):
         if initial_deposit_amount is not None:
             assert isinstance(initial_deposit_amount, Decimal)
             if initial_deposit_amount > 0:
-                self.fund_flow_queue.append(FundFlowEvent(datetime.datetime.utcnow(), initial_deposit_amount))
+                self.fund_flow_queue.append(FundFlowEvent(native_datetime_utc_now(), initial_deposit_amount))
 
     def get_token_storage_address(self) -> Optional[JSONHexAddress]:
         return None

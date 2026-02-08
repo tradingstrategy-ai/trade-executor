@@ -11,6 +11,7 @@ from pathlib import Path
 from tradeexecutor.backtest.preprocessed_backtest import PREPACKAGED_SETS, prepare_dataset, ExportFormat
 from tradeexecutor.cli.log import setup_logging
 from tradingstrategy.client import Client
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,7 @@ def export_all_main():
     assert output_path.exists(), f"{output_path} does not exist"
     assert output_path.is_dir(), f"{output_path} is not a directory"
 
-    started = datetime.datetime.utcnow()
+    started = native_datetime_utc_now()
 
     # Export newly added sets first
     if reverse:
@@ -65,7 +66,7 @@ def export_all_main():
             write_report=BACKTEST,
         )
 
-    logger.info("All done in %s", datetime.datetime.utcnow() - started)
+    logger.info("All done in %s", native_datetime_utc_now() - started)
 
 
 if __name__ == "__main__":

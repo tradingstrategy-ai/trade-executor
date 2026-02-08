@@ -11,6 +11,7 @@ from pathlib import Path
 from pyramid.registry import Registry
 from pyramid.request import Request
 from pyramid.response import Response
+from eth_defi.compat import native_datetime_utc_now
 
 # Avoid logging.getLogger() here as we do not want this logger as the part of std logging system
 http_logger = logging.Logger(name="HTTP traffic")
@@ -42,11 +43,11 @@ def log_tween_factory(handler, registry: Registry):
 
         http_logger.info("HTTP request #%d %s (%s): %s by %s", req_id, ip_addr, country, request.url, user_agent)
 
-        start = datetime.datetime.utcnow()
+        start = native_datetime_utc_now()
         try:
             response: Response = handler(request)
             code = response.status_code
-            end = datetime.datetime.utcnow()
+            end = native_datetime_utc_now()
             duration = end - start
             http_logger.info("HTTP response #%d %s duration:%s %s", req_id, code, duration, request.url)
             return response

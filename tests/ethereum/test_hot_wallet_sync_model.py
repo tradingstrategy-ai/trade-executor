@@ -20,6 +20,7 @@ from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
+from eth_defi.compat import native_datetime_utc_now
 
 
 @pytest.fixture()
@@ -140,7 +141,7 @@ def test_hot_wallet_sync_model_deposit(
     supported_reserves = [usdc_asset]
 
     sync_model.sync_treasury(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         supported_reserves
     )
@@ -151,7 +152,7 @@ def test_hot_wallet_sync_model_deposit(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     sync_model.sync_treasury(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         supported_reserves
     )
@@ -177,7 +178,7 @@ def test_hot_wallet_sync_model_sync_twice(
     supported_reserves = [usdc_asset]
 
     sync_model.sync_treasury(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         supported_reserves
     )
@@ -189,7 +190,7 @@ def test_hot_wallet_sync_model_sync_twice(
 
 
     sync_model.sync_treasury(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         supported_reserves
     )
@@ -200,7 +201,7 @@ def test_hot_wallet_sync_model_sync_twice(
     assert len(reserve_position.balance_updates) == 1
 
     sync_model.sync_treasury(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         supported_reserves
     )

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from dataclasses_json import dataclass_json
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ class Uptime:
         """Mark the execution cycle successfully completed"""
         assert isinstance(cycle_number, int)
         if now_ is None:
-            now_ = datetime.datetime.utcnow()
+            now_ = native_datetime_utc_now()
         assert isinstance(now_, datetime.datetime)
 
         # Should not ever happen, but may happen if state crashes at the right moment

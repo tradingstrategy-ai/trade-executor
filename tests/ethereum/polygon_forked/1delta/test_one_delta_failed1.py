@@ -38,6 +38,7 @@ from tradeexecutor.ethereum.universe import create_exchange_universe, create_pai
 from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_execution_loop_one_delta
 from tradeexecutor.utils.blockchain import get_latest_block_timestamp
 from tradeexecutor.strategy.account_correction import check_accounts
+from eth_defi.compat import native_datetime_utc_now
 
 
 pytestmark = pytest.mark.skipif(
@@ -181,7 +182,7 @@ def test_one_delta_live_strategy_short_increase(
     # Check that our preflight checks pass
     routing_model.perform_preflight_checks_and_logging(pair_universe)
 
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    price_structure = pricing_method.get_buy_price(native_datetime_utc_now(), pair, None)
     # assert price_structure.price == pytest.approx(2329.37032348289, rel=APPROX_REL)
 
     # # accounting check at current block, we shouldn't have any open short position
@@ -341,7 +342,7 @@ def test_one_delta_live_strategy_short_increase(
     # Check that our preflight checks pass
     routing_model.perform_preflight_checks_and_logging(pair_universe)
 
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    price_structure = pricing_method.get_buy_price(native_datetime_utc_now(), pair, None)
     # assert price_structure.price == pytest.approx(2329.37032348289, rel=APPROX_REL)
 
     # accounting check at current block, we should have 1 open short position

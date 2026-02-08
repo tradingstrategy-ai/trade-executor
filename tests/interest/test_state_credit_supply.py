@@ -15,6 +15,7 @@ from tradeexecutor.state.trade import TradeType
 from tradeexecutor.strategy.interest import update_interest
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradingstrategy.chain import ChainId
+from eth_defi.compat import native_datetime_utc_now
 
 
 @pytest.fixture()
@@ -72,8 +73,8 @@ def state(usdc: AssetIdentifier):
         usdc,
         Decimal(10_000),
         reserve_token_price=1,
-        last_pricing_at=datetime.datetime.utcnow(),
-        last_sync_at=datetime.datetime.utcnow(),
+        last_pricing_at=native_datetime_utc_now(),
+        last_sync_at=native_datetime_utc_now(),
     )
     state.portfolio.reserves = {usdc.get_identifier(): reserve_position}
     return state
@@ -96,7 +97,7 @@ def test_open_supply_credit(
     trader = UnitTestTrader(state)
 
     credit_supply_position, trade, created = state.supply_credit(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         lending_pool_identifier,
         collateral_quantity=Decimal(9000),
         trade_type=TradeType.rebalance,

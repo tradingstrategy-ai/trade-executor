@@ -41,6 +41,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.interest import sync_interests
 from tradeexecutor.strategy.lending_protocol_leverage import reset_credit_supply_loan, update_credit_supply_loan
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -211,8 +212,8 @@ class EnzymeVaultSyncModel(SyncModel):
         old_balance = reserve_position.quantity
         exchange_rate = self.vault.fetch_denomination_token_usd_exchange_rate()
         reserve_position.reserve_token_price = float(exchange_rate)
-        reserve_position.last_pricing_at = datetime.datetime.utcnow()
-        reserve_position.last_sync_at = datetime.datetime.utcnow()
+        reserve_position.last_pricing_at = native_datetime_utc_now()
+        reserve_position.last_sync_at = native_datetime_utc_now()
         reserve_position.quantity += event.investment_amount
 
         usd_value = float(exchange_rate) * float(event.investment_amount)
@@ -442,7 +443,7 @@ class EnzymeVaultSyncModel(SyncModel):
         # Hack around Anvil bug?
         if is_anvil(web3) and block_number < start_block:
             block_number = start_block
-            timestamp_dt = datetime.datetime.utcnow()
+            timestamp_dt = native_datetime_utc_now()
         else:
             # Get the block info to get the timestamp for the event
             block_data = extract_timestamps_json_rpc(web3, block_number, block_number)
@@ -646,7 +647,7 @@ class EnzymeVaultSyncModel(SyncModel):
             treasury_sync.balance_update_refs.append(ref)
 
         treasury_sync.last_block_scanned = end_block
-        treasury_sync.last_updated_at = datetime.datetime.utcnow()
+        treasury_sync.last_updated_at = native_datetime_utc_now()
         treasury_sync.last_cycle_at = strategy_cycle_ts
 
         # Update the reserve position value
@@ -719,8 +720,8 @@ class EnzymeVaultSyncModel(SyncModel):
 
         reserve_position = portfolio.get_reserve_position(asset)
         reserve_position.reserve_token_price = float(1)
-        reserve_position.last_pricing_at = datetime.datetime.utcnow()
-        reserve_position.last_sync_at = datetime.datetime.utcnow()
+        reserve_position.last_pricing_at = native_datetime_utc_now()
+        reserve_position.last_sync_at = native_datetime_utc_now()
         reserve_position.quantity = reserve_current_balance.balance
 
         # TODO: Assume USD stablecoins are 1:1 USD
@@ -765,7 +766,7 @@ class EnzymeVaultSyncModel(SyncModel):
             treasury_sync.balance_update_refs.append(ref)
 
         treasury_sync.last_block_scanned = current_block
-        treasury_sync.last_updated_at = datetime.datetime.utcnow()
+        treasury_sync.last_updated_at = native_datetime_utc_now()
         treasury_sync.last_cycle_at = None
 
     def create_transaction_builder(self) -> EnzymeTransactionBuilder:
@@ -802,7 +803,7 @@ class EnzymeVaultSyncModel(SyncModel):
         sync = state.sync
         treasury_sync = sync.treasury
         treasury_sync.last_block_scanned = current_block
-        treasury_sync.last_updated_at = datetime.datetime.utcnow()
+        treasury_sync.last_updated_at = native_datetime_utc_now()
         treasury_sync.last_cycle_at = None
 
 def _dump_enzyme_event(e: EnzymeBalanceEvent) -> str:
