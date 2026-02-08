@@ -6,7 +6,7 @@
 # To test building the image: docker build .
 #
 #
-FROM python:3.11.10
+FROM python:3.12.8
 
 # Passed from Github Actions
 ARG GIT_VERSION_TAG=unspecified
@@ -60,7 +60,7 @@ RUN (cd deps/web3-ethereum-defi/contracts/lagoon-v0 && forge soldeer install --c
 RUN rm -rf ./tests
 RUN python -m compileall -q .
 # Exclude ccxt from compileall due to syntax errors in ccxt.static_dependencies.bip
-RUN python -m compileall -q -x 'ccxt/static_dependencies' /usr/local/lib/python3.11
+RUN python -m compileall -q -x 'ccxt/static_dependencies' /usr/local/lib/python3.12
 
 # trade-executor /api
 # Pyramid HTTP server for webhooks at port 3456
