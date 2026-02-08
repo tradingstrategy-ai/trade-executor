@@ -33,6 +33,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
 from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
 from tradeexecutor.exchange_account.derive import create_derive_account_value_func
+from eth_defi.compat import native_datetime_utc_now
 
 
 # Skip tests if credentials not configured
@@ -182,7 +183,7 @@ def test_derive_valuation_reads_account_value(
     valuator = ExchangeAccountValuator(pricing_model)
 
     # Revalue position
-    ts = datetime.datetime.utcnow()
+    ts = native_datetime_utc_now()
     update = valuator(ts, position_with_deposit)
 
     # Verify valuation came from API
@@ -209,7 +210,7 @@ def test_derive_valuation_updates_position_timestamp(
     valuator = ExchangeAccountValuator(pricing_model)
 
     old_pricing_at = position_with_deposit.last_pricing_at
-    ts = datetime.datetime.utcnow()
+    ts = native_datetime_utc_now()
     valuator(ts, position_with_deposit)
 
     assert position_with_deposit.last_pricing_at == ts

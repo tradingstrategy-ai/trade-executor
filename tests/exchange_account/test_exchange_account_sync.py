@@ -22,6 +22,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.balance_update import BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
+from eth_defi.compat import native_datetime_utc_now
 
 
 @pytest.fixture
@@ -109,7 +110,7 @@ def test_sync_detects_profit(state_with_position, exchange_account_pair):
     sync_model = ExchangeAccountSyncModel(mock_value_func)
 
     events = sync_model.sync_positions(
-        timestamp=datetime.datetime.utcnow(),
+        timestamp=native_datetime_utc_now(),
         state=state_with_position,
         strategy_universe=None,
         pricing_model=None,
@@ -134,7 +135,7 @@ def test_sync_detects_loss(state_with_position, exchange_account_pair):
     sync_model = ExchangeAccountSyncModel(mock_value_func)
 
     events = sync_model.sync_positions(
-        timestamp=datetime.datetime.utcnow(),
+        timestamp=native_datetime_utc_now(),
         state=state_with_position,
         strategy_universe=None,
         pricing_model=None,
@@ -155,7 +156,7 @@ def test_sync_no_change_no_event(state_with_position, exchange_account_pair):
     sync_model = ExchangeAccountSyncModel(mock_value_func)
 
     events = sync_model.sync_positions(
-        timestamp=datetime.datetime.utcnow(),
+        timestamp=native_datetime_utc_now(),
         state=state_with_position,
         strategy_universe=None,
         pricing_model=None,
@@ -171,7 +172,7 @@ def test_sync_stores_balance_update_on_position(state_with_position, exchange_ac
     sync_model = ExchangeAccountSyncModel(mock_value_func)
 
     sync_model.sync_positions(
-        timestamp=datetime.datetime.utcnow(),
+        timestamp=native_datetime_utc_now(),
         state=state_with_position,
         strategy_universe=None,
         pricing_model=None,
@@ -192,7 +193,7 @@ def test_sync_updates_position_quantity(state_with_position, exchange_account_pa
     sync_model = ExchangeAccountSyncModel(mock_value_func)
 
     sync_model.sync_positions(
-        timestamp=datetime.datetime.utcnow(),
+        timestamp=native_datetime_utc_now(),
         state=state_with_position,
         strategy_universe=None,
         pricing_model=None,
@@ -212,7 +213,7 @@ def test_sync_allocates_unique_event_ids(state_with_position, exchange_account_p
     sync_model = ExchangeAccountSyncModel(mock_value_func)
 
     events1 = sync_model.sync_positions(
-        timestamp=datetime.datetime.utcnow(),
+        timestamp=native_datetime_utc_now(),
         state=state_with_position,
         strategy_universe=None,
         pricing_model=None,
@@ -222,7 +223,7 @@ def test_sync_allocates_unique_event_ids(state_with_position, exchange_account_p
     mock_value_func.return_value = Decimal("108000.0")
 
     events2 = sync_model.sync_positions(
-        timestamp=datetime.datetime.utcnow(),
+        timestamp=native_datetime_utc_now(),
         state=state_with_position,
         strategy_universe=None,
         pricing_model=None,
@@ -243,7 +244,7 @@ def test_sync_tracks_accounting_refs(state_with_position, exchange_account_pair)
     initial_refs = len(state_with_position.sync.accounting.balance_update_refs)
 
     sync_model.sync_positions(
-        timestamp=datetime.datetime.utcnow(),
+        timestamp=native_datetime_utc_now(),
         state=state_with_position,
         strategy_universe=None,
         pricing_model=None,
@@ -261,7 +262,7 @@ def test_sync_handles_api_error_gracefully(state_with_position, exchange_account
 
     # Should not raise, just return empty list
     events = sync_model.sync_positions(
-        timestamp=datetime.datetime.utcnow(),
+        timestamp=native_datetime_utc_now(),
         state=state_with_position,
         strategy_universe=None,
         pricing_model=None,
@@ -296,7 +297,7 @@ def test_sync_ignores_non_exchange_account_positions(state_with_position, exchan
     sync_model = ExchangeAccountSyncModel(mock_value_func)
 
     events = sync_model.sync_positions(
-        timestamp=datetime.datetime.utcnow(),
+        timestamp=native_datetime_utc_now(),
         state=state_with_position,
         strategy_universe=None,
         pricing_model=None,
@@ -313,7 +314,7 @@ def test_sync_treasury_returns_empty(state_with_position):
     sync_model = ExchangeAccountSyncModel(mock_value_func)
 
     events = sync_model.sync_treasury(
-        strategy_cycle_ts=datetime.datetime.utcnow(),
+        strategy_cycle_ts=native_datetime_utc_now(),
         state=state_with_position,
     )
 

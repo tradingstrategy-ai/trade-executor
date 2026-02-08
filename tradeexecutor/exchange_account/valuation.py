@@ -12,6 +12,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.valuation import ValuationModel
 from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class ExchangeAccountValuator(ValuationModel):
         valuator = ExchangeAccountValuator(pricing)
 
         # Revalue position
-        update = valuator(datetime.utcnow(), position)
+        update = valuator(native_datetime_utc_now(), position)
     """
 
     def __init__(self, pricing_model: ExchangeAccountPricingModel):

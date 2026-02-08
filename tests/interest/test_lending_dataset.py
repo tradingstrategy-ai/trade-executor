@@ -14,6 +14,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from tradingstrategy.lending import LendingProtocolType, UnknownLendingReserve
 from tradingstrategy.timebucket import TimeBucket
+from eth_defi.compat import native_datetime_utc_now
 
 
 def test_load_lending_dataset(persistent_test_client: Client):
@@ -270,18 +271,18 @@ def test_load_trading_and_lending_data_live(persistent_test_client: Client):
 
     # Check that we did not load too old lending data
     first_rate_sample = rates.index[0]
-    assert first_rate_sample.to_pydatetime() > datetime.datetime.utcnow() - datetime.timedelta(days=8)
+    assert first_rate_sample.to_pydatetime() > native_datetime_utc_now() - datetime.timedelta(days=8)
 
     # Check that we did not load too old price data
     desc = (ChainId.polygon, "uniswap-v3", "WETH", "USDC", 0.0005)
     pair = data_universe.pairs.get_pair_by_human_description(desc)
     price_feed = data_universe.candles.get_candles_by_pair(pair.pair_id)
     first_price_sample = price_feed.index[0]
-    assert first_price_sample.to_pydatetime() > datetime.datetime.utcnow() - datetime.timedelta(days=8)
+    assert first_price_sample.to_pydatetime() > native_datetime_utc_now() - datetime.timedelta(days=8)
 
     # Check a single data sample looks correct
     # Lending rate data
-    two_days_ago = pd.Timestamp(datetime.datetime.utcnow() - datetime.timedelta(days=2)).floor("D")
+    two_days_ago = pd.Timestamp(native_datetime_utc_now() - datetime.timedelta(days=2)).floor("D")
     open = rates["open"][two_days_ago]
     close = rates["close"][two_days_ago]
     assert rates["open"][two_days_ago] > 0

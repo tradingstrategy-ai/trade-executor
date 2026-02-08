@@ -38,6 +38,7 @@ from ...strategy.strategy_module import StrategyModuleInformation, read_strategy
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.blockchain import get_block_timestamp
+from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
@@ -226,7 +227,7 @@ def correct_accounts(
 
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
     universe = universe_model.construct_universe(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         execution_context.mode,
         UniverseOptions(history_period=mod.get_live_trading_history_period()),
         execution_model=run_description.runner.execution_model,
@@ -331,7 +332,7 @@ def correct_accounts(
                 for p in credit_positions:
                     logger.info(" - Position: %s", p)
                 balances_updates = sync_model.sync_interests(
-                    timestamp=datetime.datetime.utcnow(),
+                    timestamp=native_datetime_utc_now(),
                     state=state,
                     universe=universe,
                     pricing_model=pricing_model,
@@ -369,7 +370,7 @@ def correct_accounts(
         if account_value_func:
             exchange_sync_model = ExchangeAccountSyncModel(account_value_func)
             exchange_events = exchange_sync_model.sync_positions(
-                timestamp=datetime.datetime.utcnow(),
+                timestamp=native_datetime_utc_now(),
                 state=state,
                 strategy_universe=universe,
                 pricing_model=pricing_model,
@@ -379,7 +380,7 @@ def correct_accounts(
                 logger.info("  Position %d: %s (change: %s)", evt.position_id, evt.notes, evt.quantity)
 
     if process_redemption:
-        timestamp = datetime.datetime.utcnow()
+        timestamp = native_datetime_utc_now()
         reserve_assets = list(universe.reserve_assets)
 
         if process_redemption_end_block_hint:

@@ -8,6 +8,7 @@ from typing import Optional
 
 import pandas as pd
 from tradingstrategy.timebucket import TimeBucket
+from eth_defi.compat import native_datetime_utc_now
 
 
 class CycleDuration(enum.Enum):
@@ -28,7 +29,7 @@ class CycleDuration(enum.Enum):
 
     .. code-block:: python
 
-        clock = datetime.datetime.utcnow()
+        clock = native_datetime_utc_now()
         strategy_cycle_timestamp = snap_to_previous_tick(clock)
 
     """

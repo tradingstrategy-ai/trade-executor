@@ -59,6 +59,7 @@ from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.cpu import get_safe_max_workers_count
 from ...utils.timer import timed_task
+from eth_defi.compat import native_datetime_utc_now
 
 
 def launch_console(bindings: dict):
@@ -255,10 +256,10 @@ def console(
 
     if cycle_duration:
         # We need to found universe timestamp to its previous cycle when we have data
-        cycle_timestamp = cycle_duration.round_down(datetime.datetime.utcnow())
+        cycle_timestamp = cycle_duration.round_down(native_datetime_utc_now())
     else:
         # Legacy path
-        cycle_timestamp = datetime.datetime.utcnow()
+        cycle_timestamp = native_datetime_utc_now()
 
     universe = universe_model.construct_universe(
         cycle_timestamp,

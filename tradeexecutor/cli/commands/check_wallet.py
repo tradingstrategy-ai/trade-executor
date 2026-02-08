@@ -31,6 +31,7 @@ from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
 from ...utils.fullname import get_object_full_name
 from ...utils.timer import timed_task
+from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
@@ -111,7 +112,7 @@ def check_wallet(
     )
 
     universe = mod.create_trading_universe(
-        pd.Timestamp(datetime.datetime.utcnow()),
+        pd.Timestamp(native_datetime_utc_now()),
         client,
         execution_context,
         mod.get_universe_options(),

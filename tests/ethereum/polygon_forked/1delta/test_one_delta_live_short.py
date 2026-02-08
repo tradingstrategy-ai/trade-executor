@@ -30,6 +30,7 @@ from tradeexecutor.ethereum.universe import create_exchange_universe, create_pai
 from tradeexecutor.testing.simulated_execution_loop import set_up_simulated_execution_loop_one_delta
 from tradeexecutor.utils.blockchain import get_latest_block_timestamp
 from tradeexecutor.strategy.account_correction import check_accounts
+from eth_defi.compat import native_datetime_utc_now
 
 
 CI = os.environ.get("CI") == "true"
@@ -149,7 +150,7 @@ def test_one_delta_live_strategy_short_open_and_close(
     # Check that our preflight checks pass
     routing_model.perform_preflight_checks_and_logging(pair_universe)
 
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    price_structure = pricing_method.get_buy_price(native_datetime_utc_now(), pair, None)
     assert price_structure.price == pytest.approx(2239.420956551886, rel=APPROX_REL)
 
     # Set up an execution loop we can step through
@@ -312,7 +313,7 @@ def test_one_delta_live_strategy_short_open_accrue_interests(
     # Check that our preflight checks pass
     routing_model.perform_preflight_checks_and_logging(pair_universe)
 
-    assert pricing_method.get_sell_price(datetime.datetime.utcnow(), pair, None).price == pytest.approx(2000)
+    assert pricing_method.get_sell_price(native_datetime_utc_now(), pair, None).price == pytest.approx(2000)
     assert get_sell_price_mock.call_count == 1
 
     # Set up an execution loop we can step through
@@ -522,7 +523,7 @@ def test_one_delta_live_strategy_short_increase(
     # Check that our preflight checks pass
     routing_model.perform_preflight_checks_and_logging(pair_universe)
 
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    price_structure = pricing_method.get_buy_price(native_datetime_utc_now(), pair, None)
     assert price_structure.price == pytest.approx(2239.420956551886, rel=APPROX_REL)
 
     # Set up an execution loop we can step through
@@ -675,7 +676,7 @@ def test_one_delta_live_strategy_short_reduce(
     # Check that our preflight checks pass
     routing_model.perform_preflight_checks_and_logging(pair_universe)
 
-    price_structure = pricing_method.get_buy_price(datetime.datetime.utcnow(), pair, None)
+    price_structure = pricing_method.get_buy_price(native_datetime_utc_now(), pair, None)
     assert price_structure.price == pytest.approx(2239.4654972670164, rel=APPROX_REL)
 
     # Set up an execution loop we can step through

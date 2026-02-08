@@ -25,6 +25,7 @@ from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, load_partial_data
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.universe_model import default_universe_options
+from eth_defi.compat import native_datetime_utc_now
 
 
 
@@ -122,7 +123,7 @@ def test_generic_routing_multihops_trade(
     sync_model.sync_initial(state)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state, supported_reserves=[asset_usdc])
+    sync_model.sync_treasury(native_datetime_utc_now(), state, supported_reserves=[asset_usdc])
 
     assert state.portfolio.get_reserve_position(asset_usdc).quantity == Decimal('10_000')
 
@@ -131,14 +132,14 @@ def test_generic_routing_multihops_trade(
     routing_state = routing_model.create_routing_state(strategy_universe, routing_state_details)
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         strategy_universe,
         state,
         generic_pricing_model
     )
 
     wbtc_price = generic_pricing_model.get_buy_price(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         wbtc_weth_spot_pair,
         Decimal(500),
     )
@@ -150,7 +151,7 @@ def test_generic_routing_multihops_trade(
         500.0,
     )
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,

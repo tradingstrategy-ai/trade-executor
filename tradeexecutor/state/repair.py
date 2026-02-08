@@ -30,6 +30,7 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeType, TradeStatus
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -77,12 +78,12 @@ def make_counter_trade(portfolio: Portfolio, p: TradingPosition, t: TradeExecuti
         reserve_currency_price=t.get_reserve_currency_exchange_rate(),
         position=p,
     )
-    counter_trade.started_at = datetime.datetime.utcnow()
+    counter_trade.started_at = native_datetime_utc_now()
     assert created is False
     assert position == p
 
     counter_trade.mark_success(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         t.planned_price,
         Decimal(0),
         Decimal(0),
@@ -107,8 +108,8 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
     p = portfolio.get_position_by_id(t.position_id)
 
     c = make_counter_trade(portfolio, p, t)
-    now = datetime.datetime.utcnow()
-    t.repaired_at = t.executed_at = datetime.datetime.utcnow()
+    now = native_datetime_utc_now()
+    t.repaired_at = t.executed_at = native_datetime_utc_now()
     t.executed_quantity = 0
     t.executed_reserve = 0
     assert c.trade_id
@@ -144,8 +145,8 @@ def repair_tx_missing(portfolio: Portfolio, t: TradeExecution) -> TradeExecution
     p = portfolio.get_position_by_id(t.position_id)
 
     c = make_counter_trade(portfolio, p, t)
-    now = datetime.datetime.utcnow()
-    t.repaired_at = t.executed_at = datetime.datetime.utcnow()
+    now = native_datetime_utc_now()
+    t.repaired_at = t.executed_at = native_datetime_utc_now()
     t.executed_quantity = 0
     t.executed_reserve = 0
     assert c.trade_id
@@ -199,12 +200,12 @@ def close_position_with_empty_trade(portfolio: Portfolio, p: TradingPosition) ->
         reserve_currency_price=opening_trade.get_reserve_currency_exchange_rate(),
         position=p,
     )
-    counter_trade.started_at = datetime.datetime.utcnow()
+    counter_trade.started_at = native_datetime_utc_now()
     assert created is False
     assert position == p
 
     counter_trade.mark_success(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         opening_trade.planned_price,
         Decimal(0),
         Decimal(0),
@@ -219,14 +220,14 @@ def close_position_with_empty_trade(portfolio: Portfolio, p: TradingPosition) ->
 
     c = counter_trade
 
-    now = datetime.datetime.utcnow()
+    now = native_datetime_utc_now()
 
     assert c.trade_id
     c.repaired_trade_id = opening_trade.trade_id
     opening_trade.add_note(f"Repaired at {now.strftime('%Y-%m-%d %H:%M')}, by #{c.trade_id}")
     c.add_note(f"Repairing to close the position, full position size gone missing")
 
-    portfolio.close_position(position, datetime.datetime.utcnow())
+    portfolio.close_position(position, native_datetime_utc_now())
 
     # The position is now cleared
     assert p.is_closed()
@@ -277,7 +278,7 @@ def reconfirm_trade(reconfirming_needed_trades: List[TradeExecution]):
             receipt_data,
             stop_on_execution_failure=True)
 
-        t.repaired_at = datetime.datetime.utcnow()
+        t.repaired_at = native_datetime_utc_now()
         t.add_note(f"Failed broadcast repaired at {t.repaired_at}")
 
         repaired.append(t)
@@ -306,17 +307,17 @@ def unfreeze_position(portfolio: Portfolio, position: TradingPosition) -> bool:
     elif total_equity == 0:
         assert position.can_be_closed()
         portfolio.closed_positions[position.position_id] = position
-        position.closed_at = datetime.datetime.utcnow()
+        position.closed_at = native_datetime_utc_now()
     else:
         raise RuntimeError("Not gonna happen")
 
-    position.unfrozen_at = datetime.datetime.utcnow()
+    position.unfrozen_at = native_datetime_utc_now()
     del portfolio.frozen_positions[position.position_id]
 
     if position.notes is None:
         position.notes = ""
 
-    position.add_notes_message(f"Unfrozen at {datetime.datetime.utcnow()}")
+    position.add_notes_message(f"Unfrozen at {native_datetime_utc_now()}")
 
     return True
 

@@ -15,6 +15,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import PortfolioStatistics, Statistics
 from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
+from eth_defi.compat import native_datetime_utc_now
 
 
 def calculate_equity_curve(
@@ -652,7 +653,7 @@ def _get_strategy_time_range(state, fill_time_gaps):
     if fill_time_gaps:
         started_at, last_ts = state.get_strategy_time_range()
     if not last_ts:
-        last_ts = datetime.datetime.utcnow()
+        last_ts = native_datetime_utc_now()
     return started_at,last_ts
   
 

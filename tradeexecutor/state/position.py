@@ -36,6 +36,7 @@ from tradingstrategy.lending import LendingProtocolType
 
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
 from tradingstrategy.utils.time import ZERO_TIMEDELTA
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -2044,7 +2045,7 @@ class TradingPosition(GenericPosition):
             if execution_mode.is_backtesting():
                 assert end_at, f"get_duration(): You must give end_at timestamp in backtesting"
             else:
-                end_at = datetime.datetime.utcnow()
+                end_at = native_datetime_utc_now()
 
             return end_at - self.opened_at
 
@@ -2325,9 +2326,9 @@ class TradingPosition(GenericPosition):
 
         - Must be done to unsellable assets like scam coins
         """
-        self.other_data["marked_down_at"] = datetime.datetime.utcnow()
+        self.other_data["marked_down_at"] = native_datetime_utc_now()
         self.add_notes_message(f"Marked down to zero manually, last price was {self.last_token_price}, last value was: {self.get_value()}")
         self.last_token_price = 0
-        self.last_pricing_at = datetime.datetime.utcnow()
-        self.closed_at = datetime.datetime.utcnow()
-        self.unfrozen_at = datetime.datetime.utcnow()
+        self.last_pricing_at = native_datetime_utc_now()
+        self.closed_at = native_datetime_utc_now()
+        self.unfrozen_at = native_datetime_utc_now()

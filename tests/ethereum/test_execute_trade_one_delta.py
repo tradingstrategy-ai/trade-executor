@@ -34,6 +34,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.testing.ethereumtrader_one_delta import OneDeltaTestTrader
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
 from tradeexecutor.ethereum.one_delta.analysis import decode_path
+from eth_defi.compat import native_datetime_utc_now
 
 
 pytestmark = pytest.mark.skipif(
@@ -280,7 +281,7 @@ def state(web3, hot_wallet, asset_usdc, usdc) -> State:
     state = State()
 
     events = sync_reserves(
-        web3, datetime.datetime.utcnow(), hot_wallet.address, [], [asset_usdc]
+        web3, native_datetime_utc_now(), hot_wallet.address, [], [asset_usdc]
     )
     assert len(events) > 0
     apply_reserve_update_events(state, events)

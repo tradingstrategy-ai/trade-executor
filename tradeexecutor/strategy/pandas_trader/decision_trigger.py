@@ -21,6 +21,7 @@ from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.types import PrimaryKey
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -251,7 +252,7 @@ def wait_for_universe_data_availability_jsonl(
     bucket = current_universe.data_universe.time_bucket
     completed_pairs: Set[DEXPair] = set()
     incompleted_pairs: Set[DEXPair] = {pairs.get_pair_by_id(id) for id in pairs.pair_map.keys()}
-    started_at = datetime.datetime.utcnow()
+    started_at = native_datetime_utc_now()
     deadline = started_at + max_wait
     poll_cycle = 1
 
@@ -274,7 +275,7 @@ def wait_for_universe_data_availability_jsonl(
     max_diff = datetime.timedelta(0)
     latest_timestamp = diff = None
 
-    while datetime.datetime.utcnow() < deadline:
+    while native_datetime_utc_now() < deadline:
 
         # Get the availability of the trading for candles
         avail_map = fetch_availability(
@@ -339,11 +340,11 @@ def wait_for_universe_data_availability_jsonl(
                 lending_data
             )
 
-            time_waited = datetime.datetime.utcnow() - started_at
+            time_waited = native_datetime_utc_now() - started_at
 
             return UpdatedUniverseResult(
                 updated_universe=updated_universe,
-                ready_at=datetime.datetime.utcnow(),
+                ready_at=native_datetime_utc_now(),
                 time_waited=time_waited,
                 poll_cycles=poll_cycle,
                 max_diff=max_diff,

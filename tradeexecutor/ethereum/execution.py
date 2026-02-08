@@ -45,6 +45,7 @@ from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -214,7 +215,7 @@ class EthereumExecution(ExecutionModel):
                 receipt_data,
                 stop_on_execution_failure=True)
 
-            t.repaired_at = datetime.datetime.utcnow()
+            t.repaired_at = native_datetime_utc_now()
             t.add_note(f"Failed broadcast repaired at {t.repaired_at}")
 
             repaired.append(t)
@@ -283,7 +284,7 @@ class EthereumExecution(ExecutionModel):
         
         assert isinstance(confirmation_timeout, datetime.timedelta)
 
-        broadcasted = broadcast(web3, datetime.datetime.utcnow(), trades)
+        broadcasted = broadcast(web3, native_datetime_utc_now(), trades)
 
         # if confirmation_timeout > datetime.timedelta(0):
         receipts = wait_trades_to_complete(
@@ -442,7 +443,7 @@ class EthereumExecution(ExecutionModel):
                     )
                 except Exception as e:
                     logger.error("MEV blocker failed to broadcast: %s", e)
-                    report_failure(datetime.datetime.utcnow(), state, t, stop_on_execution_failure)
+                    report_failure(native_datetime_utc_now(), state, t, stop_on_execution_failure)
                     break
 
                 current_trade_tx_map[signed_tx.hash.hex()] = (t, tx)
@@ -450,7 +451,7 @@ class EthereumExecution(ExecutionModel):
 
             else:
                 # No problem with broadcasting, we got receipts
-                t.mark_broadcasted(datetime.datetime.utcnow(), rebroadcast=False)
+                t.mark_broadcasted(native_datetime_utc_now(), rebroadcast=False)
 
                 self.resolve_trades(
                     datetime.datetime.now(),
@@ -533,7 +534,7 @@ class EthereumExecution(ExecutionModel):
                 logger.info("Broadcasting transaction %s, nonce %s, for trade\n:%s", signed_tx.hash.hex(), signed_tx.nonce, t)
                 tx_map[signed_tx.hash.hex()] = (t, tx)
 
-            t.mark_broadcasted(datetime.datetime.utcnow(), rebroadcast=rebroadcast)
+            t.mark_broadcasted(native_datetime_utc_now(), rebroadcast=rebroadcast)
 
         logger.info("Normal tx broadcast")
         receipts = wait_and_broadcast_multiple_nodes(
@@ -576,7 +577,7 @@ class EthereumExecution(ExecutionModel):
 
         if not rebroadcast:
             state.start_execution_all(
-                datetime.datetime.utcnow(),
+                native_datetime_utc_now(),
                 trades,
                 max_slippage=self.max_slippage,
                 rebroadcast=rebroadcast,
@@ -867,7 +868,7 @@ def prepare_swaps(
         if t.is_buy():
             state.portfolio.move_capital_from_reserves_to_spot_trade(t, underflow_check=underflow_check)
 
-        t.started_at = datetime.datetime.utcnow()
+        t.started_at = native_datetime_utc_now()
 
 
 def approve_tokens(
@@ -1027,7 +1028,7 @@ def broadcast(
             broadcast_batch.append(signed_tx)
             gas_limit = tx.get_gas_limit()
             logger.info("Broadcasting transaction %s for trade %s, gas limit is %s", t, tx, gas_limit)
-        t.mark_broadcasted(datetime.datetime.utcnow())
+        t.mark_broadcasted(native_datetime_utc_now())
 
     try:
         hashes = broadcast_transactions(web3, broadcast_batch, confirmation_block_count=confirmation_block_count)

@@ -27,6 +27,7 @@ from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...utils.cpu import get_safe_max_workers_count
 from . import shared_options
 from ...utils.timer import timed_task
+from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
@@ -154,7 +155,7 @@ def check_universe(
 
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
-    ts = datetime.datetime.utcnow()
+    ts = native_datetime_utc_now()
     universe = universe_model.construct_universe(
         ts,
         ExecutionMode.preflight_check,
@@ -171,7 +172,7 @@ def check_universe(
         max_data_delay = None
 
     latest_candle_at = universe_model.check_data_age(ts, universe, max_data_delay)
-    ago = datetime.datetime.utcnow() - latest_candle_at
+    ago = native_datetime_utc_now() - latest_candle_at
     logger.info("Latest OHCLV candle is at: %s, %s ago", latest_candle_at, ago)
 
     with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 140):
@@ -187,7 +188,7 @@ def check_universe(
     if create_indicators:
         parameters = run_description.runner.parameters
         cycle_duration: CycleDuration = parameters["cycle_duration"]
-        clock = datetime.datetime.utcnow()
+        clock = native_datetime_utc_now()
         strategy_cycle_timestamp = snap_to_previous_tick(
             clock,
             cycle_duration,

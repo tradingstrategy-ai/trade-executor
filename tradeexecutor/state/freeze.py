@@ -6,6 +6,7 @@ from typing import List, Tuple
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ def freeze_position_on_failed_trade(ts: datetime.datetime, state: State, trades:
             if position.notes is None:
                 position.notes = ""
 
-            freeze_message = f"Frozen at {datetime.datetime.utcnow()} due to trade {t.trade_id} failing: {t.get_revert_reason()}"
+            freeze_message = f"Frozen at {native_datetime_utc_now()} due to trade {t.trade_id} failing: {t.get_revert_reason()}"
             position.add_notes_message(freeze_message)
 
             # Error level will send this all the way to Sentry

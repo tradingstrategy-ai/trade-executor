@@ -18,6 +18,7 @@ from tradeexecutor.strategy.summary import KeyMetric, KeyMetricKind, KeyMetricSo
 from tradeexecutor.visual.equity_curve import calculate_size_relative_realised_trading_returns, calculate_non_cumulative_daily_returns, calculate_equity_curve, \
     calculate_returns, calculate_daily_returns, calculate_share_price
 from tradeexecutor.visual.qs_wrapper import import_quantstats_wrapped
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -197,9 +198,9 @@ def calculate_trades_last_week(portfolio: Portfolio, cut_off_date=None) -> int:
     See :term:`trades last week`.
     """
     if cut_off_date is None:
-        cut_off_date = datetime.datetime.utcnow() - datetime.timedelta(days=7)
+        cut_off_date = native_datetime_utc_now() - datetime.timedelta(days=7)
 
-    end_date = datetime.datetime.utcnow()
+    end_date = native_datetime_utc_now()
 
     trades = portfolio.get_all_trades()
     trades_last_week = [t for t in trades if t.is_success() and t.executed_at >= cut_off_date and t.executed_at <= end_date]
@@ -466,7 +467,7 @@ def get_data_source_and_calculation_window(
         source_state = live_state
         source = KeyMetricSource.live_trading
         calculation_window_start_at = source_state.created_at
-        calculation_window_end_at = datetime.datetime.utcnow()
+        calculation_window_end_at = native_datetime_utc_now()
     elif backtested_state and backtested_state.portfolio.get_trading_history_duration():
         source_state = backtested_state
         source = KeyMetricSource.backtesting

@@ -531,7 +531,7 @@ def setup_backtest(
     if client is not None:
         logger.info("Loading backtesting universe data for %s", universe_options)
         universe = strategy_module.create_trading_universe(
-            pd.Timestamp.utcnow(),
+            pd.Timestamp.utcnow().tz_localize(None),
             client,
             standalone_backtest_execution_context,
             universe_options,

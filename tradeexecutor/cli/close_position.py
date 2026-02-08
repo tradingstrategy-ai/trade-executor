@@ -21,6 +21,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ def close_single_or_all_positions(
         assert type(position_id) is int, f"Got: {position_id} {type(position_id)}"
         assert position_id >= 0
 
-    ts = datetime.datetime.utcnow()
+    ts = native_datetime_utc_now()
 
     # Sync nonce for the hot wallet
     execution_model.initialize()
@@ -204,7 +205,7 @@ def close_single_or_all_positions(
         for p in positions_to_close:
 
             # The message left on the positions that were closed
-            note = f"Close sell with CLI command at {datetime.datetime.utcnow()}"
+            note = f"Close sell with CLI command at {native_datetime_utc_now()}"
 
             # Create trades to open the position
             logger.info("Closing position %s", p)

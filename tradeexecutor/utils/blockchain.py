@@ -1,6 +1,7 @@
 """Blockchain related utilities."""
 import datetime
 
+from eth_defi.compat import native_datetime_utc_fromtimestamp
 from web3 import Web3
 from web3.types import BlockIdentifier
 
@@ -28,7 +29,7 @@ def get_latest_block_timestamp(web3: Web3) -> datetime.datetime:
     else:
         ts = ts_str
 
-    return datetime.datetime.utcfromtimestamp(ts)
+    return native_datetime_utc_fromtimestamp(ts)
 
 
 def get_block_timestamp(web3: Web3, block_identifier: BlockIdentifier) -> datetime.datetime:
@@ -48,6 +49,6 @@ def get_block_timestamp(web3: Web3, block_identifier: BlockIdentifier) -> dateti
     else:
         ts = ts_str
 
-    return datetime.datetime.utcfromtimestamp(ts)
+    return native_datetime_utc_fromtimestamp(ts)
 
 

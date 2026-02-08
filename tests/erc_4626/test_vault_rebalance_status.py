@@ -20,6 +20,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from eth_defi.compat import native_datetime_utc_now
 
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
@@ -114,7 +115,7 @@ def test_vault_rebalance_status_with_position(
     state.portfolio.get_default_reserve_position().quantity = Decimal("999")
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         universe=strategy_universe,
         state=state,
         pricing_model=pricing_model,
@@ -133,7 +134,7 @@ def test_vault_rebalance_status_with_position(
     execution_model.initialize()
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,

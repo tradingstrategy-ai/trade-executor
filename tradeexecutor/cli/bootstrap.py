@@ -67,6 +67,7 @@ from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalType, ApprovalModel
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_model import AssetManagementMode, ExecutionModel
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -482,7 +483,7 @@ def create_metadata(
         short_description,
         long_description,
         icon_url,
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         executor_running=True,
         on_chain_data=on_chain_data,
         backtested_state=backtested_state,

@@ -1,5 +1,4 @@
 {
-
   "permissions": {
     "allow": [
       "WebSearch",
@@ -35,8 +34,8 @@
       "Bash(cp:*)",
       "Bash(test:*)",
       "Bash(file:*)",
-      "Bash(identify:*)",   
-      "Bash(unzip:*)",      
+      "Bash(identify:*)",
+      "Bash(unzip:*)",
       "Edit(**)",
       "Write(**)",
       "MultiEdit(**)",
@@ -45,19 +44,19 @@
       "Skill(more-vaults)",
       "Skill(more-vaults:*)",
       "Skill(identify-vault-protocol)",
-      "Skill(identify-vault-protocol:*)",      
+      "Skill(identify-vault-protocol:*)",
       "Skill(get-block-number)",
-      "Skill(get-block-number:*)",      
+      "Skill(get-block-number:*)",
       "Skill(extract-project-logo)",
       "Skill(extract-project-logo:*)",
       "Skill(extract-vault-protocol-logo)",
       "Skill(extract-vault-protocol-logo:*)",
       "Skill(post-process-logo)",
       "Skill(post-process-logo:*)",
-      "mcp__github__*"                           
+      "mcp__github__*",
+      "Bash(pip index:*)"
     ]
   },
   "model": "opus",
   "thinkingMode": "extended"
-
 }

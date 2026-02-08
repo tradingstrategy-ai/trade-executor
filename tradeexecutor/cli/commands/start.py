@@ -49,6 +49,7 @@ from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
+from eth_defi.compat import native_datetime_utc_now
 
 try:
     from ...webhook.server import create_webhook_server
@@ -164,7 +165,7 @@ def start(
     """Launch Trade Executor instance."""
     global logger
 
-    started_at = datetime.datetime.utcnow()
+    started_at = native_datetime_utc_now()
 
     # Guess id from the strategy file
     id = prepare_executor_id(id, strategy_file)
@@ -663,7 +664,7 @@ def start(
             import ipdb
             ipdb.post_mortem()
 
-        running_time = datetime.datetime.utcnow() - started_at
+        running_time = native_datetime_utc_now() - started_at
 
         if (server is None) or (running_time < datetime.timedelta(seconds=http_wait_good_startup_seconds)):
             # Only terminate the process if the webhook server is not running,

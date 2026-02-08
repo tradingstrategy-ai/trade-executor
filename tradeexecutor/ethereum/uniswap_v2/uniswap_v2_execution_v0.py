@@ -31,6 +31,7 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +163,7 @@ class UniswapV2ExecutionModelVersion0(ExecutionModel):
             trading_fee=0.0,
         )
 
-        state.start_execution_all(datetime.datetime.utcnow(), trades)
+        state.start_execution_all(native_datetime_utc_now(), trades)
 
         routing_model.setup_trades(
             state,
@@ -285,7 +286,7 @@ def broadcast_and_resolve(
 
     assert isinstance(confirmation_timeout, datetime.timedelta)
 
-    broadcasted = broadcast(web3, datetime.datetime.utcnow(), trades)
+    broadcasted = broadcast(web3, native_datetime_utc_now(), trades)
 
     if confirmation_timeout > datetime.timedelta(0):
 

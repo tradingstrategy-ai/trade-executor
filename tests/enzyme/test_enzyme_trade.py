@@ -31,6 +31,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
+from eth_defi.compat import native_datetime_utc_now
 
 
 
@@ -129,7 +130,7 @@ def test_enzyme_execute_open_position(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    sync_model.sync_treasury(native_datetime_utc_now(), state)
     assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
@@ -255,7 +256,7 @@ def test_enzyme_execute_close_position(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    sync_model.sync_treasury(native_datetime_utc_now(), state)
     assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
@@ -338,14 +339,14 @@ def test_enzyme_lp_fees(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    sync_model.sync_treasury(native_datetime_utc_now(), state)
     assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
 
     # Check we have a good price ETH/USD
     price_structure = pricing_model.get_buy_price(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         weth_usdc_trading_pair,
         Decimal(1),
     )

@@ -39,6 +39,7 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, Execution
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradingstrategy.chain import ChainId
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -141,7 +142,7 @@ def test_exchange_account_sync_cli_style(
     universe_options = UniverseOptions()
 
     strategy_universe = strategy_module.create_trading_universe(
-        ts=datetime.datetime.utcnow(),
+        ts=native_datetime_utc_now(),
         client=None,
         execution_context=execution_context,
         universe_options=universe_options,

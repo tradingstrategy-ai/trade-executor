@@ -18,6 +18,7 @@ from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
 from tradingstrategy.client import Client
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -93,7 +94,7 @@ def run_backtest_for_module(
     universe = call_create_trading_universe(
         mod.create_trading_universe,
         client=client,
-        timestamp=datetime.datetime.utcnow(),
+        timestamp=native_datetime_utc_now(),
         strategy_parameters=mod.parameters,
         execution_context=execution_context,
         universe_options=universe_options,

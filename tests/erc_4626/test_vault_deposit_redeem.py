@@ -20,6 +20,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import \
     PositionManager
 from tradeexecutor.strategy.trading_strategy_universe import \
     TradingStrategyUniverse
+from eth_defi.compat import native_datetime_utc_now
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable")
@@ -66,7 +67,7 @@ def test_vault_trading_deposit_redeem(
     )
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         universe=strategy_universe,
         state=state,
         pricing_model=pricing_model,
@@ -86,7 +87,7 @@ def test_vault_trading_deposit_redeem(
     execution_model.initialize()
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -109,7 +110,7 @@ def test_vault_trading_deposit_redeem(
     t = trades[0]
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,

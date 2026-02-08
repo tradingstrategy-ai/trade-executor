@@ -34,6 +34,7 @@ from .trade import TradeExecution, TradeFlag, TradeStatus, TradeType
 from .types import USDollarAmount, USDollarPrice
 from .uptime import Uptime
 from .visualisation import Visualisation
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -978,7 +979,7 @@ class State:
             reason = "-"
 
         # Always have human timestamp at reason
-        reason = f"Blacklisted {datetime.datetime.utcnow()}:\n{reason}"
+        reason = f"Blacklisted {native_datetime_utc_now()}:\n{reason}"
 
         self.blacklist_reason[asset.get_identifier()] = reason
 

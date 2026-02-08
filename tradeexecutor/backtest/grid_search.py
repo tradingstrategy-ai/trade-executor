@@ -4,8 +4,6 @@ import gc
 import tempfile
 import traceback
 from _decimal import Decimal
-from distutils.version import Version
-
 from packaging.version import Version
 import numpy
 from pandas._libs.missing import NAType
@@ -40,6 +38,7 @@ import pandas as pd
 import futureproof
 
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
+from eth_defi.compat import native_datetime_utc_now
 
 try:
     from tqdm_loggable.auto import tqdm
@@ -1114,7 +1113,7 @@ def perform_grid_search(
 
     global _process_pool_executor
 
-    start = datetime.datetime.utcnow()
+    start = native_datetime_utc_now()
 
     # Resolve CPU count
     if callable(max_workers):
@@ -1236,7 +1235,7 @@ def perform_grid_search(
         # Force workers to finish
         results = list(iter)
 
-    duration = datetime.datetime.utcnow() - start
+    duration = native_datetime_utc_now() - start
     logger.info("Grid search finished in %s, calculated %d new results", duration, len(results))
 
     results = list(cached_results.values()) + results
@@ -1327,7 +1326,7 @@ def run_grid_search_backtest(
     if cycle_debug_data is None:
         cycle_debug_data = {}
 
-    duration_start = datetime.datetime.utcnow()
+    duration_start = native_datetime_utc_now()
 
     if parameters and parameters.get("backtest_start"):
         start_at = parameters["backtest_start"]
@@ -1421,7 +1420,7 @@ def run_grid_search_backtest(
         tb = traceback.format_exc()
         raise RuntimeError(f"Running a grid search combination failed:\n{combination}\nThe original exception was: {e}\n{tb}") from e
 
-    backtest_end = datetime.datetime.utcnow()
+    backtest_end = native_datetime_utc_now()
 
     # Store backtest metadata
     state.backtest_data.description = f"Combination search: {combination.get_all_parameters_label()}"
@@ -1442,7 +1441,7 @@ def run_grid_search_backtest(
     analysis = build_trade_analysis(state.portfolio)
     summary = analysis.calculate_summary_statistics()
 
-    analysis_end = datetime.datetime.utcnow()
+    analysis_end = native_datetime_utc_now()
 
     period = state.get_trading_time_range()
 

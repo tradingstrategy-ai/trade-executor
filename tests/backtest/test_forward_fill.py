@@ -13,6 +13,7 @@ from tradingstrategy.client import Client
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.forward_fill import forward_fill
+from eth_defi.compat import native_datetime_utc_now
 
 
 def test_forward_fill_spot_only_forward_filled(persistent_test_client: Client):
@@ -204,7 +205,7 @@ def test_forward_fill_too_old(persistent_test_client: Client):
     for t in pairs.iterate_tokens():
         assert t.chain_id == ChainId.polygon
 
-    now_= datetime.datetime.utcnow()
+    now_= native_datetime_utc_now()
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
         reserve_asset="0x2791bca1f2de4661ed88a30c99a7a9449aa84174",

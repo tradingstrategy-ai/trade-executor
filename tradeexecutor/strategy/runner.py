@@ -50,6 +50,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeFlag
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.strategy.valuation import ValuationModelFactory, ValuationModel, revalue_state
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -318,7 +319,7 @@ class StrategyRunner(abc.ABC):
             if execution_context.mode.is_live_trading():
                 # In live trading, use the current UTC time to fetch
                 # the post execution price info
-                ts = datetime.datetime.utcnow()
+                ts = native_datetime_utc_now()
             else:
                 # Backtesting does not yet have a way
                 # to simulate slippage
@@ -978,7 +979,7 @@ class StrategyRunner(abc.ABC):
             # Only log in live execution
             logger.info(f"check_position_triggers() using block %s", end_block)
 
-        timestamp = datetime.datetime.utcnow()
+        timestamp = native_datetime_utc_now()
         universe = cast(TradingStrategyUniverse, universe)
 
         with self.timed_task_context_manager("check_position_triggers"):

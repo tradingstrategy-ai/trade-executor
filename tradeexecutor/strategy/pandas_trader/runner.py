@@ -26,6 +26,7 @@ from tradeexecutor.strategy.runner import StrategyRunner, PreflightCheckFailed
 from tradeexecutor.utils.timestamp import convert_and_validate_timestamp_as_int
 from tradeexecutor.visual.image_output import render_plotly_figure_as_image_file
 from tradeexecutor.visual.strategy_state import draw_single_pair_strategy_state, draw_multi_pair_strategy_state
+from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -314,7 +315,7 @@ class PandasTraderRunner(StrategyRunner):
 
             print("Strategy thinking", file=buf)
             print("", file=buf)
-            print(f"  Strategy cycle #{cycle}: {strategy_cycle_timestamp} UTC, now is {datetime.datetime.utcnow()}", file=buf)
+            print(f"  Strategy cycle #{cycle}: {strategy_cycle_timestamp} UTC, now is {native_datetime_utc_now()}", file=buf)
             print(f"  Last candle at: {last_candle['timestamp']} UTC, market data and action lag: {lag}", file=buf)
             print(f"  Price open:{last_candle['open']} close:{last_candle['close']} {pair.base.token_symbol} / {pair.quote.token_symbol}", file=buf)
 
@@ -340,7 +341,7 @@ class PandasTraderRunner(StrategyRunner):
             buf = StringIO()
 
             print("Strategy thinking", file=buf)
-            print(f"  Strategy cycle #{cycle}: {strategy_cycle_timestamp} UTC, now is {datetime.datetime.utcnow()}", file=buf)
+            print(f"  Strategy cycle #{cycle}: {strategy_cycle_timestamp} UTC, now is {native_datetime_utc_now()}", file=buf)
 
             for pair_id, candles in universe.data_universe.candles.get_all_pairs(max_count=3):
                 

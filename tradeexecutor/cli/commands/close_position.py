@@ -30,6 +30,7 @@ from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.close_position import close_single_or_all_positions
+from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
@@ -171,7 +172,7 @@ def close_position(
 
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
-    ts = datetime.datetime.utcnow()
+    ts = native_datetime_utc_now()
 
     universe = universe_model.construct_universe(
         ts,

@@ -28,6 +28,7 @@ from tradeexecutor.state.types import USDollarAmount, Percent, LeverageMultiplie
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -2163,7 +2164,7 @@ class PositionManager:
             # Move trade to pending, instead to be executed right away
             del position.trades[trade.trade_id]
             position.pending_trades[trade.trade_id] = trade
-            position.pending_since_at = datetime.datetime.utcnow()
+            position.pending_since_at = native_datetime_utc_now()
 
             logger.info("Added trade trigger: trade: %s, position: %s, trigger: %s", trade, position, trigger)
 

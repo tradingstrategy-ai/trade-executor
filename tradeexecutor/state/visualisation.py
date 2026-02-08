@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 from types import NoneType
 from typing import List, Dict, Optional, Any, Union, Tuple, Callable
 
+from eth_defi.compat import native_datetime_utc_fromtimestamp
+
 import numpy as np
 import pandas as pd
 import logging
@@ -296,7 +298,7 @@ class Plot:
         last_entry = max(self.points.keys())
         last_value = self.points[last_entry]
 
-        return datetime.datetime.utcfromtimestamp(last_entry), last_value
+        return native_datetime_utc_fromtimestamp(last_entry), last_value
 
     def get_first_entry(self) -> Tuple[datetime.datetime, float]:
         """Get the first entry in this plot.
@@ -307,7 +309,7 @@ class Plot:
         first_entry = min(self.points.keys())
         first_value = self.points[first_entry]
 
-        return datetime.datetime.utcfromtimestamp(first_entry), first_value
+        return native_datetime_utc_fromtimestamp(first_entry), first_value
 
     def get_entries(self) -> List[Tuple[datetime.datetime, float]]:
         """Get entries as a sorted list."
@@ -318,7 +320,7 @@ class Plot:
         sorted_entries = []
         keys = sorted(self.points.keys())
         for k in keys:
-            timestamp = datetime.datetime.utcfromtimestamp(k)
+            timestamp = native_datetime_utc_fromtimestamp(k)
             v = self.points[k]
             sorted_entries.append((timestamp, v))
         return sorted_entries
@@ -471,7 +473,7 @@ class Visualisation:
                             continue
 
                     # We only want the first message for this timepoint
-                    timestamp = datetime.datetime.utcfromtimestamp(unix_time)
+                    timestamp = native_datetime_utc_fromtimestamp(unix_time)
                     result[timestamp] = "\n".join(messages)
 
             last_n = dict(list(result.items())[-count:])
@@ -484,7 +486,7 @@ class Visualisation:
 
                 if messages:
                     # We only want the first message for this timepoint
-                    timestamp = datetime.datetime.utcfromtimestamp(unix_time)
+                    timestamp = native_datetime_utc_fromtimestamp(unix_time)
                     result[timestamp] = "\n".join(messages)
 
         return result

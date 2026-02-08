@@ -13,6 +13,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.timebucket import TimeBucket
+from eth_defi.compat import native_datetime_utc_now
 
 
 DEFAULT_COLUMN_MAP: Final = {
@@ -424,7 +425,7 @@ def replace_candles(
 
         client = Client.create_jupyter_client()
         universe = create_trading_universe(
-            datetime.datetime.utcnow(),
+            native_datetime_utc_now(),
             client,
             ExecutionContext(mode=ExecutionMode.backtesting),
             universe_options=UniverseOptions(),

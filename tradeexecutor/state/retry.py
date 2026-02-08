@@ -8,6 +8,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeType, TradeStatus
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from .repair import find_trades_to_be_repaired, RepairAborted, RepairResult, unfreeze_position
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ def rebroadcast_trade(
     logger.info("Rebroadcasting trade: %s", t)
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         [t],
         routing_model,
@@ -34,7 +35,7 @@ def rebroadcast_trade(
         rebroadcast=True,
     )
 
-    t.repaired_at = datetime.datetime.utcnow()
+    t.repaired_at = native_datetime_utc_now()
     t.add_note(f"Failed trade rebroadcasted at {t.repaired_at}")
 
     return t

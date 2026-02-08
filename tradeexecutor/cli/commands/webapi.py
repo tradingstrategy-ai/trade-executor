@@ -16,6 +16,7 @@ from queue import Queue
 from typing import Optional
 
 import typer
+from eth_defi.compat import native_datetime_utc_now
 
 try:
     import waitress
@@ -138,7 +139,7 @@ def webapi(
     run_state.executor_id = id
 
     # Create strategy universe and chart_registry to load into the run_state
-    ts = datetime.datetime.utcnow()
+    ts = native_datetime_utc_now()
     execution_context = ExecutionContext(
         mode=ExecutionMode.preflight_check,
         timed_task_context_manager=timed_task,

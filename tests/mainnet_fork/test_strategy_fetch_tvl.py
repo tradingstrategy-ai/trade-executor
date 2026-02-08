@@ -118,7 +118,7 @@ def test_fetch_tvl_in_decide_trades(
     strategy_input = StrategyInput(
         cycle=1,
         strategy_universe=strategy_universe,
-        timestamp=pd.Timestamp.utcnow(),
+        timestamp=pd.Timestamp.utcnow().tz_localize(None),
         parameters=StrategyParameters({}),
         state=None,
         indicators=None,
@@ -140,7 +140,7 @@ def test_fetch_tvl_in_decide_trades_broken(
     strategy_input = StrategyInput(
         cycle=1,
         strategy_universe=strategy_universe_broken,
-        timestamp=pd.Timestamp.utcnow(),
+        timestamp=pd.Timestamp.utcnow().tz_localize(None),
         parameters=StrategyParameters({}),
         state=None,
         indicators=None,

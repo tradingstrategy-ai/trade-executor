@@ -9,6 +9,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.freqtrade.freqtrade_client import FreqtradeClient
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ class FreqtradePricingModel(PricingModel):
             pair_fee=[0.0],
             side=True,  # Buy
             path=[pair],
-            read_at=datetime.datetime.utcnow(),
+            read_at=native_datetime_utc_now(),
             block_number=None,  # No blockchain
             token_in=reserve,  # USDT deposit
             token_out=reserve,  # Get same amount tracked
@@ -126,7 +127,7 @@ class FreqtradePricingModel(PricingModel):
             pair_fee=[0.0],
             side=False,  # Sell
             path=[pair],
-            read_at=datetime.datetime.utcnow(),
+            read_at=native_datetime_utc_now(),
             block_number=None,  # No blockchain
             token_in=quantity,
             token_out=quantity,  # 1:1 withdrawal

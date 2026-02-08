@@ -13,6 +13,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,7 @@ class VaultPricing(PricingModel):
             pair_fee=[0.0],
             side=False,
             path=[pair],
-            read_at=datetime.datetime.utcnow(),
+            read_at=native_datetime_utc_now(),
             block_number=block_number,
             token_in=quantity,
             token_out=estimated_usd,
@@ -106,7 +107,7 @@ class VaultPricing(PricingModel):
             pair_fee=[0.0],
             side=False,
             path=[pair],
-            read_at=datetime.datetime.utcnow(),
+            read_at=native_datetime_utc_now(),
             block_number=block_number,
             token_in=reserve,
             token_out=estimated_shares,

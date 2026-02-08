@@ -21,6 +21,7 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.chain import ChainId
+from eth_defi.compat import native_datetime_utc_now
 
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
@@ -80,7 +81,7 @@ def deposited_vault(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Process the initial deposits
-    cycle = datetime.datetime.utcnow()
+    cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(
         cycle,
         state,
@@ -109,7 +110,7 @@ def test_lagoon_swap_uniswap_v2(
     routing_model = lagoon_routing_model
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         universe=strategy_universe,
         state=state,
         pricing_model=lagoon_pricing_model,
@@ -129,7 +130,7 @@ def test_lagoon_swap_uniswap_v2(
     execution_model.initialize()
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -148,7 +149,7 @@ def test_lagoon_swap_uniswap_v2(
     t = trades[0]
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -178,7 +179,7 @@ def test_lagoon_swap_uniswap_v3(
     routing_model = lagoon_routing_model
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         universe=strategy_universe,
         state=state,
         pricing_model=lagoon_pricing_model,
@@ -198,7 +199,7 @@ def test_lagoon_swap_uniswap_v3(
     execution_model.initialize()
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -217,7 +218,7 @@ def test_lagoon_swap_uniswap_v3(
     t = trades[0]
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -254,7 +255,7 @@ def test_lagoon_redemption_queue(
     #
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         universe=strategy_universe,
         state=state,
         pricing_model=lagoon_pricing_model,
@@ -276,7 +277,7 @@ def test_lagoon_redemption_queue(
     execution_model.initialize()
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -311,7 +312,7 @@ def test_lagoon_redemption_queue(
     # Settle to see the redemption,
     # was not instantly settled because it is more than we have cash
     sync_model.sync_treasury(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         post_valuation=True,
     )
@@ -325,7 +326,7 @@ def test_lagoon_redemption_queue(
     t = trades[0]
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,
@@ -344,7 +345,7 @@ def test_lagoon_redemption_queue(
 
     # Settle to clear the redemption,
     sync_model.sync_treasury(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         post_valuation=True,
     )

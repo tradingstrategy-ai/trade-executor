@@ -23,6 +23,7 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.trade_pricing import TradePricing
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +154,7 @@ class OneDeltaLivePricing(EthereumPricingModel):
             pair_fee=fees,
             side=False,
             path=path,
-            read_at=datetime.datetime.utcnow(),
+            read_at=native_datetime_utc_now(),
             block_number=block_number,
             token_in=quantity,
             token_out=received,
@@ -270,7 +271,7 @@ class OneDeltaLivePricing(EthereumPricingModel):
             market_feed_delay=datetime.timedelta(seconds=0),
             side=True,
             path=path,
-            read_at=datetime.datetime.utcnow(),
+            read_at=native_datetime_utc_now(),
             block_number=block_number,
             token_in=reserve,
             token_out=token_received,

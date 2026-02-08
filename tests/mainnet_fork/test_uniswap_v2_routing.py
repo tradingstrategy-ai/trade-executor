@@ -41,6 +41,7 @@ from tradeexecutor.strategy.trading_strategy_universe import create_pair_univers
 from tradeexecutor.testing.pairuniversetrader import PairUniverseTestTrader
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import PandasPairUniverse
+from eth_defi.compat import native_datetime_utc_now
 
 pytestmark = pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None,
                                 reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
@@ -262,7 +263,7 @@ def state(web3, hot_wallet, usdt_asset) -> State:
     state = State()
 
     events = sync_reserves(
-        web3, datetime.datetime.utcnow(), hot_wallet.address, [], [usdt_asset]
+        web3, native_datetime_utc_now(), hot_wallet.address, [], [usdt_asset]
     )
     assert len(events) > 0
     apply_reserve_update_events(state, events)
@@ -772,7 +773,7 @@ def test_stateful_routing_three_legstest_stateful_routing_three_legs(
     assert t.reserve_currency == usdt_asset
     assert t.pair == cake_bnb_trading_pair
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
@@ -799,7 +800,7 @@ def test_stateful_routing_three_legstest_stateful_routing_three_legs(
     assert t.pair == cake_bnb_trading_pair
     assert t.planned_quantity == -cake_position.get_quantity()
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
@@ -852,7 +853,7 @@ def test_stateful_routing_two_legs(
     assert t.reserve_currency == usdt_asset
     assert t.pair == cake_usdt_trading_pair
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
@@ -884,7 +885,7 @@ def test_stateful_routing_two_legs(
     assert t.pair == cake_usdt_trading_pair
     assert t.planned_quantity == -cake_position.get_quantity()
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
@@ -936,7 +937,7 @@ def test_stateful_routing_out_of_balance(
         trader.buy(cake_usdt_trading_pair, Decimal(100))
     ]
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
 
     with pytest.raises(OutOfBalance):
         routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
@@ -983,7 +984,7 @@ def test_stateful_routing_adjust_epsilon(
     assert t.reserve_currency == usdt_asset
     assert t.pair == cake_usdt_trading_pair
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
@@ -1026,7 +1027,7 @@ def test_stateful_routing_adjust_epsilon_sell(
         trader.buy(cake_usdt_trading_pair, Decimal(100))
     ]
 
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
 
@@ -1044,7 +1045,7 @@ def test_stateful_routing_adjust_epsilon_sell(
     assert t.is_sell()
 
     trades = [t]
-    state.start_execution_all(datetime.datetime.utcnow(), trades)
+    state.start_execution_all(native_datetime_utc_now(), trades)
     routing_model.execute_trades_internal(pair_universe, routing_state, trades, check_balances=True)
     execution_model.broadcast_and_resolve_old(state, trades, routing_model, stop_on_execution_failure=True)
     assert t.is_success()

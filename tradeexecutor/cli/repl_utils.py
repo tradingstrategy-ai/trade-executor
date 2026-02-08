@@ -27,6 +27,7 @@ from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from eth_defi.compat import native_datetime_utc_now
 
 
 def _broadcast_tx(
@@ -203,7 +204,7 @@ def deposit_4626(
     web3 = console_context["web3"]
 
     position_manager = PositionManager(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         universe=strategy_universe,
         state=state,
         pricing_model=pricing_model,
@@ -236,7 +237,7 @@ def deposit_4626(
     execution_model.initialize()
 
     execution_model.execute_trades(
-        datetime.datetime.utcnow(),
+        native_datetime_utc_now(),
         state,
         trades,
         routing_model,

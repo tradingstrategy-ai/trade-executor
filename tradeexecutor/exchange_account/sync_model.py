@@ -22,6 +22,7 @@ from tradeexecutor.state.types import JSONHexAddress, BlockNumber
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.pricing_model import PricingModel
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -195,7 +196,7 @@ class ExchangeAccountSyncModel(SyncModel):
             events.append(evt)
 
         if events:
-            state.sync.accounting.last_updated_at = datetime.datetime.utcnow()
+            state.sync.accounting.last_updated_at = native_datetime_utc_now()
 
         return events
 

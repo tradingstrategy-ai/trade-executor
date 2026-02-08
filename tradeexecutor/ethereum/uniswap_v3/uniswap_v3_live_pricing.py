@@ -23,6 +23,7 @@ from tradingstrategy.pair import PandasPairUniverse
 
 from eth_defi.uniswap_v3.price import UniswapV3PriceHelper, estimate_sell_received_amount, estimate_buy_received_amount, get_onchain_price
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +193,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
             pair_fee=fees,
             side=False,
             path=path,
-            read_at=datetime.datetime.utcnow(),
+            read_at=native_datetime_utc_now(),
             block_number=block_number,
             token_in=quantity,
             token_out=received,
@@ -312,7 +313,7 @@ class UniswapV3LivePricing(EthereumPricingModel):
             market_feed_delay=datetime.timedelta(seconds=0),
             side=True,
             path=path,
-            read_at=datetime.datetime.utcnow(),
+            read_at=native_datetime_utc_now(),
             block_number=block_number,
             token_in=reserve,
             token_out=token_received,

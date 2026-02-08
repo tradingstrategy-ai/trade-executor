@@ -37,6 +37,7 @@ from tradeexecutor.strategy.asset import get_relevant_assets, build_expected_ass
 from tradeexecutor.strategy.account_correction import calculate_account_corrections, AccountingCorrectionCause, correct_accounts, UnknownTokenPositionFix
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
+from eth_defi.compat import native_datetime_utc_now
 
 
 @pytest.fixture
@@ -141,7 +142,7 @@ def test_enzyme_no_accounting_errors(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    sync_model.sync_treasury(native_datetime_utc_now(), state)
     assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     tx_builder = EnzymeTransactionBuilder(hot_wallet, vault)
@@ -241,7 +242,7 @@ def test_enzyme_correct_accounting_errors(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    sync_model.sync_treasury(native_datetime_utc_now(), state)
     assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     reserve_position: ReservePosition = state.portfolio.get_default_reserve_position()
@@ -454,7 +455,7 @@ def test_enzyme_correct_accounting_no_open_position(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    sync_model.sync_treasury(native_datetime_utc_now(), state)
     assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     # Send in some WETH
@@ -555,7 +556,7 @@ def test_correct_accounting_errors_for_zero_position(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    sync_model.sync_treasury(native_datetime_utc_now(), state)
     assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     reserve_position: ReservePosition = state.portfolio.get_default_reserve_position()

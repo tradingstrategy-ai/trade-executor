@@ -31,6 +31,7 @@ from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.valuation import revalue_state, ValuationModel
 from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
+from eth_defi.compat import native_datetime_utc_now
 
 
 @pytest.fixture
@@ -147,7 +148,7 @@ def test_enzyme_redeemed_position_profit(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Strategy has its reserve balances updated
-    sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    sync_model.sync_treasury(native_datetime_utc_now(), state)
     assert state.portfolio.calculate_total_equity() == pytest.approx(500)
 
     # Create open WETH/USDC position worth of 100
@@ -177,7 +178,7 @@ def test_enzyme_redeemed_position_profit(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Strategy has its reserve balances updated
-    events = sync_model.sync_treasury(datetime.datetime.utcnow(), state)
+    events = sync_model.sync_treasury(native_datetime_utc_now(), state)
     assert len(events) == 2  # redemption detected for two assts
 
     assert state.portfolio.open_positions[1].get_unrealised_profit_usd() == 0
@@ -202,13 +203,13 @@ def test_enzyme_redeemed_position_profit(
     assert moved_price == pytest.approx(1359.153875)
 
     # Revalue positions
-    revalue_state(state, datetime.datetime.utcnow(), valuation_model)
+    revalue_state(state, native_datetime_utc_now(), valuation_model)
 
     # Because price went down we have unrealised PnL
     assert state.portfolio.open_positions[1].get_unrealised_profit_usd() == pytest.approx(-7.372047000000003)
 
     # Close the position
-    position_manager = PositionManager(datetime.datetime.utcnow(), single_pair_strategy_universe, state, pricing_model)
+    position_manager = PositionManager(native_datetime_utc_now(), single_pair_strategy_universe, state, pricing_model)
     trades = position_manager.close_all()
     assert len(trades) == 1
 

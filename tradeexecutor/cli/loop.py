@@ -61,6 +61,7 @@ from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse, UniverseOptions
 from tradeexecutor.strategy.valuation import ValuationModelFactory
+from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
 
 try:
     from apscheduler.executors.pool import ThreadPoolExecutor
@@ -479,7 +480,7 @@ class ExecutionLoop:
         if self.execution_context.mode.is_live_trading() and not (self.execution_context.mode == ExecutionMode.simulated_trading):
             # In live trading, the interest follows clock
             # (chain blocks)
-            interest_timestamp = datetime.datetime.utcnow()
+            interest_timestamp = native_datetime_utc_now()
             logger.info("Doing live trading interest sync at %s", interest_timestamp)
         else:
             # In backtesting do discreet steps
@@ -555,7 +556,7 @@ class ExecutionLoop:
             assert long_short_metrics_latest, "long_short_metrics_latest cannot be None during live trading"
 
             update_statistics(
-                datetime.datetime.utcnow(),
+                native_datetime_utc_now(),
                 state.stats,
                 state.portfolio,
                 ExecutionMode.real_trading,
@@ -717,7 +718,7 @@ class ExecutionLoop:
         if trades:
             # Recalculate statistics if we got any executed trades
             update_statistics(
-                datetime.datetime.utcnow(),
+                native_datetime_utc_now(),
                 state.stats,
                 state.portfolio,
                 ExecutionMode.real_trading,
@@ -750,7 +751,7 @@ class ExecutionLoop:
         )
         universe = cast(TradingStrategyUniverse, universe)
 
-        ts = datetime.datetime.utcnow()
+        ts = native_datetime_utc_now()
         time_bucket = universe.data_universe.time_bucket
         if time_bucket != TimeBucket.not_applicable:
             rounded_ts = time_bucket.floor(pd.Timestamp(ts)).to_pydatetime()
@@ -961,7 +962,7 @@ class ExecutionLoop:
         # Throttle TQDM updates to 1 per second because
         # otherwise we crash PyCharm
         # https://stackoverflow.com/q/43288550/315168
-        last_progress_update = datetime.datetime.utcfromtimestamp(0)
+        last_progress_update = native_datetime_utc_fromtimestamp(0)
         progress_update_threshold = datetime.timedelta(seconds=0.1)
         last_update_ts = None  # The last pushed timestamp to tqdm
         trigger_checks = 0
@@ -991,13 +992,13 @@ class ExecutionLoop:
             ts = snap_to_previous_tick(ts, backtest_step)
 
             # Bump progress bar forward and update backtest status
-            if datetime.datetime.utcnow() - last_progress_update > progress_update_threshold:
+            if native_datetime_utc_now() - last_progress_update > progress_update_threshold:
                 friedly_ts = ts.strftime(ts_format)
                 trade_count = len(list(state.portfolio.get_all_trades()))
                 if progress_bar:
                     progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name})")
                     set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses)
-                last_progress_update = datetime.datetime.utcnow()
+                last_progress_update = native_datetime_utc_now()
                 if last_update_ts:
                     # Push update for the period
                     passed_seconds = (ts - last_update_ts).total_seconds()
@@ -1142,7 +1143,7 @@ class ExecutionLoop:
         # Set up web server chart exports
         if self.create_charts:
             run_state.chart_registry = self.create_charts(
-                timestamp=datetime.datetime.utcnow(),
+                timestamp=native_datetime_utc_now(),
                 parameters=self.parameters,
                 strategy_universe=universe,
                 execution_context=self.execution_context,
@@ -1166,7 +1167,7 @@ class ExecutionLoop:
         if self.sync_treasury_on_startup:
 
             reserve_assets = list(universe.reserve_assets)
-            startup_time = datetime.datetime.utcnow()
+            startup_time = native_datetime_utc_now()
             logger.info(
                 "Syncing treasury events for startup, startup time is %s",
                 startup_time,
@@ -1185,7 +1186,7 @@ class ExecutionLoop:
                 )
 
             self.sync_model.sync_treasury(
-                datetime.datetime.utcnow(),
+                native_datetime_utc_now(),
                 state,
                 reserve_assets,
                 post_valuation=True,
@@ -1238,7 +1239,7 @@ class ExecutionLoop:
                 extra_debug_data = {}
 
                 # Wall clock time
-                unrounded_timestamp = datetime.datetime.utcnow()
+                unrounded_timestamp = native_datetime_utc_now()
                 strategy_cycle_timestamp = snap_to_previous_tick(unrounded_timestamp, self.cycle_duration)
 
                 logger.info("Executing live strategy cycle %d, now is %s, decision slot is %s",
