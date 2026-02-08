@@ -13,6 +13,7 @@ from web3 import Web3
 from dataclasses_json import dataclass_json, config
 from eth_typing import HexAddress
 
+from eth_defi.compat import native_datetime_utc_fromtimestamp
 from eth_defi.erc_4626.core import ERC4626Feature
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingProtocolType
@@ -741,7 +742,7 @@ class TradingPairIdentifier:
                 tokensniffer_data = metadata.token_sniffer_data
                 if tokensniffer_data:
                     data["tokensniffer_fetched_at"] = tokensniffer_data["data_fetched_at"]
-                    data["tokensniffer_refreshed_at"] = datetime.datetime.utcfromtimestamp(int(tokensniffer_data["refreshed_at"] / 1000))
+                    data["tokensniffer_refreshed_at"] = native_datetime_utc_fromtimestamp(int(tokensniffer_data["refreshed_at"] / 1000))
                     data["tokensniffer_token_created_at"] = tokensniffer_data["created_at"]
                     data["tokensniffer_token_flagged_at"] = tokensniffer_data["flagged_at"]
 

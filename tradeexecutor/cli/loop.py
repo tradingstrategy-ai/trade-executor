@@ -61,7 +61,7 @@ from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse, UniverseOptions
 from tradeexecutor.strategy.valuation import ValuationModelFactory
-from eth_defi.compat import native_datetime_utc_now
+from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
 
 try:
     from apscheduler.executors.pool import ThreadPoolExecutor
@@ -962,7 +962,7 @@ class ExecutionLoop:
         # Throttle TQDM updates to 1 per second because
         # otherwise we crash PyCharm
         # https://stackoverflow.com/q/43288550/315168
-        last_progress_update = datetime.datetime.utcfromtimestamp(0)
+        last_progress_update = native_datetime_utc_fromtimestamp(0)
         progress_update_threshold = datetime.timedelta(seconds=0.1)
         last_update_ts = None  # The last pushed timestamp to tqdm
         trigger_checks = 0

@@ -16,6 +16,7 @@ from uuid import UUID
 
 import pandas as pd
 from dataclasses_json import core
+from eth_defi.compat import native_datetime_utc_fromtimestamp
 
 from tradeexecutor.utils.timestamp import \
     convert_and_validate_timestamp_as_float
@@ -67,7 +68,7 @@ def _patched_support_extended_types(field_type, field_value):
         else:
             # Fixed here
             # tz = datetime.now(timezone.utc).astimezone().tzinfo
-            res = datetime.utcfromtimestamp(field_value)
+            res = native_datetime_utc_fromtimestamp(field_value)
     #
     # Add timedelta support
     #

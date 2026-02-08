@@ -41,7 +41,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.interest import sync_interests
 from tradeexecutor.strategy.lending_protocol_leverage import reset_credit_supply_loan, update_credit_supply_loan
-from eth_defi.compat import native_datetime_utc_now
+from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -450,7 +450,7 @@ class EnzymeVaultSyncModel(SyncModel):
             assert block_hash in block_data, f"extract_timestamps_json_rpc() could not find data for block number {block_number:,}, last block is {web3.eth.block_number:,}"
 
             timestamp_unix = block_data[block_hash]
-            timestamp_dt = datetime.datetime.utcfromtimestamp(timestamp_unix)
+            timestamp_dt = native_datetime_utc_fromtimestamp(timestamp_unix)
 
         deployment.address = self.vault.vault.address
         deployment.block_number = block_number
