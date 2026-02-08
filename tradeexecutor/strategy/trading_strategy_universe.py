@@ -2133,6 +2133,65 @@ def load_all_data(
         )
 
 
+def load_vault_universe_with_metadata(
+    client: Client,
+    vaults: list[tuple[ChainId, JSONHexAddress]] | None = None,
+    url: str | None = None,
+) -> VaultUniverse:
+    """Load vault universe with full metadata from JSON blob.
+
+    Loads vault data from the Trading Strategy vault metrics API,
+    which includes performance metrics like 1-month CAGR, volatility,
+    and fees.
+
+    This is the preferred way to load vault data for live trading
+    as it provides the most up-to-date metadata.
+
+    Example:
+
+    .. code-block:: python
+
+        from tradingstrategy.chain import ChainId
+        from tradeexecutor.strategy.trading_strategy_universe import load_vault_universe_with_metadata
+
+        # Load all vaults with metadata
+        vault_universe = load_vault_universe_with_metadata(client)
+
+        # Or limit to specific vaults
+        vault_universe = load_vault_universe_with_metadata(
+            client,
+            vaults=[
+                (ChainId.base, "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216"),
+            ]
+        )
+
+        # Access metadata including 1-month CAGR
+        for vault in vault_universe.iterate_vaults():
+            if vault.metadata:
+                print(f"{vault.name}: 1M CAGR = {vault.metadata.one_month_cagr}")
+
+    :param client:
+        Trading Strategy client instance.
+
+    :param vaults:
+        Optional list of (chain_id, address) tuples to limit the universe to.
+        If None, all vaults are loaded.
+
+    :param url:
+        Optional custom URL to fetch vault metadata JSON from.
+        If not provided, uses the default Trading Strategy vault metrics endpoint.
+
+    :return:
+        VaultUniverse containing Vault instances with full VaultMetadata.
+    """
+    vault_universe = client.fetch_vault_universe(url=url)
+
+    if vaults is not None:
+        vault_universe = vault_universe.limit_to_vaults(vaults, check_all_vaults_found=True)
+
+    return vault_universe
+
+
 def load_partial_data(
     client: BaseClient,
     execution_context: ExecutionContext,

@@ -865,6 +865,27 @@ class TradingPairIdentifier:
         """
         return self.other_data.get("vault_management_fee")
 
+    def get_vault_metadata(self) -> "VaultMetadata | None":
+        """Get the full vault metadata object.
+
+        - Returns the complete VaultMetadata with all available fields
+        - None if not a vault pair or metadata not loaded
+
+        .. warning::
+
+            VaultMetadata is not serialised when state is saved.
+            It is only available during strategy execution with a loaded trading universe.
+
+        :return:
+            VaultMetadata object or None
+        """
+        from tradingstrategy.vault import VaultMetadata
+
+        metadata = self.other_data.get("token_metadata")
+        if isinstance(metadata, VaultMetadata):
+            return metadata
+        return None
+
     def get_freqtrade_id(self) -> str | None:
         """Get the Freqtrade instance ID.
 
