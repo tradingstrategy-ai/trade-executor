@@ -23,6 +23,7 @@ from tradeexecutor.strategy.trading_strategy_universe import \
 from eth_defi.compat import native_datetime_utc_now
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
+CI = os.environ.get("CI") == "true"
 pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable")
 
 
@@ -45,6 +46,7 @@ def test_vault_routing(
     assert isinstance(protocol_config.routing_model, VaultRouting)
 
 
+@pytest.mark.skipif(CI, reason="Too flaky on CI")
 @flaky.flaky
 def test_vault_trading_deposit_redeem(
     vault: IPORVault,

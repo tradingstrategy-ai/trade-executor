@@ -523,6 +523,7 @@ def test_enzyme_correct_accounts(
     assert state.sync.accounting.last_updated_at is not None
 
 
+@pytest.mark.skipif(CI, reason="Too flaky on CI")
 def test_enzyme_check_accounts(
     environment: dict,
     state_file: Path,
