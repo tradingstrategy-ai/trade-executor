@@ -209,6 +209,7 @@ def create_universe_from_trading_pair_identifiers(
             "token1_decimals": t.quote.decimals,
             "exchange_slug": exchange_slug,
             "exchange_address": t.exchange_address,
+            "exchange_name": t.exchange_name,
             "pair_slug": f"{t.base.token_symbol}-{t.quote.token_symbol}",
             "fee": int(t.fee * 10_000),
             "other_data": {"token_metadata": metadata},

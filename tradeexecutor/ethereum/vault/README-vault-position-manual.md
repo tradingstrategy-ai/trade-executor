@@ -273,7 +273,7 @@ ts = datetime.datetime.utcnow()
 pm = PositionManager(ts, strategy_universe, state, pricing_model)
 
 # Get the vault pair by name
-pair = strategy_universe.get_pair_by_vault_name("IPOR USDC Lending Optimizer")
+pair = strategy_universe.get_pair_by_vault_name("Plutus Hedge Token")
 
 # Increase position by $100 using adjust_position()
 # - dollar_delta: positive value = buy more

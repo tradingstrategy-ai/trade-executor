@@ -16,7 +16,7 @@ from tradeexecutor.analysis.vault_rebalance import (
     print_vault_rebalance_status,
 )
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
-from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -181,3 +181,32 @@ def test_vault_rebalance_status_with_position(
 
     # 1M CAGR column should exist in DataFrame
     assert "1M CAGR" in df.columns
+
+
+def test_get_pair_by_vault_name(
+    vault: IPORVault,
+    strategy_universe: TradingStrategyUniverse,
+):
+    """Test get_pair_by_vault_name() returns the correct vault pair."""
+    # Get the vault name from the vault object
+    vault_name = vault.name
+
+    # Get the pair by name
+    pair = strategy_universe.get_pair_by_vault_name(vault_name)
+
+    # Verify we got the correct pair
+    assert isinstance(pair, TradingPairIdentifier)
+    assert pair.is_vault()
+    assert pair.pool_address.lower() == vault.vault_address.lower()
+
+    # Vault name is stored in VaultMetadata
+    metadata = pair.get_token_metadata()
+    assert metadata.vault_name == vault_name
+
+
+def test_get_pair_by_vault_name_not_found(
+    strategy_universe: TradingStrategyUniverse,
+):
+    """Test get_pair_by_vault_name() raises error for non-existent vault."""
+    with pytest.raises(KeyError, match="No vault found with name"):
+        strategy_universe.get_pair_by_vault_name("Non-existent Vault Name")
