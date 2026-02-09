@@ -87,6 +87,8 @@ def test_vault_data_has_price_and_tvl(
     # Plutus HedgeDAO
     vault_address = VAULTS[-1][1]
     vault_pair = strategy_universe.get_pair_by_smart_contract(vault_address)
+    vault_pair_two = strategy_universe.get_pair_by_vault_name("Plutus Hedge Token")
+    assert vault_pair.internal_id == vault_pair_two.internal_id
 
     assert vault_pair.get_vault_name() == "Plutus Hedge Token"
     assert vault_pair.get_vault_protocol() == "plutus"
@@ -110,3 +112,5 @@ def test_vault_data_has_price_and_tvl(
         execution_mode=ExecutionMode.unit_testing,
         printer=lambda x: x,
     )
+
+
