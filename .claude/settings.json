@@ -54,7 +54,8 @@
       "Skill(post-process-logo)",
       "Skill(post-process-logo:*)",
       "mcp__github__*",
-      "Bash(pip index:*)"
+      "Bash(pip index:*)",
+      "Bash(pyenv install:*)"
     ]
   },
   "model": "opus",
