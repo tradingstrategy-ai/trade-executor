@@ -25,6 +25,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
+CI = os.environ.get("CI") == "true"
 pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable")
 
 
@@ -87,6 +88,7 @@ def test_vault_rebalance_status_no_positions(
     assert "1M CAGR" in output  # Column header should be displayed
 
 
+@pytest.mark.skipif(CI, reason="Too flaky on CI")
 @flaky(max_runs=3)
 def test_vault_rebalance_status_with_position(
     vault: IPORVault,

@@ -49,7 +49,6 @@ import pandas as pd
 from eth_defi.token import USDC_NATIVE_TOKEN
 from eth_defi.vault.vaultdb import DEFAULT_RAW_PRICE_DATABASE
 from plotly.graph_objects import Figure
-from tradingstrategy.alternative_data.vault import load_vault_database
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.token_filter import filter_for_selected_pairs
@@ -104,7 +103,7 @@ from tradeexecutor.strategy.pandas_trader.trading_universe_input import \
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import (
-    TradingStrategyUniverse, load_partial_data)
+    TradingStrategyUniverse, load_partial_data, load_vault_universe_with_metadata)
 from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_passthrouh
@@ -261,12 +260,11 @@ def create_trading_universe(
 
     debug_printer(f"We have total {len(all_pairs_df)} pairs in dataset and going to use {len(pairs_df)} pairs for the strategy")
 
-    # Check which vaults we can include based on allowed deposit tokens for this backtest
-    vault_universe = load_vault_database()
-    total_vaults = vault_universe.get_vault_count()
-    vault_universe = vault_universe.limit_to_vaults(VAULTS, check_all_vaults_found=False)
+    # Load vault universe with metadata from JSON blob
+    # This provides richer metadata including performance metrics, fees, etc.
+    vault_universe = load_vault_universe_with_metadata(client, vaults=VAULTS)
     vault_universe = vault_universe.limit_to_denomination(ALLOWED_VAULT_DENOMINATION_TOKENS, check_all_vaults_found=True)
-    debug_printer(f"Loaded total {vault_universe.get_vault_count()} vaults from the total of {total_vaults} in vault database")
+    debug_printer(f"Loaded {vault_universe.get_vault_count()} vaults from JSON vault database")
 
     # Default vault data bundle path for backtesting
     vault_bundled_price_data = DEFAULT_RAW_PRICE_DATABASE
@@ -282,7 +280,7 @@ def create_trading_universe(
         liquidity_time_bucket=TimeBucket.d1,
         lending_reserves=LENDING_RESERVES,
         vaults=vault_universe,
-        vault_bundled_price_data=vault_bundled_price_data,
+        vault_bundled_price_data=vault_bundled_price_data if not execution_context.live_trading else None,
         check_all_vaults_found=True,
     )
 
