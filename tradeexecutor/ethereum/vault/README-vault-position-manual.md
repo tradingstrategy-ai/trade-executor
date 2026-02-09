@@ -173,13 +173,11 @@ pm = PositionManager(ts, strategy_universe, state, pricing_model)
 
 ## Opening a position
 
-### Basic spot position
+### Basic vault position
 
 ```python
-# Get trading pair from universe
-pair = strategy_universe.get_pair_by_human_description(
-    (ChainId.base, "uniswap-v3", "WETH", "USDC")
-)
+# Get vault pair by name
+pair = strategy_universe.get_pair_by_vault_name("IPOR USDC Lending Optimizer")
 
 # Open $100 position
 trades = pm.open_spot(pair=pair, value=100)
@@ -238,15 +236,14 @@ execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
 ```
 
-### Close position for a specific pair
+### Close position for a specific vault
 
 ```python
-pair = strategy_universe.get_pair_by_human_description(
-    (ChainId.base, "uniswap-v3", "WETH", "USDC")
-)
+# Get vault pair by name
+pair = strategy_universe.get_pair_by_vault_name("IPOR USDC Lending Optimizer")
 
 position = pm.get_current_position_for_pair(pair)
-trades = pm.close_position(position, notes="Closing WETH position")
+trades = pm.close_position(position, notes="Closing vault position")
 
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
@@ -267,34 +264,46 @@ store.sync(state)
 
 ## Increasing a position
 
-Use `adjust_position()` with a positive `dollar_delta`:
-
 ```python
-pair = strategy_universe.get_pair_by_human_description(
-    (ChainId.base, "uniswap-v3", "WETH", "USDC")
-)
+import datetime
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 
-# Increase position by $100
+# Create position manager with current timestamp
+ts = datetime.datetime.utcnow()
+pm = PositionManager(ts, strategy_universe, state, pricing_model)
+
+# Get the vault pair by name
+pair = strategy_universe.get_pair_by_vault_name("IPOR USDC Lending Optimizer")
+
+# Increase position by $100 using adjust_position()
+# - dollar_delta: positive value = buy more
+# - quantity_delta: not needed for buys, set to None
 trades = pm.adjust_position(
     pair=pair,
-    dollar_delta=100,       # Positive = buy more
-    quantity_delta=None,    # Not needed for buys
+    dollar_delta=100,
+    quantity_delta=None,
     weight=1,
-    notes="Manual increase from console"
+    notes="Rebalancing"
 )
 
+# Execute trades on-chain and save state
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
 ```
 
 ## Decreasing a position
 
-Use `adjust_position()` with a negative `dollar_delta`:
-
 ```python
-pair = strategy_universe.get_pair_by_human_description(
-    (ChainId.base, "uniswap-v3", "WETH", "USDC")
-)
+import datetime
+from decimal import Decimal
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+
+# Create position manager with current timestamp
+ts = datetime.datetime.utcnow()
+pm = PositionManager(ts, strategy_universe, state, pricing_model)
+
+# Get the vault pair by name
+pair = strategy_universe.get_pair_by_vault_name("IPOR USDC Lending Optimizer")
 
 position = pm.get_current_position_for_pair(pair)
 current_price = position.get_current_price()
@@ -302,14 +311,18 @@ current_price = position.get_current_price()
 # Calculate quantity to sell for $50 worth
 quantity_to_sell = Decimal(str(50 / current_price))
 
+# Decrease position by $50 using adjust_position()
+# - dollar_delta: negative value = sell
+# - quantity_delta: must be negative for sells
 trades = pm.adjust_position(
     pair=pair,
-    dollar_delta=-50,                 # Negative = sell
-    quantity_delta=-quantity_to_sell, # Must be negative for sells
+    dollar_delta=-50,
+    quantity_delta=-quantity_to_sell,
     weight=1,
-    notes="Manual decrease from console"
+    notes="Rebalancing"
 )
 
+# Execute trades on-chain and save state
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
 ```
@@ -402,17 +415,15 @@ from tradeexecutor.strategy.pandas_trader.position_manager import PositionManage
 ts = datetime.datetime.utcnow()
 pm = PositionManager(ts, strategy_universe, state, pricing_model)
 
-# 2. Get a trading pair
-pair = strategy_universe.get_pair_by_human_description(
-    (ChainId.base, "uniswap-v3", "WETH", "USDC")
-)
+# 2. Get a vault pair by name
+pair = strategy_universe.get_pair_by_vault_name("IPOR USDC Lending Optimizer")
 
 # 3. Check current cash
 cash = pm.get_current_cash()
 print(f"Available cash: ${cash:.2f}")
 
 # 4. Open a position
-trades = pm.open_spot(pair=pair, value=100, stop_loss_pct=0.95)
+trades = pm.open_spot(pair=pair, value=100)
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
 
@@ -422,12 +433,12 @@ print(f"Position quantity: {position.get_quantity()}")
 print(f"Entry price: ${position.get_opening_price():.4f}")
 
 # 6. Increase position
-trades = pm.adjust_position(pair=pair, dollar_delta=50, quantity_delta=None, weight=1)
+trades = pm.adjust_position(pair=pair, dollar_delta=50, quantity_delta=None, weight=1, notes="Rebalancing")
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
 
 # 7. Close position
-trades = pm.close_position(position)
+trades = pm.close_position(position, notes="Rebalancing")
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
 

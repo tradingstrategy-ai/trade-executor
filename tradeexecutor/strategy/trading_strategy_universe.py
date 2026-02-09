@@ -1013,6 +1013,39 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             return None
         return translate_trading_pair(pair, cache=self.pair_cache)
 
+    def get_pair_by_vault_name(self, name: str) -> TradingPairIdentifier:
+        """Get a vault pair by its name.
+
+        - Vault pairs use the vault name as the exchange_name field
+
+        :param name:
+            Vault name to search for.
+
+        :return:
+            The trading pair identifier for the vault.
+
+        :raise AssertionError:
+            If no vault found or multiple vaults have the same name.
+        """
+        matches = []
+        for pair in self.data_universe.pairs.iterate_pairs():
+            if pair.exchange_name == name:
+                matches.append(pair)
+
+        if len(matches) == 0:
+            raise AssertionError(f"No vault found with name: {name}")
+
+        if len(matches) > 1:
+            addresses = [p.address for p in matches]
+            raise AssertionError(
+                f"Multiple vaults found with name '{name}': {addresses}. "
+                f"Use get_pair_by_address() instead."
+            )
+
+        pair = translate_trading_pair(matches[0], cache=self.pair_cache)
+        assert pair.is_vault(), f"Found pair is not a vault: {pair}"
+        return pair
+
     def get_asset_by_address(self, address: str, chain_id: ChainId=None) -> Optional[AssetIdentifier]:
         """Get a trading pair data by a smart contract address."""
         if chain_id is None:
