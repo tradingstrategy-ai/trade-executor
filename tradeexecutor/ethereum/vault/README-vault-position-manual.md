@@ -31,20 +31,24 @@ When you launch the console, these objects are automatically available:
 | `Decimal` | Python Decimal class |
 | `ChainId` | Chain ID enum |
 
-## Vault rebalance status
+## Vault status
 
-Use `print_vault_rebalance_status()` to display all vaults in the universe with current allocations.
+Use `print_vault_rebalance_status()` to display vault allocations and `print_vault_deposit_status()` to display Lagoon deposit/redemption queue status.
 
 ### Console example
 
 ```python
-from tradeexecutor.analysis.vault_rebalance import print_vault_rebalance_status
+from tradeexecutor.analysis.vault_rebalance import print_vault_rebalance_status, print_vault_deposit_status
 
-# Print vault status to console
+# Print vault allocations
 df = print_vault_rebalance_status(state, strategy_universe)
+
+# Print Lagoon deposit/redemption queue status (if connected to Lagoon vault)
+if vault is not None:
+    print_vault_deposit_status(vault, state)
 ```
 
-Example output:
+Example output for `print_vault_rebalance_status()`:
 
 ```
 ================================================================================
@@ -62,6 +66,34 @@ Vault                        Protocol   Address              Available  Position
 IPOR USDC Lending Optimizer  ipor       0x45aa96f0...58216   Yes        1            $85,432.10    42.72%    82,543.2100  8.5%
 Morpho Blue USDC             morpho     0x8eB67A509...7b2c3  Yes        2            $69,337.40    34.67%    67,892.5000  6.2%
 Aave v3 USDC                 aave       0x4e65fE4D...a9f21   Yes        -            $0.00         0.00%     -            4.1%
+
+================================================================================
+```
+
+Example output for `print_vault_deposit_status()`:
+
+```
+================================================================================
+LAGOON VAULT DEPOSIT STATUS
+================================================================================
+
+Vault:                  My Lagoon Vault
+Address:                0x6a5ea384e394083149ce39db29d5787a658aa98a
+Safe:                   0xAD1241Ba37ab07fFc5d38e006747F8b92BB217D5
+
+Block:                  12,345,678
+Block time:             2024-01-15 14:35:00 UTC
+Last settled:           2024-01-15 14:30:00 UTC
+
+Total assets:           $200,000.00
+Total supply:           195,000.0000 shares
+Share price:            $1.025641
+
+Queue status:
+----------------------------------------
+Pending deposits:       $10,000.00
+Pending redemptions:    $5,000.00
+  (shares pending:      4,850.5000)
 
 ================================================================================
 ```

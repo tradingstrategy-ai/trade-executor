@@ -221,3 +221,102 @@ def print_vault_rebalance_status(
     printer("=" * 80)
 
     return df
+
+
+def print_vault_deposit_status(
+    vault,
+    state: State | None = None,
+    printer: Callable = print,
+) -> None:
+    """Print Lagoon vault deposit and redemption queue status.
+
+    Displays live queue status from a connected Lagoon vault:
+    - Last settlement timestamp (if state is provided)
+    - Pending deposits waiting to be processed
+    - Pending redemptions waiting to be processed
+
+    Example usage in console:
+
+    .. code-block:: python
+
+        from tradeexecutor.analysis.vault_rebalance import print_vault_deposit_status
+
+        # vault and state are available in the console locals
+        print_vault_deposit_status(vault, state)
+
+    :param vault:
+        A LagoonVault instance from the console locals dictionary.
+        Available as ``vault`` in the trade-executor console.
+
+    :param state:
+        Optional trading state to display last settlement timestamp.
+        Available as ``state`` in the trade-executor console.
+
+    :param printer:
+        Function to use for printing output.
+        Defaults to print().
+        Use logger.info for logging output.
+    """
+    from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
+
+    if not isinstance(vault, LagoonVault):
+        printer(f"Error: Expected LagoonVault, got {type(vault).__name__}")
+        printer("This function only works with Lagoon vaults.")
+        return
+
+    web3 = vault.web3
+    block_number = web3.eth.block_number
+    flow_manager = vault.get_flow_manager()
+
+    # Get pending deposits and redemptions
+    pending_deposits = flow_manager.fetch_pending_deposit(block_number)
+    pending_redemptions_shares = flow_manager.fetch_pending_redemption(block_number)
+    pending_redemptions_usd = flow_manager.calculate_underlying_needed_for_redemptions(block_number)
+
+    # Get vault info
+    total_assets = vault.fetch_total_assets(block_number)
+    total_supply = vault.fetch_total_supply(block_number)
+    share_price = vault.fetch_share_price(block_number)
+
+    # Get block timestamp
+    block = web3.eth.get_block(block_number)
+    block_time = datetime.datetime.fromtimestamp(block["timestamp"], tz=datetime.timezone.utc)
+
+    # Get last settlement timestamp from state if available
+    last_settled = None
+    if state is not None:
+        last_settled = state.sync.treasury.last_cycle_at
+
+    # Print header
+    printer("=" * 80)
+    printer("LAGOON VAULT DEPOSIT STATUS")
+    printer("=" * 80)
+    printer("")
+
+    # Print vault info
+    printer(f"Vault:                  {vault.name}")
+    printer(f"Address:                {vault.vault_address}")
+    printer(f"Safe:                   {vault.safe_address}")
+    printer("")
+
+    # Print current state
+    printer(f"Block:                  {block_number:,}")
+    printer(f"Block time:             {block_time.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+    if last_settled:
+        printer(f"Last settled:           {last_settled.strftime('%Y-%m-%d %H:%M:%S')} UTC")
+    printer("")
+
+    # Print vault metrics
+    printer(f"Total assets:           ${float(total_assets):,.2f}")
+    printer(f"Total supply:           {float(total_supply):,.4f} shares")
+    printer(f"Share price:            ${float(share_price):,.6f}")
+    printer("")
+
+    # Print queue status
+    printer("Queue status:")
+    printer("-" * 40)
+    printer(f"Pending deposits:       ${float(pending_deposits):,.2f}")
+    printer(f"Pending redemptions:    ${float(pending_redemptions_usd):,.2f}")
+    printer(f"  (shares pending:      {float(pending_redemptions_shares):,.4f})")
+    printer("")
+    printer("=" * 80)
