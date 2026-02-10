@@ -8182,14 +8182,14 @@ telegram = ["requests"]
 
 [[package]]
 name = "tqdm-loggable"
-version = "0.2"
+version = "0.3"
 description = "TQDM progress bar helpers for logging and other headless application"
 optional = false
-python-versions = ">3.8"
+python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "tqdm_loggable-0.2-py3-none-any.whl", hash = "sha256:9703046302b93a667166487759e6f3f49597e86c89eb132ba1f31caa07bf0941"},
-    {file = "tqdm_loggable-0.2.tar.gz", hash = "sha256:175abec3e1f63bbd2eac192fa5da075e80c7bb715d7ccf3cd1a29b7ab5af0617"},
+    {file = "tqdm_loggable-0.3-py3-none-any.whl", hash = "sha256:e5175d36927eb7453f9580cd7aee0eb145f06bc5c38874cca9b4ab7fa8ede345"},
+    {file = "tqdm_loggable-0.3.tar.gz", hash = "sha256:a01d634fea248aa21d0a8ed20f250438e19faf8f299461a1c77ae50b0c5bb872"},
 ]
 
 [package.dependencies]
@@ -8216,7 +8216,7 @@ plotly = ">=5.1.0"
 pyarrow = ">=17.0.0"
 requests = "^2.28.1"
 tqdm = "^4.61.2"
-tqdm-loggable = ">=0.2"
+tqdm-loggable = ">=0.3"
 
 [package.extras]
 backtrader = ["trading-strategy-backtrader (>=0.1,<0.2)"]
@@ -9300,4 +9300,4 @@ web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitres
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.15"
-content-hash = "b7d1ade686b353057de21b5c2bc94bff06f093d296018efa542ddc483b145a5b"
+content-hash = "6d5a4667e022ab7ef07139dda979553527c739e0b327dd808a2560200989887d"
