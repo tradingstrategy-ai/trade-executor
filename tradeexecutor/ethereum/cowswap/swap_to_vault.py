@@ -4,6 +4,11 @@ Instead of using PositionManager which deposits through the ERC-4626 ``deposit()
 this module buys vault share tokens directly on the open market through CoW Swap.
 A tracked position and trade are created in the trade executor state.
 
+Intended for vault share tokens that are traded on secondary markets, such as:
+
+- Staked USDAi (sUSDAi)
+- LLama Lend pools (future)
+
 This is useful when:
 
 - The vault has a deposit queue or settlement delay (e.g. Lagoon vaults)
