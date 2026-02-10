@@ -7,6 +7,8 @@
 import datetime
 
 import pandas as pd
+
+from eth_defi.compat import native_datetime_utc_now
 import pandas_ta
 
 from tradeexecutor.state.trade import TradeExecution
@@ -73,7 +75,7 @@ def decide_trades(
 
     assert input.execution_context.mode in (ExecutionMode.unit_testing_trading, ExecutionMode.backtesting)
     if live:
-        assert datetime.datetime.utcnow() - timestamp < datetime.timedelta(minutes=1)      # We should do 1s cycles near real time
+        assert native_datetime_utc_now() - timestamp < datetime.timedelta(minutes=1)      # We should do 1s cycles near real time
     assert parameters.custom_parameter == 1
 
     # Do various live data assets and
@@ -166,7 +168,7 @@ def create_trading_universe(
     universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
     # Try to load live data, do some sanity checks
-    assert datetime.datetime.utcnow() - timestamp < datetime.timedelta(minutes=1)
+    assert native_datetime_utc_now() - timestamp < datetime.timedelta(minutes=1)
 
     # Load data for our trading pair whitelist
     if execution_context.mode.is_backtesting():

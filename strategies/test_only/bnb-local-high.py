@@ -6,6 +6,7 @@ import logging
 
 import pandas as pd
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.token import USDC_NATIVE_TOKEN, USDT_NATIVE_TOKEN
 from eth_defi.token import WRAPPED_NATIVE_TOKEN
 
@@ -228,7 +229,7 @@ def create_trading_universe(
         # For live trading, we take TVL data from ~around the start of the strategy until today
         tvl_time_bucket = TimeBucket.d1
         start = datetime.datetime(2024, 2, 1)
-        end = tvl_time_bucket.floor(pd.Timestamp(datetime.datetime.utcnow() - tvl_time_bucket.to_timedelta()))
+        end = tvl_time_bucket.floor(pd.Timestamp(native_datetime_utc_now() - tvl_time_bucket.to_timedelta()))
     else:
         start = Parameters.backtest_start
         end = Parameters.backtest_end
