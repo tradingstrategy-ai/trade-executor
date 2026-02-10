@@ -1341,7 +1341,11 @@ def test_blockchain_transaction_params():
     args = (2**80,)
     bt = BlockchainTransaction(transaction_args=args)
     data = bt.to_dict()
-    assert data["transaction_args"] == "80049510000000000000008a0b000000000000000000000185942e"
+    # Pickle protocol version varies by Python version (4 on 3.12, 5 on 3.14),
+    # so verify the roundtrip instead of exact bytes
+    assert isinstance(data["transaction_args"], str)
+    bt2 = BlockchainTransaction.from_dict(data)
+    assert bt2.transaction_args == args
     validate_nested_state_dict(data)
     bt.to_json()
 
