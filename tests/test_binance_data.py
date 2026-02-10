@@ -149,8 +149,8 @@ def test_fetch_binance_dataset():
     assert dataset.backtest_stop_loss_time_bucket == TimeBucket.h4
     assert dataset.exchanges.exchanges[BINANCE_EXCHANGE_ID]
 
-    assert dataset.candles["timestamp"][0].to_pydatetime() == START_AT
-    assert dataset.candles["timestamp"][-1].to_pydatetime() == END_AT
+    assert dataset.candles["timestamp"].iloc[0].to_pydatetime() == START_AT
+    assert dataset.candles["timestamp"].iloc[-1].to_pydatetime() == END_AT
     
     assert dataset.backtest_stop_loss_candles["timestamp"].iloc[0].to_pydatetime() == START_AT
     assert dataset.backtest_stop_loss_candles["timestamp"].iloc[-1].to_pydatetime() == END_AT

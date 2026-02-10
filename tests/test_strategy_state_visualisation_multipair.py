@@ -215,7 +215,7 @@ def decide_trades(
             # Lookback buffer does not have enough candles yet
             continue
 
-        current_rsi = rsi_bars[-1]
+        current_rsi = rsi_bars.iloc[-1]
 
         price_latest = close_prices.iloc[-1]
 
@@ -347,7 +347,7 @@ def decide_trades_2(
             # Lookback buffer does not have enough candles yet
             continue
 
-        current_rsi = rsi_bars[-1]
+        current_rsi = rsi_bars.iloc[-1]
 
         pair_slug = f"{pair.base.token_symbol}/{pair.quote.token_symbol}"
         

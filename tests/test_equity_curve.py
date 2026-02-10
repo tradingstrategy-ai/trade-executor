@@ -254,7 +254,7 @@ def test_calculate_aggregated_returns(state: State):
 
     # Calculate monthly aggregate returns.
     # The test strategy should slowly bleed money in trade fees.
-    monthly_aggregate = calculate_aggregate_returns(curve, "1M")
+    monthly_aggregate = calculate_aggregate_returns(curve, "1ME")
     assert monthly_aggregate["2021-07-31"] == pytest.approx(-0.07914776379460564)
     assert monthly_aggregate["2021-11-30"] == pytest.approx(-0.0030962288338045596)
 

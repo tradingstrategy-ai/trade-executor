@@ -147,7 +147,7 @@ def decide_trades(
 
     # Calculate RSI for candle close
     # https://tradingstrategy.ai/docs/programming/api/technical-analysis/momentum/help/pandas_ta.momentum.rsi.html#rsi
-    current_rsi = rsi(close_prices, length=RSI_LENGTH)[-1]
+    current_rsi = rsi(close_prices, length=RSI_LENGTH).iloc[-1]
 
     trades = []
 

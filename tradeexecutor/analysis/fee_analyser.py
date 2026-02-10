@@ -73,12 +73,12 @@ def create_pair_trading_fee_summary_table(analysis: pd.DataFrame) -> pd.DataFram
 
     # https://pandas.pydata.org/docs/reference/api/pandas.pivot_table.html
     agg_funcs = {
-        "fee_tier": [np.max, np.min],
-        "value_usd": [np.sum, np.max, np.min, np.mean],
-        "fees_paid_usd": [np.sum, np.max, np.min, np.mean],
-        "fees_paid_pct": [np.max, np.min, np.mean],
-        "fees_estimated_usd": [np.max, np.min, np.mean],
-        "fees_estimated_pct": [np.max, np.min, np.mean],
+        "fee_tier": ["max", "min"],
+        "value_usd": ["sum", "max", "min", "mean"],
+        "fees_paid_usd": ["sum", "max", "min", "mean"],
+        "fees_paid_pct": ["max", "min", "mean"],
+        "fees_estimated_usd": ["max", "min", "mean"],
+        "fees_estimated_pct": ["max", "min", "mean"],
 
     }
 
