@@ -355,8 +355,8 @@ def create_pair_weight_analysis_summary_table(analysis: pd.DataFrame) -> pd.Data
     # https://pandas.pydata.org/docs/reference/api/pandas.pivot_table.html
 
     agg_funcs = {
-        "signal": [np.max, np.min, np.mean],
-        "normalised_weight": [np.max, np.min, np.mean],
+        "signal": ["max", "min", "mean"],
+        "normalised_weight": ["max", "min", "mean"],
     }
 
     return pd.pivot_table(

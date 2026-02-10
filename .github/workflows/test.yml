@@ -18,10 +18,10 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.14
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14'
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
@@ -56,9 +56,14 @@ jobs:
           #version: "nightly-fdd321bac95f0935529164a88faf99d4d5cfa321"
           version: "v1.2.3"
 
+      # lxml needs to compile from source on Python 3.14 (no pre-built wheel)
+      - name: Install system dependencies for lxml
+        run: |
+          sudo apt-get update && sudo apt-get install -y libxml2-dev libxslt-dev
+
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-        run: |          
+        run: |
           poetry install --no-interaction -E execution -E web-server -E qstrader -E demeter
 
       # Run testa parallel, do not run slow tests before Docker image build.

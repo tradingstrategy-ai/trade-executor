@@ -6,7 +6,7 @@
 
 # See official Python Docker images
 # https://hub.docker.com/_/python/
-FROM python:3.11.10-bullseye
+FROM python:3.14-bookworm
 
 # pysha3 does not yet work on Python 3.11
 # FROM python:3.11.1-slim-buster

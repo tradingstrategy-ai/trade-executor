@@ -365,7 +365,7 @@ def calculate_naive_profitability(
     start_val_idx = total_equity_series.index.get_indexer([start_at], method="nearest")
     end_val_idx = total_equity_series.index.get_indexer([end_at], method="nearest")
 
-    start_val = float(total_equity_series.iloc[start_val_idx])
-    end_val = float(total_equity_series.iloc[end_val_idx])
+    start_val = float(total_equity_series.iloc[start_val_idx].iloc[0])
+    end_val = float(total_equity_series.iloc[end_val_idx].iloc[0])
 
     return (end_val - start_val) / (start_val), end_at - start_at

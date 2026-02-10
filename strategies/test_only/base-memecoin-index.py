@@ -617,7 +617,7 @@ def volatility_inclusion_criteria(
         return rows["pair_id"].tolist()
 
     # Turn to a series of lists
-    series = high_volatility_rows.groupby(by=['timestamp']).apply(_get_pair_ids_as_list)
+    series = high_volatility_rows.groupby(by=['timestamp']).apply(_get_pair_ids_as_list, include_groups=False)
     assert isinstance(series, pd.Series)
     return series
 

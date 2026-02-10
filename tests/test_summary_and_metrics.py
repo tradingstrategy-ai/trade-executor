@@ -326,7 +326,7 @@ def test_advanced_metrics(state: State):
 
     # Each metric as a series. Index 0 is our performance,
     # index 1 is the benchmark.
-    sharpe = metrics.loc["Sharpe"][0]
+    sharpe = metrics.loc["Sharpe"].iloc[0]
     assert sharpe == pytest.approx(-2.09)
 
 
