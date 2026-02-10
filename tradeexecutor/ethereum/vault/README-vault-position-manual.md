@@ -425,56 +425,51 @@ store.sync(state)
 print("Done!")
 ```
 
-## Opening and increasing a vault position via CoW Swap
+## Managing vault positions via CoW Swap
 
-Instead of using `PositionManager.open_spot()` which deposits USDC into the vault via
-the ERC-4626 `deposit()` function, you can buy vault share tokens directly on the open
-market via CoW Swap. This bypasses the vault's deposit mechanism and instead swaps USDC
-for the vault's share token through DEX liquidity that CoW Swap routes through.
-
-This creates a tracked position and trade in the trade executor state. If a position
-already exists for the vault pair, the function increases it instead of opening a new one.
+Instead of using `PositionManager` which deposits/redeems through the ERC-4626
+`deposit()`/`redeem()` functions, you can trade vault share tokens directly on the
+open market via CoW Swap. This bypasses the vault's deposit/redeem mechanism and
+instead swaps through DEX liquidity that CoW Swap routes through.
 
 Intended for vault share tokens traded on secondary markets, such as Staked USDAi (sUSDAi)
 and LLama Lend pools.
 
 This approach is useful when:
 - The vault has a deposit queue or settlement delay (e.g. Lagoon vaults)
-- You want to acquire shares immediately without waiting for settlement
+- You want to acquire or exit shares immediately without waiting for settlement
 - The share token has sufficient DEX liquidity
 
 **Requirements**: This only works for Lagoon vaults with CoW Swap integration enabled
 via `TradingStrategyModuleV0`, and requires the vault share token to have liquidity on
 DEXes that CoW Swap can route through.
 
-### Opening a new position
+### Opening, increasing, closing and reducing positions
 
 ```python
-from tradeexecutor.ethereum.cowswap.swap_to_vault import open_vault_position_cowswap
+from tradeexecutor.ethereum.cowswap.swap_to_vault import (
+    open_vault_position_cowswap,
+    close_vault_position_cowswap,
+)
 
-# Open a new $100 position by swapping USDC -> vault share token via CoW Swap
+# Open a new $100 position (or increase existing)
 open_vault_position_cowswap(
     locals(),
     vault_name="IPOR USDC Lending Optimizer",
     amount_usd=100.0,
-    max_slippage=0.01,  # 1% max slippage
 )
-```
 
-### Increasing an existing position
-
-Calling the same function again for the same vault will add to the existing position:
-
-```python
-from tradeexecutor.ethereum.cowswap.swap_to_vault import open_vault_position_cowswap
-
-# Add another $200 to the existing position
-open_vault_position_cowswap(
+# Close the entire position
+close_vault_position_cowswap(
     locals(),
     vault_name="IPOR USDC Lending Optimizer",
-    amount_usd=200.0,
-    max_slippage=0.01,
-    notes="Increasing position allocation",
+)
+
+# Or reduce by selling a specific number of shares
+close_vault_position_cowswap(
+    locals(),
+    vault_name="IPOR USDC Lending Optimizer",
+    shares_to_sell=50.0,
 )
 ```
 

@@ -1,12 +1,13 @@
-"""Test opening a vault position via CoW Swap with mocked external calls.
+"""Test opening and closing vault positions via CoW Swap with mocked external calls.
 
 We mock all CoW Swap API and on-chain interactions since they cannot be tested
-without a live environment. The test verifies that:
+without a live environment. The tests verify that:
 
 - A tracked position is created in state
-- Reserves are correctly deducted
-- The trade is marked as successful with correct amounts
+- Reserves are correctly deducted and returned
+- Trades are marked as successful with correct amounts
 - State is synced to the store
+- Positions are properly closed
 """
 
 import datetime
@@ -16,7 +17,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from hexbytes import HexBytes
 
-from tradeexecutor.ethereum.cowswap.swap_to_vault import open_vault_position_cowswap
+from tradeexecutor.ethereum.cowswap.swap_to_vault import (
+    close_vault_position_cowswap,
+    open_vault_position_cowswap,
+)
 from tradeexecutor.state.identifier import (
     AssetIdentifier,
     TradingPairIdentifier,
@@ -201,3 +205,132 @@ def test_open_vault_position_cowswap(
     mock_approve.assert_called_once()
     mock_presign.assert_called_once()
     mock_execute.assert_called_once()
+
+
+@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.execute_presigned_cowswap_order")
+@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.presign_and_broadcast")
+@patch("tradeexecutor.ethereum.cowswap.swap_to_vault._broadcast_tx")
+@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.approve_cow_swap")
+@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.fetch_quote")
+@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.fetch_erc20_details")
+def test_close_vault_position_cowswap(
+    mock_fetch_erc20,
+    mock_fetch_quote,
+    mock_approve,
+    mock_broadcast,
+    mock_presign,
+    mock_execute,
+    state_with_reserves,
+    vault_pair,
+    usdc,
+):
+    """Test the full close_vault_position_cowswap happy path with mocked CoW Swap."""
+
+    # First open a position so we have something to close
+    mock_usdc = MagicMock()
+    mock_usdc.symbol = "USDC"
+    mock_usdc.address = usdc.address
+    mock_usdc.decimals = 6
+    mock_usdc.convert_to_decimals.side_effect = lambda raw: Decimal(raw) / Decimal(10**6)
+
+    mock_share = MagicMock()
+    mock_share.symbol = "ipUSDC"
+    mock_share.address = vault_pair.base.address
+    mock_share.decimals = 6
+    mock_share.convert_to_decimals.side_effect = lambda raw: Decimal(raw) / Decimal(10**6)
+
+    mock_fetch_erc20.side_effect = lambda web3, addr: (
+        mock_usdc if addr == usdc.address else mock_share
+    )
+
+    # Mock quote for opening: ~97.09 shares for 100 USDC
+    mock_quote_open = MagicMock()
+    mock_quote_open.get_buy_amount.return_value = Decimal("97.087378")
+    mock_fetch_quote.return_value = mock_quote_open
+
+    mock_approve.return_value = MagicMock()
+    mock_broadcast.return_value = MagicMock(hash=HexBytes(b"\xaa" * 32))
+    mock_presign.return_value = {
+        "uid": "0x" + "bb" * 32,
+        "sellAmount": "100000000",
+        "buyAmount": "97087378",
+    }
+
+    mock_result_open = MagicMock()
+    mock_result_open.get_status.return_value = "traded"
+    mock_result_open.order = {"sellAmount": "100000000", "buyAmount": "97087378"}
+    mock_result_open.final_status_reply = {
+        "type": "traded",
+        "value": [{"executedAmounts": {"sell": "100000000", "buy": "97087378"}}],
+    }
+    mock_execute.return_value = mock_result_open
+
+    mock_store = MagicMock()
+    mock_hot_wallet = MagicMock()
+    mock_hot_wallet.address = "0x1234567890123456789012345678901234567890"
+    mock_web3 = MagicMock()
+    mock_web3.eth.chain_id = CHAIN_ID
+
+    mock_universe = MagicMock()
+    mock_universe.get_pair_by_vault_name.return_value = vault_pair
+    mock_universe.get_reserve_asset.return_value = usdc
+
+    console_context = {
+        "strategy_universe": mock_universe,
+        "pricing_model": MagicMock(),
+        "vault": MagicMock(),
+        "state": state_with_reserves,
+        "web3": mock_web3,
+        "store": mock_store,
+        "hot_wallet": mock_hot_wallet,
+    }
+
+    # Open a position first
+    open_vault_position_cowswap(
+        console_context,
+        vault_name="IPOR USDC Lending Optimizer",
+        amount_usd=100.0,
+    )
+
+    assert len(state_with_reserves.portfolio.open_positions) == 1
+
+    # Now set up mocks for the close: sell 97.087378 shares -> ~100 USDC
+    mock_quote_close = MagicMock()
+    mock_quote_close.get_buy_amount.return_value = Decimal("99.50")
+    mock_fetch_quote.return_value = mock_quote_close
+
+    mock_presign.return_value = {
+        "uid": "0x" + "cc" * 32,
+        "sellAmount": "97087378",
+        "buyAmount": "99500000",
+    }
+
+    mock_result_close = MagicMock()
+    mock_result_close.get_status.return_value = "traded"
+    mock_result_close.order = {"sellAmount": "97087378", "buyAmount": "99500000"}
+    mock_result_close.final_status_reply = {
+        "type": "traded",
+        "value": [{"executedAmounts": {"sell": "97087378", "buy": "99500000"}}],
+    }
+    mock_execute.return_value = mock_result_close
+
+    # Close the position
+    trade = close_vault_position_cowswap(
+        console_context,
+        vault_name="IPOR USDC Lending Optimizer",
+        max_slippage=0.01,
+    )
+
+    # Verify trade was created and marked successful
+    assert trade.get_status() == TradeStatus.success
+    assert trade.executed_reserve == pytest.approx(Decimal("99.50"))
+    assert trade.executed_quantity == pytest.approx(-Decimal("97.087378"))
+    assert trade.executed_price == pytest.approx(float(Decimal("99.50") / Decimal("97.087378")))
+
+    # Verify position was closed
+    assert len(state_with_reserves.portfolio.open_positions) == 0
+    assert len(state_with_reserves.portfolio.closed_positions) == 1
+
+    # Verify reserves were returned (10000 - 100 open + 99.50 close = 9999.50)
+    reserve_position = state_with_reserves.portfolio.reserves[usdc.address]
+    assert reserve_position.quantity == pytest.approx(Decimal("9999.50"))
