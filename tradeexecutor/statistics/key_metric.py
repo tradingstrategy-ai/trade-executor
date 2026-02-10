@@ -319,7 +319,7 @@ def calculate_key_metrics(
                     KeyMetricCalculationMethod.historical_data,
                 )
                 daily_share_price_df = share_price_df.resample("1d").last()
-                daily_returns = returns = daily_share_price_df['share_price_usd'].pct_change(fill_method=None)
+                daily_returns = returns = daily_share_price_df['share_price_usd'].ffill().pct_change()
                 periods = 365
             else:
                 # TODO: Here we need fix these stats -
