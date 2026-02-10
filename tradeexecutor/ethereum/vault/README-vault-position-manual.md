@@ -425,15 +425,18 @@ store.sync(state)
 print("Done!")
 ```
 
-## Opening a vault position via CoW Swap (without PositionManager)
+## Opening and increasing a vault position via CoW Swap
 
 Instead of using `PositionManager.open_spot()` which deposits USDC into the vault via
 the ERC-4626 `deposit()` function, you can buy vault share tokens directly on the open
 market via CoW Swap. This bypasses the vault's deposit mechanism and instead swaps USDC
 for the vault's share token through DEX liquidity that CoW Swap routes through.
 
-This approach creates a tracked position and trade in the trade executor state,
-just like `PositionManager.open_spot()` would.
+This creates a tracked position and trade in the trade executor state. If a position
+already exists for the vault pair, the function increases it instead of opening a new one.
+
+Intended for vault share tokens traded on secondary markets, such as Staked USDAi (sUSDAi)
+and LLama Lend pools.
 
 This approach is useful when:
 - The vault has a deposit queue or settlement delay (e.g. Lagoon vaults)
@@ -444,16 +447,34 @@ This approach is useful when:
 via `TradingStrategyModuleV0`, and requires the vault share token to have liquidity on
 DEXes that CoW Swap can route through.
 
-### Console example
+### Opening a new position
 
 ```python
 from tradeexecutor.ethereum.cowswap.swap_to_vault import open_vault_position_cowswap
 
+# Open a new $100 position by swapping USDC -> vault share token via CoW Swap
 open_vault_position_cowswap(
     locals(),
     vault_name="IPOR USDC Lending Optimizer",
     amount_usd=100.0,
     max_slippage=0.01,  # 1% max slippage
+)
+```
+
+### Increasing an existing position
+
+Calling the same function again for the same vault will add to the existing position:
+
+```python
+from tradeexecutor.ethereum.cowswap.swap_to_vault import open_vault_position_cowswap
+
+# Add another $200 to the existing position
+open_vault_position_cowswap(
+    locals(),
+    vault_name="IPOR USDC Lending Optimizer",
+    amount_usd=200.0,
+    max_slippage=0.01,
+    notes="Increasing position allocation",
 )
 ```
 

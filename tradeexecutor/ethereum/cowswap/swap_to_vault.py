@@ -182,7 +182,9 @@ def open_vault_position_cowswap(
     if notes is None:
         notes = f"CoW Swap: {usdc.symbol} -> {share_token.symbol}"
 
-    print(f"Opening vault position via CoW Swap")
+    existing_position = state.portfolio.get_position_by_trading_pair(pair)
+    action = "Increasing" if existing_position else "Opening"
+    print(f"{action} vault position via CoW Swap")
     print(f"  Vault: {vault_name}")
     print(f"  Swap: {amount} {usdc.symbol} -> {share_token.symbol}")
     print(f"  Share token: {share_token.address}")
@@ -207,6 +209,8 @@ def open_vault_position_cowswap(
     print(f"  Min output (with slippage): {min_amount_out:.6f} {share_token.symbol}")
 
     # 3. Create tracked trade and position in state
+    flags = {TradeFlag.increase} if existing_position else {TradeFlag.open}
+
     position, trade, created = state.create_trade(
         strategy_cycle_at=ts,
         pair=pair,
@@ -218,13 +222,13 @@ def open_vault_position_cowswap(
         reserve_currency_price=1.0,
         notes=notes,
         slippage_tolerance=max_slippage,
-        flags={TradeFlag.open},
+        flags=flags,
     )
 
     if created:
         print(f"  Created new position #{position.position_id}")
     else:
-        print(f"  Adding to existing position #{position.position_id}")
+        print(f"  Increasing position #{position.position_id}")
 
     # 4. Start execution - moves capital from reserves to the trade
     state.start_execution(
