@@ -182,7 +182,8 @@ pair = strategy_universe.get_pair_by_vault_name("IPOR USDC Lending Optimizer")
 # Open $100 position
 trades = pm.open_spot(pair=pair, value=100)
 
-# Execute the trades
+# Sync hot wallet nonce and execute the trades
+execution_model.tx_builder.hot_wallet.sync_nonce(web3)
 execution_model.execute_trades(
     ts, state, trades, routing_model, routing_state
 )
@@ -202,6 +203,7 @@ trades = pm.open_spot(
     notes="Manual console entry"
 )
 
+execution_model.tx_builder.hot_wallet.sync_nonce(web3)
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
 ```
@@ -216,6 +218,7 @@ trades = pm.open_spot(
     notes="High slippage trade"
 )
 
+execution_model.tx_builder.hot_wallet.sync_nonce(web3)
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
 ```
@@ -231,7 +234,8 @@ position = pm.get_current_position()
 # Close it
 trades = pm.close_position(position, notes="Manual close from console")
 
-# Execute and save
+# Sync hot wallet nonce and execute
+execution_model.tx_builder.hot_wallet.sync_nonce(web3)
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
 ```
@@ -245,6 +249,7 @@ pair = strategy_universe.get_pair_by_vault_name("IPOR USDC Lending Optimizer")
 position = pm.get_current_position_for_pair(pair)
 trades = pm.close_position(position, notes="Closing vault position")
 
+execution_model.tx_builder.hot_wallet.sync_nonce(web3)
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
 ```
@@ -258,6 +263,7 @@ trades = pm.close_position(
     notes="Closing illiquid position"
 )
 
+execution_model.tx_builder.hot_wallet.sync_nonce(web3)
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
 ```
@@ -280,13 +286,14 @@ pair = strategy_universe.get_pair_by_vault_name("Plutus Hedge Token")
 # - quantity_delta: not needed for buys, set to None
 trades = pm.adjust_position(
     pair=pair,
-    dollar_delta=100,
+    dollar_delta=2300,
     quantity_delta=None,
     weight=1,
     notes="Rebalancing"
 )
 
-# Execute trades on-chain and save state
+# Sync hot wallet nonce and execute trades on-chain
+execution_model.tx_builder.hot_wallet.sync_nonce(web3)
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
 ```
@@ -322,7 +329,8 @@ trades = pm.adjust_position(
     notes="Rebalancing"
 )
 
-# Execute trades on-chain and save state
+# Sync hot wallet nonce and execute trades on-chain
+execution_model.tx_builder.hot_wallet.sync_nonce(web3)
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
 ```
@@ -422,7 +430,8 @@ pair = strategy_universe.get_pair_by_vault_name("IPOR USDC Lending Optimizer")
 cash = pm.get_current_cash()
 print(f"Available cash: ${cash:.2f}")
 
-# 4. Open a position
+# 4. Sync hot wallet nonce and open a position
+execution_model.tx_builder.hot_wallet.sync_nonce(web3)
 trades = pm.open_spot(pair=pair, value=100)
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
@@ -433,11 +442,13 @@ print(f"Position quantity: {position.get_quantity()}")
 print(f"Entry price: ${position.get_opening_price():.4f}")
 
 # 6. Increase position
+execution_model.tx_builder.hot_wallet.sync_nonce(web3)
 trades = pm.adjust_position(pair=pair, dollar_delta=50, quantity_delta=None, weight=1, notes="Rebalancing")
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
 
 # 7. Close position
+execution_model.tx_builder.hot_wallet.sync_nonce(web3)
 trades = pm.close_position(position, notes="Rebalancing")
 execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
 store.sync(state)
