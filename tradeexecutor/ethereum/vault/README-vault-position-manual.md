@@ -192,37 +192,6 @@ execution_model.execute_trades(
 store.sync(state)
 ```
 
-### Position with stop loss and take profit
-
-```python
-trades = pm.open_spot(
-    pair=pair,
-    value=1000,
-    stop_loss_pct=0.95,      # Stop loss at 5% below entry
-    take_profit_pct=1.10,    # Take profit at 10% above entry
-    notes="Manual console entry"
-)
-
-execution_model.tx_builder.hot_wallet.sync_nonce(web3)
-execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
-store.sync(state)
-```
-
-### Position with custom slippage
-
-```python
-trades = pm.open_spot(
-    pair=pair,
-    value=500,
-    slippage_tolerance=0.02,  # 2% slippage tolerance
-    notes="High slippage trade"
-)
-
-execution_model.tx_builder.hot_wallet.sync_nonce(web3)
-execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
-store.sync(state)
-```
-
 ## Closing a position
 
 ### Close single position (for single-pair strategies)
@@ -279,14 +248,14 @@ ts = datetime.datetime.utcnow()
 pm = PositionManager(ts, strategy_universe, state, pricing_model)
 
 # Get the vault pair by name
-pair = strategy_universe.get_pair_by_vault_name("Plutus Hedge Token")
+pair = strategy_universe.get_pair_by_vault_name("gmUSDC")
 
 # Increase position by $100 using adjust_position()
 # - dollar_delta: positive value = buy more
 # - quantity_delta: not needed for buys, set to None
 trades = pm.adjust_position(
     pair=pair,
-    dollar_delta=2300,
+    dollar_delta=1200,
     quantity_delta=None,
     weight=1,
     notes="Rebalancing"
@@ -455,6 +424,51 @@ store.sync(state)
 
 print("Done!")
 ```
+
+## Opening a vault position via CoW Swap (without PositionManager)
+
+Instead of using `PositionManager.open_spot()` which deposits USDC into the vault via
+the ERC-4626 `deposit()` function, you can buy vault share tokens directly on the open
+market via CoW Swap. This bypasses the vault's deposit mechanism and instead swaps USDC
+for the vault's share token through DEX liquidity that CoW Swap routes through.
+
+This approach creates a tracked position and trade in the trade executor state,
+just like `PositionManager.open_spot()` would.
+
+This approach is useful when:
+- The vault has a deposit queue or settlement delay (e.g. Lagoon vaults)
+- You want to acquire shares immediately without waiting for settlement
+- The share token has sufficient DEX liquidity
+
+**Requirements**: This only works for Lagoon vaults with CoW Swap integration enabled
+via `TradingStrategyModuleV0`, and requires the vault share token to have liquidity on
+DEXes that CoW Swap can route through.
+
+### Console example
+
+```python
+from tradeexecutor.ethereum.cowswap.swap_to_vault import open_vault_position_cowswap
+
+open_vault_position_cowswap(
+    locals(),
+    vault_name="IPOR USDC Lending Optimizer",
+    amount_usd=100.0,
+    max_slippage=0.01,  # 1% max slippage
+)
+```
+
+### Important notes
+
+- **Share token liquidity**: The vault share token must have liquidity on DEXes
+  (e.g. Uniswap, Balancer) that CoW Swap can route through. Not all vault share tokens
+  are traded on secondary markets.
+- **Price difference**: The market price of the share token on DEXes may differ from
+  the vault's NAV-based share price (available via `deposit()`). Check both prices
+  before choosing this approach.
+- **The `vault` object** in the console is the Lagoon vault that owns the strategy (the
+  "outer" vault), not the target vault whose shares you are buying.
+
+See [swap_to_vault.py](../../ethereum/cowswap/swap_to_vault.py) for the full implementation.
 
 ## Related integration tests
 
