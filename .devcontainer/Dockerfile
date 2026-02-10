@@ -3,7 +3,7 @@
 #
 
 # Use Microsoft specific base image
-ARG VARIANT="3.12.8-bullseye"
+ARG VARIANT="3.14-bookworm"
 FROM mcr.microsoft.com/vscode/devcontainers/python:0-${VARIANT}
 
 # Passed from Github Actions
