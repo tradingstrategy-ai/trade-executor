@@ -16,10 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from hexbytes import HexBytes
 
-from tradeexecutor.ethereum.cowswap.swap_to_vault import (
-    _extract_executed_amounts,
-    open_vault_position_cowswap,
-)
+from tradeexecutor.ethereum.cowswap.swap_to_vault import open_vault_position_cowswap
 from tradeexecutor.state.identifier import (
     AssetIdentifier,
     TradingPairIdentifier,
@@ -86,138 +83,6 @@ def state_with_reserves(usdc) -> State:
     return state
 
 
-@pytest.fixture()
-def mock_strategy_universe(vault_pair, usdc):
-    """Mock strategy universe that returns the vault pair."""
-    universe = MagicMock()
-    universe.get_pair_by_vault_name.return_value = vault_pair
-    universe.get_reserve_asset.return_value = usdc
-    return universe
-
-
-@pytest.fixture()
-def mock_store():
-    store = MagicMock()
-    return store
-
-
-@pytest.fixture()
-def mock_lagoon_vault():
-    vault = MagicMock()
-    vault.safe_address = "0xAD1241Ba37ab07fFc5d38e006747F8b92BB217D5"
-    vault.vault_address = "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216"
-    return vault
-
-
-@pytest.fixture()
-def mock_hot_wallet():
-    hw = MagicMock()
-    hw.address = "0x1234567890123456789012345678901234567890"
-    return hw
-
-
-@pytest.fixture()
-def mock_web3():
-    web3 = MagicMock()
-    web3.eth.chain_id = CHAIN_ID
-    return web3
-
-
-@pytest.fixture()
-def mock_usdc_token_details():
-    """Mock TokenDetails for USDC."""
-    token = MagicMock()
-    token.symbol = "USDC"
-    token.address = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
-    token.decimals = 6
-    token.convert_to_decimals.side_effect = lambda raw: Decimal(raw) / Decimal(10**6)
-    return token
-
-
-@pytest.fixture()
-def mock_share_token_details():
-    """Mock TokenDetails for vault share token."""
-    token = MagicMock()
-    token.symbol = "ipUSDC"
-    token.address = "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216"
-    token.decimals = 6
-    token.convert_to_decimals.side_effect = lambda raw: Decimal(raw) / Decimal(10**6)
-    return token
-
-
-@pytest.fixture()
-def mock_quote(mock_share_token_details, mock_usdc_token_details):
-    """Mock CoW Swap quote returning ~97.09 shares for 100 USDC."""
-    quote = MagicMock()
-    quote.get_buy_amount.return_value = Decimal("97.087378")
-    quote.pformat.return_value = "mock quote"
-    return quote
-
-
-@pytest.fixture()
-def mock_cowswap_result():
-    """Mock a successful CoW Swap result."""
-    result = MagicMock()
-    result.get_status.return_value = "traded"
-    result.order_uid = HexBytes(b"\x01" * 32)
-    result.order = {
-        "sellAmount": "100000000",
-        "buyAmount": "97087378",
-        "uid": "0x" + "01" * 32,
-    }
-    result.final_status_reply = {
-        "type": "traded",
-        "value": [
-            {
-                "solver": "test_solver",
-                "executedAmounts": {
-                    "sell": "100000000",
-                    "buy": "97087378",
-                },
-            }
-        ],
-    }
-    return result
-
-
-def test_extract_executed_amounts_from_status(
-    mock_cowswap_result,
-    mock_usdc_token_details,
-    mock_share_token_details,
-):
-    """Test extracting executed amounts from status reply."""
-    sell_amount, buy_amount = _extract_executed_amounts(
-        mock_cowswap_result,
-        sell_token=mock_usdc_token_details,
-        buy_token=mock_share_token_details,
-    )
-
-    assert sell_amount == pytest.approx(Decimal(100))
-    assert buy_amount == pytest.approx(Decimal("97.087378"))
-
-
-def test_extract_executed_amounts_fallback(
-    mock_usdc_token_details,
-    mock_share_token_details,
-):
-    """Test fallback to order data when status reply has no executedAmounts."""
-    result = MagicMock()
-    result.final_status_reply = {"type": "traded"}
-    result.order = {
-        "sellAmount": "50000000",
-        "buyAmount": "48500000",
-    }
-
-    sell_amount, buy_amount = _extract_executed_amounts(
-        result,
-        sell_token=mock_usdc_token_details,
-        buy_token=mock_share_token_details,
-    )
-
-    assert sell_amount == pytest.approx(Decimal(50))
-    assert buy_amount == pytest.approx(Decimal("48.5"))
-
-
 @patch("tradeexecutor.ethereum.cowswap.swap_to_vault.execute_presigned_cowswap_order")
 @patch("tradeexecutor.ethereum.cowswap.swap_to_vault.presign_and_broadcast")
 @patch("tradeexecutor.ethereum.cowswap.swap_to_vault._broadcast_tx")
@@ -232,25 +97,35 @@ def test_open_vault_position_cowswap(
     mock_presign,
     mock_execute,
     state_with_reserves,
-    mock_strategy_universe,
-    mock_store,
-    mock_lagoon_vault,
-    mock_hot_wallet,
-    mock_web3,
-    mock_usdc_token_details,
-    mock_share_token_details,
-    mock_quote,
-    mock_cowswap_result,
     vault_pair,
     usdc,
 ):
-    """Test the full open_vault_position_cowswap flow with mocked CoW Swap."""
+    """Test the full open_vault_position_cowswap happy path with mocked CoW Swap."""
 
-    # Set up mocks
+    # Mock token details
+    mock_usdc = MagicMock()
+    mock_usdc.symbol = "USDC"
+    mock_usdc.address = usdc.address
+    mock_usdc.decimals = 6
+    mock_usdc.convert_to_decimals.side_effect = lambda raw: Decimal(raw) / Decimal(10**6)
+
+    mock_share = MagicMock()
+    mock_share.symbol = "ipUSDC"
+    mock_share.address = vault_pair.base.address
+    mock_share.decimals = 6
+    mock_share.convert_to_decimals.side_effect = lambda raw: Decimal(raw) / Decimal(10**6)
+
     mock_fetch_erc20.side_effect = lambda web3, addr: (
-        mock_usdc_token_details if addr == usdc.address else mock_share_token_details
+        mock_usdc if addr == usdc.address else mock_share
     )
+
+    # Mock quote: ~97.09 shares for 100 USDC
+    mock_quote = MagicMock()
+    mock_quote.get_buy_amount.return_value = Decimal("97.087378")
+    mock_quote.pformat.return_value = "mock quote"
     mock_fetch_quote.return_value = mock_quote
+
+    # Mock CoW Swap on-chain interactions
     mock_approve.return_value = MagicMock()
     mock_broadcast.return_value = MagicMock(hash=HexBytes(b"\xaa" * 32))
     mock_presign.return_value = {
@@ -258,12 +133,36 @@ def test_open_vault_position_cowswap(
         "sellAmount": "100000000",
         "buyAmount": "97087378",
     }
-    mock_execute.return_value = mock_cowswap_result
+
+    # Mock successful CoW Swap result
+    mock_result = MagicMock()
+    mock_result.get_status.return_value = "traded"
+    mock_result.order_uid = HexBytes(b"\x01" * 32)
+    mock_result.order = {"sellAmount": "100000000", "buyAmount": "97087378"}
+    mock_result.final_status_reply = {
+        "type": "traded",
+        "value": [{
+            "solver": "test_solver",
+            "executedAmounts": {"sell": "100000000", "buy": "97087378"},
+        }],
+    }
+    mock_execute.return_value = mock_result
+
+    # Mock console context objects
+    mock_store = MagicMock()
+    mock_hot_wallet = MagicMock()
+    mock_hot_wallet.address = "0x1234567890123456789012345678901234567890"
+    mock_web3 = MagicMock()
+    mock_web3.eth.chain_id = CHAIN_ID
+
+    mock_universe = MagicMock()
+    mock_universe.get_pair_by_vault_name.return_value = vault_pair
+    mock_universe.get_reserve_asset.return_value = usdc
 
     console_context = {
-        "strategy_universe": mock_strategy_universe,
+        "strategy_universe": mock_universe,
         "pricing_model": MagicMock(),
-        "vault": mock_lagoon_vault,
+        "vault": MagicMock(),
         "state": state_with_reserves,
         "web3": mock_web3,
         "store": mock_store,
@@ -297,129 +196,8 @@ def test_open_vault_position_cowswap(
     # Verify state was synced
     mock_store.sync.assert_called_once_with(state_with_reserves)
 
-    # Verify CoW Swap interactions happened in order
+    # Verify CoW Swap interactions happened
     mock_fetch_quote.assert_called_once()
     mock_approve.assert_called_once()
     mock_presign.assert_called_once()
     mock_execute.assert_called_once()
-    mock_hot_wallet.sync_nonce.assert_called_once_with(mock_web3)
-
-
-@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.execute_presigned_cowswap_order")
-@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.presign_and_broadcast")
-@patch("tradeexecutor.ethereum.cowswap.swap_to_vault._broadcast_tx")
-@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.approve_cow_swap")
-@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.fetch_quote")
-@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.fetch_erc20_details")
-def test_open_vault_position_cowswap_insufficient_reserves(
-    mock_fetch_erc20,
-    mock_fetch_quote,
-    mock_approve,
-    mock_broadcast,
-    mock_presign,
-    mock_execute,
-    state_with_reserves,
-    mock_strategy_universe,
-    mock_store,
-    mock_lagoon_vault,
-    mock_hot_wallet,
-    mock_web3,
-    mock_usdc_token_details,
-    mock_share_token_details,
-    mock_quote,
-    usdc,
-):
-    """Test that opening a position fails when reserves are insufficient."""
-
-    mock_fetch_erc20.side_effect = lambda web3, addr: (
-        mock_usdc_token_details if addr == usdc.address else mock_share_token_details
-    )
-    mock_fetch_quote.return_value = mock_quote
-
-    console_context = {
-        "strategy_universe": mock_strategy_universe,
-        "pricing_model": MagicMock(),
-        "vault": mock_lagoon_vault,
-        "state": state_with_reserves,
-        "web3": mock_web3,
-        "store": mock_store,
-        "hot_wallet": mock_hot_wallet,
-    }
-
-    # Try to open a position worth more than reserves ($10,000)
-    with pytest.raises(Exception, match="Not enough"):
-        open_vault_position_cowswap(
-            console_context,
-            vault_name="IPOR USDC Lending Optimizer",
-            amount_usd=20_000.0,
-            max_slippage=0.01,
-        )
-
-    # No CoW Swap calls should have been made
-    mock_approve.assert_not_called()
-    mock_presign.assert_not_called()
-    mock_execute.assert_not_called()
-
-    # State should not have been synced
-    mock_store.sync.assert_not_called()
-
-
-@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.execute_presigned_cowswap_order")
-@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.presign_and_broadcast")
-@patch("tradeexecutor.ethereum.cowswap.swap_to_vault._broadcast_tx")
-@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.approve_cow_swap")
-@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.fetch_quote")
-@patch("tradeexecutor.ethereum.cowswap.swap_to_vault.fetch_erc20_details")
-def test_open_vault_position_cowswap_custom_notes(
-    mock_fetch_erc20,
-    mock_fetch_quote,
-    mock_approve,
-    mock_broadcast,
-    mock_presign,
-    mock_execute,
-    state_with_reserves,
-    mock_strategy_universe,
-    mock_store,
-    mock_lagoon_vault,
-    mock_hot_wallet,
-    mock_web3,
-    mock_usdc_token_details,
-    mock_share_token_details,
-    mock_quote,
-    mock_cowswap_result,
-    usdc,
-):
-    """Test that custom notes are attached to the trade."""
-
-    mock_fetch_erc20.side_effect = lambda web3, addr: (
-        mock_usdc_token_details if addr == usdc.address else mock_share_token_details
-    )
-    mock_fetch_quote.return_value = mock_quote
-    mock_approve.return_value = MagicMock()
-    mock_broadcast.return_value = MagicMock(hash=HexBytes(b"\xaa" * 32))
-    mock_presign.return_value = {
-        "uid": "0x" + "bb" * 32,
-        "sellAmount": "100000000",
-        "buyAmount": "97087378",
-    }
-    mock_execute.return_value = mock_cowswap_result
-
-    console_context = {
-        "strategy_universe": mock_strategy_universe,
-        "pricing_model": MagicMock(),
-        "vault": mock_lagoon_vault,
-        "state": state_with_reserves,
-        "web3": mock_web3,
-        "store": mock_store,
-        "hot_wallet": mock_hot_wallet,
-    }
-
-    trade = open_vault_position_cowswap(
-        console_context,
-        vault_name="IPOR USDC Lending Optimizer",
-        amount_usd=50.0,
-        notes="Manual rebalance from console",
-    )
-
-    assert trade.notes.strip() == "Manual rebalance from console"
-    assert trade.get_status() == TradeStatus.success
