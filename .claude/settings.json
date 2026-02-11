@@ -57,7 +57,10 @@
       "Bash(pip index:*)",
       "Bash(pyenv install:*)",
       "Bash(brew upgrade:*)",
-      "Bash(python3.14 -m venv:*)"
+      "Bash(python3.14 -m venv:*)",
+      "Bash(xxd:*)",
+      "Bash(bash -c:*)",
+      "Bash(bash:*)"
     ]
   },
   "model": "opus",
