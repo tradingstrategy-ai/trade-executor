@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from typer.main import get_command
 
-from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
 
