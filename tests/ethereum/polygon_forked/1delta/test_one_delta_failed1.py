@@ -41,14 +41,7 @@ from tradeexecutor.strategy.account_correction import check_accounts
 from eth_defi.compat import native_datetime_utc_now
 
 
-pytestmark = pytest.mark.skipif(
-    any([
-        os.environ.get("JSON_RPC_POLYGON") is None,
-        os.environ.get("PRIVATE_KEY") is None,
-        shutil.which("anvil") is None,
-    ]),
-    reason="Set JSON_RPC_POLYGON and PRIVATE_KEY env and install anvil command to run these tests",
-)
+pytestmark = pytest.mark.skip(reason="The old 1delta API is no longer supported")
 
 
 #: How much values we allow to drift.
