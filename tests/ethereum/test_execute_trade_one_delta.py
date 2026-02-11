@@ -37,10 +37,7 @@ from tradeexecutor.ethereum.one_delta.analysis import decode_path
 from eth_defi.compat import native_datetime_utc_now
 
 
-pytestmark = pytest.mark.skipif(
-    (os.environ.get("JSON_RPC_POLYGON") is None) or (shutil.which("anvil") is None),
-    reason="Set JSON_RPC_POLYGON env install anvil command to run these tests",
-)
+pytestmark = pytest.mark.skip(reason="The old 1delta API is no longer supported")
 
 WETH_USDC_FEE = 0.003
 AAVE_USDC_FEE = 0.003

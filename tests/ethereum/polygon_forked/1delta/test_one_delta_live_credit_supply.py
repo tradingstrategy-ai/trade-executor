@@ -31,10 +31,7 @@ from tradeexecutor.utils.blockchain import get_latest_block_timestamp
 CI = os.environ.get("CI") == "true"
 
 
-pytestmark = pytest.mark.skipif(
-    (os.environ.get("JSON_RPC_POLYGON") is None) or (shutil.which("anvil") is None),
-    reason="Set JSON_RPC_POLYGON env install anvil command to run these tests",
-)
+pytestmark = pytest.mark.skip(reason="The old 1delta API is no longer supported")
 
 
 #: How much values we allow to drift.
