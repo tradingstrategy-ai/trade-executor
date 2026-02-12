@@ -6,6 +6,8 @@ This document describes how to set up and use Derive.xyz integration with the tr
 
 Exchange account positions allow tracking capital deployed to external perpetual DEXes like Derive. The trade executor monitors the account value via the Derive API and syncs profit/loss changes as balance update events.
 
+For deploying a Lagoon vault on Derive chain and linking it to a Derive trading account, see the [Derive vault deployment guide](./README-Derive-Vault.md).
+
 ## Environment variables
 
 Configure these environment variables for Derive integration:
