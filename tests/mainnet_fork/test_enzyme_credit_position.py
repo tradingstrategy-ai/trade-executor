@@ -9,7 +9,6 @@ import pytest
 
 from eth_account import Account
 from eth_typing import HexAddress
-from hexbytes import HexBytes
 from web3 import Web3, HTTPProvider
 
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil, mine
@@ -108,7 +107,7 @@ def hot_wallet(
 
     Top is up with some gas money and 500 USDC.
     """
-    private_key = HexBytes(secrets.token_bytes(32))
+    private_key = "0x" + secrets.token_bytes(32).hex()
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)

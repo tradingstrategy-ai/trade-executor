@@ -6,7 +6,6 @@ from decimal import Decimal
 
 import pytest
 from eth_account import Account
-from hexbytes import HexBytes
 from web3 import Web3
 from web3.contract import Contract
 from eth_typing import HexAddress
@@ -40,7 +39,7 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
 
     Top is up with some gas money and 500 USDC.
     """
-    private_key = HexBytes(secrets.token_bytes(32))
+    private_key = "0x" + secrets.token_bytes(32).hex()
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)

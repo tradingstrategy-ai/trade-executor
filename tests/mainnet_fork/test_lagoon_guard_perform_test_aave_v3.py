@@ -17,7 +17,6 @@ from eth_defi.token import USDC_WHALE, TokenDetails, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.vault.base import VaultSpec
 from eth_typing import HexAddress
-from hexbytes import HexBytes
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from web3 import HTTPProvider, Web3
@@ -91,7 +90,7 @@ def hot_wallet(
 
     Top is up with some gas money and 500 USDC.
     """
-    private_key = HexBytes(secrets.token_bytes(32))
+    private_key = "0x" + secrets.token_bytes(32).hex()
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)

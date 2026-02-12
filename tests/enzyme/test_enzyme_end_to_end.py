@@ -20,7 +20,6 @@ from eth_defi.provider.anvil import AnvilLaunch
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_typing import HexAddress
-from hexbytes import HexBytes
 from tradingstrategy.pair import PandasPairUniverse
 from typer.main import get_command
 from typer.testing import CliRunner
@@ -72,7 +71,7 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
 
     Top is up with some gas money and 500 USDC.
     """
-    private_key = HexBytes(secrets.token_bytes(32))
+    private_key = "0x" + secrets.token_bytes(32).hex()
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)

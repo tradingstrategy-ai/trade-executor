@@ -33,7 +33,7 @@ def hot_wallet_private_key() -> HexBytes:
 
     Does not need to have balance.
     """
-    return HexBytes(secrets.token_bytes(32))
+    return "0x" + secrets.token_bytes(32).hex()
 
 
 @pytest.mark.slow_test_group

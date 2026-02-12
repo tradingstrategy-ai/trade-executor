@@ -7,7 +7,6 @@ import logging
 import pytest
 import secrets
 
-from hexbytes import HexBytes
 from eth_typing import HexAddress
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
@@ -74,7 +73,7 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
 
     Top up with some gas money and 500 USDC.
     """
-    private_key = HexBytes(secrets.token_bytes(32))
+    private_key = "0x" + secrets.token_bytes(32).hex()
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)

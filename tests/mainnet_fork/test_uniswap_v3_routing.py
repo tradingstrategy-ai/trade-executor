@@ -865,8 +865,6 @@ def test_stateful_routing_two_leg_multi_node_broadcast(
         HTTPProvider(anvil_polygon_chain_fork),
     ]
 
-    providers[0].middlewares.clear()
-    providers[1].middlewares.clear()
     web3 = Web3(FallbackProvider(providers))
     web3.middleware_onion.clear()
 
@@ -956,8 +954,6 @@ def test_stateful_routing_two_leg_multi_node_broadcast_force_mev_blocker(
         HTTPProvider(anvil_polygon_chain_fork),
     ]
 
-    providers[0].middlewares.clear()
-    providers[1].middlewares.clear()
     web3 = Web3(FallbackProvider(providers))
     web3.middleware_onion.clear()
 

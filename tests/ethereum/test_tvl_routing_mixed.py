@@ -12,7 +12,6 @@ from decimal import Decimal
 
 import pandas as pd
 import pytest
-from hexbytes import HexBytes
 
 from tradeexecutor.cli.bootstrap import create_execution_and_sync_model, create_web3_config
 from tradeexecutor.cli.log import setup_pytest_logging
@@ -257,7 +256,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=AssetManagementMode.hot_wallet,
-        private_key=HexBytes(secrets.token_bytes(32)).hex(),
+        private_key="0x" + secrets.token_bytes(32).hex(),
         web3config=web3config,
         confirmation_timeout=datetime.timedelta(seconds=1),
         confirmation_block_count=0,

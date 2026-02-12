@@ -93,7 +93,7 @@ def deployer(web3) -> HexAddress:
 @pytest.fixture()
 def hot_wallet_private_key(web3) -> HexBytes:
     """Generate a private key"""
-    return HexBytes(secrets.token_bytes(32))
+    return "0x" + secrets.token_bytes(32).hex()
 
 
 @pytest.fixture
