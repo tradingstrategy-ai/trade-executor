@@ -832,7 +832,7 @@ def translate_to_naive_swap(
         tx,
     )
 
-    tx_info.set_broadcast_information(tx["nonce"], signed.hash.hex(), signed.rawTransaction.hex())
+    tx_info.set_broadcast_information(tx["nonce"], "0x" + signed.hash.hex(), "0x" + signed.rawTransaction.hex())
 
 
 def prepare_swaps(

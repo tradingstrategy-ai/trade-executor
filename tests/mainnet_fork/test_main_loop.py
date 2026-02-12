@@ -204,7 +204,7 @@ def test_main_loop_success(
         "EXECUTOR_ID": "test_main_loop.py",
         "NAME": "test_main_loop.py",
         "STRATEGY_FILE": strategy_path.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": "0x" + hot_wallet.account.key.hex(),
         "HTTP_ENABLED": "false",
         "JSON_RPC_BINANCE": anvil_bnb_chain_fork,
         "UNISWAP_V2_FACTORY_ADDRESS": pancakeswap_v2.factory.address,

@@ -274,7 +274,7 @@ def environment(
         "EXECUTOR_ID": "test_enzyme_mainnet_fork_uniswap_v3",
         "NAME": "test_enzyme_live_trading_init",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": "0x" + hot_wallet.account.key.hex(),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",

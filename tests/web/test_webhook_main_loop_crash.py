@@ -50,7 +50,7 @@ def test_main_loop_catch(
     # Set up the configuration for the live trader
     env = {
         "STRATEGY_FILE": strategy_path.as_posix(),  # Pass crash test
-        "PRIVATE_KEY": hot_wallet_private_key.hex(),
+        "PRIVATE_KEY": "0x" + hot_wallet_private_key.hex(),
         "HTTP_ENABLED": "false",
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "CACHE_PATH": "/tmp/main_loop_tests",
@@ -94,7 +94,7 @@ def test_main_loop_traceback_over_web(
     # Set up the configuration for the live trader
     env = {
         "STRATEGY_FILE": strategy_path.as_posix(),  # Pass crash test
-        "PRIVATE_KEY": hot_wallet_private_key.hex(),
+        "PRIVATE_KEY": "0x" + hot_wallet_private_key.hex(),
         "HTTP_ENABLED": "false",
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "CACHE_PATH": "/tmp/main_loop_tests",

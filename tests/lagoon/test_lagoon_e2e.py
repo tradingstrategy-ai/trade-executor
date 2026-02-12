@@ -82,7 +82,7 @@ def deployed_vault_environment(
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.005",
         "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
-        "PRIVATE_KEY": asset_manager.private_key.hex(),
+        "PRIVATE_KEY": "0x" + asset_manager.private_key.hex(),
         "GENERATE_REPORT": "false",
         "CACHE_PATH": cache_path,
     }
@@ -118,7 +118,7 @@ def pre_deployment_vault_environment(
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.005",
         "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
-        "PRIVATE_KEY": asset_manager.private_key.hex(),
+        "PRIVATE_KEY": "0x" + asset_manager.private_key.hex(),
         "ANY_ASSET": "true",
         "CACHE_PATH": cache_path,
     }
@@ -154,7 +154,7 @@ def test_cli_lagoon_deploy_vault(
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
-        "PRIVATE_KEY": asset_manager.private_key.hex(),
+        "PRIVATE_KEY": "0x" + asset_manager.private_key.hex(),
         "VAULT_RECORD_FILE": str(tmp_path / "vault-record.json"),
         "FUND_NAME": "Example",
         "FUND_SYMBOL": "EXAM",

@@ -56,7 +56,7 @@ def environment(
     environment = {
         "EXECUTOR_ID": "test_correct_accounts_derive",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": "0x" + hot_wallet.account.key.hex(),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
@@ -88,7 +88,7 @@ def environment_anvil(
     environment = {
         "EXECUTOR_ID": "test_derive_cli_start",
         "STRATEGY_FILE": strategy_file_anvil.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": "0x" + hot_wallet.account.key.hex(),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "hot_wallet",

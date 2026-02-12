@@ -118,7 +118,7 @@ def environment(
         "EXECUTOR_ID": "test_enzyme_vault_arbitrum_fork",
         "NAME": "test_enzyme_vault_arbitrum_fork",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": "0x" + hot_wallet.account.key.hex(),
         "JSON_RPC_ARBITRUM": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",

@@ -104,7 +104,7 @@ class LagoonTransactionBuilder(TransactionBuilder):
             del tx_data["gasPrice"]
 
         signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx_data)
-        signed_bytes = signed_tx.rawTransaction.hex()
+        signed_bytes = "0x" + signed_tx.rawTransaction.hex()
 
         # Needed for get_swap_transactions() hack
         tx_data["function"] = args_bound_func.fn_name
@@ -122,7 +122,7 @@ class LagoonTransactionBuilder(TransactionBuilder):
             wrapped_function_selector=args_bound_func.fn_name,
             signed_bytes=signed_bytes,
             signed_tx_object=encode_pickle_over_json(signed_tx),
-            tx_hash=signed_tx.hash.hex(),
+            tx_hash="0x" + signed_tx.hash.hex(),
             nonce=signed_tx.nonce,
             details=tx_data,
             # Lagoon/TradingStrategyModuleV0 does not support guard level slippage tolerance

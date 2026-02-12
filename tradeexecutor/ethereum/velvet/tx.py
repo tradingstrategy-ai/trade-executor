@@ -80,7 +80,7 @@ class VelvetTransactionBuilder(TransactionBuilder):
 
         signed_tx = self.hot_wallet.sign_transaction_with_new_nonce(tx)
 
-        signed_bytes = signed_tx.rawTransaction.hex()
+        signed_bytes = "0x" + signed_tx.rawTransaction.hex()
 
         if asset_deltas is None:
             asset_deltas = []
@@ -95,7 +95,7 @@ class VelvetTransactionBuilder(TransactionBuilder):
             wrapped_args=None,
             signed_bytes=signed_bytes,
             signed_tx_object=encode_pickle_over_json(signed_tx),
-            tx_hash=signed_tx.hash.hex(),
+            tx_hash="0x" + signed_tx.hash.hex(),
             nonce=signed_tx.nonce,
             details=tx,
             asset_deltas=[JSONAssetDelta.from_asset_delta(a) for a in asset_deltas],

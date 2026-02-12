@@ -148,7 +148,7 @@ def environment(
         "CACHE_PATH": unit_test_cache_path,
         "EXECUTOR_ID": "test_lagoon_guard_perform_test_aave_v3",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": "0x" + hot_wallet.account.key.hex(),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "lagoon",

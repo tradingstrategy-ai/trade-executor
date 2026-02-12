@@ -153,7 +153,7 @@ def test_cli_lagoon_deploy_binance_vault(
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
-        "PRIVATE_KEY": hot_wallet.private_key.hex(),
+        "PRIVATE_KEY": "0x" + hot_wallet.private_key.hex(),
         "VAULT_RECORD_FILE": str(vault_record_file),
         "FUND_NAME": "Example",
         "FUND_SYMBOL": "EXAM",
@@ -255,7 +255,7 @@ def test_cli_lagoon_anvil_checks(
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
-        "PRIVATE_KEY": hot_wallet.private_key.hex(),
+        "PRIVATE_KEY": "0x" + hot_wallet.private_key.hex(),
         "VAULT_RECORD_FILE": str(vault_record_file),
         "FUND_NAME": "Example",
         "FUND_SYMBOL": "EXAM",
@@ -340,7 +340,7 @@ def test_cli_lagoon_check_universe_with_anvil_checks(
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
-        "PRIVATE_KEY": hot_wallet.private_key.hex(),
+        "PRIVATE_KEY": "0x" + hot_wallet.private_key.hex(),
         "VAULT_RECORD_FILE": str(vault_record_file),
         "FUND_NAME": "Example",
         "FUND_SYMBOL": "EXAM",
@@ -421,7 +421,7 @@ def test_cli_lagoon_bnb_local_high_2_backtest(
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
-        "PRIVATE_KEY": hot_wallet.private_key.hex(),
+        "PRIVATE_KEY": "0x" + hot_wallet.private_key.hex(),
         "VAULT_RECORD_FILE": str(vault_record_file),
         "FUND_NAME": "Example",
         "FUND_SYMBOL": "EXAM",

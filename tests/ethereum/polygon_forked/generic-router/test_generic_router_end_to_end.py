@@ -97,7 +97,7 @@ def environment(
         "EXECUTOR_ID": "test_generic_router_end_to_end",
         "NAME": "test_generic_router_end_to_end",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": "0x" + hot_wallet.account.key.hex(),
         "JSON_RPC_ANVIL": anvil_polygon_chain_fork,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "hot_wallet",

@@ -374,7 +374,10 @@ def test_binance_timezone():
     )
 
     pair_desc = (ChainId.centralised_exchange, "binance", "BTC", "USDT")
-    pair = strategy_universe.data_universe.pairs.get_pair_by_human_description(pair_desc)
+    pair = strategy_universe.data_universe.pairs.get_pair_by_human_description(
+        pair_desc,
+        exchange_universe=strategy_universe.data_universe.exchange_universe,
+    )
     btc = strategy_universe.data_universe.candles.get_last_entries_by_pair_and_timestamp(pair, strategy_universe.end_at)
     assert btc.index[0] == pd.Timestamp("2019-01-01 00:00:00")
 
@@ -402,7 +405,10 @@ def test_binance_resample_no_change():
     )
 
     pair_desc = (ChainId.centralised_exchange, "binance", "BTC", "USDT")
-    pair = strategy_universe.data_universe.pairs.get_pair_by_human_description(pair_desc)
+    pair = strategy_universe.data_universe.pairs.get_pair_by_human_description(
+        pair_desc,
+        exchange_universe=strategy_universe.data_universe.exchange_universe,
+    )
     btc = strategy_universe.data_universe.candles.get_last_entries_by_pair_and_timestamp(pair, strategy_universe.end_at)
 
     assert btc.index[0] == pd.Timestamp('2019-01-01')
@@ -450,11 +456,17 @@ def test_binance_upsample_again():
     )
 
     pair_desc = (ChainId.centralised_exchange, "binance", "BTC", "USDT")
-    pair = strategy_universe_daily.data_universe.pairs.get_pair_by_human_description(pair_desc)
+    pair = strategy_universe_daily.data_universe.pairs.get_pair_by_human_description(
+        pair_desc,
+        exchange_universe=strategy_universe_daily.data_universe.exchange_universe,
+    )
     btc_daily = strategy_universe_daily.data_universe.candles.get_last_entries_by_pair_and_timestamp(pair, end_at)
 
     pair_desc = (ChainId.centralised_exchange, "binance", "BTC", "USDT")
-    pair = strategy_universe_8h.data_universe.pairs.get_pair_by_human_description(pair_desc)
+    pair = strategy_universe_8h.data_universe.pairs.get_pair_by_human_description(
+        pair_desc,
+        exchange_universe=strategy_universe_8h.data_universe.exchange_universe,
+    )
     btc_8h = strategy_universe_8h.data_universe.candles.get_last_entries_by_pair_and_timestamp(pair, end_at)
 
     btc_resampled = resample_candles(btc_8h, pd.Timedelta(days=1))

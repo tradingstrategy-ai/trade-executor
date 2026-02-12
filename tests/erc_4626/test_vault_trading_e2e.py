@@ -54,7 +54,7 @@ def environment(
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.01",
         "GAS_BALANCE_WARNING_LEVEL": "0.0",
-        "PRIVATE_KEY": hot_wallet.private_key.hex(),
+        "PRIVATE_KEY": "0x" + hot_wallet.private_key.hex(),
         "CACHE_PATH":  cache_path,
     }
     return environment
