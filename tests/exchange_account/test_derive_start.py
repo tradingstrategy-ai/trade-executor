@@ -25,7 +25,7 @@ import pytest
 
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
-from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
 

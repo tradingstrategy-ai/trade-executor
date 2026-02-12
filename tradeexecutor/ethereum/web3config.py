@@ -13,7 +13,6 @@ from eth_defi.provider.multi_provider import MultiProviderWeb3, create_multi_pro
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradingstrategy.chain import ChainId
 from web3 import Web3, HTTPProvider
-from web3.middleware import geth_poa_middleware
 
 from tradeexecutor.utils.url import get_url_domain
 

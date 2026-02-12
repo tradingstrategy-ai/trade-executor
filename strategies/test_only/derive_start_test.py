@@ -10,7 +10,6 @@ GenericRouting / EthereumPairConfigurator handle pricing and valuation.
 
 import datetime
 from decimal import Decimal
-from typing import List
 
 import pandas as pd
 
@@ -23,13 +22,12 @@ from tradingstrategy.universe import Universe
 
 from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
-from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
-from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
 from tradeexecutor.strategy.strategy_type import StrategyType
@@ -51,6 +49,7 @@ class Parameters:
     initial_cash = 10_000
     cycle_duration = CycleDuration.cycle_1d
     routing = TradeRouting.default
+    required_history_period = datetime.timedelta(days=1)
     backtest_start = None
     backtest_end = None
 
@@ -111,7 +110,7 @@ def create_trading_universe(
 
     candles = pd.DataFrame({
         "pair_id": [1],
-        "timestamp": [pd.Timestamp(ts)],
+        "timestamp": [pd.Timestamp(ts).floor("D")],
         "open": [1.0],
         "high": [1.0],
         "low": [1.0],
@@ -145,11 +144,7 @@ def create_indicators(
 
 
 def decide_trades(
-    timestamp: pd.Timestamp,
-    strategy_universe: TradingStrategyUniverse,
-    state: State,
-    pricing_model: PricingModel,
-    cycle_debug_data: dict,
+    input: StrategyInput,
 ) -> list[TradeExecution]:
     """Ensure one exchange account position exists.
 
@@ -159,6 +154,8 @@ def decide_trades(
     Always returns [] because exchange account trades are spoofed
     directly on the state and must never reach routing/execution.
     """
+    state = input.state
+    timestamp = input.timestamp
 
     # Check if position already exists
     for pos in state.portfolio.open_positions.values():
