@@ -124,6 +124,8 @@ class GenericRouting(RoutingModel):
         assert isinstance(routing_state, GenericRoutingState)
 
         for t in trades:
+            assert not t.pair.is_exchange_account(), \
+                f"Unsupported: exchange account trades must not reach routing. Trade: {t}"
             router, protocol_config = self.get_router(t.pair)
             # Set the router, so we know
             # in the post-trade analysis which route this trade took

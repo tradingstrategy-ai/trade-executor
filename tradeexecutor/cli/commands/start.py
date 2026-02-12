@@ -26,6 +26,7 @@ from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, prepare_token_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_metadata, create_approval_model, create_client, configure_default_chain
+from ...exchange_account.derive import DeriveNetwork
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, setup_telegram_logging, setup_sentry_logging
 from ..loop import ExecutionLoop
 from ..result import display_backtesting_results
@@ -98,6 +99,12 @@ def start(
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
     json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
+
+    # Derive exchange account options
+    derive_owner_private_key: Optional[str] = typer.Option(None, envvar="DERIVE_OWNER_PRIVATE_KEY", help="Derive owner wallet private key"),
+    derive_session_private_key: Optional[str] = typer.Option(None, envvar="DERIVE_SESSION_PRIVATE_KEY", help="Derive session key private key"),
+    derive_wallet_address: Optional[str] = typer.Option(None, envvar="DERIVE_WALLET_ADDRESS", help="Derive wallet address (auto-derived if not provided)"),
+    derive_network: DeriveNetwork = typer.Option(DeriveNetwork.mainnet, envvar="DERIVE_NETWORK", help="Derive network: mainnet or testnet"),
 
     gas_price_method: Optional[GasPriceMethod] = shared_options.gas_price_method,
     confirmation_block_count: int = shared_options.confirmation_block_count,
@@ -334,6 +341,18 @@ def start(
 
         # TODO: Unit test hack
         execution_model.disable_broadcast = disable_broadcast
+
+        # Wire up exchange account value function if Derive credentials provided
+        if derive_session_private_key:
+            from ...exchange_account.utils import create_derive_value_func_from_credentials
+            account_value_func = create_derive_value_func_from_credentials(
+                derive_session_private_key=derive_session_private_key,
+                derive_owner_private_key=derive_owner_private_key,
+                derive_wallet_address=derive_wallet_address,
+                derive_network=derive_network,
+            )
+            execution_model.account_value_func = account_value_func
+            logger.info("Exchange account value function configured for Derive")
 
         approval_model = create_approval_model(approval_type)
 

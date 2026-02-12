@@ -109,6 +109,7 @@ class EthereumExecution(ExecutionModel):
         self.mainnet_fork = mainnet_fork
         self.force_sequential_broadcast = force_sequential_broadcast
         self.disable_broadcast =disable_broadcast
+        self.account_value_func = None
         logger.info(
             "Execution model %s created.\n confirmation_block_count: %s, confirmation_timeout: %s, mainnet_fork: %s, force_sequential_broadcast: %s",
             self.__class__.__name__,
@@ -568,6 +569,9 @@ class EthereumExecution(ExecutionModel):
         rebroadcast=False,
         triggered=False,
     ):
+        for t in trades:
+            assert not t.pair.is_exchange_account(), \
+                f"Unsupported: exchange account trades must not reach execute_trades(). Trade: {t}"
 
         if self.disable_broadcast:
             return
@@ -693,7 +697,11 @@ class EthereumExecution(ExecutionModel):
 
         """
         web3 = self.web3
-        configurator = EthereumPairConfigurator(web3, strategy_universe)
+        configurator = EthereumPairConfigurator(
+            web3,
+            strategy_universe,
+            account_value_func=self.account_value_func,
+        )
         return GenericRouting(configurator)
 
 

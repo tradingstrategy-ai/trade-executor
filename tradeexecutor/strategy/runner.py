@@ -593,7 +593,8 @@ class StrategyRunner(abc.ABC):
                 web3 = tx_builder.web3
                 pair_configurator = EthereumPairConfigurator(
                     web3,
-                    cast(TradingStrategyUniverse, universe)
+                    cast(TradingStrategyUniverse, universe),
+                    account_value_func=getattr(self.execution_model, 'account_value_func', None),
                 )
                 routing_model.initialise(pair_configurator)
 
@@ -812,7 +813,15 @@ class StrategyRunner(abc.ABC):
                     # 1. PositionManager.open_spot() called
                     # 2. Trade is created
                     # 3. This trade is not returned
-                    if not state.portfolio.pending_positions:  # The strategy might have created market limit positions that do not open on this cycle
+                    #
+                    # Exchange account positions are created and spoofed directly in decide_trades()
+                    # without returning trades, so we skip them in this check.
+                    new_pos_ids = new_position_ids - old_position_ids
+                    non_exchange_account_new = any(
+                        not state.portfolio.open_positions[pid].pair.is_exchange_account()
+                        for pid in new_pos_ids
+                    )
+                    if non_exchange_account_new and not state.portfolio.pending_positions:  # The strategy might have created market limit positions that do not open on this cycle
                         raise RuntimeError(f"decide_trades() returned empty trade list, but new positions were added.\n"
                                            f"This is likely a bug in your decide_trades() - remember to return trades list for any position modifications you do,\n"
                                            f"and do not accidentally return empty list when you have made trades.\n"

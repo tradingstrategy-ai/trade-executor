@@ -49,6 +49,10 @@ def default_match_router(
         return ProtocolRoutingId(
             router_name="freqtrade",
         )
+    elif pair.is_exchange_account():
+        return ProtocolRoutingId(
+            router_name="exchange_account",
+        )
 
     pair_universe = strategy_universe.data_universe.pairs
 
@@ -88,10 +92,22 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
     assert exchanges.get_exchange_count() < 1000, f"Exchanges might not be configured correctly, we have {exchanges.get_exchange_count()} exchanges"
     configs = set()
 
+    # Collect exchange IDs used by exchange account pairs (Derive, etc.)
+    # so we can skip them in the exchange loop below
+    exchange_account_exchange_ids = set()
+    pairs_df = strategy_universe.data_universe.pairs.df
+    if "other_data" in pairs_df.columns:
+        for _, row in pairs_df.iterrows():
+            other_data = row.get("other_data")
+            if isinstance(other_data, dict) and other_data.get("exchange_protocol"):
+                exchange_account_exchange_ids.add(row["exchange_id"])
+
     vaults_done = False
 
     for xc in exchanges.exchanges.values():
-        if xc.exchange_type == ExchangeType.erc_4626_vault:
+        if xc.exchange_id in exchange_account_exchange_ids:
+            continue
+        elif xc.exchange_type == ExchangeType.erc_4626_vault:
             if not vaults_done:
                 # All vaults use the same route
                 configs.add(
