@@ -19,6 +19,8 @@
 
 - Add `print_vault_rebalance_status()` console utility for displaying vault allocations and cash balance (2026-02-08)
 
+- Add premium harvest strategy module for Derive options manual trading, make DERIVE_OWNER_PRIVATE_KEY optional when DERIVE_WALLET_ADDRESS is provided (2026-02-12)
+
 - Add `print_vault_deposit_status()` console utility for displaying Lagoon vault deposit and redemption queue status (2026-02-09)
 
 - Add vault universe loading with full metadata from JSON blob in trading-strategy module (2026-02-08)

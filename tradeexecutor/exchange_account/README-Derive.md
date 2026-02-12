@@ -12,10 +12,12 @@ Configure these environment variables for Derive integration:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DERIVE_OWNER_PRIVATE_KEY` | Yes | Private key of the Ethereum wallet that owns the Derive account |
 | `DERIVE_SESSION_PRIVATE_KEY` | Yes | Private key for the Derive session key (used for API authentication) |
-| `DERIVE_WALLET_ADDRESS` | No | Derive wallet address (auto-derived from owner if not provided) |
+| `DERIVE_OWNER_PRIVATE_KEY` | No* | Private key of the Ethereum wallet that owns the Derive account |
+| `DERIVE_WALLET_ADDRESS` | No* | Derive wallet address (auto-derived from owner key if not provided) |
 | `DERIVE_NETWORK` | No | Network selection: `mainnet` or `testnet` (default: `mainnet`) |
+
+\* Either `DERIVE_OWNER_PRIVATE_KEY` or `DERIVE_WALLET_ADDRESS` must be provided. If the wallet address is provided directly, the owner private key is not needed.
 
 ## Strategy setup
 
@@ -180,7 +182,7 @@ A smart contract wallet address on the Derive L2 chain. Automatically derived fr
 
 ### "Derive credentials required" error
 
-Ensure both `DERIVE_OWNER_PRIVATE_KEY` and `DERIVE_SESSION_PRIVATE_KEY` are set.
+Ensure `DERIVE_SESSION_PRIVATE_KEY` is set, and either `DERIVE_OWNER_PRIVATE_KEY` or `DERIVE_WALLET_ADDRESS` is provided.
 
 ### "Subaccount not found" warning
 

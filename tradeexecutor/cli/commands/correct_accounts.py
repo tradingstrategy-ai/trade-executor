@@ -516,18 +516,23 @@ def _create_exchange_account_value_func(
     # Set up Derive if needed
     derive_value_func = None
     if "derive" in protocols:
-        if not derive_owner_private_key or not derive_session_private_key:
-            logger.error("Derive credentials required: DERIVE_OWNER_PRIVATE_KEY and DERIVE_SESSION_PRIVATE_KEY")
+        if not derive_session_private_key:
+            logger.error("Derive credentials required: DERIVE_SESSION_PRIVATE_KEY")
+        elif not derive_owner_private_key and not derive_wallet_address:
+            logger.error("Derive credentials required: either DERIVE_OWNER_PRIVATE_KEY or DERIVE_WALLET_ADDRESS must be provided")
         else:
-            from eth_account import Account
             from eth_defi.derive.authentication import DeriveApiClient
             from eth_defi.derive.account import fetch_subaccount_ids
-            from eth_defi.derive.onboarding import fetch_derive_wallet_address
 
             is_testnet = (derive_network == DeriveNetwork.testnet)
-            owner_account = Account.from_key(derive_owner_private_key)
+
+            owner_account = None
+            if derive_owner_private_key:
+                from eth_account import Account
+                owner_account = Account.from_key(derive_owner_private_key)
 
             if not derive_wallet_address:
+                from eth_defi.derive.onboarding import fetch_derive_wallet_address
                 derive_wallet_address = fetch_derive_wallet_address(
                     owner_account.address,
                     is_testnet=is_testnet,
