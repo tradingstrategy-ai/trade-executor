@@ -9,7 +9,6 @@ import pytest
 
 from eth_account import Account
 from eth_typing import HexAddress
-from hexbytes import HexBytes
 from web3 import Web3, HTTPProvider
 
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil, mine
@@ -23,6 +22,7 @@ from eth_defi.trace import assert_transaction_success_with_explanation
 from tradeexecutor.cli.main import app
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradeexecutor.state.state import State
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 CI = os.environ.get("CI")  == "true"
@@ -108,7 +108,7 @@ def hot_wallet(
 
     Top is up with some gas money and 500 USDC.
     """
-    private_key = HexBytes(secrets.token_bytes(32))
+    private_key = hexbytes_to_hex_str(secrets.token_bytes(32))
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)
@@ -170,7 +170,7 @@ def environment(
     environment = {
         "EXECUTOR_ID": "test_enzyme_guard_live_credit_positions",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.account.key),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",

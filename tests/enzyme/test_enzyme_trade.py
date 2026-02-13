@@ -6,7 +6,6 @@ from decimal import Decimal
 import pytest
 import flaky
 from eth_account import Account
-from hexbytes import HexBytes
 
 from eth_defi.enzyme.integration_manager import IntegrationManagerActionId
 from eth_defi.enzyme.vault import Vault
@@ -32,6 +31,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
 from eth_defi.compat import native_datetime_utc_now
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 
@@ -41,7 +41,7 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
 
     Top is up with some gas money and 500 USDC.
     """
-    private_key = HexBytes(secrets.token_bytes(32))
+    private_key = hexbytes_to_hex_str(secrets.token_bytes(32))
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)

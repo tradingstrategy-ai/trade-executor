@@ -30,6 +30,7 @@ pytestmark = pytest.mark.skipif(
     (not JSON_RPC_ARBITRUM or not TRADING_STRATEGY_API_KEY),
      reason="Set JSON_RPC_ARBITRUM and TRADING_STRATEGY_API_KEY needed to run this test"
 )
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 @pytest.fixture()
@@ -118,7 +119,7 @@ def environment(
         "EXECUTOR_ID": "test_enzyme_vault_arbitrum_fork",
         "NAME": "test_enzyme_vault_arbitrum_fork",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.account.key),
         "JSON_RPC_ARBITRUM": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",

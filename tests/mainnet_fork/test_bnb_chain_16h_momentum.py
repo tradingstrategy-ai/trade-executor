@@ -34,6 +34,7 @@ from tradeexecutor.state.state import State
 
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.strategy.qstrader import HAS_QSTRADER
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 pytestmark = pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None or not HAS_QSTRADER, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
@@ -145,7 +146,7 @@ def test_bnb_chain_16h_momentum(
         "EXECUTOR_ID": "test_bnb_chain_16h_momentum",
         "NAME": "test_bnb_chain_16h_momentum",
         "STRATEGY_FILE": strategy_path.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.account.key),
         "HTTP_ENABLED": "false",
         "JSON_RPC_BINANCE": ganache_bnb_chain_fork,
         "GAS_PRICE_METHOD": "legacy",

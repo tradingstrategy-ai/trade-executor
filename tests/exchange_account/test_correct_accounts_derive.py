@@ -22,6 +22,7 @@ pytestmark = pytest.mark.skipif(
     not os.environ.get("DERIVE_OWNER_PRIVATE_KEY") or not os.environ.get("DERIVE_SESSION_PRIVATE_KEY"),
     reason="Set DERIVE_OWNER_PRIVATE_KEY and DERIVE_SESSION_PRIVATE_KEY for Derive tests",
 )
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 @pytest.fixture()
@@ -56,7 +57,7 @@ def environment(
     environment = {
         "EXECUTOR_ID": "test_correct_accounts_derive",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.account.key),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
@@ -88,7 +89,7 @@ def environment_anvil(
     environment = {
         "EXECUTOR_ID": "test_derive_cli_start",
         "STRATEGY_FILE": strategy_file_anvil.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.account.key),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "hot_wallet",

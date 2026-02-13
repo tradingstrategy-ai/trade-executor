@@ -24,6 +24,7 @@ pytestmark = pytest.mark.skipif(
     (not JSON_RPC_BINANCE or not TRADING_STRATEGY_API_KEY),
      reason="Set JSON_RPC_BINANCE and TRADING_STRATEGY_API_KEY needed to run this test"
 )
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 @pytest.fixture()
@@ -87,7 +88,7 @@ def environment(
         "EXECUTOR_ID": "test_velvet_enter_check_position",
         "NAME": "test_velvet_enter_check_position",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": "0x" + secrets.token_bytes(32).hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(secrets.token_bytes(32)),
         "CACHE_PATH": cache_path,
         "JSON_RPC_BINANCE": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),

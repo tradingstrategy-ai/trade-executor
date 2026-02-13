@@ -19,6 +19,7 @@ from tradingstrategy.pair import PandasPairUniverse
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 @pytest.fixture()
@@ -48,7 +49,7 @@ def environment(
     multipair_environment = {
         "EXECUTOR_ID": "test_cli_blacklists",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.account.key),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "hot_wallet",

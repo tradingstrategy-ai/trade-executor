@@ -16,7 +16,6 @@ from web3 import Web3
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.provider.anvil import AnvilLaunch
-from hexbytes import HexBytes
 from typer.testing import CliRunner
 from web3.contract import Contract
 from eth_typing import HexAddress
@@ -35,6 +34,7 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransactionType
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 logger = logging.getLogger(__name__)
@@ -46,7 +46,7 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract, vault: Vault) -> HotWalle
 
     Top is up with some gas money and 500 USDC.
     """
-    private_key = HexBytes(secrets.token_bytes(32))
+    private_key = hexbytes_to_hex_str(secrets.token_bytes(32))
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)
@@ -98,7 +98,7 @@ def multipair_environment(
         "EXECUTOR_ID": "test_enzyme_live_trading_init",
         "NAME": "test_enzyme_live_trading_init",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.account.key),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",

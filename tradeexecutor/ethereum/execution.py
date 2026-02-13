@@ -42,6 +42,7 @@ from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routin
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing, UniswapV3RoutingState
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails, ExecutionHaltableIssue
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -109,6 +110,7 @@ class EthereumExecution(ExecutionModel):
         self.mainnet_fork = mainnet_fork
         self.force_sequential_broadcast = force_sequential_broadcast
         self.disable_broadcast =disable_broadcast
+        self.account_value_func = None
         logger.info(
             "Execution model %s created.\n confirmation_block_count: %s, confirmation_timeout: %s, mainnet_fork: %s, force_sequential_broadcast: %s",
             self.__class__.__name__,
@@ -447,7 +449,7 @@ class EthereumExecution(ExecutionModel):
                     report_failure(native_datetime_utc_now(), state, t, stop_on_execution_failure)
                     break
 
-                current_trade_tx_map[signed_tx.hash.hex()] = (t, tx)
+                current_trade_tx_map[hexbytes_to_hex_str(signed_tx.hash)] = (t, tx)
                 current_trade_receipts.update(receipts)
 
             else:
@@ -533,7 +535,7 @@ class EthereumExecution(ExecutionModel):
                 )
                 txs.add(signed_tx)
                 logger.info("Broadcasting transaction %s, nonce %s, for trade\n:%s", signed_tx.hash.hex(), signed_tx.nonce, t)
-                tx_map[signed_tx.hash.hex()] = (t, tx)
+                tx_map[hexbytes_to_hex_str(signed_tx.hash)] = (t, tx)
 
             t.mark_broadcasted(native_datetime_utc_now(), rebroadcast=rebroadcast)
 
@@ -568,6 +570,9 @@ class EthereumExecution(ExecutionModel):
         rebroadcast=False,
         triggered=False,
     ):
+        for t in trades:
+            assert not t.pair.is_exchange_account(), \
+                f"Unsupported: exchange account trades must not reach execute_trades(). Trade: {t}"
 
         if self.disable_broadcast:
             return
@@ -693,7 +698,11 @@ class EthereumExecution(ExecutionModel):
 
         """
         web3 = self.web3
-        configurator = EthereumPairConfigurator(web3, strategy_universe)
+        configurator = EthereumPairConfigurator(
+            web3,
+            strategy_universe,
+            account_value_func=self.account_value_func,
+        )
         return GenericRouting(configurator)
 
 
@@ -712,9 +721,9 @@ def update_confirmation_status(
         # as we now have receipt for them
         for tx_hash, receipt in receipts.items():
             try:
-                trade, tx = tx_map[tx_hash.hex()]
+                trade, tx = tx_map[hexbytes_to_hex_str(tx_hash)]
             except KeyError as e:
-                raise KeyError(f"{tx_hash.hex()} not in map keys: {list(tx_map.keys())}") from e
+                raise KeyError(f"{hexbytes_to_hex_str(tx_hash)} not in map keys: {list(tx_map.keys())}") from e
             # Update the transaction confirmation status
             status = receipt["status"] == 1
             block_number = receipt["blockNumber"]
@@ -824,7 +833,7 @@ def translate_to_naive_swap(
         tx,
     )
 
-    tx_info.set_broadcast_information(tx["nonce"], signed.hash.hex(), signed.rawTransaction.hex())
+    tx_info.set_broadcast_information(tx["nonce"], hexbytes_to_hex_str(signed.hash), hexbytes_to_hex_str(signed.rawTransaction))
 
 
 def prepare_swaps(

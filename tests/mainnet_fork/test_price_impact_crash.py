@@ -9,7 +9,6 @@ import pytest
 
 from eth_account import Account
 from eth_typing import HexAddress
-from hexbytes import HexBytes
 from web3 import Web3, HTTPProvider
 
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
@@ -28,6 +27,7 @@ pytestmark = pytest.mark.skipif(
     or not os.environ.get("TRADING_STRATEGY_API_KEY"),
     reason="Set POLYGON_JSON_RPC and TRADING_STRATEGY_API_KEY environment variables to run this test",
 )
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 @pytest.fixture()
@@ -93,7 +93,7 @@ def hot_wallet(
 
     Top is up with some gas money and 500 USDC.
     """
-    private_key = HexBytes(secrets.token_bytes(32))
+    private_key = hexbytes_to_hex_str(secrets.token_bytes(32))
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)
@@ -148,7 +148,7 @@ def environment(
     environment = {
         "EXECUTOR_ID": "price_impact_crash",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.account.key),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "hot_wallet",

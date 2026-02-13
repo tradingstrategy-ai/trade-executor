@@ -12,6 +12,7 @@ from _pytest.fixtures import FixtureRequest
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
 from tradeexecutor.cli.commands.app import app
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test")
@@ -64,7 +65,7 @@ def environment(
     # Set up the configuration for the live trader
     environment = {
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": "0x" + secrets.token_bytes(32).hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(secrets.token_bytes(32)),
         "JSON_RPC_BASE": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "lagoon",

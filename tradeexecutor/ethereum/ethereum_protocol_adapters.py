@@ -497,6 +497,33 @@ def create_freqtrade_adapter(
     )
 
 
+def create_exchange_account_adapter(
+    routing_id: ProtocolRoutingId,
+    account_value_func: callable | None = None,
+) -> ProtocolRoutingConfig:
+    """Create adapter for exchange account pairs (Derive, etc.).
+
+    Exchange account positions are valued via an external API,
+    not through on-chain routing.
+    """
+    from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
+    from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
+
+    assert account_value_func is not None, \
+        "account_value_func is required for exchange account routing. " \
+        "Set DERIVE_SESSION_PRIVATE_KEY or similar credentials."
+
+    pricing_model = ExchangeAccountPricingModel(account_value_func)
+    valuation_model = ExchangeAccountValuator(pricing_model)
+
+    return ProtocolRoutingConfig(
+        routing_id=routing_id,
+        routing_model=None,
+        pricing_model=pricing_model,
+        valuation_model=valuation_model,
+    )
+
+
 class EthereumPairConfigurator(PairConfigurator):
     """Set up routes for EVM trading pairs.
 
@@ -517,6 +544,7 @@ class EthereumPairConfigurator(PairConfigurator):
         self,
         web3: Web3,
         strategy_universe: TradingStrategyUniverse | None,
+        account_value_func: callable | None = None,
     ):
         """Initialise pair configuration.
 
@@ -528,12 +556,18 @@ class EthereumPairConfigurator(PairConfigurator):
 
             TODO: Currently only reserve currency, exchange and pair data is used.
             Candle data is discarded.
+
+        :param account_value_func:
+            Optional function to query exchange account values.
+            Required when the universe contains exchange account pairs.
+            Signature: (pair: TradingPairIdentifier) -> Decimal
         """
 
         assert isinstance(web3, Web3)
         assert isinstance(strategy_universe, TradingStrategyUniverse)
 
         self.web3 = web3
+        self.account_value_func = account_value_func
 
         super().__init__(strategy_universe)
 
@@ -553,6 +587,8 @@ class EthereumPairConfigurator(PairConfigurator):
             return create_vault_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "freqtrade":
             return create_freqtrade_adapter(self.web3, self.strategy_universe, routing_id)
+        elif routing_id.router_name == "exchange_account":
+            return create_exchange_account_adapter(routing_id, self.account_value_func)
         else:
             raise NotImplementedError(f"Cannot route exchange {routing_id}")
 

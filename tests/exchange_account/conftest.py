@@ -7,7 +7,6 @@ import logging
 import pytest
 import secrets
 
-from hexbytes import HexBytes
 from eth_typing import HexAddress
 from web3 import Web3, HTTPProvider
 from web3.contract import Contract
@@ -18,6 +17,7 @@ from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 from eth_defi.chain import install_chain_middleware
 from eth_defi.token import create_token
 from eth_defi.trace import assert_transaction_success_with_explanation
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
 
     Top up with some gas money and 500 USDC.
     """
-    private_key = HexBytes(secrets.token_bytes(32))
+    private_key = hexbytes_to_hex_str(secrets.token_bytes(32))
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)

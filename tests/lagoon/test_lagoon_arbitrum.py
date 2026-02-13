@@ -31,6 +31,7 @@ pytestmark = pytest.mark.skipif(
      (not JSON_RPC_ARBITRUM or not TRADING_STRATEGY_API_KEY),
       reason="Set JSON_RPC_ARBITRUM and TRADING_STRATEGY_API_KEY needed to run this test"
 )
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 @pytest.fixture()
@@ -152,7 +153,7 @@ def test_cli_lagoon_deploy_arbitrum_vault(
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
-        "PRIVATE_KEY": hot_wallet.private_key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.private_key),
         "VAULT_RECORD_FILE": str(vault_record_file),
         "FUND_NAME": "Example",
         "FUND_SYMBOL": "EXAM",

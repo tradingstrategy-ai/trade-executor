@@ -17,7 +17,6 @@ from typer.testing import CliRunner
 
 from web3 import Web3
 from eth_account import Account
-from hexbytes import HexBytes
 
 
 from eth_defi.provider.anvil import AnvilLaunch
@@ -27,6 +26,7 @@ from eth_defi.trace import assert_transaction_success_with_explanation
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 CI = os.environ.get("CI") == "true"
@@ -44,7 +44,7 @@ def hot_wallet(
 
     Top is up with some gas money and 500 USDC.
     """
-    private_key = HexBytes(secrets.token_bytes(32))
+    private_key = hexbytes_to_hex_str(secrets.token_bytes(32))
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)
@@ -98,7 +98,7 @@ def environment(
         "EXECUTOR_ID": "test_generic_router_end_to_end",
         "NAME": "test_generic_router_end_to_end",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.account.key),
         "JSON_RPC_ANVIL": anvil_polygon_chain_fork,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "hot_wallet",

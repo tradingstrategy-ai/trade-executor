@@ -67,7 +67,7 @@ def test_vault_rebalance_status_no_positions(
     assert vault_row["Weight %"] == 0
     assert vault_row["Position ID"] is None
     assert "IPOR" in vault_row["Vault"]
-    assert vault_row["Protocol"] == "ipor"
+    assert vault_row["Protocol"] == "ipor_fusion"
 
     # 1M CAGR column should exist (may be None if not loaded from JSON blob)
     assert "1M CAGR" in df.columns

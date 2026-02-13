@@ -10,6 +10,7 @@ import pytest
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
 from tradeexecutor.cli.main import app
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 CI = os.environ.get("CI") == "true"
@@ -66,7 +67,7 @@ def environment(
     """Used by CLI commands, for setting up this test environment"""
     environment = {
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": "0x" + secrets.token_bytes(32).hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(secrets.token_bytes(32)),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",

@@ -37,7 +37,7 @@ def test_vault_routing(
     pair = strategy_universe.get_pair_by_smart_contract(vault.address)
     assert pair.is_vault()
     assert pair.get_vault_features() == {ERC4626Feature.ipor_like}
-    assert pair.get_vault_protocol() == "ipor"
+    assert pair.get_vault_protocol() == "ipor_fusion"
 
     routing_id = routing_model.pair_configurator.match_router(pair)
     protocol_config = routing_model.pair_configurator.get_config(routing_id)

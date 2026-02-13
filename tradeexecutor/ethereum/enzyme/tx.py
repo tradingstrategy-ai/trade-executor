@@ -17,6 +17,7 @@ from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, BlockchainTransactionType, JSONAssetDelta
 from tradeexecutor.state.pickle_over_json import encode_pickle_over_json
 from tradeexecutor.state.types import Percent
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
 
         def present(a):
             if type(a) == bytes:
-                return "0x" + a.hex()
+                return hexbytes_to_hex_str(a)
             return str(a)
 
         logger.info("Enzyme tx for %s.%s(%s), gas limit %d, deltas %s",
@@ -165,7 +166,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
         gas_data = gas_price_suggestion.get_tx_gas_params()
 
         signed_tx, execute_calls_bound_func = self.vault_controlled_wallet.sign_transaction_with_new_nonce(enzyme_tx, gas_data)
-        signed_bytes = signed_tx.rawTransaction.hex()
+        signed_bytes = hexbytes_to_hex_str(signed_tx.rawTransaction)
 
         # Capture gas data for gas troublshooting
         tx_data = enzyme_tx.as_json_friendly_dict()
@@ -183,7 +184,7 @@ class EnzymeTransactionBuilder(TransactionBuilder):
             wrapped_function_selector=args_bound_func.fn_name,
             signed_bytes=signed_bytes,
             signed_tx_object=encode_pickle_over_json(signed_tx),
-            tx_hash=signed_tx.hash.hex(),
+            tx_hash=hexbytes_to_hex_str(signed_tx.hash),
             nonce=signed_tx.nonce,
             details=tx_data,
             asset_deltas=[JSONAssetDelta.from_asset_delta(a) for a in vault_asset_deltas],

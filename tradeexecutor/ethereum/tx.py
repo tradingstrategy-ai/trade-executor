@@ -26,6 +26,7 @@ from eth_defi.tx import decode_signed_transaction
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction, JSONAssetDelta
 from tradeexecutor.state.pickle_over_json import encode_pickle_over_json
 from tradeexecutor.state.types import Percent
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
@@ -150,7 +151,7 @@ class TransactionBuilder(ABC):
         # Update persistant status of transactions
         # based on the result read from the chain
         for tx_hash, receipt in receipts.items():
-            tx = tx_hashes[tx_hash.hex()]
+            tx = tx_hashes[hexbytes_to_hex_str(tx_hash)]
             status = receipt["status"] == 1
 
             reason = None
@@ -315,7 +316,7 @@ class HotWalletTransactionBuilder(TransactionBuilder):
             gas_limit,
         )
 
-        signed_bytes = signed_tx.rawTransaction.hex()
+        signed_bytes = hexbytes_to_hex_str(signed_tx.rawTransaction)
 
         if asset_deltas is None:
             asset_deltas = []
@@ -330,7 +331,7 @@ class HotWalletTransactionBuilder(TransactionBuilder):
             wrapped_args=None,
             signed_bytes=signed_bytes,
             signed_tx_object=encode_pickle_over_json(signed_tx),
-            tx_hash=signed_tx.hash.hex(),
+            tx_hash=hexbytes_to_hex_str(signed_tx.hash),
             nonce=signed_tx.nonce,
             details=tx,
             asset_deltas=[JSONAssetDelta.from_asset_delta(a) for a in asset_deltas],
