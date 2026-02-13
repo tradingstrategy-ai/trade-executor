@@ -150,7 +150,7 @@ class TransactionBuilder(ABC):
         # Update persistant status of transactions
         # based on the result read from the chain
         for tx_hash, receipt in receipts.items():
-            tx = tx_hashes[tx_hash.hex()]
+            tx = tx_hashes["0x" + tx_hash.hex()]
             status = receipt["status"] == 1
 
             reason = None

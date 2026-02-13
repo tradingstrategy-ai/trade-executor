@@ -448,7 +448,7 @@ class EthereumExecution(ExecutionModel):
                     report_failure(native_datetime_utc_now(), state, t, stop_on_execution_failure)
                     break
 
-                current_trade_tx_map[signed_tx.hash.hex()] = (t, tx)
+                current_trade_tx_map["0x" + signed_tx.hash.hex()] = (t, tx)
                 current_trade_receipts.update(receipts)
 
             else:
@@ -534,7 +534,7 @@ class EthereumExecution(ExecutionModel):
                 )
                 txs.add(signed_tx)
                 logger.info("Broadcasting transaction %s, nonce %s, for trade\n:%s", signed_tx.hash.hex(), signed_tx.nonce, t)
-                tx_map[signed_tx.hash.hex()] = (t, tx)
+                tx_map["0x" + signed_tx.hash.hex()] = (t, tx)
 
             t.mark_broadcasted(native_datetime_utc_now(), rebroadcast=rebroadcast)
 
@@ -720,9 +720,9 @@ def update_confirmation_status(
         # as we now have receipt for them
         for tx_hash, receipt in receipts.items():
             try:
-                trade, tx = tx_map[tx_hash.hex()]
+                trade, tx = tx_map["0x" + tx_hash.hex()]
             except KeyError as e:
-                raise KeyError(f"{tx_hash.hex()} not in map keys: {list(tx_map.keys())}") from e
+                raise KeyError(f"0x{tx_hash.hex()} not in map keys: {list(tx_map.keys())}") from e
             # Update the transaction confirmation status
             status = receipt["status"] == 1
             block_number = receipt["blockNumber"]
