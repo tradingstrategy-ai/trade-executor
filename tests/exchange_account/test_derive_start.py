@@ -36,6 +36,7 @@ pytestmark = pytest.mark.skipif(
     or not os.environ.get("DERIVE_SESSION_PRIVATE_KEY"),
     reason="Set JSON_RPC_ARBITRUM, TRADING_STRATEGY_API_KEY and DERIVE_SESSION_PRIVATE_KEY to run this test",
 )
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 @pytest.fixture()
@@ -68,7 +69,7 @@ def environment(
 
     env = {
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": "0x" + secrets.token_bytes(32).hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(secrets.token_bytes(32)),
         "JSON_RPC_ARBITRUM": anvil_arbitrum_fork.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "hot_wallet",

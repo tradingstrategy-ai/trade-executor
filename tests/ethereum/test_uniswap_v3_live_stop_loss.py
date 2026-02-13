@@ -48,6 +48,7 @@ from tradeexecutor.utils.blockchain import get_latest_block_timestamp
 from tradeexecutor.visual.image_output import open_plotly_figure_in_browser, open_bytes_in_browser
 from tradeexecutor.statistics.summary import calculate_summary_statistics
 from eth_defi.compat import native_datetime_utc_now
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 #: How much values we allow to drift.
@@ -95,7 +96,7 @@ def deployer(web3) -> HexAddress:
 @pytest.fixture()
 def hot_wallet_private_key(web3) -> HexBytes:
     """Generate a private key"""
-    return "0x" + secrets.token_bytes(32).hex()
+    return hexbytes_to_hex_str(secrets.token_bytes(32))
 
 
 @pytest.fixture

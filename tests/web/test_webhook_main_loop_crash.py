@@ -16,6 +16,7 @@ from hexbytes import HexBytes
 from typer.main import get_command
 
 from tradeexecutor.cli.main import app
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ def hot_wallet_private_key() -> HexBytes:
 
     Does not need to have balance.
     """
-    return "0x" + secrets.token_bytes(32).hex()
+    return hexbytes_to_hex_str(secrets.token_bytes(32))
 
 
 @pytest.mark.slow_test_group
@@ -50,7 +51,7 @@ def test_main_loop_catch(
     # Set up the configuration for the live trader
     env = {
         "STRATEGY_FILE": strategy_path.as_posix(),  # Pass crash test
-        "PRIVATE_KEY": "0x" + hot_wallet_private_key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet_private_key),
         "HTTP_ENABLED": "false",
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "CACHE_PATH": "/tmp/main_loop_tests",
@@ -94,7 +95,7 @@ def test_main_loop_traceback_over_web(
     # Set up the configuration for the live trader
     env = {
         "STRATEGY_FILE": strategy_path.as_posix(),  # Pass crash test
-        "PRIVATE_KEY": "0x" + hot_wallet_private_key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet_private_key),
         "HTTP_ENABLED": "false",
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "CACHE_PATH": "/tmp/main_loop_tests",

@@ -30,6 +30,7 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 @pytest.fixture
@@ -69,7 +70,7 @@ def deployer(web3) -> HexAddress:
 @pytest.fixture()
 def hot_wallet_private_key(web3) -> HexBytes:
     """Generate a private key"""
-    return "0x" + secrets.token_bytes(32).hex()
+    return hexbytes_to_hex_str(secrets.token_bytes(32))
 
 
 @pytest.fixture

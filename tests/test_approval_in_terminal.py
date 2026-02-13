@@ -45,6 +45,7 @@ from tradingstrategy.liquidity import GroupedLiquidityUniverse
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 pytestmark = pytest.mark.skipif(HAS_QSTRADER is False, reason="Install with optional qstrader dependency to run these tests")
@@ -93,7 +94,7 @@ def deployer(web3) -> HexAddress:
 @pytest.fixture()
 def hot_wallet_private_key(web3) -> HexBytes:
     """Generate a private key"""
-    return "0x" + secrets.token_bytes(32).hex()
+    return hexbytes_to_hex_str(secrets.token_bytes(32))
 
 
 @pytest.fixture

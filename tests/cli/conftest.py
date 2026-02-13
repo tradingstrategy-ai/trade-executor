@@ -32,6 +32,7 @@ from eth_defi.uniswap_v2.deployment import deploy_uniswap_v2_like, UniswapV2Depl
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.ethereum.universe import create_pair_universe
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 logger = logging.getLogger(__name__)
@@ -171,7 +172,7 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
 
     Top is up with some gas money and 500 USDC.
     """
-    private_key = "0x" + secrets.token_bytes(32).hex()
+    private_key = hexbytes_to_hex_str(secrets.token_bytes(32))
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)

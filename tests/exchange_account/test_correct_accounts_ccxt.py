@@ -24,6 +24,7 @@ pytestmark = pytest.mark.skipif(
     not os.environ.get("ASTER_API_KEY") or not os.environ.get("ASTER_API_SECRET"),
     reason="Set ASTER_API_KEY and ASTER_API_SECRET for Aster CCXT tests",
 )
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 @pytest.fixture()
@@ -64,7 +65,7 @@ def environment(
     environment = {
         "EXECUTOR_ID": "test_correct_accounts_ccxt",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": "0x" + hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.account.key),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
@@ -101,7 +102,7 @@ def environment_anvil(
     environment = {
         "EXECUTOR_ID": "test_ccxt_cli_start",
         "STRATEGY_FILE": strategy_file_anvil.as_posix(),
-        "PRIVATE_KEY": "0x" + hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.account.key),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "hot_wallet",

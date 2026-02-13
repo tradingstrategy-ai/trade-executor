@@ -42,6 +42,7 @@ from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routin
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_routing import UniswapV3Routing, UniswapV3RoutingState
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.execution_model import ExecutionModel, RoutingStateDetails, ExecutionHaltableIssue
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -448,7 +449,7 @@ class EthereumExecution(ExecutionModel):
                     report_failure(native_datetime_utc_now(), state, t, stop_on_execution_failure)
                     break
 
-                current_trade_tx_map["0x" + signed_tx.hash.hex()] = (t, tx)
+                current_trade_tx_map[hexbytes_to_hex_str(signed_tx.hash)] = (t, tx)
                 current_trade_receipts.update(receipts)
 
             else:
@@ -534,7 +535,7 @@ class EthereumExecution(ExecutionModel):
                 )
                 txs.add(signed_tx)
                 logger.info("Broadcasting transaction %s, nonce %s, for trade\n:%s", signed_tx.hash.hex(), signed_tx.nonce, t)
-                tx_map["0x" + signed_tx.hash.hex()] = (t, tx)
+                tx_map[hexbytes_to_hex_str(signed_tx.hash)] = (t, tx)
 
             t.mark_broadcasted(native_datetime_utc_now(), rebroadcast=rebroadcast)
 
@@ -720,9 +721,9 @@ def update_confirmation_status(
         # as we now have receipt for them
         for tx_hash, receipt in receipts.items():
             try:
-                trade, tx = tx_map["0x" + tx_hash.hex()]
+                trade, tx = tx_map[hexbytes_to_hex_str(tx_hash)]
             except KeyError as e:
-                raise KeyError(f"0x{tx_hash.hex()} not in map keys: {list(tx_map.keys())}") from e
+                raise KeyError(f"{hexbytes_to_hex_str(tx_hash)} not in map keys: {list(tx_map.keys())}") from e
             # Update the transaction confirmation status
             status = receipt["status"] == 1
             block_number = receipt["blockNumber"]
@@ -832,7 +833,7 @@ def translate_to_naive_swap(
         tx,
     )
 
-    tx_info.set_broadcast_information(tx["nonce"], "0x" + signed.hash.hex(), "0x" + signed.rawTransaction.hex())
+    tx_info.set_broadcast_information(tx["nonce"], hexbytes_to_hex_str(signed.hash), hexbytes_to_hex_str(signed.rawTransaction))
 
 
 def prepare_swaps(

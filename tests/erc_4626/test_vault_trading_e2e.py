@@ -8,6 +8,7 @@ from typer.main import get_command
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
@@ -54,7 +55,7 @@ def environment(
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.01",
         "GAS_BALANCE_WARNING_LEVEL": "0.0",
-        "PRIVATE_KEY": "0x" + hot_wallet.private_key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.private_key),
         "CACHE_PATH":  cache_path,
     }
     return environment

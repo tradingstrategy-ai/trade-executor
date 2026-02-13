@@ -62,6 +62,7 @@ from tradeexecutor.strategy.valuation import revalue_state
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
 from tradeexecutor.utils.timer import timed_task
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 pytestmark = pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None or not HAS_QSTRADER, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
@@ -122,7 +123,7 @@ def chain_id(web3):
 @pytest.fixture()
 def hot_wallet_private_key(web3) -> HexBytes:
     """Generate a private key"""
-    return "0x" + secrets.token_bytes(32).hex()
+    return hexbytes_to_hex_str(secrets.token_bytes(32))
 
 
 @pytest.fixture

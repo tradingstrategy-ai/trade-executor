@@ -25,6 +25,7 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.monkeypatch.web3 import \
     construct_sign_and_send_raw_middleware
 from tradeexecutor.state.state import State
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY environment variables to run this test")
 
@@ -90,7 +91,7 @@ def hot_wallet(
 
     Top is up with some gas money and 500 USDC.
     """
-    private_key = "0x" + secrets.token_bytes(32).hex()
+    private_key = hexbytes_to_hex_str(secrets.token_bytes(32))
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)
@@ -148,7 +149,7 @@ def environment(
         "CACHE_PATH": unit_test_cache_path,
         "EXECUTOR_ID": "test_lagoon_guard_perform_test_aave_v3",
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": "0x" + hot_wallet.account.key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.account.key),
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "lagoon",

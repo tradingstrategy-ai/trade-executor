@@ -15,6 +15,7 @@ from web3 import Web3, HTTPProvider
 
 from tradeexecutor.ethereum.wallet import perform_gas_level_checks
 from tradeexecutor.strategy.run_state import RunState
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 @pytest.fixture()
@@ -72,7 +73,7 @@ def hot_wallet(web3, deployer, user_1) -> HotWallet:
 
     Top is up with some gas money and 500 USDC.
     """
-    private_key = "0x" + secrets.token_bytes(32).hex()
+    private_key = hexbytes_to_hex_str(secrets.token_bytes(32))
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)

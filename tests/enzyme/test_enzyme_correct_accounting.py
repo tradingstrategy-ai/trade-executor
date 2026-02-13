@@ -37,6 +37,7 @@ from tradeexecutor.strategy.account_correction import calculate_account_correcti
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
 from eth_defi.compat import native_datetime_utc_now
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 @pytest.fixture
@@ -45,7 +46,7 @@ def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
 
     Top is up with some gas money and 500 USDC.
     """
-    private_key = "0x" + secrets.token_bytes(32).hex()
+    private_key = hexbytes_to_hex_str(secrets.token_bytes(32))
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
     wallet.sync_nonce(web3)

@@ -33,6 +33,7 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
 from tradeexecutor.cli.log import setup_pytest_logging
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 CI = os.environ.get("CI") == "true"
@@ -165,7 +166,7 @@ def test_trading_strategy_engine_v050_live_trading(
         "STRATEGY_FILE": strategy_path.as_posix(),
         "CACHE_PATH": persistent_test_cache_path,
         "JSON_RPC_ANVIL": anvil_polygon_chain_fork_rpc,
-        "PRIVATE_KEY": "0x" + hot_wallet.private_key.hex(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.private_key),
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "disabled",
         "ASSET_MANAGEMENT_MODE": "hot_wallet",

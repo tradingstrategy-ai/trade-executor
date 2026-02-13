@@ -27,6 +27,7 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.exchange import ExchangeUniverse
 from eth_defi.compat import native_datetime_utc_now
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 #: How much values we allow to drift.
@@ -79,7 +80,7 @@ def deployer(web3) -> HexAddress:
 @pytest.fixture()
 def hot_wallet_private_key(web3) -> HexBytes:
     """Generate a private key"""
-    return "0x" + secrets.token_bytes(32).hex()
+    return hexbytes_to_hex_str(secrets.token_bytes(32))
 
 
 @pytest.fixture

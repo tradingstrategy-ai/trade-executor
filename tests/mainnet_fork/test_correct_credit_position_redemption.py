@@ -17,6 +17,7 @@ from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.state.state import State
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 CI = os.environ.get("CI") == "true"
@@ -70,7 +71,7 @@ def environment(
 
     environment = {
         "STRATEGY_FILE": strategy_file.as_posix(),
-        "PRIVATE_KEY": "0x" + secrets.token_bytes(32).hex(),  # Not needed
+        "PRIVATE_KEY": hexbytes_to_hex_str(secrets.token_bytes(32)),  # Not needed
         "JSON_RPC_ANVIL": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",

@@ -33,6 +33,7 @@ from tradingstrategy.pair import PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.token_extra_data import filter_scams
 from tradingstrategy.utils.token_filter import deduplicate_pairs_by_volume, filter_for_base_tokens
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 JSON_RPC_ETHEREUM = os.environ.get("JSON_RPC_ETHEREUM")
 
@@ -256,7 +257,7 @@ def test_tvl_routing_mixed(persistent_test_client, logger):
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=AssetManagementMode.hot_wallet,
-        private_key="0x" + secrets.token_bytes(32).hex(),
+        private_key=hexbytes_to_hex_str(secrets.token_bytes(32)),
         web3config=web3config,
         confirmation_timeout=datetime.timedelta(seconds=1),
         confirmation_block_count=0,
