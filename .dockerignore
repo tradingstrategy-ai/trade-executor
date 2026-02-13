@@ -6,3 +6,39 @@
 **/.cache
 **/cache
 
+# Large directories not needed for production Docker image
+**/.venv
+.venv
+venv
+state
+logs
+notebooks
+tests
+.claude
+.idea
+.ruff_cache
+
+# Large subdirs in deps
+deps/web3-ethereum-defi/dist
+deps/web3-ethereum-defi/docs
+deps/web3-ethereum-defi/tests
+deps/web3-ethereum-defi/contracts/aave-v2
+deps/web3-ethereum-defi/contracts/aave-v3-deploy
+deps/web3-ethereum-defi/contracts/aave-v3-origin
+deps/web3-ethereum-defi/contracts/centre
+deps/web3-ethereum-defi/contracts/enzyme
+deps/web3-ethereum-defi/contracts/uniswap-v3-core
+deps/web3-ethereum-defi/contracts/uniswap-v3-periphery
+deps/web3-ethereum-defi/contracts/velvet-core
+deps/web3-ethereum-defi/contracts/safe-integration
+deps/web3-ethereum-defi/contracts/sushiswap
+deps/web3-ethereum-defi/contracts/guard
+deps/web3-ethereum-defi/contracts/1delta
+deps/web3-ethereum-defi/contracts/terms-of-service
+deps/web3-ethereum-defi/contracts/in-house
+deps/web3-ethereum-defi/contracts/dhedge
+deps/web3-ethereum-defi/contracts/orderly-contract-evm
+deps/trading-strategy/dist
+deps/trading-strategy/docs
+deps/trading-strategy/tests
+
