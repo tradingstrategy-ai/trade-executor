@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add `deposits_disabled` strategy tag to disable deposit box on the website (2026-02-15)
+
 - Add `--trade-type` option to `show-positions` command to control trade display (2026-01-31)
 
 - Add `--sync-interest` option to `lagoon-settle` command to fix credit supply position valuation timestamp issues (2026-01-31)
