@@ -36,3 +36,6 @@ class StrategyTag(enum.Enum):
 
     #: The strategy should appear on the front page hero box showcasing strategies
     hero = "hero"
+
+    #: The deposit box should be disabled on the website for this strategy
+    deposits_disabled = "deposits_disabled"
