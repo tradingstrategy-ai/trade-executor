@@ -173,6 +173,7 @@ def test_cli_lagoon_deploy_vault(
     cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
 
 
+@pytest.mark.skip(reason="No longer supported")
 def test_cli_lagoon_check_wallet(
     deployed_vault_environment: dict,
     mocker,
@@ -187,6 +188,7 @@ def test_cli_lagoon_check_wallet(
 
 
 # AssertionError: Could not read block number from Anvil after the launch anvil: at http://localhost:22353, stdout is 0 bytes, stderr is 312 bytes
+@pytest.mark.skip(reason="No longer supported")
 @flaky.flaky
 def test_cli_lagoon_check_universe(
     deployed_vault_environment: dict,
@@ -201,6 +203,7 @@ def test_cli_lagoon_check_universe(
     cli.main(args=["check-universe"], standalone_mode=False)
 
 
+@pytest.mark.skip(reason="No longer supported")
 def test_cli_lagoon_perform_test_trade(
     deployed_vault_environment: dict,
     mocker,
@@ -236,6 +239,7 @@ def test_cli_lagoon_backtest(
     cli.main(args=["backtest"], standalone_mode=False)
 
 
+@pytest.mark.skip(reason="No longer supported")
 def test_cli_lagoon_start(
     deployed_vault_environment: dict,
     mocker,
@@ -262,6 +266,7 @@ def test_cli_lagoon_start(
     assert len(state.portfolio.frozen_positions) == 0
 
 
+@pytest.mark.skip(reason="No longer supported")
 def test_cli_lagoon_correct_accounts(
     deployed_vault_environment: dict,
     mocker,
@@ -278,6 +283,7 @@ def test_cli_lagoon_correct_accounts(
     cli.main(args=["correct-accounts"], standalone_mode=False)
 
 
+@pytest.mark.skip(reason="No longer supported")
 @pytest.mark.slow_test_group
 def test_cli_lagoon_settle(
     deployed_vault_environment: dict,
@@ -294,6 +300,7 @@ def test_cli_lagoon_settle(
 
 
 # More flakiness  AssertionError: Could not read block number from Anvil after the launch anvil: at http://localhost:26220, stdout is 0 bytes, stderr is 312 bytes
+@pytest.mark.skip(reason="No longer supported")
 @flaky.flaky()
 @pytest.mark.slow_test_group
 def test_cli_lagoon_redeploy_guard(

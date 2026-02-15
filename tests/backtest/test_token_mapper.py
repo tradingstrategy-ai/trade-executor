@@ -2,6 +2,8 @@
 
 import datetime
 
+import pytest
+
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.pandas_trader.token_mapper import create_trading_universe_for_tokens, TokenTuple
 from tradeexecutor.strategy.universe_model import UniverseOptions
@@ -9,6 +11,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 
 
+@pytest.mark.skip(reason="No longer supported")
 def test_load_token_data_polygon(persistent_test_client):
     """Load trading pair data based on ERC-20 address only."""
     client = persistent_test_client

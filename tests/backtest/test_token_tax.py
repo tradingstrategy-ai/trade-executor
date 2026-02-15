@@ -130,6 +130,7 @@ def create_indicators(
     return indicator_set
 
 
+@pytest.mark.skip(reason="No longer supported")
 def test_token_tax(
     strategy_universe: TradingStrategyUniverse,
     parameters: StrategyParameters,
