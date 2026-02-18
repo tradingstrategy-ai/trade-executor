@@ -13,8 +13,8 @@ Requires environment variables:
 - TRADING_STRATEGY_API_KEY
 - DERIVE_INTEGRATION_TEST_ASSET_MANAGER_PRIVATE_KEY
 - DERIVE_INTEGRATION_TEST_SESSION_KEY
-- DERIVE_INTEGRATION_TEST_VAULT_ADDRESS (Derive wallet address on Derive chain)
-- DERIVE_INTEGRATION_TEST_SAFE_ADDRESS (Gnosis Safe address)
+- DERIVE_INTEGRATION_TEST_VAULT_ADDRESS (Lagoon vault contract on Derive chain)
+- DERIVE_INTEGRATION_TEST_SAFE_ADDRESS (Safe multisig, used as Derive wallet address)
 """
 
 import datetime
@@ -96,7 +96,7 @@ def environment(
         # Map integration test credentials to standard Derive env vars
         "DERIVE_OWNER_PRIVATE_KEY": os.environ["DERIVE_INTEGRATION_TEST_ASSET_MANAGER_PRIVATE_KEY"],
         "DERIVE_SESSION_PRIVATE_KEY": os.environ["DERIVE_INTEGRATION_TEST_SESSION_KEY"],
-        "DERIVE_WALLET_ADDRESS": os.environ["DERIVE_INTEGRATION_TEST_VAULT_ADDRESS"],
+        "DERIVE_WALLET_ADDRESS": os.environ["DERIVE_INTEGRATION_TEST_SAFE_ADDRESS"],
         "DERIVE_NETWORK": "mainnet",
     }
     return env
@@ -184,7 +184,7 @@ def _create_test_state_with_mainnet_position(state_file: Path) -> Decimal:
 
     owner_private_key = os.environ["DERIVE_INTEGRATION_TEST_ASSET_MANAGER_PRIVATE_KEY"]
     session_private_key = os.environ["DERIVE_INTEGRATION_TEST_SESSION_KEY"]
-    derive_wallet_address = os.environ["DERIVE_INTEGRATION_TEST_VAULT_ADDRESS"]
+    derive_wallet_address = os.environ["DERIVE_INTEGRATION_TEST_SAFE_ADDRESS"]
 
     owner_account = Account.from_key(owner_private_key)
 
@@ -208,21 +208,21 @@ def _create_test_state_with_mainnet_position(state_file: Path) -> Decimal:
 
     usdc = AssetIdentifier(
         chain_id=chain_id,
-        address="0x0000000000000000000000000000000000000001",
+        address="0x6879287835A86F50f784313dBEd5E5cCC5bb8481",
         token_symbol="USDC",
         decimals=6,
     )
     derive_account = AssetIdentifier(
         chain_id=chain_id,
-        address="0x0000000000000000000000000000000000000002",
+        address="0x0000000000000000000000000000000000D371E0",
         token_symbol="DERIVE-ACCOUNT",
         decimals=6,
     )
     exchange_account_pair = TradingPairIdentifier(
         base=derive_account,
         quote=usdc,
-        pool_address="0x0000000000000000000000000000000000000003",
-        exchange_address="0x0000000000000000000000000000000000000004",
+        pool_address="0x0000000000000000000000000000000000D371E1",
+        exchange_address="0x0000000000000000000000000000000000D371E2",
         internal_id=1,
         internal_exchange_id=1,
         fee=0.0,

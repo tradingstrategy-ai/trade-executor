@@ -450,6 +450,8 @@ class TradingPosition(GenericPosition):
 
     def is_spot(self) -> bool:
         """Is this a spot market position."""
+        if self.pair.is_exchange_account():
+            return False
         assert len(self.trades) + len(self.pending_trades) > 0, "Cannot determine if position is long or short because there are no trades"
         return self.get_first_trade().is_spot()
 

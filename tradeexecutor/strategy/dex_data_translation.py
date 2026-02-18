@@ -131,6 +131,8 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
     if dex_pair.dex_type == ExchangeType.erc_4626_vault:
         # For vaults, exchange_name is set as the vault protocol name e.g. "morpho" or "ipor"
         kind = TradingPairKind.vault
+    elif dex_pair.other_data and dex_pair.other_data.get("exchange_protocol"):
+        kind = TradingPairKind.exchange_account
     else:
         kind = TradingPairKind.spot_market_hold
 
@@ -146,6 +148,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
         exchange_name=dex_pair.exchange_name,
         kind=kind,
         internal_exchange_id=dex_pair.exchange_id,
+        other_data=dex_pair.other_data or {},
     )
 
     # Need to be loaded with load_extra_metadata()
