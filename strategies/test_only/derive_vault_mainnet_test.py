@@ -13,9 +13,6 @@ GenericRouting / EthereumPairConfigurator handle pricing and valuation.
 import datetime
 from decimal import Decimal
 
-import pandas as pd
-
-from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import BaseClient
 from tradingstrategy.exchange import Exchange, ExchangeType
@@ -111,23 +108,12 @@ def create_trading_universe(
         pair_count=1,
     )
 
-    candles = pd.DataFrame({
-        "pair_id": [1],
-        "timestamp": [pd.Timestamp(ts).floor("D")],
-        "open": [1.0],
-        "high": [1.0],
-        "low": [1.0],
-        "close": [1.0],
-        "volume": [0.0],
-    })
-    candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles)
-
     universe = Universe(
         time_bucket=TimeBucket.d1,
         chains={CHAIN_ID},
         exchanges={derive_exchange},
         pairs=pair_universe,
-        candles=candle_universe,
+        candles=None,
         liquidity=None,
     )
 

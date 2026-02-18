@@ -26,7 +26,6 @@ from tradeexecutor.strategy.strategy_module import StrategyParameters
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.strategy.universe_model import UniverseOptions
-from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import BaseClient
 from tradingstrategy.exchange import Exchange, ExchangeType
@@ -103,25 +102,12 @@ def create_trading_universe(
         pair_count=1,
     )
 
-    # Create minimal candle universe
-    candles = pd.DataFrame({
-        "pair_id": [1],
-        "timestamp": [pd.Timestamp(ts)],
-        "open": [1.0],
-        "high": [1.0],
-        "low": [1.0],
-        "close": [1.0],
-        "volume": [0.0],
-    })
-    candle_universe = GroupedCandleUniverse.create_from_single_pair_dataframe(candles)
-
-    # Create the universe
     universe = Universe(
         time_bucket=TimeBucket.d1,
         chains={CHAIN_ID},
         exchanges={derive_exchange},
         pairs=pair_universe,
-        candles=candle_universe,
+        candles=None,
         liquidity=None,
     )
 

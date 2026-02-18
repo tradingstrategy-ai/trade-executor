@@ -217,6 +217,10 @@ class PandasTraderRunner(StrategyRunner):
             logger.info("Strategy universe is empty - nothing to report")
             return
 
+        if not universe.has_candle_data():
+            logger.info("No candle data available - skipping visualisations")
+            return
+
         try:
 
             if pair_count == 1:
@@ -304,6 +308,10 @@ class PandasTraderRunner(StrategyRunner):
         if universe.is_empty():
             # TODO: Not sure how we end up here
             logger.info("Strategy universe is empty - nothing to report")
+            return
+
+        if not universe.has_candle_data():
+            logger.info("No candle data available - skipping strategy thinking report")
             return
 
         if universe.is_single_pair_universe():

@@ -264,6 +264,19 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         assert len(self.data_universe.chains) == 1
 
+        chain_str = self.data_universe.get_default_chain().get_slug()
+
+        if self.get_pair_count() < 5:
+            pair_str = "-".join([p.get_ticker() for p in self.data_universe.pairs.iterate_pairs()])
+        else:
+            pair_str = str(self.get_pair_count())
+
+        # No candle data and no date hints — use a simplified key
+        if not self.has_candle_data() and self.data_universe.start_hint is None:
+            key = f"{chain_str}_{pair_str}_no-candles"
+            assert len(key) < 256, f"Generated very long fname cache key, check the generation logic: {key}"
+            return key
+
         # Currently supports only full date ranges,
         # to keep filenames clean.
         # Easy to support any other range, just add tests.
@@ -275,12 +288,6 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         assert self.end_at.second == 0, f"Got end_at: {self.end_at}"
 
         time_str = f"{self.start_at.strftime('%Y-%m-%d')}-{self.end_at.strftime('%Y-%m-%d')}"
-        if self.get_pair_count() < 5:
-            pair_str = "-".join([p.get_ticker() for p in self.data_universe.pairs.iterate_pairs()])
-        else:
-            pair_str = str(self.get_pair_count())
-
-        chain_str = self.data_universe.get_default_chain().get_slug()
         time_bucket_str = self.data_universe.time_bucket.value
 
         separator = "_"
@@ -312,20 +319,28 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         """Start timestamp of the data.
 
         - Valid for backtesting only
-        - Based on OHLCV candles
+        - Based on OHLCV candles, falls back to :py:attr:`Universe.start_hint`
         """
-        start, end = self.data_universe.candles.get_timestamp_range()
-        return start.to_pydatetime()
+        if self.data_universe.candles is not None:
+            start, end = self.data_universe.candles.get_timestamp_range()
+            return start.to_pydatetime()
+        if self.data_universe.start_hint is not None:
+            return self.data_universe.start_hint
+        raise ValueError("No candle data or start_hint available")
 
     @property
     def end_at(self) -> datetime.datetime:
         """End timestamp of the data.
 
         - Valid for backtesting only
-        - Based on OHLCV candles
+        - Based on OHLCV candles, falls back to :py:attr:`Universe.end_hint`
         """
-        start, end = self.data_universe.candles.get_timestamp_range()
-        return end.to_pydatetime()
+        if self.data_universe.candles is not None:
+            start, end = self.data_universe.candles.get_timestamp_range()
+            return end.to_pydatetime()
+        if self.data_universe.end_hint is not None:
+            return self.data_universe.end_hint
+        raise ValueError("No candle data or end_hint available")
 
     @property
     def universe(self):
@@ -622,15 +637,13 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     def get_pair_count(self) -> int:
         return self.data_universe.pairs.get_count()
 
+    def has_candle_data(self) -> bool:
+        """Check if candle (OHLCV) data is available in this universe."""
+        return self.data_universe.candles is not None and len(self.data_universe.candles.df) > 0
+
     def is_empty(self) -> bool:
-        """This is an empty universe
-
-        - without trading pairs
-
-        - ...or without candles
-        """
-        candles = self.data_universe.candles.df if self.data_universe.candles else []
-        return self.data_universe.pairs.get_count() == 0 or len(candles) == 0
+        """This is an empty universe without trading pairs."""
+        return self.data_universe.pairs.get_count() == 0
 
     def is_single_pair_universe(self) -> bool:
         """Is this trading universe made for a single pair trading.
@@ -1628,6 +1641,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
             `None` if good.
         """
+        if self.data_universe.candles is None:
+            return None
+
         candles = self.data_universe.candles.get_candles_by_pair(pair.internal_id)
 
         if candles is None:
@@ -1720,26 +1736,34 @@ class TradingStrategyUniverseModel(UniverseModel):
 
     def log_universe(self, universe: Universe):
         """Log the state of the current universe.]"""
-        data_start, data_end = universe.candles.get_timestamp_range()
+
+        if universe.candles is not None:
+            data_start, data_end = universe.candles.get_timestamp_range()
+            candle_count = universe.candles.get_sample_count()
+        else:
+            data_start = data_end = None
+            candle_count = 0
 
         if universe.liquidity:
             liquidity_start, liquidity_end = universe.liquidity.get_timestamp_range()
+            liquidity_count = universe.liquidity.get_sample_count()
         else:
             liquidity_start = liquidity_end = None
+            liquidity_count = 0
 
         logger.info(textwrap.dedent(f"""
-                Universe constructed.                    
-                
+                Universe constructed.
+
                 Time periods
                 - Time frame {universe.time_bucket.value}
                 - Candle data range: {data_start} - {data_end}
                 - Liquidity data range: {liquidity_start} - {liquidity_end}
-                
+
                 The size of our trading universe is
                 - {len(universe.exchanges):,} exchanges
                 - {universe.pairs.get_count():,} pairs
-                - {universe.candles.get_sample_count():,} candles
-                - {universe.liquidity.get_sample_count():,} liquidity samples                
+                - {candle_count:,} candles
+                - {liquidity_count:,} liquidity samples
                 """))
         return universe
 
