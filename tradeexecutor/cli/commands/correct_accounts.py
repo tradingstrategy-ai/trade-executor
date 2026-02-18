@@ -69,6 +69,7 @@ def correct_accounts(
     json_rpc_base: Optional[str] = shared_options.json_rpc_base,
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
+    json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
 
     unknown_token_receiver: Optional[str] = Option(None, "--unknown-token-receiver", envvar="UNKNOWN_TOKEN_RECEIVER", help="The Ethereum address that will receive any token that cannot be associated with an open position. For Enzyme vault based strategies this address defauts to the executor hot wallet."),
 
@@ -128,6 +129,7 @@ def correct_accounts(
         json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base, 
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_anvil=json_rpc_anvil,
+        json_rpc_derive=json_rpc_derive,
         unit_testing=unit_testing,
     )
 
