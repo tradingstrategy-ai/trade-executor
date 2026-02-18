@@ -2047,9 +2047,10 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
 
         assert p.internal_id not in used_ids, f"Duplicate internal id {p}: {p.internal_id}"
 
-        # TODO: The reverse translate here is incomplete
         if p.is_vault():
             dex_type = ExchangeType.erc_4626_vault
+        elif p.is_exchange_account():
+            dex_type = ExchangeType.derive
         else:
             dex_type = ExchangeType.uniswap_v2
 
