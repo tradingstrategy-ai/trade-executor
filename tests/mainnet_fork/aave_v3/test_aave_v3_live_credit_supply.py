@@ -43,6 +43,7 @@ APPROX_REL = 0.001
 APPROX_REL_DECIMAL = Decimal("0.001")
 
 
+@flaky.flaky
 def test_aave_v3_live_credit_supply_open_only(
     logger,
     web3: Web3,

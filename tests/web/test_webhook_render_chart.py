@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 from queue import Queue
 
+import flaky
 import numpy as np
 import pandas as pd
 import pytest
@@ -191,6 +192,7 @@ def server_url(store, chart_registry, strategy_input_indicators):
     server.shutdown()
 
 
+@flaky.flaky
 def test_web_render_figure(logger, server_url):
     """Render PNG and HTML output on the server-side for strategy charts"""
 

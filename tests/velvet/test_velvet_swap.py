@@ -21,10 +21,7 @@ from eth_defi.compat import native_datetime_utc_now
 CI = os.environ.get("CI", None) is not None
 
 
-pytestmark = pytest.mark.skipif(
-    (not os.environ.get("VELVET_VAULT_OWNER_PRIVATE_KEY")) or CI,
-    reason="Need to set VELVET_VAULT_OWNER_PRIVATE_KEY to a specific private key to run this test"
-)
+pytestmark = pytest.mark.skip(reason="Velvet no longer supported")
 
 
 @pytest.fixture()

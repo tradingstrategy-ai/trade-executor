@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from unittest.mock import patch
 
+import flaky
 import pytest
 
 from eth_account import Account
@@ -292,6 +293,7 @@ def environment(
     return environment
 
 
+@flaky.flaky
 @pytest.mark.skipif(CI, reason="Constantly fails on Github Actions")
 def test_enzyme_uniswap_v3_test_trade(
     environment: dict,

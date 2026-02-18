@@ -1,6 +1,7 @@
 """Test Enzyme redemption where the redemption request has a closed position with dust."""
 import os
 import secrets
+import shutil
 from pathlib import Path
 
 import flaky
@@ -42,9 +43,12 @@ def anvil(end_block) -> AnvilLaunch:
 
 
 @pytest.fixture()
-def state_file() -> Path:
-    p = Path(os.path.join(os.path.dirname(__file__), "redeem-dust.json"))
-    assert p.exists(), f"{p} missing"
+def state_file(tmp_path) -> Path:
+    """Make a working copy of the state file so the original fixture is not modified."""
+    template = Path(os.path.join(os.path.dirname(__file__), "redeem-dust.json"))
+    assert template.exists(), f"{template} missing"
+    p = tmp_path / "redeem-dust.json"
+    shutil.copy(template, p)
     return p
 
 

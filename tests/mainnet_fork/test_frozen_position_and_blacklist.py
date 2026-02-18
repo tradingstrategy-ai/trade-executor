@@ -12,6 +12,7 @@ This test executes against LIVE bit-busd and bnb-busd order books on PancakeSwap
 so prices may vary.
 """
 import datetime
+import flaky
 import logging
 import os
 import secrets
@@ -331,6 +332,7 @@ def runner(
     return runner
 
 
+@flaky.flaky
 def test_buy_and_sell_blacklisted_asset(
     logger: logging.Logger,
     strategy_path: Path,

@@ -121,6 +121,10 @@ def redraw_visualisations(
         logger.info("Strategy universe is empty - nothing to report")
         return
 
+    if not universe.has_candle_data():
+        logger.info("No candle data available - skipping visualisations")
+        return
+
     try:
 
         if pair_count == 1:

@@ -14,10 +14,10 @@ Configure these environment variables for Derive integration:
 |----------|----------|-------------|
 | `DERIVE_SESSION_PRIVATE_KEY` | Yes | Private key for the Derive session key (used for API authentication) |
 | `DERIVE_OWNER_PRIVATE_KEY` | No* | Private key of the Ethereum wallet that owns the Derive account |
-| `DERIVE_WALLET_ADDRESS` | No* | Derive wallet address (auto-derived from owner key if not provided) |
+| `DERIVE_WALLET_ADDRESS` | No* | Derive wallet address (auto-derived from owner key if not provided). For Lagoon vault deployments, set this to the Safe multisig address. |
 | `DERIVE_NETWORK` | No | Network selection: `mainnet` or `testnet` (default: `mainnet`) |
 
-\* Either `DERIVE_OWNER_PRIVATE_KEY` or `DERIVE_WALLET_ADDRESS` must be provided. If the wallet address is provided directly, the owner private key is not needed.
+\* Either `DERIVE_OWNER_PRIVATE_KEY` or `DERIVE_WALLET_ADDRESS` must be provided. If the wallet address is provided directly, the owner private key is not needed. For Lagoon vault deployments, the Derive exchange account is registered against the Safe multisig address, so `DERIVE_WALLET_ADDRESS` must be set to the Safe address (not the vault contract address).
 
 ## Strategy setup
 

@@ -53,6 +53,7 @@ def init(
     json_rpc_base: Optional[str] = shared_options.json_rpc_base,
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
+    json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
 
 ):
     """Initialise a strategy.
@@ -77,6 +78,7 @@ def init(
         json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base, 
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_anvil=json_rpc_anvil,
+        json_rpc_derive=json_rpc_derive,
     )
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"

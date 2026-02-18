@@ -980,7 +980,9 @@ class TradeExecution:
         return self.pair.kind.is_credit_supply()
 
     def is_spot(self) -> bool:
-        """This is a spot marget trade."""
+        """This is a spot market trade."""
+        if self.pair.is_exchange_account():
+            return False
         return not self.is_credit_based()
 
     def is_vault(self) -> bool:
