@@ -1,5 +1,3 @@
-# Master tracked dependencies
+Git submodule referred dependencies.
 
-As these dependencies are heavily under development and tightly coupled with the project,
-we track them directly as master branch submodules.
-
+These are under heavy development and we follow the master branch of the submodule.

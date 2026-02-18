@@ -60,7 +60,13 @@
       "Bash(python3.14 -m venv:*)",
       "Bash(xxd:*)",
       "Bash(bash -c:*)",
-      "Bash(bash:*)"
+      "Bash(bash:*)",
+      "Bash(pip show:*)",
+      "Bash(while read f)",
+      "Bash(if ! grep -q 'from tradeexecutor.utils.hex import hexbytes_to_hex_str' \"$f\")",
+      "Bash(docker system prune:*)",
+      "Bash(du:*)",
+      "Bash(docker run:*)"
     ]
   },
   "model": "opus",

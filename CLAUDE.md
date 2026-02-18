@@ -82,6 +82,7 @@ Don't format code.
 - Instead of manual float fuzzy comparison like `assert abs(aave_total_pnl - 96.6087) < 0.01` use `pytest.approx()`
 - Don't use logger.info() or logger.debug() inside test and fixture function bodies unless specifically asked
 - Do not do excessive number of tests. Prefer one test for happy path and one test for bad path. Do several asserts within a single test case to have test coverage, but keeping the number of tests low.
+- Always use pytest timeout and chat timeout when running tests. Use 5 minutes timeout unless you are running the full test suite.
 
 ### pyproject.toml
 

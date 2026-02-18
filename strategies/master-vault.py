@@ -103,7 +103,8 @@ from tradeexecutor.strategy.pandas_trader.trading_universe_input import \
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import (
-    TradingStrategyUniverse, load_partial_data, load_vault_universe_with_metadata)
+    TradingStrategyUniverse, load_partial_data,
+    load_vault_universe_with_metadata)
 from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_passthrouh
@@ -822,7 +823,7 @@ def create_charts(
 # Metadata
 #
 
-tags = {StrategyTag.beta}
+tags = {StrategyTag.beta, StrategyTag.deposits_disabled}
 
 name = "Master vault strategy"
 

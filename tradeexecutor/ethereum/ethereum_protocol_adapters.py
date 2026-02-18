@@ -4,7 +4,7 @@ See :py:mod:`tradeexecutor.strategy.generic.pair_configurator`.
 """
 
 import logging
-from typing import Set
+from typing import Callable, Set
 
 from web3 import Web3
 from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_deployment
@@ -499,7 +499,7 @@ def create_freqtrade_adapter(
 
 def create_exchange_account_adapter(
     routing_id: ProtocolRoutingId,
-    account_value_func: callable | None = None,
+    account_value_func: Callable | None = None,
 ) -> ProtocolRoutingConfig:
     """Create adapter for exchange account pairs (Derive, etc.).
 
@@ -544,7 +544,7 @@ class EthereumPairConfigurator(PairConfigurator):
         self,
         web3: Web3,
         strategy_universe: TradingStrategyUniverse | None,
-        account_value_func: callable | None = None,
+        account_value_func: Callable | None = None,
     ):
         """Initialise pair configuration.
 
