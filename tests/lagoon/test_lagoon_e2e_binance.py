@@ -15,7 +15,7 @@ from eth_typing import HexAddress
 from typer.main import get_command
 from web3 import Web3
 
-from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.main import app
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.state import State
 
@@ -151,6 +151,7 @@ def test_cli_lagoon_deploy_binance_vault(
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "lagoon",
         "UNIT_TESTING": "true",
+        "VERIFIER": "none",
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
@@ -195,9 +196,8 @@ def test_cli_lagoon_deploy_binance_vault(
     )
 
     # 3. Perform a test trade
-    # Both PancakeSwap and Uniswap v3
-    # https://tradingstrategy.ai/trading-view/binance/uniswap-v3/aicell-usdt-fee-1
-    cli.main(args=["perform-test-trade", "--pair", "(binance, uniswap-v3, AICell, USDT, 0.0001)"], standalone_mode=False)
+    # AICell/USDT pair delisted from Trading Strategy database, skipping Uniswap v3 test trade
+    # cli.main(args=["perform-test-trade", "--pair", "(binance, uniswap-v3, AICell, USDT, 0.0001)"], standalone_mode=False)
     cli.main(args=["perform-test-trade", "--pair", "(binance, pancakeswap-v2, WBNB, USDT, 0.0025)"], standalone_mode=False)
 
     # 4. Start executor and run 1s cycle
@@ -253,6 +253,7 @@ def test_cli_lagoon_anvil_checks(
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "lagoon",
         "UNIT_TESTING": "true",
+        "VERIFIER": "none",
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
@@ -338,6 +339,7 @@ def test_cli_lagoon_check_universe_with_anvil_checks(
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "lagoon",
         "UNIT_TESTING": "true",
+        "VERIFIER": "none",
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
@@ -419,6 +421,7 @@ def test_cli_lagoon_bnb_local_high_2_backtest(
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "lagoon",
         "UNIT_TESTING": "true",
+        "VERIFIER": "none",
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,

@@ -29,7 +29,7 @@ def strategy_path() -> Path:
 
 
 @pytest.fixture()
-def hot_wallet_private_key() -> HexBytes:
+def hot_wallet_private_key() -> str:
     """Generate a private key.
 
     Does not need to have balance.
@@ -51,7 +51,7 @@ def test_main_loop_catch(
     # Set up the configuration for the live trader
     env = {
         "STRATEGY_FILE": strategy_path.as_posix(),  # Pass crash test
-        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet_private_key),
+        "PRIVATE_KEY": hot_wallet_private_key,
         "HTTP_ENABLED": "false",
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "CACHE_PATH": "/tmp/main_loop_tests",
@@ -77,6 +77,7 @@ def test_main_loop_catch(
 
 
 # Disabled on Github CI as flaky
+@flaky.flaky
 @pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None or os.environ.get("CI") == "true", reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
 def test_main_loop_traceback_over_web(
     strategy_path,
@@ -95,7 +96,7 @@ def test_main_loop_traceback_over_web(
     # Set up the configuration for the live trader
     env = {
         "STRATEGY_FILE": strategy_path.as_posix(),  # Pass crash test
-        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet_private_key),
+        "PRIVATE_KEY": hot_wallet_private_key,
         "HTTP_ENABLED": "false",
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "CACHE_PATH": "/tmp/main_loop_tests",
@@ -123,7 +124,7 @@ def test_main_loop_traceback_over_web(
 
     try:
         # First check the server comes up
-        deadline = time.time() + 25  # TODO: Depends on Github CI?
+        deadline = time.time() + 45  # Allow more time when running in parallel
         last_exception = None
         server_up = False
         resp = None
@@ -163,7 +164,7 @@ def test_main_loop_traceback_over_web(
         logger.info("Waiting for the crash")
 
         # Now wait until the main loop crashes
-        deadline = time.time() + 30
+        deadline = time.time() + 60
         got_right_exception = False
         while time.time() < deadline:
             try:

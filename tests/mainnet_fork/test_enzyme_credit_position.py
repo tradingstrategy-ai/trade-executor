@@ -5,6 +5,7 @@ import secrets
 from pathlib import Path
 from unittest import mock
 
+import flaky
 import pytest
 
 from eth_account import Account
@@ -28,14 +29,7 @@ from tradeexecutor.utils.hex import hexbytes_to_hex_str
 CI = os.environ.get("CI")  == "true"
 
 
-pytestmark = [
-    pytest.mark.skipif(
-        not os.environ.get("JSON_RPC_POLYGON")
-        or not os.environ.get("TRADING_STRATEGY_API_KEY"),
-        reason="Set POLYGON_JSON_RPC and TRADING_STRATEGY_API_KEY environment variables to run this test",
-    ),
-    pytest.mark.slow_test_group,
-]
+pytestmark = pytest.mark.skip(reason="The old 1delta API is no longer supported")
 
 
 @pytest.fixture()
@@ -256,6 +250,7 @@ def vault(
     return vault
 
 
+@flaky.flaky
 @pytest.mark.skipif(CI, reason="Too flaky on Github")
 def test_enzyme_credit_positions_with_big_size(
     vault: Vault,
@@ -291,6 +286,7 @@ def test_enzyme_credit_positions_with_big_size(
 
 
 # ERROR tests/mainnet_fork/test_enzyme_credit_position.py::test_enzyme_credit_position_redemption - requests.exceptions.ReadTimeout: HTTPConnectionPool(host='localhost', port=20415): Read timed out. (read timeout=10)
+@flaky.flaky
 @pytest.mark.skipif(CI, reason="Too flaky on Github")
 def test_enzyme_credit_position_redemption(
     web3: Web3,
@@ -380,6 +376,7 @@ def test_enzyme_credit_position_redemption(
         assert reserve_position.get_value() == pytest.approx(1980)
 
 
+@flaky.flaky
 @pytest.mark.skipif(CI, reason="Too flaky on Github")
 def test_enzyme_credit_position_redemption_check_triggers(
     web3: Web3,

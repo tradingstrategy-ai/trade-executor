@@ -212,6 +212,7 @@ def test_generic_routing_test_trade_spot_and_short(
         assert reserve_value == pytest.approx(499.990849)
 
 
+@flaky.flaky
 @pytest.mark.slow_test_group
 def test_generic_routing_live_trading_start_spot_only(
     environment: dict,

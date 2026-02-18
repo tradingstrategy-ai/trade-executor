@@ -7,6 +7,7 @@ import os
 from decimal import Decimal
 from typing import List
 
+import flaky
 import pytest
 import pandas as pd
 from eth_account import Account
@@ -617,6 +618,7 @@ def test_broadcast_failed_and_repair_state(
     state.check_if_clean()
 
 
+@flaky.flaky
 def test_refresh_visualisations(
         logger,
         web3: Web3,

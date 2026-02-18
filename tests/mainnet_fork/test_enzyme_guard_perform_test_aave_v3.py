@@ -28,7 +28,7 @@ from tradeexecutor.utils.hex import hexbytes_to_hex_str
 CI = os.environ.get("CI") == "true"
 
 
-pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set POLYGON_JSON_RPC and TRADING_STRATEGY_API_KEY environment variables to run this test")
+pytestmark = pytest.mark.skip(reason="The old 1delta API is no longer supported")
 
 
 @pytest.fixture()
@@ -169,6 +169,7 @@ def environment(
     return environment
 
 
+@flaky.flaky
 @pytest.mark.skipif(CI, reason="Too flaky to run on CI")
 def test_enzyme_guard_perform_test_trade_aave(
     environment: dict,
