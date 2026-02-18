@@ -63,7 +63,7 @@ def create_trading_universe(
 ) -> TradingStrategyUniverse:
     """Create a minimal trading universe.
 
-    Has USDC as reserve and a dummy trading pair.
+    Has USDC as reserve and a Derive exchange account pair.
     """
     # Use real USDC address from environment
     usdc_address = os.environ.get("TEST_USDC_ADDRESS", "0x0000000000000000000000000000000000000001")
@@ -74,38 +74,32 @@ def create_trading_universe(
         decimals=6,
     )
 
-    # Create a dummy base token for the pair
-    # Use real token address from environment if available (for Anvil testing)
-    dummy_token_address = os.environ.get("TEST_DUMMY_TOKEN_ADDRESS", "0x0000000000000000000000000000000000000002")
-    dummy_token = AssetIdentifier(
+    derive_account_asset = AssetIdentifier(
         chain_id=CHAIN_ID.value,
-        address=dummy_token_address,
-        token_symbol="DUMMY",
-        decimals=18,
+        address="0x0000000000000000000000000000000000D371E0",
+        token_symbol="DERIVE-ACCOUNT",
+        decimals=6,
     )
 
-    # Create a dummy trading pair (won't be traded)
-    dummy_pair = TradingPairIdentifier(
-        base=dummy_token,
+    derive_account_pair = TradingPairIdentifier(
+        base=derive_account_asset,
         quote=usdc,
-        pool_address="0x0000000000000000000000000000000000000003",
-        exchange_address="0x0000000000000000000000000000000000000004",
+        pool_address="0x0000000000000000000000000000000000D371E1",
+        exchange_address="0x0000000000000000000000000000000000D371E2",
         internal_id=1,
         internal_exchange_id=1,
-        fee=0.003,
+        fee=0.0,
     )
 
-    # Create pair universe with the dummy pair
-    pair_universe = create_pair_universe_from_code(CHAIN_ID, [dummy_pair])
+    pair_universe = create_pair_universe_from_code(CHAIN_ID, [derive_account_pair])
 
-    # Create mock exchange (required by Universe)
-    mock_exchange = Exchange(
+    derive_exchange = Exchange(
         chain_id=CHAIN_ID,
         chain_slug="anvil",
         exchange_id=1,
-        exchange_slug="mock",
-        address="0x0000000000000000000000000000000000000004",
-        exchange_type=ExchangeType.uniswap_v2,
+        exchange_slug="derive",
+        address="0x0000000000000000000000000000000000D371E2",
+        exchange_type=ExchangeType.derive,
         pair_count=1,
     )
 
@@ -125,7 +119,7 @@ def create_trading_universe(
     universe = Universe(
         time_bucket=TimeBucket.d1,
         chains={CHAIN_ID},
-        exchanges={mock_exchange},
+        exchanges={derive_exchange},
         pairs=pair_universe,
         candles=candle_universe,
         liquidity=None,

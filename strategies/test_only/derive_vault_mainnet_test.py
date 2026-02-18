@@ -101,13 +101,13 @@ def create_trading_universe(
 
     pair_universe = create_pair_universe_from_code(CHAIN_ID, [EXCHANGE_ACCOUNT_PAIR])
 
-    mock_exchange = Exchange(
+    derive_exchange = Exchange(
         chain_id=CHAIN_ID,
         chain_slug="derive",
         exchange_id=1,
         exchange_slug="derive",
         address="0x0000000000000000000000000000000000D371E2",
-        exchange_type=ExchangeType.uniswap_v2,
+        exchange_type=ExchangeType.derive,
         pair_count=1,
     )
 
@@ -125,7 +125,7 @@ def create_trading_universe(
     universe = Universe(
         time_bucket=TimeBucket.d1,
         chains={CHAIN_ID},
-        exchanges={mock_exchange},
+        exchanges={derive_exchange},
         pairs=pair_universe,
         candles=candle_universe,
         liquidity=None,
