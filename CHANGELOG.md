@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add `correct-history` CLI command to prune early time-series data from state files (2026-02-20)
+
 - Add `deposits_disabled` strategy tag to disable deposit box on the website (2026-02-15)
 
 - Add `--trade-type` option to `show-positions` command to control trade display (2026-01-31)
