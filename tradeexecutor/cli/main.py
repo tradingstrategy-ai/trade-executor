@@ -10,6 +10,7 @@ from .commands.close_all import close_all
 from .commands.close_position import close_position
 from .commands.console import console
 from .commands.correct_accounts import correct_accounts
+from .commands.correct_history import correct_history
 from .commands.deploy_guard import deploy_guard
 from .commands.enzyme_asset_list import enzyme_asset_list
 from .commands.export import export
@@ -40,7 +41,7 @@ from .commands.prune import prune_state
 __all__ = [
     app, backtest, blacklist, check_accounts, check_position_triggers,
     check_universe, check_wallet, close_all, close_position, console,
-    correct_accounts, deploy_guard, enzyme_asset_list, enzyme_deploy_vault,
+    correct_accounts, correct_history, deploy_guard, enzyme_asset_list, enzyme_deploy_vault,
     export, hello, init, lagoon_deploy_vault, lagoon_settle, perform_test_trade, prune_state,
     repair, reset, reset_deposits, retry, send_log_message, show_positions,
     show_valuation, start, token_cache, trading_pair,
