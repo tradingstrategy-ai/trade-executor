@@ -16,6 +16,7 @@ from eth_defi.hotwallet import HotWallet
 from typer.main import get_command
 
 from tradeexecutor.cli.main import app
+from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.state.state import State
 
 pytestmark = pytest.mark.skipif(
@@ -293,4 +294,69 @@ def test_derive_cli_start(
 
     assert state is not None
     assert state.sync is not None
+
+
+def test_correct_accounts_auto_creates_positions(
+    environment_anvil: dict,
+    state_file: Path,
+):
+    """Test auto-creation of missing exchange account positions.
+
+    Flow:
+    1. Create empty state (init only, no positions)
+    2. Strategy universe contains Derive exchange account pair
+    3. Run correct-accounts
+    4. Verify position auto-created with correct attributes
+
+    This tests that correct-accounts will automatically create exchange account
+    positions for pairs defined in the universe but not yet created by decide_trades().
+    """
+    cli = get_command(app)
+
+    # Step 1: Init (creates empty state)
+    with patch.dict(os.environ, environment_anvil, clear=True):
+        cli.main(args=["init"], standalone_mode=False)
+
+    # Verify state exists but has no positions
+    initial_state = State.read_json_file(state_file)
+    assert len(initial_state.portfolio.open_positions) == 0, \
+        "State should have no positions after init"
+
+    # Step 2: Run correct-accounts (should auto-create position)
+    with patch.dict(os.environ, environment_anvil, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["correct-accounts"])
+        assert e.value.code == 0, f"CLI command failed with exit code {e.value.code}"
+
+    # Step 3: Verify position was auto-created
+    final_state = State.read_json_file(state_file)
+
+    # Should have exactly one open position
+    assert len(final_state.portfolio.open_positions) == 1, \
+        "correct-accounts should have auto-created one exchange account position"
+
+    # Get the position
+    position = list(final_state.portfolio.open_positions.values())[0]
+
+    # Verify it's an exchange account position
+    assert position.pair.is_exchange_account(), \
+        "Created position should be an exchange account"
+
+    # Verify it's the Derive pair (by checking exchange_name or pair properties)
+    # Note: other_data might not survive JSON serialization in all cases,
+    # so we check kind which is more reliable
+    assert position.pair.kind == TradingPairKind.exchange_account, \
+        f"Expected exchange_account kind, got {position.pair.kind}"
+
+    # Should have one trade in success state
+    assert len(position.trades) == 1, \
+        f"Position should have 1 trade, got {len(position.trades)}"
+
+    trade = list(position.trades.values())[0]
+    assert trade.is_success(), \
+        "Trade should be marked as success"
+
+    # Verify trade notes indicate auto-creation
+    assert trade.notes and "Auto-created" in trade.notes, \
+        f"Trade notes should mention auto-creation, got: {trade.notes}"
 
