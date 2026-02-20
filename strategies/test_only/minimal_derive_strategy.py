@@ -13,7 +13,7 @@ from typing import List
 
 import pandas as pd
 
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -88,6 +88,13 @@ def create_trading_universe(
         internal_id=1,
         internal_exchange_id=1,
         fee=0.0,
+        kind=TradingPairKind.exchange_account,
+        exchange_name="derive",
+        other_data={
+            "exchange_protocol": "derive",
+            "exchange_subaccount_id": 1,
+            "exchange_is_testnet": True,
+        },
     )
 
     pair_universe = create_pair_universe_from_code(CHAIN_ID, [derive_account_pair])

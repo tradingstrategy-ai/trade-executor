@@ -383,6 +383,24 @@ def correct_accounts(
             for evt in exchange_events:
                 logger.info("  Position %d: %s (change: %s)", evt.position_id, evt.notes, evt.quantity)
 
+    # Auto-create missing exchange account positions
+    if universe:
+        from tradeexecutor.strategy.account_correction import create_missing_exchange_account_positions
+
+        logger.info("Checking for missing exchange account positions in universe...")
+        created_trades = create_missing_exchange_account_positions(
+            strategy_universe=universe,
+            state=state,
+            strategy_cycle_at=native_datetime_utc_now(),
+        )
+
+        if created_trades:
+            logger.info("Auto-created %d exchange account position(s)", len(created_trades))
+            for trade in created_trades:
+                logger.info("  Created position for %s", trade.pair)
+        else:
+            logger.info("No missing exchange account positions")
+
     if process_redemption:
         timestamp = native_datetime_utc_now()
         reserve_assets = list(universe.reserve_assets)
