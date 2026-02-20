@@ -946,6 +946,86 @@ def open_missing_position(
     return trade
 
 
+def create_missing_exchange_account_positions(
+    strategy_universe: TradingStrategyUniverse,
+    state: State,
+    strategy_cycle_at: datetime.datetime,
+) -> list[TradeExecution]:
+    """Create positions for exchange account pairs that don't have open positions.
+
+    Scans the trading universe for exchange account pairs (Derive, CCXT, Hyperliquid)
+    and creates positions for any that don't already exist in the state.
+
+    This is useful when:
+    - A strategy defines exchange account pairs in create_trading_universe()
+    - But hasn't yet called open_exchange_account_position() in decide_trades()
+    - Running correct-accounts should auto-create these positions
+
+    The function creates positions with placeholder values (1 USD). Subsequent
+    sync via ExchangeAccountSyncModel will update positions with actual account values.
+
+    :param strategy_universe:
+        The trading universe containing all pairs (including exchange account pairs)
+
+    :param state:
+        Current strategy state to check for existing positions and create new ones
+
+    :param strategy_cycle_at:
+        Timestamp for position creation (typically native_datetime_utc_now())
+
+    :return:
+        List of created trades (for logging purposes only, not to be returned from decide_trades)
+
+    :raise AssertionError:
+        If reserve assets aren't configured properly in the universe
+    """
+    from tradeexecutor.exchange_account.state import open_exchange_account_position
+
+    logger.info("Scanning universe for missing exchange account positions...")
+
+    created_trades = []
+
+    # Get pair universe
+    pair_universe = strategy_universe.data_universe.pairs
+
+    # Find exchange account pairs
+    for dex_pair in pair_universe.iterate_pairs():
+        # Translate to TradingPairIdentifier
+        pair = translate_trading_pair(dex_pair)
+
+        if not pair.is_exchange_account():
+            continue
+
+        # Check if position exists
+        existing_position = state.portfolio.get_position_by_trading_pair(pair)
+        if existing_position and existing_position.is_open():
+            logger.debug("Exchange account position already exists for %s, skipping", pair)
+            continue
+
+        # Get reserve asset
+        assert len(strategy_universe.reserve_assets) > 0, \
+            "Strategy universe must have at least one reserve asset to create exchange account positions"
+        reserve_asset = strategy_universe.reserve_assets[0]
+
+        # Create position with placeholder value
+        logger.info("Creating exchange account position for %s (%s)",
+                   pair.get_human_description(),
+                   pair.get_exchange_account_protocol())
+
+        trades = open_exchange_account_position(
+            state=state,
+            strategy_cycle_at=strategy_cycle_at,
+            pair=pair,
+            reserve_currency=reserve_asset,
+            reserve_amount=Decimal(1),  # Placeholder value, sync will update
+            notes=f"Auto-created by correct-accounts for {pair.get_exchange_account_protocol()}",
+        )
+        created_trades.extend(trades)
+
+    logger.info("Created %d exchange account position(s)", len(created_trades))
+    return created_trades
+
+
 def check_accounts(
     pair_universe: PandasPairUniverse,
     reserve_assets: Collection[AssetIdentifier],
