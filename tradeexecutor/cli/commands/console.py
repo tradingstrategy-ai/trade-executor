@@ -107,6 +107,7 @@ def console(
     json_rpc_base: Optional[str] = shared_options.json_rpc_base,
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
+    json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
 
     # Live trading or backtest
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
@@ -172,6 +173,7 @@ def console(
         json_rpc_base=json_rpc_base,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
+        json_rpc_derive=json_rpc_derive,
         gas_price_method=gas_price_method,
         unit_testing=unit_testing,
         simulate=simulate,
@@ -304,7 +306,12 @@ def console(
     logger.info("  Number of trades: %s", len(list(state.portfolio.get_all_trades())))
 
     runner = run_description.runner
-    routing_state, pricing_model, valuation_model = runner.setup_routing(universe)
+    try:
+        routing_state, pricing_model, valuation_model = runner.setup_routing(universe)
+    except Exception as e:
+        logger.warning("Could not set up routing: %s", e)
+        logger.warning("Routing, pricing and valuation models will not be available in the console")
+        routing_state = pricing_model = valuation_model = None
 
     # TODO: Make construction of routing model cleaner
     if routing_model is None:
@@ -318,16 +325,19 @@ def console(
         backtested_state = None
 
     cycle_duration = run_description.cycle_duration
-    refresh_run_state(
-        run_state,
-        state,
-        execution_context,
-        visualisation=True,
-        universe=universe,
-        sync_model=sync_model,
-        backtested_state=backtested_state,
-        cycle_duration=cycle_duration,
-    )
+    try:
+        refresh_run_state(
+            run_state,
+            state,
+            execution_context,
+            visualisation=True,
+            universe=universe,
+            sync_model=sync_model,
+            backtested_state=backtested_state,
+            cycle_duration=cycle_duration,
+        )
+    except Exception as e:
+        logger.warning("Could not refresh run state statistics: %s", e)
 
     if mod.create_indicators:
         # If the strategy uses indicators calculate and expose them to the console
