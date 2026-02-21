@@ -92,7 +92,7 @@ def get_futures_account_balance(exchange: "ccxt.binanceusdm") -> Decimal:
     return value
 
 
-def get_open_positions(exchange: "ccxt.binanceusdm") -> list[dict]:
+def get_open_positions(exchange: "ccxt.binanceusdm") -> list:
     """Fetch all open leveraged positions on the Binance Futures account.
 
     Returns only positions with a non-zero ``contracts`` amount.
