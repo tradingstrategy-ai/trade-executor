@@ -16,6 +16,8 @@ import pytest
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.store import JSONFileStore
 
+pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")
+
 
 CUTOFF_DATE = datetime.datetime(2026, 1, 15)
 
@@ -140,6 +142,10 @@ def test_correct_history(environment: dict, state_file: Path):
             f"Closed position {position_id} stat at {fps.calculated_at} is before cutoff"
         )
 
+    # state.created_at should be updated to the cutoff date so that
+    # key metrics (CAGR, trading period, etc.) use the correct start date
+    assert pruned_state.created_at == CUTOFF_DATE
+
     # File size should be smaller
     pruned_file_size = state_file.stat().st_size
     assert pruned_file_size < original_file_size
@@ -164,3 +170,15 @@ def test_correct_history(environment: dict, state_file: Path):
     )
     # Should be a modest positive yield (~5-10% annualised)
     assert annualised_return == pytest.approx(0.08, abs=0.05)
+
+    # initial_share_price should be set to the first remaining share price
+    # so that share_price_based_return chart shows positive values
+    assert pruned_state.initial_share_price == pytest.approx(first_ps.share_price_usd)
+
+    # Verify all share price based returns are non-negative after pruning
+    from tradeexecutor.visual.equity_curve import calculate_share_price
+    share_price_df = calculate_share_price(pruned_state)
+    assert (share_price_df["returns"] >= 0).all(), (
+        f"Expected all share price returns to be non-negative after pruning, "
+        f"but found negative values: {share_price_df['returns'].min():.6f}"
+    )

@@ -69,7 +69,9 @@ def correct_history(
 
     # Create backup and load state
     print("Creating backup of state file...")
-    store, state = backup_state(str(state_file), backup_suffix="correct-history-backup", unit_testing=unit_testing)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning, module="dataclasses_json")
+        store, state = backup_state(str(state_file), backup_suffix="correct-history-backup", unit_testing=unit_testing)
 
     # Get original file size
     original_size = state_file.stat().st_size if state_file.exists() else 0
