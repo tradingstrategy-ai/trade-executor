@@ -876,7 +876,7 @@ def calculate_rolling_sharpe(
     return rolling_sharpe.dropna()
 
 
-def calculate_share_price(state: State, initial_share_price=1.0) -> pd.DataFrame:
+def calculate_share_price(state: State, initial_share_price: float | None = None) -> pd.DataFrame:
     """Calculate share price of the strategy.
 
     Share price is the value of a single share in the strategy.
@@ -889,6 +889,11 @@ def calculate_share_price(state: State, initial_share_price=1.0) -> pd.DataFrame
         print(share_price_df)
 
 
+    :param initial_share_price:
+        Baseline share price for return calculations.
+        If not given, uses ``state.initial_share_price`` (defaults to 1.0,
+        but may be updated by history pruning).
+
     :return:
         DataFrame with returns, share price USD, NAV.
 
@@ -897,6 +902,9 @@ def calculate_share_price(state: State, initial_share_price=1.0) -> pd.DataFrame
         - share_price_usd: price of a single share in USD
         - returns: cumulative returns
     """
+
+    if initial_share_price is None:
+        initial_share_price = state.initial_share_price
 
     profit = [
         {"calculated_at": s.calculated_at, "share_price_usd": s.share_price_usd, "nav": s.net_asset_value} for s in state.stats.portfolio

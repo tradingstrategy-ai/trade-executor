@@ -133,6 +133,13 @@ class State:
     #: Same as when the strategy was launched
     created_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
 
+    #: The share price used as the baseline for return calculations.
+    #:
+    #: Defaults to 1.0. Updated by :py:func:`tradeexecutor.state.correct_history.prune_history`
+    #: when early history is pruned, so that returns are relative to
+    #: the first remaining data point instead of the original $1.0.
+    initial_share_price: float = 1.0
+
     #: When this state was saved
     #:
     #: UTC timestamp.

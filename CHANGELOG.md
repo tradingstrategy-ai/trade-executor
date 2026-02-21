@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Fix `correct-history` to update trading period start date and share price return baseline after pruning (2026-02-21)
+
 - Add `correct-history` CLI command to prune early time-series data from state files (2026-02-20)
 
 - Add `deposits_disabled` strategy tag to disable deposit box on the website (2026-02-15)

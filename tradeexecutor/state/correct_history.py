@@ -124,6 +124,20 @@ def prune_history(state: State, cutoff_date: datetime.datetime) -> HistoryPrunin
             del state.uptime.cycles_completed_at[cycle_num]
             cycles_removed += 1
 
+    # 9. Update state.created_at so that key metrics (CAGR, etc.)
+    # use the cutoff date as the calculation window start instead of
+    # the original strategy creation date.
+    if cutoff_date > state.created_at:
+        state.created_at = cutoff_date
+
+    # 10. Update initial_share_price to the first remaining portfolio
+    # stat's share price so that share-price-based return charts start
+    # from zero instead of showing negative returns relative to $1.0.
+    if state.stats.portfolio:
+        first_share_price = state.stats.portfolio[0].share_price_usd
+        if first_share_price is not None:
+            state.initial_share_price = first_share_price
+
     return HistoryPruningStats(
         portfolio_stats_removed=portfolio_stats_removed,
         position_stats_removed=position_stats_removed,
