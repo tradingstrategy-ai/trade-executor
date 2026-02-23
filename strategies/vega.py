@@ -81,60 +81,6 @@ DERIVE_ACCOUNT = AssetIdentifier(
 )
 
 
-def _discover_derive_subaccount_id() -> int:
-    """Discover the first Derive subaccount ID from the API.
-
-    Uses ``DERIVE_OWNER_PRIVATE_KEY`` and ``DERIVE_SESSION_PRIVATE_KEY``
-    environment variables to authenticate and query available subaccounts.
-
-    :return: First subaccount ID
-    :raises RuntimeError: If no subaccounts found or credentials missing
-    """
-    from eth_account import Account
-    from eth_defi.derive.account import fetch_subaccount_ids
-    from eth_defi.derive.authentication import DeriveApiClient
-    from eth_defi.derive.onboarding import fetch_derive_wallet_address
-
-    owner_key = os.environ.get("DERIVE_OWNER_PRIVATE_KEY")
-    session_key = os.environ.get("DERIVE_SESSION_PRIVATE_KEY")
-    if not owner_key or not session_key:
-        raise RuntimeError(
-            "DERIVE_OWNER_PRIVATE_KEY and DERIVE_SESSION_PRIVATE_KEY "
-            "environment variables are required to discover subaccount IDs"
-        )
-
-    is_testnet = os.environ.get("DERIVE_NETWORK", "mainnet") == "testnet"
-
-    owner_account = Account.from_key(owner_key)
-    derive_wallet_address = os.environ.get("DERIVE_WALLET_ADDRESS")
-    if not derive_wallet_address:
-        derive_wallet_address = fetch_derive_wallet_address(
-            owner_account.address,
-            is_testnet=is_testnet,
-        )
-
-    client = DeriveApiClient(
-        owner_account=owner_account,
-        derive_wallet_address=derive_wallet_address,
-        is_testnet=is_testnet,
-        session_key_private=session_key,
-    )
-
-    subaccount_ids = fetch_subaccount_ids(client)
-    if not subaccount_ids:
-        raise RuntimeError(
-            f"No Derive subaccounts found for wallet {derive_wallet_address}"
-        )
-
-    logger.info(
-        "Discovered %d Derive subaccount(s): %s, using first: %d",
-        len(subaccount_ids),
-        subaccount_ids,
-        subaccount_ids[0],
-    )
-    return subaccount_ids[0]
-
-
 def create_trading_universe(
     ts: datetime.datetime,
     client: BaseClient,
@@ -146,14 +92,19 @@ def create_trading_universe(
     Discovers the real subaccount ID from the Derive API so that
     sync and valuation target the correct account.
     """
+    from tradeexecutor.exchange_account.derive import discover_derive_subaccount_id
+
     is_testnet = os.environ.get("DERIVE_NETWORK", "mainnet") == "testnet"
-    subaccount_id = _discover_derive_subaccount_id()
+    subaccount_id = discover_derive_subaccount_id()
+
+    # Encode subaccount ID into pool/exchange addresses for traceability
+    subaccount_hex = hex(subaccount_id)
 
     exchange_account_pair = TradingPairIdentifier(
         base=DERIVE_ACCOUNT,
         quote=USDC,
-        pool_address="0x0000000000000000000000000000000000D371E1",
-        exchange_address="0x0000000000000000000000000000000000D371E2",
+        pool_address=subaccount_hex,
+        exchange_address=subaccount_hex,
         internal_id=1,
         internal_exchange_id=1,
         fee=0.0,
@@ -173,7 +124,7 @@ def create_trading_universe(
         chain_slug="derive",
         exchange_id=1,
         exchange_slug="derive",
-        address="0x0000000000000000000000000000000000D371E2",
+        address=subaccount_hex,
         exchange_type=ExchangeType.derive,
         pair_count=1,
     )
