@@ -8,11 +8,6 @@ calls extract_long_short_stats_from_state. This triggers:
 
 Both paths crash if portfolio_value_at_open is 0 or None, which happens
 when exchange account positions are created on an empty portfolio.
-
-These tests verify that:
-- open_exchange_account_position sets portfolio_value_at_open correctly
-- The statistics pipeline survives exchange account positions
-- func_check handles None values in lists
 """
 
 import datetime
@@ -20,9 +15,7 @@ from decimal import Decimal
 
 import pytest
 
-from eth_defi.compat import native_datetime_utc_now
-
-from tradeexecutor.analysis.trade_analyser import build_trade_analysis, func_check
+from tradeexecutor.analysis.trade_analyser import func_check
 from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.state.identifier import (
     AssetIdentifier,
@@ -31,7 +24,6 @@ from tradeexecutor.state.identifier import (
 )
 from tradeexecutor.state.state import State
 from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
-from tradeexecutor.visual.equity_curve import calculate_compounding_unrealised_trading_profitability
 
 
 @pytest.fixture
@@ -67,15 +59,24 @@ def exchange_account_pair():
     ), usdc
 
 
-def _create_state_with_exchange_account_position(pair, usdc) -> State:
-    """Create a fresh state and open an exchange account position on it.
+def test_startup_statistics_with_exchange_account_position(exchange_account_pair):
+    """The full startup statistics pipeline must not crash with exchange account positions.
 
-    Simulates what happens on the very first strategy cycle when
-    the portfolio has no prior positions and no cash.
+    Simulates what happens on the very first strategy cycle: an exchange account
+    position is created on an empty portfolio (zero equity), then the startup
+    revaluation calls serialise_long_short_stats_as_json_table. This exercises:
+
+    - portfolio_value_at_open is set correctly (non-zero) by open_exchange_account_position
+    - get_capital_tied_at_open_pct() does not raise LegacyDataException
+    - get_size_relative_unrealised_or_realised_profit_percent() survives
+    - calculate_compounding_unrealised_trading_profitability() survives
+    - build_trade_analysis + calculate_all_summary_stats_by_side() survives
+    - func_check(loss_risk_at_open_pc, max) does not crash on None values
     """
+    pair, usdc = exchange_account_pair
+
     state = State()
-    assert state.portfolio.calculate_total_equity() == 0, \
-        "Sanity check: empty portfolio should have zero equity"
+    assert state.portfolio.calculate_total_equity() == 0
 
     open_exchange_account_position(
         state=state,
@@ -84,91 +85,13 @@ def _create_state_with_exchange_account_position(pair, usdc) -> State:
         reserve_currency=usdc,
         reserve_amount=Decimal(1),
     )
-    return state
-
-
-def test_portfolio_value_at_open_set_on_empty_portfolio(exchange_account_pair):
-    """portfolio_value_at_open must be non-zero even on an empty portfolio.
-
-    Without this, get_capital_tied_at_open_pct() raises LegacyDataException
-    and the startup statistics pipeline crashes.
-    """
-    pair, usdc = exchange_account_pair
-    state = _create_state_with_exchange_account_position(pair, usdc)
 
     position = list(state.portfolio.open_positions.values())[0]
-    assert position.portfolio_value_at_open is not None
-    assert position.portfolio_value_at_open > 0, \
-        f"portfolio_value_at_open should be positive, got {position.portfolio_value_at_open}"
+    assert position.portfolio_value_at_open > 0
+    assert position.get_capital_tied_at_open_pct() > 0
 
-
-def test_capital_tied_at_open_pct_does_not_crash(exchange_account_pair):
-    """get_capital_tied_at_open_pct must not raise for exchange account positions."""
-    pair, usdc = exchange_account_pair
-    state = _create_state_with_exchange_account_position(pair, usdc)
-
-    position = list(state.portfolio.open_positions.values())[0]
-    pct = position.get_capital_tied_at_open_pct()
-    assert pct > 0
-
-
-def test_size_relative_profit_does_not_crash(exchange_account_pair):
-    """get_size_relative_unrealised_or_realised_profit_percent must not raise.
-
-    This is called by calculate_compounding_unrealised_trading_profitability
-    during the startup statistics pipeline.
-    """
-    pair, usdc = exchange_account_pair
-    state = _create_state_with_exchange_account_position(pair, usdc)
-
-    position = list(state.portfolio.open_positions.values())[0]
-    # Should not raise LegacyDataException
-    pct = position.get_size_relative_unrealised_or_realised_profit_percent()
-    assert isinstance(pct, (int, float))
-
-
-def test_compounding_unrealised_profitability_does_not_crash(exchange_account_pair):
-    """calculate_compounding_unrealised_trading_profitability must survive exchange account positions.
-
-    This is called during update_position_valuations at startup.
-    """
-    pair, usdc = exchange_account_pair
-    state = _create_state_with_exchange_account_position(pair, usdc)
-
-    # Should not raise
-    result = calculate_compounding_unrealised_trading_profitability(state)
-    assert result is not None
-    assert len(result) == 1
-
-
-def test_trade_analysis_summary_does_not_crash(exchange_account_pair):
-    """build_trade_analysis + calculate_all_summary_stats_by_side must survive.
-
-    This is the other crash path: the trade analyser iterates positions
-    and calls func_check(loss_risk_at_open_pc, max) which can fail
-    if the list contains None values.
-    """
-    pair, usdc = exchange_account_pair
-    state = _create_state_with_exchange_account_position(pair, usdc)
-
-    analysis = build_trade_analysis(state.portfolio)
-    # Should not raise
-    summary = analysis.calculate_all_summary_stats_by_side(state=state)
-    assert summary is not None
-
-
-def test_serialise_long_short_stats_does_not_crash(exchange_account_pair):
-    """serialise_long_short_stats_as_json_table must not crash at startup.
-
-    This is the top-level function called from extract_long_short_stats_from_state
-    during run_live startup. It exercises both crash paths:
-    1. trade analysis summary statistics
-    2. compounding unrealised profitability
-    """
-    pair, usdc = exchange_account_pair
-    state = _create_state_with_exchange_account_position(pair, usdc)
-
-    # Should not raise
+    # This is the top-level function called from extract_long_short_stats_from_state
+    # during run_live startup — exercises both crash paths end-to-end
     result = serialise_long_short_stats_as_json_table(live_state=state)
     assert "live_stats" in result
     assert result["live_stats"] is not None
@@ -181,16 +104,9 @@ def test_func_check_filters_none_values():
     returns None, which gets appended to loss_risk_at_open_pc.
     max([None, None]) raises TypeError: '>' not supported between NoneType.
     """
-    # List with all None values — should return None, not crash
     assert func_check([None, None], max) is None
     assert func_check([None, None], min) is None
-
-    # Mixed None and real values — should ignore None
     assert func_check([None, 5.0, None, 3.0], max) == 5.0
     assert func_check([None, 5.0, None, 3.0], min) == 3.0
-
-    # Empty list — should return None
     assert func_check([], max) is None
-
-    # Normal list without None — should work as before
     assert func_check([1.0, 2.0, 3.0], max) == 3.0
