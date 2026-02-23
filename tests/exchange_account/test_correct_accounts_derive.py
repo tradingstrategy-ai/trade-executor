@@ -75,6 +75,33 @@ def environment(
 
 
 @pytest.fixture()
+def derive_subaccount_id() -> int:
+    """Discover the first valid Derive testnet subaccount ID.
+
+    Queries the Derive API so that test strategies use a real subaccount.
+    """
+    from eth_account import Account
+    from eth_defi.derive.account import fetch_subaccount_ids
+    from eth_defi.derive.authentication import DeriveApiClient
+    from eth_defi.derive.onboarding import fetch_derive_wallet_address
+
+    owner_account = Account.from_key(os.environ["DERIVE_OWNER_PRIVATE_KEY"])
+    derive_wallet_address = fetch_derive_wallet_address(owner_account.address, is_testnet=True)
+
+    client = DeriveApiClient(
+        owner_account=owner_account,
+        derive_wallet_address=derive_wallet_address,
+        is_testnet=True,
+        session_key_private=os.environ["DERIVE_SESSION_PRIVATE_KEY"],
+    )
+
+    ids = fetch_subaccount_ids(client)
+    if not ids:
+        pytest.skip("Derive account has no subaccounts yet")
+    return ids[0]
+
+
+@pytest.fixture()
 def environment_anvil(
     anvil,
     hot_wallet: HotWallet,
@@ -82,6 +109,7 @@ def environment_anvil(
     strategy_file_anvil: Path,
     usdc,
     dummy_token,
+    derive_subaccount_id: int,
 ) -> dict:
     """Set up environment vars for init/start CLI commands on Anvil chain.
 
@@ -105,6 +133,8 @@ def environment_anvil(
         # Token addresses for strategy to use
         "TEST_USDC_ADDRESS": usdc.address,
         "TEST_DUMMY_TOKEN_ADDRESS": dummy_token.address,
+        # Subaccount ID discovered from the Derive API
+        "TEST_DERIVE_SUBACCOUNT_ID": str(derive_subaccount_id),
         # Run single cycle for start command tests
         "RUN_SINGLE_CYCLE": "true",
     }
@@ -230,6 +260,8 @@ def _create_test_state_with_derive_position(state_file: Path) -> tuple[State, De
     )
     position.trades[1] = trade
     state.portfolio.open_positions[1] = position
+    state.portfolio.next_position_id = 2
+    state.portfolio.next_trade_id = 2
 
     # Save state file
     with state_file.open("wt") as f:
@@ -300,16 +332,18 @@ def test_correct_accounts_auto_creates_positions(
     environment_anvil: dict,
     state_file: Path,
 ):
-    """Test auto-creation of missing exchange account positions.
+    """Test auto-creation of missing exchange account positions and sync.
 
     Flow:
     1. Create empty state (init only, no positions)
     2. Strategy universe contains Derive exchange account pair
     3. Run correct-accounts
     4. Verify position auto-created with correct attributes
+    5. Verify position was synced with actual Derive API value
 
-    This tests that correct-accounts will automatically create exchange account
-    positions for pairs defined in the universe but not yet created by decide_trades().
+    This tests the reordering fix: correct-accounts now creates missing positions
+    first, then syncs all exchange positions (including newly created ones).
+    Previously, sync ran before creation so new positions stayed at placeholder 1 USD.
     """
     cli = get_command(app)
 
@@ -322,7 +356,7 @@ def test_correct_accounts_auto_creates_positions(
     assert len(initial_state.portfolio.open_positions) == 0, \
         "State should have no positions after init"
 
-    # Step 2: Run correct-accounts (should auto-create position)
+    # Step 2: Run correct-accounts (should auto-create position AND sync it)
     with patch.dict(os.environ, environment_anvil, clear=True):
         with pytest.raises(SystemExit) as e:
             cli.main(args=["correct-accounts"])
@@ -342,9 +376,6 @@ def test_correct_accounts_auto_creates_positions(
     assert position.pair.is_exchange_account(), \
         "Created position should be an exchange account"
 
-    # Verify it's the Derive pair (by checking exchange_name or pair properties)
-    # Note: other_data might not survive JSON serialization in all cases,
-    # so we check kind which is more reliable
     assert position.pair.kind == TradingPairKind.exchange_account, \
         f"Expected exchange_account kind, got {position.pair.kind}"
 
@@ -359,4 +390,17 @@ def test_correct_accounts_auto_creates_positions(
     # Verify trade notes indicate auto-creation
     assert trade.notes and "Auto-created" in trade.notes, \
         f"Trade notes should mention auto-creation, got: {trade.notes}"
+
+    # Step 4: Verify position was synced with actual Derive API value
+    # After the reordering fix, the position should have been updated
+    # from the placeholder 1 USD to the real exchange account balance
+    quantity = position.get_quantity()
+    assert quantity != Decimal(1), \
+        f"Position should have been synced with actual exchange value, not placeholder 1 USD (got {quantity})"
+
+    # A balance update should have been recorded for the sync
+    assert len(position.balance_updates) == 1, \
+        f"Expected 1 balance update from sync, got {len(position.balance_updates)}"
+    assert len(final_state.sync.accounting.balance_update_refs) == 1, \
+        f"Expected 1 balance update ref, got {len(final_state.sync.accounting.balance_update_refs)}"
 

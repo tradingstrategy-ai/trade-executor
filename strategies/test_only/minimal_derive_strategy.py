@@ -80,6 +80,8 @@ def create_trading_universe(
         decimals=6,
     )
 
+    subaccount_id = int(os.environ.get("TEST_DERIVE_SUBACCOUNT_ID", "0"))
+
     derive_account_pair = TradingPairIdentifier(
         base=derive_account_asset,
         quote=usdc,
@@ -92,7 +94,7 @@ def create_trading_universe(
         exchange_name="derive",
         other_data={
             "exchange_protocol": "derive",
-            "exchange_subaccount_id": 1,
+            "exchange_subaccount_id": subaccount_id,
             "exchange_is_testnet": True,
         },
     )

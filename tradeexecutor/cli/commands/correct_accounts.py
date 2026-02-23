@@ -349,12 +349,32 @@ def correct_accounts(
     else:
         logger.info("Interest distribution skipped")
 
-    # Sync exchange account positions (Derive, CCXT, etc.)
+    # Auto-create missing exchange account positions first
+    # (so newly created positions are included in the sync below)
+    if universe:
+        from tradeexecutor.strategy.account_correction import create_missing_exchange_account_positions
+
+        logger.info("Checking for missing exchange account positions in universe...")
+        created_trades = create_missing_exchange_account_positions(
+            strategy_universe=universe,
+            state=state,
+            strategy_cycle_at=native_datetime_utc_now(),
+        )
+
+        if created_trades:
+            logger.info("Auto-created %d exchange account position(s)", len(created_trades))
+            for trade in created_trades:
+                logger.info("  Created position for %s", trade.pair)
+        else:
+            logger.info("No missing exchange account positions")
+
+    # Collect ALL exchange account positions (existing + newly created)
     exchange_account_positions = [
         p for p in state.portfolio.get_open_and_frozen_positions()
         if p.is_exchange_account()
     ]
 
+    # Sync all exchange account positions with actual exchange API values
     if exchange_account_positions:
         logger.info("Found %d exchange account position(s)", len(exchange_account_positions))
         from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
@@ -382,24 +402,6 @@ def correct_accounts(
             logger.info("Exchange account sync: %d balance update(s)", len(exchange_events))
             for evt in exchange_events:
                 logger.info("  Position %d: %s (change: %s)", evt.position_id, evt.notes, evt.quantity)
-
-    # Auto-create missing exchange account positions
-    if universe:
-        from tradeexecutor.strategy.account_correction import create_missing_exchange_account_positions
-
-        logger.info("Checking for missing exchange account positions in universe...")
-        created_trades = create_missing_exchange_account_positions(
-            strategy_universe=universe,
-            state=state,
-            strategy_cycle_at=native_datetime_utc_now(),
-        )
-
-        if created_trades:
-            logger.info("Auto-created %d exchange account position(s)", len(created_trades))
-            for trade in created_trades:
-                logger.info("  Created position for %s", trade.pair)
-        else:
-            logger.info("No missing exchange account positions")
 
     if process_redemption:
         timestamp = native_datetime_utc_now()
