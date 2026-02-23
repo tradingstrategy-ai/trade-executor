@@ -73,13 +73,6 @@ def create_trading_universe(
         decimals=6,
     )
 
-    derive_account_asset = AssetIdentifier(
-        chain_id=CHAIN_ID.value,
-        address="0x0000000000000000000000000000000000D371E0",
-        token_symbol="DERIVE-ACCOUNT",
-        decimals=6,
-    )
-
     from tradeexecutor.exchange_account.derive import (
         create_derive_exchange_account_pair,
         discover_derive_subaccount_id,
@@ -89,7 +82,6 @@ def create_trading_universe(
     subaccount_id = discover_derive_subaccount_id()
 
     derive_account_pair = create_derive_exchange_account_pair(
-        base=derive_account_asset,
         quote=usdc,
         subaccount_id=subaccount_id,
         is_testnet=is_testnet,

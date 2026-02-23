@@ -70,15 +70,6 @@ USDC = AssetIdentifier(
     decimals=6,
 )
 
-# Synthetic asset representing the Derive vault account value
-DERIVE_ACCOUNT = AssetIdentifier(
-    chain_id=CHAIN_ID.value,
-    address="0x0000000000000000000000000000000000D371E0",
-    token_symbol="DERIVE-ACCOUNT",
-    decimals=6,
-)
-
-
 def create_trading_universe(
     ts: datetime.datetime,
     client: BaseClient,
@@ -99,7 +90,6 @@ def create_trading_universe(
     subaccount_id = discover_derive_subaccount_id()
 
     exchange_account_pair = create_derive_exchange_account_pair(
-        base=DERIVE_ACCOUNT,
         quote=USDC,
         subaccount_id=subaccount_id,
         is_testnet=is_testnet,

@@ -112,7 +112,6 @@ def discover_derive_subaccount_id(
 
 
 def create_derive_exchange_account_pair(
-    base: "AssetIdentifier",
     quote: "AssetIdentifier",
     subaccount_id: int,
     is_testnet: bool = False,
@@ -122,6 +121,8 @@ def create_derive_exchange_account_pair(
     Builds the pair with correct ``kind``, ``exchange_name``, and ``other_data``
     fields needed by the sync, pricing, and valuation pipeline.
 
+    The base asset is a synthetic ``DERIVE-ACCOUNT`` token created
+    automatically with the same ``chain_id`` as the quote asset.
     The subaccount ID is encoded into ``pool_address`` and ``exchange_address``
     for traceability (exchange accounts have no real on-chain pool).
 
@@ -136,14 +137,10 @@ def create_derive_exchange_account_pair(
 
         subaccount_id = discover_derive_subaccount_id()
         pair = create_derive_exchange_account_pair(
-            base=derive_account_asset,
             quote=usdc,
             subaccount_id=subaccount_id,
         )
 
-    :param base:
-        Synthetic asset representing the exchange account value
-        (e.g. ``DERIVE-ACCOUNT``).
     :param quote:
         Reserve / quote asset (e.g. ``USDC``).
     :param subaccount_id:
@@ -154,6 +151,14 @@ def create_derive_exchange_account_pair(
         Fully configured exchange account pair.
     """
     from tradeexecutor.state.identifier import AssetIdentifier, TradingPairKind
+
+    # Synthetic asset representing the Derive account value
+    base = AssetIdentifier(
+        chain_id=quote.chain_id,
+        address="0x0000000000000000000000000000000000D371E0",
+        token_symbol="DERIVE-ACCOUNT",
+        decimals=6,
+    )
 
     subaccount_hex = hex(subaccount_id)
 
