@@ -36,26 +36,31 @@ def discover_derive_subaccount_id(
 ) -> int:
     """Discover the first Derive subaccount ID from the API.
 
-    If ``DERIVE_SUBACCOUNT_ID`` environment variable is set, returns it
-    directly without contacting the API. This allows production deployments
-    to skip API discovery when the subaccount ID is already known.
+    Resolution order:
 
-    Otherwise authenticates with the Derive API and queries available
-    subaccounts. Falls back to environment variables when parameters
-    are not provided:
+    1. ``DERIVE_SUBACCOUNT_ID`` env var — returns immediately, no API call.
+    2. ``DERIVE_WALLET_ADDRESS`` + ``DERIVE_SESSION_PRIVATE_KEY`` — queries
+       the API using the session key. Works with Safe multisig owners that
+       have no single private key.
+    3. ``DERIVE_OWNER_PRIVATE_KEY`` + ``DERIVE_SESSION_PRIVATE_KEY`` — derives
+       the wallet address from the owner EOA, then queries the API.
 
-    - ``DERIVE_SUBACCOUNT_ID`` (shortcut, skips API discovery)
-    - ``DERIVE_OWNER_PRIVATE_KEY``
+    Environment variables (all optional, checked in order above):
+
+    - ``DERIVE_SUBACCOUNT_ID``
+    - ``DERIVE_WALLET_ADDRESS``
     - ``DERIVE_SESSION_PRIVATE_KEY``
-    - ``DERIVE_WALLET_ADDRESS`` (optional, derived from owner key if absent)
-    - ``DERIVE_NETWORK`` (optional, defaults to ``"mainnet"``)
+    - ``DERIVE_OWNER_PRIVATE_KEY``
+    - ``DERIVE_NETWORK`` (defaults to ``"mainnet"``)
 
     :param owner_private_key:
         Derive owner wallet private key hex string.
+        Only needed when ``wallet_address`` / ``DERIVE_WALLET_ADDRESS`` is absent.
     :param session_private_key:
         Derive session key private key hex string.
     :param wallet_address:
-        Derive wallet address (auto-derived from owner key if absent).
+        Derive wallet address. For Safe multisig owners, set this to the
+        Safe address directly (no owner key needed).
     :param network:
         ``"mainnet"`` or ``"testnet"``.
     :return:
@@ -72,17 +77,13 @@ def discover_derive_subaccount_id(
         logger.info("Using DERIVE_SUBACCOUNT_ID from environment: %d", subaccount_id)
         return subaccount_id
 
-    from eth_account import Account
     from eth_defi.derive.account import fetch_subaccount_ids
     from eth_defi.derive.authentication import DeriveApiClient
-    from eth_defi.derive.onboarding import fetch_derive_wallet_address
 
-    owner_key = owner_private_key or os.environ.get("DERIVE_OWNER_PRIVATE_KEY")
     session_key = session_private_key or os.environ.get("DERIVE_SESSION_PRIVATE_KEY")
-    if not owner_key or not session_key:
+    if not session_key:
         raise RuntimeError(
-            "DERIVE_OWNER_PRIVATE_KEY and DERIVE_SESSION_PRIVATE_KEY "
-            "environment variables are required to discover subaccount IDs. "
+            "DERIVE_SESSION_PRIVATE_KEY is required to discover subaccount IDs. "
             "Alternatively set DERIVE_SUBACCOUNT_ID to skip API discovery."
         )
 
@@ -95,9 +96,23 @@ def discover_derive_subaccount_id(
     if env_network:
         is_testnet = (env_network == "testnet")
 
-    owner_account = Account.from_key(owner_key)
+    # Resolve wallet address: explicit > env var > derived from owner key
     derive_wallet = wallet_address or os.environ.get("DERIVE_WALLET_ADDRESS")
+    owner_account = None
     if not derive_wallet:
+        # Need owner key only to derive the wallet address
+        from eth_account import Account
+        from eth_defi.derive.onboarding import fetch_derive_wallet_address
+
+        owner_key = owner_private_key or os.environ.get("DERIVE_OWNER_PRIVATE_KEY")
+        if not owner_key:
+            raise RuntimeError(
+                "Either DERIVE_WALLET_ADDRESS or DERIVE_OWNER_PRIVATE_KEY "
+                "is required to resolve the Derive wallet address. "
+                "For Safe multisig owners, set DERIVE_WALLET_ADDRESS directly. "
+                "Alternatively set DERIVE_SUBACCOUNT_ID to skip API discovery."
+            )
+        owner_account = Account.from_key(owner_key)
         derive_wallet = fetch_derive_wallet_address(
             owner_account.address,
             is_testnet=is_testnet,
