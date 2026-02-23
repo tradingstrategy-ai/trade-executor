@@ -111,6 +111,70 @@ def discover_derive_subaccount_id(
     return subaccount_ids[0]
 
 
+def create_derive_exchange_account_pair(
+    base: "AssetIdentifier",
+    quote: "AssetIdentifier",
+    subaccount_id: int,
+    is_testnet: bool = False,
+) -> "TradingPairIdentifier":
+    """Create a TradingPairIdentifier for a Derive exchange account.
+
+    Builds the pair with correct ``kind``, ``exchange_name``, and ``other_data``
+    fields needed by the sync, pricing, and valuation pipeline.
+
+    The subaccount ID is encoded into ``pool_address`` and ``exchange_address``
+    for traceability (exchange accounts have no real on-chain pool).
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.exchange_account.derive import (
+            create_derive_exchange_account_pair,
+            discover_derive_subaccount_id,
+        )
+
+        subaccount_id = discover_derive_subaccount_id()
+        pair = create_derive_exchange_account_pair(
+            base=derive_account_asset,
+            quote=usdc,
+            subaccount_id=subaccount_id,
+        )
+
+    :param base:
+        Synthetic asset representing the exchange account value
+        (e.g. ``DERIVE-ACCOUNT``).
+    :param quote:
+        Reserve / quote asset (e.g. ``USDC``).
+    :param subaccount_id:
+        Derive subaccount ID (integer, from :py:func:`discover_derive_subaccount_id`).
+    :param is_testnet:
+        Whether this targets the Derive testnet.
+    :return:
+        Fully configured exchange account pair.
+    """
+    from tradeexecutor.state.identifier import AssetIdentifier, TradingPairKind
+
+    subaccount_hex = hex(subaccount_id)
+
+    return TradingPairIdentifier(
+        base=base,
+        quote=quote,
+        pool_address=subaccount_hex,
+        exchange_address=subaccount_hex,
+        internal_id=1,
+        internal_exchange_id=1,
+        fee=0.0,
+        kind=TradingPairKind.exchange_account,
+        exchange_name="derive",
+        other_data={
+            "exchange_protocol": "derive",
+            "exchange_subaccount_id": subaccount_id,
+            "exchange_is_testnet": is_testnet,
+        },
+    )
+
+
 def create_derive_account_value_func(
     clients: "dict[int, DeriveApiClient]",
 ) -> Callable[[TradingPairIdentifier], Decimal]:

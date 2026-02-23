@@ -20,7 +20,7 @@ from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
+from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -80,29 +80,19 @@ def create_trading_universe(
         decimals=6,
     )
 
-    from tradeexecutor.exchange_account.derive import discover_derive_subaccount_id
+    from tradeexecutor.exchange_account.derive import (
+        create_derive_exchange_account_pair,
+        discover_derive_subaccount_id,
+    )
 
     is_testnet = os.environ.get("DERIVE_NETWORK", "mainnet") == "testnet"
     subaccount_id = discover_derive_subaccount_id()
 
-    # Encode subaccount ID into pool/exchange addresses for traceability
-    subaccount_hex = hex(subaccount_id)
-
-    derive_account_pair = TradingPairIdentifier(
+    derive_account_pair = create_derive_exchange_account_pair(
         base=derive_account_asset,
         quote=usdc,
-        pool_address=subaccount_hex,
-        exchange_address=subaccount_hex,
-        internal_id=1,
-        internal_exchange_id=1,
-        fee=0.0,
-        kind=TradingPairKind.exchange_account,
-        exchange_name="derive",
-        other_data={
-            "exchange_protocol": "derive",
-            "exchange_subaccount_id": subaccount_id,
-            "exchange_is_testnet": is_testnet,
-        },
+        subaccount_id=subaccount_id,
+        is_testnet=is_testnet,
     )
 
     pair_universe = create_pair_universe_from_code(CHAIN_ID, [derive_account_pair])
@@ -112,7 +102,7 @@ def create_trading_universe(
         chain_slug="anvil",
         exchange_id=1,
         exchange_slug="derive",
-        address=subaccount_hex,
+        address=derive_account_pair.exchange_address,
         exchange_type=ExchangeType.derive,
         pair_count=1,
     )
