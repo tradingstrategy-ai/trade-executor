@@ -36,9 +36,15 @@ def discover_derive_subaccount_id(
 ) -> int:
     """Discover the first Derive subaccount ID from the API.
 
-    Authenticates with the Derive API and queries available subaccounts.
-    Falls back to environment variables when parameters are not provided:
+    If ``DERIVE_SUBACCOUNT_ID`` environment variable is set, returns it
+    directly without contacting the API. This allows production deployments
+    to skip API discovery when the subaccount ID is already known.
 
+    Otherwise authenticates with the Derive API and queries available
+    subaccounts. Falls back to environment variables when parameters
+    are not provided:
+
+    - ``DERIVE_SUBACCOUNT_ID`` (shortcut, skips API discovery)
     - ``DERIVE_OWNER_PRIVATE_KEY``
     - ``DERIVE_SESSION_PRIVATE_KEY``
     - ``DERIVE_WALLET_ADDRESS`` (optional, derived from owner key if absent)
@@ -59,6 +65,13 @@ def discover_derive_subaccount_id(
     """
     import os
 
+    # Shortcut: if subaccount ID is already known, skip API discovery
+    env_subaccount_id = os.environ.get("DERIVE_SUBACCOUNT_ID")
+    if env_subaccount_id:
+        subaccount_id = int(env_subaccount_id)
+        logger.info("Using DERIVE_SUBACCOUNT_ID from environment: %d", subaccount_id)
+        return subaccount_id
+
     from eth_account import Account
     from eth_defi.derive.account import fetch_subaccount_ids
     from eth_defi.derive.authentication import DeriveApiClient
@@ -69,7 +82,8 @@ def discover_derive_subaccount_id(
     if not owner_key or not session_key:
         raise RuntimeError(
             "DERIVE_OWNER_PRIVATE_KEY and DERIVE_SESSION_PRIVATE_KEY "
-            "environment variables are required to discover subaccount IDs"
+            "environment variables are required to discover subaccount IDs. "
+            "Alternatively set DERIVE_SUBACCOUNT_ID to skip API discovery."
         )
 
     if isinstance(network, str):
