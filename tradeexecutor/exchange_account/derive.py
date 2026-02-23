@@ -5,10 +5,11 @@ Provides the account value function for Derive.xyz exchange accounts.
 
 import enum
 import logging
+import os
 from decimal import Decimal
 from typing import TYPE_CHECKING, Callable
 
-from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 
 # Lazy imports to avoid loading pyrate_limiter at module load time
 # (not installed in CI environment)
@@ -33,8 +34,9 @@ def discover_derive_subaccount_id(
     session_private_key: str | None = None,
     wallet_address: str | None = None,
     network: DeriveNetwork | str = DeriveNetwork.mainnet,
+    subaccount_index: int = 0,
 ) -> int:
-    """Discover the first Derive subaccount ID from the API.
+    """Discover a Derive subaccount ID from the API.
 
     Resolution order:
 
@@ -63,13 +65,14 @@ def discover_derive_subaccount_id(
         Safe address directly (no owner key needed).
     :param network:
         ``"mainnet"`` or ``"testnet"``.
+    :param subaccount_index:
+        Which subaccount to pick from the list returned by the API.
+        Defaults to 0 (first subaccount).
     :return:
-        First subaccount ID.
+        Subaccount ID at the given index.
     :raises RuntimeError:
         If credentials are missing or no subaccounts are found.
     """
-    import os
-
     # Shortcut: if subaccount ID is already known, skip API discovery
     env_subaccount_id = os.environ.get("DERIVE_SUBACCOUNT_ID")
     if env_subaccount_id:
@@ -131,13 +134,20 @@ def discover_derive_subaccount_id(
             f"No Derive subaccounts found for wallet {derive_wallet}"
         )
 
+    if subaccount_index >= len(subaccount_ids):
+        raise RuntimeError(
+            f"Subaccount index {subaccount_index} out of range, "
+            f"wallet {derive_wallet} has {len(subaccount_ids)} subaccount(s): {subaccount_ids}"
+        )
+
     logger.info(
-        "Discovered %d Derive subaccount(s): %s, using first: %d",
+        "Discovered %d Derive subaccount(s): %s, using index %d: %d",
         len(subaccount_ids),
         subaccount_ids,
-        subaccount_ids[0],
+        subaccount_index,
+        subaccount_ids[subaccount_index],
     )
-    return subaccount_ids[0]
+    return subaccount_ids[subaccount_index]
 
 
 def create_derive_exchange_account_pair(
@@ -179,8 +189,6 @@ def create_derive_exchange_account_pair(
     :return:
         Fully configured exchange account pair.
     """
-    from tradeexecutor.state.identifier import AssetIdentifier, TradingPairKind
-
     # Synthetic asset representing the Derive account value
     base = AssetIdentifier(
         chain_id=quote.chain_id,
