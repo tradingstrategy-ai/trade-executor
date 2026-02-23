@@ -75,33 +75,6 @@ def environment(
 
 
 @pytest.fixture()
-def derive_subaccount_id() -> int:
-    """Discover the first valid Derive testnet subaccount ID.
-
-    Queries the Derive API so that test strategies use a real subaccount.
-    """
-    from eth_account import Account
-    from eth_defi.derive.account import fetch_subaccount_ids
-    from eth_defi.derive.authentication import DeriveApiClient
-    from eth_defi.derive.onboarding import fetch_derive_wallet_address
-
-    owner_account = Account.from_key(os.environ["DERIVE_OWNER_PRIVATE_KEY"])
-    derive_wallet_address = fetch_derive_wallet_address(owner_account.address, is_testnet=True)
-
-    client = DeriveApiClient(
-        owner_account=owner_account,
-        derive_wallet_address=derive_wallet_address,
-        is_testnet=True,
-        session_key_private=os.environ["DERIVE_SESSION_PRIVATE_KEY"],
-    )
-
-    ids = fetch_subaccount_ids(client)
-    if not ids:
-        pytest.skip("Derive account has no subaccounts yet")
-    return ids[0]
-
-
-@pytest.fixture()
 def environment_anvil(
     anvil,
     hot_wallet: HotWallet,
@@ -109,11 +82,11 @@ def environment_anvil(
     strategy_file_anvil: Path,
     usdc,
     dummy_token,
-    derive_subaccount_id: int,
 ) -> dict:
     """Set up environment vars for init/start CLI commands on Anvil chain.
 
-    Uses the anvil strategy which is configured for ChainId.anvil (31337).
+    Uses the anvil strategy which discovers its Derive subaccount ID
+    from the API automatically (same pattern as vega.py).
     """
     environment = {
         "EXECUTOR_ID": "test_derive_cli_start",
@@ -124,7 +97,7 @@ def environment_anvil(
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "UNIT_TESTING": "true",
         "TRADING_STRATEGY_API_KEY": os.environ.get("TRADING_STRATEGY_API_KEY", ""),
-        # Derive credentials from environment
+        # Derive credentials from environment (strategy discovers subaccount ID)
         "DERIVE_OWNER_PRIVATE_KEY": os.environ["DERIVE_OWNER_PRIVATE_KEY"],
         "DERIVE_SESSION_PRIVATE_KEY": os.environ["DERIVE_SESSION_PRIVATE_KEY"],
         "DERIVE_NETWORK": "testnet",
@@ -133,8 +106,6 @@ def environment_anvil(
         # Token addresses for strategy to use
         "TEST_USDC_ADDRESS": usdc.address,
         "TEST_DUMMY_TOKEN_ADDRESS": dummy_token.address,
-        # Subaccount ID discovered from the Derive API
-        "TEST_DERIVE_SUBACCOUNT_ID": str(derive_subaccount_id),
         # Run single cycle for start command tests
         "RUN_SINGLE_CYCLE": "true",
     }
