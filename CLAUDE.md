@@ -71,6 +71,10 @@ Don't format code.
 - When using datetime class use `import datetime.datetime` and use `datetime.datetime` and `datetime.timedelta` as type hints
 - Instead of `datetime.datetime.utcnow()` use `native_datetime_utc_now()` that is compatible across Python versions
 
+### Python
+
+- Always use module level imports, unless there are circular dependencies
+
 ### Enum
 
 - For string enums, both members and values must in snake_case
