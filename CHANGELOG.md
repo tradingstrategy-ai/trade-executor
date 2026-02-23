@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Fix `correct-accounts` to create and sync exchange account positions in one pass (2026-02-23)
+
 - Fix `correct-history` to update trading period start date and share price return baseline after pruning (2026-02-21)
 
 - Add `correct-history` CLI command to prune early time-series data from state files (2026-02-20)
