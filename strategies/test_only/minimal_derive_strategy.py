@@ -4,18 +4,18 @@ A simple strategy that does nothing but runs through init/start CLI commands.
 Uses Anvil chain and deployed USDC for testing.
 
 The Derive subaccount ID is discovered automatically from the Derive API
-at universe creation time using ``DERIVE_OWNER_PRIVATE_KEY`` and
-``DERIVE_SESSION_PRIVATE_KEY`` environment variables.
+at universe creation time. When running inside a Lagoon vault deployment,
+the Safe address is used as the Derive wallet address.
 
 Environment variables:
 - TEST_USDC_ADDRESS: Address of the USDC token contract deployed on Anvil
 """
 
 import datetime
+import logging
 import os
 
 from tradingstrategy.chain import ChainId
-from tradingstrategy.client import BaseClient
 from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
@@ -31,11 +31,11 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
-from tradeexecutor.strategy.universe_model import UniverseOptions
 
 trading_strategy_engine_version = "0.5"
 trading_strategy_type = StrategyType.managed_positions
@@ -59,16 +59,15 @@ class Parameters:
 
 
 def create_trading_universe(
-    ts: datetime.datetime,
-    client: BaseClient,
-    execution_context: ExecutionContext,
-    universe_options: UniverseOptions,
+    input: CreateTradingUniverseInput,
 ) -> TradingStrategyUniverse:
     """Create a minimal trading universe.
 
     Has USDC as reserve and a Derive exchange account pair.
     Discovers the real subaccount ID from the Derive API.
     """
+    logger = logging.getLogger(__name__)
+
     usdc_address = os.environ.get("TEST_USDC_ADDRESS", "0x0000000000000000000000000000000000000001")
     usdc = AssetIdentifier(
         chain_id=CHAIN_ID.value,
@@ -77,8 +76,15 @@ def create_trading_universe(
         decimals=6,
     )
 
+    # Get wallet address from Lagoon vault's Safe multisig when available
+    execution_model = input.execution_model
+    wallet_address = None
+    if execution_model and hasattr(execution_model, "vault"):
+        wallet_address = execution_model.vault.safe_address
+        logger.info("Using Safe address as Derive wallet: %s", wallet_address)
+
     is_testnet = os.environ.get("DERIVE_NETWORK", "mainnet") == "testnet"
-    subaccount_id = discover_derive_subaccount_id()
+    subaccount_id = discover_derive_subaccount_id(wallet_address=wallet_address)
 
     derive_account_pair = create_derive_exchange_account_pair(
         quote=usdc,

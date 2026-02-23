@@ -7,8 +7,9 @@ On the first cycle it opens the exchange account position;
 on subsequent cycles it returns no trades (valuation happens via sync).
 
 The Derive subaccount ID is discovered automatically from the Derive API
-at universe creation time using ``DERIVE_OWNER_PRIVATE_KEY`` and
-``DERIVE_SESSION_PRIVATE_KEY`` environment variables.
+at universe creation time. The Derive wallet address is read from the
+Lagoon vault's Safe multisig, so ``DERIVE_OWNER_PRIVATE_KEY`` is not needed.
+Only ``DERIVE_SESSION_PRIVATE_KEY`` is required for API authentication.
 
 Uses ``TradeRouting.default`` with the real execution model so that
 GenericRouting / EthereumPairConfigurator handle pricing and valuation.
@@ -20,7 +21,6 @@ import os
 from decimal import Decimal
 
 from tradingstrategy.chain import ChainId
-from tradingstrategy.client import BaseClient
 from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
@@ -37,12 +37,12 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import (
     TradingStrategyUniverse, create_pair_universe_from_code)
-from tradeexecutor.strategy.universe_model import UniverseOptions
 
 logger = logging.getLogger(__name__)
 
@@ -75,18 +75,25 @@ USDC = AssetIdentifier(
 )
 
 def create_trading_universe(
-    ts: datetime.datetime,
-    client: BaseClient,
-    execution_context: ExecutionContext,
-    universe_options: UniverseOptions,
+    input: CreateTradingUniverseInput,
 ) -> TradingStrategyUniverse:
     """Create universe with a single Derive exchange account pair.
 
     Discovers the real subaccount ID from the Derive API so that
     sync and valuation target the correct account.
+
+    The Derive wallet address is read from the Lagoon vault's Safe
+    multisig when available, so no owner private key is needed.
     """
+    # Get wallet address from Lagoon vault's Safe multisig
+    execution_model = input.execution_model
+    wallet_address = None
+    if execution_model and hasattr(execution_model, "vault"):
+        wallet_address = execution_model.vault.safe_address
+        logger.info("Using Safe address as Derive wallet: %s", wallet_address)
+
     is_testnet = os.environ.get("DERIVE_NETWORK", "mainnet") == "testnet"
-    subaccount_id = discover_derive_subaccount_id()
+    subaccount_id = discover_derive_subaccount_id(wallet_address=wallet_address)
 
     exchange_account_pair = create_derive_exchange_account_pair(
         quote=USDC,
