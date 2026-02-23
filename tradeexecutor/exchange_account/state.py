@@ -189,6 +189,15 @@ def open_exchange_account_position(
         lp_fees_estimated=0,
     )
 
+    # Ensure portfolio_value_at_open is set to at least the reserve amount.
+    # On a fresh start with no prior positions and no cash,
+    # calculate_total_equity() returns 0, which downstream code
+    # (get_capital_tied_at_open_pct) treats as invalid/legacy data.
+    # For exchange accounts the position IS the portfolio allocation,
+    # so the reserve amount is a reasonable minimum.
+    if not position.portfolio_value_at_open:
+        position.portfolio_value_at_open = float(reserve_amount)
+
     # Immediately spoof the trade as successfully executed
     trade.mark_success(
         executed_at=native_datetime_utc_now(),
