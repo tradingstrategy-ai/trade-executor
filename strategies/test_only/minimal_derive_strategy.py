@@ -3,35 +3,39 @@
 A simple strategy that does nothing but runs through init/start CLI commands.
 Uses Anvil chain and deployed USDC for testing.
 
+The Derive subaccount ID is discovered automatically from the Derive API
+at universe creation time using ``DERIVE_OWNER_PRIVATE_KEY`` and
+``DERIVE_SESSION_PRIVATE_KEY`` environment variables.
+
 Environment variables:
 - TEST_USDC_ADDRESS: Address of the USDC token contract deployed on Anvil
 """
 
 import datetime
 import os
-from typing import List
 
-import pandas as pd
-
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
-from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
-from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.execution_context import ExecutionContext
-from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
-from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.reserve_currency import ReserveCurrency
-from tradeexecutor.strategy.strategy_module import StrategyParameters
-from tradeexecutor.strategy.strategy_type import StrategyType
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
-from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import BaseClient
 from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.exchange_account.derive import (
+    create_derive_exchange_account_pair,
+    discover_derive_subaccount_id,
+)
+from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.strategy.execution_context import ExecutionContext
+from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.reserve_currency import ReserveCurrency
+from tradeexecutor.strategy.strategy_module import StrategyParameters
+from tradeexecutor.strategy.strategy_type import StrategyType
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
+from tradeexecutor.strategy.universe_model import UniverseOptions
 
 trading_strategy_engine_version = "0.5"
 trading_strategy_type = StrategyType.managed_positions
@@ -63,8 +67,8 @@ def create_trading_universe(
     """Create a minimal trading universe.
 
     Has USDC as reserve and a Derive exchange account pair.
+    Discovers the real subaccount ID from the Derive API.
     """
-    # Use real USDC address from environment
     usdc_address = os.environ.get("TEST_USDC_ADDRESS", "0x0000000000000000000000000000000000000001")
     usdc = AssetIdentifier(
         chain_id=CHAIN_ID.value,
@@ -73,28 +77,13 @@ def create_trading_universe(
         decimals=6,
     )
 
-    derive_account_asset = AssetIdentifier(
-        chain_id=CHAIN_ID.value,
-        address="0x0000000000000000000000000000000000D371E0",
-        token_symbol="DERIVE-ACCOUNT",
-        decimals=6,
-    )
+    is_testnet = os.environ.get("DERIVE_NETWORK", "mainnet") == "testnet"
+    subaccount_id = discover_derive_subaccount_id()
 
-    derive_account_pair = TradingPairIdentifier(
-        base=derive_account_asset,
+    derive_account_pair = create_derive_exchange_account_pair(
         quote=usdc,
-        pool_address="0x0000000000000000000000000000000000D371E1",
-        exchange_address="0x0000000000000000000000000000000000D371E2",
-        internal_id=1,
-        internal_exchange_id=1,
-        fee=0.0,
-        kind=TradingPairKind.exchange_account,
-        exchange_name="derive",
-        other_data={
-            "exchange_protocol": "derive",
-            "exchange_subaccount_id": 1,
-            "exchange_is_testnet": True,
-        },
+        subaccount_id=subaccount_id,
+        is_testnet=is_testnet,
     )
 
     pair_universe = create_pair_universe_from_code(CHAIN_ID, [derive_account_pair])
@@ -104,7 +93,7 @@ def create_trading_universe(
         chain_slug="anvil",
         exchange_id=1,
         exchange_slug="derive",
-        address="0x0000000000000000000000000000000000D371E2",
+        address=derive_account_pair.exchange_address,
         exchange_type=ExchangeType.derive,
         pair_count=1,
     )
@@ -118,12 +107,10 @@ def create_trading_universe(
         liquidity=None,
     )
 
-    strategy_universe = TradingStrategyUniverse(
+    return TradingStrategyUniverse(
         data_universe=universe,
         reserve_assets=[usdc],
     )
-
-    return strategy_universe
 
 
 def create_indicators(
@@ -137,11 +124,7 @@ def create_indicators(
 
 
 def decide_trades(
-    timestamp: pd.Timestamp,
-    universe: Universe,
-    state: State,
-    pricing_model: PricingModel,
-    cycle_debug_data: dict,
-) -> List[TradeExecution]:
+    input: StrategyInput,
+) -> list[TradeExecution]:
     """No trades - just a passive strategy."""
     return []

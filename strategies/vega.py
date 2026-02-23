@@ -1,4 +1,4 @@
-"""Test strategy for Derive vault on mainnet via CLI start command.
+"""Strategy for Derive vault on mainnet via CLI start command.
 
 A strategy with a fixed universe of one Derive exchange account pair
 targeting the mainnet Derive vault on Derive (Lyra) chain.
@@ -6,11 +6,17 @@ targeting the mainnet Derive vault on Derive (Lyra) chain.
 On the first cycle it opens the exchange account position;
 on subsequent cycles it returns no trades (valuation happens via sync).
 
+The Derive subaccount ID is discovered automatically from the Derive API
+at universe creation time using ``DERIVE_OWNER_PRIVATE_KEY`` and
+``DERIVE_SESSION_PRIVATE_KEY`` environment variables.
+
 Uses ``TradeRouting.default`` with the real execution model so that
 GenericRouting / EthereumPairConfigurator handle pricing and valuation.
 """
 
 import datetime
+import logging
+import os
 from decimal import Decimal
 
 from tradingstrategy.chain import ChainId
@@ -19,10 +25,12 @@ from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.exchange_account.derive import (
+    create_derive_exchange_account_pair,
+    discover_derive_subaccount_id,
+)
 from tradeexecutor.exchange_account.state import open_exchange_account_position
-from tradeexecutor.state.identifier import (AssetIdentifier,
-                                            TradingPairIdentifier,
-                                            TradingPairKind)
+from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -35,6 +43,8 @@ from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import (
     TradingStrategyUniverse, create_pair_universe_from_code)
 from tradeexecutor.strategy.universe_model import UniverseOptions
+
+logger = logging.getLogger(__name__)
 
 trading_strategy_engine_version = "0.5"
 trading_strategy_type = StrategyType.managed_positions
@@ -64,48 +74,34 @@ USDC = AssetIdentifier(
     decimals=6,
 )
 
-# Synthetic asset representing the Derive vault account value
-DERIVE_ACCOUNT = AssetIdentifier(
-    chain_id=CHAIN_ID.value,
-    address="0x0000000000000000000000000000000000D371E0",
-    token_symbol="DERIVE-ACCOUNT",
-    decimals=6,
-)
-
-EXCHANGE_ACCOUNT_PAIR = TradingPairIdentifier(
-    base=DERIVE_ACCOUNT,
-    quote=USDC,
-    pool_address="0x0000000000000000000000000000000000D371E1",
-    exchange_address="0x0000000000000000000000000000000000D371E2",
-    internal_id=1,
-    internal_exchange_id=1,
-    fee=0.0,
-    kind=TradingPairKind.exchange_account,
-    exchange_name="derive",
-    other_data={
-        "exchange_protocol": "derive",
-        "exchange_subaccount_id": 0,
-        "exchange_is_testnet": False,
-    },
-)
-
-
 def create_trading_universe(
     ts: datetime.datetime,
     client: BaseClient,
     execution_context: ExecutionContext,
     universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
-    """Create universe with a single Derive exchange account pair."""
+    """Create universe with a single Derive exchange account pair.
 
-    pair_universe = create_pair_universe_from_code(CHAIN_ID, [EXCHANGE_ACCOUNT_PAIR])
+    Discovers the real subaccount ID from the Derive API so that
+    sync and valuation target the correct account.
+    """
+    is_testnet = os.environ.get("DERIVE_NETWORK", "mainnet") == "testnet"
+    subaccount_id = discover_derive_subaccount_id()
+
+    exchange_account_pair = create_derive_exchange_account_pair(
+        quote=USDC,
+        subaccount_id=subaccount_id,
+        is_testnet=is_testnet,
+    )
+
+    pair_universe = create_pair_universe_from_code(CHAIN_ID, [exchange_account_pair])
 
     derive_exchange = Exchange(
         chain_id=CHAIN_ID,
         chain_slug="derive",
         exchange_id=1,
         exchange_slug="derive",
-        address="0x0000000000000000000000000000000000D371E2",
+        address=exchange_account_pair.exchange_address,
         exchange_type=ExchangeType.derive,
         pair_count=1,
     )
@@ -153,11 +149,22 @@ def decide_trades(
         if pos.pair.is_exchange_account():
             return []
 
+    # Get the exchange account pair from the universe (has real subaccount ID)
+    pair = None
+    for p in input.strategy_universe.iterate_pairs():
+        if p.is_exchange_account():
+            pair = p
+            break
+
+    if pair is None:
+        logger.error("No exchange account pair found in universe")
+        return []
+
     # First cycle: create exchange account position
     open_exchange_account_position(
         state=state,
         strategy_cycle_at=timestamp.to_pydatetime(),
-        pair=EXCHANGE_ACCOUNT_PAIR,
+        pair=pair,
         reserve_currency=USDC,
         reserve_amount=Decimal(1),
         notes="Initial Derive vault mainnet position",

@@ -2095,7 +2095,7 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
             token1_address=p.quote.address,
             token0_decimals=p.base.decimals,
             token1_decimals=p.quote.decimals,
-            fee=int(p.fee * 10_000) if p.fee else None,  # Convert to bps according to the documentation
+            fee=int(p.fee * 10_000) if p.fee is not None else None,  # Convert to bps according to the documentation
             other_data=other_data,
         )
         used_ids.add(p.internal_id)

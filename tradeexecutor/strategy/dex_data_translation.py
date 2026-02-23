@@ -198,6 +198,13 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                 }
             })
 
+        # Preserve exchange account fields (Derive, CCXT, etc.)
+        for key in ("exchange_protocol", "exchange_subaccount_id", "exchange_is_testnet",
+                     "ccxt_account_id", "ccxt_exchange_id"):
+            val = dex_pair.other_data.get(key)
+            if val is not None:
+                pair.other_data[key] = val
+
     # if dex_pair.dex_type == ExchangeType.erc_4626_vault:
     #    import ipdb ; ipdb.set_trace()
 

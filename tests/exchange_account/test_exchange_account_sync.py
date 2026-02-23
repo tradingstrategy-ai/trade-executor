@@ -327,3 +327,117 @@ def test_has_position_sync_returns_true():
     sync_model = ExchangeAccountSyncModel(mock_value_func)
 
     assert sync_model.has_position_sync() is True
+
+
+def test_create_then_sync_positions():
+    """Test that auto-created positions get synced in the same pass.
+
+    This validates the fix where correct-accounts reorders operations:
+    1. Auto-create missing exchange account positions (placeholder 1 USD)
+    2. Sync all exchange account positions with actual exchange API values
+
+    Previously sync ran before creation, leaving new positions at placeholder value.
+    """
+    from tradingstrategy.chain import ChainId
+    from tradingstrategy.exchange import Exchange, ExchangeType
+    from tradingstrategy.timebucket import TimeBucket
+    from tradingstrategy.universe import Universe
+    from tradeexecutor.strategy.trading_strategy_universe import (
+        TradingStrategyUniverse,
+        create_pair_universe_from_code,
+    )
+    from tradeexecutor.strategy.account_correction import create_missing_exchange_account_positions
+
+    # Create pair with a valid ChainId for create_pair_universe_from_code
+    usdc = AssetIdentifier(
+        chain_id=ChainId.anvil.value,
+        address="0x0000000000000000000000000000000000000001",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    derive_account = AssetIdentifier(
+        chain_id=ChainId.anvil.value,
+        address="0x0000000000000000000000000000000000000002",
+        token_symbol="DERIVE-ACCOUNT",
+        decimals=6,
+    )
+    pair = TradingPairIdentifier(
+        base=derive_account,
+        quote=usdc,
+        pool_address="0x0000000000000000000000000000000000000003",
+        exchange_address="0x0000000000000000000000000000000000000004",
+        internal_id=1,
+        internal_exchange_id=1,
+        fee=0.0,
+        kind=TradingPairKind.exchange_account,
+        exchange_name="derive",
+        other_data={
+            "exchange_protocol": "derive",
+            "exchange_subaccount_id": 1,
+            "exchange_is_testnet": True,
+        },
+    )
+
+    state = State()
+
+    # Create universe containing the exchange account pair
+    pair_universe = create_pair_universe_from_code(ChainId.anvil, [pair])
+    mock_exchange = Exchange(
+        chain_id=ChainId.anvil,
+        chain_slug="anvil",
+        exchange_id=1,
+        exchange_slug="derive",
+        address="0x0000000000000000000000000000000000000004",
+        exchange_type=ExchangeType.derive,
+        pair_count=1,
+    )
+    universe = Universe(
+        time_bucket=TimeBucket.d1,
+        chains={ChainId.anvil},
+        exchanges={mock_exchange},
+        pairs=pair_universe,
+        candles=None,
+        liquidity=None,
+    )
+    strategy_universe = TradingStrategyUniverse(
+        data_universe=universe,
+        reserve_assets=[usdc],
+    )
+
+    # Step 1: No positions initially
+    assert len(state.portfolio.open_positions) == 0
+
+    # Step 2: Auto-create missing exchange account positions (placeholder 1 USD)
+    created_trades = create_missing_exchange_account_positions(
+        strategy_universe=strategy_universe,
+        state=state,
+        strategy_cycle_at=datetime.datetime(2024, 1, 1),
+    )
+    assert len(created_trades) == 1
+    assert len(state.portfolio.open_positions) == 1
+
+    position = list(state.portfolio.open_positions.values())[0]
+    assert position.get_quantity() == Decimal(1), \
+        "Newly created position should have placeholder value of 1"
+
+    # Step 3: Sync with mock exchange API (reports 50,000 USD)
+    mock_value_func = Mock(return_value=Decimal("50000.0"))
+    sync_model = ExchangeAccountSyncModel(mock_value_func)
+
+    events = sync_model.sync_positions(
+        timestamp=native_datetime_utc_now(),
+        state=state,
+        strategy_universe=None,
+        pricing_model=None,
+    )
+
+    # Should have created a balance update for the diff (50000 - 1 = 49999)
+    assert len(events) == 1
+    evt = events[0]
+    assert evt.quantity == Decimal("49999.0")
+    assert evt.old_balance == Decimal(1)
+
+    # Position quantity should now reflect actual exchange value
+    assert position.get_quantity() == Decimal("50000.0")
+    assert len(position.balance_updates) == 1
+    assert len(state.sync.accounting.balance_update_refs) == 1
