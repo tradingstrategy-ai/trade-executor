@@ -20,6 +20,10 @@ from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.exchange_account.derive import (
+    create_derive_exchange_account_pair,
+    discover_derive_subaccount_id,
+)
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -71,11 +75,6 @@ def create_trading_universe(
         address=usdc_address,
         token_symbol="USDC",
         decimals=6,
-    )
-
-    from tradeexecutor.exchange_account.derive import (
-        create_derive_exchange_account_pair,
-        discover_derive_subaccount_id,
     )
 
     is_testnet = os.environ.get("DERIVE_NETWORK", "mainnet") == "testnet"

@@ -25,6 +25,10 @@ from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
+from tradeexecutor.exchange_account.derive import (
+    create_derive_exchange_account_pair,
+    discover_derive_subaccount_id,
+)
 from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
@@ -81,11 +85,6 @@ def create_trading_universe(
     Discovers the real subaccount ID from the Derive API so that
     sync and valuation target the correct account.
     """
-    from tradeexecutor.exchange_account.derive import (
-        create_derive_exchange_account_pair,
-        discover_derive_subaccount_id,
-    )
-
     is_testnet = os.environ.get("DERIVE_NETWORK", "mainnet") == "testnet"
     subaccount_id = discover_derive_subaccount_id()
 
