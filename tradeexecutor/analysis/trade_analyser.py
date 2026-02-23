@@ -1630,4 +1630,5 @@ def get_avg_trade_duration(duration_list: List | None):
 
 
 def func_check(lst: list, func: Callable):
-    return func(lst) if lst else None
+    filtered = [x for x in lst if x is not None]
+    return func(filtered) if filtered else None
