@@ -482,6 +482,29 @@ def correct_accounts(
 
     output = tabulate(df, headers='keys', tablefmt='rounded_outline')
 
+    # Append exchange account positions to the summary
+    exchange_positions = [
+        p for p in state.portfolio.get_open_and_frozen_positions()
+        if p.is_exchange_account()
+    ]
+    if exchange_positions:
+        rows = []
+        for p in exchange_positions:
+            protocol = p.pair.get_exchange_account_protocol() or "unknown"
+            quantity = p.get_quantity()
+            rows.append([
+                p.pair.get_ticker(),
+                protocol,
+                f"{quantity:,.2f}",
+                p.position_id,
+            ])
+        exchange_output = tabulate(
+            rows,
+            headers=["Position", "Protocol", "Value (USD)", "Position ID"],
+            tablefmt="rounded_outline",
+        )
+        output += f"\n\nExchange account positions:\n{exchange_output}"
+
     if clean:
         logger.info(f"Accounts after the correction match for block {block_number:,}:\n%s", output)
         if not raise_on_unclean:
