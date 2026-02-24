@@ -59,6 +59,7 @@ class LagoonExecution(EthereumExecution):
         pair_configurator = EthereumPairConfigurator(
             self.web3,
             strategy_universe,
+            account_value_func=self.account_value_func,
         )
 
         # TODO: Create a proper place fot his

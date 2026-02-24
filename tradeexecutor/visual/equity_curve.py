@@ -915,5 +915,5 @@ def calculate_share_price(state: State, initial_share_price: float | None = None
 
     df = df.set_index("calculated_at").sort_index()  # Make sure index comes through in the correct order
     df = df.dropna()
-    df["returns"] = df["share_price_usd"] - initial_share_price
+    df["returns"] = df["share_price_usd"] / initial_share_price - 1.0
     return df

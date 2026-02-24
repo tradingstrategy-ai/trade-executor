@@ -50,7 +50,7 @@ def prepare_share_price_summary_statistics(
     assert isinstance(age, datetime.timedelta), "age must be a datetime.timedelta"
 
     if len(share_price_df) > 0:
-        returns_all_time = share_price_df["returns"].iloc[-1] - 1.0
+        returns_all_time = share_price_df["returns"].iloc[-1]
         returns_annualised = calculate_annualised_return(returns_all_time, age)
     else:
         returns_annualised = 0

@@ -124,7 +124,7 @@ def test_share_price_chart(
         start_at=pd.Timestamp("2025-05-01"),
         age=datetime.timedelta(days=30),
     )
-    assert returns_annualised == pytest.approx(-10.229681969539822)
+    assert returns_annualised == pytest.approx(1.9369846971268423)
     assert len(performance_90_days) == 26
     assert len(nav_90_days) == 26
 
