@@ -95,6 +95,7 @@ def format_position(
         TradingPairKind.credit_supply: "credit",
         TradingPairKind.vault: "vault",
         TradingPairKind.freqtrade: "freqtrade",
+        TradingPairKind.exchange_account: "exchange account",
     }
 
     position_label = position_labels.get(position_kind, "<unknown position type>")
