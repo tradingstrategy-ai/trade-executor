@@ -79,7 +79,7 @@ EXCHANGE_ACCOUNT_PAIR = TradingPairIdentifier(
     internal_exchange_id=1,
     fee=0.0,
     kind=TradingPairKind.exchange_account,
-    exchange_name="derive",
+    exchange_name="Derive",
     other_data={
         "exchange_protocol": "derive",
         "exchange_subaccount_id": 0,

@@ -26,9 +26,7 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.exchange_account.derive import (
-    create_derive_exchange_account_pair,
-    discover_derive_subaccount_id,
-)
+    create_derive_exchange_account_pair, discover_derive_subaccount_id)
 from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.trade import TradeExecution
@@ -37,10 +35,12 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
-from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
+from tradeexecutor.strategy.pandas_trader.trading_universe_input import \
+    CreateTradingUniverseInput
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
 from tradeexecutor.strategy.strategy_type import StrategyType
+from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import (
     TradingStrategyUniverse, create_pair_universe_from_code)
 
@@ -59,7 +59,8 @@ CHAIN_ID = ChainId.derive
 class Parameters:
     chain_id = ChainId.derive
     initial_cash = 10_000
-    cycle_duration = CycleDuration.cycle_1d
+    # Cycle often, as there is no logic, but we still want to settle NAV
+    cycle_duration = CycleDuration.cycle_15m
     routing = TradeRouting.default
     required_history_period = datetime.timedelta(days=1)
     backtest_start = None
@@ -178,3 +179,21 @@ def decide_trades(
     )
 
     return []
+
+
+
+#
+# Metadata
+#
+
+tags = {StrategyTag.beta, StrategyTag.live, StrategyTag.deposits_disabled}
+
+name = "Premium Harvest Vault"
+
+short_description = "Discrere options trading strategy"
+
+icon = ""
+
+long_description = """
+The vault is an actively managed options strategy on BTC and ETH that aims to earn yield by selling options instead of betting on whether prices will go up or down. The vault tries to keep the overall exposure balanced so it’s mostly market-neutral, focusing on collecting option premiums and time decay (theta). Risk is managed by using liquid expiries, avoiding excessive leverage, and limiting exposure to very large market moves through a diversified mix of strikes and maturities.
+"""

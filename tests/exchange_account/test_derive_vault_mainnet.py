@@ -227,7 +227,7 @@ def _create_test_state_with_mainnet_position(state_file: Path) -> Decimal:
         internal_exchange_id=1,
         fee=0.0,
         kind=TradingPairKind.exchange_account,
-        exchange_name="derive",
+        exchange_name="Derive",
         other_data={
             "exchange_protocol": "derive",
             "exchange_subaccount_id": client.subaccount_id,
