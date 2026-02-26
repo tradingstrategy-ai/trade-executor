@@ -33,7 +33,7 @@ from tradingstrategy.universe import Universe
 trading_strategy_engine_version = "0.5"
 trading_strategy_type = StrategyType.managed_positions
 trading_strategy_cycle = CycleDuration.cycle_1d
-trade_routing = TradeRouting.ignore
+trade_routing = TradeRouting.default
 reserve_currency = ReserveCurrency.usdc
 
 # Chain ID for the exchange account (synthetic)
@@ -45,7 +45,7 @@ class Parameters:
     chain_id = ChainId.ethereum
     initial_cash = 100_000
     cycle_duration = CycleDuration.cycle_1d
-    routing = TradeRouting.ignore
+    routing = TradeRouting.default
     backtest_start = None
     backtest_end = None
 

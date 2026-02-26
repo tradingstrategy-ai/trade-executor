@@ -98,7 +98,7 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
 
     # Collect exchange IDs used by exchange account pairs (Derive, etc.)
     # and CCTP bridge pairs so we can skip them in the exchange loop below
-    exchange_account_exchange_ids = set()
+    non_dex_exchange_ids = set()
     has_cctp_bridge = False
     pairs_df = strategy_universe.data_universe.pairs.df
     if "other_data" in pairs_df.columns:
@@ -106,14 +106,15 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
             other_data = row.get("other_data")
             if isinstance(other_data, dict):
                 if other_data.get("exchange_protocol"):
-                    exchange_account_exchange_ids.add(row["exchange_id"])
+                    non_dex_exchange_ids.add(row["exchange_id"])
                 if other_data.get("bridge_protocol") == "cctp":
                     has_cctp_bridge = True
+                    non_dex_exchange_ids.add(row["exchange_id"])
 
     vaults_done = False
 
     for xc in exchanges.exchanges.values():
-        if xc.exchange_id in exchange_account_exchange_ids:
+        if xc.exchange_id in non_dex_exchange_ids:
             continue
         elif xc.exchange_type == ExchangeType.erc_4626_vault:
             if not vaults_done:

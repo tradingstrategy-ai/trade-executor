@@ -1154,11 +1154,17 @@ class TradeExecution:
         """Get the planned or executed quantity of the quote token.
 
         Negative for buy, positive for sell.
+
+        For bridge-funded trades, the reserve comes from the bridge position
+        instead of from main reserves.
         """
 
         if self.is_buy():
             if self.get_status() in (TradeStatus.started, TradeStatus.broadcasted):
-                return self.reserve_currency_allocated
+                if self.reserve_currency_allocated is not None:
+                    return self.reserve_currency_allocated
+                if self.bridge_currency_allocated is not None:
+                    return self.bridge_currency_allocated
 
         return Decimal(0)
 

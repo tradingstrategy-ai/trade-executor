@@ -309,16 +309,16 @@ def correct_accounts(
 
     block_timestamp = get_block_timestamp(web3, block_number)
 
-    # Skip on-chain accounting for strategies without on-chain trading,
-    # but still check if there are bridge positions with on-chain assets
-    has_onchain_bridge_positions = any(
-        p.pair.is_cctp_bridge()
+    # Skip on-chain corrections when all positions are exchange account positions
+    # (their balances are synced via exchange API, not on-chain balance checks)
+    has_onchain_positions = any(
+        not p.pair.is_exchange_account()
         for p in state.portfolio.get_open_and_frozen_positions()
     )
 
-    if mod.trade_routing == TradeRouting.ignore and not has_onchain_bridge_positions:
+    if not has_onchain_positions:
         corrections = []
-        logger.info("On-chain account correction skipped - strategy uses TradeRouting.ignore")
+        logger.info("On-chain account correction skipped - no on-chain positions")
     else:
         corrections = calculate_account_corrections(
             universe.data_universe.pairs,
@@ -489,9 +489,13 @@ def correct_accounts(
 
     block_number = get_almost_latest_block_number(web3)
 
-    # Skip final on-chain account check for strategies without on-chain trading
-    if mod.trade_routing == TradeRouting.ignore and not has_onchain_bridge_positions:
-        logger.info("Final account check skipped - strategy uses TradeRouting.ignore")
+    # Skip final on-chain account check for strategies without on-chain positions
+    has_onchain_positions_final = any(
+        not p.pair.is_exchange_account()
+        for p in state.portfolio.get_open_and_frozen_positions()
+    )
+    if not has_onchain_positions_final:
+        logger.info("Final account check skipped - no on-chain positions")
         logger.info("All ok")
         sys.exit(0)
 
