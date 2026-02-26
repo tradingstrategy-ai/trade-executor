@@ -28,7 +28,14 @@ logger = logging.getLogger(__name__)
 
 
 class AddressSyncModel(SyncModel):
-    """Sync vault/wallet address by polling its list of assests"""
+    """Sync vault/wallet address by polling its list of assets.
+
+    Supports optional multichain balance queries via :py:attr:`web3config`.
+    """
+
+    #: Optional Web3Config with connections to multiple chains.
+    #: When set, :py:meth:`fetch_onchain_balances` can query satellite chain balances.
+    web3config: "Web3Config | None" = None
 
     @abstractmethod
     def get_token_storage_address(self) -> Optional[JSONHexAddress]:

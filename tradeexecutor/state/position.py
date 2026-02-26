@@ -312,6 +312,13 @@ class TradingPosition(GenericPosition):
     #: Misc bag of data, not often needed
     other_data: PositionOtherData = field(default_factory=dict)
 
+    #: For CCTP bridge positions: how much capital has been allocated to satellite chain trades.
+    #:
+    #: The available bridge capital is ``get_quantity() - bridge_capital_allocated``.
+    #: Updated by :py:meth:`Portfolio.move_capital_from_bridge_to_spot_trade` and
+    #: :py:meth:`Portfolio.return_capital_to_bridge`.
+    bridge_capital_allocated: Decimal = field(default_factory=lambda: Decimal(0))
+
     def __repr__(self):
         if self.is_pending():
             return f"<Pending position #{self.position_id} {self.pair} ${self.get_value()}>"
@@ -656,6 +663,28 @@ class TradingPosition(GenericPosition):
         # Always convert zero to decimal
         return Decimal(s)
 
+    def get_available_bridge_capital(self) -> Decimal:
+        """Get the available capital in a CCTP bridge position.
+
+        This is the total bridged quantity minus capital currently allocated
+        to satellite chain trades.
+
+        :return:
+            Available USDC quantity that can be allocated to satellite trades.
+        """
+        return self.get_quantity() - self.bridge_capital_allocated
+
+    def adjust_bridge_capital_allocated(self, amount: Decimal):
+        """Adjust the bridge capital allocated to satellite chain trades.
+
+        :param amount:
+            Positive to allocate more capital, negative to return capital.
+
+        Note: ``bridge_capital_allocated`` can go negative when satellite
+        trades return more than was originally allocated (i.e. profitable trades).
+        """
+        self.bridge_capital_allocated += amount
+
     def get_pending_quantity(self) -> Decimal:
         """Get the quantity locked up in market limit trades."""
         q = sum_decimal([t.get_position_quantity() for t in self.pending_trades.values() if t.is_success() or t.is_planned()])
@@ -844,6 +873,10 @@ class TradingPosition(GenericPosition):
                     self.last_reserve_price,
                     include_interest=False,
                 )
+
+            case TradingPairKind.cctp_bridge:
+                # Bridge positions are always valued at 1:1 USDC face value
+                value += float(self.get_quantity())
 
             case TradingPairKind.lending_protocol_short | TradingPairKind.credit_supply:
                 # Value for leveraged positions is net asset value from its two loans
@@ -1115,8 +1148,9 @@ class TradingPosition(GenericPosition):
                 planned_collateral_consumption = planned_collateral_consumption or Decimal(0)
                 planned_collateral_allocation = planned_collateral_allocation or Decimal(0)
 
-            case TradingPairKind.spot_market_hold | TradingPairKind.vault | TradingPairKind.exchange_account:
+            case TradingPairKind.spot_market_hold | TradingPairKind.vault | TradingPairKind.exchange_account | TradingPairKind.cctp_bridge:
                 # Set spot market estimated quantities
+                # For CCTP bridge: price is always 1:1 (USDC to USDC), fee is zero
                 if reserve is not None:
                     planned_reserve = reserve
                     planned_quantity = reserve / Decimal(assumed_price)
@@ -1273,7 +1307,7 @@ class TradingPosition(GenericPosition):
         # VELVET HACK: Quantity can go to below zero, because te last trade
         # got in last minute deposit and executed more than we thought we have
         # aBasUSDC HACK: Quantity can also go below zero due to rounding/epsilon
-        if self.is_spot() or self.is_credit_supply():
+        if self.is_spot() or self.is_credit_supply() or self.pair.is_cctp_bridge():
             if quantity <= 0:
                 return True
 

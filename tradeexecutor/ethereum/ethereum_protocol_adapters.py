@@ -524,6 +524,36 @@ def create_exchange_account_adapter(
     )
 
 
+def create_cctp_bridge_adapter(
+    web3config: "Web3Config",
+    routing_id: ProtocolRoutingId,
+) -> ProtocolRoutingConfig:
+    """Create adapter for CCTP bridge pairs.
+
+    CCTP bridge positions transfer USDC between chains via Circle's
+    Cross-Chain Transfer Protocol. Price is always 1:1 with zero fees.
+
+    :param web3config:
+        Web3Config with connections to all chains involved in bridging.
+    :param routing_id:
+        The protocol routing identifier.
+    """
+    from tradeexecutor.ethereum.cctp.pricing import CctpBridgePricingModel
+    from tradeexecutor.ethereum.cctp.routing import CctpBridgeRouting
+    from tradeexecutor.ethereum.cctp.valuation import CctpBridgeValuationModel
+
+    routing_model = CctpBridgeRouting(web3config)
+    pricing_model = CctpBridgePricingModel()
+    valuation_model = CctpBridgeValuationModel()
+
+    return ProtocolRoutingConfig(
+        routing_id=routing_id,
+        routing_model=routing_model,
+        pricing_model=pricing_model,
+        valuation_model=valuation_model,
+    )
+
+
 class EthereumPairConfigurator(PairConfigurator):
     """Set up routes for EVM trading pairs.
 
@@ -538,6 +568,8 @@ class EthereumPairConfigurator(PairConfigurator):
     - Aave v3
 
     - ERC-4626 vaults
+
+    - CCTP bridge (cross-chain USDC)
     """
 
     def __init__(
@@ -545,11 +577,12 @@ class EthereumPairConfigurator(PairConfigurator):
         web3: Web3,
         strategy_universe: TradingStrategyUniverse | None,
         account_value_func: Callable | None = None,
+        web3config: "Web3Config | None" = None,
     ):
         """Initialise pair configuration.
 
         :param web3:
-            Web3 connection to the active blockchain.
+            Web3 connection to the active blockchain (default chain).
 
         :param strategy_universe:
             The initial strategy universe.
@@ -561,15 +594,38 @@ class EthereumPairConfigurator(PairConfigurator):
             Optional function to query exchange account values.
             Required when the universe contains exchange account pairs.
             Signature: (pair: TradingPairIdentifier) -> Decimal
+
+        :param web3config:
+            Optional Web3Config with connections to multiple chains.
+            Required for CCTP bridge routing which needs access to both
+            source and destination chain connections.
         """
 
         assert isinstance(web3, Web3)
         assert isinstance(strategy_universe, TradingStrategyUniverse)
 
         self.web3 = web3
+        self.web3config = web3config
         self.account_value_func = account_value_func
 
         super().__init__(strategy_universe)
+
+    def get_web3_for_chain(self, chain_id: int) -> Web3:
+        """Get a Web3 connection for a specific chain.
+
+        Falls back to self.web3 if no Web3Config is available.
+
+        :param chain_id:
+            The chain id to get a connection for.
+        :return:
+            Web3 connection for the specified chain.
+        """
+        if self.web3config is not None:
+            from tradeexecutor.ethereum.web3config import Web3Config
+            connection = self.web3config.get_connection(ChainId(chain_id))
+            if connection is not None:
+                return connection
+        return self.web3
 
     def get_supported_routers(self) -> Set[ProtocolRoutingId]:
         return default_supported_routers(self.strategy_universe)
@@ -589,6 +645,8 @@ class EthereumPairConfigurator(PairConfigurator):
             return create_freqtrade_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "exchange_account":
             return create_exchange_account_adapter(routing_id, self.account_value_func)
+        elif routing_id.router_name == "cctp-bridge":
+            return create_cctp_bridge_adapter(self.web3config, routing_id)
         else:
             raise NotImplementedError(f"Cannot route exchange {routing_id}")
 

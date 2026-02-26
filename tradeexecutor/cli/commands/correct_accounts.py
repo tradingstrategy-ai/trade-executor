@@ -287,13 +287,36 @@ def correct_accounts(
         logger.info("Manually remove duplicates with close-position command first.")
         raise RuntimeError("Crash for safety")
 
+    # Auto-create CCTP bridge positions from universe before corrections
+    # (so newly created positions are included in the on-chain balance check)
+    from tradeexecutor.strategy.account_correction import create_missing_cctp_bridge_positions
+
+    logger.info("Checking for missing CCTP bridge positions in universe...")
+    created_bridge_trades = create_missing_cctp_bridge_positions(
+        strategy_universe=universe,
+        state=state,
+        strategy_cycle_at=native_datetime_utc_now(),
+    )
+    if created_bridge_trades:
+        logger.info("Auto-created %d CCTP bridge position(s)", len(created_bridge_trades))
+        for trade in created_bridge_trades:
+            logger.info("  Created bridge position for %s", trade.pair)
+    else:
+        logger.info("No missing CCTP bridge positions")
+
     block_number = get_almost_latest_block_number(web3)
     logger.info(f"Correcting accounts at block {block_number:,}")
 
     block_timestamp = get_block_timestamp(web3, block_number)
 
-    # Skip on-chain accounting for strategies without on-chain trading
-    if mod.trade_routing == TradeRouting.ignore:
+    # Skip on-chain accounting for strategies without on-chain trading,
+    # but still check if there are bridge positions with on-chain assets
+    has_onchain_bridge_positions = any(
+        p.pair.is_cctp_bridge()
+        for p in state.portfolio.get_open_and_frozen_positions()
+    )
+
+    if mod.trade_routing == TradeRouting.ignore and not has_onchain_bridge_positions:
         corrections = []
         logger.info("On-chain account correction skipped - strategy uses TradeRouting.ignore")
     else:
@@ -467,7 +490,7 @@ def correct_accounts(
     block_number = get_almost_latest_block_number(web3)
 
     # Skip final on-chain account check for strategies without on-chain trading
-    if mod.trade_routing == TradeRouting.ignore:
+    if mod.trade_routing == TradeRouting.ignore and not has_onchain_bridge_positions:
         logger.info("Final account check skipped - strategy uses TradeRouting.ignore")
         logger.info("All ok")
         sys.exit(0)

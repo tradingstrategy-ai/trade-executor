@@ -133,6 +133,8 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
         kind = TradingPairKind.vault
     elif dex_pair.dex_type == ExchangeType.derive:
         kind = TradingPairKind.exchange_account
+    elif dex_pair.other_data and dex_pair.other_data.get("bridge_protocol") == "cctp":
+        kind = TradingPairKind.cctp_bridge
     else:
         kind = TradingPairKind.spot_market_hold
 
@@ -198,9 +200,9 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                 }
             })
 
-        # Preserve exchange account fields (Derive, CCXT, etc.)
+        # Preserve exchange account fields (Derive, CCXT, etc.) and bridge fields
         for key in ("exchange_protocol", "exchange_subaccount_id", "exchange_is_testnet",
-                     "ccxt_account_id", "ccxt_exchange_id"):
+                     "ccxt_account_id", "ccxt_exchange_id", "bridge_protocol"):
             val = dex_pair.other_data.get(key)
             if val is not None:
                 pair.other_data[key] = val

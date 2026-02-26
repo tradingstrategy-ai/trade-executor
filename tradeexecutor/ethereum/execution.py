@@ -111,6 +111,7 @@ class EthereumExecution(ExecutionModel):
         self.force_sequential_broadcast = force_sequential_broadcast
         self.disable_broadcast =disable_broadcast
         self.account_value_func = None
+        self.web3config = None  # Set by CLI bootstrap for multichain support
         logger.info(
             "Execution model %s created.\n confirmation_block_count: %s, confirmation_timeout: %s, mainnet_fork: %s, force_sequential_broadcast: %s",
             self.__class__.__name__,

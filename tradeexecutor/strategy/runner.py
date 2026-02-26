@@ -595,6 +595,7 @@ class StrategyRunner(abc.ABC):
                     web3,
                     cast(TradingStrategyUniverse, universe),
                     account_value_func=getattr(self.execution_model, 'account_value_func', None),
+                    web3config=getattr(self.execution_model, 'web3config', None),
                 )
                 routing_model.initialise(pair_configurator)
 

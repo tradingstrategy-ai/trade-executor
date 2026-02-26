@@ -376,6 +376,12 @@ class TradeExecution:
     #: How much reserves was moved on this trade before execution
     reserve_currency_allocated: Optional[Decimal] = None
 
+    #: How much was allocated from a CCTP bridge position for this trade.
+    #:
+    #: Used for satellite chain trades that spend from bridge positions
+    #: instead of from the source chain reserve.
+    bridge_currency_allocated: Decimal | None = None
+
     #: When this trade entered mempool
     broadcasted_at: Optional[datetime.datetime] = None
 
@@ -760,7 +766,12 @@ class TradeExecution:
 
         - :py:meth:`get_short_label`
         """
-        if self.is_spot():
+        if self.pair.is_cctp_bridge():
+            if self.is_buy():
+                return "Bridge out"
+            else:
+                return "Bridge back"
+        elif self.is_spot():
             if self.is_buy():
                 return "Buy"
             else:
@@ -982,6 +993,8 @@ class TradeExecution:
     def is_spot(self) -> bool:
         """This is a spot market trade."""
         if self.pair.is_exchange_account():
+            return False
+        if self.pair.is_cctp_bridge():
             return False
         return not self.is_credit_based()
 

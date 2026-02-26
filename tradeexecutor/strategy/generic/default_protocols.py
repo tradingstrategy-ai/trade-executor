@@ -53,6 +53,10 @@ def default_match_router(
         return ProtocolRoutingId(
             router_name="exchange_account",
         )
+    elif pair.is_cctp_bridge():
+        return ProtocolRoutingId(
+            router_name="cctp-bridge",
+        )
 
     pair_universe = strategy_universe.data_universe.pairs
 
@@ -93,14 +97,18 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
     configs = set()
 
     # Collect exchange IDs used by exchange account pairs (Derive, etc.)
-    # so we can skip them in the exchange loop below
+    # and CCTP bridge pairs so we can skip them in the exchange loop below
     exchange_account_exchange_ids = set()
+    has_cctp_bridge = False
     pairs_df = strategy_universe.data_universe.pairs.df
     if "other_data" in pairs_df.columns:
         for _, row in pairs_df.iterrows():
             other_data = row.get("other_data")
-            if isinstance(other_data, dict) and other_data.get("exchange_protocol"):
-                exchange_account_exchange_ids.add(row["exchange_id"])
+            if isinstance(other_data, dict):
+                if other_data.get("exchange_protocol"):
+                    exchange_account_exchange_ids.add(row["exchange_id"])
+                if other_data.get("bridge_protocol") == "cctp":
+                    has_cctp_bridge = True
 
     vaults_done = False
 
@@ -143,5 +151,13 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
                     lending_protocol_slug="aave_v3",
                 )
             )
+
+    # Add CCTP bridge routing if any bridge pairs are present
+    if has_cctp_bridge:
+        configs.add(
+            ProtocolRoutingId(
+                router_name="cctp-bridge",
+            )
+        )
 
     return configs

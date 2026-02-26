@@ -166,6 +166,9 @@ def get_asset_amounts(p: TradingPosition) -> List[Tuple[AssetIdentifier, Decimal
     elif p.is_exchange_account():
         # Exchange account positions are not on-chain, skip them
         return []
+    elif p.pair.is_cctp_bridge():
+        # Bridge positions hold destination USDC on-chain
+        return [(p.pair.base, p.get_quantity())]
     else:
         raise NotImplementedError()
 
@@ -179,6 +182,9 @@ def get_onchain_assets(pair: TradingPairIdentifier) -> List[AssetIdentifier]:
     elif pair.is_exchange_account():
         # Exchange account positions are not on-chain, no assets to check
         return []
+    elif pair.is_cctp_bridge():
+        # Bridge positions hold destination USDC on-chain
+        return [pair.base]
     else:
         raise NotImplementedError()
 

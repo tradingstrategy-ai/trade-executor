@@ -13,7 +13,7 @@ from dataclasses_json import dataclass_json
 
 from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.types import PrimaryKey
-from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier, AssetFriendlyId
+from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind, AssetIdentifier, AssetFriendlyId
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
@@ -950,6 +950,76 @@ class Portfolio:
             trade.executed_reserve,
             f"Returning USD to reserves from trade::\n{trade}"
         )
+
+    def get_bridge_position_for_chain(self, chain_id: int) -> "TradingPosition | None":
+        """Find an open CCTP bridge position targeting the given destination chain.
+
+        :param chain_id:
+            The destination chain id to look for.
+
+        :return:
+            The bridge position, or None if no bridge exists to that chain.
+        """
+        for position in self.open_positions.values():
+            if position.pair.kind == TradingPairKind.cctp_bridge:
+                if position.pair.destination_chain_id == chain_id:
+                    return position
+        return None
+
+    def move_capital_from_bridge_to_spot_trade(
+            self,
+            trade: "TradeExecution",
+            underflow_check=True):
+        """Allocate capital from a bridge position to a satellite chain trade.
+
+        Similar to :py:meth:`move_capital_from_reserves_to_spot_trade` but deducts
+        from an open CCTP bridge position instead of from reserves.
+
+        :param trade:
+            The trade that needs capital on the satellite chain.
+        :param underflow_check:
+            If True, raise if bridge position has insufficient funds.
+        :raises NotEnoughMoney:
+            If the bridge position does not have enough capital.
+        """
+        reserve = trade.get_planned_reserve()
+        bridge_chain_id = trade.pair.chain_id
+        bridge_position = self.get_bridge_position_for_chain(bridge_chain_id)
+
+        if bridge_position is None:
+            raise NotEnoughMoney(f"No bridge position found for chain {bridge_chain_id}, trade {trade}")
+
+        available = bridge_position.get_available_bridge_capital()
+        if underflow_check:
+            if available < reserve:
+                raise NotEnoughMoney(
+                    f"Not enough bridged capital on chain {bridge_chain_id}. "
+                    f"Bridge has {available}, trade {trade} wants {reserve}"
+                )
+
+        trade.bridge_currency_allocated = reserve
+
+        # Track capital allocated from the bridge position to satellite trades
+        bridge_position.adjust_bridge_capital_allocated(reserve)
+
+    def return_capital_to_bridge(
+            self,
+            trade: "TradeExecution"):
+        """Return capital to a bridge position after a satellite chain sell.
+
+        The reverse of :py:meth:`move_capital_from_bridge_to_spot_trade`.
+
+        :param trade:
+            The completed sell trade whose proceeds should go back to the bridge.
+        """
+        assert trade.is_sell(), f"Can only return capital from sell trades: {trade}"
+        assert trade.executed_reserve > 0, f"Trade has no executed reserve: {trade}"
+
+        bridge_chain_id = trade.pair.chain_id
+        bridge_position = self.get_bridge_position_for_chain(bridge_chain_id)
+        assert bridge_position is not None, f"No bridge position for chain {bridge_chain_id}"
+
+        bridge_position.adjust_bridge_capital_allocated(-trade.executed_reserve)
 
     def has_unexecuted_trades(self) -> bool:
         """Do we have any trades that have capital allocated, but not executed yet."""

@@ -732,12 +732,20 @@ class State:
             self.portfolio.check_for_nonce_reuse(nonce)
 
         # Allocate reserve capital for this trade.
-        # Reserve capital cannot be double spent until the trades are execured.
-        if trade.is_spot():
+        # Reserve capital cannot be double spent until the trades are executed.
+        if trade.pair.is_cctp_bridge():
+            # CCTP bridge trades spend from source chain reserves
             if trade.is_buy():
-                # Spot trade reserves can go to negative before execution,
-                # because reservs will be there after we have executed some sell trades first
                 self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
+        elif trade.is_spot():
+            if trade.is_buy():
+                # Check if this trade is on a satellite chain (funded by bridge position)
+                bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+                if bridge_position is not None:
+                    self.portfolio.move_capital_from_bridge_to_spot_trade(trade, underflow_check=underflow_check)
+                else:
+                    # Normal spot trade from reserves
+                    self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
         elif trade.is_leverage():
             self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
         elif trade.is_credit_supply():
@@ -870,6 +878,14 @@ class State:
                 )
 
         if trade.is_spot() and trade.is_sell():
+            # For satellite chain trades, return capital to bridge position
+            bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+            if bridge_position is not None:
+                self.portfolio.return_capital_to_bridge(trade)
+            else:
+                self.portfolio.return_capital_to_reserves(trade)
+        elif trade.pair.is_cctp_bridge() and trade.is_sell():
+            # Bridge-back: return capital to source chain reserves
             self.portfolio.return_capital_to_reserves(trade)
         elif trade.is_leverage():
 

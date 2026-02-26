@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add multichain CCTP bridge position support with pricing, valuation, routing and `correct-accounts` auto-creation (2026-02-26)
+
 - Fix `correct-accounts` to create and sync exchange account positions in one pass (2026-02-23)
 
 - Fix `correct-history` to update trading period start date and share price return baseline after pruning (2026-02-21)
