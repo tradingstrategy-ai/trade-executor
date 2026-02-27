@@ -160,7 +160,7 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             decide_trades=mod_info.decide_trades,
             execution_context=execution_context,
             run_state=run_state,
-            accounting_checks=execution_context.mode.is_live_trading(),
+            accounting_checks=kwargs["check_accounts"] if kwargs.get("check_accounts") is not None else execution_context.mode.is_live_trading(),
             unit_testing=execution_context.mode.is_unit_testing(),
             create_indicators=create_indicators,
             parameters=parameters,

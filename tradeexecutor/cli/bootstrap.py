@@ -246,6 +246,7 @@ def create_execution_and_sync_model(
     vault_adapter_address: Optional[str],
     vault_payment_forwarder_address: Optional[str],
     routing_hint: Optional[TradeRouting] = None,
+    unit_testing: bool = False,
 ) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory]:
     """Set up the wallet sync and execution mode for the command line client."""
 
@@ -270,6 +271,7 @@ def create_execution_and_sync_model(
             vault_address,
             vault_adapter_address,
             vault_payment_forwarder_address,
+            unit_testing=unit_testing,
         )
 
         # Pass web3config for multichain balance queries (e.g. CCTP bridge)
@@ -304,8 +306,9 @@ def create_execution_and_sync_model(
             if satellite_modules_json:
                 import json as _json
                 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonSatelliteVault
-                from eth_defi.vault.base import VaultSpec
                 satellite_modules = _json.loads(satellite_modules_json)
+                # The Safe address is shared across all chains (CREATE2)
+                safe_address = sync_model.vault.safe_address
                 satellite_vaults = {}
                 for chain_slug, module_address in satellite_modules.items():
                     sat_chain_id = ChainId[chain_slug]
@@ -313,11 +316,11 @@ def create_execution_and_sync_model(
                     assert sat_web3, f"No Web3 connection for satellite chain {chain_slug}"
                     sat_vault = LagoonSatelliteVault(
                         sat_web3,
-                        VaultSpec(sat_web3.eth.chain_id, sat_web3.to_checksum_address(module_address)),
-                        trading_strategy_module_address=module_address,
+                        safe_address=sat_web3.to_checksum_address(safe_address),
+                        trading_strategy_module_address=sat_web3.to_checksum_address(module_address),
                     )
                     satellite_vaults[sat_chain_id.value] = sat_vault
-                    logger.info("Satellite vault on %s: module=%s", chain_slug, module_address)
+                    logger.info("Satellite vault on %s: safe=%s, module=%s", chain_slug, safe_address, module_address)
                 execution_model.satellite_vaults = satellite_vaults
 
         return execution_model, sync_model, valuation_model_factory, pricing_model_factory
@@ -567,6 +570,7 @@ def create_sync_model(
     vault_adapter_address: Optional[str] = None,
     vault_payment_forwarder_address: Optional[str] = None,
     init=False,
+    unit_testing=False,
 ) -> SyncModel:
     """Create sync model for wallet type
 
@@ -608,6 +612,8 @@ def create_sync_model(
             return LagoonVaultSyncModel(
                 vault,
                 hot_wallet,
+                unit_testing=unit_testing,
+                valuation_data_freshness=datetime.timedelta(days=2) if unit_testing else datetime.timedelta(hours=4),
             )
         case _:
             raise NotImplementedError()

@@ -95,7 +95,11 @@ def lagoon_settle(
     if not web3config.has_any_connection():
         raise RuntimeError("Vault deploy requires that you pass JSON-RPC connection to one of the networks")
 
-    web3config.choose_single_chain()
+    if len(web3config.connections) > 1:
+        # Multichain setup — pick the first chain (vault source chain) as the default
+        web3config.choose_single_chain(default_chain_id=next(iter(web3config.connections.keys())))
+    else:
+        web3config.choose_single_chain()
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=asset_management_mode,
@@ -109,6 +113,7 @@ def lagoon_settle(
         vault_adapter_address=vault_adapter_address,
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
+        unit_testing=unit_testing,
     )
 
     client, routing_model = create_client(

@@ -341,6 +341,7 @@ def start(
             vault_adapter_address=vault_adapter_address,
             vault_payment_forwarder_address=vault_payment_forwarder_address,
             routing_hint=mod.trade_routing,
+            unit_testing=unit_testing,
         )
 
         # TODO: Unit test hack

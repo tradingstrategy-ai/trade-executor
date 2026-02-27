@@ -92,8 +92,9 @@ def create_trading_universe(
     usdc_dest_address = USDC_NATIVE_TOKEN[DEST_CHAIN_ID.value]
     weth_address = WRAPPED_NATIVE_TOKEN[DEST_CHAIN_ID.value]
 
-    # WETH/USDC pool on Base Sepolia — must be provided via env var
-    weth_usdc_pool = os.environ.get("WETH_USDC_POOL_BASE_SEPOLIA", "0x0000000000000000000000000000000000000000")
+    # WETH/USDC pool on Base Sepolia (Uniswap v3, 0.05% fee tier)
+    # Default: well-known pool at 0x94bfc...EeC0
+    weth_usdc_pool = os.environ.get("WETH_USDC_POOL_BASE_SEPOLIA", "0x94bfc0574FF48E92cE43d495376C477B1d0EEeC0")
 
     # Reserve token on source chain (Arbitrum Sepolia)
     usdc_source = AssetIdentifier(
@@ -137,6 +138,8 @@ def create_trading_universe(
     )
 
     # WETH/USDC on Base Sepolia Uniswap v3 (0.05% fee tier)
+    # Token order: USDC (0x036C...) < WETH (0x4200...) so USDC=token0, WETH=token1
+    # Since base=WETH != token0=USDC, we need reverse_token_order=True
     weth_usdc_pair = TradingPairIdentifier(
         base=weth,
         quote=usdc_dest,
@@ -147,6 +150,7 @@ def create_trading_universe(
         fee=0.0005,
         kind=TradingPairKind.spot_market_hold,
         exchange_name="Uniswap v3 (Base Sepolia)",
+        reverse_token_order=True,
     )
 
     # Reverse CCTP bridge pair: bridge USDC from Base Sepolia back to Arbitrum Sepolia

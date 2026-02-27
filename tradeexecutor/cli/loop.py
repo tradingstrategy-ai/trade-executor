@@ -1518,6 +1518,7 @@ class ExecutionLoop:
             parameters=self.parameters,
             visualisation=self.visulisation,
             max_price_impact=self.max_price_impact,
+            check_accounts=self.check_accounts,
         )
 
         self.init_live_run_state(run_description)

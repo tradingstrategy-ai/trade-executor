@@ -152,8 +152,9 @@ def create_uniswap_v3_adapter(
     allowed_intermediary_pairs = UNISWAP_V3_INTERMEDIATE.get(chain_id, {})
 
     if chain_id == ChainId.base:
-        # Special case for Base chain
         address_map = UNISWAP_V3_DEPLOYMENTS["base"]
+    elif chain_id == ChainId.base_sepolia:
+        address_map = UNISWAP_V3_DEPLOYMENTS["base_sepolia"]
     elif chain_id == ChainId.binance:
         address_map = UNISWAP_V3_DEPLOYMENTS["binance"]
     elif chain_id in (ChainId.ethereum, ChainId.polygon, ChainId.arbitrum):

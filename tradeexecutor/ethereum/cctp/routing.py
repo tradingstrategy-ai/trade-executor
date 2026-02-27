@@ -95,8 +95,9 @@ class CctpBridgeRouting(RoutingModel):
 
             amount_raw = int(trade.planned_reserve * (10 ** pair.quote.decimals))
 
-            # Get the token storage address (wallet/safe) that holds USDC
-            token_storage = state.sync.deployment.address
+            # Get the address that holds USDC — for vault setups (Lagoon, Enzyme)
+            # this is the Safe/vault custody address, not the ERC-4626 wrapper.
+            token_storage = tx_builder.get_erc_20_balance_address()
 
             # Resolve burn token address (source chain USDC)
             burn_token_address = USDC_NATIVE_TOKEN.get(source_chain_id)
@@ -122,16 +123,21 @@ class CctpBridgeRouting(RoutingModel):
             )
 
             # Sign transactions
+            # asset_deltas=[] is required by vault transaction builders
+            # (Lagoon, Enzyme) even though CCTP bridges don't have traditional
+            # asset deltas — the guard doesn't enforce slippage on bridging.
             approve_tx = tx_builder.sign_transaction(
                 usdc_contract,
                 approve_fn,
                 gas_limit=100_000,
+                asset_deltas=[],
                 notes=f"CCTP approve {trade.planned_reserve} USDC",
             )
             burn_tx = tx_builder.sign_transaction(
                 token_messenger,
                 burn_fn,
                 gas_limit=300_000,
+                asset_deltas=[],
                 notes=f"CCTP depositForBurn {trade.planned_reserve} USDC chain {source_chain_id} -> {dest_chain_id}",
             )
 
