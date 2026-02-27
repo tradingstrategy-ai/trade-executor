@@ -6,13 +6,10 @@ Tests cross-chain USDC bridging via Circle's CCTP V2 protocol:
 2. Bridge back (reverse direction)
 3. Bridge + swap on satellite chain
 
-Requires JSON_RPC_ARBITRUM and JSON_RPC_BASE environment variables.
-Uses Anvil forks with spoofed CCTP attestation.
+Pure unit tests — no RPC connections or Anvil forks needed.
 """
 
 import datetime
-import logging
-import os
 from decimal import Decimal
 
 import pytest
@@ -24,14 +21,6 @@ from tradeexecutor.state.identifier import (
 )
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeType
-
-JSON_RPC_ARBITRUM = os.environ.get("JSON_RPC_ARBITRUM")
-JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
-
-pytestmark = pytest.mark.skipif(
-    not JSON_RPC_ARBITRUM or not JSON_RPC_BASE,
-    reason="JSON_RPC_ARBITRUM and JSON_RPC_BASE environment variables required",
-)
 
 
 #: Arbitrum native USDC address
@@ -83,11 +72,11 @@ def test_cctp_pair_properties(cctp_pair):
     assert cctp_pair.kind == TradingPairKind.cctp_bridge
 
     # Source chain is Arbitrum (quote token chain)
-    assert cctp_pair.source_chain_id == 42161
+    assert cctp_pair.get_source_chain_id() == 42161
     assert cctp_pair.chain_id == 42161  # chain_id returns source for bridge pairs
 
     # Destination chain is Base (base token chain)
-    assert cctp_pair.destination_chain_id == 8453
+    assert cctp_pair.get_destination_chain_id() == 8453
 
     # Fee is zero
     assert cctp_pair.fee == 0
@@ -344,73 +333,46 @@ def test_bridge_then_spot_on_satellite(cctp_pair, usdc_arbitrum_asset, usdc_base
     assert bridge_position in state.portfolio.open_positions.values()
 
 
-def test_cctp_pricing_model():
+def test_cctp_pricing_model(cctp_pair):
     """Test that CCTP bridge pricing always returns 1:1."""
     from tradeexecutor.ethereum.cctp.pricing import CctpBridgePricingModel
-
-    usdc_arb = AssetIdentifier(chain_id=42161, address="0xaf88d065e77c8cC2239327C5EDb3A432268e5831", token_symbol="USDC", decimals=6)
-    usdc_base = AssetIdentifier(chain_id=8453, address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", token_symbol="USDC", decimals=6)
-
-    pair = TradingPairIdentifier(
-        base=usdc_base,
-        quote=usdc_arb,
-        pool_address="0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
-        exchange_address="0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
-        fee=0,
-        kind=TradingPairKind.cctp_bridge,
-        other_data={"bridge_protocol": "cctp"},
-    )
 
     pricing = CctpBridgePricingModel()
     ts = datetime.datetime(2025, 1, 1)
 
-    buy_price = pricing.get_buy_price(ts, pair, Decimal(1000))
+    buy_price = pricing.get_buy_price(ts, cctp_pair, Decimal(1000))
     assert buy_price.price == 1.0
     assert buy_price.mid_price == 1.0
     assert buy_price.lp_fee == [0.0]
 
-    sell_price = pricing.get_sell_price(ts, pair, Decimal(1000))
+    sell_price = pricing.get_sell_price(ts, cctp_pair, Decimal(1000))
     assert sell_price.price == 1.0
     assert sell_price.mid_price == 1.0
 
-    mid_price = pricing.get_mid_price(ts, pair)
+    mid_price = pricing.get_mid_price(ts, cctp_pair)
     assert mid_price == 1.0
 
 
-def test_cctp_valuation_model():
+def test_cctp_valuation_model(cctp_pair, usdc_arbitrum_asset):
     """Test that CCTP bridge valuation returns face value."""
     from tradeexecutor.ethereum.cctp.valuation import CctpBridgeValuationModel
 
-    usdc_arb = AssetIdentifier(chain_id=42161, address="0xaf88d065e77c8cC2239327C5EDb3A432268e5831", token_symbol="USDC", decimals=6)
-    usdc_base = AssetIdentifier(chain_id=8453, address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", token_symbol="USDC", decimals=6)
-
-    pair = TradingPairIdentifier(
-        base=usdc_base,
-        quote=usdc_arb,
-        pool_address="0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
-        exchange_address="0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
-        fee=0,
-        kind=TradingPairKind.cctp_bridge,
-        other_data={"bridge_protocol": "cctp"},
-    )
-
-    # Create a state with a bridge position
     state = State()
     ts = datetime.datetime(2025, 1, 1)
 
-    state.portfolio.initialise_reserves(usdc_arb)
+    state.portfolio.initialise_reserves(usdc_arbitrum_asset)
     reserve = state.portfolio.get_default_reserve_position()
     reserve.quantity = Decimal(10000)
     reserve.reserve_token_price = 1.0
 
     position, trade, _ = state.create_trade(
         strategy_cycle_at=ts,
-        pair=pair,
+        pair=cctp_pair,
         quantity=None,
         reserve=Decimal(1000),
         assumed_price=1.0,
         trade_type=TradeType.rebalance,
-        reserve_currency=usdc_arb,
+        reserve_currency=usdc_arbitrum_asset,
         reserve_currency_price=1.0,
     )
 
@@ -426,7 +388,6 @@ def test_cctp_valuation_model():
         native_token_price=0,
     )
 
-    # Revalue
     valuator = CctpBridgeValuationModel()
     update = valuator(ts, position)
 

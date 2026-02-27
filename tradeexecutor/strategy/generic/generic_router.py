@@ -139,18 +139,13 @@ class GenericRouting(RoutingModel):
             # Multichain: if the trade targets a satellite chain, temporarily
             # swap the tx_builder and web3 so transactions are signed for and
             # contract calls hit the correct chain.
-            # For CCTP bridge trades, the execution chain is the source chain (quote),
-            # not the destination (base).
             original_tx_builder = None
             original_web3 = None
             web3config = getattr(self.pair_configurator, 'web3config', None)
             if (web3config
                 and hasattr(router_state, 'tx_builder')
                 and router_state.tx_builder is not None):
-                if t.pair.is_cctp_bridge():
-                    trade_chain_id = t.pair.quote.chain_id
-                else:
-                    trade_chain_id = t.pair.base.chain_id
+                trade_chain_id = t.pair.chain_id
                 if trade_chain_id != router_state.tx_builder.chain_id:
                     from eth_defi.hotwallet import HotWallet as EthHotWallet
                     from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
@@ -199,12 +194,8 @@ class GenericRouting(RoutingModel):
 
         # Multichain: use the satellite chain's web3 if the trade
         # was executed on a different chain than the default.
-        # For CCTP bridge, execution happens on the source chain (quote).
         web3config = getattr(self.pair_configurator, 'web3config', None)
-        if trade.pair.is_cctp_bridge():
-            trade_chain_id = trade.pair.quote.chain_id
-        else:
-            trade_chain_id = trade.pair.base.chain_id
+        trade_chain_id = trade.pair.chain_id
         if web3config and trade_chain_id != web3.eth.chain_id:
             web3 = web3config.get_connection(ChainId(trade_chain_id))
 

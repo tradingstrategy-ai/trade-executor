@@ -648,8 +648,7 @@ class TradingPairIdentifier:
             return self.quote.chain_id
         return self.base.chain_id
 
-    @property
-    def source_chain_id(self) -> int:
+    def get_source_chain_id(self) -> int:
         """Return the source chain id for cross-chain pairs.
 
         For CCTP bridge pairs, this is the chain where USDC is burned (quote token chain).
@@ -657,8 +656,7 @@ class TradingPairIdentifier:
         """
         return self.quote.chain_id
 
-    @property
-    def destination_chain_id(self) -> int:
+    def get_destination_chain_id(self) -> int:
         """Return the destination chain id for cross-chain pairs.
 
         For CCTP bridge pairs, this is the chain where USDC is minted (base token chain).

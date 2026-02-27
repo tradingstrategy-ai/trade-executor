@@ -962,7 +962,7 @@ class Portfolio:
         """
         for position in self.open_positions.values():
             if position.pair.kind == TradingPairKind.cctp_bridge:
-                if position.pair.destination_chain_id == chain_id:
+                if position.pair.get_destination_chain_id() == chain_id:
                     return position
         return None
 

@@ -40,8 +40,6 @@ from eth_defi.trace import assert_transaction_success_with_explanation
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
-from tradeexecutor.statistics.core import calculate_statistics
-from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
@@ -211,8 +209,8 @@ def test_cctp_bridge_start_single_cycle(
 
     equity_after_c1 = state.portfolio.get_total_equity()
     # Bridge positions have 0 equity, so total = reserves only (~5000)
-    assert equity_after_c1 > 0, \
-        f"Equity should be positive after cycle 1, got {equity_after_c1}"
+    assert equity_after_c1 == pytest.approx(5000, abs=500), \
+        f"Equity after cycle 1 should be ~5000 (reserves only), got {equity_after_c1}"
 
     # === Spoof CCTP attestation on Base ===
     base_web3 = Web3(HTTPProvider(anvil_base.json_rpc_url))
@@ -278,8 +276,8 @@ def test_cctp_bridge_start_single_cycle(
 
     equity_after_c2 = state.portfolio.get_total_equity()
     # Equity = reserves (Arb USDC) + WETH position value; bridge = 0
-    assert equity_after_c2 > 0, \
-        f"Equity should be positive after cycle 2, got {equity_after_c2}"
+    assert equity_after_c2 > 4000, \
+        f"Equity after cycle 2 should be > 4000 (reserves + WETH), got {equity_after_c2}"
 
     # === Cycle 3: Sell WETH → USDC on Base ===
     with mock.patch.dict("os.environ", environment, clear=True):
@@ -311,8 +309,8 @@ def test_cctp_bridge_start_single_cycle(
         f"Expected USDC to increase after WETH sell, got {base_usdc_after_sell}"
 
     equity_after_c3 = state.portfolio.get_total_equity()
-    assert equity_after_c3 > 0, \
-        f"Equity should be positive after cycle 3, got {equity_after_c3}"
+    assert equity_after_c3 > 4000, \
+        f"Equity after cycle 3 should be > 4000, got {equity_after_c3}"
 
     # === Cycle 4: Bridge USDC from Base → Arbitrum ===
     with mock.patch.dict("os.environ", environment, clear=True):

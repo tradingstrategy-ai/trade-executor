@@ -644,7 +644,6 @@ class EthereumPairConfigurator(PairConfigurator):
             Web3 connection for the specified chain.
         """
         if self.web3config is not None:
-            from tradeexecutor.ethereum.web3config import Web3Config
             connection = self.web3config.get_connection(ChainId(chain_id))
             if connection is not None:
                 return connection

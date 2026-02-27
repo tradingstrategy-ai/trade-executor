@@ -5,7 +5,6 @@ on the source chain and receive transactions on the destination chain.
 """
 
 import logging
-from typing import List
 
 from eth_defi.chain import fetch_block_timestamp
 from eth_defi.compat import native_datetime_utc_now
@@ -23,8 +22,7 @@ logger = logging.getLogger(__name__)
 class CctpBridgeRoutingState(RoutingState):
     """Tracks CCTP bridge transactions for the current cycle."""
 
-    def __init__(self, universe=None, tx_builder: TransactionBuilder | None = None):
-        self.universe = universe
+    def __init__(self, tx_builder: TransactionBuilder | None = None):
         self.tx_builder = tx_builder
 
 
@@ -48,7 +46,7 @@ class CctpBridgeRouting(RoutingModel):
         execution_details: object,
     ) -> CctpBridgeRoutingState:
         tx_builder = execution_details.get("tx_builder") if isinstance(execution_details, dict) else None
-        return CctpBridgeRoutingState(universe, tx_builder=tx_builder)
+        return CctpBridgeRoutingState(tx_builder=tx_builder)
 
     def setup_trades(
         self,
