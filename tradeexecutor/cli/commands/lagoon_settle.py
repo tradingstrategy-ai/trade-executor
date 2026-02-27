@@ -44,6 +44,8 @@ def lagoon_settle(
     json_rpc_base: Optional[str] = shared_options.json_rpc_base,
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
+    json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
+    json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
     private_key: str = shared_options.private_key,
 
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
@@ -85,6 +87,8 @@ def lagoon_settle(
         json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base, 
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
+        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
+        json_rpc_base_sepolia=json_rpc_base_sepolia,
         simulate=simulate,
     )
 

@@ -1,0 +1,550 @@
+"""Manual test: Cross-chain Lagoon vault lifecycle via trade-executor CLI.
+
+Exercises the full lifecycle of a multichain Lagoon vault on
+Arbitrum Sepolia + Base Sepolia using trade-executor CLI commands:
+
+1. Deploy multichain vault via ``lagoon-deploy-vault --strategy-file=...``
+2. Initialise state via ``init``
+3. Deposit USDC into the vault
+4. Settle vault via ``lagoon-settle``
+5. Run 5 strategy cycles via ``start`` with ``RUN_SINGLE_CYCLE=true``:
+   - Cycle 1: Bridge USDC from Arbitrum Sepolia -> Base Sepolia via CCTP
+   - (wait for CCTP attestation + receive on Base Sepolia)
+   - Cycle 2: Swap USDC -> WETH on Base Sepolia via Uniswap v3
+   - Cycle 3: Sell WETH -> USDC on Base Sepolia
+   - Cycle 4: Bridge USDC from Base Sepolia -> Arbitrum Sepolia via reverse CCTP
+   - (wait for CCTP attestation + receive on Arbitrum Sepolia)
+   - Cycle 5: No-op, verify funds returned
+6. Final settle + verification
+
+The script uses the ``lagoon_crosschain_manual_test`` strategy module,
+which creates a universe with CCTP bridge pairs and a WETH/USDC Uniswap v3
+pair on Base Sepolia.
+
+Prerequisites
+-------------
+
+- Forge (for from-scratch Lagoon deployment on testnets)
+- Testnet ETH on Arbitrum Sepolia and Base Sepolia
+  (use LearnWeb3 and thirdweb faucets)
+- Testnet USDC on Arbitrum Sepolia
+  (use Circle faucet: https://faucet.circle.com/)
+- A WETH/USDC Uniswap v3 pool on Base Sepolia (provide address via env var)
+
+Environment variables
+---------------------
+
+``JSON_RPC_ARBITRUM_SEPOLIA``
+    Arbitrum Sepolia RPC URL. Required.
+
+``JSON_RPC_BASE_SEPOLIA``
+    Base Sepolia RPC URL. Required.
+
+``PRIVATE_KEY``
+    Deployer private key. Must hold testnet ETH + USDC.
+
+``USDC_AMOUNT``
+    Amount of USDC to deposit into the vault (default: ``10``).
+
+``WETH_USDC_POOL_BASE_SEPOLIA``
+    Uniswap v3 WETH/USDC pool address on Base Sepolia.
+    Required for swap cycles.
+
+``ATTESTATION_TIMEOUT``
+    Maximum seconds to wait for CCTP attestation (default: ``3600``).
+    Testnet attestations can take 15-20 minutes.
+
+``TRADING_STRATEGY_API_KEY``
+    TradingStrategy.ai API key. Optional for code-based strategies,
+    but may be required by the ``start`` command.
+
+Usage
+-----
+
+.. code-block:: shell
+
+    JSON_RPC_ARBITRUM_SEPOLIA="https://..." \\
+    JSON_RPC_BASE_SEPOLIA="https://..." \\
+    PRIVATE_KEY="0x..." \\
+    WETH_USDC_POOL_BASE_SEPOLIA="0x..." \\
+    poetry run python scripts/lagoon/test-lagoon-crosschain-te.py
+
+.. note::
+
+    Simulation mode (Anvil forks) is **not supported** for testnet chains
+    because Lagoon factory contracts are not deployed on Sepolia chains.
+    For simulated testing, use the reference eth_defi deploy script:
+    ``deps/web3-ethereum-defi/scripts/lagoon/deploy-lagoon-multichain.py``
+    with ``SIMULATE=true`` (mainnet forks).
+"""
+
+import json
+import logging
+import os
+import sys
+import tempfile
+from decimal import Decimal
+from pathlib import Path
+from unittest import mock
+
+from eth_defi.cctp.attestation import wait_for_cctp_attestation
+from eth_defi.cctp.constants import TESTNET_CHAIN_ID_TO_CCTP_DOMAIN
+from eth_defi.cctp.receive import prepare_receive_message
+from eth_defi.erc_4626.vault_protocol.lagoon.testing import fund_lagoon_vault
+from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.multi_provider import create_multi_provider_web3
+from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
+from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_defi.utils import setup_console_logging
+
+from tradeexecutor.cli.main import app
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeStatus
+
+logger = logging.getLogger(__name__)
+
+#: Arbitrum Sepolia chain ID
+ARBITRUM_SEPOLIA_CHAIN_ID = 421614
+
+#: Base Sepolia chain ID
+BASE_SEPOLIA_CHAIN_ID = 84532
+
+
+def run_cli(args: list[str], env: dict):
+    """Run a trade-executor CLI command with the given environment.
+
+    Uses ``mock.patch.dict`` to set environment variables cleanly,
+    matching the pattern used by the trade-executor test suite.
+    """
+    logger.info("Running CLI: trade-executor %s", " ".join(args))
+    with mock.patch.dict("os.environ", env, clear=True):
+        app(args, standalone_mode=False)
+
+
+def load_state(state_file: str) -> State:
+    """Load strategy state from a JSON file."""
+    with open(state_file, "rt") as f:
+        return State.from_json(f.read())
+
+
+def spoof_cctp_attestation(
+    dest_web3,
+    source_chain_id: int,
+    dest_chain_id: int,
+    burn_tx_hash: str,
+    mint_recipient: str,
+    amount_raw: int,
+    deployer: HotWallet,
+    attestation_timeout: float = 3600.0,
+):
+    """Wait for CCTP attestation and call receiveMessage on the destination chain.
+
+    On real testnets, polls Circle's Iris API until the attestation is ready,
+    then submits receiveMessage. Anyone can call receiveMessage — it is
+    permissionless.
+
+    :param dest_web3:
+        Web3 connection to the destination chain.
+
+    :param source_chain_id:
+        Numeric chain ID of the source chain.
+
+    :param dest_chain_id:
+        Numeric chain ID of the destination chain.
+
+    :param burn_tx_hash:
+        Transaction hash of the depositForBurn call.
+
+    :param mint_recipient:
+        Address that will receive the minted USDC.
+
+    :param amount_raw:
+        Raw USDC amount (6 decimals).
+
+    :param deployer:
+        Hot wallet for signing the receiveMessage transaction.
+
+    :param attestation_timeout:
+        Maximum seconds to wait for attestation.
+    """
+    logger.info(
+        "Waiting for CCTP attestation: src_chain=%d, dest_chain=%d, tx=%s, amount=%d, recipient=%s",
+        source_chain_id, dest_chain_id, burn_tx_hash, amount_raw, mint_recipient,
+    )
+
+    message_bytes, attestation_bytes = wait_for_cctp_attestation(
+        source_chain_id=source_chain_id,
+        dest_chain_id=dest_chain_id,
+        burn_tx_hash=burn_tx_hash,
+        dest_safe_address=mint_recipient,
+        amount=amount_raw,
+        simulate=False,
+        timeout=attestation_timeout,
+    )
+
+    logger.info("Attestation received, calling receiveMessage on chain %d", dest_chain_id)
+
+    receive_fn = prepare_receive_message(dest_web3, message_bytes, attestation_bytes)
+
+    deployer.sync_nonce(dest_web3)
+    tx_hash = deployer.transact_and_broadcast_with_contract(receive_fn)
+    assert_transaction_success_with_explanation(dest_web3, tx_hash)
+
+    logger.info("receiveMessage successful: %s", tx_hash.hex() if hasattr(tx_hash, "hex") else tx_hash)
+
+
+def main():
+    setup_console_logging("info")
+
+    # ----- Parse environment -----
+    json_rpc_arb_sepolia = os.environ.get("JSON_RPC_ARBITRUM_SEPOLIA")
+    json_rpc_base_sepolia = os.environ.get("JSON_RPC_BASE_SEPOLIA")
+    private_key = os.environ.get("PRIVATE_KEY")
+
+    assert json_rpc_arb_sepolia, "JSON_RPC_ARBITRUM_SEPOLIA is required"
+    assert json_rpc_base_sepolia, "JSON_RPC_BASE_SEPOLIA is required"
+    assert private_key, "PRIVATE_KEY is required"
+
+    usdc_amount = Decimal(os.environ.get("USDC_AMOUNT", "10"))
+    attestation_timeout = float(os.environ.get("ATTESTATION_TIMEOUT", "3600"))
+    weth_usdc_pool = os.environ.get("WETH_USDC_POOL_BASE_SEPOLIA", "")
+    trading_strategy_api_key = os.environ.get("TRADING_STRATEGY_API_KEY", "")
+
+    # ----- Set up Web3 connections -----
+    arb_web3 = create_multi_provider_web3(json_rpc_arb_sepolia)
+    base_web3 = create_multi_provider_web3(json_rpc_base_sepolia)
+
+    assert arb_web3.eth.chain_id == ARBITRUM_SEPOLIA_CHAIN_ID, \
+        f"Expected Arbitrum Sepolia ({ARBITRUM_SEPOLIA_CHAIN_ID}), got {arb_web3.eth.chain_id}"
+    assert base_web3.eth.chain_id == BASE_SEPOLIA_CHAIN_ID, \
+        f"Expected Base Sepolia ({BASE_SEPOLIA_CHAIN_ID}), got {base_web3.eth.chain_id}"
+
+    deployer = HotWallet.from_private_key(private_key)
+    deployer.sync_nonce(arb_web3)
+
+    # Verify deployer has gas
+    arb_balance = arb_web3.eth.get_balance(deployer.address)
+    base_balance = base_web3.eth.get_balance(deployer.address)
+    logger.info("Deployer: %s", deployer.address)
+    logger.info("  Arbitrum Sepolia ETH: %.6f", arb_balance / 10**18)
+    logger.info("  Base Sepolia ETH:     %.6f", base_balance / 10**18)
+    assert arb_balance > 0, f"Deployer has no ETH on Arbitrum Sepolia. Fund {deployer.address} first."
+    assert base_balance > 0, f"Deployer has no ETH on Base Sepolia. Fund {deployer.address} first."
+
+    # Verify deployer has USDC
+    arb_usdc = fetch_erc20_details(arb_web3, USDC_NATIVE_TOKEN[ARBITRUM_SEPOLIA_CHAIN_ID])
+    deployer_usdc = arb_usdc.fetch_balance_of(deployer.address)
+    logger.info("  Arbitrum Sepolia USDC: %s", deployer_usdc)
+    assert deployer_usdc >= usdc_amount, \
+        f"Deployer needs {usdc_amount} USDC on Arbitrum Sepolia but has {deployer_usdc}. " \
+        f"Get testnet USDC from https://faucet.circle.com/"
+
+    # Strategy file
+    strategy_file = (
+        Path(__file__).resolve().parent / ".." / ".." /
+        "strategies" / "test_only" / "lagoon_crosschain_manual_test.py"
+    )
+    assert strategy_file.exists(), f"Strategy file not found: {strategy_file}"
+
+    print("=" * 70)
+    print("Cross-chain Lagoon vault manual test")
+    print("=" * 70)
+    print(f"  Deployer:       {deployer.address}")
+    print(f"  USDC deposit:   {usdc_amount}")
+    print(f"  Strategy:       {strategy_file.name}")
+    print(f"  Attest timeout: {attestation_timeout}s")
+    print()
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        state_file = str(Path(tmp_dir) / "state.json")
+        vault_record_file = str(Path(tmp_dir) / "vault-record.txt")
+        cache_path = str(Path(tmp_dir) / "cache")
+
+        # ===================================================================
+        # Step 1: Deploy multichain vault
+        # ===================================================================
+        print("\n=== Step 1: Deploy multichain vault ===")
+
+        deploy_env = {
+            "STRATEGY_FILE": str(strategy_file),
+            "PRIVATE_KEY": private_key,
+            "JSON_RPC_ARBITRUM_SEPOLIA": json_rpc_arb_sepolia,
+            "JSON_RPC_BASE_SEPOLIA": json_rpc_base_sepolia,
+            "VAULT_RECORD_FILE": vault_record_file,
+            "FUND_NAME": "Test Crosschain Vault",
+            "FUND_SYMBOL": "TCV",
+            "ANY_ASSET": "true",
+            "UNIT_TESTING": "true",
+            "LOG_LEVEL": "info",
+        }
+
+        run_cli(["lagoon-deploy-vault"], deploy_env)
+
+        # Read deployment record
+        deployment_json = vault_record_file.replace(".txt", ".json")
+        with open(deployment_json) as f:
+            deployment_data = json.load(f)
+
+        arb_dep = deployment_data["deployments"]["arbitrum_sepolia"]
+        base_dep = deployment_data["deployments"]["base_sepolia"]
+        vault_address = arb_dep["vault_address"]
+        safe_address = arb_dep["safe_address"]
+        arb_module = arb_dep["module_address"]
+        base_module = base_dep["module_address"]
+
+        print(f"  Vault:      {vault_address}")
+        print(f"  Safe:       {safe_address}")
+        print(f"  Arb module: {arb_module}")
+        print(f"  Base module: {base_module}")
+
+        # ===================================================================
+        # Step 2: Initialise state
+        # ===================================================================
+        print("\n=== Step 2: Initialise state ===")
+
+        base_env = {
+            "ID": "test-crosschain",
+            "STRATEGY_FILE": str(strategy_file),
+            "STATE_FILE": state_file,
+            "PRIVATE_KEY": private_key,
+            "JSON_RPC_ARBITRUM_SEPOLIA": json_rpc_arb_sepolia,
+            "JSON_RPC_BASE_SEPOLIA": json_rpc_base_sepolia,
+            "ASSET_MANAGEMENT_MODE": "lagoon_vault",
+            "VAULT_ADDRESS": vault_address,
+            "VAULT_ADAPTER_ADDRESS": arb_module,
+            "UNIT_TESTING": "true",
+            "LOG_LEVEL": "info",
+            "CACHE_PATH": cache_path,
+            "SATELLITE_MODULES": json.dumps({"base_sepolia": base_module}),
+            "WETH_USDC_POOL_BASE_SEPOLIA": weth_usdc_pool,
+            "MIN_GAS_BALANCE": "0.0",
+        }
+        if trading_strategy_api_key:
+            base_env["TRADING_STRATEGY_API_KEY"] = trading_strategy_api_key
+
+        run_cli(["init"], {**base_env, "NAME": "Test Crosschain Vault"})
+
+        assert Path(state_file).exists(), "State file was not created"
+        print(f"  State file: {state_file}")
+
+        # ===================================================================
+        # Step 3: Deposit USDC into the vault
+        # ===================================================================
+        print("\n=== Step 3: Deposit USDC ===")
+
+        deployer.sync_nonce(arb_web3)
+        fund_lagoon_vault(
+            web3=arb_web3,
+            vault_address=vault_address,
+            asset_manager=deployer.address,
+            test_account_with_balance=deployer.address,
+            trading_strategy_module_address=arb_module,
+            amount=usdc_amount,
+            hot_wallet=deployer,
+        )
+
+        safe_usdc = arb_usdc.fetch_balance_of(safe_address)
+        print(f"  Safe USDC after deposit: {safe_usdc}")
+
+        # ===================================================================
+        # Step 4: Settle vault (process deposit, update NAV)
+        # ===================================================================
+        print("\n=== Step 4: Settle vault ===")
+
+        settle_env = {k: v for k, v in base_env.items() if k != "NAME"}
+        settle_env["SYNC_INTEREST"] = "false"
+        run_cli(["lagoon-settle"], settle_env)
+
+        print("  Vault settled")
+
+        # ===================================================================
+        # Step 5: Cycle 1 — Bridge USDC from Arbitrum Sepolia to Base Sepolia
+        # ===================================================================
+        print("\n=== Step 5: Cycle 1 — Bridge USDC to Base Sepolia ===")
+
+        start_env = {
+            **base_env,
+            "RUN_SINGLE_CYCLE": "true",
+            "TRADE_IMMEDIATELY": "true",
+            "MAX_CYCLES": "1",
+            "SYNC_TREASURY_ON_STARTUP": "true",
+            "CHECK_ACCOUNTS": "false",
+            "MAX_SLIPPAGE": "0.05",
+        }
+
+        run_cli(["start"], start_env)
+
+        state = load_state(state_file)
+        assert len(state.portfolio.open_positions) >= 1, \
+            f"Expected at least 1 open position after cycle 1, got {len(state.portfolio.open_positions)}"
+
+        # Find the bridge position
+        bridge_positions = [
+            pos for pos in state.portfolio.open_positions.values()
+            if pos.pair.is_cctp_bridge()
+        ]
+        assert len(bridge_positions) == 1, \
+            f"Expected 1 bridge position after cycle 1, got {len(bridge_positions)}"
+
+        bridge_trade = list(bridge_positions[0].trades.values())[0]
+        assert bridge_trade.get_status() == TradeStatus.success, \
+            f"Bridge trade status: {bridge_trade.get_status()}"
+
+        burn_tx_hash = bridge_trade.blockchain_transactions[-1].tx_hash
+        bridge_amount_raw = int(bridge_trade.planned_reserve * 10**6)
+        print(f"  Bridge trade: {bridge_trade.get_status()}")
+        print(f"  Burn TX: {burn_tx_hash}")
+        print(f"  Amount: {bridge_trade.planned_reserve} USDC")
+
+        # ===================================================================
+        # Step 5b: Wait for CCTP attestation + receive on Base Sepolia
+        # ===================================================================
+        print("\n=== Step 5b: CCTP attestation + receive on Base Sepolia ===")
+
+        spoof_cctp_attestation(
+            dest_web3=base_web3,
+            source_chain_id=ARBITRUM_SEPOLIA_CHAIN_ID,
+            dest_chain_id=BASE_SEPOLIA_CHAIN_ID,
+            burn_tx_hash=burn_tx_hash,
+            mint_recipient=safe_address,
+            amount_raw=bridge_amount_raw,
+            deployer=deployer,
+            attestation_timeout=attestation_timeout,
+        )
+
+        # Verify USDC arrived on Base Sepolia
+        base_usdc = fetch_erc20_details(base_web3, USDC_NATIVE_TOKEN[BASE_SEPOLIA_CHAIN_ID])
+        base_safe_usdc = base_usdc.fetch_balance_of(safe_address)
+        print(f"  Base Safe USDC after bridge: {base_safe_usdc}")
+        assert base_safe_usdc > 0, "USDC did not arrive on Base Sepolia"
+
+        # ===================================================================
+        # Step 6: Cycle 2 — Swap USDC -> WETH on Base Sepolia
+        # ===================================================================
+        print("\n=== Step 6: Cycle 2 — Swap USDC -> WETH ===")
+
+        run_cli(["start"], start_env)
+
+        state = load_state(state_file)
+        weth_positions = [
+            pos for pos in state.portfolio.open_positions.values()
+            if pos.pair.base.token_symbol == "WETH"
+        ]
+        assert len(weth_positions) == 1, \
+            f"Expected 1 WETH position after cycle 2, got {len(weth_positions)}"
+
+        weth_trade = list(weth_positions[0].trades.values())[0]
+        assert weth_trade.get_status() == TradeStatus.success, \
+            f"WETH buy trade status: {weth_trade.get_status()}"
+
+        print(f"  WETH buy trade: {weth_trade.get_status()}")
+        print(f"  WETH acquired: {weth_trade.executed_quantity}")
+
+        # ===================================================================
+        # Step 7: Cycle 3 — Sell WETH -> USDC on Base Sepolia
+        # ===================================================================
+        print("\n=== Step 7: Cycle 3 — Sell WETH -> USDC ===")
+
+        run_cli(["start"], start_env)
+
+        state = load_state(state_file)
+        weth_closed = [
+            pos for pos in state.portfolio.closed_positions.values()
+            if pos.pair.base.token_symbol == "WETH"
+        ]
+        assert len(weth_closed) == 1, \
+            f"Expected 1 closed WETH position after cycle 3, got {len(weth_closed)}"
+
+        weth_sell_trade = list(weth_closed[0].trades.values())[-1]
+        assert weth_sell_trade.get_status() == TradeStatus.success, \
+            f"WETH sell trade status: {weth_sell_trade.get_status()}"
+
+        print(f"  WETH sell trade: {weth_sell_trade.get_status()}")
+
+        # ===================================================================
+        # Step 8: Cycle 4 — Bridge USDC from Base Sepolia back to Arb Sepolia
+        # ===================================================================
+        print("\n=== Step 8: Cycle 4 — Bridge USDC back to Arbitrum Sepolia ===")
+
+        run_cli(["start"], start_env)
+
+        state = load_state(state_file)
+        reverse_bridge_positions = [
+            pos for pos in state.portfolio.open_positions.values()
+            if pos.pair.is_cctp_bridge() and pos.pair.quote.chain_id == BASE_SEPOLIA_CHAIN_ID
+        ]
+        assert len(reverse_bridge_positions) == 1, \
+            f"Expected 1 reverse bridge position after cycle 4, got {len(reverse_bridge_positions)}"
+
+        reverse_trade = list(reverse_bridge_positions[0].trades.values())[0]
+        assert reverse_trade.get_status() == TradeStatus.success, \
+            f"Reverse bridge trade status: {reverse_trade.get_status()}"
+
+        reverse_burn_tx = reverse_trade.blockchain_transactions[-1].tx_hash
+        reverse_amount_raw = int(reverse_trade.planned_reserve * 10**6)
+        print(f"  Reverse bridge trade: {reverse_trade.get_status()}")
+        print(f"  Burn TX: {reverse_burn_tx}")
+        print(f"  Amount: {reverse_trade.planned_reserve} USDC")
+
+        # ===================================================================
+        # Step 8b: Wait for CCTP attestation + receive on Arbitrum Sepolia
+        # ===================================================================
+        print("\n=== Step 8b: CCTP attestation + receive on Arbitrum Sepolia ===")
+
+        spoof_cctp_attestation(
+            dest_web3=arb_web3,
+            source_chain_id=BASE_SEPOLIA_CHAIN_ID,
+            dest_chain_id=ARBITRUM_SEPOLIA_CHAIN_ID,
+            burn_tx_hash=reverse_burn_tx,
+            mint_recipient=safe_address,
+            amount_raw=reverse_amount_raw,
+            deployer=deployer,
+            attestation_timeout=attestation_timeout,
+        )
+
+        # Verify USDC returned to Arbitrum Sepolia
+        arb_safe_usdc_after = arb_usdc.fetch_balance_of(safe_address)
+        print(f"  Arb Safe USDC after reverse bridge: {arb_safe_usdc_after}")
+
+        # ===================================================================
+        # Step 9: Cycle 5 — No-op (verify funds returned)
+        # ===================================================================
+        print("\n=== Step 9: Cycle 5 — No-op (verify funds returned) ===")
+
+        run_cli(["start"], start_env)
+
+        state = load_state(state_file)
+        final_equity = state.portfolio.get_total_equity()
+        print(f"  Final equity: {final_equity}")
+
+        # ===================================================================
+        # Step 10: Final settle + verification
+        # ===================================================================
+        print("\n=== Step 10: Final settle + verification ===")
+
+        run_cli(["lagoon-settle"], settle_env)
+
+        # Check balances
+        final_arb_safe_usdc = arb_usdc.fetch_balance_of(safe_address)
+        final_base_safe_usdc = base_usdc.fetch_balance_of(safe_address)
+
+        print()
+        print("=" * 70)
+        print("Final status")
+        print("=" * 70)
+        print(f"  Arb Safe USDC:  {final_arb_safe_usdc}")
+        print(f"  Base Safe USDC: {final_base_safe_usdc}")
+        print(f"  Portfolio equity: {final_equity}")
+        print(f"  Open positions:  {len(state.portfolio.open_positions)}")
+        print(f"  Closed positions: {len(state.portfolio.closed_positions)}")
+
+        # Verify the round trip was successful
+        # We expect most USDC to be back on Arbitrum, minus swap fees
+        assert final_arb_safe_usdc > 0, "No USDC returned to Arbitrum Sepolia Safe"
+
+        print()
+        print("All ok!")
+
+
+if __name__ == "__main__":
+    main()

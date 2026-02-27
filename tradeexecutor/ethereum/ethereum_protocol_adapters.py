@@ -601,6 +601,7 @@ class EthereumPairConfigurator(PairConfigurator):
         strategy_universe: TradingStrategyUniverse | None,
         account_value_func: Callable | None = None,
         web3config: "Web3Config | None" = None,
+        satellite_vaults: dict | None = None,
     ):
         """Initialise pair configuration.
 
@@ -622,6 +623,11 @@ class EthereumPairConfigurator(PairConfigurator):
             Optional Web3Config with connections to multiple chains.
             Required for CCTP bridge routing which needs access to both
             source and destination chain connections.
+
+        :param satellite_vaults:
+            Optional mapping of chain_id -> AutomatedSafe for satellite
+            Lagoon vault deployments. Used by GenericRouting to create
+            LagoonTransactionBuilder for satellite chain trades.
         """
 
         assert isinstance(web3, Web3)
@@ -630,6 +636,7 @@ class EthereumPairConfigurator(PairConfigurator):
         self.web3 = web3
         self.web3config = web3config
         self.account_value_func = account_value_func
+        self.satellite_vaults = satellite_vaults or {}
 
         super().__init__(strategy_universe)
 

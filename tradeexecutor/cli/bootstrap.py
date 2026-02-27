@@ -100,6 +100,8 @@ def create_web3_config(
     json_rpc_base,
     json_rpc_anvil,
     json_rpc_derive=None,
+    json_rpc_arbitrum_sepolia=None,
+    json_rpc_base_sepolia=None,
     gas_price_method: Optional[GasPriceMethod] = None,
     unit_testing: bool=False,
     simulate: bool=False,
@@ -126,6 +128,8 @@ def create_web3_config(
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_derive=json_rpc_derive,
+        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
+        json_rpc_base_sepolia=json_rpc_base_sepolia,
         unit_testing=unit_testing,
         simulate=simulate,
         mev_endpoint_disabled=mev_endpoint_disabled,
@@ -293,6 +297,28 @@ def create_execution_and_sync_model(
 
         # Pass web3config for multichain execution (e.g. CCTP bridge)
         execution_model.web3config = web3config
+
+        # Populate satellite vaults for multichain Lagoon deployments
+        if isinstance(execution_model, LagoonExecution):
+            satellite_modules_json = os.environ.get("SATELLITE_MODULES")
+            if satellite_modules_json:
+                import json as _json
+                from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonSatelliteVault
+                from eth_defi.vault.base import VaultSpec
+                satellite_modules = _json.loads(satellite_modules_json)
+                satellite_vaults = {}
+                for chain_slug, module_address in satellite_modules.items():
+                    sat_chain_id = ChainId[chain_slug]
+                    sat_web3 = web3config.get_connection(sat_chain_id)
+                    assert sat_web3, f"No Web3 connection for satellite chain {chain_slug}"
+                    sat_vault = LagoonSatelliteVault(
+                        sat_web3,
+                        VaultSpec(sat_web3.eth.chain_id, sat_web3.to_checksum_address(module_address)),
+                        trading_strategy_module_address=module_address,
+                    )
+                    satellite_vaults[sat_chain_id.value] = sat_vault
+                    logger.info("Satellite vault on %s: module=%s", chain_slug, module_address)
+                execution_model.satellite_vaults = satellite_vaults
 
         return execution_model, sync_model, valuation_model_factory, pricing_model_factory
 

@@ -151,13 +151,30 @@ class GenericRouting(RoutingModel):
                     from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
                     satellite_web3 = web3config.get_connection(ChainId(trade_chain_id))
                     original_tx_builder = router_state.tx_builder
+
                     # Create a separate HotWallet with its own nonce counter
                     # so the original wallet's nonce isn't corrupted
                     satellite_wallet = EthHotWallet(original_tx_builder.hot_wallet.account)
                     satellite_wallet.sync_nonce(satellite_web3)
-                    router_state.tx_builder = HotWalletTransactionBuilder(
-                        satellite_web3, satellite_wallet,
-                    )
+
+                    # For Lagoon vaults, wrap satellite chain transactions through
+                    # the satellite's TradingStrategyModuleV0 guard
+                    from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
+                    if isinstance(original_tx_builder, LagoonTransactionBuilder):
+                        satellite_vaults = getattr(self.pair_configurator, 'satellite_vaults', None) or {}
+                        satellite_vault = satellite_vaults.get(trade_chain_id)
+                        assert satellite_vault, (
+                            f"No satellite vault configured for chain {trade_chain_id}. "
+                            f"Available satellite chains: {list(satellite_vaults.keys())}"
+                        )
+                        router_state.tx_builder = LagoonTransactionBuilder(
+                            satellite_vault, satellite_wallet, original_tx_builder.extra_gnosis_gas,
+                        )
+                    else:
+                        router_state.tx_builder = HotWalletTransactionBuilder(
+                            satellite_web3, satellite_wallet,
+                        )
+
                     # Also swap the routing state's web3 for contract calls
                     if hasattr(router_state, 'web3'):
                         original_web3 = router_state.web3
