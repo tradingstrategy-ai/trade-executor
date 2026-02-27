@@ -146,7 +146,15 @@ def run_cli(args: list[str], env: dict):
     Uses ``mock.patch.dict`` to set environment variables cleanly,
     matching the pattern used by the trade-executor test suite.
     Preserves ``PATH`` and ``HOME`` so subprocesses (e.g. Forge) work.
+
+    Clears the ``get_safe_cached_latest_block_number()`` block cache
+    before each call so that vault reads use a fresh block number.
+    Without this, newly deployed contracts appear empty because the
+    cached block predates the deployment.
     """
+    from eth_defi.provider.broken_provider import _latest_delayed_block_number_cache
+    _latest_delayed_block_number_cache.clear()
+
     logger.info("Running CLI: trade-executor %s", " ".join(args))
     patched_env = {**env}
     for key in ("PATH", "HOME", "USER", "TMPDIR", "SHELL"):
@@ -525,6 +533,12 @@ def _run_test_lifecycle(
         assert Path(state_file).exists(), "State file was not created"
         print(f"  State file: {state_file}")
 
+        if not simulate:
+            # Allow testnet RPC state to propagate after vault deployment
+            import time as _time
+            logger.info("Waiting 30s for testnet state propagation after init")
+            _time.sleep(30)
+
         # ===================================================================
         # Step 3: Deposit USDC into the vault
         # ===================================================================
@@ -551,7 +565,25 @@ def _run_test_lifecycle(
 
         settle_env = {k: v for k, v in base_env.items() if k != "NAME"}
         settle_env["SYNC_INTEREST"] = "false"
-        run_cli(["lagoon-settle"], settle_env)
+
+        # Testnet RPCs can be slow to propagate new contract state.
+        # Retry the settle step with increasing delays.
+        # The block cache is cleared in run_cli() before each call.
+        import time as _time
+
+        for attempt in range(1, 6):
+            if not simulate:
+                delay = 30 * attempt
+                logger.info("Waiting %ds for testnet state propagation (attempt %d/5)", delay, attempt)
+                _time.sleep(delay)
+
+            try:
+                run_cli(["lagoon-settle"], settle_env)
+                break
+            except Exception as e:
+                if attempt == 5:
+                    raise
+                logger.warning("Settle attempt %d failed: %s. Retrying...", attempt, e)
 
         print("  Vault settled")
 
@@ -621,9 +653,15 @@ def _run_test_lifecycle(
                 attestation_timeout=attestation_timeout,
             )
 
-        # Verify USDC arrived on Base Sepolia
+        # Verify USDC arrived on Base Sepolia (with retry for RPC propagation)
         base_usdc = fetch_erc20_details(base_web3, USDC_NATIVE_TOKEN[BASE_SEPOLIA_CHAIN_ID])
-        base_safe_usdc = base_usdc.fetch_balance_of(safe_address)
+        for _check in range(6):
+            base_safe_usdc = base_usdc.fetch_balance_of(safe_address)
+            if base_safe_usdc > 0:
+                break
+            if not simulate:
+                logger.info("Base Safe USDC still 0, waiting 10s for RPC propagation (attempt %d/6)", _check + 1)
+                _time.sleep(10)
         print(f"  Base Safe USDC after bridge: {base_safe_usdc}")
         assert base_safe_usdc > 0, "USDC did not arrive on Base Sepolia"
 
@@ -723,8 +761,14 @@ def _run_test_lifecycle(
                 attestation_timeout=attestation_timeout,
             )
 
-        # Verify USDC returned to Arbitrum Sepolia
-        arb_safe_usdc_after = arb_usdc.fetch_balance_of(safe_address)
+        # Verify USDC returned to Arbitrum Sepolia (with retry for RPC propagation)
+        for _check in range(6):
+            arb_safe_usdc_after = arb_usdc.fetch_balance_of(safe_address)
+            if arb_safe_usdc_after > 0:
+                break
+            if not simulate:
+                logger.info("Arb Safe USDC still 0, waiting 10s for RPC propagation (attempt %d/6)", _check + 1)
+                _time.sleep(10)
         print(f"  Arb Safe USDC after reverse bridge: {arb_safe_usdc_after}")
 
         # ===================================================================

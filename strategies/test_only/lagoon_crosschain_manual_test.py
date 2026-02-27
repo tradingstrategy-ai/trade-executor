@@ -56,13 +56,13 @@ DEST_CHAIN_ID = ChainId.base_sepolia
 BASE_SEPOLIA_UNISWAP_V3_FACTORY = UNISWAP_V3_DEPLOYMENTS["base_sepolia"]["factory"]
 
 #: How much USDC to bridge
-BRIDGE_AMOUNT = Decimal(5)
+BRIDGE_AMOUNT = Decimal(os.environ.get("BRIDGE_AMOUNT", "3"))
 
 #: How much USDC to swap on Uniswap v3 (leave some for gas/fees)
-SWAP_AMOUNT = Decimal(4)
+SWAP_AMOUNT = Decimal(os.environ.get("SWAP_AMOUNT", "2"))
 
 #: How much USDC to bridge back from Base Sepolia to Arbitrum Sepolia
-REVERSE_BRIDGE_AMOUNT = Decimal(3)
+REVERSE_BRIDGE_AMOUNT = Decimal(os.environ.get("REVERSE_BRIDGE_AMOUNT", "1"))
 
 
 class Parameters:
@@ -285,8 +285,8 @@ def decide_trades(
         )
         return position_manager.open_spot(pair, value=BRIDGE_AMOUNT)
 
-    # Cycle 2: Buy WETH on Base Sepolia
-    if not has_open_weth and not has_closed_weth:
+    # Cycle 2: Buy WETH on Base Sepolia (skip if SWAP_AMOUNT=0)
+    if SWAP_AMOUNT > 0 and not has_open_weth and not has_closed_weth:
         pair = universe.get_pair_by_human_description(
             (DEST_CHAIN_ID, "uniswap-v3", "WETH", "USDC"),
         )
@@ -301,7 +301,7 @@ def decide_trades(
         return position_manager.close_position(weth_pos)
 
     # Cycle 4: Bridge USDC back from Base Sepolia to Arbitrum Sepolia
-    if has_closed_weth and not has_reverse_bridge:
+    if (has_closed_weth or SWAP_AMOUNT == 0) and not has_reverse_bridge:
         pair = universe.get_pair_by_human_description(
             (DEST_CHAIN_ID, "cctp-bridge", "USDC", "USDC"),
         )

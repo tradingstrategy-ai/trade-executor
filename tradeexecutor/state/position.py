@@ -1728,8 +1728,11 @@ class TradingPosition(GenericPosition):
         :return:
             Percent of the portfolio value
         """
-        if not self.portfolio_value_at_open:
+        if self.portfolio_value_at_open is None:
             raise LegacyDataException(f"Portfolio value at position open was not recorded for {self}")
+
+        if self.portfolio_value_at_open == 0:
+            return 0
 
         return self.get_value_at_open() / self.portfolio_value_at_open
 
