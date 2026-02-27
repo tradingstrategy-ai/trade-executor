@@ -343,6 +343,9 @@ class StrategyRunner(abc.ABC):
             elif t.pair.is_credit_supply():
                 # For credit supply, no swaps are executed
                 t.post_execution_price_structure = None
+            elif t.pair.is_cctp_bridge():
+                # Bridge trades are 1:1, no price structure needed
+                t.post_execution_price_structure = None
             else:
                 raise AssertionError(f"Unsupported: {t}")
 

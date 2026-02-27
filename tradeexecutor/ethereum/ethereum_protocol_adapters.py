@@ -19,7 +19,7 @@ from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse, ExchangeType
 
-from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator, ProtocolRoutingId, ProtocolRoutingConfig
 from tradeexecutor.strategy.generic.default_protocols import default_match_router, default_supported_routers
@@ -111,6 +111,7 @@ def create_uniswap_v3_adapter(
     web3: Web3,
     strategy_universe: TradingStrategyUniverse,
     routing_id: ProtocolRoutingId,
+    chain_id_override: ChainId | None = None,
 ) -> ProtocolRoutingConfig:
     """Always the same."""
 
@@ -121,10 +122,32 @@ def create_uniswap_v3_adapter(
     from tradeexecutor.ethereum.routing_data import uniswap_v3_address_map
 
     assert routing_id.router_name == "uniswap-v3"
-    assert len(strategy_universe.data_universe.chains) == 1
     assert len(strategy_universe.reserve_assets) == 1
-    chain_id = strategy_universe.get_single_chain()
-    reserve_asset = strategy_universe.get_reserve_asset()
+
+    if chain_id_override is not None:
+        chain_id = chain_id_override
+        # For satellite chains, find the quote token used on that chain
+        # (e.g. Base USDC for Uniswap v3 on Base).
+        # Match pairs via exchange_id since exchange_slug may not be set on DEXPair.
+        exchange_ids = set()
+        for xc in strategy_universe.data_universe.exchange_universe.exchanges.values():
+            if xc.exchange_slug == routing_id.exchange_slug:
+                exchange_ids.add(xc.exchange_id)
+        reserve_asset = None
+        for dex_pair in strategy_universe.data_universe.pairs.iterate_pairs():
+            if dex_pair.chain_id == chain_id and dex_pair.exchange_id in exchange_ids:
+                reserve_asset = AssetIdentifier(
+                    chain_id=chain_id.value,
+                    address=dex_pair.quote_token_address,
+                    token_symbol=dex_pair.quote_token_symbol,
+                    decimals=dex_pair.quote_token_decimals,
+                )
+                break
+        if reserve_asset is None:
+            reserve_asset = strategy_universe.get_reserve_asset()
+    else:
+        chain_id = strategy_universe.get_single_chain()
+        reserve_asset = strategy_universe.get_reserve_asset()
 
     allowed_intermediary_pairs = UNISWAP_V3_INTERMEDIATE.get(chain_id, {})
 
@@ -636,7 +659,15 @@ class EthereumPairConfigurator(PairConfigurator):
         elif routing_id.router_name == "uniswap-v2":
             return create_uniswap_v2_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "uniswap-v3":
-            return create_uniswap_v3_adapter(self.web3, self.strategy_universe, routing_id)
+            # For multichain universes, determine the chain from the exchange's pairs
+            chain_id_override = None
+            if len(self.strategy_universe.data_universe.chains) > 1 and routing_id.exchange_slug:
+                for xc in self.strategy_universe.data_universe.exchange_universe.exchanges.values():
+                    if xc.exchange_slug == routing_id.exchange_slug:
+                        chain_id_override = xc.chain_id
+                        break
+            web3 = self.get_web3_for_chain(chain_id_override.value) if chain_id_override else self.web3
+            return create_uniswap_v3_adapter(web3, self.strategy_universe, routing_id, chain_id_override=chain_id_override)
         elif routing_id.router_name == "aave-v3":
             return create_aave_v3_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "vault":

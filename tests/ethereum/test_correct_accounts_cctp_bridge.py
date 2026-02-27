@@ -2,16 +2,17 @@
 
 Verifies that the correct-accounts CLI auto-creates and corrects
 accounting for both:
-1. Main reserve (source USDC)
-2. CCTP bridge position (destination USDC)
+1. Main reserve on source chain (Arbitrum USDC)
+2. CCTP bridge position on destination chain (Base USDC)
 
-Uses a single Anvil instance with two deployed ERC-20 tokens
-to simulate source and destination USDC.
+Uses two separate Anvil instances to simulate source and destination
+chains, each with its own deployed ERC-20 USDC token.
 
 Flow:
 1. ``cli init`` creates empty state
 2. ``cli correct-accounts`` loads universe, auto-creates missing
-   bridge positions, detects on-chain balances, corrects everything
+   bridge positions, detects on-chain balances on both chains,
+   and corrects everything
 """
 
 import os
@@ -38,16 +39,13 @@ from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.state.state import State
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
-# Fixtures below are not directly used in test bodies but are required
-# as transitive pytest fixture dependencies (environment → hot_wallet → usdc_source etc.)
-
 
 # --- Fixtures ---
 
 
 @pytest.fixture()
-def anvil() -> AnvilLaunch:
-    """Launch local Anvil node."""
+def anvil_source() -> AnvilLaunch:
+    """Source chain (Arbitrum-like) Anvil node."""
     anvil = launch_anvil()
     try:
         yield anvil
@@ -56,63 +54,97 @@ def anvil() -> AnvilLaunch:
 
 
 @pytest.fixture()
-def web3(anvil: AnvilLaunch) -> Web3:
-    """Set up the Anvil Web3 connection."""
-    web3 = Web3(HTTPProvider(anvil.json_rpc_url, request_kwargs={"timeout": 2}))
+def anvil_dest() -> AnvilLaunch:
+    """Destination chain (Base-like) Anvil node."""
+    anvil = launch_anvil()
+    try:
+        yield anvil
+    finally:
+        anvil.close()
+
+
+@pytest.fixture()
+def web3_source(anvil_source: AnvilLaunch) -> Web3:
+    """Web3 connection to the source chain."""
+    web3 = Web3(HTTPProvider(anvil_source.json_rpc_url, request_kwargs={"timeout": 2}))
     web3.middleware_onion.clear()
     install_chain_middleware(web3)
     return web3
 
 
 @pytest.fixture()
-def deployer(web3) -> HexAddress:
-    """Deployer account with ETH."""
-    return web3.eth.accounts[0]
+def web3_dest(anvil_dest: AnvilLaunch) -> Web3:
+    """Web3 connection to the destination chain."""
+    web3 = Web3(HTTPProvider(anvil_dest.json_rpc_url, request_kwargs={"timeout": 2}))
+    web3.middleware_onion.clear()
+    install_chain_middleware(web3)
+    return web3
 
 
 @pytest.fixture()
-def usdc_source(web3, deployer) -> Contract:
-    """Mock source chain USDC token (reserve currency)."""
-    token = create_token(web3, deployer, "USD Coin Source", "USDC", 100_000_000 * 10**6, decimals=6)
+def deployer_source(web3_source) -> HexAddress:
+    """Deployer account on source chain."""
+    return web3_source.eth.accounts[0]
+
+
+@pytest.fixture()
+def deployer_dest(web3_dest) -> HexAddress:
+    """Deployer account on destination chain."""
+    return web3_dest.eth.accounts[0]
+
+
+@pytest.fixture()
+def usdc_source(web3_source, deployer_source) -> Contract:
+    """USDC token on source chain (reserve currency)."""
+    token = create_token(web3_source, deployer_source, "USD Coin", "USDC", 100_000_000 * 10**6, decimals=6)
     return token
 
 
 @pytest.fixture()
-def usdc_dest(web3, deployer) -> Contract:
-    """Mock destination chain USDC token (bridged currency)."""
-    token = create_token(web3, deployer, "USD Coin Bridged", "USDC-BRIDGED", 100_000_000 * 10**6, decimals=6)
+def usdc_dest(web3_dest, deployer_dest) -> Contract:
+    """USDC token on destination chain (bridged currency)."""
+    token = create_token(web3_dest, deployer_dest, "USD Coin Bridged", "USDC-BRIDGED", 100_000_000 * 10**6, decimals=6)
     return token
 
 
 @pytest.fixture()
-def hot_wallet(web3, deployer, usdc_source: Contract, usdc_dest: Contract) -> HotWallet:
-    """Create hot wallet funded with ETH and both USDC tokens.
+def hot_wallet(
+    web3_source,
+    web3_dest,
+    deployer_source,
+    deployer_dest,
+    usdc_source: Contract,
+    usdc_dest: Contract,
+) -> HotWallet:
+    """Create hot wallet funded on both chains.
 
     Simulates a wallet that started with 10,000 source USDC
     and bridged 5,000 to the destination chain:
 
-    - 15 ETH for gas
-    - 5000 source USDC (remaining after bridge)
-    - 5000 destination USDC (bridged)
+    - Source chain: 15 ETH for gas, 5,000 USDC (remaining after bridge)
+    - Dest chain: 15 ETH for gas, 5,000 USDC (bridged)
     - Total portfolio: 10,000 USDC
     """
     private_key = hexbytes_to_hex_str(secrets.token_bytes(32))
     account = Account.from_key(private_key)
     wallet = HotWallet(account)
-    wallet.sync_nonce(web3)
+    wallet.sync_nonce(web3_source)
 
-    # Fund with ETH
-    user_1 = web3.eth.accounts[1]
-    tx_hash = web3.eth.send_transaction({"to": wallet.address, "from": user_1, "value": 15 * 10**18})
-    assert_transaction_success_with_explanation(web3, tx_hash)
+    # --- Fund on source chain ---
+    user_1_source = web3_source.eth.accounts[1]
+    tx_hash = web3_source.eth.send_transaction({"to": wallet.address, "from": user_1_source, "value": 15 * 10**18})
+    assert_transaction_success_with_explanation(web3_source, tx_hash)
 
-    # Fund with source USDC (5000 remaining after bridging 5000)
-    tx_hash = usdc_source.functions.transfer(wallet.address, 5_000 * 10**6).transact({"from": deployer})
-    assert_transaction_success_with_explanation(web3, tx_hash)
+    tx_hash = usdc_source.functions.transfer(wallet.address, 5_000 * 10**6).transact({"from": deployer_source})
+    assert_transaction_success_with_explanation(web3_source, tx_hash)
 
-    # Fund with destination USDC (5000 bridged from source)
-    tx_hash = usdc_dest.functions.transfer(wallet.address, 5_000 * 10**6).transact({"from": deployer})
-    assert_transaction_success_with_explanation(web3, tx_hash)
+    # --- Fund on destination chain ---
+    user_1_dest = web3_dest.eth.accounts[1]
+    tx_hash = web3_dest.eth.send_transaction({"to": wallet.address, "from": user_1_dest, "value": 15 * 10**18})
+    assert_transaction_success_with_explanation(web3_dest, tx_hash)
+
+    tx_hash = usdc_dest.functions.transfer(wallet.address, 5_000 * 10**6).transact({"from": deployer_dest})
+    assert_transaction_success_with_explanation(web3_dest, tx_hash)
 
     return wallet
 
@@ -131,19 +163,26 @@ def state_file() -> Path:
 
 @pytest.fixture()
 def environment(
-    anvil: AnvilLaunch,
+    anvil_source: AnvilLaunch,
+    anvil_dest: AnvilLaunch,
     hot_wallet: HotWallet,
     state_file: Path,
     strategy_file: Path,
     usdc_source: Contract,
     usdc_dest: Contract,
 ) -> dict:
-    """Set up environment vars for correct-accounts CLI command."""
+    """Set up environment vars for correct-accounts CLI command.
+
+    Provides two JSON-RPC endpoints: one for each chain.
+    """
     environment = {
         "EXECUTOR_ID": "test_correct_accounts_cctp_bridge",
         "STRATEGY_FILE": strategy_file.as_posix(),
         "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.account.key),
-        "JSON_RPC_ANVIL": anvil.json_rpc_url,
+        # Source chain (mapped as Arbitrum in Web3Config)
+        "JSON_RPC_ARBITRUM": anvil_source.json_rpc_url,
+        # Destination chain (mapped as Base in Web3Config)
+        "JSON_RPC_BASE": anvil_dest.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "UNIT_TESTING": "true",
@@ -166,14 +205,18 @@ def test_correct_accounts_cctp_bridge(
 ):
     """Test correct-accounts auto-creates and corrects bridge position.
 
+    Uses two separate Anvil instances as source and destination chains.
+
     Simulates a wallet that started with 10,000 source USDC and bridged
-    5,000 to destination. On-chain state: 5,000 source + 5,000 dest.
+    5,000 to destination. On-chain state:
+    - Source chain: 5,000 USDC
+    - Destination chain: 5,000 USDC
 
     Flow:
     1. Run ``cli init`` to create empty state
     2. Run ``cli correct-accounts`` which auto-creates bridge position
        from universe and corrects both reserve and bridge to match
-       on-chain balances
+       on-chain balances on their respective chains
     3. Verify reserve = 5,000 (source USDC remaining after bridge)
     4. Verify bridge position = 5,000 (destination USDC)
     5. Verify total portfolio = 10,000

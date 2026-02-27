@@ -28,6 +28,8 @@ def is_swap_function(name: str):
         # ERC-4626
         "deposit",
         "redeem",
+        # CCTP bridge
+        "depositForBurn",
     }
 
 

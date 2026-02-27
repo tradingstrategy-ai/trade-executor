@@ -91,8 +91,15 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
     assert dex_pair.base_token_decimals is not None, f"Base token missing decimals: {dex_pair}"
     assert dex_pair.quote_token_decimals is not None, f"Quote token missing decimals: {dex_pair}"
 
+    # For CCTP bridge pairs, the base (destination) asset lives on a different chain
+    base_chain_id = dex_pair.chain_id.value
+    if dex_pair.other_data and dex_pair.other_data.get("bridge_protocol") == "cctp":
+        destination_chain_id = dex_pair.other_data.get("destination_chain_id")
+        if destination_chain_id is not None:
+            base_chain_id = destination_chain_id
+
     base = AssetIdentifier(
-        chain_id=dex_pair.chain_id.value,
+        chain_id=base_chain_id,
         address=dex_pair.base_token_address,
         token_symbol=dex_pair.base_token_symbol,
         decimals=dex_pair.base_token_decimals,

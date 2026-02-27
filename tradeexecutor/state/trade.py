@@ -1021,6 +1021,9 @@ class TradeExecution:
             return self.planned_quantity < 0
         elif self.is_spot() or self.is_vault():
             return self.planned_quantity < 0
+        elif self.pair.is_cctp_bridge():
+            # Bridge trades always spend reserves (bridge out)
+            return False
         else:
             raise NotImplementedError(f"Not leveraged trade: {self}")
 

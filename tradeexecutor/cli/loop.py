@@ -1201,11 +1201,14 @@ class ExecutionLoop:
 
             self.store.sync(state)
 
-        logger.info("Performing startup accounting check")
-        self.runner.check_accounts(
-            universe,
-            state
-        )
+        if self.check_accounts is not False:
+            logger.info("Performing startup accounting check")
+            self.runner.check_accounts(
+                universe,
+                state
+            )
+        else:
+            logger.info("Startup accounting check disabled (CHECK_ACCOUNTS=false)")
 
         # Store summary statistics in memory before doing anything else
         self.refresh_live_run_state(state, visualisation=self.visulisation, universe=universe, cycle_duration=self.cycle_duration)

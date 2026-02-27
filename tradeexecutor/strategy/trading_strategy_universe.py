@@ -262,9 +262,10 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         """
 
-        assert len(self.data_universe.chains) == 1
-
-        chain_str = self.data_universe.get_default_chain().get_slug()
+        if len(self.data_universe.chains) == 1:
+            chain_str = self.data_universe.get_default_chain().get_slug()
+        else:
+            chain_str = "-".join(sorted(c.get_slug() for c in self.data_universe.chains))
 
         if self.get_pair_count() < 5:
             pair_str = "-".join([p.get_ticker() for p in self.data_universe.pairs.iterate_pairs()])
@@ -1086,12 +1087,25 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         return translate_trading_pair(pair, cache=self.pair_cache)
 
     def get_single_chain(self) -> ChainId:
-        """Get the single trading pair in this universe.
+        """Get the single chain in this universe.
 
-        :raise Exception:
-            If we have more than one chain
+        :raise AssertionError:
+            If we have more than one chain.
+            Use :py:meth:`get_primary_chain` for multichain universes.
         """
-        assert len(self.data_universe.chains) == 1
+        assert len(self.data_universe.chains) == 1, \
+            f"Expected single chain, got {len(self.data_universe.chains)}: {self.data_universe.chains}"
+        return next(iter(self.data_universe.chains))
+
+    def get_primary_chain(self) -> ChainId:
+        """Get the primary (first) chain for this universe.
+
+        For single-chain universes, returns the only chain.
+        For multichain universes (e.g. CCTP bridge), returns the first chain.
+
+        Use this instead of :py:meth:`get_single_chain` when the caller
+        can handle multichain universes.
+        """
         return next(iter(self.data_universe.chains))
 
     @staticmethod
@@ -2080,9 +2094,13 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
 
         other_data = p.other_data
 
+        # Use per-pair chain_id when available (multichain universes),
+        # falling back to the global chain_id
+        pair_chain_id = ChainId(p.quote.chain_id) if p.quote.chain_id else chain_id
+
         dex_pair = DEXPair(
             pair_id=p.internal_id,
-            chain_id=chain_id,
+            chain_id=pair_chain_id,
             exchange_id=p.internal_exchange_id,
             address=p.pool_address,
             exchange_address=p.exchange_address,

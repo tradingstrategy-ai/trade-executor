@@ -135,8 +135,17 @@ def correct_accounts(
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
 
-    # Check that we are connected to the chain strategy assumes
-    web3config.choose_single_chain()
+    # Set default chain but allow multiple connections for multichain strategies
+    if len(web3config.connections) == 1:
+        web3config.choose_single_chain()
+    else:
+        default_chain_id = next(iter(web3config.connections.keys()))
+        web3config.set_default_chain(default_chain_id)
+        logger.info(
+            "Multichain mode: default chain %s, %d chain(s) connected",
+            default_chain_id.name,
+            len(web3config.connections),
+        )
 
     if private_key is not None:
         hot_wallet = HotWallet.from_private_key(private_key)
@@ -155,9 +164,10 @@ def correct_accounts(
 
     logger.info("RPC details")
 
-    # Check the chain is online
-    logger.info(f"  Chain id is {web3.eth.chain_id:,}")
-    logger.info(f"  Latest block is {web3.eth.block_number:,}")
+    # Log all connected chains
+    for chain_id, conn in web3config.connections.items():
+        logger.info(f"  Chain {chain_id.name} (id {conn.eth.chain_id:,})")
+        logger.info(f"    Latest block is {conn.eth.block_number:,}")
 
     # Check balances
     logger.info("Balance details")

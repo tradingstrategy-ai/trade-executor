@@ -516,7 +516,8 @@ class EthereumExecution(ExecutionModel):
             logger.info("Unit test path of no confirmation")
             return
 
-        txs: Set[SignedTransactionWithNonce] = set()
+        # Group transactions by chain for multichain broadcasting
+        txs_by_chain: Dict[int, set] = {}
         tx_map: Dict[HexStr, tuple] = dict()
 
         for t in trades:
@@ -534,29 +535,39 @@ class EthereumExecution(ExecutionModel):
                     nonce=tx.nonce,
                     source=tx.details,
                 )
-                txs.add(signed_tx)
+                chain_id = tx.chain_id or self.chain_id
+                txs_by_chain.setdefault(chain_id, set()).add(signed_tx)
                 logger.info("Broadcasting transaction %s, nonce %s, for trade\n:%s", signed_tx.hash.hex(), signed_tx.nonce, t)
                 tx_map[hexbytes_to_hex_str(signed_tx.hash)] = (t, tx)
 
             t.mark_broadcasted(native_datetime_utc_now(), rebroadcast=rebroadcast)
 
-        logger.info("Normal tx broadcast")
-        receipts = wait_and_broadcast_multiple_nodes(
-            web3,
-            txs,
-            max_timeout=confirmation_timeout,
-            confirmation_block_count=confirmation_block_count,
-            node_switch_timeout=datetime.timedelta(minutes=1),  # Rebroadcast every 1 minute
-            check_nonce_validity=not rebroadcast,
-            mine_blocks=self.mainnet_fork,
-        )
+        all_receipts = {}
+        for chain_id, chain_txs in txs_by_chain.items():
+            if chain_id != self.chain_id and self.web3config:
+                chain_web3 = self.web3config.get_connection(ChainId(chain_id))
+                logger.info("Broadcasting %d txs on satellite chain %d", len(chain_txs), chain_id)
+            else:
+                chain_web3 = web3
+                logger.info("Normal tx broadcast for %d txs on default chain", len(chain_txs))
+
+            receipts = wait_and_broadcast_multiple_nodes(
+                chain_web3,
+                chain_txs,
+                max_timeout=confirmation_timeout,
+                confirmation_block_count=confirmation_block_count,
+                node_switch_timeout=datetime.timedelta(minutes=1),  # Rebroadcast every 1 minute
+                check_nonce_validity=not rebroadcast,
+                mine_blocks=self.mainnet_fork,
+            )
+            all_receipts.update(receipts)
 
         self.resolve_trades(
             datetime.datetime.now(),
             routing_model,
             state,
             tx_map,
-            receipts,
+            all_receipts,
             stop_on_execution_failure=stop_on_execution_failure
         )
 

@@ -35,6 +35,7 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.backtest.backtest_valuation import backtest_valuation_factory
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.approval import CLIApprovalModel
+from tradeexecutor.ethereum.address_sync_model import AddressSyncModel
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.tx import TransactionBuilder
@@ -267,6 +268,10 @@ def create_execution_and_sync_model(
             vault_payment_forwarder_address,
         )
 
+        # Pass web3config for multichain balance queries (e.g. CCTP bridge)
+        if isinstance(sync_model, AddressSyncModel):
+            sync_model.web3config = web3config
+
         logger.info(
             "Creating execution model. Asset management mode is %s, routing hint is %s, confirmation timeout %s",
             asset_management_mode.value,
@@ -285,6 +290,10 @@ def create_execution_and_sync_model(
             mainnet_fork=web3config.is_mainnet_fork(),
             sync_model=sync_model,
         )
+
+        # Pass web3config for multichain execution (e.g. CCTP bridge)
+        execution_model.web3config = web3config
+
         return execution_model, sync_model, valuation_model_factory, pricing_model_factory
 
     elif asset_management_mode == AssetManagementMode.backtest:
