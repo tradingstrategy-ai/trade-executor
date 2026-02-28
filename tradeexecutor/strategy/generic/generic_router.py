@@ -145,11 +145,11 @@ class GenericRouting(RoutingModel):
             if (web3config
                 and hasattr(router_state, 'tx_builder')
                 and router_state.tx_builder is not None):
-                # For CCTP bridge sells, execution happens on the base chain
-                # (where USDC is burned), not the pair's default chain_id
-                # (which is the quote/source chain).
-                if t.pair.is_cctp_bridge() and t.is_sell():
-                    trade_chain_id = t.pair.base.chain_id
+                # For CCTP bridge buys, execution (depositForBurn) happens on
+                # the source chain, not the pair's chain_id (which is the
+                # destination chain where bridged value resides).
+                if t.pair.is_cctp_bridge() and t.is_buy():
+                    trade_chain_id = t.pair.get_source_chain_id()
                 else:
                     trade_chain_id = t.pair.chain_id
                 if trade_chain_id != router_state.tx_builder.chain_id:
@@ -218,8 +218,10 @@ class GenericRouting(RoutingModel):
         # Multichain: use the satellite chain's web3 if the trade
         # was executed on a different chain than the default.
         web3config = getattr(self.pair_configurator, 'web3config', None)
-        if trade.pair.is_cctp_bridge() and trade.is_sell():
-            trade_chain_id = trade.pair.base.chain_id
+        # For CCTP bridge buys, execution (depositForBurn) happens on
+        # the source chain, not the pair's chain_id (destination).
+        if trade.pair.is_cctp_bridge() and trade.is_buy():
+            trade_chain_id = trade.pair.get_source_chain_id()
         else:
             trade_chain_id = trade.pair.chain_id
         if web3config and trade_chain_id != web3.eth.chain_id:

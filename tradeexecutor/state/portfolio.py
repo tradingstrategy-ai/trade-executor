@@ -12,6 +12,7 @@ from typing import Dict, Iterable, Optional, Tuple, List, Set
 from dataclasses_json import dataclass_json
 
 from eth_defi.compat import native_datetime_utc_now
+from tradingstrategy.chain import ChainId
 from tradingstrategy.types import PrimaryKey
 from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind, AssetIdentifier, AssetFriendlyId
 from tradeexecutor.state.loan import Loan
@@ -706,6 +707,36 @@ class Portfolio:
         return self.get_position_equity_and_loan_nav() + self.get_cash()
 
     get_total_equity = calculate_total_equity
+
+    def calculate_total_equity_chain(self) -> dict[ChainId, USDollarAmount]:
+        """Get the value of the portfolio broken down by chain.
+
+        Groups reserves and open non-loan position equity by their
+        respective ``chain_id``.  For reserve positions the chain comes
+        from :py:attr:`ReservePosition.asset.chain_id`.  For trading
+        positions it comes from :py:attr:`TradingPairIdentifier.chain_id`.
+
+        The same exclusions as :py:meth:`calculate_total_equity` apply:
+        frozen and loan-based positions are not counted.
+
+        :return:
+            Mapping of :py:class:`ChainId` -> USD equity on that chain.
+        """
+        result: dict[ChainId, USDollarAmount] = {}
+
+        # Reserves grouped by asset chain
+        for r in self.reserves.values():
+            chain = ChainId(r.asset.chain_id)
+            result[chain] = result.get(chain, 0) + r.get_value()
+
+        # Open position equity grouped by pair chain
+        for p in self.open_positions.values():
+            if p.is_loan_based():
+                continue
+            chain = ChainId(p.pair.chain_id)
+            result[chain] = result.get(chain, 0) + p.get_equity()
+
+        return result
 
     def get_net_asset_value(self, include_interest=True) -> USDollarAmount:
         """Calculate portfolio value if every position would be closed now.

@@ -639,13 +639,11 @@ class TradingPairIdentifier:
 
         Get one from the base token, because both tokens are on the same chain.
 
-        For CCTP bridge pairs, returns the source chain (quote token chain),
-        since the source chain is where execution starts.
+        For CCTP bridge pairs, returns the destination chain (base token chain),
+        since that is where the bridged position's value resides.
 
         See also :py:class:`tradingstrategy.chain.ChainId`
         """
-        if self.kind == TradingPairKind.cctp_bridge:
-            return self.quote.chain_id
         return self.base.chain_id
 
     def get_source_chain_id(self) -> int:

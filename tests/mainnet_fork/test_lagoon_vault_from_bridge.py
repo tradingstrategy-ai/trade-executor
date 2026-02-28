@@ -338,6 +338,11 @@ def test_vault_deposit_from_bridge_capital(
     assert initial_equity == pytest.approx(float(DEPOSIT_AMOUNT), rel=0.01), \
         f"Initial equity {initial_equity} != deposit {DEPOSIT_AMOUNT}"
 
+    # Chain equity: all on Arbitrum
+    chain_equity = state.portfolio.calculate_total_equity_chain()
+    assert chain_equity.get(ChainId.arbitrum, 0) == pytest.approx(float(DEPOSIT_AMOUNT), rel=0.01)
+    assert chain_equity.get(ChainId.base, 0) == pytest.approx(0, abs=0.01)
+
     # --- Step 2: Bridge USDC to Base ---
     make_test_trade(
         web3=arb_web3,
@@ -390,6 +395,11 @@ def test_vault_deposit_from_bridge_capital(
     assert equity_after_bridge == pytest.approx(float(DEPOSIT_AMOUNT), rel=0.01), \
         f"Equity after bridge {equity_after_bridge} != {DEPOSIT_AMOUNT}"
 
+    # Chain equity: Arb reserves + Base bridge position
+    chain_equity = state.portfolio.calculate_total_equity_chain()
+    assert chain_equity.get(ChainId.arbitrum, 0) == pytest.approx(float(DEPOSIT_AMOUNT - BRIDGE_AMOUNT), rel=0.01)
+    assert chain_equity.get(ChainId.base, 0) == pytest.approx(float(BRIDGE_AMOUNT), rel=0.01)
+
     # --- Step 3: Deposit into IPOR vault on Base ---
     ts = native_datetime_utc_now()
     make_test_trade(
@@ -432,6 +442,11 @@ def test_vault_deposit_from_bridge_capital(
     assert equity_after_vault == pytest.approx(float(DEPOSIT_AMOUNT), rel=0.02), \
         f"Equity after vault deposit {equity_after_vault} != {DEPOSIT_AMOUNT}"
 
+    # Chain equity: Arb reserves + Base (bridge unallocated + vault)
+    chain_equity = state.portfolio.calculate_total_equity_chain()
+    assert chain_equity.get(ChainId.arbitrum, 0) == pytest.approx(float(DEPOSIT_AMOUNT - BRIDGE_AMOUNT), rel=0.01)
+    assert chain_equity.get(ChainId.base, 0) == pytest.approx(float(BRIDGE_AMOUNT), rel=0.02)
+
     # --- Step 4: Redeem from IPOR vault ---
     # IPOR Fusion has a short lockup — forward time 1 hour
     mine(base_web3, increase_timestamp=3600)
@@ -468,6 +483,11 @@ def test_vault_deposit_from_bridge_capital(
     equity_after_redeem = get_total_equity(state)
     assert equity_after_redeem == pytest.approx(float(DEPOSIT_AMOUNT), rel=0.03), \
         f"Equity after vault redeem {equity_after_redeem} != {DEPOSIT_AMOUNT}"
+
+    # Chain equity: Arb reserves + Base bridge (capital returned)
+    chain_equity = state.portfolio.calculate_total_equity_chain()
+    assert chain_equity.get(ChainId.arbitrum, 0) == pytest.approx(float(DEPOSIT_AMOUNT - BRIDGE_AMOUNT), rel=0.01)
+    assert chain_equity.get(ChainId.base, 0) == pytest.approx(float(BRIDGE_AMOUNT), rel=0.03)
 
     # --- Step 5: Bridge USDC back to Arbitrum ---
     # Check Base USDC balance before bridge-back
@@ -533,3 +553,8 @@ def test_vault_deposit_from_bridge_capital(
     open_positions = list(state.portfolio.open_positions.values())
     assert len(open_positions) == 0, \
         f"Expected 0 open positions after full round-trip, got {len(open_positions)}: {open_positions}"
+
+    # Chain equity: all back on Arbitrum
+    chain_equity = state.portfolio.calculate_total_equity_chain()
+    assert chain_equity.get(ChainId.arbitrum, 0) == pytest.approx(float(DEPOSIT_AMOUNT), rel=0.03)
+    assert chain_equity.get(ChainId.base, 0) == pytest.approx(0, abs=0.01)

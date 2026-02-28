@@ -21,6 +21,8 @@ The script uses the ``lagoon_crosschain_manual_test`` strategy module,
 which creates a universe with CCTP bridge pairs and a WETH/USDC Uniswap v3
 pair on Base Sepolia.
 
+See lagoon-multichai.rst for more details how bridges and testnets work under the hood.
+
 Modes
 -----
 
@@ -94,7 +96,7 @@ Simulated (Anvil forks):
     SIMULATE=true \\
     JSON_RPC_ARBITRUM_SEPOLIA="https://..." \\
     JSON_RPC_BASE_SEPOLIA="https://..." \\
-    poetry run python scripts/lagoon/test-lagoon-crosschain-te.py
+    python scripts/lagoon/manual-trade-executor-multichain.py
 
 Live testnets:
 
@@ -103,7 +105,7 @@ Live testnets:
     JSON_RPC_ARBITRUM_SEPOLIA="https://..." \\
     JSON_RPC_BASE_SEPOLIA="https://..." \\
     LAGOON_MULTCHAIN_TEST_PRIVATE_KEY="0x..." \\
-    poetry run python scripts/lagoon/test-lagoon-crosschain-te.py
+    python scripts/lagoon/manual-trade-executor-multichain.py
 """
 
 import json
@@ -115,13 +117,14 @@ from pathlib import Path
 from unittest import mock
 
 from eth_account.signers.local import LocalAccount
-
 from eth_defi.cctp.attestation import wait_for_cctp_attestation
 from eth_defi.cctp.receive import prepare_receive_message
-from eth_defi.cctp.testing import replace_attester_on_fork, craft_cctp_message, forge_attestation
+from eth_defi.cctp.testing import (craft_cctp_message, forge_attestation,
+                                   replace_attester_on_fork)
 from eth_defi.erc_4626.vault_protocol.lagoon.testing import fund_lagoon_vault
 from eth_defi.hotwallet import HotWallet
-from eth_defi.provider.anvil import fork_network_anvil, set_balance, fund_erc20_on_anvil, AnvilLaunch
+from eth_defi.provider.anvil import (AnvilLaunch, fork_network_anvil,
+                                     fund_erc20_on_anvil, set_balance)
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
@@ -152,7 +155,8 @@ def run_cli(args: list[str], env: dict):
     Without this, newly deployed contracts appear empty because the
     cached block predates the deployment.
     """
-    from eth_defi.provider.broken_provider import _latest_delayed_block_number_cache
+    from eth_defi.provider.broken_provider import \
+        _latest_delayed_block_number_cache
     _latest_delayed_block_number_cache.clear()
 
     logger.info("Running CLI: trade-executor %s", " ".join(args))
@@ -336,6 +340,9 @@ def main():
         assert private_key, "LAGOON_MULTCHAIN_TEST_PRIVATE_KEY is required in live testnet mode"
 
     usdc_amount = Decimal(os.environ.get("USDC_AMOUNT", "10"))
+    bridge_amount = os.environ.get("BRIDGE_AMOUNT", "3")
+    swap_amount = os.environ.get("SWAP_AMOUNT", "2")
+    reverse_bridge_amount = os.environ.get("REVERSE_BRIDGE_AMOUNT", "1")
     attestation_timeout = float(os.environ.get("ATTESTATION_TIMEOUT", "3600"))
     trading_strategy_api_key = os.environ.get("TRADING_STRATEGY_API_KEY", "")
 
@@ -436,6 +443,9 @@ def main():
             json_rpc_base_sepolia=json_rpc_base_sepolia,
             strategy_file=strategy_file,
             usdc_amount=usdc_amount,
+            bridge_amount=bridge_amount,
+            swap_amount=swap_amount,
+            reverse_bridge_amount=reverse_bridge_amount,
             trading_strategy_api_key=trading_strategy_api_key,
             attestation_timeout=attestation_timeout,
         )
@@ -457,6 +467,9 @@ def _run_test_lifecycle(
     json_rpc_base_sepolia: str,
     strategy_file: Path,
     usdc_amount: Decimal,
+    bridge_amount: str,
+    swap_amount: str,
+    reverse_bridge_amount: str,
     trading_strategy_api_key: str,
     attestation_timeout: float,
 ):
@@ -524,6 +537,9 @@ def _run_test_lifecycle(
             "CACHE_PATH": cache_path,
             "SATELLITE_MODULES": json.dumps({"base_sepolia": base_module}),
             "MIN_GAS_BALANCE": "0.0",
+            "BRIDGE_AMOUNT": bridge_amount,
+            "SWAP_AMOUNT": swap_amount,
+            "REVERSE_BRIDGE_AMOUNT": reverse_bridge_amount,
         }
         if trading_strategy_api_key:
             base_env["TRADING_STRATEGY_API_KEY"] = trading_strategy_api_key
@@ -665,51 +681,56 @@ def _run_test_lifecycle(
         print(f"  Base Safe USDC after bridge: {base_safe_usdc}")
         assert base_safe_usdc > 0, "USDC did not arrive on Base Sepolia"
 
-        # ===================================================================
-        # Step 6: Cycle 2 — Swap USDC -> WETH on Base Sepolia
-        # ===================================================================
-        print("\n=== Step 6: Cycle 2 — Swap USDC -> WETH ===")
+        if swap_amount != "0":
+            # ===================================================================
+            # Step 6: Cycle 2 — Swap USDC -> WETH on Base Sepolia
+            # ===================================================================
+            print("\n=== Step 6: Cycle 2 — Swap USDC -> WETH ===")
 
-        run_cli(["start"], start_env)
+            run_cli(["start"], start_env)
 
-        state = load_state(state_file)
-        weth_positions = [
-            pos for pos in state.portfolio.open_positions.values()
-            if pos.pair.base.token_symbol == "WETH"
-        ]
-        assert len(weth_positions) == 1, \
-            f"Expected 1 WETH position after cycle 2, got {len(weth_positions)}"
+            state = load_state(state_file)
+            weth_positions = [
+                pos for pos in state.portfolio.open_positions.values()
+                if pos.pair.base.token_symbol == "WETH"
+            ]
+            assert len(weth_positions) == 1, \
+                f"Expected 1 WETH position after cycle 2, got {len(weth_positions)}"
 
-        weth_trade = list(weth_positions[0].trades.values())[0]
-        assert weth_trade.get_status() == TradeStatus.success, \
-            f"WETH buy trade status: {weth_trade.get_status()}"
+            weth_trade = list(weth_positions[0].trades.values())[0]
+            assert weth_trade.get_status() == TradeStatus.success, \
+                f"WETH buy trade status: {weth_trade.get_status()}"
 
-        print(f"  WETH buy trade: {weth_trade.get_status()}")
-        print(f"  WETH acquired: {weth_trade.executed_quantity}")
+            print(f"  WETH buy trade: {weth_trade.get_status()}")
+            print(f"  WETH acquired: {weth_trade.executed_quantity}")
 
-        # ===================================================================
-        # Step 7: Cycle 3 — Sell WETH -> USDC on Base Sepolia
-        # ===================================================================
-        print("\n=== Step 7: Cycle 3 — Sell WETH -> USDC ===")
+            # ===================================================================
+            # Step 7: Cycle 3 — Sell WETH -> USDC on Base Sepolia
+            # ===================================================================
+            print("\n=== Step 7: Cycle 3 — Sell WETH -> USDC ===")
 
-        run_cli(["start"], start_env)
+            run_cli(["start"], start_env)
 
-        state = load_state(state_file)
-        weth_closed = [
-            pos for pos in state.portfolio.closed_positions.values()
-            if pos.pair.base.token_symbol == "WETH"
-        ]
-        assert len(weth_closed) == 1, \
-            f"Expected 1 closed WETH position after cycle 3, got {len(weth_closed)}"
+            state = load_state(state_file)
+            weth_closed = [
+                pos for pos in state.portfolio.closed_positions.values()
+                if pos.pair.base.token_symbol == "WETH"
+            ]
+            assert len(weth_closed) == 1, \
+                f"Expected 1 closed WETH position after cycle 3, got {len(weth_closed)}"
 
-        weth_sell_trade = list(weth_closed[0].trades.values())[-1]
-        assert weth_sell_trade.get_status() == TradeStatus.success, \
-            f"WETH sell trade status: {weth_sell_trade.get_status()}"
+            weth_sell_trade = list(weth_closed[0].trades.values())[-1]
+            assert weth_sell_trade.get_status() == TradeStatus.success, \
+                f"WETH sell trade status: {weth_sell_trade.get_status()}"
 
-        print(f"  WETH sell trade: {weth_sell_trade.get_status()}")
+            print(f"  WETH sell trade: {weth_sell_trade.get_status()}")
+        else:
+            print("\n=== Step 6-7: Skipped (SWAP_AMOUNT=0) ===")
 
         # ===================================================================
         # Step 8: Cycle 4 — Bridge USDC from Base Sepolia back to Arb Sepolia
+        # When SWAP_AMOUNT=0, strategy skips WETH and goes straight to
+        # reverse bridge in the next cycle.
         # ===================================================================
         print("\n=== Step 8: Cycle 4 — Bridge USDC back to Arbitrum Sepolia ===")
 
@@ -804,8 +825,46 @@ def _run_test_lifecycle(
         print(f"  Closed positions: {len(state.portfolio.closed_positions)}")
 
         # Verify the round trip was successful
-        # We expect most USDC to be back on Arbitrum, minus swap fees
         assert final_arb_safe_usdc > 0, "No USDC returned to Arbitrum Sepolia Safe"
+
+        # Total USDC across all chains should equal the deposited amount
+        total_usdc = final_arb_safe_usdc + final_base_safe_usdc
+        print(f"  Total USDC across chains: {total_usdc}")
+        assert total_usdc == usdc_amount, \
+            f"Total USDC across chains ({total_usdc}) != deposited amount ({usdc_amount})"
+
+        # Portfolio equity should account for all cross-chain positions
+        state = load_state(state_file)
+        final_equity = state.portfolio.get_total_equity()
+        print(f"  Portfolio equity (post-settle): {final_equity}")
+        assert final_equity == float(usdc_amount), \
+            f"Portfolio equity ({final_equity}) != deposited amount ({usdc_amount})"
+
+        # Display all positions and trades
+        all_positions = list(state.portfolio.open_positions.values()) + \
+            list(state.portfolio.closed_positions.values())
+
+        print()
+        print("=" * 70)
+        print("Positions and trades")
+        print("=" * 70)
+
+        for pos in all_positions:
+            status = "OPEN" if pos.is_open() else "CLOSED"
+            print(f"\n  [{status}] Position #{pos.position_id}: {pos.pair.get_human_description()}")
+            print(f"    Kind:     {pos.pair.kind.value}")
+            print(f"    Value:    ${pos.get_value():.4f}")
+            print(f"    Equity:   ${pos.get_equity():.4f}")
+            print(f"    Quantity: {pos.get_quantity()}")
+
+            for tid, trade in pos.trades.items():
+                print(f"    Trade #{trade.trade_id}: {trade.get_action_verb()} "
+                      f"{trade.get_position_quantity()} {pos.pair.base.token_symbol} "
+                      f"at ${trade.executed_price or trade.planned_price:.4f} — "
+                      f"{trade.get_status().name}")
+                if trade.blockchain_transactions:
+                    last_tx = trade.blockchain_transactions[-1]
+                    print(f"      TX: {last_tx.tx_hash}")
 
         print()
         print("All ok!")

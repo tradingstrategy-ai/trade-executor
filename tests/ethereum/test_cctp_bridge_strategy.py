@@ -73,7 +73,7 @@ def test_cctp_pair_properties(cctp_pair):
 
     # Source chain is Arbitrum (quote token chain)
     assert cctp_pair.get_source_chain_id() == 42161
-    assert cctp_pair.chain_id == 42161  # chain_id returns source for bridge pairs
+    assert cctp_pair.chain_id == 8453  # chain_id returns destination for bridge pairs
 
     # Destination chain is Base (base token chain)
     assert cctp_pair.get_destination_chain_id() == 8453
