@@ -86,8 +86,16 @@ class CctpBridgeRouting(RoutingModel):
                 f"CctpBridgeRouting received non-bridge trade: {trade}"
 
             pair = trade.pair
-            source_chain_id = pair.quote.chain_id
-            dest_chain_id = pair.base.chain_id
+
+            # Bridge direction depends on buy vs sell:
+            # - Buy (forward): burn on quote chain, mint on base chain
+            # - Sell (reverse): burn on base chain, mint on quote chain
+            if trade.is_buy():
+                source_chain_id = pair.quote.chain_id
+                dest_chain_id = pair.base.chain_id
+            else:
+                source_chain_id = pair.base.chain_id
+                dest_chain_id = pair.quote.chain_id
 
             source_web3 = self.web3config.get_connection(ChainId(source_chain_id))
             assert source_web3 is not None, \

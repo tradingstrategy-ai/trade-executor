@@ -333,6 +333,7 @@ def create_vault_adapter(
     web3: Web3,
     strategy_universe: TradingStrategyUniverse,
     routing_id: ProtocolRoutingId,
+    web3config=None,
 ) -> ProtocolRoutingConfig:
 
     # TODO: Avoid circular imports for now
@@ -343,15 +344,13 @@ def create_vault_adapter(
     logger.info("create_vault_adapter(): %s", routing_id)
 
     assert routing_id.router_name == "vault"
-    assert len(strategy_universe.data_universe.chains) == 1
     assert len(strategy_universe.reserve_assets) == 1
 
     reserve = strategy_universe.get_reserve_asset()
     assert reserve.token_symbol in ("USDC", "USDT",)
-    chain_id = strategy_universe.get_single_chain()
 
     routing_model = VaultRouting(reserve.address)
-    pricing_model = VaultPricing(web3)
+    pricing_model = VaultPricing(web3, web3config=web3config)
     valuation_model = VaultValuator(pricing_model)
 
     return ProtocolRoutingConfig(
@@ -678,7 +677,7 @@ class EthereumPairConfigurator(PairConfigurator):
         elif routing_id.router_name == "aave-v3":
             return create_aave_v3_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "vault":
-            return create_vault_adapter(self.web3, self.strategy_universe, routing_id)
+            return create_vault_adapter(self.web3, self.strategy_universe, routing_id, web3config=self.web3config)
         elif routing_id.router_name == "freqtrade":
             return create_freqtrade_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "exchange_account":

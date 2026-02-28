@@ -827,6 +827,15 @@ class TradingPosition(GenericPosition):
         """
 
         match self.pair.kind:
+            case TradingPairKind.cctp_bridge:
+                # Bridge equity excludes capital allocated to satellite
+                # positions — those positions report their own equity.
+                full_value = self.calculate_value_using_price(
+                    self.last_token_price,
+                    self.last_reserve_price,
+                    include_interest=False,
+                )
+                return full_value - float(self.bridge_capital_allocated) * self.last_token_price
             case TradingPairKind.spot_market_hold | TradingPairKind.vault | TradingPairKind.freqtrade | TradingPairKind.exchange_account:
                 return self.calculate_value_using_price(
                     self.last_token_price,

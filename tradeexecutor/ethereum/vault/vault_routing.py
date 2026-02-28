@@ -116,9 +116,14 @@ class VaultRouting(RoutingModel):
 
         assert trade.is_vault(), "Vault only supports vault trades"
         assert trade.slippage_tolerance, "TradeExecution.slippage_tolerance must be set"
-        assert trade.pair.quote.address in self.allowed_intermediary_pairs or trade.pair.quote.address == self.reserve_token_address, f"Unsupported quote token: {trade.pair}: {trade.pair.quote.address}, our reserve is {self.reserve_token_address}"
 
         reserve_asset = routing_state.strategy_universe.get_reserve_asset()
+
+        # Cross-chain vault trades use the satellite chain's reserve token
+        # (e.g. Base USDC) which differs from the home chain reserve (Arb USDC).
+        # The on-chain deposit uses the vault's own denomination_token regardless.
+        if trade.pair.quote.chain_id == reserve_asset.chain_id:
+            assert trade.pair.quote.address in self.allowed_intermediary_pairs or trade.pair.quote.address == self.reserve_token_address, f"Unsupported quote token: {trade.pair}: {trade.pair.quote.address}, our reserve is {self.reserve_token_address}"
 
         tx_builder = routing_state.tx_builder
         web3 = tx_builder.web3
@@ -311,8 +316,13 @@ class VaultRouting(RoutingModel):
 
             path = result.path
 
+            # For cross-chain vault trades the on-chain path uses the
+            # satellite chain's quote token (e.g. Base USDC) whereas
+            # reserve_currency is the home chain token (Arb USDC).
+            expected_quote_addr = trade.pair.quote.address.lower()
+
             if trade.is_buy():
-                assert path[0] == reserve.address, f"Was expecting the route path to start with reserve token {reserve}, got path {result.path}"
+                assert path[0] == expected_quote_addr, f"Was expecting the route path to start with quote token {trade.pair.quote}, got path {result.path}"
 
                 # price = result.get_human_price(quote_token_details.address == result.token0.address)
                 executed_reserve = result.amount_in / Decimal(10 ** reserve.decimals)
@@ -323,7 +333,7 @@ class VaultRouting(RoutingModel):
             else:
                 # Ordered other way around
                 assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
-                assert path[-1] == reserve.address
+                assert path[-1] == expected_quote_addr, f"Path is {path}, expected quote token {trade.pair.quote}"
                 # price = result.get_human_price(quote_token_details.address == result.token0.address)
                 executed_amount = -result.amount_in / Decimal(10 ** base_token_details.decimals)
                 executed_reserve = result.amount_out / Decimal(10 ** reserve.decimals)

@@ -649,13 +649,13 @@ class EthereumExecution(ExecutionModel):
         }
 
     def update_confirmation_status(
-        self, 
+        self,
         ts: datetime.datetime,
         tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
         receipts: Dict[HexBytes, dict]
     ) -> set[TradeExecution]:
         """First update the state of all transactions, as we now have receipt for them. Update the transaction confirmation status"""
-        return update_confirmation_status(self.web3, ts, tx_map, receipts)
+        return update_confirmation_status(self.web3, ts, tx_map, receipts, web3config=self.web3config)
     
     def resolve_trades(
         self,
@@ -723,10 +723,11 @@ def update_confirmation_status(
         web3: Web3,
         ts: datetime.datetime,
         tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
-        receipts: Dict[HexBytes, dict]
+        receipts: Dict[HexBytes, dict],
+        web3config=None,
     ) -> set[TradeExecution]:
         """First update the state of all transactions, as we now have receipt for them. Update the transaction confirmation status"""
-        
+
         trades: set[TradeExecution] = set()
 
         # First update the state of all transactions,
@@ -752,14 +753,19 @@ def update_confirmation_status(
             reason = None
             stack_trace = None
 
+            # Resolve the correct web3 for this transaction's chain
+            tx_web3 = web3
+            if web3config and tx.chain_id and tx.chain_id != web3.eth.chain_id:
+                tx_web3 = web3config.get_connection(ChainId(tx.chain_id))
+
             # Transaction failed,
             # try to get as much as information possible
             if status == 0:
-                reason = fetch_transaction_revert_reason(web3, tx_hash)
+                reason = fetch_transaction_revert_reason(tx_web3, tx_hash)
 
-                if web3.eth.chain_id == ChainId.anvil.value:
-                    trace_data = trace_evm_transaction(web3, tx_hash)
-                    stack_trace = print_symbolic_trace(get_or_create_contract_registry(web3), trace_data)
+                if tx_web3.eth.chain_id == ChainId.anvil.value:
+                    trace_data = trace_evm_transaction(tx_web3, tx_hash)
+                    stack_trace = print_symbolic_trace(get_or_create_contract_registry(tx_web3), trace_data)
 
             tx.set_confirmation_information(
                 ts,
