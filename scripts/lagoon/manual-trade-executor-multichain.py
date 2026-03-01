@@ -21,7 +21,7 @@ The script uses the ``lagoon_crosschain_manual_test`` strategy module,
 which creates a universe with CCTP bridge pairs and a WETH/USDC Uniswap v3
 pair on Base Sepolia.
 
-See lagoon-multichai.rst for more details how bridges and testnets work under the hood.
+See lagoon-multichain.rst for more details how bridges and testnets work under the hood.
 
 Modes
 -----
