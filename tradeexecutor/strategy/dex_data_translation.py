@@ -91,15 +91,33 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
     assert dex_pair.base_token_decimals is not None, f"Base token missing decimals: {dex_pair}"
     assert dex_pair.quote_token_decimals is not None, f"Quote token missing decimals: {dex_pair}"
 
+    # For CCTP bridge pairs, base and quote may have the same symbol (USDC/USDC)
+    # which confuses generate_address_columns. Use stored addresses from other_data.
+    if dex_pair.other_data and dex_pair.other_data.get("bridge_protocol") == "cctp":
+        base_addr = dex_pair.other_data.get("_base_address", dex_pair.base_token_address)
+        quote_addr = dex_pair.other_data.get("_quote_address", dex_pair.quote_token_address)
+        base_chain_id = dex_pair.other_data.get("_base_chain_id", dex_pair.chain_id.value)
+        quote_chain_id = dex_pair.other_data.get("_quote_chain_id", dex_pair.chain_id.value)
+        # Legacy fallback for older data without stored addresses
+        if "_base_chain_id" not in dex_pair.other_data:
+            destination_chain_id = dex_pair.other_data.get("destination_chain_id")
+            if destination_chain_id is not None:
+                base_chain_id = destination_chain_id
+    else:
+        base_addr = dex_pair.base_token_address
+        quote_addr = dex_pair.quote_token_address
+        base_chain_id = dex_pair.chain_id.value
+        quote_chain_id = dex_pair.chain_id.value
+
     base = AssetIdentifier(
-        chain_id=dex_pair.chain_id.value,
-        address=dex_pair.base_token_address,
+        chain_id=base_chain_id,
+        address=base_addr,
         token_symbol=dex_pair.base_token_symbol,
         decimals=dex_pair.base_token_decimals,
     )
     quote = AssetIdentifier(
-        chain_id=dex_pair.chain_id.value,
-        address=dex_pair.quote_token_address,
+        chain_id=quote_chain_id,
+        address=quote_addr,
         token_symbol=dex_pair.quote_token_symbol,
         decimals=dex_pair.quote_token_decimals,
     )
@@ -133,6 +151,8 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
         kind = TradingPairKind.vault
     elif dex_pair.dex_type == ExchangeType.derive:
         kind = TradingPairKind.exchange_account
+    elif dex_pair.other_data and dex_pair.other_data.get("bridge_protocol") == "cctp":
+        kind = TradingPairKind.cctp_bridge
     else:
         kind = TradingPairKind.spot_market_hold
 
@@ -198,9 +218,9 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                 }
             })
 
-        # Preserve exchange account fields (Derive, CCXT, etc.)
+        # Preserve exchange account fields (Derive, CCXT, etc.) and bridge fields
         for key in ("exchange_protocol", "exchange_subaccount_id", "exchange_is_testnet",
-                     "ccxt_account_id", "ccxt_exchange_id"):
+                     "ccxt_account_id", "ccxt_exchange_id", "bridge_protocol"):
             val = dex_pair.other_data.get(key)
             if val is not None:
                 pair.other_data[key] = val

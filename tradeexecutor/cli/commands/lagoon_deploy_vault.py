@@ -47,8 +47,10 @@ Example how to manually test:
     trade-executor lagoon-deploy-vault
 """
 
+import datetime
 import json
 import os.path
+import random
 import sys
 from pathlib import Path
 from typing import cast
@@ -64,7 +66,8 @@ from eth_defi.erc_4626.vault_protocol.lagoon.config import \
     get_lagoon_chain_config
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
     DEFAULT_MANAGEMENT_RATE, DEFAULT_PERFORMANCE_RATE,
-    LagoonDeploymentParameters, deploy_automated_lagoon_vault)
+    LagoonDeploymentParameters, deploy_automated_lagoon_vault,
+    deploy_multichain_lagoon_vault)
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
@@ -83,9 +86,13 @@ from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.commands.shared_options import \
     parse_comma_separated_list
 from tradeexecutor.cli.log import setup_logging
+from tradeexecutor.ethereum.lagoon.universe_config import translate_trading_universe_to_lagoon_config
 from tradeexecutor.ethereum.token_cache import get_default_token_cache
 from tradeexecutor.monkeypatch.web3 import \
     construct_sign_and_send_raw_middleware
+from tradeexecutor.strategy.execution_context import one_off_execution_context
+from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import call_create_trading_universe
+from tradeexecutor.strategy.strategy_module import read_strategy_module
 
 
 @app.command()
@@ -99,6 +106,8 @@ def lagoon_deploy_vault(
     json_rpc_arbitrum: str | None = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: str | None = shared_options.json_rpc_anvil,
     json_rpc_derive: str | None = shared_options.json_rpc_derive,
+    json_rpc_arbitrum_sepolia: str | None = shared_options.json_rpc_arbitrum_sepolia,
+    json_rpc_base_sepolia: str | None = shared_options.json_rpc_base_sepolia,
     private_key: str = shared_options.private_key,
 
     # Vault options
@@ -132,15 +141,21 @@ def lagoon_deploy_vault(
     existing_safe_address: str | None = Option(None, envvar="EXISTING_SAFE_ADDRESS", help="When deploying a guard only, get the existing safe address."),
     vault_adapter_address: str = shared_options.vault_adapter_address,
     cache_path: Path | None = shared_options.cache_path,
+    strategy_file: Path | None = Option(None, envvar="STRATEGY_FILE", help="Strategy module for multichain deployment. When provided, uses translate_trading_universe_to_lagoon_config() to generate per-chain configs."),
+    safe_salt_nonce: int | None = Option(None, envvar="SAFE_SALT_NONCE", help="CREATE2 salt nonce for deterministic Safe address across chains. Random if not given."),
+    trading_strategy_api_key: str | None = shared_options.trading_strategy_api_key,
 ):
     """Deploy a Lagoon vault or modify the vault deployment.
 
     Deploys a new Lagoon vault, Safe and TradingStrategyModuleV0 guard for automated trading.
 
+    When --strategy-file is provided, performs a multichain deployment using the
+    strategy's trading universe to determine per-chain configurations (CCTP bridging,
+    Uniswap v3 whitelisting, etc.).
+
     TODO: Heavily under development.
     """
 
-    assert any_asset, "Currently only any_asset configurations supported"
     assert private_key, "PRIVATE_KEY not set"
 
     logger = setup_logging(log_level)
@@ -160,6 +175,8 @@ def lagoon_deploy_vault(
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_derive=json_rpc_derive,
+        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
+        json_rpc_base_sepolia=json_rpc_base_sepolia,
         simulate=simulate,
         mev_endpoint_disabled=True,
     )
@@ -167,6 +184,38 @@ def lagoon_deploy_vault(
     if not web3config.has_any_connection():
         raise RuntimeError("Vault deploy requires that you pass JSON-RPC connection to one of the networks")
 
+    hot_wallet = HotWallet.from_private_key(private_key)
+
+    # Asset manager defaults to deployer, but can be overridden
+    if asset_manager_address:
+        asset_manager = Web3.to_checksum_address(asset_manager_address)
+    else:
+        asset_manager = hot_wallet.address
+
+    # Multichain deployment path: use strategy file to generate per-chain configs
+    # Only take this path when multiple chains are actually configured
+    if strategy_file and len(web3config.connections) > 1:
+        _deploy_multichain(
+            web3config=web3config,
+            hot_wallet=hot_wallet,
+            asset_manager=asset_manager,
+            strategy_file=strategy_file,
+            safe_salt_nonce=safe_salt_nonce,
+            fund_name=fund_name,
+            fund_symbol=fund_symbol,
+            multisig_owners=multisig_owners,
+            vault_record_file=vault_record_file,
+            simulate=simulate,
+            unit_testing=unit_testing,
+            logger=logger,
+            any_asset=any_asset,
+            trading_strategy_api_key=trading_strategy_api_key,
+        )
+        web3config.close()
+        logger.info("All ok.")
+        return
+
+    # Single-chain deployment path (original flow)
     web3config.choose_single_chain()
 
     web3 = web3config.get_default()
@@ -174,7 +223,6 @@ def lagoon_deploy_vault(
 
     logger.info("Connected to chain %s", chain_id.name)
 
-    hot_wallet = HotWallet.from_private_key(private_key)
     hot_wallet.sync_nonce(web3)
     web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
 
@@ -184,12 +232,6 @@ def lagoon_deploy_vault(
     # Check the chain is online
     logger.info(f"  Chain id is {web3.eth.chain_id:,}")
     logger.info(f"  Latest block is {web3.eth.block_number:,}")
-
-    # Asset manager defaults to deployer, but can be overridden
-    if asset_manager_address:
-        asset_manager = Web3.to_checksum_address(asset_manager_address)
-    else:
-        asset_manager = hot_wallet.address
 
     lagoon_chain_config = get_lagoon_chain_config(chain_id)
 
@@ -336,7 +378,7 @@ def lagoon_deploy_vault(
         uniswap_v2=uniswap_v2_deployment,
         uniswap_v3=uniswap_v3_deployment,
         aave_v3=aave_v3_deployment,
-        any_asset=True,
+        any_asset=any_asset,
         use_forge=True,
         etherscan_api_key=etherscan_api_key,
         verifier=verifier,
@@ -383,6 +425,146 @@ def lagoon_deploy_vault(
     web3config.close()
 
     logger.info("All ok.")
+
+
+def _deploy_multichain(
+    web3config,
+    hot_wallet: HotWallet,
+    asset_manager: str,
+    strategy_file: Path,
+    safe_salt_nonce: int | None,
+    fund_name: str | None,
+    fund_symbol: str | None,
+    multisig_owners: list[str] | None,
+    vault_record_file: Path,
+    simulate: bool,
+    unit_testing: bool,
+    logger,
+    any_asset: bool = False,
+    trading_strategy_api_key: str | None = None,
+):
+    """Deploy multichain Lagoon vault from a strategy file.
+
+    Uses the strategy's trading universe to determine per-chain configurations.
+    """
+
+    if safe_salt_nonce is None:
+        safe_salt_nonce = random.randint(1, 2**32)
+        logger.info("Generated random safe_salt_nonce: %d", safe_salt_nonce)
+
+    if not multisig_owners:
+        multisig_owners = [hot_wallet.address]
+
+    safe_threshold = max(1, len(multisig_owners) - 1)
+
+    # Create TradingStrategy client if API key is available
+    # (needed by strategies that fetch exchange/pair data from the API)
+    client = None
+    if trading_strategy_api_key:
+        from tradingstrategy.client import Client
+        client = Client.create_live_client(api_key=trading_strategy_api_key)
+
+    # Load strategy module and create trading universe
+    mod = read_strategy_module(strategy_file)
+    universe = call_create_trading_universe(
+        mod.create_trading_universe,
+        client=client,
+        universe_options=mod.get_universe_options(),
+        execution_context=one_off_execution_context,
+    )
+
+    # Build chain_web3 mapping: {chain_slug: web3}
+    chain_web3 = {}
+    for chain_id, web3 in web3config.connections.items():
+        chain_web3[chain_id.get_slug()] = web3
+
+    logger.info("Multichain deployment: chains=%s, strategy=%s", list(chain_web3.keys()), strategy_file)
+
+    # Sync hot wallet nonce on each chain
+    for slug, web3 in chain_web3.items():
+        hot_wallet.sync_nonce(web3)
+        web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
+        logger.info("  Chain %s: block %d", slug, web3.eth.block_number)
+
+    # Generate per-chain configs from the strategy universe
+    configs = translate_trading_universe_to_lagoon_config(
+        universe=universe,
+        chain_web3=chain_web3,
+        asset_manager=asset_manager,
+        safe_owners=multisig_owners,
+        safe_threshold=safe_threshold,
+        safe_salt_nonce=safe_salt_nonce,
+        fund_name=fund_name or "Crosschain Strategy Vault",
+        fund_symbol=fund_symbol or "CSV",
+        any_asset=any_asset,
+    )
+
+    logger.info("Generated %d chain configs:", len(configs))
+    for slug, config in configs.items():
+        logger.info("  %s: satellite=%s, cctp=%s, uniswap_v3=%s",
+                     slug, config.satellite_chain,
+                     config.cctp_deployment is not None,
+                     config.uniswap_v3 is not None)
+
+    if not (simulate or unit_testing):
+        confirm = input("Deploy multichain vault? [y/n] ")
+        if not confirm.lower().startswith("y"):
+            print("Aborted")
+            sys.exit(1)
+
+    # Deploy across all chains
+    result = deploy_multichain_lagoon_vault(
+        chain_web3=chain_web3,
+        deployer=hot_wallet.account,
+        chain_configs=configs,
+    )
+
+    logger.info("Multichain deployment complete")
+    logger.info("Safe address: %s", result.deployments[next(iter(result.deployments))].safe_address)
+
+    # Write deployment record
+    if vault_record_file and not simulate:
+        deployment_data = {
+            "multichain": True,
+            "safe_salt_nonce": safe_salt_nonce,
+            "deployments": {},
+        }
+        for slug, dep in result.deployments.items():
+            deployment_data["deployments"][slug] = {
+                "vault_address": dep.vault.address if hasattr(dep.vault, "address") else None,
+                "safe_address": dep.safe_address,
+                "module_address": dep.trading_strategy_module.address if dep.trading_strategy_module else None,
+                "is_satellite": dep.is_satellite,
+            }
+
+        # Write human-readable summary
+        with open(vault_record_file, "wt") as out:
+            for slug, dep in result.deployments.items():
+                out.write(f"Chain: {slug}\n")
+                out.write(f"  Satellite: {dep.is_satellite}\n")
+                out.write(f"  Safe: {dep.safe_address}\n")
+                if not dep.is_satellite:
+                    out.write(f"  Vault: {dep.vault.address}\n")
+                if dep.trading_strategy_module:
+                    out.write(f"  Module: {dep.trading_strategy_module.address}\n")
+                out.write("\n")
+
+        # Write machine-readable JSON
+        with open(vault_record_file.with_suffix(".json"), "wt") as out:
+            out.write(json.dumps(deployment_data, indent=2))
+
+        logger.info("Wrote deployment record to %s", os.path.abspath(vault_record_file))
+
+    for slug, dep in result.deployments.items():
+        kind = "satellite" if dep.is_satellite else "source"
+        logger.info("  %s (%s): safe=%s", slug, kind, dep.safe_address)
+        if not dep.is_satellite:
+            logger.info("    vault=%s", dep.vault.address)
+        if dep.trading_strategy_module:
+            logger.info("    module=%s", dep.trading_strategy_module.address)
+        if dep.whitelisted_items:
+            kinds = {e.kind for e in dep.whitelisted_items}
+            logger.info("    whitelisted: %s", ", ".join(sorted(kinds)))
 
 
 SAFE_ABI_STR = """

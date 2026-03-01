@@ -70,6 +70,8 @@ def correct_accounts(
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
     json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
+    json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
+    json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
 
     unknown_token_receiver: Optional[str] = Option(None, "--unknown-token-receiver", envvar="UNKNOWN_TOKEN_RECEIVER", help="The Ethereum address that will receive any token that cannot be associated with an open position. For Enzyme vault based strategies this address defauts to the executor hot wallet."),
 
@@ -130,13 +132,24 @@ def correct_accounts(
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_derive=json_rpc_derive,
+        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
+        json_rpc_base_sepolia=json_rpc_base_sepolia,
         unit_testing=unit_testing,
     )
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
 
-    # Check that we are connected to the chain strategy assumes
-    web3config.choose_single_chain()
+    # Set default chain but allow multiple connections for multichain strategies
+    if len(web3config.connections) == 1:
+        web3config.choose_single_chain()
+    else:
+        default_chain_id = next(iter(web3config.connections.keys()))
+        web3config.set_default_chain(default_chain_id)
+        logger.info(
+            "Multichain mode: default chain %s, %d chain(s) connected",
+            default_chain_id.name,
+            len(web3config.connections),
+        )
 
     if private_key is not None:
         hot_wallet = HotWallet.from_private_key(private_key)
@@ -155,9 +168,10 @@ def correct_accounts(
 
     logger.info("RPC details")
 
-    # Check the chain is online
-    logger.info(f"  Chain id is {web3.eth.chain_id:,}")
-    logger.info(f"  Latest block is {web3.eth.block_number:,}")
+    # Log all connected chains
+    for chain_id, conn in web3config.connections.items():
+        logger.info(f"  Chain {chain_id.name} (id {conn.eth.chain_id:,})")
+        logger.info(f"    Latest block is {conn.eth.block_number:,}")
 
     # Check balances
     logger.info("Balance details")
@@ -287,15 +301,38 @@ def correct_accounts(
         logger.info("Manually remove duplicates with close-position command first.")
         raise RuntimeError("Crash for safety")
 
+    # Auto-create CCTP bridge positions from universe before corrections
+    # (so newly created positions are included in the on-chain balance check)
+    from tradeexecutor.strategy.account_correction import create_missing_cctp_bridge_positions
+
+    logger.info("Checking for missing CCTP bridge positions in universe...")
+    created_bridge_trades = create_missing_cctp_bridge_positions(
+        strategy_universe=universe,
+        state=state,
+        strategy_cycle_at=native_datetime_utc_now(),
+    )
+    if created_bridge_trades:
+        logger.info("Auto-created %d CCTP bridge position(s)", len(created_bridge_trades))
+        for trade in created_bridge_trades:
+            logger.info("  Created bridge position for %s", trade.pair)
+    else:
+        logger.info("No missing CCTP bridge positions")
+
     block_number = get_almost_latest_block_number(web3)
     logger.info(f"Correcting accounts at block {block_number:,}")
 
     block_timestamp = get_block_timestamp(web3, block_number)
 
-    # Skip on-chain accounting for strategies without on-chain trading
-    if mod.trade_routing == TradeRouting.ignore:
+    # Skip on-chain corrections when all positions are exchange account positions
+    # (their balances are synced via exchange API, not on-chain balance checks)
+    has_onchain_positions = any(
+        not p.pair.is_exchange_account()
+        for p in state.portfolio.get_open_and_frozen_positions()
+    )
+
+    if not has_onchain_positions:
         corrections = []
-        logger.info("On-chain account correction skipped - strategy uses TradeRouting.ignore")
+        logger.info("On-chain account correction skipped - no on-chain positions")
     else:
         corrections = calculate_account_corrections(
             universe.data_universe.pairs,
@@ -466,9 +503,13 @@ def correct_accounts(
 
     block_number = get_almost_latest_block_number(web3)
 
-    # Skip final on-chain account check for strategies without on-chain trading
-    if mod.trade_routing == TradeRouting.ignore:
-        logger.info("Final account check skipped - strategy uses TradeRouting.ignore")
+    # Skip final on-chain account check for strategies without on-chain positions
+    has_onchain_positions_final = any(
+        not p.pair.is_exchange_account()
+        for p in state.portfolio.get_open_and_frozen_positions()
+    )
+    if not has_onchain_positions_final:
+        logger.info("Final account check skipped - no on-chain positions")
         logger.info("All ok")
         sys.exit(0)
 

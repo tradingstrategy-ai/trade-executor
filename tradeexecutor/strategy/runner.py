@@ -343,6 +343,9 @@ class StrategyRunner(abc.ABC):
             elif t.pair.is_credit_supply():
                 # For credit supply, no swaps are executed
                 t.post_execution_price_structure = None
+            elif t.pair.is_cctp_bridge():
+                # Bridge trades are 1:1, no price structure needed
+                t.post_execution_price_structure = None
             else:
                 raise AssertionError(f"Unsupported: {t}")
 
@@ -595,6 +598,8 @@ class StrategyRunner(abc.ABC):
                     web3,
                     cast(TradingStrategyUniverse, universe),
                     account_value_func=getattr(self.execution_model, 'account_value_func', None),
+                    web3config=getattr(self.execution_model, 'web3config', None),
+                    satellite_vaults=getattr(self.execution_model, 'satellite_vaults', None),
                 )
                 routing_model.initialise(pair_configurator)
 

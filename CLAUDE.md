@@ -58,6 +58,7 @@ Don't format code.
 
 ## Pull requests
 
+- Only push changes to remote when asked, never update pull requess automatically.
 - Never push directly to a master, and open a pull request when asked.
 - Do not include test plan in a pull request description
 - If the user ask to open a pull request as feature then start the PR title with "feat:" prefix and also add one line about the feature into `CHANGELOG.md`
@@ -102,3 +103,26 @@ Don't format code.
 - Use `type | None` instead of `Optional[type]`
 - Use `str | int` instead of `Union[str, int]`
 - Only import from typing when necessary (e.g., `Any`, `Callable`, `TypeVar`)
+
+## ERC-20
+
+- Don't do hardcoded token decimal multiply, use `TokenDetails.convert_to_raw()`
+- Use `TokenDetails.transfer()` and similar - do not do raw ERC-20 contract calls unless needed
+- Use `eth_defi.hotwallet.HotWallet` for deployer accounts and signing transactions when possible
+
+## Web Fetching and 403
+
+When fetching web pages, if `web_fetch` returns a 403 error, retry the request using the Chrome MCP tool to load the page in a real browser instead.
+
+Prerequisites:
+
+1. **Claude in Chrome extension** (v1.0.36+) - [Chrome Web Store](https://chromewebstore.google.com/detail/claude/fcoeoabgfenejglbffodgkkbkcdhcgfn)
+2. **Google Chrome** running
+3. **Direct Anthropic plan** (Pro, Max, Team, or Enterprise)
+
+
+Browser tools are automatically available when the Chrome extension is connected. Use `@browser` in your Visual Studio Code prompt to activate the connection.
+
+When using browser tools, Claude may ask for permission to visit specific domains. **Approve these prompts** to allow browser automation. You can also pre-approve domains in the Chrome extension settings.
+
+

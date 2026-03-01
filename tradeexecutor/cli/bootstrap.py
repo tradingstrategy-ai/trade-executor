@@ -35,6 +35,7 @@ from tradeexecutor.backtest.backtest_sync import BacktestSyncModel
 from tradeexecutor.backtest.backtest_valuation import backtest_valuation_factory
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.approval import CLIApprovalModel
+from tradeexecutor.ethereum.address_sync_model import AddressSyncModel
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.tx import TransactionBuilder
@@ -99,6 +100,8 @@ def create_web3_config(
     json_rpc_base,
     json_rpc_anvil,
     json_rpc_derive=None,
+    json_rpc_arbitrum_sepolia=None,
+    json_rpc_base_sepolia=None,
     gas_price_method: Optional[GasPriceMethod] = None,
     unit_testing: bool=False,
     simulate: bool=False,
@@ -125,6 +128,8 @@ def create_web3_config(
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_derive=json_rpc_derive,
+        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
+        json_rpc_base_sepolia=json_rpc_base_sepolia,
         unit_testing=unit_testing,
         simulate=simulate,
         mev_endpoint_disabled=mev_endpoint_disabled,
@@ -241,6 +246,7 @@ def create_execution_and_sync_model(
     vault_adapter_address: Optional[str],
     vault_payment_forwarder_address: Optional[str],
     routing_hint: Optional[TradeRouting] = None,
+    unit_testing: bool = False,
 ) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory]:
     """Set up the wallet sync and execution mode for the command line client."""
 
@@ -265,7 +271,12 @@ def create_execution_and_sync_model(
             vault_address,
             vault_adapter_address,
             vault_payment_forwarder_address,
+            unit_testing=unit_testing,
         )
+
+        # Pass web3config for multichain balance queries (e.g. CCTP bridge)
+        if isinstance(sync_model, AddressSyncModel):
+            sync_model.web3config = web3config
 
         logger.info(
             "Creating execution model. Asset management mode is %s, routing hint is %s, confirmation timeout %s",
@@ -285,6 +296,33 @@ def create_execution_and_sync_model(
             mainnet_fork=web3config.is_mainnet_fork(),
             sync_model=sync_model,
         )
+
+        # Pass web3config for multichain execution (e.g. CCTP bridge)
+        execution_model.web3config = web3config
+
+        # Populate satellite vaults for multichain Lagoon deployments
+        if isinstance(execution_model, LagoonExecution):
+            satellite_modules_json = os.environ.get("SATELLITE_MODULES")
+            if satellite_modules_json:
+                import json as _json
+                from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonSatelliteVault
+                satellite_modules = _json.loads(satellite_modules_json)
+                # The Safe address is shared across all chains (CREATE2)
+                safe_address = sync_model.vault.safe_address
+                satellite_vaults = {}
+                for chain_slug, module_address in satellite_modules.items():
+                    sat_chain_id = ChainId[chain_slug]
+                    sat_web3 = web3config.get_connection(sat_chain_id)
+                    assert sat_web3, f"No Web3 connection for satellite chain {chain_slug}"
+                    sat_vault = LagoonSatelliteVault(
+                        sat_web3,
+                        safe_address=sat_web3.to_checksum_address(safe_address),
+                        trading_strategy_module_address=sat_web3.to_checksum_address(module_address),
+                    )
+                    satellite_vaults[sat_chain_id.value] = sat_vault
+                    logger.info("Satellite vault on %s: safe=%s, module=%s", chain_slug, safe_address, module_address)
+                execution_model.satellite_vaults = satellite_vaults
+
         return execution_model, sync_model, valuation_model_factory, pricing_model_factory
 
     elif asset_management_mode == AssetManagementMode.backtest:
@@ -532,6 +570,7 @@ def create_sync_model(
     vault_adapter_address: Optional[str] = None,
     vault_payment_forwarder_address: Optional[str] = None,
     init=False,
+    unit_testing=False,
 ) -> SyncModel:
     """Create sync model for wallet type
 
@@ -569,10 +608,13 @@ def create_sync_model(
                 web3,
                 VaultSpec(web3.eth.chain_id, cast(HexAddress, vault_address)),
                 trading_strategy_module_address=vault_adapter_address,
+                default_block_identifier="latest",
             )
             return LagoonVaultSyncModel(
                 vault,
                 hot_wallet,
+                unit_testing=unit_testing,
+                valuation_data_freshness=datetime.timedelta(days=2) if unit_testing else datetime.timedelta(hours=4),
             )
         case _:
             raise NotImplementedError()

@@ -22,10 +22,14 @@ logger = logging.getLogger(__name__)
 class LagoonExecution(EthereumExecution):
     """Execution model that uses raw onchain Uniswap swaps with Lagoon."""
 
-    def __init__(self, vault: LagoonVault, **kwargs):
+    def __init__(self, vault: LagoonVault, satellite_vaults: dict | None = None, **kwargs):
         assert isinstance(vault, LagoonVault)
         super().__init__(**kwargs)
         self.vault = vault
+        #: Mapping of chain_id -> AutomatedSafe for satellite chain vaults.
+        #: Used for multichain Lagoon deployments where satellite chains
+        #: have a Safe + TradingStrategyModuleV0 guard but no vault contract.
+        self.satellite_vaults = satellite_vaults or {}
 
     @staticmethod
     def pre_execute_assertions(
@@ -60,6 +64,8 @@ class LagoonExecution(EthereumExecution):
             self.web3,
             strategy_universe,
             account_value_func=self.account_value_func,
+            web3config=self.web3config,
+            satellite_vaults=self.satellite_vaults,
         )
 
         # TODO: Create a proper place fot his

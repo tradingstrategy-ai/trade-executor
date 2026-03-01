@@ -30,12 +30,26 @@ class VaultPricing(PricingModel):
     def __init__(
         self,
         web3: Web3,
+        web3config=None,
     ):
         self.web3 = web3
+        self.web3config = web3config
+
+    def get_web3_for_pair(self, pair: TradingPairIdentifier) -> Web3:
+        """Resolve the correct web3 connection for a pair.
+
+        For cross-chain vaults (e.g. a vault on Base when the home chain
+        is Arbitrum), use the satellite chain's web3 from web3config.
+        """
+        if self.web3config is not None and pair.base.chain_id != self.web3.eth.chain_id:
+            from tradingstrategy.chain import ChainId
+            return self.web3config.get_connection(ChainId(pair.base.chain_id))
+        return self.web3
 
     def get_vault(self, target_pair: TradingPairIdentifier) -> ERC4626Vault:
         """Helper function to speed up vault deployment resolution."""
-        return get_vault_for_pair(self.web3, target_pair)
+        web3 = self.get_web3_for_pair(target_pair)
+        return get_vault_for_pair(web3, target_pair)
 
     def get_sell_price(
         self,
@@ -52,7 +66,8 @@ class VaultPricing(PricingModel):
 
         assert isinstance(quantity, Decimal)
 
-        block_number = self.web3.eth.block_number
+        web3 = self.get_web3_for_pair(pair)
+        block_number = web3.eth.block_number
         vault = self.get_vault(pair)
 
         estimated_usd = estimate_4626_redeem(
@@ -89,7 +104,8 @@ class VaultPricing(PricingModel):
         assert pair.is_vault()
         assert isinstance(reserve, Decimal)
 
-        block_number = self.web3.eth.block_number
+        web3 = self.get_web3_for_pair(pair)
+        block_number = web3.eth.block_number
         vault = self.get_vault(pair)
 
         estimated_shares = estimate_4626_deposit(
@@ -136,7 +152,8 @@ class VaultPricing(PricingModel):
     ) -> USDollarAmount:
         """Get the TVL of a vault pair."""
         assert pair.quote.is_stablecoin(), f"Only stablecoin vaults are supported for TVL, got: {pair}"
-        block_number = self.web3.eth.block_number
+        web3 = self.get_web3_for_pair(pair)
+        block_number = web3.eth.block_number
         vault = self.get_vault(pair)
         tvl_tokens = vault.fetch_total_assets(block_identifier=block_number)
         assert tvl_tokens is not None, f"Failed to fetch TVL for vault {pair} at block {block_number}"

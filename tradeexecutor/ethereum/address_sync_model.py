@@ -28,7 +28,14 @@ logger = logging.getLogger(__name__)
 
 
 class AddressSyncModel(SyncModel):
-    """Sync vault/wallet address by polling its list of assests"""
+    """Sync vault/wallet address by polling its list of assets.
+
+    Supports optional multichain balance queries via :py:attr:`web3config`.
+    """
+
+    #: Optional Web3Config with connections to multiple chains.
+    #: When set, :py:meth:`fetch_onchain_balances` can query satellite chain balances.
+    web3config: "Web3Config | None" = None
 
     @abstractmethod
     def get_token_storage_address(self) -> Optional[JSONHexAddress]:
@@ -136,22 +143,61 @@ class AddressSyncModel(SyncModel):
 
     def fetch_onchain_balances(
         self,
-        assets: List[AssetIdentifier],
+        assets: list[AssetIdentifier],
         filter_zero=True,
         block_identifier: BlockIdentifier = None,
     ) -> Iterable[OnChainBalance]:
+        """Fetch on-chain token balances, with multichain support.
 
-        # Latest block fails on LlamaNodes.com
-        if block_identifier is None:
-            block_identifier = get_almost_latest_block_number(self.web3)
+        When :py:attr:`web3config` is set, assets are grouped by ``chain_id``
+        and each group is fetched from the correct chain's Web3 connection.
+        Otherwise falls back to fetching all from ``self.web3``.
+        """
 
-        return fetch_address_balances(
-            self.web3,
-            self.get_token_storage_address(),
-            assets,
-            filter_zero=filter_zero,
-            block_number=block_identifier,
-        )
+        address = self.get_token_storage_address()
+
+        if self.web3config is not None and len(self.web3config.connections) > 1:
+            # Multichain mode: route each asset group to the correct chain
+            by_chain: dict[int, list[AssetIdentifier]] = {}
+            for asset in assets:
+                by_chain.setdefault(asset.chain_id, []).append(asset)
+
+            for chain_id, chain_assets in by_chain.items():
+                try:
+                    chain_web3 = self.web3config.get_connection(ChainId(chain_id))
+                except KeyError:
+                    chain_web3 = None
+
+                if chain_web3 is None:
+                    # Fall back to default connection
+                    chain_web3 = self.web3
+
+                chain_block = get_almost_latest_block_number(chain_web3)
+                logger.info(
+                    "Fetching chain %s balances at block %d for %d asset(s)",
+                    ChainId(chain_id).name,
+                    chain_block,
+                    len(chain_assets),
+                )
+                yield from fetch_address_balances(
+                    chain_web3,
+                    address,
+                    chain_assets,
+                    filter_zero=filter_zero,
+                    block_number=chain_block,
+                )
+        else:
+            # Single-chain mode (existing behaviour)
+            if block_identifier is None:
+                block_identifier = get_almost_latest_block_number(self.web3)
+
+            yield from fetch_address_balances(
+                self.web3,
+                address,
+                assets,
+                filter_zero=filter_zero,
+                block_number=block_identifier,
+            )
 
     def sync_interests(
         self,

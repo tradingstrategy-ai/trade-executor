@@ -384,6 +384,13 @@ class TradingPairKind(enum.Enum):
     #: The position value is the total account value in USD from the exchange API.
     exchange_account = "exchange_account"
 
+    #: CCTP bridge position for cross-chain USDC transfers.
+    #:
+    #: Represents reserve assets (USDC) bridged to a satellite chain via Circle's CCTP V2.
+    #: Base token is USDC on the destination chain, quote token is USDC on the source chain.
+    #: Fee is always zero. Trades are called "bridge in" and "bridge out".
+    cctp_bridge = "cctp_bridge"
+
     def is_interest_accruing(self) -> bool:
         """Do base or quote or both gain interest during when the position is open."""
         return self in (TradingPairKind.lending_protocol_short, TradingPairKind.lending_protocol_long, TradingPairKind.credit_supply)
@@ -424,6 +431,10 @@ class TradingPairKind(enum.Enum):
     def is_exchange_account(self):
         """This is an exchange account position (Derive, Hyperliquid, etc.)."""
         return self == TradingPairKind.exchange_account
+
+    def is_cctp_bridge(self):
+        """This is a CCTP bridge position for cross-chain USDC transfers."""
+        return self == TradingPairKind.cctp_bridge
 
 
 _TRANSIENT_OTHER_DATA_KEYS = {
@@ -575,7 +586,9 @@ class TradingPairIdentifier:
     other_data: Optional[dict] = field(default_factory=dict, metadata=config(encoder=_reduce_other_data))
 
     def __post_init__(self):
-        assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
+        # CCTP bridge pairs are cross-chain by design (base on destination, quote on source)
+        if self.kind != TradingPairKind.cctp_bridge:
+            assert self.base.chain_id == self.quote.chain_id, "Cross-chain trading pairs are not possible"
 
         # float/int zero fix
         # TODO: Can be carefully removed later
@@ -624,9 +637,28 @@ class TradingPairIdentifier:
     def chain_id(self) -> int:
         """Return raw chain id.
 
-        Get one from the base token, beacuse both tokens are on the same chain.
+        Get one from the base token, because both tokens are on the same chain.
+
+        For CCTP bridge pairs, returns the destination chain (base token chain),
+        since that is where the bridged position's value resides.
 
         See also :py:class:`tradingstrategy.chain.ChainId`
+        """
+        return self.base.chain_id
+
+    def get_source_chain_id(self) -> int:
+        """Return the source chain id for cross-chain pairs.
+
+        For CCTP bridge pairs, this is the chain where USDC is burned (quote token chain).
+        For same-chain pairs, same as chain_id.
+        """
+        return self.quote.chain_id
+
+    def get_destination_chain_id(self) -> int:
+        """Return the destination chain id for cross-chain pairs.
+
+        For CCTP bridge pairs, this is the chain where USDC is minted (base token chain).
+        For same-chain pairs, same as chain_id.
         """
         return self.base.chain_id
 
@@ -642,8 +674,12 @@ class TradingPairIdentifier:
 
         Example: ``WETH-USDC``, ``
 
+        For CCTP bridge pairs, returns e.g. "USDC (CCTP bridged to Base)".
+
         See also :py:meth:`get_human_description`.
         """
+        if self.kind == TradingPairKind.cctp_bridge:
+            return self.get_cctp_bridge_label()
         return f"{self.base.token_symbol}-{self.quote.token_symbol}"
 
     def get_human_description_for_code(self) -> str:
@@ -664,9 +700,12 @@ class TradingPairIdentifier:
 
         - Base token symbol if spot
         - Vault name if vault
+        - Bridge label if CCTP bridge
         """
         if self.is_vault():
             return self.get_vault_name()
+        if self.is_cctp_bridge():
+            return self.get_cctp_bridge_label()
         return self.base.token_symbol
 
     get_chart_label = get_easy_label
@@ -696,6 +735,8 @@ class TradingPairIdentifier:
                 return f"{underlying.get_ticker()} credit"
             elif self.is_vault():
                 return self.get_vault_name()
+            elif self.is_cctp_bridge():
+                return self.get_cctp_bridge_label()
 
         return self.get_ticker()
 
@@ -1083,6 +1124,24 @@ class TradingPairIdentifier:
     def is_exchange_account(self) -> bool:
         return self.kind.is_exchange_account()
 
+    def is_cctp_bridge(self) -> bool:
+        """This is a CCTP bridge position for cross-chain USDC transfers."""
+        return self.kind.is_cctp_bridge()
+
+    def get_cctp_bridge_label(self) -> str:
+        """Get human-readable label for a CCTP bridge pair.
+
+        :return:
+            E.g. "USDC (CCTP bridged to Base)"
+        """
+        assert self.is_cctp_bridge(), f"Not a CCTP bridge pair: {self}"
+        try:
+            dest_chain = ChainId(self.base.chain_id)
+            dest_chain_name = dest_chain.get_name()
+        except Exception:
+            dest_chain_name = str(self.base.chain_id)
+        return f"{self.base.token_symbol} (CCTP bridged to {dest_chain_name})"
+
     def is_credit_supply(self) -> bool:
         return self.kind.is_credit_supply()
 
@@ -1128,6 +1187,9 @@ class TradingPairIdentifier:
         elif self.is_leverage():
             assert self.underlying_spot_pair is not None, f"For a leveraged pair, we lack the price feed for the underlying spot: {self}"
             return self.underlying_spot_pair
+        elif self.is_cctp_bridge():
+            # CCTP bridge pairs are always 1:1 USDC-USDC
+            return self
         raise AssertionError(f"Cannot figure out how to get the underlying pricing pair for: {self}")
 
     def get_tags(self) -> set[str]:

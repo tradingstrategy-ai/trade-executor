@@ -91,11 +91,15 @@ def format_position(
 
     position_labels = {
         TradingPairKind.spot_market_hold: "spot",
+        TradingPairKind.spot_market_hold_rebalancing_token: "rebalancing",
         TradingPairKind.lending_protocol_short: "short",
+        TradingPairKind.lending_protocol_long: "long",
         TradingPairKind.credit_supply: "credit",
         TradingPairKind.vault: "vault",
+        TradingPairKind.cash: "cash",
         TradingPairKind.freqtrade: "freqtrade",
         TradingPairKind.exchange_account: "exchange account",
+        TradingPairKind.cctp_bridge: "CCTP bridge",
     }
 
     position_label = position_labels.get(position_kind, "<unknown position type>")

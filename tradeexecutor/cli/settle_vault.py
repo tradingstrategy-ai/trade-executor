@@ -137,7 +137,8 @@ def settle_vault(
 
     logger.info("  Reserve currency balance: %s %s", reserve_currency_at_start, reserve_currency)
 
-    assert reserve_currency_at_start > 0, f"No deposits available to trade. Vault at {vault_address}"
+    if reserve_currency_at_start == 0:
+        logger.warning("Reserve currency balance is 0 %s for vault %s — this is expected when settling redemptions only", reserve_currency, vault_address)
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()

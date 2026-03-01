@@ -19,7 +19,7 @@ from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse, ExchangeType
 
-from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator, ProtocolRoutingId, ProtocolRoutingConfig
 from tradeexecutor.strategy.generic.default_protocols import default_match_router, default_supported_routers
@@ -111,6 +111,7 @@ def create_uniswap_v3_adapter(
     web3: Web3,
     strategy_universe: TradingStrategyUniverse,
     routing_id: ProtocolRoutingId,
+    chain_id_override: ChainId | None = None,
 ) -> ProtocolRoutingConfig:
     """Always the same."""
 
@@ -121,16 +122,39 @@ def create_uniswap_v3_adapter(
     from tradeexecutor.ethereum.routing_data import uniswap_v3_address_map
 
     assert routing_id.router_name == "uniswap-v3"
-    assert len(strategy_universe.data_universe.chains) == 1
     assert len(strategy_universe.reserve_assets) == 1
-    chain_id = strategy_universe.get_single_chain()
-    reserve_asset = strategy_universe.get_reserve_asset()
+
+    if chain_id_override is not None:
+        chain_id = chain_id_override
+        # For satellite chains, find the quote token used on that chain
+        # (e.g. Base USDC for Uniswap v3 on Base).
+        # Match pairs via exchange_id since exchange_slug may not be set on DEXPair.
+        exchange_ids = set()
+        for xc in strategy_universe.data_universe.exchange_universe.exchanges.values():
+            if xc.exchange_slug == routing_id.exchange_slug:
+                exchange_ids.add(xc.exchange_id)
+        reserve_asset = None
+        for dex_pair in strategy_universe.data_universe.pairs.iterate_pairs():
+            if dex_pair.chain_id == chain_id and dex_pair.exchange_id in exchange_ids:
+                reserve_asset = AssetIdentifier(
+                    chain_id=chain_id.value,
+                    address=dex_pair.quote_token_address,
+                    token_symbol=dex_pair.quote_token_symbol,
+                    decimals=dex_pair.quote_token_decimals,
+                )
+                break
+        if reserve_asset is None:
+            reserve_asset = strategy_universe.get_reserve_asset()
+    else:
+        chain_id = strategy_universe.get_single_chain()
+        reserve_asset = strategy_universe.get_reserve_asset()
 
     allowed_intermediary_pairs = UNISWAP_V3_INTERMEDIATE.get(chain_id, {})
 
     if chain_id == ChainId.base:
-        # Special case for Base chain
         address_map = UNISWAP_V3_DEPLOYMENTS["base"]
+    elif chain_id == ChainId.base_sepolia:
+        address_map = UNISWAP_V3_DEPLOYMENTS["base_sepolia"]
     elif chain_id == ChainId.binance:
         address_map = UNISWAP_V3_DEPLOYMENTS["binance"]
     elif chain_id in (ChainId.ethereum, ChainId.polygon, ChainId.arbitrum):
@@ -309,6 +333,7 @@ def create_vault_adapter(
     web3: Web3,
     strategy_universe: TradingStrategyUniverse,
     routing_id: ProtocolRoutingId,
+    web3config=None,
 ) -> ProtocolRoutingConfig:
 
     # TODO: Avoid circular imports for now
@@ -319,15 +344,13 @@ def create_vault_adapter(
     logger.info("create_vault_adapter(): %s", routing_id)
 
     assert routing_id.router_name == "vault"
-    assert len(strategy_universe.data_universe.chains) == 1
     assert len(strategy_universe.reserve_assets) == 1
 
     reserve = strategy_universe.get_reserve_asset()
     assert reserve.token_symbol in ("USDC", "USDT",)
-    chain_id = strategy_universe.get_single_chain()
 
     routing_model = VaultRouting(reserve.address)
-    pricing_model = VaultPricing(web3)
+    pricing_model = VaultPricing(web3, web3config=web3config)
     valuation_model = VaultValuator(pricing_model)
 
     return ProtocolRoutingConfig(
@@ -524,6 +547,36 @@ def create_exchange_account_adapter(
     )
 
 
+def create_cctp_bridge_adapter(
+    web3config: "Web3Config",
+    routing_id: ProtocolRoutingId,
+) -> ProtocolRoutingConfig:
+    """Create adapter for CCTP bridge pairs.
+
+    CCTP bridge positions transfer USDC between chains via Circle's
+    Cross-Chain Transfer Protocol. Price is always 1:1 with zero fees.
+
+    :param web3config:
+        Web3Config with connections to all chains involved in bridging.
+    :param routing_id:
+        The protocol routing identifier.
+    """
+    from tradeexecutor.ethereum.cctp.pricing import CctpBridgePricingModel
+    from tradeexecutor.ethereum.cctp.routing import CctpBridgeRouting
+    from tradeexecutor.ethereum.cctp.valuation import CctpBridgeValuationModel
+
+    routing_model = CctpBridgeRouting(web3config)
+    pricing_model = CctpBridgePricingModel()
+    valuation_model = CctpBridgeValuationModel()
+
+    return ProtocolRoutingConfig(
+        routing_id=routing_id,
+        routing_model=routing_model,
+        pricing_model=pricing_model,
+        valuation_model=valuation_model,
+    )
+
+
 class EthereumPairConfigurator(PairConfigurator):
     """Set up routes for EVM trading pairs.
 
@@ -538,6 +591,8 @@ class EthereumPairConfigurator(PairConfigurator):
     - Aave v3
 
     - ERC-4626 vaults
+
+    - CCTP bridge (cross-chain USDC)
     """
 
     def __init__(
@@ -545,11 +600,13 @@ class EthereumPairConfigurator(PairConfigurator):
         web3: Web3,
         strategy_universe: TradingStrategyUniverse | None,
         account_value_func: Callable | None = None,
+        web3config: "Web3Config | None" = None,
+        satellite_vaults: dict | None = None,
     ):
         """Initialise pair configuration.
 
         :param web3:
-            Web3 connection to the active blockchain.
+            Web3 connection to the active blockchain (default chain).
 
         :param strategy_universe:
             The initial strategy universe.
@@ -561,15 +618,43 @@ class EthereumPairConfigurator(PairConfigurator):
             Optional function to query exchange account values.
             Required when the universe contains exchange account pairs.
             Signature: (pair: TradingPairIdentifier) -> Decimal
+
+        :param web3config:
+            Optional Web3Config with connections to multiple chains.
+            Required for CCTP bridge routing which needs access to both
+            source and destination chain connections.
+
+        :param satellite_vaults:
+            Optional mapping of chain_id -> AutomatedSafe for satellite
+            Lagoon vault deployments. Used by GenericRouting to create
+            LagoonTransactionBuilder for satellite chain trades.
         """
 
         assert isinstance(web3, Web3)
         assert isinstance(strategy_universe, TradingStrategyUniverse)
 
         self.web3 = web3
+        self.web3config = web3config
         self.account_value_func = account_value_func
+        self.satellite_vaults = satellite_vaults or {}
 
         super().__init__(strategy_universe)
+
+    def get_web3_for_chain(self, chain_id: int) -> Web3:
+        """Get a Web3 connection for a specific chain.
+
+        Falls back to self.web3 if no Web3Config is available.
+
+        :param chain_id:
+            The chain id to get a connection for.
+        :return:
+            Web3 connection for the specified chain.
+        """
+        if self.web3config is not None:
+            connection = self.web3config.get_connection(ChainId(chain_id))
+            if connection is not None:
+                return connection
+        return self.web3
 
     def get_supported_routers(self) -> Set[ProtocolRoutingId]:
         return default_supported_routers(self.strategy_universe)
@@ -580,15 +665,25 @@ class EthereumPairConfigurator(PairConfigurator):
         elif routing_id.router_name == "uniswap-v2":
             return create_uniswap_v2_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "uniswap-v3":
-            return create_uniswap_v3_adapter(self.web3, self.strategy_universe, routing_id)
+            # For multichain universes, determine the chain from the exchange's pairs
+            chain_id_override = None
+            if len(self.strategy_universe.data_universe.chains) > 1 and routing_id.exchange_slug:
+                for xc in self.strategy_universe.data_universe.exchange_universe.exchanges.values():
+                    if xc.exchange_slug == routing_id.exchange_slug:
+                        chain_id_override = xc.chain_id
+                        break
+            web3 = self.get_web3_for_chain(chain_id_override.value) if chain_id_override else self.web3
+            return create_uniswap_v3_adapter(web3, self.strategy_universe, routing_id, chain_id_override=chain_id_override)
         elif routing_id.router_name == "aave-v3":
             return create_aave_v3_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "vault":
-            return create_vault_adapter(self.web3, self.strategy_universe, routing_id)
+            return create_vault_adapter(self.web3, self.strategy_universe, routing_id, web3config=self.web3config)
         elif routing_id.router_name == "freqtrade":
             return create_freqtrade_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "exchange_account":
             return create_exchange_account_adapter(routing_id, self.account_value_func)
+        elif routing_id.router_name == "cctp-bridge":
+            return create_cctp_bridge_adapter(self.web3config, routing_id)
         else:
             raise NotImplementedError(f"Cannot route exchange {routing_id}")
 

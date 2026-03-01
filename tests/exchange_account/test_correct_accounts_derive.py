@@ -279,24 +279,30 @@ def test_derive_cli_start(
     environment_anvil: dict,
     state_file: Path,
 ):
-    """Test init CLI command with Derive exchange account support.
+    """Test init + start CLI runs one strategy cycle successfully.
 
-    Following pattern from tests/lagoon/test_lagoon_e2e.py test_cli_lagoon_start.
-    Tests that the strategy can be initialised with Derive environment variables.
-
-    Note: Full start command testing requires DEX routing infrastructure
-    which is complex to set up. This test verifies init works correctly.
+    1. Init creates empty state
+    2. Start runs a single cycle (RUN_SINGLE_CYCLE=true)
+    3. Strategy discovers Derive subaccount, creates exchange account position
+    4. decide_trades returns [] so no new trades are attempted
+    5. Verify cycle completed with exchange account position synced
     """
     cli = get_command(app)
 
     with patch.dict(os.environ, environment_anvil, clear=True):
         cli.main(args=["init"], standalone_mode=False)
+        cli.main(args=["start"], standalone_mode=False)
 
-    # Verify state was created
+    # Read results after one cycle
     state = State.read_json_file(state_file)
-
     assert state is not None
-    assert state.sync is not None
+
+    # Strategy cycle should have completed
+    assert state.cycle > 0, f"Expected at least one cycle, got {state.cycle}"
+
+    # No frozen positions (no errors during cycle)
+    assert len(state.portfolio.frozen_positions) == 0, \
+        f"Expected no frozen positions, got {len(state.portfolio.frozen_positions)}"
 
 
 def test_correct_accounts_auto_creates_positions(

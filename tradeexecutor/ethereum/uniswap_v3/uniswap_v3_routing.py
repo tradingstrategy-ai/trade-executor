@@ -337,7 +337,14 @@ class UniswapV3Routing(EthereumRoutingModel):
 
         base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
         quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
-        reserve = trade.reserve_currency
+        # For cross-chain trades the reserve_currency is on the home chain
+        # but the swap uses the satellite chain's quote token.
+        # For same-chain multi-hop trades we need the actual reserve currency
+        # because pair.quote is the intermediary, not the swap entry token.
+        if trade.pair.quote.chain_id != trade.reserve_currency.chain_id:
+            reserve = trade.pair.quote
+        else:
+            reserve = trade.reserve_currency
 
         swap_tx = get_swap_transactions(trade)
         uniswap = self.mock_partial_deployment_for_analysis(web3, swap_tx.contract_address)

@@ -54,6 +54,8 @@ def init(
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
     json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
+    json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
+    json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
 
 ):
     """Initialise a strategy.
@@ -79,12 +81,18 @@ def init(
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_derive=json_rpc_derive,
+        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
+        json_rpc_base_sepolia=json_rpc_base_sepolia,
     )
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
 
-    # Check that we are connected to the chain strategy assumes
-    web3config.choose_single_chain()
+    # Set default chain, allowing multiple connections for multichain strategies
+    if len(web3config.connections) == 1:
+        web3config.choose_single_chain()
+    else:
+        default_chain_id = next(iter(web3config.connections.keys()))
+        web3config.set_default_chain(default_chain_id)
 
     if private_key is not None:
         hot_wallet = HotWallet.from_private_key(private_key)

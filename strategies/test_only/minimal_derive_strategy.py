@@ -40,7 +40,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 trading_strategy_engine_version = "0.5"
 trading_strategy_type = StrategyType.managed_positions
 trading_strategy_cycle = CycleDuration.cycle_1d
-trade_routing = TradeRouting.ignore
+trade_routing = TradeRouting.default
 reserve_currency = ReserveCurrency.usdc
 
 # Chain ID for local Anvil testing
@@ -52,7 +52,7 @@ class Parameters:
     chain_id = ChainId.anvil
     initial_cash = 100_000
     cycle_duration = CycleDuration.cycle_1d
-    routing = TradeRouting.ignore
+    routing = TradeRouting.default
     required_history_period = datetime.timedelta(days=1)
     backtest_start = None
     backtest_end = None

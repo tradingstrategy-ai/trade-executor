@@ -53,6 +53,10 @@ def default_match_router(
         return ProtocolRoutingId(
             router_name="exchange_account",
         )
+    elif pair.is_cctp_bridge():
+        return ProtocolRoutingId(
+            router_name="cctp-bridge",
+        )
 
     pair_universe = strategy_universe.data_universe.pairs
 
@@ -86,26 +90,31 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
     based on loaded trading pairs.
     """
     exchanges = strategy_universe.data_universe.exchange_universe
-    chain_id = strategy_universe.get_single_chain()
+    chain_id = strategy_universe.get_primary_chain()
 
     # Vaults count as exchanges, so multi vault strategy needs bump the number here
     assert exchanges.get_exchange_count() < 1000, f"Exchanges might not be configured correctly, we have {exchanges.get_exchange_count()} exchanges"
     configs = set()
 
     # Collect exchange IDs used by exchange account pairs (Derive, etc.)
-    # so we can skip them in the exchange loop below
-    exchange_account_exchange_ids = set()
+    # and CCTP bridge pairs so we can skip them in the exchange loop below
+    non_dex_exchange_ids = set()
+    has_cctp_bridge = False
     pairs_df = strategy_universe.data_universe.pairs.df
     if "other_data" in pairs_df.columns:
         for _, row in pairs_df.iterrows():
             other_data = row.get("other_data")
-            if isinstance(other_data, dict) and other_data.get("exchange_protocol"):
-                exchange_account_exchange_ids.add(row["exchange_id"])
+            if isinstance(other_data, dict):
+                if other_data.get("exchange_protocol"):
+                    non_dex_exchange_ids.add(row["exchange_id"])
+                if other_data.get("bridge_protocol") == "cctp":
+                    has_cctp_bridge = True
+                    non_dex_exchange_ids.add(row["exchange_id"])
 
     vaults_done = False
 
     for xc in exchanges.exchanges.values():
-        if xc.exchange_id in exchange_account_exchange_ids:
+        if xc.exchange_id in non_dex_exchange_ids:
             continue
         elif xc.exchange_type == ExchangeType.erc_4626_vault:
             if not vaults_done:
@@ -143,5 +152,13 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
                     lending_protocol_slug="aave_v3",
                 )
             )
+
+    # Add CCTP bridge routing if any bridge pairs are present
+    if has_cctp_bridge:
+        configs.add(
+            ProtocolRoutingId(
+                router_name="cctp-bridge",
+            )
+        )
 
     return configs

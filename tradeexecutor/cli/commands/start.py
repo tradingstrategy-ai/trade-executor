@@ -99,6 +99,8 @@ def start(
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
     json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
+    json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
+    json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
 
     # Derive exchange account options
     derive_owner_private_key: Optional[str] = typer.Option(None, envvar="DERIVE_OWNER_PRIVATE_KEY", help="Derive owner wallet private key"),
@@ -271,6 +273,8 @@ def start(
                 json_rpc_anvil=json_rpc_anvil,
                 json_rpc_arbitrum=json_rpc_arbitrum,
                 json_rpc_derive=json_rpc_derive,
+                json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
+                json_rpc_base_sepolia=json_rpc_base_sepolia,
                 gas_price_method=gas_price_method,
                 unit_testing=unit_testing,
                 simulate=simulate,
@@ -337,6 +341,7 @@ def start(
             vault_adapter_address=vault_adapter_address,
             vault_payment_forwarder_address=vault_payment_forwarder_address,
             routing_hint=mod.trade_routing,
+            unit_testing=unit_testing,
         )
 
         # TODO: Unit test hack

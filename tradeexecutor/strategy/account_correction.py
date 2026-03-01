@@ -32,7 +32,7 @@ from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
-from tradeexecutor.state.trade import TradeFlag, TradeExecution
+from tradeexecutor.state.trade import TradeFlag, TradeExecution, TradeType
 from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON, \
     get_relative_epsilon_for_asset, DEFAULT_USD_LOW_VALUE_THRESHOLD
 from tradeexecutor.strategy.lending_protocol_leverage import reset_credit_supply_loan
@@ -453,7 +453,7 @@ def apply_accounting_correction(
     if isinstance(position, TradingPosition):
         position_type = BalanceUpdatePositionType.open_position
         position_id = correction.position.position_id
-        assert position.is_spot() or position.is_credit_supply(), f"Correction not yet implemented for all position types, got {position}"
+        assert position.is_spot() or position.is_credit_supply() or position.pair.is_cctp_bridge(), f"Correction not yet implemented for all position types, got {position}"
         logger.info(
             "Correcting %s %s, asset %s, %f -> %f",
             position.pair.kind.name,
@@ -1023,6 +1023,87 @@ def create_missing_exchange_account_positions(
         created_trades.extend(trades)
 
     logger.info("Created %d exchange account position(s)", len(created_trades))
+    return created_trades
+
+
+def create_missing_cctp_bridge_positions(
+    strategy_universe: TradingStrategyUniverse,
+    state: State,
+    strategy_cycle_at: datetime.datetime,
+) -> list[TradeExecution]:
+    """Create positions for CCTP bridge pairs that don't have open positions.
+
+    Scans the trading universe for cctp_bridge pairs and creates positions
+    for any that don't already exist in the state. Positions are created
+    with a placeholder 1 USD value — ``calculate_account_corrections()``
+    will correct the balance from the actual on-chain data.
+
+    :param strategy_universe:
+        The trading universe containing all pairs (including bridge pairs)
+
+    :param state:
+        Current strategy state to check for existing positions and create new ones
+
+    :param strategy_cycle_at:
+        Timestamp for position creation
+
+    :return:
+        List of created trades (for logging purposes)
+    """
+
+    logger.info("Scanning universe for missing CCTP bridge positions...")
+
+    created_trades = []
+
+    pair_universe = strategy_universe.data_universe.pairs
+
+    for dex_pair in pair_universe.iterate_pairs():
+        pair = translate_trading_pair(dex_pair)
+
+        if not pair.is_cctp_bridge():
+            continue
+
+        existing_position = state.portfolio.get_position_by_trading_pair(pair)
+        if existing_position and existing_position.is_open():
+            logger.debug("CCTP bridge position already exists for %s, skipping", pair)
+            continue
+
+        assert len(strategy_universe.reserve_assets) > 0, \
+            "Strategy universe must have at least one reserve asset to create bridge positions"
+        reserve_asset = strategy_universe.reserve_assets[0]
+
+        logger.info("Creating CCTP bridge position for %s", pair.get_human_description())
+
+        position, trade, created = state.create_trade(
+            strategy_cycle_at=strategy_cycle_at,
+            pair=pair,
+            quantity=None,
+            reserve=Decimal(1),
+            assumed_price=1.0,
+            trade_type=TradeType.rebalance,
+            reserve_currency=reserve_asset,
+            reserve_currency_price=1.0,
+            notes="Auto-created by correct-accounts for CCTP bridge",
+            pair_fee=0.0,
+            lp_fees_estimated=0,
+        )
+
+        if not position.portfolio_value_at_open:
+            position.portfolio_value_at_open = 1.0
+
+        trade.mark_success(
+            executed_at=strategy_cycle_at,
+            executed_price=1.0,
+            executed_quantity=Decimal(1),
+            executed_reserve=Decimal(1),
+            lp_fees=0,
+            native_token_price=0,
+            force=True,
+        )
+
+        created_trades.append(trade)
+
+    logger.info("Created %d CCTP bridge position(s)", len(created_trades))
     return created_trades
 
 

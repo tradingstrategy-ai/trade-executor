@@ -111,6 +111,7 @@ class EthereumExecution(ExecutionModel):
         self.force_sequential_broadcast = force_sequential_broadcast
         self.disable_broadcast =disable_broadcast
         self.account_value_func = None
+        self.web3config = None  # Set by CLI bootstrap for multichain support
         logger.info(
             "Execution model %s created.\n confirmation_block_count: %s, confirmation_timeout: %s, mainnet_fork: %s, force_sequential_broadcast: %s",
             self.__class__.__name__,
@@ -515,7 +516,8 @@ class EthereumExecution(ExecutionModel):
             logger.info("Unit test path of no confirmation")
             return
 
-        txs: Set[SignedTransactionWithNonce] = set()
+        # Group transactions by chain for multichain broadcasting
+        txs_by_chain: Dict[int, set] = {}
         tx_map: Dict[HexStr, tuple] = dict()
 
         for t in trades:
@@ -533,29 +535,39 @@ class EthereumExecution(ExecutionModel):
                     nonce=tx.nonce,
                     source=tx.details,
                 )
-                txs.add(signed_tx)
+                chain_id = tx.chain_id or self.chain_id
+                txs_by_chain.setdefault(chain_id, set()).add(signed_tx)
                 logger.info("Broadcasting transaction %s, nonce %s, for trade\n:%s", signed_tx.hash.hex(), signed_tx.nonce, t)
                 tx_map[hexbytes_to_hex_str(signed_tx.hash)] = (t, tx)
 
             t.mark_broadcasted(native_datetime_utc_now(), rebroadcast=rebroadcast)
 
-        logger.info("Normal tx broadcast")
-        receipts = wait_and_broadcast_multiple_nodes(
-            web3,
-            txs,
-            max_timeout=confirmation_timeout,
-            confirmation_block_count=confirmation_block_count,
-            node_switch_timeout=datetime.timedelta(minutes=1),  # Rebroadcast every 1 minute
-            check_nonce_validity=not rebroadcast,
-            mine_blocks=self.mainnet_fork,
-        )
+        all_receipts = {}
+        for chain_id, chain_txs in txs_by_chain.items():
+            if chain_id != self.chain_id and self.web3config:
+                chain_web3 = self.web3config.get_connection(ChainId(chain_id))
+                logger.info("Broadcasting %d txs on satellite chain %d", len(chain_txs), chain_id)
+            else:
+                chain_web3 = web3
+                logger.info("Normal tx broadcast for %d txs on default chain", len(chain_txs))
+
+            receipts = wait_and_broadcast_multiple_nodes(
+                chain_web3,
+                chain_txs,
+                max_timeout=confirmation_timeout,
+                confirmation_block_count=confirmation_block_count,
+                node_switch_timeout=datetime.timedelta(minutes=1),  # Rebroadcast every 1 minute
+                check_nonce_validity=not rebroadcast,
+                mine_blocks=self.mainnet_fork,
+            )
+            all_receipts.update(receipts)
 
         self.resolve_trades(
             datetime.datetime.now(),
             routing_model,
             state,
             tx_map,
-            receipts,
+            all_receipts,
             stop_on_execution_failure=stop_on_execution_failure
         )
 
@@ -637,13 +649,13 @@ class EthereumExecution(ExecutionModel):
         }
 
     def update_confirmation_status(
-        self, 
+        self,
         ts: datetime.datetime,
         tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
         receipts: Dict[HexBytes, dict]
     ) -> set[TradeExecution]:
         """First update the state of all transactions, as we now have receipt for them. Update the transaction confirmation status"""
-        return update_confirmation_status(self.web3, ts, tx_map, receipts)
+        return update_confirmation_status(self.web3, ts, tx_map, receipts, web3config=self.web3config)
     
     def resolve_trades(
         self,
@@ -711,10 +723,11 @@ def update_confirmation_status(
         web3: Web3,
         ts: datetime.datetime,
         tx_map: Dict[HexBytes, Tuple[TradeExecution, BlockchainTransaction]],
-        receipts: Dict[HexBytes, dict]
+        receipts: Dict[HexBytes, dict],
+        web3config=None,
     ) -> set[TradeExecution]:
         """First update the state of all transactions, as we now have receipt for them. Update the transaction confirmation status"""
-        
+
         trades: set[TradeExecution] = set()
 
         # First update the state of all transactions,
@@ -740,14 +753,19 @@ def update_confirmation_status(
             reason = None
             stack_trace = None
 
+            # Resolve the correct web3 for this transaction's chain
+            tx_web3 = web3
+            if web3config and tx.chain_id and tx.chain_id != web3.eth.chain_id:
+                tx_web3 = web3config.get_connection(ChainId(tx.chain_id))
+
             # Transaction failed,
             # try to get as much as information possible
             if status == 0:
-                reason = fetch_transaction_revert_reason(web3, tx_hash)
+                reason = fetch_transaction_revert_reason(tx_web3, tx_hash)
 
-                if web3.eth.chain_id == ChainId.anvil.value:
-                    trace_data = trace_evm_transaction(web3, tx_hash)
-                    stack_trace = print_symbolic_trace(get_or_create_contract_registry(web3), trace_data)
+                if tx_web3.eth.chain_id == ChainId.anvil.value:
+                    trace_data = trace_evm_transaction(tx_web3, tx_hash)
+                    stack_trace = print_symbolic_trace(get_or_create_contract_registry(tx_web3), trace_data)
 
             tx.set_confirmation_information(
                 ts,
