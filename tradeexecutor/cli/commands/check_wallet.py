@@ -4,15 +4,15 @@ import datetime
 from pathlib import Path
 from typing import Optional
 
-import pandas as pd
 import typer
 from web3 import Web3
 
 from eth_defi.balances import fetch_erc20_balances_by_token_list
-from eth_defi.compat import native_datetime_utc_now
 from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
+
+from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import call_create_trading_universe
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from . import shared_options
@@ -32,7 +32,6 @@ from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
 from ...utils.fullname import get_object_full_name
 from ...utils.timer import timed_task
-from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
@@ -112,11 +111,11 @@ def check_wallet(
         engine_version=mod.trading_strategy_engine_version,
     )
 
-    universe = mod.create_trading_universe(
-        pd.Timestamp(native_datetime_utc_now()),
-        client,
-        execution_context,
-        mod.get_universe_options(),
+    universe = call_create_trading_universe(
+        mod.create_trading_universe,
+        client=client,
+        universe_options=mod.get_universe_options(),
+        execution_context=execution_context,
     )
 
     # Check that we are connected to the chain strategy assumes

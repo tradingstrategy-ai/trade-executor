@@ -608,6 +608,7 @@ def create_sync_model(
                 web3,
                 VaultSpec(web3.eth.chain_id, cast(HexAddress, vault_address)),
                 trading_strategy_module_address=vault_adapter_address,
+                default_block_identifier="latest",
             )
             return LagoonVaultSyncModel(
                 vault,

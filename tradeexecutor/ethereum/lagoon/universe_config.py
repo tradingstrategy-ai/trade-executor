@@ -48,6 +48,7 @@ def translate_trading_universe_to_lagoon_config(
     safe_salt_nonce: int,
     fund_name: str = "Crosschain Strategy Vault",
     fund_symbol: str = "CSV",
+    any_asset: bool = False,
 ) -> dict[str, LagoonConfig]:
     """Translate a trading universe into per-chain Lagoon vault deployment configs.
 
@@ -58,6 +59,10 @@ def translate_trading_universe_to_lagoon_config(
     The source chain (where ``reserve_assets[0]`` lives) gets a full Lagoon
     vault deployment. All other chains become satellite deployments
     (Safe + guard only, no vault contract).
+
+    When *any_asset* is ``False`` (the default), the function extracts all
+    unique token addresses from the universe's trading pairs and whitelists
+    them per chain via :attr:`LagoonConfig.assets`.
 
     :param universe:
         Strategy trading universe containing pairs, exchanges, and reserve assets.
@@ -82,6 +87,11 @@ def translate_trading_universe_to_lagoon_config(
 
     :param fund_symbol:
         Vault token symbol.
+
+    :param any_asset:
+        When ``True``, the vault guard allows any ERC-20 token.
+        When ``False`` (default), only tokens from the trading universe
+        are whitelisted.
 
     :return:
         Per-chain configs keyed by chain slug, ready for
@@ -132,14 +142,28 @@ def translate_trading_universe_to_lagoon_config(
         if exchange.exchange_type == ExchangeType.uniswap_v3:
             uniswap_v3_chain_ids.add(exchange.chain_id.value)
 
+    # Collect unique token addresses per chain (used when any_asset=False)
+    chain_token_addresses: dict[int, set[str]] = {cid: set() for cid in all_chain_ids}
+    if not any_asset:
+        for pair in universe.iterate_pairs():
+            chain_token_addresses[pair.base.chain_id].add(Web3.to_checksum_address(pair.base.address))
+            chain_token_addresses[pair.quote.chain_id].add(Web3.to_checksum_address(pair.quote.address))
+
     logger.info(
-        "Universe analysis: source_chain=%s, chains=%s, cctp=%s, uniswap_v3_chains=%s, testnet=%s",
+        "Universe analysis: source_chain=%s, chains=%s, cctp=%s, uniswap_v3_chains=%s, testnet=%s, any_asset=%s",
         source_chain_slug,
         list(chain_id_to_slug.values()),
         has_cctp,
         [chain_id_to_slug[cid] for cid in uniswap_v3_chain_ids],
         is_testnet,
+        any_asset,
     )
+
+    if not any_asset:
+        logger.info(
+            "Token whitelist per chain: %s",
+            {chain_id_to_slug[cid]: sorted(addrs) for cid, addrs in chain_token_addresses.items() if addrs},
+        )
 
     # Build per-chain configs
     base_params = LagoonDeploymentParameters(
@@ -153,13 +177,16 @@ def translate_trading_universe_to_lagoon_config(
         slug = chain_id_to_slug[chain_id]
         is_source = (chain_id == source_chain_id)
 
+        token_addresses = sorted(chain_token_addresses.get(chain_id, set())) if not any_asset else None
+
         config = LagoonConfig(
             parameters=deepcopy(base_params),
             asset_manager=asset_manager,
             safe_owners=list(safe_owners),
             safe_threshold=safe_threshold,
             safe_salt_nonce=safe_salt_nonce,
-            any_asset=True,
+            any_asset=any_asset,
+            assets=token_addresses if token_addresses else None,
             satellite_chain=not is_source,
         )
 

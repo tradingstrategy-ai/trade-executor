@@ -106,6 +106,10 @@ Live testnets:
     JSON_RPC_BASE_SEPOLIA="https://..." \\
     LAGOON_MULTCHAIN_TEST_PRIVATE_KEY="0x..." \\
     python scripts/lagoon/manual-trade-executor-multichain.py
+
+If the script aborts before redeeming vault shares, USDC may remain
+locked inside the deployed Gnosis Safe. Use ``recover-safe-usdc.py``
+(in the same directory) to transfer that USDC back to the deployer.
 """
 
 import json
@@ -121,7 +125,10 @@ from eth_defi.cctp.attestation import wait_for_cctp_attestation
 from eth_defi.cctp.receive import prepare_receive_message
 from eth_defi.cctp.testing import (craft_cctp_message, forge_attestation,
                                    replace_attester_on_fork)
-from eth_defi.erc_4626.vault_protocol.lagoon.testing import fund_lagoon_vault
+from eth_defi.erc_4626.classification import create_vault_instance
+from eth_defi.erc_4626.core import ERC4626Feature
+from eth_defi.erc_4626.vault_protocol.lagoon.testing import (
+    fund_lagoon_vault, redeem_vault_shares)
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import (AnvilLaunch, fork_network_anvil,
                                      fund_erc20_on_anvil, set_balance)
@@ -141,6 +148,20 @@ ARBITRUM_SEPOLIA_CHAIN_ID = 421614
 
 #: Base Sepolia chain ID
 BASE_SEPOLIA_CHAIN_ID = 84532
+
+
+def _check_shares(web3, vault_address: str, deployer_address: str, label: str):
+    """Log the deployer's vault share balance at a checkpoint."""
+    vault = create_vault_instance(
+        web3, vault_address,
+        features={ERC4626Feature.lagoon_like},
+        default_block_identifier="latest",
+        require_denomination_token=True,
+    )
+    share_token = vault.share_token
+    raw = share_token.fetch_raw_balance_of(deployer_address)
+    human = share_token.convert_to_decimals(raw)
+    print(f"  [shares] {label}: {human} {share_token.symbol} (raw={raw})")
 
 
 def run_cli(args: list[str], env: dict):
@@ -322,8 +343,168 @@ def complete_cctp_bridge(
     logger.info("receiveMessage successful: %s", tx_hash.hex() if hasattr(tx_hash, "hex") else tx_hash)
 
 
+def wait_for_token_balance(
+    token,
+    address: str,
+    *,
+    simulate: bool,
+    label: str = "Token",
+    retries: int = 6,
+    delay: float = 10.0,
+) -> Decimal:
+    """Wait for a non-zero token balance with retries for RPC propagation.
+
+    In simulate mode (Anvil forks) the balance is expected immediately,
+    so no delay is applied between checks. On live testnets a short
+    delay is inserted between retries to allow the RPC to catch up.
+
+    :param token:
+        ERC-20 token details (from :func:`fetch_erc20_details`).
+    :param address:
+        Address to check the balance of.
+    :param simulate:
+        Whether running against Anvil forks.
+    :param label:
+        Human-readable label for log messages.
+    :param retries:
+        Maximum number of check attempts.
+    :param delay:
+        Seconds to wait between retries (live mode only).
+    :return:
+        The token balance (asserts it is positive).
+    """
+    import time as _time
+
+    for attempt in range(retries):
+        balance = token.fetch_balance_of(address)
+        if balance > 0:
+            break
+        if not simulate:
+            logger.info(
+                "%s balance still 0, waiting %.0fs for RPC propagation (attempt %d/%d)",
+                label, delay, attempt + 1, retries,
+            )
+            _time.sleep(delay)
+
+    assert balance > 0, f"{label} balance is 0 at {address}"
+    return balance
+
+
+def setup_simulation(
+    *,
+    json_rpc_arb_sepolia: str,
+    json_rpc_base_sepolia: str,
+    simulate: bool,
+    private_key: str | None,
+    usdc_amount: Decimal,
+) -> tuple:
+    """Set up Web3 connections, deployer wallet, and optionally Anvil forks.
+
+    In simulate mode:
+
+    - Forks both testnets locally with Anvil
+    - Creates Web3 connections pointing at Anvil forks
+    - Creates a deployer wallet funded with ETH on both forks
+    - Funds deployer with USDC on Arb Sepolia fork
+    - Replaces CCTP attesters on both forks
+
+    In live mode:
+
+    - Creates Web3 connections to real RPCs
+    - Loads deployer from *private_key*
+
+    :return:
+        Tuple of ``(arb_web3, base_web3, deployer, private_key,
+        json_rpc_arb_sepolia, json_rpc_base_sepolia,
+        test_attesters, anvil_launches)``.
+    """
+    anvil_launches: list[AnvilLaunch] = []
+    test_attesters: dict[int, LocalAccount] = {}
+
+    if simulate:
+        logger.info("SIMULATE=true — forking testnets with Anvil")
+
+        arb_launch = fork_network_anvil(json_rpc_arb_sepolia)
+        anvil_launches.append(arb_launch)
+        base_launch = fork_network_anvil(json_rpc_base_sepolia)
+        anvil_launches.append(base_launch)
+
+        arb_web3 = create_multi_provider_web3(arb_launch.json_rpc_url)
+        base_web3 = create_multi_provider_web3(base_launch.json_rpc_url)
+
+        # Override RPC URLs for CLI commands to point at Anvil forks
+        json_rpc_arb_sepolia = arb_launch.json_rpc_url
+        json_rpc_base_sepolia = base_launch.json_rpc_url
+
+        # Create a random deployer wallet, funded with ETH on the primary fork
+        deployer = HotWallet.create_for_testing(arb_web3, eth_amount=100)
+        private_key = "0x" + deployer.account.key.hex()
+
+        # Fund deployer with ETH on the second fork too
+        set_balance(base_web3, deployer.address, 100 * 10**18)
+
+        # Fund deployer with USDC on Arbitrum Sepolia fork
+        arb_usdc_token = fetch_erc20_details(arb_web3, USDC_NATIVE_TOKEN[ARBITRUM_SEPOLIA_CHAIN_ID])
+        usdc_raw = arb_usdc_token.convert_to_raw(usdc_amount) * 10  # 10x for headroom
+        fund_erc20_on_anvil(arb_web3, USDC_NATIVE_TOKEN[ARBITRUM_SEPOLIA_CHAIN_ID], deployer.address, usdc_raw)
+
+        logger.info("Deployer %s funded with 100 ETH + %d USDC on Arb Sepolia fork", deployer.address, usdc_raw // 10**arb_usdc_token.decimals)
+
+        # Replace CCTP attesters on both forks
+        test_attesters[ARBITRUM_SEPOLIA_CHAIN_ID] = replace_attester_on_fork(arb_web3)
+        test_attesters[BASE_SEPOLIA_CHAIN_ID] = replace_attester_on_fork(base_web3)
+        logger.info("CCTP attesters replaced on both forks")
+    else:
+        arb_web3 = create_multi_provider_web3(json_rpc_arb_sepolia)
+        base_web3 = create_multi_provider_web3(json_rpc_base_sepolia)
+        deployer = HotWallet.from_private_key(private_key)
+
+    assert arb_web3.eth.chain_id == ARBITRUM_SEPOLIA_CHAIN_ID, \
+        f"Expected Arbitrum Sepolia ({ARBITRUM_SEPOLIA_CHAIN_ID}), got {arb_web3.eth.chain_id}"
+    assert base_web3.eth.chain_id == BASE_SEPOLIA_CHAIN_ID, \
+        f"Expected Base Sepolia ({BASE_SEPOLIA_CHAIN_ID}), got {base_web3.eth.chain_id}"
+
+    deployer.sync_nonce(arb_web3)
+
+    return (
+        arb_web3, base_web3, deployer, private_key,
+        json_rpc_arb_sepolia, json_rpc_base_sepolia,
+        test_attesters, anvil_launches,
+    )
+
+
+def verify_deployer_balances(
+    *,
+    arb_web3,
+    base_web3,
+    deployer: HotWallet,
+    usdc_amount: Decimal,
+):
+    """Verify deployer has ETH on both chains and sufficient USDC on Arb Sepolia.
+
+    :return:
+        The ``arb_usdc`` token details (from :func:`fetch_erc20_details`).
+    """
+    arb_balance = arb_web3.eth.get_balance(deployer.address)
+    base_balance = base_web3.eth.get_balance(deployer.address)
+    logger.info("Deployer: %s", deployer.address)
+    logger.info("  Arbitrum Sepolia ETH: %.6f", arb_balance / 10**18)
+    logger.info("  Base Sepolia ETH:     %.6f", base_balance / 10**18)
+    assert arb_balance > 0, f"Deployer has no ETH on Arbitrum Sepolia. Fund {deployer.address} first."
+    assert base_balance > 0, f"Deployer has no ETH on Base Sepolia. Fund {deployer.address} first."
+
+    arb_usdc = fetch_erc20_details(arb_web3, USDC_NATIVE_TOKEN[ARBITRUM_SEPOLIA_CHAIN_ID])
+    deployer_usdc = arb_usdc.fetch_balance_of(deployer.address)
+    logger.info("  Arbitrum Sepolia USDC: %s", deployer_usdc)
+    assert deployer_usdc >= usdc_amount, \
+        f"Deployer needs {usdc_amount} USDC on Arbitrum Sepolia but has {deployer_usdc}. " \
+        f"Get testnet USDC from https://faucet.circle.com/"
+
+    return arb_usdc
+
+
 def main():
-    setup_console_logging("info")
+    setup_console_logging("warning")
 
     # ----- Parse environment -----
     json_rpc_arb_sepolia = os.environ.get("JSON_RPC_ARBITRUM_SEPOLIA")
@@ -346,72 +527,26 @@ def main():
     attestation_timeout = float(os.environ.get("ATTESTATION_TIMEOUT", "3600"))
     trading_strategy_api_key = os.environ.get("TRADING_STRATEGY_API_KEY", "")
 
-    # ----- Set up Web3 connections -----
-    anvil_launches: list[AnvilLaunch] = []
-    test_attesters: dict[int, LocalAccount] = {}
+    # ----- Set up simulation / connections -----
+    (
+        arb_web3, base_web3, deployer, private_key,
+        json_rpc_arb_sepolia, json_rpc_base_sepolia,
+        test_attesters, anvil_launches,
+    ) = setup_simulation(
+        json_rpc_arb_sepolia=json_rpc_arb_sepolia,
+        json_rpc_base_sepolia=json_rpc_base_sepolia,
+        simulate=simulate,
+        private_key=private_key,
+        usdc_amount=usdc_amount,
+    )
 
     try:
-        if simulate:
-            # Fork the testnets with Anvil for local simulation
-            logger.info("SIMULATE=true — forking testnets with Anvil")
-
-            arb_launch = fork_network_anvil(json_rpc_arb_sepolia)
-            anvil_launches.append(arb_launch)
-            base_launch = fork_network_anvil(json_rpc_base_sepolia)
-            anvil_launches.append(base_launch)
-
-            arb_web3 = create_multi_provider_web3(arb_launch.json_rpc_url)
-            base_web3 = create_multi_provider_web3(base_launch.json_rpc_url)
-
-            # Override RPC URLs for CLI commands to point at Anvil forks
-            json_rpc_arb_sepolia = arb_launch.json_rpc_url
-            json_rpc_base_sepolia = base_launch.json_rpc_url
-
-            # Create a random deployer wallet, funded with ETH on the primary fork
-            deployer = HotWallet.create_for_testing(arb_web3, eth_amount=100)
-            private_key = "0x" + deployer.account.key.hex()
-
-            # Fund deployer with ETH on the second fork too
-            set_balance(base_web3, deployer.address, 100 * 10**18)
-
-            # Fund deployer with USDC on Arbitrum Sepolia fork
-            usdc_raw = int(usdc_amount * 10**6) * 10  # 10x for headroom
-            fund_erc20_on_anvil(arb_web3, USDC_NATIVE_TOKEN[ARBITRUM_SEPOLIA_CHAIN_ID], deployer.address, usdc_raw)
-
-            logger.info("Deployer %s funded with 100 ETH + %d USDC on Arb Sepolia fork", deployer.address, usdc_raw // 10**6)
-
-            # Replace CCTP attesters on both forks
-            test_attesters[ARBITRUM_SEPOLIA_CHAIN_ID] = replace_attester_on_fork(arb_web3)
-            test_attesters[BASE_SEPOLIA_CHAIN_ID] = replace_attester_on_fork(base_web3)
-            logger.info("CCTP attesters replaced on both forks")
-        else:
-            arb_web3 = create_multi_provider_web3(json_rpc_arb_sepolia)
-            base_web3 = create_multi_provider_web3(json_rpc_base_sepolia)
-            deployer = HotWallet.from_private_key(private_key)
-
-        assert arb_web3.eth.chain_id == ARBITRUM_SEPOLIA_CHAIN_ID, \
-            f"Expected Arbitrum Sepolia ({ARBITRUM_SEPOLIA_CHAIN_ID}), got {arb_web3.eth.chain_id}"
-        assert base_web3.eth.chain_id == BASE_SEPOLIA_CHAIN_ID, \
-            f"Expected Base Sepolia ({BASE_SEPOLIA_CHAIN_ID}), got {base_web3.eth.chain_id}"
-
-        deployer.sync_nonce(arb_web3)
-
-        # Verify deployer has gas
-        arb_balance = arb_web3.eth.get_balance(deployer.address)
-        base_balance = base_web3.eth.get_balance(deployer.address)
-        logger.info("Deployer: %s", deployer.address)
-        logger.info("  Arbitrum Sepolia ETH: %.6f", arb_balance / 10**18)
-        logger.info("  Base Sepolia ETH:     %.6f", base_balance / 10**18)
-        assert arb_balance > 0, f"Deployer has no ETH on Arbitrum Sepolia. Fund {deployer.address} first."
-        assert base_balance > 0, f"Deployer has no ETH on Base Sepolia. Fund {deployer.address} first."
-
-        # Verify deployer has USDC
-        arb_usdc = fetch_erc20_details(arb_web3, USDC_NATIVE_TOKEN[ARBITRUM_SEPOLIA_CHAIN_ID])
-        deployer_usdc = arb_usdc.fetch_balance_of(deployer.address)
-        logger.info("  Arbitrum Sepolia USDC: %s", deployer_usdc)
-        assert deployer_usdc >= usdc_amount, \
-            f"Deployer needs {usdc_amount} USDC on Arbitrum Sepolia but has {deployer_usdc}. " \
-            f"Get testnet USDC from https://faucet.circle.com/"
+        arb_usdc = verify_deployer_balances(
+            arb_web3=arb_web3,
+            base_web3=base_web3,
+            deployer=deployer,
+            usdc_amount=usdc_amount,
+        )
 
         # Strategy file
         strategy_file = (
@@ -494,6 +629,8 @@ def _run_test_lifecycle(
             "FUND_NAME": "Test Crosschain Vault",
             "FUND_SYMBOL": "TCV",
             "ANY_ASSET": "true",
+            "PERFORMANCE_FEE": "0",
+            "MANAGEMENT_FEE": "0",
             "UNIT_TESTING": "true",
             "LOG_LEVEL": "info",
         }
@@ -548,12 +685,7 @@ def _run_test_lifecycle(
 
         assert Path(state_file).exists(), "State file was not created"
         print(f"  State file: {state_file}")
-
-        if not simulate:
-            # Allow testnet RPC state to propagate after vault deployment
-            import time as _time
-            logger.info("Waiting 30s for testnet state propagation after init")
-            _time.sleep(30)
+        # No wait needed after init — it does not make on-chain transactions
 
         # ===================================================================
         # Step 3: Deposit USDC into the vault
@@ -573,6 +705,8 @@ def _run_test_lifecycle(
 
         safe_usdc = arb_usdc.fetch_balance_of(safe_address)
         print(f"  Safe USDC after deposit: {safe_usdc}")
+
+        _check_shares(arb_web3, vault_address, deployer.address, "After fund_lagoon_vault")
 
         # ===================================================================
         # Step 4: Settle vault (process deposit, update NAV)
@@ -602,6 +736,7 @@ def _run_test_lifecycle(
                 logger.warning("Settle attempt %d failed: %s. Retrying...", attempt, e)
 
         print("  Vault settled")
+        _check_shares(arb_web3, vault_address, deployer.address, "After Step 4 settle")
 
         # ===================================================================
         # Step 5: Cycle 1 — Bridge USDC from Arbitrum Sepolia to Base Sepolia
@@ -637,7 +772,7 @@ def _run_test_lifecycle(
             f"Bridge trade status: {bridge_trade.get_status()}"
 
         burn_tx_hash = bridge_trade.blockchain_transactions[-1].tx_hash
-        bridge_amount_raw = int(bridge_trade.planned_reserve * 10**6)
+        bridge_amount_raw = arb_usdc.convert_to_raw(bridge_trade.planned_reserve)
         print(f"  Bridge trade: {bridge_trade.get_status()}")
         print(f"  Burn TX: {burn_tx_hash}")
         print(f"  Amount: {bridge_trade.planned_reserve} USDC")
@@ -671,15 +806,10 @@ def _run_test_lifecycle(
 
         # Verify USDC arrived on Base Sepolia (with retry for RPC propagation)
         base_usdc = fetch_erc20_details(base_web3, USDC_NATIVE_TOKEN[BASE_SEPOLIA_CHAIN_ID])
-        for _check in range(6):
-            base_safe_usdc = base_usdc.fetch_balance_of(safe_address)
-            if base_safe_usdc > 0:
-                break
-            if not simulate:
-                logger.info("Base Safe USDC still 0, waiting 10s for RPC propagation (attempt %d/6)", _check + 1)
-                _time.sleep(10)
+        base_safe_usdc = wait_for_token_balance(
+            base_usdc, safe_address, simulate=simulate, label="Base Safe USDC",
+        )
         print(f"  Base Safe USDC after bridge: {base_safe_usdc}")
-        assert base_safe_usdc > 0, "USDC did not arrive on Base Sepolia"
 
         if swap_amount != "0":
             # ===================================================================
@@ -731,10 +861,18 @@ def _run_test_lifecycle(
         # Step 8: Cycle 4 — Bridge USDC from Base Sepolia back to Arb Sepolia
         # When SWAP_AMOUNT=0, strategy skips WETH and goes straight to
         # reverse bridge in the next cycle.
+        #
+        # Override REVERSE_BRIDGE_AMOUNT with the actual Base USDC balance
+        # so that all USDC is bridged back in one go. This is needed because
+        # swap fees cause a slight mismatch between bridged and available amounts.
         # ===================================================================
         print("\n=== Step 8: Cycle 4 — Bridge USDC back to Arbitrum Sepolia ===")
 
-        run_cli(["start"], start_env)
+        actual_base_usdc = base_usdc.fetch_balance_of(safe_address)
+        bridge_back_env = {**start_env, "REVERSE_BRIDGE_AMOUNT": str(actual_base_usdc)}
+        print(f"  Base Safe USDC available: {actual_base_usdc}")
+
+        run_cli(["start"], bridge_back_env)
 
         state = load_state(state_file)
         reverse_bridge_positions = [
@@ -749,7 +887,7 @@ def _run_test_lifecycle(
             f"Reverse bridge trade status: {reverse_trade.get_status()}"
 
         reverse_burn_tx = reverse_trade.blockchain_transactions[-1].tx_hash
-        reverse_amount_raw = int(reverse_trade.planned_reserve * 10**6)
+        reverse_amount_raw = arb_usdc.convert_to_raw(reverse_trade.planned_reserve)
         print(f"  Reverse bridge trade: {reverse_trade.get_status()}")
         print(f"  Burn TX: {reverse_burn_tx}")
         print(f"  Amount: {reverse_trade.planned_reserve} USDC")
@@ -783,13 +921,9 @@ def _run_test_lifecycle(
             )
 
         # Verify USDC returned to Arbitrum Sepolia (with retry for RPC propagation)
-        for _check in range(6):
-            arb_safe_usdc_after = arb_usdc.fetch_balance_of(safe_address)
-            if arb_safe_usdc_after > 0:
-                break
-            if not simulate:
-                logger.info("Arb Safe USDC still 0, waiting 10s for RPC propagation (attempt %d/6)", _check + 1)
-                _time.sleep(10)
+        arb_safe_usdc_after = wait_for_token_balance(
+            arb_usdc, safe_address, simulate=simulate, label="Arb Safe USDC",
+        )
         print(f"  Arb Safe USDC after reverse bridge: {arb_safe_usdc_after}")
 
         # ===================================================================
@@ -809,6 +943,7 @@ def _run_test_lifecycle(
         print("\n=== Step 10: Final settle + verification ===")
 
         run_cli(["lagoon-settle"], settle_env)
+        _check_shares(arb_web3, vault_address, deployer.address, "After Step 10 settle")
 
         # Check balances
         final_arb_safe_usdc = arb_usdc.fetch_balance_of(safe_address)
@@ -827,18 +962,20 @@ def _run_test_lifecycle(
         # Verify the round trip was successful
         assert final_arb_safe_usdc > 0, "No USDC returned to Arbitrum Sepolia Safe"
 
-        # Total USDC across all chains should equal the deposited amount
+        # Total USDC across all chains should approximately equal the deposited amount
+        # (small difference expected from Uniswap swap fees/slippage on the WETH round-trip)
         total_usdc = final_arb_safe_usdc + final_base_safe_usdc
         print(f"  Total USDC across chains: {total_usdc}")
-        assert total_usdc == usdc_amount, \
-            f"Total USDC across chains ({total_usdc}) != deposited amount ({usdc_amount})"
+        tolerance = Decimal("0.05")
+        assert abs(total_usdc - usdc_amount) < tolerance, \
+            f"Total USDC across chains ({total_usdc}) != deposited amount ({usdc_amount}), diff={total_usdc - usdc_amount}"
 
         # Portfolio equity should account for all cross-chain positions
         state = load_state(state_file)
         final_equity = state.portfolio.get_total_equity()
         print(f"  Portfolio equity (post-settle): {final_equity}")
-        assert final_equity == float(usdc_amount), \
-            f"Portfolio equity ({final_equity}) != deposited amount ({usdc_amount})"
+        assert abs(final_equity - float(usdc_amount)) < float(tolerance), \
+            f"Portfolio equity ({final_equity}) != deposited amount ({usdc_amount}), diff={final_equity - float(usdc_amount)}"
 
         # Display all positions and trades
         all_positions = list(state.portfolio.open_positions.values()) + \
@@ -865,6 +1002,53 @@ def _run_test_lifecycle(
                 if trade.blockchain_transactions:
                     last_tx = trade.blockchain_transactions[-1]
                     print(f"      TX: {last_tx.tx_hash}")
+
+        # ===================================================================
+        # Step 11: Redeem vault shares and verify USDC returns to deployer
+        #
+        # All USDC should have been bridged back to Arb in Step 8.
+        # ===================================================================
+        print("\n=== Step 11: Redeem vault shares ===")
+
+        deployer.sync_nonce(arb_web3)
+        deployer_usdc_before = arb_usdc.fetch_balance_of(deployer.address)
+        print(f"  Deployer USDC before redeem: {deployer_usdc_before}")
+
+        # Phase 1: Approve shares and request redemption
+        vault = redeem_vault_shares(
+            web3=arb_web3,
+            vault_address=vault_address,
+            redeemer=deployer.address,
+            hot_wallet=deployer,
+        )
+        print("  Redemption requested")
+
+        # Phase 2: Settle via CLI (processes the redemption)
+        run_cli(["lagoon-settle"], settle_env)
+        print("  Vault settled for redemption")
+
+        # Phase 3: Claim redeemed USDC
+        deployer.sync_nonce(arb_web3)
+        finalise_fn = vault.finalise_redeem(deployer.address)
+        tx_hash = deployer.transact_and_broadcast_with_contract(finalise_fn)
+        assert_transaction_success_with_explanation(arb_web3, tx_hash)
+
+        deployer_usdc_after = arb_usdc.fetch_balance_of(deployer.address)
+        redeemed_usdc = deployer_usdc_after - deployer_usdc_before
+        print(f"  Deployer USDC after redeem: {deployer_usdc_after}")
+        print(f"  USDC redeemed: {redeemed_usdc}")
+
+        # Verify deployer got back approximately what was deposited
+        # (minus trade losses and decimal conversion errors)
+        loss = usdc_amount - redeemed_usdc
+        print(f"  Loss from round-trip: {loss} USDC")
+        assert redeemed_usdc > 0, "Deployer received no USDC from redemption"
+        assert abs(loss) < tolerance, \
+            f"Redeemed USDC ({redeemed_usdc}) differs from deposited ({usdc_amount}) by {loss}, exceeds tolerance {tolerance}"
+
+        # Verify shares are fully redeemed
+        remaining_shares = vault.share_token.fetch_raw_balance_of(deployer.address)
+        assert remaining_shares == 0, f"Deployer still holds {remaining_shares} raw shares after full redemption"
 
         print()
         print("All ok!")

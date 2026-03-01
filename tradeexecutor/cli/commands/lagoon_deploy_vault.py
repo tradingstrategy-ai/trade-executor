@@ -90,6 +90,8 @@ from tradeexecutor.ethereum.lagoon.universe_config import translate_trading_univ
 from tradeexecutor.ethereum.token_cache import get_default_token_cache
 from tradeexecutor.monkeypatch.web3 import \
     construct_sign_and_send_raw_middleware
+from tradeexecutor.strategy.execution_context import one_off_execution_context
+from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import call_create_trading_universe
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 
 
@@ -141,6 +143,7 @@ def lagoon_deploy_vault(
     cache_path: Path | None = shared_options.cache_path,
     strategy_file: Path | None = Option(None, envvar="STRATEGY_FILE", help="Strategy module for multichain deployment. When provided, uses translate_trading_universe_to_lagoon_config() to generate per-chain configs."),
     safe_salt_nonce: int | None = Option(None, envvar="SAFE_SALT_NONCE", help="CREATE2 salt nonce for deterministic Safe address across chains. Random if not given."),
+    trading_strategy_api_key: str | None = shared_options.trading_strategy_api_key,
 ):
     """Deploy a Lagoon vault or modify the vault deployment.
 
@@ -153,7 +156,6 @@ def lagoon_deploy_vault(
     TODO: Heavily under development.
     """
 
-    assert any_asset, "Currently only any_asset configurations supported"
     assert private_key, "PRIVATE_KEY not set"
 
     logger = setup_logging(log_level)
@@ -191,7 +193,8 @@ def lagoon_deploy_vault(
         asset_manager = hot_wallet.address
 
     # Multichain deployment path: use strategy file to generate per-chain configs
-    if strategy_file:
+    # Only take this path when multiple chains are actually configured
+    if strategy_file and len(web3config.connections) > 1:
         _deploy_multichain(
             web3config=web3config,
             hot_wallet=hot_wallet,
@@ -205,6 +208,8 @@ def lagoon_deploy_vault(
             simulate=simulate,
             unit_testing=unit_testing,
             logger=logger,
+            any_asset=any_asset,
+            trading_strategy_api_key=trading_strategy_api_key,
         )
         web3config.close()
         logger.info("All ok.")
@@ -373,7 +378,7 @@ def lagoon_deploy_vault(
         uniswap_v2=uniswap_v2_deployment,
         uniswap_v3=uniswap_v3_deployment,
         aave_v3=aave_v3_deployment,
-        any_asset=True,
+        any_asset=any_asset,
         use_forge=True,
         etherscan_api_key=etherscan_api_key,
         verifier=verifier,
@@ -435,6 +440,8 @@ def _deploy_multichain(
     simulate: bool,
     unit_testing: bool,
     logger,
+    any_asset: bool = False,
+    trading_strategy_api_key: str | None = None,
 ):
     """Deploy multichain Lagoon vault from a strategy file.
 
@@ -450,13 +457,20 @@ def _deploy_multichain(
 
     safe_threshold = max(1, len(multisig_owners) - 1)
 
+    # Create TradingStrategy client if API key is available
+    # (needed by strategies that fetch exchange/pair data from the API)
+    client = None
+    if trading_strategy_api_key:
+        from tradingstrategy.client import Client
+        client = Client.create_live_client(api_key=trading_strategy_api_key)
+
     # Load strategy module and create trading universe
     mod = read_strategy_module(strategy_file)
-    universe = mod.create_trading_universe(
-        ts=datetime.datetime.utcnow(),
-        client=None,
-        execution_context=None,
-        universe_options=None,
+    universe = call_create_trading_universe(
+        mod.create_trading_universe,
+        client=client,
+        universe_options=mod.get_universe_options(),
+        execution_context=one_off_execution_context,
     )
 
     # Build chain_web3 mapping: {chain_slug: web3}
@@ -482,6 +496,7 @@ def _deploy_multichain(
         safe_salt_nonce=safe_salt_nonce,
         fund_name=fund_name or "Crosschain Strategy Vault",
         fund_symbol=fund_symbol or "CSV",
+        any_asset=any_asset,
     )
 
     logger.info("Generated %d chain configs:", len(configs))

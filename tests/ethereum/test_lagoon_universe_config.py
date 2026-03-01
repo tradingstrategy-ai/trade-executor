@@ -180,7 +180,7 @@ def test_translate_universe_to_lagoon_config_and_deploy(
     assert "CCTP" in arb_kinds
     assert "Sender" in arb_kinds
     assert "Receiver" in arb_kinds
-    assert "Any asset" in arb_kinds
+    assert "Token" in arb_kinds
     assert "Vault settlement" in arb_kinds  # Source chain has vault
 
     # Verify whitelisted items on Base

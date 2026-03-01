@@ -30,7 +30,7 @@ def call_create_trading_universe(
         version,
         execution_model,
         timestamp,
-        execution_context.mode.name,
+        execution_context.mode.name if execution_context else None,
     )
 
     match version:
