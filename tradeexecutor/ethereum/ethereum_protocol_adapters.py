@@ -638,7 +638,40 @@ class EthereumPairConfigurator(PairConfigurator):
         self.account_value_func = account_value_func
         self.satellite_vaults = satellite_vaults or {}
 
+        # Auto-discover GMX exchange account pairs in the universe
+        # and wire up the GMX value func if not already provided
+        self._auto_discover_gmx(strategy_universe)
+
         super().__init__(strategy_universe)
+
+    def _auto_discover_gmx(self, strategy_universe: TradingStrategyUniverse):
+        """Auto-discover GMX exchange account pairs and wire up the value func.
+
+        Scans the strategy universe for GMX exchange account pairs.
+        If found and no GMX-capable value func is already set, creates
+        one using the Web3 connection.
+
+        This enables GMX support without requiring ``GMX_ENABLED=true``
+        in the CLI — the universe itself drives discovery.
+        """
+        has_gmx = False
+        for pair in strategy_universe.iterate_pairs():
+            if pair.is_exchange_account() and pair.get_exchange_account_protocol() == "gmx":
+                has_gmx = True
+                break
+
+        if not has_gmx:
+            return
+
+        # Check if existing func already handles GMX
+        if self.account_value_func is not None:
+            return
+
+        # Auto-create GMX value func from the Web3 connection
+        from tradeexecutor.exchange_account.gmx import create_gmx_account_value_func
+        gmx_func = create_gmx_account_value_func(self.web3)
+        self.account_value_func = gmx_func
+        logger.info("Auto-discovered GMX exchange account pairs — wired up GMX value func")
 
     def get_web3_for_chain(self, chain_id: int) -> Web3:
         """Get a Web3 connection for a specific chain.

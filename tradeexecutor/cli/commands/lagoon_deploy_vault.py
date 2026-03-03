@@ -192,9 +192,9 @@ def lagoon_deploy_vault(
     else:
         asset_manager = hot_wallet.address
 
-    # Multichain deployment path: use strategy file to generate per-chain configs
-    # Only take this path when multiple chains are actually configured
-    if strategy_file and len(web3config.connections) > 1:
+    # Strategy-file deployment path: use strategy file to generate per-chain configs
+    # Works for both single-chain (e.g. GMX on Arbitrum) and multichain strategies
+    if strategy_file:
         _deploy_multichain(
             web3config=web3config,
             hot_wallet=hot_wallet,

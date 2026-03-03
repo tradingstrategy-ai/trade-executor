@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add GMX perpetuals exchange account support for Lagoon vaults with auto-discovery, on-chain position valuation, and market whitelisting (2026-03-03)
+
 - Add multichain CCTP bridge position support with pricing, valuation, routing and `correct-accounts` auto-creation (2026-02-26)
 
 - Fix `correct-accounts` to create and sync exchange account positions in one pass (2026-02-23)

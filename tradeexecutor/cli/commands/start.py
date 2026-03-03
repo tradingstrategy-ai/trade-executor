@@ -108,6 +108,9 @@ def start(
     derive_wallet_address: Optional[str] = typer.Option(None, envvar="DERIVE_WALLET_ADDRESS", help="Derive wallet address (auto-derived from owner key if not provided). For Lagoon vault deployments, set this to the Safe multisig address."),
     derive_network: DeriveNetwork = typer.Option(DeriveNetwork.mainnet, envvar="DERIVE_NETWORK", help="Derive network: mainnet or testnet"),
 
+    # GMX exchange account options
+    gmx_enabled: bool = typer.Option(False, envvar="GMX_ENABLED", help="Explicitly enable GMX value tracking at startup. Usually auto-discovered from the strategy's trading universe."),
+
     gas_price_method: Optional[GasPriceMethod] = shared_options.gas_price_method,
     confirmation_block_count: int = shared_options.confirmation_block_count,
     confirmation_timeout: int = shared_options.confirmation_timeout,
@@ -358,6 +361,22 @@ def start(
             )
             execution_model.account_value_func = account_value_func
             logger.info("Exchange account value function configured for Derive")
+
+        # Wire up GMX exchange account value function
+        if gmx_enabled:
+            from ...exchange_account.utils import create_gmx_value_func_from_web3
+            gmx_func = create_gmx_value_func_from_web3(web3config.get_default())
+            # Compose with existing value func if present (e.g. Derive)
+            if execution_model.account_value_func:
+                existing = execution_model.account_value_func
+                def unified(pair):
+                    if pair.get_exchange_account_protocol() == "gmx":
+                        return gmx_func(pair)
+                    return existing(pair)
+                execution_model.account_value_func = unified
+            else:
+                execution_model.account_value_func = gmx_func
+            logger.info("Exchange account value function configured for GMX")
 
         approval_model = create_approval_model(approval_type)
 
