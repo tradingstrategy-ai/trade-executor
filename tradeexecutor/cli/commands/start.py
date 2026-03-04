@@ -359,22 +359,6 @@ def start(
             execution_model.account_value_func = account_value_func
             logger.info("Exchange account value function configured for Derive")
 
-        # Wire up GMX exchange account value function
-        if gmx_enabled:
-            from ...exchange_account.utils import create_gmx_value_func_from_web3
-            gmx_func = create_gmx_value_func_from_web3(web3config.get_default())
-            # Compose with existing value func if present (e.g. Derive)
-            if execution_model.account_value_func:
-                existing = execution_model.account_value_func
-                def unified(pair):
-                    if pair.get_exchange_account_protocol() == "gmx":
-                        return gmx_func(pair)
-                    return existing(pair)
-                execution_model.account_value_func = unified
-            else:
-                execution_model.account_value_func = gmx_func
-            logger.info("Exchange account value function configured for GMX")
-
         approval_model = create_approval_model(approval_type)
 
         if state_file:
