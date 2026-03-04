@@ -228,10 +228,17 @@ def translate_trading_universe_to_lagoon_config(
             else:
                 logger.warning("No Uniswap v3 deployment data for chain %s", slug)
 
-        # Configure GMX with all dynamically fetched markets
+        # Configure GMX router whitelisting (and per-market whitelisting when any_asset is off)
         if chain_id in gmx_chain_ids:
-            all_markets = fetch_all_gmx_markets(chain_web3[slug])
-            market_addresses = list(all_markets.keys())
+            if any_asset:
+                # When any_asset=True the guard's GmxLib.isAllowedMarket()
+                # short-circuits to True, so per-market whitelisting is redundant.
+                # We still need GMXDeployment for the router addresses.
+                market_addresses = []
+            else:
+                all_markets = fetch_all_gmx_markets(chain_web3[slug])
+                market_addresses = list(all_markets.keys())
+
             if chain_id == 421614:
                 # Arbitrum Sepolia testnet — construct GMXDeployment manually
                 from eth_defi.gmx.contracts import get_contract_addresses as get_gmx_addresses
@@ -244,7 +251,7 @@ def translate_trading_universe_to_lagoon_config(
                 )
             else:
                 config.gmx_deployment = GMXDeployment.create_arbitrum(markets=market_addresses)
-            logger.info("GMX deployment configured for %s: %d market(s) (all markets)", slug, len(market_addresses))
+            logger.info("GMX deployment configured for %s: %d market(s)%s", slug, len(market_addresses), " (skipped per-market whitelisting — any_asset=True)" if any_asset else " (all markets)")
 
         configs[slug] = config
 
