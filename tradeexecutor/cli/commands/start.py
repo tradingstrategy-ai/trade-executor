@@ -108,9 +108,6 @@ def start(
     derive_wallet_address: Optional[str] = typer.Option(None, envvar="DERIVE_WALLET_ADDRESS", help="Derive wallet address (auto-derived from owner key if not provided). For Lagoon vault deployments, set this to the Safe multisig address."),
     derive_network: DeriveNetwork = typer.Option(DeriveNetwork.mainnet, envvar="DERIVE_NETWORK", help="Derive network: mainnet or testnet"),
 
-    # GMX exchange account options
-    gmx_enabled: bool = typer.Option(False, envvar="GMX_ENABLED", help="Explicitly enable GMX value tracking at startup. Usually auto-discovered from the strategy's trading universe."),
-
     gas_price_method: Optional[GasPriceMethod] = shared_options.gas_price_method,
     confirmation_block_count: int = shared_options.confirmation_block_count,
     confirmation_timeout: int = shared_options.confirmation_timeout,

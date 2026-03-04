@@ -50,7 +50,10 @@ Environment variables
     ``mainnet`` (default), ``testnet``, or ``simulate`` (alias for SIMULATE=true).
 
 ``JSON_RPC_ARBITRUM``
-    Arbitrum RPC URL. Required.
+    Arbitrum mainnet RPC URL. Required for mainnet/simulate.
+
+``JSON_RPC_ARBITRUM_SEPOLIA``
+    Arbitrum Sepolia RPC URL. Required for testnet.
 
 ``GMX_PRIVATE_KEY``
     Deployer private key (matching ``lagoon-gmx-example.py``).
@@ -58,9 +61,6 @@ Environment variables
 
 ``USDC_AMOUNT``
     Amount of USDC to deposit (default: ``5``).
-
-``GMX_ENABLED``
-    Set to ``true`` to enable GMX account value tracking in ``start``.
 
 ``TRADING_STRATEGY_API_KEY``
     TradingStrategy.ai API key. Optional for code-based strategies.
@@ -82,7 +82,6 @@ Mainnet:
 
     JSON_RPC_ARBITRUM="https://..." \\
     GMX_PRIVATE_KEY="0x..." \\
-    GMX_ENABLED=true \\
     python scripts/lagoon/manual-trade-executor-gmx.py
 """
 
@@ -467,9 +466,17 @@ def verify_deployer_balances(
         The USDC token details.
     """
     eth_balance = web3.eth.get_balance(deployer.address)
+    eth_human = eth_balance / 10**18
     logger.info("Deployer: %s", deployer.address)
-    logger.info("  ETH: %.6f", eth_balance / 10**18)
-    assert eth_balance > 0, f"Deployer has no ETH. Fund {deployer.address} first."
+    logger.info("  ETH: %.6f", eth_human)
+    # Vault deployment requires multiple contract deployments (Safe, guard
+    # module, vault proxy, whitelisting library).  0.01 ETH is a safe
+    # minimum on Arbitrum / Arbitrum Sepolia.
+    min_eth = 0.01
+    assert eth_human >= min_eth, (
+        f"Deployer {deployer.address} has {eth_human:.6f} ETH, "
+        f"need at least {min_eth} ETH for vault deployment"
+    )
 
     chain_id = web3.eth.chain_id
     usdc_address = USDC_NATIVE_TOKEN[chain_id]
@@ -596,7 +603,6 @@ def _run_test_lifecycle(
             "LOG_LEVEL": "info",
             "CACHE_PATH": cache_path,
             "MIN_GAS_BALANCE": "0.0",
-            "GMX_ENABLED": "true",
             "GMX_SAFE_ADDRESS": safe_address,
         }
         if is_testnet:
@@ -756,7 +762,6 @@ def main():
     setup_console_logging("warning")
 
     # ----- Parse environment -----
-    json_rpc_arbitrum = os.environ.get("JSON_RPC_ARBITRUM")
     simulate = os.environ.get("SIMULATE", "").lower() in ("true", "1")
     network = os.environ.get("NETWORK", "mainnet").lower()
 
@@ -766,14 +771,15 @@ def main():
     is_testnet = (network == "testnet")
 
     if is_testnet:
-        # Prefer Sepolia RPC when running in testnet mode
-        json_rpc_arbitrum = os.environ.get("JSON_RPC_ARBITRUM_SEPOLIA") or json_rpc_arbitrum
+        json_rpc_arbitrum = os.environ.get("JSON_RPC_ARBITRUM_SEPOLIA")
+        assert json_rpc_arbitrum, "JSON_RPC_ARBITRUM_SEPOLIA is required for testnet mode"
         # GMX markets on Arbitrum Sepolia use USDC.SG as collateral;
         # override the global USDC lookup so vault deployment and all
         # downstream code use the correct token.
         USDC_NATIVE_TOKEN[ARBITRUM_SEPOLIA_CHAIN_ID] = GMX_TESTNET_USDC_ADDRESS
-
-    assert json_rpc_arbitrum, "JSON_RPC_ARBITRUM is required"
+    else:
+        json_rpc_arbitrum = os.environ.get("JSON_RPC_ARBITRUM")
+        assert json_rpc_arbitrum, "JSON_RPC_ARBITRUM is required"
 
     if simulate:
         private_key = None
