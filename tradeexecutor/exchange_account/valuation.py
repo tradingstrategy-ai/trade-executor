@@ -113,7 +113,9 @@ class ExchangeAccountValuator(ValuationModel):
 
             old_price = position.last_token_price
             old_value = position.get_value()
-            new_price = 1.0  # Always 1:1 for USD denominated
+            # Exchange account positions have quantity=1 (spoofed),
+            # so the "price" represents the total account value in USD
+            new_price = float(api_value)
             new_value = float(api_value)
 
             position.last_token_price = new_price
