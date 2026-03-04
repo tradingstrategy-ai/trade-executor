@@ -2,6 +2,7 @@
 
 import pytest
 
+from eth_defi.gmx.contracts import get_contract_addresses
 from eth_defi.token import USDC_NATIVE_TOKEN
 
 from tradeexecutor.exchange_account.gmx import create_gmx_exchange_account_pair
@@ -40,7 +41,7 @@ def test_create_gmx_exchange_account_pair(usdc, safe_address):
     assert pair.base.chain_id == ARBITRUM_CHAIN_ID
     assert pair.quote.token_symbol == "USDC"
     assert pair.pool_address == safe_address
-    assert pair.exchange_address == safe_address
+    assert pair.exchange_address == get_contract_addresses("arbitrum").exchangerouter
     assert pair.exchange_name == "GMX"
     assert pair.fee == 0.0
 
