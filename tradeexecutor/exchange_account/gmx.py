@@ -12,6 +12,8 @@ import logging
 from decimal import Decimal
 from typing import Callable
 
+from eth_defi.gmx.contracts import get_contract_addresses
+
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 
 logger = logging.getLogger(__name__)
@@ -58,11 +60,14 @@ def create_gmx_exchange_account_pair(
         decimals=6,
     )
 
+    chain = "arbitrum_sepolia" if is_testnet else "arbitrum"
+    addresses = get_contract_addresses(chain)
+
     return TradingPairIdentifier(
         base=base,
         quote=quote,
         pool_address=safe_address,
-        exchange_address=safe_address,
+        exchange_address=addresses.exchangerouter,
         internal_id=1,
         internal_exchange_id=1,
         fee=0.0,

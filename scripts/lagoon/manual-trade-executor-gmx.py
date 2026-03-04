@@ -101,6 +101,9 @@ from web3 import Web3
 from eth_defi.chain import get_chain_id_by_name
 from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import ERC4626Feature
+from eth_defi.erc_4626.vault_protocol.lagoon.config_event_scanner import (
+    build_multichain_guard_config, fetch_guard_config_events, format_guard_config_report)
+from eth_defi.hypersync.server import get_hypersync_server
 from eth_defi.erc_4626.vault_protocol.lagoon.testing import (
     fund_lagoon_vault, redeem_vault_shares)
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
@@ -540,6 +543,40 @@ def _run_test_lifecycle(
         print(f"  Vault:  {vault_address}")
         print(f"  Safe:   {safe_address}")
         print(f"  Module: {module_address}")
+
+        # Print guard configuration report.
+        # In simulate mode (Anvil fork) use RPC get_logs directly.
+        # For live/testnet use Envio HyperSync — Arbitrum Sepolia's
+        # public RPC is too rate-limited for event scanning.
+        hs_client = None
+        if not simulate:
+            try:
+                import hypersync
+                hypersync_api_key = os.environ.get("HYPERSYNC_API_KEY")
+                hypersync_url = get_hypersync_server(web3)
+                hs_config = hypersync.ClientConfig(url=hypersync_url)
+                if hypersync_api_key:
+                    hs_config = hypersync.ClientConfig(url=hypersync_url, bearer_token=hypersync_api_key)
+                hs_client = hypersync.HypersyncClient(hs_config)
+            except ImportError:
+                logger.warning("hypersync not installed — falling back to RPC for guard config scan")
+
+        chain_web3 = {web3.eth.chain_id: web3}
+        module_addresses = {web3.eth.chain_id: module_address}
+        events, _module_addrs = fetch_guard_config_events(
+            safe_address=safe_address,
+            web3=web3,
+            hypersync_client=hs_client,
+            chain_web3=chain_web3,
+            follow_cctp=False,
+        )
+        config = build_multichain_guard_config(events, safe_address, module_addresses)
+        report = format_guard_config_report(
+            config=config,
+            events=events,
+            chain_web3=chain_web3,
+        )
+        print(report)
 
         # ===================================================================
         # Step 2: Initialise state
