@@ -62,6 +62,7 @@ def mock_strategy_universe(freqtrade_pair, usdc_asset):
     universe.reserve_assets = [usdc_asset]
     universe.get_reserve_asset.return_value = usdc_asset
     universe.get_single_chain.return_value = ChainId.polygon
+    universe.iterate_pairs.return_value = [freqtrade_pair]
 
     return universe
 
