@@ -22,35 +22,28 @@ def usdc() -> AssetIdentifier:
     )
 
 
-@pytest.fixture()
-def safe_address() -> str:
-    return "0x1234567890abcdef1234567890abcdef12345678"
-
-
-def test_create_gmx_exchange_account_pair(usdc, safe_address):
+def test_create_gmx_exchange_account_pair(usdc):
     """Verify pair fields, kind, and is_exchange_account()."""
-    pair = create_gmx_exchange_account_pair(
-        quote=usdc,
-        safe_address=safe_address,
-    )
+    pair = create_gmx_exchange_account_pair(quote=usdc)
 
+    exchange_router = get_contract_addresses("arbitrum").exchangerouter
     assert pair.kind == TradingPairKind.exchange_account
     assert pair.is_exchange_account()
     assert pair.base.token_symbol == "GMX-ACCOUNT"
     assert pair.base.decimals == 6
     assert pair.base.chain_id == ARBITRUM_CHAIN_ID
+    assert pair.base.address == exchange_router.lower()  # AssetIdentifier lowercases
     assert pair.quote.token_symbol == "USDC"
-    assert pair.pool_address == safe_address
-    assert pair.exchange_address == get_contract_addresses("arbitrum").exchangerouter
+    assert pair.pool_address == exchange_router
+    assert pair.exchange_address == exchange_router
     assert pair.exchange_name == "GMX"
     assert pair.fee == 0.0
 
 
-def test_gmx_pair_protocol_detection(usdc, safe_address):
+def test_gmx_pair_protocol_detection(usdc):
     """Verify get_exchange_account_protocol() and other_data."""
     pair = create_gmx_exchange_account_pair(
         quote=usdc,
-        safe_address=safe_address,
         is_testnet=True,
     )
 
@@ -63,7 +56,6 @@ def test_gmx_pair_protocol_detection(usdc, safe_address):
     # Mainnet variant
     pair_mainnet = create_gmx_exchange_account_pair(
         quote=usdc,
-        safe_address=safe_address,
         is_testnet=False,
     )
     assert pair_mainnet.get_exchange_account_config()["exchange_is_testnet"] is False

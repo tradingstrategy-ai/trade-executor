@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 def create_gmx_exchange_account_pair(
     quote: AssetIdentifier,
-    safe_address: str,
     is_testnet: bool = False,
 ) -> TradingPairIdentifier:
     """Create a TradingPairIdentifier for a GMX exchange account.
@@ -29,44 +28,39 @@ def create_gmx_exchange_account_pair(
     Builds the pair with correct ``kind``, ``exchange_name``, and ``other_data``
     fields needed by the sync, pricing, and valuation pipeline.
 
-    The base asset is a synthetic ``GMX-ACCOUNT`` token. The Safe address
-    (which holds GMX positions) is stored in ``pool_address`` and
-    ``exchange_address`` for use by the account value function at query time.
+    The base asset is a synthetic ``GMX-ACCOUNT`` token whose address is set
+    to the GMX ExchangeRouter contract. ``pool_address`` and ``exchange_address``
+    also point to the ExchangeRouter — the Safe address (which holds GMX
+    positions) is resolved at runtime from the execution model's transaction
+    builder, not stored in the pair.
 
     Example::
 
         from tradeexecutor.exchange_account.gmx import create_gmx_exchange_account_pair
 
-        pair = create_gmx_exchange_account_pair(
-            quote=usdc,
-            safe_address="0xAbC...",
-        )
+        pair = create_gmx_exchange_account_pair(quote=usdc)
 
     :param quote:
         Reserve / quote asset (e.g. ``USDC``).
-    :param safe_address:
-        Address of the Safe multisig that holds GMX positions.
     :param is_testnet:
         Whether this targets a testnet deployment.
     :return:
         Fully configured exchange account pair.
     """
-    # Synthetic asset representing the GMX account value
-    # 694D = "GM" in ASCII-ish hex
+    chain = "arbitrum_sepolia" if is_testnet else "arbitrum"
+    addresses = get_contract_addresses(chain)
+
     base = AssetIdentifier(
         chain_id=quote.chain_id,
-        address="0x000000000000000000000000000000000000694D",
+        address=addresses.exchangerouter,
         token_symbol="GMX-ACCOUNT",
         decimals=6,
     )
 
-    chain = "arbitrum_sepolia" if is_testnet else "arbitrum"
-    addresses = get_contract_addresses(chain)
-
     return TradingPairIdentifier(
         base=base,
         quote=quote,
-        pool_address=safe_address,
+        pool_address=addresses.exchangerouter,
         exchange_address=addresses.exchangerouter,
         internal_id=1,
         internal_exchange_id=1,
@@ -81,7 +75,7 @@ def create_gmx_exchange_account_pair(
 
 
 def create_gmx_account_value_func(
-    web3,
+    execution_model,
 ) -> Callable[[TradingPairIdentifier], Decimal]:
     """Create GMX-specific account value function.
 
@@ -89,24 +83,17 @@ def create_gmx_account_value_func(
     positions held by the Safe address, and returns the total equity
     (collateral + unrealised PnL) across all positions.
 
+    The Safe address is resolved at query time from the execution model's
+    transaction builder (``tx_builder.get_token_delivery_address()``),
+    so it does not need to be stored in the pair metadata.
+
     Free USDC sitting in the Safe is tracked separately by Lagoon
     treasury sync, so this function only returns the value locked
     in GMX positions to avoid double counting.
 
-    Example::
-
-        from web3 import Web3
-        from tradeexecutor.exchange_account.gmx import create_gmx_account_value_func
-
-        web3 = Web3(Web3.HTTPProvider("https://arb1.arbitrum.io/rpc"))
-        value_func = create_gmx_account_value_func(web3)
-
-        # Use with pricing model
-        value = value_func(gmx_pair)
-
-    :param web3:
-        Web3 instance connected to the chain where GMX positions live
-        (typically Arbitrum).
+    :param execution_model:
+        The execution model (e.g. ``LagoonExecution``) that provides
+        Web3 and the transaction builder with the Safe address.
     :return:
         Function that takes a TradingPairIdentifier and returns
         the total GMX position equity in USD.
@@ -116,8 +103,8 @@ def create_gmx_account_value_func(
         """Get GMX account value for the given pair.
 
         Reads all open positions from the GMX Reader contract for the
-        Safe address stored in ``pair.pool_address``, then sums the
-        equity of each position:
+        Safe address from the execution model's transaction builder,
+        then sums the equity of each position:
         ``equity = collateral_usd * (1 + percent_profit / 100)``.
 
         :param pair:
@@ -134,9 +121,8 @@ def create_gmx_account_value_func(
         assert pair.get_exchange_account_protocol() == "gmx", \
             f"Not a GMX pair: {pair.get_exchange_account_protocol()}"
 
-        safe_address = pair.pool_address
-        if not safe_address:
-            raise ValueError(f"No pool_address (Safe address) in pair: {pair}")
+        web3 = execution_model.web3
+        safe_address = execution_model.tx_builder.get_token_delivery_address()
 
         try:
             config = GMXConfig(web3=web3)

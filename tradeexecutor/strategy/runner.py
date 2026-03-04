@@ -597,9 +597,7 @@ class StrategyRunner(abc.ABC):
                 pair_configurator = EthereumPairConfigurator(
                     web3,
                     cast(TradingStrategyUniverse, universe),
-                    account_value_func=getattr(self.execution_model, 'account_value_func', None),
-                    web3config=getattr(self.execution_model, 'web3config', None),
-                    satellite_vaults=getattr(self.execution_model, 'satellite_vaults', None),
+                    execution_model=self.execution_model,
                 )
                 routing_model.initialise(pair_configurator)
 

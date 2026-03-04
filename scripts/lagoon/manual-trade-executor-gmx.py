@@ -603,7 +603,6 @@ def _run_test_lifecycle(
             "LOG_LEVEL": "info",
             "CACHE_PATH": cache_path,
             "MIN_GAS_BALANCE": "0.0",
-            "GMX_SAFE_ADDRESS": safe_address,
         }
         if is_testnet:
             base_env["GMX_NETWORK"] = "testnet"

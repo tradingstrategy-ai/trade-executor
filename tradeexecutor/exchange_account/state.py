@@ -22,7 +22,7 @@ def open_exchange_account_position(
     strategy_cycle_at: datetime.datetime,
     pair: TradingPairIdentifier,
     reserve_currency: AssetIdentifier,
-    reserve_amount: Decimal = Decimal(1),
+    reserve_amount: Decimal = Decimal(0),
     notes: str | None = None,
 ) -> list[TradeExecution]:
     """Open an exchange account position by creating a spoofed trade.
@@ -44,7 +44,7 @@ def open_exchange_account_position(
 
     Exchange account positions follow a 4-step lifecycle:
 
-    1. **Position creation**: Call this function with a placeholder value (typically 1 USD)
+    1. **Position creation**: Call this function with a zero or nominal reserve amount
     2. **Trade spoofing**: Trade is marked success with ``force=True``, bypassing execution
     3. **API sync**: ``ExchangeAccountSyncModel`` queries the exchange API for real account value
     4. **Balance updates**: ``BalanceUpdate`` events track PnL and value changes over time
@@ -74,7 +74,7 @@ def open_exchange_account_position(
                 strategy_cycle_at=timestamp.to_pydatetime(),
                 pair=EXCHANGE_ACCOUNT_PAIR,
                 reserve_currency=USDC,
-                reserve_amount=Decimal(1),  # Placeholder
+                reserve_amount=Decimal(0),
                 notes="Initial exchange account position",
             )
 
@@ -125,8 +125,10 @@ def open_exchange_account_position(
 
     :param reserve_amount:
         Nominal reserve amount for the position.
-        Defaults to 1 USD as a placeholder - the sync process will
-        update this to the actual account value from the exchange API.
+        Defaults to 0 — for on-chain exchange accounts like GMX,
+        no capital is locked externally at position creation time.
+        The sync process will update this to the actual account value
+        from the exchange API.
 
     :param notes:
         Optional human-readable notes for the trade (e.g. "Initial position",

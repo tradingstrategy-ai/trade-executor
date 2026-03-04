@@ -4,16 +4,11 @@ A simple strategy that does nothing but runs through init/start CLI commands.
 Creates a GMX exchange account position that tracks the NAV of the vault's
 GMX perpetuals positions.
 
-The Safe address is discovered from the Lagoon vault's execution model
-at universe creation time.
-
-Environment variables:
-
-- ``GMX_SAFE_ADDRESS``: Fallback Safe address when not running inside a vault
+The Safe address is resolved at runtime from the execution model's
+transaction builder, not stored in the pair or environment.
 """
 
 import datetime
-import logging
 import os
 
 from tradingstrategy.chain import ChainId
@@ -76,11 +71,7 @@ def create_trading_universe(
     """Create a minimal trading universe with a GMX exchange account pair.
 
     Has USDC as reserve and a GMX exchange account pair.
-    The Safe address is read from the vault execution model when available,
-    falling back to the ``GMX_SAFE_ADDRESS`` environment variable.
     """
-    logger = logging.getLogger(__name__)
-
     usdc = AssetIdentifier(
         chain_id=CHAIN_ID.value,
         address=USDC_ADDRESS,
@@ -88,22 +79,10 @@ def create_trading_universe(
         decimals=6,
     )
 
-    # Get wallet address from Lagoon vault's Safe multisig when available
-    execution_model = input.execution_model
-    safe_address = None
-    if execution_model and hasattr(execution_model, "vault"):
-        safe_address = execution_model.vault.safe_address
-        logger.info("Using Safe address from vault: %s", safe_address)
-
-    if not safe_address:
-        safe_address = os.environ.get("GMX_SAFE_ADDRESS", "0x0000000000000000000000000000000000000001")
-        logger.info("Using GMX_SAFE_ADDRESS from environment: %s", safe_address)
-
     is_testnet = os.environ.get("GMX_NETWORK", "mainnet") == "testnet"
 
     gmx_account_pair = create_gmx_exchange_account_pair(
         quote=usdc,
-        safe_address=safe_address,
         is_testnet=is_testnet,
     )
 
@@ -175,7 +154,7 @@ def decide_trades(
         strategy_cycle_at=timestamp.to_pydatetime(),
         pair=pair,
         reserve_currency=reserve,
-        reserve_amount=Decimal(1),
+        reserve_amount=Decimal(0),
         notes="GMX exchange account position",
     )
 
