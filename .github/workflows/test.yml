@@ -18,10 +18,10 @@ jobs:
         with:
           submodules: 'recursive'
 
-      - name: Set up Python 3.14
+      - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
-          python-version: '3.14'
+          python-version: '3.12'
 
       - name: Install Poetry
         uses: snok/install-poetry@v1
@@ -55,11 +55,6 @@ jobs:
           # version: 'nightly-de33b6af53005037b463318d2628b5cfcaf39916'
           #version: "nightly-fdd321bac95f0935529164a88faf99d4d5cfa321"
           version: "v1.2.3"
-
-      # lxml needs to compile from source on Python 3.14 (no pre-built wheel)
-      - name: Install system dependencies for lxml
-        run: |
-          sudo apt-get update && sudo apt-get install -y libxml2-dev libxslt-dev
 
       - name: Install dependencies
         if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'

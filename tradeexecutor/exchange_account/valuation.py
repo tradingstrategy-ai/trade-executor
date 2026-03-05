@@ -2,6 +2,10 @@
 
 Valuation model for exchange account positions (Derive, Hyperliquid, etc.)
 using a configurable account value function.
+
+Creates ``BalanceUpdate`` events directly on positions so that
+``position.get_value()`` reflects the exchange API value regardless
+of which sync model is active (Lagoon, hot wallet, etc.).
 """
 
 import datetime
@@ -10,11 +14,11 @@ from decimal import Decimal
 
 from eth_defi.compat import native_datetime_utc_now
 
+from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.valuation import ValuationModel
 from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
-from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +29,11 @@ class ExchangeAccountValuator(ValuationModel):
     Works with any exchange that can provide account value in USD.
     The account value function is injected via the pricing model,
     making this valuator protocol-agnostic.
+
+    Creates a ``BalanceUpdate`` event on the position each time the
+    API value differs from the tracked quantity, so that
+    ``position.get_value()`` (which sums trade quantities +
+    balance updates) stays in sync with the exchange.
 
     Example:
 
@@ -56,6 +65,54 @@ class ExchangeAccountValuator(ValuationModel):
             f"Expected ExchangeAccountPricingModel, got {type(pricing_model)}"
         self.pricing_model = pricing_model
 
+    def _create_balance_update(
+        self,
+        ts: datetime.datetime,
+        position: TradingPosition,
+        diff: Decimal,
+        tracked_amount: Decimal,
+    ) -> BalanceUpdate:
+        """Create a BalanceUpdate event to adjust position quantity.
+
+        Uses the position's own balance_updates dict to derive a
+        locally-unique event ID (max existing key + 1).  This avoids
+        needing access to ``state.portfolio.next_balance_update_id``.
+
+        :param ts:
+            Timestamp of the valuation.
+        :param position:
+            The exchange account position.
+        :param diff:
+            Value change (new_value - tracked_value).
+        :param tracked_amount:
+            The tracked quantity before this update.
+        :return:
+            The new BalanceUpdate event (already stored on the position).
+        """
+        event_id = max(position.balance_updates.keys(), default=0) + 1
+
+        evt = BalanceUpdate(
+            balance_update_id=event_id,
+            position_type=BalanceUpdatePositionType.open_position,
+            cause=BalanceUpdateCause.vault_flow,
+            asset=position.pair.base,
+            block_mined_at=ts,
+            strategy_cycle_included_at=ts,
+            chain_id=position.pair.base.chain_id,
+            old_balance=tracked_amount,
+            usd_value=float(diff),
+            quantity=diff,
+            owner_address=None,
+            tx_hash=None,
+            log_index=None,
+            position_id=position.position_id,
+            block_number=None,
+            notes=f"Exchange account valuation: {position.pair.get_exchange_account_protocol()}",
+        )
+
+        position.balance_updates[evt.balance_update_id] = evt
+        return evt
+
     def __call__(
         self,
         ts: datetime.datetime,
@@ -65,6 +122,10 @@ class ExchangeAccountValuator(ValuationModel):
 
         The position value is the total account value in USD from the exchange,
         which includes collateral and unrealised PnL from all positions.
+
+        Creates a ``BalanceUpdate`` event on the position when the API
+        value differs from the tracked quantity, ensuring
+        ``position.get_value()`` returns the correct value.
 
         :param ts:
             Timestamp for valuation
@@ -78,45 +139,24 @@ class ExchangeAccountValuator(ValuationModel):
         tracked_amount = position.get_quantity()
         position.last_pricing_at = ts
 
-        if tracked_amount == 0:
-            logger.warning(
-                "Creating null valuation: amount is 0 for position %d",
-                position.position_id,
-            )
-            return ValuationUpdate(
-                created_at=ts,
-                position_id=position.position_id,
-                valued_at=ts,
-                old_value=0,
-                new_value=0,
-                old_price=0,
-                new_price=0,
-                quantity=tracked_amount,
-            )
-
         try:
             # Query exchange API for account value
             api_value = self.pricing_model.get_account_value(position.pair)
 
-            # Check for reconciliation issues (drift between tracked and actual)
-            balance_diff = api_value - tracked_amount
-            if abs(balance_diff) > tracked_amount * Decimal("0.01"):
-                # >1% drift
-                logger.warning(
-                    "Balance drift detected for position %d: "
-                    "API=%.2f, Tracked=%.2f, Diff=%.2f",
-                    position.position_id,
-                    api_value,
-                    tracked_amount,
-                    balance_diff,
-                )
-
             old_price = position.last_token_price
             old_value = position.get_value()
-            new_price = 1.0  # Always 1:1 for USD denominated
-            new_value = float(api_value)
+            # Exchange account quantity represents USD value directly,
+            # so the per-unit price is always 1.0
+            new_price = 1.0
+
+            # Create a BalanceUpdate to adjust the position quantity
+            # so that get_value() reflects the API value
+            diff = api_value - tracked_amount
+            if diff != 0:
+                self._create_balance_update(ts, position, diff, tracked_amount)
 
             position.last_token_price = new_price
+            new_value = float(api_value)
 
             evt = ValuationUpdate(
                 created_at=ts,

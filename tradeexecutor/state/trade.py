@@ -725,9 +725,11 @@ class TradeExecution:
 
         assert self.trade_id > 0
 
-        if self.trade_type != TradeType.repair and not self.is_credit_based():
+        if self.trade_type != TradeType.repair and not self.is_credit_based() and not self.pair.is_exchange_account():
             # Leveraged trade can have quantity in zero,
-            # if they just adjust the collateral amount
+            # if they just adjust the collateral amount.
+            # Exchange account trades start with zero quantity — the real
+            # value is synced later from the exchange API.
             assert self.planned_quantity != 0
 
             # TODO: We have additional check in open_position()

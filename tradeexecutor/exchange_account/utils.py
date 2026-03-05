@@ -22,6 +22,7 @@ def create_exchange_account_value_func(
     ccxt_options: str | None,
     ccxt_sandbox: bool,
     logger,
+    web3=None,
 ):
     """Create account value function for exchange account positions.
 
@@ -37,6 +38,7 @@ def create_exchange_account_value_func(
     :param ccxt_options: CCXT exchange constructor options as JSON string
     :param ccxt_sandbox: Whether to use CCXT sandbox mode
     :param logger: Logger instance
+    :param web3: Web3 instance for GMX on-chain reads (required when GMX positions exist)
     :return: Account value function or None if credentials not provided
     """
     from decimal import Decimal
@@ -149,14 +151,26 @@ def create_exchange_account_value_func(
                     ccxt_value_func = create_ccxt_account_value_func(exchanges)
                     logger.info("Created CCXT account value function for %d account(s)", len(exchanges))
 
+    # Set up GMX if needed
+    gmx_value_func = None
+    if "gmx" in protocols:
+        if not web3:
+            logger.error("Web3 connection required for GMX account value function")
+        else:
+            from tradeexecutor.exchange_account.gmx import create_gmx_account_value_func
+            gmx_value_func = create_gmx_account_value_func(web3)
+            logger.info("Created GMX account value function")
+
     # Create unified dispatcher
-    if derive_value_func or ccxt_value_func:
+    if derive_value_func or ccxt_value_func or gmx_value_func:
         def unified_account_value_func(pair: TradingPairIdentifier) -> Decimal:
             protocol = pair.get_exchange_account_protocol()
             if protocol == "derive" and derive_value_func:
                 return derive_value_func(pair)
             elif protocol == "ccxt" and ccxt_value_func:
                 return ccxt_value_func(pair)
+            elif protocol == "gmx" and gmx_value_func:
+                return gmx_value_func(pair)
             else:
                 raise ValueError(f"No account value function for protocol: {protocol}")
 
@@ -245,3 +259,24 @@ def create_derive_value_func_from_credentials(
             raise
 
     return get_derive_account_value
+
+
+def create_gmx_value_func_from_web3(web3) -> Callable:
+    """Create a GMX account value func from a Web3 instance.
+
+    Unlike the dispatcher in :py:func:`create_exchange_account_value_func`,
+    this does not require positions to be known upfront. The returned
+    function reads the Safe address from each pair's ``pool_address``
+    at call time.
+
+    Used by the ``start`` command where positions may not yet exist at
+    startup time.
+
+    :param web3:
+        Web3 instance connected to the chain where GMX positions live.
+    :return:
+        Function that takes a TradingPairIdentifier and returns
+        the total GMX position equity in USD.
+    """
+    from tradeexecutor.exchange_account.gmx import create_gmx_account_value_func
+    return create_gmx_account_value_func(web3)

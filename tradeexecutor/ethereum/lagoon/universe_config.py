@@ -27,6 +27,7 @@ from web3 import Web3
 from eth_defi.cctp.constants import TESTNET_CHAIN_IDS
 from eth_defi.cctp.whitelist import CCTPDeployment
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonConfig, LagoonDeploymentParameters
+from eth_defi.gmx.whitelist import GMXDeployment, fetch_all_gmx_markets
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_deployment_uni_v3
 
@@ -142,6 +143,14 @@ def translate_trading_universe_to_lagoon_config(
         if exchange.exchange_type == ExchangeType.uniswap_v3:
             uniswap_v3_chain_ids.add(exchange.chain_id.value)
 
+    # Collect GMX exchange account chain IDs
+    gmx_chain_ids: set[int] = set()
+    for pair in universe.iterate_pairs():
+        if pair.is_exchange_account():
+            protocol = pair.get_exchange_account_protocol()
+            if protocol == "gmx":
+                gmx_chain_ids.add(pair.base.chain_id)
+
     # Collect unique token addresses per chain (used when any_asset=False)
     chain_token_addresses: dict[int, set[str]] = {cid: set() for cid in all_chain_ids}
     if not any_asset:
@@ -218,6 +227,31 @@ def translate_trading_universe_to_lagoon_config(
                 )
             else:
                 logger.warning("No Uniswap v3 deployment data for chain %s", slug)
+
+        # Configure GMX router whitelisting (and per-market whitelisting when any_asset is off)
+        if chain_id in gmx_chain_ids:
+            if any_asset:
+                # When any_asset=True the guard's GmxLib.isAllowedMarket()
+                # short-circuits to True, so per-market whitelisting is redundant.
+                # We still need GMXDeployment for the router addresses.
+                market_addresses = []
+            else:
+                all_markets = fetch_all_gmx_markets(chain_web3[slug])
+                market_addresses = list(all_markets.keys())
+
+            if chain_id == 421614:
+                # Arbitrum Sepolia testnet — construct GMXDeployment manually
+                from eth_defi.gmx.contracts import get_contract_addresses as get_gmx_addresses
+                testnet_addrs = get_gmx_addresses("arbitrum_sepolia")
+                config.gmx_deployment = GMXDeployment(
+                    exchange_router=testnet_addrs.exchangerouter,
+                    synthetics_router=testnet_addrs.syntheticsrouter,
+                    order_vault=testnet_addrs.ordervault,
+                    markets=market_addresses,
+                )
+            else:
+                config.gmx_deployment = GMXDeployment.create_arbitrum(markets=market_addresses)
+            logger.info("GMX deployment configured for %s: %d market(s)%s", slug, len(market_addresses), " (skipped per-market whitelisting — any_asset=True)" if any_asset else " (all markets)")
 
         configs[slug] = config
 

@@ -713,7 +713,7 @@ class EthereumExecution(ExecutionModel):
         configurator = EthereumPairConfigurator(
             web3,
             strategy_universe,
-            account_value_func=self.account_value_func,
+            execution_model=self,
         )
         return GenericRouting(configurator)
 
