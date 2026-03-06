@@ -574,3 +574,23 @@ def test_cli_lagoon_first_deposit(
     share_balance = vault.share_token.fetch_balance_of(asset_manager.address)
     assert share_balance > 0, f"Expected depositor to hold shares, got {share_balance}"
 
+    # 7. Run lagoon-redeem to cash out all shares
+    mocker.patch.dict("os.environ", base_env, clear=True)
+    cli.main(args=["lagoon-redeem"], standalone_mode=False)
+
+    # 8. Verify redemption: shares gone, USDC returned, state updated
+    share_balance_after = vault.share_token.fetch_balance_of(asset_manager.address)
+    assert share_balance_after == 0, f"Expected 0 shares after redeem, got {share_balance_after}"
+
+    manager_usdc = usdc_token.fetch_balance_of(asset_manager.address)
+    assert manager_usdc > 0, f"Expected asset manager to hold USDC after redemption, got {manager_usdc}"
+
+    safe_usdc_after = usdc_token.fetch_balance_of(vault.safe_address)
+    assert safe_usdc_after == 0, f"Expected Safe to hold 0 USDC after full redemption, got {safe_usdc_after}"
+
+    state = State.read_json_file(state_file)
+    reserve_position = state.portfolio.get_default_reserve_position()
+    assert reserve_position.get_value() == pytest.approx(0), (
+        f"Expected reserves == 0 after full redemption, got {reserve_position.get_value()}"
+    )
+

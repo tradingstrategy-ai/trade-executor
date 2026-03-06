@@ -33,6 +33,7 @@ from .commands.check_position_triggers import check_position_triggers
 from .commands.send_log_message import send_log_message
 from .commands.lagoon_deploy_vault import lagoon_deploy_vault
 from .commands.lagoon_first_deposit import lagoon_first_deposit
+from .commands.lagoon_redeem import lagoon_redeem
 from .commands.show_valuation import show_valuation
 from .commands.blacklist import blacklist
 from .commands.prune import prune_state
@@ -43,7 +44,7 @@ __all__ = [
     app, backtest, blacklist, check_accounts, check_position_triggers,
     check_universe, check_wallet, close_all, close_position, console,
     correct_accounts, correct_history, deploy_guard, enzyme_asset_list, enzyme_deploy_vault,
-    export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_settle, perform_test_trade, prune_state,
+    export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_redeem, lagoon_settle, perform_test_trade, prune_state,
     repair, reset, reset_deposits, retry, send_log_message, show_positions,
     show_valuation, start, token_cache, trading_pair,
     version, visualise, webapi
