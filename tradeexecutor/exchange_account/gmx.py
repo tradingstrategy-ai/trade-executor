@@ -12,7 +12,16 @@ import logging
 from decimal import Decimal
 from typing import Callable
 
+from hexbytes import HexBytes
+
+from eth_defi.gmx.config import GMXConfig
 from eth_defi.gmx.contracts import get_contract_addresses
+from eth_defi.gmx.core.open_positions import GetOpenPositions
+from eth_defi.gmx.lagoon.approvals import (
+    UNLIMITED,
+    approve_gmx_collateral_via_vault,
+)
+from eth_defi.token import fetch_erc20_details
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 
@@ -113,10 +122,6 @@ def create_gmx_account_value_func(
             Total position equity in USD, or ``Decimal(0)`` if no
             open positions.
         """
-        # Lazy imports to avoid loading GMX modules at startup
-        from eth_defi.gmx.config import GMXConfig
-        from eth_defi.gmx.core.open_positions import GetOpenPositions
-
         assert pair.is_exchange_account(), f"Not an exchange account pair: {pair}"
         assert pair.get_exchange_account_protocol() == "gmx", \
             f"Not a GMX pair: {pair.get_exchange_account_protocol()}"
@@ -159,3 +164,66 @@ def create_gmx_account_value_func(
             raise
 
     return get_gmx_account_value
+
+
+def approve_gmx_trading(
+    vault,
+    hot_wallet,
+    collateral_address: str | None = None,
+) -> HexBytes:
+    """Approve GMX collateral token to trade via the Lagoon vault.
+
+    Convenience function intended to be called from the trade executor
+    console (``trade-executor console``) to initialise GMX trading.
+    Approves the collateral token (e.g. USDC) for the GMX
+    SyntheticsRouter through the vault's Safe, because
+    ``sendTokens()`` in the multicall does ``transferFrom`` via the
+    SyntheticsRouter on every trade.
+
+    The approval uses an unlimited amount (``2**256 - 1``).
+    The Guard contract ensures that tokens can only flow to
+    the pre-configured OrderVault and that order proceeds always
+    return to the Safe, so an unlimited allowance does not increase
+    the attack surface.
+
+    For the full security analysis of the approval and trading flow,
+    see `README-GMX-Lagoon.md <https://github.com/tradingstrategy-ai/web3-ethereum-defi/blob/master/eth_defi/gmx/README-GMX-Lagoon.md>`_
+    (section *"Pre-requisite: USDC approval"*).
+
+    Example usage from the console::
+
+        from tradeexecutor.exchange_account.gmx import approve_gmx_trading
+        approve_gmx_trading(vault, hot_wallet)
+
+    :param vault:
+        ``LagoonVault`` instance (available as ``vault`` in the console).
+    :param hot_wallet:
+        ``HotWallet`` of the asset manager (available as ``hot_wallet``
+        in the console).
+    :param collateral_address:
+        ERC-20 address of the collateral token to approve.
+        Defaults to the vault's underlying token (denomination asset).
+    :return:
+        Transaction hash of the collateral approval.
+    """
+    web3 = vault.web3
+
+    # Resolve collateral token
+    if collateral_address:
+        collateral_token = fetch_erc20_details(web3, collateral_address)
+    else:
+        collateral_token = vault.underlying_token
+    logger.info("Using collateral token: %s (%s)", collateral_token.symbol, collateral_token.address)
+
+    # Approve collateral for GMX SyntheticsRouter
+    logger.info("Approving collateral token for GMX SyntheticsRouter...")
+    collateral_tx = approve_gmx_collateral_via_vault(
+        vault=vault,
+        asset_manager=hot_wallet,
+        collateral_token=collateral_token,
+        amount=UNLIMITED,
+    )
+    logger.info("Collateral approval tx: %s", web3.to_hex(collateral_tx))
+
+    logger.info("GMX trading approval complete")
+    return collateral_tx
