@@ -58,7 +58,7 @@ def lagoon_redeem(
 
     simulate: bool = shared_options.simulate,
 ):
-    """Redeem all vault shares from a Lagoon vault.
+    """Redeem all vault shares from a Lagoon vault for the asset manager.
 
     - Performs the full ERC-7540 three-phase async redemption
     - Approves and requests redemption of all shares (Phase 1)
