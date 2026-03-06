@@ -2585,7 +2585,11 @@ def load_partial_data(
             filtered_pairs_df = pairs
             our_pair_ids = loadable_pairs["pair_id"]
             exchange_ids = loadable_pairs["exchange_id"]
-            our_exchanges = {exchange_universe.get_by_id(id) for id in exchange_ids}
+            # Use a list instead of a set to avoid Exchange.__eq__/__hash__ deduplication.
+            # Exchange hashes by factory address, which can be the same across chains
+            # (e.g. Uniswap V3 uses CREATE2 so the factory address is identical on Ethereum and Arbitrum).
+            # ExchangeUniverse.from_collection() deduplicates by exchange_id which is unique per chain.
+            our_exchanges = [exchange_universe.get_by_id(id) for id in exchange_ids]
             our_exchange_universe = ExchangeUniverse.from_collection(our_exchanges)
 
         else:
@@ -2604,7 +2608,7 @@ def load_partial_data(
 
             our_pair_ids = {p.pair_id for p in our_pairs}
             exchange_ids = {p.exchange_id for p in our_pairs}
-            our_exchanges = {exchange_universe.get_by_id(id) for id in exchange_ids}
+            our_exchanges = [exchange_universe.get_by_id(id) for id in exchange_ids]
             our_exchange_universe = ExchangeUniverse.from_collection(our_exchanges)
 
             # Eliminate the pairs we are not interested in from the database
