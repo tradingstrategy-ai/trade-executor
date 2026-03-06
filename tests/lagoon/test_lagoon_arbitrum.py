@@ -232,18 +232,18 @@ def test_lagoon_arbitrum_gmx(
     tmp_path: Path,
     usdc: TokenDetails,
 ):
-    """Deploy Lagoon vault with DENOMINATION_ASSET + STRATEGY_FILE and verify GMX whitelisting.
+    """Deploy Lagoon vault with STRATEGY_FILE (no --denomination-asset) and verify GMX whitelisting.
 
-    Regression test: when both --denomination-asset and --strategy-file are provided,
-    the single-chain deployment path must auto-detect GMX from the strategy universe
-    and whitelist the SyntheticsRouter as an approval destination. Without this,
-    approve_gmx_trading() reverts with "Approve address not allowed".
+    When --strategy-file is provided without --denomination-asset, the deployment
+    routes through translate_trading_universe_to_lagoon_config() which auto-detects
+    GMX from the strategy universe and whitelists GMX router addresses in the guard.
+    Without this, approve_gmx_trading() reverts with "Approve address not allowed".
     """
     from tradeexecutor.exchange_account.gmx import approve_gmx_trading
 
     multisig_owners = f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
 
-    vault_record_file = tmp_path / "vault-record.json"
+    vault_record_file = tmp_path / "vault-record.txt"
     environment = {
         "PATH": os.environ["PATH"],
         "EXECUTOR_ID": "test_lagoon_arbitrum_gmx",
@@ -258,21 +258,22 @@ def test_lagoon_arbitrum_gmx(
         "FUND_NAME": "GMX Test",
         "FUND_SYMBOL": "GMXT",
         "MULTISIG_OWNERS": multisig_owners,
-        "DENOMINATION_ASSET": usdc.address,
         "ANY_ASSET": "true",
     }
 
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
 
-    # 1. Deploy vault — exercises single-chain path with GMX auto-detection
+    # 1. Deploy vault — routes through translate_trading_universe_to_lagoon_config()
     cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
 
-    # 2. Read deployment record
-    deploy_info = json.load(vault_record_file.open("rt"))
-    vault_address = deploy_info["Vault"]
-    module_address = deploy_info["Trading strategy module"]
-    safe_address = deploy_info["Safe"]
+    # 2. Read multichain deployment record
+    deploy_record = json.load(vault_record_file.with_suffix(".json").open("rt"))
+    assert deploy_record["multichain"] is True
+    arb_dep = deploy_record["deployments"]["arbitrum"]
+    vault_address = arb_dep["vault_address"]
+    module_address = arb_dep["module_address"]
+    safe_address = arb_dep["safe_address"]
 
     # 3. Construct LagoonVault and call approve_gmx_trading — must not revert
     vault = LagoonVault(
