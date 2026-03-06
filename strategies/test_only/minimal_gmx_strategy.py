@@ -6,17 +6,39 @@ GMX perpetuals positions.
 
 The Safe address is resolved at runtime from the execution model's
 transaction builder, not stored in the pair or environment.
+
+Example: deploy a Lagoon vault for this strategy on a simulated Anvil fork
+--------------------------------------------------------------------------
+
+Uses the strategy-universe-based deployment path which is required for GMX
+whitelisting. The key is to provide ``--strategy-file`` without
+``--denomination-asset`` — this triggers ``_deploy_multichain()`` which reads
+the trading universe from the strategy, detects GMX pairs, and whitelists
+GMX router addresses and markets in the guard contract.
+
+.. code-block:: shell
+
+    STRATEGY_FILE=strategies/test_only/minimal_gmx_strategy.py \
+    SIMULATE=true \
+    PRIVATE_KEY=$PRIVATE_KEY \
+    VAULT_RECORD_FILE=/tmp/vault-record.json \
+    FUND_NAME="GMX Test Vault" \
+    FUND_SYMBOL="GMX-TV" \
+    ANY_ASSET=true \
+    LOG_LEVEL=info \
+        trade-executor lagoon-deploy-vault
+
+
 """
 
 import datetime
 import os
 
+from eth_defi.token import USDC_NATIVE_TOKEN
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
-
-from eth_defi.token import USDC_NATIVE_TOKEN
 
 from tradeexecutor.exchange_account.gmx import create_gmx_exchange_account_pair
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -26,11 +48,13 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
-from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
+from tradeexecutor.strategy.pandas_trader.trading_universe_input import \
+    CreateTradingUniverseInput
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
 from tradeexecutor.strategy.strategy_type import StrategyType
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
+from tradeexecutor.strategy.trading_strategy_universe import (
+    TradingStrategyUniverse, create_pair_universe_from_code)
 
 trading_strategy_engine_version = "0.5"
 trading_strategy_type = StrategyType.managed_positions
@@ -135,7 +159,9 @@ def decide_trades(
     which creates a spoofed trade that never goes through routing/execution.
     """
     from decimal import Decimal
-    from tradeexecutor.exchange_account.state import open_exchange_account_position
+
+    from tradeexecutor.exchange_account.state import \
+        open_exchange_account_position
 
     state = input.state
     timestamp = input.timestamp
