@@ -87,6 +87,7 @@ from tradeexecutor.cli.commands.shared_options import \
     parse_comma_separated_list
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.ethereum.lagoon.deploy_report import print_deployment_report
+from tradeexecutor.ethereum.lagoon.preflight_report import log_deployment_preflight_report
 from tradeexecutor.ethereum.lagoon.universe_config import \
     translate_trading_universe_to_lagoon_config
 from tradeexecutor.ethereum.token_cache import get_default_token_cache
@@ -228,6 +229,9 @@ def lagoon_deploy_vault(
             any_asset=any_asset,
             trading_strategy_api_key=trading_strategy_api_key,
             hypersync_api_key=hypersync_api_key,
+            etherscan_api_key=etherscan_api_key,
+            verifier=verifier,
+            verifier_url=verifier_url,
         )
         web3config.close()
         logger.info("All ok.")
@@ -272,39 +276,31 @@ def lagoon_deploy_vault(
     else:
         logger.info("Ready to deploy")
 
-    logger.info("-" * 80)
-    logger.info("Deployer hot wallet: %s", hot_wallet.address)
-    logger.info("Deployer balance: %f, nonce %d", hot_wallet.get_native_currency_balance(web3), hot_wallet.current_nonce)
-    logger.info("Fund: %s (%s)", fund_name, fund_symbol)
-    logger.info("Underlying token: %s", denomination_token.symbol)
-    logger.info("Whitelisting any token: %s", aave)
-    logger.info("Whitelisted assets: %s", ", ".join([a.symbol for a in whitelisted_asset_details]))
-    logger.info("Whitelisting Uniswap v2: %s", uniswap_v2)
-    logger.info("Whitelisting Uniswap v3: %s", uniswap_v3)
-    logger.info("Whitelisting 1delta: %s", one_delta)
-    logger.info("Whitelisting Aave: %s", aave)
-    logger.info("Whitelisting vaults: %s", erc_4626_vaults)
-    logger.info("Multisig owners: %s", multisig_owners)
-    logger.info("Performance fee: %f %%", performance_fee / 100)
-    logger.info("Management fee: %f %%", management_fee / 100)
-    logger.info("From the scratch Lagoon deployment: %s", lagoon_chain_config.from_the_scratch)
-    logger.info("Use Lagoon BeaconProxyFactory: %s", lagoon_chain_config.factory_contract)
-
-    if etherscan_api_key:
-        logger.info("Etherscan API key: %s", etherscan_api_key)
-    else:
-        logger.warning("Etherscan API key: not provided")
-
-    logger.info("Verifier: %s", verifier)
-    if verifier_url:
-        logger.info("Verifier URL: %s", verifier_url)
-
-    if asset_manager != hot_wallet.address:
-        logger.info("Asset manager is %s", asset_manager)
-    else:
-        logger.info("Hot wallet set for the asset manager role")
-
-    logger.info("-" * 80)
+    chain_slug = chain_id.get_slug()
+    log_deployment_preflight_report(
+        hot_wallet=hot_wallet,
+        chain_web3={chain_slug: web3},
+        fund_name=fund_name,
+        fund_symbol=fund_symbol,
+        asset_manager=asset_manager,
+        multisig_owners=multisig_owners,
+        performance_fee=performance_fee,
+        management_fee=management_fee,
+        etherscan_api_key=etherscan_api_key,
+        verifier=verifier,
+        verifier_url=verifier_url,
+        denomination_token=denomination_token,
+        any_asset=any_asset,
+        whitelisted_asset_details=whitelisted_asset_details,
+        uniswap_v2=uniswap_v2,
+        uniswap_v3=uniswap_v3,
+        one_delta=one_delta,
+        aave=aave,
+        erc_4626_vaults=erc_4626_vaults,
+        lagoon_chain_config=lagoon_chain_config,
+        simulate=simulate,
+        logger=logger,
+    )
 
     if not (simulate or unit_testing):
 
@@ -475,6 +471,9 @@ def _deploy_multichain(
     any_asset: bool = False,
     trading_strategy_api_key: str | None = None,
     hypersync_api_key: str | None = None,
+    etherscan_api_key: str | None = None,
+    verifier: str = "etherscan",
+    verifier_url: str | None = None,
 ):
     """Deploy multichain Lagoon vault from a strategy file.
 
@@ -534,11 +533,23 @@ def _deploy_multichain(
 
     chain_word = "chain" if len(configs) == 1 else "chains"
     logger.info("Generated configs for %d %s:", len(configs), chain_word)
-    for slug, config in configs.items():
-        logger.info("  %s: satellite=%s, cctp=%s, uniswap_v3=%s",
-                     slug, config.satellite_chain,
-                     config.cctp_deployment is not None,
-                     config.uniswap_v3 is not None)
+
+    log_deployment_preflight_report(
+        hot_wallet=hot_wallet,
+        chain_web3=chain_web3,
+        fund_name=fund_name or "Strategy Vault",
+        fund_symbol=fund_symbol or "CSV",
+        asset_manager=asset_manager,
+        multisig_owners=multisig_owners,
+        performance_fee=configs[next(iter(configs))].parameters.performanceRate,
+        management_fee=configs[next(iter(configs))].parameters.managementRate,
+        etherscan_api_key=etherscan_api_key,
+        verifier=verifier,
+        verifier_url=verifier_url,
+        chain_configs=configs,
+        simulate=simulate,
+        logger=logger,
+    )
 
     if not (simulate or unit_testing):
         label = "multichain vault" if len(configs) > 1 else "vault"
