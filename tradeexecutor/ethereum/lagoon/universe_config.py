@@ -159,11 +159,12 @@ def translate_trading_universe_to_lagoon_config(
             chain_token_addresses[pair.quote.chain_id].add(Web3.to_checksum_address(pair.quote.address))
 
     logger.info(
-        "Universe analysis: source_chain=%s, chains=%s, cctp=%s, uniswap_v3_chains=%s, testnet=%s, any_asset=%s",
+        "Universe analysis: source_chain=%s, chains=%s, cctp=%s, uniswap_v3_chains=%s, gmx_chains=%s, testnet=%s, any_asset=%s",
         source_chain_slug,
         list(chain_id_to_slug.values()),
         has_cctp,
         [chain_id_to_slug[cid] for cid in uniswap_v3_chain_ids],
+        [chain_id_to_slug[cid] for cid in gmx_chain_ids],
         is_testnet,
         any_asset,
     )
