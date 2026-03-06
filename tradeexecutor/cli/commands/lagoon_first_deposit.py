@@ -22,11 +22,9 @@ from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
 from typer import Option
 
-from tradeexecutor.cli.bootstrap import (
-    create_state_store,
-    create_web3_config,
-    prepare_executor_id,
-)
+from tradeexecutor.cli.bootstrap import (create_state_store,
+                                         create_web3_config,
+                                         prepare_executor_id)
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.log import setup_logging
@@ -57,6 +55,8 @@ def lagoon_first_deposit(
     vault_address: Optional[str] = shared_options.vault_address,
     vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
 
+    simulate: bool = shared_options.simulate,
+
     deposit_amount: float = Option(..., envvar="DEPOSIT_AMOUNT", help="Amount of denomination token (e.g. USDC) to deposit into the vault."),
 ):
     """Make the first deposit into a Lagoon vault.
@@ -85,7 +85,7 @@ def lagoon_first_deposit(
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
         json_rpc_base_sepolia=json_rpc_base_sepolia,
-        simulate=False,
+        simulate=simulate,
     )
 
     if not web3config.has_any_connection():
@@ -154,35 +154,40 @@ def lagoon_first_deposit(
     # so we directly update the state's reserve position from the
     # on-chain Safe balance rather than running the full settle flow
     # (which would require constructing the full trading universe).
-    if not state_file:
-        state_file = f"state/{id}.json"
+    if simulate:
+        logger.info("Simulation mode — skipping state file update")
+        logger.info("  Vault Safe %s balance: %s", denomination_token.symbol, safe_balance)
+        logger.info("  Depositor shares: %s %s", share_balance, vault.share_token.symbol)
+    else:
+        if not state_file:
+            state_file = f"state/{id}.json"
 
-    store = create_state_store(Path(state_file))
+        store = create_state_store(Path(state_file))
 
-    assert not store.is_pristine(), f"State file does not exist: {state_file}. Run 'init' first."
-    state = store.load()
+        assert not store.is_pristine(), f"State file does not exist: {state_file}. Run 'init' first."
+        state = store.load()
 
-    ts = native_datetime_utc_now()
-    if len(state.portfolio.reserves) == 0:
-        reserve_asset = translate_token_details(denomination_token)
-        state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
-    reserve_position = state.portfolio.get_default_reserve_position()
-    reserve_position.quantity = safe_balance
-    reserve_position.reserve_token_price = 1.0
-    reserve_position.last_pricing_at = ts
-    reserve_position.last_sync_at = ts
+        ts = native_datetime_utc_now()
+        if len(state.portfolio.reserves) == 0:
+            reserve_asset = translate_token_details(denomination_token)
+            state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+        reserve_position = state.portfolio.get_default_reserve_position()
+        reserve_position.quantity = safe_balance
+        reserve_position.reserve_token_price = 1.0
+        reserve_position.last_pricing_at = ts
+        reserve_position.last_sync_at = ts
 
-    store.sync(state)
+        store.sync(state)
 
-    # Final state check
-    reserve_value = reserve_position.get_value()
-    reserve_symbol = reserve_position.asset.token_symbol
+        # Final state check
+        reserve_value = reserve_position.get_value()
+        reserve_symbol = reserve_position.asset.token_symbol
 
-    logger.info("State file updated: %s", state_file)
-    logger.info("  Reserve balance: %s %s", reserve_value, reserve_symbol)
-    logger.info("  Vault Safe %s balance: %s", denomination_token.symbol, safe_balance)
-    logger.info("  Depositor shares: %s %s", share_balance, vault.share_token.symbol)
+        logger.info("State file updated: %s", state_file)
+        logger.info("  Reserve balance: %s %s", reserve_value, reserve_symbol)
+        logger.info("  Vault Safe %s balance: %s", denomination_token.symbol, safe_balance)
+        logger.info("  Depositor shares: %s %s", share_balance, vault.share_token.symbol)
 
-    assert reserve_value > 0, f"Reserve balance is 0 after deposit — something went wrong"
+        assert reserve_value > 0, f"Reserve balance is 0 after deposit — something went wrong"
 
     logger.info("All ok")
