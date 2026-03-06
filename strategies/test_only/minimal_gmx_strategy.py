@@ -18,6 +18,7 @@ GMX router addresses and markets in the guard contract.
 
 .. code-block:: shell
 
+    CHAIN_NAME=arbitrum \
     STRATEGY_FILE=strategies/test_only/minimal_gmx_strategy.py \
     SIMULATE=true \
     PRIVATE_KEY=$PRIVATE_KEY \
