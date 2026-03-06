@@ -1,6 +1,7 @@
 """Test CLI command and strategy running with Lagoon vault."""
 import json
 import os
+from decimal import Decimal
 from pathlib import Path
 
 import flaky
@@ -9,8 +10,11 @@ from typer.main import get_command
 from web3 import Web3
 
 from eth_defi.abi import get_deployed_contract
+from eth_defi.erc_4626.classification import create_vault_instance
+from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.safe.deployment import fetch_safe_deployment, disable_safe_module
 from eth_defi.safe.simulate import simulate_safe_execution_anvil
+from eth_defi.token import fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 from tradeexecutor.cli.main import app
 from tradeexecutor.cli.log import setup_pytest_logging
@@ -454,4 +458,119 @@ def test_cli_lagoon_redeploy_guard(
     # Check there is no change in Uniswap v2 trade whitelisting
     cli.main(args=["perform-test-trade", "--pair", "(base, uniswap-v2, KEYCAT, WETH, 0.0030)"], standalone_mode=False)
     _check_clean_state()
+
+
+@pytest.mark.slow_test_group
+def test_cli_lagoon_first_deposit(
+    web3,
+    anvil_base_fork,
+    strategy_file,
+    mocker,
+    tmp_path: Path,
+    base_usdc,
+    asset_manager,
+    usdc_holder,
+    persistent_test_client,
+):
+    """Test the first-deposit CLI command.
+
+    1. Deploy a vault
+    2. Initialise state
+    3. Fund asset manager with USDC
+    4. Run first-deposit command
+    5. Verify state has reserves and vault has shares
+    """
+
+    cache_path = persistent_test_client.transport.cache_path
+    state_file = tmp_path / "first-deposit-test.json"
+    vault_record_file = tmp_path / "vault-record.json"
+
+    multisig_owners = f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
+
+    base_env = {
+        "PATH": os.environ["PATH"],
+        "EXECUTOR_ID": "test_cli_lagoon_first_deposit",
+        "NAME": "test_cli_lagoon_first_deposit",
+        "STRATEGY_FILE": strategy_file.as_posix(),
+        "JSON_RPC_BASE": anvil_base_fork.json_rpc_url,
+        "STATE_FILE": state_file.as_posix(),
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+        "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "PRIVATE_KEY": hexbytes_to_hex_str(asset_manager.private_key),
+        "CACHE_PATH": cache_path,
+        "GENERATE_REPORT": "false",
+    }
+
+    cli = get_command(app)
+
+    # 1. Deploy vault
+    deploy_env = {
+        **base_env,
+        "VAULT_RECORD_FILE": str(vault_record_file),
+        "FUND_NAME": "First Deposit Test",
+        "FUND_SYMBOL": "FDT",
+        "MULTISIG_OWNERS": multisig_owners,
+        "DENOMINATION_ASSET": base_usdc.address,
+        "ANY_ASSET": "true",
+        "UNISWAP_V2": "true",
+        "UNISWAP_V3": "true",
+    }
+    mocker.patch.dict("os.environ", deploy_env, clear=True)
+    cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
+
+    deploy_info = json.load(vault_record_file.open("rt"))
+    vault_address = deploy_info["Vault"]
+    vault_adapter_address = deploy_info["Trading strategy module"]
+
+    base_env.update({
+        "VAULT_ADDRESS": vault_address,
+        "VAULT_ADAPTER_ADDRESS": vault_adapter_address,
+        "MIN_GAS_BALANCE": "0.0",
+    })
+
+    # 2. Init state
+    mocker.patch.dict("os.environ", {**base_env, "NAME": "First Deposit Test"}, clear=True)
+    cli.main(args=["init"], standalone_mode=False)
+    assert state_file.exists()
+
+    # 3. Fund asset manager with USDC (transfer from unlocked holder)
+    usdc_token = fetch_erc20_details(web3, base_usdc.address)
+    deposit_amount = Decimal(100)
+    tx_hash = usdc_token.contract.functions.transfer(
+        asset_manager.address,
+        usdc_token.convert_to_raw(deposit_amount),
+    ).transact({"from": usdc_holder, "gas": 100_000})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    manager_balance = usdc_token.fetch_balance_of(asset_manager.address)
+    assert manager_balance >= deposit_amount
+
+    # 4. Run first-deposit
+    deposit_env = {
+        **base_env,
+        "DEPOSIT_AMOUNT": str(deposit_amount),
+    }
+    mocker.patch.dict("os.environ", deposit_env, clear=True)
+    cli.main(args=["lagoon-first-deposit"], standalone_mode=False)
+
+    # 5. Verify state has reserves
+    state = State.read_json_file(state_file)
+    reserve_position = state.portfolio.get_default_reserve_position()
+    assert reserve_position.get_value() > 0, f"Expected reserves > 0, got {reserve_position.get_value()}"
+
+    # 6. Verify vault has USDC and depositor has shares
+    vault = create_vault_instance(
+        web3,
+        vault_address,
+        features={ERC4626Feature.lagoon_like},
+        default_block_identifier="latest",
+        require_denomination_token=True,
+    )
+    safe_usdc = usdc_token.fetch_balance_of(vault.safe_address)
+    assert safe_usdc > 0, f"Expected Safe to hold USDC, got {safe_usdc}"
+
+    share_balance = vault.share_token.fetch_balance_of(asset_manager.address)
+    assert share_balance > 0, f"Expected depositor to hold shares, got {share_balance}"
 

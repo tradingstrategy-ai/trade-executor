@@ -39,6 +39,69 @@ TEST_CHAIN_IDS: List[ChainId] = [
 logger = logging.getLogger(__name__)
 
 
+def filter_rpc_kwargs_by_chain(chain_name: str, **rpc_kwargs) -> dict:
+    """Filter JSON-RPC kwargs to keep only the selected chain.
+
+    Used when multiple ``JSON_RPC_*`` environment variables are set but only
+    one chain is needed (e.g. ``simulate`` mode).
+
+    :param chain_name:
+        Chain slug, e.g. ``"base"``, ``"arbitrum"``, ``"ethereum"``.
+    :param rpc_kwargs:
+        The ``json_rpc_*`` keyword arguments as passed to :func:`create_web3_config`.
+    :return:
+        Same dict with all non-matching RPC values set to ``None``.
+    :raises AssertionError:
+        If the slug is unknown or no RPC is configured for it.
+    """
+    selected = ChainId.get_by_slug(chain_name)
+    assert selected is not None, f"Unknown chain slug: {chain_name}. Supported: {[c.get_slug() for c in SUPPORTED_CHAINS]}"
+    target_key = f"json_rpc_{selected.get_slug()}"
+    assert rpc_kwargs.get(target_key), (
+        f"No JSON-RPC configured for chain {chain_name} "
+        f"(expected env var JSON_RPC_{chain_name.upper()})"
+    )
+    return {k: (v if k == target_key else None) for k, v in rpc_kwargs.items()}
+
+
+def collect_rpc_kwargs(
+    *,
+    json_rpc_binance=None,
+    json_rpc_polygon=None,
+    json_rpc_avalanche=None,
+    json_rpc_ethereum=None,
+    json_rpc_base=None,
+    json_rpc_anvil=None,
+    json_rpc_arbitrum=None,
+    json_rpc_derive=None,
+    json_rpc_arbitrum_sepolia=None,
+    json_rpc_base_sepolia=None,
+    chain_name: str | None = None,
+) -> dict:
+    """Collect JSON-RPC kwargs and optionally filter to a single chain.
+
+    Standardises the boilerplate of gathering Typer RPC params into a dict
+    suitable for :func:`create_web3_config`.  When ``chain_name`` is given,
+    delegates to :func:`filter_rpc_kwargs_by_chain` so only that chain's
+    RPC survives.
+    """
+    rpc_kwargs = dict(
+        json_rpc_binance=json_rpc_binance,
+        json_rpc_polygon=json_rpc_polygon,
+        json_rpc_avalanche=json_rpc_avalanche,
+        json_rpc_ethereum=json_rpc_ethereum,
+        json_rpc_base=json_rpc_base,
+        json_rpc_anvil=json_rpc_anvil,
+        json_rpc_arbitrum=json_rpc_arbitrum,
+        json_rpc_derive=json_rpc_derive,
+        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
+        json_rpc_base_sepolia=json_rpc_base_sepolia,
+    )
+    if chain_name:
+        rpc_kwargs = filter_rpc_kwargs_by_chain(chain_name, **rpc_kwargs)
+    return rpc_kwargs
+
+
 @dataclass
 class Web3Config:
     """Advanced Web3 connection manager.

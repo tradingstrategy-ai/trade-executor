@@ -86,12 +86,16 @@ from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.commands.shared_options import \
     parse_comma_separated_list
 from tradeexecutor.cli.log import setup_logging
-from tradeexecutor.ethereum.lagoon.universe_config import translate_trading_universe_to_lagoon_config
+from tradeexecutor.ethereum.lagoon.deploy_report import print_deployment_report
+from tradeexecutor.ethereum.lagoon.universe_config import \
+    translate_trading_universe_to_lagoon_config
 from tradeexecutor.ethereum.token_cache import get_default_token_cache
+from tradeexecutor.ethereum.web3config import collect_rpc_kwargs
 from tradeexecutor.monkeypatch.web3 import \
     construct_sign_and_send_raw_middleware
 from tradeexecutor.strategy.execution_context import one_off_execution_context
-from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import call_create_trading_universe
+from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import \
+    call_create_trading_universe
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 
 
@@ -144,6 +148,8 @@ def lagoon_deploy_vault(
     strategy_file: Path | None = Option(None, envvar="STRATEGY_FILE", help="Strategy module for multichain deployment. When provided, uses translate_trading_universe_to_lagoon_config() to generate per-chain configs."),
     safe_salt_nonce: int | None = Option(None, envvar="SAFE_SALT_NONCE", help="CREATE2 salt nonce for deterministic Safe address across chains. Random if not given."),
     trading_strategy_api_key: str | None = shared_options.trading_strategy_api_key,
+    hypersync_api_key: str | None = shared_options.hypersync_api_key,
+    chain_name: str | None = shared_options.chain_name,
 ):
     """Deploy a Lagoon vault or modify the vault deployment.
 
@@ -166,7 +172,7 @@ def lagoon_deploy_vault(
     cache_path = prepare_cache(executor_id, cache_path, unit_testing=unit_testing)
     token_cache = prepare_token_cache(cache_path, unit_testing=unit_testing)
 
-    web3config = create_web3_config(
+    rpc_kwargs = collect_rpc_kwargs(
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
@@ -177,6 +183,10 @@ def lagoon_deploy_vault(
         json_rpc_derive=json_rpc_derive,
         json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
         json_rpc_base_sepolia=json_rpc_base_sepolia,
+        chain_name=chain_name,
+    )
+    web3config = create_web3_config(
+        **rpc_kwargs,
         simulate=simulate,
         mev_endpoint_disabled=True,
     )
@@ -212,6 +222,7 @@ def lagoon_deploy_vault(
             logger=logger,
             any_asset=any_asset,
             trading_strategy_api_key=trading_strategy_api_key,
+            hypersync_api_key=hypersync_api_key,
         )
         web3config.close()
         logger.info("All ok.")
@@ -370,6 +381,10 @@ def lagoon_deploy_vault(
             logger.info("Preparing vault %s for whitelisting", vault.name)
             erc_4626_vaults.append(vault)
 
+    # Capture block before deployment so the report can find guard config events
+    # (deploy_info.block_number is set AFTER deployment, missing all events)
+    pre_deploy_block = web3.eth.block_number
+
     deploy_info = deploy_automated_lagoon_vault(
         web3=web3,
         deployer=hot_wallet,
@@ -424,6 +439,16 @@ def lagoon_deploy_vault(
         logger.info("Safe ABI needed: %s", SAFE_ABI_STR)
 
 
+    # Print deployment guard configuration report
+    print_deployment_report(
+        safe_address=deploy_info.safe_address or deploy_info.safe.address,
+        module_address=deploy_info.trading_strategy_module.address,
+        web3=web3,
+        hypersync_api_key=hypersync_api_key,
+        simulate=simulate,
+        from_block=pre_deploy_block,
+    )
+
     web3config.close()
 
     logger.info("All ok.")
@@ -444,6 +469,7 @@ def _deploy_multichain(
     logger,
     any_asset: bool = False,
     trading_strategy_api_key: str | None = None,
+    hypersync_api_key: str | None = None,
 ):
     """Deploy multichain Lagoon vault from a strategy file.
 
@@ -514,6 +540,9 @@ def _deploy_multichain(
             print("Aborted")
             sys.exit(1)
 
+    # Capture block before deployment so the report can find guard config events
+    pre_deploy_blocks = {slug: w3.eth.block_number for slug, w3 in chain_web3.items()}
+
     # Deploy across all chains
     result = deploy_multichain_lagoon_vault(
         chain_web3=chain_web3,
@@ -567,6 +596,18 @@ def _deploy_multichain(
         if dep.whitelisted_items:
             kinds = {e.kind for e in dep.whitelisted_items}
             logger.info("    whitelisted: %s", ", ".join(sorted(kinds)))
+
+    # Print deployment guard configuration report for each chain
+    for slug, dep in result.deployments.items():
+        if dep.trading_strategy_module and slug in chain_web3:
+            print_deployment_report(
+                safe_address=dep.safe_address,
+                module_address=dep.trading_strategy_module.address,
+                web3=chain_web3[slug],
+                hypersync_api_key=hypersync_api_key,
+                simulate=simulate,
+                from_block=pre_deploy_blocks.get(slug, 0),
+            )
 
 
 SAFE_ABI_STR = """
