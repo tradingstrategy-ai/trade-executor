@@ -12,7 +12,9 @@ import logging
 from decimal import Decimal
 from typing import Callable
 
-from eth_defi.gmx.contracts import get_contract_addresses
+from hexbytes import HexBytes
+
+from eth_defi.gmx.contracts import get_contract_addresses, NETWORK_TOKENS
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 
@@ -159,3 +161,95 @@ def create_gmx_account_value_func(
             raise
 
     return get_gmx_account_value
+
+
+def approve_gmx_trading(
+    vault,
+    hot_wallet,
+    collateral_address: str | None = None,
+) -> tuple[HexBytes, HexBytes]:
+    """Approve GMX contracts to trade via the Lagoon vault.
+
+    Convenience function intended to be called from the trade executor
+    console (``trade-executor console``) to initialise GMX trading.
+    Performs two approvals through the vault's Safe:
+
+    1. Collateral token (e.g. USDC) → GMX SyntheticsRouter
+    2. WETH → GMX ExchangeRouter (for execution fees)
+
+    Both approvals are unlimited (``2**256 - 1``).
+
+    Example usage from the console::
+
+        from tradeexecutor.exchange_account.gmx import approve_gmx_trading
+        approve_gmx_trading(vault, hot_wallet)
+
+    :param vault:
+        ``LagoonVault`` instance (available as ``vault`` in the console).
+    :param hot_wallet:
+        ``HotWallet`` of the asset manager (available as ``hot_wallet``
+        in the console).
+    :param collateral_address:
+        ERC-20 address of the collateral token to approve.
+        Defaults to the vault's underlying token (denomination asset).
+    :return:
+        Tuple of ``(collateral_tx_hash, weth_tx_hash)``.
+    """
+    from eth_defi.gmx.lagoon.approvals import (
+        UNLIMITED,
+        approve_gmx_collateral_via_vault,
+        approve_gmx_execution_fee_via_vault,
+    )
+    from eth_defi.token import fetch_erc20_details
+
+    web3 = vault.web3
+    chain_id = web3.eth.chain_id
+
+    chain_name_map = {
+        42161: "arbitrum",
+        421614: "arbitrum_sepolia",
+        43114: "avalanche",
+    }
+    chain = chain_name_map.get(chain_id)
+    if not chain:
+        raise ValueError(f"GMX not supported on chain ID {chain_id}")
+
+    # Resolve collateral token
+    if collateral_address:
+        collateral_token = fetch_erc20_details(web3, collateral_address)
+    else:
+        collateral_token = vault.underlying_token
+    logger.info("Using collateral token: %s (%s)", collateral_token.symbol, collateral_token.address)
+
+    # Resolve WETH token
+    weth_address = NETWORK_TOKENS.get(chain, {}).get("WETH")
+    if not weth_address:
+        raise ValueError(f"WETH address not found for chain {chain}")
+    weth_token = fetch_erc20_details(web3, weth_address)
+    logger.info("Using WETH token: %s (%s)", weth_token.symbol, weth_token.address)
+
+    # 1. Approve collateral for GMX SyntheticsRouter
+    logger.info("Approving collateral token for GMX SyntheticsRouter...")
+    collateral_tx = approve_gmx_collateral_via_vault(
+        vault=vault,
+        asset_manager=hot_wallet,
+        collateral_token=collateral_token,
+        amount=UNLIMITED,
+    )
+    logger.info("Collateral approval tx: %s", web3.to_hex(collateral_tx))
+
+    # Re-sync nonce between transactions
+    hot_wallet.sync_nonce(web3)
+
+    # 2. Approve WETH for GMX ExchangeRouter (execution fees)
+    logger.info("Approving WETH for GMX ExchangeRouter...")
+    weth_tx = approve_gmx_execution_fee_via_vault(
+        vault=vault,
+        asset_manager=hot_wallet,
+        weth_token=weth_token,
+        amount=UNLIMITED,
+    )
+    logger.info("WETH approval tx: %s", web3.to_hex(weth_tx))
+
+    logger.info("GMX trading approvals complete")
+    return collateral_tx, weth_tx
