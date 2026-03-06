@@ -284,6 +284,11 @@ def test_lagoon_arbitrum_gmx(
     tx_hash = approve_gmx_trading(vault, hot_wallet)
     assert tx_hash, "approve_gmx_trading() returned empty tx hash"
 
+    # assert_transaction_success_with_explanation is called inside
+    # approve_gmx_trading, but double-check the receipt here
+    receipt = web3.eth.get_transaction_receipt(tx_hash)
+    assert receipt["status"] == 1, f"GMX approval tx reverted: {receipt}"
+
     # 4. Verify on-chain allowance for SyntheticsRouter
     addresses = get_gmx_addresses("arbitrum")
     allowance = usdc.contract.functions.allowance(
