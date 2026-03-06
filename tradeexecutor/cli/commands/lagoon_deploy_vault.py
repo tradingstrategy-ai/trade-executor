@@ -68,6 +68,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
     DEFAULT_MANAGEMENT_RATE, DEFAULT_PERFORMANCE_RATE,
     LagoonDeploymentParameters, deploy_automated_lagoon_vault,
     deploy_multichain_lagoon_vault)
+from eth_defi.gmx.whitelist import GMXDeployment, fetch_all_gmx_markets
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
@@ -367,6 +368,31 @@ def lagoon_deploy_vault(
     else:
         aave_v3_deployment = None
 
+    # Auto-detect GMX from strategy universe when strategy_file is provided
+    gmx_deployment = None
+    if strategy_file:
+        client = None
+        if trading_strategy_api_key:
+            from tradingstrategy.client import Client
+            client = Client.create_live_client(api_key=trading_strategy_api_key)
+        mod = read_strategy_module(strategy_file)
+        universe = call_create_trading_universe(
+            mod.create_trading_universe,
+            client=client,
+            universe_options=mod.get_universe_options(),
+            execution_context=one_off_execution_context,
+        )
+        for pair in universe.iterate_pairs():
+            if pair.is_exchange_account() and pair.get_exchange_account_protocol() == "gmx":
+                if any_asset:
+                    market_addresses = []
+                else:
+                    all_markets = fetch_all_gmx_markets(web3)
+                    market_addresses = list(all_markets.keys())
+                gmx_deployment = GMXDeployment.create_arbitrum(markets=market_addresses)
+                logger.info("Auto-detected GMX from strategy: %d market(s)", len(market_addresses))
+                break
+
     # Scanning ERC-4626 vaults on a startup for token details takes a long time
     # Token cache already prepared at the start of the command
     logger.info("Using token cache at %s", token_cache.filename)
@@ -407,6 +433,7 @@ def lagoon_deploy_vault(
         factory_contract=lagoon_chain_config.factory_contract,
         from_the_scratch=lagoon_chain_config.from_the_scratch,
         cowswap=cowswap,
+        gmx_deployment=gmx_deployment,
     )
 
     if vault_record_file and (not simulate):
