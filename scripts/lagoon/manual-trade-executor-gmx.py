@@ -140,6 +140,25 @@ GMX_TESTNET_USDC_ADDRESS = "0x3253a335E7bFfB4790Aa4C25C4250d206E9b9773"
 GMX_TESTNET_COLLATERAL_SYMBOL = "USDC.SG"
 
 
+def _broadcast_and_wait(
+    web3: Web3,
+    lagoon_wallet: LagoonGMXTradingWallet,
+    transaction: dict,
+) -> dict:
+    """Sign, broadcast, and wait for a LagoonGMXTradingWallet transaction.
+
+    Strips any existing nonce, signs with a fresh nonce via the wallet,
+    broadcasts, asserts success, and returns the receipt.
+    """
+    tx = transaction.copy()
+    tx.pop("nonce", None)
+
+    signed_tx = lagoon_wallet.sign_transaction_with_new_nonce(tx)
+    tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    return web3.eth.wait_for_transaction_receipt(tx_hash)
+
+
 def _check_shares(web3: Web3, vault_address: str, deployer_address: str, label: str):
     """Log the deployer's vault share balance at a checkpoint."""
     vault = create_vault_instance(
@@ -258,14 +277,7 @@ def _open_gmx_position(
         execution_buffer=EXECUTION_BUFFER_TESTNET,
     )
 
-    transaction = order_result.transaction.copy()
-    if "nonce" in transaction:
-        del transaction["nonce"]
-
-    signed_tx = lagoon_wallet.sign_transaction_with_new_nonce(transaction)
-    tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-    assert_transaction_success_with_explanation(web3, tx_hash)
-    receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
+    receipt = _broadcast_and_wait(web3, lagoon_wallet, order_result.transaction)
 
     order_key = extract_order_key_from_receipt(receipt, web3)
     print(f"  Order created: key={order_key.hex()}")
@@ -327,14 +339,7 @@ def _close_gmx_position(
         execution_buffer=EXECUTION_BUFFER_TESTNET,
     )
 
-    transaction = order_result.transaction.copy()
-    if "nonce" in transaction:
-        del transaction["nonce"]
-
-    signed_tx = lagoon_wallet.sign_transaction_with_new_nonce(transaction)
-    tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-    assert_transaction_success_with_explanation(web3, tx_hash)
-    receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
+    receipt = _broadcast_and_wait(web3, lagoon_wallet, order_result.transaction)
 
     order_key = extract_order_key_from_receipt(receipt, web3)
     print(f"  Close order created: key={order_key.hex()}")
