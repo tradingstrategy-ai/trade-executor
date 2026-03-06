@@ -12,18 +12,17 @@ import logging
 from decimal import Decimal
 from typing import Callable
 
-from hexbytes import HexBytes
-
 from eth_defi.gmx.config import GMXConfig
 from eth_defi.gmx.contracts import get_contract_addresses
 from eth_defi.gmx.core.open_positions import GetOpenPositions
-from eth_defi.gmx.lagoon.approvals import (
-    UNLIMITED,
-    approve_gmx_collateral_via_vault,
-)
+from eth_defi.gmx.lagoon.approvals import (UNLIMITED,
+                                           approve_gmx_collateral_via_vault)
 from eth_defi.token import fetch_erc20_details
+from hexbytes import HexBytes
 
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
+from tradeexecutor.state.identifier import (AssetIdentifier,
+                                            TradingPairIdentifier,
+                                            TradingPairKind)
 
 logger = logging.getLogger(__name__)
 

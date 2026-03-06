@@ -202,10 +202,12 @@ def lagoon_deploy_vault(
     else:
         asset_manager = hot_wallet.address
 
-    # Strategy-file deployment path: use strategy file to generate per-chain configs.
-    # Used for multichain strategies (multiple RPC connections) or single-chain
-    # strategies that rely on the universe for deployment config (e.g. GMX on
-    # Arbitrum, where denomination_asset is not passed via CLI).
+    # Strategy-file deployment path: use strategy file to generate per-chain configs
+    # via translate_trading_universe_to_lagoon_config(). Handles both multichain
+    # and single-chain strategies — protocol detection (GMX, CCTP, Uniswap v3, etc.)
+    # is always driven by the strategy's trading universe.
+    # When --denomination-asset is provided with a single chain, the legacy
+    # single-chain path is used instead (no universe loading).
     if strategy_file and (len(web3config.connections) > 1 or not denomination_asset):
         _deploy_multichain(
             web3config=web3config,

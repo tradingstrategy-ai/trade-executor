@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Auto-detect GMX from strategy universe in single-chain `lagoon-deploy-vault` so the guard whitelists GMX routers (2026-03-06)
+
 - Add `approve_gmx_trading()` console helper to initialise GMX trading approvals for Lagoon vaults (2026-03-06)
 
 - Add `lagoon-redeem` CLI command for redeeming all vault shares from a Lagoon vault (2026-03-06)

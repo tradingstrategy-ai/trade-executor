@@ -9,13 +9,17 @@ import flaky
 from typer.main import get_command
 from web3 import Web3
 
+from eth_defi.gmx.contracts import get_contract_addresses as get_gmx_addresses
 from eth_defi.hotwallet import HotWallet
+from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.erc_4626.vault_protocol.lagoon.testing import fund_lagoon_vault
+from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.provider.anvil import fork_network_anvil, AnvilLaunch
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import USDT_NATIVE_TOKEN, fetch_erc20_details, TokenDetails, USDC_WHALE, USDC_NATIVE_TOKEN
+from eth_defi.vault.base import VaultSpec
 
-from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.main import app
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.state import State
 
@@ -210,4 +214,85 @@ def test_cli_lagoon_deploy_arbitrum_vault(
     for t in state.portfolio.get_all_trades():
         assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
     assert len(state.portfolio.frozen_positions) == 0
+
+
+@pytest.fixture()
+def gmx_strategy_file() -> Path:
+    """GMX strategy file for auto-detection testing."""
+    return Path(os.path.dirname(__file__)) / ".." / ".." / "strategies" / "test_only" / "minimal_gmx_strategy.py"
+
+
+@pytest.mark.slow_test_group
+def test_lagoon_arbitrum_gmx(
+    web3,
+    anvil_bnb_fork,
+    gmx_strategy_file,
+    mocker,
+    hot_wallet,
+    tmp_path: Path,
+    usdc: TokenDetails,
+):
+    """Deploy Lagoon vault with STRATEGY_FILE (no --denomination-asset) and verify GMX whitelisting.
+
+    When --strategy-file is provided without --denomination-asset, the deployment
+    routes through translate_trading_universe_to_lagoon_config() which auto-detects
+    GMX from the strategy universe and whitelists GMX router addresses in the guard.
+    Without this, approve_gmx_trading() reverts with "Approve address not allowed".
+    """
+    from tradeexecutor.exchange_account.gmx import approve_gmx_trading
+
+    multisig_owners = f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
+
+    vault_record_file = tmp_path / "vault-record.txt"
+    environment = {
+        "PATH": os.environ["PATH"],
+        "EXECUTOR_ID": "test_lagoon_arbitrum_gmx",
+        "NAME": "test_lagoon_arbitrum_gmx",
+        "STRATEGY_FILE": gmx_strategy_file.as_posix(),
+        "JSON_RPC_ARBITRUM": anvil_bnb_fork.json_rpc_url,
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+        "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.private_key),
+        "VAULT_RECORD_FILE": str(vault_record_file),
+        "FUND_NAME": "GMX Test",
+        "FUND_SYMBOL": "GMXT",
+        "MULTISIG_OWNERS": multisig_owners,
+        "ANY_ASSET": "true",
+    }
+
+    cli = get_command(app)
+    mocker.patch.dict("os.environ", environment, clear=True)
+
+    # 1. Deploy vault — routes through translate_trading_universe_to_lagoon_config()
+    cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
+
+    # 2. Read multichain deployment record
+    deploy_record = json.load(vault_record_file.with_suffix(".json").open("rt"))
+    assert deploy_record["multichain"] is True
+    arb_dep = deploy_record["deployments"]["arbitrum"]
+    vault_address = arb_dep["vault_address"]
+    module_address = arb_dep["module_address"]
+    safe_address = arb_dep["safe_address"]
+
+    # 3. Construct LagoonVault and call approve_gmx_trading — must not revert
+    vault = LagoonVault(
+        web3,
+        VaultSpec(web3.eth.chain_id, vault_address),
+        trading_strategy_module_address=module_address,
+    )
+
+    hot_wallet.sync_nonce(web3)
+    tx_hash = approve_gmx_trading(vault, hot_wallet)
+    assert tx_hash, "approve_gmx_trading() returned empty tx hash"
+
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    # 4. Verify on-chain allowance for SyntheticsRouter
+    addresses = get_gmx_addresses("arbitrum")
+    allowance = usdc.contract.functions.allowance(
+        Web3.to_checksum_address(safe_address),
+        Web3.to_checksum_address(addresses.syntheticsrouter),
+    ).call()
+    assert allowance == 2**256 - 1, f"Expected unlimited allowance, got {allowance}"
 
