@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Extract deployment pre-flight report into a reusable function for both single-chain and multichain Lagoon vault deployments (2026-03-06)
+
 - Auto-detect GMX from strategy universe in single-chain `lagoon-deploy-vault` so the guard whitelists GMX routers (2026-03-06)
 
 - Add `approve_gmx_trading()` console helper to initialise GMX trading approvals for Lagoon vaults (2026-03-06)
