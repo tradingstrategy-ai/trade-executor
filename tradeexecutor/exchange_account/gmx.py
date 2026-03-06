@@ -172,12 +172,23 @@ def approve_gmx_trading(
 
     Convenience function intended to be called from the trade executor
     console (``trade-executor console``) to initialise GMX trading.
-    Performs two approvals through the vault's Safe:
+    Performs two one-time approvals through the vault's Safe:
 
     1. Collateral token (e.g. USDC) → GMX SyntheticsRouter
     2. WETH → GMX ExchangeRouter (for execution fees)
 
-    Both approvals are unlimited (``2**256 - 1``).
+    Both approvals use unlimited amounts (``2**256 - 1``) because
+    GMX's ``ExchangeRouter.multicall()`` transfers tokens from the
+    Safe to the OrderVault via ``sendTokens()`` on every trade.
+    An unlimited approval avoids the need to re-approve before each
+    order. The Guard contract ensures that tokens can only flow to
+    the pre-configured OrderVault and that order proceeds always
+    return to the Safe, so an unlimited allowance does not increase
+    the attack surface.
+
+    For the full security analysis of the approval and trading flow,
+    see `README-GMX-Lagoon.md <https://github.com/tradingstrategy-ai/web3-ethereum-defi/blob/master/eth_defi/gmx/README-GMX-Lagoon.md>`_
+    (section *"Pre-requisite: USDC approval"*).
 
     Example usage from the console::
 
