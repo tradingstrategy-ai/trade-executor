@@ -427,6 +427,7 @@ def correct_accounts(
             ccxt_sandbox,
             logger,
             web3=web3config.get_default() if web3config.has_any_connection() else None,
+            execution_model=execution_model,
         )
 
         if account_value_func:

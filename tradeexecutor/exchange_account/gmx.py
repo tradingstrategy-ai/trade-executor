@@ -83,7 +83,10 @@ def create_gmx_exchange_account_pair(
 
 
 def create_gmx_account_value_func(
-    execution_model,
+    execution_model=None,
+    *,
+    web3=None,
+    safe_address: str | None = None,
 ) -> Callable[[TradingPairIdentifier], Decimal]:
     """Create GMX-specific account value function.
 
@@ -91,28 +94,39 @@ def create_gmx_account_value_func(
     positions held by the Safe address, and returns the total equity
     (collateral + unrealised PnL) across all positions.
 
-    The Safe address is resolved at query time from the execution model's
-    transaction builder (``tx_builder.get_token_delivery_address()``),
-    so it does not need to be stored in the pair metadata.
-
     Free USDC sitting in the Safe is tracked separately by Lagoon
     treasury sync, so this function only returns the value locked
     in GMX positions to avoid double counting.
 
+    Can be called with either an *execution_model* (used by the runner)
+    or explicit *web3* + *safe_address* (used by CLI commands like
+    ``correct-accounts``).
+
     :param execution_model:
         The execution model (e.g. ``LagoonExecution``) that provides
         Web3 and the transaction builder with the Safe address.
+    :param web3:
+        Explicit Web3 instance (used when no execution model is available).
+    :param safe_address:
+        Explicit Safe address (used when no execution model is available).
     :return:
         Function that takes a TradingPairIdentifier and returns
         the total GMX position equity in USD.
     """
+    if execution_model is None:
+        assert web3 is not None and safe_address is not None, \
+            "Either execution_model or both web3 and safe_address must be provided"
+        _web3 = web3
+        _safe_address = safe_address
+    else:
+        _web3 = None
+        _safe_address = None
 
     def get_gmx_account_value(pair: TradingPairIdentifier) -> Decimal:
         """Get GMX account value for the given pair.
 
         Reads all open positions from the GMX Reader contract for the
-        Safe address from the execution model's transaction builder,
-        then sums the equity of each position:
+        Safe address, then sums the equity of each position:
         ``equity = collateral_usd * (1 + percent_profit / 100)``.
 
         :param pair:
@@ -125,8 +139,12 @@ def create_gmx_account_value_func(
         assert pair.get_exchange_account_protocol() == "gmx", \
             f"Not a GMX pair: {pair.get_exchange_account_protocol()}"
 
-        web3 = execution_model.web3
-        safe_address = execution_model.tx_builder.get_token_delivery_address()
+        if _web3 is not None:
+            web3 = _web3
+            safe_address = _safe_address
+        else:
+            web3 = execution_model.web3
+            safe_address = execution_model.tx_builder.get_token_delivery_address()
 
         try:
             config = GMXConfig(web3=web3)

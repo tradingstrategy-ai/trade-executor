@@ -23,6 +23,7 @@ def create_exchange_account_value_func(
     ccxt_sandbox: bool,
     logger,
     web3=None,
+    execution_model=None,
 ):
     """Create account value function for exchange account positions.
 
@@ -39,6 +40,7 @@ def create_exchange_account_value_func(
     :param ccxt_sandbox: Whether to use CCXT sandbox mode
     :param logger: Logger instance
     :param web3: Web3 instance for GMX on-chain reads (required when GMX positions exist)
+    :param execution_model: Execution model for GMX (provides Web3 + Safe address via tx_builder)
     :return: Account value function or None if credentials not provided
     """
     from decimal import Decimal
@@ -156,9 +158,11 @@ def create_exchange_account_value_func(
     if "gmx" in protocols:
         if not web3:
             logger.error("Web3 connection required for GMX account value function")
+        elif not execution_model:
+            logger.error("Execution model required for GMX account value function (provides Safe address)")
         else:
             from tradeexecutor.exchange_account.gmx import create_gmx_account_value_func
-            gmx_value_func = create_gmx_account_value_func(web3)
+            gmx_value_func = create_gmx_account_value_func(execution_model)
             logger.info("Created GMX account value function")
 
     # Create unified dispatcher

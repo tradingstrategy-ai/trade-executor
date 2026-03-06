@@ -115,7 +115,16 @@ def lagoon_first_deposit(
     denomination_token = vault.denomination_token
     amount = Decimal(str(deposit_amount))
 
-    # Pre-flight checks
+    # Pre-flight checks — verify state file exists before depositing
+    if not simulate:
+        if not state_file:
+            state_file = f"state/{id}.json"
+        store = create_state_store(Path(state_file))
+        assert not store.is_pristine(), (
+            f"State file does not exist: {state_file}. "
+            f"Run 'init' first to create the state file before depositing."
+        )
+
     eth_balance = web3.eth.get_balance(hot_wallet.address)
     eth_human = eth_balance / 10**18
     logger.info("Asset manager: %s", hot_wallet.address)
@@ -159,12 +168,7 @@ def lagoon_first_deposit(
         logger.info("  Vault Safe %s balance: %s", denomination_token.symbol, safe_balance)
         logger.info("  Depositor shares: %s %s", share_balance, vault.share_token.symbol)
     else:
-        if not state_file:
-            state_file = f"state/{id}.json"
-
-        store = create_state_store(Path(state_file))
-
-        assert not store.is_pristine(), f"State file does not exist: {state_file}. Run 'init' first."
+        # store was already created and verified in pre-flight checks above
         state = store.load()
 
         ts = native_datetime_utc_now()
