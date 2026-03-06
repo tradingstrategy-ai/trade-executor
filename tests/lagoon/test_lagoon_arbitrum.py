@@ -11,6 +11,7 @@ from web3 import Web3
 
 from eth_defi.gmx.contracts import get_contract_addresses as get_gmx_addresses
 from eth_defi.hotwallet import HotWallet
+from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.erc_4626.vault_protocol.lagoon.testing import fund_lagoon_vault
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.provider.anvil import fork_network_anvil, AnvilLaunch
@@ -284,10 +285,7 @@ def test_lagoon_arbitrum_gmx(
     tx_hash = approve_gmx_trading(vault, hot_wallet)
     assert tx_hash, "approve_gmx_trading() returned empty tx hash"
 
-    # assert_transaction_success_with_explanation is called inside
-    # approve_gmx_trading, but double-check the receipt here
-    receipt = web3.eth.get_transaction_receipt(tx_hash)
-    assert receipt["status"] == 1, f"GMX approval tx reverted: {receipt}"
+    assert_transaction_success_with_explanation(web3, tx_hash)
 
     # 4. Verify on-chain allowance for SyntheticsRouter
     addresses = get_gmx_addresses("arbitrum")
