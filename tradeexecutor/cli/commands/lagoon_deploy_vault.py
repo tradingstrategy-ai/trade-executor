@@ -527,12 +527,13 @@ def _deploy_multichain(
         safe_owners=multisig_owners,
         safe_threshold=safe_threshold,
         safe_salt_nonce=safe_salt_nonce,
-        fund_name=fund_name or "Crosschain Strategy Vault",
+        fund_name=fund_name or "Strategy Vault",
         fund_symbol=fund_symbol or "CSV",
         any_asset=any_asset,
     )
 
-    logger.info("Generated %d chain configs:", len(configs))
+    chain_word = "chain" if len(configs) == 1 else "chains"
+    logger.info("Generated configs for %d %s:", len(configs), chain_word)
     for slug, config in configs.items():
         logger.info("  %s: satellite=%s, cctp=%s, uniswap_v3=%s",
                      slug, config.satellite_chain,
@@ -540,7 +541,8 @@ def _deploy_multichain(
                      config.uniswap_v3 is not None)
 
     if not (simulate or unit_testing):
-        confirm = input("Deploy multichain vault? [y/n] ")
+        label = "multichain vault" if len(configs) > 1 else "vault"
+        confirm = input(f"Deploy {label}? [y/n] ")
         if not confirm.lower().startswith("y"):
             print("Aborted")
             sys.exit(1)
@@ -555,7 +557,7 @@ def _deploy_multichain(
         chain_configs=configs,
     )
 
-    logger.info("Multichain deployment complete")
+    logger.info("Deployment complete")
     logger.info("Safe address: %s", result.deployments[next(iter(result.deployments))].safe_address)
 
     # Write deployment record
