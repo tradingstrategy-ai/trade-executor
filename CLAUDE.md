@@ -110,6 +110,10 @@ Don't format code.
 - Use `TokenDetails.transfer()` and similar - do not do raw ERC-20 contract calls unless needed
 - Use `eth_defi.hotwallet.HotWallet` for deployer accounts and signing transactions when possible
 
+## Web3
+
+- Use create_multi_provider_web3() to create an RPC connection from JSON_xxx env vars
+
 ## Web Fetching and 403
 
 When fetching web pages, if `web_fetch` returns a 403 error, retry the request using the Chrome MCP tool to load the page in a real browser instead.
