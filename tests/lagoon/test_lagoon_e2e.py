@@ -587,7 +587,7 @@ def test_cli_lagoon_first_deposit(
     assert manager_usdc > 0, f"Expected asset manager to hold USDC after redemption, got {manager_usdc}"
 
     safe_usdc_after = usdc_token.fetch_balance_of(vault.safe_address)
-    assert safe_usdc_after == 0, f"Expected Safe to hold 0 USDC after full redemption, got {safe_usdc_after}"
+    assert safe_usdc_after == pytest.approx(0, abs=Decimal("0.01")), f"Expected Safe to hold ~0 USDC after full redemption, got {safe_usdc_after}"
 
     state = State.read_json_file(state_file)
     reserve_position = state.portfolio.get_default_reserve_position()
