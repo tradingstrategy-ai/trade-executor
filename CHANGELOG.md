@@ -7,6 +7,8 @@
 
 - Add `approve_gmx_trading()` console helper to initialise GMX trading approvals for Lagoon vaults (2026-03-06)
 
+- Add `lagoon-redeem` CLI command for redeeming all vault shares from a Lagoon vault (2026-03-06)
+
 - Add `lagoon-first-deposit` CLI command for making the initial deposit into a Lagoon vault (2026-03-06)
 
 - Add GMX perpetuals exchange account support for Lagoon vaults with auto-discovery, on-chain position valuation, and market whitelisting (2026-03-03)
