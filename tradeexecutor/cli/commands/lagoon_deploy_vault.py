@@ -280,6 +280,7 @@ def lagoon_deploy_vault(
     logger.info("Whitelisting Uniswap v3: %s", uniswap_v3)
     logger.info("Whitelisting 1delta: %s", one_delta)
     logger.info("Whitelisting Aave: %s", aave)
+    logger.info("Whitelisting GMX: False (use --strategy-file without --denomination-asset for GMX)")
     logger.info("Whitelisting vaults: %s", erc_4626_vaults)
     logger.info("Multisig owners: %s", multisig_owners)
     logger.info("Performance fee: %f %%", performance_fee / 100)
