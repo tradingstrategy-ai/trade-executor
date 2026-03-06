@@ -202,13 +202,16 @@ def lagoon_deploy_vault(
     else:
         asset_manager = hot_wallet.address
 
+    assert not (strategy_file and denomination_asset), \
+        f"Cannot use both --strategy-file and --denomination-asset. " \
+        f"When --strategy-file is provided, the reserve asset is read from the strategy's create_trading_universe(). " \
+        f"Remove --denomination-asset to use the strategy-file deployment path."
+
     # Strategy-file deployment path: use strategy file to generate per-chain configs
     # via translate_trading_universe_to_lagoon_config(). Handles both multichain
     # and single-chain strategies — protocol detection (GMX, CCTP, Uniswap v3, etc.)
     # is always driven by the strategy's trading universe.
-    # When --denomination-asset is provided with a single chain, the legacy
-    # single-chain path is used instead (no universe loading).
-    if strategy_file and (len(web3config.connections) > 1 or not denomination_asset):
+    if strategy_file:
         _deploy_multichain(
             web3config=web3config,
             hot_wallet=hot_wallet,
@@ -280,7 +283,6 @@ def lagoon_deploy_vault(
     logger.info("Whitelisting Uniswap v3: %s", uniswap_v3)
     logger.info("Whitelisting 1delta: %s", one_delta)
     logger.info("Whitelisting Aave: %s", aave)
-    logger.info("Whitelisting GMX: False (use --strategy-file without --denomination-asset for GMX)")
     logger.info("Whitelisting vaults: %s", erc_4626_vaults)
     logger.info("Multisig owners: %s", multisig_owners)
     logger.info("Performance fee: %f %%", performance_fee / 100)

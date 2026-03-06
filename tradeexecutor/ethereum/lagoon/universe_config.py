@@ -21,21 +21,22 @@ Example::
 import logging
 from copy import deepcopy
 
-from eth_typing import HexAddress
-from web3 import Web3
-
 from eth_defi.cctp.constants import TESTNET_CHAIN_IDS
 from eth_defi.cctp.whitelist import CCTPDeployment
-from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonConfig, LagoonDeploymentParameters
+from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
+    LagoonConfig, LagoonDeploymentParameters)
 from eth_defi.gmx.whitelist import GMXDeployment, fetch_all_gmx_markets
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
-from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_deployment_uni_v3
-
+from eth_defi.uniswap_v3.deployment import \
+    fetch_deployment as fetch_deployment_uni_v3
+from eth_typing import HexAddress
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeType
+from web3 import Web3
 
 from tradeexecutor.state.identifier import TradingPairKind
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.trading_strategy_universe import \
+    TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,8 @@ def translate_trading_universe_to_lagoon_config(
         Per-chain configs keyed by chain slug, ready for
         :func:`deploy_multichain_lagoon_vault`.
     """
+
+    logger.info("translate_trading_universe_to_lagoon_config() called with universe: %s", universe)
 
     # Determine source chain from the first reserve asset
     reserve_asset = list(universe.reserve_assets)[0]
@@ -242,7 +245,8 @@ def translate_trading_universe_to_lagoon_config(
 
             if chain_id == 421614:
                 # Arbitrum Sepolia testnet — construct GMXDeployment manually
-                from eth_defi.gmx.contracts import get_contract_addresses as get_gmx_addresses
+                from eth_defi.gmx.contracts import \
+                    get_contract_addresses as get_gmx_addresses
                 testnet_addrs = get_gmx_addresses("arbitrum_sepolia")
                 config.gmx_deployment = GMXDeployment(
                     exchange_router=testnet_addrs.exchangerouter,

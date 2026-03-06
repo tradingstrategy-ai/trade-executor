@@ -151,7 +151,6 @@ def test_cli_lagoon_deploy_vault(
         "PATH": os.environ["PATH"],  # Need forge
         "EXECUTOR_ID": "test_cli_lagoon_deploy_vault",
         "NAME": "test_cli_lagoon_deploy_vault",
-        "STRATEGY_FILE": strategy_file.as_posix(),
         "JSON_RPC_BASE": anvil_base_fork.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "lagoon",
@@ -505,9 +504,11 @@ def test_cli_lagoon_first_deposit(
 
     cli = get_command(app)
 
-    # 1. Deploy vault
+    # 1. Deploy vault (exclude STRATEGY_FILE — cannot combine with DENOMINATION_ASSET)
     deploy_env = {
-        **base_env,
+        k: v for k, v in base_env.items() if k != "STRATEGY_FILE"
+    }
+    deploy_env.update({
         "VAULT_RECORD_FILE": str(vault_record_file),
         "FUND_NAME": "First Deposit Test",
         "FUND_SYMBOL": "FDT",
@@ -516,7 +517,7 @@ def test_cli_lagoon_first_deposit(
         "ANY_ASSET": "true",
         "UNISWAP_V2": "true",
         "UNISWAP_V3": "true",
-    }
+    })
     mocker.patch.dict("os.environ", deploy_env, clear=True)
     cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
 
