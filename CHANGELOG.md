@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add `lagoon-first-deposit` CLI command for making the initial deposit into a Lagoon vault (2026-03-06)
+
 - Add GMX perpetuals exchange account support for Lagoon vaults with auto-discovery, on-chain position valuation, and market whitelisting (2026-03-03)
 
 - Add multichain CCTP bridge position support with pricing, valuation, routing and `correct-accounts` auto-creation (2026-02-26)
