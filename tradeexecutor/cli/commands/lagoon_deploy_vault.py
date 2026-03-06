@@ -595,14 +595,7 @@ def _deploy_multichain(
 
     for slug, dep in result.deployments.items():
         kind = "satellite" if dep.is_satellite else "source"
-        logger.info("  %s (%s): safe=%s", slug, kind, dep.safe_address)
-        if not dep.is_satellite:
-            logger.info("    vault=%s", dep.vault.address)
-        if dep.trading_strategy_module:
-            logger.info("    module=%s", dep.trading_strategy_module.address)
-        if dep.whitelisted_items:
-            kinds = {e.kind for e in dep.whitelisted_items}
-            logger.info("    whitelisted: %s", ", ".join(sorted(kinds)))
+        logger.info("Lagoon deployed on %s (%s):\n%s", slug, kind, dep.pformat())
 
     # Print deployment guard configuration report for each chain
     for slug, dep in result.deployments.items():
