@@ -66,6 +66,11 @@ Environment variables
     HLP has a 4-day lock-up period.
     Run deposit first, then withdraw later.
 
+``SAFE_SALT_NONCE``
+    CREATE2 salt nonce for deterministic Safe address. If set, the same
+    nonce will produce the same Safe address on each chain. Random if
+    not set. Printed to stdout for later re-use.
+
 ``HYPERCORE_VAULT``
     Hypercore vault address. Defaults to HLP for the selected network.
 
@@ -361,6 +366,7 @@ def _run_test_lifecycle(
     action: str,
     trading_strategy_api_key: str,
     network: str = "mainnet",
+    safe_salt_nonce: int | None = None,
 ):
     """Run the full test lifecycle."""
 
@@ -395,6 +401,8 @@ def _run_test_lifecycle(
             "UNIT_TESTING": "true",
             "LOG_LEVEL": "info",
         }
+        if safe_salt_nonce is not None:
+            deploy_env["SAFE_SALT_NONCE"] = str(safe_salt_nonce)
 
         run_cli(["lagoon-deploy-vault"], deploy_env)
 
@@ -412,9 +420,12 @@ def _run_test_lifecycle(
         safe_address = dep["safe_address"]
         module_address = dep["module_address"]
 
+        used_salt_nonce = deployment_data.get("safe_salt_nonce")
         print(f"  Vault:  {lagoon_vault_address}")
         print(f"  Safe:   {safe_address}")
         print(f"  Module: {module_address}")
+        print(f"  Safe salt nonce: {used_salt_nonce}")
+        logger.info("Safe salt nonce used: %s", used_salt_nonce)
 
         # ===================================================================
         # Step 2: Initialise state
@@ -657,6 +668,9 @@ def main():
     usdc_amount = Decimal(os.environ.get("USDC_AMOUNT", "5"))
     trading_strategy_api_key = os.environ.get("TRADING_STRATEGY_API_KEY", "")
 
+    safe_salt_nonce_str = os.environ.get("SAFE_SALT_NONCE")
+    safe_salt_nonce = int(safe_salt_nonce_str) if safe_salt_nonce_str else None
+
     # ----- Connect -----
     web3 = create_multi_provider_web3(json_rpc, default_http_timeout=(3, 500.0))
     chain_id = web3.eth.chain_id
@@ -698,6 +712,10 @@ def main():
     print(f"  Vault:     {vault_address}")
     print(f"  Action:    {action}")
     print(f"  Strategy:  {strategy_file.name}")
+    if safe_salt_nonce is not None:
+        print(f"  Safe salt nonce: {safe_salt_nonce}")
+    else:
+        print(f"  Safe salt nonce: (random)")
     print()
 
     _run_test_lifecycle(
@@ -712,6 +730,7 @@ def main():
         action=action,
         trading_strategy_api_key=trading_strategy_api_key,
         network=network,
+        safe_salt_nonce=safe_salt_nonce,
     )
 
 
