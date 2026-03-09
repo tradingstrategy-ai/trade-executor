@@ -43,6 +43,7 @@ from eth_defi.hyperliquid.core_writer import (
     build_hypercore_withdraw_multicall,
 )
 from eth_defi.hyperliquid.evm_escrow import (
+    DEFAULT_ACTIVATION_AMOUNT,
     activate_account,
     is_account_activated,
     wait_for_evm_escrow_clear,
@@ -146,6 +147,7 @@ class HypercoreVaultRouting(RoutingModel):
         self.chain_id = web3.eth.chain_id
         self.is_testnet = self.chain_id == 998
         self._session: HyperliquidSession | None = None
+        self._activation_cost_raw: int = 0
 
     @property
     def safe_address(self) -> str:
@@ -250,6 +252,7 @@ class HypercoreVaultRouting(RoutingModel):
     def _create_deposit_or_withdraw_txs(
         self,
         trade: TradeExecution,
+        activation_cost_raw: int = 0,
     ) -> list[BlockchainTransaction]:
         """Create blockchain transactions for a vault deposit or withdrawal.
 
@@ -259,9 +262,23 @@ class HypercoreVaultRouting(RoutingModel):
 
         Activation (if needed) is handled synchronously in
         :py:meth:`setup_trades` before this method is called.
+
+        :param activation_cost_raw:
+            Raw USDC consumed by activation (deducted from deposit amount).
         """
         vault_address = self._get_vault_address(trade)
         raw_amount = self._get_raw_usdc_amount(trade)
+
+        if trade.is_buy() and activation_cost_raw > 0:
+            raw_amount -= activation_cost_raw
+            assert raw_amount > 0, \
+                f"Deposit amount {self._get_raw_usdc_amount(trade)} raw USDC is less than " \
+                f"activation cost {activation_cost_raw} raw USDC"
+            logger.info(
+                "Reduced deposit by %d raw USDC activation cost → %d raw USDC",
+                activation_cost_raw,
+                raw_amount,
+            )
 
         if trade.is_buy():
             logger.info(
@@ -315,6 +332,8 @@ class HypercoreVaultRouting(RoutingModel):
         )
 
         activated = is_account_activated(self.web3, self.safe_address)
+        activation_cost_raw = 0
+
         if activated:
             logger.info("Safe %s is activated on HyperCore", self.safe_address)
         else:
@@ -332,7 +351,13 @@ class HypercoreVaultRouting(RoutingModel):
                 session=session,
             )
             self.deployer.sync_nonce(self.web3)
-            logger.info("Safe %s activated on HyperCore", self.safe_address)
+            activation_cost_raw = DEFAULT_ACTIVATION_AMOUNT
+            self._activation_cost_raw = activation_cost_raw
+            logger.info(
+                "Safe %s activated on HyperCore (cost %d raw USDC from Safe)",
+                self.safe_address,
+                activation_cost_raw,
+            )
 
         for trade in trades:
             assert trade.is_vault(), f"Not a vault trade: {trade}"
@@ -343,7 +368,10 @@ class HypercoreVaultRouting(RoutingModel):
                     f"is not activated on HyperCore."
                 )
 
-            trade.blockchain_transactions = self._create_deposit_or_withdraw_txs(trade)
+            trade.blockchain_transactions = self._create_deposit_or_withdraw_txs(
+                trade,
+                activation_cost_raw=activation_cost_raw,
+            )
 
     # ------------------------------------------------------------------
     # Settlement helpers
@@ -438,7 +466,7 @@ class HypercoreVaultRouting(RoutingModel):
             return
 
         vault_address = self._get_vault_address(trade)
-        raw_amount = self._get_raw_usdc_amount(trade)
+        deposit_raw = self._get_raw_usdc_amount(trade) - self._activation_cost_raw
         session = self._get_session()
         planned_reserve = trade.get_planned_reserve()
 
@@ -466,7 +494,7 @@ class HypercoreVaultRouting(RoutingModel):
         self.deployer.sync_nonce(web3)
 
         try:
-            phase2_tx, phase2_receipt = self._broadcast_phase2(trade, vault_address, raw_amount)
+            phase2_tx, phase2_receipt = self._broadcast_phase2(trade, vault_address, deposit_raw)
         except Exception as e:
             logger.error("Phase 2 broadcast failed: %s", e)
             report_failure(ts, state, trade, stop_on_execution_failure)
@@ -483,21 +511,27 @@ class HypercoreVaultRouting(RoutingModel):
         logger.info("Hypercore deposit phase 2 succeeded (tx %s)", phase2_tx.tx_hash)
 
         # --- Query vault equity and settle ---
+        # executed_reserve = total USDC removed from Safe (activation + deposit).
+        # executed_amount = vault equity received (queried from API).
+        # The activation cost is accounted as part of the trade's reserve spend.
         executed_reserve = planned_reserve
-        executed_amount = planned_reserve  # 1:1 for USDC-denominated vault
+        actual_deposit_human = Decimal(deposit_raw) / Decimal(10**6)
+        executed_amount = actual_deposit_human
 
         try:
             eq = fetch_user_vault_equity(
                 session,
                 user=self.safe_address,
                 vault_address=vault_address,
+                bypass_cache=True,
             )
             if eq is not None:
                 executed_amount = eq.equity
                 logger.info(
-                    "Vault equity after deposit: %s (deposited %s USDC)",
+                    "Vault equity after deposit: %s (deposited %s USDC, activation cost %s USDC)",
                     executed_amount,
-                    executed_reserve,
+                    actual_deposit_human,
+                    Decimal(self._activation_cost_raw) / Decimal(10**6),
                 )
         except Exception as e:
             logger.warning(

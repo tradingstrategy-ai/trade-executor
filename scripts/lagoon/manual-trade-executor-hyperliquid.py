@@ -20,6 +20,12 @@ Hypercore native vault deposit (e.g. HLP):
     No simulation mode — Hypercore deposits require the real Hyperliquid
     info API for escrow clearing and vault equity queries.
 
+.. warning::
+
+    HyperEVM **testnet** does not support ``depositFor`` activation of
+    contract addresses (Safe multisigs). The script works on mainnet only.
+    See `web3-ethereum-defi#813 <https://github.com/tradingstrategy-ai/web3-ethereum-defi/issues/813>`_.
+
 Wallet funding
 --------------
 
@@ -48,7 +54,8 @@ Environment variables
     HyperEVM RPC URL. Defaults to the public RPC for the selected network.
 
 ``PRIVATE_KEY`` / ``HYPERCORE_WRITER_TEST_PRIVATE_KEY``
-    Deployer private key. Must hold HYPE + at least 25 USDC on HyperEVM.
+    Deployer private key. Must hold HYPE + USDC on HyperEVM
+    (at least ``USDC_AMOUNT + 2`` for activation).
 
 ``USDC_AMOUNT``
     USDC to deposit into the Hypercore vault (default: ``5``).
@@ -86,6 +93,29 @@ Testnet:
     USDC_AMOUNT=5 \\
     ACTION=deposit \\
         poetry run python scripts/lagoon/manual-trade-executor-hyperliquid.py
+
+For agents running this script
+------------------------------
+
+This script takes a **very long time** to run (5–15 minutes) because it
+deploys a new Lagoon vault, performs on-chain transactions, and waits for
+HyperCore escrow clearing. **Do not run it repeatedly** — each run deploys
+a new vault and spends real USDC.
+
+When invoking from an LLM agent, redirect output to a log file so the
+full output is preserved for debugging:
+
+.. code-block:: shell
+
+    source .local-test.env && PRIVATE_KEY="$HYPERCORE_WRITER_TEST_PRIVATE_KEY" \\
+        USDC_AMOUNT=5 ACTION=deposit \\
+        poetry run python scripts/lagoon/manual-trade-executor-hyperliquid.py \\
+        2>&1 | tee /tmp/hypercore-lifecycle.log
+
+If a transaction fails, extract the transaction hash from the log output
+(look for ``tx_hash``, ``send_raw_transaction``, or ``0x`` prefixed hashes)
+and use a blockchain explorer or the contract ABI to debug the reverted
+transaction. The HyperEVM mainnet explorer is https://www.hyperscan.com/.
 """
 
 import json
@@ -419,6 +449,10 @@ def _run_test_lifecycle(
         # ===================================================================
         print("\n=== Step 3: Deposit USDC ===")
 
+        # Fund the Safe with enough USDC for both activation and the vault deposit.
+        # Activation costs 2 USDC (depositFor), so the Safe needs usdc_amount + 2.
+        lagoon_fund_amount = usdc_amount + ACTIVATION_USDC
+
         deployer.sync_nonce(web3)
         fund_lagoon_vault(
             web3=web3,
@@ -426,7 +460,7 @@ def _run_test_lifecycle(
             asset_manager=deployer.address,
             test_account_with_balance=deployer.address,
             trading_strategy_module_address=module_address,
-            amount=usdc_amount,
+            amount=lagoon_fund_amount,
             hot_wallet=deployer,
         )
 
@@ -585,12 +619,12 @@ def _run_test_lifecycle(
         print("=" * 70)
 
 
+#: Activation costs 2 USDC (depositFor). The deposit amount is on top.
+ACTIVATION_USDC = 2
+
+
 def main():
     setup_console_logging("warning")
-
-    #: Minimum USDC balance required to run the full lifecycle
-    #: (deployment + activation + deposit with margin).
-    MIN_USDC_BALANCE = 25
 
     # ----- Parse environment -----
     network = os.environ.get("NETWORK", "mainnet").lower()
@@ -640,9 +674,11 @@ def main():
     usdc_address = USDC_NATIVE_TOKEN[chain_id]
     usdc_token = fetch_erc20_details(web3, usdc_address)
     deployer_usdc = usdc_token.fetch_balance_of(deployer.address)
-    assert deployer_usdc >= MIN_USDC_BALANCE, \
-        f"Deployer needs at least {MIN_USDC_BALANCE} USDC on chain {chain_id} ({network}) " \
-        f"but has {deployer_usdc}. See wallet funding instructions in this script's docstring."
+    min_usdc = usdc_amount + ACTIVATION_USDC
+    assert deployer_usdc >= min_usdc, \
+        f"Deployer needs at least {min_usdc} USDC on chain {chain_id} ({network}) " \
+        f"but has {deployer_usdc} (deposit={usdc_amount}, activation={ACTIVATION_USDC}). " \
+        f"See wallet funding instructions in this script's docstring."
 
     # Strategy file
     strategy_file = (
