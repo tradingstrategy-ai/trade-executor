@@ -14,7 +14,9 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.valuation import ValuationModel
+from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -29,15 +31,34 @@ class HypercoreVaultPricing(PricingModel):
     def __init__(self, value_func: Callable[[TradingPairIdentifier], Decimal]):
         self.value_func = value_func
 
-    def get_sell_price(self, ts, pair, quantity):
-        equity = self.value_func(pair)
-        return float(equity)
+    def _make_pricing(self, pair: TradingPairIdentifier, token_in: Decimal | None = None, token_out: Decimal | None = None) -> TradePricing:
+        """Build a :class:`TradePricing` from the vault equity.
 
-    def get_buy_price(self, ts, pair, reserve):
+        If no existing vault position (equity=0), use price=1.0
+        since Hypercore vaults are USDC-denominated (1 USDC = 1 unit).
+        """
         equity = self.value_func(pair)
-        return float(equity)
+        price = float(equity) if equity else 1.0
+        return TradePricing(
+            price=price,
+            mid_price=price,
+            lp_fee=[0.0],
+            pair_fee=[0.0],
+            side=False,
+            path=[pair],
+            read_at=native_datetime_utc_now(),
+            block_number=None,
+            token_in=token_in,
+            token_out=token_out,
+        )
 
-    def get_mid_price(self, ts, pair):
+    def get_sell_price(self, ts, pair, quantity) -> TradePricing:
+        return self._make_pricing(pair, token_in=quantity)
+
+    def get_buy_price(self, ts, pair, reserve) -> TradePricing:
+        return self._make_pricing(pair, token_in=reserve)
+
+    def get_mid_price(self, ts, pair) -> float:
         equity = self.value_func(pair)
         return float(equity)
 

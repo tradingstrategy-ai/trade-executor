@@ -102,6 +102,7 @@ def start(
     json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
     json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
     json_rpc_hyperliquid: Optional[str] = shared_options.json_rpc_hyperliquid,
+    json_rpc_hyperliquid_testnet: Optional[str] = shared_options.json_rpc_hyperliquid_testnet,
 
     # Derive exchange account options
     derive_owner_private_key: Optional[str] = typer.Option(None, envvar="DERIVE_OWNER_PRIVATE_KEY", help="Derive owner wallet private key"),
@@ -277,6 +278,7 @@ def start(
                 json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
                 json_rpc_base_sepolia=json_rpc_base_sepolia,
                 json_rpc_hyperliquid=json_rpc_hyperliquid,
+                json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
                 gas_price_method=gas_price_method,
                 unit_testing=unit_testing,
                 simulate=simulate,

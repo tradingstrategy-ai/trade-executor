@@ -523,16 +523,34 @@ def create_freqtrade_adapter(
 def create_hypercore_vault_adapter(
     routing_id: ProtocolRoutingId,
     hypercore_vault_value_func: Callable | None = None,
+    web3: Web3 | None = None,
+    execution_model=None,
+    strategy_universe: "TradingStrategyUniverse | None" = None,
 ) -> ProtocolRoutingConfig:
     """Create adapter for Hypercore native vault positions.
 
     Hypercore vault positions are valued via the Hyperliquid info API,
     not through on-chain ERC-4626 share price queries.
+
+    When ``execution_model`` is provided, a real
+    :py:class:`~tradeexecutor.ethereum.vault.hypercore_routing.HypercoreVaultRouting`
+    is created for on-chain deposit/withdrawal execution.
+
+    :param web3:
+        HyperEVM Web3 connection.
+
+    :param execution_model:
+        Execution model with ``tx_builder.vault`` (LagoonVault) and
+        ``tx_builder.hot_wallet`` (deployer HotWallet).
+
+    :param strategy_universe:
+        Strategy universe for reserve asset lookup.
     """
     from tradeexecutor.ethereum.vault.hypercore_valuation import (
         HypercoreVaultPricing,
         HypercoreVaultValuator,
     )
+    from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreVaultRouting
 
     assert hypercore_vault_value_func is not None, \
         "hypercore_vault_value_func is required for Hypercore vault routing"
@@ -540,9 +558,22 @@ def create_hypercore_vault_adapter(
     pricing_model = HypercoreVaultPricing(hypercore_vault_value_func)
     valuation_model = HypercoreVaultValuator(hypercore_vault_value_func)
 
+    routing_model = None
+    if execution_model is not None and web3 is not None and strategy_universe is not None:
+        lagoon_vault = execution_model.tx_builder.vault
+        deployer = execution_model.tx_builder.hot_wallet
+        reserve = strategy_universe.get_reserve_asset()
+        routing_model = HypercoreVaultRouting(
+            web3=web3,
+            lagoon_vault=lagoon_vault,
+            deployer=deployer,
+            reserve_token_address=reserve.address,
+        )
+        logger.info("Created HypercoreVaultRouting for vault %s", lagoon_vault.safe_address)
+
     return ProtocolRoutingConfig(
         routing_id=routing_id,
-        routing_model=None,
+        routing_model=routing_model,
         pricing_model=pricing_model,
         valuation_model=valuation_model,
     )
@@ -782,6 +813,9 @@ class EthereumPairConfigurator(PairConfigurator):
             return create_hypercore_vault_adapter(
                 routing_id,
                 getattr(self, "hypercore_vault_value_func", None),
+                web3=self.web3,
+                execution_model=self.execution_model,
+                strategy_universe=self.strategy_universe,
             )
         elif routing_id.router_name == "vault":
             return create_vault_adapter(self.web3, self.strategy_universe, routing_id, web3config=self.web3config)

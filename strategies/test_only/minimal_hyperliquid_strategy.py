@@ -1,12 +1,13 @@
 """Minimal test strategy for Hypercore vault Lagoon integration.
 
-A simple strategy that creates a Hypercore vault position on the first
-cycle and does nothing afterwards. The position tracks the NAV of the
-vault's equity via the Hyperliquid info API.
+A simple strategy that creates a Hypercore vault deposit on the first
+cycle and does nothing afterwards. The deposit goes through the standard
+routing pipeline via
+:py:class:`~tradeexecutor.ethereum.vault.hypercore_routing.HypercoreVaultRouting`
+which handles the two-phase HyperCore deposit flow.
 
-Deposits and withdrawals happen externally via CoreWriter actions — this
-strategy only creates the tracking position and lets the valuation model
-keep its price in sync.
+Supports both mainnet (chain 999) and testnet (chain 998) via the
+``NETWORK`` environment variable.
 
 Example: deploy a Lagoon vault for this strategy
 -------------------------------------------------
@@ -62,16 +63,10 @@ trading_strategy_cycle = CycleDuration.cycle_1d
 trade_routing = TradeRouting.default
 reserve_currency = ReserveCurrency.usdc
 
-# Detect testnet from environment
-_NETWORK = os.environ.get("HYPERLIQUID_NETWORK", "mainnet")
+# Detect testnet vs mainnet via NETWORK env var.
+_NETWORK = os.environ.get("NETWORK", "mainnet").lower()
 _IS_TESTNET = _NETWORK == "testnet"
-
-# HyperEVM mainnet = 999, testnet = 998
-if _IS_TESTNET:
-    CHAIN_ID = ChainId(998)
-else:
-    CHAIN_ID = ChainId.hyperliquid
-
+CHAIN_ID = ChainId.hyperliquid_testnet if _IS_TESTNET else ChainId.hyperliquid
 USDC_ADDRESS = USDC_NATIVE_TOKEN[CHAIN_ID.value]
 
 
@@ -100,13 +95,11 @@ def create_trading_universe(
         decimals=6,
     )
 
-    is_testnet = os.environ.get("HYPERLIQUID_NETWORK", "mainnet") == "testnet"
-    vault_address = HLP_VAULT_ADDRESS["testnet" if is_testnet else "mainnet"]
+    vault_address = HLP_VAULT_ADDRESS["testnet" if _IS_TESTNET else "mainnet"]
 
     hypercore_vault_pair = create_hypercore_vault_pair(
         quote=usdc,
         vault_address=vault_address,
-        is_testnet=is_testnet,
     )
 
     pair_universe = create_pair_universe_from_code(CHAIN_ID, [hypercore_vault_pair])
@@ -114,7 +107,7 @@ def create_trading_universe(
     # Use ExchangeType.erc_4626_vault since this IS a vault position
     hypercore_exchange = Exchange(
         chain_id=CHAIN_ID,
-        chain_slug="hyperliquid_testnet" if is_testnet else "hyperliquid",
+        chain_slug="hyperliquid",
         exchange_id=1,
         exchange_slug="hypercore",
         address=hypercore_vault_pair.exchange_address,
@@ -150,33 +143,26 @@ def create_indicators(
 def decide_trades(
     input: StrategyInput,
 ) -> list[TradeExecution]:
-    """Create the Hypercore vault position on the first cycle, then do nothing.
+    """Create the Hypercore vault deposit on the first cycle, then do nothing.
 
-    The position is created by calling ``open_hypercore_vault_position()``
-    which creates a spoofed trade that never goes through routing/execution.
+    The trade is returned for execution through the standard routing pipeline
+    via :py:class:`~tradeexecutor.ethereum.vault.hypercore_routing.HypercoreVaultRouting`.
     """
-    from tradeexecutor.ethereum.vault.hypercore_vault import (
-        open_hypercore_vault_position,
-    )
-
+    position_manager = input.get_position_manager()
     state = input.state
-    timestamp = input.timestamp
 
     # Check if vault position already exists
     for pos in state.portfolio.open_positions.values():
         if pos.is_vault() and pos.pair.other_data.get("vault_protocol") == "hypercore":
             return []
 
-    # First cycle: create Hypercore vault position
-    pair = next(input.strategy_universe.iterate_pairs())
-    reserve = input.strategy_universe.reserve_assets[0]
+    # First cycle: deposit all available cash into Hypercore vault
+    pair = input.get_default_pair()
+    cash = position_manager.get_current_cash()
 
-    open_hypercore_vault_position(
-        state=state,
-        strategy_cycle_at=timestamp.to_pydatetime(),
-        pair=pair,
-        reserve_currency=reserve,
-        notes="Hypercore HLP vault position",
+    trades = position_manager.open_spot(
+        pair,
+        cash,
+        notes="Hypercore vault deposit",
     )
-
-    return []
+    return trades

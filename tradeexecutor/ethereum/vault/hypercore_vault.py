@@ -1,6 +1,6 @@
 """Hypercore native vault support for Lagoon-on-HyperEVM positions.
 
-Provides pair creation, account value function, and position opening
+Provides pair creation and account value function
 for Hypercore vault deposits managed through a Lagoon vault on HyperEVM.
 
 Hypercore vault equity is queried via the Hyperliquid info API
@@ -10,19 +10,19 @@ rather than on-chain contracts.
 The pair uses ``TradingPairKind.vault`` with
 ``other_data["vault_protocol"] = "hypercore"`` to distinguish from
 ERC-4626 vault positions.
+
+Vault deposits and withdrawals are routed through
+:py:class:`~tradeexecutor.ethereum.vault.hypercore_routing.HypercoreVaultRouting`.
 """
 
-import datetime
 import logging
 from decimal import Decimal
 from typing import Callable
 
-from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hyperliquid.api import fetch_user_vault_equity
 from eth_defi.hyperliquid.core_writer import CORE_WRITER_ADDRESS
 from eth_defi.hyperliquid.session import (
     HYPERLIQUID_API_URL,
-    HYPERLIQUID_TESTNET_API_URL,
     create_hyperliquid_session,
 )
 from eth_typing import HexAddress
@@ -32,8 +32,6 @@ from tradeexecutor.state.identifier import (
     TradingPairIdentifier,
     TradingPairKind,
 )
-from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeType
 
 logger = logging.getLogger(__name__)
 
@@ -184,8 +182,7 @@ def create_hypercore_vault_value_func(
             safe_address = _safe_address
         else:
             safe_address = execution_model.tx_builder.get_token_delivery_address()
-            testnet = pair.other_data.get("exchange_is_testnet", False)
-            api_url = HYPERLIQUID_TESTNET_API_URL if testnet else HYPERLIQUID_API_URL
+            api_url = HYPERLIQUID_API_URL
             session = create_hyperliquid_session(api_url=api_url)
 
         try:
@@ -218,67 +215,3 @@ def create_hypercore_vault_value_func(
     return get_hypercore_vault_value
 
 
-def open_hypercore_vault_position(
-    state: State,
-    strategy_cycle_at: datetime.datetime,
-    pair: TradingPairIdentifier,
-    reserve_currency: AssetIdentifier,
-    notes: str | None = None,
-) -> list[TradeExecution]:
-    """Open a Hypercore vault position by creating a spoofed trade.
-
-    Creates a position with quantity=1 and price=0. The actual deposit
-    happens externally (via CoreWriter actions), and the valuation model
-    updates the price to reflect the vault equity.
-
-    :param state:
-        Current strategy state.
-
-    :param strategy_cycle_at:
-        Timestamp of the current strategy cycle.
-
-    :param pair:
-        Hypercore vault trading pair (``kind=vault``,
-        ``other_data["vault_protocol"] = "hypercore"``).
-
-    :param reserve_currency:
-        Reserve currency asset (e.g. USDC).
-
-    :param notes:
-        Optional human-readable notes.
-
-    :return:
-        List containing the single spoofed trade.
-        **Do NOT return this from ``decide_trades()``** — always
-        return ``[]`` to prevent trades from reaching execution.
-    """
-    assert pair.is_vault(), f"Expected vault pair, got: {pair}"
-    assert pair.other_data.get("vault_protocol") == "hypercore", \
-        f"Expected Hypercore vault pair, got: {pair.other_data}"
-
-    position, trade, created = state.create_trade(
-        strategy_cycle_at=strategy_cycle_at,
-        pair=pair,
-        quantity=None,
-        reserve=Decimal(0),
-        assumed_price=0.0,
-        trade_type=TradeType.rebalance,
-        reserve_currency=reserve_currency,
-        reserve_currency_price=1.0,
-        notes=notes or "Open Hypercore vault position",
-        pair_fee=0.0,
-        lp_fees_estimated=0,
-    )
-
-    # Immediately spoof the trade as successfully executed
-    trade.mark_success(
-        executed_at=native_datetime_utc_now(),
-        executed_price=0.0,
-        executed_quantity=Decimal(1),
-        executed_reserve=Decimal(0),
-        lp_fees=0,
-        native_token_price=0,
-        force=True,
-    )
-
-    return [trade]

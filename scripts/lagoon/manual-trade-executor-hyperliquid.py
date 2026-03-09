@@ -25,8 +25,6 @@ Wallet funding
 
 The deployer wallet needs HYPE (gas) and USDC on HyperEVM.
 
-**Mainnet** (recommended — cheaper and easier than testnet):
-
 1. Create a new private key and set ``PRIVATE_KEY`` env var
 2. Move ~$2 worth of ETH on Arbitrum to that address
 3. Move ~$10 worth of USDC on Arbitrum to that address
@@ -38,52 +36,19 @@ The deployer wallet needs HYPE (gas) and USDC on HyperEVM.
 9. Move 0.01 HYPE to HyperEVM (for gas)
 10. Check HyperEVM balances on the EVM <-> CORE dialog
 
-**Testnet**:
-
-1. Create a new private key and set ``PRIVATE_KEY`` env var
-2. Move ~$2 worth of ETH on Arbitrum to that address
-3. Move ~$5 worth of USDC on Arbitrum to that address
-4. Sign in to https://app.hyperliquid.xyz with the new account
-5. Deposit $5 USDC (minimum)
-6. Now you have an account on Hyperliquid mainnet
-7. Visit https://app.hyperliquid-testnet.xyz/drip and claim
-8. Now you have 1000 USDC on the Hypercore testnet
-9. Buy 1 HYPE with the mock USDC (set max slippage to 99%,
-   testnet orderbook is illiquid)
-10. Visit https://app.hyperliquid-testnet.xyz/portfolio — click EVM <-> CORE
-11. Move 100 USDC to HyperEVM testnet
-12. Move 0.01 HYPE to HyperEVM testnet
-13. Check HyperEVM testnet balance on EVM <-> CORE dialog
-    (there is no working HyperEVM testnet explorer)
-
-Modes
------
-
-**Mainnet** — set ``NETWORK=mainnet`` (default):
-
-- Runs against HyperEVM mainnet (chain 999)
-- Depositor must hold HYPE (gas) + USDC
-
-**Testnet** — set ``NETWORK=testnet``:
-
-- Runs against HyperEVM testnet (chain 998)
-- Depositor must hold testnet HYPE + USDC
-
 Environment variables
 ---------------------
 
 ``NETWORK``
     ``mainnet`` (default) or ``testnet``.
+    Selects the RPC URL (if ``JSON_RPC_HYPERLIQUID`` is not set) and
+    the default Hypercore vault address.
 
 ``JSON_RPC_HYPERLIQUID``
-    HyperEVM mainnet RPC URL. Required for mainnet.
+    HyperEVM RPC URL. Defaults to the public RPC for the selected network.
 
-``JSON_RPC_HYPERLIQUID_TESTNET``
-    HyperEVM testnet RPC URL.
-    Defaults to ``https://rpc.hyperliquid-testnet.xyz/evm``.
-
-``PRIVATE_KEY``
-    Deployer private key. Must hold HYPE + USDC.
+``PRIVATE_KEY`` / ``HYPERCORE_WRITER_TEST_PRIVATE_KEY``
+    Deployer private key. Must hold HYPE + at least 25 USDC on HyperEVM.
 
 ``USDC_AMOUNT``
     USDC to deposit into the Hypercore vault (default: ``5``).
@@ -91,15 +56,11 @@ Environment variables
 
 ``ACTION``
     ``deposit`` (default), ``withdraw``, or ``both``.
-    On testnet, user-created vaults have a 1-day lock-up; HLP has 4 days.
+    HLP has a 4-day lock-up period.
     Run deposit first, then withdraw later.
 
 ``HYPERCORE_VAULT``
     Hypercore vault address. Defaults to HLP for the selected network.
-
-``DEPOSIT_MODE``
-    ``two_phase`` (default) or ``batched``. Only ``two_phase`` is supported
-    on live networks.
 
 ``TRADING_STRATEGY_API_KEY``
     TradingStrategy.ai API key. Optional for code-based strategies.
@@ -107,18 +68,16 @@ Environment variables
 Usage
 -----
 
-Mainnet deposit:
+Mainnet:
 
 .. code-block:: shell
 
-    NETWORK=mainnet \\
-    JSON_RPC_HYPERLIQUID="https://rpc.hyperliquid.xyz/evm" \\
     PRIVATE_KEY="0x..." \\
     USDC_AMOUNT=5 \\
     ACTION=deposit \\
         poetry run python scripts/lagoon/manual-trade-executor-hyperliquid.py
 
-Testnet deposit:
+Testnet:
 
 .. code-block:: shell
 
@@ -178,9 +137,6 @@ from tradeexecutor.state.state import State
 
 logger = logging.getLogger(__name__)
 
-#: Default public RPC for HyperEVM testnet
-HYPERLIQUID_TESTNET_RPC = "https://rpc.hyperliquid-testnet.xyz/evm"
-
 
 def run_cli(args: list[str], env: dict):
     """Run a trade-executor CLI command with the given environment."""
@@ -215,7 +171,7 @@ def _check_shares(web3: Web3, vault_address: str, deployer_address: str, label: 
     print(f"  [shares] {label}: {human} {share_token.symbol} (raw={raw})")
 
 
-def _print_hypercore_balances(safe_address: str, network: str) -> list:
+def _print_hypercore_balances(safe_address: str, network: str = "mainnet") -> list:
     """Query Hyperliquid info API and print the Safe's Hypercore vault balances."""
     api_url = HYPERLIQUID_TESTNET_API_URL if network == "testnet" else HYPERLIQUID_API_URL
     session = create_hyperliquid_session(api_url=api_url)
@@ -238,7 +194,7 @@ def _do_hypercore_deposit(
     hypercore_amount_raw: int,
     vault_address: str,
     usdc_human: int,
-    network: str,
+    network: str = "mainnet",
 ):
     """Execute two-phase deposit into a Hypercore vault via Lagoon.
 
@@ -290,7 +246,7 @@ def _do_hypercore_deposit(
     logger.info("Waiting 10s for CoreWriter actions to settle on HyperCore...")
     time.sleep(10)
 
-    equities = _print_hypercore_balances(lagoon_vault.safe_address, network)
+    equities = _print_hypercore_balances(lagoon_vault.safe_address, network=network)
     assert len(equities) > 0, \
         f"Deposit failed: Safe {lagoon_vault.safe_address} has no vault positions on HyperCore"
 
@@ -303,7 +259,7 @@ def _do_hypercore_withdraw(
     hypercore_amount_raw: int,
     vault_address: str,
     usdc_human: int,
-    network: str,
+    network: str = "mainnet",
 ):
     """Execute withdrawal from Hypercore vault."""
     from eth_defi.hyperliquid.core_writer import build_hypercore_withdraw_multicall
@@ -326,7 +282,7 @@ def _do_hypercore_withdraw(
 
     logger.info("Waiting 10s for CoreWriter actions to settle on HyperCore...")
     time.sleep(10)
-    _print_hypercore_balances(lagoon_vault.safe_address, network)
+    _print_hypercore_balances(lagoon_vault.safe_address, network=network)
 
 
 def _revalue_and_check(
@@ -372,15 +328,13 @@ def _run_test_lifecycle(
     strategy_file: Path,
     usdc_amount: Decimal,
     vault_address: str,
-    network: str,
     action: str,
     trading_strategy_api_key: str,
+    network: str = "mainnet",
 ):
     """Run the full test lifecycle."""
 
     chain_id = web3.eth.chain_id
-    is_testnet = (network == "testnet")
-    rpc_env_key = "JSON_RPC_HYPERLIQUID_TESTNET" if is_testnet else "JSON_RPC_HYPERLIQUID"
 
     usdc_raw = usdc_token.convert_to_raw(usdc_amount)
     hypercore_raw = usdc_raw  # Same decimals
@@ -395,7 +349,10 @@ def _run_test_lifecycle(
         # ===================================================================
         print("\n=== Step 1: Deploy Hypercore vault ===")
 
+        rpc_env_key = "JSON_RPC_HYPERLIQUID_TESTNET" if network == "testnet" else "JSON_RPC_HYPERLIQUID"
+
         deploy_env = {
+            "NETWORK": network,
             "STRATEGY_FILE": str(strategy_file),
             "PRIVATE_KEY": private_key,
             rpc_env_key: json_rpc,
@@ -408,8 +365,6 @@ def _run_test_lifecycle(
             "UNIT_TESTING": "true",
             "LOG_LEVEL": "info",
         }
-        if is_testnet:
-            deploy_env["HYPERLIQUID_NETWORK"] = "testnet"
 
         run_cli(["lagoon-deploy-vault"], deploy_env)
 
@@ -437,6 +392,7 @@ def _run_test_lifecycle(
         print("\n=== Step 2: Initialise state ===")
 
         base_env = {
+            "NETWORK": network,
             "ID": "test-hypercore",
             "STRATEGY_FILE": str(strategy_file),
             "STATE_FILE": state_file,
@@ -450,8 +406,6 @@ def _run_test_lifecycle(
             "CACHE_PATH": cache_path,
             "MIN_GAS_BALANCE": "0.0",
         }
-        if is_testnet:
-            base_env["HYPERLIQUID_NETWORK"] = "testnet"
         if trading_strategy_api_key:
             base_env["TRADING_STRATEGY_API_KEY"] = trading_strategy_api_key
 
@@ -634,19 +588,28 @@ def _run_test_lifecycle(
 def main():
     setup_console_logging("warning")
 
+    #: Minimum USDC balance required to run the full lifecycle
+    #: (deployment + activation + deposit with margin).
+    MIN_USDC_BALANCE = 25
+
     # ----- Parse environment -----
     network = os.environ.get("NETWORK", "mainnet").lower()
     assert network in ("mainnet", "testnet"), \
         f"NETWORK must be 'mainnet' or 'testnet', got '{network}'"
 
     if network == "testnet":
-        json_rpc = os.environ.get("JSON_RPC_HYPERLIQUID_TESTNET", HYPERLIQUID_TESTNET_RPC)
+        json_rpc = os.environ.get(
+            "JSON_RPC_HYPERLIQUID_TESTNET",
+            "https://rpc.hyperliquid-testnet.xyz/evm",
+        )
     else:
-        json_rpc = os.environ.get("JSON_RPC_HYPERLIQUID")
-        assert json_rpc, "JSON_RPC_HYPERLIQUID is required for mainnet"
+        json_rpc = os.environ.get(
+            "JSON_RPC_HYPERLIQUID",
+            "https://rpc.hyperliquid.xyz/evm",
+        )
 
-    private_key = os.environ.get("PRIVATE_KEY")
-    assert private_key, "PRIVATE_KEY is required"
+    private_key = os.environ.get("PRIVATE_KEY") or os.environ.get("HYPERCORE_WRITER_TEST_PRIVATE_KEY")
+    assert private_key, "PRIVATE_KEY or HYPERCORE_WRITER_TEST_PRIVATE_KEY is required"
 
     action = os.environ.get("ACTION", "deposit").lower()
     assert action in ("deposit", "withdraw", "both"), \
@@ -668,17 +631,18 @@ def main():
     deployer = HotWallet.from_private_key(private_key)
     deployer.sync_nonce(web3)
 
-    # Verify balances
+    # Verify balances on the target chain
     hype_balance = web3.eth.get_balance(deployer.address)
     hype_human = hype_balance / 10**18
-    assert hype_human >= 0.1, \
-        f"Deployer {deployer.address} has {hype_human:.4f} HYPE, need at least 0.1 HYPE for gas"
+    assert hype_human >= 0.001, \
+        f"Deployer {deployer.address} has {hype_human:.4f} HYPE on chain {chain_id}, need HYPE for gas"
 
     usdc_address = USDC_NATIVE_TOKEN[chain_id]
     usdc_token = fetch_erc20_details(web3, usdc_address)
     deployer_usdc = usdc_token.fetch_balance_of(deployer.address)
-    assert deployer_usdc >= usdc_amount, \
-        f"Deployer needs {usdc_amount} USDC but has {deployer_usdc}"
+    assert deployer_usdc >= MIN_USDC_BALANCE, \
+        f"Deployer needs at least {MIN_USDC_BALANCE} USDC on chain {chain_id} ({network}) " \
+        f"but has {deployer_usdc}. See wallet funding instructions in this script's docstring."
 
     # Strategy file
     strategy_file = (
@@ -690,9 +654,11 @@ def main():
     print("=" * 70)
     print("Hypercore vault Lagoon manual test")
     print("=" * 70)
-    print(f"  Network:   {network}")
+    print(f"  Network:   {network} (chain {chain_id})")
     print(f"  Deployer:  {deployer.address}")
-    print(f"  USDC:      {usdc_amount}")
+    print(f"  HYPE:      {hype_human:.4f}")
+    print(f"  USDC:      {deployer_usdc}")
+    print(f"  Deposit:   {usdc_amount} USDC")
     print(f"  Vault:     {vault_address}")
     print(f"  Action:    {action}")
     print(f"  Strategy:  {strategy_file.name}")
@@ -707,9 +673,9 @@ def main():
         strategy_file=strategy_file,
         usdc_amount=usdc_amount,
         vault_address=vault_address,
-        network=network,
         action=action,
         trading_strategy_api_key=trading_strategy_api_key,
+        network=network,
     )
 
 

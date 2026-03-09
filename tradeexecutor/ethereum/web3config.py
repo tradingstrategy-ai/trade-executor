@@ -31,12 +31,14 @@ SUPPORTED_CHAINS = [
     ChainId.arbitrum_sepolia,
     ChainId.base_sepolia,
     ChainId.hyperliquid,
+    ChainId.hyperliquid_testnet,
 ]
 
 #: Override broken slugs in the tradingstrategy library.
 #: ChainId.hyperliquid (999) reports "wanchain testnet" instead of "hyperliquid".
 _CHAIN_SLUG_OVERRIDES: dict[ChainId, str] = {
     ChainId.hyperliquid: "hyperliquid",
+    ChainId.hyperliquid_testnet: "hyperliquid_testnet",
 }
 
 
@@ -99,6 +101,7 @@ def collect_rpc_kwargs(
     json_rpc_arbitrum_sepolia=None,
     json_rpc_base_sepolia=None,
     json_rpc_hyperliquid=None,
+    json_rpc_hyperliquid_testnet=None,
     chain_name: str | None = None,
 ) -> dict:
     """Collect JSON-RPC kwargs and optionally filter to a single chain.
@@ -120,6 +123,7 @@ def collect_rpc_kwargs(
         json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
         json_rpc_base_sepolia=json_rpc_base_sepolia,
         json_rpc_hyperliquid=json_rpc_hyperliquid,
+        json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
     )
     if chain_name:
         rpc_kwargs = filter_rpc_kwargs_by_chain(chain_name, **rpc_kwargs)
@@ -229,13 +233,18 @@ class Web3Config:
 
         assert isinstance(gas_price_method, GasPriceMethod)
 
-        chain_id_obj = ChainId(chain_id)
+        try:
+            chain_id_obj = ChainId(chain_id)
+            chain_label = chain_id_obj.name
+        except ValueError:
+            # Unknown chain ID (e.g. HyperEVM testnet 998) — use raw int
+            chain_label = str(chain_id)
 
         rpc_urls = [get_url_domain(rpc) for rpc in configuration_line.split()]
-        logger.info("Chain %s connects using %s", chain_id_obj.name, rpc_urls)
+        logger.info("Chain %s connects using %s", chain_label, rpc_urls)
 
         logger.trade("Connected to chain: %s, gas pricing method: %s, providers %s",
-                     chain_id_obj.name,
+                     chain_label,
                      gas_price_method.name,
                      rpc_urls,
                      )
@@ -317,7 +326,11 @@ class Web3Config:
         web3 = self.get_default()
 
         if self.default_chain_id not in TEST_CHAIN_IDS:
-            assert web3.eth.chain_id == self.default_chain_id.value, f"Strategy expected chain id {self.default_chain_id}, RPC says we got got {web3.eth.chain_id}"
+            actual = web3.eth.chain_id
+            expected = self.default_chain_id.value
+            assert actual == expected, \
+                f"Strategy expected chain id {self.default_chain_id} ({expected}), " \
+                f"RPC says we got {actual}"
 
     @classmethod
     def setup_from_environment(
