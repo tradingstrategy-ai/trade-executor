@@ -30,7 +30,19 @@ SUPPORTED_CHAINS = [
     ChainId.derive,
     ChainId.arbitrum_sepolia,
     ChainId.base_sepolia,
+    ChainId.hyperliquid,
 ]
+
+#: Override broken slugs in the tradingstrategy library.
+#: ChainId.hyperliquid (999) reports "wanchain testnet" instead of "hyperliquid".
+_CHAIN_SLUG_OVERRIDES: dict[ChainId, str] = {
+    ChainId.hyperliquid: "hyperliquid",
+}
+
+
+def _get_chain_slug(chain_id: ChainId) -> str:
+    """Get the RPC kwarg slug for a chain, with overrides for broken slugs."""
+    return _CHAIN_SLUG_OVERRIDES.get(chain_id, chain_id.get_slug())
 
 #: Funny chain ids used. e.g. with mainnet forks
 TEST_CHAIN_IDS: List[ChainId] = [
@@ -48,7 +60,8 @@ def filter_rpc_kwargs_by_chain(chain_name: str, **rpc_kwargs) -> dict:
     one chain is needed (e.g. ``simulate`` mode).
 
     :param chain_name:
-        Chain slug, e.g. ``"base"``, ``"arbitrum"``, ``"ethereum"``.
+        Chain slug, e.g. ``"base"``, ``"arbitrum"``, ``"ethereum"``,
+        ``"hyperliquid"``.
     :param rpc_kwargs:
         The ``json_rpc_*`` keyword arguments as passed to :func:`create_web3_config`.
     :return:
@@ -56,9 +69,16 @@ def filter_rpc_kwargs_by_chain(chain_name: str, **rpc_kwargs) -> dict:
     :raises AssertionError:
         If the slug is unknown or no RPC is configured for it.
     """
+    # Try standard slug lookup first, then check overrides
     selected = ChainId.get_by_slug(chain_name)
-    assert selected is not None, f"Unknown chain slug: {chain_name}. Supported: {[c.get_slug() for c in SUPPORTED_CHAINS]}"
-    target_key = f"json_rpc_{selected.get_slug()}"
+    if selected is None:
+        # Check if chain_name matches an override value
+        for chain_id, slug in _CHAIN_SLUG_OVERRIDES.items():
+            if slug == chain_name:
+                selected = chain_id
+                break
+    assert selected is not None, f"Unknown chain slug: {chain_name}. Supported: {[_get_chain_slug(c) for c in SUPPORTED_CHAINS]}"
+    target_key = f"json_rpc_{_get_chain_slug(selected)}"
     assert rpc_kwargs.get(target_key), (
         f"No JSON-RPC configured for chain {chain_name} "
         f"(expected env var JSON_RPC_{chain_name.upper()})"
@@ -78,6 +98,7 @@ def collect_rpc_kwargs(
     json_rpc_derive=None,
     json_rpc_arbitrum_sepolia=None,
     json_rpc_base_sepolia=None,
+    json_rpc_hyperliquid=None,
     chain_name: str | None = None,
 ) -> dict:
     """Collect JSON-RPC kwargs and optionally filter to a single chain.
@@ -98,6 +119,7 @@ def collect_rpc_kwargs(
         json_rpc_derive=json_rpc_derive,
         json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
         json_rpc_base_sepolia=json_rpc_base_sepolia,
+        json_rpc_hyperliquid=json_rpc_hyperliquid,
     )
     if chain_name:
         rpc_kwargs = filter_rpc_kwargs_by_chain(chain_name, **rpc_kwargs)
@@ -329,7 +351,7 @@ class Web3Config:
         simulation_already_created = False
 
         for chain_id in SUPPORTED_CHAINS:
-            key = f"json_rpc_{chain_id.get_slug()}"
+            key = f"json_rpc_{_get_chain_slug(chain_id)}"
             configuration_line = kwargs.get(key)
             if configuration_line:
 

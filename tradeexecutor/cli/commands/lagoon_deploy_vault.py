@@ -113,6 +113,7 @@ def lagoon_deploy_vault(
     json_rpc_derive: str | None = shared_options.json_rpc_derive,
     json_rpc_arbitrum_sepolia: str | None = shared_options.json_rpc_arbitrum_sepolia,
     json_rpc_base_sepolia: str | None = shared_options.json_rpc_base_sepolia,
+    json_rpc_hyperliquid: str | None = shared_options.json_rpc_hyperliquid,
     private_key: str = shared_options.private_key,
 
     # Vault options
@@ -184,6 +185,7 @@ def lagoon_deploy_vault(
         json_rpc_derive=json_rpc_derive,
         json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
         json_rpc_base_sepolia=json_rpc_base_sepolia,
+        json_rpc_hyperliquid=json_rpc_hyperliquid,
         chain_name=chain_name,
     )
     web3config = create_web3_config(

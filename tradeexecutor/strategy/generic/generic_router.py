@@ -94,6 +94,10 @@ class GenericRouting(RoutingModel):
         substates = {}
         for routing_id in self.pair_configurator.get_supported_routers():
             router = self.pair_configurator.get_config(routing_id, three_leg_resolution=self.three_leg_resolution).routing_model
+            if router is None:
+                # Protocols like hypercore_vault don't use routing —
+                # positions are created via spoofed trades, not real swaps
+                continue
             substates[routing_id.router_name] = router.create_routing_state(universe, execution_details)
 
         return GenericRoutingState(universe, substates)
