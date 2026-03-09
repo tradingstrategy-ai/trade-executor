@@ -50,6 +50,8 @@ def lagoon_first_deposit(
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
     json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
     json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
+    json_rpc_hyperliquid: Optional[str] = shared_options.json_rpc_hyperliquid,
+    json_rpc_hyperliquid_testnet: Optional[str] = shared_options.json_rpc_hyperliquid_testnet,
     private_key: str = shared_options.private_key,
 
     vault_address: Optional[str] = shared_options.vault_address,
@@ -85,6 +87,8 @@ def lagoon_first_deposit(
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
         json_rpc_base_sepolia=json_rpc_base_sepolia,
+        json_rpc_hyperliquid=json_rpc_hyperliquid,
+        json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
         simulate=simulate,
     )
 

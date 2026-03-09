@@ -520,6 +520,65 @@ def create_freqtrade_adapter(
     )
 
 
+def create_hypercore_vault_adapter(
+    routing_id: ProtocolRoutingId,
+    hypercore_vault_value_func: Callable | None = None,
+    web3: Web3 | None = None,
+    execution_model=None,
+    strategy_universe: "TradingStrategyUniverse | None" = None,
+) -> ProtocolRoutingConfig:
+    """Create adapter for Hypercore native vault positions.
+
+    Hypercore vault positions are valued via the Hyperliquid info API,
+    not through on-chain ERC-4626 share price queries.
+
+    When ``execution_model`` is provided, a real
+    :py:class:`~tradeexecutor.ethereum.vault.hypercore_routing.HypercoreVaultRouting`
+    is created for on-chain deposit/withdrawal execution.
+
+    :param web3:
+        HyperEVM Web3 connection.
+
+    :param execution_model:
+        Execution model with ``tx_builder.vault`` (LagoonVault) and
+        ``tx_builder.hot_wallet`` (deployer HotWallet).
+
+    :param strategy_universe:
+        Strategy universe for reserve asset lookup.
+    """
+    from tradeexecutor.ethereum.vault.hypercore_valuation import (
+        HypercoreVaultPricing,
+        HypercoreVaultValuator,
+    )
+    from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreVaultRouting
+
+    assert hypercore_vault_value_func is not None, \
+        "hypercore_vault_value_func is required for Hypercore vault routing"
+
+    pricing_model = HypercoreVaultPricing(hypercore_vault_value_func)
+    valuation_model = HypercoreVaultValuator(hypercore_vault_value_func)
+
+    routing_model = None
+    if execution_model is not None and web3 is not None and strategy_universe is not None:
+        lagoon_vault = execution_model.tx_builder.vault
+        deployer = execution_model.tx_builder.hot_wallet
+        reserve = strategy_universe.get_reserve_asset()
+        routing_model = HypercoreVaultRouting(
+            web3=web3,
+            lagoon_vault=lagoon_vault,
+            deployer=deployer,
+            reserve_token_address=reserve.address,
+        )
+        logger.info("Created HypercoreVaultRouting for vault %s", lagoon_vault.safe_address)
+
+    return ProtocolRoutingConfig(
+        routing_id=routing_id,
+        routing_model=routing_model,
+        pricing_model=pricing_model,
+        valuation_model=valuation_model,
+    )
+
+
 def create_exchange_account_adapter(
     routing_id: ProtocolRoutingId,
     account_value_func: Callable | None = None,
@@ -653,6 +712,9 @@ class EthereumPairConfigurator(PairConfigurator):
         # and wire up the GMX value func if not already provided
         self._auto_discover_gmx(strategy_universe)
 
+        # Auto-discover Hypercore vault pairs and wire up value func
+        self._auto_discover_hypercore_vault(strategy_universe)
+
         super().__init__(strategy_universe)
 
     def _auto_discover_gmx(self, strategy_universe: TradingStrategyUniverse):
@@ -687,6 +749,29 @@ class EthereumPairConfigurator(PairConfigurator):
         gmx_func = create_gmx_account_value_func(self.execution_model)
         self.account_value_func = gmx_func
         logger.info("Auto-discovered GMX exchange account pairs — wired up GMX value func")
+
+    def _auto_discover_hypercore_vault(self, strategy_universe: TradingStrategyUniverse):
+        """Auto-discover Hypercore vault pairs and wire up the value func.
+
+        Scans the strategy universe for vault pairs with
+        ``other_data["vault_protocol"] == "hypercore"``.
+        If found, creates a value func using the execution model.
+        """
+        has_hypercore = False
+        for pair in strategy_universe.iterate_pairs():
+            if pair.is_vault() and pair.other_data.get("vault_protocol") == "hypercore":
+                has_hypercore = True
+                break
+
+        if not has_hypercore:
+            return
+
+        if hasattr(self, "hypercore_vault_value_func") and self.hypercore_vault_value_func is not None:
+            return
+
+        from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_value_func
+        self.hypercore_vault_value_func = create_hypercore_vault_value_func(self.execution_model)
+        logger.info("Auto-discovered Hypercore vault pairs — wired up Hypercore value func")
 
     def get_web3_for_chain(self, chain_id: int) -> Web3:
         """Get a Web3 connection for a specific chain.
@@ -724,6 +809,14 @@ class EthereumPairConfigurator(PairConfigurator):
             return create_uniswap_v3_adapter(web3, self.strategy_universe, routing_id, chain_id_override=chain_id_override)
         elif routing_id.router_name == "aave-v3":
             return create_aave_v3_adapter(self.web3, self.strategy_universe, routing_id)
+        elif routing_id.router_name == "hypercore_vault":
+            return create_hypercore_vault_adapter(
+                routing_id,
+                getattr(self, "hypercore_vault_value_func", None),
+                web3=self.web3,
+                execution_model=self.execution_model,
+                strategy_universe=self.strategy_universe,
+            )
         elif routing_id.router_name == "vault":
             return create_vault_adapter(self.web3, self.strategy_universe, routing_id, web3config=self.web3config)
         elif routing_id.router_name == "freqtrade":

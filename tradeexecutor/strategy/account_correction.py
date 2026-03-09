@@ -1107,6 +1107,114 @@ def create_missing_cctp_bridge_positions(
     return created_trades
 
 
+def create_missing_vault_positions(
+    strategy_universe: "TradingStrategyUniverse",
+    state: State,
+    strategy_cycle_at: datetime.datetime,
+    vault_value_func: "Callable[[TradingPairIdentifier], Decimal]",
+) -> list["TradeExecution"]:
+    """Create positions for Hypercore vault pairs that don't have open positions.
+
+    Scans the trading universe for Hypercore vault pairs and creates positions
+    for any that don't already exist in the state. Queries the Hyperliquid info
+    API for actual vault equity and creates the position with that value.
+
+    Follows the same pattern as :func:`create_missing_exchange_account_positions`.
+
+    :param strategy_universe:
+        The trading universe containing all pairs (including vault pairs)
+
+    :param state:
+        Current strategy state to check for existing positions and create new ones
+
+    :param strategy_cycle_at:
+        Timestamp for position creation
+
+    :param vault_value_func:
+        Function that takes a TradingPairIdentifier and returns vault equity in USD.
+        Created via ``create_hypercore_vault_value_func()``.
+
+    :return:
+        List of created trades (for logging purposes)
+    """
+    logger.info("Scanning universe for missing Hypercore vault positions...")
+
+    created_trades = []
+
+    pair_universe = strategy_universe.data_universe.pairs
+
+    for dex_pair in pair_universe.iterate_pairs():
+        pair = translate_trading_pair(dex_pair)
+
+        if not pair.is_vault():
+            continue
+
+        if pair.other_data.get("vault_protocol") != "hypercore":
+            continue
+
+        existing_position = state.portfolio.get_position_by_trading_pair(pair)
+        if existing_position and existing_position.is_open():
+            logger.debug("Vault position already exists for %s, skipping", pair)
+            continue
+
+        # Query actual vault equity from Hyperliquid API
+        try:
+            equity = vault_value_func(pair)
+        except Exception as e:
+            logger.error("Failed to query vault equity for %s: %s", pair, e)
+            continue
+
+        if equity <= 0:
+            logger.info("No vault equity for %s, skipping position creation", pair)
+            continue
+
+        assert len(strategy_universe.reserve_assets) > 0, \
+            "Strategy universe must have at least one reserve asset to create vault positions"
+        reserve_asset = strategy_universe.reserve_assets[0]
+
+        logger.info(
+            "Creating Hypercore vault position for %s (equity=$%.2f)",
+            pair.get_human_description(),
+            equity,
+        )
+
+        # Create position directly using state.create_trade() + mark_success()
+        # pattern (same as create_missing_cctp_bridge_positions).
+        # Cannot use open_exchange_account_position() because it asserts
+        # pair.is_exchange_account().
+        position, trade, created = state.create_trade(
+            strategy_cycle_at=strategy_cycle_at,
+            pair=pair,
+            quantity=None,
+            reserve=equity,
+            assumed_price=1.0,
+            trade_type=TradeType.rebalance,
+            reserve_currency=reserve_asset,
+            reserve_currency_price=1.0,
+            notes="Auto-created by correct-accounts for Hypercore vault",
+            pair_fee=0.0,
+            lp_fees_estimated=0,
+        )
+
+        if not position.portfolio_value_at_open:
+            position.portfolio_value_at_open = float(equity)
+
+        trade.mark_success(
+            executed_at=strategy_cycle_at,
+            executed_price=1.0,
+            executed_quantity=equity,
+            executed_reserve=equity,
+            lp_fees=0,
+            native_token_price=0,
+            force=True,
+        )
+
+        created_trades.append(trade)
+
+    logger.info("Created %d Hypercore vault position(s)", len(created_trades))
+    return created_trades
+
+
 def check_accounts(
     pair_universe: PandasPairUniverse,
     reserve_assets: Collection[AssetIdentifier],

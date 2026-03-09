@@ -154,6 +154,15 @@ def translate_trading_universe_to_lagoon_config(
             if protocol == "gmx":
                 gmx_chain_ids.add(pair.base.chain_id)
 
+    # Collect Hypercore vault addresses per chain
+    hypercore_vaults_per_chain: dict[int, list[str]] = {}
+    for pair in universe.iterate_pairs():
+        if pair.is_vault() and pair.other_data.get("vault_protocol") == "hypercore":
+            vault_addr = pair.other_data.get("hypercore_vault_address")
+            if vault_addr:
+                chain_id = pair.base.chain_id
+                hypercore_vaults_per_chain.setdefault(chain_id, []).append(vault_addr)
+
     # Collect unique token addresses per chain (used when any_asset=False)
     chain_token_addresses: dict[int, set[str]] = {cid: set() for cid in all_chain_ids}
     if not any_asset:
@@ -162,12 +171,13 @@ def translate_trading_universe_to_lagoon_config(
             chain_token_addresses[pair.quote.chain_id].add(Web3.to_checksum_address(pair.quote.address))
 
     logger.info(
-        "Universe analysis: source_chain=%s, chains=%s, cctp=%s, uniswap_v3_chains=%s, gmx_chains=%s, testnet=%s, any_asset=%s",
+        "Universe analysis: source_chain=%s, chains=%s, cctp=%s, uniswap_v3_chains=%s, gmx_chains=%s, hypercore_vault_chains=%s, testnet=%s, any_asset=%s",
         source_chain_slug,
         list(chain_id_to_slug.values()),
         has_cctp,
         [chain_id_to_slug[cid] for cid in uniswap_v3_chain_ids],
         [chain_id_to_slug[cid] for cid in gmx_chain_ids],
+        [chain_id_to_slug[cid] for cid in hypercore_vaults_per_chain],
         is_testnet,
         any_asset,
     )
@@ -257,6 +267,12 @@ def translate_trading_universe_to_lagoon_config(
             else:
                 config.gmx_deployment = GMXDeployment.create_arbitrum(markets=market_addresses)
             logger.info("GMX deployment configured for %s: %d market(s)%s", slug, len(market_addresses), " (skipped per-market whitelisting — any_asset=True)" if any_asset else " (all markets)")
+
+        # Configure Hypercore vault whitelisting
+        vault_addrs = hypercore_vaults_per_chain.get(chain_id, [])
+        if vault_addrs:
+            config.hypercore_vaults = vault_addrs
+            logger.info("Hypercore vaults configured for %s: %s", slug, vault_addrs)
 
         configs[slug] = config
 

@@ -42,6 +42,10 @@ def default_match_router(
                 lending_protocol_slug="aave_v3",
             )
     elif pair.is_vault():
+        if pair.other_data.get("vault_protocol") == "hypercore":
+            return ProtocolRoutingId(
+                router_name="hypercore_vault",
+            )
         return ProtocolRoutingId(
             router_name="vault",
         )
@@ -112,6 +116,22 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
                     non_dex_exchange_ids.add(row["exchange_id"])
 
     vaults_done = False
+    hypercore_vault_done = False
+
+    # Detect Hypercore vault pairs from other_data
+    if "other_data" in pairs_df.columns:
+        for _, row in pairs_df.iterrows():
+            other_data = row.get("other_data")
+            if isinstance(other_data, dict) and other_data.get("vault_protocol") == "hypercore":
+                if not hypercore_vault_done:
+                    configs.add(
+                        ProtocolRoutingId(
+                            router_name="hypercore_vault",
+                            exchange_slug=None,
+                        )
+                    )
+                    hypercore_vault_done = True
+                    non_dex_exchange_ids.add(row["exchange_id"])
 
     for xc in exchanges.exchanges.values():
         if xc.exchange_id in non_dex_exchange_ids:

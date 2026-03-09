@@ -817,11 +817,13 @@ class StrategyRunner(abc.ABC):
                     # 2. Trade is created
                     # 3. This trade is not returned
                     #
-                    # Exchange account positions are created and spoofed directly in decide_trades()
-                    # without returning trades, so we skip them in this check.
+                    # Exchange account and vault positions are created and spoofed
+                    # directly in decide_trades() without returning trades,
+                    # so we skip them in this check.
                     new_pos_ids = new_position_ids - old_position_ids
                     non_exchange_account_new = any(
-                        not state.portfolio.open_positions[pid].pair.is_exchange_account()
+                        not (state.portfolio.open_positions[pid].pair.is_exchange_account()
+                             or state.portfolio.open_positions[pid].pair.is_vault())
                         for pid in new_pos_ids
                     )
                     if non_exchange_account_new and not state.portfolio.pending_positions:  # The strategy might have created market limit positions that do not open on this cycle

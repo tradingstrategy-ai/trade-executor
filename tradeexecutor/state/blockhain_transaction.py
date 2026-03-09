@@ -317,6 +317,17 @@ class BlockchainTransaction:
     #:
     notes: str | None = ""
 
+    #: Extra sleep in seconds after this transaction is confirmed.
+    #:
+    #: Used for Hypercore vault deposits where the EVM transaction succeeds
+    #: but the funds take additional time to propagate through HyperCore
+    #: (EVM escrow clearing, CoreWriter action processing).
+    #:
+    #: When set, the execution pipeline will ``time.sleep(extra_sleep)``
+    #: after ``set_confirmation_information()`` before proceeding to
+    #: the next transaction.
+    extra_sleep: float | None = None
+
     def __repr__(self):
 
         notes = "\n" + textwrap.indent(self.notes, prefix="      ")

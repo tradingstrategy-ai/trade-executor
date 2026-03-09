@@ -218,9 +218,11 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                 }
             })
 
-        # Preserve exchange account fields (Derive, CCXT, etc.) and bridge fields
+        # Preserve exchange account fields (Derive, CCXT, etc.), bridge fields,
+        # and Hypercore vault fields
         for key in ("exchange_protocol", "exchange_subaccount_id", "exchange_is_testnet",
-                     "ccxt_account_id", "ccxt_exchange_id", "bridge_protocol"):
+                     "ccxt_account_id", "ccxt_exchange_id", "bridge_protocol",
+                     "vault_protocol", "hypercore_vault_address"):
             val = dex_pair.other_data.get(key)
             if val is not None:
                 pair.other_data[key] = val

@@ -150,6 +150,9 @@ def map_onchain_asset_to_position(
 def get_asset_amounts(p: TradingPosition) -> List[Tuple[AssetIdentifier, Decimal]]:
     """What tokens this position should hold in a wallet."""
     if p.is_spot() or p.is_vault():
+        # Hypercore vault positions are API-tracked, not on-chain
+        if p.pair.other_data.get("vault_protocol") == "hypercore":
+            return []
         return [(p.pair.base, p.get_quantity())]
     elif p.is_short():
         return [
@@ -176,6 +179,9 @@ def get_asset_amounts(p: TradingPosition) -> List[Tuple[AssetIdentifier, Decimal
 def get_onchain_assets(pair: TradingPairIdentifier) -> List[AssetIdentifier]:
     """What tokens should be present on-chain for this pair."""
     if pair.is_spot() or pair.is_vault():
+        # Hypercore vault positions are API-tracked, not on-chain
+        if pair.other_data.get("vault_protocol") == "hypercore":
+            return []
         return [pair.base]
     elif pair.is_short():
         return [pair.base, pair.quote]

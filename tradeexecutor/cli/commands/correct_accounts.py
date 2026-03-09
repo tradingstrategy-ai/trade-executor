@@ -72,6 +72,8 @@ def correct_accounts(
     json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
     json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
     json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
+    json_rpc_hyperliquid: Optional[str] = shared_options.json_rpc_hyperliquid,
+    json_rpc_hyperliquid_testnet: Optional[str] = shared_options.json_rpc_hyperliquid_testnet,
 
     unknown_token_receiver: Optional[str] = Option(None, "--unknown-token-receiver", envvar="UNKNOWN_TOKEN_RECEIVER", help="The Ethereum address that will receive any token that cannot be associated with an open position. For Enzyme vault based strategies this address defauts to the executor hot wallet."),
 
@@ -134,6 +136,8 @@ def correct_accounts(
         json_rpc_derive=json_rpc_derive,
         json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
         json_rpc_base_sepolia=json_rpc_base_sepolia,
+        json_rpc_hyperliquid=json_rpc_hyperliquid,
+        json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
         unit_testing=unit_testing,
     )
 
@@ -441,6 +445,107 @@ def correct_accounts(
             logger.info("Exchange account sync: %d balance update(s)", len(exchange_events))
             for evt in exchange_events:
                 logger.info("  Position %d: %s (change: %s)", evt.position_id, evt.notes, evt.quantity)
+
+    # Auto-create and sync Hypercore vault positions
+    if asset_management_mode.is_vault() and universe:
+        from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
+
+        _has_vault_pairs = any(
+            translate_trading_pair(p).is_vault() and translate_trading_pair(p).other_data.get("vault_protocol") == "hypercore"
+            for p in universe.data_universe.pairs.iterate_pairs()
+        )
+        if _has_vault_pairs:
+            safe_address = sync_model.get_token_storage_address()
+            chain_id = web3.eth.chain_id
+
+            from eth_defi.hyperliquid.session import (
+                HYPERLIQUID_API_URL,
+                HYPERLIQUID_TESTNET_API_URL,
+                create_hyperliquid_session,
+            )
+            from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_value_func
+            from tradeexecutor.strategy.account_correction import create_missing_vault_positions
+
+            is_testnet = chain_id == 998
+            api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
+            hl_session = create_hyperliquid_session(api_url=api_url)
+
+            vault_value_func = create_hypercore_vault_value_func(
+                session=hl_session,
+                safe_address=safe_address,
+                is_testnet=is_testnet,
+            )
+
+            logger.info("Checking for missing Hypercore vault positions (Safe: %s)...", safe_address)
+            vault_created_trades = create_missing_vault_positions(
+                strategy_universe=universe,
+                state=state,
+                strategy_cycle_at=native_datetime_utc_now(),
+                vault_value_func=vault_value_func,
+            )
+            if vault_created_trades:
+                logger.info("Auto-created %d Hypercore vault position(s)", len(vault_created_trades))
+                for trade in vault_created_trades:
+                    logger.info("  Created vault position for %s", trade.pair)
+
+            # Sync existing vault positions with actual API equity
+            vault_positions = [
+                p for p in state.portfolio.get_open_positions()
+                if p.is_vault() and p.pair.other_data.get("vault_protocol") == "hypercore"
+            ]
+            vault_sync_events = []
+            for position in vault_positions:
+                try:
+                    current_equity = vault_value_func(position.pair)
+                except Exception as e:
+                    logger.error("Failed to get vault equity for position %d: %s", position.position_id, e)
+                    continue
+
+                tracked_value = position.get_quantity()
+                diff = current_equity - tracked_value
+
+                if diff == 0:
+                    logger.debug("Vault position %d: no change (equity=%.2f)", position.position_id, current_equity)
+                    continue
+
+                logger.info(
+                    "Vault position %d: equity changed %.2f -> %.2f (diff=%.2f)",
+                    position.position_id, tracked_value, current_equity, diff,
+                )
+
+                event_id = state.portfolio.next_balance_update_id
+                state.portfolio.next_balance_update_id += 1
+
+                from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
+                from tradeexecutor.state.sync import BalanceEventRef
+
+                evt = BalanceUpdate(
+                    balance_update_id=event_id,
+                    position_type=BalanceUpdatePositionType.open_position,
+                    cause=BalanceUpdateCause.vault_flow,
+                    asset=position.pair.base,
+                    block_mined_at=native_datetime_utc_now(),
+                    strategy_cycle_included_at=native_datetime_utc_now(),
+                    chain_id=position.pair.base.chain_id,
+                    old_balance=tracked_value,
+                    usd_value=float(diff),
+                    quantity=diff,
+                    owner_address=None,
+                    tx_hash=None,
+                    log_index=None,
+                    position_id=position.position_id,
+                    block_number=None,
+                    notes="Hypercore vault equity sync",
+                )
+
+                position.balance_updates[evt.balance_update_id] = evt
+                ref = BalanceEventRef.from_balance_update_event(evt)
+                state.sync.accounting.balance_update_refs.append(ref)
+                vault_sync_events.append(evt)
+
+            if vault_sync_events:
+                state.sync.accounting.last_updated_at = native_datetime_utc_now()
+                logger.info("Vault equity sync: %d balance update(s)", len(vault_sync_events))
 
     if process_redemption:
         timestamp = native_datetime_utc_now()

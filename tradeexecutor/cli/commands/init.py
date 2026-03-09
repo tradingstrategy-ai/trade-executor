@@ -56,6 +56,8 @@ def init(
     json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
     json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
     json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
+    json_rpc_hyperliquid: Optional[str] = shared_options.json_rpc_hyperliquid,
+    json_rpc_hyperliquid_testnet: Optional[str] = shared_options.json_rpc_hyperliquid_testnet,
 
 ):
     """Initialise a strategy.
@@ -83,6 +85,8 @@ def init(
         json_rpc_derive=json_rpc_derive,
         json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
         json_rpc_base_sepolia=json_rpc_base_sepolia,
+        json_rpc_hyperliquid=json_rpc_hyperliquid,
+        json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
     )
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"

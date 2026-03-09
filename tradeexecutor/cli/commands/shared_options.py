@@ -85,6 +85,8 @@ json_rpc_anvil = Option(None, envvar="JSON_RPC_ANVIL", help="Anvil JSON-RPC url.
 json_rpc_derive = Option(None, envvar="JSON_RPC_DERIVE", help=_gen_rpc_help("RPC: Derive"))
 json_rpc_arbitrum_sepolia = Option(None, envvar="JSON_RPC_ARBITRUM_SEPOLIA", help=_gen_rpc_help("RPC: Arbitrum Sepolia"))
 json_rpc_base_sepolia = Option(None, envvar="JSON_RPC_BASE_SEPOLIA", help=_gen_rpc_help("RPC: Base Sepolia"))
+json_rpc_hyperliquid = Option(None, envvar="JSON_RPC_HYPERLIQUID", help=_gen_rpc_help("RPC: HyperEVM (Hyperliquid)"))
+json_rpc_hyperliquid_testnet = Option(None, envvar="JSON_RPC_HYPERLIQUID_TESTNET", help=_gen_rpc_help("RPC: HyperEVM testnet"))
 
 state_file = Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json for live trade execution, state/{executor-id}-backtest.json for the backtest results.")
 
