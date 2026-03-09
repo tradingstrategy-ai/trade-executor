@@ -273,8 +273,12 @@ class StrategyRunner(abc.ABC):
             logger.info("No sync_positions() needed")
 
         # If we have any new deposits, let's refresh our stats right away
-        # to reflect the new balances
-        if len(balance_update_events) > 0:
+        # to reflect the new balances.
+        # Skip during backtesting: update_position_valuations() runs right after tick()
+        # and captures the correct post-trade state. Recording pre-trade stats here
+        # creates a duplicate entry at the same timestamp, causing double-counting
+        # in charts that sum reserve + position values (equity_curve_by_chain).
+        if len(balance_update_events) > 0 and not self.execution_context.mode.is_backtesting():
 
             with self.timed_task_context_manager("sync_portfolio_stats_refresh"):
 

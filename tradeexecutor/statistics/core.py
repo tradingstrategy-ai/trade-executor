@@ -200,11 +200,17 @@ def calculate_statistics(
         )
 
     else:
+        # Backtesting: skip expensive build_trade_analysis() and
+        # calculate_compounding_unrealised_trading_profitability(),
+        # but include open_position_equity so charts can derive
+        # reserve cash as total_equity - open_position_equity
+        # without double-counting.
         pf_stats = PortfolioStatistics(
             calculated_at=clock,
             total_equity=total_equity,
             net_asset_value=portfolio.get_net_asset_value(),
             free_cash=float(portfolio.get_cash()),
+            open_position_equity=portfolio.get_position_equity_and_loan_nav(),  # No extra cost: already computed inside calculate_total_equity() above
             share_count=share_count,
             share_price_usd=share_price_usd,
         )
