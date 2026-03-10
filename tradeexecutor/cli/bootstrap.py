@@ -771,3 +771,36 @@ def configure_default_chain(
             logger.warning("Legacy strategy module: makes assumption of BNB Chain")
             web3config.set_default_chain(ChainId.bsc)
 
+
+def check_universe_chains_have_rpc(
+    web3config: "Web3Config",
+    universe: "TradingStrategyUniverse",
+):
+    """Validate that all chains in the trading universe have RPC connections configured.
+
+    Call after create_trading_universe() to catch missing JSON-RPC
+    configurations early, rather than failing during trade execution.
+
+    :param web3config:
+        Web3 configuration with RPC connections.
+
+    :param universe:
+        Trading universe with chains to check.
+    """
+    if web3config is None:
+        return
+
+    configured_chains = set(web3config.connections.keys())
+    universe_chains = universe.data_universe.chains
+
+    missing = set(universe_chains) - configured_chains
+    if missing:
+        missing_names = ", ".join(c.get_name() for c in sorted(missing, key=lambda c: c.value))
+        configured_names = ", ".join(c.get_name() for c in sorted(configured_chains, key=lambda c: c.value))
+        raise RuntimeError(
+            f"Strategy universe uses chains that do not have JSON-RPC connections configured.\n"
+            f"Missing RPCs for: {missing_names}\n"
+            f"Configured RPCs for: {configured_names}\n"
+            f"Set the corresponding JSON_RPC_* environment variables."
+        )
+

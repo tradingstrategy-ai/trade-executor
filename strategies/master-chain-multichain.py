@@ -331,9 +331,8 @@ def create_trading_universe(
         # Jupyter notebook inline output
         debug_printer = print
 
-    chain_id = parameters.primary_chain_id
-
-    debug_printer(f"Preparing trading universe on chain {chain_id.get_name()}")
+    all_chain_names = sorted(set(c.get_name() for c, _ in VAULTS))
+    debug_printer(f"Preparing trading universe on chains: {', '.join(all_chain_names)}")
 
     # Pull out our benchmark pairs ids.
     # We need to construct pair universe object for the symbolic lookup.
