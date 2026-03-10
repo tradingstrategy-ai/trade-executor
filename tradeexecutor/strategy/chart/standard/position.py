@@ -20,6 +20,7 @@ def positions_at_end(
         vault_name = p.pair.get_vault_name()
         if vault_name:
             entry["vault"] = vault_name
+            entry["address"] = p.pair.pool_address
         data.append(entry)
 
     df = pd.DataFrame(data)
