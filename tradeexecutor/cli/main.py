@@ -37,13 +37,14 @@ from .commands.lagoon_redeem import lagoon_redeem
 from .commands.show_valuation import show_valuation
 from .commands.blacklist import blacklist
 from .commands.prune import prune_state
+from .commands.distribute_gas_funds import distribute_gas_funds
 
 # Dummy export commands even though they are already registered
 # to make the linter happy
 __all__ = [
     app, backtest, blacklist, check_accounts, check_position_triggers,
     check_universe, check_wallet, close_all, close_position, console,
-    correct_accounts, correct_history, deploy_guard, enzyme_asset_list, enzyme_deploy_vault,
+    correct_accounts, correct_history, deploy_guard, distribute_gas_funds, enzyme_asset_list, enzyme_deploy_vault,
     export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_redeem, lagoon_settle, perform_test_trade, prune_state,
     repair, reset, reset_deposits, retry, send_log_message, show_positions,
     show_valuation, start, token_cache, trading_pair,

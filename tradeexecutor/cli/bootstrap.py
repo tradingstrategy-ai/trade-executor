@@ -804,3 +804,60 @@ def check_universe_chains_have_rpc(
             f"Set the corresponding JSON_RPC_* environment variables."
         )
 
+
+def check_universe_chains_have_gas(
+    web3config: "Web3Config",
+    universe: "TradingStrategyUniverse",
+    wallet_address: str,
+    min_gas_balance: float = 0,
+):
+    """Check that the hot wallet has native token for gas on all universe chains.
+
+    :param web3config:
+        Web3 configuration with RPC connections.
+
+    :param universe:
+        Trading universe with chains to check.
+
+    :param wallet_address:
+        The hot wallet address (same across all chains).
+
+    :param min_gas_balance:
+        Minimum native token balance required per chain.
+    """
+    if web3config is None:
+        return
+
+    if min_gas_balance <= 0:
+        return
+
+    universe_chains = universe.data_universe.chains
+    low_balance_chains = []
+
+    for chain_id in universe_chains:
+        try:
+            web3 = web3config.get_connection(chain_id)
+        except KeyError:
+            continue  # Already handled by check_universe_chains_have_rpc
+
+        if web3 is None:
+            continue
+
+        raw_balance = web3.eth.get_balance(wallet_address)
+        balance = Decimal(raw_balance) / Decimal(10**18)
+
+        if balance < min_gas_balance:
+            low_balance_chains.append((chain_id, balance))
+
+    if low_balance_chains:
+        details = "\n".join(
+            f"  {c.get_name()}: {balance:.8f} native tokens"
+            for c, balance in low_balance_chains
+        )
+        raise RuntimeError(
+            f"Hot wallet {wallet_address} does not have enough gas on all universe chains.\n"
+            f"Minimum required: {min_gas_balance} native tokens per chain.\n"
+            f"Low balance chains:\n{details}\n"
+            f"Top up the wallet or adjust MIN_GAS_BALANCE environment variable."
+        )
+
