@@ -59,6 +59,9 @@ class TradingPairSignalFlags(enum.Enum):
     #: Position was not opened/was closed because its weight % in the portfolio is too small
     close_position_weight_limit = "close_position_weight_limit"
 
+    #: This signal's weight was reduced because its chain exceeded the per-chain allocation cap.
+    capped_by_chain_allocation = "capped_by_chain_allocation"
+
     #: This signal led to closing the position (signal went to zero)
     closed = "closed"
 
@@ -1171,6 +1174,70 @@ class AlphaModel:
             )
             for s in self.signals.values():
                 logger.warning("Signal %s", s)
+
+    def cap_chain_allocation(
+        self,
+        max_weight_per_chain: float,
+    ) -> None:
+        """Cap the total normalised weight allocated to any single blockchain.
+
+        Call after :py:meth:`normalise_weights`. Positions on over-allocated
+        chains are proportionally scaled down. Freed weight stays as cash
+        (no redistribution to other chains).
+
+        :param max_weight_per_chain:
+            Maximum share of the portfolio that can be allocated to positions
+            on a single chain. E.g. ``0.33`` means 33 %.
+        """
+        from collections import defaultdict
+
+        if not self.signals:
+            return
+
+        assert 0 < max_weight_per_chain <= 1.0, f"max_weight_per_chain must be in (0, 1], got {max_weight_per_chain}"
+
+        # Group signals by chain
+        chain_signals: dict[int, list[TradingPairSignal]] = defaultdict(list)
+        for s in self.signals.values():
+            chain_signals[s.pair.chain_id].append(s)
+
+        # Sum normalised weights per chain
+        chain_weights: dict[int, float] = {}
+        for chain_id, signals in chain_signals.items():
+            chain_weights[chain_id] = sum(s.normalised_weight for s in signals)
+
+        # Scale down over-allocated chains
+        any_capped = False
+        for chain_id, chain_weight in chain_weights.items():
+            if chain_weight > max_weight_per_chain:
+                scale = max_weight_per_chain / chain_weight
+                for s in chain_signals[chain_id]:
+                    s.normalised_weight *= scale
+                    if s.position_target is not None:
+                        s.position_target *= scale
+                    s.flags.add(TradingPairSignalFlags.capped_by_chain_allocation)
+
+                logger.info(
+                    "Chain %s allocation capped: %.2f%% -> %.2f%%",
+                    chain_id,
+                    chain_weight * 100,
+                    max_weight_per_chain * 100,
+                )
+                any_capped = True
+
+        # Update aggregate bookkeeping
+        if any_capped and self.accepted_investable_equity is not None:
+            old_accepted = self.accepted_investable_equity
+            new_accepted = sum(
+                s.position_target for s in self.signals.values()
+                if s.position_target is not None
+            )
+            self.accepted_investable_equity = new_accepted
+            discarded = old_accepted - new_accepted
+            if self.size_risk_discarded_value is not None:
+                self.size_risk_discarded_value += discarded
+            else:
+                self.size_risk_discarded_value = discarded
 
     def assign_weights(self, method=weight_by_1_slash_n):
         """Convert raw signals to their portfolio weight counterparts.

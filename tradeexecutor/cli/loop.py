@@ -452,6 +452,12 @@ class ExecutionLoop:
                     strategy_parameters=self.parameters,
                 )
 
+                # Validate all universe chains have RPC connections configured
+                web3config = getattr(self.execution_model, 'web3config', None)
+                if live and web3config is not None:
+                    from tradeexecutor.cli.bootstrap import check_universe_chains_have_rpc
+                    check_universe_chains_have_rpc(web3config, universe)
+
                 # Check if our data is stagnated and we cannot execute the strategy
                 if self.max_data_delay is not None:
                     self.universe_model.check_data_age(ts, universe, self.max_data_delay)

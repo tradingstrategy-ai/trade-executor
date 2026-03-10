@@ -3,6 +3,9 @@
 Hypercore vault equity is queried via the Hyperliquid info API,
 not from on-chain contracts. The position tracks a single "unit"
 (quantity=1) with the price equal to the vault equity in USDC.
+
+In simulate mode (Anvil forks), the Hyperliquid API has no data for the
+forked Safe address, so the API is skipped and a 1:1 USDC price is assumed.
 """
 
 import datetime
@@ -26,10 +29,19 @@ class HypercoreVaultPricing(PricingModel):
 
     Returns the vault equity as the per-unit price.
     The position has quantity=1, so value = 1 × equity = equity.
+
+    :param simulate:
+        When ``True``, skip the Hyperliquid API and use 1.0 USDC per unit.
+        Used in Anvil fork mode where the API has no data for the forked Safe.
     """
 
-    def __init__(self, value_func: Callable[[TradingPairIdentifier], Decimal]):
+    def __init__(
+        self,
+        value_func: Callable[[TradingPairIdentifier], Decimal],
+        simulate: bool = False,
+    ):
         self.value_func = value_func
+        self.simulate = simulate
 
     def _make_pricing(self, pair: TradingPairIdentifier, token_in: Decimal | None = None, token_out: Decimal | None = None) -> TradePricing:
         """Build a :class:`TradePricing` from the vault equity.
@@ -37,8 +49,11 @@ class HypercoreVaultPricing(PricingModel):
         If no existing vault position (equity=0), use price=1.0
         since Hypercore vaults are USDC-denominated (1 USDC = 1 unit).
         """
-        equity = self.value_func(pair)
-        price = float(equity) if equity else 1.0
+        if self.simulate:
+            price = 1.0
+        else:
+            equity = self.value_func(pair)
+            price = float(equity) if equity else 1.0
         return TradePricing(
             price=price,
             mid_price=price,
@@ -59,6 +74,8 @@ class HypercoreVaultPricing(PricingModel):
         return self._make_pricing(pair, token_in=reserve)
 
     def get_mid_price(self, ts, pair) -> float:
+        if self.simulate:
+            return 1.0
         equity = self.value_func(pair)
         return float(equity)
 
@@ -78,10 +95,19 @@ class HypercoreVaultValuator(ValuationModel):
     - quantity = 1 (one "unit" of this vault position)
     - price = equity in USDC
     - value = 1 × equity = equity
+
+    :param simulate:
+        When ``True``, skip the Hyperliquid API and use 1.0 USDC per unit.
+        Used in Anvil fork mode where the API has no data for the forked Safe.
     """
 
-    def __init__(self, value_func: Callable[[TradingPairIdentifier], Decimal]):
+    def __init__(
+        self,
+        value_func: Callable[[TradingPairIdentifier], Decimal],
+        simulate: bool = False,
+    ):
         self.value_func = value_func
+        self.simulate = simulate
 
     def __call__(
         self,
@@ -92,14 +118,22 @@ class HypercoreVaultValuator(ValuationModel):
 
         position.last_pricing_at = ts
 
-        try:
-            equity = self.value_func(position.pair)
-        except Exception as e:
-            logger.error(
-                "Failed to get Hypercore vault equity for position %s: %s",
-                position, e,
+        if self.simulate:
+            # Anvil fork: Hyperliquid API has no data for forked Safe
+            equity = position.get_quantity()
+            logger.info(
+                "Hypercore vault position %s: simulate mode, using quantity %s as equity",
+                position, equity,
             )
-            raise
+        else:
+            try:
+                equity = self.value_func(position.pair)
+            except Exception as e:
+                logger.error(
+                    "Failed to get Hypercore vault equity for position %s: %s",
+                    position, e,
+                )
+                raise
 
         old_price = position.last_token_price
         old_value = position.get_value()

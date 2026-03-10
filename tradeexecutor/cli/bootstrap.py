@@ -119,6 +119,17 @@ def create_web3_config(
 
     :return web3:
         Connect to any passed JSON RPC URL
+
+    Environment variables
+    ---------------------
+
+    ``MAINNET_FORK``
+        Set to ``true`` to signal mainnet fork mode when Anvil forks
+        are created externally (outside the CLI).  This sets
+        ``web3config.mainnet_fork_simulation = True`` without launching
+        a new Anvil instance, enabling simulate-mode behaviour in
+        routing models (e.g. batched multicall in
+        :py:class:`~tradeexecutor.ethereum.vault.hypercore_routing.HypercoreVaultRouting`).
     """
     web3config = Web3Config.setup_from_environment(
         gas_price_method,
@@ -138,6 +149,13 @@ def create_web3_config(
         simulate=simulate,
         mev_endpoint_disabled=mev_endpoint_disabled,
     )
+
+    # Allow externally-created Anvil forks to signal mainnet fork mode
+    # without launching a new Anvil instance.  Used when the test harness
+    # forks mainnets itself and passes the Anvil RPC URLs as JSON_RPC_xxx.
+    if os.environ.get("MAINNET_FORK", "").lower() in ("true", "1", "yes"):
+        web3config.mainnet_fork_simulation = True
+
     return web3config
 
 
@@ -752,4 +770,37 @@ def configure_default_chain(
             # All chain_ids are 56 (BNB Chain)
             logger.warning("Legacy strategy module: makes assumption of BNB Chain")
             web3config.set_default_chain(ChainId.bsc)
+
+
+def check_universe_chains_have_rpc(
+    web3config: "Web3Config",
+    universe: "TradingStrategyUniverse",
+):
+    """Validate that all chains in the trading universe have RPC connections configured.
+
+    Call after create_trading_universe() to catch missing JSON-RPC
+    configurations early, rather than failing during trade execution.
+
+    :param web3config:
+        Web3 configuration with RPC connections.
+
+    :param universe:
+        Trading universe with chains to check.
+    """
+    if web3config is None:
+        return
+
+    configured_chains = set(web3config.connections.keys())
+    universe_chains = universe.data_universe.chains
+
+    missing = set(universe_chains) - configured_chains
+    if missing:
+        missing_names = ", ".join(c.get_name() for c in sorted(missing, key=lambda c: c.value))
+        configured_names = ", ".join(c.get_name() for c in sorted(configured_chains, key=lambda c: c.value))
+        raise RuntimeError(
+            f"Strategy universe uses chains that do not have JSON-RPC connections configured.\n"
+            f"Missing RPCs for: {missing_names}\n"
+            f"Configured RPCs for: {configured_names}\n"
+            f"Set the corresponding JSON_RPC_* environment variables."
+        )
 

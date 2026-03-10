@@ -37,7 +37,7 @@ class CreateTradingUniverseInput:
 
             chain_id = parameters.chain_id
 
-            debug_printer(f"Preparing trading universe on chain {chain_id.get_name()}")
+            debug_printer(f"Preparing trading universe on chain(s): {chain_id.get_name()}")
 
             exchange_universe = client.fetch_exchange_universe()
             targeted_exchanges = [exchange_universe.get_by_chain_and_slug(chain_id, slug) for slug in parameters.exchanges]
