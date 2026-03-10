@@ -12,11 +12,15 @@ def positions_at_end(
     state = input.state
     data = []
     for p in list(state.portfolio.open_positions.values())[0:10]:
-        data.append({
+        entry = {
             "position_id": p.position_id,
             "token": p.pair.base.token_symbol,
             "value": p.get_value(),
-        })
+        }
+        vault_name = p.pair.get_vault_name()
+        if vault_name:
+            entry["vault"] = vault_name
+        data.append(entry)
 
     df = pd.DataFrame(data)
     if len(df) > 0:
