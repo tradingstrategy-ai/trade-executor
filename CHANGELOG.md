@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add multichain gas balance check to validate hot wallet has native tokens on all universe chains at startup (2026-03-10)
+
 - Add cross-chain CCTP bridge + Hypercore vault lifecycle support with simulate mode for Anvil fork testing (2026-03-10)
 
 - Add Hypercore native vault position support for Lagoon vaults on HyperEVM with API-based valuation, routing, and CLI pipeline (2026-03-09)

@@ -452,11 +452,14 @@ class ExecutionLoop:
                     strategy_parameters=self.parameters,
                 )
 
-                # Validate all universe chains have RPC connections configured
+                # Validate all universe chains have RPC connections and gas
                 web3config = getattr(self.execution_model, 'web3config', None)
                 if live and web3config is not None:
-                    from tradeexecutor.cli.bootstrap import check_universe_chains_have_rpc
+                    from tradeexecutor.cli.bootstrap import check_universe_chains_have_rpc, check_universe_chains_have_gas
                     check_universe_chains_have_rpc(web3config, universe)
+                    wallet_address = self.execution_model.tx_builder.get_gas_wallet_address()
+                    min_gas_balance = getattr(self.execution_model, 'min_balance_threshold', 0)
+                    check_universe_chains_have_gas(web3config, universe, wallet_address, min_gas_balance)
 
                 # Check if our data is stagnated and we cannot execute the strategy
                 if self.max_data_delay is not None:
