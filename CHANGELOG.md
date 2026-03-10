@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Support multi-chain simulated Lagoon vault deployment with multiple Anvil forks per CLI invocation (2026-03-10)
+
 - Add cross-chain CCTP bridge + Hypercore vault lifecycle support with simulate mode for Anvil fork testing (2026-03-10)
 
 - Add Hypercore native vault position support for Lagoon vaults on HyperEVM with API-based valuation, routing, and CLI pipeline (2026-03-09)
