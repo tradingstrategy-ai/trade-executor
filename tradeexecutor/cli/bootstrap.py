@@ -119,6 +119,17 @@ def create_web3_config(
 
     :return web3:
         Connect to any passed JSON RPC URL
+
+    Environment variables
+    ---------------------
+
+    ``MAINNET_FORK``
+        Set to ``true`` to signal mainnet fork mode when Anvil forks
+        are created externally (outside the CLI).  This sets
+        ``web3config.mainnet_fork_simulation = True`` without launching
+        a new Anvil instance, enabling simulate-mode behaviour in
+        routing models (e.g. batched multicall in
+        :py:class:`~tradeexecutor.ethereum.vault.hypercore_routing.HypercoreVaultRouting`).
     """
     web3config = Web3Config.setup_from_environment(
         gas_price_method,
@@ -138,6 +149,13 @@ def create_web3_config(
         simulate=simulate,
         mev_endpoint_disabled=mev_endpoint_disabled,
     )
+
+    # Allow externally-created Anvil forks to signal mainnet fork mode
+    # without launching a new Anvil instance.  Used when the test harness
+    # forks mainnets itself and passes the Anvil RPC URLs as JSON_RPC_xxx.
+    if os.environ.get("MAINNET_FORK", "").lower() in ("true", "1", "yes"):
+        web3config.mainnet_fork_simulation = True
+
     return web3config
 
 

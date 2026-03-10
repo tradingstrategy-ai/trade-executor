@@ -737,6 +737,15 @@ class State:
             # CCTP bridge trades spend from source chain reserves
             if trade.is_buy():
                 self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
+        elif trade.is_vault():
+            # Vault trades (e.g. Hypercore vault deposits) may be on a satellite
+            # chain funded via a CCTP bridge position
+            if trade.is_buy():
+                bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+                if bridge_position is not None:
+                    self.portfolio.move_capital_from_bridge_to_spot_trade(trade, underflow_check=underflow_check)
+                else:
+                    self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
         elif trade.is_spot():
             if trade.is_buy():
                 # Check if this trade is on a satellite chain (funded by bridge position)
@@ -877,7 +886,7 @@ class State:
                     trade,
                 )
 
-        if trade.is_spot() and trade.is_sell():
+        if (trade.is_spot() or trade.is_vault()) and trade.is_sell():
             # For satellite chain trades, return capital to bridge position
             bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
             if bridge_position is not None:

@@ -526,6 +526,7 @@ def create_hypercore_vault_adapter(
     web3: Web3 | None = None,
     execution_model=None,
     strategy_universe: "TradingStrategyUniverse | None" = None,
+    simulate: bool = False,
 ) -> ProtocolRoutingConfig:
     """Create adapter for Hypercore native vault positions.
 
@@ -536,6 +537,14 @@ def create_hypercore_vault_adapter(
     :py:class:`~tradeexecutor.ethereum.vault.hypercore_routing.HypercoreVaultRouting`
     is created for on-chain deposit/withdrawal execution.
 
+    :param routing_id:
+        Protocol routing identifier for this adapter.
+
+    :param hypercore_vault_value_func:
+        Callable that takes a :py:class:`TradingPairIdentifier` and returns
+        the vault equity as a :py:class:`~decimal.Decimal`.
+        Created via :py:func:`~tradeexecutor.ethereum.vault.hypercore_vault.create_hypercore_vault_value_func`.
+
     :param web3:
         HyperEVM Web3 connection.
 
@@ -545,6 +554,12 @@ def create_hypercore_vault_adapter(
 
     :param strategy_universe:
         Strategy universe for reserve asset lookup.
+
+    :param simulate:
+        If ``True``, use batched multicall (all steps in one tx) instead of
+        two-phase deposit with escrow wait, and skip Hyperliquid API calls
+        for pricing/valuation.  Used in Anvil fork testing where the
+        Hyperliquid API has no data for the forked Safe.
     """
     from tradeexecutor.ethereum.vault.hypercore_valuation import (
         HypercoreVaultPricing,
@@ -555,12 +570,24 @@ def create_hypercore_vault_adapter(
     assert hypercore_vault_value_func is not None, \
         "hypercore_vault_value_func is required for Hypercore vault routing"
 
-    pricing_model = HypercoreVaultPricing(hypercore_vault_value_func)
-    valuation_model = HypercoreVaultValuator(hypercore_vault_value_func)
+    pricing_model = HypercoreVaultPricing(hypercore_vault_value_func, simulate=simulate)
+    valuation_model = HypercoreVaultValuator(hypercore_vault_value_func, simulate=simulate)
 
     routing_model = None
     if execution_model is not None and web3 is not None and strategy_universe is not None:
+        # For multichain deployments, use satellite vault on HyperEVM
+        # instead of the primary chain's LagoonVault
         lagoon_vault = execution_model.tx_builder.vault
+        satellite_vaults = getattr(execution_model, 'satellite_vaults', {})
+        hypercore_chain_id = web3.eth.chain_id
+        if hypercore_chain_id in satellite_vaults:
+            lagoon_vault = satellite_vaults[hypercore_chain_id]
+            logger.info(
+                "Using satellite vault on chain %d for Hypercore routing: %s",
+                hypercore_chain_id,
+                lagoon_vault.safe_address,
+            )
+
         deployer = execution_model.tx_builder.hot_wallet
         reserve = strategy_universe.get_reserve_asset()
         routing_model = HypercoreVaultRouting(
@@ -568,8 +595,13 @@ def create_hypercore_vault_adapter(
             lagoon_vault=lagoon_vault,
             deployer=deployer,
             reserve_token_address=reserve.address,
+            simulate=simulate,
         )
-        logger.info("Created HypercoreVaultRouting for vault %s", lagoon_vault.safe_address)
+        logger.info(
+            "Created HypercoreVaultRouting for vault %s (simulate=%s)",
+            lagoon_vault.safe_address,
+            simulate,
+        )
 
     return ProtocolRoutingConfig(
         routing_id=routing_id,
@@ -810,12 +842,22 @@ class EthereumPairConfigurator(PairConfigurator):
         elif routing_id.router_name == "aave-v3":
             return create_aave_v3_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "hypercore_vault":
+            # Resolve the correct web3 for the Hypercore vault chain
+            hypercore_web3 = self.web3
+            if self.web3config and len(self.strategy_universe.data_universe.chains) > 1:
+                for pair in self.strategy_universe.iterate_pairs():
+                    if pair.is_vault() and pair.other_data.get("vault_protocol") == "hypercore":
+                        vault_chain_id = pair.chain_id
+                        hypercore_web3 = self.web3config.get_connection(ChainId(vault_chain_id))
+                        break
+            simulate = getattr(self.execution_model, 'mainnet_fork', False) if self.execution_model else False
             return create_hypercore_vault_adapter(
                 routing_id,
                 getattr(self, "hypercore_vault_value_func", None),
-                web3=self.web3,
+                web3=hypercore_web3,
                 execution_model=self.execution_model,
                 strategy_universe=self.strategy_universe,
+                simulate=simulate,
             )
         elif routing_id.router_name == "vault":
             return create_vault_adapter(self.web3, self.strategy_universe, routing_id, web3config=self.web3config)

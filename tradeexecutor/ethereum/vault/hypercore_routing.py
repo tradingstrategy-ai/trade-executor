@@ -38,6 +38,7 @@ from eth_defi.gas import apply_gas
 from eth_defi.hotwallet import HotWallet
 from eth_defi.hyperliquid.api import fetch_user_vault_equity
 from eth_defi.hyperliquid.core_writer import (
+    build_hypercore_deposit_multicall,
     build_hypercore_deposit_phase1,
     build_hypercore_deposit_phase2,
     build_hypercore_withdraw_multicall,
@@ -123,6 +124,7 @@ class HypercoreVaultRouting(RoutingModel):
         lagoon_vault: LagoonVault,
         deployer: HotWallet,
         reserve_token_address: str,
+        simulate: bool = False,
     ):
         """
         :param web3:
@@ -136,6 +138,11 @@ class HypercoreVaultRouting(RoutingModel):
 
         :param reserve_token_address:
             USDC token address (lowercase).
+
+        :param simulate:
+            If True, use batched multicall (all 4 steps in one tx) instead of
+            two-phase deposit with escrow wait. For Anvil fork testing with
+            mock Hypercore Writer contracts.
         """
         super().__init__(
             allowed_intermediary_pairs={},
@@ -146,6 +153,7 @@ class HypercoreVaultRouting(RoutingModel):
         self.deployer = deployer
         self.chain_id = web3.eth.chain_id
         self.is_testnet = self.chain_id == 998
+        self.simulate = simulate
         self._session: HyperliquidSession | None = None
         self._activation_cost_raw: int = 0
 
@@ -281,17 +289,35 @@ class HypercoreVaultRouting(RoutingModel):
             )
 
         if trade.is_buy():
-            logger.info(
-                "Building Hypercore vault deposit phase 1: %d raw USDC to vault %s",
-                raw_amount,
-                vault_address,
-            )
-            fn = build_hypercore_deposit_phase1(
-                self.lagoon_vault,
-                evm_usdc_amount=raw_amount,
-            )
-            tx = self._sign_multicall(fn, notes=f"Hypercore deposit phase 1: {raw_amount} raw USDC")
-            return [tx]
+            if self.simulate:
+                logger.info(
+                    "Building Hypercore vault deposit (simulate, batched): %d raw USDC to vault %s",
+                    raw_amount,
+                    vault_address,
+                )
+                fn = build_hypercore_deposit_multicall(
+                    lagoon_vault=self.lagoon_vault,
+                    evm_usdc_amount=raw_amount,
+                    hypercore_usdc_amount=raw_amount,
+                    vault_address=vault_address,
+                    check_activation=False,
+                    chain_id=self.web3.eth.chain_id,
+                    asset_address=self.reserve_token_address,
+                )
+                tx = self._sign_multicall(fn, notes=f"Hypercore deposit (simulate): {raw_amount} raw USDC")
+                return [tx]
+            else:
+                logger.info(
+                    "Building Hypercore vault deposit phase 1: %d raw USDC to vault %s",
+                    raw_amount,
+                    vault_address,
+                )
+                fn = build_hypercore_deposit_phase1(
+                    self.lagoon_vault,
+                    evm_usdc_amount=raw_amount,
+                )
+                tx = self._sign_multicall(fn, notes=f"Hypercore deposit phase 1: {raw_amount} raw USDC")
+                return [tx]
 
         else:
             logger.info(
@@ -327,42 +353,56 @@ class HypercoreVaultRouting(RoutingModel):
         is created here and phase 2 is deferred to :py:meth:`settle_trade`.
         """
         logger.info(
-            "Preparing %d trades for Hypercore vault execution",
+            "Preparing %d trades for Hypercore vault execution (simulate=%s)",
             len(trades),
+            self.simulate,
         )
 
-        activated = is_account_activated(self.web3, self.safe_address)
+        # In multichain setups, GenericRouting creates a satellite wallet
+        # with the correct nonce for this chain and wraps it in a
+        # LagoonTransactionBuilder with the satellite vault.  Use these
+        # instead of the originals (which target the primary chain).
+        if hasattr(routing_state, 'tx_builder') and hasattr(routing_state.tx_builder, 'hot_wallet'):
+            self.deployer = routing_state.tx_builder.hot_wallet
+        if hasattr(routing_state, 'tx_builder') and hasattr(routing_state.tx_builder, 'vault'):
+            self.lagoon_vault = routing_state.tx_builder.vault
+
         activation_cost_raw = 0
 
-        if activated:
-            logger.info("Safe %s is activated on HyperCore", self.safe_address)
+        if self.simulate:
+            logger.info("Simulate mode — skipping activation check")
         else:
-            logger.info("Safe %s is NOT activated on HyperCore — will activate first", self.safe_address)
+            activated = is_account_activated(self.web3, self.safe_address)
 
-        has_buys = any(t.is_buy() for t in trades)
+            if activated:
+                logger.info("Safe %s is activated on HyperCore", self.safe_address)
+            else:
+                logger.info("Safe %s is NOT activated on HyperCore — will activate first", self.safe_address)
 
-        if not activated and has_buys:
-            logger.info("Activating Safe %s on HyperCore before deposit...", self.safe_address)
-            session = self._get_session()
-            activate_account(
-                web3=self.web3,
-                lagoon_vault=self.lagoon_vault,
-                deployer=self.deployer,
-                session=session,
-            )
-            self.deployer.sync_nonce(self.web3)
-            activation_cost_raw = DEFAULT_ACTIVATION_AMOUNT
-            self._activation_cost_raw = activation_cost_raw
-            logger.info(
-                "Safe %s activated on HyperCore (cost %d raw USDC from Safe)",
-                self.safe_address,
-                activation_cost_raw,
-            )
+            has_buys = any(t.is_buy() for t in trades)
+
+            if not activated and has_buys:
+                logger.info("Activating Safe %s on HyperCore before deposit...", self.safe_address)
+                session = self._get_session()
+                activate_account(
+                    web3=self.web3,
+                    lagoon_vault=self.lagoon_vault,
+                    deployer=self.deployer,
+                    session=session,
+                )
+                self.deployer.sync_nonce(self.web3)
+                activation_cost_raw = DEFAULT_ACTIVATION_AMOUNT
+                self._activation_cost_raw = activation_cost_raw
+                logger.info(
+                    "Safe %s activated on HyperCore (cost %d raw USDC from Safe)",
+                    self.safe_address,
+                    activation_cost_raw,
+                )
 
         for trade in trades:
             assert trade.is_vault(), f"Not a vault trade: {trade}"
 
-            if not trade.is_buy() and not activated:
+            if not self.simulate and not trade.is_buy() and not activated:
                 raise AssertionError(
                     f"Cannot withdraw from Hypercore vault: Safe {self.safe_address} "
                     f"is not activated on HyperCore."
@@ -425,6 +465,73 @@ class HypercoreVaultRouting(RoutingModel):
         tx_hash = self.web3.eth.send_raw_transaction(HexBytes(tx.signed_bytes))
         receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
         return tx, receipt
+
+    def _settle_deposit_simulate(
+        self,
+        web3: Web3,
+        state: State,
+        trade: TradeExecution,
+        receipts: Dict[str, dict],
+        stop_on_execution_failure: bool,
+    ):
+        """Settle a Hypercore vault deposit in simulate mode.
+
+        The batched multicall already executed all 4 steps in a single tx.
+        No escrow wait or phase 2 needed — just verify receipt and mark success.
+
+        :param web3:
+            HyperEVM Web3 connection (Anvil fork).
+
+        :param state:
+            Strategy state to update.
+
+        :param trade:
+            The vault deposit trade to settle.
+
+        :param receipts:
+            Transaction receipts from the broadcast step, keyed by tx hash.
+
+        :param stop_on_execution_failure:
+            If ``True``, raise on revert instead of marking trade as failed.
+        """
+        broadcast_tx = trade.blockchain_transactions[-1]
+        try:
+            receipt = receipts[HexBytes(broadcast_tx.tx_hash)]
+        except KeyError as e:
+            raise KeyError(
+                f"Could not find tx hash {broadcast_tx.tx_hash} in receipts: "
+                f"{list(receipts.keys())}"
+            ) from e
+
+        ts = get_block_timestamp(web3, receipt["blockNumber"])
+
+        if receipt["status"] != 1:
+            logger.error(
+                "Hypercore vault deposit (simulate) tx %s reverted (trade %s)",
+                broadcast_tx.tx_hash,
+                trade.trade_id,
+            )
+            report_failure(ts, state, trade, stop_on_execution_failure)
+            return
+
+        planned_reserve = trade.get_planned_reserve()
+        executed_reserve = planned_reserve
+        executed_amount = planned_reserve  # In simulate mode, 1:1 USDC deposit
+
+        state.mark_trade_success(
+            ts,
+            trade,
+            executed_price=1.0,
+            executed_amount=executed_amount,
+            executed_reserve=executed_reserve,
+            lp_fees=0,
+            native_token_price=0,
+        )
+
+        logger.info(
+            "Hypercore vault deposit (simulate) settled: %s USDC deposited",
+            executed_reserve,
+        )
 
     def _settle_deposit(
         self,
@@ -628,6 +735,9 @@ class HypercoreVaultRouting(RoutingModel):
         based on the trade direction.
         """
         if trade.is_buy():
-            self._settle_deposit(web3, state, trade, receipts, stop_on_execution_failure)
+            if self.simulate:
+                self._settle_deposit_simulate(web3, state, trade, receipts, stop_on_execution_failure)
+            else:
+                self._settle_deposit(web3, state, trade, receipts, stop_on_execution_failure)
         else:
             self._settle_withdrawal(web3, state, trade, receipts, stop_on_execution_failure)
