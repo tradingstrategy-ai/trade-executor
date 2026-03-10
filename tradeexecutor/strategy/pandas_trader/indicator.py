@@ -1158,12 +1158,71 @@ class DiskIndicatorStorage(IndicatorStorage):
         )
 
     @staticmethod
+    def _cleanup_stale_universe_caches(path: Path, universe_key: str) -> None:
+        """Remove old cache directories when pair composition has changed.
+
+        When the pair hash in the universe key changes (because vaults were
+        swapped), old cache directories become stale. This method finds and
+        removes them.
+
+        Only cleans up directories that match the same skeleton pattern
+        (chain, time bucket, date range, flags) but have a different pair
+        hash segment.
+        """
+        import re
+
+        universe_cache_path = path / universe_key
+
+        # Only clean up if the current cache directory does not already exist
+        # (meaning this is a fresh run with new pairs)
+        if universe_cache_path.exists():
+            return
+
+        if not path.exists():
+            return
+
+        # Parse the universe key to find the pair segment containing the hash.
+        # Pair segment format: digits + "p" + 8 hex chars, e.g. "91pa3f7c2d1"
+        pair_hash_pattern = re.compile(r"^\d+p[0-9a-f]{8}$")
+
+        parts = universe_key.split("_")
+        pair_segment_idx = None
+        for i, part in enumerate(parts):
+            if pair_hash_pattern.match(part):
+                pair_segment_idx = i
+                break
+
+        if pair_segment_idx is None:
+            # No hash in the key (< 5 pairs or old format), skip cleanup
+            return
+
+        # Build a glob pattern: replace the pair segment with a wildcard
+        glob_parts = list(parts)
+        glob_parts[pair_segment_idx] = "*"
+        glob_pattern = "_".join(glob_parts)
+
+        for candidate in path.glob(glob_pattern):
+            if candidate.is_dir() and candidate.name != universe_key:
+                logger.info(
+                    "Removing stale indicator cache directory: %s (replaced by %s)",
+                    candidate,
+                    universe_key,
+                )
+                shutil.rmtree(candidate)
+
+    @staticmethod
     def create_default(
         universe: TradingStrategyUniverse,
         default_path=DEFAULT_INDICATOR_STORAGE_PATH,
     ) -> "DiskIndicatorStorage":
-        """Get the indicator storage with the default cache path."""
-        return DiskIndicatorStorage(default_path, universe.get_cache_key())
+        """Get the indicator storage with the default cache path.
+
+        Automatically cleans up stale cache directories when the pair
+        composition has changed but the pair count has remained the same.
+        """
+        universe_key = universe.get_cache_key()
+        DiskIndicatorStorage._cleanup_stale_universe_caches(default_path, universe_key)
+        return DiskIndicatorStorage(default_path, universe_key)
 
 
 class MemoryIndicatorStorage(IndicatorStorage):
@@ -2176,9 +2235,11 @@ def calculate_and_load_indicators_inline(
     from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 
     if storage is None:
+        universe_key = strategy_universe.get_cache_key()
+        DiskIndicatorStorage._cleanup_stale_universe_caches(indicator_storage_path, universe_key)
         storage = DiskIndicatorStorage(
             indicator_storage_path,
-            strategy_universe.get_cache_key()
+            universe_key,
         )
 
     if create_indicators:

@@ -5,6 +5,12 @@
 
 - Breaking API changes
 
+- Fix indicator cache key for multipair universes to include a pair composition hash, preventing stale cache reuse when pairs change (2026-03-10)
+
+- Add chain and address columns to multipair analysis and vault position tables (2026-03-10)
+
+- Add equity curve by chain chart showing USD allocation per blockchain over time (2026-03-10)
+
 - Add `distribute-gas-funds` CLI command to bridge native gas tokens to hot wallets across all strategy universe chains via LI.FI (2026-03-10)
 
 - Add multichain gas balance check to validate hot wallet has native tokens on all universe chains at startup (2026-03-10)
