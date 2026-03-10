@@ -146,11 +146,26 @@ class Web3Config:
     #: Chain id for single chain strategies
     default_chain_id: Optional[ChainId] = None
 
-    #: Anvil backend we use for the transaction simuation
-    anvil: Optional[AnvilLaunch] = None
+    #: Anvil forks per chain (for multi-chain simulation)
+    anvils: dict = field(default_factory=dict)  # dict[ChainId, AnvilLaunch]
 
     #: Is this mainnet fork for simulation deployment
     mainnet_fork_simulation = False
+
+    @property
+    def anvil(self) -> Optional[AnvilLaunch]:
+        """Backward-compatible single Anvil accessor."""
+        if self.anvils:
+            return next(iter(self.anvils.values()))
+        return None
+
+    @anvil.setter
+    def anvil(self, value):
+        """Backward-compatible setter."""
+        if value is None:
+            self.anvils.clear()
+        else:
+            self.anvils[ChainId.anvil] = value
 
     @staticmethod
     def create_web3(
@@ -265,8 +280,9 @@ class Web3Config:
         :param level:
             Logging level to copy Anvil stdout
         """
-        if self.anvil is not None:
-            self.anvil.close(log_level=log_level)
+        for anvil_instance in self.anvils.values():
+            anvil_instance.close(log_level=log_level)
+        self.anvils.clear()
 
     def has_chain_configured(self) -> bool:
         """Do we have one or more chains configured."""
@@ -361,16 +377,10 @@ class Web3Config:
         # Lowercase all key names
         kwargs = {k.lower(): v for k, v in kwargs.items()}
 
-        simulation_already_created = False
-
         for chain_id in SUPPORTED_CHAINS:
             key = f"json_rpc_{_get_chain_slug(chain_id)}"
             configuration_line = kwargs.get(key)
             if configuration_line:
-
-                if simulate and simulation_already_created:
-                    raise AssertionError(f"Simulation can be used only with one chain, got {kwargs}")
-
                 web3config.connections[chain_id] = Web3Config.create_web3(
                     configuration_line,
                     gas_price_method,
@@ -380,9 +390,7 @@ class Web3Config:
                 )
 
                 if simulate:
-                    # TODO: Clean up API
-                    web3config.anvil = getattr(web3config.connections[chain_id], "anvil")
-                    simulation_already_created = True
+                    web3config.anvils[chain_id] = getattr(web3config.connections[chain_id], "anvil")
 
         return web3config
 
@@ -393,6 +401,9 @@ class Web3Config:
         """Is this connection a testing fork of a mainnet."""
 
         if self.mainnet_fork_simulation:
+            return True
+
+        if self.anvils:
             return True
 
         # TODO: The last condition here is for the legacy compat
