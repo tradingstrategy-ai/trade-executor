@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add `distribute-gas-funds` CLI command to bridge native gas tokens to hot wallets across all strategy universe chains via LI.FI (2026-03-10)
+
 - Add multichain gas balance check to validate hot wallet has native tokens on all universe chains at startup (2026-03-10)
 
 - Add cross-chain CCTP bridge + Hypercore vault lifecycle support with simulate mode for Anvil fork testing (2026-03-10)
