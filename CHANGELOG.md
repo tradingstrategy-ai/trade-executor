@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add Monad chain RPC support, Hypercore→HyperEVM chain mapping for vault deployment, and master-chain-multichain deployment test (2026-03-11)
+
 - Fix indicator cache key for multipair universes to include a pair composition hash, preventing stale cache reuse when pairs change (2026-03-10)
 
 - Add chain and address columns to multipair analysis and vault position tables (2026-03-10)

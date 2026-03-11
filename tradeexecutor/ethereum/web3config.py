@@ -32,6 +32,7 @@ SUPPORTED_CHAINS = [
     ChainId.base_sepolia,
     ChainId.hyperliquid,
     ChainId.hyperliquid_testnet,
+    ChainId.monad,
 ]
 
 #: Override broken slugs in the tradingstrategy library.
@@ -102,6 +103,7 @@ def collect_rpc_kwargs(
     json_rpc_base_sepolia=None,
     json_rpc_hyperliquid=None,
     json_rpc_hyperliquid_testnet=None,
+    json_rpc_monad=None,
     chain_name: str | None = None,
 ) -> dict:
     """Collect JSON-RPC kwargs and optionally filter to a single chain.
@@ -124,6 +126,7 @@ def collect_rpc_kwargs(
         json_rpc_base_sepolia=json_rpc_base_sepolia,
         json_rpc_hyperliquid=json_rpc_hyperliquid,
         json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
+        json_rpc_monad=json_rpc_monad,
     )
     if chain_name:
         rpc_kwargs = filter_rpc_kwargs_by_chain(chain_name, **rpc_kwargs)
