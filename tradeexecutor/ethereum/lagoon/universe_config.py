@@ -113,6 +113,13 @@ def translate_trading_universe_to_lagoon_config(
         all_chain_ids.add(pair.base.chain_id)
         all_chain_ids.add(pair.quote.chain_id)
 
+    # Hypercore native (chain_id=9999) is not a real EVM chain — remove it
+    # early so it doesn't appear in slug mapping or validation.
+    # Whitelisting is handled on HyperEVM (999) instead.
+    HYPERCORE_NATIVE_CHAIN_ID = 9999
+    HYPEREVM_CHAIN_ID = ChainId.hyperliquid.value  # 999
+    all_chain_ids.discard(HYPERCORE_NATIVE_CHAIN_ID)
+
     # Map chain IDs to slugs
     chain_id_to_slug = {cid: ChainId(cid).get_slug() for cid in all_chain_ids}
     slug_to_chain_id = {slug: cid for cid, slug in chain_id_to_slug.items()}
@@ -154,13 +161,18 @@ def translate_trading_universe_to_lagoon_config(
             if protocol == "gmx":
                 gmx_chain_ids.add(pair.base.chain_id)
 
-    # Collect Hypercore vault addresses per chain
+    # Collect Hypercore vault addresses per chain.
+    # Hypercore native vaults (chain_id=9999) are accessed via HyperEVM's
+    # CoreWriter contract — redirect their whitelisting to HyperEVM (999).
     hypercore_vaults_per_chain: dict[int, list[str]] = {}
     for pair in universe.iterate_pairs():
         if pair.is_vault() and pair.other_data.get("vault_protocol") == "hypercore":
             vault_addr = pair.other_data.get("hypercore_vault_address")
             if vault_addr:
                 chain_id = pair.base.chain_id
+                # Redirect Hypercore native → HyperEVM for deployment
+                if chain_id == HYPERCORE_NATIVE_CHAIN_ID:
+                    chain_id = HYPEREVM_CHAIN_ID
                 hypercore_vaults_per_chain.setdefault(chain_id, []).append(vault_addr)
 
     # Collect unique token addresses per chain (used when any_asset=False)
