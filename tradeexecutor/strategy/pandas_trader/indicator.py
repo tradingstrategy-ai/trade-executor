@@ -2271,6 +2271,70 @@ def calculate_and_load_indicators_inline(
     )
 
 
+def load_indicators_inline(
+    strategy_universe: TradingStrategyUniverse,
+    create_indicators: CreateIndicatorsProtocol,
+    parameters: StrategyParameters,
+    execution_context: ExecutionContext = notebook_execution_context,
+    indicator_storage_path=DEFAULT_INDICATOR_STORAGE_PATH,
+) -> "tradeexecutor.strategy.pandas_trader.strategy_input.StrategyInputIndicators":
+    """Load pre-calculated indicators from disk cache.
+
+    - Use after grid search or optimiser has cached indicators to disk
+    - Does NOT calculate missing indicators — only loads what is available
+    - Rebuilds the indicator set from ``create_indicators`` and ``parameters``
+      to know which indicator keys to look up on disk
+    - Companion to :py:func:`calculate_and_load_indicators_inline`
+
+    Example:
+
+    .. code-block:: python
+
+        # After grid search, load indicators for the best result
+        from tradeexecutor.strategy.pandas_trader.indicator import load_indicators_inline
+
+        indicator_data = load_indicators_inline(
+            strategy_universe=strategy_universe,
+            create_indicators=indicators.create_indicators,
+            parameters=best_pick.combination.to_strategy_parameters(),
+        )
+
+    :param strategy_universe:
+        The trading universe
+
+    :param create_indicators:
+        The strategy's ``create_indicators`` function, same one passed to the optimiser
+
+    :param parameters:
+        Strategy parameters for the combination to load
+        (use ``combination.to_strategy_parameters()``)
+
+    :param execution_context:
+        The execution context
+
+    :param indicator_storage_path:
+        Path to the indicator cache directory
+    """
+    from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
+
+    storage = DiskIndicatorStorage.create_default(strategy_universe, default_path=indicator_storage_path)
+    indicator_set = prepare_indicators(create_indicators, parameters, strategy_universe, execution_context)
+    all_combinations = set(indicator_set.generate_combinations(strategy_universe))
+
+    indicator_results = load_indicators(
+        strategy_universe,
+        storage,
+        indicator_set,
+        all_combinations,
+    )
+
+    return StrategyInputIndicators(
+        strategy_universe=strategy_universe,
+        indicator_results=indicator_results,
+        available_indicators=indicator_set,
+    )
+
+
 def warm_up_indicator_cache(
     strategy_universe: TradingStrategyUniverse,
     storage: DiskIndicatorStorage,
