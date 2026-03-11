@@ -1085,10 +1085,11 @@ class ExecutionLoop:
 
         # Validate the backtest state at the end.
         # We want to avoid situation where we have stored
-        # non-serialisable types in the state
-        if not (self.execution_context.grid_search or self.execution_context.optimiser):
-            # Save time in grid seach of not doing unnecessary validation
-            # (Very unlikely to break)
+        # non-serialisable types in the state.
+        # Skip for grid search, optimiser and backtesting
+        # as the validation is expensive (~3s for dataclasses_json serialisation)
+        # and unlikely to find issues in these modes.
+        if not (self.execution_context.grid_search or self.execution_context.optimiser or self.execution_context.mode == ExecutionMode.backtesting):
             validate_state_serialisation(state)
 
         return self.debug_dump_state
