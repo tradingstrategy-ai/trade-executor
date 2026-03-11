@@ -119,6 +119,8 @@ def visualise_grid_search_equity_curves(
     alpha=0.7,
     label_func: Callable = None,
     annotation_xshift=200,
+    group_by: str | None = None,
+    group_by_secondary: str | None = None,
 ) -> Figure:
     """Draw multiple equity curves in the same chart.
 
@@ -128,53 +130,22 @@ def visualise_grid_search_equity_curves(
 
     - Benchmark against hold all cash
 
-    TODO: A lot of parameter descriptions are not up-to-date.
+    - Optionally group and colour curves by parameter values
 
     .. note ::
 
         Only good up to ~hundreds results. If more than thousand result, rendering takes too long time.
 
-    Example that draws equity curve comparison with custom labels:
+    Example with grouped equity curves coloured by parameter:
 
     .. code-block:: python
-
-        from tradeexecutor.visual.grid_search_basic import visualise_grid_search_equity_curves
-        from tradeexecutor.analysis.multi_asset_benchmark import get_benchmark_data
-
-        # Automatically create BTC and ETH buy and hold benchmark if present
-        # in the trading universe
-        benchmark_indexes = get_benchmark_data(
-            strategy_universe,
-            cumulative_with_initial_cash=Parameters.initial_cash,
-        )
 
         fig = visualise_grid_search_equity_curves(
             grid_search_results,
             benchmark_indexes=benchmark_indexes,
             log_y=False,
-            label_func=lambda x: f"Decision cycle {x.get_parameter('cycle_duration').value}, CARG {x.get_cagr():.0%}, Sharpe {x.get_sharpe():.1f}",
-        )
-        fig.show()
-
-    Example that draws equity curves of a grid search results.
-
-    .. code-block:: python
-
-        from tradeexecutor.visual.grid_search_basic import visualise_grid_search_equity_curves
-        from tradeexecutor.analysis.multi_asset_benchmark import get_benchmark_data
-
-        # Automatically create BTC and ETH buy and hold benchmark if present
-        # in the trading universe
-        benchmark_indexes = get_benchmark_data(
-            strategy_universe,
-            cumulative_with_initial_cash=ShiftedStrategyParameters.initial_cash,
-        )
-
-        fig = visualise_grid_search_equity_curves(
-            grid_search_results,
-            name="8h clock shift, stop loss added and adjusted momentum",
-            benchmark_indexes=benchmark_indexes,
-            log_y=False,
+            group_by="weighting_method",
+            group_by_secondary="weight_function",
         )
         fig.show()
 
@@ -187,39 +158,30 @@ def visualise_grid_search_equity_curves(
         DataFrame containing multiple series.
 
         - Asset name is the series name.
-        - Setting `colour` for `pd.Series.attrs` allows you to override the colour of the index
+        - Setting ``colour`` for ``pd.Series.attrs`` allows you to override the colour of the index
 
     :param height:
         Chart height in pixels
 
     :param colour:
-        Colour of the equity curve e.g. "rgba(160, 160, 160, 0.5)". If provided, all equity curves will be drawn with this colour.
-
-    :param start_at:
-        When the backtest started
-
-    :param end_at:
-        When the backtest ended
-
-    :param additional_indicators:
-        Additional technical indicators drawn on this chart.
-
-        List of indicator names.
-
-        The indicators must be plotted earlier using `state.visualisation.plot_indicator()`.
-
-        **Note**: Currently not very useful due to Y axis scale
+        Colour of the equity curve e.g. ``"rgba(160, 160, 160, 0.5)"``.
+        If provided, all equity curves will be drawn with this colour.
 
     :param log_y:
         Use logarithmic Y-axis.
 
-        Because we accumulate larger treasury over time,
-        the swings in the value will be higher later.
-        We need to use a logarithmic Y axis so that we can compare the performance
-        early in the strateg and late in the strategy.
-
     :param label_func:
-        Create custom legend to compare
+        Create custom annotation labels for individual curves.
+
+    :param group_by:
+        Primary parameter name to group curves by (e.g. ``"weighting_method"``).
+        Each unique value gets a distinct colour family.
+        When not set, all curves are drawn in greyscale.
+
+    :param group_by_secondary:
+        Secondary parameter name to group curves by (e.g. ``"weight_function"``).
+        Each unique value gets a distinct line dash style.
+        Only used when ``group_by`` is also set.
 
     """
 
@@ -228,28 +190,93 @@ def visualise_grid_search_equity_curves(
 
     fig = Figure()
 
-    colors = _generate_grey_alpha(len(results))
-
     results = order_grid_search_results_by_metric(results)
+
+    use_grouping = group_by is not None
+
+    if use_grouping:
+        # Build colour and dash mappings from unique parameter values
+        primary_values = list(dict.fromkeys(
+            str(r.get_parameter(group_by)) for r in results
+        ))
+        group_hues = _get_group_colour_palette(len(primary_values))
+        primary_colour_map = {val: group_hues[i] for i, val in enumerate(primary_values)}
+
+        dash_styles = ["solid", "dash", "dot", "dashdot", "longdash", "longdashdot"]
+        if group_by_secondary is not None:
+            secondary_values = list(dict.fromkeys(
+                str(r.get_parameter(group_by_secondary)) for r in results
+            ))
+            secondary_dash_map = {val: dash_styles[i % len(dash_styles)] for i, val in enumerate(secondary_values)}
+        else:
+            secondary_dash_map = None
+
+        # Pre-compute per-group rank for opacity
+        from collections import defaultdict
+        group_counts = defaultdict(int)
+        group_indices = defaultdict(int)
+        for r in results:
+            key = str(r.get_parameter(group_by))
+            group_counts[key] += 1
+
+        shown_legend_groups = set()
+    else:
+        colors = _generate_grey_alpha(len(results))
 
     for result in results:
         curve = result.equity_curve
-        label = result.get_truncated_label()
-        template =_get_hover_template(result)
+        template = _get_hover_template(result)
 
         if label_func is not None:
             text = label_func(result)
         else:
             text = None
 
-        scatter = Scatter(
-            x=curve.index,
-            y=curve,
-            mode="lines",
-            name="",  # Hides hover legend, use hovertext only
-            line=dict(color=colors.pop(0)),
-            showlegend=False,
-        )
+        if use_grouping:
+            primary_val = str(result.get_parameter(group_by))
+            r, g, b = primary_colour_map[primary_val]
+
+            # Opacity: best in group = most opaque, worst = least
+            count = group_counts[primary_val]
+            rank = group_indices[primary_val]
+            group_indices[primary_val] += 1
+            opacity = 0.9 - (0.6 * rank / max(count - 1, 1))
+
+            line_colour = f"rgba({r},{g},{b},{opacity:.2f})"
+
+            if secondary_dash_map is not None:
+                secondary_val = str(result.get_parameter(group_by_secondary))
+                dash = secondary_dash_map[secondary_val]
+                legend_group = f"{primary_val} / {secondary_val}"
+                legend_name = f"{primary_val} / {secondary_val}"
+            else:
+                dash = "solid"
+                legend_group = primary_val
+                legend_name = primary_val
+
+            show_legend = legend_group not in shown_legend_groups
+            if show_legend:
+                shown_legend_groups.add(legend_group)
+
+            scatter = Scatter(
+                x=curve.index,
+                y=curve,
+                mode="lines",
+                name=legend_name,
+                line=dict(color=line_colour, dash=dash),
+                legendgroup=legend_group,
+                showlegend=show_legend,
+            )
+        else:
+            scatter = Scatter(
+                x=curve.index,
+                y=curve,
+                mode="lines",
+                name="",
+                line=dict(color=colors.pop(0)),
+                showlegend=False,
+            )
+
         fig.add_trace(scatter)
 
         if text:
@@ -266,7 +293,7 @@ def visualise_grid_search_equity_curves(
                 ax=20 + annotation_xshift,
                 ay=-20,
                 font=dict(size=12, color=text_color, weight='bold'),
-                xshift=0,  # Small shift to avoid overlap with line end
+                xshift=0,
                 yshift=0
             )
 
@@ -290,18 +317,37 @@ def visualise_grid_search_equity_curves(
         fig.update_yaxes(title="Value $", showgrid=False)
     fig.update_xaxes(rangeslider={"visible": False})
 
-    # Move legend to the bottom so we have more space for
-    # time axis in narrow notebook views
+    # Place legend below the chart so it does not overlap curves
     # https://plotly.com/python/legend/
     fig.update_layout(legend=dict(
         orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="right",
-        x=1
+        yanchor="top",
+        y=-0.15,
+        xanchor="left",
+        x=0
     ))
 
     return fig
+
+
+def _get_group_colour_palette(num_groups):
+    """Return a list of distinct RGB tuples for grouping equity curves.
+
+    Uses well-separated hues that remain distinguishable
+    when rendered with varying opacity.
+    """
+    base_colours = [
+        (31, 119, 180),   # blue
+        (214, 39, 40),    # red
+        (44, 160, 44),    # green
+        (255, 127, 14),   # orange
+        (148, 103, 189),  # purple
+        (23, 190, 207),   # teal
+        (188, 189, 34),   # olive
+        (227, 119, 194),  # pink
+    ]
+    # Cycle if more groups than base colours
+    return [base_colours[i % len(base_colours)] for i in range(num_groups)]
 
 
 def _generate_broad_bluered_colors(num_colors, alpha):
