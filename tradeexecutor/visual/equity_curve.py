@@ -819,7 +819,8 @@ def calculate_rolling_sharpe(
     returns: pd.Series,
     freq: pd.DateOffset | str | None = "D",
     periods=90,  # 90 Days
-) -> pd.Series:
+    diagnose=False,
+) -> pd.Series | pd.DataFrame:
     """Calculate rolling Sharpe ration.
 
     - Declining rolling :term:`sharpe` means that the alpha of the :term:`strategy is decaying <strategy decay>`.
@@ -860,6 +861,11 @@ def calculate_rolling_sharpe(
 
     :param periods:
         How many periods of data we sample for rolling sharpe.
+
+    :param diagnose:
+        If True, return a DataFrame with intermediate values
+        (resampled_returns, rolling_mean, rolling_std, rolling_sharpe)
+        instead of just the Sharpe series. Useful for debugging jumps.
     """
 
     if freq is not None:
@@ -868,9 +874,20 @@ def calculate_rolling_sharpe(
         resampled_returns = returns
 
     rolling = resampled_returns.rolling(window=periods)
+    rolling_mean = rolling.mean()
+    rolling_std = rolling.std()
     rolling_sharpe = np.sqrt(periods) * (
-        rolling.mean() / rolling.std()
+        rolling_mean / rolling_std
     )
+
+    if diagnose:
+        df = pd.DataFrame({
+            "resampled_returns": resampled_returns,
+            "rolling_mean": rolling_mean,
+            "rolling_std": rolling_std,
+            "rolling_sharpe": rolling_sharpe,
+        })
+        return df.dropna()
 
     # Remove NA entries at the beginning of the series
     return rolling_sharpe.dropna()

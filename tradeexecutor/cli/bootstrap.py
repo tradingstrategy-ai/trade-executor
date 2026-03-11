@@ -790,7 +790,15 @@ def check_universe_chains_have_rpc(
     if web3config is None:
         return
 
+    from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
+
     configured_chains = set(web3config.connections.keys())
+
+    # Skip check when running on test chains (e.g. Anvil forks of mainnet)
+    # because the fork simulates a different chain than its chain ID suggests
+    if configured_chains & set(TEST_CHAIN_IDS):
+        return
+
     universe_chains = universe.data_universe.chains
 
     missing = set(universe_chains) - configured_chains

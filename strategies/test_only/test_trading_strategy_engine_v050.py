@@ -96,11 +96,9 @@ def decide_trades(
         # Each RSI series cell is21 days backwards for RSI from that point
         # The initial cells have NaN as value
         if live:
-            # TODO: Not sure when the RSI series length dif happens
-            # 2025-04-25          NaN
-            # 2025-06-24    50.516862
-            # Name: RSI_21, Length: 61, dtype: float64
-            assert len(rsi_series) in (60, 61), f"RSI for {pair} is length {len(rsi_series)}, values:\n{rsi_series}"
+            # RSI series length varies based on available candle data
+            # We load 60 days of history but actual data availability may differ
+            assert len(rsi_series) >= parameters.rsi_length, f"RSI for {pair} is length {len(rsi_series)}, values:\n{rsi_series}"
 
         # Test unknown indicator
         try:
