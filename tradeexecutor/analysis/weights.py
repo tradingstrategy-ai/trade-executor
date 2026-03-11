@@ -5,7 +5,10 @@
 - See :py:func:`visualise_weights` for usage
 
 """
+from __future__ import annotations
+
 import enum
+from collections import defaultdict
 
 import pandas as pd
 from plotly.graph_objs import Figure
@@ -13,6 +16,7 @@ import plotly.express as px
 import plotly.colors as colors
 
 from tradeexecutor.state.state import State
+from tradeexecutor.state.types import USDollarAmount
 
 class LegendMode(enum.Enum):
     side = "side"
@@ -255,6 +259,7 @@ def visualise_weights(
 
 def calculate_weights_statistics(
     weights: pd.Series,
+    state: State | None = None,
 ) -> pd.DataFrame:
     """Get statistics of weights during the portfolio construction.
 
@@ -262,6 +267,10 @@ def calculate_weights_statistics(
 
     :param weights:
         US Dollar weights as series of MultiIndex(timestamp, pair)
+
+    :param state:
+        If provided, also calculate biggest winner/loser
+        for individual positions and by vault (aggregated).
 
     :return:
         Human-readable table of statistics
@@ -403,11 +412,152 @@ def calculate_weights_statistics(
         "Unit": "%",
     })
 
+    #
+    # Biggest winner/loser by individual position and by vault
+    #
+    if state is not None:
+        winner_loser_stats = _calculate_winner_loser_stats(state)
+        stats.extend(winner_loser_stats)
+
     df = pd.DataFrame(stats)
 
     df = df.set_index("Name")
     df["Value"] = df["Value"].apply(lambda x: "{:,.2f}".format(x))
     return df
+
+
+def _make_vault_link(address: str) -> str:
+    """Create a clickable link to the vault on Trading Strategy."""
+    return f"https://tradingstrategy.ai/trading-view/vaults/address/{address}"
+
+
+def _calculate_winner_loser_stats(state: State) -> list[dict]:
+    """Calculate biggest winner/loser for individual positions and by vault.
+
+    :return:
+        List of stat dicts with Name, At, Pair, Value, Unit, Address, Link keys.
+    """
+    stats = []
+    positions = list(state.portfolio.get_all_positions())
+
+    # Skip reserve/credit supply positions
+    positions = [p for p in positions if not p.is_credit_supply()]
+
+    if not positions:
+        return stats
+
+    # Individual position winner/loser (by USD profit)
+    best_pos = max(positions, key=lambda p: p.get_total_profit_usd())
+    worst_pos = min(positions, key=lambda p: p.get_total_profit_usd())
+
+    stats.append({
+        "Name": "Biggest winner (position)",
+        "At": best_pos.opened_at,
+        "Pair": best_pos.pair.get_chart_label(),
+        "Value": best_pos.get_total_profit_usd(),
+        "Unit": "USD",
+        "Address": best_pos.pair.pool_address,
+        "Link": _make_vault_link(best_pos.pair.pool_address),
+    })
+
+    stats.append({
+        "Name": "Biggest loser (position)",
+        "At": worst_pos.opened_at,
+        "Pair": worst_pos.pair.get_chart_label(),
+        "Value": worst_pos.get_total_profit_usd(),
+        "Unit": "USD",
+        "Address": worst_pos.pair.pool_address,
+        "Link": _make_vault_link(worst_pos.pair.pool_address),
+    })
+
+    # Individual position winner/loser (by % profit)
+    best_pct_pos = max(positions, key=lambda p: p.get_total_profit_percent())
+    worst_pct_pos = min(positions, key=lambda p: p.get_total_profit_percent())
+
+    stats.append({
+        "Name": "Biggest winner (position)",
+        "At": best_pct_pos.opened_at,
+        "Pair": best_pct_pos.pair.get_chart_label(),
+        "Value": best_pct_pos.get_total_profit_percent() * 100,
+        "Unit": "%",
+        "Address": best_pct_pos.pair.pool_address,
+        "Link": _make_vault_link(best_pct_pos.pair.pool_address),
+    })
+
+    stats.append({
+        "Name": "Biggest loser (position)",
+        "At": worst_pct_pos.opened_at,
+        "Pair": worst_pct_pos.pair.get_chart_label(),
+        "Value": worst_pct_pos.get_total_profit_percent() * 100,
+        "Unit": "%",
+        "Address": worst_pct_pos.pair.pool_address,
+        "Link": _make_vault_link(worst_pct_pos.pair.pool_address),
+    })
+
+    # Aggregate by vault (chart label)
+    # Track address per vault label for links
+    vault_profits: dict[str, USDollarAmount] = defaultdict(float)
+    vault_bought: dict[str, USDollarAmount] = defaultdict(float)
+    vault_address: dict[str, str] = {}
+    for p in positions:
+        label = p.pair.get_chart_label()
+        vault_profits[label] += p.get_total_profit_usd()
+        vault_bought[label] += p.get_total_bought_usd()
+        vault_address[label] = p.pair.pool_address
+
+    if vault_profits:
+        best_vault = max(vault_profits, key=vault_profits.get)
+        worst_vault = min(vault_profits, key=vault_profits.get)
+
+        stats.append({
+            "Name": "Biggest winner (vault)",
+            "At": "",
+            "Pair": best_vault,
+            "Value": vault_profits[best_vault],
+            "Unit": "USD",
+            "Address": vault_address[best_vault],
+            "Link": _make_vault_link(vault_address[best_vault]),
+        })
+
+        stats.append({
+            "Name": "Biggest loser (vault)",
+            "At": "",
+            "Pair": worst_vault,
+            "Value": vault_profits[worst_vault],
+            "Unit": "USD",
+            "Address": vault_address[worst_vault],
+            "Link": _make_vault_link(vault_address[worst_vault]),
+        })
+
+        # Vault winner/loser by % (profit / total bought)
+        vault_pct = {
+            label: (vault_profits[label] / vault_bought[label] * 100) if vault_bought[label] else 0
+            for label in vault_profits
+        }
+        best_pct_vault = max(vault_pct, key=vault_pct.get)
+        worst_pct_vault = min(vault_pct, key=vault_pct.get)
+
+        stats.append({
+            "Name": "Biggest winner (vault)",
+            "At": "",
+            "Pair": best_pct_vault,
+            "Value": vault_pct[best_pct_vault],
+            "Unit": "%",
+            "Address": vault_address[best_pct_vault],
+            "Link": _make_vault_link(vault_address[best_pct_vault]),
+        })
+
+        stats.append({
+            "Name": "Biggest loser (vault)",
+            "At": "",
+            "Pair": worst_pct_vault,
+            "Value": vault_pct[worst_pct_vault],
+            "Unit": "%",
+            "Address": vault_address[worst_pct_vault],
+            "Link": _make_vault_link(vault_address[worst_pct_vault]),
+        })
+
+    return stats
 
 
 def render_weight_series_table(weights_series: pd.Series) -> pd.DataFrame:

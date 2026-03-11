@@ -53,6 +53,11 @@ class ChartInput:
 
     #: Passed when setting up `ChartBacktestRenderingSetup`.
     #:
+    #: Use :py:meth:`start_at` for access.
+    backtest_start_at: datetime.datetime | None = None
+
+    #: Passed when setting up `ChartBacktestRenderingSetup`.
+    #:
     #: Use :py:meth:`end_at` for access.
     backtest_end_at: datetime.datetime | None = None
 
@@ -83,6 +88,22 @@ class ChartInput:
     @property
     def backtest(self) -> bool:
         return not self.execution_context.live_trading
+
+    @property
+    def start_at(self) -> datetime.datetime | None:
+        """The start timestamp of the charting.
+
+        - Backtesting: backtest start timestamp
+        - Live trading: The strategy start timestamp
+        """
+        if self.execution_context.live_trading:
+            if self.state:
+                start_at, _ = self.state.get_strategy_start_and_end()
+                return start_at.to_pydatetime() if start_at else None
+            else:
+                return None
+        else:
+            return self.backtest_start_at
 
     @property
     def end_at(self) -> datetime.datetime:

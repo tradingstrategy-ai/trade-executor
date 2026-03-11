@@ -60,7 +60,10 @@ def available_trading_pairs(
 
     fig = px.line(df, title='Trading pairs available for strategy to trade')
     fig.update_yaxes(title="Number of assets")
-    fig.update_xaxes(title="Time")
+    xaxis_kwargs = dict(title="Time")
+    if input.start_at or input.end_at:
+        xaxis_kwargs["range"] = [input.start_at, input.end_at]
+    fig.update_xaxes(**xaxis_kwargs)
 
     if with_dataframe:
         return fig, df

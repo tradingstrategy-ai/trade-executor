@@ -213,7 +213,9 @@ class ChartBacktestRenderingSetup:
     #: Backtesting or live trading state
     state: State | None = None
 
-    #: Backtest end time hint, if backtest is not run yet.
+    #: Backtest start time hint, if backtest is not run yet.
+    backtest_start_at: datetime.datetime | None = None
+
     #: Backtest end time hint, if backtest is not run yet.
     backtest_end_at: datetime.datetime | None = None
 
@@ -265,7 +267,8 @@ class ChartBacktestRenderingSetup:
             strategy_input_indicators=self.strategy_input_indicators,
             pairs=self.pairs,
             execution_context=self.execution_context,
-            backtest_end_at= self.backtest_end_at,
+            backtest_start_at=self.backtest_start_at,
+            backtest_end_at=self.backtest_end_at,
             state=self.state,
         )
         result = func(input, **kwargs)

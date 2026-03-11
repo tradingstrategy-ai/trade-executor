@@ -69,7 +69,7 @@ def weight_allocation_statistics(
     """Statistics about portfolio mixture.
     """
     weights_series = calculate_asset_weights(input.state)
-    stats = calculate_weights_statistics(weights_series)
+    stats = calculate_weights_statistics(weights_series, state=input.state)
     return stats
 
 
