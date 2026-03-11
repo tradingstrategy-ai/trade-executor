@@ -8,6 +8,7 @@ See :ref:`trading universe` for more information.
 
 import contextlib
 import datetime
+import hashlib
 import pickle
 import textwrap
 from abc import abstractmethod
@@ -270,7 +271,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         if self.get_pair_count() < 5:
             pair_str = "-".join([p.get_ticker() for p in self.data_universe.pairs.iterate_pairs()])
         else:
-            pair_str = str(self.get_pair_count())
+            pair_ids = sorted(int(pid) for pid in self.data_universe.pairs.get_all_pair_ids())
+            pair_hash = hashlib.md5("-".join(str(pid) for pid in pair_ids).encode()).hexdigest()[:8]
+            pair_str = f"{self.get_pair_count()}p{pair_hash}"
 
         # No candle data and no date hints — use a simplified key
         if not self.has_candle_data() and self.data_universe.start_hint is None:

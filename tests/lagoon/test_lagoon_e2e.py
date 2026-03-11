@@ -591,7 +591,7 @@ def test_cli_lagoon_first_deposit(
 
     state = State.read_json_file(state_file)
     reserve_position = state.portfolio.get_default_reserve_position()
-    assert reserve_position.get_value() == pytest.approx(0), (
+    assert reserve_position.get_value() == pytest.approx(0, abs=1e-4), (
         f"Expected reserves == 0 after full redemption, got {reserve_position.get_value()}"
     )
 

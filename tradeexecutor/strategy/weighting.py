@@ -207,3 +207,20 @@ def weight_passthrouh(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[PairI
     items = sorted(items, key=lambda i: i[0])
 
     return {pair_id: abs(signal) for pair_id, signal in items}
+
+
+def weight_by_log(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[PairInternalId, Weight]:
+    """Use logarithmic weighting to dampen high signals.
+
+    - Applies log(1 + signal) to each signal's absolute value
+
+    - Higher signals still get more weight, but the relationship is logarithmic
+      rather than linear
+
+    - Useful when raw signal values span a wide range and you don't want
+      top signals to dominate the portfolio
+    """
+    import math
+
+    items = sorted(alpha_signals.items(), key=lambda i: i[0])
+    return {pair_id: math.log(1 + abs(signal)) for pair_id, signal in items}

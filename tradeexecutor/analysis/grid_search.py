@@ -238,6 +238,10 @@ def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResul
     # KeyError: 'Styler.apply and .map are not compatible with non-unique index or columns'
     df = df[~df.index.duplicated(keep='first')]
 
+    # Set NaN cells to white background, overriding any gradient
+    def highlight_nan_white(s):
+        return ['background-color: white' if pd.isna(v) else '' for v in s]
+
     formatted = df.style.background_gradient(
         axis = 0,
         subset = value_cols,
@@ -249,8 +253,12 @@ def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResul
         color = 'darkgreen',
         axis = 0,
         subset = value_cols,
+    ).apply(
+        highlight_nan_white,
+        subset = value_cols,
     ).format(
-        format_dict
+        format_dict,
+        na_rep="",
     )
     return formatted
 

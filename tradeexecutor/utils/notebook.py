@@ -170,6 +170,25 @@ def set_large_plotly_chart_font(
     pio.templates.default = "custom"
 
 
+def display_dataframe_with_html(df: pd.DataFrame):
+    """Display a DataFrame in a notebook with clickable HTML links.
+
+    Use instead of ``display(df)`` when the DataFrame contains
+    HTML content such as ``<a>`` links that should be rendered.
+
+    Example:
+
+    .. code-block:: python
+
+        from tradeexecutor.utils.notebook import display_dataframe_with_html
+
+        display_dataframe_with_html(stats)
+
+    """
+    from IPython.display import display, HTML
+    display(HTML(df.to_html(escape=False)))
+
+
 def set_notebook_logging(log_level: int | str=logging.INFO):
     """Enable logging in notebooks.
 

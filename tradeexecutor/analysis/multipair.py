@@ -12,8 +12,10 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.pnl import calculate_pnl, calculate_pnl_generic
+from tradingstrategy.chain import ChainId
 from tradingstrategy.utils.format import format_percent_2_decimals
 from tradingstrategy.utils.jupyter import make_clickable
+from tradingstrategy.vault import get_vault_page
 
 
 def _format_value(v: float) -> str:
@@ -71,12 +73,22 @@ def analyse_pair_trades(
     }
 
 
-def analyse_multipair(state: State) -> pd.DataFrame:
+def analyse_multipair(
+    state: State,
+    show_chain: bool = False,
+    show_address: bool = False,
+) -> pd.DataFrame:
     """Build an analysis table.
 
     Create a table where 1 row = 1 trading pair.
 
     :param state:
+
+    :param show_chain:
+        Add a "Chain" column with the chain name for each pair.
+
+    :param show_address:
+        Display the trading pair smart contract address.
 
     :return:
         Datframe of the results.
@@ -84,10 +96,20 @@ def analyse_multipair(state: State) -> pd.DataFrame:
         Sorted by the best return.
     """
 
-    pairs = state.portfolio.get_all_traded_pairs()
+    pairs = list(state.portfolio.get_all_traded_pairs())
     start_at, end_at = state.get_strategy_time_range()
     rows = [analyse_pair_trades(p, state.portfolio, end_at=end_at) for p in pairs]
     df = pd.DataFrame(rows)
+
+    if show_chain and len(df) > 0:
+        chain_names = [ChainId(p.chain_id).get_name() for p in pairs]
+        df.insert(1, "Chain", chain_names)
+
+    if show_address and len(df) > 0:
+        addresses = [p.pool_address for p in pairs]
+        insert_loc = 2 if show_chain else 1
+        df.insert(insert_loc, "Address", addresses)
+
     return df
 
 
@@ -121,8 +143,13 @@ def format_multipair_summary(
 
     df = df.sort_values(by=[sort_column], ascending=ascending)
 
+    has_chain = "Chain" in df.columns
+    has_address = "Address" in df.columns
+
     formatters = {
         "Trading pair": str,
+        "Chain": str,
+        "Address": lambda addr: f'<a href="{get_vault_page(addr)}">{addr[:8]}…</a>',
         "Positions": str,
         "Trades": str,
         "Total return %": format_percent_2_decimals,
@@ -141,11 +168,18 @@ def format_multipair_summary(
     }
 
     for col, format_func in formatters.items():
-        df[col] = df[col].apply(format_func)
+        if col in df.columns:
+            df[col] = df[col].apply(format_func)
 
     if format_columns:
         headings = [
             ("Trading pair", "https://tradingstrategy.ai/glossary/trading-pair"),
+        ]
+        if has_chain:
+            headings.append(("Chain", None))
+        if has_address:
+            headings.append(("Address", None))
+        headings += [
             ("Positions", "https://tradingstrategy.ai/glossary/position"),
             ("Trades", "https://tradingstrategy.ai/glossary/swap"),
             ("Total return %", "https://tradingstrategy.ai/glossary/aggregate-return"),

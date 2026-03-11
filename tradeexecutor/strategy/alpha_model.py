@@ -40,6 +40,20 @@ def _get_next_id():
     return _signal_id_counter
 
 
+def _get_pair_protocol(pair: "TradingPairIdentifier") -> str | None:
+    """Resolve the protocol slug for a trading pair.
+
+    - Vault pairs use ``pair.get_vault_protocol()``
+    - Exchange account pairs use ``pair.get_exchange_account_protocol()``
+    - Returns None for pairs without a named protocol
+    """
+    if pair.is_vault():
+        return pair.get_vault_protocol()
+    if pair.is_exchange_account():
+        return pair.get_exchange_account_protocol()
+    return None
+
+
 class TradingPairSignalFlags(enum.Enum):
     """Diagnostics flags set on trading signal to understand better the decision making process."""
 
@@ -61,6 +75,10 @@ class TradingPairSignalFlags(enum.Enum):
 
     #: This signal's weight was reduced because its chain exceeded the per-chain allocation cap.
     capped_by_chain_allocation = "capped_by_chain_allocation"
+
+    #: This signal's weight was reduced because its protocol exceeded the per-protocol allocation cap.
+    #: Risk of having too much allocation into a single vault protocol.
+    capped_by_protocol_allocation = "capped_by_protocol_allocation"
 
     #: This signal led to closing the position (signal went to zero)
     closed = "closed"
@@ -989,6 +1007,7 @@ class AlphaModel:
         investable_equity: USDollarAmount | None = None,
         size_risk_model: SizeRiskModel | None = None,
         epsilon_usd=5.0,
+        max_protocol_weight: float | None = None,
     ):
         """Normalises position weights between 0 and 1.
 
@@ -1009,6 +1028,14 @@ class AlphaModel:
         invested = 0
         included_pair_ids = set()
 
+        # Per-protocol allocation tracking
+        if max_protocol_weight is not None:
+            assert 0 < max_protocol_weight <= 1.0, f"max_protocol_weight must be in (0, 1], got {max_protocol_weight}"
+            max_protocol_budget = max_protocol_weight * investable_equity
+        else:
+            max_protocol_budget = None
+        protocol_allocated: dict[str, float] = {}
+
         # logging.getLogger().setLevel(logging.INFO)
 
         logger.info("Total %d positions to consider for size risk adjustment", len(remaining_weights))
@@ -1028,12 +1055,36 @@ class AlphaModel:
             assert s.old_weight is not None, f"TradingSignal.old_weight is not available: {s} - remember to call AlphaModel.update_old_weights()"
             assert s.raw_weight >= 0, "_normalise_weights_size_risk(): short or leverage not implemented"
 
-            asked_position_size = equity_left 
+            asked_position_size = equity_left
             max_concentrion_capped_size = max_weight * investable_equity
 
             if asked_position_size > max_concentrion_capped_size:
                 asked_position_size = max_concentrion_capped_size
                 s.flags.add(TradingPairSignalFlags.capped_by_concentration)
+
+            # Cap by protocol allocation - risk of having too much allocation into a single vault protocol
+            if max_protocol_budget is not None:
+                protocol = _get_pair_protocol(s.pair)
+                if protocol is not None:
+                    already_allocated = protocol_allocated.get(protocol, 0.0)
+                    remaining_budget = max_protocol_budget - already_allocated
+
+                    if remaining_budget <= epsilon_usd:
+                        # Protocol budget exhausted — skip and redistribute to other protocols
+                        logger.info(
+                            "Skipping %s: protocol %s budget exhausted (allocated %.2f / %.2f)",
+                            s.pair.base.token_symbol,
+                            protocol,
+                            already_allocated,
+                            max_protocol_budget,
+                        )
+                        s.flags.add(TradingPairSignalFlags.capped_by_protocol_allocation)
+                        del remaining_weights[pair_id]
+                        continue
+
+                    if asked_position_size > remaining_budget:
+                        asked_position_size = remaining_budget
+                        s.flags.add(TradingPairSignalFlags.capped_by_protocol_allocation)
 
             size_risk = size_risk_model.get_acceptable_size_for_position(
                 self.timestamp,
@@ -1043,7 +1094,7 @@ class AlphaModel:
 
             if size_risk.capped:
                 s.flags.add(TradingPairSignalFlags.capped_by_pool_size)
-        
+
             total_missed_investments += (size_risk.asked_size - size_risk.accepted_size)
 
             s.position_size_risk = size_risk
@@ -1054,6 +1105,12 @@ class AlphaModel:
             # in the rebalance if we could not fully allocate this one
             equity_left -= size_risk.accepted_size
             del remaining_weights[pair_id]
+
+            # Update protocol budget tracker
+            if max_protocol_budget is not None:
+                protocol = _get_pair_protocol(s.pair)
+                if protocol is not None:
+                    protocol_allocated[protocol] = protocol_allocated.get(protocol, 0.0) + size_risk.accepted_size
 
             logger.info(
                 "Position size risk, pair: %s, asked: %s, accepted: %s, diagnostics: %s, equity left: %f, invested: %f",
@@ -1107,6 +1164,7 @@ class AlphaModel:
         size_risk_model: SizeRiskModel | None = None,
         max_positions: int | None = None,
         waterfall=False,
+        max_protocol_weight: float | None = None,
     ):
         """Normalise weights to 0...1 scale.
 
@@ -1135,6 +1193,15 @@ class AlphaModel:
 
         :param investable_equity:
             Only needed if `size_risk_model` is given.
+
+        :param max_protocol_weight:
+            Maximum share of the portfolio that can be allocated to positions
+            belonging to a single vault protocol (e.g. ``0.40`` means 40 %).
+
+            Only used with ``waterfall=True``. Caps the risk of having too much
+            allocation into a single vault protocol (e.g. Hyperliquid).
+
+            Set to ``None`` to disable (default).
         """
 
         if not size_risk_model:
@@ -1149,6 +1216,7 @@ class AlphaModel:
                     max_weight=max_weight,
                     investable_equity=investable_equity,
                     size_risk_model=size_risk_model,
+                    max_protocol_weight=max_protocol_weight,
                 )
             elif max_positions is not None:
                 # Method 1: weights normalised after TVL-based adjustment

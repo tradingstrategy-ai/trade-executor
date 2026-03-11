@@ -175,7 +175,7 @@ class GridParameter:
             return f"{self.name}={value.value}"
         elif isinstance(value, (bool, numpy.bool_)):
             return f"{self.name}={str(value).lower()}"
-        elif isinstance(value, (numpy.float64, numpy.float32, numpy.int64)):
+        elif isinstance(value, (numpy.float64, numpy.float32, numpy.int64, numpy.str_)):
             # scikit-optimise values
             return f"{self.name}={value}"
         elif isinstance(value, Decimal):
@@ -459,10 +459,14 @@ class GridSearchResult:
         return self.combination == other.combination
 
     def __repr__(self) -> str:
-        cagr = self.get_cagr() or 0
-        sharpe = self.get_sharpe() or 0
-        sortino = self.get_sortino() or 0
-        max_drawdown = self.get_max_drawdown() or 0
+        cagr = self.get_cagr()
+        sharpe = self.get_sharpe()
+        sortino = self.get_sortino()
+        max_drawdown = self.get_max_drawdown()
+        cagr = 0 if pd.isna(cagr) else cagr
+        sharpe = 0 if pd.isna(sharpe) else sharpe
+        sortino = 0 if pd.isna(sortino) else sortino
+        max_drawdown = 0 if pd.isna(max_drawdown) else max_drawdown
         return f"<GridSearchResult\n  {self.combination.get_all_parameters_label()}\n  CAGR: {cagr*100:.2f}%, Sharpe: {sharpe:.2f}, Sortino: {sortino:.2f}, Max drawdown:{max_drawdown*100:.2f}%\n>"
 
     def get_label(self) -> str:

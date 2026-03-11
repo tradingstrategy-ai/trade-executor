@@ -115,11 +115,23 @@ calculate_credit_metrics = calculate_yield_metrics
 def display_vault_position_table(
     state: State,
     execution_mode=ExecutionMode.backtesting,
+    sort_by: str = "Opened",
+    sort_ascending: bool = True,
+    show_address: bool = False,
 ) -> pd.DataFrame:
     """Analysis each vault position individually.
 
     - Figure out how where the yield comes from
     - Only consider vaults, lending protocols like Aave excluded
+
+    :param sort_by:
+        Column name to sort by. E.g. "Profit USD", "Profit % annualised", "Opened".
+
+    :param sort_ascending:
+        Sort order.
+
+    :param show_address:
+        Display the vault smart contract address.
 
     :return:
         DataFrame with row per vault position.
@@ -198,9 +210,12 @@ def display_vault_position_table(
             "Redeems": redeem_count,
         }
 
+        if show_address:
+            entry["Address"] = p.pair.pool_address
+
         rows.append(entry)
 
     df = pd.DataFrame(rows)
-    df = df.sort_values("Opened")
+    df = df.sort_values(sort_by, ascending=sort_ascending)
     df = df.set_index("Id")
     return df

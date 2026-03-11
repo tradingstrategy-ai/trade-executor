@@ -100,10 +100,26 @@ def vault_position_timeline(
 
 def all_vault_positions(
     chart_input: ChartInput,
+    sort_by: str = "Opened",
+    sort_ascending: bool = True,
+    show_address: bool = False,
 ) -> pd.DataFrame:
     """Display all vault positions in a table.
 
+    :param sort_by:
+        Column name to sort by. E.g. "Profit USD", "Profit % annualised", "Opened".
+
+    :param sort_ascending:
+        Sort order.
+
+    :param show_address:
+        Display the vault smart contract address.
     """
     state = chart_input.state
-    vault_df = display_vault_position_table(state)
+    vault_df = display_vault_position_table(
+        state,
+        sort_by=sort_by,
+        sort_ascending=sort_ascending,
+        show_address=show_address,
+    )
     return vault_df
