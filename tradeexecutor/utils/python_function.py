@@ -30,7 +30,9 @@ def _remove_docstring(node):
 # Cache for hash_function results, keyed by (func_id, char_length, bytecode_only).
 # The same function is hashed many times during indicator cache key generation
 # (once per indicator combination), and inspect.getsource + tokeniser is expensive.
-_hash_function_cache: dict[tuple, str] = {}
+# Each entry stores (func_reference, hash_result) — the strong reference to func
+# prevents GC and guards against id() reuse in multiprocessing child processes.
+_hash_function_cache: dict[tuple, tuple[object, str]] = {}
 
 
 def hash_function(func, char_length=8, bytecode_only=False):
@@ -59,7 +61,9 @@ def hash_function(func, char_length=8, bytecode_only=False):
     cache_key = (id(func), char_length, bytecode_only)
     cached = _hash_function_cache.get(cache_key)
     if cached is not None:
-        return cached
+        cached_func, cached_result = cached
+        if cached_func is func:
+            return cached_result
 
     try:
         func_str = inspect.getsource(func)
@@ -100,7 +104,7 @@ def hash_function(func, char_length=8, bytecode_only=False):
         fhash = hashlib.sha256(func.__code__.co_code)
 
     result = fhash.hexdigest()[0:char_length]
-    _hash_function_cache[cache_key] = result
+    _hash_function_cache[cache_key] = (func, result)
     return result
 
 
