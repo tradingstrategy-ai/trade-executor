@@ -577,8 +577,12 @@ class ExecutionLoop:
 
         state.uptime.record_cycle_complete(cycle)
 
-        # Check that state is good before writing it to the disk
-        state.perform_integrity_check()
+        # Check that state is good before writing it to the disk.
+        # Skip for backtesting as IDs are assigned sequentially
+        # and cannot collide, and it's called again in
+        # update_position_valuations().
+        if self.execution_context.mode != ExecutionMode.backtesting:
+            state.perform_integrity_check()
 
         # Store the current state to disk
         self.store.sync(state)
@@ -633,7 +637,9 @@ class ExecutionLoop:
 
         routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
 
-        if interest:
+        # Skip duplicate interest sync for backtesting —
+        # already called in tick() before runner.tick().
+        if interest and self.execution_context.mode != ExecutionMode.backtesting:
             interest_events = self.sync_model.sync_interests(
                 clock,
                 state,
@@ -652,8 +658,10 @@ class ExecutionLoop:
             long_short_metrics_latest=long_short_metrics_latest,
         )
 
-        # Check that state is good before writing it to the disk
-        state.perform_integrity_check()
+        # Check that state is good before writing it to the disk.
+        # Skip for backtesting — IDs are assigned sequentially.
+        if self.execution_context.mode != ExecutionMode.backtesting:
+            state.perform_integrity_check()
 
         # Store the current state to disk
         self.store.sync(state)
@@ -1004,7 +1012,7 @@ class ExecutionLoop:
             # Bump progress bar forward and update backtest status
             if native_datetime_utc_now() - last_progress_update > progress_update_threshold:
                 friedly_ts = ts.strftime(ts_format)
-                trade_count = len(list(state.portfolio.get_all_trades()))
+                trade_count = sum(len(p.trades) for p in state.portfolio.get_all_positions())
                 if progress_bar:
                     progress_bar.set_description(f"Backtesting {self.name}, {friendly_start} - {friendly_end} at {friedly_ts} ({cycle_name})")
                     set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses)
@@ -1063,7 +1071,7 @@ class ExecutionLoop:
             if next_tick >= self.backtest_end:
                 # Backteting has ended
                 logger.info("Terminating backtesting. Backtest end %s, current timestamp %s", self.backtest_end, next_tick)
-                trade_count = len(list(state.portfolio.get_all_trades()))
+                trade_count = sum(len(p.trades) for p in state.portfolio.get_all_positions())
                 passed_seconds = (ts - last_update_ts).total_seconds()
                 if progress_bar:
                     set_progress_bar_postfix(state, progress_bar, trade_count, cycle, take_profits, stop_losses)
