@@ -118,6 +118,8 @@ def display_vault_position_table(
     sort_by: str = "Opened",
     sort_ascending: bool = True,
     show_address: bool = False,
+    top_n: int | None = None,
+    bottom_n: int | None = None,
 ) -> pd.DataFrame:
     """Analysis each vault position individually.
 
@@ -132,6 +134,14 @@ def display_vault_position_table(
 
     :param show_address:
         Display the vault smart contract address.
+
+    :param top_n:
+        If set, return only the top N positions (by sort column, descending).
+        When both ``top_n`` and ``bottom_n`` are set, returns the
+        top winners concatenated with the bottom losers.
+
+    :param bottom_n:
+        If set, return only the bottom N positions (by sort column, ascending).
 
     :return:
         DataFrame with row per vault position.
@@ -218,4 +228,17 @@ def display_vault_position_table(
     df = pd.DataFrame(rows)
     df = df.sort_values(sort_by, ascending=sort_ascending)
     df = df.set_index("Id")
+
+    if top_n is not None or bottom_n is not None:
+        # Sort by profit to pick winners/losers regardless of the display sort
+        profit_sorted = df.sort_values("Profit USD", ascending=False)
+        parts = []
+        if top_n is not None:
+            parts.append(profit_sorted.head(top_n))
+        if bottom_n is not None:
+            parts.append(profit_sorted.tail(bottom_n))
+        df = pd.concat(parts)
+        df = df[~df.index.duplicated(keep="first")]
+        df = df.sort_values(sort_by, ascending=sort_ascending)
+
     return df

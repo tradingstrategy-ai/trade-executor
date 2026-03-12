@@ -103,8 +103,12 @@ def all_vault_positions(
     sort_by: str = "Opened",
     sort_ascending: bool = True,
     show_address: bool = False,
+    top_n: int | None = 10,
+    bottom_n: int | None = 10,
 ) -> pd.DataFrame:
-    """Display all vault positions in a table.
+    """Display vault positions in a table.
+
+    By default shows the top 10 winners and bottom 10 losers.
 
     :param sort_by:
         Column name to sort by. E.g. "Profit USD", "Profit % annualised", "Opened".
@@ -114,6 +118,12 @@ def all_vault_positions(
 
     :param show_address:
         Display the vault smart contract address.
+
+    :param top_n:
+        Show the N most profitable positions. Set to ``None`` to show all.
+
+    :param bottom_n:
+        Show the N least profitable positions. Set to ``None`` to show all.
     """
     state = chart_input.state
     vault_df = display_vault_position_table(
@@ -121,5 +131,7 @@ def all_vault_positions(
         sort_by=sort_by,
         sort_ascending=sort_ascending,
         show_address=show_address,
+        top_n=top_n,
+        bottom_n=bottom_n,
     )
     return vault_df
