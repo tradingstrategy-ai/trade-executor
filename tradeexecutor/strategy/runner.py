@@ -740,8 +740,7 @@ class StrategyRunner(abc.ABC):
             # Needed for Lagoon.
             # sync_portfolio() posts valuation onchain to
             # process the deposit/redemption queue and
-            # for this we need up-to-date valuation
-            # if self.sync_model.has_async_deposits():
+            # for this we need up-to-date valuation.
             with self.timed_task_context_manager("revalue_portfolio_before_sync"):
                 self.revalue_state(strategy_cycle_timestamp, state, valuation_model)
 

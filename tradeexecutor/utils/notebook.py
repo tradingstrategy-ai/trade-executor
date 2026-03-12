@@ -75,9 +75,10 @@ def setup_charting_and_output(
     """
 
     import plotly.io as pio
+    from plotly.offline import init_notebook_mode
+
     # Apply Plotly bug fixes
     import tradeexecutor.monkeypatch.plotly
-    from plotly.offline import init_notebook_mode
 
     # Get rid of findfont: Font family 'Arial' not found.
     # when running a remote notebook on Jupyter Server on Ubuntu Linux server
@@ -185,8 +186,9 @@ def display_dataframe_with_html(df: pd.DataFrame):
         display_dataframe_with_html(stats)
 
     """
-    from IPython.display import display, HTML
-    display(HTML(df.to_html(escape=False)))
+    from IPython.display import HTML, display
+    html_table = df.to_html(escape=False, classes='table table-striped')
+    display(HTML(html_table))
 
 
 def set_notebook_logging(log_level: int | str=logging.INFO):

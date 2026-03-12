@@ -127,6 +127,11 @@ class ExecutionMode(enum.Enum):
         return self in (self.unit_testing_trading, self.simulated_trading, self.unit_testing,)
 
 
+# Cache for is_version_greater_or_equal_than() results.
+# Avoids re-parsing version strings on every call (called ~640× per backtest).
+_version_check_cache: dict[tuple, bool] = {}
+
+
 @dataclass(slots=True)
 class ExecutionContext:
     """Information about the strategy execution environment.
@@ -230,8 +235,13 @@ class ExecutionContext:
     def is_version_greater_or_equal_than(self, major: int, minor: int, patch: int) -> bool:
         """Check that we are runing engine as the minimum required version."""
         running_version = self.engine_version or "0.1"
-        required_version = f"{major}.{minor}.{patch}"
-        return version.parse(running_version) >= version.parse(required_version)
+        key = (running_version, major, minor, patch)
+        result = _version_check_cache.get(key)
+        if result is None:
+            required_version = f"{major}.{minor}.{patch}"
+            result = version.parse(running_version) >= version.parse(required_version)
+            _version_check_cache[key] = result
+        return result
 
     def has_visualisation(self) -> bool:
         """Should backtest spend time to draw custom visualisations.

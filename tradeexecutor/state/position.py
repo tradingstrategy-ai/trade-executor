@@ -797,12 +797,13 @@ class TradingPosition(GenericPosition):
     ) -> USDollarAmount:
         """Calculate the value of this position using the given prices."""
 
-        token_quantity = sum([t.get_equity_for_position() for t in self.trades.values() if t.is_accounted_for_equity()])
+        accounted_trades = [t for t in self.trades.values() if t.is_accounted_for_equity()]
+        token_quantity = sum(t.get_equity_for_position() for t in accounted_trades)
 
         if include_interest:
             raise NotImplementedError()
 
-        reserve_quantity = sum([t.get_equity_for_reserve() for t in self.trades.values() if t.is_accounted_for_equity()])
+        reserve_quantity = sum(t.get_equity_for_reserve() for t in accounted_trades)
 
         direct_balance_updates = self.get_base_token_balance_update_quantity()
 
