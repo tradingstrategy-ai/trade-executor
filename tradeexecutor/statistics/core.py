@@ -220,16 +220,13 @@ def calculate_statistics(
         strategy_cycle_at=strategy_cycle_at,
     )
 
-    # Skip per-tick position statistics in backtesting —
-    # only portfolio-level total_equity is needed for equity curves.
-    # Closed position statistics are still collected when positions
-    # close (handled by update_statistics below).
-    if execution_mode != ExecutionMode.backtesting:
-        for position in portfolio.open_positions.values():
-            stats.positions[position.position_id] = calculate_position_statistics(clock, position)
+    # Do not skip position stats in backtesting — equity_curve_by_asset
+    # and equity_curve_by_chain charts depend on per-tick position values.
+    for position in portfolio.open_positions.values():
+        stats.positions[position.position_id] = calculate_position_statistics(clock, position)
 
-        for position in portfolio.frozen_positions.values():
-            stats.positions[position.position_id] = calculate_position_statistics(clock, position)
+    for position in portfolio.frozen_positions.values():
+        stats.positions[position.position_id] = calculate_position_statistics(clock, position)
 
     return stats
 

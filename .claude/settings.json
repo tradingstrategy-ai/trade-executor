@@ -70,5 +70,6 @@
     ]
   },
   "model": "opus",
-  "thinkingMode": "extended"
+  "thinkingMode": "extended",
+  "effortLevel": "high"
 }
