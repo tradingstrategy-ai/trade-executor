@@ -98,6 +98,37 @@ def _find_nb_path() -> Union[Tuple[dict, PurePath], Tuple[None, None]]:
     return None, None
 
 
+def _find_notebook_path_from_parent_process() -> Path | None:
+    """Check parent process command line for a .ipynb path.
+
+    When running via ``jupyter execute notebook.ipynb``, the kernel is a
+    separate subprocess. The kernel's ``sys.argv`` only contains the
+    connection file, not the notebook path. However, the parent process
+    (``jupyter execute``) has the notebook path in its command line.
+
+    Uses ``psutil`` (already a project dependency) to traverse up the
+    process tree.
+    """
+    try:
+        import psutil
+        current = psutil.Process()
+        for parent in current.parents():
+            try:
+                cmdline = parent.cmdline()
+            except (psutil.AccessDenied, psutil.NoSuchProcess):
+                continue
+            for arg in cmdline:
+                if arg.endswith(".ipynb"):
+                    path = Path(arg)
+                    if path.exists():
+                        return path.resolve()
+                    # Try as-is even if not resolved (might be relative to parent cwd)
+                    return path
+    except Exception:
+        pass
+    return None
+
+
 def get_notebook_file_from_within_notebook(_globals) -> Path:
     """Return the notebook file.
 
@@ -128,7 +159,14 @@ def get_notebook_file_from_within_notebook(_globals) -> Path:
         # Ipython
         return Path(sys.argv[0])
     else:
-        # Jupyter-based systems
+        # When running via `jupyter execute notebook.ipynb`, the kernel subprocess
+        # doesn't have the notebook path in sys.argv and there's no Jupyter server
+        # to query. Check the parent process command line for the .ipynb path.
+        notebook_path = _find_notebook_path_from_parent_process()
+        if notebook_path is not None:
+            return notebook_path
+
+        # Jupyter-based systems (requires a running Jupyter server)
         import ipynbname
         return ipynbname.path()
 
