@@ -37,7 +37,7 @@ from tradeexecutor.strategy.pandas_trader.indicator import DiskIndicatorStorage,
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol4
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.utils.cpu import get_safe_max_workers_count
+from tradeexecutor.utils.cpu import get_safe_max_workers_count, is_running_in_ipython
 from eth_defi.compat import native_datetime_utc_now
 
 
@@ -643,6 +643,12 @@ def perform_optimisation(
     # Resolve CPU count
     if callable(max_workers):
         max_workers = max_workers()
+
+    # IPython CLI fails with multiprocessing - fall back to single process.
+    # Use `jupyter execute` instead for multiprocess support.
+    if max_workers > 1 and is_running_in_ipython():
+        logger.warning("IPython CLI detected - falling back to max_workers=1 (use 'jupyter execute' for multiprocess support)")
+        max_workers = 1
 
     search_space = get_optimised_dimensions(parameters)
 

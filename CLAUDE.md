@@ -8,13 +8,17 @@
 
 ## Running notebooks
 
-You can test if a notebook runs from the command line with IPython command.
-
-Example:
+You can run a notebook from the command line using `jupyter execute`.
+This supports multiprocessing (unlike `ipython` which forces single-process execution).
 
 ```shell
-poetry run ipython my-notebook.ipynb
+poetry run jupyter execute my-notebook.ipynb --inplace --timeout=900
 ```
+
+- `--inplace` overwrites the notebook with executed results (cell outputs)
+- `--timeout=900` sets a 15 minute per-cell execution timeout (use `-1` to disable for long-running optimisers)
+
+Never use `ipython` command as it does not work with multiprocessing.
 
 Alternative if you have IDE access, you can use the IDE to run the notebook.
 

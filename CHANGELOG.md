@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Switch notebook CLI runner from `ipython` to `jupyter execute` for multiprocess support in optimiser and grid search (2026-03-13)
+
 - Add Markdown deployment report generation and `/file?type=deployment-report` API endpoint for Lagoon vault deployments (2026-03-13)
 
 - Optimise backtest performance: skip expensive state serialisation validation and cache function hash results, reducing backtest time by ~44% (2026-03-11)
