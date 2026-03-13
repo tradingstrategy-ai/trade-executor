@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add Markdown deployment report generation and `/file?type=deployment-report` API endpoint for Lagoon vault deployments (2026-03-13)
+
 - Optimise backtest performance: skip expensive state serialisation validation and cache function hash results, reducing backtest time by ~44% (2026-03-11)
 
 - Add Monad chain RPC support, Hypercore→HyperEVM chain mapping for vault deployment, and master-chain-multichain deployment test (2026-03-11)
