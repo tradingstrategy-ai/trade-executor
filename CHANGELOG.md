@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Fix exchange account treasury sync crash where `last_updated_at` was never set, causing assertion failure on first trade cycle (2026-03-13)
+
 - Switch notebook CLI runner from `ipython` to `jupyter execute` for multiprocess support in optimiser and grid search (2026-03-13)
 
 - Add Markdown deployment report generation and `/file?type=deployment-report` API endpoint for Lagoon vault deployments (2026-03-13)
