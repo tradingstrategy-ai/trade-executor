@@ -97,7 +97,12 @@ class ExchangeAccountSyncModel(SyncModel):
         """No treasury sync needed for exchange accounts.
 
         Exchange account positions are synced via sync_positions().
+        We still need to mark the treasury as updated so that
+        downstream assertions do not fail.
         """
+        treasury = state.sync.treasury
+        treasury.last_updated_at = native_datetime_utc_now()
+        treasury.last_cycle_at = strategy_cycle_ts
         return []
 
     def sync_positions(
