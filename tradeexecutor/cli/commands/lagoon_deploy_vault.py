@@ -86,7 +86,10 @@ from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.commands.shared_options import \
     parse_comma_separated_list
 from tradeexecutor.cli.log import setup_logging
-from tradeexecutor.ethereum.lagoon.deploy_report import print_deployment_report
+from tradeexecutor.ethereum.lagoon.deploy_report import (
+    generate_multichain_deployment_report,
+    print_deployment_report,
+)
 from tradeexecutor.ethereum.lagoon.preflight_report import log_deployment_preflight_report
 from tradeexecutor.ethereum.lagoon.universe_config import \
     translate_trading_universe_to_lagoon_config
@@ -447,7 +450,7 @@ def lagoon_deploy_vault(
 
 
     # Print deployment guard configuration report
-    print_deployment_report(
+    _, markdown_report = print_deployment_report(
         safe_address=deploy_info.safe_address or deploy_info.safe.address,
         module_address=deploy_info.trading_strategy_module.address,
         web3=web3,
@@ -455,6 +458,13 @@ def lagoon_deploy_vault(
         simulate=simulate,
         from_block=pre_deploy_block,
     )
+
+    # Write Markdown deployment report alongside other deployment files
+    if vault_record_file:
+        md_path = vault_record_file.with_name("deployment-report.md")
+        with open(md_path, "wt") as out:
+            out.write(markdown_report)
+        logger.info("Wrote deployment report to %s", os.path.abspath(md_path))
 
     web3config.close()
 
@@ -614,17 +624,30 @@ def _deploy_multichain(
         kind = "satellite" if dep.is_satellite else "source"
         logger.info("Lagoon deployed on %s (%s):\n%s", slug, kind, dep.pformat())
 
-    # Print deployment guard configuration report for each chain
-    for slug, dep in result.deployments.items():
-        if dep.trading_strategy_module and slug in chain_web3:
-            print_deployment_report(
-                safe_address=dep.safe_address,
-                module_address=dep.trading_strategy_module.address,
-                web3=chain_web3[slug],
-                hypersync_api_key=hypersync_api_key,
-                simulate=simulate,
-                from_block=pre_deploy_blocks.get(slug, 0),
-            )
+    # Build chain_id-keyed mappings for the multichain report
+    chain_id_web3: dict[int, Web3] = {}
+    from_block_by_chain_id: dict[int, int] = {}
+    for slug, w3 in chain_web3.items():
+        cid = w3.eth.chain_id
+        chain_id_web3[cid] = w3
+        from_block_by_chain_id[cid] = pre_deploy_blocks.get(slug, 0)
+
+    # Generate multichain deployment report (single scan with follow_cctp=True)
+    _, markdown_report = generate_multichain_deployment_report(
+        safe_address=result.safe_address,
+        chain_web3=chain_id_web3,
+        deployment_result=result,
+        hypersync_api_key=hypersync_api_key,
+        simulate=simulate,
+        from_block=from_block_by_chain_id,
+    )
+
+    # Write Markdown deployment report alongside other deployment files
+    if vault_record_file:
+        md_path = vault_record_file.with_name("deployment-report.md")
+        with open(md_path, "wt") as out:
+            out.write(markdown_report)
+        logger.info("Wrote deployment report to %s", os.path.abspath(md_path))
 
 
 SAFE_ABI_STR = """

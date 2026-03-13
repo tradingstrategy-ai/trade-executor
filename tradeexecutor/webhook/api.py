@@ -266,6 +266,10 @@ def web_file(request: Request):
         case "html":
             path = metadata.backtest_html
             content_type = "text/html"
+        case "deployment-report":
+            store: JSONFileStore = request.registry["store"]
+            path = store.path.with_name("deployment-report.md")
+            content_type = "text/markdown"
         case _:
             return exception_response(501, detail=f"Not implemented. Unknown type {type}")
 

@@ -184,6 +184,29 @@ def test_cli_lagoon_deploy_multichain_vault(
         modules = safe.retrieve_modules()
         assert len(modules) >= 1, f"No guard module on {chain_name}"
 
+    # Verify deployment report Markdown file was written
+    md_path = vault_record_file.with_name("deployment-report.md")
+    assert md_path.exists(), f"deployment-report.md not written at {md_path}"
+
+    md_content = md_path.read_text()
+
+    # Report contains deployment metadata
+    assert "# Deployment report" in md_content
+    assert safe_address in md_content
+
+    # Report contains guard config tree for both chains
+    assert "Arbitrum" in md_content
+    assert "Base" in md_content
+
+    # Report contains block explorer links (Arbitrum has arbiscan.io)
+    assert "arbiscan.io/address/" in md_content
+
+    # Report contains deployer address
+    assert deployer.address in md_content
+
+    # Sections rendered as bullet list tree
+    assert "- **Senders" in md_content or "- **Any asset" in md_content
+
 
 @pytest.mark.timeout(600)
 def test_cli_lagoon_deploy_multichain_simulate(
@@ -232,3 +255,11 @@ def test_cli_lagoon_deploy_multichain_simulate(
 
     # Vault record is not written in simulate mode
     assert not vault_record_file.with_suffix(".json").exists()
+
+    # Deployment report IS written even in simulate mode
+    md_path = vault_record_file.with_name("deployment-report.md")
+    assert md_path.exists(), "deployment-report.md should be written even in simulate mode"
+
+    md_content = md_path.read_text()
+    assert "# Deployment report" in md_content
+    assert "- **Senders" in md_content or "- **Any asset" in md_content

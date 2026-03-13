@@ -306,3 +306,22 @@ def test_deploy_multichain_vault(
 
         modules = safe.retrieve_modules()
         assert len(modules) >= 1, f"No guard module on {slug}"
+
+    # Verify deployment report Markdown file
+    md_path = vault_record_file.with_name("deployment-report.md")
+    assert md_path.exists()
+
+    md_content = md_path.read_text()
+
+    # All chains mentioned in report
+    for chain_slug in EXPECTED_CHAINS:
+        assert chain_slug in md_content.lower() or chain_slug.title() in md_content, \
+            f"Chain {chain_slug} not found in deployment report"
+
+    # Contains Safe address
+    assert safe_address in md_content
+
+    # Contains block explorer links for chains that have them
+    assert "arbiscan.io/address/" in md_content
+    assert "basescan.org/address/" in md_content
+    assert "etherscan.io/address/" in md_content
