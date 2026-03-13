@@ -16,6 +16,7 @@ def available_trading_pairs(
     all_criteria_included_pair_count="all_criteria_included_pair_count",
     volume_included_pair_count="volume_included_pair_count",
     tvl_included_pair_count="tvl_included_pair_count",
+    age_included_pair_count="age_included_pair_count",
     trading_pair_count="trading_pair_count",
     with_dataframe: bool = False,
 ) -> Figure | tuple[Figure, pd.DataFrame]:
@@ -25,6 +26,7 @@ def available_trading_pairs(
     :param all_criteria_included_pair_count: Indicator name for pairs meeting all criteria.
     :param volume_included_pair_count: Indicator name for pairs meeting volume criteria.
     :param tvl_included_pair_count: Indicator name for pairs meeting TVL criteria.
+    :param age_included_pair_count: Indicator name for pairs meeting age criteria.
     :param trading_pair_count: Indicator name for total trading pairs available.
     :param with_dataframe: If True, return both DataFrame and Figure.
     """
@@ -40,6 +42,14 @@ def available_trading_pairs(
     except IndicatorNotFound:
         volume_criteria = None
 
+    try:
+        age_criteria = indicator_data.resolve_indicator_data(
+            age_included_pair_count,
+            unlimited=True,
+        )
+    except IndicatorNotFound:
+        age_criteria = None
+
     data = {}
 
     data["Inclusion criteria met (all)"] = indicator_data.get_indicator_series(all_criteria_included_pair_count)
@@ -47,6 +57,10 @@ def available_trading_pairs(
         data["Inclusion criteria met (volume)"] = indicator_data.get_indicator_series(volume_included_pair_count)
 
     data["Inclusion criteria met (TVL)"] = indicator_data.get_indicator_series(tvl_included_pair_count)
+
+    if age_criteria is not None:
+        data["Inclusion criteria met (age)"] = indicator_data.get_indicator_series(age_included_pair_count)
+
     data["Visible pairs"] = indicator_data.get_indicator_series(trading_pair_count)
 
     # df = pd.DataFrame({

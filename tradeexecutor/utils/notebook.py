@@ -2,6 +2,7 @@
 import enum
 import logging
 import sys
+from contextlib import contextmanager
 
 import matplotlib_inline
 import pandas as pd
@@ -120,6 +121,26 @@ def setup_charting_and_output(
 
     if max_rows:
         pd.set_option('display.max_rows', max_rows)
+
+
+@contextmanager
+def interactive_plotly_renderer():
+    """Temporarily switch Plotly to interactive rendering.
+
+    Use this to override static mode set by :py:func:`setup_charting_and_output`
+    for specific charts that benefit from interactivity (e.g. legend toggling).
+
+    Example::
+
+        with interactive_plotly_renderer():
+            fig.show()
+    """
+    previous = pio.renderers.default
+    pio.renderers.default = "notebook_connected"
+    try:
+        yield
+    finally:
+        pio.renderers.default = previous
 
 
 def set_large_plotly_chart_font(

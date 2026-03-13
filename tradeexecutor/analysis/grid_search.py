@@ -23,6 +23,8 @@ from tradeexecutor.utils.sort import unique_sort
 
 VALUE_COLS = ["Optim", "CAGR", "Max DD", "Sharpe", "Sortino", "Avg pos", "Med pos", "Win rate", "Time in market"]
 
+CALMAR_VALUE_COLS = ["Optim", "CAGR", "Max DD", "Sharpe", "Sortino", "Calmar", "Time in market", "Avg pos", "Med pos", "Win rate"]
+
 PERCENT_COLS = ["CAGR", "Max DD", "Avg pos", "Med pos", "Time in market", "Win rate"]
 
 DATA_COLS = ["Positions", "Trades"]
@@ -92,6 +94,14 @@ def analyse_combination(
         "Avg pos": r.summary.average_trade,  # Average position
         "Med pos": r.summary.median_trade,  # Median position
     })
+
+    # Calmar ratio: CAGR / |max drawdown|
+    cagr_val = row.get("CAGR")
+    max_dd_val = row.get("Max DD")
+    if cagr_val is not None and max_dd_val is not None and not np.isnan(cagr_val) and not np.isnan(max_dd_val) and abs(max_dd_val) > 0:
+        row["Calmar"] = cagr_val / abs(max_dd_val)
+    else:
+        row["Calmar"] = np.nan
 
     # Clear all values except position count if this is not a good trade series
     if r.summary.total_positions < min_positions_threshold:
@@ -170,7 +180,12 @@ def visualise_table(*args, **kwargs):
     return render_grid_search_result_table(*args, **kwargs)
 
 
-def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResult]) -> Styler:
+def render_grid_search_result_table(
+    results: pd.DataFrame | list[GridSearchResult],
+    calmar: bool = False,
+    sharpe: bool = True,
+    sortino: bool = True,
+) -> Styler:
     """Render a grid search combination table to notebook output.
 
     - Highlight winners and losers
@@ -195,7 +210,16 @@ def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResul
 
     :param results:
         Output from :py:func:`perform_grid_search`.
-        
+
+    :param calmar:
+        Include the Calmar ratio (CAGR / |max drawdown|) column.
+
+    :param sharpe:
+        Include the Sharpe ratio column.
+
+    :param sortino:
+        Include the Sortino ratio column.
+
     :return:
         Styled DataFrame for the notebook output
     """
@@ -213,7 +237,30 @@ def render_grid_search_result_table(results: pd.DataFrame | list[GridSearchResul
 
     # Optimised column is not always present,
     # avoid error on format()
-    value_cols = [v for v in VALUE_COLS if v in df.columns]
+    cols = list(CALMAR_VALUE_COLS if calmar else VALUE_COLS)
+    if not sharpe:
+        cols = [c for c in cols if c != "Sharpe"]
+    if not sortino:
+        cols = [c for c in cols if c != "Sortino"]
+    value_cols = [v for v in cols if v in df.columns]
+
+    # Drop hidden columns from the DataFrame
+    drop_cols = []
+    if not sharpe and "Sharpe" in df.columns:
+        drop_cols.append("Sharpe")
+    if not sortino and "Sortino" in df.columns:
+        drop_cols.append("Sortino")
+    if not calmar and "Calmar" in df.columns:
+        drop_cols.append("Calmar")
+    if drop_cols:
+        df = df.drop(columns=drop_cols)
+
+    # Reorder columns to match the desired display order:
+    # parameter columns first (in their original order), then value columns
+    param_cols = [c for c in df.columns if c not in value_cols and c not in DATA_COLS]
+    data_cols_present = [c for c in DATA_COLS if c in df.columns]
+    ordered_cols = param_cols + data_cols_present + value_cols
+    df = df[[c for c in ordered_cols if c in df.columns]]
 
     format_dict = {}
     for v in value_cols:

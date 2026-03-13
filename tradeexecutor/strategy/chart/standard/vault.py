@@ -3,7 +3,7 @@ import warnings
 
 import pandas as pd
 from plotly.graph_objects import Figure
-from tradeexecutor.analysis.credit import display_vault_position_table
+from tradeexecutor.analysis.credit import display_vault_position_table, display_vault_daily_pnl_table
 from tradeexecutor.analysis.vault import visualise_vaults
 from tradeexecutor.strategy.chart.definition import ChartInput
 from tradeexecutor.visual.position import (calculate_position_timeline,
@@ -135,3 +135,24 @@ def all_vault_positions(
         bottom_n=bottom_n,
     )
     return vault_df
+
+
+def all_vault_daily_gains_losses(
+    chart_input: ChartInput,
+    top_n: int = 10,
+    bottom_n: int = 10,
+) -> pd.DataFrame:
+    """Display the biggest daily gains and losses for vault positions.
+
+    :param top_n:
+        Show the N biggest daily gains.
+
+    :param bottom_n:
+        Show the N biggest daily losses.
+    """
+    state = chart_input.state
+    return display_vault_daily_pnl_table(
+        state,
+        top_n=top_n,
+        bottom_n=bottom_n,
+    )

@@ -17,7 +17,7 @@ import warnings
 from _decimal import Decimal
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Type
+from typing import Callable, Literal, Type
 
 import psutil
 from joblib import Parallel, delayed
@@ -42,6 +42,26 @@ from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
+
+
+#: Column names produced by :py:func:`~tradeexecutor.analysis.grid_search.analyse_combination`
+#: that can be used as ``analysis_metric`` in parameter analysis functions.
+AnalysisMetric = Literal["CAGR", "Max DD", "Sharpe", "Sortino", "Calmar", "Time in market", "Win rate", "Avg pos", "Med pos"]
+
+#: Maps ``search_func.__name__`` to the corresponding column name in the
+#: grid search result table.  Used by :py:func:`perform_optimisation` to
+#: automatically set :py:attr:`OptimiserResult.target_metric_name`.
+_SEARCH_FUNC_TO_METRIC: dict[str, AnalysisMetric] = {
+    "optimise_profit": "CAGR",
+    "optimise_sharpe": "Sharpe",
+    "optimise_sortino": "Sortino",
+    "optimise_calmar": "Calmar",
+    "optimise_max_drawdown": "Max DD",
+    "optimise_win_rate": "Win rate",
+    "optimise_gain_to_pain": "CAGR",
+    "optimise_ulcer_performance": "CAGR",
+    "optimise_sharpe_and_max_drawdown_ratio": "Sharpe",
+}
 
 
 @dataclass(slots=True)
@@ -200,6 +220,17 @@ class OptimiserResult:
     #:
     #: Allows to peek into raw indicator data if we need to.
     indicator_storage: DiskIndicatorStorage
+
+    #: The analysis metric name that corresponds to the search function
+    #: used during optimisation.
+    #:
+    #: Automatically resolved from the search function name via
+    #: :py:data:`_SEARCH_FUNC_TO_METRIC`.  Falls back to ``"CAGR"`` when
+    #: the search function is not in the mapping.
+    #:
+    #: Use this to pass ``analysis_metric`` to analysis functions like
+    #: :py:func:`~tradeexecutor.analysis.grid_search_parameters.analyse_feature_importance`.
+    target_metric_name: AnalysisMetric = "CAGR"
 
     def is_empty(self) -> bool:
         """The optimiser run generated zero results."""
@@ -741,9 +772,15 @@ def perform_optimisation(
     all_results.sort()
     duration = native_datetime_utc_now() - start
     logger.info("Optimiser search finished in %s, calculated %d results", duration, len(all_results))
+
+    # Resolve the analysis metric from the search function name
+    func_name = getattr(search_func, "__name__", None) or ""
+    target_metric_name: AnalysisMetric = _SEARCH_FUNC_TO_METRIC.get(func_name, "CAGR")
+
     return OptimiserResult(
         parameters=parameters,
         result_path=result_path,
         results=all_results,
         indicator_storage=indicator_storage,
+        target_metric_name=target_metric_name,
     )

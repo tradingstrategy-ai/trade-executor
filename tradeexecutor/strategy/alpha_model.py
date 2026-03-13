@@ -7,7 +7,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from io import StringIO
 from types import NoneType
-from typing import Dict, Iterable, List, Literal, Optional
+from typing import Callable, Dict, Iterable, List, Literal, Optional
 
 import numpy as np
 import pandas as pd
@@ -763,7 +763,9 @@ class AlphaModel:
 
     def _normalise_weights_simple(
         self,
-        max_weight=1.0):
+        max_weight=1.0,
+        max_weight_function: Callable[["TradingPairSignal"], float] | None = None,
+    ):
         """Normalises position weights between 0 and 1.
 
         - Simple approach, do not deal with the US dollar size/liquidity risk
@@ -771,13 +773,20 @@ class AlphaModel:
         raw_weights = {s.pair.internal_id: s.raw_weight for s in self.signals.values()}
         normalised = normalise_weights(raw_weights)
         for pair_id, normal_weight in normalised.items():
-            self.signals[pair_id].normalised_weight = min(normal_weight, max_weight)
+            s = self.signals[pair_id]
+            effective_max = max_weight
+            if max_weight_function is not None:
+                per_pair = max_weight_function(s)
+                if per_pair is not None:
+                    effective_max = per_pair
+            s.normalised_weight = min(normal_weight, effective_max)
 
     def _normalise_weights_size_risk(
         self,
         max_weight=1.0,
         investable_equity: USDollarAmount | None = None,
         size_risk_model: SizeRiskModel | None = None,
+        max_weight_function: Callable[["TradingPairSignal"], float] | None = None,
     ):
         """Normalises position weights between 0 and 1.
 
@@ -816,13 +825,18 @@ class AlphaModel:
             assert s.raw_weight >= 0, "_normalise_weights_size_risk(): short or leverage not implemented"
 
             try:
-                concentration_capped_normal_weight = min(normal_weight, max_weight)
+                effective_max = max_weight
+                if max_weight_function is not None:
+                    per_pair = max_weight_function(s)
+                    if per_pair is not None:
+                        effective_max = per_pair
+                concentration_capped_normal_weight = min(normal_weight, effective_max)
 
                 if concentration_capped_normal_weight != normal_weight:
                     s.flags.add(TradingPairSignalFlags.capped_by_concentration)
 
             except TypeError as e:
-                raise TypeError(f"Cannot min({normal_weight}, {max_weight})") from e
+                raise TypeError(f"Cannot min({normal_weight}, {effective_max})") from e
 
             asked_position_size = concentration_capped_normal_weight * equity_left
             size_risk = size_risk_model.get_acceptable_size_for_position(
@@ -884,6 +898,7 @@ class AlphaModel:
         investable_equity: USDollarAmount | None = None,
         size_risk_model: SizeRiskModel | None = None,
         epsilon_usd=5.0,
+        max_weight_function: Callable[["TradingPairSignal"], float] | None = None,
     ):
         """Normalises position weights between 0 and 1.
 
@@ -929,7 +944,12 @@ class AlphaModel:
             assert s.raw_weight >= 0, "_normalise_weights_size_risk(): short or leverage not implemented"
 
             asked_position_size = equity_left * weight
-            max_concentrion_capped_size = max_weight * investable_equity
+            effective_max = max_weight
+            if max_weight_function is not None:
+                per_pair = max_weight_function(s)
+                if per_pair is not None:
+                    effective_max = per_pair
+            max_concentrion_capped_size = effective_max * investable_equity
 
             if asked_position_size > max_concentrion_capped_size:
                 asked_position_size = max_concentrion_capped_size
@@ -943,7 +963,7 @@ class AlphaModel:
 
             if size_risk.capped:
                 s.flags.add(TradingPairSignalFlags.capped_by_pool_size)
-        
+
             total_missed_investments += (size_risk.asked_size - size_risk.accepted_size)
 
             s.position_size_risk = size_risk
@@ -973,8 +993,8 @@ class AlphaModel:
         self.size_risk_discarded_value = total_missed_investments
 
         logger.info(
-            "Positions accepted: %d out of %d requested, total accepted %f out of %f", 
-            positions_accepted, 
+            "Positions accepted: %d out of %d requested, total accepted %f out of %f",
+            positions_accepted,
             max_positions,
             self.accepted_investable_equity,
             self.investable_equity
@@ -998,7 +1018,7 @@ class AlphaModel:
         # Any remaining signal is set to zero
         for s in self.signals.values():
             if s.position_target is None:
-                s.position_target = 0.0  
+                s.position_target = 0.0
 
     def _normalise_weights_waterfall(
         self,
@@ -1008,6 +1028,7 @@ class AlphaModel:
         size_risk_model: SizeRiskModel | None = None,
         epsilon_usd=5.0,
         max_protocol_weight: float | None = None,
+        max_weight_function: Callable[["TradingPairSignal"], float] | None = None,
     ):
         """Normalises position weights between 0 and 1.
 
@@ -1056,7 +1077,12 @@ class AlphaModel:
             assert s.raw_weight >= 0, "_normalise_weights_size_risk(): short or leverage not implemented"
 
             asked_position_size = equity_left
-            max_concentrion_capped_size = max_weight * investable_equity
+            effective_max = max_weight
+            if max_weight_function is not None:
+                per_pair = max_weight_function(s)
+                if per_pair is not None:
+                    effective_max = per_pair
+            max_concentrion_capped_size = effective_max * investable_equity
 
             if asked_position_size > max_concentrion_capped_size:
                 asked_position_size = max_concentrion_capped_size
@@ -1165,6 +1191,7 @@ class AlphaModel:
         max_positions: int | None = None,
         waterfall=False,
         max_protocol_weight: float | None = None,
+        max_weight_function: Callable[["TradingPairSignal"], float] | None = None,
     ):
         """Normalise weights to 0...1 scale.
 
@@ -1186,6 +1213,9 @@ class AlphaModel:
             `max_weight` caps the asset allocation, preventing too concentrated
             positions.
 
+            When ``max_weight_function`` is given, this value is used as a
+            fallback only for signals where the function returns ``None``.
+
         :param size_risk_model:
             Limit position sizes by the current market conditions.
 
@@ -1202,11 +1232,30 @@ class AlphaModel:
             allocation into a single vault protocol (e.g. Hyperliquid).
 
             Set to ``None`` to disable (default).
+
+        :param max_weight_function:
+            Optional callable that returns the per-pair maximum concentration
+            weight.  Receives a :py:class:`TradingPairSignal` and should return
+            a ``float`` in (0, 1].  When provided, the returned value overrides
+            ``max_weight`` for that signal.  Return ``None`` to fall back to the
+            global ``max_weight``.
+
+            Example – cap gold-tier vaults at 33 %, others at 10 %::
+
+                def my_max_weight(signal):
+                    addr = signal.pair.pool_address.lower()
+                    return tier_map.get(addr, 0.10)
+
+                alpha_model.normalise_weights(
+                    max_weight=0.10,
+                    max_weight_function=my_max_weight,
+                    ...
+                )
         """
 
         if not size_risk_model:
             # Easy path
-            self._normalise_weights_simple(max_weight)
+            self._normalise_weights_simple(max_weight, max_weight_function=max_weight_function)
         else:
             # Thinking harder
 
@@ -1217,6 +1266,7 @@ class AlphaModel:
                     investable_equity=investable_equity,
                     size_risk_model=size_risk_model,
                     max_protocol_weight=max_protocol_weight,
+                    max_weight_function=max_weight_function,
                 )
             elif max_positions is not None:
                 # Method 1: weights normalised after TVL-based adjustment
@@ -1225,13 +1275,15 @@ class AlphaModel:
                     max_weight=max_weight,
                     investable_equity=investable_equity,
                     size_risk_model=size_risk_model,
+                    max_weight_function=max_weight_function,
                 )
-            else:   
+            else:
                 # Method 2: weights normalised before TVL-based adjustment
                 self._normalise_weights_size_risk(
                     max_weight=max_weight,
                     size_risk_model=size_risk_model,
                     investable_equity=investable_equity,
+                    max_weight_function=max_weight_function,
                 )
 
         # Risk model zeroed out everything so something is likely wrong

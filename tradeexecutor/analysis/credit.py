@@ -242,3 +242,69 @@ def display_vault_position_table(
         df = df.sort_values(sort_by, ascending=sort_ascending)
 
     return df
+
+
+def display_vault_daily_pnl_table(
+    state: State,
+    execution_mode=ExecutionMode.backtesting,
+    top_n: int = 10,
+    bottom_n: int = 10,
+) -> pd.DataFrame:
+    """Biggest daily gains and losses for vault positions.
+
+    - Computes day-over-day P&L changes from position statistics time-series
+    - Returns top N gains and bottom N losses sorted by absolute USD jump
+    - Output contains HTML formatting for use with ``display_dataframe_with_html``
+
+    :param top_n:
+        Show the N biggest daily gains.
+
+    :param bottom_n:
+        Show the N biggest daily losses.
+
+    :return:
+        DataFrame with HTML-formatted Daily P&L and clickable Address columns.
+    """
+    from tradeexecutor.analysis.weights import _make_clickable_address, _format_coloured_value, _format_date
+
+    positions = [p for p in state.portfolio.get_all_positions() if p.is_vault()]
+
+    if len(positions) == 0:
+        return pd.DataFrame([])
+
+    position_map = {p.position_id: p for p in positions}
+
+    rows = []
+    for position_id, stats_list in state.stats.positions.items():
+        if position_id not in position_map:
+            continue
+        p = position_map[position_id]
+
+        for i in range(1, len(stats_list)):
+            prev = stats_list[i - 1]
+            curr = stats_list[i]
+            daily_pnl = curr.profit_usd - prev.profit_usd
+            rows.append({
+                "Date": _format_date(curr.calculated_at),
+                "Vault": p.pair.get_vault_name(),
+                "Daily P&L": _format_coloured_value(daily_pnl, "USD"),
+                "Address": _make_clickable_address(p.pair.pool_address),
+                "_raw_pnl": daily_pnl,
+                "_abs_pnl": abs(daily_pnl),
+            })
+
+    df = pd.DataFrame(rows)
+
+    if df.empty:
+        return df
+
+    gains = df[df["_raw_pnl"] > 0].nlargest(top_n, "_abs_pnl")
+    losses = df[df["_raw_pnl"] < 0].nlargest(bottom_n, "_abs_pnl")
+    result = pd.concat([gains, losses])
+    result = result.sort_values("_raw_pnl", ascending=False)
+    result = result.drop(columns=["_abs_pnl", "_raw_pnl"])
+    result = result.reset_index(drop=True)
+    result.index = result.index + 1
+    result.index.name = "#"
+
+    return result

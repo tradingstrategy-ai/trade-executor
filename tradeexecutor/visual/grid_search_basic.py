@@ -121,6 +121,7 @@ def visualise_grid_search_equity_curves(
     annotation_xshift=200,
     group_by: str | None = None,
     group_by_secondary: str | None = None,
+    color_mode: str | None = None,
 ) -> Figure:
     """Draw multiple equity curves in the same chart.
 
@@ -183,6 +184,16 @@ def visualise_grid_search_equity_curves(
         Each unique value gets a distinct line dash style.
         Only used when ``group_by`` is also set.
 
+    :param color_mode:
+        How to colour grouped curves. Only used when ``group_by`` is set.
+
+        - ``"gradient"``: shade curves from light to dark within a single hue,
+          ordered by parameter value.  Best for numeric parameters.
+        - ``"discrete"``: assign a distinct colour to each unique parameter value.
+          Best for categorical / string parameters.
+        - ``None`` (default): auto-detect — uses gradient when only ``group_by``
+          is set, discrete when ``group_by_secondary`` is also set.
+
     """
 
     if name is None:
@@ -193,23 +204,35 @@ def visualise_grid_search_equity_curves(
     results = order_grid_search_results_by_metric(results)
 
     use_grouping = group_by is not None
+    if color_mode == "gradient":
+        use_gradient = use_grouping
+    elif color_mode == "discrete":
+        use_gradient = False
+    else:
+        use_gradient = use_grouping and group_by_secondary is None
 
     if use_grouping:
         # Build colour and dash mappings from unique parameter values
         primary_values = list(dict.fromkeys(
             str(r.get_parameter(group_by)) for r in results
         ))
-        group_hues = _get_group_colour_palette(len(primary_values))
-        primary_colour_map = {val: group_hues[i] for i, val in enumerate(primary_values)}
 
-        dash_styles = ["solid", "dash", "dot", "dashdot", "longdash", "longdashdot"]
-        if group_by_secondary is not None:
-            secondary_values = list(dict.fromkeys(
-                str(r.get_parameter(group_by_secondary)) for r in results
-            ))
-            secondary_dash_map = {val: dash_styles[i % len(dash_styles)] for i, val in enumerate(secondary_values)}
-        else:
+        if use_gradient:
+            # Single group_by: gradient shades of one colour by feature value
+            primary_colour_map, sorted_gradient_values = _build_gradient_colour_map(primary_values)
             secondary_dash_map = None
+        else:
+            group_hues = _get_group_colour_palette(len(primary_values))
+            primary_colour_map = {val: group_hues[i] for i, val in enumerate(primary_values)}
+
+            dash_styles = ["solid", "dash", "dot", "dashdot", "longdash", "longdashdot"]
+            if group_by_secondary is not None:
+                secondary_values = list(dict.fromkeys(
+                    str(r.get_parameter(group_by_secondary)) for r in results
+                ))
+                secondary_dash_map = {val: dash_styles[i % len(dash_styles)] for i, val in enumerate(secondary_values)}
+            else:
+                secondary_dash_map = None
 
         # Pre-compute per-group rank for opacity
         from collections import defaultdict
@@ -220,6 +243,13 @@ def visualise_grid_search_equity_curves(
             group_counts[key] += 1
 
         shown_legend_groups = set()
+
+        if use_gradient:
+            # Sort results so gradient values appear in legend order (low to high)
+            results = sorted(
+                results,
+                key=lambda r: sorted_gradient_values.index(str(r.get_parameter(group_by))),
+            )
     else:
         colors = _generate_grey_alpha(len(results))
 
@@ -234,25 +264,33 @@ def visualise_grid_search_equity_curves(
 
         if use_grouping:
             primary_val = str(result.get_parameter(group_by))
-            r, g, b = primary_colour_map[primary_val]
 
-            # Opacity: best in group = most opaque, worst = least
-            count = group_counts[primary_val]
-            rank = group_indices[primary_val]
-            group_indices[primary_val] += 1
-            opacity = 0.9 - (0.6 * rank / max(count - 1, 1))
-
-            line_colour = f"rgba({r},{g},{b},{opacity:.2f})"
-
-            if secondary_dash_map is not None:
-                secondary_val = str(result.get_parameter(group_by_secondary))
-                dash = secondary_dash_map[secondary_val]
-                legend_group = f"{primary_val} / {secondary_val}"
-                legend_name = f"{primary_val} / {secondary_val}"
-            else:
+            if use_gradient:
+                # Gradient mode: colour already encodes the feature value
+                line_colour = primary_colour_map[primary_val]
                 dash = "solid"
-                legend_group = primary_val
-                legend_name = primary_val
+                legend_group = f"{group_by}={primary_val}"
+                legend_name = f"{group_by}={primary_val}"
+            else:
+                r, g, b = primary_colour_map[primary_val]
+
+                # Opacity: best in group = most opaque, worst = least
+                count = group_counts[primary_val]
+                rank = group_indices[primary_val]
+                group_indices[primary_val] += 1
+                opacity = 0.9 - (0.6 * rank / max(count - 1, 1))
+
+                line_colour = f"rgba({r},{g},{b},{opacity:.2f})"
+
+                if secondary_dash_map is not None:
+                    secondary_val = str(result.get_parameter(group_by_secondary))
+                    dash = secondary_dash_map[secondary_val]
+                    legend_group = f"{group_by}={primary_val} / {group_by_secondary}={secondary_val}"
+                    legend_name = f"{group_by}={primary_val} / {group_by_secondary}={secondary_val}"
+                else:
+                    dash = "solid"
+                    legend_group = f"{group_by}={primary_val}"
+                    legend_name = f"{group_by}={primary_val}"
 
             show_legend = legend_group not in shown_legend_groups
             if show_legend:
@@ -266,6 +304,7 @@ def visualise_grid_search_equity_curves(
                 line=dict(color=line_colour, dash=dash),
                 legendgroup=legend_group,
                 showlegend=show_legend,
+                connectgaps=True,
             )
         else:
             scatter = Scatter(
@@ -275,6 +314,7 @@ def visualise_grid_search_equity_curves(
                 name="",
                 line=dict(color=colors.pop(0)),
                 showlegend=False,
+                connectgaps=True,
             )
 
         fig.add_trace(scatter)
@@ -328,6 +368,42 @@ def visualise_grid_search_equity_curves(
     ))
 
     return fig
+
+
+def _build_gradient_colour_map(values: list[str]) -> tuple[dict[str, str], list[str]]:
+    """Map feature values to shades of a single colour.
+
+    - Tries to sort values numerically; falls back to original order
+    - Maps the value range linearly from pale red (low) to dark red (high)
+
+    :return:
+        Tuple of (colour map, sorted values list)
+    """
+    # Try numeric sort
+    try:
+        numeric = [(v, float(v)) for v in values]
+        numeric.sort(key=lambda x: x[1])
+        sorted_values = [v for v, _ in numeric]
+    except (ValueError, TypeError):
+        sorted_values = list(values)
+
+    n = len(sorted_values)
+
+    # Shade from light red (low values) to dark red (high values).
+    # We interpolate the RGB channels directly so the hue stays red
+    # regardless of the background.
+    light = (255, 180, 180)  # pale red
+    dark = (139, 0, 0)       # dark red
+
+    colour_map = {}
+    for i, val in enumerate(sorted_values):
+        t = i / max(n - 1, 1)
+        r = int(light[0] + t * (dark[0] - light[0]))
+        g = int(light[1] + t * (dark[1] - light[1]))
+        b = int(light[2] + t * (dark[2] - light[2]))
+        colour_map[val] = f"rgb({r},{g},{b})"
+
+    return colour_map, sorted_values
 
 
 def _get_group_colour_palette(num_groups):

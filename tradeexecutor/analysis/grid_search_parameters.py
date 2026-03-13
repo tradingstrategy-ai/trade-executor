@@ -27,6 +27,8 @@ Example usage in a notebook:
 
 from typing import Callable
 
+from tradeexecutor.backtest.optimiser import AnalysisMetric
+
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -38,7 +40,7 @@ from sklearn.preprocessing import LabelEncoder
 
 def _prepare_parameter_data(
     df: pd.DataFrame,
-    analysis_metric: str = "CAGR",
+    analysis_metric: AnalysisMetric = "CAGR",
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series, list[str]]:
     """Prepare grid search results for sklearn-based analysis.
 
@@ -76,7 +78,7 @@ def _prepare_parameter_data(
 
 def analyse_decision_tree(
     df: pd.DataFrame,
-    analysis_metric: str = "CAGR",
+    analysis_metric: AnalysisMetric = "CAGR",
     max_depth: int = 4,
     figsize: tuple[int, int] = (20, 10),
     printer: Callable = print,
@@ -125,7 +127,7 @@ def analyse_decision_tree(
 
 def analyse_feature_importance(
     df: pd.DataFrame,
-    analysis_metric: str = "CAGR",
+    analysis_metric: AnalysisMetric = "CAGR",
     n_estimators: int = 100,
     figsize: tuple[int, int] = (10, 6),
     printer: Callable = print,
@@ -180,7 +182,7 @@ def analyse_feature_importance(
 
 def analyse_parameter_pair_heatmaps(
     df: pd.DataFrame,
-    analysis_metric: str = "CAGR",
+    analysis_metric: AnalysisMetric = "CAGR",
     param_pairs: list[tuple[str, str]] | None = None,
     printer: Callable = print,
 ) -> list[go.Figure]:
@@ -248,7 +250,7 @@ def analyse_parameter_pair_heatmaps(
 
 def analyse_parameter_clusters(
     df: pd.DataFrame,
-    analysis_metric: str = "CAGR",
+    analysis_metric: AnalysisMetric = "CAGR",
     n_clusters: int = 5,
     printer: Callable = print,
 ) -> tuple[pd.DataFrame, go.Figure | None]:
@@ -321,7 +323,7 @@ def analyse_parameter_clusters(
 
 def analyse_parallel_coordinates(
     df: pd.DataFrame,
-    analysis_metric: str = "CAGR",
+    analysis_metric: AnalysisMetric = "CAGR",
     printer: Callable = print,
 ) -> go.Figure:
     """Create a parallel coordinates plot of parameter combinations.
