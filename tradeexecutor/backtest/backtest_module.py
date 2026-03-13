@@ -1,5 +1,4 @@
 """Run backtest for a single strategy module."""
-import inspect
 import logging
 import os
 import datetime
@@ -18,7 +17,7 @@ from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import call_cr
 from tradeexecutor.strategy.pandas_trader.indicator import DiskIndicatorStorage
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.utils.cpu import get_safe_max_workers_count
+from tradeexecutor.utils.cpu import get_safe_max_workers_count, is_running_in_ipython
 from tradingstrategy.client import Client
 from eth_defi.compat import native_datetime_utc_now
 
@@ -125,11 +124,10 @@ def run_backtest_for_module(
         print("Backtesting period is", backtest_start_at, backtest_end_at)
 
     indicator_storage = DiskIndicatorStorage(Path(client.transport.cache_path) / "indicators", universe_key=universe.get_cache_key())
-    inside_ipython = any(frame for frame in inspect.stack() if frame.function == "start_ipython")
-
     if not max_workers:
-        # ipython command fails with multiprocessing module
-        if inside_ipython:
+        # IPython CLI fails with multiprocessing - fall back to single process.
+        # Use `jupyter execute` instead for multiprocess support.
+        if is_running_in_ipython():
             max_workers = 1
 
     backtest_setup = setup_backtest_for_universe(

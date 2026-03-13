@@ -1,4 +1,5 @@
 """Run-time environment CPU queries."""
+import inspect
 import multiprocessing
 
 
@@ -26,3 +27,25 @@ def get_safe_max_workers_count(os_reserved_cpus=2) -> int:
         return 1
 
     return cpus
+
+
+def is_running_in_ipython() -> bool:
+    """Detect if we are running inside the IPython CLI (not a Jupyter kernel).
+
+    - ``ipython notebook.ipynb`` executes cells directly in its own process,
+      where ``start_ipython`` is on the call stack. Spawning child processes
+      via Loky/joblib fails because IPython's dynamic ``__main__`` module
+      cannot be properly resolved in spawned worker processes.
+
+    - ``jupyter execute notebook.ipynb`` launches an IPython **kernel as a
+      separate subprocess** (via ``IPKernelApp``, not ``start_ipython``),
+      so multiprocessing works normally — Loky can spawn workers and
+      cloudpickle handles function serialisation across processes.
+
+    - This function checks for ``start_ipython`` in the call stack to
+      distinguish the two cases.
+
+    - When IPython CLI is detected, callers should fall back to
+      ``max_workers=1`` and log a warning suggesting ``jupyter execute``.
+    """
+    return any(frame for frame in inspect.stack() if frame.function == "start_ipython")
