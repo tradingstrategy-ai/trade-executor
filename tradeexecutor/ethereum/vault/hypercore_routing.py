@@ -89,6 +89,19 @@ logger = logging.getLogger(__name__)
 #: Gas limit for Hypercore multicall transactions (approve + CDW.deposit or CoreWriter actions).
 HYPERCORE_MULTICALL_GAS = 500_000
 
+#: USDC uses 6 decimals on HyperEVM.
+USDC_DECIMALS = 6
+
+
+def usdc_to_raw(amount: Decimal) -> int:
+    """Convert a human-readable USDC amount to raw 6-decimal integer."""
+    return int(amount * 10**USDC_DECIMALS)
+
+
+def raw_to_usdc(raw: int) -> Decimal:
+    """Convert a raw 6-decimal USDC integer to human-readable Decimal."""
+    return Decimal(raw) / Decimal(10**USDC_DECIMALS)
+
 
 class HypercoreWithdrawalVerificationError(Exception):
     """Raised when a Hypercore vault withdrawal cannot be verified on EVM.
@@ -171,12 +184,10 @@ class HypercoreVaultRouting(RoutingModel):
         self.is_testnet = self.chain_id == 998
         self.simulate = simulate
         self._session: HyperliquidSession | None = None
-        self._activation_cost_raw: int = 0
 
-        # P14: Verify deployer is not in big blocks mode.
-        # If left enabled from a previous deployment, all transactions
-        # would go to the large block mempool (~1 min confirmation
-        # instead of ~1s).
+        # Verify deployer is not in big blocks mode.  If left enabled
+        # from a previous deployment, all transactions would go to the
+        # large block mempool (~1 min confirmation instead of ~1s).
         if not simulate:
             try:
                 from eth_defi.hyperliquid.block import fetch_using_big_blocks
@@ -291,7 +302,7 @@ class HypercoreVaultRouting(RoutingModel):
     def _get_raw_usdc_amount(self, trade: TradeExecution) -> int:
         """Get the raw USDC amount (6 decimals) for the trade."""
         planned_reserve = trade.get_planned_reserve()
-        return int(planned_reserve * 10**6)
+        return usdc_to_raw(planned_reserve)
 
     def _fetch_safe_evm_usdc_balance(self) -> int:
         """Read the Safe's EVM USDC balance (raw, 6 decimals).
@@ -364,7 +375,7 @@ class HypercoreVaultRouting(RoutingModel):
                     f"baseline: {baseline_balance_raw} raw, "
                     f"current: {current_balance_raw} raw, "
                     f"after {attempt} poll(s). "
-                    f"P9: The HyperCore-to-EVM bridge may be dry or one of the "
+                    f"The HyperCore-to-EVM bridge may be dry or one of the "
                     f"CoreWriter actions (vaultTransfer/transferUsdClass/spotSend) "
                     f"failed silently on HyperCore."
                 )
@@ -396,7 +407,7 @@ class HypercoreVaultRouting(RoutingModel):
         :param location:
             Where the USDC is stranded (e.g. ``"hypercore_spot"``).
         """
-        human_amount = Decimal(raw_amount) / Decimal(10**6)
+        human_amount = raw_to_usdc(raw_amount)
         stranded_info = {
             "amount_raw": raw_amount,
             "amount_human": str(human_amount),
@@ -413,7 +424,7 @@ class HypercoreVaultRouting(RoutingModel):
             trade.other_data = {}
         trade.other_data["hypercore_stranded_usdc"] = stranded_info
         trade.add_note(
-            f"P5: USDC stranded on HyperCore ({human_amount} USDC in {location})"
+            f"USDC stranded on HyperCore ({human_amount} USDC in {location})"
         )
         logger.error(
             "STRANDED USDC: %s USDC in %s for Safe %s (trade %s). "
@@ -439,11 +450,9 @@ class HypercoreVaultRouting(RoutingModel):
             Raw USDC consumed by activation (deducted from deposit amount).
         """
         vault_address = self._get_vault_address(trade)
-        # P13: The minimum vault deposit (5 USDC / 5_000_000 raw) is enforced
-        # by an assertion in encode_vault_deposit() in eth_defi core_writer.py.
-        # Deposits below this threshold are silently rejected by HyperCore.
-        # The assertion catches this at encoding time, so it is a non-issue
-        # for the trade executor.
+        # Minimum vault deposit (5 USDC) is enforced by an assertion in
+        # encode_vault_deposit() in eth_defi core_writer.py.  Deposits
+        # below this threshold are silently rejected by HyperCore.
         raw_amount = self._get_raw_usdc_amount(trade)
 
         if trade.is_buy() and activation_cost_raw > 0:
@@ -527,16 +536,17 @@ class HypercoreVaultRouting(RoutingModel):
             self.simulate,
         )
 
+        # Activation cost is tracked per-trade in trade.other_data, not
+        # on the instance, so there is no stale state to reset between cycles.
+
         # In multichain setups, GenericRouting creates a satellite wallet
         # with the correct nonce for this chain and wraps it in a
         # LagoonTransactionBuilder with the satellite vault.  Use these
         # instead of the originals (which target the primary chain).
         #
-        # P10: The primary-chain gas check (EthereumExecution.preflight_check)
-        # does NOT cover satellite chains.  If the deployer runs out of HYPE
-        # on HyperEVM, multicall transactions fail with out-of-gas.  The
-        # failure is caught by the normal trade failure path but is not
-        # diagnosed specifically.  Consider adding a HYPE balance check here
+        # Note: the primary-chain gas check does NOT cover satellite chains.
+        # If the deployer runs out of HYPE on HyperEVM, multicall transactions
+        # fail with out-of-gas.  Consider adding a HYPE balance check here
         # if gas management becomes a recurring issue.
         if hasattr(routing_state, 'tx_builder') and hasattr(routing_state.tx_builder, 'hot_wallet'):
             self.deployer = routing_state.tx_builder.hot_wallet
@@ -568,15 +578,14 @@ class HypercoreVaultRouting(RoutingModel):
                 )
                 self.deployer.sync_nonce(self.web3)
                 activation_cost_raw = DEFAULT_ACTIVATION_AMOUNT
-                # P8: Store activation cost both on the instance (for same-cycle
-                # access in _settle_deposit) and in trade.other_data (persisted
-                # in state JSON, survives executor restarts between setup and settle).
-                self._activation_cost_raw = activation_cost_raw
                 logger.info(
                     "Safe %s activated on HyperCore (cost %d raw USDC from Safe)",
                     self.safe_address,
                     activation_cost_raw,
                 )
+
+        # Only the first buy trade in the cycle bears the activation cost.
+        activation_cost_applied = False
 
         for trade in trades:
             assert trade.is_vault(), f"Not a vault trade: {trade}"
@@ -587,17 +596,20 @@ class HypercoreVaultRouting(RoutingModel):
                     f"is not activated on HyperCore."
                 )
 
+            cost_for_this_trade = activation_cost_raw if (trade.is_buy() and not activation_cost_applied) else 0
+
             trade.blockchain_transactions = self._create_deposit_or_withdraw_txs(
                 trade,
-                activation_cost_raw=activation_cost_raw,
+                activation_cost_raw=cost_for_this_trade,
             )
 
-            # P8: Persist activation cost in trade state for crash recovery
-            if trade.is_buy() and activation_cost_raw > 0:
-                trade.add_note(f"Activation cost: {activation_cost_raw} raw USDC")
+            # Persist per-trade activation cost for settlement to read.
+            if trade.is_buy() and cost_for_this_trade > 0:
+                activation_cost_applied = True
+                trade.add_note(f"Activation cost: {cost_for_this_trade} raw USDC")
                 if not hasattr(trade, "other_data") or trade.other_data is None:
                     trade.other_data = {}
-                trade.other_data["hypercore_activation_cost_raw"] = activation_cost_raw
+                trade.other_data["hypercore_activation_cost_raw"] = cost_for_this_trade
 
     # ------------------------------------------------------------------
     # Settlement helpers
@@ -759,10 +771,9 @@ class HypercoreVaultRouting(RoutingModel):
             return
 
         vault_address = self._get_vault_address(trade)
-        # P8: Read activation cost from instance state, falling back to
-        # trade.other_data for crash recovery scenarios.
-        activation_cost = self._activation_cost_raw
-        if activation_cost == 0 and hasattr(trade, "other_data") and trade.other_data:
+        # Read per-trade activation cost (only set on the first buy).
+        activation_cost = 0
+        if hasattr(trade, "other_data") and trade.other_data:
             activation_cost = trade.other_data.get("hypercore_activation_cost_raw", 0)
         deposit_raw = self._get_raw_usdc_amount(trade) - activation_cost
         session = self._get_session()
@@ -774,9 +785,9 @@ class HypercoreVaultRouting(RoutingModel):
         )
 
         # --- Escrow wait ---
-        # P15: Pass expected USDC so the escrow wait also verifies that USDC
+        # Pass expected USDC so the escrow wait also verifies that USDC
         # appeared in the HyperCore spot balance, not just that escrows cleared.
-        expected_usdc_human = Decimal(deposit_raw) / Decimal(10**6)
+        expected_usdc_human = raw_to_usdc(deposit_raw)
         try:
             wait_for_evm_escrow_clear(
                 session,
@@ -793,7 +804,10 @@ class HypercoreVaultRouting(RoutingModel):
         logger.info("Escrow cleared. Building and broadcasting phase 2...")
 
         # Snapshot existing vault equity before phase 2 so we can detect
-        # the increase after deposit (handles both new and existing positions).
+        # the increase after deposit.  If the snapshot fails, abort: without
+        # a baseline the verification step cannot distinguish pre-existing
+        # equity from a fresh deposit and would falsely mark a silent
+        # HyperCore rejection as success.
         existing_equity: Decimal | None = None
         try:
             eq_before = fetch_user_vault_equity(
@@ -806,19 +820,24 @@ class HypercoreVaultRouting(RoutingModel):
                 existing_equity = eq_before.equity
                 logger.info("Existing vault equity before phase 2: %s", existing_equity)
         except Exception as e:
-            logger.warning("Could not query vault equity before phase 2: %s", e)
+            logger.error(
+                "Cannot snapshot vault equity before phase 2: %s. "
+                "Aborting deposit to prevent false verification.",
+                e,
+            )
+            self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot")
+            report_failure(ts, state, trade, stop_on_execution_failure)
+            return
 
         # --- Phase 2 ---
-        # P7: RPC failure during nonce sync between phases could strand USDC
-        # in HyperCore spot.  Currently not handled — manual recovery needed
-        # via check-hypercore-user.py script.
+        # Note: RPC failure during nonce sync between phases could strand
+        # USDC in HyperCore spot.  Manual recovery via check-hypercore-user.py.
         self.deployer.sync_nonce(web3)
 
         try:
             phase2_tx, phase2_receipt = self._broadcast_phase2(trade, vault_address, deposit_raw)
         except Exception as e:
             logger.error("Phase 2 broadcast failed: %s", e)
-            # P5: Record stranded USDC info for operator recovery
             self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot")
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
@@ -827,7 +846,6 @@ class HypercoreVaultRouting(RoutingModel):
 
         if phase2_receipt["status"] != 1:
             logger.error("Hypercore deposit phase 2 reverted: tx %s", phase2_tx.tx_hash)
-            # P5: USDC may be in spot or partially transferred
             self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot_or_perp")
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
@@ -840,7 +858,7 @@ class HypercoreVaultRouting(RoutingModel):
         # deposit may be silently rejected by HyperCore.  We poll the API
         # until vault equity appears/increases, or fail the trade.
         executed_reserve = planned_reserve
-        actual_deposit_human = Decimal(deposit_raw) / Decimal(10**6)
+        actual_deposit_human = raw_to_usdc(deposit_raw)
 
         try:
             confirmed_eq = wait_for_vault_deposit_confirmation(
@@ -852,19 +870,23 @@ class HypercoreVaultRouting(RoutingModel):
                 timeout=60.0,
                 poll_interval=2.0,
             )
-            executed_amount = confirmed_eq.equity
+            # Use the deposited amount (delta) as executed_amount, NOT the
+            # total vault equity.  Position quantity tracks cumulative USDC
+            # deposited; the valuation model then computes per-unit price
+            # as equity/quantity so that value = equity.
+            executed_amount = actual_deposit_human
             logger.info(
                 "Vault equity after deposit: %s (deposited %s USDC, activation cost %s USDC)",
-                executed_amount,
+                confirmed_eq.equity,
                 actual_deposit_human,
-                Decimal(activation_cost) / Decimal(10**6),
+                raw_to_usdc(activation_cost),
             )
         except HypercoreDepositVerificationError as e:
             logger.error(
                 "Vault deposit verification failed for trade %s: %s",
                 trade.trade_id, e,
             )
-            # P5: Deposit silently rejected — USDC is in spot or perp
+            # Deposit silently rejected — USDC stranded in spot or perp
             self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot_or_perp")
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
@@ -912,6 +934,9 @@ class HypercoreVaultRouting(RoutingModel):
         # Capture baseline USDC balance before processing receipt.
         # The withdrawal multicall has already been mined but spotSend's
         # bridge delivery takes 2-10 seconds, so USDC hasn't arrived yet.
+        # Capture baseline EVM USDC balance and vault equity before the
+        # bridge delivers the withdrawal.  These are used for dual-chain
+        # verification after the USDC arrives on EVM.
         if not self.simulate:
             baseline_balance_raw = self._fetch_safe_evm_usdc_balance()
             expected_raw = self._get_raw_usdc_amount(trade)
@@ -920,6 +945,25 @@ class HypercoreVaultRouting(RoutingModel):
                 "expected increase = %d raw",
                 self.safe_address, baseline_balance_raw, expected_raw,
             )
+            equity_before: Decimal | None = None
+            vault_address = self._get_vault_address(trade)
+            session = self._get_session()
+            try:
+                eq_before = fetch_user_vault_equity(
+                    session,
+                    user=self.safe_address,
+                    vault_address=vault_address,
+                    bypass_cache=True,
+                )
+                if eq_before is not None:
+                    equity_before = eq_before.equity
+                    logger.info(
+                        "Vault equity before withdrawal: %s", equity_before,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "Could not snapshot vault equity before withdrawal: %s", e,
+                )
 
         withdraw_tx = trade.blockchain_transactions[-1]
         try:
@@ -969,17 +1013,16 @@ class HypercoreVaultRouting(RoutingModel):
                 report_failure(ts, state, trade, stop_on_execution_failure)
                 return
 
-            executed_reserve = Decimal(actual_increase_raw) / Decimal(10**6)
+            executed_reserve = raw_to_usdc(actual_increase_raw)
             if executed_reserve < planned_reserve:
                 logger.warning(
                     "Withdrawal partial: received %s USDC but planned %s USDC (trade %s)",
                     executed_reserve, planned_reserve, trade.trade_id,
                 )
 
-            # P6: Also verify vault equity decreased on HyperCore.
-            # This confirms both chains are consistent after the withdrawal.
-            vault_address = self._get_vault_address(trade)
-            session = self._get_session()
+            # Dual-chain check: verify vault equity decreased on HyperCore
+            # to match the USDC that arrived on EVM.  Non-fatal — EVM
+            # verification already passed; this is an extra consistency check.
             try:
                 eq_after = fetch_user_vault_equity(
                     session,
@@ -988,16 +1031,35 @@ class HypercoreVaultRouting(RoutingModel):
                     bypass_cache=True,
                 )
                 remaining_equity = eq_after.equity if eq_after else Decimal(0)
-                logger.info(
-                    "P6: Withdrawal dual-chain check: EVM USDC arrived (+%s), "
-                    "HyperCore vault equity remaining: %s",
-                    executed_reserve, remaining_equity,
-                )
+
+                if equity_before is not None:
+                    equity_decrease = equity_before - remaining_equity
+                    expected_decrease = executed_reserve
+                    tolerance = expected_decrease * Decimal("0.01")
+                    if equity_decrease < expected_decrease - tolerance:
+                        logger.warning(
+                            "Withdrawal dual-chain mismatch: EVM USDC arrived (+%s), "
+                            "but HyperCore equity decreased by only %s (expected ~%s). "
+                            "Before: %s, after: %s",
+                            executed_reserve, equity_decrease, expected_decrease,
+                            equity_before, remaining_equity,
+                        )
+                    else:
+                        logger.info(
+                            "Withdrawal dual-chain verified: EVM USDC arrived (+%s), "
+                            "HyperCore equity decreased by %s. Before: %s, after: %s",
+                            executed_reserve, equity_decrease,
+                            equity_before, remaining_equity,
+                        )
+                else:
+                    logger.info(
+                        "Withdrawal dual-chain check (no baseline): "
+                        "EVM USDC arrived (+%s), HyperCore equity remaining: %s",
+                        executed_reserve, remaining_equity,
+                    )
             except Exception as e:
-                # Non-fatal: EVM verification already passed, this is
-                # an additional consistency check.
                 logger.warning(
-                    "P6: Could not verify vault equity after withdrawal: %s", e,
+                    "Could not verify vault equity after withdrawal: %s", e,
                 )
 
         executed_amount = -executed_reserve  # Negative for sells

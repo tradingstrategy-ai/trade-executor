@@ -34,5 +34,9 @@ escrow wait, enabling dual verification (escrow clear + spot balance).
 
 ## Files modified
 
-- `deps/web3-ethereum-defi/eth_defi/hyperliquid/evm_escrow.py` - `wait_for_evm_escrow_clear()` enhanced with `expected_usdc` parameter, added `_get_usdc_spot_balance()` helper
-- `tradeexecutor/ethereum/vault/hypercore_routing.py` - `_settle_deposit()` passes `expected_usdc` to escrow wait
+- `deps/web3-ethereum-defi/eth_defi/hyperliquid/evm_escrow.py` — `wait_for_evm_escrow_clear()` enhanced with `expected_usdc` parameter, added `_get_usdc_spot_balance()` helper
+- `tradeexecutor/ethereum/vault/hypercore_routing.py` — `_settle_deposit()` passes `expected_usdc` to escrow wait
+
+## Test coverage
+
+- `tests/hyperliquid/test_hypercore_escrow_robust.py` — 5 tests covering `_get_usdc_spot_balance`, escrow wait with/without expected_usdc, and shortfall warning

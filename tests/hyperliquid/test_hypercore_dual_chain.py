@@ -1,90 +1,229 @@
-"""Test P6: Dual-chain confirmation after Hypercore trades."""
+"""Test P6: Dual-chain confirmation after Hypercore withdrawals.
 
+Tests that _settle_withdrawal() captures baseline vault equity before
+the withdrawal and compares it against equity after USDC arrives on EVM.
+"""
+
+import datetime
+import itertools
+import logging
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
-from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreVaultRouting
+from eth_defi.hyperliquid.api import UserVaultEquity
 
 
-def test_withdrawal_checks_vault_equity_after_usdc_arrival():
-    """After USDC arrives on EVM, _settle_withdrawal queries HyperCore equity."""
-    routing = MagicMock(spec=HypercoreVaultRouting)
-    routing.safe_address = "0xABC123"
-    routing.simulate = False
-    routing._get_vault_address = MagicMock(return_value="0xVAULT")
-
-    mock_session = MagicMock()
-    routing._get_session = MagicMock(return_value=mock_session)
-
-    # Simulate equity response after withdrawal
-    mock_equity = MagicMock()
-    mock_equity.equity = Decimal("450.0")
-
-    with patch(
-        "tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity",
-        return_value=mock_equity,
-    ) as mock_fetch:
-        # Call the equity check part directly by invoking the method
-        # We need to test the P6 block in isolation since _settle_withdrawal
-        # has many dependencies. Verify the function is called correctly.
-        from tradeexecutor.ethereum.vault.hypercore_routing import fetch_user_vault_equity
-
-        result = fetch_user_vault_equity(
-            mock_session,
-            user="0xABC123",
-            vault_address="0xVAULT",
-            bypass_cache=True,
-        )
-        assert result.equity == Decimal("450.0")
-        mock_fetch.assert_called_once_with(
-            mock_session,
-            user="0xABC123",
-            vault_address="0xVAULT",
-            bypass_cache=True,
-        )
+VAULT_ADDR = "0xdfc24b077bc1425ad1dea75bcb6f8158e10df303"
+SAFE_ADDR = "0xABC123"
+LOCKED_UNTIL = datetime.datetime(2030, 1, 1)
 
 
-def test_withdrawal_equity_check_non_fatal_on_api_failure():
-    """P6 equity check failure should not crash the withdrawal."""
-    routing = MagicMock(spec=HypercoreVaultRouting)
-    routing.safe_address = "0xABC123"
-    routing.simulate = False
+def _make_equity(equity: Decimal) -> UserVaultEquity:
+    return UserVaultEquity(
+        vault_address=VAULT_ADDR,
+        equity=equity,
+        locked_until=LOCKED_UNTIL,
+    )
 
-    with patch(
-        "tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity",
-        side_effect=Exception("API timeout"),
-    ):
-        # The P6 block catches exceptions and logs a warning.
-        # Verify the import still works even when API fails.
-        from tradeexecutor.ethereum.vault.hypercore_routing import fetch_user_vault_equity
-        try:
-            fetch_user_vault_equity(
-                MagicMock(), user="x", vault_address="y", bypass_cache=True,
+
+def _make_routing(simulate=False):
+    """Create a minimal HypercoreVaultRouting with mocked dependencies."""
+    from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreVaultRouting
+
+    routing = object.__new__(HypercoreVaultRouting)
+    routing.web3 = MagicMock()
+    routing.lagoon_vault = MagicMock()
+    routing.lagoon_vault.safe_address = SAFE_ADDR
+    routing.deployer = MagicMock()
+    routing.chain_id = 999
+    routing.is_testnet = False
+    routing.simulate = simulate
+    routing.reserve_token_address = "0xusdc"
+    routing._session = MagicMock()
+    return routing
+
+
+def _make_trade(planned_reserve=Decimal("50.0"), is_buy=False):
+    """Create a mock trade."""
+    trade = MagicMock()
+    trade.is_buy.return_value = is_buy
+    trade.is_vault.return_value = True
+    trade.get_planned_reserve.return_value = planned_reserve
+    trade.trade_id = 1
+    trade.blockchain_transactions = [MagicMock(tx_hash="0xabc")]
+    trade.other_data = {"hypercore_vault_address": VAULT_ADDR}
+    trade.pair = MagicMock()
+    trade.pair.other_data = {"hypercore_vault_address": VAULT_ADDR}
+    return trade
+
+
+def _monotonic_time():
+    """Return a callable that yields monotonically increasing values.
+
+    Patching ``time.time`` with a fixed side_effect list is fragile because
+    the patch is global (``time`` is a module singleton).  Python's logging
+    module calls ``time.time()`` for every ``LogRecord``, consuming values
+    intended for the code under test.  A callable avoids StopIteration.
+    """
+    counter = itertools.count()
+    return lambda: float(next(counter))
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_withdrawal_dual_chain_verified(mock_fetch_equity, mock_block_ts):
+    """After USDC arrives on EVM, equity decrease on HyperCore is compared to baseline."""
+    routing = _make_routing()
+
+    # Equity before withdrawal: 500, after: 450 (decreased by 50, matching withdrawal)
+    mock_fetch_equity.side_effect = [
+        _make_equity(Decimal("500.0")),   # baseline snapshot
+        _make_equity(Decimal("450.0")),   # post-withdrawal check
+    ]
+
+    trade = _make_trade(planned_reserve=Decimal("50.0"))
+    state = MagicMock()
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+
+    from hexbytes import HexBytes
+    receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
+
+    with patch.object(routing, "_fetch_safe_evm_usdc_balance", side_effect=[100_000_000, 150_000_000]):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+            with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+                routing._settle_withdrawal(
+                    routing.web3, state, trade, receipts,
+                    stop_on_execution_failure=False,
+                )
+
+    state.mark_trade_success.assert_called_once()
+    # Verify both equity calls were made (baseline + post-withdrawal)
+    assert mock_fetch_equity.call_count == 2
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_withdrawal_dual_chain_mismatch_logs_warning(mock_fetch_equity, mock_block_ts, caplog):
+    """Equity does NOT decrease as expected — warning logged but trade still succeeds."""
+    routing = _make_routing()
+
+    # Equity stays at 500 (HyperCore didn't process the withdrawal)
+    mock_fetch_equity.side_effect = [
+        _make_equity(Decimal("500.0")),   # baseline
+        _make_equity(Decimal("500.0")),   # post-withdrawal: no decrease!
+    ]
+
+    trade = _make_trade(planned_reserve=Decimal("50.0"))
+    state = MagicMock()
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+
+    from hexbytes import HexBytes
+    receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
+
+    with caplog.at_level(logging.WARNING):
+        with patch.object(routing, "_fetch_safe_evm_usdc_balance", side_effect=[100_000_000, 150_000_000]):
+            with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+                with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+                    routing._settle_withdrawal(
+                        routing.web3, state, trade, receipts,
+                        stop_on_execution_failure=False,
+                    )
+
+    # Trade still succeeds (EVM verification passed)
+    state.mark_trade_success.assert_called_once()
+    # But a mismatch warning was logged
+    assert any("mismatch" in r.message for r in caplog.records)
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_withdrawal_equity_check_non_fatal_on_api_failure(mock_fetch_equity, mock_block_ts, caplog):
+    """P6 post-withdrawal equity check failure does not crash the trade."""
+    routing = _make_routing()
+
+    # Baseline succeeds, post-withdrawal check fails
+    mock_fetch_equity.side_effect = [
+        _make_equity(Decimal("500.0")),   # baseline OK
+        Exception("API timeout"),          # post-withdrawal fails
+    ]
+
+    trade = _make_trade(planned_reserve=Decimal("50.0"))
+    state = MagicMock()
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+
+    from hexbytes import HexBytes
+    receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
+
+    with caplog.at_level(logging.WARNING):
+        with patch.object(routing, "_fetch_safe_evm_usdc_balance", side_effect=[100_000_000, 150_000_000]):
+            with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+                with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+                    routing._settle_withdrawal(
+                        routing.web3, state, trade, receipts,
+                        stop_on_execution_failure=False,
+                    )
+
+    # Trade still succeeds despite P6 check failure
+    state.mark_trade_success.assert_called_once()
+    assert any("Could not verify vault equity" in r.message for r in caplog.records)
+
+
+# --- P2: _wait_for_usdc_arrival tests ---
+
+
+def test_wait_for_usdc_arrival_succeeds():
+    """P2: USDC arrives after 2 polls — returns actual increase."""
+    import pytest
+    from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreVaultRouting
+
+    routing = _make_routing()
+    # Poll 1: no increase, Poll 2: +50 USDC
+    routing._fetch_safe_evm_usdc_balance = MagicMock(
+        side_effect=[100_000_000, 150_000_000],
+    )
+
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+            result = routing._wait_for_usdc_arrival(
+                baseline_balance_raw=100_000_000,
+                expected_increase_raw=50_000_000,
+                timeout=30.0,
+                poll_interval=2.0,
             )
-            assert False, "Should have raised"
-        except Exception as e:
-            assert "API timeout" in str(e)
+
+    assert result == 50_000_000
 
 
-def test_deposit_verification_covers_both_chains():
-    """P1 + P6: Deposit settlement verifies EVM receipt AND HyperCore equity."""
-    # The deposit flow checks:
-    # 1. Phase 1 EVM receipt (status == 1)
-    # 2. Phase 2 EVM receipt (status == 1)
-    # 3. HyperCore vault equity via wait_for_vault_deposit_confirmation()
-    # This test verifies the import chain is intact.
+def test_wait_for_usdc_arrival_timeout():
+    """P2: USDC never arrives — raises HypercoreWithdrawalVerificationError."""
+    import pytest
     from tradeexecutor.ethereum.vault.hypercore_routing import (
         HypercoreVaultRouting,
         HypercoreWithdrawalVerificationError,
     )
-    from eth_defi.hyperliquid.api import (
-        HypercoreDepositVerificationError,
-        wait_for_vault_deposit_confirmation,
-        fetch_user_vault_equity,
-    )
 
-    # Verify all the verification pieces exist
-    assert HypercoreDepositVerificationError is not None
-    assert HypercoreWithdrawalVerificationError is not None
-    assert callable(wait_for_vault_deposit_confirmation)
-    assert callable(fetch_user_vault_equity)
+    routing = _make_routing()
+    # Balance never increases
+    routing._fetch_safe_evm_usdc_balance = MagicMock(return_value=100_000_000)
+
+    # time.time returns: 0 (deadline=30), then 31 on the remaining check → timeout
+    call_count = [0]
+    def fake_time():
+        call_count[0] += 1
+        # First call sets deadline, subsequent calls simulate time passing
+        if call_count[0] <= 2:
+            return 0.0
+        return 999.0  # past deadline
+
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=fake_time):
+            with pytest.raises(HypercoreWithdrawalVerificationError) as exc_info:
+                routing._wait_for_usdc_arrival(
+                    baseline_balance_raw=100_000_000,
+                    expected_increase_raw=50_000_000,
+                    timeout=30.0,
+                    poll_interval=2.0,
+                )
+
+    assert "did not arrive" in str(exc_info.value)
+    assert "50000000" in str(exc_info.value)
