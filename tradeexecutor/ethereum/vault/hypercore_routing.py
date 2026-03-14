@@ -377,6 +377,50 @@ class HypercoreVaultRouting(RoutingModel):
             )
             time.sleep(min(poll_interval, remaining))
 
+    def _mark_stranded_usdc(
+        self,
+        trade: TradeExecution,
+        raw_amount: int,
+        location: str,
+    ):
+        """Record stranded USDC info on a failed trade for operator recovery.
+
+        When phase 2 fails after phase 1 bridged USDC to HyperCore,
+        or when the vault deposit is silently rejected, this method
+        stores recovery info in ``trade.other_data``.
+
+        :param trade:
+            The failed trade.
+        :param raw_amount:
+            Stranded USDC amount in raw units (6 decimals).
+        :param location:
+            Where the USDC is stranded (e.g. ``"hypercore_spot"``).
+        """
+        human_amount = Decimal(raw_amount) / Decimal(10**6)
+        stranded_info = {
+            "amount_raw": raw_amount,
+            "amount_human": str(human_amount),
+            "location": location,
+            "safe_address": self.safe_address,
+            "recovery": (
+                f"USDC ({human_amount}) is stranded in {location} for "
+                f"Safe {self.safe_address}. Use check-hypercore-user.py to "
+                f"verify, then manually execute spotSend to bridge back to EVM "
+                f"or complete the vault deposit."
+            ),
+        }
+        if not hasattr(trade, "other_data") or trade.other_data is None:
+            trade.other_data = {}
+        trade.other_data["hypercore_stranded_usdc"] = stranded_info
+        trade.add_note(
+            f"P5: USDC stranded on HyperCore ({human_amount} USDC in {location})"
+        )
+        logger.error(
+            "STRANDED USDC: %s USDC in %s for Safe %s (trade %s). "
+            "Use check-hypercore-user.py to verify and recover.",
+            human_amount, location, self.safe_address, trade.trade_id,
+        )
+
     def _create_deposit_or_withdraw_txs(
         self,
         trade: TradeExecution,
@@ -770,6 +814,8 @@ class HypercoreVaultRouting(RoutingModel):
             phase2_tx, phase2_receipt = self._broadcast_phase2(trade, vault_address, deposit_raw)
         except Exception as e:
             logger.error("Phase 2 broadcast failed: %s", e)
+            # P5: Record stranded USDC info for operator recovery
+            self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot")
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
 
@@ -777,6 +823,8 @@ class HypercoreVaultRouting(RoutingModel):
 
         if phase2_receipt["status"] != 1:
             logger.error("Hypercore deposit phase 2 reverted: tx %s", phase2_tx.tx_hash)
+            # P5: USDC may be in spot or partially transferred
+            self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot_or_perp")
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
 
@@ -812,6 +860,8 @@ class HypercoreVaultRouting(RoutingModel):
                 "Vault deposit verification failed for trade %s: %s",
                 trade.trade_id, e,
             )
+            # P5: Deposit silently rejected — USDC is in spot or perp
+            self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot_or_perp")
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
 
