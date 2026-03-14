@@ -173,6 +173,26 @@ class HypercoreVaultRouting(RoutingModel):
         self._session: HyperliquidSession | None = None
         self._activation_cost_raw: int = 0
 
+        # P14: Verify deployer is not in big blocks mode.
+        # If left enabled from a previous deployment, all transactions
+        # would go to the large block mempool (~1 min confirmation
+        # instead of ~1s).
+        if not simulate:
+            try:
+                from eth_defi.hyperliquid.block import fetch_using_big_blocks
+                if fetch_using_big_blocks(web3, deployer.address):
+                    raise AssertionError(
+                        f"Deployer {deployer.address} has big blocks enabled on HyperEVM. "
+                        f"This causes ~1 minute confirmation times instead of ~1 second. "
+                        f"Disable big blocks before running the strategy."
+                    )
+            except Exception as e:
+                if isinstance(e, AssertionError):
+                    raise
+                # RPC method may not be available on Anvil forks or
+                # non-HyperEVM chains — log and continue.
+                logger.debug("Could not check big blocks mode: %s", e)
+
     @property
     def safe_address(self) -> str:
         return self.lagoon_vault.safe_address
@@ -375,6 +395,11 @@ class HypercoreVaultRouting(RoutingModel):
             Raw USDC consumed by activation (deducted from deposit amount).
         """
         vault_address = self._get_vault_address(trade)
+        # P13: The minimum vault deposit (5 USDC / 5_000_000 raw) is enforced
+        # by an assertion in encode_vault_deposit() in eth_defi core_writer.py.
+        # Deposits below this threshold are silently rejected by HyperCore.
+        # The assertion catches this at encoding time, so it is a non-issue
+        # for the trade executor.
         raw_amount = self._get_raw_usdc_amount(trade)
 
         if trade.is_buy() and activation_cost_raw > 0:
@@ -462,6 +487,13 @@ class HypercoreVaultRouting(RoutingModel):
         # with the correct nonce for this chain and wraps it in a
         # LagoonTransactionBuilder with the satellite vault.  Use these
         # instead of the originals (which target the primary chain).
+        #
+        # P10: The primary-chain gas check (EthereumExecution.preflight_check)
+        # does NOT cover satellite chains.  If the deployer runs out of HYPE
+        # on HyperEVM, multicall transactions fail with out-of-gas.  The
+        # failure is caught by the normal trade failure path but is not
+        # diagnosed specifically.  Consider adding a HYPE balance check here
+        # if gas management becomes a recurring issue.
         if hasattr(routing_state, 'tx_builder') and hasattr(routing_state.tx_builder, 'hot_wallet'):
             self.deployer = routing_state.tx_builder.hot_wallet
         if hasattr(routing_state, 'tx_builder') and hasattr(routing_state.tx_builder, 'vault'):
@@ -492,6 +524,9 @@ class HypercoreVaultRouting(RoutingModel):
                 )
                 self.deployer.sync_nonce(self.web3)
                 activation_cost_raw = DEFAULT_ACTIVATION_AMOUNT
+                # P8: Store activation cost both on the instance (for same-cycle
+                # access in _settle_deposit) and in trade.other_data (persisted
+                # in state JSON, survives executor restarts between setup and settle).
                 self._activation_cost_raw = activation_cost_raw
                 logger.info(
                     "Safe %s activated on HyperCore (cost %d raw USDC from Safe)",
@@ -512,6 +547,13 @@ class HypercoreVaultRouting(RoutingModel):
                 trade,
                 activation_cost_raw=activation_cost_raw,
             )
+
+            # P8: Persist activation cost in trade state for crash recovery
+            if trade.is_buy() and activation_cost_raw > 0:
+                trade.add_note(f"Activation cost: {activation_cost_raw} raw USDC")
+                if not hasattr(trade, "other_data") or trade.other_data is None:
+                    trade.other_data = {}
+                trade.other_data["hypercore_activation_cost_raw"] = activation_cost_raw
 
     # ------------------------------------------------------------------
     # Settlement helpers
@@ -673,7 +715,12 @@ class HypercoreVaultRouting(RoutingModel):
             return
 
         vault_address = self._get_vault_address(trade)
-        deposit_raw = self._get_raw_usdc_amount(trade) - self._activation_cost_raw
+        # P8: Read activation cost from instance state, falling back to
+        # trade.other_data for crash recovery scenarios.
+        activation_cost = self._activation_cost_raw
+        if activation_cost == 0 and hasattr(trade, "other_data") and trade.other_data:
+            activation_cost = trade.other_data.get("hypercore_activation_cost_raw", 0)
+        deposit_raw = self._get_raw_usdc_amount(trade) - activation_cost
         session = self._get_session()
         planned_reserve = trade.get_planned_reserve()
 
@@ -758,7 +805,7 @@ class HypercoreVaultRouting(RoutingModel):
                 "Vault equity after deposit: %s (deposited %s USDC, activation cost %s USDC)",
                 executed_amount,
                 actual_deposit_human,
-                Decimal(self._activation_cost_raw) / Decimal(10**6),
+                Decimal(activation_cost) / Decimal(10**6),
             )
         except HypercoreDepositVerificationError as e:
             logger.error(

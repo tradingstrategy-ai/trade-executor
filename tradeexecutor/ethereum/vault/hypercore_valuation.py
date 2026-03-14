@@ -129,6 +129,9 @@ class HypercoreVaultValuator(ValuationModel):
             try:
                 equity = self.value_func(position.pair)
             except Exception as e:
+                # P11: Intentionally crash the tick cycle on API failure.
+                # If the Hyperliquid API is down, we cannot value the vault
+                # position and must halt rather than use stale/incorrect data.
                 logger.error(
                     "Failed to get Hypercore vault equity for position %s: %s",
                     position, e,
