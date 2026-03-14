@@ -192,11 +192,13 @@ def check_wallet(
     else:
         logger.info("  Vault address lookup not implemented", )
 
-    logger.info("  We have %f tokens left for gas", gas_balance)
+    logger.info("  Hot wallet %s has %f native gas tokens", hot_wallet.address, gas_balance)
     logger.info("  The gas error limit is %f tokens", min_gas_balance)
 
     for asset in reserve_assets:
         logger.info("  Reserve asset: %s (%s)", asset.token_symbol, asset.address)
+        hot_wallet_reserve_balance = fetch_erc20_details(web3, asset.address).fetch_balance_of(hot_wallet.address)
+        logger.info("  Hot wallet %s has %s %s", hot_wallet.address, hot_wallet_reserve_balance, asset.token_symbol)
 
     balances = fetch_erc20_balances_by_token_list(web3, reserve_address, tokens)
 
@@ -205,7 +207,7 @@ def check_wallet(
 
     for address, balance in balances.items():
         details = fetch_erc20_details(web3, address, cache=token_cache)
-        logger.info("  Balance of %s (%s): %s %s", details.name, details.address, details.convert_to_decimals(balance), details.symbol)
+        logger.info("  Balance of %s (%s) at address %s: %s %s", details.name, details.address, reserve_address, details.convert_to_decimals(balance), details.symbol)
 
     # Check that the routing looks sane
     # E.g. there is no mismatch between strategy reserve token, wallet and pair universe
