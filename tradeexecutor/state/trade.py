@@ -1275,9 +1275,13 @@ class TradeExecution:
 
         - Closing trades should go first
 
-        - Selling trades should go first
+        - Vault withdrawals next (free up USDC from external vaults)
+
+        - Selling trades next
 
         - Buy trades with all cash in hand
+
+        - Vault deposits after buys (send USDC to external vaults)
 
         - Aave credit supply last, so we put any exceed cash to Aave
 
@@ -1289,6 +1293,7 @@ class TradeExecution:
 
         credit_order_bump = 200_000_000
         close_order_bump = 100_000_000
+        vault_order_bump = 50_000_000
 
         if self.is_credit_supply() and TradeFlag.close in self.flags:
             # Always withdraw credit to cash in hand first,
@@ -1297,11 +1302,19 @@ class TradeExecution:
         elif self.closing:
             # Close positions always first to release maximum cash
             return -self.trade_id - close_order_bump
+        elif self.is_vault() and self.is_reduce():
+            # Vault withdrawals free up USDC from external vaults.
+            # Execute before regular spot sells but after position closes.
+            return -self.trade_id - vault_order_bump
         elif (not self.is_credit_supply()) and self.is_reduce():
             # Reduces any existing position to release cash.
             # Trades that release cash need to go before
             # trades where we spend reserves.
             return -self.trade_id
+        elif self.is_vault() and self.is_buy():
+            # Vault deposits send USDC to external vaults.
+            # Execute after regular buys but before credit supply.
+            return self.trade_id + vault_order_bump
         elif self.is_credit_supply() and TradeFlag.open in self.flags:
             # As the last action, we supply exceed cash to Aave
             return self.trade_id + credit_order_bump
