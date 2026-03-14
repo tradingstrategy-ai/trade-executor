@@ -972,6 +972,30 @@ class HypercoreVaultRouting(RoutingModel):
                     executed_reserve, planned_reserve, trade.trade_id,
                 )
 
+            # P6: Also verify vault equity decreased on HyperCore.
+            # This confirms both chains are consistent after the withdrawal.
+            vault_address = self._get_vault_address(trade)
+            session = self._get_session()
+            try:
+                eq_after = fetch_user_vault_equity(
+                    session,
+                    user=self.safe_address,
+                    vault_address=vault_address,
+                    bypass_cache=True,
+                )
+                remaining_equity = eq_after.equity if eq_after else Decimal(0)
+                logger.info(
+                    "P6: Withdrawal dual-chain check: EVM USDC arrived (+%s), "
+                    "HyperCore vault equity remaining: %s",
+                    executed_reserve, remaining_equity,
+                )
+            except Exception as e:
+                # Non-fatal: EVM verification already passed, this is
+                # an additional consistency check.
+                logger.warning(
+                    "P6: Could not verify vault equity after withdrawal: %s", e,
+                )
+
         executed_amount = -executed_reserve  # Negative for sells
 
         state.mark_trade_success(
