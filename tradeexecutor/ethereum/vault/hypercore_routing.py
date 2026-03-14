@@ -36,7 +36,11 @@ from web3.contract.contract import ContractFunction
 
 from eth_defi.gas import apply_gas
 from eth_defi.hotwallet import HotWallet
-from eth_defi.hyperliquid.api import fetch_user_vault_equity
+from eth_defi.hyperliquid.api import (
+    HypercoreDepositVerificationError,
+    fetch_user_vault_equity,
+    wait_for_vault_deposit_confirmation,
+)
 from eth_defi.hyperliquid.core_writer import (
     build_hypercore_deposit_multicall,
     build_hypercore_deposit_phase1,
@@ -597,7 +601,26 @@ class HypercoreVaultRouting(RoutingModel):
 
         logger.info("Escrow cleared. Building and broadcasting phase 2...")
 
+        # Snapshot existing vault equity before phase 2 so we can detect
+        # the increase after deposit (handles both new and existing positions).
+        existing_equity: Decimal | None = None
+        try:
+            eq_before = fetch_user_vault_equity(
+                session,
+                user=self.safe_address,
+                vault_address=vault_address,
+                bypass_cache=True,
+            )
+            if eq_before is not None:
+                existing_equity = eq_before.equity
+                logger.info("Existing vault equity before phase 2: %s", existing_equity)
+        except Exception as e:
+            logger.warning("Could not query vault equity before phase 2: %s", e)
+
         # --- Phase 2 ---
+        # P7: RPC failure during nonce sync between phases could strand USDC
+        # in HyperCore spot.  Currently not handled — manual recovery needed
+        # via check-hypercore-user.py script.
         self.deployer.sync_nonce(web3)
 
         try:
@@ -617,34 +640,37 @@ class HypercoreVaultRouting(RoutingModel):
         ts = get_block_timestamp(web3, phase2_receipt["blockNumber"])
         logger.info("Hypercore deposit phase 2 succeeded (tx %s)", phase2_tx.tx_hash)
 
-        # --- Query vault equity and settle ---
-        # executed_reserve = total USDC removed from Safe (activation + deposit).
-        # executed_amount = vault equity received (queried from API).
-        # The activation cost is accounted as part of the trade's reserve spend.
+        # --- Verify deposit on HyperCore via poll loop ---
+        # CoreWriter actions are NOT atomic: the EVM tx can succeed but the
+        # deposit may be silently rejected by HyperCore.  We poll the API
+        # until vault equity appears/increases, or fail the trade.
         executed_reserve = planned_reserve
         actual_deposit_human = Decimal(deposit_raw) / Decimal(10**6)
-        executed_amount = actual_deposit_human
 
         try:
-            eq = fetch_user_vault_equity(
+            confirmed_eq = wait_for_vault_deposit_confirmation(
                 session,
                 user=self.safe_address,
                 vault_address=vault_address,
-                bypass_cache=True,
+                expected_deposit=actual_deposit_human,
+                existing_equity=existing_equity,
+                timeout=60.0,
+                poll_interval=2.0,
             )
-            if eq is not None:
-                executed_amount = eq.equity
-                logger.info(
-                    "Vault equity after deposit: %s (deposited %s USDC, activation cost %s USDC)",
-                    executed_amount,
-                    actual_deposit_human,
-                    Decimal(self._activation_cost_raw) / Decimal(10**6),
-                )
-        except Exception as e:
-            logger.warning(
-                "Could not query vault equity after deposit (using planned values): %s",
-                e,
+            executed_amount = confirmed_eq.equity
+            logger.info(
+                "Vault equity after deposit: %s (deposited %s USDC, activation cost %s USDC)",
+                executed_amount,
+                actual_deposit_human,
+                Decimal(self._activation_cost_raw) / Decimal(10**6),
             )
+        except HypercoreDepositVerificationError as e:
+            logger.error(
+                "Vault deposit verification failed for trade %s: %s",
+                trade.trade_id, e,
+            )
+            report_failure(ts, state, trade, stop_on_execution_failure)
+            return
 
         price = float(executed_reserve / executed_amount) if executed_amount else 1.0
 
