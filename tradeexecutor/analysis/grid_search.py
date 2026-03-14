@@ -229,14 +229,83 @@ def render_grid_search_result_table(
     else:
         df = analyse_grid_search_result(results)
 
-    # https://stackoverflow.com/a/57152529/315168
+    return _style_grid_search_table(df, calmar=calmar, sharpe=sharpe, sortino=sortino)
 
-    # TODO:
-    # Diverge color gradient around zero
+
+def render_grid_search_result_table_avg(
+    results: pd.DataFrame | list[GridSearchResult],
+    avg_by: str,
+    calmar: bool = False,
+    sharpe: bool = True,
+    sortino: bool = True,
+) -> Styler:
+    """Render a grid search table with rows averaged by a single parameter.
+
+    - Groups all combinations by ``avg_by`` parameter and averages their metrics
+    - Shows one row per unique value of ``avg_by``
+    - Includes an ``n`` column with the number of combinations in each group
+
+    Example:
+
+    .. code-block:: python
+
+        render_grid_search_result_table_avg(df, avg_by="calmar_signal_transform", calmar=True)
+
+    :param results:
+        Output from :py:func:`perform_grid_search` or :py:func:`analyse_grid_search_result`.
+
+    :param avg_by:
+        Parameter name to group by.
+
+    :param calmar:
+        Include the Calmar ratio column.
+
+    :param sharpe:
+        Include the Sharpe ratio column.
+
+    :param sortino:
+        Include the Sortino ratio column.
+
+    :return:
+        Styled DataFrame for the notebook output
+    """
+    if isinstance(results, pd.DataFrame):
+        df = results
+    else:
+        df = analyse_grid_search_result(results)
+
+    # Parameters are in the MultiIndex — reset to make them regular columns
+    df = df.reset_index()
+
+    if avg_by not in df.columns:
+        raise ValueError(f"Parameter '{avg_by}' not found in results. Available columns: {list(df.columns)}")
+
+    # Identify numeric columns to average
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+
+    grouped = df.groupby(avg_by, sort=True)
+    avg_df = grouped[numeric_cols].mean()
+    avg_df.insert(0, "n", grouped.size())
+
+    return _style_grid_search_table(avg_df, calmar=calmar, sharpe=sharpe, sortino=sortino)
+
+
+def _style_grid_search_table(
+    df: pd.DataFrame,
+    calmar: bool = False,
+    sharpe: bool = True,
+    sortino: bool = True,
+) -> Styler:
+    """Apply standard grid search table styling.
+
+    Shared helper for :py:func:`render_grid_search_result_table`
+    and :py:func:`render_grid_search_result_table_avg`.
+    """
+
+    # https://stackoverflow.com/a/57152529/315168
+    # TODO: Diverge color gradient around zero
     # https://stackoverflow.com/a/60654669/315168
 
-    # Optimised column is not always present,
-    # avoid error on format()
     cols = list(CALMAR_VALUE_COLS if calmar else VALUE_COLS)
     if not sharpe:
         cols = [c for c in cols if c != "Sharpe"]
