@@ -312,14 +312,10 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         if not post_valuation:
             logger.warning("LagoonVaultSyncModel.sync_treasury() called with post_valuation=False")
-            treasury_sync.last_updated_at = native_datetime_utc_now()
-            treasury_sync.last_cycle_at = strategy_cycle_ts
             return []
 
         if not self.check_nav_update_and_settle_needed(valuation):
             logger.info("LagoonVaultSyncModel.sync_treasury() no actionable changes detected")
-            treasury_sync.last_updated_at = native_datetime_utc_now()
-            treasury_sync.last_cycle_at = strategy_cycle_ts
             return []
 
         assert self.hot_wallet, "asset_manager HotWallet needed in order to sync Lagoon vault"
