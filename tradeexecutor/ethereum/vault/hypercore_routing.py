@@ -774,12 +774,16 @@ class HypercoreVaultRouting(RoutingModel):
         )
 
         # --- Escrow wait ---
+        # P15: Pass expected USDC so the escrow wait also verifies that USDC
+        # appeared in the HyperCore spot balance, not just that escrows cleared.
+        expected_usdc_human = Decimal(deposit_raw) / Decimal(10**6)
         try:
             wait_for_evm_escrow_clear(
                 session,
                 user=self.safe_address,
                 timeout=60.0,
                 poll_interval=2.0,
+                expected_usdc=expected_usdc_human,
             )
         except TimeoutError as e:
             logger.error("EVM escrow did not clear: %s", e)
