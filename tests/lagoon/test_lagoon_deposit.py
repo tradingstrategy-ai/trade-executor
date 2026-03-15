@@ -318,6 +318,13 @@ def test_lagoon_nav_with_exchange_account_position(
     # Step 2: Transfer 20 USDC out of Safe (simulating GMX sendTokens)
     safe_address = vault.safe_address
     burn_address = web3.eth.accounts[9]
+    # Fund the Safe with ETH for gas, then impersonate it
+    tx_hash = web3.eth.send_transaction({
+        "from": web3.eth.accounts[0],
+        "to": safe_address,
+        "value": 10**18,
+    })
+    assert_transaction_success_with_explanation(web3, tx_hash)
     web3.provider.make_request("anvil_impersonateAccount", [safe_address])
     tx_hash = usdc.transfer(burn_address, Decimal(20)).transact({"from": safe_address, "gas": 100_000})
     assert_transaction_success_with_explanation(web3, tx_hash)
@@ -422,8 +429,8 @@ def test_lagoon_nav_with_exchange_account_position(
     assert_transaction_success_with_explanation(web3, tx_hash)
 
     # Check minted shares are fair — should be ~100 / share_price
-    depositor_shares = vault.share_token.fetch_balance_of(another_new_depositor)
-    expected_shares = Decimal(str(usdc_deposit_2)) / Decimal(str(share_price_before))
+    depositor_shares = float(vault.share_token.fetch_balance_of(another_new_depositor))
+    expected_shares = float(usdc_deposit_2) / share_price_before
     assert depositor_shares == pytest.approx(expected_shares, rel=0.02)
 
     # Check share price is preserved after deposit
