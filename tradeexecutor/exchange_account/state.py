@@ -237,7 +237,7 @@ def open_exchange_account_position(
     # Decimal(1) — a placeholder.  The Lagoon sync model additionally
     # reconciles reserves from the on-chain Safe balance before
     # calculating NAV, which catches any remaining discrepancy.
-    if reserve_amount > 0:
+    if reserve_amount > 0 and reserve_currency.get_identifier() in state.portfolio.reserves:
         state.portfolio.adjust_reserves(
             reserve_currency,
             -reserve_amount,
