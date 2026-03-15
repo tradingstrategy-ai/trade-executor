@@ -12,6 +12,16 @@ Transfer from Safe to GMX is managed by an external FreqTrade instance
 not by the trade executor's execution pipeline.  The trade executor only
 tracks the aggregate value of GMX positions via the account value function
 and creates a bookkeeping exchange account position to represent them.
+
+.. todo::
+
+    Devise a mechanism to ensure communication between FreqTrade trades
+    and NAV syncing.  Currently, when FreqTrade opens or closes GMX
+    positions, USDC moves in/out of the Safe without the trade executor
+    knowing.  The Lagoon sync model works around this by reconciling
+    reserves from the on-chain Safe balance before calculating NAV,
+    but a proper coordination protocol (e.g. webhook, shared state,
+    or event-driven notification) would be more robust.
 """
 
 import logging
