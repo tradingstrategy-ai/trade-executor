@@ -10,8 +10,6 @@ from typing import Optional, TypedDict
 from dataclasses_json import dataclass_json
 from tblib import Traceback
 
-from eth_defi.compat import native_datetime_utc_now
-
 from tradeexecutor.cli.version_info import VersionInfo
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import JSONHexAddress
@@ -38,7 +36,7 @@ class LatestStateVisualisation:
     """The last visualisation of the strategy state."""
 
     #: When the execution state was updated last time
-    last_refreshed_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+    last_refreshed_at: datetime.datetime = field(default_factory=native_datetime_utc_now)
 
     #: 512 x 512 image SVG
     small_image: Optional[str] = None
@@ -112,10 +110,10 @@ class RunState:
     executor_id: Optional[str] = None
 
     #: When the execution state was updated last time
-    last_refreshed_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+    last_refreshed_at: datetime.datetime = field(default_factory=native_datetime_utc_now)
 
     #: When the executor was started
-    started_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+    started_at: datetime.datetime = field(default_factory=native_datetime_utc_now)
 
     #: Is the main loop alive
     #:

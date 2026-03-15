@@ -14,6 +14,7 @@ from typing import Optional
 
 from dataclasses_json import dataclass_json
 from eth_defi.aave_v3.rates import SECONDS_PER_YEAR, SECONDS_PER_YEAR_INT
+from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradingstrategy.types import USDollarAmount, Percent
@@ -133,7 +134,7 @@ class BalanceUpdate:
 
     #: Wall clock time when this event was created
     #:
-    created_at: datetime.datetime | None = field(default_factory=datetime.datetime.utcnow)
+    created_at: datetime.datetime | None = field(default_factory=native_datetime_utc_now)
 
     #: What was the event time of the previous update.
     #:

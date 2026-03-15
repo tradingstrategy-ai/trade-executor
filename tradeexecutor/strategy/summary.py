@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Optional, List, Tuple, Dict, Any, Set
 
 from dataclasses_json import dataclass_json
+from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.state.metadata import OnChainData
 from tradeexecutor.state.types import USDollarAmount, UnixTimestamp, Percent
@@ -334,7 +335,7 @@ class StrategySummaryStatistics:
 
     #: When these stats where calculated
     #:
-    calculated_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+    calculated_at: datetime.datetime = field(default_factory=native_datetime_utc_now)
 
     #: When this trade executor was launched first time.
     #:

@@ -198,6 +198,7 @@ filterwarnings = [
   "ignore::DeprecationWarning:pandas.*:",
   "ignore::DeprecationWarning:quantstats.*:",
   "ignore::DeprecationWarning:pkg_resources.*:",
+  "ignore:websockets\\.legacy is deprecated.*:DeprecationWarning",
 ]
 markers = [
   "slow_test_group: manually separated group of tests that take individually long time to run",

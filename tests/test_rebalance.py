@@ -1550,3 +1550,30 @@ def test_alpha_model_vault_weights(universe):
     assert signal is not None
     assert signal.old_weight == pytest.approx(1.0, rel=0.01)  # $3000 / $3000 spot = 100%
     assert signal.old_value == pytest.approx(3000, rel=0.01)
+
+
+def test_update_old_weights_reads_position_value_once(
+    single_asset_portfolio: Portfolio,
+    weth_usdc: TradingPairIdentifier,
+    monkeypatch,
+):
+    """update_old_weights() should reuse the computed position value within the method."""
+    position = single_asset_portfolio.open_positions[1]
+    original_get_value = position.get_value
+    calls = {"get_value": 0}
+
+    def get_value_wrapper():
+        calls["get_value"] += 1
+        return original_get_value()
+
+    monkeypatch.setattr(position, "get_value", get_value_wrapper)
+
+    alpha_model = AlphaModel(timestamp=position.opened_at)
+    alpha_model.set_signal(weth_usdc, 1.0)
+    alpha_model.update_old_weights(single_asset_portfolio)
+
+    signal = alpha_model.get_signal_by_pair(weth_usdc)
+    assert signal is not None
+    assert signal.old_weight == pytest.approx(1.0)
+    assert signal.old_value == pytest.approx(original_get_value())
+    assert calls["get_value"] == 1
