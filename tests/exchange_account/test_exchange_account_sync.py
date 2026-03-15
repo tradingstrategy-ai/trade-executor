@@ -4,6 +4,8 @@ These tests verify that the ExchangeAccountSyncModel correctly:
 1. Detects account value changes between syncs
 2. Generates BalanceUpdate events for the difference (PnL)
 3. Updates position quantity to match actual account value
+4. ExchangeAccountValuator uses wall clock time for valued_at
+5. ExchangeAccountValuator preserves stale timestamps on API failure
 """
 
 import datetime
@@ -22,6 +24,8 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.balance_update import BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
+from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
+from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
 from eth_defi.compat import native_datetime_utc_now
 
 
@@ -441,3 +445,129 @@ def test_create_then_sync_positions():
     assert position.get_quantity() == Decimal("50000.0")
     assert len(position.balance_updates) == 1
     assert len(state.sync.accounting.balance_update_refs) == 1
+
+
+def test_valuation_uses_wall_clock_time(exchange_account_pair):
+    """Valuator must use wall clock time for valued_at, not cycle timestamp.
+
+    Reproduces the production crash where the cycle timestamp (midnight)
+    was hours behind wall clock time, causing Lagoon's freshness guard
+    to reject the valuation even though the exchange API was just queried.
+    """
+    twelve_hours_ago = native_datetime_utc_now() - datetime.timedelta(hours=12)
+
+    position = TradingPosition(
+        position_id=1,
+        pair=exchange_account_pair,
+        opened_at=twelve_hours_ago,
+        last_pricing_at=twelve_hours_ago,
+        last_token_price=1.0,
+        last_reserve_price=1.0,
+        reserve_currency=exchange_account_pair.quote,
+    )
+    trade = TradeExecution(
+        trade_id=1,
+        position_id=1,
+        trade_type=TradeType.rebalance,
+        pair=exchange_account_pair,
+        opened_at=twelve_hours_ago,
+        planned_quantity=Decimal("100000.0"),
+        planned_price=1.0,
+        planned_reserve=Decimal("100000.0"),
+        reserve_currency=exchange_account_pair.quote,
+    )
+    trade.started_at = twelve_hours_ago
+    trade.mark_broadcasted(twelve_hours_ago)
+    trade.mark_success(
+        executed_at=twelve_hours_ago,
+        executed_price=1.0,
+        executed_quantity=Decimal("100000.0"),
+        executed_reserve=Decimal("100000.0"),
+        lp_fees=0.0,
+        native_token_price=1.0,
+    )
+    position.trades[1] = trade
+
+    mock_pricing = Mock(spec=ExchangeAccountPricingModel)
+    mock_pricing.get_account_value.return_value = Decimal("105000.0")
+
+    valuator = ExchangeAccountValuator(mock_pricing)
+
+    before = native_datetime_utc_now()
+    update = valuator(ts=twelve_hours_ago, position=position)
+    after = native_datetime_utc_now()
+
+    # valued_at must be wall clock time, not the stale cycle timestamp
+    assert update.valued_at >= before
+    assert update.valued_at <= after
+    assert update.valued_at != twelve_hours_ago
+
+    # created_at preserves the cycle timestamp
+    assert update.created_at == twelve_hours_ago
+
+    # last_pricing_at must also be wall clock time
+    assert position.last_pricing_at >= before
+    assert position.last_pricing_at <= after
+
+    # BalanceUpdate.strategy_cycle_included_at must be the cycle timestamp
+    assert len(position.balance_updates) == 1
+    evt = list(position.balance_updates.values())[0]
+    assert evt.strategy_cycle_included_at == twelve_hours_ago
+    assert evt.block_mined_at >= before
+
+
+def test_valuation_failure_preserves_stale_timestamp(exchange_account_pair):
+    """API failure must NOT advance freshness timestamps.
+
+    If the exchange API is down, last_pricing_at and valued_at must stay
+    stale so Lagoon's freshness guard rejects the valuation and prevents
+    settling with stale NAV.
+    """
+    twelve_hours_ago = native_datetime_utc_now() - datetime.timedelta(hours=12)
+
+    position = TradingPosition(
+        position_id=1,
+        pair=exchange_account_pair,
+        opened_at=twelve_hours_ago,
+        last_pricing_at=twelve_hours_ago,
+        last_token_price=1.0,
+        last_reserve_price=1.0,
+        reserve_currency=exchange_account_pair.quote,
+    )
+    trade = TradeExecution(
+        trade_id=1,
+        position_id=1,
+        trade_type=TradeType.rebalance,
+        pair=exchange_account_pair,
+        opened_at=twelve_hours_ago,
+        planned_quantity=Decimal("100000.0"),
+        planned_price=1.0,
+        planned_reserve=Decimal("100000.0"),
+        reserve_currency=exchange_account_pair.quote,
+    )
+    trade.started_at = twelve_hours_ago
+    trade.mark_broadcasted(twelve_hours_ago)
+    trade.mark_success(
+        executed_at=twelve_hours_ago,
+        executed_price=1.0,
+        executed_quantity=Decimal("100000.0"),
+        executed_reserve=Decimal("100000.0"),
+        lp_fees=0.0,
+        native_token_price=1.0,
+    )
+    position.trades[1] = trade
+
+    mock_pricing = Mock(spec=ExchangeAccountPricingModel)
+    mock_pricing.get_account_value.side_effect = Exception("API unreachable")
+
+    valuator = ExchangeAccountValuator(mock_pricing)
+    update = valuator(ts=twelve_hours_ago, position=position)
+
+    # last_pricing_at must NOT have been advanced
+    assert position.last_pricing_at == twelve_hours_ago
+
+    # valued_at must be the old stale timestamp, not wall clock time
+    assert update.valued_at == twelve_hours_ago
+
+    # No balance updates should have been created
+    assert len(position.balance_updates) == 0

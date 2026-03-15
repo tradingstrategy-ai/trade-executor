@@ -102,8 +102,11 @@ def revalue_portfolio(
     :param ts:
         Timestamp.
 
-        Strategy cycle time if valuation performed in pre-tick.
-        otherwise wall clock time.
+        Strategy cycle time if valuation performed in pre-tick,
+        otherwise wall clock time.  May differ significantly from
+        wall clock time during manual CLI runs or on startup.
+        Exchange account valuators use wall clock time internally
+        for ``valued_at`` regardless of this value.
 
     :param valuation_model:
         The model we use to reassign values to the positions
@@ -170,6 +173,12 @@ def revalue_state(
 
     :param ts:
         Strategy timestamp pre-tick, or wall clock time.
+
+        May differ significantly from wall clock time during manual
+        CLI runs (e.g. ``trade-executor start --max-cycles 1``) or
+        on startup when the cycle timestamp snaps to midnight.
+        Exchange account valuators use wall clock time internally
+        for ``valued_at`` regardless of this value.
 
     :param valuation_model:
         Model that pulls out new values for positions.

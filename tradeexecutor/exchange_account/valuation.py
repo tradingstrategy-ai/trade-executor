@@ -67,10 +67,11 @@ class ExchangeAccountValuator(ValuationModel):
 
     def _create_balance_update(
         self,
-        ts: datetime.datetime,
+        valued_at: datetime.datetime,
         position: TradingPosition,
         diff: Decimal,
         tracked_amount: Decimal,
+        strategy_cycle_ts: datetime.datetime,
     ) -> BalanceUpdate:
         """Create a BalanceUpdate event to adjust position quantity.
 
@@ -78,14 +79,18 @@ class ExchangeAccountValuator(ValuationModel):
         locally-unique event ID (max existing key + 1).  This avoids
         needing access to ``state.portfolio.next_balance_update_id``.
 
-        :param ts:
-            Timestamp of the valuation.
+        :param valued_at:
+            Wall clock time when the exchange API was queried.
         :param position:
             The exchange account position.
         :param diff:
             Value change (new_value - tracked_value).
         :param tracked_amount:
             The tracked quantity before this update.
+        :param strategy_cycle_ts:
+            The strategy cycle timestamp that triggered this valuation.
+            May differ significantly from wall clock time during manual
+            CLI runs (e.g. ``trade-executor start --max-cycles 1``).
         :return:
             The new BalanceUpdate event (already stored on the position).
         """
@@ -96,8 +101,8 @@ class ExchangeAccountValuator(ValuationModel):
             position_type=BalanceUpdatePositionType.open_position,
             cause=BalanceUpdateCause.vault_flow,
             asset=position.pair.base,
-            block_mined_at=ts,
-            strategy_cycle_included_at=ts,
+            block_mined_at=valued_at,
+            strategy_cycle_included_at=strategy_cycle_ts,
             chain_id=position.pair.base.chain_id,
             old_balance=tracked_amount,
             usd_value=float(diff),
@@ -128,7 +133,17 @@ class ExchangeAccountValuator(ValuationModel):
         ``position.get_value()`` returns the correct value.
 
         :param ts:
-            Timestamp for valuation
+            Strategy cycle timestamp that triggered this valuation.
+            May differ significantly from wall clock time when the cycle
+            is run manually from the CLI (e.g. ``trade-executor start
+            --max-cycles 1``) or when the executor starts up and the
+            cycle timestamp snaps to midnight.
+
+            We use wall clock time (not this value) for ``valued_at``
+            and ``last_pricing_at`` because the exchange API data is
+            fetched in real-time. This keeps Lagoon's freshness guard
+            happy.
+
         :param position:
             Exchange account position to revalue
         :return:
@@ -137,11 +152,18 @@ class ExchangeAccountValuator(ValuationModel):
         assert position.is_exchange_account(), f"Not an exchange account position: {position}"
 
         tracked_amount = position.get_quantity()
-        position.last_pricing_at = ts
 
         try:
             # Query exchange API for account value
             api_value = self.pricing_model.get_account_value(position.pair)
+
+            # Only advance freshness timestamps after a successful fetch.
+            # Wall clock time is used (not the cycle timestamp ``ts``)
+            # because the exchange API data is real-time. The cycle
+            # timestamp can lag wall clock by hours during manual CLI
+            # runs, which would trip Lagoon's valuation freshness guard.
+            now = native_datetime_utc_now()
+            position.last_pricing_at = now
 
             old_price = position.last_token_price
             old_value = position.get_value()
@@ -153,7 +175,7 @@ class ExchangeAccountValuator(ValuationModel):
             # so that get_value() reflects the API value
             diff = api_value - tracked_amount
             if diff != 0:
-                self._create_balance_update(ts, position, diff, tracked_amount)
+                self._create_balance_update(now, position, diff, tracked_amount, strategy_cycle_ts=ts)
 
             position.last_token_price = new_price
             new_value = float(api_value)
@@ -161,7 +183,7 @@ class ExchangeAccountValuator(ValuationModel):
             evt = ValuationUpdate(
                 created_at=ts,
                 position_id=position.position_id,
-                valued_at=ts,
+                valued_at=now,
                 old_value=old_value,
                 new_value=new_value,
                 old_price=old_price,
@@ -178,7 +200,9 @@ class ExchangeAccountValuator(ValuationModel):
             return evt
 
         except Exception as e:
-            # API failure - keep last valuation
+            # API failure — preserve the previous freshness timestamps
+            # so Lagoon's guard still catches stale data after an outage.
+            # Do NOT update last_pricing_at here.
             logger.error(
                 "Failed to revalue exchange account position %d: %s",
                 position.position_id,
@@ -188,7 +212,7 @@ class ExchangeAccountValuator(ValuationModel):
             return ValuationUpdate(
                 created_at=ts,
                 position_id=position.position_id,
-                valued_at=ts,
+                valued_at=position.last_pricing_at,
                 old_value=old_value,
                 new_value=old_value,
                 old_price=position.last_token_price,

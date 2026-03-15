@@ -768,6 +768,10 @@ class StrategyRunner(abc.ABC):
             # sync_portfolio() posts valuation onchain to
             # process the deposit/redemption queue and
             # for this we need up-to-date valuation.
+            # Note: strategy_cycle_timestamp may differ significantly from
+            # wall clock time during manual CLI runs or on startup.
+            # Exchange account valuators use wall clock time internally
+            # for valued_at so Lagoon freshness checks pass.
             with self.timed_task_context_manager("revalue_portfolio_before_sync"):
                 self.revalue_state(strategy_cycle_timestamp, state, valuation_model)
 

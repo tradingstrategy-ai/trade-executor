@@ -210,10 +210,13 @@ def test_derive_valuation_updates_position_timestamp(
     valuator = ExchangeAccountValuator(pricing_model)
 
     old_pricing_at = position_with_deposit.last_pricing_at
+    before = native_datetime_utc_now()
     ts = native_datetime_utc_now()
     valuator(ts, position_with_deposit)
 
-    assert position_with_deposit.last_pricing_at == ts
+    # last_pricing_at is set to wall clock time inside the valuator,
+    # not the passed-in ts, to keep Lagoon freshness checks happy
+    assert position_with_deposit.last_pricing_at >= before
     assert position_with_deposit.last_pricing_at != old_pricing_at
 
 
