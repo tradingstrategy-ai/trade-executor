@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Speed up grid search result serialisation ~5-13x by clearing unused indicators before save, switching from joblib+gzip to pickle+zstd, and disabling GC during serialisation (2026-03-15)
+
 - Add explicit vault sort priority for Hypercore deposits and withdrawals, ensuring withdrawals execute before deposits (2026-03-14)
 
 - Fix exchange account treasury sync crash where `last_updated_at` was never set, causing assertion failure on first trade cycle (2026-03-13)
