@@ -5,6 +5,7 @@ import warnings
 from decimal import ROUND_DOWN, Decimal
 from typing import Literal, Optional
 
+import numpy as np
 import pandas as pd
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
@@ -154,6 +155,34 @@ class BacktestPricing(PricingModel):
 
         # This was late additio,
         self.pairs = pairs
+
+        # Pre-index liquidity data for fast TVL lookups.
+        #
+        # get_usd_tvl() is called ~23 times per tick (once per signal pair)
+        # during normalise_weights(). The standard path through
+        # get_liquidity_with_tolerance() costs ~0.5ms per call due to pandas
+        # overhead (isinstance checks, get_indexer, iloc). Pre-building numpy
+        # arrays reduces each call to ~1µs via numpy.searchsorted.
+        #
+        # Each entry: pair_id → (sorted_timestamps_seconds, open_values)
+        # where timestamps are int64 UNIX seconds for fast comparison.
+        # Memory: ~120 pairs × 1000 candles × 16 bytes ≈ 2MB.
+        self._tvl_arrays: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        if self.liquidity_universe is not None:
+            for pair_id in self.liquidity_universe.get_pair_ids():
+                try:
+                    samples = self.liquidity_universe.get_samples_by_pair(pair_id)
+                except KeyError:
+                    continue
+                if isinstance(samples.index, pd.MultiIndex):
+                    ts_values = samples.index.get_level_values(1).values
+                else:
+                    ts_values = samples.index.values
+                # Store as int64 UNIX seconds for fast numpy.searchsorted
+                self._tvl_arrays[pair_id] = (
+                    ts_values.astype("datetime64[s]").astype("int64"),
+                    samples["open"].values.astype(float),
+                )
 
         # assert not three_leg_resolution
 
@@ -424,28 +453,60 @@ class BacktestPricing(PricingModel):
     def get_usd_tvl(
         self,
         timestamp: AnyTimestamp | None,
-        pair: TradingPairIdentifier
+        pair: TradingPairIdentifier,
     ) -> USDollarAmount:
-        """Get the available liquidity at the opening of the day."""
-        assert self.liquidity_universe is not None, "liquidity_universe not passed to BacktestPricing constructor"
+        """Get the available liquidity for a pair at a given timestamp.
+
+        Uses pre-indexed numpy arrays for O(log K) lookups without
+        pandas overhead. Semantically identical to
+        ``liquidity_universe.get_liquidity_with_tolerance()``:
+        backward-fill (most recent value at or before timestamp)
+        with tolerance validation.
+
+        The pre-indexing happens at ``__init__()`` time, converting each
+        pair's liquidity data from a pandas DataFrame into sorted numpy
+        arrays. Each lookup is a single ``numpy.searchsorted()``
+        call (~1µs) instead of the full pandas path (~0.5ms).
+
+        Profiling showed the original path consuming ~13s across a
+        6-backtest optimiser run (25,625 calls × 0.5ms each).
+        """
+        assert self.liquidity_universe is not None, \
+            "liquidity_universe not passed to BacktestPricing constructor"
 
         if isinstance(timestamp, datetime.datetime):
             timestamp = pd.Timestamp(timestamp)
 
-        try:
-            tvl, when = self.liquidity_universe.get_liquidity_with_tolerance(
-                pair.internal_id,
-                timestamp,
-                tolerance=self.data_delay_tolerance,
-                kind="open"
+        lookup = self._tvl_arrays.get(pair.internal_id)
+        if lookup is None:
+            raise LiquidityDataUnavailable(
+                f"Could not read TVL/liquidity data for {pair} — "
+                f"pair {pair.internal_id} not in pre-indexed liquidity data"
             )
-        except LiquidityDataUnavailable as e:
-            # Show the pair naem
-            raise LiquidityDataUnavailable(f"Could not read TVL/liquidity data for {pair} - see nested exception for details") from e
 
-        assert tvl is not None, "get_liquidity_with_tolerance() returned None: likely cause is that synthetic backtest data period mismatches backtest"
+        ts_seconds, values = lookup
+        query_seconds = int(timestamp.timestamp())  # UNIX seconds
 
-        return tvl
+        # Backward-fill: find rightmost timestamp <= requested
+        idx = np.searchsorted(ts_seconds, query_seconds, side="right") - 1
+
+        if idx < 0:
+            raise LiquidityDataUnavailable(
+                f"Could not read TVL/liquidity data for {pair} — "
+                f"no data before {timestamp}"
+            )
+
+        # Tolerance check: sample must be within data_delay_tolerance
+        sample_seconds = int(ts_seconds[idx])
+        tolerance_seconds = int(self.data_delay_tolerance.total_seconds())
+        if query_seconds - sample_seconds > tolerance_seconds:
+            raise LiquidityDataUnavailable(
+                f"Could not read TVL/liquidity data for {pair} — "
+                f"most recent sample is too old "
+                f"(beyond {self.data_delay_tolerance} tolerance)"
+            )
+
+        return float(values[idx])
 
 
 def backtest_pricing_factory(
