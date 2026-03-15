@@ -55,7 +55,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         valuation_data_freshness=datetime.timedelta(hours=4),
         min_nav_change_update: Percent=0.005,
         unit_testing=False,
-        calculate_valuation_func: Callable[[State], USDollarPrice] | None = None,
+        calculate_valuation_func: Callable[..., USDollarPrice] | None = None,
     ):
         """
         :param extra_gnosis_gas:
@@ -217,7 +217,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
             filter_zero=filter_zero,
         )
 
-    def calculate_valuation(self, state: State) -> USDollarPrice:
+    def calculate_valuation(self, state: State, *, block_number: int | None = None) -> USDollarPrice:
         """Calculate NAV of the vault.
 
         - Calculate the equity of all assets in the vault
@@ -228,6 +228,12 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         The freshness check always runs regardless of which valuation
         path is used.
+
+        :param state:
+            Current strategy state.
+        :param block_number:
+            Block number at which to read on-chain state.
+            Forwarded to ``calculate_valuation_func`` when set.
         """
 
         now = native_datetime_utc_now()
@@ -242,7 +248,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 assert updated_ago < self.valuation_data_freshness, f"Position {p} pricing was too old for Lagoon valuation update. Now: {now}, updated at: {valued_at}, diff: {updated_ago}, threshold: {self.valuation_data_freshness}, last valuation event: {last_event}"
 
         if self.calculate_valuation_func is not None:
-            return self.calculate_valuation_func(state)
+            return self.calculate_valuation_func(state, block_number=block_number)
 
         return state.portfolio.get_net_asset_value(include_interest=True)
 
@@ -364,7 +370,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
             )
             reserve_position.quantity = onchain_balance
 
-        valuation = self.calculate_valuation(state)
+        valuation = self.calculate_valuation(state, block_number=block_number)
 
         if not post_valuation:
             logger.warning("LagoonVaultSyncModel.sync_treasury() called with post_valuation=False")

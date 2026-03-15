@@ -40,25 +40,27 @@ class ExchangeAccountPricingModel(PricingModel):
 
     def __init__(
         self,
-        account_value_func: Callable[[TradingPairIdentifier], Decimal],
+        account_value_func: Callable[..., Decimal],
     ):
         """Initialise pricing model.
 
         :param account_value_func:
             Function that takes a pair and returns account value in USD.
-            Signature: (pair: TradingPairIdentifier) -> Decimal
+            Signature: ``(pair: TradingPairIdentifier, **kwargs) -> Decimal``
         """
         self.account_value_func = account_value_func
 
-    def get_account_value(self, pair: TradingPairIdentifier) -> Decimal:
+    def get_account_value(self, pair: TradingPairIdentifier, **kwargs) -> Decimal:
         """Get account value from the configured function.
 
         :param pair:
             Exchange account trading pair
+        :param kwargs:
+            Forwarded to the account value function (e.g. ``block_identifier``).
         :return:
             Account value in USD
         """
-        return self.account_value_func(pair)
+        return self.account_value_func(pair, **kwargs)
 
     def get_buy_price(
         self,
