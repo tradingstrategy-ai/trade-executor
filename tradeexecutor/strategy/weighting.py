@@ -209,6 +209,155 @@ def weight_passthrouh(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[PairI
     return {pair_id: abs(signal) for pair_id, signal in items}
 
 
+def weight_by_softmax(
+    alpha_signals: Dict[PairInternalId, Signal],
+    temperature: float = 2.0,
+) -> Dict[PairInternalId, Weight]:
+    """Softmax-temperature weighting that smoothly interpolates between
+    equal-weight and winner-take-all allocation.
+
+    Applies the softmax function with a temperature parameter to transform
+    raw signal values into portfolio weights:
+
+        ``w_i = exp(signal_i / T) / sum_j(exp(signal_j / T))``
+
+    The temperature T controls concentration:
+
+    - ``T → ∞``: converges to equal weights (1/N)
+    - ``T → 0``: converges to winner-take-all (100% in top signal)
+    - ``T ≈ 1-2``: moderate tilt toward higher signals
+
+    Weights always sum to 1.0, eliminating the cash drag problem inherent
+    in equal weighting under greedy allocation loops.
+
+    **Pros:**
+
+    - Single tunable parameter with intuitive behaviour
+    - Smooth, differentiable — no hard cutoffs or discontinuities
+    - Numerically stable (uses max-subtraction trick)
+    - Naturally handles any number of assets
+
+    **Cons:**
+
+    - Sensitive to signal scale — signals should be comparable magnitude
+    - Low temperatures can over-concentrate into noisy top signals
+    - Does not account for correlation between assets
+
+    References:
+
+    - `Zakamulin (2025), "Entropy-Regularized Portfolio Selection via
+      Softmax Sharpe Allocation", SSRN 5539560
+      <https://doi.org/10.2139/ssrn.5539560>`_
+    - `Britten-Jones (1999), "The Sampling Error in Estimates of
+      Mean-Variance Efficient Portfolio Weights", Journal of Finance
+      <https://doi.org/10.1111/0022-1082.00120>`_
+    - `Goodfellow, Bengio & Courville (2016), "Deep Learning",
+      Ch. 6.2.2 — softmax as generalisation of logistic function
+      <https://www.deeplearningbook.org/contents/mlp.html>`_
+
+    :param alpha_signals:
+        Signal objects keyed by pair ID.
+
+    :param temperature:
+        Controls equal↔concentrated tradeoff.
+        Higher = more equal, lower = more concentrated.
+
+    :return:
+        Weight map summing to 1.0.
+    """
+    import math
+
+    if not alpha_signals:
+        return {}
+
+    signals = {k: abs(v) for k, v in alpha_signals.items()}
+    max_s = max(signals.values())
+
+    # Numerically stable softmax: subtract max before exp
+    exp_signals = {k: math.exp((v - max_s) / temperature) for k, v in signals.items()}
+    total = sum(exp_signals.values())
+
+    return {k: v / total for k, v in exp_signals.items()}
+
+
+def weight_by_blend(
+    alpha_signals: Dict[PairInternalId, Signal],
+    blend_alpha: float = 0.5,
+) -> Dict[PairInternalId, Weight]:
+    """Linear blend of equal-weight and signal-proportional allocation.
+
+    Computes weights as:
+
+        ``w_i = alpha * (1/N) + (1 - alpha) * (signal_i / sum_j(signal_j))``
+
+    This is equivalent to James-Stein shrinkage applied to the portfolio
+    weight vector, shrinking signal-proportional weights toward the
+    equal-weight prior. The literature consistently shows that shrinkage
+    estimators outperform both pure equal-weight and pure optimised
+    portfolios out of sample.
+
+    The blend parameter alpha controls the shrinkage intensity:
+
+    - ``alpha=1.0``: pure equal weight
+    - ``alpha=0.0``: pure signal-proportional (same as :py:func:`weight_passthrouh`)
+    - ``alpha=0.5``: 50/50 blend (recommended starting point)
+
+    **Pros:**
+
+    - Dead simple — one-line formula, easy to reason about
+    - Grounded in shrinkage estimation theory (James & Stein, 1961)
+    - Robust to signal noise — always partially diversified
+    - Weights sum to 1.0
+
+    **Cons:**
+
+    - Linear blending may not be optimal — equal weight is a crude prior
+    - Does not adapt to signal dispersion (same alpha regardless of
+      whether signals are tightly clustered or widely spread)
+
+    References:
+
+    - `James & Stein (1961), "Estimation with Quadratic Loss",
+      Proc. 4th Berkeley Symposium
+      <https://projecteuclid.org/proceedings/berkeley-symposium-on-mathematical-statistics-and-probability/Proceedings-of-the-Fourth-Berkeley-Symposium-on-Mathematical-Statistics-and/Chapter/Estimation-with-Quadratic-Loss/bsmsp/1200512173>`_
+    - `Jorion (1986), "Bayes-Stein Estimation for Portfolio Analysis",
+      Journal of Financial and Quantitative Analysis
+      <https://doi.org/10.2307/2331042>`_
+    - `DeMiguel, Garlappi & Uppal (2009), "Optimal Versus Naive
+      Diversification: How Inefficient is the 1/N Portfolio Strategy?",
+      Review of Financial Studies — shows 1/N is hard to beat
+      <https://doi.org/10.1093/rfs/hhm075>`_
+    - `Carver (2015), "Systematic Trading", Ch. 11 — handcrafting
+      portfolio weights as shrinkage toward equal weight
+      <https://qoppac.blogspot.com/2018/12/portfolio-construction-through.html>`_
+
+    :param alpha_signals:
+        Signal objects keyed by pair ID.
+
+    :param blend_alpha:
+        Shrinkage intensity. 1.0 = pure equal, 0.0 = pure signal.
+
+    :return:
+        Weight map summing to 1.0.
+    """
+    if not alpha_signals:
+        return {}
+
+    n = len(alpha_signals)
+    equal_w = 1.0 / n
+
+    signals = {k: abs(v) for k, v in alpha_signals.items()}
+    total_signal = sum(signals.values())
+
+    if total_signal == 0:
+        return {k: equal_w for k in alpha_signals}
+
+    return {
+        k: blend_alpha * equal_w + (1 - blend_alpha) * (v / total_signal)
+        for k, v in signals.items()
+    }
+
+
 def weight_by_log(alpha_signals: Dict[PairInternalId, Signal]) -> Dict[PairInternalId, Weight]:
     """Use logarithmic weighting to dampen high signals.
 

@@ -23,6 +23,7 @@ from eth_defi.hyperliquid.api import fetch_user_vault_equity
 from eth_defi.hyperliquid.core_writer import CORE_WRITER_ADDRESS
 from eth_defi.hyperliquid.session import (
     HYPERLIQUID_API_URL,
+    HYPERLIQUID_TESTNET_API_URL,
     create_hyperliquid_session,
 )
 from eth_typing import HexAddress
@@ -182,7 +183,7 @@ def create_hypercore_vault_value_func(
             safe_address = _safe_address
         else:
             safe_address = execution_model.tx_builder.get_token_delivery_address()
-            api_url = HYPERLIQUID_API_URL
+            api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
             session = create_hyperliquid_session(api_url=api_url)
 
         try:

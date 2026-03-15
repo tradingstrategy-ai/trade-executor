@@ -39,7 +39,7 @@ To run tests you need to use the installed Poetry environment, with given enviro
 To run tests use the `pytest` wrapper command:
 
 ```shell
-source .local-test.env && poetry pytest run {test case name or pattern here}
+source .local-test.env && poetry run pytest {test case name or pattern here}
 ```
 
 Always prefix pytest command with relevant source command,

@@ -23,9 +23,9 @@ from tradeexecutor.utils.sort import unique_sort
 
 VALUE_COLS = ["Optim", "CAGR", "Max DD", "Sharpe", "Sortino", "Avg pos", "Med pos", "Win rate", "Time in market"]
 
-CALMAR_VALUE_COLS = ["Optim", "CAGR", "Max DD", "Sharpe", "Sortino", "Calmar", "Time in market", "Avg pos", "Med pos", "Win rate"]
+CALMAR_VALUE_COLS = ["Optim", "CAGR", "Max DD", "Sharpe", "Sortino", "Calmar", "Time in market", "Avg capital util", "Max cash %", "Avg pos", "Med pos", "Win rate"]
 
-PERCENT_COLS = ["CAGR", "Max DD", "Avg pos", "Med pos", "Time in market", "Win rate"]
+PERCENT_COLS = ["CAGR", "Max DD", "Avg pos", "Med pos", "Time in market", "Win rate", "Avg capital util", "Max cash %"]
 
 DATA_COLS = ["Positions", "Trades"]
 
@@ -102,6 +102,29 @@ def analyse_combination(
         row["Calmar"] = cagr_val / abs(max_dd_val)
     else:
         row["Calmar"] = np.nan
+
+    # Capital utilisation metrics from portfolio stats time-series
+    try:
+        state = r.hydrate_state()
+        if state and state.stats and state.stats.portfolio:
+            cash_ratios = []
+            for ps in state.stats.portfolio:
+                equity = ps.total_equity or 0
+                cash = ps.free_cash
+                if equity > 0 and cash is not None:
+                    cash_ratios.append(cash / equity)
+            if cash_ratios:
+                row["Avg capital util"] = clean(1.0 - np.mean(cash_ratios))
+                row["Max cash %"] = clean(np.max(cash_ratios))
+            else:
+                row["Avg capital util"] = np.nan
+                row["Max cash %"] = np.nan
+        else:
+            row["Avg capital util"] = np.nan
+            row["Max cash %"] = np.nan
+    except Exception:
+        row["Avg capital util"] = np.nan
+        row["Max cash %"] = np.nan
 
     # Clear all values except position count if this is not a good trade series
     if r.summary.total_positions < min_positions_threshold:
