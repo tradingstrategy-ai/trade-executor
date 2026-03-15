@@ -98,6 +98,21 @@ def create_gmx_account_value_func(
     treasury sync, so this function only returns the value locked
     in GMX positions to avoid double counting.
 
+    USDC flow and NAV implications
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    When GMX positions are opened, USDC is **transferred** from the Safe
+    to the GMX OrderVault via ``sendTokens()`` in an ``ExchangeRouter.multicall()``.
+    This reduces the Safe's USDC balance but happens outside the trade engine,
+    so ``reserve_position.quantity`` in the portfolio becomes stale.
+
+    The total vault NAV is: ``Safe USDC (reserves) + GMX position value (this function)``.
+
+    To prevent double-counting (stale reserves + real position value),
+    ``LagoonVaultSyncModel.sync_treasury()`` reconciles reserves from the
+    actual on-chain Safe balance before calculating NAV.  See
+    ``README-GMX-Lagoon.md`` for the full security analysis and token flow.
+
     Can be called with either an *execution_model* (used by the runner)
     or explicit *web3* + *safe_address* (used by CLI commands like
     ``correct-accounts``).

@@ -203,8 +203,17 @@ class LagoonVaultSyncModel(AddressSyncModel):
     def calculate_valuation(self, state: State) -> USDollarPrice:
         """Calculate NAV of the vault.
 
-        - Calculate the equity of all assts in the vault
+        - Calculate the equity of all assets in the vault
         - Check that we do not use stale data
+
+        .. note::
+
+            This method uses ``portfolio.get_net_asset_value()`` which reads
+            ``reserve_position.quantity`` for the cash component.  The caller
+            (``sync_treasury``) must reconcile that quantity from the on-chain
+            Safe balance *before* calling this method, because exchange account
+            positions (GMX, Derive, …) can transfer USDC out of the Safe via
+            multicall without updating the portfolio reserves.
         """
 
         now = native_datetime_utc_now()
@@ -243,9 +252,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
             nav_diff = abs(calculated_nav - onchain_nav) / onchain_nav
             if nav_diff >= self.min_nav_change_update:
                 logger.info(
-                    "NAV update neeed. Calcualted %s, onchain %s, diff %f %%",
-                    onchain_nav,
+                    "NAV update needed. Calculated %s, onchain %s, diff %f %%",
                     calculated_nav,
+                    onchain_nav,
                     nav_diff * 100,
                 )
                 return True
@@ -307,6 +316,37 @@ class LagoonVaultSyncModel(AddressSyncModel):
             reserve_asset.address,
             chain_id=reserve_asset.chain_id,
         )
+
+        # Reconcile reserves from on-chain before calculating NAV.
+        #
+        # Exchange account positions (e.g. GMX) transfer USDC from the Safe
+        # via sendTokens() in multicall — outside the trade engine.
+        # This means reserve_position.quantity can be stale: it still
+        # reflects the pre-transfer balance while the USDC has already
+        # left the Safe.
+        #
+        # The exchange account value function (e.g. create_gmx_account_value_func)
+        # only returns capital locked in exchange positions, NOT free USDC
+        # in the Safe — so the Safe's actual USDC balance is the correct
+        # reserve component for NAV.  Without this reconciliation,
+        # calculate_valuation() double-counts the transferred USDC
+        # (once in stale reserves, once in the exchange account position),
+        # inflating the NAV and mispricing deposits.
+        #
+        # See README-GMX-Lagoon.md for the full token flow.
+        block_number = self.get_safe_latest_block()
+        onchain_balance = reserve_token.fetch_balance_of(
+            self.get_token_storage_address(),
+            block_identifier=block_number,
+        )
+        if reserve_position.quantity != onchain_balance:
+            logger.warning(
+                "Reserve balance mismatch: portfolio=%s, on-chain=%s. "
+                "Updating to on-chain value before NAV calculation.",
+                reserve_position.quantity,
+                onchain_balance,
+            )
+            reserve_position.quantity = onchain_balance
 
         valuation = self.calculate_valuation(state)
 
