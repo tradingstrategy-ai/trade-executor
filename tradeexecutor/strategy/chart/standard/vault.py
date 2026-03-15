@@ -4,6 +4,7 @@ import warnings
 import pandas as pd
 from plotly.graph_objects import Figure
 from tradeexecutor.analysis.credit import display_vault_position_table, display_vault_daily_pnl_table
+from tradeexecutor.analysis.vault_position_helpers import find_latest_position_for_pair
 from tradeexecutor.analysis.vault import visualise_vaults
 from tradeexecutor.strategy.chart.definition import ChartInput
 from tradeexecutor.visual.position import (calculate_position_timeline,
@@ -50,17 +51,9 @@ def vault_position_timeline(
     assert input.pairs and len(input.pairs) == 1, "This chart only supports a single vault pair."
     pair = input.pairs[0]
 
-    all_positions = list(state.portfolio.get_all_positions())
-    position_id = None
-    for p in reversed(all_positions):
-        if p.pair == pair:
-            position_id = p.position_id
-            break
-
-    if position_id is None:
+    position = find_latest_position_for_pair(state, pair)
+    if position is None:
         return None, None
-
-    assert position_id is not None, f"Position for pair {pair} not found in portfolio."
 
     if input.execution_context.mode.is_backtesting():
         assert state.backtest_data
@@ -68,7 +61,6 @@ def vault_position_timeline(
     else:
         start_at, end_at = state.get_strategy_start_and_end()
 
-    position = state.portfolio.get_position_by_id(position_id)
     position_df = calculate_position_timeline(
         strategy_universe,
         position,

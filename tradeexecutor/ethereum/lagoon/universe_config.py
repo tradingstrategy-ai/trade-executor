@@ -40,6 +40,149 @@ from tradeexecutor.strategy.trading_strategy_universe import \
 
 logger = logging.getLogger(__name__)
 
+HYPERCORE_NATIVE_CHAIN_ID = 9999
+HYPEREVM_CHAIN_ID = ChainId.hyperliquid.value  # 999
+
+
+def normalise_deployment_chain_id(chain_id: int) -> int | None:
+    """Normalise non-deployable or redirected chain ids to deployment chains."""
+    if chain_id == HYPERCORE_NATIVE_CHAIN_ID:
+        return HYPEREVM_CHAIN_ID
+    return chain_id
+
+
+def _collect_chain_ids(universe: TradingStrategyUniverse) -> set[int]:
+    """Collect all deployable chain ids from the trading universe."""
+    chain_ids: set[int] = set()
+    for pair in universe.iterate_pairs():
+        for chain_id in (pair.base.chain_id, pair.quote.chain_id):
+            normalised = normalise_deployment_chain_id(chain_id)
+            if normalised is not None:
+                chain_ids.add(normalised)
+    return chain_ids
+
+
+def _build_chain_slug_maps(all_chain_ids: set[int], chain_web3: dict[str, Web3]) -> tuple[dict[int, str], dict[str, int]]:
+    """Build and validate slug mappings for deployment chains."""
+    chain_id_to_slug = {cid: ChainId(cid).get_slug() for cid in all_chain_ids}
+    slug_to_chain_id = {slug: cid for cid, slug in chain_id_to_slug.items()}
+    for chain_id, slug in chain_id_to_slug.items():
+        assert slug in chain_web3, (
+            f"No Web3 connection for chain {slug} (id={chain_id}). "
+            f"Available connections: {list(chain_web3.keys())}"
+        )
+    return chain_id_to_slug, slug_to_chain_id
+
+
+def _collect_universe_metadata(universe: TradingStrategyUniverse, all_chain_ids: set[int]) -> tuple[dict[int, set[int]], bool, set[int], set[int], dict[int, list[str]]]:
+    """Collect cross-chain protocol metadata used to build Lagoon configs."""
+    cctp_destinations: dict[int, set[int]] = {cid: set() for cid in all_chain_ids}
+    has_cctp = False
+    gmx_chain_ids: set[int] = set()
+    hypercore_vaults_per_chain: dict[int, list[str]] = {}
+
+    for pair in universe.iterate_pairs():
+        if pair.kind == TradingPairKind.cctp_bridge:
+            has_cctp = True
+            src = normalise_deployment_chain_id(pair.get_source_chain_id())
+            dest = normalise_deployment_chain_id(pair.get_destination_chain_id())
+            if src is not None and dest is not None:
+                cctp_destinations[src].add(dest)
+                cctp_destinations[dest].add(src)
+
+        if pair.is_exchange_account() and pair.get_exchange_account_protocol() == "gmx":
+            gmx_chain_ids.add(normalise_deployment_chain_id(pair.base.chain_id))
+
+        if pair.is_vault() and pair.other_data.get("vault_protocol") == "hypercore":
+            vault_addr = pair.other_data.get("hypercore_vault_address")
+            if vault_addr:
+                chain_id = normalise_deployment_chain_id(pair.base.chain_id)
+                if chain_id is not None:
+                    hypercore_vaults_per_chain.setdefault(chain_id, []).append(vault_addr)
+
+    uniswap_v3_chain_ids = {
+        exchange.chain_id.value
+        for exchange in universe.data_universe.exchange_universe.exchanges.values()
+        if exchange.exchange_type == ExchangeType.uniswap_v3
+    }
+    return cctp_destinations, has_cctp, uniswap_v3_chain_ids, gmx_chain_ids, hypercore_vaults_per_chain
+
+
+def _collect_chain_token_addresses(universe: TradingStrategyUniverse, all_chain_ids: set[int], any_asset: bool) -> dict[int, set[str]]:
+    """Collect per-chain token whitelist addresses after chain normalisation."""
+    chain_token_addresses: dict[int, set[str]] = {cid: set() for cid in all_chain_ids}
+    if any_asset:
+        return chain_token_addresses
+
+    for pair in universe.iterate_pairs():
+        for asset in (pair.base, pair.quote):
+            chain_id = normalise_deployment_chain_id(asset.chain_id)
+            if chain_id is not None:
+                chain_token_addresses.setdefault(chain_id, set()).add(Web3.to_checksum_address(asset.address))
+    return chain_token_addresses
+
+
+def _apply_protocol_configs(
+    *,
+    config: LagoonConfig,
+    chain_id: int,
+    slug: str,
+    chain_web3: dict[str, Web3],
+    cctp_destinations: dict[int, set[int]],
+    uniswap_v3_chain_ids: set[int],
+    gmx_chain_ids: set[int],
+    hypercore_vaults_per_chain: dict[int, list[str]],
+    any_asset: bool,
+) -> None:
+    """Apply protocol-specific whitelist/deployment settings to one chain config."""
+    dest_chain_ids = cctp_destinations.get(chain_id, set())
+    if dest_chain_ids:
+        config.cctp_deployment = CCTPDeployment.create_for_chain(
+            chain_id=chain_id,
+            allowed_destinations=list(dest_chain_ids),
+        )
+
+    if chain_id in uniswap_v3_chain_ids:
+        deployment_data = UNISWAP_V3_DEPLOYMENTS.get(slug)
+        if deployment_data:
+            config.uniswap_v3 = fetch_deployment_uni_v3(
+                chain_web3[slug],
+                factory_address=deployment_data["factory"],
+                router_address=deployment_data["router"],
+                position_manager_address=deployment_data["position_manager"],
+                quoter_address=deployment_data["quoter"],
+                quoter_v2=deployment_data.get("quoter_v2", False),
+                router_v2=deployment_data.get("router_v2", False),
+            )
+        else:
+            logger.warning("No Uniswap v3 deployment data for chain %s", slug)
+
+    if chain_id in gmx_chain_ids:
+        if any_asset:
+            market_addresses = []
+        else:
+            all_markets = fetch_all_gmx_markets(chain_web3[slug])
+            market_addresses = list(all_markets.keys())
+
+        if chain_id == ChainId.arbitrum_sepolia.value:
+            from eth_defi.gmx.contracts import \
+                get_contract_addresses as get_gmx_addresses
+            testnet_addrs = get_gmx_addresses("arbitrum_sepolia")
+            config.gmx_deployment = GMXDeployment(
+                exchange_router=testnet_addrs.exchangerouter,
+                synthetics_router=testnet_addrs.syntheticsrouter,
+                order_vault=testnet_addrs.ordervault,
+                markets=market_addresses,
+            )
+        else:
+            config.gmx_deployment = GMXDeployment.create_arbitrum(markets=market_addresses)
+        logger.info("GMX deployment configured for %s: %d market(s)%s", slug, len(market_addresses), " (skipped per-market whitelisting — any_asset=True)" if any_asset else " (all markets)")
+
+    vault_addrs = hypercore_vaults_per_chain.get(chain_id, [])
+    if vault_addrs:
+        config.hypercore_vaults = vault_addrs
+        logger.info("Hypercore vaults configured for %s: %s", slug, vault_addrs)
+
 
 def translate_trading_universe_to_lagoon_config(
     universe: TradingStrategyUniverse,
@@ -104,83 +247,20 @@ def translate_trading_universe_to_lagoon_config(
 
     # Determine source chain from the first reserve asset
     reserve_asset = list(universe.reserve_assets)[0]
-    source_chain_id = reserve_asset.chain_id
+    source_chain_id = normalise_deployment_chain_id(reserve_asset.chain_id)
     source_chain_slug = ChainId(source_chain_id).get_slug()
 
-    # Collect all chain IDs from pairs
-    all_chain_ids = set()
-    for pair in universe.iterate_pairs():
-        all_chain_ids.add(pair.base.chain_id)
-        all_chain_ids.add(pair.quote.chain_id)
-
-    # Hypercore native (chain_id=9999) is not a real EVM chain — remove it
-    # early so it doesn't appear in slug mapping or validation.
-    # Whitelisting is handled on HyperEVM (999) instead.
-    HYPERCORE_NATIVE_CHAIN_ID = 9999
-    HYPEREVM_CHAIN_ID = ChainId.hyperliquid.value  # 999
-    all_chain_ids.discard(HYPERCORE_NATIVE_CHAIN_ID)
-
-    # Map chain IDs to slugs
-    chain_id_to_slug = {cid: ChainId(cid).get_slug() for cid in all_chain_ids}
-    slug_to_chain_id = {slug: cid for cid, slug in chain_id_to_slug.items()}
-
-    # Validate chain_web3 has connections for all chains
-    for chain_id, slug in chain_id_to_slug.items():
-        assert slug in chain_web3, (
-            f"No Web3 connection for chain {slug} (id={chain_id}). "
-            f"Available connections: {list(chain_web3.keys())}"
-        )
+    all_chain_ids = _collect_chain_ids(universe)
+    chain_id_to_slug, _ = _build_chain_slug_maps(all_chain_ids, chain_web3)
 
     # Detect testnet
     is_testnet = any(cid in TESTNET_CHAIN_IDS for cid in all_chain_ids)
 
-    # Collect CCTP destination chain IDs per chain
-    # For each chain, find which other chains it bridges to/from
-    cctp_destinations: dict[int, set[int]] = {cid: set() for cid in all_chain_ids}
-    has_cctp = False
-    for pair in universe.iterate_pairs():
-        if pair.kind == TradingPairKind.cctp_bridge:
-            has_cctp = True
-            src = pair.get_source_chain_id()
-            dest = pair.get_destination_chain_id()
-            cctp_destinations[src].add(dest)
-            cctp_destinations[dest].add(src)
-
-    # Collect Uniswap v3 exchange chain IDs
-    uniswap_v3_chain_ids = set()
-    exchanges = universe.data_universe.exchange_universe.exchanges
-    for exchange in exchanges.values():
-        if exchange.exchange_type == ExchangeType.uniswap_v3:
-            uniswap_v3_chain_ids.add(exchange.chain_id.value)
-
-    # Collect GMX exchange account chain IDs
-    gmx_chain_ids: set[int] = set()
-    for pair in universe.iterate_pairs():
-        if pair.is_exchange_account():
-            protocol = pair.get_exchange_account_protocol()
-            if protocol == "gmx":
-                gmx_chain_ids.add(pair.base.chain_id)
-
-    # Collect Hypercore vault addresses per chain.
-    # Hypercore native vaults (chain_id=9999) are accessed via HyperEVM's
-    # CoreWriter contract — redirect their whitelisting to HyperEVM (999).
-    hypercore_vaults_per_chain: dict[int, list[str]] = {}
-    for pair in universe.iterate_pairs():
-        if pair.is_vault() and pair.other_data.get("vault_protocol") == "hypercore":
-            vault_addr = pair.other_data.get("hypercore_vault_address")
-            if vault_addr:
-                chain_id = pair.base.chain_id
-                # Redirect Hypercore native → HyperEVM for deployment
-                if chain_id == HYPERCORE_NATIVE_CHAIN_ID:
-                    chain_id = HYPEREVM_CHAIN_ID
-                hypercore_vaults_per_chain.setdefault(chain_id, []).append(vault_addr)
-
-    # Collect unique token addresses per chain (used when any_asset=False)
-    chain_token_addresses: dict[int, set[str]] = {cid: set() for cid in all_chain_ids}
-    if not any_asset:
-        for pair in universe.iterate_pairs():
-            chain_token_addresses[pair.base.chain_id].add(Web3.to_checksum_address(pair.base.address))
-            chain_token_addresses[pair.quote.chain_id].add(Web3.to_checksum_address(pair.quote.address))
+    cctp_destinations, has_cctp, uniswap_v3_chain_ids, gmx_chain_ids, hypercore_vaults_per_chain = _collect_universe_metadata(
+        universe,
+        all_chain_ids,
+    )
+    chain_token_addresses = _collect_chain_token_addresses(universe, all_chain_ids, any_asset)
 
     logger.info(
         "Universe analysis: source_chain=%s, chains=%s, cctp=%s, uniswap_v3_chains=%s, gmx_chains=%s, hypercore_vault_chains=%s, testnet=%s, any_asset=%s",
@@ -230,61 +310,17 @@ def translate_trading_universe_to_lagoon_config(
             config.from_the_scratch = True
             config.use_forge = True
 
-        # Configure CCTP
-        dest_chain_ids = cctp_destinations.get(chain_id, set())
-        if dest_chain_ids:
-            config.cctp_deployment = CCTPDeployment.create_for_chain(
-                chain_id=chain_id,
-                allowed_destinations=list(dest_chain_ids),
-            )
-
-        # Configure Uniswap v3
-        if chain_id in uniswap_v3_chain_ids:
-            deployment_data = UNISWAP_V3_DEPLOYMENTS.get(slug)
-            if deployment_data:
-                config.uniswap_v3 = fetch_deployment_uni_v3(
-                    chain_web3[slug],
-                    factory_address=deployment_data["factory"],
-                    router_address=deployment_data["router"],
-                    position_manager_address=deployment_data["position_manager"],
-                    quoter_address=deployment_data["quoter"],
-                    quoter_v2=deployment_data.get("quoter_v2", False),
-                    router_v2=deployment_data.get("router_v2", False),
-                )
-            else:
-                logger.warning("No Uniswap v3 deployment data for chain %s", slug)
-
-        # Configure GMX router whitelisting (and per-market whitelisting when any_asset is off)
-        if chain_id in gmx_chain_ids:
-            if any_asset:
-                # When any_asset=True the guard's GmxLib.isAllowedMarket()
-                # short-circuits to True, so per-market whitelisting is redundant.
-                # We still need GMXDeployment for the router addresses.
-                market_addresses = []
-            else:
-                all_markets = fetch_all_gmx_markets(chain_web3[slug])
-                market_addresses = list(all_markets.keys())
-
-            if chain_id == 421614:
-                # Arbitrum Sepolia testnet — construct GMXDeployment manually
-                from eth_defi.gmx.contracts import \
-                    get_contract_addresses as get_gmx_addresses
-                testnet_addrs = get_gmx_addresses("arbitrum_sepolia")
-                config.gmx_deployment = GMXDeployment(
-                    exchange_router=testnet_addrs.exchangerouter,
-                    synthetics_router=testnet_addrs.syntheticsrouter,
-                    order_vault=testnet_addrs.ordervault,
-                    markets=market_addresses,
-                )
-            else:
-                config.gmx_deployment = GMXDeployment.create_arbitrum(markets=market_addresses)
-            logger.info("GMX deployment configured for %s: %d market(s)%s", slug, len(market_addresses), " (skipped per-market whitelisting — any_asset=True)" if any_asset else " (all markets)")
-
-        # Configure Hypercore vault whitelisting
-        vault_addrs = hypercore_vaults_per_chain.get(chain_id, [])
-        if vault_addrs:
-            config.hypercore_vaults = vault_addrs
-            logger.info("Hypercore vaults configured for %s: %s", slug, vault_addrs)
+        _apply_protocol_configs(
+            config=config,
+            chain_id=chain_id,
+            slug=slug,
+            chain_web3=chain_web3,
+            cctp_destinations=cctp_destinations,
+            uniswap_v3_chain_ids=uniswap_v3_chain_ids,
+            gmx_chain_ids=gmx_chain_ids,
+            hypercore_vaults_per_chain=hypercore_vaults_per_chain,
+            any_asset=any_asset,
+        )
 
         configs[slug] = config
 

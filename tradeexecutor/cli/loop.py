@@ -485,7 +485,7 @@ class ExecutionLoop:
 
         # TODO: This setup repeated in tick().
         # Modify tick() to take these as argument
-        routing_state, pricing_model, valuation_model = self.runner.setup_routing(universe)
+        routing_setup = self.runner.setup_routing_context(universe)
 
         if self.execution_context.mode.is_live_trading() and not (self.execution_context.mode == ExecutionMode.simulated_trading):
             # In live trading, the interest follows clock
@@ -501,7 +501,7 @@ class ExecutionLoop:
             interest_timestamp,
             state,
             cast(TradingStrategyUniverse, universe),
-            pricing_model,
+            routing_setup.pricing_model,
         )
         logger.info("Generated %d sync interest events", len(interest_events))
 

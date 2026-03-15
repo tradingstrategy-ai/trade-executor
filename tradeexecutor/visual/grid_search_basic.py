@@ -9,6 +9,11 @@ import plotly.graph_objects as go
 from plotly.graph_objs import Figure, Scatter
 
 from tradeexecutor.analysis.curve import CurveType, DEFAULT_BENCHMARK_COLOURS
+from tradeexecutor.analysis.grid_search_format import (
+    build_gradient_colour_map,
+    generate_grey_alpha,
+    get_group_colour_palette,
+)
 from tradeexecutor.analysis.grid_search import _get_hover_template, order_grid_search_results_by_metric
 from tradeexecutor.analysis.multi_asset_benchmark import get_benchmark_data
 from tradeexecutor.backtest.grid_search import GridSearchResult
@@ -219,10 +224,10 @@ def visualise_grid_search_equity_curves(
 
         if use_gradient:
             # Single group_by: gradient shades of one colour by feature value
-            primary_colour_map, sorted_gradient_values = _build_gradient_colour_map(primary_values)
+            primary_colour_map, sorted_gradient_values = build_gradient_colour_map(primary_values)
             secondary_dash_map = None
         else:
-            group_hues = _get_group_colour_palette(len(primary_values))
+            group_hues = get_group_colour_palette(len(primary_values))
             primary_colour_map = {val: group_hues[i] for i, val in enumerate(primary_values)}
 
             dash_styles = ["solid", "dash", "dot", "dashdot", "longdash", "longdashdot"]
@@ -251,7 +256,7 @@ def visualise_grid_search_equity_curves(
                 key=lambda r: sorted_gradient_values.index(str(r.get_parameter(group_by))),
             )
     else:
-        colors = _generate_grey_alpha(len(results))
+        colors = generate_grey_alpha(len(results))
 
     for result in results:
         curve = result.equity_curve
@@ -368,64 +373,6 @@ def visualise_grid_search_equity_curves(
     ))
 
     return fig
-
-
-def _build_gradient_colour_map(values: list[str]) -> tuple[dict[str, str], list[str]]:
-    """Map feature values to shades of a single colour.
-
-    - Tries to sort values numerically; falls back to original order
-    - Maps the value range linearly from pale red (low) to dark red (high)
-
-    :return:
-        Tuple of (colour map, sorted values list)
-    """
-    # Try numeric sort
-    try:
-        numeric = [(v, float(v)) for v in values]
-        numeric.sort(key=lambda x: x[1])
-        sorted_values = [v for v, _ in numeric]
-    except (ValueError, TypeError):
-        sorted_values = list(values)
-
-    n = len(sorted_values)
-
-    # Shade from light red (low values) to dark red (high values).
-    # We interpolate the RGB channels directly so the hue stays red
-    # regardless of the background.
-    light = (255, 180, 180)  # pale red
-    dark = (139, 0, 0)       # dark red
-
-    colour_map = {}
-    for i, val in enumerate(sorted_values):
-        t = i / max(n - 1, 1)
-        r = int(light[0] + t * (dark[0] - light[0]))
-        g = int(light[1] + t * (dark[1] - light[1]))
-        b = int(light[2] + t * (dark[2] - light[2]))
-        colour_map[val] = f"rgb({r},{g},{b})"
-
-    return colour_map, sorted_values
-
-
-def _get_group_colour_palette(num_groups):
-    """Return a list of distinct RGB tuples for grouping equity curves.
-
-    Uses well-separated hues that remain distinguishable
-    when rendered with varying opacity.
-    """
-    base_colours = [
-        (31, 119, 180),   # blue
-        (214, 39, 40),    # red
-        (44, 160, 44),    # green
-        (255, 127, 14),   # orange
-        (148, 103, 189),  # purple
-        (23, 190, 207),   # teal
-        (188, 189, 34),   # olive
-        (227, 119, 194),  # pink
-    ]
-    # Cycle if more groups than base colours
-    return [base_colours[i % len(base_colours)] for i in range(num_groups)]
-
-
 def _generate_broad_bluered_colors(num_colors, alpha):
     """
     Generate a list of RGBA colors along a broad blue-purple-red color scale.
@@ -447,18 +394,6 @@ def _generate_broad_bluered_colors(num_colors, alpha):
             red = 255
             blue = int(255 * (2 * (1 - ratio)))
         green = max(0, int(255 * (1 - abs(ratio - 0.7) * 2)))
-        color = (red, green, blue, alpha)
-        colors.append(f"rgba{color}")
-    return colors
-
-
-def _generate_grey_alpha(num_colors):
-    colors = []
-    for i in range(num_colors):
-        red = 33 + 128 * i / num_colors
-        green = red
-        blue = red
-        alpha = red
         color = (red, green, blue, alpha)
         colors.append(f"rgba{color}")
     return colors

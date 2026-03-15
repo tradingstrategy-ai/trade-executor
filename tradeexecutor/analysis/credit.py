@@ -6,6 +6,7 @@ import enum
 import pandas as pd
 
 from tradeexecutor.state.state import State
+from tradeexecutor.analysis.vault_position_helpers import get_vault_positions
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.pnl import calculate_pnl
 
@@ -64,7 +65,7 @@ def calculate_yield_metrics(
             deposit_trades = [t for p in credit_positions for t in p.trades.values() if t.is_credit_supply()]
             durations = [p.get_duration(partial=True, execution_mode=execution_mode, end_at=end_at) for p in credit_positions]
         case YieldType.vault:
-            credit_positions = [p for p in state.portfolio.get_all_positions() if p.is_vault()]
+            credit_positions = get_vault_positions(state)
             durations = [p.get_duration(partial=True, execution_mode=execution_mode, end_at=end_at) for p in credit_positions]
             total_interest_earned_usd = sum(p.get_total_profit_usd() for p in credit_positions)
             interest_rates = [p.calculate_annualised_profit(duration) for p, duration in zip(credit_positions, durations)]
@@ -154,7 +155,7 @@ def display_vault_position_table(
         end_at = state.backtest_data.end_at
         assert end_at
 
-    positions = [p for p in state.portfolio.get_all_positions() if p.is_vault()]
+    positions = get_vault_positions(state)
 
     if len(positions) == 0:
         return pd.DataFrame([])
@@ -267,7 +268,7 @@ def display_vault_daily_pnl_table(
     """
     from tradeexecutor.analysis.weights import _make_clickable_address, _format_coloured_value, _format_date
 
-    positions = [p for p in state.portfolio.get_all_positions() if p.is_vault()]
+    positions = get_vault_positions(state)
 
     if len(positions) == 0:
         return pd.DataFrame([])

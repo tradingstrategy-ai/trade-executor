@@ -7,6 +7,7 @@ import abc
 import datetime
 import time
 from contextlib import AbstractContextManager
+from dataclasses import dataclass
 import logging
 from io import StringIO
 from pprint import pformat
@@ -54,6 +55,15 @@ from tradeexecutor.strategy.valuation import ValuationModelFactory, ValuationMod
 from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class RoutingSetup:
+    """Per-tick routing setup objects that travel together through the cycle."""
+
+    routing_state: "RoutingState"
+    pricing_model: "PricingModel"
+    valuation_model: "ValuationModel"
 
 
 class PreflightCheckFailed(Exception):
@@ -236,7 +246,7 @@ class StrategyRunner(abc.ABC):
         token = reserve_assets[0]
         assert token.decimals and token.decimals > 0, f"Reserve asset lacked decimals"
 
-        routing_state, pricing_model, valuation_model = self.setup_routing(universe)
+        routing_setup = self.setup_routing_context(universe)
 
         if end_block is not None:
             # Only msg in live executoin
@@ -266,7 +276,7 @@ class StrategyRunner(abc.ABC):
                 strategy_cycle_or_trigger_check_ts,
                 state,
                 cast(TradingStrategyUniverse, universe),
-                pricing_model,
+                routing_setup.pricing_model,
             )
             debug_details["sync_position_events"] = sync_position_events
         else:
@@ -288,7 +298,7 @@ class StrategyRunner(abc.ABC):
                 self.revalue_state(
                     timestamp,
                     state,
-                    valuation_model,
+                    routing_setup.valuation_model,
                 )
 
                 update_statistics(
@@ -635,6 +645,18 @@ class StrategyRunner(abc.ABC):
 
         return routing_state, pricing_model, valuation_model
 
+    def setup_routing_context(
+        self,
+        universe: StrategyExecutionUniverse,
+    ) -> RoutingSetup:
+        """Return routing, pricing and valuation objects as one per-tick bundle."""
+        routing_state, pricing_model, valuation_model = self.setup_routing(universe)
+        return RoutingSetup(
+            routing_state=routing_state,
+            pricing_model=pricing_model,
+            valuation_model=valuation_model,
+        )
+
     def check_balances_post_execution(
         self,
         universe: StrategyExecutionUniverse,
@@ -734,8 +756,13 @@ class StrategyRunner(abc.ABC):
         friendly_cycle_duration = cycle_duration.value if cycle_duration else "-"
         with self.timed_task_context_manager("strategy_tick", clock=strategy_cycle_timestamp, cycle_duration=friendly_cycle_duration):
 
-            routing_state, pricing_model, valuation_model = self.setup_routing(universe)
-            assert pricing_model, "Routing did not provide pricing_model"
+            routing_setup = self.setup_routing_context(universe)
+            assert routing_setup.pricing_model, "Routing did not provide pricing_model"
+            # Keep local aliases so existing helper calls inside tick remain readable
+            # while the per-tick bundle becomes the canonical setup result.
+            routing_state = routing_setup.routing_state
+            pricing_model = routing_setup.pricing_model
+            valuation_model = routing_setup.valuation_model
 
             # Needed for Lagoon.
             # sync_portfolio() posts valuation onchain to
