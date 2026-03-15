@@ -739,6 +739,7 @@ class EthereumPairConfigurator(PairConfigurator):
         self.web3config = web3config or getattr(execution_model, "web3config", None)
         self.account_value_func = account_value_func or getattr(execution_model, "account_value_func", None)
         self.satellite_vaults = satellite_vaults or getattr(execution_model, "satellite_vaults", None) or {}
+        self.vault_valuation_func = None
 
         # Auto-discover GMX exchange account pairs in the universe
         # and wire up the GMX value func if not already provided
@@ -777,9 +778,18 @@ class EthereumPairConfigurator(PairConfigurator):
             "pass execution_model to EthereumPairConfigurator"
 
         # Auto-create GMX value func from the execution model
-        from tradeexecutor.exchange_account.gmx import create_gmx_account_value_func
+        from tradeexecutor.exchange_account.gmx import create_gmx_account_value_func, create_gmx_vault_valuation_func
         gmx_func = create_gmx_account_value_func(self.execution_model)
         self.account_value_func = gmx_func
+
+        # Create strategy-specific NAV calculation function for the Lagoon sync model.
+        # This uses the on-chain Safe balance instead of stale portfolio reserves,
+        # because FreqTrade moves USDC in/out of the Safe without the trade engine knowing.
+        web3 = self.execution_model.web3
+        safe_address = self.execution_model.tx_builder.get_token_delivery_address()
+        reserve_asset = strategy_universe.get_reserve_asset()
+        self.vault_valuation_func = create_gmx_vault_valuation_func(web3, safe_address, reserve_asset)
+
         logger.info("Auto-discovered GMX exchange account pairs — wired up GMX value func")
 
     def _auto_discover_hypercore_vault(self, strategy_universe: TradingStrategyUniverse):

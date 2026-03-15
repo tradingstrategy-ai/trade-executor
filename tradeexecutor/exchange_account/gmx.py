@@ -275,3 +275,72 @@ def approve_gmx_trading(
 
     logger.info("GMX trading approval complete")
     return collateral_tx
+
+
+def create_gmx_vault_valuation_func(
+    web3,
+    safe_address: str,
+    reserve_asset: "AssetIdentifier",
+) -> Callable[["State"], float]:
+    """Create a GMX-specific vault NAV calculation function.
+
+    For GMX strategies where an external FreqTrade instance
+    (https://github.com/tradingstrategy-ai/gmx-ccxt-freqtrade)
+    moves USDC between the Safe and GMX, the portfolio's
+    ``reserve_position.quantity`` can be stale.  This function
+    reads the actual Safe USDC balance on-chain for the cash
+    component and combines it with position equity from
+    portfolio state.
+
+    The returned callable is passed to
+    :py:class:`~tradeexecutor.ethereum.lagoon.vault.LagoonVaultSyncModel`
+    as ``calculate_valuation_func``.
+
+    Token flow when FreqTrade opens a GMX position::
+
+        Safe USDC ──sendTokens──▶ OrderVault ──keeper──▶ GMX position
+
+    After this transfer the Safe's USDC balance drops, but the
+    portfolio reserves are not updated until the next settlement.
+    This function computes NAV as::
+
+        NAV = on-chain Safe USDC + portfolio position equity
+
+    instead of relying on the potentially stale reserve quantity.
+
+    Both the reserve value and GMX position value are still kept
+    accurate in the portfolio state for historical tracing:
+
+    - **GMX position**: updated by ``ExchangeAccountValuator`` during
+      ``revalue_state()`` (before ``sync_treasury()`` runs)
+    - **Reserves**: reconciled from on-chain in ``sync_treasury()``
+
+    :param web3:
+        Web3 instance connected to the vault's chain.
+    :param safe_address:
+        Gnosis Safe address that holds the vault's assets.
+    :param reserve_asset:
+        The reserve currency asset (e.g. USDC).
+    :return:
+        Callable that takes ``State`` and returns NAV as float.
+    """
+    from tradeexecutor.state.state import State
+
+    def calculate_nav(state: State) -> float:
+        reserve_token = fetch_erc20_details(
+            web3,
+            reserve_asset.address,
+            chain_id=reserve_asset.chain_id,
+        )
+        onchain_cash = float(reserve_token.fetch_balance_of(safe_address))
+        position_equity = state.portfolio.get_position_equity_and_loan_nav(include_interest=True)
+        nav = onchain_cash + position_equity
+        logger.info(
+            "GMX vault valuation: on-chain cash=%f, position equity=%f, NAV=%f",
+            onchain_cash,
+            position_equity,
+            nav,
+        )
+        return nav
+
+    return calculate_nav

@@ -615,6 +615,15 @@ class StrategyRunner(abc.ABC):
                 )
                 routing_model.initialise(pair_configurator)
 
+                # If the pair configurator auto-discovered a strategy-specific
+                # valuation function (e.g. GMX), wire it into the sync model
+                # so that calculate_valuation() uses it for NAV posting.
+                if pair_configurator.vault_valuation_func is not None:
+                    from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+                    if isinstance(self.sync_model, LagoonVaultSyncModel):
+                        self.sync_model.calculate_valuation_func = pair_configurator.vault_valuation_func
+                        logger.info("Wired up strategy-specific valuation function on sync model")
+
             # Update the pair configuration universe to the latest.
             # This will be referred when creating
             # pricing_model and valuation model

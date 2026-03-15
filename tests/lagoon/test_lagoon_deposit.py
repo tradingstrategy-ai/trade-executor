@@ -256,26 +256,35 @@ def test_lagoon_nav_with_exchange_account_position(
     4. The portfolio double-counts: stale reserves + exchange account value
     5. A second deposit is priced at the inflated NAV, harming the depositor
 
-    The fix reconciles reserves from the on-chain Safe balance before
-    calculating NAV, preventing the double-counting.
+    The fix uses a hookable ``calculate_valuation_func`` that reads
+    the actual on-chain Safe balance instead of stale portfolio reserves.
 
     See README-GMX-Lagoon.md for the full GMX token flow.
     """
     from tradeexecutor.exchange_account.state import open_exchange_account_position
+    from tradeexecutor.exchange_account.gmx import create_gmx_vault_valuation_func
     from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind, AssetIdentifier
     from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 
     vault = automated_lagoon_vault.vault
     usdc = base_usdc_token
     strategy_universe = vault_strategy_universe
+    usdc_asset = strategy_universe.get_reserve_asset()
+
+    # Create the GMX-specific valuation function that reads on-chain Safe balance
+    valuation_func = create_gmx_vault_valuation_func(
+        web3=web3,
+        safe_address=vault.safe_address,
+        reserve_asset=usdc_asset,
+    )
 
     sync_model = LagoonVaultSyncModel(
         vault=vault,
         hot_wallet=asset_manager,
+        calculate_valuation_func=valuation_func,
     )
 
     state = State()
-    usdc_asset = strategy_universe.get_reserve_asset()
     sync_model.sync_initial(
         state,
         reserve_asset=usdc_asset,
