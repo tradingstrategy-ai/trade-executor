@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Use `fetch_gmx_total_equity()` for GMX valuation with per-block reads and block number tracking in ValuationUpdate/BalanceUpdate state events (2026-03-15)
+
 - Fix Lagoon vault NAV double-counting when exchange account positions (GMX) transfer USDC from Safe outside the trade engine, causing share price to drop on deposit (2026-03-15)
 
 - Speed up grid search result serialisation ~5-13x by clearing unused indicators before save, switching from joblib+gzip to pickle+zstd, and disabling GC during serialisation (2026-03-15)
