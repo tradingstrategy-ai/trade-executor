@@ -663,14 +663,14 @@ class GridSearchResult:
         # from cached results — regenerated from strategy parameters before each run.
         self.combination.indicators = None
 
-        if include_state:
-            self.save_state()
-
         # Do atomic replacement to avoid partial pickles,
         # as they cause subsequent test runs to fail
         # https://stackoverflow.com/a/3716361/315168
         final_file = self.combination.get_metrics_pickle_path()
         os.makedirs(final_file.parent, exist_ok=True)
+
+        if include_state:
+            self.save_state()
 
         temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=final_file.parent)
         try:
