@@ -311,7 +311,8 @@ def lagoon_deploy_vault(
     if not web3config.has_any_connection():
         raise RuntimeError("Vault deploy requires that you pass JSON-RPC connection to one of the networks")
 
-    hot_wallet = create_hot_wallet(web3config.get_default() if len(web3config.connections) == 1 else next(iter(web3config.connections.values())), private_key)
+    wallet_sync_web3 = next(iter(web3config.connections.values()))
+    hot_wallet = create_hot_wallet(wallet_sync_web3, private_key)
     multisig_owners = _normalize_multisig_owners(multisig_owners, hot_wallet)
     asset_manager = _resolve_asset_manager(asset_manager_address, hot_wallet)
 
