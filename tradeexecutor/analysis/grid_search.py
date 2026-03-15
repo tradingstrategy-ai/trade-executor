@@ -8,7 +8,6 @@
 import textwrap
 import warnings
 from dataclasses import dataclass
-from enum import Enum
 from typing import List
 
 import numpy as np
@@ -18,6 +17,10 @@ import plotly.express as px
 from pandas.io.formats.style import Styler
 from plotly.graph_objs import Figure
 
+from tradeexecutor.analysis.grid_search_format import (
+    build_format_dict,
+    normalise_enum_values,
+)
 from tradeexecutor.backtest.grid_search import GridSearchResult
 from tradeexecutor.utils.sort import unique_sort
 
@@ -354,24 +357,8 @@ def _style_grid_search_table(
     ordered_cols = param_cols + data_cols_present + value_cols
     df = df[[c for c in ordered_cols if c in df.columns]]
 
-    format_dict = {}
-    for v in value_cols:
-        format_dict[v] = "{:.2f}".format
-    for v in PERCENT_COLS:
-        format_dict[v] = "{:.2%}".format
-    for v in DATA_COLS:
-        # # https://stackoverflow.com/a/12080042/315168
-        format_dict[v] = "{0:g}".format
-
-    # Get rid of class name in enums for presentation
-    def enum_to_value(x):
-        return x.value if isinstance(x, Enum) else x
-
-    if hasattr(df, "map"):
-        # Pandas 2+
-        df = df.map(enum_to_value)
-    else:
-        df = df.applymap(enum_to_value)
+    format_dict = build_format_dict(value_cols, PERCENT_COLS, DATA_COLS)
+    df = normalise_enum_values(df)
 
     # Not sure what triggers duplicate result in the result set
     # KeyError: 'Styler.apply and .map are not compatible with non-unique index or columns'

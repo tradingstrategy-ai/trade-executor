@@ -14,21 +14,18 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
-from eth_defi.compat import native_datetime_utc_now
-from eth_defi.erc_4626.classification import create_vault_instance
-from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault_protocol.lagoon.testing import fund_lagoon_vault
-from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
-from eth_defi.hotwallet import HotWallet
 from typer import Option
 
-from tradeexecutor.cli.bootstrap import (create_state_store,
-                                         create_web3_config,
-                                         prepare_executor_id)
+from tradeexecutor.cli.bootstrap import prepare_executor_id
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.commands.lagoon_utils import (
+    create_lagoon_command_context,
+    ensure_state_store_exists,
+    sync_reserve_balance_to_state,
+)
 from tradeexecutor.cli.log import setup_logging
-from tradeexecutor.ethereum.token import translate_token_details
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +74,10 @@ def lagoon_first_deposit(
     assert vault_adapter_address, "VAULT_ADAPTER_ADDRESS is required"
     assert deposit_amount > 0, f"DEPOSIT_AMOUNT must be positive, got {deposit_amount}"
 
-    web3config = create_web3_config(
+    context = create_lagoon_command_context(
+        private_key=private_key,
+        vault_address=vault_address,
+        simulate=simulate,
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
@@ -89,45 +89,20 @@ def lagoon_first_deposit(
         json_rpc_base_sepolia=json_rpc_base_sepolia,
         json_rpc_hyperliquid=json_rpc_hyperliquid,
         json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
-        simulate=simulate,
     )
-
-    if not web3config.has_any_connection():
-        raise RuntimeError("first-deposit requires that you pass a JSON-RPC connection to one of the networks")
-
-    if len(web3config.connections) > 1:
-        web3config.choose_single_chain(default_chain_id=next(iter(web3config.connections.keys())))
-    else:
-        web3config.choose_single_chain()
-
-    web3 = web3config.get_default()
-
-    # Set up hot wallet and check balances
-    hot_wallet = HotWallet.from_private_key(private_key)
-    hot_wallet.sync_nonce(web3)
-
-    # Load vault to get denomination token details
-    vault = create_vault_instance(
-        web3,
-        vault_address,
-        features={ERC4626Feature.lagoon_like},
-        default_block_identifier="latest",
-        require_denomination_token=True,
-    )
-    assert isinstance(vault, LagoonVault), f"Not a Lagoon vault: {vault}"
+    web3config = context.web3config
+    web3 = context.web3
+    hot_wallet = context.hot_wallet
+    vault = context.vault
 
     denomination_token = vault.denomination_token
     amount = Decimal(str(deposit_amount))
 
     # Pre-flight checks — verify state file exists before depositing
     if not simulate:
-        if not state_file:
-            state_file = f"state/{id}.json"
-        store = create_state_store(Path(state_file))
-        assert not store.is_pristine(), (
-            f"State file does not exist: {state_file}. "
-            f"Run 'init' first to create the state file before depositing."
-        )
+        state_path, store = ensure_state_store_exists(id, state_file)
+    else:
+        state_path, store = None, None
 
     eth_balance = web3.eth.get_balance(hot_wallet.address)
     eth_human = eth_balance / 10**18
@@ -172,26 +147,13 @@ def lagoon_first_deposit(
         logger.info("  Vault Safe %s balance: %s", denomination_token.symbol, safe_balance)
         logger.info("  Depositor shares: %s %s", share_balance, vault.share_token.symbol)
     else:
-        # store was already created and verified in pre-flight checks above
-        state = store.load()
-
-        ts = native_datetime_utc_now()
-        if len(state.portfolio.reserves) == 0:
-            reserve_asset = translate_token_details(denomination_token)
-            state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
-        reserve_position = state.portfolio.get_default_reserve_position()
-        reserve_position.quantity = safe_balance
-        reserve_position.reserve_token_price = 1.0
-        reserve_position.last_pricing_at = ts
-        reserve_position.last_sync_at = ts
-
-        store.sync(state)
+        state, reserve_position = sync_reserve_balance_to_state(store, denomination_token, safe_balance)
 
         # Final state check
         reserve_value = reserve_position.get_value()
         reserve_symbol = reserve_position.asset.token_symbol
 
-        logger.info("State file updated: %s", state_file)
+        logger.info("State file updated: %s", state_path)
         logger.info("  Reserve balance: %s %s", reserve_value, reserve_symbol)
         logger.info("  Vault Safe %s balance: %s", denomination_token.symbol, safe_balance)
         logger.info("  Depositor shares: %s %s", share_balance, vault.share_token.symbol)

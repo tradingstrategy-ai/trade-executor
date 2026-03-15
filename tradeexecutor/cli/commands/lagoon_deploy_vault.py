@@ -53,7 +53,7 @@ import os.path
 import random
 import sys
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from eth_defi.aave_v3.constants import AAVE_V3_DEPLOYMENTS
 from eth_defi.aave_v3.deployment import \
@@ -83,6 +83,7 @@ from tradeexecutor.cli.bootstrap import (create_web3_config, prepare_cache,
                                          prepare_token_cache)
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.commands.lagoon_utils import choose_single_chain, create_hot_wallet
 from tradeexecutor.cli.commands.shared_options import \
     parse_comma_separated_list
 from tradeexecutor.cli.log import setup_logging
@@ -93,7 +94,6 @@ from tradeexecutor.ethereum.lagoon.deploy_report import (
 from tradeexecutor.ethereum.lagoon.preflight_report import log_deployment_preflight_report
 from tradeexecutor.ethereum.lagoon.universe_config import \
     translate_trading_universe_to_lagoon_config
-from tradeexecutor.ethereum.token_cache import get_default_token_cache
 from tradeexecutor.ethereum.web3config import collect_rpc_kwargs
 from tradeexecutor.monkeypatch.web3 import \
     construct_sign_and_send_raw_middleware
@@ -101,6 +101,113 @@ from tradeexecutor.strategy.execution_context import one_off_execution_context
 from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import \
     call_create_trading_universe
 from tradeexecutor.strategy.strategy_module import read_strategy_module
+
+
+def _normalize_multisig_owners(multisig_owners: list[str] | None, hot_wallet: HotWallet) -> list[str]:
+    """Normalise owners list so single-chain and multichain paths behave identically."""
+    if multisig_owners:
+        return multisig_owners
+    return [hot_wallet.address]
+
+
+def _calculate_safe_threshold(multisig_owners: list[str]) -> int:
+    """Lagoon deployment policy for Safe threshold."""
+    return max(1, len(multisig_owners) - 1)
+
+
+def _resolve_asset_manager(asset_manager_address: str | None, hot_wallet: HotWallet) -> str:
+    """Asset manager defaults to deployer, but can be overridden."""
+    if asset_manager_address:
+        return Web3.to_checksum_address(asset_manager_address)
+    return hot_wallet.address
+
+
+def _write_file(path: Path, content: str) -> None:
+    with open(path, "wt") as out:
+        out.write(content)
+
+
+def _write_json_file(path: Path, data: Any, *, indent: int | None = None) -> None:
+    with open(path, "wt") as out:
+        out.write(json.dumps(data, indent=indent))
+
+
+def _write_deployment_artifacts(vault_record_file: Path | None, *, text_payload: str, json_payload: Any, simulate: bool, logger) -> None:
+    """Write the shared human/machine readable deployment artifacts."""
+    if not vault_record_file or simulate:
+        logger.info("Skipping record file because of simulation")
+        return
+
+    _write_file(vault_record_file, text_payload)
+    _write_json_file(vault_record_file.with_suffix(".json"), json_payload, indent=2 if isinstance(json_payload, dict) and json_payload.get("multichain") else None)
+    logger.info("Wrote deployment record to %s", os.path.abspath(vault_record_file))
+
+
+def _write_markdown_report(vault_record_file: Path | None, markdown_report: str, logger) -> None:
+    """Write deployment Markdown report next to other artifacts."""
+    if not vault_record_file:
+        return
+
+    md_path = vault_record_file.with_name("deployment-report.md")
+    _write_file(md_path, markdown_report)
+    logger.info("Wrote deployment report to %s", os.path.abspath(md_path))
+
+
+def _build_multichain_artifact_payload(result, safe_salt_nonce: int) -> tuple[str, dict[str, Any]]:
+    """Build the human-readable and JSON deployment payloads for multichain deploys."""
+    deployment_data = {
+        "multichain": True,
+        "safe_salt_nonce": safe_salt_nonce,
+        "deployments": {},
+    }
+    lines: list[str] = []
+    for slug, dep in result.deployments.items():
+        deployment_data["deployments"][slug] = {
+            "vault_address": dep.vault.address if hasattr(dep.vault, "address") else None,
+            "safe_address": dep.safe_address,
+            "module_address": dep.trading_strategy_module.address if dep.trading_strategy_module else None,
+            "is_satellite": dep.is_satellite,
+        }
+        lines.append(f"Chain: {slug}")
+        lines.append(f"  Satellite: {dep.is_satellite}")
+        lines.append(f"  Safe: {dep.safe_address}")
+        if not dep.is_satellite:
+            lines.append(f"  Vault: {dep.vault.address}")
+        if dep.trading_strategy_module:
+            lines.append(f"  Module: {dep.trading_strategy_module.address}")
+        lines.append("")
+    return "\n".join(lines), deployment_data
+
+
+def _log_guard_only_details(deploy_info, vault_adapter_address: str, logger) -> None:
+    """Log manual guard replacement steps for guard-only mode."""
+    logger.info("New guard deployed: %s", deploy_info.trading_strategy_module.address)
+    logger.info("Old guard address: %s", vault_adapter_address)
+    logger.info("Safe address: %s", deploy_info.safe.address)
+    logger.info("Vault address: %s", deploy_info.vault.address)
+    mods = deploy_info.safe.retrieve_modules()
+    logger.info("Currently enabled Safe modules: %s", mods)
+    assert len(mods) == 1, f"Expected only one module enabled, got: {mods}"
+    logger.info("Safe transactions needed:")
+    logger.info("1. %s.disableModule(%s, %s)", deploy_info.safe.address, ONE_ADDRESS_STR, deploy_info.old_trading_strategy_module.address)
+    logger.info("2. %s.enableModule(%s)", deploy_info.safe.address, deploy_info.trading_strategy_module.address)
+    logger.info("Safe ABI needed: %s", SAFE_ABI_STR)
+
+
+def _confirm_deployment(*, simulate: bool, unit_testing: bool, verifier: str, etherscan_api_key: str | None, verifier_url: str | None, label: str = "vault") -> None:
+    """Handle production deployment confirmation and verifier requirements."""
+    if simulate or unit_testing:
+        return
+
+    if verifier == "etherscan" and not etherscan_api_key:
+        raise RuntimeError("Etherscan API key needed for production deployments with etherscan verifier")
+    if verifier == "blockscout" and not verifier_url:
+        raise RuntimeError("Verifier URL needed for production deployments with blockscout verifier")
+
+    confirm = input(f"Deploy {label}? [y/n] " if label != "vault" else "Ok [y/n]? ")
+    if not confirm.lower().startswith("y"):
+        print("Aborted")
+        sys.exit(1)
 
 
 @app.command()
@@ -204,13 +311,10 @@ def lagoon_deploy_vault(
     if not web3config.has_any_connection():
         raise RuntimeError("Vault deploy requires that you pass JSON-RPC connection to one of the networks")
 
-    hot_wallet = HotWallet.from_private_key(private_key)
-
-    # Asset manager defaults to deployer, but can be overridden
-    if asset_manager_address:
-        asset_manager = Web3.to_checksum_address(asset_manager_address)
-    else:
-        asset_manager = hot_wallet.address
+    wallet_sync_web3 = next(iter(web3config.connections.values()))
+    hot_wallet = create_hot_wallet(wallet_sync_web3, private_key)
+    multisig_owners = _normalize_multisig_owners(multisig_owners, hot_wallet)
+    asset_manager = _resolve_asset_manager(asset_manager_address, hot_wallet)
 
     assert not (strategy_file and denomination_asset), \
         f"Cannot use both --strategy-file and --denomination-asset. " \
@@ -247,7 +351,7 @@ def lagoon_deploy_vault(
         return
 
     # Single-chain deployment path (original flow)
-    web3config.choose_single_chain()
+    choose_single_chain(web3config)
 
     web3 = web3config.get_default()
     chain_id = ChainId(web3.eth.chain_id)
@@ -311,18 +415,13 @@ def lagoon_deploy_vault(
         logger=logger,
     )
 
-    if not (simulate or unit_testing):
-
-        # Require API key for etherscan verifier, or verifier_url for blockscout
-        if verifier == "etherscan" and not etherscan_api_key:
-            raise RuntimeError("Etherscan API key needed for production deployments with etherscan verifier")
-        if verifier == "blockscout" and not verifier_url:
-            raise RuntimeError("Verifier URL needed for production deployments with blockscout verifier")
-
-        confirm = input("Ok [y/n]? ")
-        if not confirm.lower().startswith("y"):
-            print("Aborted")
-            sys.exit(1)
+    _confirm_deployment(
+        simulate=simulate,
+        unit_testing=unit_testing,
+        verifier=verifier,
+        etherscan_api_key=etherscan_api_key,
+        verifier_url=verifier_url,
+    )
 
     # Currently assumes HotWallet = asset manager
     # as the trade-executor that deploys the vault is going to
@@ -401,7 +500,7 @@ def lagoon_deploy_vault(
         asset_manager=asset_manager,
         parameters=parameters,
         safe_owners=multisig_owners,
-        safe_threshold=len(multisig_owners) - 1,
+        safe_threshold=_calculate_safe_threshold(multisig_owners),
         uniswap_v2=uniswap_v2_deployment,
         uniswap_v3=uniswap_v3_deployment,
         aave_v3=aave_v3_deployment,
@@ -419,34 +518,20 @@ def lagoon_deploy_vault(
         cowswap=cowswap,
     )
 
-    if vault_record_file and (not simulate):
-        # Make a small file, mostly used to communicate with unit tests
-        with open(vault_record_file, "wt") as out:
-            out.write(deploy_info.pformat())
-
-        with open(vault_record_file.with_suffix(".json"), "wt") as out:
-            out.write(json.dumps(deploy_info.get_deployment_data()))
-
-        logger.info("Wrote %s for vault details", os.path.abspath(vault_record_file))
-    else:
-        logger.info("Skipping record file because of simulation")
+    _write_deployment_artifacts(
+        vault_record_file,
+        text_payload=deploy_info.pformat(),
+        json_payload=deploy_info.get_deployment_data(),
+        simulate=simulate,
+        logger=logger,
+    )
 
     logger.info("Token cache %s contains %d entries", token_cache.filename, len(token_cache))
 
     if not guard_only:
         logger.info("Lagoon deployed:\n%s", deploy_info.pformat())
     else:
-        logger.info("New guard deployed: %s", deploy_info.trading_strategy_module.address)
-        logger.info("Old guard address: %s", vault_adapter_address)
-        logger.info("Safe address: %s", deploy_info.safe.address)
-        logger.info("Vault address: %s", deploy_info.vault.address)
-        mods = deploy_info.safe.retrieve_modules()
-        logger.info("Currently enabled Safe modules: %s", mods)
-        assert len(mods) == 1, f"Expected only one module enabled, got: {mods}"
-        logger.info("Safe transactions needed:")
-        logger.info("1. %s.disableModule(%s, %s)", deploy_info.safe.address, ONE_ADDRESS_STR, deploy_info.old_trading_strategy_module.address)
-        logger.info("2. %s.enableModule(%s)", deploy_info.safe.address, deploy_info.trading_strategy_module.address)
-        logger.info("Safe ABI needed: %s", SAFE_ABI_STR)
+        _log_guard_only_details(deploy_info, vault_adapter_address, logger)
 
 
     # Print deployment guard configuration report
@@ -459,12 +544,7 @@ def lagoon_deploy_vault(
         from_block=pre_deploy_block,
     )
 
-    # Write Markdown deployment report alongside other deployment files
-    if vault_record_file:
-        md_path = vault_record_file.with_name("deployment-report.md")
-        with open(md_path, "wt") as out:
-            out.write(markdown_report)
-        logger.info("Wrote deployment report to %s", os.path.abspath(md_path))
+    _write_markdown_report(vault_record_file, markdown_report, logger)
 
     web3config.close()
 
@@ -500,10 +580,8 @@ def _deploy_multichain(
         safe_salt_nonce = random.randint(1, 2**32)
         logger.info("Generated random safe_salt_nonce: %d", safe_salt_nonce)
 
-    if not multisig_owners:
-        multisig_owners = [hot_wallet.address]
-
-    safe_threshold = max(1, len(multisig_owners) - 1)
+    multisig_owners = _normalize_multisig_owners(multisig_owners, hot_wallet)
+    safe_threshold = _calculate_safe_threshold(multisig_owners)
 
     # Create TradingStrategy client if API key is available
     # (needed by strategies that fetch exchange/pair data from the API)
@@ -567,12 +645,14 @@ def _deploy_multichain(
         logger=logger,
     )
 
-    if not (simulate or unit_testing):
-        label = "multichain vault" if len(configs) > 1 else "vault"
-        confirm = input(f"Deploy {label}? [y/n] ")
-        if not confirm.lower().startswith("y"):
-            print("Aborted")
-            sys.exit(1)
+    _confirm_deployment(
+        simulate=simulate,
+        unit_testing=unit_testing,
+        verifier=verifier,
+        etherscan_api_key=etherscan_api_key,
+        verifier_url=verifier_url,
+        label="multichain vault" if len(configs) > 1 else "vault",
+    )
 
     # Capture block before deployment so the report can find guard config events
     pre_deploy_blocks = {slug: w3.eth.block_number for slug, w3 in chain_web3.items()}
@@ -587,38 +667,14 @@ def _deploy_multichain(
     logger.info("Deployment complete")
     logger.info("Safe address: %s", result.deployments[next(iter(result.deployments))].safe_address)
 
-    # Write deployment record
-    if vault_record_file and not simulate:
-        deployment_data = {
-            "multichain": True,
-            "safe_salt_nonce": safe_salt_nonce,
-            "deployments": {},
-        }
-        for slug, dep in result.deployments.items():
-            deployment_data["deployments"][slug] = {
-                "vault_address": dep.vault.address if hasattr(dep.vault, "address") else None,
-                "safe_address": dep.safe_address,
-                "module_address": dep.trading_strategy_module.address if dep.trading_strategy_module else None,
-                "is_satellite": dep.is_satellite,
-            }
-
-        # Write human-readable summary
-        with open(vault_record_file, "wt") as out:
-            for slug, dep in result.deployments.items():
-                out.write(f"Chain: {slug}\n")
-                out.write(f"  Satellite: {dep.is_satellite}\n")
-                out.write(f"  Safe: {dep.safe_address}\n")
-                if not dep.is_satellite:
-                    out.write(f"  Vault: {dep.vault.address}\n")
-                if dep.trading_strategy_module:
-                    out.write(f"  Module: {dep.trading_strategy_module.address}\n")
-                out.write("\n")
-
-        # Write machine-readable JSON
-        with open(vault_record_file.with_suffix(".json"), "wt") as out:
-            out.write(json.dumps(deployment_data, indent=2))
-
-        logger.info("Wrote deployment record to %s", os.path.abspath(vault_record_file))
+    text_payload, json_payload = _build_multichain_artifact_payload(result, safe_salt_nonce)
+    _write_deployment_artifacts(
+        vault_record_file,
+        text_payload=text_payload,
+        json_payload=json_payload,
+        simulate=simulate,
+        logger=logger,
+    )
 
     for slug, dep in result.deployments.items():
         kind = "satellite" if dep.is_satellite else "source"
@@ -642,12 +698,7 @@ def _deploy_multichain(
         from_block=from_block_by_chain_id,
     )
 
-    # Write Markdown deployment report alongside other deployment files
-    if vault_record_file:
-        md_path = vault_record_file.with_name("deployment-report.md")
-        with open(md_path, "wt") as out:
-            out.write(markdown_report)
-        logger.info("Wrote deployment report to %s", os.path.abspath(md_path))
+    _write_markdown_report(vault_record_file, markdown_report, logger)
 
 
 SAFE_ABI_STR = """

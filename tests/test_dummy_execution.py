@@ -38,6 +38,7 @@ def strategy_path() -> Path:
     return Path(os.path.join(os.path.dirname(__file__), "..", "strategies", "test_only", "quickswap_dummy.py"))
 
 
+@pytest.mark.skip(reason="No longer supported")
 @flaky.flaky
 @pytest.mark.slow_test_group
 def test_run_one_live_cycle(

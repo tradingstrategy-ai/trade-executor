@@ -12,6 +12,131 @@ from tradeexecutor.exchange_account.derive import DeriveNetwork
 logger = logging.getLogger(__name__)
 
 
+def _create_derive_protocol_value_func(
+    positions,
+    derive_owner_private_key: str | None,
+    derive_session_private_key: str | None,
+    derive_wallet_address: str | None,
+    derive_network: DeriveNetwork,
+    logger,
+):
+    """Build Derive account value function if credentials are available."""
+    if not derive_session_private_key:
+        logger.error("Derive credentials required: DERIVE_SESSION_PRIVATE_KEY")
+        return None
+    if not derive_owner_private_key and not derive_wallet_address:
+        logger.error("Derive credentials required: either DERIVE_OWNER_PRIVATE_KEY or DERIVE_WALLET_ADDRESS must be provided")
+        return None
+
+    from eth_defi.derive.authentication import DeriveApiClient
+    from eth_defi.derive.account import fetch_subaccount_ids
+
+    is_testnet = (derive_network == DeriveNetwork.testnet)
+
+    owner_account = None
+    if derive_owner_private_key:
+        from eth_account import Account
+        owner_account = Account.from_key(derive_owner_private_key)
+
+    if not derive_wallet_address:
+        from eth_defi.derive.onboarding import fetch_derive_wallet_address
+        derive_wallet_address = fetch_derive_wallet_address(
+            owner_account.address,
+            is_testnet=is_testnet,
+        )
+
+    client = DeriveApiClient(
+        owner_account=owner_account,
+        derive_wallet_address=derive_wallet_address,
+        is_testnet=is_testnet,
+        session_key_private=derive_session_private_key,
+    )
+
+    subaccount_ids = fetch_subaccount_ids(client)
+    logger.info("Found %d Derive subaccount(s)", len(subaccount_ids))
+
+    derive_clients = {}
+    for p in positions:
+        if p.pair.get_exchange_account_protocol() != "derive":
+            continue
+        subaccount_id = p.pair.get_exchange_account_id()
+        if subaccount_id in subaccount_ids:
+            subaccount_client = DeriveApiClient(
+                owner_account=owner_account,
+                derive_wallet_address=derive_wallet_address,
+                is_testnet=is_testnet,
+                session_key_private=derive_session_private_key,
+            )
+            subaccount_client.subaccount_id = subaccount_id
+            derive_clients[subaccount_id] = subaccount_client
+        else:
+            logger.warning("Subaccount %d not found in Derive account", subaccount_id)
+
+    if derive_clients:
+        from tradeexecutor.exchange_account.derive import create_derive_account_value_func
+        return create_derive_account_value_func(derive_clients)
+    return None
+
+
+def _create_ccxt_protocol_value_func(
+    positions,
+    ccxt_exchange_id: str | None,
+    ccxt_options: str | None,
+    ccxt_sandbox: bool,
+    logger,
+):
+    """Build CCXT account value function if credentials are available."""
+    if not ccxt_exchange_id:
+        logger.error("CCXT exchange ID required: set CCXT_EXCHANGE_ID")
+        return None
+    if not ccxt_options:
+        logger.error("CCXT options required: set CCXT_OPTIONS (JSON string with apiKey, secret, etc.)")
+        return None
+
+    import json
+    from tradeexecutor.exchange_account.ccxt_exchange import (
+        create_ccxt_exchange,
+        create_ccxt_account_value_func,
+    )
+
+    try:
+        options = json.loads(ccxt_options)
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse CCXT_OPTIONS as JSON: %s", e)
+        return None
+
+    exchange = create_ccxt_exchange(
+        exchange_id=ccxt_exchange_id,
+        options=options,
+        sandbox=ccxt_sandbox,
+    )
+    logger.info("Created CCXT exchange: %s", ccxt_exchange_id)
+
+    exchanges = {}
+    for p in positions:
+        if p.pair.get_exchange_account_protocol() != "ccxt":
+            continue
+        account_id = p.pair.other_data.get("ccxt_account_id")
+        if account_id:
+            exchanges[account_id] = exchange
+
+    if exchanges:
+        logger.info("Created CCXT account value function for %d account(s)", len(exchanges))
+        return create_ccxt_account_value_func(exchanges)
+    return None
+
+
+def _create_gmx_protocol_value_func(*, execution_model, logger):
+    """Build GMX account value function from the canonical execution-model API."""
+    if not execution_model:
+        logger.error("Execution model required for GMX account value function (provides Web3 + Safe address)")
+        return None
+
+    from tradeexecutor.exchange_account.gmx import create_gmx_account_value_func
+    logger.info("Created GMX account value function")
+    return create_gmx_account_value_func(execution_model=execution_model)
+
+
 def create_exchange_account_value_func(
     positions,
     derive_owner_private_key: str | None,
@@ -55,128 +180,41 @@ def create_exchange_account_value_func(
 
     logger.info("Exchange account protocols needed: %s", protocols)
 
-    # Set up Derive if needed
-    derive_value_func = None
-    if "derive" in protocols:
-        if not derive_session_private_key:
-            logger.error("Derive credentials required: DERIVE_SESSION_PRIVATE_KEY")
-        elif not derive_owner_private_key and not derive_wallet_address:
-            logger.error("Derive credentials required: either DERIVE_OWNER_PRIVATE_KEY or DERIVE_WALLET_ADDRESS must be provided")
-        else:
-            from eth_defi.derive.authentication import DeriveApiClient
-            from eth_defi.derive.account import fetch_subaccount_ids
-
-            is_testnet = (derive_network == DeriveNetwork.testnet)
-
-            owner_account = None
-            if derive_owner_private_key:
-                from eth_account import Account
-                owner_account = Account.from_key(derive_owner_private_key)
-
-            if not derive_wallet_address:
-                from eth_defi.derive.onboarding import fetch_derive_wallet_address
-                derive_wallet_address = fetch_derive_wallet_address(
-                    owner_account.address,
-                    is_testnet=is_testnet,
-                )
-
-            client = DeriveApiClient(
-                owner_account=owner_account,
-                derive_wallet_address=derive_wallet_address,
-                is_testnet=is_testnet,
-                session_key_private=derive_session_private_key,
-            )
-
-            # Get all subaccounts
-            subaccount_ids = fetch_subaccount_ids(client)
-            logger.info("Found %d Derive subaccount(s)", len(subaccount_ids))
-
-            derive_clients = {}
-            # Create client for each subaccount needed by positions
-            for p in positions:
-                if p.pair.get_exchange_account_protocol() == "derive":
-                    subaccount_id = p.pair.get_exchange_account_id()
-                    if subaccount_id in subaccount_ids:
-                        # Create a separate client for this subaccount
-                        subaccount_client = DeriveApiClient(
-                            owner_account=owner_account,
-                            derive_wallet_address=derive_wallet_address,
-                            is_testnet=is_testnet,
-                            session_key_private=derive_session_private_key,
-                        )
-                        subaccount_client.subaccount_id = subaccount_id
-                        derive_clients[subaccount_id] = subaccount_client
-                    else:
-                        logger.warning("Subaccount %d not found in Derive account", subaccount_id)
-
-            if derive_clients:
-                from tradeexecutor.exchange_account.derive import create_derive_account_value_func
-                derive_value_func = create_derive_account_value_func(derive_clients)
-
-    # Set up CCXT if needed
-    ccxt_value_func = None
-    if "ccxt" in protocols:
-        if not ccxt_exchange_id:
-            logger.error("CCXT exchange ID required: set CCXT_EXCHANGE_ID")
-        elif not ccxt_options:
-            logger.error("CCXT options required: set CCXT_OPTIONS (JSON string with apiKey, secret, etc.)")
-        else:
-            import json
-            from tradeexecutor.exchange_account.ccxt_exchange import (
-                create_ccxt_exchange,
-                create_ccxt_account_value_func,
-            )
-
-            try:
-                options = json.loads(ccxt_options)
-            except json.JSONDecodeError as e:
-                logger.error("Failed to parse CCXT_OPTIONS as JSON: %s", e)
-                options = None
-
-            if options:
-                exchange = create_ccxt_exchange(
-                    exchange_id=ccxt_exchange_id,
-                    options=options,
-                    sandbox=ccxt_sandbox,
-                )
-                logger.info("Created CCXT exchange: %s", ccxt_exchange_id)
-
-                # Map all CCXT positions to this exchange instance
-                exchanges = {}
-                for p in positions:
-                    if p.pair.get_exchange_account_protocol() == "ccxt":
-                        account_id = p.pair.other_data.get("ccxt_account_id")
-                        if account_id:
-                            exchanges[account_id] = exchange
-
-                if exchanges:
-                    ccxt_value_func = create_ccxt_account_value_func(exchanges)
-                    logger.info("Created CCXT account value function for %d account(s)", len(exchanges))
-
-    # Set up GMX if needed
-    gmx_value_func = None
-    if "gmx" in protocols:
-        if not web3:
-            logger.error("Web3 connection required for GMX account value function")
-        elif not execution_model:
-            logger.error("Execution model required for GMX account value function (provides Safe address)")
-        else:
-            from tradeexecutor.exchange_account.gmx import create_gmx_account_value_func
-            gmx_value_func = create_gmx_account_value_func(execution_model)
-            logger.info("Created GMX account value function")
+    protocol_factories = {
+        "derive": lambda: _create_derive_protocol_value_func(
+            positions,
+            derive_owner_private_key,
+            derive_session_private_key,
+            derive_wallet_address,
+            derive_network,
+            logger,
+        ),
+        "ccxt": lambda: _create_ccxt_protocol_value_func(
+            positions,
+            ccxt_exchange_id,
+            ccxt_options,
+            ccxt_sandbox,
+            logger,
+        ),
+        "gmx": lambda: _create_gmx_protocol_value_func(
+            execution_model=execution_model,
+            logger=logger,
+        ),
+    }
+    value_funcs = {
+        protocol: protocol_factories[protocol]()
+        for protocol in sorted(protocols)
+        if protocol in protocol_factories
+    }
 
     # Create unified dispatcher
-    if derive_value_func or ccxt_value_func or gmx_value_func:
+    if any(value_funcs.values()):
         def unified_account_value_func(pair: TradingPairIdentifier) -> Decimal:
             protocol = pair.get_exchange_account_protocol()
-            if protocol == "derive" and derive_value_func:
-                return derive_value_func(pair)
-            elif protocol == "ccxt" and ccxt_value_func:
-                return ccxt_value_func(pair)
-            elif protocol == "gmx" and gmx_value_func:
-                return gmx_value_func(pair)
-            else:
+            value_func = value_funcs.get(protocol)
+            if value_func is None:
                 raise ValueError(f"No account value function for protocol: {protocol}")
+            return value_func(pair)
 
         return unified_account_value_func
 
@@ -265,22 +303,17 @@ def create_derive_value_func_from_credentials(
     return get_derive_account_value
 
 
-def create_gmx_value_func_from_web3(web3) -> Callable:
-    """Create a GMX account value func from a Web3 instance.
+def create_gmx_value_func_from_web3(web3, safe_address: str) -> Callable:
+    """Create a GMX account value func from explicit Web3 + Safe details.
 
     Unlike the dispatcher in :py:func:`create_exchange_account_value_func`,
-    this does not require positions to be known upfront. The returned
-    function reads the Safe address from each pair's ``pool_address``
-    at call time.
-
-    Used by the ``start`` command where positions may not yet exist at
-    startup time.
+    this does not require positions to be known upfront. It delegates to
+    the canonical GMX factory using its explicit keyword-only mode.
 
     :param web3:
         Web3 instance connected to the chain where GMX positions live.
-    :return:
-        Function that takes a TradingPairIdentifier and returns
-        the total GMX position equity in USD.
+    :param safe_address:
+        Safe address whose GMX positions are read.
     """
     from tradeexecutor.exchange_account.gmx import create_gmx_account_value_func
-    return create_gmx_account_value_func(web3)
+    return create_gmx_account_value_func(web3=web3, safe_address=safe_address)

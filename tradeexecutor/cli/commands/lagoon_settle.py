@@ -7,12 +7,11 @@ import datetime
 from pathlib import Path
 from typing import Optional
 
-from eth_defi.compat import native_datetime_utc_now
-
 from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_client
+from .lagoon_utils import choose_single_chain, resolve_state_store
 from ..log import setup_logging
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -25,6 +24,7 @@ from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...utils.timer import timed_task
 from tradeexecutor.cli.settle_vault import settle_vault
 from eth_defi.compat import native_datetime_utc_now
+from tradeexecutor.ethereum.web3config import collect_rpc_kwargs
 
 
 @app.command()
@@ -82,28 +82,25 @@ def lagoon_settle(
 
     cache_path = prepare_cache(id, cache_path)
 
-    web3config = create_web3_config(
+    rpc_kwargs = collect_rpc_kwargs(
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base, 
+        json_rpc_ethereum=json_rpc_ethereum,
+        json_rpc_base=json_rpc_base,
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
         json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
         json_rpc_base_sepolia=json_rpc_base_sepolia,
         json_rpc_hyperliquid=json_rpc_hyperliquid,
         json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
-        simulate=simulate,
     )
+    web3config = create_web3_config(**rpc_kwargs, simulate=simulate)
 
     if not web3config.has_any_connection():
         raise RuntimeError("Vault deploy requires that you pass JSON-RPC connection to one of the networks")
 
-    if len(web3config.connections) > 1:
-        # Multichain setup — pick the first chain (vault source chain) as the default
-        web3config.choose_single_chain(default_chain_id=next(iter(web3config.connections.keys())))
-    else:
-        web3config.choose_single_chain()
+    choose_single_chain(web3config)
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=asset_management_mode,
@@ -132,12 +129,9 @@ def lagoon_settle(
     )
     assert client is not None, "You need to give details for TradingStrategy.ai client"
 
-    if not state_file:
-        state_file = f"state/{id}.json"
+    state_path, store = resolve_state_store(id, state_file)
 
-    store = create_state_store(Path(state_file))
-
-    assert not store.is_pristine(), f"Strategy state file does not exist: {state_file}"
+    assert not store.is_pristine(), f"Strategy state file does not exist: {state_path}"
     state = store.load()
 
     if simulate:

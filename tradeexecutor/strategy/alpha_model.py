@@ -1521,6 +1521,140 @@ class AlphaModel:
         else:
             return underlying
 
+    def _get_current_position_for_signal(
+        self,
+        position_manager: PositionManager,
+        signal: TradingPairSignal,
+    ):
+        """Resolve the current position and populate signal profit diagnostics."""
+        current_position = None
+        if signal.old_pair:
+            current_position = position_manager.get_current_position_for_pair(signal.old_pair)
+            if current_position:
+                signal.profit_before_trades = current_position.get_total_profit_usd()
+                signal.profit_before_trades_pct = current_position.get_total_profit_percent()
+            else:
+                signal.profit_before_trades = 0
+        return current_position
+
+    def _should_skip_signal_rebalance(
+        self,
+        signal: TradingPairSignal,
+        position_manager: PositionManager,
+        frozen_pairs: set,
+        individual_rebalance_min_threshold: USDollarAmount,
+        sell_rebalance_min_threshold: USDollarAmount | None,
+    ) -> bool:
+        """Handle early skip conditions before any rebalance trades are built."""
+        if position_manager.is_problematic_pair(signal.pair):
+            logger.warning("Skipping blacklisted pair: %s", signal.pair)
+            return True
+
+        if signal.pair in frozen_pairs:
+            logger.warning("Does not generate trades for a pair with frozen positions: %s", signal.pair)
+            return True
+
+        if individual_rebalance_min_threshold:
+            trade_size = abs(signal.position_adjust_usd)
+            if signal.position_adjust_usd < 0:
+                threshold = sell_rebalance_min_threshold or individual_rebalance_min_threshold
+            else:
+                threshold = individual_rebalance_min_threshold
+
+            if trade_size < threshold:
+                logger.info("Individual trade size too small, trade size is %s, our threshold %s", trade_size, individual_rebalance_min_threshold)
+                signal.flags.add(TradingPairSignalFlags.individual_trade_size_too_small)
+                return True
+
+        return False
+
+    def _generate_signal_rebalance_trades(
+        self,
+        signal: TradingPairSignal,
+        position_manager: PositionManager,
+        current_position,
+        execution_context: ExecutionContext | None,
+    ) -> list[TradeExecution]:
+        """Generate the concrete rebalance trades for a single signal."""
+        position_rebalance_trades = []
+        dollar_diff = signal.position_adjust_usd
+        quantity_diff = signal.position_adjust_quantity
+        value = signal.position_target
+        underlying = signal.pair
+        synthetic = signal.synthetic_pair
+
+        if signal.normalised_weight < self.close_position_weight_epsilon:
+            if current_position:
+                logger.info("Closing the position fully: %s", current_position)
+                position_rebalance_trades += position_manager.close_position(
+                    current_position,
+                    TradeType.rebalance,
+                    notes=f"Closing position, because the signal weight is below close position weight threshold: {signal}"
+                )
+                signal.position_id = current_position.position_id
+                signal.flags.add(TradingPairSignalFlags.closed)
+            else:
+                logger.info("Zero signal, but no position to close")
+                signal.position_adjust_ignored = True
+            signal.flags.add(TradingPairSignalFlags.close_position_weight_limit)
+            return position_rebalance_trades
+
+        if signal.is_flipping():
+            logger.info("Alpha model signal flipping for %s: %s, new strength %f", signal.pair.get_pricing_pair().base.token_symbol, signal.get_flip_label(), signal.signal)
+            old_position = position_manager.get_current_position_for_pair(signal.old_pair)
+            if old_position:
+                position_rebalance_trades += position_manager.close_position(
+                    old_position,
+                    TradeType.rebalance,
+                    notes=f"Closing because switching between long/short for {signal}"
+                )
+
+        if signal.signal < 0:
+            leverage = signal.leverage
+            assert type(leverage) == float, f"Signal is short, but does not have a leverage multiplier set {signal}"
+
+            if signal.is_flipping() or signal.is_new():
+                position_rebalance_trades += position_manager.open_short(
+                    underlying,
+                    value=value,
+                    leverage=leverage,
+                    take_profit_pct=signal.take_profit,
+                    stop_loss_pct=signal.stop_loss,
+                    trailing_stop_loss_pct=signal.trailing_stop_loss,
+                    notes="Rebalance opening a new short for signal {signal}",
+                )
+            else:
+                position_rebalance_trades += position_manager.adjust_short(
+                    current_position,
+                    new_value=value,
+                    notes=f"Rebalance existing short for signal: {signal} value: {value}",
+                )
+        elif signal.leverage is None:
+            logger.info("Adjusting spot position")
+            notes = ""
+            if execution_context and execution_context.mode.is_live_trading():
+                notes = f"Resizing position, trade based on signal: {signal} as {self.timestamp}"
+
+            position_rebalance_trades += position_manager.adjust_position(
+                synthetic,
+                dollar_diff,
+                quantity_diff,
+                signal.normalised_weight,
+                stop_loss=signal.stop_loss,
+                take_profit=signal.take_profit,
+                trailing_stop_loss=signal.trailing_stop_loss,
+                override_stop_loss=self.override_stop_loss,
+                notes=notes,
+            )
+        else:
+            raise NotImplementedError(f"Leveraged long missing w/leverage {signal.leverage}, {signal.get_flip_label()}: {signal}")
+
+        assert len(position_rebalance_trades) >= 1, "Assuming always on trade for rebalance"
+        last_trade = position_rebalance_trades[0]
+        assert last_trade.position_id
+        signal.position_id = last_trade.position_id
+        return position_rebalance_trades
+
     def generate_rebalance_trades_and_triggers(
         self,
         position_manager: PositionManager,
@@ -1637,40 +1771,16 @@ class AlphaModel:
 
         frozen_pairs = {p.pair for p in position_manager.state.portfolio.frozen_positions.values()}
 
-        #  TODO: Break this massive for if spagetti to sub-functions
         for signal in self.iterate_signals():
 
-            # Trip wire for blacklisted pairs.
-            # Never generate trades for them.
-            # Must be manually closed with close-position command.
-            if position_manager.is_problematic_pair(signal.pair):
-                logger.warning("Skipping blacklisted pair: %s", signal.pair)
-                continue
-
-            # Trades that we will execute for the position for this signal
-            # Trades that we will execute for the position for this signal
-            # A signal may cause multiple trades, as e.g.
-            # closing a short position and opening a long when the signal goes from -1 to 1
-            # will cause 2 trades (close short, open long)
-            position_rebalance_trades = []
-
             dollar_diff = signal.position_adjust_usd
-            quantity_diff = signal.position_adjust_quantity
-            value = signal.position_target
 
             underlying = signal.pair
             synthetic = signal.synthetic_pair
 
             # Do backtesting record keeping, so that
             # it is later easier to display alpha model thinking
-            current_position = None
-            if signal.old_pair:
-                current_position = position_manager.get_current_position_for_pair(signal.old_pair)
-                if current_position:
-                    signal.profit_before_trades = current_position.get_total_profit_usd()
-                    signal.profit_before_trades_pct = current_position.get_total_profit_percent()
-                else:
-                    signal.profit_before_trades = 0
+            current_position = self._get_current_position_for_signal(position_manager, signal)
 
             logger.info("Rebalancing %s, trading as %s, signal #%d, old position %s, old weight: %f, new weight: %f, size diff: %f USD",
                         underlying.base.token_symbol,
@@ -1681,131 +1791,21 @@ class AlphaModel:
                         signal.normalised_weight,
                         dollar_diff)
 
-            if signal.pair in frozen_pairs:
-                logger.warning("Does not generate trades for a pair with frozen positions: %s", signal.pair)
+            if self._should_skip_signal_rebalance(
+                signal,
+                position_manager,
+                frozen_pairs,
+                individual_rebalance_min_threshold,
+                sell_rebalance_min_threshold,
+            ):
                 continue
 
-            if individual_rebalance_min_threshold:
-                trade_size = abs(dollar_diff)
-
-                if dollar_diff < 0:
-                    # Special threshold for sells
-                    threshold  = sell_rebalance_min_threshold or individual_rebalance_min_threshold
-                else:
-                    threshold = individual_rebalance_min_threshold
-
-                if trade_size < threshold:
-                    logger.info("Individual trade size too small, trade size is %s, our threshold %s", trade_size, individual_rebalance_min_threshold)
-                    signal.flags.add(TradingPairSignalFlags.individual_trade_size_too_small)
-                    continue
-
-            if False:
-                pass
-                # Old position adjust threshold trigger - has problems with certain scenarios
-                # if abs(dollar_diff) < applied_min_trade_threshold and not signal.is_flipping():
-                #     # The value diff in the rebalance is so small that we do not care about it
-                #     logger.info(
-                #         "Not doing anything, diff %f (value %f) below trade threshold %f (applied %f)",
-                #         dollar_diff,
-                #         value,
-                #         min_trade_threshold,
-                #         applied_min_trade_threshold
-                #     )
-            #    signal.position_adjust_ignored = True
-            else:
-
-                if signal.normalised_weight < self.close_position_weight_epsilon:
-                    # Signal too weak, get rid of any open position
-                    # Explicit close to avoid rounding issues
-                    if current_position:
-                        logger.info("Closing the position fully: %s", current_position)
-                        position_rebalance_trades += position_manager.close_position(
-                            current_position,
-                            TradeType.rebalance,
-                            notes=f"Closing position, because the signal weight is below close position weight threshold: {signal}"
-                        )
-                        signal.position_id = current_position.position_id
-                        signal.flags.add(TradingPairSignalFlags.closed)
-                    else:
-                        logger.info("Zero signal, but no position to close")
-                        signal.position_adjust_ignored = True
-                    signal.flags.add(TradingPairSignalFlags.close_position_weight_limit)
-                else:
-                    # Signal is switching between short/long,
-                    # so close any old position
-                    if signal.is_flipping():
-
-                        logger.info("Alpha model signal flipping for %s: %s, new strength %f", signal.pair.get_pricing_pair().base.token_symbol, signal.get_flip_label(), signal.signal)
-
-                        old_position = position_manager.get_current_position_for_pair(signal.old_pair)
-                        if old_position:
-                            position_rebalance_trades += position_manager.close_position(
-                                old_position,
-                                TradeType.rebalance,
-                                notes=f"Closing because switching between long/short for {signal}"
-                            )
-
-                    if signal.signal < 0:
-                        # A shorting signal.
-                        # Open new short or adjust existing short.
-
-                        leverage = signal.leverage
-                        assert type(leverage) == float, f"Signal is short, but does not have a leverage multiplier set {signal}"
-
-                        if signal.is_flipping() or signal.is_new():
-                            # Open new short,
-                            # we ignore dollar_diff and use value directly
-                            position_rebalance_trades += position_manager.open_short(
-                                underlying,
-                                value=value,
-                                leverage=leverage,
-                                take_profit_pct=signal.take_profit,
-                                stop_loss_pct=signal.stop_loss,
-                                trailing_stop_loss_pct=signal.trailing_stop_loss,
-                                notes="Rebalance opening a new short for signal {signal}",
-                            )
-                        else:
-                            # Increase/decrease short
-                            position_rebalance_trades += position_manager.adjust_short(
-                                current_position,
-                                new_value=value,
-                                notes=f"Rebalance existing short for signal: {signal} value: {value}",
-                            )
-
-                    elif signal.leverage is None:
-                        # A spot buy signal.
-                        # Open new spot or adjust existing one.
-                        # Increase or decrease the position for the target pair
-                        # Open new position if needed.
-                        logger.info("Adjusting spot position")
-
-                        # For long backtests, state file is filled with these notes,
-                        # so we only enable for live trading
-                        notes = ""
-                        if execution_context:
-                            if execution_context.mode.is_live_trading():
-                                notes = f"Resizing position, trade based on signal: {signal} as {self.timestamp}"
-
-                        position_rebalance_trades += position_manager.adjust_position(
-                            synthetic,
-                            dollar_diff,
-                            quantity_diff,
-                            signal.normalised_weight,
-                            stop_loss=signal.stop_loss,
-                            take_profit=signal.take_profit,
-                            trailing_stop_loss=signal.trailing_stop_loss,
-                            override_stop_loss=self.override_stop_loss,
-                            notes=notes,
-                        )
-                    else:
-                        raise NotImplementedError(f"Leveraged long missing w/leverage {signal.leverage}, {signal.get_flip_label()}: {signal}")
-
-                    assert len(position_rebalance_trades) >= 1, "Assuming always on trade for rebalance"
-
-                    # Connect trading signal to its position
-                    last_trade = position_rebalance_trades[0]
-                    assert last_trade.position_id
-                    signal.position_id = last_trade.position_id
+            position_rebalance_trades = self._generate_signal_rebalance_trades(
+                signal,
+                position_manager,
+                current_position,
+                execution_context,
+            )
 
             if position_rebalance_trades:
                 trade_str = ", ".join(t.get_short_label() for t in position_rebalance_trades)

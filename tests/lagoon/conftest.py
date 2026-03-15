@@ -8,7 +8,9 @@ Explore the static deployment which we fork from the Base mainnet:
 - Safe contract: https://basescan.org/address/0x20415f3Ec0FEA974548184bdD6e67575D128953F#readProxyContract
 - Roles: https://app.safe.global/apps/open?safe=base:0x20415f3Ec0FEA974548184bdD6e67575D128953F&appUrl=https%3A%2F%2Fzodiac.gnosisguild.org%2F
 """
+import logging
 import os
+import time
 from decimal import Decimal
 
 import pytest
@@ -50,6 +52,8 @@ CI = os.environ.get("CI", None) is not None
 
 pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable")
 
+logger = logging.getLogger(__name__)
+
 
 @pytest.fixture()
 def usdc_holder() -> HexAddress:
@@ -63,11 +67,27 @@ def anvil_base_fork(request, usdc_holder) -> AnvilLaunch:
 
     :return: JSON-RPC URL for Web3
     """
-    assert JSON_RPC_BASE, "JSON_RPC_BASE not set"
-    launch = fork_network_anvil(
-        JSON_RPC_BASE,
-        unlocked_addresses=[usdc_holder],
-    )
+    rpc_url = os.environ.get("JSON_RPC_BASE") or JSON_RPC_BASE
+    assert rpc_url, "JSON_RPC_BASE not set"
+
+    launch = None
+    for attempt in range(3):
+        try:
+            launch = fork_network_anvil(
+                rpc_url,
+                unlocked_addresses=[usdc_holder],
+            )
+            break
+        except AssertionError:
+            if attempt == 2:
+                raise
+            logger.warning(
+                "Retrying Lagoon Base fork startup after failed Anvil launch, attempt %d/3",
+                attempt + 2,
+            )
+            time.sleep(2 * (attempt + 1))
+
+    assert launch is not None
     try:
         yield launch
     finally:
