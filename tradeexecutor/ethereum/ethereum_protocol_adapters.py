@@ -614,11 +614,17 @@ def create_hypercore_vault_adapter(
 def create_exchange_account_adapter(
     routing_id: ProtocolRoutingId,
     account_value_func: Callable | None = None,
+    web3=None,
 ) -> ProtocolRoutingConfig:
     """Create adapter for exchange account pairs (Derive, etc.).
 
     Exchange account positions are valued via an external API,
     not through on-chain routing.
+
+    :param web3:
+        Optional Web3 instance for block number tracking in valuations.
+        When provided, the valuator captures the block once per call and
+        persists it in ``ValuationUpdate`` and ``BalanceUpdate`` events.
     """
     from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
     from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
@@ -628,7 +634,7 @@ def create_exchange_account_adapter(
         "Set DERIVE_SESSION_PRIVATE_KEY or similar credentials."
 
     pricing_model = ExchangeAccountPricingModel(account_value_func)
-    valuation_model = ExchangeAccountValuator(pricing_model)
+    valuation_model = ExchangeAccountValuator(pricing_model, web3=web3)
 
     return ProtocolRoutingConfig(
         routing_id=routing_id,
@@ -874,7 +880,7 @@ class EthereumPairConfigurator(PairConfigurator):
         elif routing_id.router_name == "freqtrade":
             return create_freqtrade_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "exchange_account":
-            return create_exchange_account_adapter(routing_id, self.account_value_func)
+            return create_exchange_account_adapter(routing_id, self.account_value_func, web3=self.web3)
         elif routing_id.router_name == "cctp-bridge":
             return create_cctp_bridge_adapter(self.web3config, routing_id)
         else:

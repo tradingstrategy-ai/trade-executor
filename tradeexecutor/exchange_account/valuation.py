@@ -55,15 +55,22 @@ class ExchangeAccountValuator(ValuationModel):
         update = valuator(native_datetime_utc_now(), position)
     """
 
-    def __init__(self, pricing_model: ExchangeAccountPricingModel):
+    def __init__(self, pricing_model: ExchangeAccountPricingModel, web3=None):
         """Initialise valuation model.
 
         :param pricing_model:
             ExchangeAccountPricingModel with configured account value function
+        :param web3:
+            Optional Web3 instance for capturing the current block number.
+            When provided, the block is captured once per valuation call
+            and passed to the account value function as ``block_identifier``,
+            then persisted in ``ValuationUpdate.block_number`` and
+            ``BalanceUpdate.block_number`` for audit.
         """
         assert isinstance(pricing_model, ExchangeAccountPricingModel), \
             f"Expected ExchangeAccountPricingModel, got {type(pricing_model)}"
         self.pricing_model = pricing_model
+        self.web3 = web3
 
     def _create_balance_update(
         self,
@@ -72,6 +79,7 @@ class ExchangeAccountValuator(ValuationModel):
         diff: Decimal,
         tracked_amount: Decimal,
         strategy_cycle_ts: datetime.datetime,
+        block_number: int | None = None,
     ) -> BalanceUpdate:
         """Create a BalanceUpdate event to adjust position quantity.
 
@@ -91,6 +99,8 @@ class ExchangeAccountValuator(ValuationModel):
             The strategy cycle timestamp that triggered this valuation.
             May differ significantly from wall clock time during manual
             CLI runs (e.g. ``trade-executor start --max-cycles 1``).
+        :param block_number:
+            Block at which the exchange API value was read.
         :return:
             The new BalanceUpdate event (already stored on the position).
         """
@@ -111,7 +121,7 @@ class ExchangeAccountValuator(ValuationModel):
             tx_hash=None,
             log_index=None,
             position_id=position.position_id,
-            block_number=None,
+            block_number=block_number,
             notes=f"Exchange account valuation: {position.pair.get_exchange_account_protocol()}",
         )
 
@@ -153,9 +163,14 @@ class ExchangeAccountValuator(ValuationModel):
 
         tracked_amount = position.get_quantity()
 
+        # Capture block once — used for both the GMX read and state persistence
+        block_number = self.web3.eth.block_number if self.web3 else None
+
         try:
-            # Query exchange API for account value
-            api_value = self.pricing_model.get_account_value(position.pair)
+            # Query exchange API for account value, forwarding block_identifier
+            api_value = self.pricing_model.get_account_value(
+                position.pair, block_identifier=block_number,
+            )
 
             # Only advance freshness timestamps after a successful fetch.
             # Wall clock time is used (not the cycle timestamp ``ts``)
@@ -175,7 +190,10 @@ class ExchangeAccountValuator(ValuationModel):
             # so that get_value() reflects the API value
             diff = api_value - tracked_amount
             if diff != 0:
-                self._create_balance_update(now, position, diff, tracked_amount, strategy_cycle_ts=ts)
+                self._create_balance_update(
+                    now, position, diff, tracked_amount,
+                    strategy_cycle_ts=ts, block_number=block_number,
+                )
 
             position.last_token_price = new_price
             new_value = float(api_value)
@@ -189,13 +207,16 @@ class ExchangeAccountValuator(ValuationModel):
                 old_price=old_price,
                 new_price=new_price,
                 quantity=api_value,
+                block_number=block_number,
             )
+            position.valuation_updates.append(evt)
 
             logger.info(
-                "Exchange account position %d revalued: %.2f -> %.2f",
+                "Exchange account position %d revalued: %.2f -> %.2f (block=%s)",
                 position.position_id,
                 old_value,
                 new_value,
+                block_number,
             )
             return evt
 
@@ -209,7 +230,7 @@ class ExchangeAccountValuator(ValuationModel):
                 e,
             )
             old_value = position.get_value()
-            return ValuationUpdate(
+            evt = ValuationUpdate(
                 created_at=ts,
                 position_id=position.position_id,
                 valued_at=position.last_pricing_at,
@@ -219,14 +240,18 @@ class ExchangeAccountValuator(ValuationModel):
                 new_price=position.last_token_price,
                 quantity=tracked_amount,
             )
+            position.valuation_updates.append(evt)
+            return evt
 
 
-def exchange_account_valuation_factory(pricing_model: ExchangeAccountPricingModel) -> ExchangeAccountValuator:
+def exchange_account_valuation_factory(pricing_model: ExchangeAccountPricingModel, web3=None) -> ExchangeAccountValuator:
     """Factory function for creating ExchangeAccountValuator.
 
     :param pricing_model:
         ExchangeAccountPricingModel with configured account value function
+    :param web3:
+        Optional Web3 instance for block number tracking.
     :return:
         ExchangeAccountValuator instance
     """
-    return ExchangeAccountValuator(pricing_model)
+    return ExchangeAccountValuator(pricing_model, web3=web3)

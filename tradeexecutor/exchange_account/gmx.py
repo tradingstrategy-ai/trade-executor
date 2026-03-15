@@ -4,8 +4,8 @@ Provides the exchange account pair creation and account value function
 for GMX perpetuals positions traded through a Lagoon vault.
 
 GMX positions are on-chain (unlike Derive which uses an off-chain API),
-so the account value function reads position data directly from the
-GMX Reader contract via :class:`~eth_defi.gmx.core.open_positions.GetOpenPositions`.
+so the account value function reads position data directly via
+:py:func:`~eth_defi.gmx.valuation.fetch_gmx_total_equity`.
 
 Transfer from Safe to GMX is managed by an external FreqTrade instance
 (https://github.com/tradingstrategy-ai/gmx-ccxt-freqtrade),
@@ -28,11 +28,10 @@ import logging
 from decimal import Decimal
 from typing import Callable
 
-from eth_defi.gmx.config import GMXConfig
 from eth_defi.gmx.contracts import get_contract_addresses
-from eth_defi.gmx.core.open_positions import GetOpenPositions
 from eth_defi.gmx.lagoon.approvals import (UNLIMITED,
                                            approve_gmx_collateral_via_vault)
+from eth_defi.gmx.valuation import fetch_gmx_total_equity
 from eth_defi.token import fetch_erc20_details
 from hexbytes import HexBytes
 
@@ -103,16 +102,20 @@ def create_gmx_account_value_func(
     *,
     web3=None,
     safe_address: str | None = None,
-) -> Callable[[TradingPairIdentifier], Decimal]:
+) -> Callable[..., Decimal]:
     """Create GMX-specific account value function.
 
     The returned function queries the GMX Reader contract for all open
     positions held by the Safe address, and returns the total equity
-    (collateral + unrealised PnL) across all positions.
+    (collateral + unrealised PnL) across all positions via
+    :py:func:`~eth_defi.gmx.valuation.fetch_gmx_total_equity`.
 
     Free USDC sitting in the Safe is tracked separately by Lagoon
     treasury sync, so this function only returns the value locked
-    in GMX positions to avoid double counting.
+    in GMX positions to avoid double counting (``reserve_tokens=[]``).
+
+    The returned function accepts an optional ``block_identifier`` kwarg
+    to pin reads to a specific block.  When omitted, ``"latest"`` is used.
 
     USDC flow and NAV implications
     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -141,8 +144,9 @@ def create_gmx_account_value_func(
     :param safe_address:
         Explicit Safe address (used when no execution model is available).
     :return:
-        Function that takes a TradingPairIdentifier and returns
-        the total GMX position equity in USD.
+        Function that takes a TradingPairIdentifier (and optional
+        ``block_identifier`` kwarg) and returns the total GMX position
+        equity in USD.
     """
     if execution_model is None:
         assert web3 is not None and safe_address is not None, \
@@ -153,15 +157,16 @@ def create_gmx_account_value_func(
         _web3 = None
         _safe_address = None
 
-    def get_gmx_account_value(pair: TradingPairIdentifier) -> Decimal:
+    def get_gmx_account_value(pair: TradingPairIdentifier, **kwargs) -> Decimal:
         """Get GMX account value for the given pair.
 
-        Reads all open positions from the GMX Reader contract for the
-        Safe address, then sums the equity of each position:
-        ``equity = collateral_usd * (1 + percent_profit / 100)``.
+        Uses :py:func:`~eth_defi.gmx.valuation.fetch_gmx_total_equity`
+        to read all open positions from the GMX Reader contract.
 
         :param pair:
             Exchange account trading pair with GMX metadata in other_data.
+        :param kwargs:
+            Optional ``block_identifier`` to pin reads to a specific block.
         :return:
             Total position equity in USD, or ``Decimal(0)`` if no
             open positions.
@@ -169,6 +174,10 @@ def create_gmx_account_value_func(
         assert pair.is_exchange_account(), f"Not an exchange account pair: {pair}"
         assert pair.get_exchange_account_protocol() == "gmx", \
             f"Not a GMX pair: {pair.get_exchange_account_protocol()}"
+
+        # TODO: Switch to per-block GMX oracle prices when available,
+        # so valuations are fully reproducible from block number alone.
+        block_id = kwargs.get("block_identifier", "latest")
 
         if _web3 is not None:
             web3 = _web3
@@ -178,31 +187,17 @@ def create_gmx_account_value_func(
             safe_address = execution_model.tx_builder.get_token_delivery_address()
 
         try:
-            config = GMXConfig(web3=web3)
-            positions_manager = GetOpenPositions(config)
-            positions = positions_manager.get_data(safe_address)
-
-            if not positions:
-                logger.debug("No open GMX positions for %s", safe_address)
-                return Decimal(0)
-
-            total_equity = Decimal(0)
-            for key, pos in positions.items():
-                collateral_usd = pos.get("initial_collateral_amount_usd", 0)
-                percent_profit = pos.get("percent_profit", 0)
-                # equity = collateral * (1 + pnl%)
-                equity = Decimal(str(collateral_usd)) * (1 + Decimal(str(percent_profit)) / 100)
-                total_equity += equity
-                logger.debug(
-                    "GMX position %s: collateral=$%.2f, pnl=%.2f%%, equity=$%.2f",
-                    key, collateral_usd, percent_profit, equity,
-                )
-
-            logger.debug(
-                "GMX account %s total equity: $%.2f (%d position(s))",
-                safe_address, total_equity, len(positions),
+            result = fetch_gmx_total_equity(
+                web3=web3,
+                account=safe_address,
+                reserve_tokens=[],
+                block_identifier=block_id,
             )
-            return total_equity
+            logger.debug(
+                "GMX account %s total equity: $%s (block=%s)",
+                safe_address, result.positions, block_id,
+            )
+            return result.positions
 
         except Exception as e:
             logger.error(
@@ -281,16 +276,16 @@ def create_gmx_vault_valuation_func(
     web3,
     safe_address: str,
     reserve_asset: "AssetIdentifier",
-) -> Callable[["State"], float]:
+) -> Callable[..., float]:
     """Create a GMX-specific vault NAV calculation function.
 
     For GMX strategies where an external FreqTrade instance
     (https://github.com/tradingstrategy-ai/gmx-ccxt-freqtrade)
     moves USDC between the Safe and GMX, the portfolio's
     ``reserve_position.quantity`` can be stale.  This function
-    reads the actual Safe USDC balance on-chain for the cash
-    component and combines it with position equity from
-    portfolio state.
+    uses :py:func:`~eth_defi.gmx.valuation.fetch_gmx_total_equity`
+    to read both the on-chain Safe USDC balance and GMX position
+    equity in a single call at a consistent block.
 
     The returned callable is passed to
     :py:class:`~tradeexecutor.ethereum.lagoon.vault.LagoonVaultSyncModel`
@@ -304,7 +299,7 @@ def create_gmx_vault_valuation_func(
     portfolio reserves are not updated until the next settlement.
     This function computes NAV as::
 
-        NAV = on-chain Safe USDC + portfolio position equity
+        NAV = on-chain Safe USDC + GMX position equity
 
     instead of relying on the potentially stale reserve quantity.
 
@@ -322,24 +317,32 @@ def create_gmx_vault_valuation_func(
     :param reserve_asset:
         The reserve currency asset (e.g. USDC).
     :return:
-        Callable that takes ``State`` and returns NAV as float.
+        Callable that takes ``State`` and optional ``block_number`` kwarg,
+        returns NAV as float.
     """
     from tradeexecutor.state.state import State
 
-    def calculate_nav(state: State) -> float:
+    def calculate_nav(state: State, *, block_number=None) -> float:
         reserve_token = fetch_erc20_details(
             web3,
             reserve_asset.address,
             chain_id=reserve_asset.chain_id,
         )
-        onchain_cash = float(reserve_token.fetch_balance_of(safe_address))
-        position_equity = state.portfolio.get_position_equity_and_loan_nav(include_interest=True)
-        nav = onchain_cash + position_equity
+        # TODO: Switch to per-block GMX oracle prices when available,
+        # so valuations are fully reproducible from block number alone.
+        result = fetch_gmx_total_equity(
+            web3=web3,
+            account=safe_address,
+            reserve_tokens=[reserve_token],
+            block_identifier=block_number or "latest",
+        )
+        nav = float(result.get_total())
         logger.info(
-            "GMX vault valuation: on-chain cash=%f, position equity=%f, NAV=%f",
-            onchain_cash,
-            position_equity,
+            "GMX vault valuation: reserves=%s, positions=%s, NAV=%f (block=%s)",
+            result.reserves,
+            result.positions,
             nav,
+            block_number,
         )
         return nav
 

@@ -260,7 +260,7 @@ def create_derive_account_value_func(
         Function that takes a TradingPairIdentifier and returns account value in USD
     """
 
-    def get_derive_account_value(pair: TradingPairIdentifier) -> Decimal:
+    def get_derive_account_value(pair: TradingPairIdentifier, **kwargs) -> Decimal:
         """Get Derive account value for the given pair.
 
         :param pair:

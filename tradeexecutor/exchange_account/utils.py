@@ -209,12 +209,12 @@ def create_exchange_account_value_func(
 
     # Create unified dispatcher
     if any(value_funcs.values()):
-        def unified_account_value_func(pair: TradingPairIdentifier) -> Decimal:
+        def unified_account_value_func(pair: TradingPairIdentifier, **kwargs) -> Decimal:
             protocol = pair.get_exchange_account_protocol()
             value_func = value_funcs.get(protocol)
             if value_func is None:
                 raise ValueError(f"No account value function for protocol: {protocol}")
-            return value_func(pair)
+            return value_func(pair, **kwargs)
 
         return unified_account_value_func
 
@@ -275,7 +275,7 @@ def create_derive_value_func_from_credentials(
         derive_wallet_address,
     )
 
-    def get_derive_account_value(pair: TradingPairIdentifier) -> Decimal:
+    def get_derive_account_value(pair: TradingPairIdentifier, **kwargs) -> Decimal:
         assert pair.is_exchange_account(), f"Not an exchange account pair: {pair}"
         assert pair.get_exchange_account_protocol() == "derive", \
             f"Not a Derive pair: {pair.get_exchange_account_protocol()}"

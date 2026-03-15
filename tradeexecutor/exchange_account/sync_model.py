@@ -57,15 +57,22 @@ class ExchangeAccountSyncModel(SyncModel):
 
     def __init__(
         self,
-        account_value_func: Callable[[TradingPairIdentifier], Decimal],
+        account_value_func: Callable[..., Decimal],
+        web3=None,
     ):
         """Initialise sync model.
 
         :param account_value_func:
-            Function that takes a TradingPairIdentifier and returns the current
-            account value in USD from the exchange API.
+            Function that takes a TradingPairIdentifier (and optional kwargs)
+            and returns the current account value in USD from the exchange API.
+        :param web3:
+            Optional Web3 instance for capturing the current block number.
+            When provided, the block is captured once per ``sync_positions``
+            call and passed to the value function as ``block_identifier``,
+            then persisted in ``BalanceUpdate.block_number`` for audit.
         """
         self.account_value_func = account_value_func
+        self.web3 = web3
 
     def has_position_sync(self) -> bool:
         """We sync positions, not treasury."""
@@ -131,13 +138,18 @@ class ExchangeAccountSyncModel(SyncModel):
         """
         events = []
 
+        # Capture block once — used for both the value func read and state persistence
+        block_number = self.web3.eth.block_number if self.web3 else None
+
         for position in state.portfolio.get_open_positions():
             if not position.is_exchange_account():
                 continue
 
             try:
                 # Get current account value from exchange API
-                current_value = self.account_value_func(position.pair)
+                current_value = self.account_value_func(
+                    position.pair, block_identifier=block_number,
+                )
             except Exception as e:
                 logger.error(
                     "Failed to get account value for position %d: %s",
@@ -188,7 +200,7 @@ class ExchangeAccountSyncModel(SyncModel):
                 tx_hash=None,
                 log_index=None,
                 position_id=position.position_id,
-                block_number=None,
+                block_number=block_number,
                 notes=f"Exchange account PnL sync: {position.pair.get_exchange_account_protocol()}",
             )
 

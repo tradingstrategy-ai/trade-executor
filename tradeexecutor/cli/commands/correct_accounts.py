@@ -435,7 +435,7 @@ def correct_accounts(
         )
 
         if account_value_func:
-            exchange_sync_model = ExchangeAccountSyncModel(account_value_func)
+            exchange_sync_model = ExchangeAccountSyncModel(account_value_func, web3=web3)
             exchange_events = exchange_sync_model.sync_positions(
                 timestamp=native_datetime_utc_now(),
                 state=state,

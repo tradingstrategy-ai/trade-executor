@@ -138,7 +138,7 @@ def create_ccxt_account_value_func(
     if value_extractor is None:
         value_extractor = aster_total_equity
 
-    def get_ccxt_account_value(pair: TradingPairIdentifier) -> Decimal:
+    def get_ccxt_account_value(pair: TradingPairIdentifier, **kwargs) -> Decimal:
         """Get account value from CCXT exchange.
 
         :param pair:
