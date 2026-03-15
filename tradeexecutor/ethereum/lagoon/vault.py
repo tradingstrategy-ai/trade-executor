@@ -5,7 +5,7 @@ import logging
 from decimal import Decimal
 from pprint import pformat
 from types import NoneType
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Optional
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.confirmation import wait_and_broadcast_multiple_nodes_mev_blocker
@@ -55,6 +55,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         valuation_data_freshness=datetime.timedelta(hours=4),
         min_nav_change_update: Percent=0.005,
         unit_testing=False,
+        calculate_valuation_func: Callable[[State], USDollarPrice] | None = None,
     ):
         """
         :param extra_gnosis_gas:
@@ -74,6 +75,21 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         :param min_nav_change_update:
             Minimum change in NAV before we post update.
+
+        :param calculate_valuation_func:
+            Optional strategy-specific NAV calculation function.
+
+            When set, :py:meth:`calculate_valuation` delegates to this
+            callable instead of using the default
+            ``portfolio.get_net_asset_value()``.
+
+            This is needed for strategies where external systems (e.g.
+            FreqTrade managing GMX positions) move funds in and out of
+            the Safe without the trade engine knowing, making the
+            portfolio's reserve balance stale.
+
+            See :py:func:`tradeexecutor.exchange_account.gmx.create_gmx_vault_valuation_func`
+            for the GMX-specific implementation.
         """
         assert isinstance(vault, LagoonVault), f"Got {type(vault)} instead of LagoonVault"
         if hot_wallet is not None:
@@ -86,6 +102,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         self.min_nav_change_update = min_nav_change_update
         self.anvil = is_anvil(self.web3)  # Running test mode
         self.unit_testing = unit_testing  #
+        self.calculate_valuation_func = calculate_valuation_func
         assert vault.trading_strategy_module, "LagoonVault.trading_strategy_module initialisation param not set - needed to run the sync model properly"
         # assert isinstance(self.web3.provider, MEVBlockerProvider), f"This sync model needs MEVBlockerProvider, got {type(self.web3.provider)}"
 
@@ -203,8 +220,14 @@ class LagoonVaultSyncModel(AddressSyncModel):
     def calculate_valuation(self, state: State) -> USDollarPrice:
         """Calculate NAV of the vault.
 
-        - Calculate the equity of all assts in the vault
+        - Calculate the equity of all assets in the vault
         - Check that we do not use stale data
+        - If a strategy-specific ``calculate_valuation_func`` was provided
+          (e.g. for GMX), delegate to it; otherwise use the default
+          ``portfolio.get_net_asset_value()``
+
+        The freshness check always runs regardless of which valuation
+        path is used.
         """
 
         now = native_datetime_utc_now()
@@ -218,7 +241,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 # Try to dump as much as possible information for diagnostics
                 assert updated_ago < self.valuation_data_freshness, f"Position {p} pricing was too old for Lagoon valuation update. Now: {now}, updated at: {valued_at}, diff: {updated_ago}, threshold: {self.valuation_data_freshness}, last valuation event: {last_event}"
 
-        # TODO: Replace with pure onchain valuation mechanism?
+        if self.calculate_valuation_func is not None:
+            return self.calculate_valuation_func(state)
+
         return state.portfolio.get_net_asset_value(include_interest=True)
 
     def check_nav_update_and_settle_needed(self, calculated_nav: USDollarAmount) -> bool:
@@ -243,9 +268,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
             nav_diff = abs(calculated_nav - onchain_nav) / onchain_nav
             if nav_diff >= self.min_nav_change_update:
                 logger.info(
-                    "NAV update neeed. Calcualted %s, onchain %s, diff %f %%",
-                    onchain_nav,
+                    "NAV update needed. Calculated %s, onchain %s, diff %f %%",
                     calculated_nav,
+                    onchain_nav,
                     nav_diff * 100,
                 )
                 return True
@@ -307,6 +332,37 @@ class LagoonVaultSyncModel(AddressSyncModel):
             reserve_asset.address,
             chain_id=reserve_asset.chain_id,
         )
+
+        # Reconcile reserves from on-chain before calculating NAV.
+        #
+        # Exchange account positions (e.g. GMX) transfer USDC from the Safe
+        # via sendTokens() in multicall — outside the trade engine.
+        # This means reserve_position.quantity can be stale: it still
+        # reflects the pre-transfer balance while the USDC has already
+        # left the Safe.
+        #
+        # The exchange account value function (e.g. create_gmx_account_value_func)
+        # only returns capital locked in exchange positions, NOT free USDC
+        # in the Safe — so the Safe's actual USDC balance is the correct
+        # reserve component for NAV.  Without this reconciliation,
+        # calculate_valuation() double-counts the transferred USDC
+        # (once in stale reserves, once in the exchange account position),
+        # inflating the NAV and mispricing deposits.
+        #
+        # See README-GMX-Lagoon.md for the full token flow.
+        block_number = self.get_safe_latest_block()
+        onchain_balance = reserve_token.fetch_balance_of(
+            self.get_token_storage_address(),
+            block_identifier=block_number,
+        )
+        if reserve_position.quantity != onchain_balance:
+            logger.warning(
+                "Reserve balance mismatch: portfolio=%s, on-chain=%s. "
+                "Updating to on-chain value before NAV calculation.",
+                reserve_position.quantity,
+                onchain_balance,
+            )
+            reserve_position.quantity = onchain_balance
 
         valuation = self.calculate_valuation(state)
 

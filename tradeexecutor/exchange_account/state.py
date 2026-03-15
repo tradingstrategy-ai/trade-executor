@@ -110,6 +110,33 @@ def open_exchange_account_position(
     This is by design: exchange account operations (deposits, withdrawals, trades)
     happen externally via the exchange's API, not on-chain.
 
+    Reserve deduction and NAV accounting
+    -------------------------------------
+
+    When this function is called with ``reserve_amount > 0``, it deducts that
+    amount from the portfolio reserves via ``adjust_reserves()``.  This mirrors
+    the normal trade flow where ``start_execution()`` calls
+    ``move_capital_from_reserves_to_spot_trade()`` — a step that exchange
+    account trades bypass entirely.
+
+    For on-chain exchange accounts like GMX, USDC is **transferred** from the
+    Lagoon vault's Safe to the exchange (e.g. via ``sendTokens()`` to the GMX
+    OrderVault in a multicall).  The exchange account value function
+    (e.g. ``create_gmx_account_value_func``) deliberately excludes free USDC
+    in the Safe to avoid double counting, because the Lagoon treasury sync
+    tracks the Safe's USDC balance separately as the reserve component of NAV.
+
+    If reserves are not properly deducted, the portfolio NAV double-counts the
+    transferred USDC — once in stale reserves and once in the exchange account
+    position — inflating the NAV and mispricing vault deposits.
+
+    For positions auto-created by ``correct-accounts`` (which passes
+    ``reserve_amount=Decimal(1)`` as a placeholder), the Lagoon sync model
+    additionally reconciles ``reserve_position.quantity`` from the on-chain
+    Safe balance before calculating NAV.  See
+    ``LagoonVaultSyncModel.sync_treasury()`` and ``README-GMX-Lagoon.md``
+    for the full token flow.
+
     :param state:
         Current strategy state where the position will be created.
 
@@ -199,6 +226,23 @@ def open_exchange_account_position(
     # so the reserve amount is a reasonable minimum.
     if not position.portfolio_value_at_open:
         position.portfolio_value_at_open = float(reserve_amount)
+
+    # Deduct reserve from portfolio, matching the normal trade flow
+    # where start_execution() → move_capital_from_reserves_to_spot_trade()
+    # deducts reserves.  Exchange account trades bypass start_execution()
+    # entirely (they are spoofed via mark_success(force=True) below),
+    # so we must deduct explicitly.
+    #
+    # For positions auto-created by correct-accounts, reserve_amount is
+    # Decimal(1) — a placeholder.  The Lagoon sync model additionally
+    # reconciles reserves from the on-chain Safe balance before
+    # calculating NAV, which catches any remaining discrepancy.
+    if reserve_amount > 0 and reserve_currency.get_identifier() in state.portfolio.reserves:
+        state.portfolio.adjust_reserves(
+            reserve_currency,
+            -reserve_amount,
+            f"Capital allocated to exchange account {pair.get_exchange_account_protocol()}",
+        )
 
     # Immediately spoof the trade as successfully executed
     trade.mark_success(
