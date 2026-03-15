@@ -13,7 +13,7 @@ from web3 import Web3
 from dataclasses_json import dataclass_json, config
 from eth_typing import HexAddress
 
-from eth_defi.compat import native_datetime_utc_fromtimestamp
+from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
 from eth_defi.erc_4626.core import ERC4626Feature
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingProtocolType
@@ -1294,7 +1294,7 @@ class AssetWithTrackedValue:
 
     #: Strategy cycle time stamp when the tracking was started
     #:
-    created_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+    created_at: datetime.datetime = field(default_factory=native_datetime_utc_now)
 
     #: Strategy cycle time stamp when the tracking was started
     #:
@@ -1394,7 +1394,6 @@ class AssetWithTrackedValue:
         self.quantity = quantity
         self.interest_rate_at_open = None
         self.last_interest_rate = None
-
 
 
 

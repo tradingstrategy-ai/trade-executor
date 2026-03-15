@@ -53,8 +53,7 @@ class BacktestValuationModel(ValuationModel):
 
         old_price = position.last_token_price
         old_value = position.get_value()
-        position.revalue_base_asset(ts, price)
-        new_value = position.get_value()
+        new_value = position.revalue_base_asset(ts, price)
 
         return ValuationUpdate(
             position_id=position.position_id,

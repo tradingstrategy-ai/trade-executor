@@ -1406,13 +1406,16 @@ class AlphaModel:
 
             alpha_model_positions.append(position)
 
-        total = sum(position.get_value() for position in alpha_model_positions)
+        position_values = [
+            (position, position.get_value())
+            for position in alpha_model_positions
+        ]
+        total = sum(value for _, value in position_values)
 
         if alpha_model_positions:
             assert total > 0, f"Portfolio equity is zero, cannot calculate weights: {total}. At {self.timestamp}, positions: {portfolio.open_positions.values()}"
 
-        for position in alpha_model_positions:
-            value = position.get_value()
+        for position, value in position_values:
             weight = value / total if total > 0 else 0
             self.set_old_weight(
                 position.pair.get_pricing_pair(),

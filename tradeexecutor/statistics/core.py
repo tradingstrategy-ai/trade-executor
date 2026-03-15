@@ -155,7 +155,9 @@ def calculate_statistics(
 
     first_trade, last_trade = portfolio.get_first_and_last_executed_trade()
 
-    total_equity = portfolio.calculate_total_equity()
+    open_position_equity = portfolio.get_position_equity_and_loan_nav()
+    free_cash = float(portfolio.get_cash())
+    total_equity = open_position_equity + free_cash
 
     # May not available for non-live execution and non-vault strategies
     if treasury:
@@ -184,9 +186,9 @@ def calculate_statistics(
             total_equity=total_equity,
             net_asset_value=portfolio.get_net_asset_value(),
             unrealised_profitability=float(profitability_series.iloc[-1] if len(profitability_series) > 0 else 0),
-            free_cash=float(portfolio.get_cash()),
+            free_cash=free_cash,
             open_position_count=len(portfolio.open_positions),
-            open_position_equity=portfolio.get_position_equity_and_loan_nav(),
+            open_position_equity=open_position_equity,
             frozen_position_equity=portfolio.get_frozen_position_equity(),
             frozen_position_count=len(portfolio.frozen_positions),
             closed_position_count=len(portfolio.closed_positions),
@@ -209,8 +211,8 @@ def calculate_statistics(
             calculated_at=clock,
             total_equity=total_equity,
             net_asset_value=portfolio.get_net_asset_value(),
-            free_cash=float(portfolio.get_cash()),
-            open_position_equity=portfolio.get_position_equity_and_loan_nav(),  # No extra cost: already computed inside calculate_total_equity() above
+            free_cash=free_cash,
+            open_position_equity=open_position_equity,
             share_count=share_count,
             share_price_usd=share_price_usd,
         )

@@ -131,7 +131,7 @@ class State:
     #: When this state was created
     #:
     #: Same as when the strategy was launched
-    created_at: datetime.datetime = field(default_factory=datetime.datetime.utcnow)
+    created_at: datetime.datetime = field(default_factory=native_datetime_utc_now)
 
     #: The share price used as the baseline for return calculations.
     #:

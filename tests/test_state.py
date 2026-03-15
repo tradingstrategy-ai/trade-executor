@@ -5,6 +5,7 @@ TODO: Clean txid and nonce references properly.
 import datetime
 import os
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Tuple
 
 import numpy as np
@@ -14,6 +15,7 @@ from hexbytes import HexBytes
 from tradingstrategy.chain import ChainId
 from tradingstrategy.types import USDollarAmount
 
+from tradeexecutor.backtest.backtest_valuation import BacktestValuationModel
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.blockhain_transaction import (BlockchainTransaction,
                                                        solidity_arg_encoder)
@@ -28,7 +30,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.validator import (BadStateData,
                                            validate_nested_state_dict)
 from tradeexecutor.state.valuation import ValuationUpdate
-from tradeexecutor.statistics.core import update_statistics
+from tradeexecutor.statistics.core import calculate_statistics, update_statistics
 from tradeexecutor.statistics.statistics_table import \
     serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.execution_context import ExecutionMode
@@ -150,6 +152,73 @@ def test_update_reserves(usdc, weth, weth_usdc, start_ts):
     state.update_reserves([ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts)])
     assert state.portfolio.get_cash() == 1_000
     assert state.portfolio.calculate_total_equity() == 1_000
+
+
+def test_backtest_valuation_model_reuses_revalue_return(single_asset_portfolio, start_ts, monkeypatch):
+    """Backtest valuation should not ask the position value again after revaluation."""
+    position = single_asset_portfolio.open_positions[1]
+    old_value = position.get_value()
+    original_get_value = position.get_value
+    original_revalue_base_asset = position.revalue_base_asset
+    calls = {
+        "get_value": 0,
+        "revalue_base_asset": 0,
+        "revalued": False,
+        "new_value": None,
+    }
+
+    class FakePricingModel:
+        def get_sell_price(self, ts, pair, quantity):
+            return SimpleNamespace(price=1700.0)
+
+    def get_value_wrapper():
+        calls["get_value"] += 1
+        if calls["revalued"]:
+            raise AssertionError("get_value() should not be called after revalue_base_asset()")
+        return original_get_value()
+
+    def revalue_base_asset_wrapper(ts, price):
+        calls["revalue_base_asset"] += 1
+        result = original_revalue_base_asset(ts, price)
+        calls["revalued"] = True
+        calls["new_value"] = result
+        return result
+
+    monkeypatch.setattr(position, "get_value", get_value_wrapper)
+    monkeypatch.setattr(position, "revalue_base_asset", revalue_base_asset_wrapper)
+
+    valuation_model = BacktestValuationModel(FakePricingModel())
+    value_update = valuation_model(start_ts + datetime.timedelta(days=1), position)
+
+    assert calls["revalue_base_asset"] == 1
+    assert calls["get_value"] == 2
+    assert value_update.old_value == pytest.approx(old_value)
+    assert value_update.new_value == pytest.approx(calls["new_value"])
+    assert value_update.new_price == pytest.approx(1700.0)
+
+
+def test_calculate_statistics_total_equity_matches_components(single_asset_portfolio, start_ts):
+    """Statistics should reuse the same equity components in backtest and live-style modes."""
+    portfolio = single_asset_portfolio
+    expected_open_position_equity = portfolio.get_position_equity_and_loan_nav()
+    expected_free_cash = float(portfolio.get_cash())
+    expected_total_equity = expected_open_position_equity + expected_free_cash
+
+    backtest_stats = calculate_statistics(start_ts, portfolio, ExecutionMode.backtesting)
+    assert backtest_stats.portfolio.open_position_equity == pytest.approx(expected_open_position_equity)
+    assert backtest_stats.portfolio.free_cash == pytest.approx(expected_free_cash)
+    assert backtest_stats.portfolio.total_equity == pytest.approx(expected_total_equity)
+    assert backtest_stats.portfolio.total_equity == pytest.approx(
+        backtest_stats.portfolio.open_position_equity + backtest_stats.portfolio.free_cash
+    )
+
+    live_style_stats = calculate_statistics(start_ts, portfolio, ExecutionMode.unit_testing)
+    assert live_style_stats.portfolio.open_position_equity == pytest.approx(expected_open_position_equity)
+    assert live_style_stats.portfolio.free_cash == pytest.approx(expected_free_cash)
+    assert live_style_stats.portfolio.total_equity == pytest.approx(expected_total_equity)
+    assert live_style_stats.portfolio.total_equity == pytest.approx(
+        live_style_stats.portfolio.open_position_equity + live_style_stats.portfolio.free_cash
+    )
 
 
 def test_single_buy(usdc, weth, weth_usdc, start_ts):
