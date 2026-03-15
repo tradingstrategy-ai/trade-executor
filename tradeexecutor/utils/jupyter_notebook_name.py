@@ -9,12 +9,13 @@
     TODO: Does not work in Pycharm
 """
 
-import os
+import importlib
 import json
 import os
 import sys
 import urllib.error
 import urllib.request
+import warnings
 from itertools import chain
 from pathlib import Path, PurePath
 from typing import Generator, Tuple, Union
@@ -129,6 +130,40 @@ def _find_notebook_path_from_parent_process() -> Path | None:
     return None
 
 
+def _build_best_effort_notebook_path(_globals) -> Path:
+    """Construct a synthetic notebook path when exact discovery is unavailable.
+
+    This keeps notebook-style callers working in stripped-down environments
+    where ``ipynbname`` is not installed and there is no running Jupyter server
+    to query for the real notebook path.
+    """
+
+    env_id = os.environ.get("TRADEEXECUTOR_NOTEBOOK_ID")
+    if env_id:
+        return Path(f"{env_id}.ipynb")
+
+    session_name = os.environ.get("JPY_SESSION_NAME")
+    if session_name:
+        return Path(session_name)
+
+    file_value = _globals.get("__file__")
+    if isinstance(file_value, str) and file_value:
+        return Path(file_value)
+
+    try:
+        kernel_id = _get_kernel_id()
+        fallback_name = f"unknown-notebook-{kernel_id[:8]}"
+    except Exception:
+        fallback_name = "unknown-notebook"
+
+    warnings.warn(
+        f"Could not determine notebook filename exactly; using fallback id '{fallback_name}'",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+    return Path(f"{fallback_name}.ipynb")
+
+
 def get_notebook_file_from_within_notebook(_globals) -> Path:
     """Return the notebook file.
 
@@ -167,8 +202,15 @@ def get_notebook_file_from_within_notebook(_globals) -> Path:
             return notebook_path
 
         # Jupyter-based systems (requires a running Jupyter server)
-        import ipynbname
-        return ipynbname.path()
+        try:
+            ipynbname = importlib.import_module("ipynbname")
+        except ModuleNotFoundError:
+            return _build_best_effort_notebook_path(_globals)
+
+        try:
+            return ipynbname.path()
+        except FileNotFoundError:
+            return _build_best_effort_notebook_path(_globals)
 
 
 def get_notebook_id(_globals) -> str:
