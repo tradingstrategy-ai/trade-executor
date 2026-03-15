@@ -6,6 +6,12 @@ for GMX perpetuals positions traded through a Lagoon vault.
 GMX positions are on-chain (unlike Derive which uses an off-chain API),
 so the account value function reads position data directly from the
 GMX Reader contract via :class:`~eth_defi.gmx.core.open_positions.GetOpenPositions`.
+
+Transfer from Safe to GMX is managed by an external FreqTrade instance
+(https://github.com/tradingstrategy-ai/gmx-ccxt-freqtrade),
+not by the trade executor's execution pipeline.  The trade executor only
+tracks the aggregate value of GMX positions via the account value function
+and creates a bookkeeping exchange account position to represent them.
 """
 
 import logging
