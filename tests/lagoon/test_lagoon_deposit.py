@@ -9,7 +9,7 @@ from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonAutomatedDeployment
-from eth_defi.token import TokenDetails
+from eth_defi.token import TokenDetails, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
@@ -262,7 +262,6 @@ def test_lagoon_nav_with_exchange_account_position(
     See README-GMX-Lagoon.md for the full GMX token flow.
     """
     from tradeexecutor.exchange_account.state import open_exchange_account_position
-    from tradeexecutor.exchange_account.gmx import create_gmx_vault_valuation_func
     from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind, AssetIdentifier
     from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 
@@ -271,12 +270,15 @@ def test_lagoon_nav_with_exchange_account_position(
     strategy_universe = vault_strategy_universe
     usdc_asset = strategy_universe.get_reserve_asset()
 
-    # Create the GMX-specific valuation function that reads on-chain Safe balance
-    valuation_func = create_gmx_vault_valuation_func(
-        web3=web3,
-        safe_address=vault.safe_address,
-        reserve_asset=usdc_asset,
-    )
+    # Build a valuation function that reads the on-chain Safe USDC balance
+    # and adds portfolio position equity.  This reproduces the NAV calculation
+    # without calling GMX Reader contracts (which don't exist on the Base fork).
+    usdc_token = fetch_erc20_details(web3, usdc_asset.address, chain_id=usdc_asset.chain_id)
+
+    def valuation_func(state, *, block_number=None):
+        onchain_cash = float(usdc_token.fetch_balance_of(vault.safe_address))
+        position_equity = state.portfolio.get_position_equity_and_loan_nav(include_interest=True)
+        return onchain_cash + position_equity
 
     sync_model = LagoonVaultSyncModel(
         vault=vault,
