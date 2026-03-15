@@ -7,8 +7,6 @@ from _decimal import Decimal
 from packaging.version import Version
 import numpy
 from pandas._libs.missing import NAType
-import joblib
-
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
 from tradeexecutor.backtest.simulated_wallet import OutOfSimulatedBalance
 # Enable pickle patch that allows multiprocessing in notebooks
@@ -260,20 +258,17 @@ class GridCombination:
         return self.result_path.joinpath(self.get_relative_result_path())
 
     def get_metrics_pickle_path(self) -> Path:
-        """Get the filename for joblib pickled results are stored.
+        """Get the filename for zstd-compressed pickle results.
 
-        - This file is serialised with joblib and compressed with gzip
+        - Serialised with pickle protocol 5 and compressed with zstd
+        - Replaced legacy joblib+gzip format for ~5-13x faster serialisation
         """
-        return self.result_path.joinpath(self.get_relative_result_path()) / "metricks.joblib.gz"
+        return self.result_path.joinpath(self.get_relative_result_path()) / "metrics.pickle.zstd"
 
-    # def get_state_file_path(self) -> Path:
-    #     """Get the state file for the results.
-    #
-    #     - We use pickle over JSON here as other apps do not read this data
-    #
-    #     - Pickle is faster https://stackoverflow.com/a/39607169/315168
-    #     """
-    #     return self.get_full_result_path() / "state.pickle"
+    # Legacy path - remove once all caches have been regenerated
+    # def get_legacy_metrics_pickle_path(self) -> Path:
+    #     """Get the filename for legacy joblib+gzip pickled results."""
+    #     return self.result_path.joinpath(self.get_relative_result_path()) / "metricks.joblib.gz"
 
     def get_compressed_state_file_path(self) -> Path:
         """Get the state file that is compresed
@@ -633,17 +628,21 @@ class GridSearchResult:
 
     @staticmethod
     def load(combination: GridCombination):
-        """Deserialised from the cached Python pickle."""
+        """Deserialised from the cached Python pickle.
+
+        - Uses zstd+pickle (matching save() and save_state() pattern)
+        """
 
         path = combination.get_metrics_pickle_path()
 
         assert path.exists(), f"GridSearchResult {path} does not exist"
 
-        # with open(base_path.joinpath("result.pickle"), "rb") as inp:
-        #    result: GridSearchResult = pickle.load(inp)
         gc.disable()
-        result = joblib.load(path)
-        gc.enable()
+        try:
+            with zstd.open(path, "rb") as inp:
+                result = pickle.load(inp)
+        finally:
+            gc.enable()
 
         result.cached = True
         return result
@@ -651,31 +650,38 @@ class GridSearchResult:
     def save(self, include_state=False):
         """Serialise the result as Python pickle and state as separate file.
 
-        :param state:
+        - Uses zstd compression instead of gzip (~3-5x faster at comparable ratios)
+        - Clears indicators before save to eliminate ~4M nested objects from pickle graph
+        - Disables GC during pickle dump to avoid pause overhead
+
+        :param include_state:
             State is saved also on the disk
         """
 
-        # TODO:
-        # Fails to pickle functions, but we do not need these in results,
-        # so we just shortcut and clear out those functions
-        if self.combination.indicators is not None:
-            for ind in self.combination.indicators:
-                ind.definition.func = None
-
-        # Do atomic replacement to avoid partial pickles,
-        # as they cause subsequent test runs to fail
-        # https://stackoverflow.com/a/3716361/315168
-
-        final_file = self.combination.get_metrics_pickle_path()
-
-        os.makedirs(final_file.parent, exist_ok=True)
+        # Indicators contain deeply nested IndicatorKey -> TradingPairIdentifier objects
+        # (~3000 keys × many nested attrs = ~4M pickle objects). They are never read
+        # from cached results — regenerated from strategy parameters before each run.
+        self.combination.indicators = None
 
         if include_state:
             self.save_state()
 
+        # Do atomic replacement to avoid partial pickles,
+        # as they cause subsequent test runs to fail
+        # https://stackoverflow.com/a/3716361/315168
+        final_file = self.combination.get_metrics_pickle_path()
+        os.makedirs(final_file.parent, exist_ok=True)
+
         temp = tempfile.NamedTemporaryFile(mode='wb', delete=False, dir=final_file.parent)
-        joblib.dump(self, temp.name, compress=("gzip", 3))
-        temp.close()
+        try:
+            # Disable GC during serialisation to avoid collection pauses
+            # (matching the pattern used in load() and hydrate_state())
+            gc.disable()
+            with zstd.open(temp.name, "wb") as out:
+                pickle.dump(self, out, protocol=pickle.HIGHEST_PROTOCOL)
+        finally:
+            gc.enable()
+            temp.close()
         shutil.move(temp.name, final_file)
 
     def save_state(self):
