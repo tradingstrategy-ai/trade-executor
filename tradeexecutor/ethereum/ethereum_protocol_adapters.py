@@ -30,6 +30,26 @@ from tradingstrategy.pair import PandasPairUniverse
 logger = logging.getLogger(__name__)
 
 
+def _make_token_delivery_address_resolver(execution_model) -> Callable[[TradingPairIdentifier], str] | None:
+    """Resolve the correct token delivery address for a pair.
+
+    For multichain execution, satellite vaults can use chain-specific Safe
+    addresses instead of the primary execution vault.
+    """
+    if execution_model is None:
+        return None
+
+    satellite_vaults = getattr(execution_model, "satellite_vaults", {}) or {}
+
+    def resolver(pair: TradingPairIdentifier) -> str:
+        satellite_vault = satellite_vaults.get(pair.chain_id)
+        if satellite_vault is not None:
+            return satellite_vault.safe_address
+        return execution_model.tx_builder.get_token_delivery_address()
+
+    return resolver
+
+
 def get_exchange_type(
     exchange_universe: ExchangeUniverse,
     pair: TradingPairIdentifier,
@@ -350,15 +370,7 @@ def create_vault_adapter(
     reserve = strategy_universe.get_reserve_asset()
     assert reserve.token_symbol in ("USDC", "USDT",)
 
-    owner_address_resolver = None
-    if execution_model is not None:
-        satellite_vaults = getattr(execution_model, "satellite_vaults", {}) or {}
-
-        def owner_address_resolver(pair: TradingPairIdentifier) -> str:
-            satellite_vault = satellite_vaults.get(pair.chain_id)
-            if satellite_vault is not None:
-                return satellite_vault.safe_address
-            return execution_model.tx_builder.get_token_delivery_address()
+    owner_address_resolver = _make_token_delivery_address_resolver(execution_model)
 
     routing_model = VaultRouting(reserve.address)
     pricing_model = VaultPricing(
@@ -585,15 +597,7 @@ def create_hypercore_vault_adapter(
     assert hypercore_vault_value_func is not None, \
         "hypercore_vault_value_func is required for Hypercore vault routing"
 
-    safe_address_resolver = None
-    if execution_model is not None:
-        satellite_vaults = getattr(execution_model, "satellite_vaults", {}) or {}
-
-        def safe_address_resolver(pair: TradingPairIdentifier) -> str:
-            satellite_vault = satellite_vaults.get(pair.chain_id)
-            if satellite_vault is not None:
-                return satellite_vault.safe_address
-            return execution_model.tx_builder.get_token_delivery_address()
+    safe_address_resolver = _make_token_delivery_address_resolver(execution_model)
 
     pricing_model = HypercoreVaultPricing(
         hypercore_vault_value_func,

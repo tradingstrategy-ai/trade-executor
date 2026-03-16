@@ -190,6 +190,22 @@ def test_hypercore_redemption_allowed_when_lockup_expired(
     assert pricing.is_tradeable(None, pair) is True
 
 
+def test_hypercore_redemption_defaults_to_open_when_safe_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    pair = _make_pair()
+    pricing = HypercoreVaultPricing(
+        value_func=lambda pair: Decimal("100"),
+        safe_address_resolver=None,
+        session_factory=lambda pair: MagicMock(),
+    )
+
+    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair: _make_info())
+
+    assert pricing.get_max_redemption(None, pair) is None
+    assert pricing.can_redeem(None, pair) is True
+
+
 def test_hypercore_deposit_closed_reason_matches_parent_special_case():
     parent_info = _make_info(allow_deposits=False, relationship_type="parent")
     normal_info = _make_info(allow_deposits=False, relationship_type="normal")

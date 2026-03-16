@@ -2,7 +2,7 @@
 import logging
 import datetime
 from decimal import Decimal
-from typing import Callable, Optional
+from typing import Callable
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.estimate import estimate_4626_redeem, estimate_4626_deposit
@@ -62,7 +62,7 @@ class VaultPricing(PricingModel):
         self,
         ts: datetime.datetime,
         pair: TradingPairIdentifier,
-        quantity: Optional[Decimal],
+        quantity: Decimal | None,
     ) -> TradePricing:
         """Get live price on vault for dumping our shares."""
 
@@ -104,7 +104,7 @@ class VaultPricing(PricingModel):
         self,
         ts: datetime.datetime,
         pair: TradingPairIdentifier,
-        reserve: Optional[Decimal],
+        reserve: Decimal | None,
     ) -> TradePricing:
         """Get live price on vault for dumping our shares."""
 
@@ -149,7 +149,7 @@ class VaultPricing(PricingModel):
         self,
         ts: datetime.datetime,
         pair: TradingPairIdentifier,
-    ) -> Optional[float]:
+    ) -> float | None:
         return 0.0
 
     def get_usd_tvl(
@@ -211,7 +211,9 @@ class VaultPricing(PricingModel):
         pair: TradingPairIdentifier,
     ) -> bool:
         max_deposit = self.get_max_deposit(ts, pair)
-        return max_deposit is not None and max_deposit > 0
+        if max_deposit is None:
+            return True
+        return max_deposit > 0
 
     def can_redeem(
         self,
@@ -219,4 +221,6 @@ class VaultPricing(PricingModel):
         pair: TradingPairIdentifier,
     ) -> bool:
         max_redemption = self.get_max_redemption(ts, pair)
-        return max_redemption is not None and max_redemption > 0
+        if max_redemption is None:
+            return True
+        return max_redemption > 0

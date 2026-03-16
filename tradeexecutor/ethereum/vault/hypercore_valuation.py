@@ -216,7 +216,9 @@ class HypercoreVaultPricing(PricingModel):
             return True
 
         max_redemption = self.get_max_redemption(ts, pair)
-        return max_redemption is not None and max_redemption > 0
+        if max_redemption is None:
+            return True
+        return max_redemption > 0
 
 
 class HypercoreVaultValuator(ValuationModel):

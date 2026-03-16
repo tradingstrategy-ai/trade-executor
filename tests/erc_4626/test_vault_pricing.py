@@ -141,6 +141,22 @@ def test_vault_redemption_closed_when_max_redeem_zero(
     assert vault_pricing.can_redeem(None, ipor_usdc) is False
 
 
+def test_vault_tradeability_defaults_to_open_when_owner_unknown(
+    vault_pricing,
+    ipor_usdc: TradingPairIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Unknown owner-scoped limits should not block trading."""
+
+    monkeypatch.setattr(vault_pricing, "get_owner_address", lambda pair: None)
+
+    assert vault_pricing.get_max_deposit(None, ipor_usdc) is None
+    assert vault_pricing.get_max_redemption(None, ipor_usdc) is None
+    assert vault_pricing.can_deposit(None, ipor_usdc) is True
+    assert vault_pricing.can_redeem(None, ipor_usdc) is True
+    assert vault_pricing.is_tradeable(None, ipor_usdc) is True
+
+
 def test_vault_position_valuation(
     vault_pricing,
     ipor_usdc

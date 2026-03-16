@@ -215,16 +215,24 @@ class PricingModel(abc.ABC):
         ts: datetime.datetime | None,
         pair: TradingPairIdentifier,
     ) -> bool:
-        """Check whether a new deposit or position increase is currently possible."""
-        return False
+        """Check whether a new deposit or position increase is currently possible.
+
+        The base implementation treats unknown venue-specific limits as allowed.
+        Pricing models with live gating should override this method.
+        """
+        return True
 
     def can_redeem(
         self,
         ts: datetime.datetime | None,
         pair: TradingPairIdentifier,
     ) -> bool:
-        """Check whether a redemption or position reduction is currently possible."""
-        return False
+        """Check whether a redemption or position reduction is currently possible.
+
+        The base implementation treats unknown venue-specific limits as allowed.
+        Pricing models with live gating should override this method.
+        """
+        return True
 
     def is_tradeable(
         self,

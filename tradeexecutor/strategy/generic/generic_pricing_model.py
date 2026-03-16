@@ -190,5 +190,9 @@ class EthereumGenericPricingFactory(PricingModelFactory):
         universe,
         routing_model,
     ):
-        pair_configurator = EthereumPairConfigurator(self.web3, universe)
+        pair_configurator = EthereumPairConfigurator(
+            self.web3,
+            universe,
+            execution_model=execution_model,
+        )
         return GenericPricing(pair_configurator)
