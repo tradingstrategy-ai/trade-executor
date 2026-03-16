@@ -117,6 +117,15 @@ def _calculate_safe_threshold(multisig_owners: list[str]) -> int:
     return max(1, len(multisig_owners) - 1)
 
 
+def _normalize_multisig_owners(multisig_owners: list[str] | None, hot_wallet: HotWallet) -> list[str]:
+    """Backwards-compatible owner normalisation helper for simple CLI paths."""
+    owners, _ = _resolve_multisig_configuration(
+        multisig_owners=multisig_owners,
+        hot_wallet=hot_wallet,
+    )
+    return owners
+
+
 def _resolve_multisig_configuration(
     *,
     multisig_owners: list[str] | None,
