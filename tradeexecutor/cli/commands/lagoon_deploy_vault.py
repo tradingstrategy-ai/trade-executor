@@ -484,7 +484,7 @@ def lagoon_deploy_vault(
     fund_name: str | None = Option(None, envvar="FUND_NAME", help="On-chain name for the fund shares"),
     fund_symbol: str | None = Option(None, envvar="FUND_SYMBOL", help="On-chain token symbol for the fund shares"),
     denomination_asset: str | None = Option(None, envvar="DENOMINATION_ASSET", help="Stablecoin asset used for vault denomination"),
-    multisig_owners: str | None = Option(None, callback=parse_comma_separated_list, envvar="MULTISIG_OWNERS", help="The list of acconts that are set to the cosigners of the Safe. The multisig threshold is number of cosigners - 1."),
+    multisig_owners: list[str] | None = Option(None, callback=parse_comma_separated_list, envvar="MULTISIG_OWNERS", help="The list of acconts that are set to the cosigners of the Safe. The multisig threshold is number of cosigners - 1."),
     # terms_of_service_address: str | None = Option(None, envvar="TERMS_OF_SERVICE_ADDRESS", help="The address of the terms of service smart contract"),
     whitelisted_assets: str | None = Option(None, envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
     any_asset: bool = Option(False, envvar="ANY_ASSET", help="Allow trading of any ERC-20 on Uniswap (unsecure)."),
@@ -495,7 +495,7 @@ def lagoon_deploy_vault(
     etherscan_api_key: str | None = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key needed to verify contracts on a production deployment."),
     verifier: str = Option("etherscan", envvar="VERIFIER", help="Contract verifier to use: etherscan, blockscout, sourcify, oklink. Default: etherscan."),
     verifier_url: str | None = Option(None, envvar="VERIFIER_URL", help="Verifier API URL for Blockscout or custom verifiers (e.g., https://explorer.derive.xyz/api). Required when verifier=blockscout."),
-    asset_manager_address: str | None = Option(None, callback=parse_comma_separated_list, envvar="ASSET_MANAGER", help="Ordered comma-separated list of vault asset manager addresses. If not provided, uses the deployer address (derived from PRIVATE_KEY). The first address becomes the Lagoon valuation manager; later addresses get guard sender permissions only."),
+    asset_manager_address: list[str] | None = Option(None, callback=parse_comma_separated_list, envvar="ASSET_MANAGER", help="Ordered comma-separated list of vault asset manager addresses. If not provided, uses the deployer address (derived from PRIVATE_KEY). The first address becomes the Lagoon valuation manager; later addresses get guard sender permissions only."),
     one_delta: bool = Option(False, envvar="ONE_DELTA", help="Whitelist 1delta interaction with GuardV0 smart contract."),
     aave: bool = Option(False, envvar="AAVE", help="Whitelist Aave aUSDC deposits"),
     uniswap_v2: bool = Option(False, envvar="UNISWAP_V2", help="Whitelist Uniswap v2"),
@@ -566,7 +566,17 @@ def lagoon_deploy_vault(
     wallet_sync_web3 = next(iter(web3config.connections.values()))
     hot_wallet = create_hot_wallet(wallet_sync_web3, private_key)
     multisig_owners = _normalize_multisig_owners(multisig_owners, hot_wallet)
+    raw_asset_manager_env = os.environ.get("ASSET_MANAGER")
+    if raw_asset_manager_env:
+        logger.info("Raw ASSET_MANAGER env value: %s", raw_asset_manager_env)
+    else:
+        logger.info("Raw ASSET_MANAGER env value not provided; defaulting to deployer hot wallet")
     asset_managers = _resolve_asset_managers(asset_manager_address, hot_wallet)
+    logger.info(
+        "Resolved %d asset manager(s): %s",
+        len(asset_managers),
+        ", ".join(asset_managers),
+    )
     assert not (strategy_file and denomination_asset), \
         f"Cannot use both --strategy-file and --denomination-asset. " \
         f"When --strategy-file is provided, the reserve asset is read from the strategy's create_trading_universe(). " \

@@ -148,7 +148,7 @@ max_data_delay_minutes = Option(24*60, envvar="MAX_DATA_DELAY_MINUTES", help="Ho
 
 gas_price_method = Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model. Leave out to autodetect.")
 
-def parse_comma_separated_list(ctx: typer.Context, value: str) -> list[str] | Any:
+def parse_comma_separated_list(ctx: typer.Context, value: str | list[str] | None) -> list[str] | Any:
     """Support comma separated, whitespaced, list as a command line argument with Typer.
 
     Example:
@@ -165,6 +165,13 @@ def parse_comma_separated_list(ctx: typer.Context, value: str) -> list[str] | An
         return value
     if value is None:
         return []
+    if isinstance(value, list):
+        items: list[str] = []
+        for entry in value:
+            if not entry:
+                continue
+            items.extend(item.strip() for item in entry.split(",") if item.strip())
+        return items
     if value:
         return [item.strip() for item in value.split(',') if item.strip()]
     return []
