@@ -596,6 +596,9 @@ def lagoon_deploy_vault(
             etherscan_api_key=etherscan_api_key,
             verifier=verifier,
             verifier_url=verifier_url,
+            guard_only=guard_only,
+            existing_vault_address=existing_vault_address,
+            existing_safe_address=existing_safe_address,
         )
         web3config.close()
         logger.info("All ok.")
@@ -830,6 +833,9 @@ def _deploy_multichain(
     etherscan_api_key: str | None = None,
     verifier: str = "etherscan",
     verifier_url: str | None = None,
+    guard_only: bool = False,
+    existing_vault_address: str | None = None,
+    existing_safe_address: str | None = None,
 ):
     """Deploy multichain Lagoon vault from a strategy file.
 
@@ -883,6 +889,9 @@ def _deploy_multichain(
         fund_name=fund_name or "Strategy Vault",
         fund_symbol=fund_symbol or "CSV",
         any_asset=any_asset,
+        guard_only=guard_only,
+        existing_vault_address=existing_vault_address,
+        existing_safe_address=existing_safe_address,
     )
 
     chain_word = "chain" if len(configs) == 1 else "chains"

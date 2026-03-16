@@ -195,6 +195,9 @@ def translate_trading_universe_to_lagoon_config(
     any_asset: bool = False,
     asset_managers: list[HexAddress | str] | None = None,
     asset_manager: HexAddress | str | None = None,
+    guard_only: bool = False,
+    existing_vault_address: HexAddress | str | None = None,
+    existing_safe_address: HexAddress | str | None = None,
 ) -> dict[str, LagoonConfig]:
     """Translate a trading universe into per-chain Lagoon vault deployment configs.
 
@@ -202,9 +205,13 @@ def translate_trading_universe_to_lagoon_config(
     need CCTP bridging, Uniswap v3 whitelisting, etc., and builds the
     appropriate :class:`LagoonConfig` for each chain.
 
-    The source chain (where ``reserve_assets[0]`` lives) gets a full Lagoon
-    vault deployment. All other chains become satellite deployments
-    (Safe + guard only, no vault contract).
+    By default the source chain (where ``reserve_assets[0]`` lives) gets a
+    full Lagoon vault deployment. All other chains become satellite
+    deployments (Safe + guard only, no vault contract).
+
+    When ``guard_only`` is enabled, the source chain reuses the existing
+    Lagoon vault and Safe while satellite chains reuse the existing Safe
+    only and deploy replacement guards/modules.
 
     When *any_asset* is ``False`` (the default), the function extracts all
     unique token addresses from the universe's trading pairs and whitelists
@@ -249,6 +256,19 @@ def translate_trading_universe_to_lagoon_config(
         When ``False`` (default), only tokens from the trading universe
         are whitelisted.
 
+    :param guard_only:
+        When ``True``, build configs for redeploying only the guard/module
+        against an existing Safe. The source chain also reuses the existing
+        Lagoon vault.
+
+    :param existing_vault_address:
+        Existing Lagoon vault address on the source chain. Required when
+        ``guard_only`` is ``True``.
+
+    :param existing_safe_address:
+        Existing deterministic Safe address shared across all chains.
+        Required when ``guard_only`` is ``True``.
+
     :return:
         Per-chain configs keyed by chain slug, ready for
         :func:`deploy_multichain_lagoon_vault`.
@@ -259,6 +279,10 @@ def translate_trading_universe_to_lagoon_config(
     if asset_managers is None:
         assert asset_manager is not None, "Either asset_managers or asset_manager must be provided"
         asset_managers = [asset_manager]
+
+    if guard_only:
+        assert existing_safe_address, "existing_safe_address must be provided when guard_only=True"
+        assert existing_vault_address, "existing_vault_address must be provided when guard_only=True"
 
     # Determine source chain from the first reserve asset
     reserve_asset = list(universe.reserve_assets)[0]
@@ -318,6 +342,9 @@ def translate_trading_universe_to_lagoon_config(
             any_asset=any_asset,
             assets=token_addresses if token_addresses else None,
             satellite_chain=not is_source,
+            guard_only=guard_only,
+            existing_safe_address=existing_safe_address if guard_only else None,
+            existing_vault_address=existing_vault_address if guard_only and is_source else None,
         )
 
         # Source chain needs from_the_scratch on testnets (no factory)
