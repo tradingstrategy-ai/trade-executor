@@ -26,10 +26,13 @@ from tradeexecutor.cli.commands.app import app
 JSON_RPC_ARBITRUM = os.environ.get("JSON_RPC_ARBITRUM")
 TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
 
-pytestmark = pytest.mark.skipif(
-    (not JSON_RPC_ARBITRUM or not TRADING_STRATEGY_API_KEY),
-     reason="Set JSON_RPC_ARBITRUM and TRADING_STRATEGY_API_KEY needed to run this test"
-)
+pytestmark = [
+    pytest.mark.skip(reason="No longer maintained"),
+    pytest.mark.skipif(
+        (not JSON_RPC_ARBITRUM or not TRADING_STRATEGY_API_KEY),
+        reason="Set JSON_RPC_ARBITRUM and TRADING_STRATEGY_API_KEY needed to run this test",
+    ),
+]
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 

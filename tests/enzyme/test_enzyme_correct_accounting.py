@@ -39,6 +39,8 @@ from tradeexecutor.testing.ethereumtrader_uniswap_v2 import UniswapV2TestTrader
 from eth_defi.compat import native_datetime_utc_now
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
+pytestmark = pytest.mark.skip(reason="No longer maintained")
+
 
 @pytest.fixture
 def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:

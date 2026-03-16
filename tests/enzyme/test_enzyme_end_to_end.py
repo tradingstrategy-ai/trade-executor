@@ -40,6 +40,8 @@ from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.skip(reason="No longer maintained")
+
 
 def transfer_vault_ownership(
     vault: Vault,

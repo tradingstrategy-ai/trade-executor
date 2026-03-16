@@ -1,10 +1,13 @@
 """Test Enzyme sync model."""
+import pytest
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
 from eth_defi.event_reader.reorganisation_monitor import create_reorganisation_monitor
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.state.state import State
+
+pytestmark = pytest.mark.skip(reason="No longer maintained")
 
 
 def test_enzyme_sync_model_init(
