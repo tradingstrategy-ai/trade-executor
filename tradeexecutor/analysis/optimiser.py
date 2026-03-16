@@ -49,6 +49,7 @@ def analyse_optimiser_result(
         top_chunk,
         min_positions_threshold=0,
         drop_duplicates=drop_duplicates,
+        extended_metrics=True,
     )
 
 

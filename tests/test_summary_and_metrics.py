@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from packaging import version
 
+import numpy as np
 import pytest
 
 import pandas as pd
@@ -18,7 +19,8 @@ from tradingstrategy.exchange import Exchange
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.analysis.advanced_metrics import calculate_advanced_metrics
+from tradeexecutor.analysis.advanced_metrics import (
+    AdvancedMetricsMode, calculate_advanced_metrics)
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.backtest_runner import run_backtest, setup_backtest_for_universe
 from tradeexecutor.cli.log import setup_pytest_logging
@@ -330,6 +332,55 @@ def test_advanced_metrics(state: State):
     assert sharpe == pytest.approx(-2.09)
 
 
+def test_advanced_metrics_extended_labels(state: State):
+    """Extended QuantStats labels remain available for optimiser plumbing."""
+
+    equity = calculate_equity_curve(state)
+    returns = calculate_returns(equity)
+    metrics = calculate_advanced_metrics(returns, mode=AdvancedMetricsMode.full)
+
+    for metric in (
+        "Prob. Sharpe Ratio",
+        "Ulcer Index",
+        "Expected Shortfall (cVaR)",
+        "Recovery Factor",
+        "Longest DD Days",
+    ):
+        assert metric in metrics.index, f"Missing extended metric label: {metric}"
+
+
+@pytest.mark.parametrize("freq, periods", [
+    ("1h", 24 * 60),
+    ("4h", 6 * 60),
+    ("1d", 90),
+])
+def test_advanced_metrics_extended_labels_across_timeframes(freq: str, periods: int):
+    """Extended metrics stay available across intraday and daily return series."""
+
+    index = pd.date_range("2024-01-01", periods=periods, freq=freq)
+    base = np.sin(np.linspace(0, 10, periods)) * 0.003
+    drift = np.linspace(0.0001, 0.0004, periods)
+    returns = pd.Series(base + drift, index=index)
+    benchmark = pd.Series(base * 0.8 + drift * 0.9, index=index)
+    benchmark.attrs["returns_series_type"] = "daily_returns"
+
+    metrics = calculate_advanced_metrics(
+        returns,
+        benchmark=benchmark,
+        mode=AdvancedMetricsMode.full,
+        convert_to_daily=freq != "1d",
+    )
+
+    for metric in (
+        "Prob. Sharpe Ratio",
+        "Ulcer Index",
+        "Expected Shortfall (cVaR)",
+        "Recovery Factor",
+        "Longest DD Days",
+    ):
+        assert metric in metrics.index, f"Missing extended metric label for {freq}: {metric}"
+
+
 def test_calculate_key_metrics_empty():
     """Key metrics calculations with empty state."""
     state = State()
@@ -398,4 +449,3 @@ def test_calculate_key_metrics_live_and_backtesting(state: State):
 
     assert metrics["started_at"].source == KeyMetricSource.live_trading
     assert metrics["started_at"].value >= datetime.datetime(2023, 1, 1, 0, 0)
-

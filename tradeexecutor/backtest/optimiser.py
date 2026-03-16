@@ -46,7 +46,23 @@ logger = logging.getLogger(__name__)
 
 #: Column names produced by :py:func:`~tradeexecutor.analysis.grid_search.analyse_combination`
 #: that can be used as ``analysis_metric`` in parameter analysis functions.
-AnalysisMetric = Literal["CAGR", "Max DD", "Sharpe", "Sortino", "Calmar", "Time in market", "Win rate", "Avg pos", "Med pos"]
+AnalysisMetric = Literal[
+    "CAGR",
+    "Max DD",
+    "Sharpe",
+    "Sortino",
+    "Calmar",
+    "Time in market",
+    "Win rate",
+    "Avg pos",
+    "Med pos",
+    "PSR",
+    "Ulcer Index",
+    "UPI",
+    "cVaR",
+    "Recovery",
+    "Longest DD",
+]
 
 #: Maps ``search_func.__name__`` to the corresponding column name in the
 #: grid search result table.  Used by :py:func:`perform_optimisation` to
@@ -59,7 +75,11 @@ _SEARCH_FUNC_TO_METRIC: dict[str, AnalysisMetric] = {
     "optimise_max_drawdown": "Max DD",
     "optimise_win_rate": "Win rate",
     "optimise_gain_to_pain": "CAGR",
-    "optimise_ulcer_performance": "CAGR",
+    "optimise_ulcer_performance": "UPI",
+    "optimise_probabilistic_sharpe": "PSR",
+    "optimise_ulcer_index": "Ulcer Index",
+    "optimise_cvar": "cVaR",
+    "optimise_recovery_factor": "Recovery",
     "optimise_sharpe_and_max_drawdown_ratio": "Sharpe",
 }
 
