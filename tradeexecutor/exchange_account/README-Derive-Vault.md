@@ -12,7 +12,11 @@ This document details the steps required to deploy a Trading Strategy vault to D
 
 The process of deploying a Lagoon vault on Derive is essentially the same as it is for other chains, with two Derive-specific requirements:
 - **Derive deployer:** The account used for deployment must be the Derive deployer. This is a hot wallet that has been approved for deployment on Derive (via governance vote). Mikko has the private key.
-- **Asset manager:** Since the same account is always used for deployment, a separate asset manager hot wallet should be created for each vault deployment.
+- **Asset manager(s):** Since the same account is always used for deployment, you usually create one or more separate asset manager hot wallets per vault deployment.
+
+The `ASSET_MANAGER` setting accepts an ordered comma-separated list. The first address is the primary asset manager and becomes the Lagoon valuation manager. Any later addresses are secondary asset managers: they receive guard sender permissions, but they do not become the Lagoon vault manager.
+
+For the underlying Python role definitions, see `deps/web3-ethereum-defi/eth_defi/erc_4626/vault_protocol/lagoon/deployment.py`, especially `LagoonConfig.asset_managers` and the `deploy_automated_lagoon_vault()` role documentation.
 
 #### 1.a. Create asset manager hot wallet
 
@@ -44,8 +48,9 @@ export DENOMINATION_ASSET=0x6879287835A86F50f784313dBEd5E5cCC5bb8481
 # Trading Strategy Derive Deployer key (request from Mikko)
 export PRIVATE_KEY=0x123...
 
-# Address (NOT key) for the asset manager hot wallet created above
-export ASSET_MANAGER=0x234...
+# Address list (NOT keys) for the asset manager hot wallet(s) created above.
+# The first address is primary and becomes the Lagoon valuation manager.
+export ASSET_MANAGER="0x234..., 0x345..."
 
 # Update with correct vault-specific values
 export FUND_SYMBOL=XYZ123
@@ -120,7 +125,7 @@ Both the depositor EOA and the asset manager wallet need a small ETH balance on 
 
 **Wallets that need ETH:**
 - **Depositor EOA:** signs approval, requests deposit
-- **Asset manager:** (from step 1) signs the settlement transaction (post NAV + settle)
+- **Primary asset manager:** (from step 1) signs the settlement transaction (post NAV + settle)
 
 #### 3.b. Bridge USDC to Derive chain
 

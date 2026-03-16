@@ -21,6 +21,7 @@ from eth_account import Account
 from typer.main import get_command
 from web3 import Web3
 
+from eth_defi.abi import get_deployed_contract
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
@@ -126,6 +127,8 @@ def test_cli_lagoon_deploy_multichain_vault(
         web3.provider.make_request("anvil_setBalance", [deployer.address, hex(100 * 10**18)])
 
     multisig_owners = f"{deployer.address}"
+    primary_asset_manager = Web3.to_checksum_address(web3_arbitrum.eth.accounts[7])
+    secondary_asset_manager = Web3.to_checksum_address(web3_arbitrum.eth.accounts[8])
     vault_record_file = tmp_path / "vault-record.txt"
 
     environment = {
@@ -143,6 +146,7 @@ def test_cli_lagoon_deploy_multichain_vault(
         "FUND_NAME": "Multichain Test",
         "FUND_SYMBOL": "MCT",
         "MULTISIG_OWNERS": multisig_owners,
+        "ASSET_MANAGER": f"{primary_asset_manager}, {secondary_asset_manager}",
         "ANY_ASSET": "true",
         "SAFE_SALT_NONCE": str(SAFE_SALT_NONCE),
     }
@@ -161,10 +165,16 @@ def test_cli_lagoon_deploy_multichain_vault(
     # Source chain (Arbitrum) has a vault
     arb_dep = deploy_record["deployments"]["arbitrum"]
     assert arb_dep["vault_address"] is not None
+    assert arb_dep["asset_manager"] == primary_asset_manager
+    assert arb_dep["asset_managers"] == [primary_asset_manager, secondary_asset_manager]
+    assert arb_dep["valuation_manager"] == primary_asset_manager
     assert arb_dep["is_satellite"] is False
 
     # Satellite chain (Base) has Safe + guard only
     base_dep = deploy_record["deployments"]["base"]
+    assert base_dep["asset_manager"] == primary_asset_manager
+    assert base_dep["asset_managers"] == [primary_asset_manager, secondary_asset_manager]
+    assert base_dep["valuation_manager"] == primary_asset_manager
     assert base_dep["is_satellite"] is True
 
     # Same deterministic Safe address on both chains
@@ -183,6 +193,14 @@ def test_cli_lagoon_deploy_multichain_vault(
 
         modules = safe.retrieve_modules()
         assert len(modules) >= 1, f"No guard module on {chain_name}"
+
+        module = get_deployed_contract(
+            web3,
+            "safe-integration/TradingStrategyModuleV0.json",
+            deploy_record["deployments"][chain_name]["module_address"],
+        )
+        assert module.functions.isAllowedSender(primary_asset_manager).call() is True
+        assert module.functions.isAllowedSender(secondary_asset_manager).call() is True
 
     # Verify deployment report Markdown file was written
     md_path = vault_record_file.with_name("deployment-report.md")
@@ -203,6 +221,10 @@ def test_cli_lagoon_deploy_multichain_vault(
 
     # Report contains deployer address
     assert deployer.address in md_content
+    assert primary_asset_manager in md_content
+    assert secondary_asset_manager in md_content
+    assert "Primary asset manager" in md_content
+    assert "Lagoon valuation manager" in md_content
 
     # Sections rendered as bullet list tree
     assert "- **Senders" in md_content or "- **Any asset" in md_content

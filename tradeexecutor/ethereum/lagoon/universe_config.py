@@ -11,7 +11,7 @@ Example::
     configs = translate_trading_universe_to_lagoon_config(
         universe=strategy_universe,
         chain_web3={"arbitrum": web3_arb, "base": web3_base},
-        asset_manager=deployer.address,
+        asset_managers=[deployer.address],
         safe_owners=[deployer.address],
         safe_threshold=1,
         safe_salt_nonce=42,
@@ -187,13 +187,14 @@ def _apply_protocol_configs(
 def translate_trading_universe_to_lagoon_config(
     universe: TradingStrategyUniverse,
     chain_web3: dict[str, Web3],
-    asset_manager: HexAddress,
     safe_owners: list[HexAddress],
     safe_threshold: int,
     safe_salt_nonce: int,
     fund_name: str = "Crosschain Strategy Vault",
     fund_symbol: str = "CSV",
     any_asset: bool = False,
+    asset_managers: list[HexAddress | str] | None = None,
+    asset_manager: HexAddress | str | None = None,
 ) -> dict[str, LagoonConfig]:
     """Translate a trading universe into per-chain Lagoon vault deployment configs.
 
@@ -215,8 +216,18 @@ def translate_trading_universe_to_lagoon_config(
     :param chain_web3:
         Web3 connections keyed by chain slug (e.g. ``{"arbitrum": web3_arb, "base": web3_base}``).
 
+    :param asset_managers:
+        Ordered list of addresses that may manage the vault and execute
+        trades.
+
+        The first address becomes the primary asset manager and Lagoon
+        valuation manager. Any later addresses are secondary asset
+        managers and only receive guard sender permissions.
+
     :param asset_manager:
-        Address that will manage the vault (execute trades).
+        Backwards-compatible single-asset-manager input.
+
+        Used only when ``asset_managers`` is not provided.
 
     :param safe_owners:
         Addresses that own the Safe multisig.
@@ -244,6 +255,10 @@ def translate_trading_universe_to_lagoon_config(
     """
 
     logger.info("translate_trading_universe_to_lagoon_config() called with universe: %s", universe)
+
+    if asset_managers is None:
+        assert asset_manager is not None, "Either asset_managers or asset_manager must be provided"
+        asset_managers = [asset_manager]
 
     # Determine source chain from the first reserve asset
     reserve_asset = list(universe.reserve_assets)[0]
@@ -296,7 +311,7 @@ def translate_trading_universe_to_lagoon_config(
 
         config = LagoonConfig(
             parameters=deepcopy(base_params),
-            asset_manager=asset_manager,
+            asset_managers=list(asset_managers),
             safe_owners=list(safe_owners),
             safe_threshold=safe_threshold,
             safe_salt_nonce=safe_salt_nonce,

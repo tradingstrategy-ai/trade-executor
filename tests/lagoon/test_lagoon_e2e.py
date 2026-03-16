@@ -176,6 +176,73 @@ def test_cli_lagoon_deploy_vault(
     cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
 
 
+def test_cli_lagoon_deploy_vault_multiple_asset_managers(
+    web3,
+    anvil_base_fork,
+    mocker,
+    state_file,
+    asset_manager,
+    tmp_path: Path,
+    base_usdc,
+    persistent_test_client,
+):
+    """Deploy Lagoon vault with primary and secondary asset managers."""
+
+    cache_path = persistent_test_client.transport.cache_path
+    primary_asset_manager = Web3.to_checksum_address(web3.eth.accounts[7])
+    secondary_asset_manager = Web3.to_checksum_address(web3.eth.accounts[8])
+    multisig_owners = f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
+    vault_record_file = tmp_path / "vault-record.txt"
+
+    environment = {
+        "PATH": os.environ["PATH"],
+        "EXECUTOR_ID": "test_cli_lagoon_multi_asset_manager",
+        "NAME": "test_cli_lagoon_multi_asset_manager",
+        "JSON_RPC_BASE": anvil_base_fork.json_rpc_url,
+        "STATE_FILE": state_file.as_posix(),
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+        "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "PRIVATE_KEY": hexbytes_to_hex_str(asset_manager.private_key),
+        "VAULT_RECORD_FILE": str(vault_record_file),
+        "FUND_NAME": "Example",
+        "FUND_SYMBOL": "EXAM",
+        "MULTISIG_OWNERS": multisig_owners,
+        "DENOMINATION_ASSET": base_usdc.address,
+        "ASSET_MANAGER": f"{primary_asset_manager}, {secondary_asset_manager}",
+        "ANY_ASSET": "true",
+        "UNISWAP_V2": "true",
+        "UNISWAP_V3": "true",
+        "CACHE_PATH": cache_path,
+        "GENERATE_REPORT": "false",
+    }
+
+    cli = get_command(app)
+    mocker.patch.dict("os.environ", environment, clear=True)
+    cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
+
+    deployment_data = json.load(vault_record_file.with_suffix(".json").open("rt"))
+    assert deployment_data["Asset manager"] == primary_asset_manager
+    assert deployment_data["Asset managers"] == f"{primary_asset_manager}, {secondary_asset_manager}"
+    assert deployment_data["Valuation manager"] == primary_asset_manager
+
+    module = get_deployed_contract(
+        web3,
+        "safe-integration/TradingStrategyModuleV0.json",
+        deployment_data["Trading strategy module"],
+    )
+    assert module.functions.isAllowedSender(primary_asset_manager).call() is True
+    assert module.functions.isAllowedSender(secondary_asset_manager).call() is True
+
+    vault = create_vault_instance(
+        web3,
+        deployment_data["Vault"],
+        {ERC4626Feature.lagoon_like},
+    )
+    assert vault.valuation_manager == primary_asset_manager
+
+
 @pytest.mark.skip(reason="No longer supported")
 def test_cli_lagoon_check_wallet(
     deployed_vault_environment: dict,
@@ -594,4 +661,3 @@ def test_cli_lagoon_first_deposit(
     assert reserve_position.get_value() == pytest.approx(0, abs=1e-4), (
         f"Expected reserves == 0 after full redemption, got {reserve_position.get_value()}"
     )
-
