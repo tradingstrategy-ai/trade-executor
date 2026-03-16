@@ -57,6 +57,7 @@ import json
 import os.path
 import random
 import sys
+from dataclasses import fields, is_dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -174,15 +175,169 @@ def _write_markdown_report(vault_record_file: Path | None, markdown_report: str,
     logger.info("Wrote deployment report to %s", os.path.abspath(md_path))
 
 
-def _build_multichain_artifact_payload(result, safe_salt_nonce: int) -> tuple[str, dict[str, Any]]:
+def _serialise_simple_dataclass(value: Any) -> dict[str, Any]:
+    """Serialise a dataclass containing only scalar-ish fields."""
+    assert is_dataclass(value), f"Expected dataclass, got {type(value)}"
+    return {
+        field.name: _serialise_artifact_value(getattr(value, field.name))
+        for field in fields(value)
+    }
+
+
+def _serialise_contract_address(contract: Any) -> str | None:
+    if contract is None:
+        return None
+    return getattr(contract, "address", None)
+
+
+def _serialise_erc_4626_vaults(vaults: list[Any] | None) -> list[dict[str, Any]]:
+    if not vaults:
+        return []
+
+    return [
+        {
+            "address": getattr(vault, "vault_address", getattr(vault, "address", None)),
+            "name": getattr(vault, "name", None),
+            "symbol": getattr(vault, "symbol", None),
+        }
+        for vault in vaults
+    ]
+
+
+def _serialise_whitelist_entries(entries: tuple[Any, ...] | list[Any]) -> list[dict[str, Any]]:
+    return [
+        {
+            "kind": entry.kind,
+            "name": entry.name,
+            "address": entry.address,
+        }
+        for entry in entries
+    ]
+
+
+def _serialise_lagoon_config(config: Any) -> dict[str, Any]:
+    """Capture all LagoonConfig fields in a JSON-safe form."""
+    return {
+        "parameters": _serialise_simple_dataclass(config.parameters),
+        "safe_owners": [str(owner) for owner in config.safe_owners],
+        "safe_threshold": config.safe_threshold,
+        "asset_manager": str(config.asset_manager) if config.asset_manager else None,
+        "asset_managers": [str(manager) for manager in config.asset_managers or []],
+        "uniswap_v2": {
+            "factory": _serialise_contract_address(config.uniswap_v2.factory),
+            "router": _serialise_contract_address(config.uniswap_v2.router),
+            "weth": _serialise_contract_address(config.uniswap_v2.weth),
+            "init_code_hash": config.uniswap_v2.init_code_hash,
+        } if config.uniswap_v2 else None,
+        "uniswap_v3": {
+            "factory": _serialise_contract_address(config.uniswap_v3.factory),
+            "router": _serialise_contract_address(config.uniswap_v3.swap_router),
+            "position_manager": _serialise_contract_address(config.uniswap_v3.position_manager),
+            "quoter": _serialise_contract_address(config.uniswap_v3.quoter),
+            "weth": _serialise_contract_address(config.uniswap_v3.weth),
+            "quoter_v2": config.uniswap_v3.quoter_v2,
+            "router_v2": config.uniswap_v3.router_v2,
+        } if config.uniswap_v3 else None,
+        "aave_v3": {
+            "pool": _serialise_contract_address(config.aave_v3.pool),
+            "data_provider": _serialise_contract_address(config.aave_v3.data_provider),
+            "oracle": _serialise_contract_address(config.aave_v3.oracle),
+            "ausdc": getattr(config.aave_v3.ausdc, "address", None),
+        } if config.aave_v3 else None,
+        "cowswap": config.cowswap,
+        "velora": config.velora,
+        "gmx_deployment": _serialise_simple_dataclass(config.gmx_deployment) if config.gmx_deployment else None,
+        "cctp_deployment": _serialise_simple_dataclass(config.cctp_deployment) if config.cctp_deployment else None,
+        "any_asset": config.any_asset,
+        "etherscan_api_key": "<redacted>" if config.etherscan_api_key else None,
+        "verifier": config.verifier,
+        "verifier_url": config.verifier_url,
+        "use_forge": config.use_forge,
+        "between_contracts_delay_seconds": config.between_contracts_delay_seconds,
+        "erc_4626_vaults": _serialise_erc_4626_vaults(config.erc_4626_vaults),
+        "guard_only": config.guard_only,
+        "existing_vault_address": config.existing_vault_address,
+        "existing_safe_address": config.existing_safe_address,
+        "vault_abi": config.vault_abi,
+        "factory_contract": config.factory_contract,
+        "from_the_scratch": config.from_the_scratch,
+        "hypercore_vaults": [str(vault) for vault in config.hypercore_vaults or []],
+        "assets": [str(asset) for asset in config.assets or []],
+        "safe_salt_nonce": config.safe_salt_nonce,
+        "safe_proxy_factory_address": config.safe_proxy_factory_address,
+        "forge_cache_dir": str(config.forge_cache_dir) if config.forge_cache_dir else None,
+        "deploy_retries": config.deploy_retries,
+        "satellite_chain": config.satellite_chain,
+    }
+
+
+def _serialise_artifact_value(value: Any) -> Any:
+    """Best-effort conversion for JSON deployment records."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        return [_serialise_artifact_value(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _serialise_artifact_value(item) for key, item in value.items()}
+    if is_dataclass(value):
+        return _serialise_simple_dataclass(value)
+    if hasattr(value, "address"):
+        return value.address
+    return str(value)
+
+
+def _format_multichain_text_section(title: str, values: dict[str, Any], indent: str = "  ") -> list[str]:
+    lines = [title]
+    for key, value in values.items():
+        pretty_key = key.replace("_", " ").replace("-", " ").capitalize()
+        if isinstance(value, dict):
+            lines.append(f"{indent}{pretty_key}:")
+            for child_key, child_value in value.items():
+                child_pretty_key = child_key.replace("_", " ").replace("-", " ").capitalize()
+                lines.append(f"{indent}  {child_pretty_key}: {child_value}")
+        elif isinstance(value, list):
+            if not value:
+                lines.append(f"{indent}{pretty_key}: []")
+            elif all(isinstance(item, dict) for item in value):
+                lines.append(f"{indent}{pretty_key}:")
+                for idx, item in enumerate(value, start=1):
+                    lines.append(f"{indent}  - #{idx}")
+                    for child_key, child_value in item.items():
+                        child_pretty_key = child_key.replace("_", " ").replace("-", " ").capitalize()
+                        lines.append(f"{indent}    {child_pretty_key}: {child_value}")
+            else:
+                lines.append(f"{indent}{pretty_key}: {', '.join(str(item) for item in value)}")
+        else:
+            lines.append(f"{indent}{pretty_key}: {value}")
+    lines.append("")
+    return lines
+
+
+def _build_multichain_artifact_payload(
+    result,
+    safe_salt_nonce: int,
+    chain_configs: dict[str, Any],
+    guard_report: str,
+) -> tuple[str, dict[str, Any]]:
     """Build the human-readable and JSON deployment payloads for multichain deploys."""
     deployment_data = {
         "multichain": True,
         "safe_salt_nonce": safe_salt_nonce,
         "deployments": {},
+        "guard_report": guard_report,
     }
-    lines: list[str] = []
+    lines: list[str] = [
+        "Multichain Lagoon deployment",
+        f"Safe salt nonce: {safe_salt_nonce}",
+        f"Shared Safe: {result.safe_address}",
+        "",
+    ]
     for slug, dep in result.deployments.items():
+        deployment_fields = dep.get_deployment_data()
+        config_snapshot = _serialise_lagoon_config(chain_configs[slug])
+        whitelist_entries = _serialise_whitelist_entries(dep.whitelisted_items)
         deployment_data["deployments"][slug] = {
             "vault_address": dep.vault.address if hasattr(dep.vault, "address") else None,
             "safe_address": dep.safe_address,
@@ -191,18 +346,17 @@ def _build_multichain_artifact_payload(result, safe_salt_nonce: int) -> tuple[st
             "asset_managers": list(dep.asset_managers),
             "valuation_manager": dep.valuation_manager,
             "is_satellite": dep.is_satellite,
+            "deployment_data": deployment_fields,
+            "whitelisted_items": whitelist_entries,
+            "config": config_snapshot,
         }
         lines.append(f"Chain: {slug}")
-        lines.append(f"  Satellite: {dep.is_satellite}")
-        lines.append(f"  Safe: {dep.safe_address}")
-        lines.append(f"  Primary asset manager: {dep.asset_manager}")
-        lines.append(f"  Asset managers: {', '.join(dep.asset_managers)}")
-        lines.append(f"  Valuation manager: {dep.valuation_manager}")
-        if not dep.is_satellite:
-            lines.append(f"  Vault: {dep.vault.address}")
-        if dep.trading_strategy_module:
-            lines.append(f"  Module: {dep.trading_strategy_module.address}")
-        lines.append("")
+        lines.extend(_format_multichain_text_section("  Deployment", deployment_fields, indent="    "))
+        lines.extend(_format_multichain_text_section("  Lagoon config", config_snapshot, indent="    "))
+        lines.extend(_format_multichain_text_section("  Guard whitelist", {"entries": whitelist_entries}, indent="    "))
+
+    lines.append("Guard report")
+    lines.append(guard_report)
     return "\n".join(lines), deployment_data
 
 
@@ -333,6 +487,7 @@ def lagoon_deploy_vault(
         **rpc_kwargs,
         simulate=simulate,
         mev_endpoint_disabled=True,
+        simulate_http_timeout=(3.0, 90.0) if simulate else None,
     )
 
     if not web3config.has_any_connection():
@@ -692,15 +847,6 @@ def _deploy_multichain(
     logger.info("Deployment complete")
     logger.info("Safe address: %s", result.deployments[next(iter(result.deployments))].safe_address)
 
-    text_payload, json_payload = _build_multichain_artifact_payload(result, safe_salt_nonce)
-    _write_deployment_artifacts(
-        vault_record_file,
-        text_payload=text_payload,
-        json_payload=json_payload,
-        simulate=simulate,
-        logger=logger,
-    )
-
     for slug, dep in result.deployments.items():
         kind = "satellite" if dep.is_satellite else "source"
         logger.info("Lagoon deployed on %s (%s):\n%s", slug, kind, dep.pformat())
@@ -714,13 +860,27 @@ def _deploy_multichain(
         from_block_by_chain_id[cid] = pre_deploy_blocks.get(slug, 0)
 
     # Generate multichain deployment report (single scan with follow_cctp=True)
-    _, markdown_report = generate_multichain_deployment_report(
+    unicode_report, markdown_report = generate_multichain_deployment_report(
         safe_address=result.safe_address,
         chain_web3=chain_id_web3,
         deployment_result=result,
         hypersync_api_key=hypersync_api_key,
         simulate=simulate,
         from_block=from_block_by_chain_id,
+    )
+
+    text_payload, json_payload = _build_multichain_artifact_payload(
+        result,
+        safe_salt_nonce,
+        configs,
+        unicode_report,
+    )
+    _write_deployment_artifacts(
+        vault_record_file,
+        text_payload=text_payload,
+        json_payload=json_payload,
+        simulate=simulate,
+        logger=logger,
     )
 
     _write_markdown_report(vault_record_file, markdown_report, logger)

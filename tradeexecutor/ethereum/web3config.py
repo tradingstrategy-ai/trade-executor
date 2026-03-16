@@ -177,6 +177,7 @@ class Web3Config:
         unit_testing: bool=False,
         simulate: bool=False,
         mev_endpoint_disabled: bool=False,
+        simulate_http_timeout: tuple[float, float] | None = None,
     ) -> MultiProviderWeb3:
         """Create a new Web3.py connection.
 
@@ -210,7 +211,11 @@ class Web3Config:
             last_rpc = configuration_line.split(" ")[-1]
             logger.info(f"Simulating transactions with Anvil, forking from {last_rpc}")
             anvil = launch_anvil(last_rpc, attempts=1)
-            web3 = create_multi_provider_web3(anvil.json_rpc_url, switchover_noisiness=logging.TRADE)
+            web3 = create_multi_provider_web3(
+                anvil.json_rpc_url,
+                switchover_noisiness=logging.TRADE,
+                default_http_timeout=simulate_http_timeout,
+            )
             web3.anvil = anvil
             web3.simulate = True
             configuration_line = anvil.json_rpc_url  # Override whatever configuration given earlier
@@ -358,6 +363,7 @@ class Web3Config:
        unit_testing: bool=False,
        simulate: bool=False,
        mev_endpoint_disabled: bool=False,
+       simulate_http_timeout: tuple[float, float] | None = None,
        **kwargs
     ) -> "Web3Config":
         """Setup connections based on given RPC URLs.
@@ -390,6 +396,7 @@ class Web3Config:
                     unit_testing=unit_testing,
                     simulate=simulate,
                     mev_endpoint_disabled=mev_endpoint_disabled,
+                    simulate_http_timeout=simulate_http_timeout,
                 )
 
                 if simulate:
@@ -417,4 +424,3 @@ class Web3Config:
         for web3 in self.connections.values():
             web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
             hot_wallet.sync_nonce(web3)
-
