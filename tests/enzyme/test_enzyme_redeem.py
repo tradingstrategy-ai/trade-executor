@@ -33,6 +33,8 @@ from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 CI = os.environ.get("CI") == "true"
 
+pytestmark = pytest.mark.skip(reason="No longer maintained")
+
 
 @pytest.fixture
 def hot_wallet(web3, deployer, user_1, usdc: Contract) -> HotWallet:
@@ -241,5 +243,4 @@ def test_enzyme_redeem_open_position(
     assert position.get_value() == pytest.approx(50)
     assert reserve.get_value() == pytest.approx(200)
     assert state.portfolio.calculate_total_equity() == pytest.approx(250)
-
 

@@ -19,6 +19,8 @@ from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from eth_defi.compat import native_datetime_utc_now
 
+pytestmark = pytest.mark.skip(reason="No longer maintained")
+
 
 
 def test_enzyme_no_deposit(

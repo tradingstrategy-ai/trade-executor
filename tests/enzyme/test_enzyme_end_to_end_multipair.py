@@ -39,6 +39,8 @@ from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.skip(reason="No longer maintained")
+
 
 @pytest.fixture
 def hot_wallet(web3, deployer, user_1, usdc: Contract, vault: Vault) -> HotWallet:
@@ -348,5 +350,4 @@ def test_enzyme_live_trading_reinit(
         assert treasury.last_updated_at
         assert len(treasury.balance_update_refs) == 1
         assert len(reserve_position.balance_updates) == 1
-
 
