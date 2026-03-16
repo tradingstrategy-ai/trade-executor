@@ -75,6 +75,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
     LagoonDeploymentParameters, deploy_automated_lagoon_vault,
     deploy_multichain_lagoon_vault)
 from eth_defi.hotwallet import HotWallet
+from eth_defi.safe.deployment import fetch_safe_deployment
 from eth_defi.token import fetch_erc20_details
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
@@ -111,16 +112,53 @@ from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import \
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 
 
-def _normalize_multisig_owners(multisig_owners: list[str] | None, hot_wallet: HotWallet) -> list[str]:
-    """Normalise owners list so single-chain and multichain paths behave identically."""
-    if multisig_owners:
-        return multisig_owners
-    return [hot_wallet.address]
-
-
 def _calculate_safe_threshold(multisig_owners: list[str]) -> int:
     """Lagoon deployment policy for Safe threshold."""
     return max(1, len(multisig_owners) - 1)
+
+
+def _normalize_multisig_owners(multisig_owners: list[str] | None, hot_wallet: HotWallet) -> list[str]:
+    """Backwards-compatible owner normalisation helper for simple CLI paths."""
+    owners, _ = _resolve_multisig_configuration(
+        multisig_owners=multisig_owners,
+        hot_wallet=hot_wallet,
+    )
+    return owners
+
+
+def _resolve_multisig_configuration(
+    *,
+    multisig_owners: list[str] | None,
+    hot_wallet: HotWallet,
+    web3: Web3 | None = None,
+    guard_only: bool = False,
+    existing_safe_address: str | None = None,
+    logger=None,
+) -> tuple[list[str], int]:
+    """Resolve Safe owners and threshold for deployment.
+
+    Guard-only redeploys should reuse the live Safe configuration when the
+    operator did not explicitly provide ``MULTISIG_OWNERS``.
+    """
+    if multisig_owners:
+        return multisig_owners, _calculate_safe_threshold(multisig_owners)
+
+    if guard_only and existing_safe_address:
+        assert web3 is not None, "web3 is required to read existing Safe owners"
+        safe = fetch_safe_deployment(web3, existing_safe_address)
+        owners = [Web3.to_checksum_address(owner) for owner in safe.retrieve_owners()]
+        threshold = safe.retrieve_threshold()
+        if logger is not None:
+            logger.info(
+                "Resolved multisig owners from existing Safe %s: owners=%s, threshold=%d",
+                existing_safe_address,
+                owners,
+                threshold,
+            )
+        return owners, threshold
+
+    owners = [hot_wallet.address]
+    return owners, _calculate_safe_threshold(owners)
 
 
 def _resolve_asset_managers(asset_manager_addresses: list[str] | str | None, hot_wallet: HotWallet) -> list[str]:
@@ -217,6 +255,11 @@ def _write_markdown_report(vault_record_file: Path | None, markdown_report: str,
     md_path = vault_record_file.with_name("deployment-report.md")
     _write_file(md_path, markdown_report)
     logger.info("Wrote deployment report to %s", os.path.abspath(md_path))
+
+
+def _get_deployment_mode_label(*, guard_only: bool) -> str:
+    """Human-readable label for persisted deployment records."""
+    return "guard redeploy" if guard_only else "fresh deployment"
 
 
 def _serialise_simple_dataclass(value: Any) -> dict[str, Any]:
@@ -366,14 +409,18 @@ def _build_multichain_artifact_payload(
     guard_report: str,
 ) -> tuple[str, dict[str, Any]]:
     """Build the human-readable and JSON deployment payloads for multichain deploys."""
+    guard_only = all(config.guard_only for config in chain_configs.values())
+    deployment_mode = _get_deployment_mode_label(guard_only=guard_only)
     deployment_data = {
         "multichain": True,
+        "deployment_mode": deployment_mode,
         "safe_salt_nonce": safe_salt_nonce,
         "deployments": {},
         "guard_report": guard_report,
     }
     lines: list[str] = [
         "Multichain Lagoon deployment",
+        f"Deployment mode: {deployment_mode}",
         f"Shared Safe: {result.safe_address}",
         "",
     ]
@@ -383,6 +430,12 @@ def _build_multichain_artifact_payload(
         deployment_fields = dep.get_deployment_data()
         config_snapshot = _serialise_lagoon_config(chain_configs[slug])
         whitelist_entries = _serialise_whitelist_entries(dep.whitelisted_items)
+        guard_migration = None
+        if chain_configs[slug].guard_only:
+            guard_migration = _build_guard_migration_instructions(
+                dep,
+                chain_configs[slug].existing_vault_address or dep.safe_address,
+            )
         deployment_data["deployments"][slug] = {
             "vault_address": dep.vault.address if hasattr(dep.vault, "address") else None,
             "safe_address": dep.safe_address,
@@ -391,14 +444,31 @@ def _build_multichain_artifact_payload(
             "asset_managers": list(dep.asset_managers),
             "valuation_manager": dep.valuation_manager,
             "is_satellite": dep.is_satellite,
+            "deployment_mode": _get_deployment_mode_label(guard_only=chain_configs[slug].guard_only),
             "deployment_data": deployment_fields,
             "whitelisted_items": whitelist_entries,
             "config": config_snapshot,
+            "guard_migration": guard_migration,
         }
         lines.append(f"Chain: {slug}")
+        lines.append(f"  Deployment mode: {_get_deployment_mode_label(guard_only=chain_configs[slug].guard_only)}")
+        lines.append("")
         lines.extend(_format_multichain_text_section("  Deployment", deployment_fields, indent="    "))
         lines.extend(_format_multichain_text_section("  Lagoon config", config_snapshot, indent="    "))
         lines.extend(_format_multichain_text_section("  Guard whitelist", {"entries": whitelist_entries}, indent="    "))
+        if guard_migration:
+            lines.append("  Guard migration instructions")
+            lines.append(f"    Old guard address: {guard_migration['old_guard_address']}")
+            lines.append(f"    New guard address: {guard_migration['new_guard_address']}")
+            lines.append(f"    Safe address: {guard_migration['safe_address']}")
+            lines.append(f"    Vault address: {guard_migration['vault_address']}")
+            lines.append(f"    Currently enabled Safe modules: {guard_migration['currently_enabled_modules']}")
+            lines.append("    Safe transactions needed:")
+            for tx in guard_migration["safe_transactions"]:
+                lines.append(f"    {tx['step']}. {tx['call']}")
+            lines.append("    Safe ABI needed:")
+            lines.extend(f"    {line}" for line in guard_migration["safe_abi"].strip().splitlines())
+            lines.append("")
 
     lines.append("Guard report")
     lines.append(guard_report)
@@ -434,7 +504,7 @@ def _build_guard_migration_instructions(deploy_info, vault_adapter_address: str)
         "old_guard_address": old_guard_address,
         "new_guard_address": deploy_info.trading_strategy_module.address,
         "safe_address": safe_address,
-        "vault_address": deploy_info.vault.address,
+        "vault_address": getattr(deploy_info.vault, "address", None),
         "currently_enabled_modules": list(mods),
         "safe_transactions": transactions,
         "safe_abi": SAFE_ABI_STR,
@@ -474,6 +544,15 @@ def _augment_guard_only_artifacts(
     augmented_json["Guard migration"] = instructions
     augmented_text = text_payload.rstrip() + "\n\n" + _format_guard_migration_instructions(instructions) + "\n"
     return augmented_text, augmented_json
+
+
+def _annotate_single_chain_artifacts(*, text_payload: str, json_payload: dict[str, Any], guard_only: bool) -> tuple[str, dict[str, Any]]:
+    """Attach deployment mode information to single-chain artefacts."""
+    deployment_mode = _get_deployment_mode_label(guard_only=guard_only)
+    annotated_json = dict(json_payload)
+    annotated_json["Deployment mode"] = deployment_mode
+    annotated_text = f"Deployment mode: {deployment_mode}\n\n{text_payload.lstrip()}"
+    return annotated_text, annotated_json
 
 
 def _log_guard_only_details(deploy_info, vault_adapter_address: str, logger) -> None:
@@ -610,7 +689,6 @@ def lagoon_deploy_vault(
 
     wallet_sync_web3 = next(iter(web3config.connections.values()))
     hot_wallet = create_hot_wallet(wallet_sync_web3, private_key)
-    multisig_owners = _normalize_multisig_owners(multisig_owners, hot_wallet)
     raw_asset_manager_env = os.environ.get("ASSET_MANAGER")
     if raw_asset_manager_env:
         logger.info("Raw ASSET_MANAGER env value: %s", raw_asset_manager_env)
@@ -699,6 +777,14 @@ def lagoon_deploy_vault(
         logger.info("Ready to deploy")
 
     chain_slug = chain_id.get_slug()
+    multisig_owners, safe_threshold = _resolve_multisig_configuration(
+        multisig_owners=multisig_owners,
+        hot_wallet=hot_wallet,
+        web3=web3,
+        guard_only=guard_only,
+        existing_safe_address=existing_safe_address,
+        logger=logger,
+    )
     log_deployment_preflight_report(
         hot_wallet=hot_wallet,
         chain_web3={chain_slug: web3},
@@ -808,7 +894,7 @@ def lagoon_deploy_vault(
         asset_managers=asset_managers,
         parameters=parameters,
         safe_owners=multisig_owners,
-        safe_threshold=_calculate_safe_threshold(multisig_owners),
+        safe_threshold=safe_threshold,
         uniswap_v2=uniswap_v2_deployment,
         uniswap_v3=uniswap_v3_deployment,
         aave_v3=aave_v3_deployment,
@@ -828,6 +914,11 @@ def lagoon_deploy_vault(
 
     text_payload = deploy_info.pformat()
     json_payload = deploy_info.get_deployment_data()
+    text_payload, json_payload = _annotate_single_chain_artifacts(
+        text_payload=text_payload,
+        json_payload=json_payload,
+        guard_only=guard_only,
+    )
     if guard_only:
         text_payload, json_payload = _augment_guard_only_artifacts(
             deploy_info,
@@ -905,9 +996,6 @@ def _deploy_multichain(
     elif reusing_existing_safe:
         logger.info("Reusing existing Safe %s across chains; safe_salt_nonce not needed", existing_safe_address)
 
-    multisig_owners = _normalize_multisig_owners(multisig_owners, hot_wallet)
-    safe_threshold = _calculate_safe_threshold(multisig_owners)
-
     # Create TradingStrategy client if API key is available
     # (needed by strategies that fetch exchange/pair data from the API)
     client = None
@@ -943,6 +1031,19 @@ def _deploy_multichain(
         existing_vault_address=existing_vault_address,
         universe=universe,
         chain_web3=chain_web3,
+        logger=logger,
+    )
+
+    source_chain_id = normalise_deployment_chain_id(list(universe.reserve_assets)[0].chain_id)
+    source_chain_slug = ChainId(source_chain_id).get_slug()
+    source_chain_web3 = chain_web3[source_chain_slug]
+
+    multisig_owners, safe_threshold = _resolve_multisig_configuration(
+        multisig_owners=multisig_owners,
+        hot_wallet=hot_wallet,
+        web3=source_chain_web3,
+        guard_only=guard_only,
+        existing_safe_address=existing_safe_address,
         logger=logger,
     )
 
@@ -1007,6 +1108,13 @@ def _deploy_multichain(
     for slug, dep in result.deployments.items():
         kind = "satellite" if dep.is_satellite else "source"
         logger.info("Lagoon deployed on %s (%s):\n%s", slug, kind, dep.pformat())
+        if configs[slug].guard_only:
+            logger.info("Guard migration steps for %s:", slug)
+            _log_guard_only_details(
+                dep,
+                configs[slug].existing_vault_address or dep.safe_address,
+                logger,
+            )
 
     # Build chain_id-keyed mappings for the multichain report
     chain_id_web3: dict[int, Web3] = {}
