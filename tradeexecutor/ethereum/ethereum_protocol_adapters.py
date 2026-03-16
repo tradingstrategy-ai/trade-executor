@@ -334,6 +334,7 @@ def create_vault_adapter(
     strategy_universe: TradingStrategyUniverse,
     routing_id: ProtocolRoutingId,
     web3config=None,
+    execution_model=None,
 ) -> ProtocolRoutingConfig:
 
     # TODO: Avoid circular imports for now
@@ -349,8 +350,22 @@ def create_vault_adapter(
     reserve = strategy_universe.get_reserve_asset()
     assert reserve.token_symbol in ("USDC", "USDT",)
 
+    owner_address_resolver = None
+    if execution_model is not None:
+        satellite_vaults = getattr(execution_model, "satellite_vaults", {}) or {}
+
+        def owner_address_resolver(pair: TradingPairIdentifier) -> str:
+            satellite_vault = satellite_vaults.get(pair.chain_id)
+            if satellite_vault is not None:
+                return satellite_vault.safe_address
+            return execution_model.tx_builder.get_token_delivery_address()
+
     routing_model = VaultRouting(reserve.address)
-    pricing_model = VaultPricing(web3, web3config=web3config)
+    pricing_model = VaultPricing(
+        web3,
+        web3config=web3config,
+        owner_address_resolver=owner_address_resolver,
+    )
     valuation_model = VaultValuator(pricing_model)
 
     return ProtocolRoutingConfig(
@@ -570,7 +585,21 @@ def create_hypercore_vault_adapter(
     assert hypercore_vault_value_func is not None, \
         "hypercore_vault_value_func is required for Hypercore vault routing"
 
-    pricing_model = HypercoreVaultPricing(hypercore_vault_value_func, simulate=simulate)
+    safe_address_resolver = None
+    if execution_model is not None:
+        satellite_vaults = getattr(execution_model, "satellite_vaults", {}) or {}
+
+        def safe_address_resolver(pair: TradingPairIdentifier) -> str:
+            satellite_vault = satellite_vaults.get(pair.chain_id)
+            if satellite_vault is not None:
+                return satellite_vault.safe_address
+            return execution_model.tx_builder.get_token_delivery_address()
+
+    pricing_model = HypercoreVaultPricing(
+        hypercore_vault_value_func,
+        safe_address_resolver=safe_address_resolver,
+        simulate=simulate,
+    )
     valuation_model = HypercoreVaultValuator(hypercore_vault_value_func, simulate=simulate)
 
     routing_model = None
@@ -876,7 +905,13 @@ class EthereumPairConfigurator(PairConfigurator):
                 simulate=simulate,
             )
         elif routing_id.router_name == "vault":
-            return create_vault_adapter(self.web3, self.strategy_universe, routing_id, web3config=self.web3config)
+            return create_vault_adapter(
+                self.web3,
+                self.strategy_universe,
+                routing_id,
+                web3config=self.web3config,
+                execution_model=self.execution_model,
+            )
         elif routing_id.router_name == "freqtrade":
             return create_freqtrade_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "exchange_account":

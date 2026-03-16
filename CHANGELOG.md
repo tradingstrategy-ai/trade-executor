@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add live vault tradeability checks for ERC-4626 and Hypercore pricing, including Hyperliquid leader-fraction deposit gating and user-specific redemption limits (2026-03-16)
+
 - Use `fetch_gmx_total_equity()` for GMX valuation with per-block reads and block number tracking in ValuationUpdate/BalanceUpdate state events (2026-03-15)
 
 - Fix Lagoon vault NAV double-counting when exchange account positions (GMX) transfer USDC from Safe outside the trade engine, causing share price to drop on deposit (2026-03-15)

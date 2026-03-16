@@ -135,6 +135,46 @@ class GenericPricing(PricingModel):
         route = self.route(pair)
         return route.get_quote_token_tvl(timestamp, pair)
 
+    def get_max_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> Decimal | None:
+        route = self.route(pair)
+        return route.get_max_deposit(ts, pair)
+
+    def get_max_redemption(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> Decimal | None:
+        route = self.route(pair)
+        return route.get_max_redemption(ts, pair)
+
+    def can_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> bool:
+        route = self.route(pair)
+        return route.can_deposit(ts, pair)
+
+    def can_redeem(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> bool:
+        route = self.route(pair)
+        return route.can_redeem(ts, pair)
+
+    def is_tradeable(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> bool:
+        route = self.route(pair)
+        return route.is_tradeable(ts, pair)
+
 
 class EthereumGenericPricingFactory(PricingModelFactory):
     """Create Ethereum pricing routing tables.
@@ -152,4 +192,3 @@ class EthereumGenericPricingFactory(PricingModelFactory):
     ):
         pair_configurator = EthereumPairConfigurator(self.web3, universe)
         return GenericPricing(pair_configurator)
-
