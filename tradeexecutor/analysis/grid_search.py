@@ -26,11 +26,127 @@ from tradeexecutor.utils.sort import unique_sort
 
 VALUE_COLS = ["Optim", "CAGR", "Max DD", "Sharpe", "Sortino", "Avg pos", "Med pos", "Win rate", "Time in market"]
 
-CALMAR_VALUE_COLS = ["Optim", "CAGR", "Max DD", "Sharpe", "Sortino", "Calmar", "Time in market", "Avg capital util", "Max cash %", "Avg pos", "Med pos", "Win rate"]
+CALMAR_VALUE_COLS = ["Optim", "CAGR", "Max DD", "Sharpe", "Sortino", "Calmar", "Time in market", "Avg capital util", "Avg pos", "Med pos", "Win rate"]
 
-PERCENT_COLS = ["CAGR", "Max DD", "Avg pos", "Med pos", "Time in market", "Win rate", "Avg capital util", "Max cash %"]
+EXTENDED_VALUE_COLS = [
+    "PSR",
+    "Ulcer Index",
+    "UPI",
+    "cVaR",
+    "Recovery",
+    "Longest DD",
+]
+
+EXTENDED_EXPOSURE_COLS = ["Time in market", "Avg capital util"]
+
+HIDDEN_DISPLAY_COLS = ["Max cash %"]
+
+PERCENT_COLS = [
+    "CAGR",
+    "Max DD",
+    "Avg pos",
+    "Med pos",
+    "Time in market",
+    "Win rate",
+    "Avg capital util",
+    "Max cash %",
+    "PSR",
+    "cVaR",
+]
 
 DATA_COLS = ["Positions", "Trades"]
+
+METRIC_REGISTRY = {
+    "CAGR": "Annualised return (raw)",
+    "Max DD": "Max Drawdown",
+    "Sharpe": "Sharpe",
+    "Sortino": "Sortino",
+    "Time in market": "Time in Market",
+    "PSR": "Prob. Sharpe Ratio",
+    "Ulcer Index": "Ulcer Index",
+    "cVaR": "Expected Shortfall (cVaR)",
+    "Recovery": "Recovery Factor",
+    "Longest DD": "Longest DD Days",
+}
+
+HOVER_KEY_METRICS = (
+    "CAGR﹪",
+    "Max Drawdown",
+    "Time in Market",
+    "Sharpe",
+    "Sortino",
+    "Prob. Sharpe Ratio",
+    "Ulcer Index",
+    "Expected Shortfall (cVaR)",
+    "Recovery Factor",
+    "Longest DD Days",
+)
+
+HOVER_PERCENT_METRICS = (
+    "CAGR﹪",
+    "Max Drawdown",
+    "Time in Market",
+    "Prob. Sharpe Ratio",
+    "Expected Shortfall (cVaR)",
+)
+
+
+def _compute_calmar(cagr_val: float | None, max_dd_val: float | None) -> float:
+    """Calculate Calmar ratio for a result row.
+
+    For glossary definitions of drawdown-based metrics, see
+    https://tradingstrategy.ai/glossary.
+    """
+    if cagr_val is not None and max_dd_val is not None and not np.isnan(cagr_val) and not np.isnan(max_dd_val) and abs(max_dd_val) > 0:
+        return cagr_val / abs(max_dd_val)
+    return np.nan
+
+
+def _compute_upi(cagr_val: float | None, ulcer_index_val: float | None) -> float:
+    """Calculate Ulcer performance index for a result row.
+
+    For glossary definitions of Ulcer Index and UPI, see
+    https://tradingstrategy.ai/glossary.
+    """
+    if cagr_val is not None and ulcer_index_val is not None and not np.isnan(cagr_val) and not np.isnan(ulcer_index_val) and ulcer_index_val > 0:
+        return cagr_val / ulcer_index_val
+    return np.nan
+
+
+def _calculate_capital_utilisation_metrics(r: GridSearchResult) -> tuple[float, float]:
+    """Calculate portfolio cash deployment metrics.
+
+    For glossary definitions of capital utilisation and related portfolio
+    terms, see https://tradingstrategy.ai/glossary.
+    """
+    try:
+        state = r.hydrate_state()
+        if state and state.stats and state.stats.portfolio:
+            cash_ratios = []
+            for ps in state.stats.portfolio:
+                equity = ps.total_equity or 0
+                cash = ps.free_cash
+                if equity > 0 and cash is not None:
+                    cash_ratios.append(cash / equity)
+            if cash_ratios:
+                return clean_metric(1.0 - np.mean(cash_ratios)), clean_metric(np.max(cash_ratios))
+    except Exception:
+        pass
+
+    return np.nan, np.nan
+
+
+def clean_metric(x):
+    """Normalise display metric values for analysis tables."""
+    if x == "-":
+        return np.nan
+    elif x == "":
+        return np.nan
+
+    if type(x) == int:
+        return float(x)
+
+    return x
 
 
 def analyse_combination(
@@ -60,17 +176,6 @@ def analyse_combination(
         row[param.name] = param.value
         param_names.append(param.name)
 
-    def clean(x):
-        if x == "-":
-            return np.nan
-        elif x == "":
-            return np.nan
-
-        if type(x) == int:
-            return float(x)
-
-        return x
-
     row.update({
         "Positions": r.summary.total_positions,
         "Trades": r.summary.total_trades,
@@ -80,54 +185,23 @@ def analyse_combination(
         # Display raw optimiser search values
         # See analyse_optimiser_result()
         row.update({
-            "Optim": clean(r.optimiser_search_value),
+            "Optim": clean_metric(r.optimiser_search_value),
         })
 
+    for column, metric_name in METRIC_REGISTRY.items():
+        row[column] = clean_metric(r.metrics.loc[metric_name].iloc[0])
+
     row.update({
-        # "Return": r.summary.return_percent,
-        # "Return2": r.summary.annualised_return_percent,
-        #"Annualised profit": clean(r.metrics.loc["Expected Yearly"][0]),
-        "CAGR": clean(r.metrics.loc["Annualised return (raw)"].iloc[0]),
-        "Max DD": clean(r.metrics.loc["Max Drawdown"].iloc[0]),
-        "Sharpe": clean(r.metrics.loc["Sharpe"].iloc[0]),
-        "Sortino": clean(r.metrics.loc["Sortino"].iloc[0]),
-        # "Combination": r.combination.get_label(),
-        "Time in market": clean(r.metrics.loc["Time in Market"].iloc[0]),
-        "Win rate": clean(r.get_win_rate()),
+        "Win rate": clean_metric(r.get_win_rate()),
         "Avg pos": r.summary.average_trade,  # Average position
         "Med pos": r.summary.median_trade,  # Median position
     })
 
-    # Calmar ratio: CAGR / |max drawdown|
-    cagr_val = row.get("CAGR")
-    max_dd_val = row.get("Max DD")
-    if cagr_val is not None and max_dd_val is not None and not np.isnan(cagr_val) and not np.isnan(max_dd_val) and abs(max_dd_val) > 0:
-        row["Calmar"] = cagr_val / abs(max_dd_val)
-    else:
-        row["Calmar"] = np.nan
+    row["Calmar"] = _compute_calmar(row.get("CAGR"), row.get("Max DD"))
+    row["UPI"] = _compute_upi(row.get("CAGR"), row.get("Ulcer Index"))
 
     # Capital utilisation metrics from portfolio stats time-series
-    try:
-        state = r.hydrate_state()
-        if state and state.stats and state.stats.portfolio:
-            cash_ratios = []
-            for ps in state.stats.portfolio:
-                equity = ps.total_equity or 0
-                cash = ps.free_cash
-                if equity > 0 and cash is not None:
-                    cash_ratios.append(cash / equity)
-            if cash_ratios:
-                row["Avg capital util"] = clean(1.0 - np.mean(cash_ratios))
-                row["Max cash %"] = clean(np.max(cash_ratios))
-            else:
-                row["Avg capital util"] = np.nan
-                row["Max cash %"] = np.nan
-        else:
-            row["Avg capital util"] = np.nan
-            row["Max cash %"] = np.nan
-    except Exception:
-        row["Avg capital util"] = np.nan
-        row["Max cash %"] = np.nan
+    row["Avg capital util"], row["Max cash %"] = _calculate_capital_utilisation_metrics(r)
 
     # Clear all values except position count if this is not a good trade series
     if r.summary.total_positions < min_positions_threshold:
@@ -142,6 +216,7 @@ def analyse_grid_search_result(
     results: List[GridSearchResult],
     min_positions_threshold: int = 5,
     drop_duplicates=True,
+    extended_metrics: bool = False,
 ) -> pd.DataFrame:
     """Create aa table showing grid search result of each combination.
 
@@ -167,6 +242,13 @@ def analyse_grid_search_result(
         If we has less closed positions than this amount, do not consider this a proper trading strategy.
 
         It is just random noise. Do not write a result line for such parameter combinations.
+
+    :param extended_metrics:
+        Include extended risk metrics such as PSR, UPI, cVaR, recovery,
+        and longest drawdown duration in the output.
+
+        For glossary definitions of these metrics, see
+        https://tradingstrategy.ai/glossary.
 
     :return:
         Table of grid search combinations
@@ -197,6 +279,10 @@ def analyse_grid_search_result(
     #        print(f"Row: {r}")
     #    raise RuntimeError(f"Duplicate indexes found: {duplicates}")
 
+    if not extended_metrics:
+        hidden_cols = [c for c in EXTENDED_VALUE_COLS if c in df.columns]
+        df = df.drop(columns=hidden_cols)
+
     df = df.sort_index()
     return df
 
@@ -211,6 +297,7 @@ def render_grid_search_result_table(
     calmar: bool = False,
     sharpe: bool = True,
     sortino: bool = True,
+    extended_metrics: bool = False,
 ) -> Styler:
     """Render a grid search combination table to notebook output.
 
@@ -246,6 +333,13 @@ def render_grid_search_result_table(
     :param sortino:
         Include the Sortino ratio column.
 
+    :param extended_metrics:
+        Include extended risk metrics such as PSR, UPI, cVaR, recovery,
+        and longest drawdown duration.
+
+        For glossary definitions of these metrics, see
+        https://tradingstrategy.ai/glossary.
+
     :return:
         Styled DataFrame for the notebook output
     """
@@ -253,9 +347,9 @@ def render_grid_search_result_table(
     if isinstance(results, pd.DataFrame):
         df = results
     else:
-        df = analyse_grid_search_result(results)
+        df = analyse_grid_search_result(results, extended_metrics=extended_metrics)
 
-    return _style_grid_search_table(df, calmar=calmar, sharpe=sharpe, sortino=sortino)
+    return _style_grid_search_table(df, calmar=calmar, sharpe=sharpe, sortino=sortino, extended_metrics=extended_metrics)
 
 
 def render_grid_search_result_table_avg(
@@ -264,6 +358,7 @@ def render_grid_search_result_table_avg(
     calmar: bool = False,
     sharpe: bool = True,
     sortino: bool = True,
+    extended_metrics: bool = False,
 ) -> Styler:
     """Render a grid search table with rows averaged by a single parameter.
 
@@ -292,13 +387,17 @@ def render_grid_search_result_table_avg(
     :param sortino:
         Include the Sortino ratio column.
 
+    :param extended_metrics:
+        Include extended risk metrics such as PSR, UPI, cVaR, recovery,
+        and longest drawdown duration.
+
     :return:
         Styled DataFrame for the notebook output
     """
     if isinstance(results, pd.DataFrame):
         df = results
     else:
-        df = analyse_grid_search_result(results)
+        df = analyse_grid_search_result(results, extended_metrics=extended_metrics)
 
     # Parameters are in the MultiIndex — reset to make them regular columns
     df = df.reset_index()
@@ -313,7 +412,7 @@ def render_grid_search_result_table_avg(
     avg_df = grouped[numeric_cols].mean()
     avg_df.insert(0, "n", grouped.size())
 
-    return _style_grid_search_table(avg_df, calmar=calmar, sharpe=sharpe, sortino=sortino)
+    return _style_grid_search_table(avg_df, calmar=calmar, sharpe=sharpe, sortino=sortino, extended_metrics=extended_metrics)
 
 
 def _style_grid_search_table(
@@ -321,6 +420,7 @@ def _style_grid_search_table(
     calmar: bool = False,
     sharpe: bool = True,
     sortino: bool = True,
+    extended_metrics: bool = False,
 ) -> Styler:
     """Apply standard grid search table styling.
 
@@ -333,6 +433,9 @@ def _style_grid_search_table(
     # https://stackoverflow.com/a/60654669/315168
 
     cols = list(CALMAR_VALUE_COLS if calmar else VALUE_COLS)
+    if extended_metrics:
+        cols.extend(EXTENDED_VALUE_COLS)
+        cols.extend([c for c in EXTENDED_EXPOSURE_COLS if c not in cols])
     if not sharpe:
         cols = [c for c in cols if c != "Sharpe"]
     if not sortino:
@@ -347,6 +450,11 @@ def _style_grid_search_table(
         drop_cols.append("Sortino")
     if not calmar and "Calmar" in df.columns:
         drop_cols.append("Calmar")
+    if not calmar and not extended_metrics:
+        drop_cols.extend([c for c in ("Avg capital util", "Max cash %") if c in df.columns])
+    if not extended_metrics:
+        drop_cols.extend([c for c in EXTENDED_VALUE_COLS if c in df.columns])
+    drop_cols.extend([c for c in HIDDEN_DISPLAY_COLS if c in df.columns])
     if drop_cols:
         df = df.drop(columns=drop_cols)
 
@@ -552,15 +660,16 @@ def visualise_3d_scatter(
 
 def _get_hover_template(
     result: GridSearchResult,
-    key_metrics = ("CAGR﹪", "Max Drawdown", "Time in Market", "Sharpe", "Sortino"),  # See quantstats
-    percent_metrics = ("CAGR﹪", "Max Drawdown", "Time in Market"),
+    key_metrics=HOVER_KEY_METRICS,  # See quantstats
+    percent_metrics=HOVER_PERCENT_METRICS,
 ):
 
     # Get metrics calculated with QuantStats
     data = result.metrics["Strategy"]
     metrics = {}
     for name in key_metrics:
-        metrics[name] = data[name]
+        if name in data.index:
+            metrics[name] = data[name]
 
     template = textwrap.dedent(f"""<b>{result.get_label()}</b><br><br>""")
 
@@ -577,6 +686,13 @@ def _get_hover_template(
         else:
             assert type(v) == float, f"Got unknown type: {k}: {v} ({type(v)}"
             template += f"{k}: {v:.2f}<br>"
+
+    avg_capital_util, max_cash_pct = _calculate_capital_utilisation_metrics(result)
+    upi = _compute_upi(data.get("CAGR﹪"), data.get("Ulcer Index"))
+    if pd.notna(upi):
+        template += f"UPI: {upi:.2f}<br>"
+    if pd.notna(avg_capital_util):
+        template += f"Avg capital util: {avg_capital_util * 100:.2f}%<br>"
 
     # Get trade metrics
     for k, v in result.summary.get_trading_core_metrics().items():

@@ -271,9 +271,28 @@ def test_perform_grid_search_single_thread(
     # periods=365 (crypto calendar days) instead of periods=252 (trading days)
     assert row["CAGR"] == pytest.approx(0.06771955893113946)
     assert row["Positions"] == 2
+    assert "PSR" not in table.columns
 
     styler = render_grid_search_result_table(table)
     assert isinstance(styler, Styler)
+
+    extended_table = analyse_grid_search_result(
+        results,
+        min_positions_threshold=0,
+        drop_duplicates=False,
+        extended_metrics=True,
+    )
+    extended_row = extended_table.iloc[0]
+    assert extended_row["PSR"] == pytest.approx(results[0].get_metric("Prob. Sharpe Ratio"))
+    assert extended_row["Ulcer Index"] == pytest.approx(results[0].get_metric("Ulcer Index"))
+    assert extended_row["cVaR"] == pytest.approx(results[0].get_metric("Expected Shortfall (cVaR)"))
+    assert extended_row["Recovery"] == pytest.approx(results[0].get_metric("Recovery Factor"))
+    assert extended_row["Longest DD"] == pytest.approx(results[0].get_metric("Longest DD Days"))
+    assert extended_row["UPI"] == pytest.approx(extended_row["CAGR"] / extended_row["Ulcer Index"])
+
+    extended_styler = render_grid_search_result_table(extended_table, extended_metrics=True)
+    assert isinstance(extended_styler, Styler)
+    assert "Max cash %" not in extended_styler.data.columns
 
     # Remove extra axis by focusing only stop_loss_pct=0.9
     heatmap_data = table.xs(0.9, level="stop_loss_pct")

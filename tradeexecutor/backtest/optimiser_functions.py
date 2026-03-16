@@ -54,6 +54,23 @@ def optimise_sortino(result: GridSearchResult) -> OptimiserSearchResult:
     return OptimiserSearchResult(-result.get_sortino(), negative=True)
 
 
+def optimise_probabilistic_sharpe(result: GridSearchResult) -> OptimiserSearchResult:
+    """Search for the best probabilistic Sharpe ratio.
+
+    Probabilistic Sharpe Ratio (PSR) converts the observed Sharpe ratio into
+    a confidence-style probability that the true Sharpe exceeds a chosen
+    threshold. This makes it a useful optimisation target when you care more
+    about statistical credibility than raw point estimates.
+
+    For glossary definitions of PSR and related risk metrics, see
+    https://tradingstrategy.ai/glossary.
+    """
+    psr = result.get_metric("Prob. Sharpe Ratio")
+    if pd.isna(psr):
+        return OptimiserSearchResult(0, negative=False)
+    return OptimiserSearchResult(-float(psr), negative=True)
+
+
 def optimise_win_rate(result: GridSearchResult) -> OptimiserSearchResult:
     """Search for the best trade win rate."""
     return OptimiserSearchResult(-result.get_win_rate(), negative=True)
@@ -313,6 +330,21 @@ def optimise_gain_to_pain(result: GridSearchResult) -> OptimiserSearchResult:
     return OptimiserSearchResult(-float(gpr), negative=True)
 
 
+def optimise_ulcer_index(result: GridSearchResult) -> OptimiserSearchResult:
+    """Search for the lowest Ulcer Index.
+
+    Unlike standard deviation based metrics, Ulcer Index measures the depth
+    and duration of drawdowns only. Lower values are better.
+
+    For glossary definitions of Ulcer Index and drawdown terms, see
+    https://tradingstrategy.ai/glossary.
+    """
+    ulcer = result.get_metric("Ulcer Index")
+    if pd.isna(ulcer):
+        return OptimiserSearchResult(0, negative=False)
+    return OptimiserSearchResult(float(ulcer), negative=False)
+
+
 def optimise_ulcer_performance(result: GridSearchResult) -> OptimiserSearchResult:
     """Search for the best Ulcer performance index (return / Ulcer index).
 
@@ -354,6 +386,7 @@ def optimise_ulcer_performance(result: GridSearchResult) -> OptimiserSearchResul
     - https://en.wikipedia.org/wiki/Ulcer_index
     - https://www.investopedia.com/terms/u/ulcerindex.asp
     - https://portfoliooptimizer.io/blog/ulcer-performance-index-optimization/
+    - https://tradingstrategy.ai/glossary
 
     Example:
 
@@ -372,6 +405,37 @@ def optimise_ulcer_performance(result: GridSearchResult) -> OptimiserSearchResul
     if pd.isna(ulcer) or pd.isna(cagr) or ulcer < 0.001:
         return OptimiserSearchResult(0, negative=False)
     return OptimiserSearchResult(-(cagr / ulcer), negative=True)
+
+
+def optimise_cvar(result: GridSearchResult) -> OptimiserSearchResult:
+    """Search for the lowest absolute conditional value at risk.
+
+    cVaR, also called Expected Shortfall, measures average losses in the tail
+    once returns breach the VaR threshold. Lower absolute tail loss is better.
+
+    For glossary definitions of cVaR and tail-risk metrics, see
+    https://tradingstrategy.ai/glossary.
+    """
+    cvar = result.get_metric("Expected Shortfall (cVaR)")
+    if pd.isna(cvar):
+        return OptimiserSearchResult(0, negative=False)
+    return OptimiserSearchResult(abs(float(cvar)), negative=False)
+
+
+def optimise_recovery_factor(result: GridSearchResult) -> OptimiserSearchResult:
+    """Search for the best recovery factor.
+
+    Recovery Factor compares cumulative profit to the magnitude of the worst
+    drawdown, rewarding strategies that earn back losses efficiently after a
+    setback.
+
+    For glossary definitions of recovery factor and drawdown metrics, see
+    https://tradingstrategy.ai/glossary.
+    """
+    recovery = result.get_metric("Recovery Factor")
+    if pd.isna(recovery):
+        return OptimiserSearchResult(0, negative=False)
+    return OptimiserSearchResult(-float(recovery), negative=True)
 
 
 class BalancedCAGRAndSharpeOptimisationFunction:

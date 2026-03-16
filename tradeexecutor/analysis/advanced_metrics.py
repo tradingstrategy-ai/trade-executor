@@ -38,6 +38,28 @@ class AdvancedMetricsMode(enum.Enum):
     full = "full"
 
 
+def _prepare_benchmark_series_for_advanced_metrics(
+    benchmark: pd.Series | None,
+    convert_to_daily: bool,
+) -> pd.Series | None:
+    """Normalise benchmark series for QuantStats metric calculations.
+
+    When metrics are calculated on resampled daily returns, ensure the
+    benchmark uses the same daily returns basis regardless of the original
+    cycle duration.
+    """
+    if benchmark is None:
+        return None
+
+    if convert_to_daily:
+        returns_series_type = benchmark.attrs.get("returns_series_type")
+        if returns_series_type == "cumulative_returns":
+            benchmark = calculate_returns(benchmark)
+        benchmark = resample_returns(benchmark, "D")
+
+    return benchmark
+
+
 def calculate_advanced_metrics(
     returns: pd.Series,
     mode: AdvancedMetricsMode=AdvancedMetricsMode.basic,
@@ -118,6 +140,10 @@ def calculate_advanced_metrics(
 
         if convert_to_daily:
             returns = resample_returns(returns, "D")
+            benchmark = _prepare_benchmark_series_for_advanced_metrics(benchmark, convert_to_daily=True)
+            periods_per_year = 365
+        else:
+            benchmark = _prepare_benchmark_series_for_advanced_metrics(benchmark, convert_to_daily=False)
 
         if len(returns) == 0 or returns.nunique() == 1:
             # Unit test workaround, otherwise quantstats crashes when calculating adv stats
@@ -248,9 +274,12 @@ def visualise_advanced_metrics(
         
         if convert_to_daily:
             returns = resample_returns(returns, "D")
+            periods_per_year = 365
 
-            if benchmark is not None:
-                benchmark = resample_returns(calculate_returns(benchmark), "D")
+        benchmark = _prepare_benchmark_series_for_advanced_metrics(
+            benchmark,
+            convert_to_daily=convert_to_daily,
+        )
 
         # Internal sets the flag for percent output
         df = metrics(

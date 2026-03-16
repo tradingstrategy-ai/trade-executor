@@ -20,6 +20,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.strategy.chart.definition import ChartRegistry, ChartKind, ChartInput
+from tradeexecutor.strategy.chart.standard.performance_metrics import extended_performance_metrics
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.run_state import RunState
@@ -142,6 +143,7 @@ def chart_registry() -> ChartRegistry:
     chart_registry = ChartRegistry()
     chart_registry.register(chart_func, ChartKind.indicator_all_pairs)
     chart_registry.register(table_func, ChartKind.indicator_all_pairs)
+    chart_registry.register(extended_performance_metrics, ChartKind.state_all_pairs)
     return chart_registry
 
 
@@ -217,6 +219,40 @@ def test_web_render_table(logger, server_url):
     assert resp.status_code == 200
     assert resp.headers.get("content-type") == "text/html; charset=UTF-8", f"Got: {resp.text}"
     assert int(resp.headers["content-length"]) > 100
+
+
+def test_web_render_extended_performance_metrics(logger, server_url, monkeypatch):
+    """Render the extended performance metrics table through webhook charting."""
+
+    def _mock_compare_strategy_backtest_to_multiple_assets(*args, **kwargs):
+        return pd.DataFrame(
+            {
+                "Strategy": ["84.00%", "0.12", "-0.17%", "1.90", "23", "47.00%"],
+                "ETH": ["55.00%", "0.34", "-0.29%", "0.90", "41", "100.00%"],
+            },
+            index=[
+                "Prob. Sharpe Ratio",
+                "Ulcer Index",
+                "Expected Shortfall (cVaR)",
+                "Recovery Factor",
+                "Longest DD Days",
+                "Time in Market",
+            ],
+        )
+
+    monkeypatch.setattr(
+        "tradeexecutor.strategy.chart.standard.performance_metrics.compare_strategy_backtest_to_multiple_assets",
+        _mock_compare_strategy_backtest_to_multiple_assets,
+    )
+
+    resp = requests.get(
+        f"{server_url}/chart-registry/render",
+        params={"chart_id": "extended_performance_metrics"},
+    )
+    assert resp.status_code == 200
+    assert resp.headers.get("content-type") == "text/html; charset=UTF-8", f"Got: {resp.text}"
+    assert "Prob. Sharpe Ratio" in resp.text
+    assert "Recovery Factor" in resp.text
 
 
 def test_web_chart_registry(logger, server_url):

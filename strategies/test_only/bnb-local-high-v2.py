@@ -1247,7 +1247,8 @@ from tradeexecutor.strategy.chart.standard.vault import vault_position_timeline
 from tradeexecutor.strategy.chart.standard.vault import all_vault_positions
 from tradeexecutor.strategy.chart.standard.equity_curve import equity_curve
 from tradeexecutor.strategy.chart.standard.equity_curve import equity_curve_with_drawdown
-from tradeexecutor.strategy.chart.standard.performance_metrics import performance_metrics
+from tradeexecutor.strategy.chart.standard.performance_metrics import (
+    extended_performance_metrics, performance_metrics)
 from tradeexecutor.strategy.chart.standard.weight import volatile_weights_by_percent
 from tradeexecutor.strategy.chart.standard.weight import volatile_and_non_volatile_percent
 from tradeexecutor.strategy.chart.standard.weight import equity_curve_by_asset
@@ -1294,6 +1295,7 @@ def create_charts(
     charts.register(equity_curve_with_benchmark, ChartKind.state_all_pairs)
     charts.register(equity_curve_with_drawdown, ChartKind.state_all_pairs)
     charts.register(performance_metrics, ChartKind.state_all_pairs)
+    charts.register(extended_performance_metrics, ChartKind.state_all_pairs)
     charts.register(volatile_weights_by_percent, ChartKind.state_all_pairs)
     charts.register(volatile_and_non_volatile_percent, ChartKind.state_all_pairs)
     charts.register(equity_curve_by_asset, ChartKind.state_all_pairs)
@@ -1310,4 +1312,3 @@ def create_charts(
     charts.register(trading_pair_positions, ChartKind.state_single_vault_pair)
     charts.register(trading_pair_price_and_trades, ChartKind.state_single_vault_pair)
     return charts
-

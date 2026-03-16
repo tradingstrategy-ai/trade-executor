@@ -2,6 +2,7 @@
 import datetime
 from pathlib import Path
 from typing import List
+from unittest.mock import Mock
 
 import pandas as pd
 import pandas_ta
@@ -10,8 +11,11 @@ from plotly.graph_objs import Figure
 from skopt import space
 
 from tradeexecutor.analysis.optimiser import profile_optimiser, plot_profile_duration_data
-from tradeexecutor.backtest.optimiser import prepare_optimiser_parameters, perform_optimisation, OptimiserResult
-from tradeexecutor.backtest.optimiser_functions import optimise_profit
+from tradeexecutor.backtest.optimiser import _SEARCH_FUNC_TO_METRIC, prepare_optimiser_parameters, perform_optimisation, OptimiserResult
+from tradeexecutor.backtest.optimiser_functions import (
+    optimise_cvar, optimise_probabilistic_sharpe, optimise_profit,
+    optimise_recovery_factor, optimise_ulcer_index,
+    optimise_ulcer_performance)
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.execution_context import ExecutionContext
@@ -250,3 +254,49 @@ def test_perform_optimisation_engine_v5_multi_worker(
 
     assert isinstance(result, OptimiserResult)
 
+
+def _mock_grid_search_result(
+    metrics: dict[str, float],
+    cagr: float = 0.25,
+) -> Mock:
+    result = Mock()
+    result.get_metric.side_effect = lambda name: metrics[name]
+    result.get_cagr.return_value = cagr
+    return result
+
+
+def test_extended_optimiser_search_functions():
+    result = _mock_grid_search_result({
+        "Prob. Sharpe Ratio": 0.84,
+        "Ulcer Index": 0.125,
+        "Expected Shortfall (cVaR)": -0.17,
+        "Recovery Factor": 1.9,
+    })
+
+    psr = optimise_probabilistic_sharpe(result)
+    assert psr.negative is True
+    assert psr.get_original_value() == pytest.approx(0.84)
+
+    ulcer_index = optimise_ulcer_index(result)
+    assert ulcer_index.negative is False
+    assert ulcer_index.get_original_value() == pytest.approx(0.125)
+
+    cvar = optimise_cvar(result)
+    assert cvar.negative is False
+    assert cvar.get_original_value() == pytest.approx(0.17)
+
+    recovery = optimise_recovery_factor(result)
+    assert recovery.negative is True
+    assert recovery.get_original_value() == pytest.approx(1.9)
+
+    upi = optimise_ulcer_performance(result)
+    assert upi.negative is True
+    assert upi.get_original_value() == pytest.approx(2.0)
+
+
+def test_extended_target_metric_mapping():
+    assert _SEARCH_FUNC_TO_METRIC["optimise_probabilistic_sharpe"] == "PSR"
+    assert _SEARCH_FUNC_TO_METRIC["optimise_ulcer_index"] == "Ulcer Index"
+    assert _SEARCH_FUNC_TO_METRIC["optimise_cvar"] == "cVaR"
+    assert _SEARCH_FUNC_TO_METRIC["optimise_recovery_factor"] == "Recovery"
+    assert _SEARCH_FUNC_TO_METRIC["optimise_ulcer_performance"] == "UPI"

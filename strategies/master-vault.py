@@ -66,8 +66,8 @@ from tradeexecutor.strategy.chart.standard.equity_curve import (
     equity_curve, equity_curve_with_drawdown)
 from tradeexecutor.strategy.chart.standard.interest import (
     lending_pool_interest_accrued, vault_statistics)
-from tradeexecutor.strategy.chart.standard.performance_metrics import \
-    performance_metrics
+from tradeexecutor.strategy.chart.standard.performance_metrics import (
+    extended_performance_metrics, performance_metrics)
 from tradeexecutor.strategy.chart.standard.position import positions_at_end
 from tradeexecutor.strategy.chart.standard.profit_breakdown import \
     trading_pair_breakdown
@@ -800,6 +800,7 @@ def create_charts(
     charts.register(equity_curve_with_benchmark, ChartKind.state_all_pairs)
     charts.register(equity_curve_with_drawdown, ChartKind.state_all_pairs)
     charts.register(performance_metrics, ChartKind.state_all_pairs)
+    charts.register(extended_performance_metrics, ChartKind.state_all_pairs)
     charts.register(volatile_weights_by_percent, ChartKind.state_all_pairs)
     charts.register(volatile_and_non_volatile_percent, ChartKind.state_all_pairs)
     charts.register(equity_curve_by_asset, ChartKind.state_all_pairs)
