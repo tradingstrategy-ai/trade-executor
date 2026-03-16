@@ -139,3 +139,60 @@ def test_build_multichain_artifact_payload_contains_guard_report_and_config_snap
     assert arbitrum_payload["config"]["cctp_deployment"]["allowed_destination_domains"] == [3, 6]
     assert arbitrum_payload["config"]["erc_4626_vaults"][0]["address"] == _addr(24)
     assert arbitrum_payload["whitelisted_items"][1]["address"] == secondary_asset_manager
+
+
+def test_build_multichain_artifact_payload_omits_safe_salt_nonce_when_reusing_existing_safe():
+    safe_address = _addr(200)
+    module_address = _addr(201)
+    asset_manager = _addr(202)
+
+    config = LagoonConfig(
+        parameters=LagoonDeploymentParameters(
+            underlying=_addr(1),
+            name="Example fund",
+            symbol="EXAM",
+        ),
+        safe_owners=[_addr(2)],
+        safe_threshold=1,
+        asset_managers=[asset_manager],
+        guard_only=True,
+        existing_safe_address=safe_address,
+        existing_vault_address=_addr(203),
+        satellite_chain=False,
+    )
+
+    deployment = SimpleNamespace(
+        vault=SimpleNamespace(address=_addr(204)),
+        safe_address=safe_address,
+        trading_strategy_module=SimpleNamespace(address=module_address),
+        asset_manager=asset_manager,
+        asset_managers=(asset_manager,),
+        valuation_manager=asset_manager,
+        is_satellite=False,
+        whitelisted_items=(),
+        get_deployment_data=lambda: {
+            "Deployer": _addr(205),
+            "Safe": safe_address,
+            "Trading strategy module": module_address,
+            "Asset manager": asset_manager,
+            "Asset managers": asset_manager,
+            "Valuation manager": asset_manager,
+            "Vault": _addr(204),
+            "Block number": "123",
+        },
+    )
+
+    result = SimpleNamespace(
+        safe_address=safe_address,
+        deployments={"arbitrum": deployment},
+    )
+
+    text_payload, json_payload = _build_multichain_artifact_payload(
+        result=result,
+        safe_salt_nonce=None,
+        chain_configs={"arbitrum": config},
+        guard_report="Guard configuration",
+    )
+
+    assert "Multichain Lagoon deployment\nShared Safe:" in text_payload
+    assert json_payload["safe_salt_nonce"] is None

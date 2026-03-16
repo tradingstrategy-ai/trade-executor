@@ -98,8 +98,10 @@ from tradeexecutor.ethereum.lagoon.deploy_report import (
     print_deployment_report,
 )
 from tradeexecutor.ethereum.lagoon.preflight_report import log_deployment_preflight_report
-from tradeexecutor.ethereum.lagoon.universe_config import \
-    translate_trading_universe_to_lagoon_config
+from tradeexecutor.ethereum.lagoon.universe_config import (
+    normalise_deployment_chain_id,
+    translate_trading_universe_to_lagoon_config,
+)
 from tradeexecutor.ethereum.web3config import collect_rpc_kwargs
 from tradeexecutor.monkeypatch.web3 import \
     construct_sign_and_send_raw_middleware
@@ -142,6 +144,48 @@ def _resolve_asset_managers(asset_manager_addresses: list[str] | str | None, hot
     if resolved_addresses:
         return resolved_addresses
     return [hot_wallet.address]
+
+
+def _resolve_multichain_fund_metadata(
+    *,
+    fund_name: str | None,
+    fund_symbol: str | None,
+    existing_vault_address: str | None,
+    universe,
+    chain_web3: dict[str, Web3],
+    logger,
+) -> tuple[str, str]:
+    """Resolve fund name and symbol for multichain deploys.
+
+    When redeploying a guard against an existing source-chain Lagoon vault,
+    re-use the vault's current name and symbol unless explicitly overridden.
+    """
+    resolved_fund_name = fund_name
+    resolved_fund_symbol = fund_symbol
+
+    if existing_vault_address and (resolved_fund_name is None or resolved_fund_symbol is None):
+        reserve_asset = list(universe.reserve_assets)[0]
+        source_chain_id = normalise_deployment_chain_id(reserve_asset.chain_id)
+        source_chain_slug = ChainId(source_chain_id).get_slug()
+        source_web3 = chain_web3[source_chain_slug]
+        existing_vault = create_vault_instance(
+            source_web3,
+            existing_vault_address,
+            {ERC4626Feature.lagoon_like},
+        )
+        if resolved_fund_name is None:
+            resolved_fund_name = existing_vault.name
+        if resolved_fund_symbol is None:
+            resolved_fund_symbol = existing_vault.symbol
+        logger.info(
+            "Resolved existing multichain vault metadata from %s on %s: name=%s, symbol=%s",
+            existing_vault_address,
+            source_chain_slug,
+            resolved_fund_name,
+            resolved_fund_symbol,
+        )
+
+    return resolved_fund_name or "Strategy Vault", resolved_fund_symbol or "CSV"
 
 
 def _write_file(path: Path, content: str) -> None:
@@ -317,7 +361,7 @@ def _format_multichain_text_section(title: str, values: dict[str, Any], indent: 
 
 def _build_multichain_artifact_payload(
     result,
-    safe_salt_nonce: int,
+    safe_salt_nonce: int | None,
     chain_configs: dict[str, Any],
     guard_report: str,
 ) -> tuple[str, dict[str, Any]]:
@@ -330,10 +374,11 @@ def _build_multichain_artifact_payload(
     }
     lines: list[str] = [
         "Multichain Lagoon deployment",
-        f"Safe salt nonce: {safe_salt_nonce}",
         f"Shared Safe: {result.safe_address}",
         "",
     ]
+    if safe_salt_nonce is not None:
+        lines.insert(1, f"Safe salt nonce: {safe_salt_nonce}")
     for slug, dep in result.deployments.items():
         deployment_fields = dep.get_deployment_data()
         config_snapshot = _serialise_lagoon_config(chain_configs[slug])
@@ -852,9 +897,13 @@ def _deploy_multichain(
     Uses the strategy's trading universe to determine per-chain configurations.
     """
 
-    if safe_salt_nonce is None:
+    reusing_existing_safe = guard_only and existing_safe_address is not None
+
+    if safe_salt_nonce is None and not reusing_existing_safe:
         safe_salt_nonce = random.randint(1, 2**32)
         logger.info("Generated random safe_salt_nonce: %d", safe_salt_nonce)
+    elif reusing_existing_safe:
+        logger.info("Reusing existing Safe %s across chains; safe_salt_nonce not needed", existing_safe_address)
 
     multisig_owners = _normalize_multisig_owners(multisig_owners, hot_wallet)
     safe_threshold = _calculate_safe_threshold(multisig_owners)
@@ -888,6 +937,15 @@ def _deploy_multichain(
         web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
         logger.info("  Chain %s: block %d", slug, web3.eth.block_number)
 
+    resolved_fund_name, resolved_fund_symbol = _resolve_multichain_fund_metadata(
+        fund_name=fund_name,
+        fund_symbol=fund_symbol,
+        existing_vault_address=existing_vault_address,
+        universe=universe,
+        chain_web3=chain_web3,
+        logger=logger,
+    )
+
     # Generate per-chain configs from the strategy universe
     configs = translate_trading_universe_to_lagoon_config(
         universe=universe,
@@ -896,8 +954,8 @@ def _deploy_multichain(
         safe_owners=multisig_owners,
         safe_threshold=safe_threshold,
         safe_salt_nonce=safe_salt_nonce,
-        fund_name=fund_name or "Strategy Vault",
-        fund_symbol=fund_symbol or "CSV",
+        fund_name=resolved_fund_name,
+        fund_symbol=resolved_fund_symbol,
         any_asset=any_asset,
         guard_only=guard_only,
         existing_vault_address=existing_vault_address,
@@ -910,8 +968,8 @@ def _deploy_multichain(
     log_deployment_preflight_report(
         hot_wallet=hot_wallet,
         chain_web3=chain_web3,
-        fund_name=fund_name or "Strategy Vault",
-        fund_symbol=fund_symbol or "CSV",
+        fund_name=resolved_fund_name,
+        fund_symbol=resolved_fund_symbol,
         asset_managers=asset_managers,
         multisig_owners=multisig_owners,
         performance_fee=configs[next(iter(configs))].parameters.performanceRate,
