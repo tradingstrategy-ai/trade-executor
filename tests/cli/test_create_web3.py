@@ -1,4 +1,5 @@
 import os
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from eth_defi.gas import GasPriceMethod
@@ -28,3 +29,31 @@ def test_configure_web3():
     polygon_web3 = config.connections[ChainId.polygon]
     assert polygon_web3.get_active_transact_provider().endpoint_uri == "https://polygon-rpc.com"
     assert polygon_web3.get_active_call_provider().endpoint_uri == "https://bsc-dataseed2.bnbchain.org"
+
+
+def test_configure_web3_simulate_uses_custom_http_timeout():
+    captured = {}
+
+    class FakeEth:
+        chain_id = ChainId.anvil.value
+
+        def set_gas_price_strategy(self, strategy):
+            captured["gas_strategy"] = strategy
+
+    fake_web3 = SimpleNamespace(eth=FakeEth())
+
+    with patch("tradeexecutor.ethereum.web3config.launch_anvil") as launch_anvil_mock:
+        launch_anvil_mock.return_value = SimpleNamespace(json_rpc_url="http://127.0.0.1:8545")
+
+        with patch("tradeexecutor.ethereum.web3config.create_multi_provider_web3") as create_web3_mock:
+            create_web3_mock.return_value = fake_web3
+
+            config = Web3Config.setup_from_environment(
+                GasPriceMethod.legacy,
+                simulate=True,
+                simulate_http_timeout=(3.0, 90.0),
+                json_rpc_base="https://example-rpc.invalid",
+            )
+
+    assert config.connections[ChainId.base] is fake_web3
+    assert create_web3_mock.call_args.kwargs["default_http_timeout"] == (3.0, 90.0)

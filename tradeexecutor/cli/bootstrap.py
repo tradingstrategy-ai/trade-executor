@@ -109,6 +109,7 @@ def create_web3_config(
     unit_testing: bool=False,
     simulate: bool=False,
     mev_endpoint_disabled: bool=False,
+    simulate_http_timeout: tuple[float, float] | None = None,
 ) -> Web3Config:
     """Create Web3 connection to the live node we are executing against.
 
@@ -150,6 +151,7 @@ def create_web3_config(
         unit_testing=unit_testing,
         simulate=simulate,
         mev_endpoint_disabled=mev_endpoint_disabled,
+        simulate_http_timeout=simulate_http_timeout,
     )
 
     # Allow externally-created Anvil forks to signal mainnet fork mode
@@ -870,4 +872,3 @@ def check_universe_chains_have_gas(
             f"Low balance chains:\n{details}\n"
             f"Top up the wallet or adjust MIN_GAS_BALANCE environment variable."
         )
-

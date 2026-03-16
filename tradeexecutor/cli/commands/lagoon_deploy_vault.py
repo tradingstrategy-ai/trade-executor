@@ -487,6 +487,7 @@ def lagoon_deploy_vault(
         **rpc_kwargs,
         simulate=simulate,
         mev_endpoint_disabled=True,
+        simulate_http_timeout=(3.0, 90.0) if simulate else None,
     )
 
     if not web3config.has_any_connection():
