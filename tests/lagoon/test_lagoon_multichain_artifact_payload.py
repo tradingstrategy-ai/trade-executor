@@ -143,7 +143,8 @@ def test_build_multichain_artifact_payload_contains_guard_report_and_config_snap
 
 def test_build_multichain_artifact_payload_omits_safe_salt_nonce_when_reusing_existing_safe():
     safe_address = _addr(200)
-    module_address = _addr(201)
+    old_guard_address = _addr(201)
+    module_address = _addr(203)
     asset_manager = _addr(202)
 
     config = LagoonConfig(
@@ -162,9 +163,14 @@ def test_build_multichain_artifact_payload_omits_safe_salt_nonce_when_reusing_ex
     )
 
     deployment = SimpleNamespace(
+        safe=SimpleNamespace(
+            address=safe_address,
+            retrieve_modules=lambda: [old_guard_address],
+        ),
         vault=SimpleNamespace(address=_addr(204)),
         safe_address=safe_address,
         trading_strategy_module=SimpleNamespace(address=module_address),
+        old_trading_strategy_module=SimpleNamespace(address=old_guard_address),
         asset_manager=asset_manager,
         asset_managers=(asset_manager,),
         valuation_manager=asset_manager,
@@ -194,5 +200,12 @@ def test_build_multichain_artifact_payload_omits_safe_salt_nonce_when_reusing_ex
         guard_report="Guard configuration",
     )
 
-    assert "Multichain Lagoon deployment\nShared Safe:" in text_payload
+    assert "Deployment mode: guard redeploy" in text_payload
+    assert "Multichain Lagoon deployment\nDeployment mode: guard redeploy\nShared Safe:" in text_payload
+    assert "Guard migration instructions" in text_payload
+    assert f"{safe_address}.disableModule(0x0000000000000000000000000000000000000001, {old_guard_address})" in text_payload
+    assert f"{safe_address}.enableModule({module_address})" in text_payload
+    assert json_payload["deployment_mode"] == "guard redeploy"
     assert json_payload["safe_salt_nonce"] is None
+    assert json_payload["deployments"]["arbitrum"]["deployment_mode"] == "guard redeploy"
+    assert json_payload["deployments"]["arbitrum"]["guard_migration"]["old_guard_address"] == old_guard_address
