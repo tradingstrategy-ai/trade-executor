@@ -178,6 +178,70 @@ class PricingModel(abc.ABC):
         """
         raise NotImplementedError()
 
+    def get_max_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> Decimal | None:
+        """Get the current live deposit limit for a pair.
+
+        - Mainly intended for vault-like products where the venue may
+          temporarily disable or cap new capital inflows
+
+        - Returns reserve / denomination-token units
+
+        - ``None`` means the limit is unknown or not expressed as a hard number
+        """
+        return None
+
+    def get_max_redemption(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> Decimal | None:
+        """Get the current live redemption limit for a pair.
+
+        - Mainly intended for vault-like products where reductions or closes
+          can be gated by lock-ups or venue liquidity
+
+        - Returns base / position units
+
+        - ``None`` means the limit is unknown or not expressed as a hard number
+        """
+        return None
+
+    def can_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> bool:
+        """Check whether a new deposit or position increase is currently possible.
+
+        The base implementation treats unknown venue-specific limits as allowed.
+        Pricing models with live gating should override this method.
+        """
+        return True
+
+    def can_redeem(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> bool:
+        """Check whether a redemption or position reduction is currently possible.
+
+        The base implementation treats unknown venue-specific limits as allowed.
+        Pricing models with live gating should override this method.
+        """
+        return True
+
+    def is_tradeable(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> bool:
+        """Check whether both deposit and redemption are currently possible."""
+        return self.can_deposit(ts, pair) and self.can_redeem(ts, pair)
+
     def quantize_base_quantity(self, pair: TradingPairIdentifier, quantity: Decimal, rounding=ROUND_DOWN) -> Decimal:
         """Convert any base token quantity to the native token units by its ERC-20 decimals."""
         assert isinstance(pair, TradingPairIdentifier)

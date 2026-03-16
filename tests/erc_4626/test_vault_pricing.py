@@ -1,5 +1,6 @@
 """Test ERC-4626 vault price reading and estimation."""
 from decimal import Decimal
+from unittest.mock import MagicMock
 
 import pytest
 import datetime
@@ -12,6 +13,14 @@ from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from eth_defi.compat import native_datetime_utc_now
+
+
+class _FixedCall:
+    def __init__(self, value: int):
+        self.value = value
+
+    def call(self, block_identifier=None) -> int:
+        return self.value
 
 
 @pytest.fixture()
@@ -81,6 +90,71 @@ def test_vault_tvl(
         pair=ipor_usdc,
     )
     assert tvl == pytest.approx(1437072.77357)  # We use forked by block mainnet
+
+
+def test_vault_max_deposit(
+    vault_pricing,
+    ipor_usdc: TradingPairIdentifier,
+):
+    """Read the live max deposit from the ERC-4626 vault."""
+
+    max_deposit = vault_pricing.get_max_deposit(
+        ts=None,
+        pair=ipor_usdc,
+    )
+    assert max_deposit is not None
+    assert max_deposit > 0
+    assert vault_pricing.can_deposit(None, ipor_usdc) is True
+
+
+def test_vault_deposit_closed_when_max_deposit_zero(
+    vault_pricing,
+    ipor_usdc: TradingPairIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A zero maxDeposit disables new deposits."""
+
+    fake_vault = MagicMock()
+    fake_vault.denomination_token.convert_to_decimals.return_value = Decimal(0)
+    fake_vault.vault_contract.functions.maxDeposit.return_value = _FixedCall(0)
+    monkeypatch.setattr(vault_pricing, "get_vault", lambda pair: fake_vault)
+
+    max_deposit = vault_pricing.get_max_deposit(None, ipor_usdc)
+    assert max_deposit == 0
+    assert vault_pricing.can_deposit(None, ipor_usdc) is False
+
+
+def test_vault_redemption_closed_when_max_redeem_zero(
+    vault_pricing,
+    ipor_usdc: TradingPairIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A zero maxRedeem disables redemptions."""
+
+    fake_vault = MagicMock()
+    fake_vault.share_token.convert_to_decimals.return_value = Decimal(0)
+    fake_vault.vault_contract.functions.maxRedeem.return_value = _FixedCall(0)
+    monkeypatch.setattr(vault_pricing, "get_vault", lambda pair: fake_vault)
+
+    max_redemption = vault_pricing.get_max_redemption(None, ipor_usdc)
+    assert max_redemption == 0
+    assert vault_pricing.can_redeem(None, ipor_usdc) is False
+
+
+def test_vault_tradeability_defaults_to_open_when_owner_unknown(
+    vault_pricing,
+    ipor_usdc: TradingPairIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Unknown owner-scoped limits should not block trading."""
+
+    monkeypatch.setattr(vault_pricing, "get_owner_address", lambda pair: None)
+
+    assert vault_pricing.get_max_deposit(None, ipor_usdc) is None
+    assert vault_pricing.get_max_redemption(None, ipor_usdc) is None
+    assert vault_pricing.can_deposit(None, ipor_usdc) is True
+    assert vault_pricing.can_redeem(None, ipor_usdc) is True
+    assert vault_pricing.is_tradeable(None, ipor_usdc) is True
 
 
 def test_vault_position_valuation(

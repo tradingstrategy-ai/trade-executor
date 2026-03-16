@@ -195,10 +195,12 @@ def routing_model(execution_model, strategy_universe) -> GenericRouting:
 def pricing_model(
     web3,
     strategy_universe,
+    execution_model,
 ) -> GenericPricing:
     pair_configurator = EthereumPairConfigurator(
         web3,
         strategy_universe,
+        execution_model=execution_model,
     )
 
     weth_usdc = strategy_universe.get_pair_by_human_description(

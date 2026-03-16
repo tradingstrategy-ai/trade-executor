@@ -105,6 +105,12 @@ def test_vault_trading_deposit_redeem(
 
     position = position_manager.get_current_position_for_pair(pair)
     assert position.get_quantity() == pytest.approx(Decimal(9.67523177))
+    max_redemption = pricing_model.get_max_redemption(native_datetime_utc_now(), pair)
+    assert max_redemption is not None
+    assert max_redemption > 0
+    assert pricing_model.can_deposit(native_datetime_utc_now(), pair) is True
+    assert pricing_model.can_redeem(native_datetime_utc_now(), pair) is True
+    assert pricing_model.is_tradeable(native_datetime_utc_now(), pair) is True
 
     # Then redeem shares back
     trades = position_manager.close_all()

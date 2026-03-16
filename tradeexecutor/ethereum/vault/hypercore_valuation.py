@@ -21,15 +21,46 @@ import logging
 from decimal import Decimal
 from typing import Callable
 
+from eth_defi.compat import native_datetime_utc_now
+from eth_defi.hyperliquid.api import fetch_user_vault_equity
+from eth_defi.hyperliquid.session import (
+    HYPERLIQUID_API_URL,
+    HYPERLIQUID_TESTNET_API_URL,
+    HyperliquidSession,
+    create_hyperliquid_session,
+)
+from eth_defi.hyperliquid.vault import HyperliquidVault, VaultInfo
+
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.valuation import ValuationModel
-from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
+
+
+# Must match eth_defi.hyperliquid.vault_data_export.LEADER_FRACTION_WARNING_THRESHOLD.
+LEADER_FRACTION_WARNING_THRESHOLD = 0.055
+
+
+def get_hypercore_deposit_closed_reason(info: VaultInfo) -> str | None:
+    """Return a descriptive reason why Hypercore deposits are not allowed."""
+    if info.is_closed:
+        return "Vault is permanently closed"
+
+    # HLP parent deposits remain open even if the API reports allowDeposits=False.
+    if info.relationship_type == "parent":
+        return None
+
+    if not info.allow_deposits:
+        return "Vault deposits disabled by leader"
+
+    if info.leader_fraction is not None and float(info.leader_fraction) < LEADER_FRACTION_WARNING_THRESHOLD:
+        return "Leader share of the vault capital near allowed Hyperliquid minimum and new capital may not be accepted"
+
+    return None
 
 
 class HypercoreVaultPricing(PricingModel):
@@ -47,10 +78,15 @@ class HypercoreVaultPricing(PricingModel):
     def __init__(
         self,
         value_func: Callable[[TradingPairIdentifier], Decimal],
+        safe_address_resolver: Callable[[TradingPairIdentifier], str | None] | None = None,
+        session_factory: Callable[[TradingPairIdentifier], HyperliquidSession] | None = None,
         simulate: bool = False,
     ):
         self.value_func = value_func
+        self.safe_address_resolver = safe_address_resolver
+        self.session_factory = session_factory
         self.simulate = simulate
+        self._session_cache: dict[str, HyperliquidSession] = {}
 
     def _make_pricing(self, pair: TradingPairIdentifier, token_in: Decimal | None = None, token_out: Decimal | None = None) -> TradePricing:
         """Build a :class:`TradePricing` for vault deposits/withdrawals.
@@ -89,6 +125,100 @@ class HypercoreVaultPricing(PricingModel):
 
     def get_pair_for_id(self, internal_id):
         raise NotImplementedError("Hypercore vault pricing does not support pair lookup by ID")
+
+    def _get_safe_address(self, pair: TradingPairIdentifier) -> str | None:
+        if self.safe_address_resolver is None:
+            return None
+        return self.safe_address_resolver(pair)
+
+    def _get_session(self, pair: TradingPairIdentifier) -> HyperliquidSession:
+        if self.session_factory is not None:
+            return self.session_factory(pair)
+
+        api_url = HYPERLIQUID_TESTNET_API_URL if pair.other_data.get("exchange_is_testnet", False) else HYPERLIQUID_API_URL
+        session = self._session_cache.get(api_url)
+        if session is None:
+            session = create_hyperliquid_session(api_url=api_url)
+            self._session_cache[api_url] = session
+        return session
+
+    def _get_vault_info(self, pair: TradingPairIdentifier) -> VaultInfo:
+        vault_address = pair.other_data.get("hypercore_vault_address")
+        assert vault_address, f"No hypercore_vault_address in pair other_data: {pair}"
+        session = self._get_session(pair)
+        return HyperliquidVault(session=session, vault_address=vault_address).fetch_info()
+
+    def get_max_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> Decimal | None:
+        if self.simulate:
+            return None
+
+        info = self._get_vault_info(pair)
+        reason = get_hypercore_deposit_closed_reason(info)
+        if reason is not None:
+            logger.info("Hypercore vault %s deposits closed: %s", pair, reason)
+            return Decimal(0)
+        return None
+
+    def get_max_redemption(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> Decimal | None:
+        if self.simulate:
+            return None
+
+        safe_address = self._get_safe_address(pair)
+        if safe_address is None:
+            logger.warning("Cannot resolve safe address for Hypercore redemption check: %s", pair)
+            return None
+
+        info = self._get_vault_info(pair)
+        if info.max_withdrawable <= 0:
+            return Decimal(0)
+
+        vault_address = pair.other_data.get("hypercore_vault_address")
+        assert vault_address, f"No hypercore_vault_address in pair other_data: {pair}"
+        eq = fetch_user_vault_equity(
+            self._get_session(pair),
+            user=safe_address,
+            vault_address=vault_address,
+            bypass_cache=True,
+        )
+        if eq is None:
+            return Decimal(0)
+
+        if not eq.is_lockup_expired:
+            return Decimal(0)
+
+        return min(eq.equity, info.max_withdrawable)
+
+    def can_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> bool:
+        if self.simulate:
+            return True
+
+        info = self._get_vault_info(pair)
+        return get_hypercore_deposit_closed_reason(info) is None
+
+    def can_redeem(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> bool:
+        if self.simulate:
+            return True
+
+        max_redemption = self.get_max_redemption(ts, pair)
+        if max_redemption is None:
+            return True
+        return max_redemption > 0
 
 
 class HypercoreVaultValuator(ValuationModel):

@@ -2,7 +2,7 @@
 import logging
 import datetime
 from decimal import Decimal
-from typing import Optional
+from typing import Callable
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.estimate import estimate_4626_redeem, estimate_4626_deposit
@@ -14,7 +14,6 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
-from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +30,11 @@ class VaultPricing(PricingModel):
         self,
         web3: Web3,
         web3config=None,
+        owner_address_resolver: Callable[[TradingPairIdentifier], str | None] | None = None,
     ):
         self.web3 = web3
         self.web3config = web3config
+        self.owner_address_resolver = owner_address_resolver
 
     def get_web3_for_pair(self, pair: TradingPairIdentifier) -> Web3:
         """Resolve the correct web3 connection for a pair.
@@ -51,11 +52,17 @@ class VaultPricing(PricingModel):
         web3 = self.get_web3_for_pair(target_pair)
         return get_vault_for_pair(web3, target_pair)
 
+    def get_owner_address(self, pair: TradingPairIdentifier) -> str | None:
+        """Resolve the live owner address for owner-scoped vault checks."""
+        if self.owner_address_resolver is None:
+            return None
+        return self.owner_address_resolver(pair)
+
     def get_sell_price(
         self,
         ts: datetime.datetime,
         pair: TradingPairIdentifier,
-        quantity: Optional[Decimal],
+        quantity: Decimal | None,
     ) -> TradePricing:
         """Get live price on vault for dumping our shares."""
 
@@ -97,7 +104,7 @@ class VaultPricing(PricingModel):
         self,
         ts: datetime.datetime,
         pair: TradingPairIdentifier,
-        reserve: Optional[Decimal],
+        reserve: Decimal | None,
     ) -> TradePricing:
         """Get live price on vault for dumping our shares."""
 
@@ -142,7 +149,7 @@ class VaultPricing(PricingModel):
         self,
         ts: datetime.datetime,
         pair: TradingPairIdentifier,
-    ) -> Optional[float]:
+    ) -> float | None:
         return 0.0
 
     def get_usd_tvl(
@@ -166,3 +173,54 @@ class VaultPricing(PricingModel):
     ) -> USDollarAmount:
         return self.get_usd_tvl(timestamp, pair)
 
+    def get_max_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> Decimal | None:
+        owner = self.get_owner_address(pair)
+        if owner is None:
+            logger.warning("Cannot resolve owner address for vault max deposit check: %s", pair)
+            return None
+
+        web3 = self.get_web3_for_pair(pair)
+        block_number = web3.eth.block_number
+        vault = self.get_vault(pair)
+        raw_amount = vault.vault_contract.functions.maxDeposit(owner).call(block_identifier=block_number)
+        return vault.denomination_token.convert_to_decimals(raw_amount)
+
+    def get_max_redemption(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> Decimal | None:
+        owner = self.get_owner_address(pair)
+        if owner is None:
+            logger.warning("Cannot resolve owner address for vault max redemption check: %s", pair)
+            return None
+
+        web3 = self.get_web3_for_pair(pair)
+        block_number = web3.eth.block_number
+        vault = self.get_vault(pair)
+        raw_amount = vault.vault_contract.functions.maxRedeem(owner).call(block_identifier=block_number)
+        return vault.share_token.convert_to_decimals(raw_amount)
+
+    def can_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> bool:
+        max_deposit = self.get_max_deposit(ts, pair)
+        if max_deposit is None:
+            return True
+        return max_deposit > 0
+
+    def can_redeem(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> bool:
+        max_redemption = self.get_max_redemption(ts, pair)
+        if max_redemption is None:
+            return True
+        return max_redemption > 0
