@@ -12,6 +12,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.config_event_scanner import (
     format_guard_config_report,
 )
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonMultichainDeployment
+from eth_defi.chain import get_chain_name
 from eth_defi.etherscan.config import get_etherscan_url
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,12 @@ def _create_hypersync_client(web3: Web3, hypersync_api_key: str):
         from eth_defi.hypersync.server import get_hypersync_server
 
         hypersync_url = get_hypersync_server(web3)
+        logger.info(
+            "Creating HyperSync client for chain %d (%s) using %s",
+            web3.eth.chain_id,
+            get_chain_name(web3.eth.chain_id),
+            hypersync_url,
+        )
         hs_config = hypersync.ClientConfig(url=hypersync_url, bearer_token=hypersync_api_key)
         return hypersync.HypersyncClient(hs_config)
     except ImportError:
@@ -62,33 +69,45 @@ def print_deployment_report(
 
     chain_id = web3.eth.chain_id
     chain_web3 = {chain_id: web3}
+    module_addresses = {chain_id: module_address}
+    logger.info(
+        "Generating single-chain guard deployment report for Safe %s on chain %d, module %s, from_block %d, simulate=%s",
+        safe_address,
+        chain_id,
+        module_address,
+        from_block,
+        simulate,
+    )
 
     # Set up HyperSync client for live deployments
     hs_client = None
     if not simulate and hypersync_api_key:
         hs_client = _create_hypersync_client(web3, hypersync_api_key)
 
-    events, _module_addrs = fetch_guard_config_events(
+    events, _module_addrs, scan_info = fetch_guard_config_events(
         safe_address=safe_address,
         web3=web3,
         hypersync_client=hs_client,
         chain_web3=chain_web3,
         follow_cctp=False,
         from_block=from_block,
+        include_scan_metadata=True,
+        module_addresses_override=module_addresses,
     )
 
-    module_addresses = {chain_id: module_address}
     config = build_multichain_guard_config(events, safe_address, module_addresses)
 
     unicode_report = format_guard_config_report(
         config=config,
         events=events,
         chain_web3=chain_web3,
+        scan_info=scan_info,
     )
     markdown_report = format_guard_config_markdown(
         config=config,
         events=events,
         chain_web3=chain_web3,
+        scan_info=scan_info,
     )
 
     print(unicode_report)
@@ -211,19 +230,33 @@ def generate_multichain_deployment_report(
     # Pick the first available chain as the starting point
     first_chain_id = next(iter(chain_web3))
     web3 = chain_web3[first_chain_id]
+    module_addresses_override = {
+        dep.vault.w3.eth.chain_id: dep.trading_strategy_module.address
+        for dep in deployment_result.deployments.values()
+    }
+    logger.info(
+        "Generating multichain guard deployment report for Safe %s across chains %s, from_block=%s, simulate=%s",
+        safe_address,
+        sorted(chain_web3.keys()),
+        from_block,
+        simulate,
+    )
+    logger.info("Using module overrides for report scan: %s", module_addresses_override)
 
     # Set up HyperSync client for live deployments
     hs_client = None
     if not simulate and hypersync_api_key:
         hs_client = _create_hypersync_client(web3, hypersync_api_key)
 
-    events, module_addresses = fetch_guard_config_events(
+    events, module_addresses, scan_info = fetch_guard_config_events(
         safe_address=safe_address,
         web3=web3,
         hypersync_client=hs_client,
         chain_web3=chain_web3,
         follow_cctp=True,
         from_block=from_block,
+        include_scan_metadata=True,
+        module_addresses_override=module_addresses_override,
     )
 
     config = build_multichain_guard_config(events, safe_address, module_addresses)
@@ -233,6 +266,7 @@ def generate_multichain_deployment_report(
         events=events,
         chain_web3=chain_web3,
         token_cache=token_cache,
+        scan_info=scan_info,
     )
 
     # Build full Markdown: deployment metadata + guard config tree
@@ -242,6 +276,7 @@ def generate_multichain_deployment_report(
         events=events,
         chain_web3=chain_web3,
         token_cache=token_cache,
+        scan_info=scan_info,
     )
 
     markdown_report = metadata_md + "\n---\n\n" + guard_md
