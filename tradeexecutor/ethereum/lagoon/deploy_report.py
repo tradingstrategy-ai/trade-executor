@@ -125,13 +125,21 @@ def _format_deployment_metadata_markdown(
                     return f"[`{addr}`]({explorer_url}/address/{addr})"
             return f"`{addr}`" if addr else "-"
 
+        def _link_address_list(value: str) -> str:
+            if not value:
+                return "-"
+            addresses = [address.strip() for address in value.split(",") if address.strip()]
+            return ", ".join(_link(address) for address in addresses)
+
         lines.append(f"- **Deployer**: {_link(data.get('Deployer', ''))}")
         lines.append(f"- **Safe**: {_link(data.get('Safe', ''))}")
         vault_addr = data.get("Vault", "")
         if vault_addr and vault_addr != "N/A (satellite chain)":
             lines.append(f"- **Vault**: {_link(vault_addr)}")
         lines.append(f"- **Guard module**: {_link(data.get('Trading strategy module', ''))}")
-        lines.append(f"- **Asset manager**: {_link(data.get('Asset manager', ''))}")
+        lines.append(f"- **Primary asset manager**: {_link(data.get('Asset manager', ''))}")
+        lines.append(f"- **Asset managers**: {_link_address_list(data.get('Asset managers', ''))}")
+        lines.append(f"- **Lagoon valuation manager**: {_link(data.get('Valuation manager', ''))}")
 
         if not dep.is_satellite:
             symbol = data.get("Share token symbol", "")

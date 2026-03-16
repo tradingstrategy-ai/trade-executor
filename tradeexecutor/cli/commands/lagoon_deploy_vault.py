@@ -39,10 +39,15 @@ Example how to manually test:
     # export VERIFIER_URL=https://explorer.derive.xyz/api
 
     #
-    # Asset manager (optional, defaults to PRIVATE_KEY address)
+    # Asset managers (optional, defaults to PRIVATE_KEY address)
     #
 
-    # export ASSET_MANAGER=0x...
+    # Ordered comma-separated list. The first address becomes the
+    # primary asset manager and Lagoon valuation manager. Any later
+    # addresses become secondary asset managers with guard sender
+    # permissions only.
+    #
+    # export ASSET_MANAGER="0x..., 0x..."
 
     trade-executor lagoon-deploy-vault
 """
@@ -115,11 +120,27 @@ def _calculate_safe_threshold(multisig_owners: list[str]) -> int:
     return max(1, len(multisig_owners) - 1)
 
 
-def _resolve_asset_manager(asset_manager_address: str | None, hot_wallet: HotWallet) -> str:
-    """Asset manager defaults to deployer, but can be overridden."""
-    if asset_manager_address:
-        return Web3.to_checksum_address(asset_manager_address)
-    return hot_wallet.address
+def _resolve_asset_managers(asset_manager_addresses: list[str] | str | None, hot_wallet: HotWallet) -> list[str]:
+    """Resolve ordered asset manager addresses.
+
+    Defaults to the deployer hot wallet when the CLI input is omitted or
+    contains only whitespace.
+    """
+    if isinstance(asset_manager_addresses, str):
+        raw_addresses = [asset_manager_addresses]
+    elif asset_manager_addresses:
+        raw_addresses = list(asset_manager_addresses)
+    else:
+        return [hot_wallet.address]
+
+    resolved_addresses = [
+        Web3.to_checksum_address(address.strip())
+        for address in raw_addresses
+        if address and address.strip()
+    ]
+    if resolved_addresses:
+        return resolved_addresses
+    return [hot_wallet.address]
 
 
 def _write_file(path: Path, content: str) -> None:
@@ -166,11 +187,17 @@ def _build_multichain_artifact_payload(result, safe_salt_nonce: int) -> tuple[st
             "vault_address": dep.vault.address if hasattr(dep.vault, "address") else None,
             "safe_address": dep.safe_address,
             "module_address": dep.trading_strategy_module.address if dep.trading_strategy_module else None,
+            "asset_manager": dep.asset_manager,
+            "asset_managers": list(dep.asset_managers),
+            "valuation_manager": dep.valuation_manager,
             "is_satellite": dep.is_satellite,
         }
         lines.append(f"Chain: {slug}")
         lines.append(f"  Satellite: {dep.is_satellite}")
         lines.append(f"  Safe: {dep.safe_address}")
+        lines.append(f"  Primary asset manager: {dep.asset_manager}")
+        lines.append(f"  Asset managers: {', '.join(dep.asset_managers)}")
+        lines.append(f"  Valuation manager: {dep.valuation_manager}")
         if not dep.is_satellite:
             lines.append(f"  Vault: {dep.vault.address}")
         if dep.trading_strategy_module:
@@ -244,7 +271,7 @@ def lagoon_deploy_vault(
     etherscan_api_key: str | None = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key needed to verify contracts on a production deployment."),
     verifier: str = Option("etherscan", envvar="VERIFIER", help="Contract verifier to use: etherscan, blockscout, sourcify, oklink. Default: etherscan."),
     verifier_url: str | None = Option(None, envvar="VERIFIER_URL", help="Verifier API URL for Blockscout or custom verifiers (e.g., https://explorer.derive.xyz/api). Required when verifier=blockscout."),
-    asset_manager_address: str | None = Option(None, envvar="ASSET_MANAGER", help="Address to use as vault asset manager. If not provided, uses the deployer address (derived from PRIVATE_KEY). Allows using a master deployer while assigning a different asset manager."),
+    asset_manager_address: str | None = Option(None, callback=parse_comma_separated_list, envvar="ASSET_MANAGER", help="Ordered comma-separated list of vault asset manager addresses. If not provided, uses the deployer address (derived from PRIVATE_KEY). The first address becomes the Lagoon valuation manager; later addresses get guard sender permissions only."),
     one_delta: bool = Option(False, envvar="ONE_DELTA", help="Whitelist 1delta interaction with GuardV0 smart contract."),
     aave: bool = Option(False, envvar="AAVE", help="Whitelist Aave aUSDC deposits"),
     uniswap_v2: bool = Option(False, envvar="UNISWAP_V2", help="Whitelist Uniswap v2"),
@@ -314,8 +341,7 @@ def lagoon_deploy_vault(
     wallet_sync_web3 = next(iter(web3config.connections.values()))
     hot_wallet = create_hot_wallet(wallet_sync_web3, private_key)
     multisig_owners = _normalize_multisig_owners(multisig_owners, hot_wallet)
-    asset_manager = _resolve_asset_manager(asset_manager_address, hot_wallet)
-
+    asset_managers = _resolve_asset_managers(asset_manager_address, hot_wallet)
     assert not (strategy_file and denomination_asset), \
         f"Cannot use both --strategy-file and --denomination-asset. " \
         f"When --strategy-file is provided, the reserve asset is read from the strategy's create_trading_universe(). " \
@@ -329,7 +355,7 @@ def lagoon_deploy_vault(
         _deploy_multichain(
             web3config=web3config,
             hot_wallet=hot_wallet,
-            asset_manager=asset_manager,
+            asset_managers=asset_managers,
             strategy_file=strategy_file,
             safe_salt_nonce=safe_salt_nonce,
             fund_name=fund_name,
@@ -395,7 +421,7 @@ def lagoon_deploy_vault(
         chain_web3={chain_slug: web3},
         fund_name=fund_name,
         fund_symbol=fund_symbol,
-        asset_manager=asset_manager,
+        asset_managers=asset_managers,
         multisig_owners=multisig_owners,
         performance_fee=performance_fee,
         management_fee=management_fee,
@@ -423,9 +449,8 @@ def lagoon_deploy_vault(
         verifier_url=verifier_url,
     )
 
-    # Currently assumes HotWallet = asset manager
-    # as the trade-executor that deploys the vault is going to
-    # the assset manager for this vault
+    # The first asset manager remains the Lagoon valuation manager.
+    # Any later asset managers only receive guard sender permissions.
     parameters = LagoonDeploymentParameters(
         underlying=denomination_token.address,
         name=fund_name,
@@ -497,7 +522,7 @@ def lagoon_deploy_vault(
     deploy_info = deploy_automated_lagoon_vault(
         web3=web3,
         deployer=hot_wallet,
-        asset_manager=asset_manager,
+        asset_managers=asset_managers,
         parameters=parameters,
         safe_owners=multisig_owners,
         safe_threshold=_calculate_safe_threshold(multisig_owners),
@@ -554,7 +579,7 @@ def lagoon_deploy_vault(
 def _deploy_multichain(
     web3config,
     hot_wallet: HotWallet,
-    asset_manager: str,
+    asset_managers: list[str],
     strategy_file: Path,
     safe_salt_nonce: int | None,
     fund_name: str | None,
@@ -616,7 +641,7 @@ def _deploy_multichain(
     configs = translate_trading_universe_to_lagoon_config(
         universe=universe,
         chain_web3=chain_web3,
-        asset_manager=asset_manager,
+        asset_managers=asset_managers,
         safe_owners=multisig_owners,
         safe_threshold=safe_threshold,
         safe_salt_nonce=safe_salt_nonce,
@@ -633,7 +658,7 @@ def _deploy_multichain(
         chain_web3=chain_web3,
         fund_name=fund_name or "Strategy Vault",
         fund_symbol=fund_symbol or "CSV",
-        asset_manager=asset_manager,
+        asset_managers=asset_managers,
         multisig_owners=multisig_owners,
         performance_fee=configs[next(iter(configs))].parameters.performanceRate,
         management_fee=configs[next(iter(configs))].parameters.managementRate,

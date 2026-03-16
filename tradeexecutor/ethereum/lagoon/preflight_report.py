@@ -22,7 +22,7 @@ def log_deployment_preflight_report(
     chain_web3: dict[str, Web3],
     fund_name: str,
     fund_symbol: str,
-    asset_manager: str,
+    asset_managers: list[str],
     multisig_owners: list[str],
     performance_fee: int,
     management_fee: int,
@@ -72,11 +72,21 @@ def log_deployment_preflight_report(
     logger.info("DEPLOYMENT PRE-FLIGHT REPORT")
     logger.info(sep)
 
+    primary_asset_manager = asset_managers[0]
+
     logger.info("Deployer hot wallet: %s", hot_wallet.address)
-    if asset_manager != hot_wallet.address:
-        logger.info("Asset manager: %s", asset_manager)
+    if primary_asset_manager != hot_wallet.address:
+        logger.info("Primary asset manager: %s", primary_asset_manager)
     else:
-        logger.info("Hot wallet set for the asset manager role")
+        logger.info("Hot wallet set as the primary asset manager")
+
+    logger.info("Asset managers: %s", ", ".join(asset_managers))
+    logger.info("Lagoon valuation manager: %s", primary_asset_manager)
+    if len(asset_managers) > 1:
+        logger.info(
+            "Secondary asset managers: %s",
+            ", ".join(asset_managers[1:]),
+        )
 
     logger.info("Fund: %s (%s)", fund_name, fund_symbol)
     logger.info("Multisig owners: %s", multisig_owners)
@@ -131,6 +141,15 @@ def _log_chain_config_section(config: LagoonConfig, logger):
     logger.info("  Role: %s", "satellite" if config.satellite_chain else "source (vault)")
     logger.info("  From the scratch deployment: %s", config.from_the_scratch)
     logger.info("  Use BeaconProxyFactory: %s", config.factory_contract)
+    if config.asset_managers:
+        logger.info("  Primary asset manager: %s", config.asset_managers[0])
+        logger.info("  Asset managers: %s", ", ".join(str(a) for a in config.asset_managers))
+        logger.info(
+            "  Lagoon valuation manager: %s",
+            config.parameters.valuationManager or config.asset_managers[0],
+        )
+        if len(config.asset_managers) > 1:
+            logger.info("  Secondary asset managers: %s", ", ".join(str(a) for a in config.asset_managers[1:]))
 
     if config.parameters and config.parameters.underlying:
         logger.info("  Underlying token: %s", config.parameters.underlying)
