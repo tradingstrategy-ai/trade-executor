@@ -131,7 +131,7 @@ def _format_deployment_metadata_markdown(
 
     for slug, dep in deployment_result.deployments.items():
         data = dep.get_deployment_data()
-        chain_id = dep.vault.w3.eth.chain_id if hasattr(dep.vault, "w3") else None
+        chain_id = dep.chain_id
 
         kind = "satellite" if dep.is_satellite else "source"
         lines.append(f"## {slug.title()} ({kind})")
@@ -231,7 +231,7 @@ def generate_multichain_deployment_report(
     first_chain_id = next(iter(chain_web3))
     web3 = chain_web3[first_chain_id]
     module_addresses_override = {
-        dep.vault.w3.eth.chain_id: dep.trading_strategy_module.address
+        dep.chain_id: dep.trading_strategy_module.address
         for dep in deployment_result.deployments.values()
     }
     logger.info(

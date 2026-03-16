@@ -189,7 +189,7 @@ def translate_trading_universe_to_lagoon_config(
     chain_web3: dict[str, Web3],
     safe_owners: list[HexAddress],
     safe_threshold: int,
-    safe_salt_nonce: int,
+    safe_salt_nonce: int | None,
     fund_name: str = "Crosschain Strategy Vault",
     fund_symbol: str = "CSV",
     any_asset: bool = False,
@@ -244,6 +244,9 @@ def translate_trading_universe_to_lagoon_config(
 
     :param safe_salt_nonce:
         CREATE2 salt for deterministic Safe address across chains.
+
+        Not needed when ``guard_only`` is enabled and the deployment reuses an
+        existing Safe across all chains.
 
     :param fund_name:
         Vault token name.
