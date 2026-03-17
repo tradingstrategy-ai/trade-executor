@@ -273,7 +273,7 @@ def export_backtest_report(
 
             # Inject our custom css
             if custom_css is not None:
-                html_content = _inject_custom_css_and_js(html_content, custom_css, custom_js)
+                html_content = inject_iframe_css_and_js(html_content, custom_css, custom_js)
 
             with open(output_html, 'w', encoding='utf-8') as f:
                 f.write(html_content)
@@ -283,7 +283,7 @@ def export_backtest_report(
         return nb
 
 
-def _inject_custom_css_and_js(html: str, css_code: str, js_code: str) -> str:
+def inject_iframe_css_and_js(html: str, css_code: str, js_code: str) -> str:
     """Injects new <style> tag to HTML code.
 
     Use BeautifulSoup to parse HTMl, inject new <style> tag, reassemble.
@@ -311,3 +311,38 @@ def _inject_custom_css_and_js(html: str, css_code: str, js_code: str) -> str:
     tag.append(js_code)
 
     return str(soup)
+
+
+def prepare_html_for_iframe(
+    input_html: Path,
+    output_html: Path | None = None,
+    custom_css: str = DEFAULT_CUSTOM_CSS,
+    custom_js: str = DEFAULT_CUSTOM_JS,
+) -> str:
+    """Inject iframe CSS/JS into an externally generated HTML file.
+
+    Reads the input HTML, injects the standard trade-executor CSS and JS
+    for iframe embedding, and optionally writes the result to output_html.
+
+    :param input_html:
+        Path to the source HTML file.
+
+    :param output_html:
+        Path to write the processed HTML file. If ``None``, the result is only returned.
+
+    :param custom_css:
+        CSS code to inject. Defaults to :py:data:`DEFAULT_CUSTOM_CSS`.
+
+    :param custom_js:
+        JS code to inject. Defaults to :py:data:`DEFAULT_CUSTOM_JS`.
+
+    :return:
+        The processed HTML string with CSS/JS injected.
+    """
+    html_content = input_html.read_text(encoding="utf-8")
+    html_content = inject_iframe_css_and_js(html_content, custom_css, custom_js)
+    if output_html is not None:
+        output_html.parent.mkdir(parents=True, exist_ok=True)
+        output_html.write_text(html_content, encoding="utf-8")
+        logger.info("Wrote iframe-ready HTML report to %s, total %d bytes", output_html, len(html_content))
+    return html_content
