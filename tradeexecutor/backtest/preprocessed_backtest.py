@@ -52,7 +52,7 @@ import nbformat
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.token import USDT_NATIVE_TOKEN, USDC_NATIVE_TOKEN
-from tradeexecutor.backtest.tearsheet import BacktestReportRunFailed, DEFAULT_CUSTOM_CSS, _inject_custom_css_and_js, DEFAULT_CUSTOM_JS
+from tradeexecutor.backtest.tearsheet import BacktestReportRunFailed, DEFAULT_CUSTOM_CSS, inject_iframe_css_and_js, DEFAULT_CUSTOM_JS
 from tradeexecutor.strategy.execution_context import python_script_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import load_partial_data, TradingStrategyUniverse, Dataset
 from tradeexecutor.strategy.universe_model import UniverseOptions
@@ -265,7 +265,7 @@ def run_and_write_report(
 
                 # Inject our custom css
                 if custom_css is not None:
-                    html_content = _inject_custom_css_and_js(html_content, custom_css, custom_js)
+                    html_content = inject_iframe_css_and_js(html_content, custom_css, custom_js)
 
                 with open(output_html, 'w', encoding='utf-8') as f:
                     f.write(html_content)
