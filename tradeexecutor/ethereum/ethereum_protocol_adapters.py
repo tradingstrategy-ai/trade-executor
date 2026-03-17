@@ -554,6 +554,7 @@ def create_hypercore_vault_adapter(
     execution_model=None,
     strategy_universe: "TradingStrategyUniverse | None" = None,
     simulate: bool = False,
+    hypercore_market_data_source=None,
 ) -> ProtocolRoutingConfig:
     """Create adapter for Hypercore native vault positions.
 
@@ -594,8 +595,8 @@ def create_hypercore_vault_adapter(
     )
     from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreVaultRouting
 
-    assert hypercore_vault_value_func is not None, \
-        "hypercore_vault_value_func is required for Hypercore vault routing"
+    assert hypercore_vault_value_func is not None or hypercore_market_data_source is not None, \
+        "hypercore_vault_value_func or hypercore_market_data_source is required for Hypercore vault routing"
 
     safe_address_resolver = _make_token_delivery_address_resolver(execution_model)
 
@@ -603,8 +604,13 @@ def create_hypercore_vault_adapter(
         hypercore_vault_value_func,
         safe_address_resolver=safe_address_resolver,
         simulate=simulate,
+        market_data_source=hypercore_market_data_source,
     )
-    valuation_model = HypercoreVaultValuator(hypercore_vault_value_func, simulate=simulate)
+    valuation_model = HypercoreVaultValuator(
+        hypercore_vault_value_func,
+        simulate=simulate,
+        market_data_source=hypercore_market_data_source,
+    )
 
     routing_model = None
     if execution_model is not None and web3 is not None and strategy_universe is not None:
@@ -730,6 +736,7 @@ class EthereumPairConfigurator(PairConfigurator):
         web3: Web3,
         strategy_universe: TradingStrategyUniverse | None,
         account_value_func: Callable | None = None,
+        hypercore_market_data_source=None,
         web3config: "Web3Config | None" = None,
         satellite_vaults: dict | None = None,
         execution_model=None,
@@ -778,6 +785,7 @@ class EthereumPairConfigurator(PairConfigurator):
         self.web3config = web3config or getattr(execution_model, "web3config", None)
         self.account_value_func = account_value_func or getattr(execution_model, "account_value_func", None)
         self.satellite_vaults = satellite_vaults or getattr(execution_model, "satellite_vaults", None) or {}
+        self.hypercore_market_data_source = hypercore_market_data_source or getattr(execution_model, "hypercore_market_data_source", None)
         self.vault_valuation_func = None
 
         # Auto-discover GMX exchange account pairs in the universe
@@ -907,6 +915,7 @@ class EthereumPairConfigurator(PairConfigurator):
                 execution_model=self.execution_model,
                 strategy_universe=self.strategy_universe,
                 simulate=simulate,
+                hypercore_market_data_source=self.hypercore_market_data_source,
             )
         elif routing_id.router_name == "vault":
             return create_vault_adapter(
