@@ -21,6 +21,7 @@ from .commands.reset_deposits import reset_deposits
 from .commands.show_positions import show_positions
 from .commands.start import start
 from .commands.perform_test_trade import perform_test_trade
+from .commands.prepare_report import prepare_report
 from .commands.token_cache import token_cache
 from .commands.trading_pair import trading_pair
 from .commands.version import version
@@ -45,7 +46,7 @@ __all__ = [
     app, backtest, blacklist, check_accounts, check_position_triggers,
     check_universe, check_wallet, close_all, close_position, console,
     correct_accounts, correct_history, deploy_guard, distribute_gas_funds, enzyme_asset_list, enzyme_deploy_vault,
-    export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_redeem, lagoon_settle, perform_test_trade, prune_state,
+    export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_redeem, lagoon_settle, perform_test_trade, prepare_report, prune_state,
     repair, reset, reset_deposits, retry, send_log_message, show_positions,
     show_valuation, start, token_cache, trading_pair,
     version, visualise, webapi

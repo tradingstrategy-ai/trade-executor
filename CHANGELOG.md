@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add `prepare-report` CLI command to inject iframe CSS/JS into externally generated HTML files for use as backtest reports (2026-03-17)
+
 - Add live vault tradeability checks for ERC-4626 and Hypercore pricing, including Hyperliquid leader-fraction deposit gating and user-specific redemption limits (2026-03-16)
 
 - Use `fetch_gmx_total_equity()` for GMX valuation with per-block reads and block number tracking in ValuationUpdate/BalanceUpdate state events (2026-03-15)
