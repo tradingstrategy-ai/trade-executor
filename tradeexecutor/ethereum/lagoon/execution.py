@@ -2,6 +2,7 @@
 
 import datetime
 import logging
+from typing import TYPE_CHECKING
 
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.velvet import VelvetVault
@@ -15,6 +16,9 @@ from tradeexecutor.strategy.generic.generic_router import GenericRouting, Generi
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.chain import ChainId
+
+if TYPE_CHECKING:
+    from tradeexecutor.testing.hypercore_replay import HypercoreVaultMarketDataSource
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,7 @@ class LagoonExecution(EthereumExecution):
         #: Used for multichain Lagoon deployments where satellite chains
         #: have a Safe + TradingStrategyModuleV0 guard but no vault contract.
         self.satellite_vaults = satellite_vaults or {}
+        self.hypercore_market_data_source: "HypercoreVaultMarketDataSource | None" = None
 
     @staticmethod
     def pre_execute_assertions(

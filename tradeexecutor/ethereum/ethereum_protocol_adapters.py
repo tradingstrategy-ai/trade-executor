@@ -4,7 +4,7 @@ See :py:mod:`tradeexecutor.strategy.generic.pair_configurator`.
 """
 
 import logging
-from typing import Callable, Set
+from typing import Callable, Set, TYPE_CHECKING
 
 from web3 import Web3
 from eth_defi.aave_v3.deployment import fetch_deployment as fetch_aave_deployment
@@ -26,6 +26,9 @@ from tradeexecutor.strategy.generic.default_protocols import default_match_route
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.pair import PandasPairUniverse
+
+if TYPE_CHECKING:
+    from tradeexecutor.testing.hypercore_replay import HypercoreVaultMarketDataSource
 
 logger = logging.getLogger(__name__)
 
@@ -554,7 +557,7 @@ def create_hypercore_vault_adapter(
     execution_model=None,
     strategy_universe: "TradingStrategyUniverse | None" = None,
     simulate: bool = False,
-    hypercore_market_data_source=None,
+    hypercore_market_data_source: "HypercoreVaultMarketDataSource | None" = None,
 ) -> ProtocolRoutingConfig:
     """Create adapter for Hypercore native vault positions.
 
@@ -736,7 +739,7 @@ class EthereumPairConfigurator(PairConfigurator):
         web3: Web3,
         strategy_universe: TradingStrategyUniverse | None,
         account_value_func: Callable | None = None,
-        hypercore_market_data_source=None,
+        hypercore_market_data_source: "HypercoreVaultMarketDataSource | None" = None,
         web3config: "Web3Config | None" = None,
         satellite_vaults: dict | None = None,
         execution_model=None,

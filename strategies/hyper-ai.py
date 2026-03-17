@@ -172,7 +172,7 @@ class Parameters:
     routing = TradeRouting.default
     required_history_period = datetime.timedelta(days=60 * 2)
     slippage_tolerance = 0.0060
-    assummed_liquidity_when_data_missings = 10_000
+    assumed_liquidity_when_data_missing = 10_000
 
 
 #
@@ -295,7 +295,8 @@ def decide_trades(
         if not state.is_good_pair(pair):
             continue
 
-        if is_quarantined(pair.pool_address, timestamp):
+        quarantine_address = pair.other_data.get("hypercore_vault_address", pair.pool_address)
+        if quarantine_address and is_quarantined(quarantine_address, timestamp):
             continue
 
         age_ramp_weight = indicators.get_indicator_value("age_ramp_weight", pair=pair)
@@ -339,7 +340,7 @@ def decide_trades(
     trades = alpha_model.generate_rebalance_trades_and_triggers(
         position_manager,
         min_trade_threshold=rebalance_threshold_usd,
-        invidiual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
+        individual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
         sell_rebalance_min_threshold=parameters.sell_rebalance_min_threshold,
         execution_context=input.execution_context,
     )

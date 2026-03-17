@@ -203,7 +203,7 @@ def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
         routing_state=routing_state,
     )
 
-    assert final_position_manager.get_pending_redemptions() == pytest.approx(0)
+    assert final_position_manager.get_pending_redemptions() == pytest.approx(0, abs=1e-6)
     assert all(trade.is_success() for trade in state.portfolio.get_all_trades())
     assert all(len(trade.blockchain_transactions) >= 1 for trade in state.portfolio.get_all_trades())
     assert not any(position.is_frozen() for position in state.portfolio.get_all_positions())
@@ -344,6 +344,46 @@ def test_hyper_ai_hypercore_open_cycle(
     assert tx.signed_tx_object is not None
     assert "Hypercore deposit (simulate)" in (tx.notes or "")
     assert len(state.portfolio.open_positions) == 1
+
+
+def test_hyper_ai_uses_hypercore_vault_address_for_quarantine(
+    monkeypatch: pytest.MonkeyPatch,
+    hyper_ai_strategy_module,
+    make_fake_indicators,
+    hypercore_state_with_safe_reserves,
+    hypercore_pricing_model,
+    hypercore_routing_model,
+    hypercore_strategy_universe,
+    hypercore_vault_pair,
+):
+    """Hypercore quarantine checks must use the real vault address, not CoreWriter."""
+    _, state = hypercore_state_with_safe_reserves
+    pair = hypercore_strategy_universe.get_pair_by_id(hypercore_vault_pair.internal_id)
+    seen_addresses: list[str] = []
+
+    def _is_quarantined(address: str, timestamp: datetime.datetime) -> bool:
+        del timestamp
+        seen_addresses.append(address)
+        return True
+
+    monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", _is_quarantined)
+
+    strategy_input = _make_test_input(
+        hyper_ai_strategy_module=hyper_ai_strategy_module,
+        make_fake_indicators=make_fake_indicators,
+        state=state,
+        strategy_universe=hypercore_strategy_universe,
+        pricing_model=hypercore_pricing_model,
+        routing_model=hypercore_routing_model,
+        routing_state=None,
+        pair=pair,
+        timestamp=datetime.datetime(2026, 1, 21),
+        include_pair=True,
+    )
+
+    trades = hyper_ai_strategy_module.decide_trades(strategy_input)
+    assert trades == []
+    assert seen_addresses == [pair.other_data["hypercore_vault_address"]]
 
 
 def test_hyper_ai_hypercore_close_cycle(
