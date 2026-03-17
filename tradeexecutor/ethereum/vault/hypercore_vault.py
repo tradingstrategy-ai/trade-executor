@@ -60,10 +60,11 @@ def create_hypercore_vault_pair(
     ``other_data["vault_protocol"] = "hypercore"``.
 
     The base asset is a synthetic ``HYPERCORE-VAULT`` token whose address
-    is the CoreWriter system contract. ``pool_address`` and
-    ``exchange_address`` also point to CoreWriter — the Safe address
-    (which holds the vault deposit) is resolved at runtime from the
-    execution model's transaction builder, not stored in the pair.
+    is the CoreWriter system contract. ``pool_address`` points to the
+    actual Hypercore vault address so pair identity, quarantine checks,
+    analytics, and links refer to the real vault. ``exchange_address``
+    continues to point to CoreWriter because execution is routed through
+    the Hypercore writer contract.
 
     Example::
 
@@ -103,7 +104,7 @@ def create_hypercore_vault_pair(
     return TradingPairIdentifier(
         base=base,
         quote=quote,
-        pool_address=CORE_WRITER_ADDRESS,
+        pool_address=vault_addr,
         exchange_address=CORE_WRITER_ADDRESS,
         internal_id=internal_id,
         internal_exchange_id=internal_id,
@@ -214,5 +215,4 @@ def create_hypercore_vault_value_func(
             raise
 
     return get_hypercore_vault_value
-
 
