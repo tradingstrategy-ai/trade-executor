@@ -21,6 +21,7 @@ FIXED_HYPERCORE_VAULTS = [
 ]
 
 
+@pytest.mark.timeout(300)
 def test_hyper_ai_strategy_create_trading_universe_uses_remote_vault_data(
     persistent_test_client: Client,
     hyper_ai_strategy_module: ModuleType,

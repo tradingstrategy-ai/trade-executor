@@ -31,6 +31,7 @@ SUPPORTING_PAIRS = [
 ]
 
 
+@pytest.mark.timeout(300)
 def test_load_partial_data_with_remote_vault_history(
     persistent_test_client: Client,
     tmp_path: Path,
