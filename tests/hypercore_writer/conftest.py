@@ -51,6 +51,7 @@ from tradeexecutor.strategy.trading_strategy_universe import (
     translate_token,
 )
 from tradeexecutor.testing.hypercore_replay import HypercoreDailyMetricsReplay
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange, ExchangeType, ExchangeUniverse
 from tradingstrategy.timebucket import TimeBucket
@@ -452,3 +453,54 @@ def hypercore_state_with_safe_reserves(
     )
 
     return automated_hypercore_lagoon_vault.vault, state
+
+
+@pytest.fixture()
+def hypercore_cli_state_file(
+    tmp_path: Path,
+    deposited_hypercore_vault_state: tuple[object, State],
+) -> Path:
+    """Persist a Lagoon state file that already contains reserve capital."""
+    _vault, state = deposited_hypercore_vault_state
+    state_file = tmp_path / "hypercore-cli-state.json"
+    state_file.write_text(state.to_json_safe())
+    return state_file
+
+
+@pytest.fixture()
+def hypercore_cli_environment(
+    anvil_hyperevm: AnvilLaunch,
+    automated_hypercore_lagoon_vault: LagoonAutomatedDeployment,
+    _whitelist_hypercore_on_lagoon_guard: None,
+    asset_manager: HotWallet,
+    hypercore_cli_state_file: Path,
+) -> dict[str, str]:
+    """Environment for a one-cycle CLI Hypercore writer smoke test."""
+    api_key = os.environ.get("TRADING_STRATEGY_API_KEY")
+    if not api_key:
+        pytest.skip("TRADING_STRATEGY_API_KEY environment variable required for the real CLI client test")
+
+    strategy_path = Path(__file__).resolve().parents[2] / "strategies" / "test_only" / "minimal_hyperliquid_strategy.py"
+    assert strategy_path.exists(), f"Strategy file not found: {strategy_path}"
+
+    return {
+        "EXECUTOR_ID": "hypercore-cli-writer-test",
+        "NAME": "Hypercore CLI writer test",
+        "STRATEGY_FILE": strategy_path.as_posix(),
+        "STATE_FILE": hypercore_cli_state_file.as_posix(),
+        "PRIVATE_KEY": hexbytes_to_hex_str(asset_manager.private_key),
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "VAULT_ADDRESS": automated_hypercore_lagoon_vault.vault.address,
+        "VAULT_ADAPTER_ADDRESS": automated_hypercore_lagoon_vault.trading_strategy_module.address,
+        "JSON_RPC_HYPERLIQUID": anvil_hyperevm.json_rpc_url,
+        "MAINNET_FORK": "true",
+        "TRADING_STRATEGY_API_KEY": api_key,
+        "UNIT_TESTING": "true",
+        "RUN_SINGLE_CYCLE": "true",
+        "MAX_CYCLES": "1",
+        "CHECK_ACCOUNTS": "false",
+        "SYNC_TREASURY_ON_STARTUP": "false",
+        "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),
+        "MIN_GAS_BALANCE": "0.0",
+        "LOG_LEVEL": "disabled",
+    }
