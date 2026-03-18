@@ -756,14 +756,47 @@ def backup_state(state_file: Path | str, backup_suffix="backup", unit_testing=Fa
 def configure_default_chain(
     web3config: Web3Config,
     mod: StrategyModuleInformation,
+    asset_management_mode: AssetManagementMode | None = None,
+    vault_address: str | None = None,
 ):
     if web3config is not None:
 
         if isinstance(mod, StrategyModuleInformation):
+            default_chain_id = mod.get_default_chain_id()
+
             # This path is not enabled for legacy strategy modules
-            if mod.get_default_chain_id():
+            if default_chain_id == ChainId.cross_chain:
+                if asset_management_mode and asset_management_mode.is_vault() and vault_address:
+                    checksum_address = Web3.to_checksum_address(vault_address)
+                    matching_chains = []
+
+                    for chain_id, web3 in web3config.connections.items():
+                        try:
+                            if web3.eth.get_code(checksum_address):
+                                matching_chains.append(chain_id)
+                        except Exception as e:
+                            logger.warning("Could not inspect vault address %s on chain %s: %s", vault_address, chain_id, e)
+
+                    if len(matching_chains) == 1:
+                        web3config.set_default_chain(matching_chains[0])
+                        web3config.check_default_chain_id()
+                    elif len(matching_chains) == 0:
+                        raise RuntimeError(
+                            f"Cross-chain strategy {mod.path} needs a default execution chain for vault {vault_address}, "
+                            f"but no configured JSON-RPC endpoint reports contract code at that address."
+                        )
+                    else:
+                        raise RuntimeError(
+                            f"Cross-chain strategy {mod.path} resolved vault {vault_address} on multiple chains: "
+                            f"{', '.join(chain.get_name() for chain in matching_chains)}."
+                        )
+                else:
+                    # Cross-chain strategies do not have one natural default chain.
+                    # Fall back to the single configured chain if there is exactly one.
+                    web3config.choose_single_chain()
+            elif default_chain_id:
                 # Strategy tells what chain to use
-                web3config.set_default_chain(mod.get_default_chain_id())
+                web3config.set_default_chain(default_chain_id)
                 web3config.check_default_chain_id()
             else:
                 # User has configured only one chain, use it

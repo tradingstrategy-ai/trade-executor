@@ -167,7 +167,6 @@ class Parameters:
     routing = TradeRouting.default
     required_history_period = datetime.timedelta(days=60 * 2)
     slippage_tolerance = 0.0060
-    assumed_liquidity_when_data_missing = 10_000
 
 
 #
@@ -307,7 +306,7 @@ def decide_trades(
         if not state.is_good_pair(pair):
             continue
 
-        quarantine_address = pair.other_data.get("hypercore_vault_address", pair.pool_address)
+        quarantine_address = pair.pool_address
         if quarantine_address and is_quarantined(quarantine_address, timestamp):
             continue
 
@@ -326,10 +325,11 @@ def decide_trades(
     alpha_model.select_top_signals(count=parameters.max_assets_in_portfolio)
     alpha_model.assign_weights(method=weight_equal)
 
+    # Hyperliquid vaults are expected to have complete TVL data in live trading.
+    # Fail the cycle loudly if TVL is missing instead of silently sizing with a placeholder.
     size_risk_model = USDTVLSizeRiskModel(
         pricing_model=input.pricing_model,
         per_position_cap=parameters.per_position_cap_of_pool,
-        missing_tvl_placeholder_usd=0.0,
     )
 
     alpha_model.normalise_weights(

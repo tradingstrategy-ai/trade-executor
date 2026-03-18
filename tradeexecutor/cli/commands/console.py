@@ -195,6 +195,8 @@ def console(
     configure_default_chain(
         web3config,
         mod,
+        asset_management_mode=asset_management_mode,
+        vault_address=vault_address,
     )
 
     if hot_wallet:

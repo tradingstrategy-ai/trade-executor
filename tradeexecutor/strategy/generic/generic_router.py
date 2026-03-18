@@ -3,8 +3,9 @@
 See :py:mod:`tradeexecutor.ethereum.routing_data` for per-chain and per-protocol configuration data.
 """
 
-from typing import Dict, TypeAlias, List, Tuple
+import contextlib
 import logging
+from typing import Dict, TypeAlias, List, Tuple
 
 from tradingstrategy.chain import ChainId
 from web3 import Web3
@@ -108,6 +109,108 @@ class GenericRouting(RoutingModel):
         router = protocol_config.routing_model
         return router, protocol_config
 
+    @staticmethod
+    def _get_execution_chain_id(
+        trade: TradeExecution,
+        protocol_config,
+        execution_target: object | None = None,
+    ) -> int:
+        """Resolve which EVM chain actually executes this trade.
+
+        Most trades execute on ``trade.pair.chain_id``.
+
+        Special cases:
+
+        - CCTP bridge buys execute on the source chain, not the destination
+        - Hypercore vault trades use a logical Hypercore-native chain id on the
+          pair itself, but the on-chain transaction is broadcast on HyperEVM
+          through the router state's Web3 / tx builder
+        """
+        if trade.pair.is_cctp_bridge() and trade.is_buy():
+            return trade.pair.get_source_chain_id()
+
+        if protocol_config.routing_id.router_name == "hypercore_vault":
+            if execution_target is not None and hasattr(execution_target, "web3"):
+                return execution_target.web3.eth.chain_id
+            if execution_target is not None and hasattr(execution_target, "tx_builder"):
+                return execution_target.tx_builder.chain_id
+
+        return trade.pair.chain_id
+
+    @contextlib.contextmanager
+    def _temporarily_bind_router_execution_target(
+        self,
+        router_state: RoutingState,
+        trade: TradeExecution,
+        protocol_config,
+    ):
+        """Temporarily swap a router state's tx builder / Web3 to the trade execution chain.
+
+        Generic routing keeps one routing state object per protocol for the whole cycle.
+        When a trade needs to execute on a different chain, we temporarily point that state
+        at the satellite chain. Always restore the original values afterwards so later trades
+        in the same cycle do not inherit the wrong chain-specific state after an exception.
+        """
+        original_tx_builder = None
+        original_web3 = None
+
+        web3config = getattr(self.pair_configurator, "web3config", None)
+        if (
+            web3config
+            and hasattr(router_state, "tx_builder")
+            and router_state.tx_builder is not None
+        ):
+            trade_chain_id = self._get_execution_chain_id(
+                trade,
+                protocol_config,
+                router_state,
+            )
+            if trade_chain_id != router_state.tx_builder.chain_id:
+                from eth_defi.hotwallet import HotWallet as EthHotWallet
+                from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
+
+                satellite_web3 = web3config.get_connection(ChainId(trade_chain_id))
+                original_tx_builder = router_state.tx_builder
+
+                # Create a separate HotWallet with its own nonce counter
+                # so the original wallet's nonce isn't corrupted.
+                satellite_wallet = EthHotWallet(original_tx_builder.hot_wallet.account)
+                satellite_wallet.sync_nonce(satellite_web3)
+
+                # For Lagoon vaults, wrap satellite chain transactions through
+                # the satellite's TradingStrategyModuleV0 guard.
+                from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
+
+                if isinstance(original_tx_builder, LagoonTransactionBuilder):
+                    satellite_vaults = getattr(self.pair_configurator, "satellite_vaults", None) or {}
+                    satellite_vault = satellite_vaults.get(trade_chain_id)
+                    assert satellite_vault, (
+                        f"No satellite vault configured for chain {trade_chain_id}. "
+                        f"Available satellite chains: {list(satellite_vaults.keys())}"
+                    )
+                    router_state.tx_builder = LagoonTransactionBuilder(
+                        satellite_vault,
+                        satellite_wallet,
+                        original_tx_builder.extra_gnosis_gas,
+                    )
+                else:
+                    router_state.tx_builder = HotWalletTransactionBuilder(
+                        satellite_web3,
+                        satellite_wallet,
+                    )
+
+                if hasattr(router_state, "web3"):
+                    original_web3 = router_state.web3
+                    router_state.web3 = satellite_web3
+
+        try:
+            yield router_state
+        finally:
+            if original_tx_builder is not None:
+                router_state.tx_builder = original_tx_builder
+            if original_web3 is not None:
+                router_state.web3 = original_web3
+
     def setup_trades(
         self,
         state: State,
@@ -140,69 +243,18 @@ class GenericRouting(RoutingModel):
             router_state = routing_state.state_map.get(protocol_config.routing_id.router_name)
             assert router_state, f"No router state for: {protocol_config.routing_id.router_name}, we have {list(routing_state.state_map.keys())}"
 
-            # Multichain: if the trade targets a satellite chain, temporarily
-            # swap the tx_builder and web3 so transactions are signed for and
-            # contract calls hit the correct chain.
-            original_tx_builder = None
-            original_web3 = None
-            web3config = getattr(self.pair_configurator, 'web3config', None)
-            if (web3config
-                and hasattr(router_state, 'tx_builder')
-                and router_state.tx_builder is not None):
-                # For CCTP bridge buys, execution (depositForBurn) happens on
-                # the source chain, not the pair's chain_id (which is the
-                # destination chain where bridged value resides).
-                if t.pair.is_cctp_bridge() and t.is_buy():
-                    trade_chain_id = t.pair.get_source_chain_id()
-                else:
-                    trade_chain_id = t.pair.chain_id
-                if trade_chain_id != router_state.tx_builder.chain_id:
-                    from eth_defi.hotwallet import HotWallet as EthHotWallet
-                    from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
-                    satellite_web3 = web3config.get_connection(ChainId(trade_chain_id))
-                    original_tx_builder = router_state.tx_builder
-
-                    # Create a separate HotWallet with its own nonce counter
-                    # so the original wallet's nonce isn't corrupted
-                    satellite_wallet = EthHotWallet(original_tx_builder.hot_wallet.account)
-                    satellite_wallet.sync_nonce(satellite_web3)
-
-                    # For Lagoon vaults, wrap satellite chain transactions through
-                    # the satellite's TradingStrategyModuleV0 guard
-                    from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
-                    if isinstance(original_tx_builder, LagoonTransactionBuilder):
-                        satellite_vaults = getattr(self.pair_configurator, 'satellite_vaults', None) or {}
-                        satellite_vault = satellite_vaults.get(trade_chain_id)
-                        assert satellite_vault, (
-                            f"No satellite vault configured for chain {trade_chain_id}. "
-                            f"Available satellite chains: {list(satellite_vaults.keys())}"
-                        )
-                        router_state.tx_builder = LagoonTransactionBuilder(
-                            satellite_vault, satellite_wallet, original_tx_builder.extra_gnosis_gas,
-                        )
-                    else:
-                        router_state.tx_builder = HotWalletTransactionBuilder(
-                            satellite_web3, satellite_wallet,
-                        )
-
-                    # Also swap the routing state's web3 for contract calls
-                    if hasattr(router_state, 'web3'):
-                        original_web3 = router_state.web3
-                        router_state.web3 = satellite_web3
-
-            router.setup_trades(
-                state=state,
-                routing_state=router_state,
-                trades=[t],
-                check_balances=check_balances,
-                rebroadcast=rebroadcast,
-            )
-
-            # Restore originals after signing
-            if original_tx_builder is not None:
-                router_state.tx_builder = original_tx_builder
-            if original_web3 is not None:
-                router_state.web3 = original_web3
+            with self._temporarily_bind_router_execution_target(
+                router_state,
+                t,
+                protocol_config,
+            ) as effective_router_state:
+                router.setup_trades(
+                    state=state,
+                    routing_state=effective_router_state,
+                    trades=[t],
+                    check_balances=check_balances,
+                    rebroadcast=rebroadcast,
+                )
 
     def settle_trade(
         self,
@@ -218,16 +270,16 @@ class GenericRouting(RoutingModel):
         assert trade.route is not None, f"TradeExecution lacks TradeExecution.route, it was not executed with GenericRouter?\n{trade}"
 
         router = self.pair_configurator.get_routing(trade.pair)
+        protocol_config = self.pair_configurator.get_config(self.pair_configurator.match_router(trade.pair))
 
         # Multichain: use the satellite chain's web3 if the trade
         # was executed on a different chain than the default.
         web3config = getattr(self.pair_configurator, 'web3config', None)
-        # For CCTP bridge buys, execution (depositForBurn) happens on
-        # the source chain, not the pair's chain_id (destination).
-        if trade.pair.is_cctp_bridge() and trade.is_buy():
-            trade_chain_id = trade.pair.get_source_chain_id()
-        else:
-            trade_chain_id = trade.pair.chain_id
+        trade_chain_id = self._get_execution_chain_id(
+            trade,
+            protocol_config,
+            router,
+        )
         if web3config and trade_chain_id != web3.eth.chain_id:
             web3 = web3config.get_connection(ChainId(trade_chain_id))
 

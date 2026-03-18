@@ -55,6 +55,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange, ExchangeType, ExchangeUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
+from tradingstrategy.vault import Vault, VaultMetadata, VaultUniverse
 
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ class FakeIndicators:
     """Tiny indicator adapter for exercising ``strategies/test_only/hyper-ai-test.py`` in tests."""
 
     values: dict[tuple[str, int | None], object]
+    timestamp: pd.Timestamp | None = None
 
     def get_indicator_value(
         self,
@@ -80,10 +82,94 @@ class FakeIndicators:
         pair_id = None if pair is None else pair.internal_id
         return self.values.get((name, pair_id))
 
+    def prepare_decision_cycle(
+        self,
+        cycle: int,
+        timestamp: pd.Timestamp,
+    ) -> None:
+        """Mirror the live indicator adapter API used by ``PandasTraderRunner``.
+
+        1. Accept the cycle hand-off used in live trading.
+        2. Store the timestamp for debugging parity with the real adapter.
+        3. Keep the fake indicator object lightweight and deterministic.
+        """
+        # 1. Accept the cycle hand-off used in live trading.
+        del cycle
+        # 2. Store the timestamp for debugging parity with the real adapter.
+        self.timestamp = timestamp
+        # 3. Keep the fake indicator object lightweight and deterministic.
+
 
 @pytest.fixture()
 def replay_vault_address() -> str:
     return HLP_VAULT_ADDRESS["mainnet"]
+
+
+@pytest.fixture()
+def fixed_hypercore_vault_specs(replay_vault_address: str) -> list[tuple[ChainId, str]]:
+    return [(ChainId.hypercore, replay_vault_address.lower())]
+
+
+@pytest.fixture()
+def fixed_hypercore_vault_universe(replay_vault_address: str) -> VaultUniverse:
+    """Deterministic one-vault universe for Hyper AI remote-source tests."""
+    vault_address = replay_vault_address.lower()
+    metadata = VaultMetadata(
+        vault_name="Hypercore replay vault",
+        protocol_name="Hypercore",
+        protocol_slug="hypercore",
+        features=[],
+        cagr=0.12,
+        one_month_cagr=0.08,
+        tvl=301023173.834363,
+        address=vault_address,
+        chain="Hyperliquid",
+        chain_id=ChainId.hypercore.value,
+        share_token_address=vault_address,
+        denomination_token_address=USDC_NATIVE_TOKEN[999].lower(),
+        denomination="USDC",
+        share_token="HLP",
+        stablecoinish=True,
+    )
+    vault = Vault(
+        chain_id=ChainId.hypercore,
+        vault_address=vault_address,
+        denomination_token_address=USDC_NATIVE_TOKEN[999].lower(),
+        denomination_token_symbol="USDC",
+        denomination_token_decimals=6,
+        share_token_address=vault_address,
+        share_token_symbol="HLP",
+        share_token_decimals=6,
+        protocol_name="Hypercore",
+        protocol_slug="hypercore",
+        name="Hypercore replay vault",
+        token_symbol="HLP",
+        features=set(),
+        tvl=301023173.834363,
+        metadata=metadata,
+    )
+    return VaultUniverse([vault])
+
+
+@pytest.fixture()
+def fixed_hypercore_vault_price_history(
+    replay_vault_address: str,
+) -> pd.DataFrame:
+    """Deterministic cleaned vault-price history for Hyper AI remote-source tests."""
+    vault_address = replay_vault_address.lower()
+    timestamps = pd.date_range("2025-10-01", "2026-03-18", freq="D")
+    share_prices = [1.0 + idx * 0.0015 for idx in range(len(timestamps))]
+    total_assets = [250_000_000 + idx * 350_000 for idx in range(len(timestamps))]
+
+    return pd.DataFrame(
+        {
+            "chain": [ChainId.hypercore.value] * len(timestamps),
+            "address": [vault_address] * len(timestamps),
+            "timestamp": timestamps,
+            "share_price": share_prices,
+            "total_assets": total_assets,
+        }
+    )
 
 
 @pytest.fixture()
@@ -441,7 +527,11 @@ def hypercore_state_with_safe_reserves(
         reserve_token_price=1.0,
     )
 
-    reserve_amount = Decimal("399")
+    # Keep the seeded Safe balance comfortably above the live Hyper AI
+    # minimum trade size. The real strategy parameters cap a single-vault
+    # allocation by allocation * max_concentration, so a small reserve can
+    # cause the CLI live-path test to decide no trades at all.
+    reserve_amount = Decimal("10000")
     reserve.quantity = reserve_amount
 
     fund_erc20_on_anvil(

@@ -309,6 +309,8 @@ def start(
         configure_default_chain(
             web3config,
             mod,
+            asset_management_mode=asset_management_mode,
+            vault_address=vault_address,
         )
 
         if min_gas_balance:

@@ -94,7 +94,7 @@ def _collect_universe_metadata(universe: TradingStrategyUniverse, all_chain_ids:
             gmx_chain_ids.add(normalise_deployment_chain_id(pair.base.chain_id))
 
         if pair.is_vault() and pair.other_data.get("vault_protocol") == "hypercore":
-            vault_addr = pair.other_data.get("hypercore_vault_address")
+            vault_addr = pair.pool_address
             if vault_addr:
                 chain_id = normalise_deployment_chain_id(pair.base.chain_id)
                 if chain_id is not None:

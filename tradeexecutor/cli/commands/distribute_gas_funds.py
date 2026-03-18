@@ -138,7 +138,12 @@ def distribute_gas_funds(
 
     # Set the default chain (used by create_execution_and_sync_model)
     # but do NOT call choose_single_chain() — we need all connections.
-    configure_default_chain(web3config, mod)
+    configure_default_chain(
+        web3config,
+        mod,
+        asset_management_mode=asset_management_mode,
+        vault_address=vault_address,
+    )
 
     if asset_management_mode is None:
         asset_management_mode = AssetManagementMode.hot_wallet

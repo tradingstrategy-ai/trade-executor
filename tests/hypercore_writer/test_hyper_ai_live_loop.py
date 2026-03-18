@@ -1,15 +1,25 @@
 """Hyper-ai Hypercore replay integration tests."""
 
 import datetime
+import os
+import pickle
 from decimal import Decimal
+from pathlib import Path
 from types import ModuleType
 from typing import Protocol
+from unittest import mock
 
+import pandas as pd
 import pytest
+from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonAutomatedDeployment
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
+from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.anvil import AnvilLaunch
 from eth_defi.trace import assert_transaction_success_with_explanation
 from web3 import Web3
 
+from tradeexecutor.cli import bootstrap as cli_bootstrap
+from tradeexecutor.cli.main import app
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -25,6 +35,13 @@ from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import \
     TradingStrategyUniverse
+from tradeexecutor.strategy.tvl_size_risk import TVLReadError
+from tradeexecutor.testing.hypercore_replay import HypercoreDailyMetricsReplay
+from tradeexecutor.utils.hex import hexbytes_to_hex_str
+from tradingstrategy.chain import ChainId
+from tradingstrategy.client import Client
+from tradingstrategy.liquidity import LiquidityDataUnavailable
+from tradingstrategy.vault import VaultUniverse
 
 
 class IndicatorFactory(Protocol):
@@ -232,21 +249,6 @@ def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
     assert len(list(restored_state.portfolio.get_all_trades())) == len(list(state.portfolio.get_all_trades()))
 
 
-@pytest.mark.skip(reason="TODO: add CLI Hypercore replay coverage after the loop-level harness is stable")
-def test_hyper_ai_cli_hypercore_replay_todo():
-    """Document the future CLI replay coverage.
-
-    1. Reuse the same replay fixture and Hypercore mock module from the loop-level tests.
-    2. Run the Hyper-ai strategy through the CLI entry point on a HyperEVM Anvil fork.
-    3. Verify the CLI path produces the same open, close and accounting behaviour.
-    """
-    # 1. Reuse the same replay fixture and Hypercore mock module from the loop-level tests.
-    # We will keep the same mock because Hypercore does not offer historical execution simulation.
-    # 2. Run the Hyper-ai strategy through the CLI entry point on a HyperEVM Anvil fork.
-    # 3. Verify the CLI path produces the same open, close and accounting behaviour.
-    pass
-
-
 def _make_test_input(
     *,
     hyper_ai_strategy_module: ModuleType,
@@ -308,6 +310,78 @@ def _install_wait_failures(monkeypatch: pytest.MonkeyPatch) -> None:
         "tradeexecutor.ethereum.vault.hypercore_routing.HypercoreVaultRouting._wait_for_usdc_arrival",
         _unexpected_wait,
     )
+
+
+def _install_hyper_ai_cli_source_patches(
+    monkeypatch: pytest.MonkeyPatch,
+    make_fake_indicators: IndicatorFactory,
+    fixed_hypercore_vault_specs: list[tuple[ChainId, str]],
+    fixed_hypercore_vault_universe: VaultUniverse,
+    fixed_hypercore_vault_price_history: pd.DataFrame,
+    hypercore_replay_source: HypercoreDailyMetricsReplay,
+) -> None:
+    """Patch the Hyper AI CLI path to use deterministic vault and replay sources."""
+
+    def _fetch_vault_universe(self, url=None, download_root=None):
+        del self
+        del url
+        del download_root
+        return fixed_hypercore_vault_universe
+
+    def _fetch_vault_price_history(self, url=None, download_root=None):
+        del self
+        del url
+        del download_root
+        return fixed_hypercore_vault_price_history.copy()
+
+    original_create_execution_model = cli_bootstrap.create_execution_model
+
+    def _create_execution_model(*args, **kwargs):
+        execution_model, valuation_model_factory, pricing_model_factory = original_create_execution_model(*args, **kwargs)
+        if isinstance(execution_model, LagoonExecution):
+            execution_model.hypercore_market_data_source = hypercore_replay_source
+        return execution_model, valuation_model_factory, pricing_model_factory
+
+    def _calculate_live_indicators(self, timestamp, strategy_universe, parameters):
+        """Use deterministic inclusion signals in the CLI live-path test.
+
+        1. Keep the real strategy file import, bootstrap and universe construction intact.
+        2. Replace only the flaky live indicator calculation with a fixed one-vault signal.
+        3. Leave the actual trade decision and Hypercore execution path unchanged.
+        """
+        del self
+        del timestamp
+        del parameters
+
+        vault_pair = strategy_universe.get_pair_by_smart_contract(fixed_hypercore_vault_specs[0][1])
+        assert vault_pair is not None
+
+        return make_fake_indicators(
+            {
+                ("tvl_included_pair_count", None): 1,
+                ("inclusion_criteria", None): [vault_pair.internal_id],
+                ("age_ramp_weight", vault_pair.internal_id): 1.0,
+            }
+        )
+
+    _install_wait_failures(monkeypatch)
+    monkeypatch.setattr(
+        LagoonVaultSyncModel,
+        "sync_treasury",
+        lambda self, *args, **kwargs: [],
+    )
+    monkeypatch.setattr("tradeexecutor.curator.curator.is_quarantined", lambda pool_address, timestamp: False)
+    monkeypatch.setattr(
+        "tradeexecutor.curator.hyperliquid_vault_universe.build_hyperliquid_vault_universe",
+        lambda min_tvl, min_age: fixed_hypercore_vault_specs,
+    )
+    monkeypatch.setattr(
+        "tradeexecutor.strategy.pandas_trader.runner.PandasTraderRunner.calculate_live_indicators",
+        _calculate_live_indicators,
+    )
+    monkeypatch.setattr(Client, "fetch_vault_universe", _fetch_vault_universe)
+    monkeypatch.setattr(Client, "fetch_vault_price_history", _fetch_vault_price_history)
+    monkeypatch.setattr(cli_bootstrap, "create_execution_model", _create_execution_model)
 
 
 def test_hyper_ai_hypercore_open_cycle(
@@ -377,6 +451,172 @@ def test_hyper_ai_hypercore_open_cycle(
     assert len(trade.blockchain_transactions) == 1
     tx = trade.blockchain_transactions[0]
     assert tx.chain_id == 999
+    assert tx.function_selector == "multicall"
+    assert tx.tx_hash is not None
+    assert tx.signed_bytes is not None
+    assert tx.signed_tx_object is not None
+    assert "Hypercore deposit (simulate)" in (tx.notes or "")
+    assert len(state.portfolio.open_positions) == 1
+
+
+@pytest.mark.timeout(300)
+def test_hyper_ai_missing_tvl_crashes_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+    hyper_ai_strategy_module: ModuleType,
+    make_fake_indicators: IndicatorFactory,
+    hypercore_state_with_safe_reserves: tuple[LagoonVault, State],
+    hypercore_execution_model: LagoonExecution,
+    hypercore_pricing_model: GenericPricing,
+    hypercore_routing_model: GenericRouting,
+    hypercore_strategy_universe: TradingStrategyUniverse,
+    hypercore_vault_pair: TradingPairIdentifier,
+) -> None:
+    """Fail closed when Hyper AI cannot read TVL for an eligible Hypercore vault.
+
+    1. Prepare a funded Lagoon Safe and a decision input that would otherwise open one Hypercore position.
+    2. Force the Hypercore pricing model to raise ``LiquidityDataUnavailable`` for TVL reads.
+    3. Confirm ``decide_trades()`` raises a TVL error instead of sizing with a fallback placeholder.
+    """
+    # 1. Prepare a funded Lagoon Safe and a decision input that would otherwise open one Hypercore position.
+    _install_wait_failures(monkeypatch)
+    monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", lambda pool_address, timestamp: False)
+
+    vault, state = hypercore_state_with_safe_reserves
+    del vault
+    pair = hypercore_strategy_universe.get_pair_by_id(hypercore_vault_pair.internal_id)
+
+    hypercore_execution_model.initialize()
+    routing_state = hypercore_routing_model.create_routing_state(
+        hypercore_strategy_universe,
+        hypercore_execution_model.get_routing_state_details(),
+    )
+
+    open_input = _make_test_input(
+        hyper_ai_strategy_module=hyper_ai_strategy_module,
+        make_fake_indicators=make_fake_indicators,
+        state=state,
+        strategy_universe=hypercore_strategy_universe,
+        pricing_model=hypercore_pricing_model,
+        routing_model=hypercore_routing_model,
+        routing_state=routing_state,
+        pair=pair,
+        timestamp=datetime.datetime(2026, 1, 21),
+        include_pair=True,
+    )
+
+    # 2. Force the Hypercore pricing model to raise ``LiquidityDataUnavailable`` for TVL reads.
+    def _raise_missing_tvl(timestamp: datetime.datetime, queried_pair: TradingPairIdentifier) -> float:
+        del timestamp
+        del queried_pair
+        raise LiquidityDataUnavailable("Missing Hypercore TVL data")
+
+    monkeypatch.setattr(hypercore_pricing_model, "get_usd_tvl", _raise_missing_tvl)
+
+    # 3. Confirm ``decide_trades()`` raises a TVL error instead of sizing with a fallback placeholder.
+    with pytest.raises(TVLReadError, match="Cannot read TVL value"):
+        hyper_ai_strategy_module.decide_trades(open_input)
+
+
+@pytest.mark.skipif(
+    not os.environ.get("JSON_RPC_ETHEREUM")
+    or not os.environ.get("JSON_RPC_HYPERLIQUID")
+    or not os.environ.get("TRADING_STRATEGY_API_KEY"),
+    reason="Set JSON_RPC_ETHEREUM, JSON_RPC_HYPERLIQUID and TRADING_STRATEGY_API_KEY to run this test",
+)
+@pytest.mark.timeout(300)
+def test_hyper_ai_cli_start_hypercore_single_cycle(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    asset_manager: HotWallet,
+    automated_hypercore_lagoon_vault: LagoonAutomatedDeployment,
+    anvil_hyperevm: AnvilLaunch,
+    make_fake_indicators: IndicatorFactory,
+    fixed_hypercore_vault_specs: list[tuple[ChainId, str]],
+    fixed_hypercore_vault_universe: VaultUniverse,
+    fixed_hypercore_vault_price_history: pd.DataFrame,
+    hypercore_replay_source: HypercoreDailyMetricsReplay,
+    hypercore_state_with_safe_reserves: tuple[LagoonVault, State],
+    persistent_test_cache_path: Path,
+) -> None:
+    """Run the real Hyper AI ``start`` path for one simulated Hypercore cycle.
+
+    1. Prepare the CLI environment, deterministic vault downloads and replay-backed execution model on the HyperEVM Anvil fork.
+    2. Run ``init``, seed the state with Safe reserves, then run one real ``start`` cycle through the strategy file.
+    3. Confirm the debug dump, saved state and executed Hypercore multicall data all reflect a successful trade.
+    """
+    # 1. Prepare the CLI environment, deterministic vault downloads and replay-backed execution model on the HyperEVM Anvil fork.
+    _install_hyper_ai_cli_source_patches(
+        monkeypatch=monkeypatch,
+        make_fake_indicators=make_fake_indicators,
+        fixed_hypercore_vault_specs=fixed_hypercore_vault_specs,
+        fixed_hypercore_vault_universe=fixed_hypercore_vault_universe,
+        fixed_hypercore_vault_price_history=fixed_hypercore_vault_price_history,
+        hypercore_replay_source=hypercore_replay_source,
+    )
+
+    state_file = tmp_path / "hyper-ai-cli-state.json"
+    debug_dump_file = tmp_path / "hyper-ai-cli.debug.pkl"
+    strategy_file = Path(__file__).resolve().parents[2] / "strategies" / "test_only" / "hyper-ai-test.py"
+    assert strategy_file.exists()
+
+    environment = {
+        "PATH": os.environ["PATH"],
+        "EXECUTOR_ID": "test_hyper_ai_cli_start",
+        "NAME": "test_hyper_ai_cli_start",
+        "STRATEGY_FILE": strategy_file.as_posix(),
+        "STATE_FILE": state_file.as_posix(),
+        "DEBUG_DUMP_FILE": debug_dump_file.as_posix(),
+        "CACHE_PATH": str(persistent_test_cache_path),
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "VAULT_ADDRESS": automated_hypercore_lagoon_vault.vault.vault_address,
+        "VAULT_ADAPTER_ADDRESS": automated_hypercore_lagoon_vault.vault.trading_strategy_module_address,
+        "PRIVATE_KEY": hexbytes_to_hex_str(asset_manager.private_key),
+        "JSON_RPC_HYPERLIQUID": anvil_hyperevm.json_rpc_url,
+        "JSON_RPC_ETHEREUM": os.environ["JSON_RPC_ETHEREUM"],
+        "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+        "RUN_SINGLE_CYCLE": "true",
+        "MAX_CYCLES": "1",
+        "TRADE_IMMEDIATELY": "true",
+        "SYNC_TREASURY_ON_STARTUP": "false",
+        "CHECK_ACCOUNTS": "false",
+        "MIN_GAS_BALANCE": "0.0",
+        "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),
+        "MAINNET_FORK": "true",
+    }
+
+    # 2. Run ``init``, seed the state with Safe reserves, then run one real ``start`` cycle through the strategy file.
+    vault, seeded_state = hypercore_state_with_safe_reserves
+    del vault
+
+    with mock.patch.dict("os.environ", environment, clear=True):
+        app(["init"], standalone_mode=False)
+        initialised_state = State.from_json(state_file.read_text())
+        seeded_state.sync = initialised_state.sync
+        seeded_state.sync.treasury.last_updated_at = datetime.datetime(2026, 1, 21)
+        seeded_state.sync.treasury.last_cycle_at = datetime.datetime(2026, 1, 21)
+        state_file.write_text(seeded_state.to_json_safe())
+        app(["start"], standalone_mode=False)
+
+    # 3. Confirm the debug dump, saved state and executed Hypercore multicall data all reflect a successful trade.
+    with debug_dump_file.open("rb") as inp:
+        debug_dump = pickle.load(inp)
+
+    assert len(debug_dump) == 1
+    cycle_debug = next(iter(debug_dump.values()))
+    assert cycle_debug["cycle"] == 1
+    assert "timestamp" in cycle_debug, f"Unexpected debug dump keys: {sorted(cycle_debug.keys())}"
+
+    state = State.from_json(state_file.read_text())
+    state.perform_integrity_check()
+
+    trades = list(state.portfolio.get_all_trades())
+    assert len(trades) == 1
+    trade = trades[0]
+    assert trade.is_success()
+    assert len(trade.blockchain_transactions) == 1
+    tx = trade.blockchain_transactions[0]
     assert tx.function_selector == "multicall"
     assert tx.tx_hash is not None
     assert tx.signed_bytes is not None

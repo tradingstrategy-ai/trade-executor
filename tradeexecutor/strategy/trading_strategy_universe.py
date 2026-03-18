@@ -41,7 +41,13 @@ from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvaila
 from tradingstrategy.utils.token_extra_data import load_extra_metadata
 from tradingstrategy.utils.token_filter import add_base_quote_address_columns
 from tradingstrategy.vault import VaultMetadata, VaultUniverse
-from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, DEFAULT_VAULT_PRICE_BUNDLE
+from tradingstrategy.alternative_data.vault import (
+    DEFAULT_VAULT_DOWNLOAD_ROOT,
+    DEFAULT_VAULT_PRICE_BUNDLE,
+    convert_vault_prices_to_candles,
+    load_multiple_vaults,
+    load_vault_price_data,
+)
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
@@ -2335,6 +2341,29 @@ def _filter_trading_strategy_website_vault_price_history(
     return filtered_df
 
 
+def _get_trading_strategy_website_vault_history_cache_path(
+    download_root: str | Path | None,
+) -> Path:
+    """Get the cached Trading Strategy website vault history parquet path."""
+    root = Path(download_root) if download_root is not None else DEFAULT_VAULT_DOWNLOAD_ROOT
+    return root / "vault-price-history.parquet"
+
+
+def _purge_trading_strategy_website_vault_history_cache(
+    client: Client,
+    download_root: str | Path | None,
+) -> None:
+    """Purge the dedicated vault history parquet used by live Trading Strategy website loads.
+
+    Live execution already calls ``client.clear_caches()`` for the main dataset cache root,
+    but the downloaded vault history parquet lives under the separate vault download root.
+    Purge that file explicitly so each live cycle fetches fresh vault TVL/share-price data.
+    """
+    cache_path = _get_trading_strategy_website_vault_history_cache_path(download_root)
+    logger.info("Purging Trading Strategy website vault history cache at %s", cache_path)
+    client.clear_caches(filename=cache_path)
+
+
 def _concat_optional_dataframe(
     original_df: pd.DataFrame,
     additional_df: pd.DataFrame,
@@ -2816,6 +2845,12 @@ def load_partial_data(
         elif effective_vault_history_source == "trading-strategy-website":
             assert vaults, "Vaults must be given to load Trading Strategy website vault price history"
             assert vault_pairs_df is not None, "Vault pairs must be materialised before loading Trading Strategy website vault history"
+
+            if execution_context.live_trading and not execution_context.mode.is_unit_testing():
+                _purge_trading_strategy_website_vault_history_cache(
+                    client,
+                    vault_history_download_root,
+                )
 
             website_vault_prices_df = client.fetch_vault_price_history(
                 download_root=vault_history_download_root,

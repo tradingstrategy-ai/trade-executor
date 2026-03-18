@@ -3,11 +3,14 @@
 import datetime
 import os
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.trading_strategy_universe import (
+    _get_trading_strategy_website_vault_history_cache_path,
+    _purge_trading_strategy_website_vault_history_cache,
     load_partial_data,
     load_vault_universe_with_metadata,
 )
@@ -29,6 +32,29 @@ REMOTE_VAULTS = [
 SUPPORTING_PAIRS = [
     (ChainId.ethereum, "uniswap-v3", "WETH", "USDC", 0.0005),
 ]
+
+
+@pytest.mark.timeout(300)
+def test_purge_trading_strategy_website_vault_history_cache_uses_download_root(
+    tmp_path: Path,
+) -> None:
+    """Test live vault-history cache purging uses the dedicated download root.
+
+    1. Build the expected cache file path under a pytest-provided temporary download root.
+    2. Purge the Trading Strategy website vault history cache through the helper.
+    3. Confirm the client is asked to clear the dedicated parquet file, not the main cache tree.
+    """
+    download_root = tmp_path / "vault-downloads"
+    client = Mock()
+
+    # 1. Build the expected cache file path under a pytest-provided temporary download root.
+    expected_path = _get_trading_strategy_website_vault_history_cache_path(download_root)
+
+    # 2. Purge the Trading Strategy website vault history cache through the helper.
+    _purge_trading_strategy_website_vault_history_cache(client, download_root)
+
+    # 3. Confirm the client is asked to clear the dedicated parquet file, not the main cache tree.
+    client.clear_caches.assert_called_once_with(filename=expected_path)
 
 
 @pytest.mark.timeout(300)

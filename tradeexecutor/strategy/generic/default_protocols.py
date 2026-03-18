@@ -100,38 +100,40 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
     assert exchanges.get_exchange_count() < 1000, f"Exchanges might not be configured correctly, we have {exchanges.get_exchange_count()} exchanges"
     configs = set()
 
-    # Collect exchange IDs used by exchange account pairs (Derive, etc.)
-    # and CCTP bridge pairs so we can skip them in the exchange loop below
+    # Collect exchange IDs used by non-DEX pair types so we can skip them
+    # in the exchange loop below.
+    #
+    # Use translated TradingPairIdentifier instances instead of the raw pair
+    # DataFrame here. The live universe can carry protocol-specific metadata
+    # like Hypercore vault tagging on the translated pair objects even when the
+    # underlying DataFrame row shape is lossy or inconsistent.
     non_dex_exchange_ids = set()
     has_cctp_bridge = False
-    pairs_df = strategy_universe.data_universe.pairs.df
-    if "other_data" in pairs_df.columns:
-        for _, row in pairs_df.iterrows():
-            other_data = row.get("other_data")
-            if isinstance(other_data, dict):
-                if other_data.get("exchange_protocol"):
-                    non_dex_exchange_ids.add(row["exchange_id"])
-                if other_data.get("bridge_protocol") == "cctp":
-                    has_cctp_bridge = True
-                    non_dex_exchange_ids.add(row["exchange_id"])
 
     vaults_done = False
     hypercore_vault_done = False
 
-    # Detect Hypercore vault pairs from other_data
-    if "other_data" in pairs_df.columns:
-        for _, row in pairs_df.iterrows():
-            other_data = row.get("other_data")
-            if isinstance(other_data, dict) and other_data.get("vault_protocol") == "hypercore":
-                if not hypercore_vault_done:
-                    configs.add(
-                        ProtocolRoutingId(
-                            router_name="hypercore_vault",
-                            exchange_slug=None,
-                        )
+    for pair in strategy_universe.iterate_pairs():
+        if pair.is_exchange_account() and pair.internal_exchange_id is not None:
+            non_dex_exchange_ids.add(pair.internal_exchange_id)
+
+        if pair.is_cctp_bridge():
+            has_cctp_bridge = True
+            if pair.internal_exchange_id is not None:
+                non_dex_exchange_ids.add(pair.internal_exchange_id)
+
+        if pair.is_vault() and pair.other_data.get("vault_protocol") == "hypercore":
+            if not hypercore_vault_done:
+                configs.add(
+                    ProtocolRoutingId(
+                        router_name="hypercore_vault",
+                        exchange_slug=None,
                     )
-                    hypercore_vault_done = True
-                    non_dex_exchange_ids.add(row["exchange_id"])
+                )
+                hypercore_vault_done = True
+
+            if pair.internal_exchange_id is not None:
+                non_dex_exchange_ids.add(pair.internal_exchange_id)
 
     for xc in exchanges.exchanges.values():
         if xc.exchange_id in non_dex_exchange_ids:
@@ -145,7 +147,7 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
                         exchange_slug=None,
                     )
                 )
-                vault_done = True
+                vaults_done = True
         else:
             configs.add(
                 ProtocolRoutingId(
