@@ -90,7 +90,7 @@ Don't format code.
 
 - Never use test classes in pytest
 - `pytest` tests should not have stdout output like `print`
-- Instead of manual float fuzzy comparison like `assert abs(aave_total_pnl - 96.6087) < 0.01` use `pytest.approx()`
+- Use `pytest.approx()` to compare values of data and money `assert abs(aave_total_pnl - 96.6087) < 0.01` 
 - Don't use logger.info() or logger.debug() inside test and fixture function bodies unless specifically asked
 - Do not do excessive number of tests. Prefer one test for happy path and one test for bad path. Do several asserts within a single test case to have test coverage, but keeping the number of tests low.
 - Always use pytest timeout and chat timeout when running tests. Use 5 minutes timeout unless you are running the full test suite.
@@ -100,6 +100,7 @@ Don't format code.
 - If we mock something, we must describe why
 - Have Python type hints for used pytest fixtures
 - We cannot import from tests sub-tree: helper functions must go to live in `testing` submodules in the actual source tree
+
 
 ### pyproject.toml
 

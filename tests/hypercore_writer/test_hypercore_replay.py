@@ -33,8 +33,8 @@ def test_hypercore_replay_snapshot_asof(
 
     # 2. Confirm the replay picks the latest available historical row on or before that date.
     assert snapshot.data_date == datetime.date(2026, 1, 21)
-    assert snapshot.tvl_usd == Decimal("269004391.733933")
-    assert snapshot.account_pnl_usd == Decimal("119191482.033933")
+    assert snapshot.tvl_usd == pytest.approx(Decimal("269004391.733933"))
+    assert snapshot.account_pnl_usd == pytest.approx(Decimal("119191482.033933"))
 
     # 3. Confirm the hardcoded v1 defaults still fill the missing Hypercore fields.
     # These fields are mocked because historical daily metrics only give us TVL and account PnL.
@@ -72,8 +72,8 @@ def test_hypercore_replay_share_price_calculation(
     assert later.share_price > first.share_price
 
     # 3. Check that replay equity is derived from ``net_deposited_usdc * share_price``.
-    assert first.equity_usd == Decimal("125") * first.share_price
-    assert later.equity_usd == Decimal("125") * later.share_price
+    assert first.equity_usd == pytest.approx(Decimal("125") * first.share_price)
+    assert later.equity_usd == pytest.approx(Decimal("125") * later.share_price)
 
 
 def test_hypercore_pricing_uses_replay_tvl_and_gating(
@@ -104,7 +104,7 @@ def test_hypercore_pricing_uses_replay_tvl_and_gating(
     assert pricing.get_usd_tvl(timestamp, hypercore_vault_pair) == pytest.approx(308585706.340077)
     assert pricing.can_deposit(timestamp, hypercore_vault_pair) is True
     assert pricing.can_redeem(timestamp, hypercore_vault_pair) is True
-    assert pricing.get_max_redemption(timestamp, hypercore_vault_pair) == Decimal("150")
+    assert pricing.get_max_redemption(timestamp, hypercore_vault_pair) == pytest.approx(Decimal("150"))
 
     # 3. Rebuild the source with a future lock-up expiry and confirm redemption is blocked.
     # We mock the lock-up boundary here because that historical state is not present in daily metrics.
@@ -122,5 +122,5 @@ def test_hypercore_pricing_uses_replay_tvl_and_gating(
         market_data_source=locked_source,
     )
 
-    assert locked_pricing.get_max_redemption(timestamp, hypercore_vault_pair) == Decimal(0)
+    assert locked_pricing.get_max_redemption(timestamp, hypercore_vault_pair) == pytest.approx(Decimal(0))
     assert locked_pricing.can_redeem(timestamp, hypercore_vault_pair) is False

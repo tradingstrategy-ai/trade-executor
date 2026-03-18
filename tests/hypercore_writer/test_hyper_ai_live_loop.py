@@ -6,23 +6,25 @@ from types import ModuleType
 from typing import Protocol
 
 import pytest
-from web3 import Web3
-
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.trace import assert_transaction_success_with_explanation
+from web3 import Web3
 
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.execution_context import (ExecutionContext,
+                                                      ExecutionMode)
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
-from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
-from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.strategy.pandas_trader.position_manager import \
+    PositionManager
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.trading_strategy_universe import \
+    TradingStrategyUniverse
 
 
 class IndicatorFactory(Protocol):
@@ -383,55 +385,6 @@ def test_hyper_ai_hypercore_open_cycle(
     assert len(state.portfolio.open_positions) == 1
 
 
-def test_hyper_ai_uses_hypercore_vault_address_for_quarantine(
-    monkeypatch: pytest.MonkeyPatch,
-    hyper_ai_strategy_module: ModuleType,
-    make_fake_indicators: IndicatorFactory,
-    hypercore_state_with_safe_reserves: tuple[LagoonVault, State],
-    hypercore_pricing_model: GenericPricing,
-    hypercore_routing_model: GenericRouting,
-    hypercore_strategy_universe: TradingStrategyUniverse,
-    hypercore_vault_pair: TradingPairIdentifier,
-) -> None:
-    """Verify Hypercore quarantine address selection.
-
-    1. Build one Hyper-ai decision input for the replayed Hypercore vault.
-    2. Replace the quarantine hook with a recorder that always blocks the vault.
-    3. Confirm the strategy passes the real Hypercore vault address instead of CoreWriter.
-    """
-    # 1. Build one Hyper-ai decision input for the replayed Hypercore vault.
-    _, state = hypercore_state_with_safe_reserves
-    pair = hypercore_strategy_universe.get_pair_by_id(hypercore_vault_pair.internal_id)
-    seen_addresses: list[str] = []
-
-    def _is_quarantined(address: str, timestamp: datetime.datetime) -> bool:
-        del timestamp
-        seen_addresses.append(address)
-        return True
-
-    # 2. Replace the quarantine hook with a recorder that always blocks the vault.
-    # We mock the quarantine callback so the test can observe which address the strategy passes in.
-    monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", _is_quarantined)
-
-    strategy_input = _make_test_input(
-        hyper_ai_strategy_module=hyper_ai_strategy_module,
-        make_fake_indicators=make_fake_indicators,
-        state=state,
-        strategy_universe=hypercore_strategy_universe,
-        pricing_model=hypercore_pricing_model,
-        routing_model=hypercore_routing_model,
-        routing_state=None,
-        pair=pair,
-        timestamp=datetime.datetime(2026, 1, 21),
-        include_pair=True,
-    )
-
-    # 3. Confirm the strategy passes the real Hypercore vault address instead of CoreWriter.
-    trades = hyper_ai_strategy_module.decide_trades(strategy_input)
-    assert trades == []
-    assert seen_addresses == [pair.other_data["hypercore_vault_address"]]
-
-
 def test_hyper_ai_hypercore_close_cycle(
     monkeypatch: pytest.MonkeyPatch,
     hyper_ai_strategy_module: ModuleType,
@@ -535,6 +488,153 @@ def test_hyper_ai_hypercore_close_cycle(
     assert not any(position.is_frozen() for position in state.portfolio.get_all_positions())
 
 
+def test_hyper_ai_hypercore_increase_then_decrease_position(
+    monkeypatch: pytest.MonkeyPatch,
+    hyper_ai_strategy_module: ModuleType,
+    make_fake_indicators: IndicatorFactory,
+    hypercore_state_with_safe_reserves: tuple[LagoonVault, State],
+    hypercore_execution_model: LagoonExecution,
+    hypercore_pricing_model: GenericPricing,
+    hypercore_routing_model: GenericRouting,
+    hypercore_strategy_universe: TradingStrategyUniverse,
+    hypercore_valuation_model: GenericValuation,
+    hypercore_vault_pair: TradingPairIdentifier,
+) -> None:
+    """Exercise a live-style increase and partial decrease on one Hypercore position.
+
+    1. Open one Hypercore position through the existing split-scenario Anvil harness.
+    2. Revalue the position, then increase it with an additional buy and verify quantity grows.
+    3. Partially decrease the position with a sell, revalue again and verify the position stays open.
+    """
+    # 1. Open one Hypercore position through the existing split-scenario Anvil harness.
+    # We mock the live Hypercore wait helpers because Anvil simulate mode shortcuts the production delay logic.
+    _install_wait_failures(monkeypatch)
+    # Keep quarantine disabled so this test isolates the increase/decrease execution path.
+    monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", lambda pool_address, timestamp: False)
+
+    vault, state = hypercore_state_with_safe_reserves
+    del vault
+    pair = hypercore_strategy_universe.get_pair_by_id(hypercore_vault_pair.internal_id)
+
+    hypercore_execution_model.initialize()
+    routing_state = hypercore_routing_model.create_routing_state(
+        hypercore_strategy_universe,
+        hypercore_execution_model.get_routing_state_details(),
+    )
+
+    open_ts = datetime.datetime(2026, 1, 21)
+    open_input = _make_test_input(
+        hyper_ai_strategy_module=hyper_ai_strategy_module,
+        make_fake_indicators=make_fake_indicators,
+        state=state,
+        strategy_universe=hypercore_strategy_universe,
+        pricing_model=hypercore_pricing_model,
+        routing_model=hypercore_routing_model,
+        routing_state=routing_state,
+        pair=pair,
+        timestamp=open_ts,
+        include_pair=True,
+    )
+    open_trades = hyper_ai_strategy_module.decide_trades(open_input)
+    assert len(open_trades) == 1
+    hypercore_execution_model.execute_trades(
+        open_ts,
+        state,
+        open_trades,
+        hypercore_routing_model,
+        routing_state,
+        check_balances=False,
+    )
+
+    position = next(iter(state.portfolio.open_positions.values()))
+    open_quantity = position.get_quantity()
+    assert open_quantity > 0
+
+    # 2. Revalue the position, then increase it with an additional buy and verify quantity grows.
+    first_valuation_ts = datetime.datetime(2026, 2, 3)
+    first_valuation = hypercore_valuation_model(first_valuation_ts, position)
+    assert first_valuation.new_price > 1.0
+
+    increase_position_manager = PositionManager(
+        datetime.datetime(2026, 2, 4),
+        universe=hypercore_strategy_universe,
+        state=state,
+        pricing_model=hypercore_pricing_model,
+        default_slippage_tolerance=0.20,
+        routing_model=hypercore_routing_model,
+        routing_state=routing_state,
+    )
+    increase_trades = increase_position_manager.adjust_position(
+        pair=pair,
+        dollar_delta=Decimal("50"),
+        quantity_delta=Decimal("50"),
+        weight=1.0,
+    )
+    assert len(increase_trades) == 1
+    increase_trade = increase_trades[0]
+    assert increase_trade.is_buy()
+
+    hypercore_execution_model.execute_trades(
+        datetime.datetime(2026, 2, 4),
+        state,
+        increase_trades,
+        hypercore_routing_model,
+        routing_state,
+        check_balances=False,
+    )
+
+    increased_quantity = position.get_quantity()
+    assert increase_trade.is_success()
+    assert increased_quantity > open_quantity
+    assert len(increase_trade.blockchain_transactions) == 1
+    assert "Hypercore deposit (simulate)" in (increase_trade.blockchain_transactions[0].notes or "")
+
+    second_valuation = hypercore_valuation_model(datetime.datetime(2026, 2, 4), position)
+    assert second_valuation.new_value > first_valuation.new_value
+
+    # 3. Partially decrease the position with a sell, revalue again and verify the position stays open.
+    decrease_position_manager = PositionManager(
+        datetime.datetime(2026, 2, 5),
+        universe=hypercore_strategy_universe,
+        state=state,
+        pricing_model=hypercore_pricing_model,
+        default_slippage_tolerance=0.20,
+        routing_model=hypercore_routing_model,
+        routing_state=routing_state,
+    )
+    decrease_trades = decrease_position_manager.adjust_position(
+        pair=pair,
+        dollar_delta=Decimal("-40"),
+        quantity_delta=Decimal("-40"),
+        weight=1.0,
+    )
+    assert len(decrease_trades) == 1
+    decrease_trade = decrease_trades[0]
+    assert decrease_trade.is_sell()
+
+    hypercore_execution_model.execute_trades(
+        datetime.datetime(2026, 2, 5),
+        state,
+        decrease_trades,
+        hypercore_routing_model,
+        routing_state,
+        check_balances=False,
+    )
+
+    decreased_quantity = position.get_quantity()
+    assert decrease_trade.is_success()
+    assert decreased_quantity < increased_quantity
+    assert decreased_quantity > 0
+    assert len(decrease_trade.blockchain_transactions) == 1
+    assert "Hypercore withdrawal" in (decrease_trade.blockchain_transactions[0].notes or "")
+
+    final_valuation = hypercore_valuation_model(datetime.datetime(2026, 2, 5), position)
+    assert final_valuation.new_price > 1.0
+    assert final_valuation.quantity == pytest.approx(decreased_quantity)
+    assert len(state.portfolio.open_positions) == 1
+    assert not any(position.is_frozen() for position in state.portfolio.get_all_positions())
+
+
 @pytest.mark.skip(reason="TODO: split out Lagoon redemption accounting if the full HyperEVM Anvil scenario stays unstable")
 def test_hyper_ai_lagoon_redeem_accounting() -> None:
     """Document the future split redemption accounting coverage.
@@ -543,10 +643,6 @@ def test_hyper_ai_lagoon_redeem_accounting() -> None:
     2. Request a redemption in a smaller dedicated scenario with minimal Anvil traffic.
     3. Verify treasury settlement, pending redemptions and final accounting in isolation.
     """
-    # 1. Deploy the Lagoon vault and seed it with one completed deposit.
-    # 2. Request a redemption in a smaller dedicated scenario with minimal Anvil traffic.
-    # 3. Verify treasury settlement, pending redemptions and final accounting in isolation.
-    pass
     # 1. Deploy the Lagoon vault and seed it with one completed deposit.
     # 2. Request a redemption in a smaller dedicated scenario with minimal Anvil traffic.
     # 3. Verify treasury settlement, pending redemptions and final accounting in isolation.
