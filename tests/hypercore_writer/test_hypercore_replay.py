@@ -112,7 +112,7 @@ def test_hypercore_pricing_uses_replay_tvl_and_gating(
     # 3. Rebuild the source with a future lock-up expiry and confirm redemption is blocked.
     # We mock the lock-up boundary here because that historical state is not present in daily metrics.
     locked_source = HypercoreDailyMetricsReplay.from_single_vault_dataframe(
-        hypercore_vault_pair.other_data["hypercore_vault_address"],
+        hypercore_vault_pair.pool_address,
         hypercore_daily_metrics_frame,
         lockup_expired_after=datetime.datetime(2026, 3, 1),
     )

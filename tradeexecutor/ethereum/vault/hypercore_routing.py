@@ -299,8 +299,8 @@ class HypercoreVaultRouting(RoutingModel):
 
     def _get_vault_address(self, trade: TradeExecution) -> str:
         """Extract the Hypercore vault address from the trade pair."""
-        vault_addr = trade.pair.other_data.get("hypercore_vault_address")
-        assert vault_addr, f"No hypercore_vault_address in pair other_data: {trade.pair}"
+        vault_addr = trade.pair.pool_address
+        assert vault_addr, f"No pool_address set for Hypercore vault pair: {trade.pair}"
         return vault_addr
 
     def _get_raw_usdc_amount(self, trade: TradeExecution) -> int:
