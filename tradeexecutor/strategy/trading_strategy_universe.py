@@ -2247,6 +2247,7 @@ def load_vault_universe_with_metadata(
     client: Client,
     vaults: list[tuple[ChainId, JSONHexAddress]] | None = None,
     url: str | None = None,
+    download_root: str | Path | None = None,
 ) -> VaultUniverse:
     """Load vault universe with full metadata from JSON blob.
 
@@ -2291,10 +2292,14 @@ def load_vault_universe_with_metadata(
         Optional custom URL to fetch vault metadata JSON from.
         If not provided, uses the default Trading Strategy vault metrics endpoint.
 
+    :param download_root:
+        Override the root directory used for downloaded vault metadata.
+        Useful in tests to redirect downloads under ``tmp_path``.
+
     :return:
         VaultUniverse containing Vault instances with full VaultMetadata.
     """
-    vault_universe = client.fetch_vault_universe(url=url)
+    vault_universe = client.fetch_vault_universe(url=url, download_root=download_root)
 
     if vaults is not None:
         vault_universe = vault_universe.limit_to_vaults(vaults, check_all_vaults_found=True)
@@ -2366,6 +2371,7 @@ def load_partial_data(
     pair_extra_metadata=False,
     vaults: list[tuple[ChainId, JSONHexAddress]] | VaultUniverse | None = None,
     vault_history_source: Literal["none", "bundled", "remote"] = "none",
+    vault_history_download_root: str | Path | None = None,
     vault_bundled_price_data: bool | Path=False,
     round_start_end: bool = True,
     check_all_vaults_found: bool = True,
@@ -2524,6 +2530,10 @@ def load_partial_data(
 
         The legacy ``vault_bundled_price_data`` argument still activates the
         bundled path for backwards compatibility.
+
+    :param vault_history_download_root:
+        Override the root directory used for remotely downloaded vault history.
+        Useful in tests to redirect downloads under ``tmp_path``.
 
     :param vault_bundled_price_data:
         For vaults, also load bundled static price data.
@@ -2807,7 +2817,9 @@ def load_partial_data(
             assert vaults, "Vaults must be given to load remote vault price history"
             assert vault_pairs_df is not None, "Vault pairs must be materialised before loading remote vault history"
 
-            remote_vault_prices_df = client.fetch_vault_price_history()
+            remote_vault_prices_df = client.fetch_vault_price_history(
+                download_root=vault_history_download_root,
+            )
             remote_vault_prices_df = _filter_remote_vault_price_history(
                 remote_vault_prices_df,
                 vault_pairs_df,

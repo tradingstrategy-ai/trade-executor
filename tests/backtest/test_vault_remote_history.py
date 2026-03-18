@@ -2,6 +2,7 @@
 
 import datetime
 import os
+from pathlib import Path
 
 import pytest
 
@@ -32,16 +33,23 @@ SUPPORTING_PAIRS = [
 
 def test_load_partial_data_with_remote_vault_history(
     persistent_test_client: Client,
+    tmp_path: Path,
 ) -> None:
     """Test remote vault history loading in ``load_partial_data()``.
 
-    1. Load remote vault metadata for a tiny fixed vault set.
+    1. Load remote vault metadata and history into a pytest-provided temporary location.
     2. Build a partial dataset with remote vault history enabled.
-    3. Confirm vault pairs, candles and liquidity are present without local vault files.
+    3. Confirm vault pairs, candles, liquidity and downloaded files are present.
     """
-    # 1. Load remote vault metadata for a tiny fixed vault set.
+    download_root = tmp_path / "vault-downloads"
+
+    # 1. Load remote vault metadata and history into a pytest-provided temporary location.
     client = persistent_test_client
-    vault_universe = load_vault_universe_with_metadata(client, vaults=REMOTE_VAULTS)
+    vault_universe = load_vault_universe_with_metadata(
+        client,
+        vaults=REMOTE_VAULTS,
+        download_root=download_root,
+    )
 
     # 2. Build a partial dataset with remote vault history enabled.
     dataset = load_partial_data(
@@ -57,9 +65,10 @@ def test_load_partial_data_with_remote_vault_history(
         liquidity_time_bucket=TimeBucket.d1,
         vaults=vault_universe,
         vault_history_source="remote",
+        vault_history_download_root=download_root,
     )
 
-    # 3. Confirm vault pairs, candles and liquidity are present without local vault files.
+    # 3. Confirm vault pairs, candles, liquidity and downloaded files are present.
     vault_pairs_df = dataset.pairs.loc[dataset.pairs["dex_type"] == ExchangeType.erc_4626_vault]
     assert len(vault_pairs_df) == len(REMOTE_VAULTS)
 
@@ -67,3 +76,5 @@ def test_load_partial_data_with_remote_vault_history(
     assert len(dataset.candles.loc[dataset.candles["pair_id"].isin(vault_pair_ids)]) > 0
     assert dataset.liquidity is not None
     assert len(dataset.liquidity.loc[dataset.liquidity["pair_id"].isin(vault_pair_ids)]) > 0
+    assert (download_root / "vault-universe.json").exists()
+    assert (download_root / "vault-price-history.parquet").exists()
