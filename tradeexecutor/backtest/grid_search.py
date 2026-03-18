@@ -1123,7 +1123,7 @@ def perform_grid_search(
 
     from tradeexecutor.monkeypatch import cloudpickle_patch  # Enable pickle patch that allows multiprocessing in notebooks
 
-    global _process_pool_executor
+    global _process_pool
 
     start = native_datetime_utc_now()
 
@@ -1195,7 +1195,7 @@ def perform_grid_search(
             task_args = [(grid_search_worker, c, trading_strategy_engine_version, data_retention, indicator_storage.path, ignore_wallet_errors) for c in combinations if c not in cached_results]
 
             # Set up a signal handler to stop child processes on quit
-            _process_pool_executor = executor._executor
+            _process_pool = executor._executor
             signal.signal(signal.SIGTERM, _handle_sigterm)
 
             # Run the tasks
@@ -1651,10 +1651,21 @@ def _process_init(pickled_universe):
 
 def _handle_sigterm(*args):
     # TODO: Despite all the effort, this does not seem to work with Visual Studio Code's Interrupt Kernel button
-    processes: List[Process] = list(_process_pool._processes.values())
-    _process_pool.shutdown()
-    for p in processes:
-        p.kill()
+    global _process_pool
+
+    process_pool = _process_pool
+    if process_pool is None:
+        logger.warning("SIGTERM received, but grid search process pool is already gone")
+        sys.exit(1)
+
+    processes: List[Process] = list(getattr(process_pool, "_processes", {}).values())
+    _process_pool = None
+
+    try:
+        process_pool.shutdown()
+    finally:
+        for p in processes:
+            p.kill()
     sys.exit(1)
 
 

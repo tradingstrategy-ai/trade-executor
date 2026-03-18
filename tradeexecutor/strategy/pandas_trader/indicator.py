@@ -2480,10 +2480,21 @@ def _process_init(pickled_universe):
 
 def _handle_sigterm(*args):
     # TODO: Despite all the effort, this does not seem to work with Visual Studio Code's Interrupt Kernel button
-    processes: list[Process] = list(_process_pool._processes.values())
-    _process_pool.shutdown()
-    for p in processes:
-        p.kill()
+    global _process_pool
+
+    process_pool = _process_pool
+    if process_pool is None:
+        logger.warning("SIGTERM received, but indicator process pool is already gone")
+        sys.exit(1)
+
+    processes: list[Process] = list(getattr(process_pool, "_processes", {}).values())
+    _process_pool = None
+
+    try:
+        process_pool.shutdown()
+    finally:
+        for p in processes:
+            p.kill()
     sys.exit(1)
 
 
@@ -2494,8 +2505,8 @@ def setup_indicator_multiprocessing(executor):
 
     - We want to be able to abort (CTRL+C) gracefully
     """
-    global _process_pool_executor
-    _process_pool_executor = executor._executor
+    global _process_pool
+    _process_pool = executor._executor
 
     # Enable graceful multiprocessing termination only if we run as a backtesting noteboook
     # pytest work around for: test_trading_strategy_engine_v050_live_trading
@@ -2573,4 +2584,3 @@ def _deterministic_hash(input_str: str) -> str:
     - This includes notebook reboots
     """
     return hashlib.sha256(input_str.encode()).hexdigest()
-
