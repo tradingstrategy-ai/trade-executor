@@ -1,4 +1,4 @@
-"""Remote vault history integration tests."""
+"""Trading Strategy website vault history integration tests."""
 
 import datetime
 import os
@@ -35,10 +35,10 @@ def test_load_partial_data_with_remote_vault_history(
     persistent_test_client: Client,
     tmp_path: Path,
 ) -> None:
-    """Test remote vault history loading in ``load_partial_data()``.
+    """Test Trading Strategy website vault history loading in ``load_partial_data()``.
 
     1. Load remote vault metadata and history into a pytest-provided temporary location.
-    2. Build a partial dataset with remote vault history enabled.
+    2. Build a partial dataset with Trading Strategy website vault history enabled.
     3. Confirm vault pairs, candles, liquidity and downloaded files are present.
     """
     download_root = tmp_path / "vault-downloads"
@@ -51,7 +51,7 @@ def test_load_partial_data_with_remote_vault_history(
         download_root=download_root,
     )
 
-    # 2. Build a partial dataset with remote vault history enabled.
+    # 2. Build a partial dataset with Trading Strategy website vault history enabled.
     dataset = load_partial_data(
         client=client,
         execution_context=unit_test_execution_context,
@@ -64,7 +64,7 @@ def test_load_partial_data_with_remote_vault_history(
         liquidity=True,
         liquidity_time_bucket=TimeBucket.d1,
         vaults=vault_universe,
-        vault_history_source="remote",
+        vault_history_source="trading-strategy-website",
         vault_history_download_root=download_root,
     )
 

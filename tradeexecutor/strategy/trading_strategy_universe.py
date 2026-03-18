@@ -2307,13 +2307,13 @@ def load_vault_universe_with_metadata(
     return vault_universe
 
 
-def _filter_remote_vault_price_history(
+def _filter_trading_strategy_website_vault_price_history(
     vault_prices_df: pd.DataFrame,
     vault_pairs_df: pd.DataFrame,
     start_at: datetime.datetime | None,
     end_at: datetime.datetime | None,
 ) -> pd.DataFrame:
-    """Filter remote vault history to the requested vaults and time range."""
+    """Filter Trading Strategy website vault history to the requested vaults and time range."""
     assert "chain" in vault_prices_df.columns, f"Got {vault_prices_df.columns}"
     assert "address" in vault_prices_df.columns, f"Got {vault_prices_df.columns}"
     assert "timestamp" in vault_prices_df.columns, f"Got {vault_prices_df.columns}"
@@ -2370,7 +2370,7 @@ def load_partial_data(
     lending_candle_progress_bar_desc: str | None = None,
     pair_extra_metadata=False,
     vaults: list[tuple[ChainId, JSONHexAddress]] | VaultUniverse | None = None,
-    vault_history_source: Literal["none", "bundled", "remote"] = "none",
+    vault_history_source: Literal["none", "bundled", "trading-strategy-website"] = "none",
     vault_history_download_root: str | Path | None = None,
     vault_bundled_price_data: bool | Path=False,
     round_start_end: bool = True,
@@ -2526,13 +2526,13 @@ def load_partial_data(
 
         - ``"none"``: do not load vault price history
         - ``"bundled"``: use the bundled/local parquet path
-        - ``"remote"``: download the cleaned remote vault history parquet through the client
+        - ``"trading-strategy-website"``: download the cleaned vault history parquet through the client
 
         The legacy ``vault_bundled_price_data`` argument still activates the
         bundled path for backwards compatibility.
 
     :param vault_history_download_root:
-        Override the root directory used for remotely downloaded vault history.
+        Override the root directory used for Trading Strategy website vault history downloads.
         Useful in tests to redirect downloads under ``tmp_path``.
 
     :param vault_bundled_price_data:
@@ -2562,7 +2562,7 @@ def load_partial_data(
     assert isinstance(time_bucket, TimeBucket)
     assert isinstance(execution_context, ExecutionContext)
     assert isinstance(universe_options, UniverseOptions)
-    assert vault_history_source in ("none", "bundled", "remote"), f"Unsupported vault_history_source: {vault_history_source}"
+    assert vault_history_source in ("none", "bundled", "trading-strategy-website"), f"Unsupported vault_history_source: {vault_history_source}"
 
     if preloaded_tvl_df is not None:
         assert not liquidity, "Cannot use liquidity argument with preloaded_tvl_df"
@@ -2639,7 +2639,7 @@ def load_partial_data(
     with execution_context.timed_task_context_manager("load_partial_pair_data", time_bucket=time_bucket.value):
         effective_vault_history_source = vault_history_source
         if vault_bundled_price_data:
-            assert vault_history_source in ("none", "bundled"), "vault_bundled_price_data cannot be combined with remote vault history"
+            assert vault_history_source in ("none", "bundled"), "vault_bundled_price_data cannot be combined with Trading Strategy website vault history"
             effective_vault_history_source = "bundled"
 
         exchange_universe = client.fetch_exchange_universe()
@@ -2813,15 +2813,15 @@ def load_partial_data(
             candles_df = _concat_optional_dataframe(candles_df, vault_candle_df)
             if liquidity_df is not None:
                 liquidity_df = _concat_optional_dataframe(liquidity_df, vault_liquidity_df)
-        elif effective_vault_history_source == "remote":
-            assert vaults, "Vaults must be given to load remote vault price history"
-            assert vault_pairs_df is not None, "Vault pairs must be materialised before loading remote vault history"
+        elif effective_vault_history_source == "trading-strategy-website":
+            assert vaults, "Vaults must be given to load Trading Strategy website vault price history"
+            assert vault_pairs_df is not None, "Vault pairs must be materialised before loading Trading Strategy website vault history"
 
-            remote_vault_prices_df = client.fetch_vault_price_history(
+            website_vault_prices_df = client.fetch_vault_price_history(
                 download_root=vault_history_download_root,
             )
-            remote_vault_prices_df = _filter_remote_vault_price_history(
-                remote_vault_prices_df,
+            website_vault_prices_df = _filter_trading_strategy_website_vault_price_history(
+                website_vault_prices_df,
                 vault_pairs_df,
                 data_load_start_at,
                 end_at,
@@ -2829,7 +2829,7 @@ def load_partial_data(
 
             offset = time_bucket.to_frequency()
             freq_string = f"{offset.n}{offset.name.lower()}"
-            vault_candle_df, vault_liquidity_df = convert_vault_prices_to_candles(remote_vault_prices_df, freq_string)
+            vault_candle_df, vault_liquidity_df = convert_vault_prices_to_candles(website_vault_prices_df, freq_string)
             candles_df = _concat_optional_dataframe(candles_df, vault_candle_df)
             if liquidity_df is not None:
                 liquidity_df = _concat_optional_dataframe(liquidity_df, vault_liquidity_df)

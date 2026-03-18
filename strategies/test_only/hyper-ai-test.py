@@ -245,7 +245,7 @@ def create_trading_universe(
         liquidity_time_bucket=TimeBucket.d1,
         lending_reserves=LENDING_RESERVES,
         vaults=vault_universe,
-        vault_history_source="remote",
+        vault_history_source="trading-strategy-website",
         check_all_vaults_found=True,
     )
 

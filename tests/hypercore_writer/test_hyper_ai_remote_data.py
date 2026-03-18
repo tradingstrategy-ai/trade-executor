@@ -1,4 +1,4 @@
-"""Hyper AI remote vault data integration tests."""
+"""Hyper AI Trading Strategy website vault data integration tests."""
 
 import os
 from pathlib import Path
@@ -27,7 +27,7 @@ def test_hyper_ai_strategy_create_trading_universe_uses_remote_vault_data(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Test Hyper AI remote vault universe construction.
+    """Test Hyper AI Trading Strategy website vault universe construction.
 
     1. Replace the curated Hypercore builder and vault download helpers with tmp-path backed variants.
     2. Build the strategy trading universe through the real strategy module.
