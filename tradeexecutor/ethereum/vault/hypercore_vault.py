@@ -113,7 +113,6 @@ def create_hypercore_vault_pair(
         exchange_name="Hypercore",
         other_data={
             "vault_protocol": "hypercore",
-            "hypercore_vault_address": vault_addr,
             "exchange_is_testnet": is_testnet,
         },
     )
@@ -132,7 +131,7 @@ def create_hypercore_vault_value_func(
     user's vault equity position using the cached
     :py:func:`~eth_defi.hyperliquid.api.fetch_user_vault_equity`,
     returning the USDC equity for the specific vault address stored
-    in the pair's ``other_data``.
+    in ``pair.pool_address``.
 
     Can be called with either an *execution_model* (used by the runner)
     or explicit *session* + *safe_address* (used by CLI commands).
@@ -176,8 +175,8 @@ def create_hypercore_vault_value_func(
         assert pair.other_data.get("vault_protocol") == "hypercore", \
             f"Not a Hypercore vault pair: {pair.other_data}"
 
-        vault_address = pair.other_data.get("hypercore_vault_address")
-        assert vault_address, f"No hypercore_vault_address in pair other_data: {pair}"
+        vault_address = pair.pool_address
+        assert vault_address, f"No pool_address set for Hypercore vault pair: {pair}"
 
         if _session is not None:
             session = _session
@@ -215,4 +214,3 @@ def create_hypercore_vault_value_func(
             raise
 
     return get_hypercore_vault_value
-

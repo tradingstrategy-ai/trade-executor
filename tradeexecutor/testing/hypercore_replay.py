@@ -294,9 +294,9 @@ class HypercoreDailyMetricsReplay:
         """
         del safe_address
 
-        vault_address = pair.other_data.get("hypercore_vault_address")
+        vault_address = pair.pool_address
         if not vault_address:
-            raise AssertionError(f"No hypercore_vault_address in pair other_data: {pair}")
+            raise AssertionError(f"No pool_address set for Hypercore vault pair: {pair}")
 
         row = self._lookup_row(vault_address, timestamp)
         share_price = self.calculate_share_price(vault_address, row)
@@ -335,4 +335,3 @@ class HypercoreDailyMetricsReplay:
             max_withdrawable_usd=max_withdrawable_usd,
             lockup_expired=lockup_expired,
         )
-

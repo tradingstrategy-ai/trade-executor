@@ -165,8 +165,8 @@ class HypercoreVaultPricing(PricingModel):
         return session
 
     def _get_vault_info(self, pair: TradingPairIdentifier) -> VaultInfo:
-        vault_address = pair.other_data.get("hypercore_vault_address")
-        assert vault_address, f"No hypercore_vault_address in pair other_data: {pair}"
+        vault_address = pair.pool_address
+        assert vault_address, f"No pool_address set for Hypercore vault pair: {pair}"
         session = self._get_session(pair)
         return HyperliquidVault(session=session, vault_address=vault_address).fetch_info()
 
@@ -263,8 +263,8 @@ class HypercoreVaultPricing(PricingModel):
         if info.max_withdrawable <= 0:
             return Decimal(0)
 
-        vault_address = pair.other_data.get("hypercore_vault_address")
-        assert vault_address, f"No hypercore_vault_address in pair other_data: {pair}"
+        vault_address = pair.pool_address
+        assert vault_address, f"No pool_address set for Hypercore vault pair: {pair}"
         eq = fetch_user_vault_equity(
             self._get_session(pair),
             user=safe_address,

@@ -39,7 +39,8 @@ def _make_trade(planned_reserve=Decimal("100.0"), is_buy=True):
     trade.blockchain_transactions = []
     trade.other_data = {}
     trade.pair = MagicMock()
-    trade.pair.other_data = {"hypercore_vault_address": "0xVAULT"}
+    trade.pair.pool_address = "0xVAULT"
+    trade.pair.other_data = {"vault_protocol": "hypercore"}
     return trade
 
 
@@ -120,7 +121,7 @@ def test_settlement_second_buy_no_activation_cost(
     # Second buy: no activation cost in other_data
     trade = _make_trade(planned_reserve=Decimal("50.0"))
     trade.blockchain_transactions = [MagicMock(tx_hash="0xaa")]
-    trade.other_data = {"hypercore_vault_address": "0xVAULT"}
+    trade.other_data = {}
     # Crucially, NO "hypercore_activation_cost_raw" key
 
     state = MagicMock()
