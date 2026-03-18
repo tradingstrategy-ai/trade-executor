@@ -62,6 +62,24 @@ logger = logging.getLogger(__name__)
 JSON_RPC_HYPERLIQUID = os.environ.get("JSON_RPC_HYPERLIQUID")
 
 
+def _fund_hypercore_test_account(
+    web3_hyperevm: Web3,
+    hypercore_usdc_token: TokenDetails,
+    account: str,
+    amount: Decimal,
+) -> str:
+    """Fund one test account with gas and HyperEVM-native USDC."""
+
+    web3_hyperevm.provider.make_request("anvil_setBalance", [account, hex(10 * 10**18)])
+    fund_erc20_on_anvil(
+        web3_hyperevm,
+        hypercore_usdc_token.address,
+        account,
+        hypercore_usdc_token.convert_to_raw(amount),
+    )
+    return account
+
+
 @dataclass
 class FakeIndicators:
     """Tiny indicator adapter for exercising ``strategies/test_only/hyper-ai-test.py`` in tests."""
@@ -108,6 +126,24 @@ def hypercore_daily_metrics_frame(replay_vault_address: str) -> pd.DataFrame:
                 "date": datetime.date(2026, 2, 3),
                 "tvl": 308585706.340077,
                 "cumulative_pnl": 137908924.100077,
+            },
+            {
+                "vault_address": replay_vault_address,
+                "date": datetime.date(2026, 2, 10),
+                "tvl": 316842210.450077,
+                "cumulative_pnl": 145774112.220077,
+            },
+            {
+                "vault_address": replay_vault_address,
+                "date": datetime.date(2026, 2, 17),
+                "tvl": 324115991.120077,
+                "cumulative_pnl": 153481444.990077,
+            },
+            {
+                "vault_address": replay_vault_address,
+                "date": datetime.date(2026, 2, 24),
+                "tvl": 332541902.880077,
+                "cumulative_pnl": 161932118.560077,
             },
         ]
     )
@@ -247,15 +283,25 @@ def depositor(
     web3_hyperevm: Web3,
     hypercore_usdc_token: TokenDetails,
 ) -> str:
-    account = web3_hyperevm.eth.accounts[6]
-    web3_hyperevm.provider.make_request("anvil_setBalance", [account, hex(10 * 10**18)])
-    fund_erc20_on_anvil(
+    return _fund_hypercore_test_account(
         web3_hyperevm,
-        hypercore_usdc_token.address,
-        account,
-        hypercore_usdc_token.convert_to_raw(Decimal("1000")),
+        hypercore_usdc_token,
+        web3_hyperevm.eth.accounts[6],
+        Decimal("1000"),
     )
-    return account
+
+
+@pytest.fixture()
+def secondary_depositor(
+    web3_hyperevm: Web3,
+    hypercore_usdc_token: TokenDetails,
+) -> str:
+    return _fund_hypercore_test_account(
+        web3_hyperevm,
+        hypercore_usdc_token,
+        web3_hyperevm.eth.accounts[7],
+        Decimal("1000"),
+    )
 
 
 @pytest.fixture()
@@ -325,6 +371,7 @@ def hypercore_sync_model(
     return LagoonVaultSyncModel(
         vault=automated_hypercore_lagoon_vault.vault,
         hot_wallet=asset_manager,
+        valuation_data_freshness=datetime.timedelta(days=365),
         unit_testing=True,
     )
 

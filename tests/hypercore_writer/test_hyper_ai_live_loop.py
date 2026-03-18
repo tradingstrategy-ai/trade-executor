@@ -7,11 +7,12 @@ from typing import Protocol
 
 import pytest
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
-from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_defi.token import TokenDetails
 from web3 import Web3
 
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from tradeexecutor.exchange_account.redeemable import get_redeemable_capital
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import (ExecutionContext,
@@ -22,9 +23,25 @@ from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradeexecutor.strategy.pandas_trader.position_manager import \
     PositionManager
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
-from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import \
     TradingStrategyUniverse
+from tradeexecutor.testing.hypercore import (
+    assert_hyper_ai_buy_cycle_reaches_target,
+    assert_hyper_ai_sell_cycle_reaches_target,
+    assert_single_multicall_trade,
+    create_hyper_ai_test_parameters,
+    finalise_lagoon_deposit,
+    get_lagoon_pending_redemptions_underlying,
+    install_hypercore_wait_failures,
+    make_hyper_ai_strategy_input,
+    mirror_lagoon_safe_reserve_balance,
+    request_lagoon_deposit,
+    request_lagoon_redemption,
+    request_lagoon_redemption_all,
+    request_lagoon_redemption_fraction,
+    run_hyper_ai_cycle,
+    settle_lagoon_redemption_queue,
+)
 
 
 class IndicatorFactory(Protocol):
@@ -60,28 +77,15 @@ def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
     vault, state = deposited_hypercore_vault_state
     pair = hypercore_strategy_universe.get_pair_by_id(hypercore_vault_pair.internal_id)
 
-    def _unexpected_wait(*args, **kwargs):
-        raise AssertionError("Live Hypercore wait logic must be short-circuited in Anvil simulate tests")
-
     # Keep quarantine disabled so this test stays focused on execution, valuation and accounting flow.
     monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", lambda pool_address, timestamp: False)
-    monkeypatch.setattr("tradeexecutor.ethereum.vault.hypercore_routing.activate_account", _unexpected_wait)
-    monkeypatch.setattr("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_evm_escrow_clear", _unexpected_wait)
-    monkeypatch.setattr("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_vault_deposit_confirmation", _unexpected_wait)
-    monkeypatch.setattr(
-        "tradeexecutor.ethereum.vault.hypercore_routing.HypercoreVaultRouting._wait_for_usdc_arrival",
-        _unexpected_wait,
-    )
+    install_hypercore_wait_failures(monkeypatch)
 
-    parameters = StrategyParameters.from_class(hyper_ai_strategy_module.Parameters)
-    parameters.initial_cash = 100
-    parameters.max_assets_in_portfolio = 1
-    parameters.allocation = 0.50
-    parameters.max_concentration = 1.0
-    parameters.per_position_cap_of_pool = 1.0
-    parameters.individual_rebalance_min_threshold_usd = 5.0
-    parameters.sell_rebalance_min_threshold = 1.0
-    parameters.min_portfolio_weight = 0.0
+    parameters = create_hyper_ai_test_parameters(
+        hyper_ai_strategy_module,
+        initial_cash=100.0,
+        allocation=0.50,
+    )
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.unit_testing,
@@ -93,6 +97,7 @@ def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
         hypercore_strategy_universe,
         hypercore_execution_model.get_routing_state_details(),
     )
+    reserve_asset = hypercore_strategy_universe.get_reserve_asset()
 
     open_ts = datetime.datetime(2026, 1, 21)
     open_input = StrategyInput(
@@ -129,14 +134,7 @@ def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
         check_balances=True,
     )
 
-    assert open_trade.is_success()
-    assert len(open_trade.blockchain_transactions) == 1
-    open_tx = open_trade.blockchain_transactions[0]
-    assert open_tx.function_selector == "multicall"
-    assert open_tx.tx_hash is not None
-    assert open_tx.signed_bytes is not None
-    assert open_tx.signed_tx_object is not None
-    assert "Hypercore deposit (simulate)" in (open_tx.notes or "")
+    assert_single_multicall_trade(open_trade, note_substring="Hypercore deposit (simulate)")
 
     # 2. Revalue the position and verify the stored BlockchainTransaction data for the Hypercore multicalls.
     position = next(iter(state.portfolio.open_positions.values()))
@@ -178,14 +176,7 @@ def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
         check_balances=True,
     )
 
-    assert close_trade.is_success()
-    assert len(close_trade.blockchain_transactions) == 1
-    close_tx = close_trade.blockchain_transactions[0]
-    assert close_tx.function_selector == "multicall"
-    assert close_tx.tx_hash is not None
-    assert close_tx.signed_bytes is not None
-    assert close_tx.signed_tx_object is not None
-    assert "Hypercore withdrawal" in (close_tx.notes or "")
+    assert_single_multicall_trade(close_trade, note_substring="Hypercore withdrawal")
 
     state_trades = list(state.portfolio.get_all_trades())
     assert len(state_trades) == 2
@@ -199,12 +190,8 @@ def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
             assert tx.signed_tx_object is not None
 
     # 3. Finalise a Lagoon deposit, request a redemption and reconcile treasury state at the end.
-    tx_hash = vault.finalise_deposit(depositor).transact({"from": depositor, "gas": 1_000_000})
-    assert_transaction_success_with_explanation(web3_hyperevm, tx_hash)
-
-    shares_to_redeem_raw = vault.share_token.convert_to_raw(Decimal("100"))
-    tx_hash = vault.request_redeem(depositor, shares_to_redeem_raw).transact({"from": depositor, "gas": 1_000_000})
-    assert_transaction_success_with_explanation(web3_hyperevm, tx_hash)
+    finalise_lagoon_deposit(web3_hyperevm, vault, depositor)
+    request_lagoon_redemption(web3_hyperevm, vault, depositor, Decimal("100"))
 
     hypercore_sync_model.sync_treasury(
         datetime.datetime(2026, 2, 4),
@@ -245,71 +232,7 @@ def test_hyper_ai_cli_hypercore_replay_todo():
     # 2. Run the Hyper-ai strategy through the CLI entry point on a HyperEVM Anvil fork.
     # 3. Verify the CLI path produces the same open, close and accounting behaviour.
     pass
-
-
-def _make_test_input(
-    *,
-    hyper_ai_strategy_module: ModuleType,
-    make_fake_indicators: IndicatorFactory,
-    state: State,
-    strategy_universe: TradingStrategyUniverse,
-    pricing_model: GenericPricing,
-    routing_model: GenericRouting,
-    routing_state: object,
-    pair: TradingPairIdentifier,
-    timestamp: datetime.datetime,
-    include_pair: bool,
-) -> StrategyInput:
-    parameters = StrategyParameters.from_class(hyper_ai_strategy_module.Parameters)
-    parameters.initial_cash = 100
-    parameters.max_assets_in_portfolio = 1
-    parameters.allocation = 0.50
-    parameters.max_concentration = 1.0
-    parameters.per_position_cap_of_pool = 1.0
-    parameters.individual_rebalance_min_threshold_usd = 5.0
-    parameters.sell_rebalance_min_threshold = 1.0
-    parameters.min_portfolio_weight = 0.0
-
-    execution_context = ExecutionContext(
-        mode=ExecutionMode.unit_testing,
-        parameters=parameters,
-    )
-
-    indicator_values = {
-        ("tvl_included_pair_count", None): 1 if include_pair else 0,
-        ("inclusion_criteria", None): [pair.internal_id] if include_pair else [],
-    }
-    if include_pair:
-        indicator_values[("age_ramp_weight", pair.internal_id)] = 1.0
-
-    return StrategyInput(
-        cycle=1,
-        timestamp=timestamp,
-        state=state,
-        strategy_universe=strategy_universe,
-        parameters=parameters,
-        indicators=make_fake_indicators(indicator_values),
-        pricing_model=pricing_model,
-        execution_context=execution_context,
-        other_data={},
-        routing_model=routing_model,
-        routing_state=routing_state,
-    )
-
-
-def _install_wait_failures(monkeypatch: pytest.MonkeyPatch) -> None:
-    def _unexpected_wait(*args, **kwargs):
-        raise AssertionError("Live Hypercore wait logic must be short-circuited in Anvil simulate tests")
-
-    monkeypatch.setattr("tradeexecutor.ethereum.vault.hypercore_routing.activate_account", _unexpected_wait)
-    monkeypatch.setattr("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_evm_escrow_clear", _unexpected_wait)
-    monkeypatch.setattr("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_vault_deposit_confirmation", _unexpected_wait)
-    monkeypatch.setattr(
-        "tradeexecutor.ethereum.vault.hypercore_routing.HypercoreVaultRouting._wait_for_usdc_arrival",
-        _unexpected_wait,
-    )
-
-
+@pytest.mark.timeout(300)
 def test_hyper_ai_hypercore_open_cycle(
     monkeypatch: pytest.MonkeyPatch,
     hyper_ai_strategy_module: ModuleType,
@@ -329,7 +252,7 @@ def test_hyper_ai_hypercore_open_cycle(
     """
     # 1. Prepare a Lagoon Safe with reserve USDC already mirrored into state.
     # We mock the live Hypercore wait helpers because simulate mode should not depend on real bridge delays.
-    _install_wait_failures(monkeypatch)
+    install_hypercore_wait_failures(monkeypatch)
     # Keep quarantine disabled so this test isolates the Hypercore open-path mechanics.
     monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", lambda pool_address, timestamp: False)
 
@@ -345,7 +268,12 @@ def test_hyper_ai_hypercore_open_cycle(
     )
 
     open_ts = datetime.datetime(2026, 1, 21)
-    open_input = _make_test_input(
+    parameters = create_hyper_ai_test_parameters(
+        hyper_ai_strategy_module,
+        initial_cash=100.0,
+        allocation=0.50,
+    )
+    open_input = make_hyper_ai_strategy_input(
         hyper_ai_strategy_module=hyper_ai_strategy_module,
         make_fake_indicators=make_fake_indicators,
         state=state,
@@ -355,7 +283,9 @@ def test_hyper_ai_hypercore_open_cycle(
         routing_state=routing_state,
         pair=pair,
         timestamp=open_ts,
+        cycle=1,
         include_pair=True,
+        parameters=parameters,
     )
 
     trades = hyper_ai_strategy_module.decide_trades(open_input)
@@ -373,18 +303,11 @@ def test_hyper_ai_hypercore_open_cycle(
         check_balances=False,
     )
 
-    assert trade.is_success()
-    assert len(trade.blockchain_transactions) == 1
-    tx = trade.blockchain_transactions[0]
-    assert tx.chain_id == 999
-    assert tx.function_selector == "multicall"
-    assert tx.tx_hash is not None
-    assert tx.signed_bytes is not None
-    assert tx.signed_tx_object is not None
-    assert "Hypercore deposit (simulate)" in (tx.notes or "")
+    assert_single_multicall_trade(trade, note_substring="Hypercore deposit (simulate)")
     assert len(state.portfolio.open_positions) == 1
 
 
+@pytest.mark.timeout(300)
 def test_hyper_ai_hypercore_close_cycle(
     monkeypatch: pytest.MonkeyPatch,
     hyper_ai_strategy_module: ModuleType,
@@ -405,7 +328,7 @@ def test_hyper_ai_hypercore_close_cycle(
     """
     # 1. Open one replay-backed Hypercore position from a funded Lagoon Safe.
     # We mock the live Hypercore wait helpers because Anvil simulate mode shortcuts the production delay logic.
-    _install_wait_failures(monkeypatch)
+    install_hypercore_wait_failures(monkeypatch)
     # Keep quarantine disabled so this test isolates the open-then-close execution path.
     monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", lambda pool_address, timestamp: False)
 
@@ -420,7 +343,12 @@ def test_hyper_ai_hypercore_close_cycle(
     )
 
     open_ts = datetime.datetime(2026, 1, 21)
-    open_input = _make_test_input(
+    parameters = create_hyper_ai_test_parameters(
+        hyper_ai_strategy_module,
+        initial_cash=100.0,
+        allocation=0.50,
+    )
+    open_input = make_hyper_ai_strategy_input(
         hyper_ai_strategy_module=hyper_ai_strategy_module,
         make_fake_indicators=make_fake_indicators,
         state=state,
@@ -430,7 +358,9 @@ def test_hyper_ai_hypercore_close_cycle(
         routing_state=routing_state,
         pair=pair,
         timestamp=open_ts,
+        cycle=1,
         include_pair=True,
+        parameters=parameters,
     )
     open_trades = hyper_ai_strategy_module.decide_trades(open_input)
     hypercore_execution_model.execute_trades(
@@ -448,7 +378,7 @@ def test_hyper_ai_hypercore_close_cycle(
     valuation_update = hypercore_valuation_model(valuation_ts, position)
     assert valuation_update.new_price > 1.0
 
-    close_input = _make_test_input(
+    close_input = make_hyper_ai_strategy_input(
         hyper_ai_strategy_module=hyper_ai_strategy_module,
         make_fake_indicators=make_fake_indicators,
         state=state,
@@ -458,7 +388,9 @@ def test_hyper_ai_hypercore_close_cycle(
         routing_state=routing_state,
         pair=pair,
         timestamp=valuation_ts,
+        cycle=2,
         include_pair=False,
+        parameters=parameters,
     )
     close_trades = hyper_ai_strategy_module.decide_trades(close_input)
     assert len(close_trades) == 1
@@ -475,19 +407,12 @@ def test_hyper_ai_hypercore_close_cycle(
         check_balances=False,
     )
 
-    assert close_trade.is_success()
-    assert len(close_trade.blockchain_transactions) == 1
-    tx = close_trade.blockchain_transactions[0]
-    assert tx.chain_id == 999
-    assert tx.function_selector == "multicall"
-    assert tx.tx_hash is not None
-    assert tx.signed_bytes is not None
-    assert tx.signed_tx_object is not None
-    assert "Hypercore withdrawal" in (tx.notes or "")
+    assert_single_multicall_trade(close_trade, note_substring="Hypercore withdrawal")
     assert all(t.blockchain_transactions for t in state.portfolio.get_all_trades())
     assert not any(position.is_frozen() for position in state.portfolio.get_all_positions())
 
 
+@pytest.mark.timeout(300)
 def test_hyper_ai_hypercore_increase_then_decrease_position(
     monkeypatch: pytest.MonkeyPatch,
     hyper_ai_strategy_module: ModuleType,
@@ -508,7 +433,7 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
     """
     # 1. Open one Hypercore position through the existing split-scenario Anvil harness.
     # We mock the live Hypercore wait helpers because Anvil simulate mode shortcuts the production delay logic.
-    _install_wait_failures(monkeypatch)
+    install_hypercore_wait_failures(monkeypatch)
     # Keep quarantine disabled so this test isolates the increase/decrease execution path.
     monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", lambda pool_address, timestamp: False)
 
@@ -523,7 +448,12 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
     )
 
     open_ts = datetime.datetime(2026, 1, 21)
-    open_input = _make_test_input(
+    parameters = create_hyper_ai_test_parameters(
+        hyper_ai_strategy_module,
+        initial_cash=100.0,
+        allocation=0.50,
+    )
+    open_input = make_hyper_ai_strategy_input(
         hyper_ai_strategy_module=hyper_ai_strategy_module,
         make_fake_indicators=make_fake_indicators,
         state=state,
@@ -533,7 +463,9 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
         routing_state=routing_state,
         pair=pair,
         timestamp=open_ts,
+        cycle=1,
         include_pair=True,
+        parameters=parameters,
     )
     open_trades = hyper_ai_strategy_module.decide_trades(open_input)
     assert len(open_trades) == 1
@@ -586,8 +518,7 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
     increased_quantity = position.get_quantity()
     assert increase_trade.is_success()
     assert increased_quantity > open_quantity
-    assert len(increase_trade.blockchain_transactions) == 1
-    assert "Hypercore deposit (simulate)" in (increase_trade.blockchain_transactions[0].notes or "")
+    assert_single_multicall_trade(increase_trade, note_substring="Hypercore deposit (simulate)")
 
     second_valuation = hypercore_valuation_model(datetime.datetime(2026, 2, 4), position)
     assert second_valuation.new_value > first_valuation.new_value
@@ -625,8 +556,7 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
     assert decrease_trade.is_success()
     assert decreased_quantity < increased_quantity
     assert decreased_quantity > 0
-    assert len(decrease_trade.blockchain_transactions) == 1
-    assert "Hypercore withdrawal" in (decrease_trade.blockchain_transactions[0].notes or "")
+    assert_single_multicall_trade(decrease_trade, note_substring="Hypercore withdrawal")
 
     final_valuation = hypercore_valuation_model(datetime.datetime(2026, 2, 5), position)
     assert final_valuation.new_price > 1.0
@@ -635,15 +565,167 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
     assert not any(position.is_frozen() for position in state.portfolio.get_all_positions())
 
 
-@pytest.mark.skip(reason="TODO: split out Lagoon redemption accounting if the full HyperEVM Anvil scenario stays unstable")
-def test_hyper_ai_lagoon_redeem_accounting() -> None:
-    """Document the future split redemption accounting coverage.
+@pytest.mark.timeout(300)
+def test_hyper_ai_lagoon_redeem_accounting(
+    monkeypatch: pytest.MonkeyPatch,
+    hyper_ai_strategy_module: ModuleType,
+    make_fake_indicators: IndicatorFactory,
+    deposited_hypercore_vault_state: tuple[LagoonVault, State],
+    depositor: str,
+    secondary_depositor: str,
+    web3_hyperevm: Web3,
+    hypercore_usdc_token: TokenDetails,
+    hypercore_execution_model: LagoonExecution,
+    hypercore_pricing_model: GenericPricing,
+    hypercore_routing_model: GenericRouting,
+    hypercore_strategy_universe: TradingStrategyUniverse,
+    hypercore_sync_model: LagoonVaultSyncModel,
+    hypercore_valuation_model: GenericValuation,
+    hypercore_vault_pair: TradingPairIdentifier,
+) -> None:
+    """Exercise Hyper AI redemption accounting across repeated live-style cycles.
 
-    1. Deploy the Lagoon vault and seed it with one completed deposit.
-    2. Request a redemption in a smaller dedicated scenario with minimal Anvil traffic.
-    3. Verify treasury settlement, pending redemptions and final accounting in isolation.
+    1. Finalise one initial deposit, open the first Hypercore position and record the deployable target.
+    2. Queue a 50% redemption, run a rebalance cycle and verify pending redemptions reduce the target invested value.
+    3. Queue a further 25% redemption, run another rebalance and verify the strategy sells down to the new target.
+    4. Queue the remaining redemption, run another rebalance and verify the position fully exits.
+    5. Add a new deposit from another account, run one more cycle and verify the strategy reinvests only the newly available capital.
     """
-    # 1. Deploy the Lagoon vault and seed it with one completed deposit.
-    # 2. Request a redemption in a smaller dedicated scenario with minimal Anvil traffic.
-    # 3. Verify treasury settlement, pending redemptions and final accounting in isolation.
-    pass
+    # 1. Finalise one initial deposit, open the first Hypercore position and record the deployable target.
+    install_hypercore_wait_failures(monkeypatch)
+    monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", lambda pool_address, timestamp: False)
+
+    vault, state = deposited_hypercore_vault_state
+    pair = hypercore_strategy_universe.get_pair_by_id(hypercore_vault_pair.internal_id)
+    parameters = create_hyper_ai_test_parameters(
+        hyper_ai_strategy_module,
+        initial_cash=399.0,
+        allocation=0.98,
+    )
+
+    hypercore_execution_model.initialize()
+    routing_state = hypercore_routing_model.create_routing_state(
+        hypercore_strategy_universe,
+        hypercore_execution_model.get_routing_state_details(),
+    )
+    reserve_asset = hypercore_strategy_universe.get_reserve_asset()
+    cycle_specs = [
+        {
+            "cycle": 1,
+            "timestamp": datetime.datetime(2026, 1, 21),
+            "pre_action": lambda: finalise_lagoon_deposit(web3_hyperevm, vault, depositor),
+            "expected_side": "buy",
+            "note_substring": "Hypercore deposit (simulate)",
+            "fully_exit": False,
+        },
+        {
+            "cycle": 2,
+            "timestamp": datetime.datetime(2026, 2, 3),
+            "pre_action": lambda: request_lagoon_redemption_fraction(
+                web3_hyperevm,
+                vault,
+                depositor,
+                Decimal("0.5"),
+            ),
+            "fully_exit": False,
+        },
+        {
+            "cycle": 3,
+            "timestamp": datetime.datetime(2026, 2, 10),
+            "pre_action": lambda: request_lagoon_redemption_fraction(
+                web3_hyperevm,
+                vault,
+                depositor,
+                Decimal("0.5"),
+            ),
+            "fully_exit": False,
+        },
+        {
+            "cycle": 4,
+            "timestamp": datetime.datetime(2026, 2, 17),
+            "pre_action": lambda: request_lagoon_redemption_all(
+                web3_hyperevm,
+                vault,
+                depositor,
+            ),
+            "fully_exit": True,
+        },
+        {
+            "cycle": 5,
+            "timestamp": datetime.datetime(2026, 2, 24),
+            "pre_action": lambda: request_lagoon_deposit(
+                web3_hyperevm,
+                vault,
+                hypercore_usdc_token,
+                secondary_depositor,
+                Decimal("250"),
+            ),
+            "fully_exit": False,
+        },
+    ]
+
+    cycle_results = []
+    for spec in cycle_specs:
+        spec["pre_action"]()
+        cycle_result = run_hyper_ai_cycle(
+            hyper_ai_strategy_module=hyper_ai_strategy_module,
+            make_fake_indicators=make_fake_indicators,
+            cycle=spec["cycle"],
+            timestamp=spec["timestamp"],
+            include_pair=True,
+            state=state,
+            strategy_universe=hypercore_strategy_universe,
+            sync_model=hypercore_sync_model,
+            execution_model=hypercore_execution_model,
+            pricing_model=hypercore_pricing_model,
+            routing_model=hypercore_routing_model,
+            routing_state=routing_state,
+            valuation_model=hypercore_valuation_model,
+            pair=pair,
+            parameters=parameters,
+        )
+
+        target_delta = cycle_result.snapshot.deployable_equity - cycle_result.snapshot.open_position_value
+
+        if target_delta > parameters.individual_rebalance_min_threshold_usd:
+            trade = assert_hyper_ai_buy_cycle_reaches_target(cycle_result)
+            note_substring = "Hypercore deposit (simulate)"
+        else:
+            trade = assert_hyper_ai_sell_cycle_reaches_target(
+                cycle_result,
+                fully_exit=spec["fully_exit"],
+            )
+            note_substring = "Hypercore withdrawal"
+
+        assert_single_multicall_trade(trade, note_substring=note_substring)
+        mirror_lagoon_safe_reserve_balance(
+            web3_hyperevm,
+            vault,
+            hypercore_usdc_token,
+            state,
+        )
+        if trade.is_sell():
+            settle_lagoon_redemption_queue(
+                hypercore_sync_model,
+                state,
+                reserve_asset,
+                spec["timestamp"],
+            )
+        cycle_results.append(cycle_result)
+
+    cycle_1, cycle_2, cycle_3, cycle_4, cycle_5 = cycle_results
+
+    initial_shares = vault.share_token.fetch_balance_of(depositor)
+    assert initial_shares == pytest.approx(Decimal("0"))
+    assert cycle_1.snapshot.pending_redemptions == pytest.approx(0.0, abs=1e-6)
+    assert cycle_2.snapshot.pending_redemptions > 0
+    assert cycle_5.snapshot.pending_redemptions == pytest.approx(0.0, abs=1e-6)
+    assert cycle_2.snapshot.deployable_equity < cycle_1.snapshot.deployable_equity
+    assert cycle_5.snapshot.open_position_value == pytest.approx(0.0, abs=1e-6)
+    assert cycle_5.snapshot.deployable_equity > 0
+    assert len(state.portfolio.open_positions) == 1
+    assert get_lagoon_pending_redemptions_underlying(vault, web3_hyperevm.eth.block_number) == pytest.approx(Decimal("0"))
+    assert get_redeemable_capital(
+        next(iter(state.portfolio.open_positions.values())),
+        timestamp=datetime.datetime(2026, 2, 24),
+    ) == pytest.approx(0.0, abs=1e-6)
