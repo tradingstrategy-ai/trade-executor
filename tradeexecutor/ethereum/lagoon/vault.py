@@ -7,6 +7,9 @@ from pprint import pformat
 from types import NoneType
 from typing import Callable, Iterable, Optional
 
+from web3 import Web3
+from web3.contract.contract import ContractFunction
+
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.confirmation import wait_and_broadcast_multiple_nodes_mev_blocker
 from eth_defi.erc_4626.vault_protocol.lagoon.analysis import \
@@ -18,6 +21,7 @@ from eth_defi.provider.anvil import is_anvil
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_defi.provider.mev_blocker import MEVBlockerProvider
 from eth_defi.token import fetch_erc20_details
+from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_typing import BlockIdentifier, HexAddress
 from tradingstrategy.chain import ChainId
 
@@ -39,6 +43,44 @@ from tradeexecutor.strategy.trading_strategy_universe import \
     TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
+
+
+def _transact_anvil_sequentially(
+    web3,
+    hot_wallet: HotWallet,
+    txs: list[tuple[ContractFunction, int]],
+    *,
+    timeout: int = 120,
+) -> list:
+    """Broadcast a small ordered tx batch directly on Anvil.
+
+    Anvil forks are prone to returning transient ``nonce too low`` errors when
+    we feed already-signed sequential transactions through the multi-node retry
+    broadcast helper that is designed for real RPC infrastructure. In unit
+    tests we only have a single local Anvil node, so we re-sync the wallet
+    nonce once against the local chain and then sign, submit and confirm the
+    transactions one by one against the active provider.
+    """
+    provider = getattr(web3, "provider", None)
+    active_provider = getattr(provider, "get_active_provider", lambda: provider)()
+    direct_web3 = Web3(active_provider) if active_provider is not None else web3
+    hot_wallet.sync_nonce(direct_web3)
+
+    tx_hashes = []
+    for bound_func, gas_limit in txs:
+        signed_tx = hot_wallet.sign_bound_call_with_new_nonce(
+            bound_func,
+            tx_params={"gas": gas_limit},
+            web3=direct_web3,
+            fill_gas_price=True,
+        )
+        tx_hash = direct_web3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        receipt = direct_web3.eth.wait_for_transaction_receipt(tx_hash, timeout=timeout)
+        if receipt["status"] != 1:
+            assert_transaction_success_with_explanation(direct_web3, tx_hash)
+        tx_hashes.append(tx_hash)
+
+    return tx_hashes
 
 
 class LagoonVaultSyncModel(AddressSyncModel):
@@ -386,13 +428,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         logger.info("Posting new Lagoon valuation: %f USD", valuation)
         valuation_decimal = Decimal(valuation)
-        bound_func = vault.post_new_valuation(valuation_decimal)
-        signed_tx_1 = self.hot_wallet.sign_bound_call_with_new_nonce(
-            bound_func,
-            tx_params={"gas": DEFAULT_LAGOON_POST_VALUATION_GAS},
-            web3=web3,
-            fill_gas_price=True
-        )
+        valuation_func = vault.post_new_valuation(valuation_decimal)
 
         logger.info("Preparing to settle Lagoon")
 
@@ -438,22 +474,41 @@ class LagoonVaultSyncModel(AddressSyncModel):
                         deficit,
                     )
 
-        bound_func = vault.settle_via_trading_strategy_module(valuation_decimal)
-        signed_tx_2 = self.hot_wallet.sign_bound_call_with_new_nonce(
-            bound_func,
-            tx_params={"gas": DEFAULT_LAGOON_SETTLE_GAS},
-            web3=web3,
-            fill_gas_price=True
-        )
+        settle_func = vault.settle_via_trading_strategy_module(valuation_decimal)
 
-        wait_and_broadcast_multiple_nodes_mev_blocker(
-            web3.provider,
-            [signed_tx_1, signed_tx_2],
-        )
+        if self.anvil or self.unit_testing:
+            logger.info("Broadcasting Lagoon valuation + settle sequentially on Anvil")
+            tx_hashes = _transact_anvil_sequentially(
+                web3,
+                self.hot_wallet,
+                [
+                    (valuation_func, DEFAULT_LAGOON_POST_VALUATION_GAS),
+                    (settle_func, DEFAULT_LAGOON_SETTLE_GAS),
+                ],
+            )
+            settle_tx_hash = tx_hashes[-1]
+        else:
+            signed_tx_1 = self.hot_wallet.sign_bound_call_with_new_nonce(
+                valuation_func,
+                tx_params={"gas": DEFAULT_LAGOON_POST_VALUATION_GAS},
+                web3=web3,
+                fill_gas_price=True
+            )
+            signed_tx_2 = self.hot_wallet.sign_bound_call_with_new_nonce(
+                settle_func,
+                tx_params={"gas": DEFAULT_LAGOON_SETTLE_GAS},
+                web3=web3,
+                fill_gas_price=True
+            )
+            wait_and_broadcast_multiple_nodes_mev_blocker(
+                web3.provider,
+                [signed_tx_1, signed_tx_2],
+            )
+            settle_tx_hash = signed_tx_2.hash
 
         analysis = analyse_vault_flow_in_settlement(
             vault,
-            signed_tx_2.hash,
+            settle_tx_hash,
         )
 
         logger.info(

@@ -2,50 +2,66 @@
 
 import datetime
 from decimal import Decimal
+from types import ModuleType
+from typing import Protocol
 
 import pytest
+from web3 import Web3
 
+from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.trace import assert_transaction_success_with_explanation
 
+from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
+from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
+from tradeexecutor.strategy.generic.generic_router import GenericRouting
+from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+
+
+class IndicatorFactory(Protocol):
+    def __call__(self, values: dict[tuple[str, int | None], object]) -> object:
+        ...
 
 
 @pytest.mark.timeout(300)
-@pytest.mark.xfail(
-    reason="HyperEVM Anvil hangs during Lagoon treasury sync in the initial deposit fixture; split-scenario follow-up needed",
-    run=False,
-)
 def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
     monkeypatch: pytest.MonkeyPatch,
-    hyper_ai_strategy_module,
-    make_fake_indicators,
-    deposited_hypercore_vault_state,
+    hyper_ai_strategy_module: ModuleType,
+    make_fake_indicators: IndicatorFactory,
+    deposited_hypercore_vault_state: tuple[LagoonVault, State],
     depositor: str,
-    web3_hyperevm,
-    hypercore_execution_model,
-    hypercore_pricing_model,
-    hypercore_routing_model,
-    hypercore_strategy_universe,
-    hypercore_sync_model,
-    hypercore_valuation_model,
-    hypercore_vault_pair,
-):
-    """Exercise Hypercore open/close execution with replay pricing and valuation.
+    web3_hyperevm: Web3,
+    hypercore_execution_model: LagoonExecution,
+    hypercore_pricing_model: GenericPricing,
+    hypercore_routing_model: GenericRouting,
+    hypercore_strategy_universe: TradingStrategyUniverse,
+    hypercore_sync_model: LagoonVaultSyncModel,
+    hypercore_valuation_model: GenericValuation,
+    hypercore_vault_pair: TradingPairIdentifier,
+) -> None:
+    """Exercise the full Hypercore replay lifecycle on Anvil.
 
-    This is the first large integration attempt.  It uses the real
-    ``strategies/hyper-ai.py`` decision function, but keeps the universe
-    intentionally tiny so Anvil RPC traffic stays manageable.
+    1. Use the real Hyper-ai strategy to open and then close one replay-backed Hypercore position.
+    2. Revalue the position and verify the stored BlockchainTransaction data for the Hypercore multicalls.
+    3. Finalise a Lagoon deposit, request a redemption and reconcile treasury state at the end.
     """
+    # 1. Use the real Hyper-ai strategy to open and then close one replay-backed Hypercore position.
+    # We mock the live Hypercore wait helpers because Anvil simulate mode settles immediately and
+    # the production polling path would only add brittle network waits to this test.
     vault, state = deposited_hypercore_vault_state
     pair = hypercore_strategy_universe.get_pair_by_id(hypercore_vault_pair.internal_id)
 
     def _unexpected_wait(*args, **kwargs):
         raise AssertionError("Live Hypercore wait logic must be short-circuited in Anvil simulate tests")
 
+    # Keep quarantine disabled so this test stays focused on execution, valuation and accounting flow.
     monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", lambda pool_address, timestamp: False)
     monkeypatch.setattr("tradeexecutor.ethereum.vault.hypercore_routing.activate_account", _unexpected_wait)
     monkeypatch.setattr("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_evm_escrow_clear", _unexpected_wait)
@@ -120,11 +136,12 @@ def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
     assert open_tx.signed_tx_object is not None
     assert "Hypercore deposit (simulate)" in (open_tx.notes or "")
 
+    # 2. Revalue the position and verify the stored BlockchainTransaction data for the Hypercore multicalls.
     position = next(iter(state.portfolio.open_positions.values()))
     valuation_ts = datetime.datetime(2026, 2, 3)
     valuation_update = hypercore_valuation_model(valuation_ts, position)
     assert valuation_update.new_price > 1.0
-    assert valuation_update.new_value == pytest.approx(position.get_quantity() * position.last_token_price)
+    assert valuation_update.new_value == pytest.approx(float(position.get_quantity()) * position.last_token_price)
 
     close_input = StrategyInput(
         cycle=2,
@@ -179,7 +196,7 @@ def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
             assert tx.signed_bytes is not None
             assert tx.signed_tx_object is not None
 
-    # Finalise shares, request a redemption, and reconcile treasury once more.
+    # 3. Finalise a Lagoon deposit, request a redemption and reconcile treasury state at the end.
     tx_hash = vault.finalise_deposit(depositor).transact({"from": depositor, "gas": 1_000_000})
     assert_transaction_success_with_explanation(web3_hyperevm, tx_hash)
 
@@ -215,19 +232,29 @@ def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
 
 @pytest.mark.skip(reason="TODO: add CLI Hypercore replay coverage after the loop-level harness is stable")
 def test_hyper_ai_cli_hypercore_replay_todo():
-    """Placeholder for future CLI replay coverage."""
+    """Document the future CLI replay coverage.
+
+    1. Reuse the same replay fixture and Hypercore mock module from the loop-level tests.
+    2. Run the Hyper-ai strategy through the CLI entry point on a HyperEVM Anvil fork.
+    3. Verify the CLI path produces the same open, close and accounting behaviour.
+    """
+    # 1. Reuse the same replay fixture and Hypercore mock module from the loop-level tests.
+    # We will keep the same mock because Hypercore does not offer historical execution simulation.
+    # 2. Run the Hyper-ai strategy through the CLI entry point on a HyperEVM Anvil fork.
+    # 3. Verify the CLI path produces the same open, close and accounting behaviour.
+    pass
 
 
 def _make_test_input(
     *,
-    hyper_ai_strategy_module,
-    make_fake_indicators,
-    state,
-    strategy_universe,
-    pricing_model,
-    routing_model,
-    routing_state,
-    pair,
+    hyper_ai_strategy_module: ModuleType,
+    make_fake_indicators: IndicatorFactory,
+    state: State,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model: GenericPricing,
+    routing_model: GenericRouting,
+    routing_state: object,
+    pair: TradingPairIdentifier,
     timestamp: datetime.datetime,
     include_pair: bool,
 ) -> StrategyInput:
@@ -283,23 +310,32 @@ def _install_wait_failures(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_hyper_ai_hypercore_open_cycle(
     monkeypatch: pytest.MonkeyPatch,
-    hyper_ai_strategy_module,
-    make_fake_indicators,
-    hypercore_state_with_safe_reserves,
-    hypercore_execution_model,
-    hypercore_pricing_model,
-    hypercore_routing_model,
-    hypercore_strategy_universe,
-    hypercore_vault_pair,
-):
-    """Exercise one Hypercore open cycle without the hanging treasury-sync path."""
+    hyper_ai_strategy_module: ModuleType,
+    make_fake_indicators: IndicatorFactory,
+    hypercore_state_with_safe_reserves: tuple[LagoonVault, State],
+    hypercore_execution_model: LagoonExecution,
+    hypercore_pricing_model: GenericPricing,
+    hypercore_routing_model: GenericRouting,
+    hypercore_strategy_universe: TradingStrategyUniverse,
+    hypercore_vault_pair: TradingPairIdentifier,
+) -> None:
+    """Exercise one isolated Hypercore open cycle.
+
+    1. Prepare a Lagoon Safe with reserve USDC already mirrored into state.
+    2. Run one Hyper-ai decision cycle that includes the replayed Hypercore vault.
+    3. Execute the buy trade and verify the stored Hypercore multicall transaction data.
+    """
+    # 1. Prepare a Lagoon Safe with reserve USDC already mirrored into state.
+    # We mock the live Hypercore wait helpers because simulate mode should not depend on real bridge delays.
     _install_wait_failures(monkeypatch)
+    # Keep quarantine disabled so this test isolates the Hypercore open-path mechanics.
     monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", lambda pool_address, timestamp: False)
 
     vault, state = hypercore_state_with_safe_reserves
     del vault
     pair = hypercore_strategy_universe.get_pair_by_id(hypercore_vault_pair.internal_id)
 
+    # 2. Run one Hyper-ai decision cycle that includes the replayed Hypercore vault.
     hypercore_execution_model.initialize()
     routing_state = hypercore_routing_model.create_routing_state(
         hypercore_strategy_universe,
@@ -325,6 +361,7 @@ def test_hyper_ai_hypercore_open_cycle(
     trade = trades[0]
     assert trade.is_buy()
 
+    # 3. Execute the buy trade and verify the stored Hypercore multicall transaction data.
     hypercore_execution_model.execute_trades(
         open_ts,
         state,
@@ -348,15 +385,21 @@ def test_hyper_ai_hypercore_open_cycle(
 
 def test_hyper_ai_uses_hypercore_vault_address_for_quarantine(
     monkeypatch: pytest.MonkeyPatch,
-    hyper_ai_strategy_module,
-    make_fake_indicators,
-    hypercore_state_with_safe_reserves,
-    hypercore_pricing_model,
-    hypercore_routing_model,
-    hypercore_strategy_universe,
-    hypercore_vault_pair,
-):
-    """Hypercore quarantine checks must use the real vault address, not CoreWriter."""
+    hyper_ai_strategy_module: ModuleType,
+    make_fake_indicators: IndicatorFactory,
+    hypercore_state_with_safe_reserves: tuple[LagoonVault, State],
+    hypercore_pricing_model: GenericPricing,
+    hypercore_routing_model: GenericRouting,
+    hypercore_strategy_universe: TradingStrategyUniverse,
+    hypercore_vault_pair: TradingPairIdentifier,
+) -> None:
+    """Verify Hypercore quarantine address selection.
+
+    1. Build one Hyper-ai decision input for the replayed Hypercore vault.
+    2. Replace the quarantine hook with a recorder that always blocks the vault.
+    3. Confirm the strategy passes the real Hypercore vault address instead of CoreWriter.
+    """
+    # 1. Build one Hyper-ai decision input for the replayed Hypercore vault.
     _, state = hypercore_state_with_safe_reserves
     pair = hypercore_strategy_universe.get_pair_by_id(hypercore_vault_pair.internal_id)
     seen_addresses: list[str] = []
@@ -366,6 +409,8 @@ def test_hyper_ai_uses_hypercore_vault_address_for_quarantine(
         seen_addresses.append(address)
         return True
 
+    # 2. Replace the quarantine hook with a recorder that always blocks the vault.
+    # We mock the quarantine callback so the test can observe which address the strategy passes in.
     monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", _is_quarantined)
 
     strategy_input = _make_test_input(
@@ -381,6 +426,7 @@ def test_hyper_ai_uses_hypercore_vault_address_for_quarantine(
         include_pair=True,
     )
 
+    # 3. Confirm the strategy passes the real Hypercore vault address instead of CoreWriter.
     trades = hyper_ai_strategy_module.decide_trades(strategy_input)
     assert trades == []
     assert seen_addresses == [pair.other_data["hypercore_vault_address"]]
@@ -388,18 +434,26 @@ def test_hyper_ai_uses_hypercore_vault_address_for_quarantine(
 
 def test_hyper_ai_hypercore_close_cycle(
     monkeypatch: pytest.MonkeyPatch,
-    hyper_ai_strategy_module,
-    make_fake_indicators,
-    hypercore_state_with_safe_reserves,
-    hypercore_execution_model,
-    hypercore_pricing_model,
-    hypercore_routing_model,
-    hypercore_strategy_universe,
-    hypercore_valuation_model,
-    hypercore_vault_pair,
-):
-    """Exercise a Hypercore open followed by a close in split-scenario form."""
+    hyper_ai_strategy_module: ModuleType,
+    make_fake_indicators: IndicatorFactory,
+    hypercore_state_with_safe_reserves: tuple[LagoonVault, State],
+    hypercore_execution_model: LagoonExecution,
+    hypercore_pricing_model: GenericPricing,
+    hypercore_routing_model: GenericRouting,
+    hypercore_strategy_universe: TradingStrategyUniverse,
+    hypercore_valuation_model: GenericValuation,
+    hypercore_vault_pair: TradingPairIdentifier,
+) -> None:
+    """Exercise one isolated Hypercore open and close path.
+
+    1. Open one replay-backed Hypercore position from a funded Lagoon Safe.
+    2. Revalue the position at a later replay timestamp and generate the closing decision.
+    3. Execute the sell trade and verify the withdrawal multicall state is stored correctly.
+    """
+    # 1. Open one replay-backed Hypercore position from a funded Lagoon Safe.
+    # We mock the live Hypercore wait helpers because Anvil simulate mode shortcuts the production delay logic.
     _install_wait_failures(monkeypatch)
+    # Keep quarantine disabled so this test isolates the open-then-close execution path.
     monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", lambda pool_address, timestamp: False)
 
     vault, state = hypercore_state_with_safe_reserves
@@ -435,6 +489,7 @@ def test_hyper_ai_hypercore_close_cycle(
         check_balances=False,
     )
 
+    # 2. Revalue the position at a later replay timestamp and generate the closing decision.
     position = next(iter(state.portfolio.open_positions.values()))
     valuation_ts = datetime.datetime(2026, 2, 3)
     valuation_update = hypercore_valuation_model(valuation_ts, position)
@@ -457,6 +512,7 @@ def test_hyper_ai_hypercore_close_cycle(
     close_trade = close_trades[0]
     assert close_trade.is_sell()
 
+    # 3. Execute the sell trade and verify the withdrawal multicall state is stored correctly.
     hypercore_execution_model.execute_trades(
         valuation_ts,
         state,
@@ -480,5 +536,18 @@ def test_hyper_ai_hypercore_close_cycle(
 
 
 @pytest.mark.skip(reason="TODO: split out Lagoon redemption accounting if the full HyperEVM Anvil scenario stays unstable")
-def test_hyper_ai_lagoon_redeem_accounting():
-    """Placeholder for a smaller Lagoon redemption accounting test."""
+def test_hyper_ai_lagoon_redeem_accounting() -> None:
+    """Document the future split redemption accounting coverage.
+
+    1. Deploy the Lagoon vault and seed it with one completed deposit.
+    2. Request a redemption in a smaller dedicated scenario with minimal Anvil traffic.
+    3. Verify treasury settlement, pending redemptions and final accounting in isolation.
+    """
+    # 1. Deploy the Lagoon vault and seed it with one completed deposit.
+    # 2. Request a redemption in a smaller dedicated scenario with minimal Anvil traffic.
+    # 3. Verify treasury settlement, pending redemptions and final accounting in isolation.
+    pass
+    # 1. Deploy the Lagoon vault and seed it with one completed deposit.
+    # 2. Request a redemption in a smaller dedicated scenario with minimal Anvil traffic.
+    # 3. Verify treasury settlement, pending redemptions and final accounting in isolation.
+    pass

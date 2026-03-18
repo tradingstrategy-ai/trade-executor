@@ -64,7 +64,7 @@ JSON_RPC_HYPERLIQUID = os.environ.get("JSON_RPC_HYPERLIQUID")
 
 @dataclass
 class FakeIndicators:
-    """Tiny indicator adapter for exercising ``strategies/hyper-ai.py`` in tests."""
+    """Tiny indicator adapter for exercising ``strategies/test_only/hyper-ai-test.py`` in tests."""
 
     values: dict[tuple[str, int | None], object]
 
@@ -186,7 +186,7 @@ def hypercore_strategy_universe(
 
 @pytest.fixture()
 def hyper_ai_strategy_module():
-    strategy_path = Path(__file__).resolve().parents[2] / "strategies" / "hyper-ai.py"
+    strategy_path = Path(__file__).resolve().parents[2] / "strategies" / "test_only" / "hyper-ai-test.py"
     spec = importlib.util.spec_from_file_location("hyper_ai_strategy", strategy_path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None

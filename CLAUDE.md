@@ -62,6 +62,7 @@ Don't format code.
 
 ## Pull requests
 
+- When opening a pull request, include why this PR was made, only only what was changed - use ask user tool for more information if needed
 - Only push changes to remote when asked, never update pull requess automatically.
 - Never push directly to a master, and open a pull request when asked.
 - Do not include test plan in a pull request description
@@ -93,6 +94,12 @@ Don't format code.
 - Don't use logger.info() or logger.debug() inside test and fixture function bodies unless specifically asked
 - Do not do excessive number of tests. Prefer one test for happy path and one test for bad path. Do several asserts within a single test case to have test coverage, but keeping the number of tests low.
 - Always use pytest timeout and chat timeout when running tests. Use 5 minutes timeout unless you are running the full test suite.
+- Akk tests must have docstring
+- Docstring must stell what is being tested and why
+- Docstring must have 1, 2, 3, N style ordered list of steps the test is taking, up to the hig level actions in the test. These steps must then repeat as line comments within the test body.
+- If we mock something, we must describe why
+- Have Python type hints for used pytest fixtures
+- We cannot import from tests sub-tree: helper functions must go to live in `testing` submodules in the actual source tree
 
 ### pyproject.toml
 
