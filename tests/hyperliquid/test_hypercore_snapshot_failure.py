@@ -38,9 +38,10 @@ def _make_trade(planned_reserve=Decimal("50.0")):
     trade.get_planned_reserve.return_value = planned_reserve
     trade.trade_id = 1
     trade.blockchain_transactions = [MagicMock(tx_hash="0xaa")]
-    trade.other_data = {"hypercore_vault_address": VAULT_ADDR}
+    trade.other_data = {}
     trade.pair = MagicMock()
-    trade.pair.other_data = {"hypercore_vault_address": VAULT_ADDR}
+    trade.pair.pool_address = VAULT_ADDR
+    trade.pair.other_data = {"vault_protocol": "hypercore"}
     return trade
 
 

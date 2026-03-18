@@ -35,6 +35,7 @@ class DummyPair:
         quote=None,
         kind=None,
         other_data=None,
+        pool_address: str | None = None,
         exchange_account=False,
         vault=False,
     ):
@@ -43,6 +44,7 @@ class DummyPair:
         self.quote = quote
         self.kind = kind
         self.other_data = other_data or {}
+        self.pool_address = pool_address
         self._exchange_account = exchange_account
         self._vault = vault
 
@@ -122,8 +124,8 @@ def test_translate_trading_universe_handles_hypercore_native_assets_when_any_ass
         quote=usdc_asset,
         other_data={
             "vault_protocol": "hypercore",
-            "hypercore_vault_address": "0x0000000000000000000000000000000000000abc",
         },
+        pool_address="0x0000000000000000000000000000000000000abc",
         vault=True,
     )
     universe = DummyUniverse([reserve_asset], [pair])
