@@ -37,6 +37,10 @@ from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.valuation import ValuationModel
+from tradeexecutor.testing.hypercore_replay import (
+    HypercoreReplaySnapshot,
+    HypercoreVaultMarketDataSource,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,17 +51,33 @@ LEADER_FRACTION_WARNING_THRESHOLD = 0.055
 
 def get_hypercore_deposit_closed_reason(info: VaultInfo) -> str | None:
     """Return a descriptive reason why Hypercore deposits are not allowed."""
-    if info.is_closed:
+    return _get_hypercore_deposit_closed_reason_from_flags(
+        is_closed=info.is_closed,
+        allow_deposits=info.allow_deposits,
+        relationship_type=info.relationship_type,
+        leader_fraction=info.leader_fraction,
+    )
+
+
+def _get_hypercore_deposit_closed_reason_from_flags(
+    *,
+    is_closed: bool,
+    allow_deposits: bool,
+    relationship_type: str,
+    leader_fraction: float | Decimal | None,
+) -> str | None:
+    """Return a descriptive reason why Hypercore deposits are not allowed."""
+    if is_closed:
         return "Vault is permanently closed"
 
     # HLP parent deposits remain open even if the API reports allowDeposits=False.
-    if info.relationship_type == "parent":
+    if relationship_type == "parent":
         return None
 
-    if not info.allow_deposits:
+    if not allow_deposits:
         return "Vault deposits disabled by leader"
 
-    if info.leader_fraction is not None and float(info.leader_fraction) < LEADER_FRACTION_WARNING_THRESHOLD:
+    if leader_fraction is not None and float(leader_fraction) < LEADER_FRACTION_WARNING_THRESHOLD:
         return "Leader share of the vault capital near allowed Hyperliquid minimum and new capital may not be accepted"
 
     return None
@@ -77,15 +97,17 @@ class HypercoreVaultPricing(PricingModel):
 
     def __init__(
         self,
-        value_func: Callable[[TradingPairIdentifier], Decimal],
+        value_func: Callable[[TradingPairIdentifier], Decimal] | None,
         safe_address_resolver: Callable[[TradingPairIdentifier], str | None] | None = None,
         session_factory: Callable[[TradingPairIdentifier], HyperliquidSession] | None = None,
         simulate: bool = False,
+        market_data_source: HypercoreVaultMarketDataSource | None = None,
     ):
         self.value_func = value_func
         self.safe_address_resolver = safe_address_resolver
         self.session_factory = session_factory
         self.simulate = simulate
+        self.market_data_source = market_data_source
         self._session_cache: dict[str, HyperliquidSession] = {}
 
     def _make_pricing(self, pair: TradingPairIdentifier, token_in: Decimal | None = None, token_out: Decimal | None = None) -> TradePricing:
@@ -148,11 +170,53 @@ class HypercoreVaultPricing(PricingModel):
         session = self._get_session(pair)
         return HyperliquidVault(session=session, vault_address=vault_address).fetch_info()
 
+    def _get_market_snapshot(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+        *,
+        net_deposited_usdc: Decimal | None = None,
+        current_equity_usd: Decimal | None = None,
+    ) -> HypercoreReplaySnapshot:
+        assert self.market_data_source is not None
+        safe_address = self._get_safe_address(pair)
+        return self.market_data_source.get_snapshot(
+            ts or native_datetime_utc_now(),
+            pair,
+            safe_address=safe_address,
+            net_deposited_usdc=net_deposited_usdc,
+            current_equity_usd=current_equity_usd,
+        )
+
+    def get_usd_tvl(
+        self,
+        timestamp: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> float:
+        if self.market_data_source is not None:
+            snapshot = self._get_market_snapshot(timestamp, pair)
+            return float(snapshot.tvl_usd)
+
+        raise NotImplementedError("Hypercore vault TVL needs a replay market-data source in live-style tests")
+
     def get_max_deposit(
         self,
         ts: datetime.datetime | None,
         pair: TradingPairIdentifier,
     ) -> Decimal | None:
+        if self.market_data_source is not None:
+            snapshot = self._get_market_snapshot(ts, pair)
+            reason = _get_hypercore_deposit_closed_reason_from_flags(
+                is_closed=snapshot.is_closed,
+                allow_deposits=snapshot.allow_deposits,
+                relationship_type=snapshot.relationship_type,
+                leader_fraction=snapshot.leader_fraction,
+            )
+            if reason is not None:
+                logger.info("Hypercore replay vault %s deposits closed: %s", pair, reason)
+                return Decimal(0)
+            return None
+
         if self.simulate:
             return None
 
@@ -168,6 +232,25 @@ class HypercoreVaultPricing(PricingModel):
         ts: datetime.datetime | None,
         pair: TradingPairIdentifier,
     ) -> Decimal | None:
+        if self.market_data_source is not None:
+            current_equity_usd = None
+            if self.value_func is not None and not self.simulate:
+                current_equity_usd = self.value_func(pair)
+
+            snapshot = self._get_market_snapshot(
+                ts,
+                pair,
+                current_equity_usd=current_equity_usd,
+            )
+
+            if not snapshot.lockup_expired:
+                return Decimal(0)
+
+            if snapshot.max_withdrawable_usd is None:
+                return None
+
+            return snapshot.max_withdrawable_usd
+
         if self.simulate:
             return None
 
@@ -201,6 +284,15 @@ class HypercoreVaultPricing(PricingModel):
         ts: datetime.datetime | None,
         pair: TradingPairIdentifier,
     ) -> bool:
+        if self.market_data_source is not None:
+            snapshot = self._get_market_snapshot(ts, pair)
+            return _get_hypercore_deposit_closed_reason_from_flags(
+                is_closed=snapshot.is_closed,
+                allow_deposits=snapshot.allow_deposits,
+                relationship_type=snapshot.relationship_type,
+                leader_fraction=snapshot.leader_fraction,
+            ) is None
+
         if self.simulate:
             return True
 
@@ -212,6 +304,16 @@ class HypercoreVaultPricing(PricingModel):
         ts: datetime.datetime | None,
         pair: TradingPairIdentifier,
     ) -> bool:
+        if self.market_data_source is not None:
+            snapshot = self._get_market_snapshot(ts, pair)
+            if not snapshot.lockup_expired:
+                return False
+
+            if snapshot.max_withdrawable_usd is None:
+                return True
+
+            return snapshot.max_withdrawable_usd > 0
+
         if self.simulate:
             return True
 
@@ -237,11 +339,13 @@ class HypercoreVaultValuator(ValuationModel):
 
     def __init__(
         self,
-        value_func: Callable[[TradingPairIdentifier], Decimal],
+        value_func: Callable[[TradingPairIdentifier], Decimal] | None,
         simulate: bool = False,
+        market_data_source: HypercoreVaultMarketDataSource | None = None,
     ):
         self.value_func = value_func
         self.simulate = simulate
+        self.market_data_source = market_data_source
 
     def __call__(
         self,
@@ -252,7 +356,15 @@ class HypercoreVaultValuator(ValuationModel):
 
         position.last_pricing_at = ts
 
-        if self.simulate:
+        if self.market_data_source is not None:
+            snapshot = self.market_data_source.get_snapshot(
+                ts,
+                position.pair,
+                net_deposited_usdc=position.get_quantity(),
+            )
+            equity = snapshot.equity_usd
+            assert equity is not None, f"Replay snapshot did not produce equity for {position}"
+        elif self.simulate:
             # Anvil fork: Hyperliquid API has no data for forked Safe
             equity = position.get_quantity()
             logger.info(
@@ -260,6 +372,7 @@ class HypercoreVaultValuator(ValuationModel):
                 position, equity,
             )
         else:
+            assert self.value_func is not None, "value_func missing for live Hypercore valuation"
             try:
                 equity = self.value_func(position.pair)
             except Exception as e:

@@ -35,7 +35,7 @@ from hexbytes import HexBytes
 from web3 import Web3
 from web3.contract.contract import ContractFunction
 
-from eth_defi.gas import apply_gas
+from eth_defi.gas import apply_gas, estimate_gas_price
 from eth_defi.hotwallet import HotWallet
 from eth_defi.hyperliquid.api import (
     HypercoreDepositVerificationError,
@@ -87,7 +87,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 #: Gas limit for Hypercore multicall transactions (approve + CDW.deposit or CoreWriter actions).
-HYPERCORE_MULTICALL_GAS = 500_000
+#:
+#: The batched Hypercore deposit on a HyperEVM Anvil fork currently needs a bit
+#: over 520k gas once routed through TradingStrategyModuleV0.  Keep a modest
+#: buffer here so the live split tests do not fail due to an avoidable gas cap.
+HYPERCORE_MULTICALL_GAS = 650_000
 
 #: USDC uses 6 decimals on HyperEVM.
 USDC_DECIMALS = 6
@@ -266,8 +270,8 @@ class HypercoreVaultRouting(RoutingModel):
             "gas": gas_limit,
         })
 
-        gas_price = self.web3.eth.gas_price
-        tx_data["gasPrice"] = gas_price
+        gas_price_suggestion = estimate_gas_price(self.web3)
+        apply_gas(tx_data, gas_price_suggestion)
 
         signed_tx = self.deployer.sign_transaction_with_new_nonce(tx_data)
         signed_bytes = hexbytes_to_hex_str(signed_tx.rawTransaction)
@@ -552,6 +556,12 @@ class HypercoreVaultRouting(RoutingModel):
             self.deployer = routing_state.tx_builder.hot_wallet
         if hasattr(routing_state, 'tx_builder') and hasattr(routing_state.tx_builder, 'vault'):
             self.lagoon_vault = routing_state.tx_builder.vault
+
+        # Hypercore transactions are signed directly with the deployer hot wallet
+        # instead of the generic transaction builder.  Refresh the nonce here so
+        # earlier Lagoon setup calls done by fixtures or previous phases do not
+        # leave us signing a stale nonce and getting a misleading revert.
+        self.deployer.sync_nonce(self.web3)
 
         activation_cost_raw = 0
 

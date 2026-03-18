@@ -90,7 +90,7 @@ def cell_5_chain_config():
     LENDING_RESERVES = None
     PREFERRED_STABLECOIN = USDC_NATIVE_TOKEN[PRIMARY_CHAIN_ID].lower()
 
-    from getting_started.hyperliquid_vault_universe import build_hyperliquid_vault_universe
+    from tradeexecutor.curator.hyperliquid_vault_universe import build_hyperliquid_vault_universe
     VAULTS = build_hyperliquid_vault_universe(
         min_tvl=10_000,
         top_n=120,

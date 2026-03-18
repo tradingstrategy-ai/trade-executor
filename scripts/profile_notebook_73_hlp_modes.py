@@ -124,7 +124,7 @@ def cell_05_chain_config(ctx):
     LENDING_RESERVES = None
     PREFERRED_STABLECOIN = USDC_NATIVE_TOKEN[PRIMARY_CHAIN_ID].lower()
 
-    from getting_started.hyperliquid_vault_universe import build_hyperliquid_vault_universe
+    from tradeexecutor.curator.hyperliquid_vault_universe import build_hyperliquid_vault_universe
     VAULTS = build_hyperliquid_vault_universe(
         min_tvl=10_000,
         min_age=0.15,
@@ -535,7 +535,7 @@ def cell_15_decide_trades(ctx):
     from tradeexecutor.strategy.weighting import weight_by_blend
     from tradeexecutor.utils.dedent import dedent_any
     from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
-    from getting_started.curator import is_quarantined
+    from tradeexecutor.curator.curator import is_quarantined
 
     SUPPORTING_PAIRS = ctx["SUPPORTING_PAIRS"]
 
