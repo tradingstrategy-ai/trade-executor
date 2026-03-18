@@ -847,7 +847,8 @@ class EthereumPairConfigurator(PairConfigurator):
 
         Scans the strategy universe for vault pairs with
         ``other_data["vault_protocol"] == "hypercore"``.
-        If found, creates a value func using the execution model.
+        If found, creates a live value func using the execution model unless
+        a replay-style market data source has already been injected.
         """
         has_hypercore = False
         for pair in strategy_universe.iterate_pairs():
@@ -860,6 +861,14 @@ class EthereumPairConfigurator(PairConfigurator):
 
         if hasattr(self, "hypercore_vault_value_func") and self.hypercore_vault_value_func is not None:
             return
+
+        if self.hypercore_market_data_source is not None:
+            self.hypercore_vault_value_func = None
+            logger.info("Auto-discovered Hypercore vault pairs — using injected market data source")
+            return
+
+        assert self.execution_model is not None, \
+            "Hypercore vault pairs found but neither execution_model nor hypercore_market_data_source provided"
 
         from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_value_func
         self.hypercore_vault_value_func = create_hypercore_vault_value_func(self.execution_model)

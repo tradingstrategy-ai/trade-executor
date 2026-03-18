@@ -5,11 +5,13 @@ them using the same logic as the notebook helpers, and caches the result by
 filter parameters.
 """
 
+import datetime
 import hashlib
 import json
 import sys
 from pathlib import Path
 
+from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.curator.curator import EXCLUDED_PROTOCOLS, EXCLUDED_VAULTS, MUST_INCLUDE
@@ -42,6 +44,10 @@ REQUIRE_KNOWN_PROTOCOL = True
 TRACKED_PERIODS = ("1M", "3M", "1Y")
 
 CACHE_DIR = Path.home() / ".cache" / "indicators"
+CACHE_TTL = datetime.timedelta(days=1)
+
+SKIP_CAGR_FILTER = True
+USE_PEAK_TVL = True
 
 
 def _curator_fingerprint() -> str:
@@ -58,6 +64,8 @@ def _curator_fingerprint() -> str:
         "excluded_risks": sorted(EXCLUDED_RISKS),
         "excluded_flags": sorted(EXCLUDED_FLAGS),
         "require_known_protocol": REQUIRE_KNOWN_PROTOCOL,
+        "skip_cagr_filter": SKIP_CAGR_FILTER,
+        "use_peak_tvl": USE_PEAK_TVL,
     }
     digest = hashlib.md5(json.dumps(policy, sort_keys=True).encode()).hexdigest()[:8]
     return digest
@@ -79,6 +87,11 @@ def _load_cache(cache_key: str) -> list[tuple[ChainId, str]] | None:
     path = _cache_path(cache_key)
     if not path.exists():
         return None
+
+    cache_age = native_datetime_utc_now() - native_datetime_utc_fromtimestamp(path.stat().st_mtime)
+    if cache_age > CACHE_TTL or path.stat().st_size == 0:
+        return None
+
     with path.open() as inp:
         data = json.load(inp)
     return [(ChainId(entry["chain_id"]), entry["address"]) for entry in data]
@@ -133,8 +146,8 @@ def build_hyperliquid_vault_universe(
         require_known_protocol=REQUIRE_KNOWN_PROTOCOL,
         hypercore_min_tvl=min_tvl,
         top_n_override=top_n,
-        skip_cagr_filter=True,
-        use_peak_tvl=True,
+        skip_cagr_filter=SKIP_CAGR_FILTER,
+        use_peak_tvl=USE_PEAK_TVL,
         include_closed_vaults=include_closed_vaults,
     )
 

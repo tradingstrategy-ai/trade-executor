@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import datetime
 import importlib.util
+import os
 from decimal import Decimal
 from pathlib import Path
-from tradeexecutor.state.identifier import TradingPairIdentifier
 
-import pytest
 import pandas as pd
+import pytest
+from tradingstrategy.chain import ChainId
+from web3 import Web3
 
 from tradeexecutor.curator import hyperliquid_vault_universe as vault_universe_module
+from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultPricing
+from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.testing.hypercore_replay import HypercoreDailyMetricsReplay
 
 
@@ -207,8 +212,82 @@ def test_hypercore_cache_key_includes_selection_policy(
         policy_patch.setattr(vault_universe_module, "REQUIRE_KNOWN_PROTOCOL", False)
         protocol_key = vault_universe_module._make_cache_key(10_000, None, 0.15, "1Y", False)
 
+    with monkeypatch.context() as policy_patch:
+        policy_patch.setattr(vault_universe_module, "SKIP_CAGR_FILTER", False)
+        cagr_key = vault_universe_module._make_cache_key(10_000, None, 0.15, "1Y", False)
+
+    with monkeypatch.context() as policy_patch:
+        policy_patch.setattr(vault_universe_module, "USE_PEAK_TVL", False)
+        peak_tvl_key = vault_universe_module._make_cache_key(10_000, None, 0.15, "1Y", False)
+
     # 3. Confirm every policy change produces a different cache key.
     assert allowed_key != baseline_key
     assert risk_key != baseline_key
     assert flag_key != baseline_key
     assert protocol_key != baseline_key
+    assert cagr_key != baseline_key
+    assert peak_tvl_key != baseline_key
+
+
+def test_hypercore_cache_expires_after_ttl(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Verify the Hypercore universe cache expires after the configured TTL.
+
+    1. Write one cached Hypercore universe file into a temporary cache directory.
+    2. Age the cache file past the TTL and confirm the loader ignores it as stale.
+    3. Refresh the file mtime to a recent value and confirm the loader accepts it again.
+    """
+    # 1. Write one cached Hypercore universe file into a temporary cache directory.
+    # We mock the cache directory and current time here because this regression test is only
+    # about cache freshness rules, not live API fetching.
+    monkeypatch.setattr(vault_universe_module, "CACHE_DIR", tmp_path)
+    now = datetime.datetime(2026, 2, 4, 12, 0, 0)
+    monkeypatch.setattr(vault_universe_module, "native_datetime_utc_now", lambda: now)
+
+    cache_key = vault_universe_module._make_cache_key(10_000, None, 0.15, "1Y", False)
+    expected_vaults = [(ChainId.hypercore, "0x1111111111111111111111111111111111111111")]
+    vault_universe_module._save_cache(cache_key, expected_vaults)
+    cache_path = vault_universe_module._cache_path(cache_key)
+
+    # 2. Age the cache file past the TTL and confirm the loader ignores it as stale.
+    stale_mtime = (now - vault_universe_module.CACHE_TTL - datetime.timedelta(seconds=1)).timestamp()
+    os.utime(cache_path, (stale_mtime, stale_mtime))
+    assert vault_universe_module._load_cache(cache_key) is None
+
+    # 3. Refresh the file mtime to a recent value and confirm the loader accepts it again.
+    fresh_mtime = (now - datetime.timedelta(hours=1)).timestamp()
+    os.utime(cache_path, (fresh_mtime, fresh_mtime))
+    assert vault_universe_module._load_cache(cache_key) == expected_vaults
+
+
+def test_hypercore_pair_configurator_accepts_market_data_source_without_execution_model(
+    hypercore_strategy_universe: TradingStrategyUniverse,
+    hypercore_replay_source: HypercoreDailyMetricsReplay,
+    hypercore_vault_pair: TradingPairIdentifier,
+) -> None:
+    """Verify Hypercore replay-only configuration works without a live execution model.
+
+    1. Build an EthereumPairConfigurator with a Hypercore replay source but no execution model.
+    2. Ask it to create the Hypercore routing configuration for the replay-backed vault pair.
+    3. Confirm pricing and valuation use the replay source without requiring a live value function.
+    """
+    # 1. Build an EthereumPairConfigurator with a Hypercore replay source but no execution model.
+    # We use a replay source here because this regression is specifically about the market-data-only path.
+    configurator = EthereumPairConfigurator(
+        web3=Web3(),
+        strategy_universe=hypercore_strategy_universe,
+        hypercore_market_data_source=hypercore_replay_source,
+        execution_model=None,
+    )
+    pair = hypercore_strategy_universe.get_pair_by_id(hypercore_vault_pair.internal_id)
+
+    # 2. Ask it to create the Hypercore routing configuration for the replay-backed vault pair.
+    routing_id = configurator.match_router(pair)
+    config = configurator.create_config(routing_id)
+
+    # 3. Confirm pricing and valuation use the replay source without requiring a live value function.
+    assert getattr(config.pricing_model, "market_data_source", None) is hypercore_replay_source
+    assert getattr(config.valuation_model, "market_data_source", None) is hypercore_replay_source
+    assert config.routing_model is None

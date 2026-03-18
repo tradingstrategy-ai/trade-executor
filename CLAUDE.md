@@ -90,16 +90,27 @@ Don't format code.
 
 - Never use test classes in pytest
 - `pytest` tests should not have stdout output like `print`
-- Use `pytest.approx()` to compare values of data and money `assert abs(aave_total_pnl - 96.6087) < 0.01` 
+- Use `pytest.approx()` to compare values of data andmoney `assert abs(aave_total_pnl - 96.6087) < 0.01` 
 - Don't use logger.info() or logger.debug() inside test and fixture function bodies unless specifically asked
 - Do not do excessive number of tests. Prefer one test for happy path and one test for bad path. Do several asserts within a single test case to have test coverage, but keeping the number of tests low.
 - Always use pytest timeout and chat timeout when running tests. Use 5 minutes timeout unless you are running the full test suite.
 - Akk tests must have docstring
 - Docstring must stell what is being tested and why
-- Docstring must have 1, 2, 3, N style ordered list of steps the test is taking, up to the hig level actions in the test. These steps must then repeat as line comments within the test body.
+- Docstring must have a numbered list of steps the test is taking, up to the hig level actions in the test. These steps must then repeat as line comments within the test body.
 - If we mock something, we must describe why
 - Have Python type hints for used pytest fixtures
 - We cannot import from tests sub-tree: helper functions must go to live in `testing` submodules in the actual source tree
+
+Example test steps:
+
+```
+1. Checks the asset manager wallet holds vault shares
+2. Approves and requests redemption of all shares 
+3. Posts new valuation and settles the vault 
+4. Finalises the redemption to claim denomination tokens 
+5. Updates the state file with the new reserve balance
+6. Reports final balances
+```
 
 
 ### pyproject.toml
