@@ -43,9 +43,7 @@ import logging
 
 import pandas as pd
 from eth_defi.token import USDC_NATIVE_TOKEN
-from eth_defi.vault.vaultdb import DEFAULT_VAULT_DATABASE, DEFAULT_RAW_PRICE_DATABASE
 from plotly.graph_objects import Figure
-from tradingstrategy.alternative_data.vault import load_vault_database
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.token_filter import filter_for_selected_pairs
@@ -88,7 +86,7 @@ from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTr
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import (
-    TradingStrategyUniverse, load_partial_data,
+    TradingStrategyUniverse, load_partial_data, load_vault_universe_with_metadata,
 )
 from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
@@ -183,7 +181,7 @@ def create_trading_universe(
     """Create the trading universe.
 
     - Load Trading Strategy full pairs dataset
-    - Load vault universe from the local vault database
+    - Load vault universe from the remote metadata blob
     - Load OHLCV data for supporting pairs
     - Load also BTC and ETH price data to be used as a benchmark
     """
@@ -233,14 +231,9 @@ def create_trading_universe(
 
     vaults = get_vaults()
 
-    vault_universe = load_vault_database(path=DEFAULT_VAULT_DATABASE)
-    total_vaults = vault_universe.get_vault_count()
-    vault_universe = vault_universe.limit_to_vaults(vaults, check_all_vaults_found=False)
+    vault_universe = load_vault_universe_with_metadata(client, vaults=vaults)
     vault_universe = vault_universe.limit_to_denomination(ALLOWED_VAULT_DENOMINATION_TOKENS, check_all_vaults_found=True)
-    debug_printer(f"Loaded total {vault_universe.get_vault_count()} vaults from the total of {total_vaults} in vault database, source vaults count: {len(vaults)}")
-
-    vault_bundled_price_data = DEFAULT_RAW_PRICE_DATABASE
-    debug_printer(f"Using vault price data for backtesting from {vault_bundled_price_data}")
+    debug_printer(f"Loaded {vault_universe.get_vault_count()} vaults from remote vault metadata, source vaults count: {len(vaults)}")
 
     dataset = load_partial_data(
         client=client,
@@ -252,7 +245,7 @@ def create_trading_universe(
         liquidity_time_bucket=TimeBucket.d1,
         lending_reserves=LENDING_RESERVES,
         vaults=vault_universe,
-        vault_bundled_price_data=vault_bundled_price_data if not execution_context.live_trading else None,
+        vault_history_source="remote",
         check_all_vaults_found=True,
     )
 
