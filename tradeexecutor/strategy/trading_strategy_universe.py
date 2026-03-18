@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 import logging
 from math import isnan
 from pathlib import Path
-from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collection, TypeAlias
+from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collection, TypeAlias, Literal
 
 import pandas as pd
 from tabulate import tabulate
@@ -113,7 +113,7 @@ class Dataset:
     history_period: Optional[datetime.timedelta] = None
 
     #: List of vaults we loaded
-    vault_specs: Optional[List[Tuple[ChainId, JSONHexAddress]]] = None
+    vault_specs: VaultUniverse | list[tuple[ChainId, JSONHexAddress]] | None = None
 
     def __repr__(self):
         return f"<Dataset pairs:{len(self.pairs)} candles:{len(self.candles)} start:{self.start_at} end:{self.end_at} live history period:{self.history_period}>"
@@ -2247,6 +2247,7 @@ def load_vault_universe_with_metadata(
     client: Client,
     vaults: list[tuple[ChainId, JSONHexAddress]] | None = None,
     url: str | None = None,
+    download_root: str | Path | None = None,
 ) -> VaultUniverse:
     """Load vault universe with full metadata from JSON blob.
 
@@ -2291,15 +2292,61 @@ def load_vault_universe_with_metadata(
         Optional custom URL to fetch vault metadata JSON from.
         If not provided, uses the default Trading Strategy vault metrics endpoint.
 
+    :param download_root:
+        Override the root directory used for downloaded vault metadata.
+        Useful in tests to redirect downloads under ``tmp_path``.
+
     :return:
         VaultUniverse containing Vault instances with full VaultMetadata.
     """
-    vault_universe = client.fetch_vault_universe(url=url)
+    vault_universe = client.fetch_vault_universe(url=url, download_root=download_root)
 
     if vaults is not None:
         vault_universe = vault_universe.limit_to_vaults(vaults, check_all_vaults_found=True)
 
     return vault_universe
+
+
+def _filter_trading_strategy_website_vault_price_history(
+    vault_prices_df: pd.DataFrame,
+    vault_pairs_df: pd.DataFrame,
+    start_at: datetime.datetime | None,
+    end_at: datetime.datetime | None,
+) -> pd.DataFrame:
+    """Filter Trading Strategy website vault history to the requested vaults and time range."""
+    assert "chain" in vault_prices_df.columns, f"Got {vault_prices_df.columns}"
+    assert "address" in vault_prices_df.columns, f"Got {vault_prices_df.columns}"
+    assert "timestamp" in vault_prices_df.columns, f"Got {vault_prices_df.columns}"
+
+    vaults_to_match = {(int(row.chain_id), row.address.lower()) for _, row in vault_pairs_df.iterrows()}
+    addresses = vault_prices_df["address"].astype(str).str.lower()
+    mask = pd.MultiIndex.from_arrays([vault_prices_df["chain"], addresses]).isin(vaults_to_match)
+    filtered_df = vault_prices_df.loc[mask].copy()
+
+    filtered_df["address"] = filtered_df["address"].astype(str).str.lower()
+    filtered_df["timestamp"] = pd.to_datetime(filtered_df["timestamp"])
+
+    if start_at is not None:
+        filtered_df = filtered_df.loc[filtered_df["timestamp"] >= pd.Timestamp(start_at)]
+
+    if end_at is not None:
+        filtered_df = filtered_df.loc[filtered_df["timestamp"] <= pd.Timestamp(end_at)]
+
+    return filtered_df
+
+
+def _concat_optional_dataframe(
+    original_df: pd.DataFrame,
+    additional_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """Append DataFrames without triggering empty-frame concat warnings."""
+    if original_df.empty:
+        return additional_df.copy()
+
+    if additional_df.empty:
+        return original_df
+
+    return pd.concat([original_df, additional_df])
 
 
 def load_partial_data(
@@ -2323,6 +2370,8 @@ def load_partial_data(
     lending_candle_progress_bar_desc: str | None = None,
     pair_extra_metadata=False,
     vaults: list[tuple[ChainId, JSONHexAddress]] | VaultUniverse | None = None,
+    vault_history_source: Literal["none", "bundled", "trading-strategy-website"] = "none",
+    vault_history_download_root: str | Path | None = None,
     vault_bundled_price_data: bool | Path=False,
     round_start_end: bool = True,
     check_all_vaults_found: bool = True,
@@ -2472,6 +2521,20 @@ def load_partial_data(
 
         Currently does not load any historical data.
 
+    :param vault_history_source:
+        How vault price history is loaded.
+
+        - ``"none"``: do not load vault price history
+        - ``"bundled"``: use the bundled/local parquet path
+        - ``"trading-strategy-website"``: download the cleaned vault history parquet through the client
+
+        The legacy ``vault_bundled_price_data`` argument still activates the
+        bundled path for backwards compatibility.
+
+    :param vault_history_download_root:
+        Override the root directory used for Trading Strategy website vault history downloads.
+        Useful in tests to redirect downloads under ``tmp_path``.
+
     :param vault_bundled_price_data:
         For vaults, also load bundled static price data.
 
@@ -2499,6 +2562,7 @@ def load_partial_data(
     assert isinstance(time_bucket, TimeBucket)
     assert isinstance(execution_context, ExecutionContext)
     assert isinstance(universe_options, UniverseOptions)
+    assert vault_history_source in ("none", "bundled", "trading-strategy-website"), f"Unsupported vault_history_source: {vault_history_source}"
 
     if preloaded_tvl_df is not None:
         assert not liquidity, "Cannot use liquidity argument with preloaded_tvl_df"
@@ -2573,6 +2637,10 @@ def load_partial_data(
     )
 
     with execution_context.timed_task_context_manager("load_partial_pair_data", time_bucket=time_bucket.value):
+        effective_vault_history_source = vault_history_source
+        if vault_bundled_price_data:
+            assert vault_history_source in ("none", "bundled"), "vault_bundled_price_data cannot be combined with Trading Strategy website vault history"
+            effective_vault_history_source = "bundled"
 
         exchange_universe = client.fetch_exchange_universe()
 
@@ -2717,15 +2785,17 @@ def load_partial_data(
         )
 
         # Include vault data for designed vaults if asked
+        vault_pairs_df = None
         if vaults is not None:
             logger.info("Including vaults: %s", vaults)
             vault_exchanges, vault_pairs_df = load_multiple_vaults(vaults, check_all_vaults_found=check_all_vaults_found)
             our_exchange_universe.add(vault_exchanges)
             filtered_pairs_df = pd.concat([filtered_pairs_df, vault_pairs_df])
 
-        if vault_bundled_price_data:
+        if effective_vault_history_source == "bundled":
             assert vaults, "Vaults must be given to load bundled price data"
             assert not execution_context.mode.is_live_trading(), "Cannot load bundled price data in live trading"
+            assert vault_pairs_df is not None, "Vault pairs must be materialised before loading bundled vault history"
 
             assert isinstance(vault_bundled_price_data, (bool, Path)), f"vault_bundled_price_data must be bool or Path, got {type(vault_bundled_price_data)}: {vault_bundled_price_data}"
             if isinstance(vault_bundled_price_data, Path):
@@ -2740,9 +2810,29 @@ def load_partial_data(
             offset = time_bucket.to_frequency()
             freq_string = f"{offset.n}{offset.name.lower()}"
             vault_candle_df, vault_liquidity_df = convert_vault_prices_to_candles(vault_prices_df, freq_string)
-            candles_df = pd.concat([candles_df, vault_candle_df])
+            candles_df = _concat_optional_dataframe(candles_df, vault_candle_df)
             if liquidity_df is not None:
-                liquidity_df = pd.concat([liquidity_df, vault_liquidity_df])
+                liquidity_df = _concat_optional_dataframe(liquidity_df, vault_liquidity_df)
+        elif effective_vault_history_source == "trading-strategy-website":
+            assert vaults, "Vaults must be given to load Trading Strategy website vault price history"
+            assert vault_pairs_df is not None, "Vault pairs must be materialised before loading Trading Strategy website vault history"
+
+            website_vault_prices_df = client.fetch_vault_price_history(
+                download_root=vault_history_download_root,
+            )
+            website_vault_prices_df = _filter_trading_strategy_website_vault_price_history(
+                website_vault_prices_df,
+                vault_pairs_df,
+                data_load_start_at,
+                end_at,
+            )
+
+            offset = time_bucket.to_frequency()
+            freq_string = f"{offset.n}{offset.name.lower()}"
+            vault_candle_df, vault_liquidity_df = convert_vault_prices_to_candles(website_vault_prices_df, freq_string)
+            candles_df = _concat_optional_dataframe(candles_df, vault_candle_df)
+            if liquidity_df is not None:
+                liquidity_df = _concat_optional_dataframe(liquidity_df, vault_liquidity_df)
 
         # Collect some debug data for the first 5 pairs
         # to diagnose data loding problems
@@ -3222,4 +3312,3 @@ def load_trading_and_lending_data(
         )
 
     return dataset
-
