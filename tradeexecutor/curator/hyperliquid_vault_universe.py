@@ -45,9 +45,21 @@ CACHE_DIR = Path.home() / ".cache" / "indicators"
 
 
 def _curator_fingerprint() -> str:
-    """Short hash of curator lists so cache invalidates on changes."""
-    parts = sorted(EXCLUDED_VAULTS) + sorted(MUST_INCLUDE) + sorted(EXCLUDED_PROTOCOLS.keys())
-    digest = hashlib.md5("|".join(parts).encode()).hexdigest()[:8]
+    """Short hash of all selection policy inputs used by the cached universe."""
+    policy = {
+        "data_url": DATA_URL,
+        "chain_config": {str(chain_id): CHAIN_CONFIG[chain_id] for chain_id in sorted(CHAIN_CONFIG)},
+        "chain_order": CHAIN_ORDER,
+        "tracked_periods": TRACKED_PERIODS,
+        "excluded_vaults": sorted(EXCLUDED_VAULTS),
+        "must_include": sorted(MUST_INCLUDE),
+        "excluded_protocols": sorted(EXCLUDED_PROTOCOLS.items()),
+        "allowed_denominations": sorted(ALLOWED_DENOMINATIONS),
+        "excluded_risks": sorted(EXCLUDED_RISKS),
+        "excluded_flags": sorted(EXCLUDED_FLAGS),
+        "require_known_protocol": REQUIRE_KNOWN_PROTOCOL,
+    }
+    digest = hashlib.md5(json.dumps(policy, sort_keys=True).encode()).hexdigest()[:8]
     return digest
 
 
@@ -137,4 +149,3 @@ def build_hyperliquid_vault_universe(
 
     _save_cache(cache_key, result)
     return result
-

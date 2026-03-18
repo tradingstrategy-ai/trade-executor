@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import datetime
+import importlib.util
 from decimal import Decimal
+from pathlib import Path
 from tradeexecutor.state.identifier import TradingPairIdentifier
 
 import pytest
 import pandas as pd
 
+from tradeexecutor.curator import hyperliquid_vault_universe as vault_universe_module
 from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultPricing
 from tradeexecutor.testing.hypercore_replay import HypercoreDailyMetricsReplay
 
@@ -124,3 +127,88 @@ def test_hypercore_pricing_uses_replay_tvl_and_gating(
 
     assert locked_pricing.get_max_redemption(timestamp, hypercore_vault_pair) == pytest.approx(Decimal(0))
     assert locked_pricing.can_redeem(timestamp, hypercore_vault_pair) is False
+
+
+def test_hyper_ai_strategy_import_is_lazy_for_vault_universe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the test-only strategy import does not fetch the vault universe.
+
+    1. Replace the Hypercore vault builder with a sentinel failure before importing the strategy.
+    2. Import the test-only Hyper-ai strategy module from disk.
+    3. Confirm the import succeeds without building the universe and leaves the lazy cache empty.
+    """
+    # 1. Replace the Hypercore vault builder with a sentinel failure before importing the strategy.
+    # We mock the builder here because this regression test is specifically checking that import
+    # time does not depend on live curator network access or a warm cache.
+    def _unexpected_builder(*args, **kwargs):
+        raise AssertionError("Vault universe builder must not run during strategy import")
+
+    monkeypatch.setattr(vault_universe_module, "build_hyperliquid_vault_universe", _unexpected_builder)
+
+    # 2. Import the test-only Hyper-ai strategy module from disk.
+    strategy_path = Path(__file__).resolve().parents[2] / "strategies" / "test_only" / "hyper-ai-test.py"
+    spec = importlib.util.spec_from_file_location("hyper_ai_strategy_lazy_import", strategy_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec is not None
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    # 3. Confirm the import succeeds without building the universe and leaves the lazy cache empty.
+    assert module.VAULTS is None
+
+
+def test_hypercore_cache_key_includes_selection_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify the Hypercore universe cache key covers the selection policy constants.
+
+    1. Build one baseline cache key for the current Hypercore selection inputs.
+    2. Change each selection-policy constant that previously went missing from the cache fingerprint.
+    3. Confirm every policy change produces a different cache key.
+    """
+    # 1. Build one baseline cache key for the current Hypercore selection inputs.
+    baseline_key = vault_universe_module._make_cache_key(
+        min_tvl=10_000,
+        top_n=None,
+        min_age=0.15,
+        sort_period="1Y",
+        include_closed_vaults=False,
+    )
+
+    # 2. Change each selection-policy constant that previously went missing from the cache fingerprint.
+    # We mock these module constants because the regression we want to catch is stale cache reuse
+    # after changing the vault-selection policy.
+    with monkeypatch.context() as policy_patch:
+        policy_patch.setattr(
+            vault_universe_module,
+            "ALLOWED_DENOMINATIONS",
+            set(vault_universe_module.ALLOWED_DENOMINATIONS) | {"DAI"},
+        )
+        allowed_key = vault_universe_module._make_cache_key(10_000, None, 0.15, "1Y", False)
+
+    with monkeypatch.context() as policy_patch:
+        policy_patch.setattr(
+            vault_universe_module,
+            "EXCLUDED_RISKS",
+            set(vault_universe_module.EXCLUDED_RISKS) | {"Experimental"},
+        )
+        risk_key = vault_universe_module._make_cache_key(10_000, None, 0.15, "1Y", False)
+
+    with monkeypatch.context() as policy_patch:
+        policy_patch.setattr(
+            vault_universe_module,
+            "EXCLUDED_FLAGS",
+            set(vault_universe_module.EXCLUDED_FLAGS) | {"needs-review"},
+        )
+        flag_key = vault_universe_module._make_cache_key(10_000, None, 0.15, "1Y", False)
+
+    with monkeypatch.context() as policy_patch:
+        policy_patch.setattr(vault_universe_module, "REQUIRE_KNOWN_PROTOCOL", False)
+        protocol_key = vault_universe_module._make_cache_key(10_000, None, 0.15, "1Y", False)
+
+    # 3. Confirm every policy change produces a different cache key.
+    assert allowed_key != baseline_key
+    assert risk_key != baseline_key
+    assert flag_key != baseline_key
+    assert protocol_key != baseline_key

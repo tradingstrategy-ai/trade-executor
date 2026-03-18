@@ -119,10 +119,7 @@ LENDING_RESERVES = None
 
 PREFERRED_STABLECOIN = USDC_NATIVE_TOKEN[PRIMARY_CHAIN_ID].lower()
 
-VAULTS = build_hyperliquid_vault_universe(
-    min_tvl=5_000,
-    min_age=0.0,
-)
+VAULTS: list[tuple[ChainId, str]] | None = None
 
 ALLOWED_VAULT_DENOMINATION_TOKENS = {"USDC", "USDT", "USDC.e", "crvUSD", "USD₮0", "USDt", "USDT0", "USDS"}
 
@@ -214,11 +211,33 @@ def create_trading_universe(
 
     debug_printer(f"We have total {len(all_pairs_df)} pairs in dataset and going to use {len(pairs_df)} pairs for the strategy")
 
+    def get_vaults() -> list[tuple[ChainId, str]]:
+        """Load the curated Hypercore vault list lazily for universe creation.
+
+        The test-only strategy module is imported in unit and integration tests
+        that only exercise the decision logic. We therefore avoid any live
+        curator fetch during module import and only build the universe when the
+        trading universe itself is requested.
+
+        The resulting list is still cached for the process lifetime on purpose.
+        This preserves the current intentional behaviour of using one curator
+        view per process run.
+        """
+        global VAULTS
+        if VAULTS is None:
+            VAULTS = build_hyperliquid_vault_universe(
+                min_tvl=5_000,
+                min_age=0.0,
+            )
+        return VAULTS
+
+    vaults = get_vaults()
+
     vault_universe = load_vault_database(path=DEFAULT_VAULT_DATABASE)
     total_vaults = vault_universe.get_vault_count()
-    vault_universe = vault_universe.limit_to_vaults(VAULTS, check_all_vaults_found=False)
+    vault_universe = vault_universe.limit_to_vaults(vaults, check_all_vaults_found=False)
     vault_universe = vault_universe.limit_to_denomination(ALLOWED_VAULT_DENOMINATION_TOKENS, check_all_vaults_found=True)
-    debug_printer(f"Loaded total {vault_universe.get_vault_count()} vaults from the total of {total_vaults} in vault database, source vaults count: {len(VAULTS)}")
+    debug_printer(f"Loaded total {vault_universe.get_vault_count()} vaults from the total of {total_vaults} in vault database, source vaults count: {len(vaults)}")
 
     vault_bundled_price_data = DEFAULT_RAW_PRICE_DATABASE
     debug_printer(f"Using vault price data for backtesting from {vault_bundled_price_data}")
