@@ -17,6 +17,7 @@ from web3 import Web3
 
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from tradeexecutor.exchange_account.allocation import calculate_portfolio_target_value
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -174,9 +175,8 @@ def prepare_hyper_ai_cycle_snapshot(
     open_position_value = float(sum(position.get_value() for position in state.portfolio.open_positions.values()))
     pending_redemptions = float(position_manager.get_pending_redemptions())
     deployable_equity = float(
-        hyper_ai_strategy_module.calculate_portfolio_target_value(
+        calculate_portfolio_target_value(
             position_manager,
-            timestamp,
             float(parameters.allocation),
         )
     )
