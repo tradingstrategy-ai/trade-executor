@@ -575,7 +575,7 @@ class ExecutionLoop:
                 treasury=state.sync.treasury,
             )
 
-        state.uptime.record_cycle_complete(cycle)
+        state.record_cycle_end(cycle, live=live)
 
         # Check that state is good before writing it to the disk.
         # Skip for backtesting as IDs are assigned sequentially
