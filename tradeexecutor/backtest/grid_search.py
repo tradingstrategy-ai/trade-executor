@@ -67,6 +67,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, StrategyParameters, DecideTradesProtocol3, DecideTradesProtocol4
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.utils.multiprocessing_signal import suppress_worker_sigint_tracebacks
 from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, resample_returns
 
 logger = logging.getLogger(__name__)
@@ -1644,6 +1645,8 @@ _process_pool: concurrent.futures.process.ProcessPoolExecutor | None = None
 
 def _process_init(pickled_universe):
     """Child worker process initialiser."""
+    suppress_worker_sigint_tracebacks()
+
     # Transfer ove the universe to the child process
     global _universe
     _universe = pickle.loads(pickled_universe)

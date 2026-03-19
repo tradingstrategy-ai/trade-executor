@@ -1,11 +1,14 @@
 """Regression tests for multiprocessing SIGTERM cleanup helpers."""
 
+import pickle
+import signal
 from types import SimpleNamespace
 
 import pytest
 
 from tradeexecutor.backtest import grid_search
 from tradeexecutor.strategy.pandas_trader import indicator
+from tradeexecutor.utils import multiprocessing_signal
 
 
 class DummyProcess:
@@ -130,3 +133,65 @@ def test_grid_search_sigterm_cleanup_tolerates_missing_pool(
 
     # 3. Confirm the handler exits cleanly instead of raising an attribute error.
     assert grid_search._process_pool is None
+
+
+@pytest.mark.timeout(300)
+def test_worker_signal_helper_ignores_sigint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test worker signal helper suppresses child SIGINT tracebacks.
+
+    1. Patch :py:func:`signal.signal` so we can observe registrations.
+    2. Run the shared worker helper directly.
+    3. Confirm child workers are configured to ignore ``SIGINT``.
+    """
+    registrations = []
+
+    def capture(sig, handler):
+        registrations.append((sig, handler))
+
+    monkeypatch.setattr(multiprocessing_signal.signal, "signal", capture)
+
+    multiprocessing_signal.suppress_worker_sigint_tracebacks()
+
+    assert registrations == [(signal.SIGINT, signal.SIG_IGN)]
+
+
+@pytest.mark.timeout(300)
+def test_indicator_process_init_suppresses_sigint_and_loads_universe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test indicator worker initialiser installs signal handling before work starts."""
+    registrations = []
+
+    def capture(sig, handler):
+        registrations.append((sig, handler))
+
+    monkeypatch.setattr(multiprocessing_signal.signal, "signal", capture)
+    monkeypatch.setattr(indicator, "_universe", None)
+
+    payload = {"source": "indicator"}
+    indicator._process_init(pickle.dumps(payload))
+
+    assert registrations == [(signal.SIGINT, signal.SIG_IGN)]
+    assert indicator._universe == payload
+
+
+@pytest.mark.timeout(300)
+def test_grid_search_process_init_suppresses_sigint_and_loads_universe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test grid-search worker initialiser installs signal handling before work starts."""
+    registrations = []
+
+    def capture(sig, handler):
+        registrations.append((sig, handler))
+
+    monkeypatch.setattr(multiprocessing_signal.signal, "signal", capture)
+    monkeypatch.setattr(grid_search, "_universe", None)
+
+    payload = {"source": "grid-search"}
+    grid_search._process_init(pickle.dumps(payload))
+
+    assert registrations == [(signal.SIGINT, signal.SIG_IGN)]
+    assert grid_search._universe == payload
