@@ -192,6 +192,39 @@ def set_large_plotly_chart_font(
     pio.templates.default = "custom"
 
 
+def display_head_and_tail(data, head_rows: int = 5, tail_rows: int = 5) -> None:
+    """Display long notebook tables as compact head/tail slices.
+
+    Shows only the first and last rows of a large DataFrame,
+    using :py:func:`display_dataframe_with_html` for rendering.
+
+    :param data:
+        A DataFrame or an object with a ``.data`` attribute containing one.
+
+    :param head_rows:
+        Number of rows to show from the start.
+
+    :param tail_rows:
+        Number of rows to show from the end.
+    """
+    from IPython.display import display
+
+    df = getattr(data, 'data', data)
+
+    if not isinstance(df, pd.DataFrame):
+        display(data)
+        return
+
+    if len(df) <= head_rows + tail_rows:
+        display_dataframe_with_html(df)
+        return
+
+    print(f'Head ({head_rows} rows)')
+    display_dataframe_with_html(df.head(head_rows))
+    print(f'Tail ({tail_rows} rows)')
+    display_dataframe_with_html(df.tail(tail_rows))
+
+
 def display_dataframe_with_html(df: pd.DataFrame):
     """Display a DataFrame in a notebook with clickable HTML links.
 

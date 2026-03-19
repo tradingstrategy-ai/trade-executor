@@ -1,34 +1,37 @@
-"""Hyperliquid vault of vaults - minimum-hold cleanup.
+"""Hyperliquid vault of vaults - waterfall release candidate.
 
-Based on notebook ``153-research-hyperliquid-equal-weight-recycle-minimum-hold-cleanup.ipynb``.
+Based on ``158-backtest-hyperliquid-waterfall-release-candidate.ipynb`` notebook.
 
-Uses ``age_ramp`` for survivor selection, equal weights, survivor-first recycling,
-and a minimum 3-day hold rule to prevent rapid position churning.
+Survivor-first age-ramp signal with plain waterfall sizing and redemption-aware
+portfolio targeting. Full-history indicator loading ensures age-derived indicators
+see the complete pre-backtest history.
 
 Backtest results (2025-08-02 to 2026-03-10)
 =============================================
 
 Last backtest run: 2026-03-19
 
-====================  =========  ==========  ==========
-Metric                Strategy   BTC         ETH
-====================  =========  ==========  ==========
-Start period          2025-08-02 2025-08-02  2025-08-02
-End period            2026-03-10 2026-03-10  2026-03-10
-Risk-free rate        0.0%       0.0%        0.0%
-Time in market        35.0%      83.0%       82.0%
-Cumulative return     41.18%     -37.54%     -52.75%
-CAGR﹪                 77.2%      -54.19%     -71.17%
-Sharpe                2.15       -1.49       -1.56
-Prob. Sharpe ratio    99.25%     12.27%      11.26%
-Smart Sharpe          1.6        -1.11       -1.16
-Sortino               6.11       -1.95       -2.06
-Smart Sortino         4.55       -1.45       -1.53
-Sortino/√2            4.32       -1.38       -1.46
-Smart Sortino/√2      3.22       -1.03       -1.09
-Omega                 2.17       2.17        2.17
-Max drawdown          -6.12%     -49.82%     -61.35%
-====================  =========  ==========  ==========
+================================  =========  =======  =======
+Metric                            Strategy   BTC      ETH
+================================  =========  =======  =======
+Start period                      2025-08-02 2025-08-02 2025-08-02
+End period                        2026-03-10 2026-03-10 2026-03-10
+Risk-free rate                    0.0%       0.0%     0.0%
+Time in market                    36.0%      99.0%    98.0%
+Cumulative return                 98.48%     -38.86%  -43.6%
+CAGR﹪                             211.85%    -55.79%  -61.34%
+Sharpe                            3.04       -1.49    -0.93
+Prob. Sharpe ratio                100.0%     12.27%   23.72%
+Sortino                           13.1       -1.96    -1.29
+Max drawdown                      -5.48%     -49.82%  -62.29%
+Longest DD days                   56         155      200
+Volatility (ann.)                 39.7%      47.06%   73.2%
+Calmar                            38.63      -1.12    -0.98
+Best day                          21.92%     12.36%   14.4%
+Worst day                         -3.63%     -14.0%   -14.99%
+Win days                          62.03%     47.93%   47.91%
+Win month                         87.5%      25.0%    25.0%
+================================  =========  =======  =======
 """
 
 #
@@ -50,7 +53,7 @@ from tradeexecutor.curator.hyperliquid_vault_universe import \
     build_hyperliquid_vault_universe
 from tradeexecutor.exchange_account.allocation import (
     calculate_portfolio_target_value, get_redeemable_portfolio_capital)
-from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.alpha_model import AlphaModel
@@ -93,7 +96,7 @@ from tradeexecutor.strategy.trading_strategy_universe import (
     load_vault_universe_with_metadata)
 from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
-from tradeexecutor.strategy.weighting import weight_equal
+from tradeexecutor.strategy.weighting import weight_passthrouh
 from tradeexecutor.utils.dedent import dedent_any
 
 logger = logging.getLogger(__name__)
@@ -105,7 +108,7 @@ logger = logging.getLogger(__name__)
 trading_strategy_engine_version = "0.5"
 
 CHAIN_ID = ChainId.cross_chain
-PRIMARY_CHAIN_ID = ChainId.ethereum
+PRIMARY_CHAIN_ID = ChainId.hyperliquid
 HYPERCORE_CHAIN_ID = ChainId.hypercore
 
 EXCHANGES = ("uniswap-v2", "uniswap-v3")
@@ -118,7 +121,17 @@ SUPPORTING_PAIRS = [
 
 LENDING_RESERVES = None
 
-PREFERRED_STABLECOIN = USDC_NATIVE_TOKEN[PRIMARY_CHAIN_ID].lower()
+PREFERRED_STABLECOIN = AssetIdentifier(
+    chain_id=PRIMARY_CHAIN_ID.value,
+    address=USDC_NATIVE_TOKEN[PRIMARY_CHAIN_ID.value].lower(),
+    token_symbol="USDC",
+    decimals=6,
+)
+
+# The current deployment image still resolves reserve assets inside
+# `create_from_dataset()` via the loaded pair universe. Use a plain USDC
+# symbol for construction, then swap in the real Hyperliquid USDC asset.
+DATASET_RESERVE_ASSET = "USDC"
 
 VAULTS: list[tuple[ChainId, str]] | None = None
 
@@ -137,42 +150,66 @@ class Parameters:
 
     id = "hyper-ai"
 
+    #: Daily candles match the whole Hyperliquid survivor-first research chain.
     candle_time_bucket = TimeBucket.d1
+    #: Daily rebalance cadence is the validated schedule used in NB143 and NB154-NB157.
     cycle_duration = CycleDuration.cycle_1d
 
     chain_id = CHAIN_ID
+    #: HyperEVM is the primary execution chain for the survivor-first release branch.
     primary_chain_id = PRIMARY_CHAIN_ID
     exchanges = EXCHANGES
 
-    # Portfolio construction.
+    #: NB141-NB157 validated the survivor-first allocator family with a 20-vault basket.
+    #: Keep this fixed so NB158 is directly comparable to NB143 and the NB154-NB157 robustness reruns.
     max_assets_in_portfolio = 20
+    #: NB143 and NB154-NB157 used 98% target deployment and the corrected waterfall branch held up there.
+    #: NB156 showed lower allocation is viable, but not better enough to replace the release default.
     allocation = 0.98
+    #: The 12% cap is the survivor-first concentration limit carried through NB143-NB157.
+    #: Keep it unchanged because the corrected waterfall case was validated with this exact cap.
     max_concentration = 0.12
+    #: NB156 showed tighter per-pool caps reduce both return and deployment.
+    #: Keep the 20% pool-cap ceiling from NB143 so we do not reintroduce unnecessary cash drag.
     per_position_cap_of_pool = 0.2
+    #: Engine hygiene threshold used across the survivor-first notebooks.
+    #: Keep it because the alpha model uses it when cleaning up tiny residual positions.
     min_portfolio_weight = 0.005
 
-    # Trade generation.
+    #: NB156 showed higher ticket thresholds were effectively inert, so keep the standard 50 USD rebalance floor.
     individual_rebalance_min_threshold_usd = 50.0
+    #: Keep the small sell threshold from NB143/NB154 so tiny exits are not blocked unnecessarily.
     sell_rebalance_min_threshold = 10.0
 
-    # Final fixed signal configuration.
+    #: NB141 selected this wider survivor-first TVL floor and NB143-NB157 validated the allocator on it.
+    #: This is intentionally the survivor-first release setting, not the older NB124/NB126 production threshold.
     min_tvl = 7_500
+    #: NB141 also selected this young-vault-inclusive age floor for the survivor-first branch.
+    #: Keep it fixed so NB158 stays comparable with the corrected waterfall validation chain.
     min_age = 0.075
+    #: The corrected reruns kept `age_ramp` as the surviving signal family and NB154-NB157 validated waterfall on top of it.
     weight_signal = "age_ramp"
+    #: NB143 and the corrected robustness notebooks all used a 0.75-year ramp.
+    #: Keep the signal definition unchanged so NB158 isolates the release-candidate packaging, not signal drift.
     age_ramp_period = 0.75
 
-    # Minimum hold: protect positions younger than this from forced sells.
-    minimum_hold_days = 3
-
-    # Backtesting only.
+    #: August 2025 remains the canonical mature-universe start used by the release branch.
     backtest_start = datetime.datetime(2025, 8, 1)
+    #: Keep the same end date as NB143, NB153, and NB154-NB157 for an apples-to-apples comparison.
     backtest_end = datetime.datetime(2026, 3, 11)
-    initial_cash = 100000
+    #: Standard research bankroll for the survivor-first chain.
+    initial_cash = 100_000
 
-    # Live only.
+    #: Default routing is still required by the strategy runtime even though it is not the alpha source.
     routing = TradeRouting.default
-    required_history_period = datetime.timedelta(days=60 * 2)
+    #: Set deliberately high so live and notebook indicator calculations use effectively all available history.
+    #: This is an operational correction to the old 120-day default because `age()` and other history-derived indicators
+    #: depend on the first available data point and would be silently biased by a truncated lookback window.
+    required_history_period = datetime.timedelta(days=365 * 20)
+    #: Keep the same live-style slippage assumption as NB153 and `hyper-ai-test.py`.
     slippage_tolerance = 0.0060
+    #: Assume no liquidity if there is a gap in TVL data.
+    assummed_liquidity_when_data_missings = 0.01
 
 
 #
@@ -189,6 +226,11 @@ def create_trading_universe(
     - Load vault universe from the remote metadata blob
     - Load OHLCV data for supporting pairs
     - Load also BTC and ETH price data to be used as a benchmark
+
+    Keep the backtest trading window fixed to ``Parameters.backtest_start`` /
+    ``Parameters.backtest_end``, but let ``required_history_period`` extend the
+    data-loading window backwards so age and other history-derived indicators
+    can see the full pre-backtest history for the selected vaults.
     """
 
     execution_context = input.execution_context
@@ -217,14 +259,9 @@ def create_trading_universe(
     def get_vaults() -> list[tuple[ChainId, str]]:
         """Load the curated Hypercore vault list lazily for universe creation.
 
-        The strategy module is imported in unit and integration tests
-        that only exercise the decision logic. We therefore avoid any live
-        curator fetch during module import and only build the universe when the
-        trading universe itself is requested.
-
-        The resulting list is still cached for the process lifetime on purpose.
-        This preserves the current intentional behaviour of using one curator
-        view per process run.
+        Avoid any live curator fetch during module import. Only build
+        the universe when the trading universe itself is requested.
+        The resulting list is cached for the process lifetime.
         """
         global VAULTS
         if VAULTS is None:
@@ -240,6 +277,8 @@ def create_trading_universe(
     vault_universe = vault_universe.limit_to_denomination(ALLOWED_VAULT_DENOMINATION_TOKENS, check_all_vaults_found=True)
     debug_printer(f"Loaded {vault_universe.get_vault_count()} vaults from remote vault metadata, source vaults count: {len(vaults)}")
 
+    # `load_partial_data()` now honours `required_history_period` in backtests
+    # as a loader-window extension instead of clipping history to the trading window.
     dataset = load_partial_data(
         client=client,
         time_bucket=parameters.candle_time_bucket,
@@ -257,11 +296,12 @@ def create_trading_universe(
     debug_printer("Creating strategy universe with price feeds and vaults")
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
-        reserve_asset=PREFERRED_STABLECOIN,
+        reserve_asset=DATASET_RESERVE_ASSET,
         forward_fill=True,
         forward_fill_until=timestamp,
         primary_chain=parameters.primary_chain_id,
     )
+    strategy_universe.reserve_assets = [PREFERRED_STABLECOIN]
     return strategy_universe
 
 
@@ -270,48 +310,10 @@ def create_trading_universe(
 #
 
 
-def _get_minimum_hold_pair_ids(
-    portfolio,
-    strategy_universe: TradingStrategyUniverse,
-    state,
-    timestamp,
-    minimum_hold_days: int,
-) -> set[int]:
-    """Return pair ids for positions that are still within the minimum hold window.
-
-    - Positions opened within the last `minimum_hold_days` days are protected
-      from being sold even when they fall out of the inclusion criteria.
-    - Quarantined and bad pairs are excluded.
-    """
-    if minimum_hold_days <= 0:
-        return set()
-
-    threshold = datetime.timedelta(days=minimum_hold_days)
-    current_dt = timestamp.to_pydatetime() if hasattr(timestamp, "to_pydatetime") else timestamp
-    pair_ids = set()
-
-    for position in portfolio.get_open_positions():
-        pair = position.pair
-        if pair.is_credit_supply():
-            continue
-        if current_dt - position.opened_at >= threshold:
-            continue
-        quarantine_address = pair.pool_address
-        if quarantine_address and is_quarantined(quarantine_address, timestamp):
-            continue
-        if not state.is_good_pair(pair):
-            continue
-        if strategy_universe.get_pair_by_id(pair.internal_id) is None:
-            continue
-        pair_ids.add(pair.internal_id)
-
-    return pair_ids
-
-
 def decide_trades(
     input: StrategyInput,
 ) -> list[TradeExecution]:
-    """Run survivor-first equal-weight sizing with minimum-hold protection."""
+    """Run survivor-first capped waterfall sizing with a redemption-aware target value."""
     parameters = input.parameters
     position_manager = input.get_position_manager()
     state = input.state
@@ -326,6 +328,15 @@ def decide_trades(
         if equity < parameters.initial_cash * 0.10:
             return []
 
+    alpha_model = AlphaModel(
+        timestamp,
+        close_position_weight_epsilon=parameters.min_portfolio_weight,
+    )
+
+    tvl_included_pair_count = indicators.get_indicator_value(
+        "tvl_included_pair_count",
+    )
+
     included_pairs = indicators.get_indicator_value(
         "inclusion_criteria",
         na_conversion=False,
@@ -333,71 +344,26 @@ def decide_trades(
     if included_pairs is None:
         included_pairs = []
 
-    tvl_included_pair_count = indicators.get_indicator_value("tvl_included_pair_count")
+    signal_count = 0
 
-    # Build candidate signals from inclusion criteria pairs.
-    candidate_signals = []
-    candidate_signal_ids = set()
     for pair_id in included_pairs:
         pair = strategy_universe.get_pair_by_id(pair_id)
+
         if not state.is_good_pair(pair):
             continue
+
         quarantine_address = pair.pool_address
         if quarantine_address and is_quarantined(quarantine_address, timestamp):
             continue
-        age_ramp = indicators.get_indicator_value("age_ramp_weight", pair=pair)
-        candidate_signals.append({"pair": pair, "signal": age_ramp if age_ramp is not None else 1.0})
-        candidate_signal_ids.add(pair.internal_id)
 
-    # Add positions still under minimum hold that are not already candidates.
-    minimum_hold_pair_ids = _get_minimum_hold_pair_ids(
-        portfolio,
-        strategy_universe,
-        state,
-        timestamp,
-        parameters.minimum_hold_days,
-    )
-    for pair_id in minimum_hold_pair_ids:
-        if pair_id in candidate_signal_ids:
-            continue
-        pair = strategy_universe.get_pair_by_id(pair_id)
-        age_ramp = indicators.get_indicator_value("age_ramp_weight", pair=pair)
-        candidate_signals.append({"pair": pair, "signal": age_ramp if age_ramp is not None else 1.0})
-        candidate_signal_ids.add(pair_id)
+        age_ramp_weight = indicators.get_indicator_value("age_ramp_weight", pair=pair)
+        weight_signal_value = age_ramp_weight if age_ramp_weight is not None else 1.0
 
-    # Sort candidates: highest signal first, then by pair id for stability.
-    ordered_candidates = sorted(
-        candidate_signals,
-        key=lambda item: (-item["signal"], item["pair"].internal_id),
-    )
-
-    # Select survivors: minimum-hold positions fill first, then top signals fill remaining slots.
-    selected = []
-    selected_ids = set()
-
-    for item in ordered_candidates:
-        pair_id = item["pair"].internal_id
-        if pair_id in minimum_hold_pair_ids and pair_id not in selected_ids:
-            selected.append(item)
-            selected_ids.add(pair_id)
-
-    remaining_slots = max(parameters.max_assets_in_portfolio - len(selected), 0)
-    for item in ordered_candidates:
-        if len(selected) >= len(minimum_hold_pair_ids) + remaining_slots:
-            break
-        pair_id = item["pair"].internal_id
-        if pair_id in selected_ids:
-            continue
-        selected.append(item)
-        selected_ids.add(pair_id)
-
-    alpha_model = AlphaModel(
-        timestamp,
-        close_position_weight_epsilon=parameters.min_portfolio_weight,
-    )
-
-    for item in selected:
-        alpha_model.set_signal(item["pair"], item["signal"])
+        alpha_model.set_signal(
+            pair,
+            weight_signal_value,
+        )
+        signal_count += 1
 
     redeemable_capital = get_redeemable_portfolio_capital(position_manager)
     portfolio_target_value = calculate_portfolio_target_value(
@@ -405,8 +371,8 @@ def decide_trades(
         parameters.allocation,
     )
 
-    alpha_model.select_top_signals(count=len(selected))
-    alpha_model.assign_weights(method=weight_equal)
+    alpha_model.select_top_signals(count=parameters.max_assets_in_portfolio)
+    alpha_model.assign_weights(method=weight_passthrouh)
 
     # Hyperliquid vaults are expected to have complete TVL data in live trading.
     # Fail the cycle loudly if TVL is missing instead of silently sizing with a placeholder.
@@ -420,7 +386,7 @@ def decide_trades(
         size_risk_model=size_risk_model,
         max_weight=parameters.max_concentration,
         max_positions=parameters.max_assets_in_portfolio,
-        waterfall=False,
+        waterfall=True,
     )
 
     alpha_model.update_old_weights(
@@ -429,12 +395,9 @@ def decide_trades(
     )
     alpha_model.calculate_target_positions(position_manager)
 
-    rebalance_threshold_usd = parameters.individual_rebalance_min_threshold_usd
-    assert rebalance_threshold_usd > 0.1, "Safety check tripped"
-
     trades = alpha_model.generate_rebalance_trades_and_triggers(
         position_manager,
-        min_trade_threshold=rebalance_threshold_usd,
+        min_trade_threshold=parameters.individual_rebalance_min_threshold_usd,
         individual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
         sell_rebalance_min_threshold=parameters.sell_rebalance_min_threshold,
         execution_context=input.execution_context,
@@ -450,24 +413,17 @@ def decide_trades(
 
         rebalance_volume = sum(trade.get_value() for trade in trades)
 
-        unheld_selected = {
-            item["pair"].internal_id
-            for item in ordered_candidates[:parameters.max_assets_in_portfolio]
-        }
-        blocked_sell_count = len(minimum_hold_pair_ids - unheld_selected)
-
         report = dedent_any(f"""
         Cycle: #{input.cycle}
         Rebalanced: {'👍' if alpha_model.is_rebalance_triggered() else '👎'}
         Open/about to open positions: {len(state.portfolio.open_positions)}
-        Candidate signals created: {len(candidate_signals)}
-        Selected survivor signals: {len(selected)}
-        Signals blocked by minimum hold: {blocked_sell_count}
         Max position value change: {alpha_model.max_position_adjust_usd:,.2f} USD
         Rebalance threshold: {alpha_model.position_adjust_threshold_usd:,.2f} USD
         Trades decided: {len(trades)}
         Pairs meeting inclusion criteria: {len(included_pairs)}
         Pairs meeting TVL inclusion criteria: {tvl_included_pair_count}
+        Candidate signals created: {signal_count}
+        Selected survivor signals: {len(alpha_model.signals)}
         Weight signal: {parameters.weight_signal}
         Age ramp period: {parameters.age_ramp_period}
         Total equity: {portfolio.get_total_equity():,.2f} USD
@@ -642,6 +598,40 @@ def inclusion_criteria(
 
 
 @indicators.define(
+    dependencies=(age,),
+    source=IndicatorSource.dependencies_only_per_pair,
+)
+def age_ramp_weight(
+    pair: TradingPairIdentifier,
+    dependency_resolver: IndicatorDependencyResolver,
+    age_ramp_period: float = 1.0,
+) -> pd.Series:
+    """Ramp up weight linearly with vault age."""
+    vault_age = dependency_resolver.get_indicator_data("age", pair=pair)
+    return (vault_age / age_ramp_period).clip(upper=1.0).clip(lower=0.05)
+
+
+@indicators.define(
+    dependencies=(inclusion_criteria,),
+    source=IndicatorSource.dependencies_only_universe,
+)
+def all_criteria_included_pair_count(
+    min_tvl: USDollarAmount,
+    min_age: float,
+    dependency_resolver: IndicatorDependencyResolver,
+) -> pd.Series:
+    """Count pairs meeting the full inclusion rule set."""
+    series = dependency_resolver.get_indicator_data(
+        "inclusion_criteria",
+        parameters={
+            "min_tvl": min_tvl,
+            "min_age": min_age,
+        },
+    )
+    return series.apply(len)
+
+
+@indicators.define(
     dependencies=(tvl_inclusion_criteria,),
     source=IndicatorSource.dependencies_only_universe,
 )
@@ -685,26 +675,6 @@ def age_included_pair_count(
     return series.reindex(full_index, fill_value=0)
 
 
-@indicators.define(
-    dependencies=(inclusion_criteria,),
-    source=IndicatorSource.dependencies_only_universe,
-)
-def all_criteria_included_pair_count(
-    min_tvl: USDollarAmount,
-    min_age: float,
-    dependency_resolver: IndicatorDependencyResolver,
-) -> pd.Series:
-    """Count pairs meeting the full inclusion rule set."""
-    series = dependency_resolver.get_indicator_data(
-        "inclusion_criteria",
-        parameters={
-            "min_tvl": min_tvl,
-            "min_age": min_age,
-        },
-    )
-    return series.apply(len)
-
-
 @indicators.define(source=IndicatorSource.strategy_universe)
 def trading_pair_count(
     strategy_universe: TradingStrategyUniverse,
@@ -730,20 +700,6 @@ def trading_pair_count(
     return pd.Series(seen_data.values(), index=list(seen_data.keys()))
 
 
-@indicators.define(
-    dependencies=(age,),
-    source=IndicatorSource.dependencies_only_per_pair,
-)
-def age_ramp_weight(
-    pair: TradingPairIdentifier,
-    dependency_resolver: IndicatorDependencyResolver,
-    age_ramp_period: float = 1.0,
-) -> pd.Series:
-    """Ramp up weight linearly with vault age."""
-    vault_age = dependency_resolver.get_indicator_data("age", pair=pair)
-    return (vault_age / age_ramp_period).clip(upper=1.0).clip(lower=0.05)
-
-
 def create_indicators(
     timestamp: datetime.datetime | None,
     parameters: StrategyParameters,
@@ -765,7 +721,7 @@ def create_indicators(
 
 
 def equity_curve_with_benchmark(input: ChartInput) -> list[Figure]:
-    """Add ETH as the benchmark token."""
+    """Equity curve with ETH benchmark."""
     return equity_curve(
         input,
         benchmark_token_symbols=["ETH"],
@@ -796,8 +752,6 @@ def all_vault_positions_by_profit(input: ChartInput) -> pd.DataFrame:
         sort_by="Profit USD",
         sort_ascending=False,
         show_address=True,
-        top_n=10,
-        bottom_n=10,
     )
 
 
@@ -839,26 +793,25 @@ def create_charts(
 
 tags = {StrategyTag.beta, StrategyTag.deposits_disabled}
 
-name = "Hyperliquid vault of vaults - minimum hold"
+name = "Hyperliquid vault of vaults - waterfall"
 
-short_description = "Cross-chain vault of vaults with age-ramped survivor selection, equal-weight recycling, and minimum 3-day hold"
+short_description = "Cross-chain vault of vaults with survivor-first age-ramp selection and waterfall sizing"
 
 icon = ""
 
 long_description = """
-# Hyperliquid vault of vaults
+# Hyperliquid vault of vaults - waterfall
 
-A cross-chain strategy that selects from Hyperliquid-ecosystem DeFi vaults using
-age-ramped survivor selection, equal-weight allocation with capital recycling, and
-a minimum 3-day hold rule to prevent rapid position churning.
+A cross-chain strategy that selects from Hyperliquid-ecosystem DeFi vaults using survivor-first
+age-ramped selection and plain waterfall sizing with redemption-aware portfolio targeting.
 
 ## Strategy features
 
 - **Dynamic vault universe**: Fetches vaults from the Trading Strategy vault database
 - **Survivor-first selection**: Vaults must pass TVL, age, and trading availability criteria
 - **Age ramp weighting**: New vaults ramp up linearly over a configurable period
-- **Equal-weight recycling**: Accepted survivors are equal-weighted; leftover capital is recycled
-- **Minimum hold**: Positions younger than 3 days are protected from forced sells
+- **Waterfall sizing**: Pass-through weighted allocation with waterfall normalisation
+- **Redemption-aware targeting**: Portfolio target accounts for redeemable capital
 - **Daily rebalancing**: Adjusts positions based on inclusion criteria changes
 - **Risk management**: Caps individual positions at 12% of portfolio and 20% of pool TVL
 """

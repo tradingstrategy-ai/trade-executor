@@ -1360,7 +1360,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         pairs = PandasPairUniverse(dataset.pairs, exchange_universe=dataset.exchanges)
 
-        if not reserve_asset:
+        if isinstance(reserve_asset, AssetIdentifier):
+            pass  # Already constructed, use directly
+        elif not reserve_asset:
             quote_token = pairs.get_single_quote_token()
             reserve_asset = translate_token(quote_token)
         elif reserve_asset.startswith("0x"):
@@ -2313,7 +2315,12 @@ def _filter_trading_strategy_website_vault_price_history(
     start_at: datetime.datetime | None,
     end_at: datetime.datetime | None,
 ) -> pd.DataFrame:
-    """Filter Trading Strategy website vault history to the requested vaults and time range."""
+    """Filter Trading Strategy website vault history to the requested vaults and load window.
+
+    For backtests the load window may intentionally start earlier than the
+    actual trading window so age and other history-derived indicators can see
+    the full pre-backtest history they depend on.
+    """
     assert "chain" in vault_prices_df.columns, f"Got {vault_prices_df.columns}"
     assert "address" in vault_prices_df.columns, f"Got {vault_prices_df.columns}"
     assert "timestamp" in vault_prices_df.columns, f"Got {vault_prices_df.columns}"
@@ -2486,9 +2493,13 @@ def load_partial_data(
         Used in testing the framework.
 
     :param required_history_period:
-        How much historical data we need to load.
+        How much historical data we need to load for indicator calculation.
 
-        Depends on the strategy. Defaults to load all data.
+        In live trading this defines the rolling history window fetched for the
+        current cycle.
+
+        In backtesting this extends the data-loading window backwards before
+        ``start_at`` while the actual backtest still begins at ``start_at``.
 
     :param start_at:
         Load data for a specific backtesting data range.
@@ -2587,6 +2598,9 @@ def load_partial_data(
         if not end_at:
             end_at = universe_options.end_at
 
+        if not required_history_period:
+            required_history_period = universe_options.history_period
+
         assert start_at
         assert end_at
     elif execution_context.mode.is_live_trading():
@@ -2598,9 +2612,15 @@ def load_partial_data(
     else:
         raise NotImplementedError(f"Cannot determine trading mode: {execution_context.mode}")
 
-    # Where the data loading start can come from the hard backtesting range (start - end)
-    # or how many days of historical data we ask for
-    data_load_start_at = start_at or (native_datetime_utc_now() - required_history_period)
+    # Keep the trading window and the data-loading window separate.
+    #
+    # Backtests still trade inside start_at/end_at, but indicators such as
+    # age() need to see data from before start_at. If required_history_period
+    # is given, extend the load window backwards accordingly.
+    if start_at and required_history_period:
+        data_load_start_at = start_at - required_history_period
+    else:
+        data_load_start_at = start_at or (native_datetime_utc_now() - required_history_period)
 
     # Generate a rounded range of the latest data
     if round_start_end and execution_context.mode.is_live_trading():

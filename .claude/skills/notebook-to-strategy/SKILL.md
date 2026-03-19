@@ -23,7 +23,7 @@ The skill maps notebook sections to strategy module sections as defined in `stra
 1. **Read and parse** the notebook and existing strategy module (if any)
 2. **Extract code** from notebook cells, mapping to the appropriate sections
 3. **Consolidate imports** from all notebook cells to the top of the module
-4. **Transfer functions and constants**:
+4. **Transfer functions, constants and comments**:
    - `Parameters` class
    - `create_trading_universe()` function
    - `decide_trades()` function
@@ -32,6 +32,7 @@ The skill maps notebook sections to strategy module sections as defined in `stra
    - Chart functions and `create_charts()` function
    - Module-level constants (CHAIN_ID, VAULTS, EXCHANGES, etc.)
    - MAke sure `required_live_history` parameter matches the indicators used in in the decide_trades(), so that live indicator calculations will have enough data + margin
+   - Don't delete line comments from the input, like on Parameters class
 5. **Preserve metadata** if updating an existing module, or create placeholder metadata for new modules
 6. **Format the output** with proper section comments
 7. **Verify** by running a backtest command

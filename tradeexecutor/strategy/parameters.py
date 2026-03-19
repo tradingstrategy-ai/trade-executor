@@ -90,9 +90,12 @@ class CoreStrategyParameters(TypedDict):
 
     backtest_end: datetime.datetime | None
 
-    #: Live trading needed history
+    #: Historical data lookback needed by the strategy indicators.
     #:
-    #: How much data load for each strategy cycle in live trading
+    #: In live trading this defines how much data is loaded for each cycle.
+    #: In backtesting this extends the data-loading window backwards before
+    #: :py:attr:`backtest_start` while the actual trading period still begins
+    #: at :py:attr:`backtest_start`.
     #:
     required_history_period: datetime.timedelta | None
 

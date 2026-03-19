@@ -48,50 +48,53 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.token_filter import filter_for_selected_pairs
 
-from tradeexecutor.curator.curator import is_quarantined
-from tradeexecutor.curator.hyperliquid_vault_universe import build_hyperliquid_vault_universe
-from tradeexecutor.exchange_account.allocation import (
-    calculate_portfolio_target_value,
-    get_redeemable_portfolio_capital,
-)
-
 from tradeexecutor.analysis.vault import display_vaults
-from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.curator.curator import is_quarantined
+from tradeexecutor.curator.hyperliquid_vault_universe import \
+    build_hyperliquid_vault_universe
+from tradeexecutor.exchange_account.allocation import (
+    calculate_portfolio_target_value, get_redeemable_portfolio_capital)
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.alpha_model import AlphaModel
-from tradeexecutor.strategy.chart.definition import ChartInput, ChartKind, ChartRegistry
-from tradeexecutor.strategy.chart.standard.alpha_model import alpha_model_diagnostics
+from tradeexecutor.strategy.chart.definition import (ChartInput, ChartKind,
+                                                     ChartRegistry)
+from tradeexecutor.strategy.chart.standard.alpha_model import \
+    alpha_model_diagnostics
 from tradeexecutor.strategy.chart.standard.equity_curve import (
-    equity_curve, equity_curve_with_drawdown,
-)
+    equity_curve, equity_curve_with_drawdown)
 from tradeexecutor.strategy.chart.standard.interest import vault_statistics
-from tradeexecutor.strategy.chart.standard.performance_metrics import performance_metrics
+from tradeexecutor.strategy.chart.standard.performance_metrics import \
+    performance_metrics
 from tradeexecutor.strategy.chart.standard.position import positions_at_end
-from tradeexecutor.strategy.chart.standard.profit_breakdown import trading_pair_breakdown
+from tradeexecutor.strategy.chart.standard.profit_breakdown import \
+    trading_pair_breakdown
 from tradeexecutor.strategy.chart.standard.thinking import last_messages
-from tradeexecutor.strategy.chart.standard.trading_metrics import trading_metrics
-from tradeexecutor.strategy.chart.standard.trading_universe import available_trading_pairs
+from tradeexecutor.strategy.chart.standard.trading_metrics import \
+    trading_metrics
+from tradeexecutor.strategy.chart.standard.trading_universe import \
+    available_trading_pairs
 from tradeexecutor.strategy.chart.standard.vault import (
-    all_vault_daily_gains_losses, all_vault_positions,
-)
+    all_vault_daily_gains_losses, all_vault_positions)
 from tradeexecutor.strategy.chart.standard.weight import (
-    equity_curve_by_asset, weight_allocation_statistics,
-)
+    equity_curve_by_asset, weight_allocation_statistics)
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.execution_context import (ExecutionContext,
+                                                      ExecutionMode)
 from tradeexecutor.strategy.pandas_trader.indicator import (
-    IndicatorDependencyResolver, IndicatorSource,
-)
-from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
+    IndicatorDependencyResolver, IndicatorSource)
+from tradeexecutor.strategy.pandas_trader.indicator_decorator import \
+    IndicatorRegistry
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
-from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
+from tradeexecutor.strategy.pandas_trader.trading_universe_input import \
+    CreateTradingUniverseInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import (
-    TradingStrategyUniverse, load_partial_data, load_vault_universe_with_metadata,
-)
+    TradingStrategyUniverse, load_partial_data,
+    load_vault_universe_with_metadata)
 from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_equal
@@ -119,7 +122,17 @@ SUPPORTING_PAIRS = [
 
 LENDING_RESERVES = None
 
-PREFERRED_STABLECOIN = USDC_NATIVE_TOKEN[PRIMARY_CHAIN_ID].lower()
+PREFERRED_STABLECOIN = AssetIdentifier(
+    chain_id=PRIMARY_CHAIN_ID.value,
+    address=USDC_NATIVE_TOKEN[PRIMARY_CHAIN_ID.value].lower(),
+    token_symbol="USDC",
+    decimals=6,
+)
+
+# The current deployment image still resolves reserve assets inside
+# `create_from_dataset()` via the loaded pair universe. Use a plain USDC
+# symbol for construction, then swap in the intended reserve asset.
+DATASET_RESERVE_ASSET = "USDC"
 
 VAULTS: list[tuple[ChainId, str]] | None = None
 
@@ -253,11 +266,12 @@ def create_trading_universe(
     debug_printer("Creating strategy universe with price feeds and vaults")
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
-        reserve_asset=PREFERRED_STABLECOIN,
+        reserve_asset=DATASET_RESERVE_ASSET,
         forward_fill=True,
         forward_fill_until=timestamp,
         primary_chain=parameters.primary_chain_id,
     )
+    strategy_universe.reserve_assets = [PREFERRED_STABLECOIN]
     return strategy_universe
 
 

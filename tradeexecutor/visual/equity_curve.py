@@ -8,6 +8,8 @@ from typing import List
 
 import numpy as np
 import pandas as pd
+from matplotlib import colors
+from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 
 from eth_defi.compat import native_datetime_utc_now
@@ -303,11 +305,10 @@ def visualise_equity_curve(
 def visualise_returns_over_time(
         returns: pd.Series,
 ) -> Figure:
-    """Draw a grid of returns over time.
+    """Draw a monthly returns heatmap.
 
-    - Currently only monthly breakdown supported
-
-    - `See Quantstats README for more details <https://github.com/ranaroussi/quantstats>`__.
+    - Currently only monthly breakdown is supported
+    - Calculated directly from the returns series without QuantStats internals
 
     Example:
 
@@ -325,21 +326,46 @@ def visualise_returns_over_time(
         Matplotlit figure
 
     """
+    monthly_matrix = _calculate_monthly_return_matrix(returns)
+    month_labels = list(monthly_matrix.columns)
+    year_labels = [str(year) for year in monthly_matrix.index]
 
-    # /Users/moo/Library/Caches/pypoetry/virtualenvs/tradingview-defi-strategy-XB2Vkmi1-py3.10/lib/python3.10/site-packages/quantstats/stats.py:968: FutureWarning:
-    #
-    # In a future version of pandas all arguments of DataFrame.pivot will be keyword-only.
+    finite_values = monthly_matrix.to_numpy().astype(float)
+    finite_values = finite_values[np.isfinite(finite_values)]
+    max_abs = float(np.max(np.abs(finite_values))) if len(finite_values) > 0 else 0.0
+    max_abs = max(max_abs, 0.01)
+    norm = colors.TwoSlopeNorm(vmin=-max_abs, vcenter=0.0, vmax=max_abs)
 
-    qs = import_quantstats_wrapped()
+    fig, ax = plt.subplots(figsize=(14, max(2.5, 0.55 * len(year_labels) + 1.5)))
+    masked = np.ma.masked_invalid(monthly_matrix.to_numpy())
+    image = ax.imshow(masked, cmap="RdYlGn", norm=norm, aspect="auto")
 
-    with warnings.catch_warnings():  #  DeprecationWarning: Importing display from IPython.core.display is deprecated since IPython 7.14, please import from IPython display
-        warnings.simplefilter(action='ignore', category=FutureWarning)
-        # /usr/local/lib/python3.10/site-packages/quantstats/stats.py:968: FutureWarning: In a future version of pandas all arguments of DataFrame.pivot will be keyword-only.
-        #    returns = returns.pivot('Year', 'Month', 'Returns').fillna(0)
-        fig = qs.plots.monthly_returns(
-            returns,
-            show=False)
-    
+    ax.set_xticks(np.arange(len(month_labels)))
+    ax.set_xticklabels(month_labels)
+    ax.set_yticks(np.arange(len(year_labels)))
+    ax.set_yticklabels(year_labels)
+    ax.set_xlabel("Month")
+    ax.set_ylabel("Year")
+    ax.set_title("Monthly returns")
+
+    for row in range(monthly_matrix.shape[0]):
+        for column in range(monthly_matrix.shape[1]):
+            value = monthly_matrix.iat[row, column]
+            if pd.isna(value):
+                continue
+            ax.text(
+                column,
+                row,
+                f"{value * 100:.1f}%",
+                ha="center",
+                va="center",
+                fontsize=8,
+                color="black",
+            )
+
+    colour_bar = fig.colorbar(image, ax=ax, shrink=0.85, pad=0.02)
+    colour_bar.set_label("Return")
+    fig.tight_layout()
     return fig
 
 
@@ -814,6 +840,71 @@ def resample_returns(returns: pd.Series, freq: pd.DateOffset | str) -> pd.Series
     else:
         # All other cases - hit or miss
         return (1 + returns).resample(freq).prod() - 1
+
+
+def _calculate_monthly_return_matrix(returns: pd.Series) -> pd.DataFrame:
+    """Prepare monthly compounded returns as a heatmap matrix."""
+
+    assert isinstance(returns, pd.Series)
+
+    month_order = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    if len(returns) == 0:
+        return pd.DataFrame(columns=month_order, dtype="float64")
+
+    monthly_returns = resample_returns(returns, "ME").dropna()
+
+    if len(monthly_returns) == 0:
+        return pd.DataFrame(columns=month_order, dtype="float64")
+
+    monthly_frame = pd.DataFrame({
+        "year": monthly_returns.index.year,
+        "month": monthly_returns.index.strftime("%b"),
+        "return": monthly_returns.values,
+    })
+    monthly_matrix = monthly_frame.pivot(index="year", columns="month", values="return")
+    monthly_matrix = monthly_matrix.reindex(columns=month_order)
+    monthly_matrix.index.name = "Year"
+    monthly_matrix.columns.name = "Month"
+    return monthly_matrix.sort_index()
+
+
+def calculate_rolling_returns(
+    returns: pd.Series,
+    freq: pd.DateOffset | str | None = "D",
+    periods=90,
+    diagnose=False,
+) -> pd.Series | pd.DataFrame:
+    """Calculate compounded rolling returns over a fixed window.
+
+    :param returns:
+        Returns series to analyse.
+
+    :param freq:
+        Resample the returns to this frequency before calculating the rolling window.
+
+    :param periods:
+        Window size for the rolling compounded return.
+
+    :param diagnose:
+        If True, return a DataFrame with intermediate values instead of just the rolling series.
+    """
+
+    if freq is not None:
+        resampled_returns = resample_returns(returns, freq)
+    else:
+        resampled_returns = returns
+
+    rolling_returns = (1 + resampled_returns).rolling(window=periods).apply(np.prod, raw=True) - 1
+
+    if diagnose:
+        df = pd.DataFrame({
+            "resampled_returns": resampled_returns,
+            "rolling_return": rolling_returns,
+        })
+        return df.dropna()
+
+    return rolling_returns.dropna()
 
 def calculate_rolling_sharpe(
     returns: pd.Series,

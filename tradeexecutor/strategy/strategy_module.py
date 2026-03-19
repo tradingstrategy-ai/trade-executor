@@ -523,12 +523,16 @@ class StrategyModuleInformation:
         assert self.initial_cash is not None, f"INITIAL_CASH variable is not set in the strategy module {self.path}"
 
     def get_universe_options(self, mode: ExecutionMode | None = None) -> UniverseOptions:
-        """What backtest range or live trading history period this strategy defaults to."""
+        """What backtest range and history window this strategy defaults to."""
 
         # Choose by our execution mode
         if mode:
             if mode.is_backtesting():
-                return UniverseOptions(start_at=self.backtest_start, end_at=self.backtest_end)
+                return UniverseOptions(
+                    start_at=self.backtest_start,
+                    end_at=self.backtest_end,
+                    history_period=self.get_live_trading_history_period(),
+                )
             elif mode.is_live_trading():
                 return UniverseOptions(history_period=self.get_live_trading_history_period())
             else:

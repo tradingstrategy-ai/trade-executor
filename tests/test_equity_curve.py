@@ -17,6 +17,7 @@ import datetime
 from pathlib import Path
 from typing import List, Dict
 
+import numpy as np
 import pytest
 
 import pandas as pd
@@ -32,7 +33,8 @@ from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethere
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange, generate_simple_routing_model
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.visual.equity_curve import calculate_equity_curve, calculate_returns, \
-    calculate_aggregate_returns, visualise_equity_curve, visualise_returns_over_time, visualise_returns_distribution
+    calculate_aggregate_returns, calculate_rolling_returns, visualise_equity_curve, \
+    visualise_returns_over_time, visualise_returns_distribution
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -276,6 +278,31 @@ def test_returns_over_time(state: State):
     returns = calculate_returns(curve)
     fig = visualise_returns_over_time(returns)
     assert isinstance(fig, Figure)
+    axes = fig.axes
+    assert axes[0].get_xticklabels()[0].get_text() == "Jan"
+    assert axes[0].get_xticklabels()[11].get_text() == "Dec"
+
+
+def test_calculate_rolling_returns(state: State):
+    """Calculate rolling compounded returns."""
+    curve = calculate_equity_curve(state)
+    returns = calculate_returns(curve)
+    rolling_returns = calculate_rolling_returns(returns, freq="D", periods=30)
+
+    assert isinstance(rolling_returns, pd.Series)
+    assert len(rolling_returns) > 0
+    assert rolling_returns.index.is_monotonic_increasing
+    assert np.isfinite(rolling_returns.iloc[-1])
+
+
+def test_calculate_rolling_returns_diagnostics(state: State):
+    """Rolling return diagnostics expose the expected columns."""
+    curve = calculate_equity_curve(state)
+    returns = calculate_returns(curve)
+    diagnostics = calculate_rolling_returns(returns, freq="D", periods=30, diagnose=True)
+
+    assert list(diagnostics.columns) == ["resampled_returns", "rolling_return"]
+    assert len(diagnostics) > 0
 
 
 def test_returns_distribution(state: State):
@@ -351,4 +378,3 @@ def test_single_pair_timeline():
     df = expand_entries_and_exits(state)
 
     print(df)
-

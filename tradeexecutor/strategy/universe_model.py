@@ -123,7 +123,7 @@ class UniverseOptions:
             parameters: Type[StrategyParameters] | StrategyParameters,
             execution_context: ExecutionContext,
     ) -> "UniverseOptions":
-        """Extract backtesting range or live history load range based on if we are doing live trading.
+        """Extract backtesting range or history load range from strategy parameters.
 
         :param parameters:
             StrategyParameters instance or raw class.
@@ -139,6 +139,7 @@ class UniverseOptions:
             return UniverseOptions(
                 start_at=parameters.backtest_start,
                 end_at=parameters.backtest_end,
+                history_period=parameters.required_history_period,
             )
         else:
             return UniverseOptions(
