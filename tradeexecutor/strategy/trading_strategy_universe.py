@@ -2666,7 +2666,7 @@ def load_partial_data(
 
         if isinstance(pairs, pd.DataFrame):
             # Prefiltered pairs
-            assert len(pairs) > 0, "The passed in pairs dataframe was empty"
+            assert len(pairs) > 0 or vaults is not None, "The passed in pairs dataframe was empty"
 
             # Skip vault data for now
             # as it is not present
@@ -2674,7 +2674,7 @@ def load_partial_data(
             loadable_pairs = pairs[pairs["dex_type"] != ExchangeType.erc_4626_vault]
 
             filtered_pairs_df = pairs
-            our_pair_ids = loadable_pairs["pair_id"]
+            our_pair_ids = set(loadable_pairs["pair_id"])
             exchange_ids = loadable_pairs["exchange_id"]
             # Use a list instead of a set to avoid Exchange.__eq__/__hash__ deduplication.
             # Exchange hashes by factory address, which can be the same across chains
@@ -2705,6 +2705,8 @@ def load_partial_data(
             # Eliminate the pairs we are not interested in from the database
             filtered_pairs_df = pairs_df.loc[pairs_df["pair_id"].isin(our_pair_ids)]
 
+        assert our_pair_ids or vaults is not None, "Need at least one DEX trading pair or vault"
+
         if pair_extra_metadata:
             # Load token tax data
             filtered_pairs_df = filtered_pairs_df.copy()
@@ -2721,49 +2723,57 @@ def load_partial_data(
         if not candle_progress_bar_desc:
             candle_progress_bar_desc = f"Loading OHLCV data for {name}"
 
-        candles_df = client.fetch_candles_by_pair_ids(
-            our_pair_ids,
-            time_bucket,
-            progress_bar_description=candle_progress_bar_desc,
-            start_time=data_load_start_at,
-            end_time=end_at,
-        )
-
-        candles_pairs = set(candles_df["pair_id"].unique())
-        asked_pairs = set(our_pair_ids)
-
-        if len(candles_pairs) != len(asked_pairs):
-            logger.info(
-                "Data missing warning: We asked OHLCV data for %d trading pairs, but only got for %d pairs. This is usually because time period %s - %s does not have OHLCV data for all asked pairs.",
-                len(asked_pairs),
-                len(candles_pairs),
-                data_load_start_at,
-                end_at
-            )
-
-        if stop_loss_time_bucket:
-            stop_loss_desc = f"Loading stop loss/take profit granular trigger data for {name}"
-            stop_loss_candles = client.fetch_candles_by_pair_ids(
+        if our_pair_ids:
+            candles_df = client.fetch_candles_by_pair_ids(
                 our_pair_ids,
-                stop_loss_time_bucket,
-                progress_bar_description=stop_loss_desc,
+                time_bucket,
+                progress_bar_description=candle_progress_bar_desc,
                 start_time=data_load_start_at,
                 end_time=end_at,
             )
+
+            candles_pairs = set(candles_df["pair_id"].unique())
+            asked_pairs = set(our_pair_ids)
+
+            if len(candles_pairs) != len(asked_pairs):
+                logger.info(
+                    "Data missing warning: We asked OHLCV data for %d trading pairs, but only got for %d pairs. This is usually because time period %s - %s does not have OHLCV data for all asked pairs.",
+                    len(asked_pairs),
+                    len(candles_pairs),
+                    data_load_start_at,
+                    end_at
+                )
+
+            if stop_loss_time_bucket:
+                stop_loss_desc = f"Loading stop loss/take profit granular trigger data for {name}"
+                stop_loss_candles = client.fetch_candles_by_pair_ids(
+                    our_pair_ids,
+                    stop_loss_time_bucket,
+                    progress_bar_description=stop_loss_desc,
+                    start_time=data_load_start_at,
+                    end_time=end_at,
+                )
+            else:
+                stop_loss_candles = None
         else:
+            logger.info("No DEX trading pairs requested; loading a vault-only dataset")
+            candles_df = pd.DataFrame()
             stop_loss_candles = None
 
         if liquidity:
             liquidity_time_bucket = liquidity_time_bucket or time_bucket
-            liquidity_progress_bar_desc = f"Loading TVL/liquidity data for {name}"
-            liquidity_df = client.fetch_tvl_by_pair_ids(
-                our_pair_ids,
-                liquidity_time_bucket,
-                progress_bar_description=liquidity_progress_bar_desc,
-                start_time=data_load_start_at,
-                end_time=end_at,
-                query_type=liquidity_query_type,
-            )
+            if our_pair_ids:
+                liquidity_progress_bar_desc = f"Loading TVL/liquidity data for {name}"
+                liquidity_df = client.fetch_tvl_by_pair_ids(
+                    our_pair_ids,
+                    liquidity_time_bucket,
+                    progress_bar_description=liquidity_progress_bar_desc,
+                    start_time=data_load_start_at,
+                    end_time=end_at,
+                    query_type=liquidity_query_type,
+                )
+            else:
+                liquidity_df = pd.DataFrame()
         elif preloaded_tvl_df is not None:
             assert liquidity_time_bucket is not None, "load_partial_data(): liquidity_time_bucket must be given with preloaded_tvl_df argument"
             # Different column naming adapter

@@ -46,7 +46,6 @@ from eth_defi.token import USDC_NATIVE_TOKEN
 from plotly.graph_objects import Figure
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.utils.token_filter import filter_for_selected_pairs
 
 from tradeexecutor.curator.curator import is_quarantined
 from tradeexecutor.curator.hyperliquid_vault_universe import \
@@ -127,11 +126,6 @@ PREFERRED_STABLECOIN = AssetIdentifier(
     token_symbol="USDC",
     decimals=6,
 )
-
-# The current deployment image still resolves reserve assets inside
-# `create_from_dataset()` via the loaded pair universe. Use a plain USDC
-# symbol for construction, then swap in the real Hyperliquid USDC asset.
-DATASET_RESERVE_ASSET = "USDC"
 
 VAULTS: list[tuple[ChainId, str]] | None = None
 
@@ -222,10 +216,8 @@ def create_trading_universe(
 ) -> TradingStrategyUniverse:
     """Create the trading universe.
 
-    - Load Trading Strategy full pairs dataset
     - Load vault universe from the remote metadata blob
-    - Load OHLCV data for supporting pairs
-    - Load also BTC and ETH price data to be used as a benchmark
+    - Load vault OHLCV and TVL history for the curated Hypercore vaults
 
     Keep the backtest trading window fixed to ``Parameters.backtest_start`` /
     ``Parameters.backtest_end``, but let ``required_history_period`` extend the
@@ -247,14 +239,6 @@ def create_trading_universe(
     chain_id = parameters.primary_chain_id
 
     debug_printer(f"Preparing trading universe on chain {chain_id.get_name()}")
-
-    all_pairs_df = client.fetch_pair_universe().to_pandas()
-    pairs_df = filter_for_selected_pairs(
-        all_pairs_df,
-        SUPPORTING_PAIRS,
-    )
-
-    debug_printer(f"We have total {len(all_pairs_df)} pairs in dataset and going to use {len(pairs_df)} pairs for the strategy")
 
     def get_vaults() -> list[tuple[ChainId, str]]:
         """Load the curated Hypercore vault list lazily for universe creation.
@@ -282,7 +266,7 @@ def create_trading_universe(
     dataset = load_partial_data(
         client=client,
         time_bucket=parameters.candle_time_bucket,
-        pairs=pairs_df,
+        pairs=[],
         execution_context=execution_context,
         universe_options=universe_options,
         liquidity=True,
@@ -296,13 +280,25 @@ def create_trading_universe(
     debug_printer("Creating strategy universe with price feeds and vaults")
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
-        reserve_asset=DATASET_RESERVE_ASSET,
+        reserve_asset=PREFERRED_STABLECOIN,
         forward_fill=True,
         forward_fill_until=timestamp,
         primary_chain=parameters.primary_chain_id,
     )
-    strategy_universe.reserve_assets = [PREFERRED_STABLECOIN]
     return strategy_universe
+
+
+def _get_available_supporting_pair_ids(
+    strategy_universe: TradingStrategyUniverse,
+) -> set[int]:
+    """Return supporting pair ids that are actually present in the universe."""
+    pair_ids = set()
+    for desc in SUPPORTING_PAIRS:
+        try:
+            pair_ids.add(strategy_universe.get_pair_by_human_description(desc).internal_id)
+        except KeyError:
+            continue
+    return pair_ids
 
 
 #
@@ -554,10 +550,7 @@ def inclusion_criteria(
     dependency_resolver: IndicatorDependencyResolver,
 ) -> pd.Series:
     """Pairs meeting the full live inclusion rule set."""
-    benchmark_pair_ids = {
-        strategy_universe.get_pair_by_human_description(desc).internal_id
-        for desc in SUPPORTING_PAIRS
-    }
+    benchmark_pair_ids = _get_available_supporting_pair_ids(strategy_universe)
 
     tvl_series = dependency_resolver.get_indicator_data(
         tvl_inclusion_criteria,
@@ -680,10 +673,7 @@ def trading_pair_count(
     strategy_universe: TradingStrategyUniverse,
 ) -> pd.Series:
     """Get the cumulative number of tradeable non-benchmark pairs."""
-    benchmark_pair_ids = {
-        strategy_universe.get_pair_by_human_description(desc).internal_id
-        for desc in SUPPORTING_PAIRS
-    }
+    benchmark_pair_ids = _get_available_supporting_pair_ids(strategy_universe)
 
     series = strategy_universe.data_universe.candles.df["open"]
     swap_index = series.index.swaplevel(0, 1)
