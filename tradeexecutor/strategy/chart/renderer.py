@@ -231,9 +231,12 @@ class ChartBacktestRenderingSetup:
 
         if self.pairs is None:
             strategy_universe = self.strategy_input_indicators.strategy_universe
-            self.pairs = [strategy_universe.get_pair_by_human_description(desc) for desc in self.registry.default_benchmark_pairs]
-
-        assert self.pairs, "pairs must not be empty."
+            self.pairs = []
+            for desc in self.registry.default_benchmark_pairs or ():
+                try:
+                    self.pairs.append(strategy_universe.get_pair_by_human_description(desc))
+                except KeyError:
+                    continue
 
         for pair in self.pairs:
             assert isinstance(pair, TradingPairIdentifier), f"pairs must contain TradingPairIdentifier instances, got {type(pair)}: {pair}"
