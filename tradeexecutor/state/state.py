@@ -212,6 +212,32 @@ class State:
     def __repr__(self):
         return f"<State for {self.name}>"
 
+    def record_cycle_end(
+        self,
+        cycle: int,
+        now_: datetime.datetime | None = None,
+        live: bool = False,
+    ):
+        """Record when a strategy cycle ended in the persistent state.
+
+        - Always updates the historical uptime records
+
+        - For live decision cycles also stores the end timestamp in
+          :py:attr:`other_data` for per-cycle inspection
+        """
+
+        assert isinstance(cycle, int)
+
+        if now_ is None:
+            now_ = native_datetime_utc_now()
+
+        assert isinstance(now_, datetime.datetime)
+
+        self.uptime.record_cycle_complete(cycle, now_)
+
+        if live and self.other_data is not None:
+            self.other_data.save(cycle, "decision_cycle_ended_at", now_.isoformat())
+
     def is_empty(self) -> bool:
         """This state has no open or past trades or reserves."""
         return self.portfolio.is_empty()

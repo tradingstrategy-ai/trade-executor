@@ -146,6 +146,25 @@ def test_empty_state():
     state.perform_integrity_check()
 
 
+def test_record_live_cycle_end_persists_per_cycle_timestamp():
+    """Record live cycle end time in persistent state for later inspection.
+
+    1. Create an empty state and a fixed UTC timestamp.
+    2. Record one completed live cycle.
+    3. Verify the cycle end time is available in both uptime and per-cycle other data.
+    """
+    # 1. Create an empty state and a fixed UTC timestamp.
+    state = State()
+    ended_at = datetime.datetime(2026, 3, 19, 12, 34, 56)
+
+    # 2. Record one completed live cycle.
+    state.record_cycle_end(1, now_=ended_at, live=True)
+
+    # 3. Verify the cycle end time is available in both uptime and per-cycle other data.
+    assert state.uptime.cycles_completed_at[1] == ended_at
+    assert state.other_data.data[1]["decision_cycle_ended_at"] == ended_at.isoformat()
+
+
 def test_update_reserves(usdc, weth, weth_usdc, start_ts):
     """Set currency reserves for a portfolio."""
     state = State()
