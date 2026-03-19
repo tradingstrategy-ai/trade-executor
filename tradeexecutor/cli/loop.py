@@ -82,6 +82,68 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def load_latest_live_cycle_end(state: State) -> datetime.datetime | None:
+    """Load the latest successful live cycle end timestamp from the persistent state."""
+
+    latest_cycle_end = None
+
+    if state.other_data is not None:
+        latest_cycle_end = state.other_data.load_latest("decision_cycle_ended_at")
+
+    if latest_cycle_end is not None:
+        if isinstance(latest_cycle_end, str):
+            latest_cycle_end = datetime.datetime.fromisoformat(latest_cycle_end)
+
+        assert isinstance(latest_cycle_end, datetime.datetime), f"Unexpected live cycle end timestamp type: {type(latest_cycle_end)}"
+        return latest_cycle_end
+
+    if state.uptime.cycles_completed_at:
+        latest_cycle = max(state.uptime.cycles_completed_at.keys())
+        latest_cycle_end = state.uptime.cycles_completed_at[latest_cycle]
+        assert isinstance(latest_cycle_end, datetime.datetime)
+        return latest_cycle_end
+
+    return None
+
+
+def calculate_live_strategy_cycle_timestamp(
+    strategy_cycle_trigger: StrategyCycleTrigger,
+    cycle_duration: CycleDuration,
+    now_: datetime.datetime,
+    state: State | None = None,
+) -> datetime.datetime:
+    """Calculate the logical strategy cycle timestamp for a live cycle."""
+
+    if strategy_cycle_trigger == StrategyCycleTrigger.since_last_cycle_end:
+        assert state is not None, "State is required for since_last_cycle_end scheduling"
+        latest_cycle_end = load_latest_live_cycle_end(state)
+        if latest_cycle_end is None:
+            return now_
+        return latest_cycle_end + cycle_duration.to_timedelta()
+
+    return snap_to_previous_tick(now_, cycle_duration)
+
+
+def calculate_since_last_cycle_end_schedule(
+    state: State,
+    cycle_duration: CycleDuration,
+    now_: datetime.datetime,
+) -> tuple[datetime.datetime, datetime.datetime]:
+    """Calculate the logical cycle timestamp and wake-up time for rolling live cycles."""
+
+    strategy_cycle_timestamp = calculate_live_strategy_cycle_timestamp(
+        StrategyCycleTrigger.since_last_cycle_end,
+        cycle_duration,
+        now_,
+        state,
+    )
+
+    if strategy_cycle_timestamp <= now_:
+        return strategy_cycle_timestamp, now_
+
+    return strategy_cycle_timestamp, strategy_cycle_timestamp
+
+
 class LiveSchedulingTaskFailed(Exception):
     """Main loop dies uncleanly.
 
@@ -411,7 +473,13 @@ class ExecutionLoop:
         if strategy_cycle_timestamp:
             ts = strategy_cycle_timestamp
         else:
-            ts = snap_to_previous_tick(unrounded_timestamp, cycle_duration)
+            live_strategy_cycle_trigger = self.strategy_cycle_trigger if live else StrategyCycleTrigger.cycle_offset
+            ts = calculate_live_strategy_cycle_timestamp(
+                live_strategy_cycle_trigger,
+                cycle_duration,
+                unrounded_timestamp,
+                state if live else None,
+            )
 
         # This Python dict collects internal debugging data through this cycle.
         # Any submodule of strategy execution can add internal information here for
@@ -442,7 +510,7 @@ class ExecutionLoop:
             # trade cycles.
 
             # Refresh the trading universe for this cycle
-            if self.strategy_cycle_trigger == StrategyCycleTrigger.cycle_offset or self.trade_immediately:
+            if self.strategy_cycle_trigger in (StrategyCycleTrigger.cycle_offset, StrategyCycleTrigger.since_last_cycle_end) or self.trade_immediately:
                 logger.info("Creating new universe from the scratch using create_trading_universe()")
                 universe = self.universe_model.construct_universe(
                     ts=ts,
@@ -523,6 +591,7 @@ class ExecutionLoop:
             store=self.store,
             long_short_metrics_latest=long_short_metrics_latest,
             indicators=indicators,
+            allow_unaligned_strategy_cycle_timestamp=live and self.strategy_cycle_trigger == StrategyCycleTrigger.since_last_cycle_end,
         )
 
         # Update portfolio and position historical data tracking.
@@ -1234,7 +1303,16 @@ class ExecutionLoop:
         # A test path: do not wait until making the first trade
         # The first trade will be execute immediately, despite the time offset or tick
         if self.trade_immediately:
-            ts = datetime.datetime.now()
+            ts = native_datetime_utc_now()
+            if self.strategy_cycle_trigger == StrategyCycleTrigger.since_last_cycle_end:
+                strategy_cycle_timestamp = ts
+            else:
+                strategy_cycle_timestamp = calculate_live_strategy_cycle_timestamp(
+                    self.strategy_cycle_trigger,
+                    self.cycle_duration,
+                    ts,
+                    state,
+                )
             logger.info("Trade immediately triggered, using timestamp %s, cycle is %d", ts, cycle)
             universe = self.tick(
                 ts,
@@ -1243,6 +1321,7 @@ class ExecutionLoop:
                 cycle,
                 live=True,
                 existing_universe=universe,
+                strategy_cycle_timestamp=strategy_cycle_timestamp,
             )
 
         def die(exc: Exception):
@@ -1253,7 +1332,7 @@ class ExecutionLoop:
             crash_exception = exc
 
         # Timed task to do the live trading cycles
-        def live_cycle():
+        def live_cycle(strategy_cycle_timestamp: datetime.datetime | None = None):
             nonlocal cycle
             nonlocal universe
             try:
@@ -1262,7 +1341,13 @@ class ExecutionLoop:
 
                 # Wall clock time
                 unrounded_timestamp = native_datetime_utc_now()
-                strategy_cycle_timestamp = snap_to_previous_tick(unrounded_timestamp, self.cycle_duration)
+                if strategy_cycle_timestamp is None:
+                    strategy_cycle_timestamp = calculate_live_strategy_cycle_timestamp(
+                        self.strategy_cycle_trigger,
+                        self.cycle_duration,
+                        unrounded_timestamp,
+                        state,
+                    )
 
                 logger.info("Executing live strategy cycle %d, now is %s, decision slot is %s",
                             cycle,
@@ -1323,6 +1408,20 @@ class ExecutionLoop:
 
                 logger.info("run_live() tick complete, universe is now %s", universe)
 
+                if self.strategy_cycle_trigger == StrategyCycleTrigger.since_last_cycle_end:
+                    next_strategy_cycle_timestamp, next_run_at = calculate_since_last_cycle_end_schedule(
+                        state,
+                        self.cycle_duration,
+                        native_datetime_utc_now(),
+                    )
+                    logger.info(
+                        "Cycle %d completed, next rolling cycle timestamp is %s and wake-up is at %s",
+                        cycle,
+                        next_strategy_cycle_timestamp,
+                        next_run_at,
+                    )
+                    schedule_live_cycle(next_run_at, next_strategy_cycle_timestamp)
+
                 # Post execution, update our statistics
                 try:
                     # TODO: Visualisations are internally refreshed by runner
@@ -1373,7 +1472,7 @@ class ExecutionLoop:
                 return
 
             try:
-                ts = datetime.datetime.now()
+                ts = native_datetime_utc_now()
 
                 self.update_position_valuations(ts, state, universe, execution_context.mode)
 
@@ -1396,7 +1495,7 @@ class ExecutionLoop:
                 return
 
             try:
-                ts = datetime.datetime.now()
+                ts = native_datetime_utc_now()
                 self.check_position_triggers(ts, state, universe)
             except Exception as e:
                 die(e)
@@ -1420,7 +1519,37 @@ class ExecutionLoop:
             timezone=datetime.timezone.utc
         )
 
-        if self.cycle_duration == CycleDuration.cycle_7d and self.max_cycles == None:
+        def schedule_live_cycle(run_at: datetime.datetime, strategy_cycle_timestamp: datetime.datetime):
+            """Schedule the next rolling live cycle as a one-shot task."""
+
+            logger.info(
+                "Scheduling rolling live cycle for wake-up at %s with logical cycle timestamp %s",
+                run_at,
+                strategy_cycle_timestamp,
+            )
+            scheduler.add_job(
+                live_cycle,
+                "date",
+                run_date=run_at,
+                args=[strategy_cycle_timestamp],
+                id="live_cycle_rolling",
+                replace_existing=True,
+                misfire_grace_time=None,
+            )
+
+        if self.strategy_cycle_trigger == StrategyCycleTrigger.since_last_cycle_end:
+            next_strategy_cycle_timestamp, next_run_at = calculate_since_last_cycle_end_schedule(
+                state,
+                self.cycle_duration,
+                native_datetime_utc_now(),
+            )
+            logger.info(
+                "Live cycle set to trigger from previous cycle end, next logical cycle timestamp is %s and wake-up is at %s",
+                next_strategy_cycle_timestamp,
+                next_run_at,
+            )
+            schedule_live_cycle(next_run_at, next_strategy_cycle_timestamp)
+        elif self.cycle_duration == CycleDuration.cycle_7d and self.max_cycles == None:
             # Assume 7d without offset is Monday midnight
             logger.info("Live cycle set to trigger Monday midnight")
             # https://apscheduler.readthedocs.io/en/3.x/modules/triggers/cron.htmlgit-ad

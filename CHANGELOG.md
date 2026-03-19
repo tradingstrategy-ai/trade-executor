@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add rolling live cycle trigger mode based on previous cycle end timestamps, with CLI integration coverage for 1s scheduler offsets (2026-03-19)
+
 - Add Hyper AI redeem-accounting helpers for staged Lagoon redemptions and deployable-cash tracking in live loop tests (2026-03-18)
 
 - Add `prepare-report` CLI command to inject iframe CSS/JS into externally generated HTML files for use as backtest reports (2026-03-17)
