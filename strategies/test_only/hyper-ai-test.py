@@ -50,7 +50,10 @@ from tradingstrategy.utils.token_filter import filter_for_selected_pairs
 
 from tradeexecutor.curator.curator import is_quarantined
 from tradeexecutor.curator.hyperliquid_vault_universe import build_hyperliquid_vault_universe
-from tradeexecutor.exchange_account.redeemable import get_redeemable_capital
+from tradeexecutor.exchange_account.allocation import (
+    calculate_portfolio_target_value,
+    get_redeemable_portfolio_capital,
+)
 
 from tradeexecutor.analysis.vault import display_vaults
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -81,7 +84,6 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, Execution
 from tradeexecutor.strategy.pandas_trader.indicator import (
     IndicatorDependencyResolver, IndicatorSource,
 )
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
@@ -174,48 +176,6 @@ class Parameters:
 #
 # Universe creation
 #
-
-
-def get_redeemable_portfolio_capital(
-    position_manager: PositionManager,
-    timestamp: datetime.datetime,
-) -> USDollarAmount:
-    """Get the currently redeemable trading capital.
-
-    Hyperliquid vaults can have redemption delays, so not every marked position
-    value can necessarily be turned into treasury cash on this cycle.
-    """
-
-    portfolio = position_manager.get_current_portfolio()
-    return sum(
-        get_redeemable_capital(position, timestamp=timestamp)
-        for position in portfolio.open_positions.values()
-    )
-
-
-def calculate_portfolio_target_value(
-    position_manager: PositionManager,
-    timestamp: datetime.datetime,
-    allocation: float,
-) -> USDollarAmount:
-    """Calculate how much capital Hyper AI may target on this cycle.
-
-    Use total equity and the pending Lagoon redemption queue as the primary
-    sizing inputs. If some Hyperliquid vault capital is still inside a known
-    redemption lock-up, keep that locked capital as a floor under the target
-    invested value so the strategy does not generate impossible sell targets.
-    """
-
-    portfolio = position_manager.get_current_portfolio()
-    total_equity = portfolio.calculate_total_equity()
-    pending_redemptions = position_manager.get_pending_redemptions()
-    open_position_value = portfolio.get_live_position_equity()
-    redeemable_position_value = get_redeemable_portfolio_capital(position_manager, timestamp)
-    locked_position_value = max(open_position_value - redeemable_position_value, 0.0)
-
-    return max(total_equity * allocation - pending_redemptions, locked_position_value, 0.0)
-
-
 def create_trading_universe(
     input: CreateTradingUniverseInput,
 ) -> TradingStrategyUniverse:
@@ -362,10 +322,9 @@ def decide_trades(
         signal_count += 1
 
     equity = position_manager.get_current_portfolio().get_total_equity()
-    redeemable_capital = get_redeemable_portfolio_capital(position_manager, timestamp)
+    redeemable_capital = get_redeemable_portfolio_capital(position_manager)
     portfolio_target_value = calculate_portfolio_target_value(
         position_manager,
-        timestamp,
         parameters.allocation,
     )
 

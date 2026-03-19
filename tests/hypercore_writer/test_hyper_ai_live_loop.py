@@ -12,7 +12,7 @@ from web3 import Web3
 
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
-from tradeexecutor.exchange_account.redeemable import get_redeemable_capital
+from tradeexecutor.exchange_account.allocation import get_redeemable_capital
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_context import (ExecutionContext,

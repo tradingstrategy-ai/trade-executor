@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import pytest
 
 from tradeexecutor.ethereum.vault.hypercore_vault import HLP_VAULT_ADDRESS
-from tradeexecutor.exchange_account.redeemable import (
+from tradeexecutor.exchange_account.allocation import (
     HYPERLIQUID_DEFAULT_REDEEM_DELAY,
     HYPERLIQUID_HLP_REDEEM_DELAY,
     get_redeemable_capital,
