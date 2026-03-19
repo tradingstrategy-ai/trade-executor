@@ -1,3 +1,8 @@
+---
+name: notebook-to-strategy
+description: Transfer code from a backtesting Jupyter notebook to a Trade Executor strategy module
+---
+
 # Notebook to strategy module skill
 
 Transfer code from a backtesting Jupyter notebook to a Trade Executor strategy module.
@@ -26,6 +31,7 @@ The skill maps notebook sections to strategy module sections as defined in `stra
    - `create_indicators()` wrapper function
    - Chart functions and `create_charts()` function
    - Module-level constants (CHAIN_ID, VAULTS, EXCHANGES, etc.)
+   - MAke sure `required_live_history` parameter matches the indicators used in in the decide_trades(), so that live indicator calculations will have enough data + margin
 5. **Preserve metadata** if updating an existing module, or create placeholder metadata for new modules
 6. **Format the output** with proper section comments
 7. **Verify** by running a backtest command
@@ -38,30 +44,29 @@ After updating the strategy module, run a backtest to verify it works:
 source .local-test.env && poetry run trade-executor \
     backtest \
     --render=charts \
-    --strategy-file <strategy_module_path> 
+    --strategy-file <strategy_module_path>
 ```
 
-Unless the script prints "All ok" at the end of it, it is a failure. 
+Unless the script prints "All ok" at the end of it, it is a failure.
 
 - Either fix errors yourself
 - Or if you do not understand the error, ask the user for help
-
 
 ## Display results to the user
 
 After running the backtest, the CLI command outputs three generated files like:
 
 - Notebook: /Users/moo/code/trade-executor/state/master-vault-backtest.ipynb
- HTML: /Users/moo/code/trade-executor/state/master-vault-backtest.html
+  HTML: /Users/moo/code/trade-executor/state/master-vault-backtest.html
 - CSV: /Users/moo/code/trade-executor/state/master-vault-daily-returns.csv
 
-From the HTML file, extract `Performance and risk metrics¶` table, format is so that you can display it inline in the chat, and print back test results of top 15 rows. 
+From the HTML file, extract `Performance and risk metrics¶` table, format is so that you can display it inline in the chat, and print back test results of top 15 rows.
 
 ## Update strategy module with results
 
 Get the top 15 row results from the step above.
 
-In the doc string header comment of the strategy module, includethe 
+In the doc string header comment of the strategy module, includethe
 
 - The results displayed as a restructured text table for Python comment
 - Date the backtest was run

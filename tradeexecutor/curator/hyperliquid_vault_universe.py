@@ -6,12 +6,16 @@ filter parameters.
 """
 
 import hashlib
+import inspect
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from tradingstrategy.chain import ChainId
 
+from tradeexecutor.curator import curator as curator_module
+from tradeexecutor.curator import vault_universe_creation as vault_universe_creation_module
 from tradeexecutor.curator.curator import EXCLUDED_PROTOCOLS, EXCLUDED_VAULTS, MUST_INCLUDE
 from tradeexecutor.curator.vault_universe_creation import (
     fetch_vaults,
@@ -43,10 +47,26 @@ TRACKED_PERIODS = ("1M", "3M", "1Y")
 
 CACHE_DIR = Path.home() / ".cache" / "indicators"
 
+#: Bump this whenever cache invalidation needs to cover a new policy dimension.
+CURATOR_POLICY_VERSION = 2
+
+
+def _source_digest(*objects) -> str:
+    """Create a stable digest from the current selector implementation source."""
+    source_parts = []
+    for obj in objects:
+        source_parts.append(inspect.getsource(obj))
+    return hashlib.md5("\n".join(source_parts).encode()).hexdigest()[:8]
+
 
 def _curator_fingerprint() -> str:
-    """Short hash of all selection policy inputs used by the cached universe."""
+    """Short hash of all selector inputs used by the cached universe.
+
+    Include both explicit policy constants and implementation source so that
+    cached universes are invalidated when the selection logic itself changes.
+    """
     policy = {
+        "policy_version": CURATOR_POLICY_VERSION,
         "data_url": DATA_URL,
         "chain_config": {str(chain_id): CHAIN_CONFIG[chain_id] for chain_id in sorted(CHAIN_CONFIG)},
         "chain_order": CHAIN_ORDER,
@@ -58,6 +78,18 @@ def _curator_fingerprint() -> str:
         "excluded_risks": sorted(EXCLUDED_RISKS),
         "excluded_flags": sorted(EXCLUDED_FLAGS),
         "require_known_protocol": REQUIRE_KNOWN_PROTOCOL,
+        "selection_behaviour": {
+            "skip_cagr_filter": True,
+            "use_peak_tvl": True,
+        },
+        "implementation_digest": _source_digest(
+            build_hyperliquid_vault_universe,
+            fetch_vaults,
+            parse_vault,
+            select_top_vaults,
+            curator_module,
+            vault_universe_creation_module,
+        ),
     }
     digest = hashlib.md5(json.dumps(policy, sort_keys=True).encode()).hexdigest()[:8]
     return digest
@@ -98,12 +130,21 @@ def build_hyperliquid_vault_universe(
     min_age: float = 0.15,
     sort_period: str = "1Y",
     include_closed_vaults: bool = False,
+    printer: Callable[[str], None] = print,
 ) -> list[tuple[ChainId, str]]:
-    """Build a filtered Hypercore vault universe, cached by parameters."""
+    """Build a filtered Hypercore vault universe, cached by parameters.
+
+    :param printer:
+        Output callback used for cache and selection diagnostics.
+        Defaults to :py:func:`print` so notebook calls surface the
+        fingerprint and vault count in cell output.
+    """
     cache_key = _make_cache_key(min_tvl, top_n, min_age, sort_period, include_closed_vaults)
+    fingerprint = _curator_fingerprint()
+    printer(f"Hypercore universe fingerprint: {fingerprint}")
     cached = _load_cache(cache_key)
     if cached is not None:
-        print(f"Loaded {len(cached)} cached Hypercore vaults ({cache_key})", file=sys.stderr)
+        printer(f"Loaded {len(cached)} cached Hypercore vaults ({cache_key})")
         return cached
 
     chain_config = dict(CHAIN_CONFIG)
@@ -118,7 +159,7 @@ def build_hyperliquid_vault_universe(
         if v is not None:
             parsed.append(v)
 
-    print(f"Parsed {len(parsed)} Hypercore vaults from API", file=sys.stderr)
+    printer(f"Parsed {len(parsed)} Hypercore vaults from API")
 
     selected = select_top_vaults(
         parsed,
@@ -145,7 +186,7 @@ def build_hyperliquid_vault_universe(
                 result.append((ChainId.hypercore, v.address))
 
     top_label = f"top {top_n}" if top_n is not None else "all"
-    print(f"Selected {len(result)} Hypercore vaults (peak TVL >= ${min_tvl:,.0f}, {top_label})", file=sys.stderr)
+    printer(f"Selected {len(result)} Hypercore vaults (peak TVL >= ${min_tvl:,.0f}, {top_label})")
 
     _save_cache(cache_key, result)
     return result
