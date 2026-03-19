@@ -715,6 +715,7 @@ class StrategyRunner(abc.ABC):
         store: Optional[StateStore] = None,
         long_short_metrics_latest: StatisticsTable | None = None,
         indicators: StrategyInputIndicators | None = None,
+        allow_unaligned_strategy_cycle_timestamp: bool = False,
     ) -> dict:
         """Execute the core functions of a strategy.
 
@@ -755,7 +756,7 @@ class StrategyRunner(abc.ABC):
 
         assert isinstance(strategy_cycle_timestamp, datetime.datetime)
 
-        if cycle_duration not in (CycleDuration.cycle_unknown, CycleDuration.cycle_1s, None):
+        if cycle_duration not in (CycleDuration.cycle_unknown, CycleDuration.cycle_1s, None) and not allow_unaligned_strategy_cycle_timestamp:
             assert strategy_cycle_timestamp.second == 0, f"Cycle duration {cycle_duration}: Does not look like a cycle timestamp: {strategy_cycle_timestamp}, should be even minutes"
 
         end_block = self.execution_model.get_safe_latest_block()

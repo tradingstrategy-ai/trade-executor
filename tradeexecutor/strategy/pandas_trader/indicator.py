@@ -56,6 +56,7 @@ from tradeexecutor.strategy.execution_context import ExecutionContext, notebook_
 from tradeexecutor.strategy.parameters import StrategyParameters, RollingParameter
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, UniverseCacheKey
 from tradeexecutor.utils.cpu import get_safe_max_workers_count
+from tradeexecutor.utils.multiprocessing_signal import suppress_worker_sigint_tracebacks
 from tradeexecutor.utils.python_function import hash_function
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.utils.groupeduniverse import PairCandlesMissing
@@ -2473,6 +2474,8 @@ _process_pool: concurrent.futures.ProcessPoolExecutor | None = None
 
 def _process_init(pickled_universe):
     """Child worker process initialiser."""
+    suppress_worker_sigint_tracebacks()
+
     # Transfer ove the universe to the child process
     global _universe
     _universe = pickle.loads(pickled_universe)

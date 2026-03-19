@@ -84,6 +84,22 @@ class StrategyInputIndicators:
     #:
     #: Stored here, so we do not need to pass it explicitly in API.
     #:
+    #: In live trading this is usually the logical strategy cycle timestamp,
+    #: not the wall clock time when the code happened to run.
+    #:
+    #: For `StrategyCycleTrigger.since_last_cycle_end` the normal live behaviour
+    #: is to anchor this timestamp to `last_successful_cycle_end + cycle_duration`.
+    #:
+    #: There is one documented exception: if the operator forces an immediate run
+    #: with `trade_immediately` / `--run-single-cycle`, the first live cycle is
+    #: intentionally stamped with the current wall clock time instead of the
+    #: persisted anchor. This avoids passing a future anchored due time to the
+    #: strategy during a manual "run now" override.
+    #:
+    #: After that immediate cycle completes and persists its
+    #: `decision_cycle_ended_at`, subsequent scheduled live cycles return to the
+    #: normal anchored behaviour.
+    #:
     timestamp: pd.Timestamp | None = None
 
     #: Strategy cycle duration hint
@@ -1031,7 +1047,6 @@ def _calculate_and_cache_candle_width_df(df: pd.DatetimeIndex | pd.Series) -> pd
         return time_bucket.to_pandas_timedelta()
 
     return _calculate_and_cache_candle_width(df.index)
-
 
 
 

@@ -14,6 +14,11 @@ class StrategyCycleTrigger(enum.Enum):
     #: before attempting to download new data and execute decisions based on it.
     cycle_offset = "cycle_offset"
 
+    #: Rolling cycle anchored to the previous successful live cycle completion.
+    #:
+    #: Schedule the next cycle `cycle_duration` after the actual end timestamp of
+    #: the previous completed live cycle, instead of using midnight-aligned slots.
+    since_last_cycle_end = "since_last_cycle_end"
 
     #: Trading pair data availability.
     #:
