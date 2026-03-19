@@ -198,6 +198,8 @@ def translate_trading_universe_to_lagoon_config(
     guard_only: bool = False,
     existing_vault_address: HexAddress | str | None = None,
     existing_safe_address: HexAddress | str | None = None,
+    performance_fee: int | None = None,
+    management_fee: int | None = None,
 ) -> dict[str, LagoonConfig]:
     """Translate a trading universe into per-chain Lagoon vault deployment configs.
 
@@ -323,10 +325,17 @@ def translate_trading_universe_to_lagoon_config(
         )
 
     # Build per-chain configs
+    fee_kwargs = {}
+    if performance_fee is not None:
+        fee_kwargs["performanceRate"] = performance_fee
+    if management_fee is not None:
+        fee_kwargs["managementRate"] = management_fee
+
     base_params = LagoonDeploymentParameters(
         underlying=None,  # Auto-resolved per chain from USDC_NATIVE_TOKEN
         name=fund_name,
         symbol=fund_symbol,
+        **fee_kwargs,
     )
 
     configs: dict[str, LagoonConfig] = {}
