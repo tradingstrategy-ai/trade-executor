@@ -50,6 +50,10 @@ from tradingstrategy.utils.token_filter import filter_for_selected_pairs
 
 from tradeexecutor.curator.curator import is_quarantined
 from tradeexecutor.curator.hyperliquid_vault_universe import build_hyperliquid_vault_universe
+from tradeexecutor.exchange_account.allocation import (
+    calculate_portfolio_target_value,
+    get_redeemable_portfolio_capital,
+)
 
 from tradeexecutor.analysis.vault import display_vaults
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -172,8 +176,6 @@ class Parameters:
 #
 # Universe creation
 #
-
-
 def create_trading_universe(
     input: CreateTradingUniverseInput,
 ) -> TradingStrategyUniverse:
@@ -320,7 +322,11 @@ def decide_trades(
         signal_count += 1
 
     equity = position_manager.get_current_portfolio().get_total_equity()
-    portfolio_target_value = equity * parameters.allocation
+    redeemable_capital = get_redeemable_portfolio_capital(position_manager)
+    portfolio_target_value = calculate_portfolio_target_value(
+        position_manager,
+        parameters.allocation,
+    )
 
     alpha_model.select_top_signals(count=parameters.max_assets_in_portfolio)
     alpha_model.assign_weights(method=weight_equal)
@@ -381,6 +387,8 @@ def decide_trades(
         Age ramp period: {parameters.age_ramp_period}
         Total equity: {portfolio.get_total_equity():,.2f} USD
         Cash: {position_manager.get_current_cash():,.2f} USD
+        Redeemable capital: {redeemable_capital:,.2f} USD
+        Pending redemptions: {position_manager.get_pending_redemptions():,.2f} USD
         Investable equity: {alpha_model.investable_equity:,.2f} USD
         Accepted investable equity: {alpha_model.accepted_investable_equity:,.2f} USD
         Allocated to signals: {alpha_model.get_allocated_value():,.2f} USD
