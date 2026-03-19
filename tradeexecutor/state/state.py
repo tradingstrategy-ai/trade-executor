@@ -156,6 +156,22 @@ class State:
     cycle: int = 1
 
     #: When the last strategy cycle was run.
+    #:
+    #: This stores the logical strategy cycle timestamp that was passed through
+    #: the live/backtest decision flow, not necessarily the exact wall clock
+    #: completion time of the cycle.
+    #:
+    #: For the rolling live trigger `since_last_cycle_end`, this normally means
+    #: the anchored due timestamp derived from the previous successful cycle end.
+    #:
+    #: There is one documented exception for manual overrides: if live trading is
+    #: forced to run immediately with `trade_immediately` / `--run-single-cycle`,
+    #: the first forced cycle may store the current wall clock timestamp here
+    #: instead of an anchored `last_end + cycle_duration` value.
+    #:
+    #: After that immediate cycle finishes, the persisted
+    #: `decision_cycle_ended_at` becomes the new anchor and subsequent scheduled
+    #: cycles return to the normal anchored rolling behaviour.
     last_cycle_at: Optional[datetime.datetime] = None
 
     #: When the last strategy had open positions last time

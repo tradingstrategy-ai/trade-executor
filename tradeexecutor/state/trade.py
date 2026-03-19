@@ -211,6 +211,18 @@ class TradeExecution:
     #: If the trade was executed by a take profit/stop loss trigger
     #: then this is the trigger timestamp (not wall clock time)
     #:
+    #: For live trading with `StrategyCycleTrigger.since_last_cycle_end`, this
+    #: is normally the anchored logical cycle timestamp derived from the
+    #: previous successful cycle end, not the actual completion time of the
+    #: previous cycle.
+    #:
+    #: There is one documented exception for manual immediate runs:
+    #: `trade_immediately` / `--run-single-cycle` may create the first forced
+    #: live cycle with the current wall clock timestamp instead of an anchored
+    #: `last_end + cycle_duration` value. After that cycle completes, the
+    #: persisted cycle end timestamp becomes the new anchor and subsequent live
+    #: cycles return to the normal anchored behaviour.
+    #:
     #: Not available if the trade was done outside the strategy execution (manual trades, accounting corrections).
     #:
     #: See also

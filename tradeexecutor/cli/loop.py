@@ -1305,6 +1305,27 @@ class ExecutionLoop:
         if self.trade_immediately:
             ts = native_datetime_utc_now()
             if self.strategy_cycle_trigger == StrategyCycleTrigger.since_last_cycle_end:
+                # Manual override path:
+                #
+                # `since_last_cycle_end` normally derives the logical strategy cycle
+                # timestamp from the latest persisted successful cycle end timestamp.
+                # That is the behaviour used by the rolling scheduler in live_cycle().
+                #
+                # However `trade_immediately` is intentionally a "run now" shortcut
+                # used by startup/manual execution paths such as `--run-single-cycle`.
+                # If we reused the persisted anchor here and the next anchored due time
+                # was still in the future, we would stamp this immediate manual cycle
+                # with a future logical timestamp, which is more misleading than using
+                # the actual wall clock time for the forced run.
+                #
+                # Because of that, this first immediate cycle is intentionally
+                # unanchored for `since_last_cycle_end`: it uses the current wall clock
+                # timestamp instead of `last_end + cycle_duration`.
+                #
+                # This exception is temporary and local to the forced immediate cycle.
+                # Once the cycle completes, `decision_cycle_ended_at` is persisted and
+                # the following scheduled live cycles return to the normal anchored
+                # `since_last_cycle_end` behaviour.
                 strategy_cycle_timestamp = ts
             else:
                 strategy_cycle_timestamp = calculate_live_strategy_cycle_timestamp(
