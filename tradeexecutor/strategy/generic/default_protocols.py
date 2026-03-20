@@ -144,15 +144,14 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
             continue
         if xc.exchange_id not in exchange_ids_with_pairs:
             continue
+        elif xc.exchange_type == ExchangeType.hypercore_vault:
+            # Hypercore vaults are handled via hypercore_vault routing
+            # detected from pair other_data above. Skip here to avoid
+            # falling through to the Uniswap branch.
+            continue
         elif xc.exchange_type == ExchangeType.erc_4626_vault:
-            # Skip ERC-4626 vault routing when all vaults are Hypercore.
-            # Hypercore vaults use exchange_type=erc_4626_vault in
-            # metadata but are NOT ERC-4626 contracts — calling ERC-4626
-            # methods on them would fail with empty 0x responses.
-            if hypercore_vault_done:
-                continue
             if not vaults_done:
-                # All vaults use the same route
+                # All ERC-4626 vaults use the same route
                 configs.add(
                     ProtocolRoutingId(
                         router_name="vault",
