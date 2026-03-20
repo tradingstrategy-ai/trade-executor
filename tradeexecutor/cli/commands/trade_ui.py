@@ -1,4 +1,4 @@
-"""trade-ui command
+"""trade-ui command.
 
 Interactive TUI for selecting a trading pair and performing a test trade.
 
