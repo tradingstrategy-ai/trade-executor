@@ -16,7 +16,6 @@ from rich.table import Table
 from tradingstrategy.chain import ChainId
 from tradingstrategy.liquidity import LiquidityDataUnavailable
 
-from tradeexecutor.cli.commands.pair_mapping import construct_identifier_from_trading_pair
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -152,16 +151,5 @@ def display_pair_selection_ui(
 
     mode_map = {"1": "open_close", "2": "open", "3": "close"}
     trade_mode = mode_map[mode_str]
-
-    # Output the equivalent CLI command
-    pair_id_str = construct_identifier_from_trading_pair(selected_pair)
-    buy_only_flag = " --buy-only" if trade_mode == "open" else ""
-    console.print(
-        f"\n[dim]Equivalent CLI command:[/dim]\n"
-        f"  trade-executor perform-test-trade "
-        f"--pair \"{pair_id_str}\" "
-        f"--amount={amount}"
-        f"{buy_only_flag}\n"
-    )
 
     return selected_pair, amount, trade_mode

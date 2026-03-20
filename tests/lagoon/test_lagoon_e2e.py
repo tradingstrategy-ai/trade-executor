@@ -357,12 +357,25 @@ def test_cli_lagoon_trade_ui(
 
     cli.main(args=["trade-ui"], standalone_mode=False)
 
+    # 5. Read persisted state back from disk and verify the round-trip trade
     state = State.read_json_file(state_file)
     trades = list(state.portfolio.get_all_trades())
-    assert len(trades) >= 2, f"Expected at least 2 trades (open + close), got {len(trades)}"
+    assert len(trades) == 2, f"Expected exactly 2 trades (open + close), got {len(trades)}"
 
-    for t in trades:
-        assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
+    buy_trade, sell_trade = trades[0], trades[1]
+    assert buy_trade.is_success(), f"Buy trade failed: {buy_trade.get_revert_reason()}"
+    assert sell_trade.is_success(), f"Sell trade failed: {sell_trade.get_revert_reason()}"
+    assert buy_trade.is_buy(), f"First trade should be a buy, got {buy_trade}"
+    assert sell_trade.is_sell(), f"Second trade should be a sell, got {sell_trade}"
+    assert buy_trade.pair == sell_trade.pair, "Buy and sell should be for the same pair"
+
+    # Position should be closed after open+close
+    position = state.portfolio.get_position_by_id(buy_trade.position_id)
+    assert position.is_closed(), f"Position should be closed after open+close, got {position}"
+
+    # Reserve should still have funds (we only traded 1 USDC out of 399)
+    reserve = state.portfolio.get_default_reserve_position()
+    assert reserve.get_value() > 0, "Reserve should have remaining balance"
 
 
 @pytest.mark.skip(reason="Unmaintained test")
