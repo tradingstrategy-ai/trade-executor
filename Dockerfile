@@ -6,7 +6,7 @@
 # To test building the image: docker build .
 #
 #
-FROM python:3.12
+FROM python:3.14
 
 # Passed from Github Actions
 ARG GIT_VERSION_TAG=unspecified
@@ -21,7 +21,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # node.js and g++ libssl1.0.0 libssl-dev needed for enzyme below - remove when enzyme dep has been factored out
 # https://github.com/nodejs/node-gyp/issues/1195#issuecomment-371954099
 # https://stackoverflow.com/questions/40075271/gmpy2-not-installing-mpir-h-not-found
-RUN apt-get update && apt-get install -y curl jq chromium ca-certificates gnupg libmpfr-dev libmpc-dev \
+RUN apt-get update && apt-get install -y curl jq chromium ca-certificates gnupg libmpfr-dev libmpc-dev libxml2-dev libxslt-dev \
   && rm -rf /var/lib/apt/lists/*
 
 # Install Python Poetry - pinned version
@@ -60,7 +60,7 @@ RUN (cd deps/web3-ethereum-defi/contracts/lagoon-v0 && forge soldeer install --c
 RUN rm -rf ./tests
 RUN python -m compileall -q .
 # Exclude ccxt from compileall due to syntax errors in ccxt.static_dependencies.bip
-RUN python -m compileall -q -x 'ccxt/static_dependencies' /usr/local/lib/python3.12
+RUN python -m compileall -q -x 'ccxt/static_dependencies' /usr/local/lib/python3.14
 
 # trade-executor /api
 # Pyramid HTTP server for webhooks at port 3456

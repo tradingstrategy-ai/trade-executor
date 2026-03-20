@@ -17,6 +17,7 @@ from web3 import Web3
 from tradeexecutor.cli.bootstrap import create_state_store, create_web3_config
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.ethereum.web3config import collect_rpc_kwargs
+from tradeexecutor.utils.key import ensure_0x_prefixed_private_key
 
 
 @dataclass(slots=True)
@@ -56,7 +57,7 @@ def choose_single_chain(web3config, default_chain_id=None):
 
 def create_hot_wallet(web3: Web3, private_key: str) -> HotWallet:
     """Create and nonce-sync the hot wallet used by Lagoon commands."""
-    hot_wallet = HotWallet.from_private_key(private_key)
+    hot_wallet = HotWallet.from_private_key(ensure_0x_prefixed_private_key(private_key))
     hot_wallet.sync_nonce(web3)
     return hot_wallet
 

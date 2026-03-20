@@ -20,7 +20,7 @@ ENV PYTHONDONTWRITEBYTECODE 1 \
     PYTHONUNBUFFERED 1
 
 RUN apt-get update \
-    && apt-get install curl gcc -y \
+    && apt-get install curl gcc libxml2-dev libxslt-dev -y \
     && curl -sSL https://install.python-poetry.org | python - --version 1.8.1
 
 ENV PATH="/root/.local/bin:$PATH"
@@ -37,6 +37,5 @@ COPY . .
 
 RUN poetry config virtualenvs.create false
 RUN poetry install --no-dev --no-interaction --no-ansi -E web-server -E execution -E qstrader
-
 
 
