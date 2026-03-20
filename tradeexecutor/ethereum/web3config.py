@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 
 from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
 from eth_defi.hotwallet import HotWallet
+from eth_defi.hyperliquid.block import HYPEREVM_BIG_BLOCK_GAS_LIMIT
 from eth_defi.middleware import http_retry_request_with_sleep_middleware
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 from eth_defi.provider.broken_provider import set_block_tip_latency
@@ -178,6 +179,7 @@ class Web3Config:
         simulate: bool=False,
         mev_endpoint_disabled: bool=False,
         simulate_http_timeout: tuple[float, float] | None = None,
+        chain_id: ChainId | None = None,
     ) -> MultiProviderWeb3:
         """Create a new Web3.py connection.
 
@@ -210,7 +212,14 @@ class Web3Config:
             # because first one is likely MEV one
             last_rpc = configuration_line.split(" ")[-1]
             logger.info(f"Simulating transactions with Anvil, forking from {last_rpc}")
-            anvil = launch_anvil(last_rpc, attempts=1)
+            launch_kwargs = {"attempts": 1}
+
+            # HyperEVM contract deployments need the large-block gas limit even on
+            # local forks, because big-block routing is disabled on Anvil.
+            if chain_id in (ChainId.hyperliquid, ChainId.hyperliquid_testnet):
+                launch_kwargs["gas_limit"] = HYPEREVM_BIG_BLOCK_GAS_LIMIT
+
+            anvil = launch_anvil(last_rpc, **launch_kwargs)
             web3 = create_multi_provider_web3(
                 anvil.json_rpc_url,
                 switchover_noisiness=logging.TRADE,
@@ -403,6 +412,7 @@ class Web3Config:
                     simulate=simulate,
                     mev_endpoint_disabled=mev_endpoint_disabled,
                     simulate_http_timeout=simulate_http_timeout,
+                    chain_id=chain_id,
                 )
 
                 if simulate:
