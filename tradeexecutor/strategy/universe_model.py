@@ -139,13 +139,13 @@ class UniverseOptions:
             return UniverseOptions(
                 start_at=parameters.backtest_start,
                 end_at=parameters.backtest_end,
-                history_period=parameters.required_history_period,
+                history_period=getattr(parameters, "required_history_period", None),
             )
         else:
             return UniverseOptions(
                 start_at=None,
                 end_at=None,
-                history_period=parameters.required_history_period,
+                history_period=getattr(parameters, "required_history_period", None),
             )
 
 #: Shorthand method for no specifc trading univese fine tuning options set
