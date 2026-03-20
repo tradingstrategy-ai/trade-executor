@@ -11,10 +11,10 @@ fork internally, no need to start one manually):
 .. code-block:: shell
 
     trade-executor trade-ui \
-        --strategy-file=strategies/test_only/base-memecoin-index.py \
+        --strategy-file=strategies/test_only/hyper-ai-test.py \
         --private-key=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
         --asset-management-mode=hot_wallet \
-        --json-rpc-base=$JSON_RPC_BASE \
+        --json-rpc-ethereum=$JSON_RPC_ETHEREUM \
         --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY \
         --simulate
 
@@ -37,6 +37,7 @@ from ..bootstrap import (
     create_state_store,
     create_execution_and_sync_model,
     create_client,
+    configure_default_chain,
 )
 from ..log import setup_logging
 from ..slippage import configure_max_slippage_tolerance
@@ -137,7 +138,7 @@ def trade_ui(
     if not web3config.has_any_connection():
         raise RuntimeError("trade-ui requires that you pass JSON-RPC connection to one of the networks")
 
-    web3config.choose_single_chain()
+    configure_default_chain(web3config, mod)
 
     max_slippage = configure_max_slippage_tolerance(max_slippage, mod)
 
