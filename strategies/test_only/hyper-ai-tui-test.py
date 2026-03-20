@@ -239,6 +239,16 @@ def create_trading_universe(
 
     chain_id = parameters.primary_chain_id
 
+    # Supporting and benchmark pairs reference Uniswap on Ethereum/Arbitrum
+    # and are only needed for backtesting benchmarks. In live trading on
+    # HyperEVM, Uniswap does not exist and loading these pairs would cause
+    # exchange objects to appear in the universe that trigger RPC errors
+    # during routing setup.
+    if execution_context.live_trading:
+        supporting_pairs = []
+    else:
+        supporting_pairs = SUPPORTING_PAIRS
+
     debug_printer(f"Preparing trading universe on chain {chain_id.get_name()}")
 
     def get_vaults() -> list[tuple[ChainId, str]]:

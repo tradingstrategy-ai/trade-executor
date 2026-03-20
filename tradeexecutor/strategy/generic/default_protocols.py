@@ -133,8 +133,16 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
                     hypercore_vault_done = True
                     non_dex_exchange_ids.add(row["exchange_id"])
 
+    # Only set up routing for exchanges that have actual loaded pairs.
+    # Exchange metadata from vault universes may include exchanges on
+    # other chains (e.g. Uniswap on Ethereum) that have no pairs in
+    # the live universe and would cause RPC errors during routing setup.
+    exchange_ids_with_pairs = set(pairs_df["exchange_id"].unique())
+
     for xc in exchanges.exchanges.values():
         if xc.exchange_id in non_dex_exchange_ids:
+            continue
+        if xc.exchange_id not in exchange_ids_with_pairs:
             continue
         elif xc.exchange_type == ExchangeType.erc_4626_vault:
             if not vaults_done:
