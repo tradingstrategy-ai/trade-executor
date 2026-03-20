@@ -118,9 +118,10 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
     vaults_done = False
     hypercore_vault_done = False
 
-    # Hypercore chain IDs — vault exchanges on these chains are Hypercore
-    # vaults, even if they still carry the old erc_4626_vault exchange type
-    # from stale cached data.
+    # Both chain IDs are needed:
+    # - 9999 (ChainId.hypercore): synthetic ID for vault-universe-exported pairs
+    # - 999 (ChainId.hyperliquid): HyperEVM, used by manually created vault pairs
+    #   in live Lagoon deployments
     hypercore_chain_ids = {ChainId.hypercore.value, ChainId.hyperliquid.value}
 
     # Only set up routing for exchanges that have actual loaded pairs.

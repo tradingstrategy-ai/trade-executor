@@ -1121,9 +1121,20 @@ class TradingPairIdentifier:
     def is_hyperliquid_vault(self) -> bool:
         """Check if this is a Hyperliquid/Hypercore vault pair.
 
-        Detects by chain_id (Hyperliquid=999, Hypercore=9999) combined
-        with vault kind. This is the reliable detection method — the
-        pair's other_data does not carry vault_protocol metadata.
+        Matches both chain IDs:
+
+        - 9999 (ChainId.hypercore): synthetic ID for native Hyperliquid
+          vaults. Used by vault-universe-exported pairs from the Trading
+          Strategy data pipeline. Hyperliquid has no real EVM chain ID
+          so we invented this.
+
+        - 999 (ChainId.hyperliquid): HyperEVM, the actual L1. Used by
+          manually created vault pairs (via ``create_hypercore_vault_pair``)
+          in live Lagoon deployments where the vault contracts live on
+          HyperEVM.
+
+        This is the reliable detection method — the pair's other_data
+        does not carry vault_protocol metadata for vault-exported pairs.
         """
         return self.is_vault() and self.chain_id in (
             ChainId.hypercore.value,
