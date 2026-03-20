@@ -56,7 +56,7 @@ def environment(state_file: Path, strategy_file: Path) -> dict:
         "VAULT_ADAPTER_ADDRESS": TRIAL3_MODULE,
         "NETWORK": "mainnet",
         "UNIT_TESTING": "true",
-        "LOG_LEVEL": "info",
+        "LOG_LEVEL": "warning",
         "TRADING_STRATEGY_API_KEY": os.environ.get("TRADING_STRATEGY_API_KEY", ""),
         "PATH": os.environ.get("PATH", ""),
     }

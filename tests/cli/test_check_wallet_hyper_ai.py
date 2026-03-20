@@ -170,7 +170,7 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
         "PRIVATE_KEY": "0x111e53aed5e777996f26b4bdb89300bbc05b84743f32028c41be7193c0fe0b83",
         "MIN_GAS_BALANCE": "0",
         "UNIT_TESTING": "true",
-        "LOG_LEVEL": "info",
+        "LOG_LEVEL": "warning",
         "ASSET_MANAGEMENT_MODE": "lagoon",
     }
 
