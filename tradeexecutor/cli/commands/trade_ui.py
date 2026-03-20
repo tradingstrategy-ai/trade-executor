@@ -262,7 +262,7 @@ def trade_ui(
         # Skip TUI in unit test mode — auto-select the first pair
         selected_pair = pairs[0]
         amount = Decimal("1.0")
-        trade_mode = "open_only" if is_hyperliquid else "open_close"
+        trade_mode = "open" if is_hyperliquid else "open_close"
         logger.info("Unit testing mode: auto-selected pair %s, amount %s, mode %s", selected_pair, amount, trade_mode)
     else:
         selected_pair, amount, trade_mode = display_pair_selection_ui(

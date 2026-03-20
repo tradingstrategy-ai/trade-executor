@@ -31,6 +31,7 @@ from textual.widgets import (
     RadioSet,
     Static,
 )
+from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.liquidity import LiquidityDataUnavailable
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -63,18 +64,22 @@ def _format_tvl(tvl: float | None) -> Text:
     return Text(f"${tvl:,.0f}", justify="right")
 
 
-def _get_price(pricing_model, pair: TradingPairIdentifier) -> float | None:
+def _get_price(pricing_model, pair: TradingPairIdentifier, ts: datetime.datetime | None = None) -> float | None:
     """Get the approximate mid-price for a pair via the pricing model.
 
     For Hypercore vaults this returns the share price from the data
     pipeline (not a live on-chain price). Returns ``None`` when the
     price is unavailable or is the uninformative 1.0 fallback.
+
+    :param ts:
+        Timestamp to query. Callers should pass a single timestamp
+        when querying multiple pairs to avoid redundant clock reads.
     """
     if pricing_model is None:
         return None
     try:
-        from eth_defi.compat import native_datetime_utc_now
-        ts = native_datetime_utc_now()
+        if ts is None:
+            ts = native_datetime_utc_now()
         price = pricing_model.get_mid_price(ts, pair)
         # Filter out the 1.0 fallback — it means no real price data
         if price is not None and price == 1.0:
@@ -292,9 +297,10 @@ class PairSelectionApp(App):
         # Non-vault pairs would trigger on-chain price queries that fail
         # or retry endlessly on Anvil forks.
         self.prices = {}
+        price_ts = native_datetime_utc_now()
         for pair in self.sorted_pairs:
             if pair.is_vault():
-                self.prices[id(pair)] = _get_price(pricing_model, pair)
+                self.prices[id(pair)] = _get_price(pricing_model, pair, ts=price_ts)
             else:
                 self.prices[id(pair)] = None
 
@@ -399,7 +405,6 @@ def display_pair_selection_ui(
     # Compute TVL timestamp
     tvl_now = None
     if strategy_universe.data_universe.liquidity:
-        from eth_defi.compat import native_datetime_utc_now
         now_ = native_datetime_utc_now()
         if strategy_universe.data_universe.liquidity_time_bucket:
             tvl_now = strategy_universe.data_universe.liquidity_time_bucket.floor(pd.Timestamp(now_))

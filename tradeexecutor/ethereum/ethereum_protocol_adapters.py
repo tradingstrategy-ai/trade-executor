@@ -852,9 +852,9 @@ class EthereumPairConfigurator(PairConfigurator):
     def _auto_discover_hypercore_vault(self, strategy_universe: TradingStrategyUniverse):
         """Auto-discover Hypercore vault pairs and wire up the value func.
 
-        Scans the strategy universe for vault pairs on the Hypercore chain
-        (chain_id 9999 or 999). If found, creates a value func using the
-        execution model.
+        Scans the strategy universe for vault pairs on the synthetic
+        Hypercore chain (chain_id 9999) via ``is_hyperliquid_vault()``.
+        If found, creates a value func using the execution model.
         """
         has_hypercore = False
         for pair in strategy_universe.iterate_pairs():
@@ -869,13 +869,13 @@ class EthereumPairConfigurator(PairConfigurator):
             return
 
         from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_value_func
-        try:
-            self.hypercore_vault_value_func = create_hypercore_vault_value_func(self.execution_model)
-            logger.info("Auto-discovered Hypercore vault pairs — wired up Hypercore value func")
-        except (AttributeError, AssertionError) as e:
+        if not hasattr(self.execution_model, 'tx_builder') or not hasattr(self.execution_model.tx_builder, 'vault'):
             # Hot wallet mode doesn't have a vault object — value func
             # cannot be created. Pricing will fall back to candle data.
-            logger.info("Hypercore vault value func not available (hot wallet mode?): %s", e)
+            logger.info("Hypercore vault value func not available (no vault in tx_builder, hot wallet mode?)")
+            return
+        self.hypercore_vault_value_func = create_hypercore_vault_value_func(self.execution_model)
+        logger.info("Auto-discovered Hypercore vault pairs — wired up Hypercore value func")
 
     def get_web3_for_chain(self, chain_id: int) -> Web3:
         """Get a Web3 connection for a specific chain.
