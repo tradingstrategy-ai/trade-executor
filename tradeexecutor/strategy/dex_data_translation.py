@@ -201,6 +201,24 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                 pair.other_data["vault_name"] = metadata.vault_name
                 pair.other_data["vault_performance_fee"] = metadata.performance_fee
                 pair.other_data["vault_management_fee"] = metadata.management_fee
+                # Deposit/redemption gating
+                pair.other_data["deposit_closed_reason"] = metadata.deposit_closed_reason
+                pair.other_data["redemption_closed_reason"] = metadata.redemption_closed_reason
+                pair.other_data["deposit_next_open"] = metadata.deposit_next_open
+                pair.other_data["redemption_next_open"] = metadata.redemption_next_open
+                # Risk and status
+                pair.other_data["risk_level"] = metadata.risk_level
+                pair.other_data["flags"] = metadata.flags
+                # Informational metadata
+                pair.other_data["tvl"] = metadata.tvl
+                pair.other_data["tvl_peak"] = metadata.tvl_peak
+                pair.other_data["age_years"] = metadata.age_years
+                pair.other_data["volatility"] = metadata.volatility
+                pair.other_data["sharpe"] = metadata.sharpe
+                pair.other_data["max_drawdown"] = metadata.max_drawdown
+                pair.other_data["link"] = metadata.link
+                pair.other_data["fee_mode"] = metadata.fee_mode
+                pair.other_data["last_share_price"] = metadata.last_share_price
             case None:
                 pass
             case _:
