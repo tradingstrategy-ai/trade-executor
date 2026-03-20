@@ -288,10 +288,15 @@ class PairSelectionApp(App):
             reverse=True,
         )
 
-        # Fetch prices for all pairs
+        # Fetch prices — only for vault pairs (candle-based, no RPC calls).
+        # Non-vault pairs would trigger on-chain price queries that fail
+        # or retry endlessly on Anvil forks.
         self.prices = {}
         for pair in self.sorted_pairs:
-            self.prices[id(pair)] = _get_price(pricing_model, pair)
+            if pair.is_vault():
+                self.prices[id(pair)] = _get_price(pricing_model, pair)
+            else:
+                self.prices[id(pair)] = None
 
         # Result set by the trade dialog
         self.selected_pair: TradingPairIdentifier | None = None
