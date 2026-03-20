@@ -11,10 +11,10 @@ fork internally, no need to start one manually):
 .. code-block:: shell
 
     trade-executor trade-ui \
-        --strategy-file=strategies/test_only/hyper-ai-test.py \
+        --strategy-file=strategies/test_only/hyper-ai-tui-test.py \
         --private-key=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
         --asset-management-mode=hot_wallet \
-        --json-rpc-ethereum=$JSON_RPC_ETHEREUM \
+        --json-rpc-hyperliquid=$JSON_RPC_HYPERLIQUID \
         --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY \
         --simulate
 
