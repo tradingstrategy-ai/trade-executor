@@ -3,6 +3,8 @@ import re
 from tradingstrategy.chain import ChainId
 from tradingstrategy.pair import DEXPair
 
+from tradeexecutor.state.identifier import TradingPairIdentifier
+
 
 def parse_pair_data(s: str) -> list[str] | tuple:
     """Extract pair data from string.
@@ -60,3 +62,20 @@ def construct_identifier_from_pair(pair: DEXPair) -> str:
     assert isinstance(pair, DEXPair), 'Pair must be of type DEXPair'
 
     return f'({pair.chain_id.name}, "{pair.exchange_slug}", "{pair.base_token_symbol}", "{pair.quote_token_symbol}", {pair.fee/10_000})'
+
+
+def construct_identifier_from_trading_pair(pair: TradingPairIdentifier) -> str:
+    """Construct a CLI-compatible pair identifier string from a TradingPairIdentifier.
+
+    Unlike :py:func:`construct_identifier_from_pair` which works with DEXPair,
+    this works with the executor's internal TradingPairIdentifier.
+
+    :param pair:
+        Trading pair identifier.
+
+    :return:
+        Pair identifier string suitable for ``--pair`` CLI option.
+    """
+    chain_name = ChainId(pair.base.chain_id).name
+    fee = pair.fee if pair.fee else 0
+    return f'({chain_name}, "{pair.exchange_name}", "{pair.base.token_symbol}", "{pair.quote.token_symbol}", {fee})'

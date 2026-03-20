@@ -295,6 +295,76 @@ def test_cli_lagoon_perform_test_trade(
         assert t.is_success()
 
 
+def test_cli_lagoon_trade_ui(
+    anvil_base_fork,
+    asset_manager,
+    deposited_lagoon_vault,
+    persistent_test_client,
+    mocker,
+    tmp_path,
+):
+    """Test the interactive trade-ui command with mocked TUI input.
+
+    Uses a minimal strategy with two hardcoded WETH/USDC pairs
+    to avoid Coingecko/TokenSniffer data instability.
+
+    1. Build environment with trade-ui-simple.py strategy
+    2. Initialise the state
+    3. Mock display_pair_selection_ui to select first pair, 1 USDC, open+close
+    4. Run trade-ui command
+    5. Verify trades were created and succeeded
+    """
+    deploy_info = deposited_lagoon_vault
+    strategy_file = Path(os.path.dirname(__file__)) / ".." / ".." / "strategies" / "test_only" / "trade-ui-simple.py"
+    state_file = tmp_path / "trade-ui-test.json"
+    cache_path = persistent_test_client.transport.cache_path
+
+    environment = {
+        "PATH": os.environ["PATH"],
+        "EXECUTOR_ID": "trade_ui_test",
+        "NAME": "trade_ui_test",
+        "STRATEGY_FILE": strategy_file.as_posix(),
+        "JSON_RPC_BASE": anvil_base_fork.json_rpc_url,
+        "STATE_FILE": state_file.as_posix(),
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "VAULT_ADDRESS": deploy_info.vault.vault_address,
+        "VAULT_ADAPTER_ADDRESS": deploy_info.vault.trading_strategy_module_address,
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+        "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),
+        "MIN_GAS_BALANCE": "0.005",
+        "PRIVATE_KEY": hexbytes_to_hex_str(asset_manager.private_key),
+        "GENERATE_REPORT": "false",
+        "CACHE_PATH": cache_path,
+    }
+
+    cli = get_command(app)
+    mocker.patch.dict("os.environ", environment, clear=True)
+    cli.main(args=["init"], standalone_mode=False)
+
+    def _mock_selection(pairs, strategy_universe, **kwargs):
+        """Pick the first non-vault pair for the test."""
+        for p in pairs:
+            if not p.is_vault():
+                return (p, Decimal("1.0"), "open_close")
+        return (pairs[0], Decimal("1.0"), "open_close")
+
+    mocker.patch(
+        "tradeexecutor.cli.commands.trade_ui.display_pair_selection_ui",
+        side_effect=_mock_selection,
+    )
+
+    cli.main(args=["trade-ui"], standalone_mode=False)
+
+    state = State.read_json_file(state_file)
+    trades = list(state.portfolio.get_all_trades())
+    assert len(trades) >= 2, f"Expected at least 2 trades (open + close), got {len(trades)}"
+
+    for t in trades:
+        assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
+
+
 @pytest.mark.skip(reason="Unmaintained test")
 def test_cli_lagoon_backtest(
     mocker,
