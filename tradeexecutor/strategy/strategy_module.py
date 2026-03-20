@@ -547,7 +547,10 @@ class StrategyModuleInformation:
         # new way
         if self.parameters:
             assert "chain_id" in self.parameters, "Parameters.chain_id missing"
-            return self.parameters["chain_id"]
+            chain_id = self.parameters["chain_id"]
+            if chain_id == ChainId.cross_chain and "primary_chain_id" in self.parameters:
+                return self.parameters["primary_chain_id"]
+            return chain_id
 
         return self.chain_id
 
