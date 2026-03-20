@@ -168,7 +168,7 @@ def test_hypercore_vault_other_data_populated(
     # 3. Translate to TradingPairIdentifier and check accessor methods.
     pair = translate_trading_pair(raw_pair)
     assert pair.is_vault()
-    assert pair.get_vault_protocol() == "hypercore"
+    assert pair.get_vault_protocol() == "hyperliquid"
     # HLP is a parent vault — deposits are always open, so deposit_closed_reason should be None
     assert "deposit_closed_reason" in pair.other_data
     assert pair.get_deposit_closed_reason() is None
