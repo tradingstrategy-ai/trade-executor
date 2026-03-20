@@ -907,6 +907,65 @@ class TradingPairIdentifier:
         """
         return self.other_data.get("vault_management_fee")
 
+    def get_deposit_closed_reason(self) -> str | None:
+        """Get the reason why vault deposits are closed.
+
+        - ``None`` if deposits are open or unknown
+        """
+        return self.other_data.get("deposit_closed_reason")
+
+    def get_redemption_closed_reason(self) -> str | None:
+        """Get the reason why vault redemptions are closed.
+
+        - ``None`` if redemptions are open or unknown
+        """
+        return self.other_data.get("redemption_closed_reason")
+
+    def get_vault_risk_level(self) -> str | None:
+        """Get the vault risk classification.
+
+        E.g. ``"low"``, ``"medium"``, ``"high"``, ``"blacklisted"``.
+
+        - ``None`` if unknown
+        """
+        return self.other_data.get("risk_level")
+
+    def get_vault_tvl(self) -> float | None:
+        """Get the current vault TVL in USD.
+
+        This is a data-pipeline snapshot, not a live value.
+
+        - ``None`` if unknown
+        """
+        return self.other_data.get("tvl")
+
+    def get_vault_link(self) -> str | None:
+        """Get the external link to the vault's official page.
+
+        - ``None`` if unknown
+        """
+        return self.other_data.get("link")
+
+    def can_deposit(self) -> bool:
+        """Check whether deposits appear open based on data-pipeline metadata.
+
+        This is a point-in-time snapshot from the Trading Strategy data
+        pipeline, not a live check.  For authoritative gating during trade
+        execution, use
+        :py:meth:`~tradeexecutor.strategy.pricing_model.PricingModel.can_deposit`
+        instead.
+
+        - Asserts this pair is a vault.
+        - For Hyperliquid vaults, checks ``deposit_closed_reason`` in
+          :py:attr:`other_data`.
+        - For other vault types returns ``True`` (no static metadata
+          available yet).
+        """
+        assert self.is_vault(), f"Not a vault pair: {self}"
+        if self.is_hyperliquid_vault():
+            return self.other_data.get("deposit_closed_reason") is None
+        return True
+
     def get_vault_metadata(self) -> "VaultMetadata | None":
         """Get the full vault metadata object.
 

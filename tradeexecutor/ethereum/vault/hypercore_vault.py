@@ -17,7 +17,8 @@ Vault deposits and withdrawals are routed through
 
 import logging
 from decimal import Decimal
-from typing import Callable
+import datetime
+from typing import Callable, TypedDict
 
 from eth_defi.hyperliquid.api import fetch_user_vault_equity
 from eth_defi.hyperliquid.core_writer import CORE_WRITER_ADDRESS
@@ -36,6 +37,73 @@ from tradeexecutor.state.identifier import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class HypercoreVaultOtherData(TypedDict, total=False):
+    """Describes Hypercore vault-specific fields stored in
+    :py:attr:`TradingPairIdentifier.other_data`.
+
+    These fields are populated from
+    :py:class:`~tradingstrategy.vault.VaultMetadata` during
+    :py:func:`~tradeexecutor.strategy.dex_data_translation.translate_trading_pair`
+    when the pair is a Hypercore vault.  All fields are optional because:
+
+    - Programmatically created pairs
+      (:py:func:`create_hypercore_vault_pair`) do not carry VaultMetadata.
+    - Older serialised states will not have these keys.
+    - Some VaultMetadata fields may themselves be ``None``.
+
+    Datetime fields from VaultMetadata are stored as naive UTC
+    ``datetime.datetime`` objects.
+    """
+
+    #: Vault protocol slug, e.g. ``"hypercore"``
+    vault_protocol: str
+    #: Human-readable vault name
+    vault_name: str
+    #: Feature flags supported by the vault
+    vault_features: list
+    #: Performance fee as a fraction (e.g. 0.10 = 10%)
+    vault_performance_fee: float | None
+    #: Management fee as a fraction
+    vault_management_fee: float | None
+
+    #: Human-readable reason why deposits are closed, or ``None`` if open
+    deposit_closed_reason: str | None
+    #: Human-readable reason why redemptions are closed, or ``None`` if open
+    redemption_closed_reason: str | None
+    #: When deposits next open, or ``None``
+    deposit_next_open: datetime.datetime | None
+    #: When redemptions next open, or ``None``
+    redemption_next_open: datetime.datetime | None
+
+    #: Risk classification (e.g. ``"low"``, ``"medium"``, ``"high"``, ``"blacklisted"``)
+    risk_level: str | None
+    #: Warning/status flags for the vault
+    flags: list | None
+
+    #: Current TVL in USD
+    tvl: float | None
+    #: Peak TVL ever in USD
+    tvl_peak: float | None
+    #: Vault age in years
+    age_years: float | None
+    #: 3-month annualised volatility
+    volatility: float | None
+    #: 3-month Sharpe ratio
+    sharpe: float | None
+    #: Maximum drawdown
+    max_drawdown: float | None
+    #: External link to the vault's official page
+    link: str | None
+    #: Fee structure classification
+    fee_mode: str | None
+    #: Most recent share price snapshot from the data pipeline
+    last_share_price: float | None
+
+    #: Whether this targets a testnet deployment
+    exchange_is_testnet: bool
+
 
 #: Default Hypercore vault addresses per network (HLP vault).
 #:

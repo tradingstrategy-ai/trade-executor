@@ -64,6 +64,20 @@ def _format_tvl(tvl: float | None) -> Text:
     return Text(f"${tvl:,.0f}", justify="right")
 
 
+def _format_deposits_open(pair: TradingPairIdentifier) -> Text:
+    """Format the deposit status for a vault pair.
+
+    Non-vault pairs show a dash.  Vault pairs show ``Yes`` / ``No``
+    based on :py:meth:`TradingPairIdentifier.can_deposit`.
+    """
+    if not pair.is_vault():
+        return Text("-", style="dim", justify="center")
+    if pair.can_deposit():
+        return Text("Yes", style="green", justify="center")
+    reason = pair.get_deposit_closed_reason() or "closed"
+    return Text(f"No", style="red bold", justify="center")
+
+
 def _get_price(pricing_model, pair: TradingPairIdentifier, ts: datetime.datetime | None = None) -> float | None:
     """Get the approximate mid-price for a pair via the pricing model.
 
@@ -327,6 +341,7 @@ class PairSelectionApp(App):
         table.add_column("Exchange", key="exchange", width=20)
         table.add_column("Price", key="price", width=14)
         table.add_column("TVL", key="tvl", width=14)
+        table.add_column("Deposits", key="deposits", width=14)
         table.add_column("Position", key="position", width=20)
 
         for idx, pair in enumerate(self.sorted_pairs, 1):
@@ -334,6 +349,7 @@ class PairSelectionApp(App):
             exchange = pair.exchange_name or ""
             price = _format_price(self.prices.get(id(pair)))
             tvl = _format_tvl(self.tvl_values.get(id(pair)))
+            deposits = _format_deposits_open(pair)
             position = _get_position_info(self.state, pair)
 
             table.add_row(
@@ -342,6 +358,7 @@ class PairSelectionApp(App):
                 exchange,
                 price,
                 tvl,
+                deposits,
                 position,
                 key=str(idx),
             )

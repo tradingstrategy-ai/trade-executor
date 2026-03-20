@@ -219,6 +219,10 @@ class PricingModel(abc.ABC):
 
         The base implementation treats unknown venue-specific limits as allowed.
         Pricing models with live gating should override this method.
+
+        For a lightweight static check based on data-pipeline metadata
+        (no API call), see
+        :py:meth:`~tradeexecutor.state.identifier.TradingPairIdentifier.can_deposit`.
         """
         return True
 
