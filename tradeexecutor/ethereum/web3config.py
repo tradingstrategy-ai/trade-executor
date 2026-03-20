@@ -325,7 +325,13 @@ class Web3Config:
         self.default_chain_id = chain_id
 
     def get_connection(self, chain_id: ChainId) -> Optional[Web3]:
-        """Get a connection to a specific network."""
+        """Get a connection to a specific network.
+
+        Hypercore (9999) shares the same RPC as Hyperliquid (999),
+        so fall back transparently when no dedicated connection exists.
+        """
+        if chain_id not in self.connections and chain_id == ChainId.hypercore:
+            return self.connections[ChainId.hyperliquid]
         return self.connections[chain_id]
 
     def get_default(self) -> Web3:

@@ -266,6 +266,7 @@ def trade_ui(
         gas_balance=float(gas_balance),
         state=state,
         is_hyperliquid=is_hyperliquid,
+        pricing_model=pricing_model,
     )
 
     # Map trade mode to make_test_trade parameters

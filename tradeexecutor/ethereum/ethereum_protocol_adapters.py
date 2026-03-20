@@ -28,6 +28,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradingstrategy.pair import PandasPairUniverse
 
 if TYPE_CHECKING:
+    from tradingstrategy.candle import GroupedCandleUniverse
     from tradeexecutor.testing.hypercore_replay import HypercoreVaultMarketDataSource
 
 logger = logging.getLogger(__name__)
@@ -558,6 +559,7 @@ def create_hypercore_vault_adapter(
     strategy_universe: "TradingStrategyUniverse | None" = None,
     simulate: bool = False,
     hypercore_market_data_source: "HypercoreVaultMarketDataSource | None" = None,
+    candle_universe: "GroupedCandleUniverse | None" = None,
 ) -> ProtocolRoutingConfig:
     """Create adapter for Hypercore native vault positions.
 
@@ -608,6 +610,7 @@ def create_hypercore_vault_adapter(
         safe_address_resolver=safe_address_resolver,
         simulate=simulate,
         market_data_source=hypercore_market_data_source,
+        candle_universe=candle_universe,
     )
     valuation_model = HypercoreVaultValuator(
         hypercore_vault_value_func,
@@ -919,6 +922,7 @@ class EthereumPairConfigurator(PairConfigurator):
                 strategy_universe=self.strategy_universe,
                 simulate=simulate,
                 hypercore_market_data_source=self.hypercore_market_data_source,
+                candle_universe=self.strategy_universe.data_universe.candles if self.strategy_universe else None,
             )
         elif routing_id.router_name == "vault":
             return create_vault_adapter(
