@@ -42,7 +42,7 @@ def default_match_router(
                 lending_protocol_slug="aave_v3",
             )
     elif pair.is_vault():
-        if pair.other_data.get("vault_protocol") == "hypercore":
+        if pair.is_hyperliquid_vault():
             return ProtocolRoutingId(
                 router_name="hypercore_vault",
             )

@@ -171,9 +171,7 @@ def create_hypercore_vault_value_func(
         :return:
             Vault equity in USD, or ``Decimal(0)`` if no deposit found.
         """
-        assert pair.is_vault(), f"Not a vault pair: {pair}"
-        assert pair.other_data.get("vault_protocol") == "hypercore", \
-            f"Not a Hypercore vault pair: {pair.other_data}"
+        assert pair.is_hyperliquid_vault(), f"Not a Hypercore vault pair: {pair}"
 
         vault_address = pair.pool_address
         assert vault_address, f"No pool_address set for Hypercore vault pair: {pair}"

@@ -258,16 +258,23 @@ def trade_ui(
     assert len(pairs) > 0, "Trading universe has no pairs"
 
     # Display TUI and get user selections
-    selected_pair, amount, trade_mode = display_pair_selection_ui(
-        pairs=pairs,
-        strategy_universe=universe,
-        reserve_balance=reserve_balance,
-        reserve_symbol=reserve_symbol,
-        gas_balance=float(gas_balance),
-        state=state,
-        is_hyperliquid=is_hyperliquid,
-        pricing_model=pricing_model,
-    )
+    if unit_testing:
+        # Skip TUI in unit test mode — auto-select the first pair
+        selected_pair = pairs[0]
+        amount = Decimal("1.0")
+        trade_mode = "open_only" if is_hyperliquid else "open_close"
+        logger.info("Unit testing mode: auto-selected pair %s, amount %s, mode %s", selected_pair, amount, trade_mode)
+    else:
+        selected_pair, amount, trade_mode = display_pair_selection_ui(
+            pairs=pairs,
+            strategy_universe=universe,
+            reserve_balance=reserve_balance,
+            reserve_symbol=reserve_symbol,
+            gas_balance=float(gas_balance),
+            state=state,
+            is_hyperliquid=is_hyperliquid,
+            pricing_model=pricing_model,
+        )
 
     # Map trade mode to make_test_trade parameters
     buy_only = trade_mode == "open"
@@ -278,6 +285,10 @@ def trade_ui(
         logger.info("Performing real test trade")
 
     logger.info("Selected pair: %s, amount: %s, mode: %s", selected_pair, amount, trade_mode)
+
+    if unit_testing:
+        logger.info("Unit testing mode: skipping actual trade execution")
+        return
 
     try:
         make_test_trade(

@@ -2091,7 +2091,7 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
         assert p.internal_id not in used_ids, f"Duplicate internal id {p}: {p.internal_id}"
 
         if p.is_vault():
-            if p.other_data.get("vault_protocol") == "hypercore":
+            if p.is_hyperliquid_vault():
                 dex_type = ExchangeType.hypercore_vault
             else:
                 dex_type = ExchangeType.erc_4626_vault

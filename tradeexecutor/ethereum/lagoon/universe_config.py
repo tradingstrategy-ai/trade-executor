@@ -93,7 +93,7 @@ def _collect_universe_metadata(universe: TradingStrategyUniverse, all_chain_ids:
         if pair.is_exchange_account() and pair.get_exchange_account_protocol() == "gmx":
             gmx_chain_ids.add(normalise_deployment_chain_id(pair.base.chain_id))
 
-        if pair.is_vault() and pair.other_data.get("vault_protocol") == "hypercore":
+        if pair.is_hyperliquid_vault():
             vault_addr = pair.pool_address
             if vault_addr:
                 chain_id = normalise_deployment_chain_id(pair.base.chain_id)
