@@ -5,20 +5,16 @@ Interactive TUI for selecting a trading pair and performing a test trade.
 Displays the strategy's trading universe with balances, lets the user
 pick a pair, amount and trade mode, then executes the test trade.
 
-Quick test run using a test strategy and a local Anvil fork:
+Quick test run using a test strategy (``--simulate`` launches an Anvil
+fork internally, no need to start one manually):
 
 .. code-block:: shell
 
-    # 1. Start Anvil fork of Base in a separate terminal
-    anvil --fork-url $JSON_RPC_BASE --port 19999
-
-    # 2. Run trade-ui with Anvil default account #0 (has no real balance,
-    #    but enough to browse the universe and see the TUI)
     trade-executor trade-ui \
         --strategy-file=strategies/test_only/base-memecoin-index.py \
         --private-key=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
         --asset-management-mode=hot_wallet \
-        --json-rpc-anvil=http://localhost:19999 \
+        --json-rpc-base=$JSON_RPC_BASE \
         --trading-strategy-api-key=$TRADING_STRATEGY_API_KEY \
         --simulate
 
