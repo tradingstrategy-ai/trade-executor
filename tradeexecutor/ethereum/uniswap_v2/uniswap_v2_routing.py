@@ -49,8 +49,16 @@ class UniswapV2RoutingState(EthereumRoutingState):
         web3: Optional[Web3] = None,
         swap_gas_limit=None,
         approve_gas_limit=None,
+        token_cache=None,
     ):
-        super().__init__(pair_universe, tx_builder=tx_builder, swap_gas_limit=swap_gas_limit, approve_gas_limit=approve_gas_limit, web3=web3)
+        super().__init__(
+            pair_universe,
+            tx_builder=tx_builder,
+            swap_gas_limit=swap_gas_limit,
+            approve_gas_limit=approve_gas_limit,
+            web3=web3,
+            token_cache=token_cache,
+        )
         
     def __repr__(self):
         return f"<UniswapV2RoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
@@ -347,8 +355,18 @@ class UniswapV2Routing(EthereumRoutingModel):
         receipts: Dict[str, dict],
         stop_on_execution_failure=False,
     ):
-        base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
-        quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
+        base_token_details = fetch_erc20_details(
+            web3,
+            trade.pair.base.checksum_address,
+            cache=self.token_cache,
+            chain_id=trade.pair.base.chain_id,
+        )
+        quote_token_details = fetch_erc20_details(
+            web3,
+            trade.pair.quote.checksum_address,
+            cache=self.token_cache,
+            chain_id=trade.pair.quote.chain_id,
+        )
         reserve = trade.reserve_currency
 
         swap_tx = get_swap_transactions(trade)

@@ -177,7 +177,11 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
     # 1. Patch the CLI dependencies so `check-wallet` runs against `hyper-ai-test.py` with a fake Lagoon sync model.
     monkeypatch.setattr(check_wallet_module, "LagoonVaultSyncModel", FakeLagoonVaultSyncModel)
     monkeypatch.setattr(check_wallet_module, "prepare_executor_id", lambda id, strategy_file: "test-executor")
-    monkeypatch.setattr(check_wallet_module, "prepare_cache", lambda id, cache_path, unit_testing=False: tmp_path)
+    monkeypatch.setattr(
+        check_wallet_module,
+        "prepare_cache_and_token_cache",
+        lambda id, cache_path, unit_testing=False: (tmp_path, object()),
+    )
     monkeypatch.setattr(check_wallet_module, "create_web3_config", lambda **kwargs: FakeWeb3Config())
     monkeypatch.setattr(check_wallet_module.Client, "create_live_client", lambda *args, **kwargs: object())
     monkeypatch.setattr(check_wallet_module, "call_create_trading_universe", lambda *args, **kwargs: fake_universe)
@@ -191,7 +195,6 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
         "make_factory_from_strategy_mod",
         lambda mod: lambda **kwargs: SimpleNamespace(runner=FakeRunner()),
     )
-    monkeypatch.setattr(check_wallet_module, "prepare_token_cache", lambda *args, **kwargs: object())
     monkeypatch.setattr(check_wallet_module, "fetch_erc20_details", lambda web3, address, cache=None: FakeTokenDetails(address))
     monkeypatch.setattr(
         check_wallet_module,

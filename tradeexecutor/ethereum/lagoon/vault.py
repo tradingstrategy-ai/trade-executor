@@ -378,6 +378,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         reserve_token = fetch_erc20_details(
             web3,
             reserve_asset.address,
+            cache=self.vault.token_cache,
             chain_id=reserve_asset.chain_id,
         )
 

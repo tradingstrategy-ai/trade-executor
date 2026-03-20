@@ -15,7 +15,7 @@ from web3 import Web3
 from web3.contract import Contract
 
 from eth_defi.abi import get_deployed_contract
-from eth_defi.token import fetch_erc20_details
+from eth_defi.token import fetch_erc20_details, TokenDiskCache
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment
 
@@ -86,6 +86,7 @@ class EthereumRoutingState(RoutingState):
         swap_gas_limit: int | None = None,
         approve_gas_limit: int | None = None,
         web3: Optional[Web3] = None,
+        token_cache: TokenDiskCache | None = None,
     ):
         """
 
@@ -123,6 +124,8 @@ class EthereumRoutingState(RoutingState):
             self.hot_wallet = None
             self.web3 = web3
             self.chain_id = web3.eth.chain_id
+
+        self.token_cache = token_cache
 
         # router -> erc-20 mappings
         self.approved_routes = defaultdict(set)
@@ -201,6 +204,8 @@ class EthereumRoutingState(RoutingState):
             token_details = fetch_erc20_details(
                 erc_20.w3,
                 erc_20.address,
+                cache=self.token_cache,
+                chain_id=self.chain_id,
             )
             d_balance = token_details.convert_to_decimals(balance)
             d_amount = token_details.convert_to_decimals(amount)
@@ -304,7 +309,12 @@ class EthereumRoutingState(RoutingState):
 
         web3 = self.tx_builder.web3
         holding_address = self.tx_builder.get_erc_20_balance_address()
-        token = fetch_erc20_details(web3, asset.address)
+        token = fetch_erc20_details(
+            web3,
+            asset.address,
+            cache=self.token_cache,
+            chain_id=asset.chain_id,
+        )
         on_chain_balance = token.contract.functions.balanceOf(holding_address).call()
 
         if on_chain_balance < required_amount:
