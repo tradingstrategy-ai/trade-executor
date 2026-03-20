@@ -19,8 +19,12 @@ forked Safe address, so the API is skipped and a 1:1 USDC price is assumed.
 import datetime
 import logging
 from decimal import Decimal
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
+import pandas as pd
+
+if TYPE_CHECKING:
+    from tradingstrategy.candle import GroupedCandleUniverse
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hyperliquid.api import fetch_user_vault_equity
 from eth_defi.hyperliquid.session import (
@@ -86,13 +90,71 @@ def _get_hypercore_deposit_closed_reason_from_flags(
 class HypercoreVaultPricing(PricingModel):
     """Pricing model for Hypercore vault deposit/withdrawal trades.
 
-    Always returns 1.0 USDC per unit because vault trades exchange USDC
-    at face value.  Equity growth is reflected by the valuation model
-    (:class:`HypercoreVaultValuator`), not by trade pricing.
+    .. warning::
+
+        This pricing model contains several deliberate hacks because
+        Hyperliquid has no on-chain concept of vault share price, unlike
+        ERC-4626 vaults where share price is computable from on-chain
+        contract state.
+
+    Design compromises and hacks
+    ----------------------------
+
+    **1:1 USDC execution pricing (hack)**
+
+    :meth:`get_buy_price` and :meth:`get_sell_price` always return 1.0 USDC
+    per unit. This is because Hypercore vault deposits and withdrawals
+    exchange USDC at face value — there is no slippage or price impact on
+    the deposit/withdrawal itself. Equity growth (profit/loss from the
+    vault's trading activity) is tracked entirely by the valuation model
+    (:class:`HypercoreVaultValuator`), not by trade pricing. This means
+    the pricing model deliberately lies about the asset's market value to
+    make the deposit/withdrawal accounting work correctly.
+
+    **Approximate share prices from data pipeline (hack)**
+
+    :meth:`get_mid_price` returns an *approximate* share price read from
+    the Trading Strategy data pipeline's cleaned vault price bundle
+    (``~/.tradingstrategy/vaults/cleaned-vault-prices-1h.parquet``).
+    These are **not** real-time on-chain prices — they are periodic
+    snapshots collected by the data pipeline and may lag by hours or
+    days depending on the refresh frequency. They are suitable for
+    display purposes (TUI, dashboards) but must not be used for trade
+    execution decisions. When no candle data is available, falls back
+    to 1.0.
+
+    **Post-deposit valuation via Hypercore API**
+
+    After a deposit, the position's actual value is determined by
+    querying the Hyperliquid info API through :class:`HypercoreVaultValuator`,
+    which computes ``price = equity / quantity``. This is the only
+    source of truth for position value in live trading.
+
+    :param value_func:
+        Callable that fetches current vault equity for a pair via
+        the Hyperliquid API. Used in live trading only.
+
+    :param safe_address_resolver:
+        Resolves the Safe address that holds vault deposits for a pair.
+
+    :param session_factory:
+        Creates Hyperliquid API sessions for vault info queries.
 
     :param simulate:
         When ``True``, skip the Hyperliquid API and use 1.0 USDC per unit.
         Used in Anvil fork mode where the API has no data for the forked Safe.
+
+    :param market_data_source:
+        Replay data source for backtesting and tests. Provides vault
+        snapshots (TVL, gating flags, equity) without API calls.
+
+    :param candle_universe:
+        Historical vault share prices from the Trading Strategy data
+        pipeline, used by :meth:`get_mid_price` for display purposes
+        only (TUI pair tables, dashboards). These are approximations
+        derived from periodic vault snapshots — not live prices.
+        The data may lag by hours or days. When ``None``,
+        :meth:`get_mid_price` falls back to 1.0.
     """
 
     def __init__(
@@ -102,12 +164,14 @@ class HypercoreVaultPricing(PricingModel):
         session_factory: Callable[[TradingPairIdentifier], HyperliquidSession] | None = None,
         simulate: bool = False,
         market_data_source: HypercoreVaultMarketDataSource | None = None,
+        candle_universe: "GroupedCandleUniverse | None" = None,
     ):
         self.value_func = value_func
         self.safe_address_resolver = safe_address_resolver
         self.session_factory = session_factory
         self.simulate = simulate
         self.market_data_source = market_data_source
+        self.candle_universe = candle_universe
         self._session_cache: dict[str, HyperliquidSession] = {}
 
     def _make_pricing(self, pair: TradingPairIdentifier, token_in: Decimal | None = None, token_out: Decimal | None = None) -> TradePricing:
@@ -137,9 +201,37 @@ class HypercoreVaultPricing(PricingModel):
     def get_buy_price(self, ts, pair, reserve) -> TradePricing:
         return self._make_pricing(pair, token_in=reserve)
 
+    def _get_share_price_from_candles(self, ts: datetime.datetime, pair: TradingPairIdentifier) -> float | None:
+        """Look up the vault share price from candle data at a given timestamp.
+
+        Returns the approximate share price from the Trading Strategy
+        data pipeline, or ``None`` if no candle data is available.
+        These are periodic snapshots, not real-time prices.
+
+        :param ts:
+            Timestamp to look up the price at. Uses a 7-day tolerance
+            to find the nearest candle.
+        """
+        if self.candle_universe is None:
+            return None
+        try:
+            when = pd.Timestamp(ts, tz="UTC")
+            price, _ = self.candle_universe.get_price_with_tolerance(
+                pair.internal_id,
+                when=when,
+                tolerance=pd.Timedelta("7D"),
+            )
+            return float(price)
+        except Exception:
+            return None
+
     def get_mid_price(self, ts, pair) -> float:
-        # Vault trades are 1:1 USDC.  Equity growth is tracked by
-        # the valuation model, not the pricing model.
+        # Return approximate share price from candle data if available.
+        # This is a data-pipeline approximation, not a live price.
+        # Falls back to 1.0 (the deposit/withdrawal face value).
+        candle_price = self._get_share_price_from_candles(ts, pair)
+        if candle_price is not None:
+            return candle_price
         return 1.0
 
     def get_pair_fee(self, ts, pair):

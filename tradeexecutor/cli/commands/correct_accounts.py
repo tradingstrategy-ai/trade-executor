@@ -451,7 +451,7 @@ def correct_accounts(
         from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 
         _has_vault_pairs = any(
-            translate_trading_pair(p).is_vault() and translate_trading_pair(p).other_data.get("vault_protocol") == "hypercore"
+            translate_trading_pair(p).is_hyperliquid_vault()
             for p in universe.data_universe.pairs.iterate_pairs()
         )
         if _has_vault_pairs:
@@ -491,7 +491,7 @@ def correct_accounts(
             # Sync existing vault positions with actual API equity
             vault_positions = [
                 p for p in state.portfolio.get_open_positions()
-                if p.is_vault() and p.pair.other_data.get("vault_protocol") == "hypercore"
+                if p.pair.is_hyperliquid_vault()
             ]
             vault_sync_events = []
             for position in vault_positions:

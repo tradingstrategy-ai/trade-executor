@@ -116,6 +116,8 @@ telegram-bot-logger = {git = "https://github.com/tradingstrategy-ai/telegram_bot
 
 # CCXT for reading CEX exchange account balances (Aster, Binance, Bybit, OKX, etc.)
 ccxt = {version = "^4.5.16", optional = true}
+# Full-screen TUI for interactive trade-ui CLI command (DataTable, arrow navigation)
+textual = "^8.1.1"
 
 [tool.poetry.extras]
 

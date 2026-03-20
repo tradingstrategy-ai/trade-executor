@@ -2091,7 +2091,10 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
         assert p.internal_id not in used_ids, f"Duplicate internal id {p}: {p.internal_id}"
 
         if p.is_vault():
-            dex_type = ExchangeType.erc_4626_vault
+            if p.is_hyperliquid_vault():
+                dex_type = ExchangeType.hypercore_vault
+            else:
+                dex_type = ExchangeType.erc_4626_vault
         elif p.is_exchange_account():
             dex_type = ExchangeType.derive
         else:
@@ -2668,10 +2671,11 @@ def load_partial_data(
             # Prefiltered pairs
             assert len(pairs) > 0 or vaults is not None, "The passed in pairs dataframe was empty"
 
-            # Skip vault data for now
-            # as it is not present
-            # TODO: Add later when centralised vault data is available
-            loadable_pairs = pairs[pairs["dex_type"] != ExchangeType.erc_4626_vault]
+            # Skip vault data (ERC-4626 and Hypercore) as it is loaded
+            # separately via vault-specific data pipelines
+            loadable_pairs = pairs[
+                ~pairs["dex_type"].isin({ExchangeType.erc_4626_vault, ExchangeType.hypercore_vault})
+            ]
 
             filtered_pairs_df = pairs
             our_pair_ids = set(loadable_pairs["pair_id"])

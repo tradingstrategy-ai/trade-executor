@@ -17,6 +17,13 @@ from tradeexecutor.exchange_account.allocation import (
 class DummyPair:
     pool_address: str | None
     other_data: dict[str, str]
+    chain_id: int = 9999
+
+    def is_hyperliquid_vault(self) -> bool:
+        return self.chain_id == 9999 and self.other_data.get("vault_protocol") == "hypercore"
+
+    def is_vault(self) -> bool:
+        return self.other_data.get("vault_protocol") == "hypercore"
 
 
 @dataclass

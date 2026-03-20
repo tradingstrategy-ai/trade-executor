@@ -46,6 +46,7 @@ def make_test_trade(
     pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
     lending_reserve_description: LendingReserveDescription | None = None,
     buy_only: bool = False,
+    close_only: bool = False,
     test_short: bool = True,
     anvil_time_skip_seconds: int = 24*3600,
 ):
@@ -55,7 +56,14 @@ def make_test_trade(
     our trade routing works.
 
     If the pair can be shorted, open and close short position for 1 USD.
+
+    :param buy_only:
+        Only open the position, do not close it.
+
+    :param close_only:
+        Only close an existing position. Raises if no open position exists.
     """
+    assert not (buy_only and close_only), "Cannot set both buy_only and close_only"
 
     assert isinstance(sync_model, SyncModel)
     assert isinstance(universe, TradingStrategyUniverse)
@@ -184,7 +192,15 @@ def make_test_trade(
 
     position = state.portfolio.get_position_by_trading_pair(pair)
 
-    if position is None:
+    if close_only:
+        if position is None or not position.is_open():
+            raise RuntimeError(
+                f"Close-only mode selected but no open position exists for {pair}. "
+                f"Open a position first with 'open only' mode."
+            )
+        logger.info("Close-only mode: skipping buy, proceeding to close position %s", position)
+
+    if position is None and not close_only:
         # Create trades to open the position
         if lending_reserve_description:
             assert lending_reserve

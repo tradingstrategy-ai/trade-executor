@@ -1146,10 +1146,7 @@ def create_missing_vault_positions(
     for dex_pair in pair_universe.iterate_pairs():
         pair = translate_trading_pair(dex_pair)
 
-        if not pair.is_vault():
-            continue
-
-        if pair.other_data.get("vault_protocol") != "hypercore":
+        if not pair.is_hyperliquid_vault():
             continue
 
         existing_position = state.portfolio.get_position_by_trading_pair(pair)

@@ -28,6 +28,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradingstrategy.pair import PandasPairUniverse
 
 if TYPE_CHECKING:
+    from tradingstrategy.candle import GroupedCandleUniverse
     from tradeexecutor.testing.hypercore_replay import HypercoreVaultMarketDataSource
 
 logger = logging.getLogger(__name__)
@@ -558,6 +559,7 @@ def create_hypercore_vault_adapter(
     strategy_universe: "TradingStrategyUniverse | None" = None,
     simulate: bool = False,
     hypercore_market_data_source: "HypercoreVaultMarketDataSource | None" = None,
+    candle_universe: "GroupedCandleUniverse | None" = None,
 ) -> ProtocolRoutingConfig:
     """Create adapter for Hypercore native vault positions.
 
@@ -598,8 +600,12 @@ def create_hypercore_vault_adapter(
     )
     from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreVaultRouting
 
-    assert hypercore_vault_value_func is not None or hypercore_market_data_source is not None, \
-        "hypercore_vault_value_func or hypercore_market_data_source is required for Hypercore vault routing"
+    if hypercore_vault_value_func is None and hypercore_market_data_source is None:
+        logger.warning(
+            "Hypercore vault routing without value_func or market_data_source — "
+            "pricing will use candle data only (display mode). "
+            "Trade execution requiring live prices will fail."
+        )
 
     safe_address_resolver = _make_token_delivery_address_resolver(execution_model)
 
@@ -608,6 +614,7 @@ def create_hypercore_vault_adapter(
         safe_address_resolver=safe_address_resolver,
         simulate=simulate,
         market_data_source=hypercore_market_data_source,
+        candle_universe=candle_universe,
     )
     valuation_model = HypercoreVaultValuator(
         hypercore_vault_value_func,
@@ -616,7 +623,7 @@ def create_hypercore_vault_adapter(
     )
 
     routing_model = None
-    if execution_model is not None and web3 is not None and strategy_universe is not None:
+    if execution_model is not None and web3 is not None and strategy_universe is not None and hasattr(execution_model.tx_builder, 'vault'):
         # For multichain deployments, use satellite vault on HyperEVM
         # instead of the primary chain's LagoonVault
         lagoon_vault = execution_model.tx_builder.vault
@@ -845,13 +852,13 @@ class EthereumPairConfigurator(PairConfigurator):
     def _auto_discover_hypercore_vault(self, strategy_universe: TradingStrategyUniverse):
         """Auto-discover Hypercore vault pairs and wire up the value func.
 
-        Scans the strategy universe for vault pairs with
-        ``other_data["vault_protocol"] == "hypercore"``.
+        Scans the strategy universe for vault pairs on the synthetic
+        Hypercore chain (chain_id 9999) via ``is_hyperliquid_vault()``.
         If found, creates a value func using the execution model.
         """
         has_hypercore = False
         for pair in strategy_universe.iterate_pairs():
-            if pair.is_vault() and pair.other_data.get("vault_protocol") == "hypercore":
+            if pair.is_hyperliquid_vault():
                 has_hypercore = True
                 break
 
@@ -862,6 +869,11 @@ class EthereumPairConfigurator(PairConfigurator):
             return
 
         from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_value_func
+        if not hasattr(self.execution_model, 'tx_builder') or not hasattr(self.execution_model.tx_builder, 'vault'):
+            # Hot wallet mode doesn't have a vault object — value func
+            # cannot be created. Pricing will fall back to candle data.
+            logger.info("Hypercore vault value func not available (no vault in tx_builder, hot wallet mode?)")
+            return
         self.hypercore_vault_value_func = create_hypercore_vault_value_func(self.execution_model)
         logger.info("Auto-discovered Hypercore vault pairs — wired up Hypercore value func")
 
@@ -906,7 +918,7 @@ class EthereumPairConfigurator(PairConfigurator):
             hypercore_web3 = self.web3
             if self.web3config and len(self.strategy_universe.data_universe.chains) > 1:
                 for pair in self.strategy_universe.iterate_pairs():
-                    if pair.is_vault() and pair.other_data.get("vault_protocol") == "hypercore":
+                    if pair.is_hyperliquid_vault():
                         vault_chain_id = pair.chain_id
                         hypercore_web3 = self.web3config.get_connection(ChainId(vault_chain_id))
                         break
@@ -919,6 +931,7 @@ class EthereumPairConfigurator(PairConfigurator):
                 strategy_universe=self.strategy_universe,
                 simulate=simulate,
                 hypercore_market_data_source=self.hypercore_market_data_source,
+                candle_universe=self.strategy_universe.data_universe.candles if self.strategy_universe else None,
             )
         elif routing_id.router_name == "vault":
             return create_vault_adapter(

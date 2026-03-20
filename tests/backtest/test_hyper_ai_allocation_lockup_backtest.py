@@ -14,7 +14,7 @@ from tradeexecutor.exchange_account.allocation import (
     calculate_portfolio_target_value,
     get_redeemable_capital,
 )
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.alpha_model import AlphaModel
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -61,7 +61,7 @@ def _create_hypercore_pair(
     """Create one synthetic Hypercore vault pair for the backtest."""
 
     base = AssetIdentifier(
-        ChainId.ethereum.value,
+        ChainId.hypercore.value,
         generate_random_ethereum_address(),
         symbol,
         18,
@@ -75,6 +75,7 @@ def _create_hypercore_pair(
         internal_id=internal_id,
         internal_exchange_id=exchange.exchange_id,
         fee=0.0001,
+        kind=TradingPairKind.vault,
     )
     pair.other_data["vault_protocol"] = "hypercore"
     return pair
@@ -179,7 +180,7 @@ def create_indicators(
 def hyper_ai_allocation_lockup_universe() -> TradingStrategyUniverse:
     """Create a three-vault synthetic universe for the allocation-lockup backtest."""
 
-    chain_id = ChainId.ethereum
+    chain_id = ChainId.hypercore
     exchange = generate_exchange(
         exchange_id=1,
         chain_id=chain_id,

@@ -158,7 +158,7 @@ def test_gmx_collateral_approval(simulation_setup, strategy_file):
             "PERFORMANCE_FEE": "0",
             "MANAGEMENT_FEE": "0",
             "UNIT_TESTING": "true",
-            "LOG_LEVEL": "info",
+            "LOG_LEVEL": "warning",
         }
         mod.run_cli(["lagoon-deploy-vault"], deploy_env)
 

@@ -47,7 +47,7 @@ def get_redemption_delay(position: TradingPosition) -> datetime.timedelta:
         Known Hyperliquid redemption delay, or zero for non-Hypercore positions.
     """
 
-    if position.pair.other_data.get("vault_protocol") != "hypercore":
+    if not position.pair.is_hyperliquid_vault():
         return datetime.timedelta(0)
 
     # TradingPairIdentifier.pool_address is always stored in lowercase form.
@@ -106,7 +106,7 @@ def get_redeemable_capital(
     if timestamp is None:
         timestamp = native_datetime_utc_now()
 
-    if position.pair.other_data.get("vault_protocol") != "hypercore":
+    if not position.pair.is_hyperliquid_vault():
         return position.get_value()
 
     unlock_at = get_latest_capital_inflow_at(position) + get_redemption_delay(position)

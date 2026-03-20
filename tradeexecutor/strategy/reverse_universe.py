@@ -184,8 +184,8 @@ def create_universe_from_trading_pair_identifiers(
     for t in pairs:
 
         if t.is_vault():
-            dex_type = "erc_4626_vault"
-            exchange_slug = t.other_data["vault_protocol"]
+            dex_type = "hypercore_vault" if t.is_hyperliquid_vault() else "erc_4626_vault"
+            exchange_slug = t.other_data.get("vault_protocol", "")
         else:
             dex_type = exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_type.value
             exchange_slug = exchange_universe.get_by_chain_and_factory(ChainId(t.chain_id), t.exchange_address).exchange_slug

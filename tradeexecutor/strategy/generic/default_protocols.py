@@ -42,7 +42,7 @@ def default_match_router(
                 lending_protocol_slug="aave_v3",
             )
     elif pair.is_vault():
-        if pair.other_data.get("vault_protocol") == "hypercore":
+        if pair.is_hyperliquid_vault():
             return ProtocolRoutingId(
                 router_name="hypercore_vault",
             )
@@ -118,34 +118,49 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
     vaults_done = False
     hypercore_vault_done = False
 
-    # Detect Hypercore vault pairs from other_data
-    if "other_data" in pairs_df.columns:
-        for _, row in pairs_df.iterrows():
-            other_data = row.get("other_data")
-            if isinstance(other_data, dict) and other_data.get("vault_protocol") == "hypercore":
-                if not hypercore_vault_done:
-                    configs.add(
-                        ProtocolRoutingId(
-                            router_name="hypercore_vault",
-                            exchange_slug=None,
-                        )
-                    )
-                    hypercore_vault_done = True
-                    non_dex_exchange_ids.add(row["exchange_id"])
+    # Only 9999 (ChainId.hypercore): our synthetic chain ID for native
+    # Hyperliquid vaults. Chain 999 (HyperEVM) is the actual L1 and does
+    # NOT host these vaults. create_hypercore_vault_pair() re-homes pairs
+    # to 9999.
+    hypercore_chain_ids = {ChainId.hypercore.value}
+
+    # Only set up routing for exchanges that have actual loaded pairs.
+    # Exchange metadata from vault universes may include exchanges on
+    # other chains (e.g. Uniswap on Ethereum) that have no pairs in
+    # the live universe and would cause RPC errors during routing setup.
+    exchange_ids_with_pairs = set(pairs_df["exchange_id"].unique())
 
     for xc in exchanges.exchanges.values():
         if xc.exchange_id in non_dex_exchange_ids:
             continue
+        if xc.exchange_id not in exchange_ids_with_pairs:
+            continue
+
+        # Detect Hypercore vaults by exchange type OR by chain_id fallback
+        # for stale cached data that still uses erc_4626_vault type.
+        is_hypercore_vault = (
+            xc.exchange_type == ExchangeType.hypercore_vault
+            or (xc.exchange_type == ExchangeType.erc_4626_vault and xc.chain_id in hypercore_chain_ids)
+        )
+
+        if is_hypercore_vault:
+            if not hypercore_vault_done:
+                configs.add(
+                    ProtocolRoutingId(
+                        router_name="hypercore_vault",
+                        exchange_slug=None,
+                    )
+                )
+                hypercore_vault_done = True
         elif xc.exchange_type == ExchangeType.erc_4626_vault:
             if not vaults_done:
-                # All vaults use the same route
                 configs.add(
                     ProtocolRoutingId(
                         router_name="vault",
                         exchange_slug=None,
                     )
                 )
-                vault_done = True
+                vaults_done = True
         else:
             configs.add(
                 ProtocolRoutingId(

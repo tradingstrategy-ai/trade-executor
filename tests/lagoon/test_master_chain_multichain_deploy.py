@@ -237,7 +237,7 @@ def test_deploy_multichain_vault(
         "JSON_RPC_MONAD": all_anvils["monad"].json_rpc_url,
         "ASSET_MANAGEMENT_MODE": "lagoon",
         "UNIT_TESTING": "true",
-        "LOG_LEVEL": "info",
+        "LOG_LEVEL": "warning",
         "PRIVATE_KEY": DEPLOYER_PRIVATE_KEY,
         "VAULT_RECORD_FILE": str(vault_record_file),
         "FUND_NAME": "Master Chain Multichain Test",
