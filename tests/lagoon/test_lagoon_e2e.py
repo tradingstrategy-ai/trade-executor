@@ -329,7 +329,7 @@ def test_cli_lagoon_trade_ui(
         "ASSET_MANAGEMENT_MODE": "lagoon",
         "VAULT_ADDRESS": deploy_info.vault.vault_address,
         "VAULT_ADAPTER_ADDRESS": deploy_info.vault.trading_strategy_module_address,
-        "UNIT_TESTING": "true",
+        "UNIT_TESTING": "false",
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),
