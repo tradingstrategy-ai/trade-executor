@@ -43,6 +43,7 @@ from eth_defi.hyperliquid.api import (
     wait_for_vault_deposit_confirmation,
 )
 from eth_defi.hyperliquid.core_writer import (
+    MINIMUM_VAULT_DEPOSIT,
     build_hypercore_deposit_multicall,
     build_hypercore_deposit_phase1,
     build_hypercore_deposit_phase2,
@@ -454,9 +455,6 @@ class HypercoreVaultRouting(RoutingModel):
             Raw USDC consumed by activation (deducted from deposit amount).
         """
         vault_address = self._get_vault_address(trade)
-        # Minimum vault deposit (5 USDC) is enforced by an assertion in
-        # encode_vault_deposit() in eth_defi core_writer.py.  Deposits
-        # below this threshold are silently rejected by HyperCore.
         raw_amount = self._get_raw_usdc_amount(trade)
 
         if trade.is_buy() and activation_cost_raw > 0:
@@ -468,6 +466,20 @@ class HypercoreVaultRouting(RoutingModel):
                 "Reduced deposit by %d raw USDC activation cost → %d raw USDC",
                 activation_cost_raw,
                 raw_amount,
+            )
+
+        # Enforce Hyperliquid minimum vault deposit/withdrawal amounts.
+        # Hyperliquid silently rejects vault transfers below the minimum
+        # threshold — no error, no event, the USDC just stays in the
+        # escrow. The minimum is 5 USDC (MINIMUM_VAULT_DEPOSIT = 5_000_000
+        # raw, 6 decimals), determined by reverse-engineering the
+        # Hyperliquid web UI. See eth_defi.hyperliquid.core_writer.
+        if trade.is_buy():
+            assert raw_amount >= MINIMUM_VAULT_DEPOSIT, (
+                f"Vault deposit amount {raw_amount / 1e6:.2f} USDC "
+                f"({raw_amount} raw) is below the Hyperliquid minimum "
+                f"of {MINIMUM_VAULT_DEPOSIT / 1e6:.0f} USDC. "
+                f"Hyperliquid silently rejects deposits below this threshold."
             )
 
         if trade.is_buy():
