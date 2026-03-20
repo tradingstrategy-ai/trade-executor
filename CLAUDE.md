@@ -99,6 +99,7 @@ Don't format code.
 - If we mock something, we must describe why
 - Have Python type hints for used pytest fixtures
 - We cannot import from tests sub-tree: helper functions must go to live in `testing` submodules in the actual source tree
+- Never set log level to `info` in pytest tests permanently, as it clogs CI output
 
 
 ### pyproject.toml
