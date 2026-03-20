@@ -12,7 +12,7 @@ from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.chain import ChainId
 from .app import app
 from .shared_options import unit_testing
-from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_client, create_execution_and_sync_model
+from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_client, create_execution_and_sync_model
 from ..log import setup_logging
 from ...analysis.pair import display_strategy_universe
 from ...strategy.approval import UncheckedApprovalModel
@@ -73,7 +73,11 @@ def check_universe(
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 
-    cache_path = prepare_cache(id, cache_path)
+    cache_path, token_cache = prepare_cache_and_token_cache(
+        id,
+        cache_path,
+        unit_testing=unit_testing,
+    )
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.preflight_check,
@@ -119,6 +123,7 @@ def check_universe(
             routing_hint=mod.trade_routing,
             confirmation_block_count=0,  # Not used
             confirmation_timeout=datetime.timedelta(seconds=60),  # Not used
+            token_cache=token_cache,
         )
     else:
         execution_model = sync_model = valuation_model_factory = pricing_model_factory = None
@@ -209,5 +214,4 @@ def check_universe(
         logger.info("Strategy module lacks create_indicators()")
 
     logger.info("All ok")
-
 

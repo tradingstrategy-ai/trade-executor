@@ -112,6 +112,7 @@ class EthereumExecution(ExecutionModel):
         self.disable_broadcast =disable_broadcast
         self.account_value_func = None
         self.web3config = None  # Set by CLI bootstrap for multichain support
+        self.token_cache = None
         logger.info(
             "Execution model %s created.\n confirmation_block_count: %s, confirmation_timeout: %s, mainnet_fork: %s, force_sequential_broadcast: %s",
             self.__class__.__name__,
@@ -344,6 +345,7 @@ class EthereumExecution(ExecutionModel):
         treasury_token = fetch_erc20_details(
             self.web3,
             asset.address,
+            cache=self.token_cache,
             chain_id=asset.chain_id,
         )
         balance_address = self.tx_builder.get_erc_20_balance_address()
@@ -646,6 +648,7 @@ class EthereumExecution(ExecutionModel):
     def get_routing_state_details(self) -> RoutingStateDetails:
         return {
             "tx_builder": self.tx_builder,
+            "token_cache": self.token_cache,
         }
 
     def update_confirmation_status(

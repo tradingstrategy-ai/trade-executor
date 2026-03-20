@@ -21,7 +21,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 from .app import app
 from .pair_mapping import parse_pair_data, construct_identifier_from_pair
-from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
+from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_client
 from ..log import setup_logging
 from ..slippage import configure_max_slippage_tolerance
@@ -144,7 +144,11 @@ def perform_test_trade(
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 
-    cache_path = prepare_cache(id, cache_path)
+    cache_path, token_cache = prepare_cache_and_token_cache(
+        id,
+        cache_path,
+        unit_testing=unit_testing,
+    )
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.preflight_check,
@@ -186,6 +190,7 @@ def perform_test_trade(
         vault_adapter_address=vault_adapter_address,
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
+        token_cache=token_cache,
     )
 
     client, routing_model = create_client(
@@ -351,5 +356,4 @@ def perform_test_trade(
         logger.info("Simulation, no state changes")
 
     logger.info("All ok")
-
 

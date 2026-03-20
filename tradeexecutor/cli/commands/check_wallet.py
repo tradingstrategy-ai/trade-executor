@@ -17,11 +17,10 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from . import shared_options
 from .app import app
-from ..bootstrap import prepare_executor_id, prepare_cache, prepare_token_cache, create_web3_config, create_execution_and_sync_model
+from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_execution_and_sync_model
 from ..log import setup_logging
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
-from ...ethereum.token_cache import get_default_token_cache
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -86,7 +85,11 @@ def check_wallet(
 
     mod = read_strategy_module(strategy_file)
 
-    cache_path = prepare_cache(id, cache_path, unit_testing=unit_testing)
+    cache_path, token_cache = prepare_cache_and_token_cache(
+        id,
+        cache_path,
+        unit_testing=unit_testing,
+    )
 
     client = Client.create_live_client(
         trading_strategy_api_key,
@@ -142,6 +145,7 @@ def check_wallet(
         vault_adapter_address=vault_adapter_address,
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
+        token_cache=token_cache,
     )
 
     assert asset_management_mode.is_live_trading(), f"Cannot perform check wallet for non-real modes"
@@ -194,9 +198,6 @@ def check_wallet(
 
     logger.info("  Hot wallet %s has %f native gas tokens", hot_wallet.address, gas_balance)
     logger.info("  The gas error limit is %f tokens", min_gas_balance)
-
-    # Prepare token cache here, close to where it's used, to avoid SQLite connection issues with CliRunner
-    token_cache = prepare_token_cache(cache_path, unit_testing=unit_testing)
 
     token_details_by_address = {}
     for asset in reserve_assets:

@@ -60,7 +60,7 @@ def create_hot_wallet(web3: Web3, private_key: str) -> HotWallet:
     return hot_wallet
 
 
-def load_lagoon_vault(web3: Web3, vault_address: str) -> LagoonVault:
+def load_lagoon_vault(web3: Web3, vault_address: str, token_cache=None) -> LagoonVault:
     """Load a Lagoon vault instance from its address."""
     vault = create_vault_instance(
         web3,
@@ -68,6 +68,7 @@ def load_lagoon_vault(web3: Web3, vault_address: str) -> LagoonVault:
         features={ERC4626Feature.lagoon_like},
         default_block_identifier="latest",
         require_denomination_token=True,
+        token_cache=token_cache,
     )
     assert isinstance(vault, LagoonVault), f"Not a Lagoon vault: {vault}"
     return vault
@@ -77,6 +78,7 @@ def create_lagoon_command_context(
     *,
     private_key: str,
     vault_address: str,
+    token_cache=None,
     simulate: bool = False,
     chain_name: str | None = None,
     **rpc_kwargs,
@@ -89,7 +91,7 @@ def create_lagoon_command_context(
     )
     web3 = web3config.get_default()
     hot_wallet = create_hot_wallet(web3, private_key)
-    vault = load_lagoon_vault(web3, vault_address)
+    vault = load_lagoon_vault(web3, vault_address, token_cache=token_cache)
     return LagoonCommandContext(
         web3config=web3config,
         web3=web3,

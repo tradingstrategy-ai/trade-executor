@@ -273,6 +273,7 @@ def create_execution_and_sync_model(
     vault_payment_forwarder_address: Optional[str],
     routing_hint: Optional[TradeRouting] = None,
     unit_testing: bool = False,
+    token_cache: "TokenDiskCache | None" = None,
 ) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory]:
     """Set up the wallet sync and execution mode for the command line client."""
 
@@ -298,6 +299,7 @@ def create_execution_and_sync_model(
             vault_adapter_address,
             vault_payment_forwarder_address,
             unit_testing=unit_testing,
+            token_cache=token_cache,
         )
 
         # Pass web3config for multichain balance queries (e.g. CCTP bridge)
@@ -325,6 +327,7 @@ def create_execution_and_sync_model(
 
         # Pass web3config for multichain execution (e.g. CCTP bridge)
         execution_model.web3config = web3config
+        execution_model.token_cache = token_cache
 
         # Populate satellite vaults for multichain Lagoon deployments
         if isinstance(execution_model, LagoonExecution):
@@ -459,6 +462,25 @@ def prepare_token_cache(
     )
 
     return token_cache
+
+
+def prepare_cache_and_token_cache(
+    executor_id: str,
+    cache_path: Optional[Path],
+    unit_testing: bool = False,
+) -> tuple[Path, "TokenDiskCache"]:
+    """Prepare both dataset cache and token cache for a CLI command."""
+
+    resolved_cache_path = prepare_cache(
+        executor_id,
+        cache_path,
+        unit_testing=unit_testing,
+    )
+    token_cache = prepare_token_cache(
+        resolved_cache_path,
+        unit_testing=unit_testing,
+    )
+    return resolved_cache_path, token_cache
 
 
 def create_metadata(
@@ -597,6 +619,7 @@ def create_sync_model(
     vault_payment_forwarder_address: Optional[str] = None,
     init=False,
     unit_testing=False,
+    token_cache: "TokenDiskCache | None" = None,
 ) -> SyncModel:
     """Create sync model for wallet type
 
@@ -635,6 +658,7 @@ def create_sync_model(
                 VaultSpec(web3.eth.chain_id, cast(HexAddress, vault_address)),
                 trading_strategy_module_address=vault_adapter_address,
                 default_block_identifier="latest",
+                token_cache=token_cache,
             )
             return LagoonVaultSyncModel(
                 vault,

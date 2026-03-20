@@ -49,9 +49,11 @@ class VaultRoutingState(RoutingState):
         self,
         tx_builder: TransactionBuilder,
         strategy_universe: TradingStrategyUniverse,
+        token_cache: TokenDiskCache | None = None,
     ):
         self.tx_builder = tx_builder
         self.strategy_universe = strategy_universe
+        self.token_cache = token_cache
 
     def get_reserve_asset(self) -> AssetIdentifier:
         return self.strategy_universe.get_reserve_asset()
@@ -89,9 +91,11 @@ class VaultRouting(RoutingModel):
         universe: StrategyExecutionUniverse,
         execution_details: dict
     ) -> VaultRoutingState:
+        self.token_cache = execution_details.get("token_cache")
         return VaultRoutingState(
             tx_builder=execution_details["tx_builder"],
             strategy_universe=cast(TradingStrategyUniverse, universe),
+            token_cache=self.token_cache,
         )
 
     def perform_preflight_checks_and_logging(self,
@@ -129,7 +133,11 @@ class VaultRouting(RoutingModel):
         web3 = tx_builder.web3
         address = HexAddress(tx_builder.get_token_delivery_address())
 
-        target_vault = get_vault_for_pair(web3, trade.pair)
+        target_vault = get_vault_for_pair(
+            web3,
+            trade.pair,
+            token_cache=routing_state.token_cache,
+        )
 
         if trade.is_buy():
             token_in = reserve_asset
@@ -283,10 +291,19 @@ class VaultRouting(RoutingModel):
         stop_on_execution_failure=False,
     ):
 
-        vault = get_vault_for_pair(web3, trade.pair)
+        vault = get_vault_for_pair(
+            web3,
+            trade.pair,
+            token_cache=getattr(self, "token_cache", None),
+        )
         logger.info(f"Settling vault trade: #{trade.trade_id} for {vault}")
 
-        base_token_details = fetch_erc20_details(web3, trade.pair.base.checksum_address)
+        base_token_details = fetch_erc20_details(
+            web3,
+            trade.pair.base.checksum_address,
+            cache=getattr(self, "token_cache", None),
+            chain_id=trade.pair.base.chain_id,
+        )
         # quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
         reserve = trade.reserve_currency
 

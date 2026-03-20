@@ -61,8 +61,15 @@ class AaveV3RoutingState(EthereumRoutingState):
         tx_builder: Optional[HotWalletTransactionBuilder]=None,
         swap_gas_limit=None,
         approve_gas_limit=None,
+        token_cache=None,
     ):
-        super().__init__(pair_universe, tx_builder=tx_builder, swap_gas_limit=swap_gas_limit, approve_gas_limit=approve_gas_limit)
+        super().__init__(
+            pair_universe,
+            tx_builder=tx_builder,
+            swap_gas_limit=swap_gas_limit,
+            approve_gas_limit=approve_gas_limit,
+            token_cache=token_cache,
+        )
     
     def __repr__(self):
         return f"<OneDeltaRoutingState Tx builder: {self.tx_builder} web3: {self.web3}>"
@@ -332,8 +339,18 @@ class AaveV3Routing(EthereumRoutingModel):
         stop_on_execution_failure=False,
     ):
         pricing_pair = trade.pair.get_pricing_pair()
-        base_token_details = fetch_erc20_details(web3, pricing_pair.base.checksum_address)
-        quote_token_details = fetch_erc20_details(web3, pricing_pair.quote.checksum_address)
+        base_token_details = fetch_erc20_details(
+            web3,
+            pricing_pair.base.checksum_address,
+            cache=getattr(self, "token_cache", None),
+            chain_id=pricing_pair.base.chain_id,
+        )
+        quote_token_details = fetch_erc20_details(
+            web3,
+            pricing_pair.quote.checksum_address,
+            cache=getattr(self, "token_cache", None),
+            chain_id=pricing_pair.quote.chain_id,
+        )
         reserve = trade.reserve_currency
         tx = get_swap_transactions(trade)
         aave_v3_deployment = fetch_aave_v3_deployment(web3, tx.contract_address, ZERO_ADDRESS_STR, ZERO_ADDRESS_STR)

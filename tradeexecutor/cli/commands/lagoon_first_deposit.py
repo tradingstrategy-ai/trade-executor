@@ -17,7 +17,7 @@ from typing import Optional
 from eth_defi.erc_4626.vault_protocol.lagoon.testing import fund_lagoon_vault
 from typer import Option
 
-from tradeexecutor.cli.bootstrap import prepare_executor_id
+from tradeexecutor.cli.bootstrap import prepare_cache_and_token_cache, prepare_executor_id
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.commands.lagoon_utils import (
@@ -36,6 +36,7 @@ def lagoon_first_deposit(
 
     strategy_file: Path = shared_options.strategy_file,
     state_file: Optional[Path] = shared_options.state_file,
+    cache_path: Optional[Path] = shared_options.cache_path,
 
     log_level: str = shared_options.log_level,
     json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
@@ -54,6 +55,7 @@ def lagoon_first_deposit(
     vault_address: Optional[str] = shared_options.vault_address,
     vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
 
+    unit_testing: bool = shared_options.unit_testing,
     simulate: bool = shared_options.simulate,
 
     deposit_amount: float = Option(..., envvar="DEPOSIT_AMOUNT", help="Amount of denomination token (e.g. USDC) to deposit into the vault."),
@@ -74,9 +76,16 @@ def lagoon_first_deposit(
     assert vault_adapter_address, "VAULT_ADAPTER_ADDRESS is required"
     assert deposit_amount > 0, f"DEPOSIT_AMOUNT must be positive, got {deposit_amount}"
 
+    cache_path, token_cache = prepare_cache_and_token_cache(
+        id,
+        cache_path,
+        unit_testing=unit_testing,
+    )
+
     context = create_lagoon_command_context(
         private_key=private_key,
         vault_address=vault_address,
+        token_cache=token_cache,
         simulate=simulate,
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,

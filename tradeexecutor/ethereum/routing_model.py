@@ -559,9 +559,14 @@ class EthereumRoutingModel(RoutingModel):
         assert universe.data_universe.pairs is not None, "Pairs are required"
 
         tx_builder = execution_details.get("tx_builder")
+        token_cache = execution_details.get("token_cache")
         if tx_builder is not None:
             # Modern code path
-            routing_state = Routing_State(universe.data_universe.pairs, tx_builder=tx_builder)
+            routing_state = Routing_State(
+                universe.data_universe.pairs,
+                tx_builder=tx_builder,
+                token_cache=token_cache,
+            )
         else:
             # Legacy code path - do not use
 
@@ -577,11 +582,20 @@ class EthereumRoutingModel(RoutingModel):
             logger.info("Estimated gas fees for chain %d: %s", web3.eth.chain_id, fees)
             if hot_wallet is not None:
                 tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
-                routing_state = Routing_State(universe.data_universe.pairs, tx_builder)
+                routing_state = Routing_State(
+                    universe.data_universe.pairs,
+                    tx_builder,
+                    token_cache=token_cache,
+                )
             else:
-                routing_state = Routing_State(universe.data_universe.pairs,
-                                              tx_builder=None,
-                                              web3=web3)
+                routing_state = Routing_State(
+                    universe.data_universe.pairs,
+                    tx_builder=None,
+                    web3=web3,
+                    token_cache=token_cache,
+                )
+
+        self.token_cache = token_cache
 
         return routing_state
     
