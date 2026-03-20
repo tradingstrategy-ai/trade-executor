@@ -27,6 +27,7 @@ from eth_defi.hyperliquid.session import (
     create_hyperliquid_session,
 )
 from eth_typing import HexAddress
+from tradingstrategy.chain import ChainId
 
 from tradeexecutor.state.identifier import (
     AssetIdentifier,
@@ -92,12 +93,28 @@ def create_hypercore_vault_pair(
     :return:
         Fully configured vault pair for Hypercore vault.
     """
+    # Always use the synthetic Hypercore chain ID (9999) for vault pairs,
+    # not the HyperEVM chain ID (999) that the quote token lives on.
+    # Hypercore vaults are native Hyperliquid constructs, not EVM contracts.
+    # is_hyperliquid_vault() relies on chain_id == 9999 for detection.
+    hypercore_chain = ChainId.hypercore.value
     base = AssetIdentifier(
-        chain_id=quote.chain_id,
+        chain_id=hypercore_chain,
         address=CORE_WRITER_ADDRESS,
         token_symbol="HYPERCORE-VAULT",
         decimals=6,
     )
+
+    # Re-home the quote token to the Hypercore chain so the pair's
+    # cross-chain assertion passes. The USDC contract address is the same
+    # on both HyperEVM (999) and Hypercore (9999).
+    if quote.chain_id != hypercore_chain:
+        quote = AssetIdentifier(
+            chain_id=hypercore_chain,
+            address=quote.address,
+            token_symbol=quote.token_symbol,
+            decimals=quote.decimals,
+        )
 
     vault_addr = vault_address.lower() if isinstance(vault_address, str) else vault_address
 

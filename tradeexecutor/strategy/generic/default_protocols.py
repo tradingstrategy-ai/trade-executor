@@ -118,11 +118,11 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
     vaults_done = False
     hypercore_vault_done = False
 
-    # Both chain IDs are needed:
-    # - 9999 (ChainId.hypercore): synthetic ID for vault-universe-exported pairs
-    # - 999 (ChainId.hyperliquid): HyperEVM, used by manually created vault pairs
-    #   in live Lagoon deployments
-    hypercore_chain_ids = {ChainId.hypercore.value, ChainId.hyperliquid.value}
+    # Only 9999 (ChainId.hypercore): our synthetic chain ID for native
+    # Hyperliquid vaults. Chain 999 (HyperEVM) is the actual L1 and does
+    # NOT host these vaults. create_hypercore_vault_pair() re-homes pairs
+    # to 9999.
+    hypercore_chain_ids = {ChainId.hypercore.value}
 
     # Only set up routing for exchanges that have actual loaded pairs.
     # Exchange metadata from vault universes may include exchanges on
