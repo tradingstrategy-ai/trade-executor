@@ -109,7 +109,7 @@ logger = logging.getLogger(__name__)
 trading_strategy_engine_version = "0.5"
 
 CHAIN_ID = ChainId.cross_chain
-PRIMARY_CHAIN_ID = ChainId.ethereum
+PRIMARY_CHAIN_ID = ChainId.hyperliquid
 HYPERCORE_CHAIN_ID = ChainId.hypercore
 
 EXCHANGES = ("uniswap-v2", "uniswap-v3")
