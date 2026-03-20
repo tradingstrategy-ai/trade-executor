@@ -342,13 +342,13 @@ class AaveV3Routing(EthereumRoutingModel):
         base_token_details = fetch_erc20_details(
             web3,
             pricing_pair.base.checksum_address,
-            cache=getattr(self, "token_cache", None),
+            cache=self.token_cache,
             chain_id=pricing_pair.base.chain_id,
         )
         quote_token_details = fetch_erc20_details(
             web3,
             pricing_pair.quote.checksum_address,
-            cache=getattr(self, "token_cache", None),
+            cache=self.token_cache,
             chain_id=pricing_pair.quote.chain_id,
         )
         reserve = trade.reserve_currency

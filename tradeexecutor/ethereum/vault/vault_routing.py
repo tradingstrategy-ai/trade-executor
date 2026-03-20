@@ -85,6 +85,7 @@ class VaultRouting(RoutingModel):
         # 2.5% is the maximum relative difference for redeeming vault shares,
         # when checking onchain balance vs our internal accounting
         self.redeem_epsilon = redeem_epsilon
+        self.token_cache: TokenDiskCache | None = None
 
     def create_routing_state(
         self,
@@ -294,14 +295,14 @@ class VaultRouting(RoutingModel):
         vault = get_vault_for_pair(
             web3,
             trade.pair,
-            token_cache=getattr(self, "token_cache", None),
+            token_cache=self.token_cache,
         )
         logger.info(f"Settling vault trade: #{trade.trade_id} for {vault}")
 
         base_token_details = fetch_erc20_details(
             web3,
             trade.pair.base.checksum_address,
-            cache=getattr(self, "token_cache", None),
+            cache=self.token_cache,
             chain_id=trade.pair.base.chain_id,
         )
         # quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)

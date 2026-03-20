@@ -11,6 +11,7 @@ from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
+from eth_defi.token import TokenDiskCache
 from web3 import Web3
 
 from tradeexecutor.cli.bootstrap import create_state_store, create_web3_config
@@ -60,7 +61,11 @@ def create_hot_wallet(web3: Web3, private_key: str) -> HotWallet:
     return hot_wallet
 
 
-def load_lagoon_vault(web3: Web3, vault_address: str, token_cache=None) -> LagoonVault:
+def load_lagoon_vault(
+    web3: Web3,
+    vault_address: str,
+    token_cache: TokenDiskCache | None = None,
+) -> LagoonVault:
     """Load a Lagoon vault instance from its address."""
     vault = create_vault_instance(
         web3,
@@ -78,7 +83,7 @@ def create_lagoon_command_context(
     *,
     private_key: str,
     vault_address: str,
-    token_cache=None,
+    token_cache: TokenDiskCache | None = None,
     simulate: bool = False,
     chain_name: str | None = None,
     **rpc_kwargs,

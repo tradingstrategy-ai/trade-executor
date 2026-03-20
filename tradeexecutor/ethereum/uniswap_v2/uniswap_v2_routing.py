@@ -358,13 +358,13 @@ class UniswapV2Routing(EthereumRoutingModel):
         base_token_details = fetch_erc20_details(
             web3,
             trade.pair.base.checksum_address,
-            cache=getattr(self, "token_cache", None),
+            cache=self.token_cache,
             chain_id=trade.pair.base.chain_id,
         )
         quote_token_details = fetch_erc20_details(
             web3,
             trade.pair.quote.checksum_address,
-            cache=getattr(self, "token_cache", None),
+            cache=self.token_cache,
             chain_id=trade.pair.quote.chain_id,
         )
         reserve = trade.reserve_currency

@@ -78,6 +78,7 @@ class EthereumRoutingModel(RoutingModel):
 
         super().__init__(allowed_intermediary_pairs, reserve_token_address)
         self.chain_id = chain_id
+        self.token_cache = None
 
     def make_direct_trade(self,
                           routing_state: EthereumRoutingState,
