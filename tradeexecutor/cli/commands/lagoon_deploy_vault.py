@@ -86,6 +86,7 @@ from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.ethereum.token_cache import get_default_token_cache
 from tradeexecutor.monkeypatch.web3 import \
     construct_sign_and_send_raw_middleware
+from tradeexecutor.utils.key import ensure_0x_prefixed_private_key
 
 
 @app.command()
@@ -174,7 +175,7 @@ def lagoon_deploy_vault(
 
     logger.info("Connected to chain %s", chain_id.name)
 
-    hot_wallet = HotWallet.from_private_key(private_key)
+    hot_wallet = HotWallet.from_private_key(ensure_0x_prefixed_private_key(private_key))
     hot_wallet.sync_nonce(web3)
     web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
 

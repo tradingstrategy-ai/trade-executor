@@ -68,6 +68,7 @@ from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalType, ApprovalModel
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_model import AssetManagementMode, ExecutionModel
+from tradeexecutor.utils.key import ensure_0x_prefixed_private_key
 from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
@@ -257,7 +258,7 @@ def create_execution_and_sync_model(
     elif asset_management_mode.is_live_trading():
         assert private_key, "Private key is needed for live trading"
         web3 = web3config.get_default()
-        hot_wallet = HotWallet.from_private_key(private_key)
+        hot_wallet = HotWallet.from_private_key(ensure_0x_prefixed_private_key(private_key))
         sync_model = create_sync_model(
             asset_management_mode,
             web3,
@@ -706,4 +707,3 @@ def configure_default_chain(
             # All chain_ids are 56 (BNB Chain)
             logger.warning("Legacy strategy module: makes assumption of BNB Chain")
             web3config.set_default_chain(ChainId.bsc)
-

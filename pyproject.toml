@@ -25,9 +25,9 @@ requests = "^2.27.1"
 # https://github.com/tradingstrategy-ai/trade-executor/commit/52c5e9b1597c8f74ec2535b564f3b4d178780590
 ft-pandas-ta = "^0.3.15"
 numpy = "<3"
-tqdm-loggable = "^0.3"
+tqdm-loggable = "^0.4"
 
-web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras = ["data", "test", "web3v6"]}
+web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras = ["data", "test", "hypersync"]}
 
 # AttributeError: 'MathBlockParser' object has no attribute 'parse_axt_heading'
 # https://github.com/lepture/mistune/issues/403
@@ -116,6 +116,8 @@ telegram-bot-logger = {git = "https://github.com/tradingstrategy-ai/telegram_bot
 
 # CCXT for reading CEX exchange account balances (Aster, Binance, Bybit, OKX, etc.)
 ccxt = {version = "^4.5.16", optional = true}
+# Full-screen TUI for interactive trade-ui CLI command (DataTable, arrow navigation)
+textual = "^8.1.1"
 
 [tool.poetry.extras]
 
@@ -198,6 +200,7 @@ filterwarnings = [
   "ignore::DeprecationWarning:pandas.*:",
   "ignore::DeprecationWarning:quantstats.*:",
   "ignore::DeprecationWarning:pkg_resources.*:",
+  "ignore:websockets\\.legacy is deprecated.*:DeprecationWarning",
 ]
 markers = [
   "slow_test_group: manually separated group of tests that take individually long time to run",
