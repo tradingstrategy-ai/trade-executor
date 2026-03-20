@@ -201,20 +201,24 @@ class HypercoreVaultPricing(PricingModel):
     def get_buy_price(self, ts, pair, reserve) -> TradePricing:
         return self._make_pricing(pair, token_in=reserve)
 
-    def _get_share_price_from_candles(self, pair: TradingPairIdentifier) -> float | None:
-        """Look up the latest vault share price from candle data.
+    def _get_share_price_from_candles(self, ts: datetime.datetime, pair: TradingPairIdentifier) -> float | None:
+        """Look up the vault share price from candle data at a given timestamp.
 
         Returns the approximate share price from the Trading Strategy
         data pipeline, or ``None`` if no candle data is available.
         These are periodic snapshots, not real-time prices.
+
+        :param ts:
+            Timestamp to look up the price at. Uses a 7-day tolerance
+            to find the nearest candle.
         """
         if self.candle_universe is None:
             return None
         try:
-            now = pd.Timestamp(native_datetime_utc_now(), tz="UTC")
+            when = pd.Timestamp(ts, tz="UTC")
             price, _ = self.candle_universe.get_price_with_tolerance(
                 pair.internal_id,
-                when=now,
+                when=when,
                 tolerance=pd.Timedelta("7D"),
             )
             return float(price)
@@ -225,7 +229,7 @@ class HypercoreVaultPricing(PricingModel):
         # Return approximate share price from candle data if available.
         # This is a data-pipeline approximation, not a live price.
         # Falls back to 1.0 (the deposit/withdrawal face value).
-        candle_price = self._get_share_price_from_candles(pair)
+        candle_price = self._get_share_price_from_candles(ts, pair)
         if candle_price is not None:
             return candle_price
         return 1.0

@@ -278,6 +278,7 @@ def trade_ui(
 
     # Map trade mode to make_test_trade parameters
     buy_only = trade_mode == "open"
+    close_only = trade_mode == "close"
 
     if simulate:
         logger.info("Simulating test trade")
@@ -303,6 +304,7 @@ def trade_ui(
             max_slippage=max_slippage,
             pair=selected_pair,
             buy_only=buy_only,
+            close_only=close_only,
             test_short=test_short,
             amount=amount,
         )

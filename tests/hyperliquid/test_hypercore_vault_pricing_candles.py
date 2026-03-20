@@ -11,6 +11,7 @@ approximate share prices from candle data while execution pricing
 5. Verify get_mid_price falls back to 1.0 when no candle data
 """
 
+import datetime
 from decimal import Decimal
 
 import pandas as pd
@@ -179,6 +180,37 @@ def test_mid_price_falls_back_without_candle_universe(
     ts = native_datetime_utc_now()
     mid_price = pricing.get_mid_price(ts, vault_pair)
     assert mid_price == pytest.approx(1.0)
+
+
+def test_mid_price_uses_caller_timestamp(
+    candle_universe: GroupedCandleUniverse,
+    vault_pair: TradingPairIdentifier,
+):
+    """Verify get_mid_price respects the caller's timestamp, not wall-clock time.
+
+    1. Create a pricing model backed by candle data (last 48 hours)
+    2. Query at a timestamp far in the past (beyond 7-day tolerance)
+    3. Assert it falls back to 1.0 because no candle is within tolerance
+    4. Query at a timestamp within the candle range
+    5. Assert it returns the known share price
+    """
+    pricing = HypercoreVaultPricing(
+        value_func=None,
+        simulate=True,
+        candle_universe=candle_universe,
+    )
+
+    # 2-3. Timestamp far in the past — beyond 7-day tolerance window
+    ancient_ts = datetime.datetime(2020, 1, 1)
+    mid_price = pricing.get_mid_price(ancient_ts, vault_pair)
+    assert mid_price == pytest.approx(1.0), (
+        "get_mid_price should fall back to 1.0 for timestamps outside candle data range"
+    )
+
+    # 4-5. Timestamp within the candle range
+    recent_ts = native_datetime_utc_now()
+    mid_price = pricing.get_mid_price(recent_ts, vault_pair)
+    assert mid_price == pytest.approx(KNOWN_SHARE_PRICE, abs=0.01)
 
 
 def test_tui_get_price_displays_candle_share_price(
