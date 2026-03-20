@@ -44,6 +44,7 @@ from ..slippage import configure_max_slippage_tolerance
 from ..testtrade import make_test_trade
 from ..trade_ui_tui import display_pair_selection_ui
 from ...ethereum.routing_state import OutOfBalance
+from ...ethereum.web3config import SUPPORTED_CHAINS, _get_chain_slug, filter_rpc_kwargs_by_chain
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -119,7 +120,7 @@ def trade_ui(
         engine_version=mod.trading_strategy_engine_version,
     )
 
-    web3config = create_web3_config(
+    rpc_kwargs = dict(
         json_rpc_binance=json_rpc_binance,
         json_rpc_polygon=json_rpc_polygon,
         json_rpc_avalanche=json_rpc_avalanche,
@@ -131,6 +132,19 @@ def trade_ui(
         json_rpc_base_sepolia=json_rpc_base_sepolia,
         json_rpc_hyperliquid=json_rpc_hyperliquid,
         json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
+    )
+
+    # In simulate mode, only fork the chain the strategy needs
+    # to avoid launching unnecessary Anvil instances
+    if simulate:
+        chain_id = mod.get_default_chain_id()
+        if chain_id and chain_id in SUPPORTED_CHAINS:
+            chain_slug = _get_chain_slug(chain_id)
+            logger.info("Simulate mode: restricting Anvil fork to %s", chain_slug)
+            rpc_kwargs = filter_rpc_kwargs_by_chain(chain_slug, **rpc_kwargs)
+
+    web3config = create_web3_config(
+        **rpc_kwargs,
         unit_testing=unit_testing,
         simulate=simulate,
     )
@@ -175,7 +189,8 @@ def trade_ui(
     store = create_state_store(Path(state_file))
 
     if store.is_pristine():
-        assert name, "Strategy state file has not been created. You must pass strategy name to create."
+        if not name:
+            name = id
         state = store.create(name)
     else:
         state = store.load()

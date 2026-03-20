@@ -52,7 +52,8 @@ from tradeexecutor.curator.hyperliquid_vault_universe import \
     build_hyperliquid_vault_universe
 from tradeexecutor.exchange_account.allocation import (
     calculate_portfolio_target_value, get_redeemable_portfolio_capital)
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.identifier import (AssetIdentifier,
+                                            TradingPairIdentifier)
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.alpha_model import AlphaModel
@@ -106,8 +107,8 @@ logger = logging.getLogger(__name__)
 
 trading_strategy_engine_version = "0.5"
 
-CHAIN_ID = ChainId.cross_chain
-PRIMARY_CHAIN_ID = ChainId.hyperliquid
+CHAIN_ID = ChainId.hyperliquid
+PRIMARY_CHAIN_ID = CHAIN_ID
 HYPERCORE_CHAIN_ID = ChainId.hypercore
 
 EXCHANGES = ("uniswap-v2", "uniswap-v3")

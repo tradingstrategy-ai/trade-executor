@@ -1,19 +1,26 @@
-"""Rich-based TUI for interactive test trade pair selection.
+"""Textual full-screen TUI for interactive test trade pair selection.
 
-Displays the strategy's trading universe in a table with balances,
-lets the user pick a pair, amount and trade mode, then returns
-the selections for the command module to execute.
+Displays the strategy's trading universe in a navigatable DataTable
+with a status bar showing wallet balances. The user picks a pair,
+amount and trade mode, then the selections are returned for execution.
+
+Controls:
+- Arrow keys (up/down) navigate the table
+- Enter confirms the selection
+- Esc / q cancels and exits
 """
 
 import logging
 from decimal import Decimal
 
 import pandas as pd
-from rich.console import Console
-from rich.panel import Panel
-from rich.prompt import IntPrompt, Prompt
-from rich.table import Table
-from tradingstrategy.chain import ChainId
+from rich.text import Text
+from textual import on
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.widgets import DataTable, Footer, Static, Input, RadioSet, RadioButton
+from textual.containers import Vertical, Horizontal
+from textual.screen import ModalScreen
 from tradingstrategy.liquidity import LiquidityDataUnavailable
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -23,10 +30,10 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 logger = logging.getLogger(__name__)
 
 
-def _get_tvl(strategy_universe: TradingStrategyUniverse, pair: TradingPairIdentifier, tvl_now) -> str:
-    """Look up TVL for a pair, returning a formatted string."""
+def _get_tvl_value(strategy_universe: TradingStrategyUniverse, pair: TradingPairIdentifier, tvl_now) -> float | None:
+    """Look up raw TVL value for a pair."""
     if not strategy_universe.data_universe.liquidity:
-        return "N/A"
+        return None
 
     try:
         tvl, _ = strategy_universe.data_universe.liquidity.get_liquidity_with_tolerance(
@@ -34,9 +41,16 @@ def _get_tvl(strategy_universe: TradingStrategyUniverse, pair: TradingPairIdenti
             when=tvl_now,
             tolerance=pd.Timedelta("90D"),
         )
-        return f"${tvl:,.0f}"
+        return float(tvl)
     except LiquidityDataUnavailable:
-        return "N/A"
+        return None
+
+
+def _format_tvl(tvl: float | None) -> Text:
+    """Format a TVL value as a right-aligned Rich Text."""
+    if tvl is None:
+        return Text("N/A", style="dim", justify="right")
+    return Text(f"${tvl:,.0f}", justify="right")
 
 
 def _get_position_info(state: State, pair: TradingPairIdentifier) -> str:
@@ -47,6 +61,119 @@ def _get_position_info(state: State, pair: TradingPairIdentifier) -> str:
     quantity = position.get_quantity()
     symbol = pair.base.token_symbol
     return f"{quantity} {symbol}"
+
+
+def _get_pair_symbol(pair: TradingPairIdentifier) -> str:
+    """Get display symbol for a pair."""
+    if pair.is_vault():
+        return pair.get_vault_name() or f"{pair.base.token_symbol}/{pair.quote.token_symbol}"
+    return f"{pair.base.token_symbol}/{pair.quote.token_symbol}"
+
+
+class PairSelectionApp(App):
+    """Full-screen Textual app for selecting a trading pair."""
+
+    CSS = """
+    #status-bar {
+        dock: top;
+        height: 1;
+        background: $accent;
+        color: $text;
+        padding: 0 1;
+    }
+    #pair-table {
+        height: 1fr;
+    }
+    """
+
+    BINDINGS = [
+        Binding("escape", "quit_app", "Cancel", show=True),
+        Binding("q", "quit_app", "Quit", show=True),
+        Binding("enter", "select_pair", "Select", show=True),
+    ]
+
+    def __init__(
+        self,
+        pairs: list[TradingPairIdentifier],
+        strategy_universe: TradingStrategyUniverse,
+        state: State,
+        tvl_now,
+        reserve_balance: float,
+        reserve_symbol: str,
+        gas_balance: float,
+    ):
+        super().__init__()
+        self.pairs = pairs
+        self.strategy_universe = strategy_universe
+        self.state = state
+        self.tvl_now = tvl_now
+        self.reserve_balance = reserve_balance
+        self.reserve_symbol = reserve_symbol
+        self.gas_balance = gas_balance
+
+        # Compute TVL values and sort by TVL descending
+        self.tvl_values = {
+            id(pair): _get_tvl_value(strategy_universe, pair, tvl_now)
+            for pair in pairs
+        }
+        self.sorted_pairs = sorted(
+            pairs,
+            key=lambda p: self.tvl_values.get(id(p)) or 0,
+            reverse=True,
+        )
+        self.selected_pair: TradingPairIdentifier | None = None
+
+    def compose(self) -> ComposeResult:
+        status_text = (
+            f"Reserve: {self.reserve_balance:.4f} {self.reserve_symbol}"
+            f"    Gas: {self.gas_balance:.6f}"
+            f"    Pairs: {len(self.sorted_pairs)}"
+        )
+        yield Static(status_text, id="status-bar")
+        yield DataTable(id="pair-table", cursor_type="row")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        table = self.query_one(DataTable)
+        table.add_column("#", key="idx", width=5)
+        table.add_column("Symbol", key="symbol", width=40)
+        table.add_column("Exchange", key="exchange", width=20)
+        table.add_column("TVL", key="tvl", width=14)
+        table.add_column("Position", key="position", width=20)
+
+        for idx, pair in enumerate(self.sorted_pairs, 1):
+            symbol = _get_pair_symbol(pair)
+            exchange = pair.exchange_name or ""
+            tvl = _format_tvl(self.tvl_values.get(id(pair)))
+            position = _get_position_info(self.state, pair)
+
+            table.add_row(
+                str(idx),
+                symbol,
+                exchange,
+                tvl,
+                position,
+                key=str(idx),
+            )
+
+        table.focus()
+
+    def action_quit_app(self) -> None:
+        self.selected_pair = None
+        self.exit()
+
+    def action_select_pair(self) -> None:
+        table = self.query_one(DataTable)
+        if table.cursor_row is not None and table.cursor_row < len(self.sorted_pairs):
+            self.selected_pair = self.sorted_pairs[table.cursor_row]
+            self.exit()
+
+    @on(DataTable.RowSelected)
+    def on_row_selected(self, event: DataTable.RowSelected) -> None:
+        row_idx = event.cursor_row
+        if row_idx < len(self.sorted_pairs):
+            self.selected_pair = self.sorted_pairs[row_idx]
+            self.exit()
 
 
 def display_pair_selection_ui(
@@ -64,16 +191,10 @@ def display_pair_selection_ui(
         Tuple of (selected_pair, amount, trade_mode) where trade_mode
         is ``"open_close"``, ``"open"`` or ``"close"``.
     """
-    console = Console()
+    from rich.console import Console
+    from rich.prompt import Prompt
 
-    # Header panel with balances
-    header_text = (
-        f"Reserve: [bold]{reserve_balance:.4f} {reserve_symbol}[/bold]    "
-        f"Gas: [bold]{gas_balance:.6f}[/bold]"
-    )
-    console.print(Panel(header_text, title="Wallet balances"))
-
-    # Build the pairs table
+    # Compute TVL timestamp
     tvl_now = None
     if strategy_universe.data_universe.liquidity:
         from eth_defi.compat import native_datetime_utc_now
@@ -83,41 +204,24 @@ def display_pair_selection_ui(
         else:
             tvl_now = now_
 
-    table = Table(title="Trading pairs")
-    table.add_column("#", justify="right", style="cyan")
-    table.add_column("Symbol", style="bold")
-    table.add_column("Exchange", style="dim")
-    table.add_column("TVL", justify="right")
-    table.add_column("Position", style="yellow")
-
-    for idx, pair in enumerate(pairs, 1):
-        if pair.is_vault():
-            symbol = pair.get_vault_name() or f"{pair.base.token_symbol}/{pair.quote.token_symbol}"
-        else:
-            symbol = f"{pair.base.token_symbol}/{pair.quote.token_symbol}"
-
-        exchange = pair.exchange_name or ""
-        tvl = _get_tvl(strategy_universe, pair, tvl_now)
-        position_info = _get_position_info(state, pair)
-
-        table.add_row(str(idx), symbol, exchange, tvl, position_info)
-
-    console.print(table)
-
-    # Prompt: pair selection
-    pair_idx = IntPrompt.ask(
-        f"Select pair [1-{len(pairs)}]",
-        default=1,
-        console=console,
+    # Full-screen Textual pair selection
+    app = PairSelectionApp(
+        pairs=pairs,
+        strategy_universe=strategy_universe,
+        state=state,
+        tvl_now=tvl_now,
+        reserve_balance=reserve_balance,
+        reserve_symbol=reserve_symbol,
+        gas_balance=gas_balance,
     )
-    while pair_idx < 1 or pair_idx > len(pairs):
-        console.print(f"[red]Please enter a number between 1 and {len(pairs)}[/red]")
-        pair_idx = IntPrompt.ask(
-            f"Select pair [1-{len(pairs)}]",
-            default=1,
-            console=console,
-        )
-    selected_pair = pairs[pair_idx - 1]
+    app.run()
+
+    selected_pair = app.selected_pair
+    if selected_pair is None:
+        raise KeyboardInterrupt("Selection cancelled")
+
+    console = Console()
+    console.print(f"\nSelected: [bold]{_get_pair_symbol(selected_pair)}[/bold]")
 
     # Prompt: amount
     amount_str = Prompt.ask(
