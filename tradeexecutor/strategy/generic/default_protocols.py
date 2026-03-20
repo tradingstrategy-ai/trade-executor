@@ -117,6 +117,10 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
 
     vaults_done = False
     hypercore_vault_done = False
+    # Exchange IDs that belong to Hypercore vaults. Collected from pair
+    # metadata AND chain_id so that even old cached data (where
+    # vault_protocol may be missing) is handled correctly.
+    hypercore_exchange_ids = set()
 
     # Detect Hypercore vault pairs from other_data
     if "other_data" in pairs_df.columns:
@@ -131,7 +135,8 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
                         )
                     )
                     hypercore_vault_done = True
-                    non_dex_exchange_ids.add(row["exchange_id"])
+                hypercore_exchange_ids.add(row["exchange_id"])
+                non_dex_exchange_ids.add(row["exchange_id"])
 
     # Only set up routing for exchanges that have actual loaded pairs.
     # Exchange metadata from vault universes may include exchanges on
@@ -150,15 +155,25 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
             # falling through to the Uniswap branch.
             continue
         elif xc.exchange_type == ExchangeType.erc_4626_vault:
+            # Skip if this exchange belongs to a known Hypercore vault,
+            # or if it's a vault exchange on the Hypercore chain (9999)
+            # with stale metadata. Hypercore vaults are NOT ERC-4626
+            # contracts — calling ERC-4626 methods on them fails.
+            # Genuine ERC-4626 vaults on other chains are kept.
+            is_hypercore = (
+                xc.exchange_id in hypercore_exchange_ids
+                or (hypercore_vault_done and xc.chain_id in (ChainId.hypercore.value, ChainId.hyperliquid.value))
+            )
+            if is_hypercore:
+                continue
             if not vaults_done:
-                # All ERC-4626 vaults use the same route
                 configs.add(
                     ProtocolRoutingId(
                         router_name="vault",
                         exchange_slug=None,
                     )
                 )
-                vault_done = True
+                vaults_done = True
         else:
             configs.add(
                 ProtocolRoutingId(
