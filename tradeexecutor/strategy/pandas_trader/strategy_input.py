@@ -1023,7 +1023,14 @@ def _calculate_and_cache_candle_width(index: pd.DatetimeIndex | pd.MultiIndex) -
         #        (2854997, '2024-04-04 22:00:00'),
         index = index.get_level_values(1)
 
-    assert isinstance(index, pd.DatetimeIndex), f"Got index: {index}"
+    # Arrow-backed timestamp indices (dtype timestamp[ns][pyarrow]) are not
+    # recognised as pd.DatetimeIndex.  Convert them so the candle-width cache
+    # and downstream consumers work correctly.
+    if not isinstance(index, pd.DatetimeIndex):
+        try:
+            index = pd.DatetimeIndex(index)
+        except Exception:
+            raise AssertionError(f"Cannot convert index to DatetimeIndex: {index}")
 
     key = id(index)
 

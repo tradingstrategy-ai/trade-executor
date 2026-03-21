@@ -57,6 +57,32 @@ from eth_defi.compat import native_datetime_utc_now
 logger = logging.getLogger(__name__)
 
 
+def _normalise_pyarrow_timestamps(df: pd.DataFrame) -> pd.DataFrame:
+    """Convert any PyArrow-backed timestamp columns to standard pandas datetime64.
+
+    Newer versions of the ``tradingstrategy`` data client may return
+    DataFrames that use PyArrow-backed dtypes.  When a
+    ``timestamp[ns][pyarrow]`` column is promoted to a DataFrame index
+    via :meth:`~pandas.DataFrame.set_index`, pandas creates a plain
+    :class:`~pandas.Index` instead of a :class:`~pandas.DatetimeIndex`.
+    This breaks downstream code that asserts on ``DatetimeIndex``.
+
+    Call this helper immediately after loading a DataFrame from the
+    client so that the rest of the pipeline can rely on native pandas
+    dtypes.
+    """
+    if df is None or df.empty:
+        return df
+
+    for col in df.columns:
+        if hasattr(df[col].dtype, "pyarrow_dtype"):
+            import pyarrow as pa
+            if pa.types.is_timestamp(df[col].dtype.pyarrow_dtype):
+                df[col] = pd.to_datetime(df[col].to_numpy())
+
+    return df
+
+
 #: Unique hash string for each universe.
 #:
 #: Semi-human readable, is used for filenames on a disk.
@@ -1404,16 +1430,26 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         if dataset.liquidity is not None:
 
-            if isinstance(dataset.liquidity.index, pd.Index):
-                # Unindexed data
-                dataset.liquidity = dataset.liquidity.set_index("timestamp", drop=False)
+            if isinstance(dataset.liquidity.index, pd.DatetimeIndex):
+                # Already indexed by timestamp — nothing to do
+                pass
             elif isinstance(dataset.liquidity.index, pd.MultiIndex):
                 # The hack we had to do to in CachedHTTPTransport.fetch_tvl_by_pair_ids() because
                 # for some reason pd.concat() kept failing on Github.
                 # Goes from (pair_id, timestamp) -> (timestamp) index
                 dataset.liquidity = dataset.liquidity.reset_index(level=0, drop=True)
+            elif "timestamp" in dataset.liquidity.columns:
+                # Unindexed data with a timestamp column — ensure the column
+                # is a standard pandas datetime64 before promoting it to the
+                # index.  PyArrow-backed timestamps (e.g. timestamp[ns][pyarrow])
+                # produce a plain pd.Index instead of pd.DatetimeIndex, so we
+                # convert explicitly.
+                dataset.liquidity["timestamp"] = pd.to_datetime(
+                    dataset.liquidity["timestamp"].to_numpy()
+                )
+                dataset.liquidity = dataset.liquidity.set_index("timestamp", drop=False)
 
-            assert isinstance(dataset.liquidity.index, pd.DatetimeIndex), f"Got {dataset.liquidity.index.__class__}"
+            assert isinstance(dataset.liquidity.index, pd.DatetimeIndex), f"Got {dataset.liquidity.index.__class__}, columns: {list(dataset.liquidity.columns)}, dtypes: {dict(dataset.liquidity.dtypes)}, len: {len(dataset.liquidity)}"
             liquidity_universe = GroupedLiquidityUniverse(
                 dataset.liquidity,
                 time_bucket=dataset.liquidity_time_bucket,
@@ -2334,7 +2370,9 @@ def _filter_trading_strategy_website_vault_price_history(
     filtered_df = vault_prices_df.loc[mask].copy()
 
     filtered_df["address"] = filtered_df["address"].astype(str).str.lower()
-    filtered_df["timestamp"] = pd.to_datetime(filtered_df["timestamp"])
+    # Force native datetime64 — pd.to_datetime() preserves pyarrow-backed
+    # dtypes which break isinstance(..., pd.DatetimeIndex) checks downstream.
+    filtered_df["timestamp"] = pd.to_datetime(filtered_df["timestamp"].to_numpy())
 
     if start_at is not None:
         filtered_df = filtered_df.loc[filtered_df["timestamp"] >= pd.Timestamp(start_at)]
@@ -2735,6 +2773,7 @@ def load_partial_data(
                 start_time=data_load_start_at,
                 end_time=end_at,
             )
+            candles_df = _normalise_pyarrow_timestamps(candles_df)
 
             candles_pairs = set(candles_df["pair_id"].unique())
             asked_pairs = set(our_pair_ids)
@@ -2757,6 +2796,7 @@ def load_partial_data(
                     start_time=data_load_start_at,
                     end_time=end_at,
                 )
+                stop_loss_candles = _normalise_pyarrow_timestamps(stop_loss_candles)
             else:
                 stop_loss_candles = None
         else:
@@ -2776,6 +2816,7 @@ def load_partial_data(
                     end_time=end_at,
                     query_type=liquidity_query_type,
                 )
+                liquidity_df = _normalise_pyarrow_timestamps(liquidity_df)
             else:
                 liquidity_df = pd.DataFrame()
         elif preloaded_tvl_df is not None:
@@ -3090,6 +3131,7 @@ def load_pair_data_for_single_exchange(
             start_time=start_time,
             end_time=end_time,
         )
+        candles = _normalise_pyarrow_timestamps(candles)
 
         stop_loss_candles = None
         if stop_loss_time_bucket:
@@ -3104,6 +3146,7 @@ def load_pair_data_for_single_exchange(
                     start_time=start_time,
                     end_time=end_time,
                 )
+                stop_loss_candles = _normalise_pyarrow_timestamps(stop_loss_candles)
 
         if liquidity:
             raise NotImplemented("Partial liquidity data loading is not yet supported")
