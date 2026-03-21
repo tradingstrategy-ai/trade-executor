@@ -619,6 +619,8 @@ def lagoon_deploy_vault(
     # production: bool = Option(False, envvar="PRODUCTION", help="Set production metadata flag true for the deployment."),
     simulate: bool = Option(False, envvar="SIMULATE", help="Simulate deployment using Anvil mainnet work, when doing manual deployment testing."),
     rpc_proxy_verbose: bool = Option(False, envvar="RPC_PROXY_VERBOSE", help="Log all RPC proxy requests and responses at INFO level for debugging upstream provider issues."),
+    anvil_verbose: bool = Option(False, envvar="ANVIL_VERBOSE", help="Run the Anvil subprocess in verbose mode."),
+    anvil_inherit_stdio: bool = Option(False, envvar="ANVIL_INHERIT_STDIO", help="Let Anvil write directly to the container stdout/stderr so its logs appear live in Docker logs."),
     etherscan_api_key: str | None = Option(None, envvar="ETHERSCAN_API_KEY", help="Etherscan API key needed to verify contracts on a production deployment."),
     verifier: str = Option("etherscan", envvar="VERIFIER", help="Contract verifier to use: etherscan, blockscout, sourcify, oklink. Default: etherscan."),
     verifier_url: str | None = Option(None, envvar="VERIFIER_URL", help="Verifier API URL for Blockscout or custom verifiers (e.g., https://explorer.derive.xyz/api). Required when verifier=blockscout."),
@@ -686,6 +688,8 @@ def lagoon_deploy_vault(
         mev_endpoint_disabled=True,
         simulate_http_timeout=(3.0, 90.0) if simulate else None,
         rpc_proxy_verbose=rpc_proxy_verbose,
+        anvil_verbose=anvil_verbose,
+        anvil_inherit_stdio=anvil_inherit_stdio,
     )
 
     if not web3config.has_any_connection():

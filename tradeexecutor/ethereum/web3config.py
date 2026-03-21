@@ -181,6 +181,8 @@ class Web3Config:
         simulate_http_timeout: tuple[float, float] | None = None,
         chain_id: ChainId | None = None,
         rpc_proxy_verbose: bool=False,
+        anvil_verbose: bool=False,
+        anvil_inherit_stdio: bool=False,
     ) -> MultiProviderWeb3:
         """Create a new Web3.py connection.
 
@@ -207,6 +209,12 @@ class Web3Config:
         :param rpc_proxy_verbose:
             Log all RPC proxy requests and responses at INFO level.
 
+        :param anvil_verbose:
+            Start Anvil in verbose mode.
+
+        :param anvil_inherit_stdio:
+            Let Anvil write directly to the parent process stdout/stderr.
+
         """
 
         assert type(configuration_line) == str, f"Got: {configuration_line.__class__}"
@@ -226,6 +234,8 @@ class Web3Config:
             launch_kwargs = {
                 "attempts": 1,
                 "proxy_multiple_upstream": proxy_config,
+                "verbose": anvil_verbose,
+                "inherit_stdio": anvil_inherit_stdio,
             }
 
             # HyperEVM contract deployments need the large-block gas limit even on
@@ -394,6 +404,8 @@ class Web3Config:
        mev_endpoint_disabled: bool=False,
        simulate_http_timeout: tuple[float, float] | None = None,
        rpc_proxy_verbose: bool=False,
+       anvil_verbose: bool=False,
+       anvil_inherit_stdio: bool=False,
        **kwargs
     ) -> "Web3Config":
         """Setup connections based on given RPC URLs.
@@ -429,6 +441,8 @@ class Web3Config:
                     simulate_http_timeout=simulate_http_timeout,
                     chain_id=chain_id,
                     rpc_proxy_verbose=rpc_proxy_verbose,
+                    anvil_verbose=anvil_verbose,
+                    anvil_inherit_stdio=anvil_inherit_stdio,
                 )
 
                 if simulate:
