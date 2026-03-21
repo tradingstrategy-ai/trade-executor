@@ -137,6 +137,7 @@ def lagoon_first_deposit(
         trading_strategy_module_address=vault_adapter_address,
         amount=amount,
         hot_wallet=hot_wallet,
+        token_cache=token_cache,
     )
 
     # Report on-chain balances after deposit

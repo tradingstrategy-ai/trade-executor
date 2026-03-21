@@ -129,6 +129,7 @@ def lagoon_redeem(
         vault_address=vault_address,
         redeemer=hot_wallet.address,
         hot_wallet=hot_wallet,
+        token_cache=token_cache,
     )
 
     # Phase 2: Settle (post valuation + settleDeposit which also settles redeems)
