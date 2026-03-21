@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import enum
+import logging
 from collections import defaultdict
 
 import pandas as pd
@@ -40,13 +41,16 @@ def calculate_asset_weights(
         - USD value of the asset in the portfolio in the given time
     """
 
-    # Add cash rows
+    # Add cash rows.
+    # Derive reserve cash as total_equity - open_position_equity to avoid
+    # double-counting: free_cash can lag behind position openings at the
+    # same timestamp, so using it directly would inflate the total.
     reserve_asset, price = state.portfolio.get_default_reserve_asset()
     reserve_asset_symbol = reserve_asset.token_symbol
     reserve_rows = [{
         "timestamp": ps.calculated_at,
         "asset": reserve_asset_symbol,
-        "value": ps.free_cash,
+        "value": ps.total_equity - (ps.open_position_equity or 0),
         "kind": "reserve"
     } for ps in state.stats.portfolio]
 
@@ -79,13 +83,34 @@ def calculate_asset_weights(
     series = df["value"]
 
     # For each timestamp, we may have multiple entries of the same asset
-    # - in this case take the sum the assets
-    # These may cause e.g. by simulated deposit events.
-    # 2021-06-01  USDC     1.000000e+06
-    #             WBTC     9.840778e+05
-    #             USDC     1.000000e+04
-    # import ipdb ; ipdb.set_trace()
-    series_deduped = series[~series.index.duplicated(keep='last')]
+    # — sum them so no value is silently dropped.  This happens when two
+    # different positions share the same chart label (e.g. two vaults on
+    # different chains with the same name) or during simulated deposits.
+    series_deduped = series.groupby(level=[0, 1]).sum()
+
+    # Sanity check: sum of asset values at each timestamp should match
+    # total_equity from portfolio stats.  A large divergence indicates a
+    # timing alignment bug in how reserve cash or position values are
+    # collected.
+    _EQUITY_EPSILON = 1.0  # $1 tolerance
+    totals_by_ts = series_deduped.groupby(level=0).sum()
+    expected_equity = pd.Series(
+        {pd.Timestamp(ps.calculated_at, unit="s"): ps.total_equity for ps in state.stats.portfolio},
+    )
+    expected_equity = expected_equity.reindex(totals_by_ts.index)
+    equity_diff = (totals_by_ts - expected_equity).abs()
+    max_diff = equity_diff.max()
+    if max_diff > _EQUITY_EPSILON:
+        logger = logging.getLogger(__name__)
+        worst_ts = equity_diff.idxmax()
+        logger.warning(
+            "Asset weight totals diverge from total_equity by up to $%.2f at %s "
+            "(expected $%.2f, got $%.2f). This may indicate a timing alignment bug.",
+            max_diff,
+            worst_ts,
+            expected_equity[worst_ts],
+            totals_by_ts[worst_ts],
+        )
 
     # Get out all Aave aUSDC positions
     credit_supply_symbols = [p.pair.base.token_symbol for p in state.portfolio.get_all_positions() if p.is_credit_supply()]
