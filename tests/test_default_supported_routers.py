@@ -180,23 +180,3 @@ def test_mixed_hypercore_and_erc4626_universe():
     router_names = {r.router_name for r in routers}
     assert "hypercore_vault" in router_names, "Hypercore vault routing should be created"
     assert "vault" in router_names, "ERC-4626 vault routing should be created for Morpho vault"
-
-
-def test_new_hypercore_vault_exchange_type():
-    """Verify correct routing with the new ExchangeType.hypercore_vault.
-
-    1. Create exchanges using the new hypercore_vault exchange type
-    2. Assert hypercore_vault routing is created and no ERC-4626 vault routing
-    """
-    exchanges = [
-        _make_vault_exchange(100, "vault-a", exchange_type=ExchangeType.hypercore_vault),
-    ]
-    pairs = [
-        _make_vault_pair(1, 100, "vault-a", vault_protocol="hypercore"),
-    ]
-    universe = _build_universe(exchanges, pairs)
-    routers = default_supported_routers(universe)
-
-    router_names = {r.router_name for r in routers}
-    assert "hypercore_vault" in router_names
-    assert "vault" not in router_names

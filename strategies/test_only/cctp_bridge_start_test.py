@@ -282,9 +282,12 @@ def decide_trades(
         p.pair.is_cctp_bridge() and p.pair.quote.chain_id == SOURCE_CHAIN_ID.value
         for p in all_positions
     )
-    has_reverse_bridge = any(
-        p.pair.is_cctp_bridge() and p.pair.quote.chain_id == DEST_CHAIN_ID.value
-        for p in all_positions
+    forward_bridge_open = next(
+        (
+            p for p in state.portfolio.open_positions.values()
+            if p.pair.is_cctp_bridge() and p.pair.quote.chain_id == SOURCE_CHAIN_ID.value
+        ),
+        None,
     )
 
     # Cycle 1: Bridge USDC to Base
@@ -310,11 +313,14 @@ def decide_trades(
         return position_manager.close_position(weth_pos)
 
     # Cycle 4: Bridge USDC back from Base to Arbitrum
-    if has_closed_weth and not has_reverse_bridge:
-        pair = universe.get_pair_by_human_description(
-            (DEST_CHAIN_ID, "cctp-bridge", "USDC", "USDC"),
-        )
-        return position_manager.open_spot(pair, value=REVERSE_BRIDGE_AMOUNT)
+    if has_closed_weth and forward_bridge_open is not None:
+        # Close the original bridge instead of opening a second reverse-bridge
+        # position.
+        #
+        # The production accounting model expects bridge-back to be a sell on
+        # the existing bridge position. Modelling this as a fresh position keeps
+        # the transfer alive on-chain but leaves stale bridge equity behind.
+        return position_manager.close_position(forward_bridge_open)
 
     # Cycle 5: No-op
     return []

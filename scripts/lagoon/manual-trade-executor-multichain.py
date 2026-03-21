@@ -875,14 +875,14 @@ def _run_test_lifecycle(
         run_cli(["start"], bridge_back_env)
 
         state = load_state(state_file)
-        reverse_bridge_positions = [
-            pos for pos in state.portfolio.open_positions.values()
-            if pos.pair.is_cctp_bridge() and pos.pair.quote.chain_id == BASE_SEPOLIA_CHAIN_ID
+        closed_bridge_positions = [
+            pos for pos in state.portfolio.closed_positions.values()
+            if pos.pair.is_cctp_bridge() and pos.pair.quote.chain_id == ARBITRUM_SEPOLIA_CHAIN_ID
         ]
-        assert len(reverse_bridge_positions) == 1, \
-            f"Expected 1 reverse bridge position after cycle 4, got {len(reverse_bridge_positions)}"
+        assert len(closed_bridge_positions) == 1, \
+            f"Expected 1 closed bridge position after cycle 4, got {len(closed_bridge_positions)}"
 
-        reverse_trade = list(reverse_bridge_positions[0].trades.values())[0]
+        reverse_trade = list(closed_bridge_positions[0].trades.values())[-1]
         assert reverse_trade.get_status() == TradeStatus.success, \
             f"Reverse bridge trade status: {reverse_trade.get_status()}"
 

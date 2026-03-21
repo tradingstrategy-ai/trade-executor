@@ -146,7 +146,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
         else:
             fee = None
 
-    if dex_pair.dex_type in (ExchangeType.erc_4626_vault, ExchangeType.hypercore_vault):
+    if dex_pair.dex_type == ExchangeType.erc_4626_vault:
         # For vaults, exchange_name is set as the vault protocol name e.g. "morpho" or "hypercore"
         kind = TradingPairKind.vault
     elif dex_pair.dex_type == ExchangeType.derive:
