@@ -137,10 +137,9 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
             continue
 
         # Detect Hypercore vaults by exchange type OR by chain_id fallback
-        # for stale cached data that still uses erc_4626_vault type.
+        # from the current Trading Strategy dataset representation.
         is_hypercore_vault = (
-            xc.exchange_type == ExchangeType.hypercore_vault
-            or (xc.exchange_type == ExchangeType.erc_4626_vault and xc.chain_id in hypercore_chain_ids)
+            xc.exchange_type == ExchangeType.erc_4626_vault and xc.chain_id in hypercore_chain_ids
         )
 
         if is_hypercore_vault:

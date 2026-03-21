@@ -1,13 +1,13 @@
 """Test that a single Hypercore vault loads correctly through load_partial_data.
 
 Validates that Hypercore vaults exported from the vault universe have the
-correct exchange_type (hypercore_vault, not erc_4626_vault) and that
+current exchange_type representation (erc_4626_vault) and that
 default_supported_routers creates hypercore_vault routing, not ERC-4626.
 
 1. Fetch vault universe from the Trading Strategy API
 2. Pick one Hypercore vault (chain_id=9999)
-3. Check export_as_exchange returns ExchangeType.hypercore_vault
-4. Check export_as_trading_pair returns dex_type=ExchangeType.hypercore_vault
+3. Check export_as_exchange returns ExchangeType.erc_4626_vault
+4. Check export_as_trading_pair returns dex_type=ExchangeType.erc_4626_vault
 5. Build a strategy universe from load_partial_data with that vault
 6. Verify default_supported_routers returns hypercore_vault, not vault
 """
@@ -62,11 +62,11 @@ def hypercore_vault_universe(client):
     reason="Set TRADING_STRATEGY_API_KEY to run this test",
 )
 def test_hypercore_vault_export_types(hypercore_vault_universe):
-    """Verify Hypercore vault exports use ExchangeType.hypercore_vault.
+    """Verify Hypercore vault exports use the current exchange type encoding.
 
     1. Get a single Hypercore vault from the universe
-    2. Check export_as_exchange returns hypercore_vault
-    3. Check export_as_trading_pair returns hypercore_vault as dex_type
+    2. Check export_as_exchange returns erc_4626_vault
+    3. Check export_as_trading_pair returns erc_4626_vault as dex_type
     """
     # 1. Get the vault
     vault = next(hypercore_vault_universe.iterate_vaults())
@@ -74,16 +74,16 @@ def test_hypercore_vault_export_types(hypercore_vault_universe):
 
     # 2. Check exchange export
     xc_data = vault.export_as_exchange()
-    assert xc_data["exchange_type"] == ExchangeType.hypercore_vault, (
+    assert xc_data["exchange_type"] == ExchangeType.erc_4626_vault, (
         f"Hypercore vault {vault.name} (protocol_slug={vault.protocol_slug}) "
-        f"exports as {xc_data['exchange_type']} instead of hypercore_vault"
+        f"exports as {xc_data['exchange_type']} instead of erc_4626_vault"
     )
 
     # 3. Check trading pair export
     pair_data = vault.export_as_trading_pair()
-    assert pair_data["dex_type"] == ExchangeType.hypercore_vault, (
+    assert pair_data["dex_type"] == ExchangeType.erc_4626_vault, (
         f"Hypercore vault {vault.name} exports pair dex_type as "
-        f"{pair_data['dex_type']} instead of hypercore_vault"
+        f"{pair_data['dex_type']} instead of erc_4626_vault"
     )
 
 
