@@ -736,6 +736,7 @@ def lagoon_deploy_vault(
             existing_safe_address=existing_safe_address,
             performance_fee=performance_fee,
             management_fee=management_fee,
+            token_cache=token_cache,
         )
         web3config.close()
         logger.info("All ok.")
@@ -991,6 +992,7 @@ def _deploy_multichain(
     existing_safe_address: str | None = None,
     performance_fee: int = DEFAULT_PERFORMANCE_RATE,
     management_fee: int = DEFAULT_MANAGEMENT_RATE,
+    token_cache: TokenDiskCache | None = None,
 ):
     """Deploy multichain Lagoon vault from a strategy file.
 

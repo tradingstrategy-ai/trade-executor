@@ -31,7 +31,7 @@ def test_cli_strategy_file_parses_multiple_asset_managers_from_env(mocker, tmp_p
     deployer_address = Web3.to_checksum_address("0x00000000000000000000000000000000000000dE")
     primary_address = "0x00000000000000000000000000000000000000a1"
     secondary_address = "0x00000000000000000000000000000000000000b2"
-    captured: dict[str, list[str]] = {}
+    captured: dict[str, object] = {}
 
     class DummyWeb3Config:
         connections = {"base": object()}
@@ -44,6 +44,7 @@ def test_cli_strategy_file_parses_multiple_asset_managers_from_env(mocker, tmp_p
 
     def fake_deploy_multichain(**kwargs):
         captured["asset_managers"] = kwargs["asset_managers"]
+        captured["token_cache"] = kwargs["token_cache"]
 
     environment = {
         "PATH": os.environ["PATH"],
@@ -59,7 +60,8 @@ def test_cli_strategy_file_parses_multiple_asset_managers_from_env(mocker, tmp_p
 
     mocker.patch("tradeexecutor.cli.commands.lagoon_deploy_vault.setup_logging", return_value=logging.getLogger("test"))
     mocker.patch("tradeexecutor.cli.commands.lagoon_deploy_vault.prepare_cache", return_value=tmp_path)
-    mocker.patch("tradeexecutor.cli.commands.lagoon_deploy_vault.prepare_token_cache", return_value=SimpleNamespace(filename=":memory:"))
+    token_cache = SimpleNamespace(filename=":memory:")
+    mocker.patch("tradeexecutor.cli.commands.lagoon_deploy_vault.prepare_token_cache", return_value=token_cache)
     mocker.patch("tradeexecutor.cli.commands.lagoon_deploy_vault.collect_rpc_kwargs", return_value={})
     mocker.patch("tradeexecutor.cli.commands.lagoon_deploy_vault.create_web3_config", return_value=DummyWeb3Config())
     mocker.patch("tradeexecutor.cli.commands.lagoon_deploy_vault.create_hot_wallet", return_value=SimpleNamespace(address=deployer_address))
@@ -73,3 +75,4 @@ def test_cli_strategy_file_parses_multiple_asset_managers_from_env(mocker, tmp_p
         Web3.to_checksum_address(primary_address),
         Web3.to_checksum_address(secondary_address),
     ]
+    assert captured["token_cache"] is token_cache
