@@ -100,7 +100,15 @@ def load_latest_live_cycle_end(state: State) -> datetime.datetime | None:
     if state.uptime.cycles_completed_at:
         latest_cycle = max(state.uptime.cycles_completed_at.keys())
         latest_cycle_end = state.uptime.cycles_completed_at[latest_cycle]
-        assert isinstance(latest_cycle_end, datetime.datetime)
+        # After JSON round-trip, dataclasses_json deserialises datetime values
+        # in Dict[int, datetime] as epoch timestamps (int/float), not datetime objects.
+        # States created before other_data tracking hit this fallback path.
+        # Fix for hyper-ai production crash 2026-03-21.
+        if isinstance(latest_cycle_end, str):
+            latest_cycle_end = datetime.datetime.fromisoformat(latest_cycle_end)
+        elif isinstance(latest_cycle_end, (int, float)):
+            latest_cycle_end = datetime.datetime.fromtimestamp(latest_cycle_end, datetime.UTC).replace(tzinfo=None)
+        assert isinstance(latest_cycle_end, datetime.datetime), f"Unexpected uptime cycle end type: {type(latest_cycle_end)}"
         return latest_cycle_end
 
     return None
