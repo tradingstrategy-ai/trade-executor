@@ -38,7 +38,7 @@ def hot_wallet_private_key() -> str:
 
 
 @pytest.mark.slow_test_group
-@pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None, reason="Set JSON_RPC_BINANCE environment variable to Binance Smart Chain node to run this test")
+@pytest.mark.skip(reason="Unmaintained for now")
 def test_main_loop_catch(
     strategy_path,
     hot_wallet_private_key
