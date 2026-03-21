@@ -161,6 +161,7 @@ def test_quickswap_momentum(
         "CONFIRMATION_BLOCK_COUNT": "8",
         "MAX_POSITIONS": "2",
         "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
     }
 
     # Don't use CliRunner.invoke() here,

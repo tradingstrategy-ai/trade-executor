@@ -72,7 +72,7 @@ def anvil_bnb_chain_fork(logger, large_busd_holder) -> str:
     try:
         yield launch.json_rpc_url
     finally:
-        launch.close(log_level=logging.INFO)
+        launch.close(log_level=logging.WARNING)
 
 
 @pytest.fixture

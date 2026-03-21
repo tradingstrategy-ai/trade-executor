@@ -15,6 +15,7 @@ def test_cli_show_positions_long(mocker):
     environment = {
         "STATE_FILE": path.as_posix(),
         "TX_TYPE": "all",
+        "LOG_LEVEL": "disabled",
     }
 
     mocker.patch.dict("os.environ", environment, clear=True)
@@ -35,6 +36,7 @@ def test_cli_show_valuation_long(mocker):
 
     environment = {
         "STATE_FILE": path.as_posix(),
+        "LOG_LEVEL": "disabled",
     }
 
     mocker.patch.dict("os.environ", environment, clear=True)

@@ -163,6 +163,7 @@ def environment(
         "TEST_USDC_SOURCE_ADDRESS": usdc_source.address,
         "TEST_USDC_DEST_ADDRESS": usdc_dest.address,
         "PATH": os.environ.get("PATH", ""),
+        "LOG_LEVEL": "disabled",
     }
 
 
