@@ -16,10 +16,10 @@ from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, crea
 from ..log import setup_logging
 from ...analysis.pair import display_strategy_universe
 from ...strategy.approval import UncheckedApprovalModel
-from ...strategy.bootstrap import import_strategy_file, make_factory_from_strategy_mod
+from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.cycle import CycleDuration, snap_to_previous_tick
 from ...strategy.description import StrategyExecutionDescription
-from ...strategy.execution_context import console_command_execution_context, ExecutionContext, ExecutionMode
+from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
 from ...strategy.pandas_trader.indicator import calculate_and_load_indicators_inline, MemoryIndicatorStorage
 from ...strategy.run_state import RunState
@@ -28,7 +28,6 @@ from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...utils.cpu import get_safe_max_workers_count
 from . import shared_options
 from ...utils.timer import timed_task
-from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
@@ -214,4 +213,3 @@ def check_universe(
         logger.info("Strategy module lacks create_indicators()")
 
     logger.info("All ok")
-

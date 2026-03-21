@@ -55,6 +55,54 @@ This document tracks small, low-risk cleanups that can be completed and verified
    Verification:
    - `source .local-test.env && poetry run pytest tests/test_approval_in_terminal.py --log-cli-level=info`
 
+5. Clean up import clutter in the `check-universe` CLI command
+
+   Status:
+   - Done
+
+   Scope:
+   - Remove duplicate imports and obvious unused imports in `tradeexecutor/cli/commands/check_universe.py`
+   - Keep behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/cli/test_cli_check_universe.py --log-cli-level=info`
+
+6. Clean up import clutter in the `blacklist` CLI command
+
+   Status:
+   - Done
+
+   Scope:
+   - Remove duplicate imports and obvious unused imports in `tradeexecutor/cli/commands/blacklist.py`
+   - Keep behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/cli/test_cli_blacklist.py --log-cli-level=info`
+
+7. Clean up small logging-module clutter in webhook HTTP logging
+
+   Status:
+   - Done
+
+   Scope:
+   - Remove obvious unused imports in `tradeexecutor/webhook/http_log.py`
+   - Keep HTTP log behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/cli/test_http_log.py --log-cli-level=info`
+
+8. Clean up duplicate imports in strategy metadata
+
+   Status:
+   - Done
+
+   Scope:
+   - Remove duplicate imports in `tradeexecutor/state/metadata.py`
+   - Keep metadata serialisation and webhook-facing behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/web/test_webhook_api.py --log-cli-level=info`
+
 ## Execution notes
 
 - Issues should be landed one by one, with the relevant verification run after each change.

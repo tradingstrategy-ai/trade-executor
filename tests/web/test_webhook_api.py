@@ -98,7 +98,7 @@ def test_web_notify_not_implemented():
 
     1. Send a webhook notification request to the API.
     2. Confirm the endpoint refuses the call with a `501` response.
-    3. Check the response text explains that the endpoint is not implemented yet.
+    3. Check the response detail explains that the endpoint is not implemented yet.
     """
 
     # 1. Send a webhook notification request to the API.
@@ -107,8 +107,8 @@ def test_web_notify_not_implemented():
     # 2. Confirm the endpoint refuses the call with a `501` response.
     assert resp.status_code == 501
 
-    # 3. Check the response text explains that the endpoint is not implemented yet.
-    assert "Not implemented" in resp.text
+    # 3. Check the response detail explains that the endpoint is not implemented yet.
+    assert "Not implemented" in resp.detail
 
 
 # OSError: [Errno 98] Address already in use

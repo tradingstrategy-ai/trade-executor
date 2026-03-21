@@ -18,7 +18,6 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import ZeroExAddress
 from tradeexecutor.strategy.execution_model import AssetManagementMode
-from eth_defi.compat import native_datetime_utc_now
 
 
 class EnzymeSmartContracts(TypedDict):
