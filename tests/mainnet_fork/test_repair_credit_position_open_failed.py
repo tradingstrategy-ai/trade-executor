@@ -7,7 +7,7 @@ from pathlib import Path
 import os
 
 import pytest
-from _pytest.fixtures import FixtureRequest
+from pytest import FixtureRequest
 
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 

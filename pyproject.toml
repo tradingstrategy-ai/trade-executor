@@ -163,7 +163,7 @@ ccxt = ["ccxt"]
 [tool.poetry.group.dev.dependencies]
 flaky = "^3.7.0"
 ipdb = "^0.13.9"
-pytest = "^7.2.2"
+pytest = "^8.2"
 pytest-mock = "^3.11.1"
 pytest-reverse = "^1.5.0"
 pytest-timeout = "^2.3.1"

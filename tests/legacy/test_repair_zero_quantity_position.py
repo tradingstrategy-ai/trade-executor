@@ -5,7 +5,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from _pytest.fixtures import FixtureRequest
+from pytest import FixtureRequest
 
 from eth_defi.provider.anvil import launch_anvil, AnvilLaunch
 from tradeexecutor.cli.commands.app import app

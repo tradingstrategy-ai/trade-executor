@@ -3,7 +3,7 @@ import datetime
 import secrets
 
 import pytest
-from _pytest.fixtures import FixtureRequest
+from pytest import FixtureRequest
 from eth_account import Account
 from eth_defi.provider.anvil import launch_anvil, AnvilLaunch
 from eth_defi.chain import install_chain_middleware
@@ -207,4 +207,3 @@ def test_hot_wallet_sync_model_sync_twice(
     )
 
     assert len(reserve_position.balance_updates) == 1
-
