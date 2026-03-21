@@ -17,10 +17,16 @@ tests
 .claude
 .idea
 .ruff_cache
+docs
+examples
+env
+tmp-probe-cache
+~
 
 # Large subdirs in deps
 deps/web3-ethereum-defi/dist
 deps/web3-ethereum-defi/docs
+deps/web3-ethereum-defi/logs
 deps/web3-ethereum-defi/tests
 deps/web3-ethereum-defi/contracts/aave-v2
 deps/web3-ethereum-defi/contracts/aave-v3-deploy
@@ -40,5 +46,5 @@ deps/web3-ethereum-defi/contracts/dhedge
 deps/web3-ethereum-defi/contracts/orderly-contract-evm
 deps/trading-strategy/dist
 deps/trading-strategy/docs
+deps/trading-strategy/extras
 deps/trading-strategy/tests
-
