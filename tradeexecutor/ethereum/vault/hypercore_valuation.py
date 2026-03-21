@@ -289,7 +289,10 @@ class HypercoreVaultPricing(PricingModel):
             snapshot = self._get_market_snapshot(timestamp, pair)
             return float(snapshot.tvl_usd)
 
-        raise NotImplementedError("Hypercore vault TVL needs a replay market-data source in live-style tests")
+        # Live trading: fetch TVL from the Hyperliquid vaultDetails API.
+        # TVL is the sum of all followers' equity in the vault.
+        info = self._get_vault_info(pair)
+        return float(sum(f.vault_equity for f in info.followers))
 
     def get_max_deposit(
         self,
