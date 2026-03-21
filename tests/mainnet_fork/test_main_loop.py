@@ -36,7 +36,7 @@ from tradeexecutor.strategy.qstrader import HAS_QSTRADER
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None or not HAS_QSTRADER, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+pytestmark = pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None or not HAS_QSTRADER, reason="Set JSON_RPC_BINANCE environment variable to Binance Smart Chain node to run this test")
 
 
 @pytest.fixture(scope="module")
@@ -257,4 +257,3 @@ def test_main_loop_success(
 
         cycle_1 = debug_dump[1]
         assert len(cycle_1["approved_trades"]) == 2
-

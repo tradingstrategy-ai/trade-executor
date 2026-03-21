@@ -18,7 +18,7 @@ from tradeexecutor.state.state import State
 
 pytestmark = pytest.mark.skipif(
     os.environ.get("TRADING_STRATEGY_API_KEY") is None or os.environ.get("JSON_RPC_BINANCE") is None,
-    reason="Set TRADING_STRATEGY_API_KEY and BNB_CHAIN_JSON_RPC environment variable to run this test module"
+    reason="Set TRADING_STRATEGY_API_KEY and JSON_RPC_BINANCE environment variable to run this test module"
 )
 
 
@@ -40,7 +40,7 @@ def unit_test_cache_path():
     return path
 
 
-@pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+@pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None, reason="Set JSON_RPC_BINANCE environment variable to Binance Smart Chain node to run this test")
 def test_cli_check_wallet(
     logger,
     strategy_path: str,
@@ -141,7 +141,7 @@ def test_cli_legacy_backtest(
         raise AssertionError("runner launch failed")
 
 
-@pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+@pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None, reason="Set JSON_RPC_BINANCE environment variable to Binance Smart Chain node to run this test")
 def test_cli_live_trading(
         logger,
         strategy_path: str,
@@ -222,7 +222,7 @@ def test_cli_version(
     assert result.exit_code == 0
 
 
-@pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+@pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None, reason="Set JSON_RPC_BINANCE environment variable to Binance Smart Chain node to run this test")
 def test_cli_console(
         logger,
         strategy_path: str,
