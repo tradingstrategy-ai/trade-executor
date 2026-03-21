@@ -183,6 +183,7 @@ class Web3Config:
         rpc_proxy_verbose: bool=False,
         anvil_verbose: bool=False,
         anvil_inherit_stdio: bool=False,
+        anvil_warm_up_block: bool=False,
     ) -> MultiProviderWeb3:
         """Create a new Web3.py connection.
 
@@ -215,6 +216,10 @@ class Web3Config:
         :param anvil_inherit_stdio:
             Let Anvil write directly to the parent process stdout/stderr.
 
+        :param anvil_warm_up_block:
+            Force one full-block read against the local Anvil fork during
+            startup to front-load a potentially expensive lazy fork fetch.
+
         """
 
         assert type(configuration_line) == str, f"Got: {configuration_line.__class__}"
@@ -236,6 +241,7 @@ class Web3Config:
                 "proxy_multiple_upstream": proxy_config,
                 "verbose": anvil_verbose,
                 "inherit_stdio": anvil_inherit_stdio,
+                "warm_up_block": anvil_warm_up_block,
             }
 
             # HyperEVM contract deployments need the large-block gas limit even on
@@ -406,6 +412,7 @@ class Web3Config:
        rpc_proxy_verbose: bool=False,
        anvil_verbose: bool=False,
        anvil_inherit_stdio: bool=False,
+       anvil_warm_up_block: bool=False,
        **kwargs
     ) -> "Web3Config":
         """Setup connections based on given RPC URLs.
@@ -443,6 +450,7 @@ class Web3Config:
                     rpc_proxy_verbose=rpc_proxy_verbose,
                     anvil_verbose=anvil_verbose,
                     anvil_inherit_stdio=anvil_inherit_stdio,
+                    anvil_warm_up_block=anvil_warm_up_block,
                 )
 
                 if simulate:

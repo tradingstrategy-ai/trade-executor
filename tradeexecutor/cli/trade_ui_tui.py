@@ -180,11 +180,13 @@ class TradeDialog(ModalScreen):
         pair_symbol: str,
         reserve_symbol: str,
         default_mode: str,
+        min_amount: Decimal | None = None,
     ):
         super().__init__()
         self.pair_symbol = pair_symbol
         self.reserve_symbol = reserve_symbol
         self.default_mode = default_mode
+        self.min_amount = min_amount
         self.result: tuple[str, Decimal] | None = None
 
     def compose(self) -> ComposeResult:
@@ -197,7 +199,8 @@ class TradeDialog(ModalScreen):
                 yield RadioButton("Buy only (open position)", value=mode_index == 1)
                 yield RadioButton("Sell only (close position)", value=mode_index == 2)
             yield Label(f"Amount ({self.reserve_symbol}):")
-            yield Input(value="5", id="amount-input", type="number")
+            default_amount = str(self.min_amount) if self.min_amount else "5"
+            yield Input(value=default_amount, id="amount-input", type="number")
             yield Label("", id="error-label")
             with Horizontal(id="button-row"):
                 yield Button("Cancel", variant="default", id="cancel-btn")
@@ -229,6 +232,13 @@ class TradeDialog(ModalScreen):
                 raise InvalidOperation()
         except (InvalidOperation, ValueError):
             self.query_one("#error-label", Label).update("Invalid amount — enter a positive number")
+            return
+
+        if self.min_amount is not None and amount < self.min_amount:
+            self.query_one("#error-label", Label).update(
+                f"Minimum amount is {self.min_amount} {self.reserve_symbol} "
+                f"(includes activation cost on first deposit)"
+            )
             return
 
         radio_set = self.query_one("#mode-radio", RadioSet)
@@ -388,10 +398,15 @@ class PairSelectionApp(App):
         else:
             default_mode = "open_close"
 
+        # On Hyperliquid the first vault deposit requires a 2 USDC
+        # activation cost on top of the 5 USDC minimum deposit.
+        min_amount = Decimal("7") if self.is_hyperliquid else None
+
         dialog = TradeDialog(
             pair_symbol=_get_pair_symbol(pair),
             reserve_symbol=self.reserve_symbol,
             default_mode=default_mode,
+            min_amount=min_amount,
         )
 
         def on_dialog_dismiss(result: tuple[str, Decimal] | None) -> None:

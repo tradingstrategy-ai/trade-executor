@@ -114,6 +114,7 @@ def create_web3_config(
     rpc_proxy_verbose: bool = False,
     anvil_verbose: bool = False,
     anvil_inherit_stdio: bool = False,
+    anvil_warm_up_block: bool = False,
 ) -> Web3Config:
     """Create Web3 connection to the live node we are executing against.
 
@@ -159,6 +160,7 @@ def create_web3_config(
         rpc_proxy_verbose=rpc_proxy_verbose,
         anvil_verbose=anvil_verbose,
         anvil_inherit_stdio=anvil_inherit_stdio,
+        anvil_warm_up_block=anvil_warm_up_block,
     )
 
     # Allow externally-created Anvil forks to signal mainnet fork mode

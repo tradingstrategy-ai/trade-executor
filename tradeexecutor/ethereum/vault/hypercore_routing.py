@@ -475,11 +475,19 @@ class HypercoreVaultRouting(RoutingModel):
         # raw, 6 decimals), determined by reverse-engineering the
         # Hyperliquid web UI. See eth_defi.hyperliquid.core_writer.
         if trade.is_buy():
+            activation_hint = (
+                f" Note: {activation_cost_raw / 1e6:.0f} USDC was deducted for "
+                f"HyperCore account activation on first deposit — "
+                f"minimum initial deposit is "
+                f"{(MINIMUM_VAULT_DEPOSIT + activation_cost_raw) / 1e6:.0f} USDC."
+                if activation_cost_raw > 0 else ""
+            )
             assert raw_amount >= MINIMUM_VAULT_DEPOSIT, (
                 f"Vault deposit amount {raw_amount / 1e6:.2f} USDC "
                 f"({raw_amount} raw) is below the Hyperliquid minimum "
                 f"of {MINIMUM_VAULT_DEPOSIT / 1e6:.0f} USDC. "
                 f"Hyperliquid silently rejects deposits below this threshold."
+                f"{activation_hint}"
             )
 
         if trade.is_buy():
