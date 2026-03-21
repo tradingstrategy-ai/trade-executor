@@ -5,7 +5,7 @@ To run:
 .. code-block:: shell
 
     export TRADING_STRATEGY_API_KEY="secret-token:tradingstrategy-6ce98...."
-    export BNB_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
+    export JSON_RPC_BINANCE="https://bsc-dataseed.binance.org/"
     pytest --log-cli-level=info -s -k test_bnb_chain_16h_momentum
 
 """

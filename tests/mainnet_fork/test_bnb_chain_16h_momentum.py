@@ -5,7 +5,7 @@ To run:
 .. code-block:: shell
 
     export TRADING_STRATEGY_API_KEY="secret-token:tradingstrategy-6ce98...."
-    export BNB_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
+    export JSON_RPC_BINANCE="https://bsc-dataseed.binance.org/"
     pytest --log-cli-level=info -s -k test_bnb_chain_16h_momentum
 
 """
@@ -37,7 +37,7 @@ from tradeexecutor.strategy.qstrader import HAS_QSTRADER
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 # https://docs.pytest.org/en/latest/how-to/skipping.html#skip-all-test-functions-of-a-class-or-module
-pytestmark = pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None or not HAS_QSTRADER, reason="Set BNB_CHAIN_JSON_RPC environment variable to Binance Smart Chain node to run this test")
+pytestmark = pytest.mark.skipif(os.environ.get("JSON_RPC_BINANCE") is None or not HAS_QSTRADER, reason="Set JSON_RPC_BINANCE environment variable to Binance Smart Chain node to run this test")
 
 
 @pytest.fixture(scope="module")

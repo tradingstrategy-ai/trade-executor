@@ -15,7 +15,7 @@ Set up environment:
 export TRADING_STRATEGY_API_KEY="" 
 
 # We use BNB chain mainnet forking for some tests
-export BNB_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
+export JSON_RPC_BINANCE="https://bsc-dataseed.binance.org/"
 
 # ... and tons of other JSON RPCs for other chains
 ```
@@ -71,9 +71,8 @@ You can do it with:
 ```shell
 # Webhook URL for the private trash channel
 export DISCORD_TRASH_WEBHOOK_URL=...
-export BNB_CHAIN_JSON_RPC="https://bsc-dataseed.binance.org/"
+export JSON_RPC_BINANCE="https://bsc-dataseed.binance.org/"
 pytest -k test_pancake_4h_candles
 ```
 
 This will execute 6 strategy cycles and log output.
-
