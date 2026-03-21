@@ -294,6 +294,17 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         return state.portfolio.get_net_asset_value(include_interest=True)
 
+    def _mark_treasury_sync_completed(
+        self,
+        treasury_sync,
+        strategy_cycle_ts: datetime.datetime,
+        block_number: int,
+    ) -> None:
+        """Mark Lagoon treasury as synced even when no settlement was needed."""
+        treasury_sync.last_updated_at = native_datetime_utc_now()
+        treasury_sync.last_cycle_at = strategy_cycle_ts
+        treasury_sync.last_block_scanned = block_number
+
     def check_nav_update_and_settle_needed(self, calculated_nav: USDollarAmount) -> bool:
         """Do we need to settle or change onchain NAV.
 
@@ -420,6 +431,11 @@ class LagoonVaultSyncModel(AddressSyncModel):
             return []
 
         if not self.check_nav_update_and_settle_needed(valuation):
+            self._mark_treasury_sync_completed(
+                treasury_sync=treasury_sync,
+                strategy_cycle_ts=strategy_cycle_ts,
+                block_number=block_number,
+            )
             logger.info("LagoonVaultSyncModel.sync_treasury() no actionable changes detected")
             return []
 

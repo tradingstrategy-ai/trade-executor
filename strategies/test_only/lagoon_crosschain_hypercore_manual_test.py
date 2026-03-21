@@ -256,9 +256,12 @@ def decide_trades(
         p.is_vault() and p.pair.other_data.get("vault_protocol") == "hypercore"
         for p in state.portfolio.closed_positions.values()
     )
-    has_reverse_bridge = any(
-        p.pair.is_cctp_bridge() and p.pair.quote.chain_id == DEST_CHAIN_ID.value
-        for p in all_positions
+    forward_bridge_open = next(
+        (
+            p for p in state.portfolio.open_positions.values()
+            if p.pair.is_cctp_bridge() and p.pair.quote.chain_id == SOURCE_CHAIN_ID.value
+        ),
+        None,
     )
 
     universe = input.strategy_universe
@@ -286,11 +289,8 @@ def decide_trades(
         return position_manager.close_position(vault_pos)
 
     # Step 4 (simulate only): Bridge USDC back from HyperEVM to Arbitrum
-    if has_vault_closed and not has_reverse_bridge:
-        pair = universe.get_pair_by_human_description(
-            (DEST_CHAIN_ID, "cctp-bridge", "USDC", "USDC"),
-        )
-        return position_manager.open_spot(pair, value=REVERSE_BRIDGE_AMOUNT)
+    if has_vault_closed and forward_bridge_open is not None:
+        return position_manager.close_position(forward_bridge_open)
 
     # No-op: all steps completed
     return []

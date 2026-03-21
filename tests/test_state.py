@@ -32,7 +32,7 @@ from tradeexecutor.state.validator import (BadStateData,
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.statistics.core import calculate_statistics, update_statistics
 from tradeexecutor.statistics.statistics_table import \
-    serialise_long_short_stats_as_json_table
+    serialise_live_long_short_stats, serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.valuation import revalue_state
@@ -668,6 +668,44 @@ def test_not_enough_cash(usdc, weth_usdc, start_ts):
     # Has $1000, needs $1700
     with pytest.raises(NotEnoughMoney):
         trader.buy(weth_usdc, Decimal(1), 1700)
+
+
+def test_live_long_short_stats_normalise_nan_cells(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Verify live long/short stats tolerate missing side-specific values.
+
+    1. Mock the trade analysis summary to include pandas nan cells
+    2. Serialise live long/short stats from a minimal state
+    3. Assert nan cells are converted to None instead of crashing
+    """
+
+    class DummyAnalysis:
+        """Return a controlled summary table with missing side values."""
+
+        def calculate_all_summary_stats_by_side(self, state: State, urls: bool = True) -> pd.DataFrame:
+            return pd.DataFrame(
+                [
+                    ["0 hours 0 minutes", np.nan, np.nan, None],
+                ],
+                index=["Trading period length"],
+                columns=["All", "Long", "Short", "Help"],
+            )
+
+    # 1. Mock the trade analysis summary to include pandas nan cells.
+    monkeypatch.setattr(
+        "tradeexecutor.statistics.statistics_table.build_trade_analysis",
+        lambda portfolio: DummyAnalysis(),
+    )
+
+    state = State()
+
+    # 2. Serialise live long/short stats from a minimal state.
+    table = serialise_live_long_short_stats(state)
+    metric = table.rows["trading_period_length"]
+
+    # 3. Assert nan cells are converted to None instead of crashing.
+    assert isinstance(metric.value["All"], str)
+    assert metric.value["Long"] is None
+    assert metric.value["Short"] is None
 
 
 def test_buy_sell_buy(usdc, weth, weth_usdc, start_ts):

@@ -6,6 +6,7 @@ It is also used to help display statistics in the web frontend.
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 import datetime
+import math
 from typing import Literal
 
 from eth_defi.compat import native_datetime_utc_now
@@ -213,19 +214,22 @@ def _serialise_long_short_stats_as_json_table(
     rows = {}
     for key_metric_kind, summary_index in key_metrics_map.items():
         if summary_index in summary.index:
-            metric_data = summary.loc[summary_index]
+            metric_data = [
+                _normalise_summary_cell(value)
+                for value in summary.loc[summary_index].tolist()
+            ]
             
             for i in metric_data:
                 assert isinstance(i, str | None), f"Should be string. Got {i}"
 
             rows[key_metric_kind.value] = KeyMetric(
                 kind=key_metric_kind,
-                value={"All": metric_data.iloc[0], "Long": metric_data.iloc[1], "Short": metric_data.iloc[2]},
-                help_link=metric_data.iloc[3],
+                value={"All": metric_data[0], "Long": metric_data[1], "Short": metric_data[2]},
+                help_link=metric_data[3],
                 source=source,
                 calculation_window_start_at = calculation_window_start_at,
                 calculation_window_end_at = calculation_window_end_at,
-                name = metric_data.name,
+                name = summary_index,
             )
 
     if 'Average bars of winning positions' in summary.index:
@@ -251,3 +255,14 @@ def _serialise_long_short_stats_as_json_table(
     )
 
     return table
+
+
+def _normalise_summary_cell(value: str | float | None) -> str | None:
+    """Convert missing summary cells to ``None`` before serialisation."""
+    if value is None:
+        return None
+
+    if isinstance(value, float) and math.isnan(value):
+        return None
+
+    return value

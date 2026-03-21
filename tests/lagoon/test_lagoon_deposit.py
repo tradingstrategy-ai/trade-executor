@@ -156,6 +156,67 @@ def test_lagoon_sync_deposit(
     assert statistics.portfolio.share_count == Decimal(9)
 
 
+def test_lagoon_sync_treasury_marks_noop_startup_sync(
+    web3: Web3,
+    automated_lagoon_vault: LagoonAutomatedDeployment,
+    base_usdc_token: TokenDetails,
+    vault_strategy_universe: TradingStrategyUniverse,
+    depositor: HexAddress,
+    asset_manager: HotWallet,
+):
+    """Verify Lagoon marks treasury synced when startup sync has no actions.
+
+    1. Create a Lagoon state and settle an initial deposit
+    2. Run ``sync_treasury(post_valuation=True)`` again with no pending flows
+    3. Verify treasury sync metadata is still updated without new balance events
+    """
+
+    vault = automated_lagoon_vault.vault
+    usdc = base_usdc_token
+    strategy_universe = vault_strategy_universe
+
+    sync_model = LagoonVaultSyncModel(
+        vault=vault,
+        hot_wallet=asset_manager,
+    )
+
+    state = State()
+    usdc_asset = strategy_universe.get_reserve_asset()
+    sync_model.sync_initial(
+        state,
+        reserve_asset=usdc_asset,
+        reserve_token_price=1.0,
+    )
+
+    # 1. Create a Lagoon state and settle an initial deposit.
+    usdc_amount = Decimal(9)
+    raw_usdc_amount = usdc.convert_to_raw(usdc_amount)
+    tx_hash = usdc.approve(vault.address, usdc_amount).transact({"from": depositor})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    deposit_func = vault.request_deposit(depositor, raw_usdc_amount)
+    tx_hash = deposit_func.transact({"from": depositor})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+    first_cycle = native_datetime_utc_now()
+    first_events = sync_model.sync_treasury(first_cycle, state, post_valuation=True)
+    assert len(first_events) == 1
+
+    treasury = state.sync.treasury
+    previous_block = treasury.last_block_scanned
+    previous_ref_count = len(treasury.balance_update_refs)
+
+    # 2. Run sync_treasury(post_valuation=True) again with no pending flows.
+    second_cycle = native_datetime_utc_now()
+    events = sync_model.sync_treasury(second_cycle, state, post_valuation=True)
+
+    # 3. Verify treasury sync metadata is still updated without new balance events.
+    assert events == []
+    assert treasury.last_updated_at is not None
+    assert treasury.last_cycle_at == second_cycle
+    assert treasury.last_block_scanned is not None
+    assert treasury.last_block_scanned >= previous_block
+    assert len(treasury.balance_update_refs) == previous_ref_count
+
 
 def test_lagoon_sync_redeem(
     web3: Web3,

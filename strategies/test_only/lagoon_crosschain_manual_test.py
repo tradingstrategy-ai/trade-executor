@@ -273,9 +273,12 @@ def decide_trades(
         p.pair.is_cctp_bridge() and p.pair.quote.chain_id == SOURCE_CHAIN_ID.value
         for p in all_positions
     )
-    has_reverse_bridge = any(
-        p.pair.is_cctp_bridge() and p.pair.quote.chain_id == DEST_CHAIN_ID.value
-        for p in all_positions
+    forward_bridge_open = next(
+        (
+            p for p in state.portfolio.open_positions.values()
+            if p.pair.is_cctp_bridge() and p.pair.quote.chain_id == SOURCE_CHAIN_ID.value
+        ),
+        None,
     )
 
     # Cycle 1: Bridge USDC to Base Sepolia
@@ -301,11 +304,13 @@ def decide_trades(
         return position_manager.close_position(weth_pos)
 
     # Cycle 4: Bridge USDC back from Base Sepolia to Arbitrum Sepolia
-    if (has_closed_weth or SWAP_AMOUNT == 0) and not has_reverse_bridge:
-        pair = universe.get_pair_by_human_description(
-            (DEST_CHAIN_ID, "cctp-bridge", "USDC", "USDC"),
-        )
-        return position_manager.open_spot(pair, value=REVERSE_BRIDGE_AMOUNT)
+    if (has_closed_weth or SWAP_AMOUNT == 0) and forward_bridge_open is not None:
+        # The reverse CCTP leg must close the original forward bridge position.
+        #
+        # It is tempting to open a new "reverse bridge" pair here, but that
+        # leaves the original bridge position open in state and causes portfolio
+        # equity to be counted twice after funds have already returned home.
+        return position_manager.close_position(forward_bridge_open)
 
     # Cycle 5: No-op
     return []

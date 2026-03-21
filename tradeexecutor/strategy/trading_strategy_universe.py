@@ -2092,7 +2092,7 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
 
         if p.is_vault():
             if p.is_hyperliquid_vault():
-                dex_type = ExchangeType.hypercore_vault
+                dex_type = ExchangeType.erc_4626_vault
             else:
                 dex_type = ExchangeType.erc_4626_vault
         elif p.is_exchange_account():
@@ -2641,7 +2641,7 @@ def load_partial_data(
             # Skip vault data (ERC-4626 and Hypercore) as it is loaded
             # separately via vault-specific data pipelines
             loadable_pairs = pairs[
-                ~pairs["dex_type"].isin({ExchangeType.erc_4626_vault, ExchangeType.hypercore_vault})
+                ~pairs["dex_type"].isin({ExchangeType.erc_4626_vault})
             ]
 
             filtered_pairs_df = pairs
