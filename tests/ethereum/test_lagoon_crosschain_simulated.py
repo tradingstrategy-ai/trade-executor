@@ -1,18 +1,17 @@
 """Test cross-chain Lagoon vault lifecycle in simulated (Anvil fork) mode.
 
 Wraps ``scripts/lagoon/manual-trade-executor-multichain.py`` to run the full
-multichain lifecycle using Anvil forks:
+multichain lifecycle using Arbitrum and Base mainnet forks:
 
-1. Deploy multichain vault (Arb Sepolia + Base Sepolia forks)
+1. Deploy multichain vault (Arbitrum + Base forks)
 2. Deposit USDC, settle
-3. Bridge USDC via CCTP (Arb -> Base, forged attestation)
+3. Bridge USDC via CCTP (Arbitrum -> Base, forged attestation)
 4. Optionally swap on Uniswap v3
-5. Bridge USDC back via CCTP (Base -> Arb, forged attestation)
+5. Bridge USDC back via CCTP (Base -> Arbitrum, forged attestation)
 6. Verify total equity equals deposited amount across all chains
 
-Requires ``JSON_RPC_ARBITRUM_SEPOLIA`` and ``JSON_RPC_BASE_SEPOLIA``
-environment variables pointing at real testnet RPCs (used as Anvil
-fork sources).
+Requires ``JSON_RPC_ARBITRUM`` and ``JSON_RPC_BASE`` environment variables
+pointing at real mainnet RPCs used as Anvil fork sources.
 """
 
 import importlib.util
@@ -25,12 +24,12 @@ import pytest
 
 logger = logging.getLogger(__name__)
 
-JSON_RPC_ARBITRUM_SEPOLIA = os.environ.get("JSON_RPC_ARBITRUM_SEPOLIA")
-JSON_RPC_BASE_SEPOLIA = os.environ.get("JSON_RPC_BASE_SEPOLIA")
+JSON_RPC_ARBITRUM = os.environ.get("JSON_RPC_ARBITRUM")
+JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 
 pytestmark = pytest.mark.skipif(
-    not JSON_RPC_ARBITRUM_SEPOLIA or not JSON_RPC_BASE_SEPOLIA,
-    reason="JSON_RPC_ARBITRUM_SEPOLIA and JSON_RPC_BASE_SEPOLIA environment variables required",
+    not JSON_RPC_ARBITRUM or not JSON_RPC_BASE,
+    reason="JSON_RPC_ARBITRUM and JSON_RPC_BASE environment variables required",
 )
 
 
@@ -65,20 +64,31 @@ def simulation_setup():
     """
     usdc_amount = Decimal("5")
     mod = _load_script_module()
+    network_config = {
+        "network": "mainnet",
+        "is_testnet": False,
+        "json_rpc_arbitrum": JSON_RPC_ARBITRUM,
+        "json_rpc_base": JSON_RPC_BASE,
+        "rpc_env_keys": ("JSON_RPC_ARBITRUM", "JSON_RPC_BASE"),
+        "chain_ids": (42161, 8453),
+        "chain_names": ("Arbitrum", "Base"),
+        "chain_slugs": ("arbitrum", "base"),
+        "strategy_file": None,
+    }
 
     (
         arb_web3, base_web3, deployer, private_key,
-        json_rpc_arb_sepolia, json_rpc_base_sepolia,
+        json_rpc_arbitrum, json_rpc_base,
         test_attesters, anvil_launches,
     ) = mod.setup_simulation(
-        json_rpc_arb_sepolia=JSON_RPC_ARBITRUM_SEPOLIA,
-        json_rpc_base_sepolia=JSON_RPC_BASE_SEPOLIA,
+        network_config=network_config,
         simulate=True,
         private_key=None,
         usdc_amount=usdc_amount,
     )
 
     arb_usdc = mod.verify_deployer_balances(
+        network_config=network_config,
         arb_web3=arb_web3,
         base_web3=base_web3,
         deployer=deployer,
@@ -92,8 +102,9 @@ def simulation_setup():
             "base_web3": base_web3,
             "deployer": deployer,
             "private_key": private_key,
-            "json_rpc_arb_sepolia": json_rpc_arb_sepolia,
-            "json_rpc_base_sepolia": json_rpc_base_sepolia,
+            "network_config": network_config,
+            "json_rpc_arbitrum": json_rpc_arbitrum,
+            "json_rpc_base": json_rpc_base,
             "test_attesters": test_attesters,
             "arb_usdc": arb_usdc,
             "usdc_amount": usdc_amount,
@@ -116,9 +127,10 @@ def test_cctp_bridge_round_trip(simulation_setup, strategy_file):
         base_web3=s["base_web3"],
         deployer=s["deployer"],
         arb_usdc=s["arb_usdc"],
+        network_config=s["network_config"],
         private_key=s["private_key"],
-        json_rpc_arb_sepolia=s["json_rpc_arb_sepolia"],
-        json_rpc_base_sepolia=s["json_rpc_base_sepolia"],
+        json_rpc_arbitrum=s["json_rpc_arbitrum"],
+        json_rpc_base=s["json_rpc_base"],
         strategy_file=strategy_file,
         usdc_amount=s["usdc_amount"],
         bridge_amount="3",
