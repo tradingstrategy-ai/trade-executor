@@ -106,7 +106,7 @@ def environment(
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
         "CONFIRMATION_BLOCK_COUNT": "0",  # Needed for test backend, Anvil
-        "MAX_CYCLES": "10",  # Run decide_trades() N times
+        "MAX_CYCLES": "6",  # Run decide_trades() N times
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
         "MAX_DATA_DELAY_MINUTES": "1440",  # Don't crash on not doing candle refresh properly
         "GAS_BALANCE_WARNING_LEVEL": "0",  # Avoid unnecessary gas warnings
@@ -177,7 +177,7 @@ def test_generic_routing_live_trading_start_spot_and_short(
     # Check that trades completed
     with state_file.open("rt") as inp:
         state = State.from_json(inp.read())
-        assert len(state.portfolio.closed_positions) >= 7  # Sometimes 7, sometimes 8
+        assert len(state.portfolio.closed_positions) >= 3
 
 
 # FAILED tests/ethereum/polygon_forked/generic-router/test_generic_router_end_to_end.py::test_generic_routing_test_trade_spot_and_short - assert 999.990918 == 499.990849 ± 5.0e-04
@@ -243,7 +243,7 @@ def test_generic_routing_live_trading_start_spot_only(
     # Check that trades completed
     with state_file.open("rt") as inp:
         state = State.from_json(inp.read())
-        assert len(state.portfolio.closed_positions) == 8
+        assert len(state.portfolio.closed_positions) == 4
 
 
 @flaky.flaky

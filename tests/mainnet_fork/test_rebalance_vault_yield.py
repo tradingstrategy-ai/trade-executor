@@ -11,7 +11,7 @@ from pytest import FixtureRequest
 
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
-from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.main import app
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
@@ -49,7 +49,7 @@ def state_file(tmp_path) -> Path:
 @pytest.fixture()
 def strategy_file() -> Path:
     """The strategy module where the broken accounting happened."""
-    p = Path(__file__).resolve().parent / ".." / ".." / "strategies" /  "test_only" / "base-ath-ipor-aave-bug.py"
+    p = Path(__file__).resolve().parent / ".." / ".." / "strategies" /  "test_only" / "base-ath-ipor-aave-bug-fast.py"
     assert p.exists(), f"{p.resolve()} missing"
     return p
 

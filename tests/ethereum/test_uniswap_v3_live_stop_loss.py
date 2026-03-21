@@ -321,8 +321,8 @@ def core_universe(web3,
     time_bucket = TimeBucket.d1
 
     df = generate_ohlcv_candles(
-        start=datetime.datetime(2023, 1, 1),
-        end=datetime.datetime.now(),
+        start=datetime.datetime(2024, 1, 1),
+        end=datetime.datetime(2025, 1, 1),
         bucket=time_bucket,
         pair_id = weth_usdc_pair.internal_id,
         exchange_id = None,

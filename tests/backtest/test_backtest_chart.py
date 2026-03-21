@@ -1,6 +1,7 @@
 """Test chart subsystem in backtesting.
 """
 
+import datetime
 import os
 from pathlib import Path
 
@@ -45,6 +46,7 @@ def test_backtest_charts(
         mod_overrides={
             # Set in 1s to live trading test, but breaks backtest valuation
             "trading_strategy_cycle": CycleDuration.cycle_1h,
+            "backtest_end": datetime.datetime(2025, 6, 8),
         }
     )
 

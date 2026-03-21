@@ -12,7 +12,7 @@ from pytest import FixtureRequest
 
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
-from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.main import app
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 

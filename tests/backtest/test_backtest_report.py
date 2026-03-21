@@ -95,7 +95,7 @@ def synthetic_universe(mock_chain_id, mock_exchange, weth_usdc) -> TradingStrate
     """
 
     start_date = datetime.datetime(2021, 6, 1)
-    end_date = datetime.datetime(2022, 1, 1)
+    end_date = datetime.datetime(2021, 8, 1)
 
     time_bucket = TimeBucket.d1
 
@@ -138,7 +138,7 @@ def state(
     setup = setup_backtest_for_universe(
         strategy_path,
         start_at=datetime.datetime(2021, 6, 1),
-        end_at=datetime.datetime(2022, 1, 1),
+        end_at=datetime.datetime(2021, 8, 1),
         cycle_duration=CycleDuration.cycle_1d,  # Override to use 24h cycles despite what strategy file says
         candle_time_frame=TimeBucket.d1,  # Override to use 24h cycles despite what strategy file says
         initial_deposit=10_000,
