@@ -2,7 +2,6 @@
 
 import logging
 import datetime
-import copy
 import warnings
 from dataclasses import dataclass, field
 from decimal import Decimal

@@ -1,5 +1,4 @@
 """Print out the trading pair data."""
-import datetime
 import enum
 import logging
 from pathlib import Path
@@ -20,7 +19,6 @@ from ...state.identifier import TradingPairIdentifier
 from ...strategy.bootstrap import import_strategy_file
 from ...strategy.execution_context import console_command_execution_context
 from ...strategy.trading_strategy_universe import TradingStrategyUniverse
-from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)

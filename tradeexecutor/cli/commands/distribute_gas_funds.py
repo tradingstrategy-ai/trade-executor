@@ -6,7 +6,6 @@ in the strategy's trading universe using LI.FI cross-chain bridging.
 
 import datetime
 import logging
-import secrets
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional
