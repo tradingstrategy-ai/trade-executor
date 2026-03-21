@@ -111,6 +111,7 @@ def create_web3_config(
     simulate: bool=False,
     mev_endpoint_disabled: bool=False,
     simulate_http_timeout: tuple[float, float] | None = None,
+    rpc_proxy_verbose: bool = False,
 ) -> Web3Config:
     """Create Web3 connection to the live node we are executing against.
 
@@ -153,6 +154,7 @@ def create_web3_config(
         simulate=simulate,
         mev_endpoint_disabled=mev_endpoint_disabled,
         simulate_http_timeout=simulate_http_timeout,
+        rpc_proxy_verbose=rpc_proxy_verbose,
     )
 
     # Allow externally-created Anvil forks to signal mainnet fork mode

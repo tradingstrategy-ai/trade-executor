@@ -180,6 +180,7 @@ class Web3Config:
         mev_endpoint_disabled: bool=False,
         simulate_http_timeout: tuple[float, float] | None = None,
         chain_id: ChainId | None = None,
+        rpc_proxy_verbose: bool=False,
     ) -> MultiProviderWeb3:
         """Create a new Web3.py connection.
 
@@ -203,6 +204,9 @@ class Web3Config:
         :param mev_endpoint_disabled:
             MEV endpoints do not work when deploying contracts with Forge.
 
+        :param rpc_proxy_verbose:
+            Log all RPC proxy requests and responses at INFO level.
+
         """
 
         assert type(configuration_line) == str, f"Got: {configuration_line.__class__}"
@@ -212,9 +216,16 @@ class Web3Config:
             # handle failover across multiple upstream providers.
             # MEV endpoints are filtered out by launch_anvil internally.
             logger.info(f"Simulating transactions with Anvil, forking from {configuration_line}")
+
+            if rpc_proxy_verbose:
+                from eth_defi.provider.rpc_proxy import RPCProxyConfig
+                proxy_config = RPCProxyConfig(request_log_level=logging.INFO)
+            else:
+                proxy_config = True
+
             launch_kwargs = {
                 "attempts": 1,
-                "proxy_multiple_upstream": True,
+                "proxy_multiple_upstream": proxy_config,
             }
 
             # HyperEVM contract deployments need the large-block gas limit even on
@@ -382,6 +393,7 @@ class Web3Config:
        simulate: bool=False,
        mev_endpoint_disabled: bool=False,
        simulate_http_timeout: tuple[float, float] | None = None,
+       rpc_proxy_verbose: bool=False,
        **kwargs
     ) -> "Web3Config":
         """Setup connections based on given RPC URLs.
@@ -416,6 +428,7 @@ class Web3Config:
                     mev_endpoint_disabled=mev_endpoint_disabled,
                     simulate_http_timeout=simulate_http_timeout,
                     chain_id=chain_id,
+                    rpc_proxy_verbose=rpc_proxy_verbose,
                 )
 
                 if simulate:
