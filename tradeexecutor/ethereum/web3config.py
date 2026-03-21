@@ -208,18 +208,21 @@ class Web3Config:
         assert type(configuration_line) == str, f"Got: {configuration_line.__class__}"
 
         if simulate:
-            # Use last given RPC for anvil,
-            # because first one is likely MEV one
-            last_rpc = configuration_line.split(" ")[-1]
-            logger.info(f"Simulating transactions with Anvil, forking from {last_rpc}")
-            launch_kwargs = {"attempts": 1}
+            # Pass all RPCs to launch_anvil and let its proxy_multiple_upstream
+            # handle failover across multiple upstream providers.
+            # MEV endpoints are filtered out by launch_anvil internally.
+            logger.info(f"Simulating transactions with Anvil, forking from {configuration_line}")
+            launch_kwargs = {
+                "attempts": 1,
+                "proxy_multiple_upstream": True,
+            }
 
             # HyperEVM contract deployments need the large-block gas limit even on
             # local forks, because big-block routing is disabled on Anvil.
             if chain_id in (ChainId.hyperliquid, ChainId.hyperliquid_testnet):
                 launch_kwargs["gas_limit"] = HYPEREVM_BIG_BLOCK_GAS_LIMIT
 
-            anvil = launch_anvil(last_rpc, **launch_kwargs)
+            anvil = launch_anvil(configuration_line, **launch_kwargs)
             web3 = create_multi_provider_web3(
                 anvil.json_rpc_url,
                 switchover_noisiness=logging.TRADE,
