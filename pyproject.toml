@@ -27,7 +27,7 @@ ft-pandas-ta = "^0.3.15"
 numpy = "<3"
 tqdm-loggable = "^0.4"
 
-web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras = ["data", "test", "hypersync"]}
+web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras = ["data", "test", "hypersync", "ccxt"]}
 
 # AttributeError: 'MathBlockParser' object has no attribute 'parse_axt_heading'
 # https://github.com/lepture/mistune/issues/403
