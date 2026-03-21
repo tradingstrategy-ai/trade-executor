@@ -1,17 +1,14 @@
-
 """Export CLI command."""
-import datetime
 import os
 from typing import Iterable
 
-from typer import Context, Typer
+from typer import Typer
 from typer.core import TyperOption
 from typer.main import get_command_from_info
 
 from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.cli.commands.app import app
-from eth_defi.compat import native_datetime_utc_now
 
 
 def walk_all_typer_options(app: Typer) -> Iterable[TyperOption]:
@@ -73,6 +70,5 @@ def export():
             print(f"""export {env}="{val}" """)
         else:
             print(f"""# export {env}="{val}" """)
-
 
 

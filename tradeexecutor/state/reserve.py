@@ -3,7 +3,7 @@
 import datetime
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Optional, Dict, List, Iterable, Tuple
+from typing import Optional, Dict, Iterable, Tuple
 
 from dataclasses_json import dataclass_json
 
@@ -14,7 +14,6 @@ from tradeexecutor.state.generic_position import GenericPosition, BalanceUpdateE
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.utils.accuracy import sum_decimal
-from eth_defi.compat import native_datetime_utc_now
 
 
 @dataclass_json
@@ -173,4 +172,3 @@ class ReservePosition(GenericPosition):
             exchange_address=self.asset.address,
             internal_id=0,
         )
-

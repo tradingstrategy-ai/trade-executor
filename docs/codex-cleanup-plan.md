@@ -103,6 +103,54 @@ This document tracks small, low-risk cleanups that can be completed and verified
    Verification:
    - `source .local-test.env && poetry run pytest tests/web/test_webhook_api.py --log-cli-level=info`
 
+9. Clean up import clutter in the `check-wallet` CLI command
+
+   Status:
+   - Done
+
+   Scope:
+   - Remove duplicate imports and obvious unused imports in `tradeexecutor/cli/commands/check_wallet.py`
+   - Keep behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/cli/test_check_wallet_hyper_ai.py --log-cli-level=info`
+
+10. Clean up import clutter in the `export` CLI command
+
+   Status:
+   - Done
+
+   Scope:
+   - Remove duplicate imports and obvious unused imports in `tradeexecutor/cli/commands/export.py`
+   - Keep behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/cli/test_cli_commands.py -k test_cli_export --log-cli-level=info`
+
+11. Clean up duplicate imports in state storage
+
+   Status:
+   - Done
+
+   Scope:
+   - Remove duplicate imports and obvious unused imports in `tradeexecutor/state/store.py`
+   - Keep serialisation behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/test_store.py --log-cli-level=info`
+
+12. Clean up duplicate imports in reserve state handling
+
+   Status:
+   - Done
+
+   Scope:
+   - Remove duplicate imports and obvious unused imports in `tradeexecutor/state/reserve.py`
+   - Keep reserve accounting behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/test_state.py -k test_update_reserves --log-cli-level=info`
+
 ## Execution notes
 
 - Issues should be landed one by one, with the relevant verification run after each change.
