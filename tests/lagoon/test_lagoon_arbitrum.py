@@ -149,7 +149,6 @@ def test_cli_lagoon_deploy_arbitrum_vault(
         "PATH": os.environ["PATH"],  # Need forge
         "EXECUTOR_ID": "test_cli_lagoon_deploy_binance_vault",
         "NAME": "test_cli_lagoon_deploy_binance_vault",
-        "STRATEGY_FILE": strategy_file.as_posix(),
         "JSON_RPC_ARBITRUM": anvil_bnb_fork.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "lagoon",
@@ -162,6 +161,7 @@ def test_cli_lagoon_deploy_arbitrum_vault(
         "FUND_NAME": "Example",
         "FUND_SYMBOL": "EXAM",
         "MULTISIG_OWNERS": multisig_owners,
+        "DENOMINATION_ASSET": usdc.address,
         "ANY_ASSET": "true",
         "UNISWAP_V2": "false",
         "UNISWAP_V3": "true",
@@ -178,11 +178,12 @@ def test_cli_lagoon_deploy_arbitrum_vault(
     # 1. Deploy vault
     cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
 
-    # 1.b update our envinoment with the deployed vault address
+    # 1.b update our environment with the deployed vault address and strategy file
     deploy_info = json.load(vault_record_file.open("rt"))
     environment.update({
         "VAULT_ADDRESS": deploy_info["Vault"],
         "VAULT_ADAPTER_ADDRESS": deploy_info["Trading strategy module"],
+        "STRATEGY_FILE": strategy_file.as_posix(),
     })
     mocker.patch.dict("os.environ", environment, clear=True)
 
