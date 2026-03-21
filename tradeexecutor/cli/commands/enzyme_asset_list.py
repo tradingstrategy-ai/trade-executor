@@ -35,6 +35,11 @@ def enzyme_asset_list(
     json_rpc_base: Optional[str] = shared_options.json_rpc_base,
     json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
     json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
+    json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
+    json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
+    json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
+    json_rpc_hyperliquid: Optional[str] = shared_options.json_rpc_hyperliquid,
+    json_rpc_hyperliquid_testnet: Optional[str] = shared_options.json_rpc_hyperliquid_testnet,
     end_block: Optional[int] = Option(None, envvar="END_BLOCK", help="End block to scan. If not given default to the latest block.")
 
 ):
@@ -52,6 +57,11 @@ def enzyme_asset_list(
         json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base, 
         json_rpc_anvil=json_rpc_anvil,
         json_rpc_arbitrum=json_rpc_arbitrum,
+        json_rpc_derive=json_rpc_derive,
+        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
+        json_rpc_base_sepolia=json_rpc_base_sepolia,
+        json_rpc_hyperliquid=json_rpc_hyperliquid,
+        json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
     )
 
     if not web3config.has_any_connection():
