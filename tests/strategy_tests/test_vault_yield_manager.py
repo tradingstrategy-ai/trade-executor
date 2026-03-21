@@ -1,6 +1,7 @@
 """Create a strategy with vault yield management.
 """
 
+import datetime
 import os
 from pathlib import Path
 
@@ -43,6 +44,9 @@ def test_backtest_vault_yield_manager(
         strategy_file=strategy_file,
         cache_path=client.transport.cache_path,
         execution_context=unit_test_execution_context,
+        mod_overrides={
+            "backtest_end": datetime.datetime(2025, 4, 1),
+        },
     )
 
     state = result.state
