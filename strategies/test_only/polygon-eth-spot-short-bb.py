@@ -86,12 +86,12 @@ RSI_THRESHOLD = 48
 # RSI must be above this value to open a new position
 RSI_THRESHOLD_SHORT = 52
 
-# Backtest range
+# Backtest range - kept short for CI speed (3 months is enough to verify the strategy does not crash)
 BACKTEST_START = datetime.datetime(2022, 9, 1)
 START_AT_DATA = datetime.datetime(2022, 9, 1) #This is only for Binance data
 
 # Backtest range
-BACKTEST_END = datetime.datetime(2023, 12, 13)
+BACKTEST_END = datetime.datetime(2022, 12, 1)
 
 # Stop loss relative to the mid price during the time when the position is opened
 # If the price drops below this level, trigger a stop loss

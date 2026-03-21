@@ -294,35 +294,48 @@ def test_load_trading_and_lending_data_live(persistent_test_client: Client):
     assert price_feed["open"][two_days_ago] < 10_000  # To the moon warning
 
 
-def test_can_open_short(persistent_test_client: Client):
-    """Check if we correctly detect when we have lending market data available.
+@pytest.fixture(scope="module")
+def polygon_lending_dataset(persistent_test_client: Client):
+    """Shared lending dataset for long/short universe tests.
 
-    - Aave v3 on Polygon enabled MaticX 2023-3-7 https://tradingstrategy.ai/trading-view/polygon/lending/aave_v3/maticx
-
-    - Aave v3 on Polygon enabled USDC 2022-3-16
-    -
+    - Loads QuickSwap + Aave lending data on Polygon
+    - Reused across test_can_open_short and test_analyse_long_short_universe
+      to avoid duplicate API calls
+    - Date range covers MaticX enablement (2023-03-07) with minimal buffer
     """
-
-    client = persistent_test_client
-
-    start_at = datetime.datetime(2023, 1, 1)
-    end_at = datetime.datetime(2023, 10, 1)
-
-    # Load all trading and lending data on Polygon
-    # for all lending markets on a relevant time period
-    dataset = load_trading_and_lending_data(
-        client,
+    return load_trading_and_lending_data(
+        persistent_test_client,
         execution_context=unit_test_execution_context,
-        universe_options=UniverseOptions(start_at=start_at, end_at=end_at),
+        universe_options=UniverseOptions(
+            start_at=datetime.datetime(2023, 1, 1),
+            end_at=datetime.datetime(2023, 5, 1),
+        ),
         chain_id=ChainId.polygon,
         exchange_slugs="quickswap",
-        time_bucket=TimeBucket.d7,  # Optimise test speed
+        time_bucket=TimeBucket.d7,
         any_quote=True,
     )
+
+
+def test_can_open_short(polygon_lending_dataset):
+    """Check if we correctly detect when we have lending market data available.
+
+    1. Load shared Polygon lending dataset
+    2. Create strategy universe with USDC reserve
+    3. Check MaticX short availability at various timestamps
+    4. Verify availability matches MaticX enablement date (2023-03-07)
+
+    - Aave v3 on Polygon enabled MaticX 2023-3-7 https://tradingstrategy.ai/trading-view/polygon/lending/aave_v3/maticx
+    - Aave v3 on Polygon enabled USDC 2022-3-16
+    """
+
+    # 1. Load shared Polygon lending dataset
+    dataset = polygon_lending_dataset
 
     # https://tradingstrategy.ai/trading-view/polygon/tokens/0x2791bca1f2de4661ed88a30c99a7a9449aa84174
     usdc_address = "0x2791bca1f2de4661ed88a30c99a7a9449aa84174"
 
+    # 2. Create strategy universe with USDC reserve
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
         reserve_asset=usdc_address,
@@ -335,6 +348,7 @@ def test_can_open_short(persistent_test_client: Client):
     desc = (ChainId.polygon, "quickswap", "MaticX", "WMATIC")
     pair = translate_trading_pair(data_universe.pairs.get_pair_by_human_description(desc))
 
+    # 3. Check MaticX short availability at various timestamps
     # Does not exist
     assert not strategy_universe.can_open_short(
         pd.Timestamp("2000-1-1"),
@@ -353,6 +367,7 @@ def test_can_open_short(persistent_test_client: Client):
         pair,
     )
 
+    # 4. Verify availability matches MaticX enablement date
     # Both reserves available
     assert strategy_universe.can_open_short(
         pd.Timestamp("2023-04-01"),
@@ -366,36 +381,27 @@ def test_can_open_short(persistent_test_client: Client):
     )
 
 
-def test_analyse_long_short_universe(persistent_test_client: Client):
-    """Check analyse_long_short_universe() does not crash
+def test_analyse_long_short_universe(polygon_lending_dataset):
+    """Check analyse_long_short_universe() does not crash.
 
+    1. Load shared Polygon lending dataset
+    2. Create strategy universe with USDC reserve
+    3. Run analyse_long_short_universe and verify non-empty output
     """
 
-    client = persistent_test_client
-
-    start_at = datetime.datetime(2023, 1, 1)
-    end_at = datetime.datetime(2023, 10, 1)
-
-    # Load all trading and lending data on Polygon
-    # for all lending markets on a relevant time period
-    dataset = load_trading_and_lending_data(
-        client,
-        execution_context=unit_test_execution_context,
-        universe_options=UniverseOptions(start_at=start_at, end_at=end_at),
-        chain_id=ChainId.polygon,
-        exchange_slugs="quickswap",
-        time_bucket=TimeBucket.d7,  # Optimise test speed
-        any_quote=True,
-    )
+    # 1. Load shared Polygon lending dataset
+    dataset = polygon_lending_dataset
 
     # https://tradingstrategy.ai/trading-view/polygon/tokens/0x2791bca1f2de4661ed88a30c99a7a9449aa84174
     usdc_address = "0x2791bca1f2de4661ed88a30c99a7a9449aa84174"
 
+    # 2. Create strategy universe with USDC reserve
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
         reserve_asset=usdc_address,
     )
 
+    # 3. Run analyse_long_short_universe and verify non-empty output
     df = analyse_long_short_universe(
         strategy_universe,
     )
