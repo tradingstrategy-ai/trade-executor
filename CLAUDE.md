@@ -62,7 +62,7 @@ Don't format code.
 
 ## Pull requests
 
-- Pull request description must have sections Why (the rational of change), Lessons learnt (memory) and Summary (what was changed). No test plan or verification section.
+- Pull request description must have sections Why (the rational of change), Lessons learnt (memory) and Summary (what was changed). No test plan or verification section. Use Markdown formatting, headings.
 - Only push changes to remote when asked, never update pull requess automatically.
 - Never push directly to a master if not told explicitly
 - If the user ask to open a pull request as feature then start the PR title with "feat:" prefix and also add one line about the feature into `CHANGELOG.md`
