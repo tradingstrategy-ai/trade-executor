@@ -16,7 +16,7 @@ def test_resolve_multichain_fund_metadata_reads_existing_vault_when_redeploying(
 
     monkeypatch.setattr(
         "tradeexecutor.cli.commands.lagoon_deploy_vault.create_vault_instance",
-        lambda web3, address, features: SimpleNamespace(name="GMX AI", symbol="GMXAI"),
+        lambda web3, address, features, token_cache=None: SimpleNamespace(name="GMX AI", symbol="GMXAI"),
     )
 
     fund_name, fund_symbol = _resolve_multichain_fund_metadata(

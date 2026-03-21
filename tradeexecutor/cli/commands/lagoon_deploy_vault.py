@@ -76,7 +76,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
     deploy_multichain_lagoon_vault)
 from eth_defi.hotwallet import HotWallet
 from eth_defi.safe.deployment import fetch_safe_deployment
-from eth_defi.token import fetch_erc20_details
+from eth_defi.token import TokenDiskCache, fetch_erc20_details
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
@@ -191,7 +191,7 @@ def _resolve_multichain_fund_metadata(
     existing_vault_address: str | None,
     universe,
     chain_web3: dict[str, Web3],
-    token_cache,
+    token_cache: TokenDiskCache | None = None,
     logger,
 ) -> tuple[str, str]:
     """Resolve fund name and symbol for multichain deploys.
