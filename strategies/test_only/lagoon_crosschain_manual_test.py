@@ -305,6 +305,11 @@ def decide_trades(
 
     # Cycle 4: Bridge USDC back from Base Sepolia to Arbitrum Sepolia
     if (has_closed_weth or SWAP_AMOUNT == 0) and forward_bridge_open is not None:
+        # The reverse CCTP leg must close the original forward bridge position.
+        #
+        # It is tempting to open a new "reverse bridge" pair here, but that
+        # leaves the original bridge position open in state and causes portfolio
+        # equity to be counted twice after funds have already returned home.
         return position_manager.close_position(forward_bridge_open)
 
     # Cycle 5: No-op

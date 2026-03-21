@@ -314,6 +314,12 @@ def decide_trades(
 
     # Cycle 4: Bridge USDC back from Base to Arbitrum
     if has_closed_weth and forward_bridge_open is not None:
+        # Close the original bridge instead of opening a second reverse-bridge
+        # position.
+        #
+        # The production accounting model expects bridge-back to be a sell on
+        # the existing bridge position. Modelling this as a fresh position keeps
+        # the transfer alive on-chain but leaves stale bridge equity behind.
         return position_manager.close_position(forward_bridge_open)
 
     # Cycle 5: No-op

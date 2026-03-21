@@ -1223,6 +1223,24 @@ class PositionManager:
         pair = position.pair
 
         if quantity is None:
+            # CCTP bridge positions are not symmetric with normal spot positions.
+            #
+            # ``position.get_quantity()`` tells us how much USDC was originally
+            # bridged to the satellite chain, but that is not necessarily how
+            # much we can bridge back right now.
+            #
+            # Satellite-chain trades move capital in and out of the bridge via
+            # ``bridge_capital_allocated``. After profitable or lossy round-trips
+            # the bridge can have more or less *available* capital than the raw
+            # stored quantity.
+            #
+            # Because the reverse CCTP leg burns whatever is currently available
+            # on the satellite chain, we must size the close using
+            # ``get_available_bridge_capital()`` instead of ``get_quantity()``.
+            #
+            # If we used raw quantity here we would either:
+            # - leave capital stranded on the satellite chain after profits, or
+            # - try to bridge back more than is actually available after losses.
             quantity = position.get_available_bridge_capital()
 
         if quantity:
@@ -1253,6 +1271,14 @@ class PositionManager:
         if not flags:
             flags = set()
 
+        # Treat bridge-back like a genuine reduction/close on the existing
+        # bridge position.
+        #
+        # This is important because older test strategies used to model the
+        # reverse leg as a brand new "reverse bridge" position. That keeps the
+        # on-chain transfer working, but it leaks accounting because the
+        # original forward bridge position stays open and still contributes
+        # portfolio equity.
         flags = {TradeFlag.close, TradeFlag.reduce} | flags
 
         position2, trade, created = self.state.create_trade(
@@ -1275,6 +1301,10 @@ class PositionManager:
             flags=flags,
             pending=pending,
         )
+        # Closing a bridge must always mutate the original forward-bridge
+        # position. If this ever creates a fresh position again, we are back to
+        # the old double-counting bug where reserves are restored on the home
+        # chain but the original bridge position still remains open.
         assert position == position2, f"Somehow messed up the close_cctp_bridge_position() trade.\n" \
                                       f"Original position: {position}.\n" \
                                       f"Trade's position: {position2}.\n" \
