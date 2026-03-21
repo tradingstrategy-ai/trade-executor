@@ -980,7 +980,7 @@ def _run_test_lifecycle(
         state = load_state(state_file)
         closed_bridge_positions = [
             pos for pos in state.portfolio.closed_positions.values()
-            if pos.pair.is_cctp_bridge() and pos.pair.quote.chain_id == dest_chain_id
+            if pos.pair.is_cctp_bridge() and pos.pair.quote.chain_id == source_chain_id
         ]
         assert len(closed_bridge_positions) == 1, \
             f"Expected 1 closed bridge position after cycle 4, got {len(closed_bridge_positions)}"
