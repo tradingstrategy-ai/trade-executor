@@ -76,3 +76,6 @@ tests/mainnet_fork/redeem-dust.json
 
 # Test environment alias for Claude
 .local-test.env
+
+# Claude Code worktrees
+.claude/worktrees/
