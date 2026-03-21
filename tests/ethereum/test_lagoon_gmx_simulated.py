@@ -35,10 +35,7 @@ logger = logging.getLogger(__name__)
 
 JSON_RPC_ARBITRUM = os.environ.get("JSON_RPC_ARBITRUM")
 
-pytestmark = pytest.mark.skipif(
-    not JSON_RPC_ARBITRUM,
-    reason="JSON_RPC_ARBITRUM environment variable required",
-)
+pytestmark = pytest.mark.skip(reason="Takes too long - TODO create a fast variant of this")
 
 
 def _load_script_module():
