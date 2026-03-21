@@ -51,7 +51,7 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
 
         chain_id = next(iter(self.strategy_universe.data_universe.chains))
 
-        if routing_id.router_name in ("vault", "aave-v3", "1delta"):
+        if routing_id.router_name in ("vault", "hypercore_vault", "aave-v3", "1delta"):
             routing_model = BacktestRoutingIgnoredModel(
                 reserve.address,
             )
