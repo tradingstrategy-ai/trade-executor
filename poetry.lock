@@ -315,8 +315,8 @@ files = [
 
 [package.dependencies]
 cffi = [
-    {version = ">=1.0.1", markers = "python_version < \"3.14\""},
     {version = ">=2.0.0b1", markers = "python_version >= \"3.14\""},
+    {version = ">=1.0.1", markers = "python_version < \"3.14\""},
 ]
 
 [[package]]
@@ -1277,7 +1277,7 @@ description = "Safest and fastest Python library for secp256k1 elliptic curve op
 optional = true
 python-versions = ">=3.9"
 groups = ["main"]
-markers = "python_version <= \"3.13\" and extra == \"ccxt\""
+markers = "extra == \"ccxt\" and python_version <= \"3.13\""
 files = [
     {file = "coincurve-21.0.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:986727bba6cf0c5670990358dc6af9a54f8d3e257979b992a9dbd50dd82fa0dc"},
     {file = "coincurve-21.0.0-cp310-cp310-macosx_11_0_arm64.whl", hash = "sha256:c1c584059de61ed16c658e7eae87ee488e81438897dae8fabeec55ef408af474"},
@@ -2109,22 +2109,6 @@ pydantic = ">=2.5.2,<3"
 typing_extensions = ">=4.8.0,<5"
 
 [[package]]
-name = "eth-retry"
-version = "0.3.7"
-description = "Provides a decorator that automatically catches known transient exceptions that are common in the Ethereum/EVM ecosystem and reattempts to evaluate your decorated function"
-optional = false
-python-versions = "<4,>=3.10"
-groups = ["main"]
-markers = "extra == \"execution\""
-files = [
-    {file = "eth_retry-0.3.7-py3-none-any.whl", hash = "sha256:3155584bf6a178b95aa959d344dd077851295ceecba263b97a733cc9c1b1629c"},
-    {file = "eth_retry-0.3.7.tar.gz", hash = "sha256:0a0d7efbdd2f986e965e5bc8f6698d4efc001387b74d509b16216fc165d5aa5f"},
-]
-
-[package.dependencies]
-typing_extensions = ">=4.0.1"
-
-[[package]]
 name = "eth-rlp"
 version = "2.2.0"
 description = "eth-rlp: RLP definitions for common Ethereum objects in Python"
@@ -2800,16 +2784,16 @@ files = [
 google-auth = ">=2.14.1,<3.0.0"
 googleapis-common-protos = ">=1.56.3,<2.0.0"
 grpcio = [
-    {version = ">=1.49.1,<2.0.0", optional = true, markers = "python_version >= \"3.11\" and extra == \"grpc\""},
     {version = ">=1.75.1,<2.0.0", optional = true, markers = "python_version >= \"3.14\" and extra == \"grpc\""},
+    {version = ">=1.49.1,<2.0.0", optional = true, markers = "python_version >= \"3.11\" and extra == \"grpc\""},
 ]
 grpcio-status = [
-    {version = ">=1.49.1,<2.0.0", optional = true, markers = "python_version >= \"3.11\" and extra == \"grpc\""},
     {version = ">=1.75.1,<2.0.0", optional = true, markers = "python_version >= \"3.14\" and extra == \"grpc\""},
+    {version = ">=1.49.1,<2.0.0", optional = true, markers = "python_version >= \"3.11\" and extra == \"grpc\""},
 ]
 proto-plus = [
-    {version = ">=1.22.3,<2.0.0"},
     {version = ">=1.25.0,<2.0.0", markers = "python_version >= \"3.13\""},
+    {version = ">=1.22.3,<2.0.0"},
 ]
 protobuf = ">=4.25.8,<7.0.0"
 requests = ">=2.20.0,<3.0.0"
@@ -2865,12 +2849,12 @@ google-api-core = {version = ">=1.34.1,<2.0.dev0 || >=2.11.dev0,<3.0.0", extras 
 google-auth = ">=2.14.1,<2.24.0 || >2.24.0,<2.25.0 || >2.25.0,<3.0.0"
 grpc-google-iam-v1 = ">=0.14.0,<1.0.0"
 grpcio = [
-    {version = ">=1.33.2,<2.0.0"},
     {version = ">=1.75.1,<2.0.0", markers = "python_version >= \"3.14\""},
+    {version = ">=1.33.2,<2.0.0", markers = "python_version < \"3.14\""},
 ]
 proto-plus = [
-    {version = ">=1.22.3,<2.0.0"},
     {version = ">=1.25.0,<2.0.0", markers = "python_version >= \"3.13\""},
+    {version = ">=1.22.3,<2.0.0", markers = "python_version < \"3.13\""},
 ]
 protobuf = ">=3.20.2,<4.21.0 || >4.21.0,<4.21.1 || >4.21.1,<4.21.2 || >4.21.2,<4.21.3 || >4.21.3,<4.21.4 || >4.21.4,<4.21.5 || >4.21.5,<7.0.0"
 
@@ -4801,24 +4785,6 @@ toml = ["tomli ; python_version < \"3.11\"", "tomli_w"]
 yaml = ["pyyaml"]
 
 [[package]]
-name = "multicall"
-version = "0.12.3"
-description = "aggregate results from multiple ethereum contract calls"
-optional = false
-python-versions = "<4,>=3.8"
-groups = ["main"]
-markers = "extra == \"execution\""
-files = [
-    {file = "multicall-0.12.3-py3-none-any.whl", hash = "sha256:573fa5411ca1c3ae618ec1150d840c30e622be60c36a34bad4ef49ce6d8dc29b"},
-    {file = "multicall-0.12.3.tar.gz", hash = "sha256:9bd0229639e39dbb29fc6e7ee4e1af30a5b3bb390110a3584cdd99a8f77d8385"},
-]
-
-[package.dependencies]
-cchecksum = ">=0.0.3,<1"
-eth_retry = ">=0.1.8"
-web3 = ">=5.27,<5.29.dev0 || >5.31.0,<5.31.1 || >5.31.1,<5.31.2 || >5.31.2"
-
-[[package]]
 name = "multidict"
 version = "6.7.1"
 description = "multidict implementation"
@@ -5488,8 +5454,8 @@ files = [
 
 [package.dependencies]
 numpy = [
-    {version = ">=1.23.2", markers = "python_version == \"3.11\""},
     {version = ">=1.26.0", markers = "python_version >= \"3.12\""},
+    {version = ">=1.23.2", markers = "python_version == \"3.11\""},
 ]
 python-dateutil = ">=2.8.2"
 pytz = ">=2020.1"
@@ -6379,8 +6345,8 @@ files = [
 
 [package.dependencies]
 cffi = [
-    {version = ">=1.5.0", markers = "python_version < \"3.14\""},
     {version = ">=2.0.0b1", markers = "python_version >= \"3.14\""},
+    {version = ">=1.5.0", markers = "python_version < \"3.14\""},
 ]
 
 [package.extras]
@@ -8848,7 +8814,6 @@ jupyter = {version = "^1.0.0", optional = true}
 kaleido = {version = "^1.0.0", optional = true}
 matplotlib = {version = ">=3.5", optional = true}
 msgpack = "^1.0"
-multicall = "^0.12.3"
 numpy = {version = "<3", optional = true}
 orjson = ">=3.10.0"
 pandas = ">=1.4"
