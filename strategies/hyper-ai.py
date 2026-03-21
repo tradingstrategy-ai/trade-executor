@@ -236,10 +236,29 @@ def create_trading_universe(
     debug_printer = logger.info if execution_context.live_trading else print
 
     chain_id = parameters.primary_chain_id
+
+    # Supporting benchmark pairs live on Uniswap on Ethereum and Arbitrum.
+    # We only need them for backtest benchmarking and research visualisations.
+    # In live-style runs such as trade execution, one-off diagnostics, and
+    # Lagoon deployment, we do not trade these pairs at all.
+    # Loading them anyway makes the universe look multichain to later routing
+    # and deployment code, even though the executable strategy is Hyperliquid
+    # vault-only on HyperEVM.
+    # That false multichain signal is what caused Lagoon deployment to demand
+    # an Ethereum Web3 connection for a Hyperliquid-only deployment.
+    if execution_context.live_trading:
+        supporting_pairs = []
+    else:
+        supporting_pairs = SUPPORTING_PAIRS
+
     debug_printer(f"Preparing trading universe on chain {chain_id.get_name()}")
 
     all_pairs_df = client.fetch_pair_universe().to_pandas()
-    pairs_df = filter_for_selected_pairs(all_pairs_df, SUPPORTING_PAIRS)
+    # Filter the benchmark pairs only when we are in backtesting / research.
+    # In live paths this intentionally becomes an empty frame, because the
+    # strategy obtains its real tradeable instruments from the vault universe
+    # loaded below, not from spot benchmark pairs.
+    pairs_df = filter_for_selected_pairs(all_pairs_df, supporting_pairs)
     debug_printer(f"We have total {len(all_pairs_df)} pairs in dataset and going to use {len(pairs_df)} pairs for the strategy")
 
     source_vaults = build_hyperliquid_vault_universe(
@@ -273,6 +292,25 @@ def create_trading_universe(
         forward_fill_until=timestamp,
         primary_chain=parameters.primary_chain_id,
     )
+
+
+def _get_available_supporting_pair_ids(
+    strategy_universe: TradingStrategyUniverse,
+) -> set[int]:
+    """Return supporting pair ids that are actually present in the universe."""
+    pair_ids = set()
+
+    # Live universes intentionally skip SUPPORTING_PAIRS above.
+    # Because of that, any later benchmark lookup must tolerate the pairs being
+    # absent instead of crashing with a KeyError.
+    # We resolve only the pairs that are really present, so both backtest and
+    # live code paths can share the same indicator helpers safely.
+    for desc in SUPPORTING_PAIRS:
+        try:
+            pair_ids.add(strategy_universe.get_pair_by_human_description(desc).internal_id)
+        except KeyError:
+            continue
+    return pair_ids
 
 
 #
@@ -491,10 +529,10 @@ def inclusion_criteria(
     min_age: float,
     dependency_resolver: IndicatorDependencyResolver,
 ) -> pd.Series:
-    benchmark_pair_ids = {
-        strategy_universe.get_pair_by_human_description(desc).internal_id
-        for desc in SUPPORTING_PAIRS
-    }
+    # Supporting benchmark pairs are for comparison charts only.
+    # They must never compete with real vaults for allocation decisions.
+    # In live mode they are not loaded at all, so we resolve them defensively.
+    benchmark_pair_ids = _get_available_supporting_pair_ids(strategy_universe)
 
     tvl_series = dependency_resolver.get_indicator_data(
         tvl_inclusion_criteria,
@@ -590,10 +628,10 @@ def age_included_pair_count(
 def trading_pair_count(
     strategy_universe: TradingStrategyUniverse,
 ) -> pd.Series:
-    benchmark_pair_ids = {
-        strategy_universe.get_pair_by_human_description(desc).internal_id
-        for desc in SUPPORTING_PAIRS
-    }
+    # Exclude benchmark-only pairs from the cumulative tradeable pair count.
+    # This lookup must also work in live mode where the supporting pairs are
+    # intentionally absent from the universe.
+    benchmark_pair_ids = _get_available_supporting_pair_ids(strategy_universe)
     series = strategy_universe.data_universe.candles.df["open"]
     swap_index = series.index.swaplevel(0, 1)
 
@@ -670,7 +708,11 @@ def create_charts(
     execution_context: ExecutionContext,
 ) -> ChartRegistry:
     """Define charts we use in backtesting and live trading."""
-    charts = ChartRegistry(default_benchmark_pairs=BENCHMARK_PAIRS)
+    # Live universes intentionally omit SUPPORTING_PAIRS above.
+    # Keeping them as default chart benchmark lookups would make the webhook
+    # chart API try to resolve pairs that are not present in the live universe.
+    default_benchmark_pairs = [] if execution_context.live_trading else BENCHMARK_PAIRS
+    charts = ChartRegistry(default_benchmark_pairs=default_benchmark_pairs)
     charts.register(available_trading_pairs, ChartKind.indicator_all_pairs)
     charts.register(inclusion_criteria_check_with_chain, ChartKind.indicator_all_pairs)
     charts.register(equity_curve_with_benchmark, ChartKind.state_all_pairs)
