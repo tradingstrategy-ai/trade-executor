@@ -52,7 +52,6 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeFlag
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.strategy.valuation import ValuationModelFactory, ValuationModel, revalue_state
-from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 

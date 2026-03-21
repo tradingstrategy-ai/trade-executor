@@ -7,7 +7,6 @@ import datetime
 import faulthandler
 import logging
 import os
-import sys
 import time
 from decimal import Decimal
 from pathlib import Path
@@ -19,7 +18,6 @@ import typer
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.confirmation import ConfirmationTimedOut
 from eth_defi.gas import GasPriceMethod
-from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 
 from . import shared_options
@@ -48,14 +46,13 @@ from ...strategy.parameters import dump_parameters
 from ...strategy.routing import RoutingModel
 from ...strategy.run_state import RunState
 from ...strategy.strategy_cycle_trigger import StrategyCycleTrigger
-from ...strategy.strategy_module import read_strategy_module, StrategyModuleInformation
+from ...strategy.strategy_module import read_strategy_module
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
-from eth_defi.compat import native_datetime_utc_now
 
 try:
     from ...webhook.server import create_webhook_server
-except ImportError as e:
+except ImportError:
     create_webhook_server = None
 
 

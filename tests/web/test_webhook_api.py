@@ -17,6 +17,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.tag import StrategyTag
+from tradeexecutor.webhook.api import web_notify
 from tradeexecutor.webhook.server import create_webhook_server
 from eth_defi.compat import native_datetime_utc_now
 
@@ -90,6 +91,24 @@ def test_ping(logger,server_url):
     resp = requests.get(f"{server_url}/ping")
     assert resp.status_code == 200
     assert resp.json() == {"ping": "pong"}
+
+
+def test_web_notify_not_implemented():
+    """Notify endpoint returns an explicit not-implemented response.
+
+    1. Send a webhook notification request to the API.
+    2. Confirm the endpoint refuses the call with a `501` response.
+    3. Check the response text explains that the endpoint is not implemented yet.
+    """
+
+    # 1. Send a webhook notification request to the API.
+    resp = web_notify(None)
+
+    # 2. Confirm the endpoint refuses the call with a `501` response.
+    assert resp.status_code == 501
+
+    # 3. Check the response text explains that the endpoint is not implemented yet.
+    assert "Not implemented" in resp.text
 
 
 # OSError: [Errno 98] Address already in use

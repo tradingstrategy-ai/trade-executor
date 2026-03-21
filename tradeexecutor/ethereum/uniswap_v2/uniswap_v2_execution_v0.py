@@ -32,7 +32,6 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
-from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
