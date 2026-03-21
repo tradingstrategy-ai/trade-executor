@@ -4,17 +4,21 @@
 #
 
 name: Dev Container Docker image
+
+# Disabled - dev container job commented out for now
+# on:
+#   push:
+#     branches: [ master ]
+#     tags: [ v* ]
+#   pull_request:
+#     branches: [ master ]
 on:
-  push:
-    branches: [ master ]
-    tags: [ v* ]
-  pull_request:
-    branches: [ master ]
+  workflow_dispatch:
 
 jobs:
   devcontainer:
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/v')
+    if: false
     steps:
       - name: Checkout
         uses: actions/checkout@v3
