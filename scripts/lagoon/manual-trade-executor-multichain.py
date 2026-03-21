@@ -1,77 +1,93 @@
 """Manual test: Cross-chain Lagoon vault lifecycle via trade-executor CLI.
 
 Exercises the full lifecycle of a multichain Lagoon vault on
-Arbitrum Sepolia + Base Sepolia using trade-executor CLI commands:
+Arbitrum/Base mainnet or Arbitrum Sepolia/Base Sepolia using
+trade-executor CLI commands:
 
 1. Deploy multichain vault via ``lagoon-deploy-vault --strategy-file=...``
 2. Initialise state via ``init``
 3. Deposit USDC into the vault
 4. Settle vault via ``lagoon-settle``
 5. Run 5 strategy cycles via ``start`` with ``RUN_SINGLE_CYCLE=true``:
-   - Cycle 1: Bridge USDC from Arbitrum Sepolia -> Base Sepolia via CCTP
-   - (complete CCTP bridge: spoof on Anvil, wait for attestation on testnet)
-   - Cycle 2: Swap USDC -> WETH on Base Sepolia via Uniswap v3
-   - Cycle 3: Sell WETH -> USDC on Base Sepolia
-   - Cycle 4: Bridge USDC from Base Sepolia -> Arbitrum Sepolia via reverse CCTP
-   - (complete CCTP bridge: spoof on Anvil, wait for attestation on testnet)
+   - Cycle 1: Bridge USDC from Arbitrum -> Base via CCTP
+   - (complete CCTP bridge: spoof on Anvil, or wait for a real attestation)
+   - Cycle 2: Swap USDC -> WETH on Base via Uniswap v3
+   - Cycle 3: Sell WETH -> USDC on Base
+   - Cycle 4: Bridge USDC from Base -> Arbitrum via reverse CCTP
+   - (complete CCTP bridge: spoof on Anvil, or wait for a real attestation)
    - Cycle 5: No-op, verify funds returned
 6. Final settle + verification
 
-The script uses the ``lagoon_crosschain_manual_test`` strategy module,
-which creates a universe with CCTP bridge pairs and a WETH/USDC Uniswap v3
-pair on Base Sepolia.
+The script chooses a matching strategy module for the selected network,
+creating a universe with CCTP bridge pairs and a WETH/USDC Uniswap v3
+pair on Base or Base Sepolia.
 
-See lagoon-multichain.rst for more details how bridges and testnets work under the hood.
+See lagoon-multichain.rst for more details on multichain bridge flows.
 
 Modes
 -----
 
 **Simulated (Anvil forks)** — set ``SIMULATE=true``:
 
-- Forks both testnets locally with Anvil
+- Forks both mainnets locally with Anvil
 - Funds the deployer with ETH and USDC automatically
 - Replaces CCTP attesters on both forks so attestations are forged
   instantly (no Circle Iris API polling)
 - Fast — completes in minutes
 
-**Live testnets** — omit ``SIMULATE`` or set to ``false``:
+**Live network** — omit ``SIMULATE`` or set to ``false``:
 
-- Runs against real Arbitrum Sepolia + Base Sepolia
-- Deployer must already hold testnet ETH + USDC
-- CCTP attestations are polled from Circle's Iris API (15–20 min each)
+- Runs against real Arbitrum + Base or Arbitrum Sepolia + Base Sepolia
+- Deployer must already hold gas tokens + USDC on the selected network
+- CCTP attestations are polled from Circle's Iris API
 - Requires Forge for from-scratch Lagoon deployment
 
 Prerequisites
 -------------
 
-- Forge (for from-scratch Lagoon deployment on testnets)
-- Testnet ETH on Arbitrum Sepolia and Base Sepolia
-  (use LearnWeb3 and thirdweb faucets) — live mode only
-- Testnet USDC on Arbitrum Sepolia
-  (use Circle faucet: https://faucet.circle.com/) — live mode only
-- A WETH/USDC Uniswap v3 pool on Base Sepolia (provide address via env var)
+- Forge (for from-scratch Lagoon deployment)
+- Gas on Arbitrum and Base for mainnet mode, or on Arbitrum Sepolia and
+  Base Sepolia for testnet mode
+- USDC on the selected Arbitrum network
+- A WETH/USDC Uniswap v3 pool on the selected Base network
 
 Environment variables
 ---------------------
 
 ``SIMULATE``
-    Set to ``true`` to fork testnets with Anvil. Deployer is funded
+    Set to ``true`` to fork the selected network pair with Anvil. Deployer is funded
     automatically and CCTP attestations are forged locally.
-    Default: ``false`` (live testnet mode).
+    Default: ``false``.
+
+``LAGOON_CROSSCHAIN_NETWORK``
+    Optional network selector: ``mainnet`` or ``testnet``.
+    If omitted, mainnet is used when ``JSON_RPC_ARBITRUM`` and
+    ``JSON_RPC_BASE`` are present. Otherwise Sepolia is used when
+    ``JSON_RPC_ARBITRUM_SEPOLIA`` and ``JSON_RPC_BASE_SEPOLIA`` are present.
+
+``JSON_RPC_ARBITRUM``
+    Arbitrum mainnet RPC URL. Required for mainnet mode.
+
+``JSON_RPC_BASE``
+    Base mainnet RPC URL. Required for mainnet mode.
 
 ``JSON_RPC_ARBITRUM_SEPOLIA``
-    Arbitrum Sepolia RPC URL. Required.
+    Arbitrum Sepolia RPC URL. Required for testnet mode.
 
 ``JSON_RPC_BASE_SEPOLIA``
-    Base Sepolia RPC URL. Required.
+    Base Sepolia RPC URL. Required for testnet mode.
 
 ``LAGOON_MULTCHAIN_TEST_PRIVATE_KEY``
-    Deployer private key. Only needed in live testnet mode (must hold
-    testnet ETH + USDC). In simulate mode a random key is generated
+    Deployer private key. Only needed in live mode (must hold
+    gas tokens + USDC). In simulate mode a random key is generated
     and the account is funded automatically.
 
 ``USDC_AMOUNT``
     Amount of USDC to deposit into the vault (default: ``10``).
+
+``WETH_USDC_POOL_BASE``
+    Uniswap v3 WETH/USDC pool address on Base.
+    Defaults to the canonical 0.05% fee tier pool.
 
 ``WETH_USDC_POOL_BASE_SEPOLIA``
     Uniswap v3 WETH/USDC pool address on Base Sepolia.
@@ -79,8 +95,7 @@ Environment variables
 
 ``ATTESTATION_TIMEOUT``
     Maximum seconds to wait for CCTP attestation (default: ``3600``).
-    Only used in live testnet mode. Testnet attestations can take
-    15–20 minutes.
+    Only used in live mode.
 
 ``TRADING_STRATEGY_API_KEY``
     TradingStrategy.ai API key. Optional for code-based strategies,
@@ -94,18 +109,30 @@ Simulated (Anvil forks):
 .. code-block:: shell
 
     SIMULATE=true \\
-    JSON_RPC_ARBITRUM_SEPOLIA="https://..." \\
-    JSON_RPC_BASE_SEPOLIA="https://..." \\
-    python scripts/lagoon/manual-trade-executor-multichain.py
+    LAGOON_CROSSCHAIN_NETWORK=mainnet \\
+    JSON_RPC_ARBITRUM="https://..." \\
+    JSON_RPC_BASE="https://..." \\
+    poetry run python scripts/lagoon/manual-trade-executor-multichain.py
 
-Live testnets:
+Mainnet:
 
 .. code-block:: shell
 
+    LAGOON_CROSSCHAIN_NETWORK=mainnet \\
+    JSON_RPC_ARBITRUM="https://..." \\
+    JSON_RPC_BASE="https://..." \\
+    LAGOON_MULTCHAIN_TEST_PRIVATE_KEY="0x..." \\
+    poetry run python scripts/lagoon/manual-trade-executor-multichain.py
+
+Testnet:
+
+.. code-block:: shell
+
+    LAGOON_CROSSCHAIN_NETWORK=testnet \\
     JSON_RPC_ARBITRUM_SEPOLIA="https://..." \\
     JSON_RPC_BASE_SEPOLIA="https://..." \\
     LAGOON_MULTCHAIN_TEST_PRIVATE_KEY="0x..." \\
-    python scripts/lagoon/manual-trade-executor-multichain.py
+    poetry run python scripts/lagoon/manual-trade-executor-multichain.py
 
 If the script aborts before redeeming vault shares, USDC may remain
 locked inside the deployed Gnosis Safe. Use ``recover-safe-usdc.py``
@@ -143,11 +170,68 @@ from tradeexecutor.state.trade import TradeStatus
 
 logger = logging.getLogger(__name__)
 
+#: Arbitrum mainnet chain ID
+ARBITRUM_CHAIN_ID = 42161
+
+#: Base mainnet chain ID
+BASE_CHAIN_ID = 8453
+
 #: Arbitrum Sepolia chain ID
 ARBITRUM_SEPOLIA_CHAIN_ID = 421614
 
 #: Base Sepolia chain ID
 BASE_SEPOLIA_CHAIN_ID = 84532
+
+
+def resolve_network_configuration() -> dict:
+    """Resolve whether the script runs against mainnet or testnet."""
+    requested_network = os.environ.get("LAGOON_CROSSCHAIN_NETWORK")
+
+    if requested_network not in (None, "mainnet", "testnet"):
+        raise AssertionError(
+            f"LAGOON_CROSSCHAIN_NETWORK must be 'mainnet' or 'testnet', got {requested_network!r}",
+        )
+
+    mainnet_ready = bool(os.environ.get("JSON_RPC_ARBITRUM") and os.environ.get("JSON_RPC_BASE"))
+    testnet_ready = bool(os.environ.get("JSON_RPC_ARBITRUM_SEPOLIA") and os.environ.get("JSON_RPC_BASE_SEPOLIA"))
+
+    if requested_network is None:
+        if mainnet_ready:
+            requested_network = "mainnet"
+        elif testnet_ready:
+            requested_network = "testnet"
+        else:
+            raise AssertionError(
+                "Set either JSON_RPC_ARBITRUM + JSON_RPC_BASE or "
+                "JSON_RPC_ARBITRUM_SEPOLIA + JSON_RPC_BASE_SEPOLIA",
+            )
+
+    if requested_network == "mainnet":
+        assert mainnet_ready, "JSON_RPC_ARBITRUM and JSON_RPC_BASE are required for mainnet mode"
+        return {
+            "network": "mainnet",
+            "is_testnet": False,
+            "json_rpc_arbitrum": os.environ["JSON_RPC_ARBITRUM"],
+            "json_rpc_base": os.environ["JSON_RPC_BASE"],
+            "rpc_env_keys": ("JSON_RPC_ARBITRUM", "JSON_RPC_BASE"),
+            "chain_ids": (ARBITRUM_CHAIN_ID, BASE_CHAIN_ID),
+            "chain_names": ("Arbitrum", "Base"),
+            "chain_slugs": ("arbitrum", "base"),
+            "strategy_file": Path(__file__).resolve().parent / ".." / ".." / "strategies" / "test_only" / "lagoon_crosschain_manual_test.py",
+        }
+
+    assert testnet_ready, "JSON_RPC_ARBITRUM_SEPOLIA and JSON_RPC_BASE_SEPOLIA are required for testnet mode"
+    return {
+        "network": "testnet",
+        "is_testnet": True,
+        "json_rpc_arbitrum": os.environ["JSON_RPC_ARBITRUM_SEPOLIA"],
+        "json_rpc_base": os.environ["JSON_RPC_BASE_SEPOLIA"],
+        "rpc_env_keys": ("JSON_RPC_ARBITRUM_SEPOLIA", "JSON_RPC_BASE_SEPOLIA"),
+        "chain_ids": (ARBITRUM_SEPOLIA_CHAIN_ID, BASE_SEPOLIA_CHAIN_ID),
+        "chain_names": ("Arbitrum Sepolia", "Base Sepolia"),
+        "chain_slugs": ("arbitrum_sepolia", "base_sepolia"),
+        "strategy_file": Path(__file__).resolve().parent / ".." / ".." / "strategies" / "test_only" / "lagoon_crosschain_manual_testnet.py",
+    }
 
 
 def _check_shares(web3, vault_address: str, deployer_address: str, label: str):
@@ -199,6 +283,7 @@ def spoof_cctp_attestation(
     dest_web3,
     source_chain_id: int,
     dest_chain_id: int,
+    is_testnet: bool,
     mint_recipient: str,
     amount_raw: int,
     deployer: HotWallet,
@@ -256,7 +341,7 @@ def spoof_cctp_attestation(
         mint_recipient=mint_recipient,
         amount=amount_raw,
         burn_token=USDC_NATIVE_TOKEN[source_chain_id],
-        testnet=True,
+        testnet=is_testnet,
     )
     attestation_bytes = forge_attestation(message_bytes, test_attester)
 
@@ -355,7 +440,7 @@ def wait_for_token_balance(
     """Wait for a non-zero token balance with retries for RPC propagation.
 
     In simulate mode (Anvil forks) the balance is expected immediately,
-    so no delay is applied between checks. On live testnets a short
+    so no delay is applied between checks. On live networks a short
     delay is inserted between retries to allow the RPC to catch up.
 
     :param token:
@@ -392,8 +477,7 @@ def wait_for_token_balance(
 
 def setup_simulation(
     *,
-    json_rpc_arb_sepolia: str,
-    json_rpc_base_sepolia: str,
+    network_config: dict,
     simulate: bool,
     private_key: str | None,
     usdc_amount: Decimal,
@@ -402,10 +486,10 @@ def setup_simulation(
 
     In simulate mode:
 
-    - Forks both testnets locally with Anvil
+    - Forks both configured networks locally with Anvil
     - Creates Web3 connections pointing at Anvil forks
     - Creates a deployer wallet funded with ETH on both forks
-    - Funds deployer with USDC on Arb Sepolia fork
+    - Funds deployer with USDC on the configured Arbitrum fork
     - Replaces CCTP attesters on both forks
 
     In live mode:
@@ -415,26 +499,31 @@ def setup_simulation(
 
     :return:
         Tuple of ``(arb_web3, base_web3, deployer, private_key,
-        json_rpc_arb_sepolia, json_rpc_base_sepolia,
+        json_rpc_arbitrum, json_rpc_base,
         test_attesters, anvil_launches)``.
     """
+    json_rpc_arbitrum = network_config["json_rpc_arbitrum"]
+    json_rpc_base = network_config["json_rpc_base"]
+    source_chain_id, dest_chain_id = network_config["chain_ids"]
+    source_chain_name, _ = network_config["chain_names"]
+
     anvil_launches: list[AnvilLaunch] = []
     test_attesters: dict[int, LocalAccount] = {}
 
     if simulate:
-        logger.info("SIMULATE=true — forking testnets with Anvil")
+        logger.info("SIMULATE=true — forking mainnets with Anvil")
 
-        arb_launch = fork_network_anvil(json_rpc_arb_sepolia)
+        arb_launch = fork_network_anvil(json_rpc_arbitrum)
         anvil_launches.append(arb_launch)
-        base_launch = fork_network_anvil(json_rpc_base_sepolia)
+        base_launch = fork_network_anvil(json_rpc_base)
         anvil_launches.append(base_launch)
 
         arb_web3 = create_multi_provider_web3(arb_launch.json_rpc_url)
         base_web3 = create_multi_provider_web3(base_launch.json_rpc_url)
 
         # Override RPC URLs for CLI commands to point at Anvil forks
-        json_rpc_arb_sepolia = arb_launch.json_rpc_url
-        json_rpc_base_sepolia = base_launch.json_rpc_url
+        json_rpc_arbitrum = arb_launch.json_rpc_url
+        json_rpc_base = base_launch.json_rpc_url
 
         # Create a random deployer wallet, funded with ETH on the primary fork
         deployer = HotWallet.create_for_testing(arb_web3, eth_amount=100)
@@ -443,62 +532,69 @@ def setup_simulation(
         # Fund deployer with ETH on the second fork too
         set_balance(base_web3, deployer.address, 100 * 10**18)
 
-        # Fund deployer with USDC on Arbitrum Sepolia fork
-        arb_usdc_token = fetch_erc20_details(arb_web3, USDC_NATIVE_TOKEN[ARBITRUM_SEPOLIA_CHAIN_ID])
+        # Fund deployer with USDC on Arbitrum fork
+        arb_usdc_token = fetch_erc20_details(arb_web3, USDC_NATIVE_TOKEN[source_chain_id])
         usdc_raw = arb_usdc_token.convert_to_raw(usdc_amount) * 10  # 10x for headroom
-        fund_erc20_on_anvil(arb_web3, USDC_NATIVE_TOKEN[ARBITRUM_SEPOLIA_CHAIN_ID], deployer.address, usdc_raw)
+        fund_erc20_on_anvil(arb_web3, USDC_NATIVE_TOKEN[source_chain_id], deployer.address, usdc_raw)
 
-        logger.info("Deployer %s funded with 100 ETH + %d USDC on Arb Sepolia fork", deployer.address, usdc_raw // 10**arb_usdc_token.decimals)
+        logger.info(
+            "Deployer %s funded with 100 ETH + %d USDC on %s fork",
+            deployer.address,
+            usdc_raw // 10**arb_usdc_token.decimals,
+            source_chain_name,
+        )
 
         # Replace CCTP attesters on both forks
-        test_attesters[ARBITRUM_SEPOLIA_CHAIN_ID] = replace_attester_on_fork(arb_web3)
-        test_attesters[BASE_SEPOLIA_CHAIN_ID] = replace_attester_on_fork(base_web3)
+        test_attesters[source_chain_id] = replace_attester_on_fork(arb_web3)
+        test_attesters[dest_chain_id] = replace_attester_on_fork(base_web3)
         logger.info("CCTP attesters replaced on both forks")
     else:
-        arb_web3 = create_multi_provider_web3(json_rpc_arb_sepolia)
-        base_web3 = create_multi_provider_web3(json_rpc_base_sepolia)
+        arb_web3 = create_multi_provider_web3(json_rpc_arbitrum)
+        base_web3 = create_multi_provider_web3(json_rpc_base)
         deployer = HotWallet.from_private_key(private_key)
 
-    assert arb_web3.eth.chain_id == ARBITRUM_SEPOLIA_CHAIN_ID, \
-        f"Expected Arbitrum Sepolia ({ARBITRUM_SEPOLIA_CHAIN_ID}), got {arb_web3.eth.chain_id}"
-    assert base_web3.eth.chain_id == BASE_SEPOLIA_CHAIN_ID, \
-        f"Expected Base Sepolia ({BASE_SEPOLIA_CHAIN_ID}), got {base_web3.eth.chain_id}"
+    assert arb_web3.eth.chain_id == source_chain_id, \
+        f"Expected {source_chain_name} ({source_chain_id}), got {arb_web3.eth.chain_id}"
+    assert base_web3.eth.chain_id == dest_chain_id, \
+        f"Expected {network_config['chain_names'][1]} ({dest_chain_id}), got {base_web3.eth.chain_id}"
 
     deployer.sync_nonce(arb_web3)
 
     return (
         arb_web3, base_web3, deployer, private_key,
-        json_rpc_arb_sepolia, json_rpc_base_sepolia,
+        json_rpc_arbitrum, json_rpc_base,
         test_attesters, anvil_launches,
     )
 
 
 def verify_deployer_balances(
     *,
+    network_config: dict,
     arb_web3,
     base_web3,
     deployer: HotWallet,
     usdc_amount: Decimal,
 ):
-    """Verify deployer has ETH on both chains and sufficient USDC on Arb Sepolia.
+    """Verify deployer has ETH on both chains and sufficient USDC on the source chain.
 
     :return:
         The ``arb_usdc`` token details (from :func:`fetch_erc20_details`).
     """
+    source_chain_id, _ = network_config["chain_ids"]
+    source_chain_name, dest_chain_name = network_config["chain_names"]
     arb_balance = arb_web3.eth.get_balance(deployer.address)
     base_balance = base_web3.eth.get_balance(deployer.address)
     logger.info("Deployer: %s", deployer.address)
-    logger.info("  Arbitrum Sepolia ETH: %.6f", arb_balance / 10**18)
-    logger.info("  Base Sepolia ETH:     %.6f", base_balance / 10**18)
-    assert arb_balance > 0, f"Deployer has no ETH on Arbitrum Sepolia. Fund {deployer.address} first."
-    assert base_balance > 0, f"Deployer has no ETH on Base Sepolia. Fund {deployer.address} first."
+    logger.info("  %s ETH: %.6f", source_chain_name, arb_balance / 10**18)
+    logger.info("  %s ETH: %.6f", dest_chain_name, base_balance / 10**18)
+    assert arb_balance > 0, f"Deployer has no ETH on {source_chain_name}. Fund {deployer.address} first."
+    assert base_balance > 0, f"Deployer has no ETH on {dest_chain_name}. Fund {deployer.address} first."
 
-    arb_usdc = fetch_erc20_details(arb_web3, USDC_NATIVE_TOKEN[ARBITRUM_SEPOLIA_CHAIN_ID])
+    arb_usdc = fetch_erc20_details(arb_web3, USDC_NATIVE_TOKEN[source_chain_id])
     deployer_usdc = arb_usdc.fetch_balance_of(deployer.address)
-    logger.info("  Arbitrum Sepolia USDC: %s", deployer_usdc)
+    logger.info("  %s USDC: %s", source_chain_name, deployer_usdc)
     assert deployer_usdc >= usdc_amount, \
-        f"Deployer needs {usdc_amount} USDC on Arbitrum Sepolia but has {deployer_usdc}. " \
-        f"Get testnet USDC from https://faucet.circle.com/"
+        f"Deployer needs {usdc_amount} USDC on {source_chain_name} but has {deployer_usdc}."
 
     return arb_usdc
 
@@ -507,18 +603,16 @@ def main():
     setup_console_logging("warning")
 
     # ----- Parse environment -----
-    json_rpc_arb_sepolia = os.environ.get("JSON_RPC_ARBITRUM_SEPOLIA")
-    json_rpc_base_sepolia = os.environ.get("JSON_RPC_BASE_SEPOLIA")
+    network_config = resolve_network_configuration()
+    json_rpc_arbitrum = network_config["json_rpc_arbitrum"]
+    json_rpc_base = network_config["json_rpc_base"]
     simulate = os.environ.get("SIMULATE", "").lower() in ("true", "1")
-
-    assert json_rpc_arb_sepolia, "JSON_RPC_ARBITRUM_SEPOLIA is required"
-    assert json_rpc_base_sepolia, "JSON_RPC_BASE_SEPOLIA is required"
 
     if simulate:
         private_key = None  # Will create via HotWallet.create_for_testing() after Anvil forks
     else:
         private_key = os.environ.get("LAGOON_MULTCHAIN_TEST_PRIVATE_KEY")
-        assert private_key, "LAGOON_MULTCHAIN_TEST_PRIVATE_KEY is required in live testnet mode"
+        assert private_key, "LAGOON_MULTCHAIN_TEST_PRIVATE_KEY is required in live mode"
 
     usdc_amount = Decimal(os.environ.get("USDC_AMOUNT", "10"))
     bridge_amount = os.environ.get("BRIDGE_AMOUNT", "3")
@@ -530,11 +624,10 @@ def main():
     # ----- Set up simulation / connections -----
     (
         arb_web3, base_web3, deployer, private_key,
-        json_rpc_arb_sepolia, json_rpc_base_sepolia,
+        json_rpc_arbitrum, json_rpc_base,
         test_attesters, anvil_launches,
     ) = setup_simulation(
-        json_rpc_arb_sepolia=json_rpc_arb_sepolia,
-        json_rpc_base_sepolia=json_rpc_base_sepolia,
+        network_config=network_config,
         simulate=simulate,
         private_key=private_key,
         usdc_amount=usdc_amount,
@@ -542,23 +635,25 @@ def main():
 
     try:
         arb_usdc = verify_deployer_balances(
+            network_config=network_config,
             arb_web3=arb_web3,
             base_web3=base_web3,
             deployer=deployer,
             usdc_amount=usdc_amount,
         )
 
-        # Strategy file
-        strategy_file = (
-            Path(__file__).resolve().parent / ".." / ".." /
-            "strategies" / "test_only" / "lagoon_crosschain_manual_test.py"
-        )
+        strategy_file_override = os.environ.get("STRATEGY_FILE")
+        if strategy_file_override:
+            strategy_file = Path(strategy_file_override)
+        else:
+            strategy_file = network_config["strategy_file"]
         assert strategy_file.exists(), f"Strategy file not found: {strategy_file}"
 
         print("=" * 70)
         print("Cross-chain Lagoon vault manual test")
         print("=" * 70)
-        print(f"  Mode:           {'SIMULATE (Anvil forks)' if simulate else 'LIVE (real testnets)'}")
+        print(f"  Mode:           {'SIMULATE (Anvil forks)' if simulate else 'LIVE'}")
+        print(f"  Network:        {network_config['network']}")
         print(f"  Deployer:       {deployer.address}")
         print(f"  USDC deposit:   {usdc_amount}")
         print(f"  Strategy:       {strategy_file.name}")
@@ -573,9 +668,10 @@ def main():
             base_web3=base_web3,
             deployer=deployer,
             arb_usdc=arb_usdc,
+            network_config=network_config,
             private_key=private_key,
-            json_rpc_arb_sepolia=json_rpc_arb_sepolia,
-            json_rpc_base_sepolia=json_rpc_base_sepolia,
+            json_rpc_arbitrum=json_rpc_arbitrum,
+            json_rpc_base=json_rpc_base,
             strategy_file=strategy_file,
             usdc_amount=usdc_amount,
             bridge_amount=bridge_amount,
@@ -597,9 +693,10 @@ def _run_test_lifecycle(
     base_web3,
     deployer: HotWallet,
     arb_usdc,
+    network_config: dict,
     private_key: str,
-    json_rpc_arb_sepolia: str,
-    json_rpc_base_sepolia: str,
+    json_rpc_arbitrum: str,
+    json_rpc_base: str,
     strategy_file: Path,
     usdc_amount: Decimal,
     bridge_amount: str,
@@ -609,6 +706,11 @@ def _run_test_lifecycle(
     attestation_timeout: float,
 ):
     """Run the full test lifecycle (extracted to avoid deep nesting)."""
+    rpc_env_key_arbitrum, rpc_env_key_base = network_config["rpc_env_keys"]
+    source_chain_id, dest_chain_id = network_config["chain_ids"]
+    source_chain_name, dest_chain_name = network_config["chain_names"]
+    _, dest_chain_slug = network_config["chain_slugs"]
+    is_testnet = network_config["is_testnet"]
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         state_file = str(Path(tmp_dir) / "state.json")
@@ -623,8 +725,8 @@ def _run_test_lifecycle(
         deploy_env = {
             "STRATEGY_FILE": str(strategy_file),
             "PRIVATE_KEY": private_key,
-            "JSON_RPC_ARBITRUM_SEPOLIA": json_rpc_arb_sepolia,
-            "JSON_RPC_BASE_SEPOLIA": json_rpc_base_sepolia,
+            rpc_env_key_arbitrum: json_rpc_arbitrum,
+            rpc_env_key_base: json_rpc_base,
             "VAULT_RECORD_FILE": vault_record_file,
             "FUND_NAME": "Test Crosschain Vault",
             "FUND_SYMBOL": "TCV",
@@ -642,8 +744,8 @@ def _run_test_lifecycle(
         with open(deployment_json) as f:
             deployment_data = json.load(f)
 
-        arb_dep = deployment_data["deployments"]["arbitrum_sepolia"]
-        base_dep = deployment_data["deployments"]["base_sepolia"]
+        arb_dep = deployment_data["deployments"][network_config["chain_slugs"][0]]
+        base_dep = deployment_data["deployments"][dest_chain_slug]
         vault_address = arb_dep["vault_address"]
         safe_address = arb_dep["safe_address"]
         arb_module = arb_dep["module_address"]
@@ -664,15 +766,15 @@ def _run_test_lifecycle(
             "STRATEGY_FILE": str(strategy_file),
             "STATE_FILE": state_file,
             "PRIVATE_KEY": private_key,
-            "JSON_RPC_ARBITRUM_SEPOLIA": json_rpc_arb_sepolia,
-            "JSON_RPC_BASE_SEPOLIA": json_rpc_base_sepolia,
+            rpc_env_key_arbitrum: json_rpc_arbitrum,
+            rpc_env_key_base: json_rpc_base,
             "ASSET_MANAGEMENT_MODE": "lagoon",
             "VAULT_ADDRESS": vault_address,
             "VAULT_ADAPTER_ADDRESS": arb_module,
             "UNIT_TESTING": "true",
             "LOG_LEVEL": "info",
             "CACHE_PATH": cache_path,
-            "SATELLITE_MODULES": json.dumps({"base_sepolia": base_module}),
+            "SATELLITE_MODULES": json.dumps({dest_chain_slug: base_module}),
             "MIN_GAS_BALANCE": "0.0",
             "BRIDGE_AMOUNT": bridge_amount,
             "SWAP_AMOUNT": swap_amount,
@@ -716,7 +818,7 @@ def _run_test_lifecycle(
         settle_env = {k: v for k, v in base_env.items() if k != "NAME"}
         settle_env["SYNC_INTEREST"] = "false"
 
-        # Testnet RPCs can be slow to propagate new contract state.
+        # Live RPCs can be slow to propagate new contract state.
         # Retry the settle step with increasing delays.
         # The block cache is cleared in run_cli() before each call.
         import time as _time
@@ -724,7 +826,7 @@ def _run_test_lifecycle(
         for attempt in range(1, 6):
             if not simulate:
                 delay = 30 * attempt
-                logger.info("Waiting %ds for testnet state propagation (attempt %d/5)", delay, attempt)
+                logger.info("Waiting %ds for live RPC state propagation (attempt %d/5)", delay, attempt)
                 _time.sleep(delay)
 
             try:
@@ -739,9 +841,9 @@ def _run_test_lifecycle(
         _check_shares(arb_web3, vault_address, deployer.address, "After Step 4 settle")
 
         # ===================================================================
-        # Step 5: Cycle 1 — Bridge USDC from Arbitrum Sepolia to Base Sepolia
+        # Step 5: Cycle 1 — Bridge USDC from source chain to destination chain
         # ===================================================================
-        print("\n=== Step 5: Cycle 1 — Bridge USDC to Base Sepolia ===")
+        print(f"\n=== Step 5: Cycle 1 — Bridge USDC to {dest_chain_name} ===")
 
         start_env = {
             **base_env,
@@ -778,25 +880,26 @@ def _run_test_lifecycle(
         print(f"  Amount: {bridge_trade.planned_reserve} USDC")
 
         # ===================================================================
-        # Step 5b: CCTP attestation + receive on Base Sepolia
+        # Step 5b: CCTP attestation + receive on destination chain
         # ===================================================================
-        print("\n=== Step 5b: CCTP attestation + receive on Base Sepolia ===")
+        print(f"\n=== Step 5b: CCTP attestation + receive on {dest_chain_name} ===")
 
         if simulate:
             spoof_cctp_attestation(
                 dest_web3=base_web3,
-                source_chain_id=ARBITRUM_SEPOLIA_CHAIN_ID,
-                dest_chain_id=BASE_SEPOLIA_CHAIN_ID,
+                source_chain_id=source_chain_id,
+                dest_chain_id=dest_chain_id,
+                is_testnet=is_testnet,
                 mint_recipient=safe_address,
                 amount_raw=bridge_amount_raw,
                 deployer=deployer,
-                test_attester=test_attesters[BASE_SEPOLIA_CHAIN_ID],
+                test_attester=test_attesters[dest_chain_id],
             )
         else:
             complete_cctp_bridge(
                 dest_web3=base_web3,
-                source_chain_id=ARBITRUM_SEPOLIA_CHAIN_ID,
-                dest_chain_id=BASE_SEPOLIA_CHAIN_ID,
+                source_chain_id=source_chain_id,
+                dest_chain_id=dest_chain_id,
                 burn_tx_hash=burn_tx_hash,
                 mint_recipient=safe_address,
                 amount_raw=bridge_amount_raw,
@@ -804,16 +907,16 @@ def _run_test_lifecycle(
                 attestation_timeout=attestation_timeout,
             )
 
-        # Verify USDC arrived on Base Sepolia (with retry for RPC propagation)
-        base_usdc = fetch_erc20_details(base_web3, USDC_NATIVE_TOKEN[BASE_SEPOLIA_CHAIN_ID])
+        # Verify USDC arrived on the destination chain
+        base_usdc = fetch_erc20_details(base_web3, USDC_NATIVE_TOKEN[dest_chain_id])
         base_safe_usdc = wait_for_token_balance(
-            base_usdc, safe_address, simulate=simulate, label="Base Safe USDC",
+            base_usdc, safe_address, simulate=simulate, label=f"{dest_chain_name} Safe USDC",
         )
-        print(f"  Base Safe USDC after bridge: {base_safe_usdc}")
+        print(f"  {dest_chain_name} Safe USDC after bridge: {base_safe_usdc}")
 
         if swap_amount != "0":
             # ===================================================================
-            # Step 6: Cycle 2 — Swap USDC -> WETH on Base Sepolia
+            # Step 6: Cycle 2 — Swap USDC -> WETH on destination chain
             # ===================================================================
             print("\n=== Step 6: Cycle 2 — Swap USDC -> WETH ===")
 
@@ -835,7 +938,7 @@ def _run_test_lifecycle(
             print(f"  WETH acquired: {weth_trade.executed_quantity}")
 
             # ===================================================================
-            # Step 7: Cycle 3 — Sell WETH -> USDC on Base Sepolia
+            # Step 7: Cycle 3 — Sell WETH -> USDC on destination chain
             # ===================================================================
             print("\n=== Step 7: Cycle 3 — Sell WETH -> USDC ===")
 
@@ -858,7 +961,7 @@ def _run_test_lifecycle(
             print("\n=== Step 6-7: Skipped (SWAP_AMOUNT=0) ===")
 
         # ===================================================================
-        # Step 8: Cycle 4 — Bridge USDC from Base Sepolia back to Arb Sepolia
+        # Step 8: Cycle 4 — Bridge USDC back to the source chain
         # When SWAP_AMOUNT=0, strategy skips WETH and goes straight to
         # reverse bridge in the next cycle.
         #
@@ -866,7 +969,7 @@ def _run_test_lifecycle(
         # so that all USDC is bridged back in one go. This is needed because
         # swap fees cause a slight mismatch between bridged and available amounts.
         # ===================================================================
-        print("\n=== Step 8: Cycle 4 — Bridge USDC back to Arbitrum Sepolia ===")
+        print(f"\n=== Step 8: Cycle 4 — Bridge USDC back to {source_chain_name} ===")
 
         actual_base_usdc = base_usdc.fetch_balance_of(safe_address)
         bridge_back_env = {**start_env, "REVERSE_BRIDGE_AMOUNT": str(actual_base_usdc)}
@@ -877,7 +980,7 @@ def _run_test_lifecycle(
         state = load_state(state_file)
         closed_bridge_positions = [
             pos for pos in state.portfolio.closed_positions.values()
-            if pos.pair.is_cctp_bridge() and pos.pair.quote.chain_id == ARBITRUM_SEPOLIA_CHAIN_ID
+            if pos.pair.is_cctp_bridge() and pos.pair.quote.chain_id == dest_chain_id
         ]
         assert len(closed_bridge_positions) == 1, \
             f"Expected 1 closed bridge position after cycle 4, got {len(closed_bridge_positions)}"
@@ -893,26 +996,27 @@ def _run_test_lifecycle(
         print(f"  Amount: {reverse_trade.planned_reserve} USDC")
 
         # ===================================================================
-        # Step 8b: CCTP attestation + receive on Arbitrum Sepolia
+        # Step 8b: CCTP attestation + receive on source chain
         # ===================================================================
-        print("\n=== Step 8b: CCTP attestation + receive on Arbitrum Sepolia ===")
+        print(f"\n=== Step 8b: CCTP attestation + receive on {source_chain_name} ===")
 
         if simulate:
             spoof_cctp_attestation(
                 dest_web3=arb_web3,
-                source_chain_id=BASE_SEPOLIA_CHAIN_ID,
-                dest_chain_id=ARBITRUM_SEPOLIA_CHAIN_ID,
+                source_chain_id=dest_chain_id,
+                dest_chain_id=source_chain_id,
+                is_testnet=is_testnet,
                 mint_recipient=safe_address,
                 amount_raw=reverse_amount_raw,
                 deployer=deployer,
-                test_attester=test_attesters[ARBITRUM_SEPOLIA_CHAIN_ID],
+                test_attester=test_attesters[source_chain_id],
                 nonce=999_999_001,
             )
         else:
             complete_cctp_bridge(
                 dest_web3=arb_web3,
-                source_chain_id=BASE_SEPOLIA_CHAIN_ID,
-                dest_chain_id=ARBITRUM_SEPOLIA_CHAIN_ID,
+                source_chain_id=dest_chain_id,
+                dest_chain_id=source_chain_id,
                 burn_tx_hash=reverse_burn_tx,
                 mint_recipient=safe_address,
                 amount_raw=reverse_amount_raw,
@@ -920,11 +1024,11 @@ def _run_test_lifecycle(
                 attestation_timeout=attestation_timeout,
             )
 
-        # Verify USDC returned to Arbitrum Sepolia (with retry for RPC propagation)
+        # Verify USDC returned to the source chain
         arb_safe_usdc_after = wait_for_token_balance(
-            arb_usdc, safe_address, simulate=simulate, label="Arb Safe USDC",
+            arb_usdc, safe_address, simulate=simulate, label=f"{source_chain_name} Safe USDC",
         )
-        print(f"  Arb Safe USDC after reverse bridge: {arb_safe_usdc_after}")
+        print(f"  {source_chain_name} Safe USDC after reverse bridge: {arb_safe_usdc_after}")
 
         # ===================================================================
         # Step 9: Cycle 5 — No-op (verify funds returned)
@@ -953,14 +1057,14 @@ def _run_test_lifecycle(
         print("=" * 70)
         print("Final status")
         print("=" * 70)
-        print(f"  Arb Safe USDC:  {final_arb_safe_usdc}")
-        print(f"  Base Safe USDC: {final_base_safe_usdc}")
+        print(f"  {source_chain_name} Safe USDC:  {final_arb_safe_usdc}")
+        print(f"  {dest_chain_name} Safe USDC: {final_base_safe_usdc}")
         print(f"  Portfolio equity: {final_equity}")
         print(f"  Open positions:  {len(state.portfolio.open_positions)}")
         print(f"  Closed positions: {len(state.portfolio.closed_positions)}")
 
         # Verify the round trip was successful
-        assert final_arb_safe_usdc > 0, "No USDC returned to Arbitrum Sepolia Safe"
+        assert final_arb_safe_usdc > 0, f"No USDC returned to {source_chain_name} Safe"
 
         # Total USDC across all chains should approximately equal the deposited amount
         # (small difference expected from Uniswap swap fees/slippage on the WETH round-trip)

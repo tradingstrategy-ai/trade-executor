@@ -1,15 +1,15 @@
-"""Mainnet strategy for cross-chain Lagoon vault with CCTP bridging + Uniswap v3.
+"""Testnet strategy for cross-chain Lagoon vault with CCTP bridging + Uniswap v3.
 
-A 5-cycle strategy exercising the full CCTP bridge round-trip on mainnet forks:
+A 5-cycle strategy exercising the full CCTP bridge round-trip on testnets:
 
-- Cycle 1: Bridge 5 USDC from Arbitrum -> Base via CCTP
-- Cycle 2: Swap bridged USDC -> WETH on Base via Uniswap v3
-- Cycle 3: Sell WETH -> USDC on Base via Uniswap v3
-- Cycle 4: Bridge ~3 USDC from Base -> Arbitrum via reverse CCTP
+- Cycle 1: Bridge 5 USDC from Arbitrum Sepolia -> Base Sepolia via CCTP
+- Cycle 2: Swap bridged USDC -> WETH on Base Sepolia via Uniswap v3
+- Cycle 3: Sell WETH -> USDC on Base Sepolia via Uniswap v3
+- Cycle 4: Bridge ~3 USDC from Base Sepolia -> Arbitrum Sepolia via reverse CCTP
 - Cycle 5: No-op (verify funds returned)
 
-Uses mainnet addresses (Arbitrum + Base).
-WETH/USDC pool address can be overridden via ``WETH_USDC_POOL_BASE``.
+Uses testnet addresses (Arbitrum Sepolia + Base Sepolia).
+WETH/USDC pool address can be overridden via ``WETH_USDC_POOL_BASE_SEPOLIA``.
 """
 
 import datetime
@@ -47,12 +47,12 @@ trade_routing = TradeRouting.default
 reserve_currency = ReserveCurrency.usdc
 
 #: Source chain holds reserves
-SOURCE_CHAIN_ID = ChainId.arbitrum
+SOURCE_CHAIN_ID = ChainId.arbitrum_sepolia
 #: Destination chain holds bridged USDC
-DEST_CHAIN_ID = ChainId.base
+DEST_CHAIN_ID = ChainId.base_sepolia
 
-#: Uniswap v3 factory on Base
-BASE_UNISWAP_V3_FACTORY = UNISWAP_V3_DEPLOYMENTS["base"]["factory"]
+#: Uniswap v3 factory on Base Sepolia
+BASE_SEPOLIA_UNISWAP_V3_FACTORY = UNISWAP_V3_DEPLOYMENTS["base_sepolia"]["factory"]
 
 #: How much USDC to bridge
 BRIDGE_AMOUNT = Decimal(os.environ.get("BRIDGE_AMOUNT", "3"))
@@ -60,13 +60,13 @@ BRIDGE_AMOUNT = Decimal(os.environ.get("BRIDGE_AMOUNT", "3"))
 #: How much USDC to swap on Uniswap v3 (leave some for gas/fees)
 SWAP_AMOUNT = Decimal(os.environ.get("SWAP_AMOUNT", "2"))
 
-#: How much USDC to bridge back from Base to Arbitrum
+#: How much USDC to bridge back from Base Sepolia to Arbitrum Sepolia
 REVERSE_BRIDGE_AMOUNT = Decimal(os.environ.get("REVERSE_BRIDGE_AMOUNT", "1"))
 
 
 class Parameters:
-    """Strategy parameters for mainnet-fork CCTP bridge + Uniswap v3 testing."""
-    chain_id = ChainId.arbitrum
+    """Strategy parameters for testnet CCTP bridge + Uniswap v3 testing."""
+    chain_id = ChainId.arbitrum_sepolia
     initial_cash = 10
     cycle_duration = CycleDuration.cycle_1d
     routing = TradeRouting.default
@@ -81,20 +81,16 @@ def create_trading_universe(
     execution_context: ExecutionContext,
     universe_options: UniverseOptions,
 ) -> TradingStrategyUniverse:
-    """Create a trading universe with CCTP bridge pair + WETH/USDC on Base.
-
-    Uses mainnet addresses by default. The WETH/USDC pool can be
-    overridden via ``WETH_USDC_POOL_BASE``.
-    """
+    """Create a trading universe with CCTP bridge pair + WETH/USDC on Base Sepolia."""
 
     usdc_source_address = USDC_NATIVE_TOKEN[SOURCE_CHAIN_ID.value]
     usdc_dest_address = USDC_NATIVE_TOKEN[DEST_CHAIN_ID.value]
     weth_address = WRAPPED_NATIVE_TOKEN[DEST_CHAIN_ID.value]
 
-    # WETH/USDC pool on Base Uniswap v3 (0.05% fee tier)
-    weth_usdc_pool = os.environ.get("WETH_USDC_POOL_BASE", "0xd0b53d9277642d899df5c87a3966a349a798f224")
+    # WETH/USDC pool on Base Sepolia (Uniswap v3, 0.05% fee tier)
+    weth_usdc_pool = os.environ.get("WETH_USDC_POOL_BASE_SEPOLIA", "0x94bfc0574FF48E92cE43d495376C477B1d0EEeC0")
 
-    # Reserve token on source chain (Arbitrum)
+    # Reserve token on source chain (Arbitrum Sepolia)
     usdc_source = AssetIdentifier(
         chain_id=SOURCE_CHAIN_ID.value,
         address=usdc_source_address,
@@ -102,7 +98,7 @@ def create_trading_universe(
         decimals=6,
     )
 
-    # Bridged token on destination chain (Base)
+    # Bridged token on destination chain (Base Sepolia)
     usdc_dest = AssetIdentifier(
         chain_id=DEST_CHAIN_ID.value,
         address=usdc_dest_address,
@@ -110,7 +106,7 @@ def create_trading_universe(
         decimals=6,
     )
 
-    # WETH on Base
+    # WETH on Base Sepolia
     weth = AssetIdentifier(
         chain_id=DEST_CHAIN_ID.value,
         address=weth_address,
@@ -135,24 +131,23 @@ def create_trading_universe(
         },
     )
 
-    # WETH/USDC on Base Uniswap v3 (0.05% fee tier)
+    # WETH/USDC on Base Sepolia Uniswap v3 (0.05% fee tier)
     # Token order: USDC < WETH so USDC=token0, WETH=token1
     # Since base=WETH != token0=USDC, we need reverse_token_order=True
     weth_usdc_pair = TradingPairIdentifier(
         base=weth,
         quote=usdc_dest,
         pool_address=weth_usdc_pool,
-        exchange_address=BASE_UNISWAP_V3_FACTORY,
+        exchange_address=BASE_SEPOLIA_UNISWAP_V3_FACTORY,
         internal_id=2,
         internal_exchange_id=2,
         fee=0.0005,
         kind=TradingPairKind.spot_market_hold,
-        exchange_name="Uniswap v3 (Base)",
+        exchange_name="Uniswap v3 (Base Sepolia)",
         reverse_token_order=True,
     )
 
-    # Reverse CCTP bridge pair: bridge USDC from Base back to Arbitrum
-    # base=destination USDC (Arbitrum), quote=source USDC (Base — where tokens are burned)
+    # Reverse CCTP bridge pair: bridge USDC from Base Sepolia back to Arbitrum Sepolia
     reverse_cctp_bridge_pair = TradingPairIdentifier(
         base=usdc_source,
         quote=usdc_dest,
@@ -162,7 +157,7 @@ def create_trading_universe(
         internal_exchange_id=3,
         fee=0.0,
         kind=TradingPairKind.cctp_bridge,
-        exchange_name="CCTP Bridge (Base)",
+        exchange_name="CCTP Bridge (Base Sepolia)",
         other_data={
             "bridge_protocol": "cctp",
             "destination_chain_id": SOURCE_CHAIN_ID.value,
@@ -175,7 +170,7 @@ def create_trading_universe(
 
     cctp_exchange = Exchange(
         chain_id=SOURCE_CHAIN_ID,
-        chain_slug="arbitrum",
+        chain_slug="arbitrum_sepolia",
         exchange_id=1,
         exchange_slug="cctp-bridge",
         address=TOKEN_MESSENGER_V2,
@@ -185,18 +180,18 @@ def create_trading_universe(
 
     uniswap_v3_exchange = Exchange(
         chain_id=DEST_CHAIN_ID,
-        chain_slug="base",
+        chain_slug="base_sepolia",
         exchange_id=2,
         exchange_slug="uniswap-v3",
-        address=BASE_UNISWAP_V3_FACTORY,
+        address=BASE_SEPOLIA_UNISWAP_V3_FACTORY,
         exchange_type=ExchangeType.uniswap_v3,
         pair_count=1,
     )
 
-    # CCTP bridge exchange on Base (for reverse bridge direction)
+    # CCTP bridge exchange on Base Sepolia (for reverse bridge direction)
     cctp_exchange_base = Exchange(
         chain_id=DEST_CHAIN_ID,
-        chain_slug="base",
+        chain_slug="base_sepolia",
         exchange_id=3,
         exchange_slug="cctp-bridge",
         address=TOKEN_MESSENGER_V2,
@@ -242,10 +237,10 @@ def decide_trades(
 ) -> list[TradeExecution]:
     """5-cycle strategy: bridge -> buy -> sell -> bridge back -> no-op.
 
-    - Cycle 1: Bridge USDC from Arbitrum to Base
-    - Cycle 2: Buy WETH on Base
-    - Cycle 3: Sell WETH -> USDC on Base
-    - Cycle 4: Bridge USDC from Base back to Arbitrum
+    - Cycle 1: Bridge USDC from Arbitrum Sepolia to Base Sepolia
+    - Cycle 2: Buy WETH on Base Sepolia
+    - Cycle 3: Sell WETH -> USDC on Base Sepolia
+    - Cycle 4: Bridge USDC from Base Sepolia back to Arbitrum Sepolia
     - Cycle 5: No-op (verify funds returned)
 
     Uses position state (not cycle counters) to decide what to do, because
@@ -271,29 +266,26 @@ def decide_trades(
         p.pair.is_cctp_bridge() and p.pair.quote.chain_id == SOURCE_CHAIN_ID.value
         for p in all_positions
     )
-    forward_bridge_open = next(
-        (
-            p for p in state.portfolio.open_positions.values()
-            if p.pair.is_cctp_bridge() and p.pair.quote.chain_id == SOURCE_CHAIN_ID.value
-        ),
-        None,
+    has_reverse_bridge = any(
+        p.pair.is_cctp_bridge() and p.pair.quote.chain_id == DEST_CHAIN_ID.value
+        for p in all_positions
     )
 
-    # Cycle 1: Bridge USDC to Base
+    # Cycle 1: Bridge USDC to Base Sepolia
     if not has_forward_bridge:
         pair = universe.get_pair_by_human_description(
             (SOURCE_CHAIN_ID, "cctp-bridge", "USDC", "USDC"),
         )
         return position_manager.open_spot(pair, value=BRIDGE_AMOUNT)
 
-    # Cycle 2: Buy WETH on Base (skip if SWAP_AMOUNT=0)
+    # Cycle 2: Buy WETH on Base Sepolia (skip if SWAP_AMOUNT=0)
     if SWAP_AMOUNT > 0 and not has_open_weth and not has_closed_weth:
         pair = universe.get_pair_by_human_description(
             (DEST_CHAIN_ID, "uniswap-v3", "WETH", "USDC"),
         )
         return position_manager.open_spot(pair, value=SWAP_AMOUNT)
 
-    # Cycle 3: Close WETH position (sell WETH -> USDC on Base)
+    # Cycle 3: Close WETH position (sell WETH -> USDC on Base Sepolia)
     if has_open_weth:
         weth_pos = next(
             p for p in state.portfolio.open_positions.values()
@@ -301,14 +293,12 @@ def decide_trades(
         )
         return position_manager.close_position(weth_pos)
 
-    # Cycle 4: Bridge USDC back from Base to Arbitrum
-    if (has_closed_weth or SWAP_AMOUNT == 0) and forward_bridge_open is not None:
-        # The reverse CCTP leg must close the original forward bridge position.
-        #
-        # It is tempting to open a new "reverse bridge" pair here, but that
-        # leaves the original bridge position open in state and causes portfolio
-        # equity to be counted twice after funds have already returned home.
-        return position_manager.close_position(forward_bridge_open)
+    # Cycle 4: Bridge USDC back from Base Sepolia to Arbitrum Sepolia
+    if (has_closed_weth or SWAP_AMOUNT == 0) and not has_reverse_bridge:
+        pair = universe.get_pair_by_human_description(
+            (DEST_CHAIN_ID, "cctp-bridge", "USDC", "USDC"),
+        )
+        return position_manager.open_spot(pair, value=REVERSE_BRIDGE_AMOUNT)
 
     # Cycle 5: No-op
     return []
