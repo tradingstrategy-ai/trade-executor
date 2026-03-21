@@ -1206,6 +1206,86 @@ class PositionManager:
         assert trade.closing
         return [trade]
 
+    def close_cctp_bridge_position(
+        self,
+        position: TradingPosition,
+        trade_type: TradeType = TradeType.rebalance,
+        notes: str | None = None,
+        slippage_tolerance: float | None = None,
+        flags: Set[TradeFlag] | None = None,
+        quantity: Decimal | None = None,
+        pending: bool = False,
+    ) -> List[TradeExecution]:
+        """Close a CCTP bridge position by bridging available capital back."""
+
+        assert position.pair.is_cctp_bridge()
+
+        pair = position.pair
+
+        if quantity is None:
+            quantity = position.get_available_bridge_capital()
+
+        if quantity:
+            assert quantity > 0, "Closing CCTP bridge, quantity must be positive"
+
+        price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
+        price = price_structure.price
+
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
+
+        if slippage_tolerance is None:
+            slippage_tolerance = self.pricing_model.calculate_trade_adjusted_slippage_tolerance(
+                pair=pair,
+                direction="sell",
+                default_slippage_tolerance=self.default_slippage_tolerance,
+            )
+
+        assert slippage_tolerance < 0.33, f"Slippage tolerance does not look real {slippage_tolerance} for {pair}, sell tax is {pair.get_sell_tax()}"
+
+        logger.info(
+            "Preparing to close CCTP bridge %s, quantity %s, pricing %s, slippage tolerance: %f %%",
+            position,
+            quantity,
+            price_structure,
+            slippage_tolerance,
+        )
+
+        if not flags:
+            flags = set()
+
+        flags = {TradeFlag.close, TradeFlag.reduce} | flags
+
+        position2, trade, created = self.state.create_trade(
+            self.timestamp,
+            pair,
+            -quantity,
+            None,
+            price,
+            trade_type,
+            reserve_asset,
+            reserve_price,
+            notes=notes,
+            pair_fee=price_structure.get_fee_percentage(),
+            lp_fees_estimated=price_structure.get_total_lp_fees(),
+            planned_mid_price=price_structure.mid_price,
+            position=position,
+            slippage_tolerance=slippage_tolerance,
+            price_structure=price_structure,
+            closing=True,
+            flags=flags,
+            pending=pending,
+        )
+        assert position == position2, f"Somehow messed up the close_cctp_bridge_position() trade.\n" \
+                                      f"Original position: {position}.\n" \
+                                      f"Trade's position: {position2}.\n" \
+                                      f"Trade: {trade}\n" \
+                                      f"Quantity left: {quantity}\n" \
+                                      f"Price structure: {price_structure}\n" \
+                                      f"Reserve asset: {reserve_asset}\n"
+        assert created is False, "Closing CCTP bridge should mutate an existing position"
+        assert trade.closing
+        return [trade]
+
     def close_credit_supply_position(
         self,
         position: TradingPosition,
@@ -1326,7 +1406,20 @@ class PositionManager:
             )
             return []
 
-        if position.is_spot_market():
+        if position.pair.is_cctp_bridge():
+
+            if trade_type is None:
+                trade_type = TradeType.rebalance
+
+            return self.close_cctp_bridge_position(
+                position,
+                trade_type=trade_type,
+                notes=notes,
+                slippage_tolerance=slippage_tolerance,
+                flags=flags,
+                pending=pending,
+            )
+        elif position.is_spot_market():
 
             if trade_type is None:
                 trade_type = TradeType.rebalance

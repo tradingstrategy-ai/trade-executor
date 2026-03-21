@@ -1317,9 +1317,15 @@ class TradingPosition(GenericPosition):
         # VELVET HACK: Quantity can go to below zero, because te last trade
         # got in last minute deposit and executed more than we thought we have
         # aBasUSDC HACK: Quantity can also go below zero due to rounding/epsilon
-        if self.is_spot() or self.is_credit_supply() or self.pair.is_cctp_bridge():
+        if self.is_spot() or self.is_credit_supply():
             if quantity <= 0:
                 return True
+
+        if self.pair.is_cctp_bridge():
+            available_bridge_capital = self.get_available_bridge_capital()
+            if available_bridge_capital <= 0:
+                return True
+            return abs(available_bridge_capital) <= epsilon
 
         return abs(quantity) <= epsilon
 

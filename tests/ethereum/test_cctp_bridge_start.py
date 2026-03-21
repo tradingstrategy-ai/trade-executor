@@ -208,9 +208,8 @@ def test_cctp_bridge_start_single_cycle(
         f"Expected 5000 USDC remaining on Arbitrum, got {arb_balance}"
 
     equity_after_c1 = state.portfolio.get_total_equity()
-    # Bridge positions have 0 equity, so total = reserves only (~5000)
-    assert equity_after_c1 == pytest.approx(5000, abs=500), \
-        f"Equity after cycle 1 should be ~5000 (reserves only), got {equity_after_c1}"
+    assert equity_after_c1 == pytest.approx(10000, abs=500), \
+        f"Equity after cycle 1 should still reflect total bridged capital, got {equity_after_c1}"
 
     # === Spoof CCTP attestation on Base ===
     base_web3 = Web3(HTTPProvider(anvil_base.json_rpc_url))
@@ -318,15 +317,18 @@ def test_cctp_bridge_start_single_cycle(
 
     state = State.from_json(open(state_file, "rt").read())
 
-    # Should have a reverse bridge position (source chain = Base)
-    reverse_bridge_positions = [
-        pos for pos in state.portfolio.open_positions.values()
-        if pos.pair.is_cctp_bridge() and pos.pair.quote.chain_id == 8453
-    ]
-    assert len(reverse_bridge_positions) == 1, \
-        f"Expected 1 reverse bridge position after cycle 4, got {len(reverse_bridge_positions)}"
+    # The original bridge position should now be closed by the bridge-back trade.
+    assert len(state.portfolio.open_positions) == 0, \
+        f"Expected 0 open positions after cycle 4, got {len(state.portfolio.open_positions)}"
 
-    reverse_bridge_trade = list(reverse_bridge_positions[0].trades.values())[0]
+    closed_bridge_positions = [
+        pos for pos in state.portfolio.closed_positions.values()
+        if pos.pair.is_cctp_bridge() and pos.pair.quote.chain_id == 42161
+    ]
+    assert len(closed_bridge_positions) == 1, \
+        f"Expected 1 closed bridge position after cycle 4, got {len(closed_bridge_positions)}"
+
+    reverse_bridge_trade = list(closed_bridge_positions[0].trades.values())[-1]
     assert reverse_bridge_trade.get_status() == TradeStatus.success, \
         f"Reverse bridge trade status: {reverse_bridge_trade.get_status()}"
 
