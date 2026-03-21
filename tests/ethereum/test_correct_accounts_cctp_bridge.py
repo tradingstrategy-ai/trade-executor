@@ -192,6 +192,7 @@ def environment(
         "TEST_USDC_DEST_ADDRESS": usdc_dest.address,
         # PATH needed for subprocess
         "PATH": os.environ.get("PATH", ""),
+        "LOG_LEVEL": "disabled",
     }
     return environment
 

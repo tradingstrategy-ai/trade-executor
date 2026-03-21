@@ -18,6 +18,7 @@ def test_cli_purge_token_cache(mocker, persistent_test_client):
         "PRINT_TOKENS": "all",
         "UNIT_TESTING": "true",
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
+        "LOG_LEVEL": "disabled",
     }
 
     mocker.patch.dict("os.environ", environment, clear=True)

@@ -170,6 +170,11 @@ def setup_pytest_logging(request=None, mute_requests=True) -> logging.Logger:
 
     setup_custom_log_levels()
 
+    # Suppress INFO-level noise in test output.
+    # CLI commands call setup_logging() which sets root to INFO with
+    # coloredlogs; reset it here so tests don't clog CI output.
+    logging.getLogger().setLevel(logging.WARNING)
+
     # Disable logging of JSON-RPC requests and reploes
     logging.getLogger("web3.RequestManager").setLevel(logging.WARNING)
     logging.getLogger("web3.providers.HTTPProvider").setLevel(logging.WARNING)

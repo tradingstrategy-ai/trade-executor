@@ -1,3 +1,4 @@
+import logging
 import os
 from logging import Logger
 
@@ -46,6 +47,19 @@ def persistent_test_client(persistent_test_cache_path) -> Client:
     c = Client.create_test_client(persistent_test_cache_path)
     yield c
     c.close()
+
+
+@pytest.fixture(autouse=True)
+def _suppress_info_logging():
+    """Reset root logger to WARNING after each test.
+
+    CLI tests call setup_logging() which sets root logger to INFO
+    with coloredlogs. This persists across tests in the same xdist
+    worker process, clogging CI output with thousands of INFO lines.
+    """
+    logging.getLogger().setLevel(logging.WARNING)
+    yield
+    logging.getLogger().setLevel(logging.WARNING)
 
 
 @pytest.fixture()
