@@ -41,7 +41,7 @@ from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvaila
 from tradingstrategy.utils.token_extra_data import load_extra_metadata
 from tradingstrategy.utils.token_filter import add_base_quote_address_columns
 from tradingstrategy.vault import VaultMetadata, VaultUniverse
-from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, DEFAULT_VAULT_PRICE_BUNDLE
+from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
@@ -2312,39 +2312,6 @@ def load_vault_universe_with_metadata(
     return vault_universe
 
 
-def _filter_trading_strategy_website_vault_price_history(
-    vault_prices_df: pd.DataFrame,
-    vault_pairs_df: pd.DataFrame,
-    start_at: datetime.datetime | None,
-    end_at: datetime.datetime | None,
-) -> pd.DataFrame:
-    """Filter Trading Strategy website vault history to the requested vaults and load window.
-
-    For backtests the load window may intentionally start earlier than the
-    actual trading window so age and other history-derived indicators can see
-    the full pre-backtest history they depend on.
-    """
-    assert "chain" in vault_prices_df.columns, f"Got {vault_prices_df.columns}"
-    assert "address" in vault_prices_df.columns, f"Got {vault_prices_df.columns}"
-    assert "timestamp" in vault_prices_df.columns, f"Got {vault_prices_df.columns}"
-
-    vaults_to_match = {(int(row.chain_id), row.address.lower()) for _, row in vault_pairs_df.iterrows()}
-    addresses = vault_prices_df["address"].astype(str).str.lower()
-    mask = pd.MultiIndex.from_arrays([vault_prices_df["chain"], addresses]).isin(vaults_to_match)
-    filtered_df = vault_prices_df.loc[mask].copy()
-
-    filtered_df["address"] = filtered_df["address"].astype(str).str.lower()
-    filtered_df["timestamp"] = pd.to_datetime(filtered_df["timestamp"])
-
-    if start_at is not None:
-        filtered_df = filtered_df.loc[filtered_df["timestamp"] >= pd.Timestamp(start_at)]
-
-    if end_at is not None:
-        filtered_df = filtered_df.loc[filtered_df["timestamp"] <= pd.Timestamp(end_at)]
-
-    return filtered_df
-
-
 def _concat_optional_dataframe(
     original_df: pd.DataFrame,
     additional_df: pd.DataFrame,
@@ -2854,7 +2821,7 @@ def load_partial_data(
             website_vault_prices_df = client.fetch_vault_price_history(
                 download_root=vault_history_download_root,
             )
-            website_vault_prices_df = _filter_trading_strategy_website_vault_price_history(
+            website_vault_prices_df = filter_vault_price_history(
                 website_vault_prices_df,
                 vault_pairs_df,
                 data_load_start_at,
