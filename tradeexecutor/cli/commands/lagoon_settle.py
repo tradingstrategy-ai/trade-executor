@@ -9,7 +9,7 @@ from typing import Optional
 
 from . import shared_options
 from .app import app
-from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
+from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_client
 from .lagoon_utils import choose_single_chain, resolve_state_store
 from ..log import setup_logging
@@ -80,7 +80,11 @@ def lagoon_settle(
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 
-    cache_path = prepare_cache(id, cache_path)
+    cache_path, token_cache = prepare_cache_and_token_cache(
+        id,
+        cache_path,
+        unit_testing=unit_testing,
+    )
 
     rpc_kwargs = collect_rpc_kwargs(
         json_rpc_binance=json_rpc_binance,
@@ -115,6 +119,7 @@ def lagoon_settle(
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
         unit_testing=unit_testing,
+        token_cache=token_cache,
     )
 
     client, routing_model = create_client(

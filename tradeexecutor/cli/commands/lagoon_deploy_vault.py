@@ -76,7 +76,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
     deploy_multichain_lagoon_vault)
 from eth_defi.hotwallet import HotWallet
 from eth_defi.safe.deployment import fetch_safe_deployment
-from eth_defi.token import fetch_erc20_details
+from eth_defi.token import TokenDiskCache, fetch_erc20_details
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
@@ -191,6 +191,7 @@ def _resolve_multichain_fund_metadata(
     existing_vault_address: str | None,
     universe,
     chain_web3: dict[str, Web3],
+    token_cache: TokenDiskCache | None = None,
     logger,
 ) -> tuple[str, str]:
     """Resolve fund name and symbol for multichain deploys.
@@ -210,6 +211,7 @@ def _resolve_multichain_fund_metadata(
             source_web3,
             existing_vault_address,
             {ERC4626Feature.lagoon_like},
+            token_cache=token_cache,
         )
         if resolved_fund_name is None:
             resolved_fund_name = existing_vault.name
@@ -764,6 +766,7 @@ def lagoon_deploy_vault(
             web3,
             existing_vault_address,
             {ERC4626Feature.lagoon_like},
+            token_cache=token_cache,
         )
         logger.info("Deploying for existing vault %s", existing_vault.name)
         denomination_token = existing_vault.denomination_token
@@ -771,6 +774,8 @@ def lagoon_deploy_vault(
         denomination_token = fetch_erc20_details(
             web3,
             denomination_asset,
+            cache=token_cache,
+            chain_id=web3.eth.chain_id,
         )
 
     if simulate:
@@ -1035,6 +1040,7 @@ def _deploy_multichain(
         existing_vault_address=existing_vault_address,
         universe=universe,
         chain_web3=chain_web3,
+        token_cache=token_cache,
         logger=logger,
     )
 
