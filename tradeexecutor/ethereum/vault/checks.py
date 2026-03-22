@@ -21,6 +21,7 @@ import logging
 
 import pandas as pd
 
+from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ class StaleVaultData(Exception):
 def check_stale_vault_data(
     strategy_universe: TradingStrategyUniverse,
     decision_timestamp: datetime.datetime,
+    execution_mode: ExecutionMode,
     tolerance: datetime.timedelta = datetime.timedelta(hours=36),
 ) -> None:
     """Check that vault candle data is fresh enough for allocation decisions.
@@ -46,10 +48,16 @@ def check_stale_vault_data(
     Call this at the start of ``decide_trades()`` to bail out early
     rather than allocating based on synthetic forward-filled data.
 
+    Silently returns for non-live execution modes (backtesting,
+    simulation) where data is always complete by construction.
+
     :param strategy_universe:
         The trading universe with forward-filled candle data.
     :param decision_timestamp:
         The current decision cycle timestamp (naive UTC).
+    :param execution_mode:
+        The current execution mode. The check only runs for live
+        trading modes; backtesting and simulation are skipped.
     :param tolerance:
         Maximum allowed age of real (non-forward-filled) candle data.
         Defaults to 36 hours, which accommodates the 24h parquet cache
@@ -59,6 +67,9 @@ def check_stale_vault_data(
         every stale vault with its name, address, last real timestamp,
         and data age.
     """
+    if not execution_mode.is_live_trading():
+        return
+
     candles = strategy_universe.data_universe.candles
     if candles is None:
         return

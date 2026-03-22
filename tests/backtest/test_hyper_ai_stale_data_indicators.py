@@ -601,6 +601,7 @@ def test_check_stale_vault_data_raises_on_stale(
         check_stale_vault_data(
             stale_universe,
             decision_timestamp,
+            execution_mode=ExecutionMode.real_trading,
             tolerance=datetime.timedelta(hours=1),
         )
 
@@ -623,5 +624,28 @@ def test_check_stale_vault_data_passes_when_fresh(
     check_stale_vault_data(
         stale_universe,
         decision_timestamp,
+        execution_mode=ExecutionMode.real_trading,
         tolerance=datetime.timedelta(days=30),
+    )
+
+
+def test_check_stale_vault_data_skipped_in_backtest(
+    stale_universe: TradingStrategyUniverse,
+    decision_timestamp: datetime.datetime,
+):
+    """Verify check_stale_vault_data silently returns for non-live execution modes.
+
+    Backtest data is complete by construction, so the staleness check
+    should not run. Even with a very tight tolerance, no exception is raised.
+
+    1. Build a forward-filled universe where vault B is 2 days stale.
+    2. Call check_stale_vault_data with backtesting mode and a 1-hour tolerance.
+    3. Assert no exception is raised.
+    """
+    # Should not raise despite the tight tolerance — backtest mode is skipped.
+    check_stale_vault_data(
+        stale_universe,
+        decision_timestamp,
+        execution_mode=ExecutionMode.backtesting,
+        tolerance=datetime.timedelta(hours=1),
     )

@@ -297,8 +297,7 @@ def decide_trades(
     # also masks stale data — tvl() sees the last real TVL repeated,
     # age() keeps growing on synthetic rows, and age_ramp_weight()
     # increases. Bail out before the alpha model uses those values.
-    if input.execution_context.live_trading:
-        check_stale_vault_data(strategy_universe, timestamp)
+    check_stale_vault_data(strategy_universe, timestamp, input.execution_context.mode)
 
     portfolio = position_manager.get_current_portfolio()
     equity = portfolio.get_total_equity()
