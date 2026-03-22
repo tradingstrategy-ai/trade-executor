@@ -203,6 +203,18 @@ filterwarnings = [
   "ignore::DeprecationWarning:quantstats.*:",
   "ignore::DeprecationWarning:pkg_resources.*:",
   "ignore:websockets\\.legacy is deprecated.*:DeprecationWarning",
+  # pyramid imports deprecated pkg_resources
+  "ignore::DeprecationWarning:pyramid.*:",
+  # seaborn boxplot vert parameter deprecated in matplotlib
+  "ignore:vert\\: bool will be deprecated:PendingDeprecationWarning:seaborn.*:",
+  # cached_property uses deprecated asyncio.iscoroutinefunction
+  "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning:cached_property.*:",
+  # dataclasses_json warns about NoneType for non-optional fields in old serialised state
+  "ignore:.*NoneType.*object value of non-optional type.*:RuntimeWarning:dataclasses_json.*:",
+  # Legacy broadcast() function in our own code - suppressed until fully migrated to multi-node broadcasting
+  "ignore:This function is deprecated. Use multi-node broadcasting instead:DeprecationWarning",
+  # loky parallel executor leaks semaphores on shutdown - harmless
+  "ignore:resource_tracker\\: There appear to be \\d+ leaked semaphore:UserWarning",
 ]
 markers = [
   "slow_test_group: manually separated group of tests that take individually long time to run",
