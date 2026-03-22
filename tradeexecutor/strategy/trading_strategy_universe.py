@@ -2835,6 +2835,23 @@ def load_partial_data(
             if liquidity_df is not None:
                 liquidity_df = _concat_optional_dataframe(liquidity_df, vault_liquidity_df)
 
+            # Log per-vault candle data freshness so stale data is visible
+            # in the logs. Warn if any vault's latest candle is more than 24h old.
+            if execution_context.mode.is_live_trading() and vault_candle_df is not None:
+                now = pd.Timestamp(native_datetime_utc_now())
+                for pair_id in vault_candle_df["pair_id"].unique():
+                    pair_candles = vault_candle_df[vault_candle_df["pair_id"] == pair_id]
+                    if len(pair_candles) > 0:
+                        last_ts = pair_candles["timestamp"].max()
+                        age = now - last_ts
+                        if age > pd.Timedelta(hours=24):
+                            logger.warning(
+                                "Vault candle data is stale (>24h): pair_id=%d, last_candle=%s, age=%s",
+                                pair_id,
+                                last_ts,
+                                age,
+                            )
+
         # Collect some debug data for the first 5 pairs
         # to diagnose data loding problems
         if execution_context.mode.is_live_trading():

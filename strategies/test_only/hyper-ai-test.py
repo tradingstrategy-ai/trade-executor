@@ -50,6 +50,7 @@ from tradingstrategy.utils.token_filter import filter_for_selected_pairs
 
 from tradeexecutor.analysis.vault import display_vaults
 from tradeexecutor.curator.curator import is_quarantined
+from tradeexecutor.ethereum.vault.checks import check_stale_vault_data
 from tradeexecutor.curator.hyperliquid_vault_universe import \
     build_hyperliquid_vault_universe
 from tradeexecutor.exchange_account.allocation import (
@@ -291,6 +292,13 @@ def decide_trades(
     indicators = input.indicators
     strategy_universe = input.strategy_universe
 
+    # Guard against allocating based on stale forward-filled vault data.
+    # The framework forward-fill keeps indicators from crashing, but it
+    # also masks stale data — tvl() sees the last real TVL repeated,
+    # age() keeps growing on synthetic rows, and age_ramp_weight()
+    # increases. Bail out before the alpha model uses those values.
+    check_stale_vault_data(strategy_universe, timestamp, input.execution_context.mode)
+
     portfolio = position_manager.get_current_portfolio()
     equity = portfolio.get_total_equity()
 
@@ -439,28 +447,15 @@ indicators = IndicatorRegistry()
 
 
 @indicators.define(source=IndicatorSource.tvl)
-def tvl(
-    close: pd.Series,
-    execution_context: ExecutionContext,
-    timestamp: pd.Timestamp,
-) -> pd.Series:
-    """Get a forward-filled TVL series for a pair."""
-    if execution_context.live_trading:
-        assert isinstance(timestamp, pd.Timestamp), (
-            f"Live trading needs forward-fill end time, got {timestamp}"
-        )
-        from tradingstrategy.utils.forward_fill import forward_fill
+def tvl(close: pd.Series) -> pd.Series:
+    """TVL series for a pair.
 
-        df = pd.DataFrame({"close": close})
-        df_ff = forward_fill(
-            df,
-            Parameters.candle_time_bucket.to_frequency(),
-            columns=("close",),
-            forward_fill_until=timestamp,
-        )
-        return df_ff["close"]
-
-    return close.resample("1h").ffill()
+    Framework forward-fill (via ``create_from_dataset(forward_fill=True,
+    forward_fill_until=timestamp)``) already extends each pair's liquidity
+    data to the decision timestamp. No manual forward-fill needed here
+    because this strategy uses daily candles with daily TVL data.
+    """
+    return close
 
 
 @indicators.define()
