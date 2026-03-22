@@ -208,6 +208,10 @@ class HypercoreVaultPricing(PricingModel):
         data pipeline, or ``None`` if no candle data is available.
         These are periodic snapshots, not real-time prices.
 
+        Logs a warning when the nearest available candle is more than 24
+        hours old, indicating that the vault price pipeline data may be
+        stale.
+
         :param ts:
             Timestamp to look up the price at. Uses a 7-day tolerance
             to find the nearest candle.
@@ -215,12 +219,23 @@ class HypercoreVaultPricing(PricingModel):
         if self.candle_universe is None:
             return None
         try:
-            when = pd.Timestamp(ts, tz="UTC")
-            price, _ = self.candle_universe.get_price_with_tolerance(
+            # Use tz-naive timestamp to match the candle universe index
+            when = pd.Timestamp(ts)
+            if when.tzinfo is not None:
+                when = when.tz_localize(None)
+            price, delay = self.candle_universe.get_price_with_tolerance(
                 pair.internal_id,
                 when=when,
                 tolerance=pd.Timedelta("7D"),
             )
+            if delay is not None and delay > pd.Timedelta(hours=24):
+                logger.warning(
+                    "Vault share price candle is stale: pair=%s, requested=%s, delay=%s, price=%.6f",
+                    pair.get_ticker(),
+                    when,
+                    delay,
+                    price,
+                )
             return float(price)
         except Exception:
             return None

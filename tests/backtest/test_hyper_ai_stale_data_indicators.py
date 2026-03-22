@@ -14,11 +14,13 @@ behaviour so they exercise the same forward-fill pipeline.
 
 import datetime
 import importlib.util
+import logging
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
+from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultPricing
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.strategy.execution_context import (
     ExecutionContext,
@@ -430,3 +432,65 @@ def test_heavily_stale_vault_still_included_with_forward_fill(
     age_ramp_b = indicator_results.get_indicator_value("age_ramp_weight", pair=vault_b_pair)
     assert age_ramp_a is not None, "age_ramp_weight for vault A must not be None"
     assert age_ramp_b is not None, "age_ramp_weight for vault B must not be None (forward-filled)"
+
+
+def test_stale_share_price_logs_warning(
+    vault_a_pair: TradingPairIdentifier,
+    vault_b_pair: TradingPairIdentifier,
+    caplog,
+):
+    """Verify _get_share_price_from_candles logs a warning when vault data is over 24h stale.
+
+    HypercoreVaultPricing.get_mid_price() looks up share prices from the
+    data pipeline's candle universe. When the nearest candle is more than
+    24 hours old, the method should emit a warning so operators can see
+    the data is stale.
+
+    1. Build a candle universe where vault B's last candle is 3 days before the query.
+    2. Create a HypercoreVaultPricing with that candle universe.
+    3. Call get_mid_price for vault B at the query timestamp.
+    4. Assert a warning about stale data was logged.
+    5. Assert the price is still returned (not silently dropped).
+    """
+    query_ts = datetime.datetime(2026, 3, 20)
+    start = datetime.datetime(2025, 6, 1)
+
+    # Vault A has fresh data, vault B stops 3 days before query
+    full_dates = pd.date_range(start, query_ts, freq="D").to_pydatetime().tolist()
+    stale_end = query_ts - datetime.timedelta(days=3)
+    stale_dates = pd.date_range(start, stale_end, freq="D").to_pydatetime().tolist()
+
+    candle_a = _build_daily_ohlcv(vault_a_pair.internal_id, full_dates, [1.05] * len(full_dates))
+    candle_b = _build_daily_ohlcv(vault_b_pair.internal_id, stale_dates, [1.10] * len(stale_dates))
+    candles_df = pd.concat([candle_a, candle_b], ignore_index=True)
+
+    # 1. Build candle universe — no forward-fill so the gap is visible to the pricing model
+    candle_universe = GroupedCandleUniverse(candles_df, time_bucket=TimeBucket.d1)
+
+    # 2. Create HypercoreVaultPricing with candle universe for display prices
+    pricing = HypercoreVaultPricing(
+        value_func=None,
+        candle_universe=candle_universe,
+    )
+
+    # 3. Call get_mid_price for vault B — should find a candle 3 days old
+    with caplog.at_level(logging.WARNING, logger="tradeexecutor.ethereum.vault.hypercore_valuation"):
+        price_b = pricing.get_mid_price(query_ts, vault_b_pair)
+
+    # 4. Assert a warning about stale data was logged
+    stale_warnings = [r for r in caplog.records if "stale" in r.message.lower() and "VAULT_B" in r.message]
+    assert len(stale_warnings) >= 1, (
+        f"Expected a staleness warning for VAULT_B, got log records: {[r.message for r in caplog.records]}"
+    )
+
+    # 5. Assert the price is still returned (stale data is used, not dropped)
+    assert price_b == pytest.approx(1.10, abs=0.02)
+
+    # Vault A should NOT trigger a warning (fresh data)
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="tradeexecutor.ethereum.vault.hypercore_valuation"):
+        price_a = pricing.get_mid_price(query_ts, vault_a_pair)
+
+    stale_warnings_a = [r for r in caplog.records if "stale" in r.message.lower() and "VAULT_A" in r.message]
+    assert len(stale_warnings_a) == 0, "Vault A with fresh data should NOT trigger a staleness warning"
+    assert price_a == pytest.approx(1.05, abs=0.02)
