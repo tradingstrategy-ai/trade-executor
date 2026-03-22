@@ -219,10 +219,14 @@ class HypercoreVaultPricing(PricingModel):
         if self.candle_universe is None:
             return None
         try:
-            # Use tz-naive timestamp to match the candle universe index
+            # Match the candle universe index timezone: strip tz from the
+            # query if the index is naive, or add UTC if the index is aware.
             when = pd.Timestamp(ts)
-            if when.tzinfo is not None:
+            index_tz = getattr(self.candle_universe.df.index, "tz", None)
+            if index_tz is None and when.tzinfo is not None:
                 when = when.tz_localize(None)
+            elif index_tz is not None and when.tzinfo is None:
+                when = when.tz_localize("UTC")
             price, delay = self.candle_universe.get_price_with_tolerance(
                 pair.internal_id,
                 when=when,
