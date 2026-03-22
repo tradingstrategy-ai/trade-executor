@@ -98,6 +98,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         min_nav_change_update: Percent=0.005,
         unit_testing=False,
         calculate_valuation_func: Callable[..., USDollarPrice] | None = None,
+        abort_lagoon_settlement_on_frozen_positions: bool = False,
     ):
         """
         :param extra_gnosis_gas:
@@ -132,6 +133,14 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
             See :py:func:`tradeexecutor.exchange_account.gmx.create_gmx_vault_valuation_func`
             for the GMX-specific implementation.
+
+        :param abort_lagoon_settlement_on_frozen_positions:
+            Safety feature for live trading.
+
+            When enabled, abort Lagoon settlement before NAV calculation if the
+            strategy has frozen positions. This forces operators to resolve the
+            frozen positions manually first and avoids miscounting or double
+            counting capital in the posted NAV.
         """
         assert isinstance(vault, LagoonVault), f"Got {type(vault)} instead of LagoonVault"
         if hot_wallet is not None:
@@ -145,6 +154,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         self.anvil = is_anvil(self.web3)  # Running test mode
         self.unit_testing = unit_testing  #
         self.calculate_valuation_func = calculate_valuation_func
+        self.abort_lagoon_settlement_on_frozen_positions = abort_lagoon_settlement_on_frozen_positions
         assert vault.trading_strategy_module, "LagoonVault.trading_strategy_module initialisation param not set - needed to run the sync model properly"
         # assert isinstance(self.web3.provider, MEVBlockerProvider), f"This sync model needs MEVBlockerProvider, got {type(self.web3.provider)}"
 
@@ -169,6 +179,29 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
     def has_async_deposits(self):
         return True
+
+    def _check_frozen_positions_for_settlement(
+        self,
+        state: State,
+        *,
+        post_valuation: bool,
+    ) -> None:
+        """Abort Lagoon settlement before NAV calculation if frozen positions exist."""
+        if not post_valuation:
+            return
+
+        if not self.abort_lagoon_settlement_on_frozen_positions:
+            return
+
+        frozen_count = len(state.portfolio.frozen_positions)
+        if frozen_count == 0:
+            return
+
+        raise RuntimeError(
+            "Lagoon settlement safety feature aborted settlement because the strategy has "
+            f"{frozen_count} frozen position(s). Resolve frozen positions manually before "
+            "calculating NAV to avoid miscounting or double counting capital."
+        )
 
     def get_hot_wallet(self) -> Optional[HotWallet]:
         return self.hot_wallet
@@ -391,6 +424,11 @@ class LagoonVaultSyncModel(AddressSyncModel):
             reserve_asset.address,
             cache=self.vault.token_cache,
             chain_id=reserve_asset.chain_id,
+        )
+
+        self._check_frozen_positions_for_settlement(
+            state,
+            post_valuation=post_valuation,
         )
 
         # Reconcile reserves from on-chain before calculating NAV.

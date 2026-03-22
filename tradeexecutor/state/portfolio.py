@@ -744,14 +744,16 @@ class Portfolio:
 
         - Cash
 
-        - Equity hold in spot positions
+        - Equity hold in open spot positions
+
+        - Estimated value of frozen positions
 
         - Net asset value hold in leveraged positions
 
         TODO: Net asset value calculation does not account for fees
         paid to close a short position.
         """
-        return self.get_position_equity_and_loan_nav(include_interest) + self.get_cash()
+        return self.get_position_equity_and_loan_nav(include_interest) + self.get_frozen_position_equity() + self.get_cash()
 
     def get_unrealised_profit_usd(self) -> USDollarAmount:
         """Get the profit of currently open positions.
