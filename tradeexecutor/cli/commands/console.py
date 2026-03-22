@@ -16,7 +16,6 @@ To start a console in shell with `docker-compose.yml` set up:
 """
 import datetime
 import itertools
-import multiprocessing
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional
@@ -25,14 +24,12 @@ import typer
 
 from IPython import embed
 import pandas as pd
-from eth.vm.logic.block import timestamp
 from typer import Option
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from tradingstrategy.chain import ChainId
-from tradingstrategy.client import Client
 from tradingstrategy.timebucket import TimeBucket
 from . import shared_options
 
@@ -42,7 +39,6 @@ from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, 
 from ..log import setup_logging
 from ..version_info import VersionInfo
 from ...analysis.pair import display_strategy_universe
-from ...monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from ...state.state import State
 from ...statistics.in_memory_statistics import refresh_run_state
 from ...strategy.approval import UncheckedApprovalModel
@@ -51,7 +47,7 @@ from ...strategy.cycle import CycleDuration
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
-from ...strategy.pandas_trader.indicator import DiskIndicatorStorage, MemoryIndicatorStorage, prepare_indicators, calculate_indicators
+from ...strategy.pandas_trader.indicator import MemoryIndicatorStorage, prepare_indicators, calculate_indicators
 from ...strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from ...strategy.parameters import dump_parameters
 from ...strategy.run_state import RunState
@@ -60,7 +56,6 @@ from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.cpu import get_safe_max_workers_count
 from ...utils.timer import timed_task
-from eth_defi.compat import native_datetime_utc_now
 
 
 def launch_console(bindings: dict):

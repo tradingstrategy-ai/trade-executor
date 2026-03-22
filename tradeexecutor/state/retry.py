@@ -1,20 +1,17 @@
 """Retry failed trades.
 """
-import datetime
 import logging
 
 from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeType, TradeStatus
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from .repair import find_trades_to_be_repaired, RepairAborted, RepairResult, unfreeze_position
 from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
-
-
 
 def rebroadcast_trade(
     t: TradeExecution,

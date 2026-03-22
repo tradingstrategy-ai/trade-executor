@@ -10,7 +10,6 @@ from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.state.types import BlockNumber
 from tradeexecutor.utils.accuracy import ZERO_DECIMAL, INTEREST_QUANTITY_EPSILON
-from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -168,7 +167,6 @@ class Interest:
         self.interest_payments = Decimal(0)
         self.reset_at = native_datetime_utc_now()
         assert self.last_token_amount >= 0, f"last_token_amount cannot go negative. Got {self.last_token_amount} on {self}, delta was {delta}, epsilon was {epsilon}"
-
 
 
 

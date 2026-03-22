@@ -295,4 +295,3 @@ def test_lagoon_arbitrum_gmx(
         Web3.to_checksum_address(addresses.syntheticsrouter),
     ).call()
     assert allowance == 2**256 - 1, f"Expected unlimited allowance, got {allowance}"
-

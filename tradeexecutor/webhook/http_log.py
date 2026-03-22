@@ -3,7 +3,6 @@
 - Output HTTP request and response metadata to a separate log file
 
 """
-import datetime
 import logging
 import threading
 from pathlib import Path

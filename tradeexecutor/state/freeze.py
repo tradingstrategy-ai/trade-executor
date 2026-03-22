@@ -8,7 +8,6 @@ from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
-from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -68,5 +67,4 @@ def freeze_position_on_failed_trade(ts: datetime.datetime, state: State, trades:
             succeeded.append(t)
 
     return succeeded, failed
-
 

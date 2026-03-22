@@ -9451,11 +9451,11 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [extras]
 ccxt = ["ccxt"]
 demeter = ["zelos-demeter"]
-execution = ["beautifulsoup4", "click", "colorama", "coloredlogs", "prompt-toolkit", "python-dotenv", "python-logging-discord-handler", "python-logstash-tradingstrategy", "sentry-sdk", "telegram-bot-logger", "typer", "web3-ethereum-defi"]
+execution = ["beautifulsoup4", "click", "colorama", "coloredlogs", "prompt-toolkit", "python-dotenv", "python-logging-discord-handler", "python-logstash-tradingstrategy", "sentry-sdk", "setuptools", "telegram-bot-logger", "typer", "web3-ethereum-defi"]
 qstrader = ["trading-strategy-qstrader"]
 web-server = ["WebTest", "openapi-core", "pyramid", "pyramid-openapi3", "waitress"]
 
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<3.15"
-content-hash = "5f24b5f51cbca4e76886ed7776a844b6ec9c56b114c46b320d34d56eaa071c9e"
+content-hash = "d5385d3549e2f80ec1c2fa261ed5d5811db6af34de56b4bbed52fd30d36d27cf"

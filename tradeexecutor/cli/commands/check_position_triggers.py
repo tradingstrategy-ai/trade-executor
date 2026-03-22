@@ -6,7 +6,6 @@ from typing import Optional
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
 
-from tradeexecutor.strategy.account_correction import check_accounts as _check_accounts
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_state_store, create_client, create_execution_and_sync_model
 from ..log import setup_logging
@@ -17,10 +16,9 @@ from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
 from . import shared_options
 from ...strategy.run_state import RunState
-from ...strategy.strategy_module import StrategyModuleInformation, read_strategy_module
+from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
-from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()

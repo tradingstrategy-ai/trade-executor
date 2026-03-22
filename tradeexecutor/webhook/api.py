@@ -1,7 +1,6 @@
 """API function entrypoints."""
 import json
 import logging
-import math
 import os
 import time
 from dataclasses import dataclass
@@ -91,17 +90,6 @@ def web_metadata(request: Request):
     data = summary.to_dict(encode_json=False)
     validate_nested_state_dict(data)
 
-    # Convert NaN and Inf to null so it is JSON readable
-    def _sanitize_floats(obj):
-        if isinstance(obj, float):
-            if math.isnan(obj) or math.isinf(obj):
-                return None
-        elif isinstance(obj, dict):
-            return {k: _sanitize_floats(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [_sanitize_floats(v) for v in obj]
-        return obj
-
     # payload = summary.to_json()
     payload = json.dumps(data, cls=NaNToNullEncoder, allow_nan=False)
 
@@ -113,8 +101,7 @@ def web_metadata(request: Request):
 @view_config(route_name='web_notify', renderer='json', permission='view')
 def web_notify(request: Request):
     """Notify the strategy executor about the availability of new data."""
-    # TODO
-    return {"status": "TODO"}
+    return exception_response(501, detail="Not implemented. Webhook notify endpoint is not available yet")
 
 
 @view_config(route_name='web_state', renderer='json', permission='view')
@@ -461,4 +448,3 @@ def web_chart_pairs(request: Request):
     r = Response(content_type="application/json")
     r.text = reply.to_json(allow_nan=False)
     return r
-

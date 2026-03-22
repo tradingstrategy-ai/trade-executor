@@ -25,7 +25,7 @@ from ...ethereum.velvet.vault import VelvetVaultSyncModel
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
-from ...strategy.execution_context import ExecutionContext, ExecutionMode, standalone_backtest_execution_context, console_command_execution_context
+from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module

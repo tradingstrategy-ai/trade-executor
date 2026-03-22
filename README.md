@@ -40,17 +40,14 @@ First study the example code
 
 ## Installation
 
-**Note**: The project is under active development. We recommend any developers to use Github master branch
-for installations.
+**Note**: The project is under active development. We recommend developers install from the Github master branch.
 
-As dependency line for Poetry `pyproject.yml`:
+For Poetry, use Python `>=3.11,<3.15` and the extras that actually exist in `pyproject.toml`:
 
 ```toml
 [tool.poetry.dependencies]
-# Remove Python 3.11 pin down after upstream dependency issues are resolved
-python = ">=3.10,<3.11"
-# extras=["all"] does not seem to work here. Poetry bug?
-trade-executor = {git = "https://github.com/tradingstrategy-ai/trade-executor.git", extras = ["web-server", "execution", "quantstats", "data"], rev = "master" }
+python = ">=3.11,<3.15"
+trade-executor = {git = "https://github.com/tradingstrategy-ai/trade-executor.git", extras = ["web-server", "execution", "qstrader", "demeter", "ccxt"], rev = "master" }
 ```
 
 Checking out from Github to make contributions:
@@ -64,19 +61,21 @@ git submodule update --init --recursive
 # - execution: infrastructure to run live strategies
 # - web-server: support webhook server of live strategy executors
 # - qstrader: still needed to run legacy unit tests
+# - demeter: LP backtesting integration
+# - ccxt: CEX exchange account balances
 poetry install --all-extras
 ```
 
 Or with pip:
 
 ```shell
-pip install -e ".[web-server,execution,qstrader,quantstats]"
+pip install -e ".[web-server,execution,qstrader,demeter,ccxt]"
 ```
 
 Or directly from Github URL:
 
 ```shell
-pip install -e "git+https://github.com/tradingstrategy-ai/trade-executor.git@master#egg=trade-executor[web-server,execution,qstrader,quantstats]"
+pip install -e "git+https://github.com/tradingstrategy-ai/trade-executor.git@master#egg=trade-executor[web-server,execution,qstrader,demeter,ccxt]"
 ```
 
 [**Limited file size by pre-commit hook**](scripts/pre-commit-sample/README.md)

@@ -4,11 +4,8 @@ Provide helpers to understand which parts of the hot code paths take most of the
 """
 
 import contextlib
-import datetime
 import logging
 from contextlib import contextmanager
-from eth_defi.compat import native_datetime_utc_now
-
 from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
@@ -28,4 +25,3 @@ def timed_task(task_name: str, **context_info) -> contextlib.AbstractContextMana
     finally:
         duration = native_datetime_utc_now() - started
         logger.info("Ended task %s, took %s", task_name, duration)
-

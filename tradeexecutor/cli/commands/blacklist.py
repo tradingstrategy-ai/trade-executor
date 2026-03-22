@@ -7,7 +7,6 @@ To run with Docker:
     docker compose run base-ath blacklist
 
 """
-import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -30,7 +29,6 @@ from ...strategy.run_state import RunState
 from ...strategy.strategy_module import StrategyModuleInformation, read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
-from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
@@ -188,4 +186,3 @@ def blacklist(
     if add_token or remove_token:
         logger.info("Saving state to %s", state_file)
         store.sync(state)
-

@@ -1,7 +1,3 @@
-"""show-positions command.
-
-"""
-import datetime
 import sys
 from pathlib import Path
 from typing import Optional
@@ -16,7 +12,6 @@ from tradeexecutor.strategy.account_correction import check_accounts as _check_a
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client
 from ..log import setup_logging
-from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...state.state import UncleanState
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -27,7 +22,6 @@ from ...strategy.run_state import RunState
 from ...strategy.strategy_module import StrategyModuleInformation, read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
-from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
