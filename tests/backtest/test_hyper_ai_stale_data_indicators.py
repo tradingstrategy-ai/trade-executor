@@ -77,6 +77,25 @@ Edge case: ``autoheal_pair_limit``
     exceeds ``autoheal_pair_limit`` (default 1500). Not a risk for hyper-ai
     (~120 vaults) but would silently break for larger universes.
     **File**: ``tradingstrategy/utils/groupeduniverse.py:174``
+
+Limitations
+-----------
+
+These tests may not fully capture all indicator and data gap scenarios.
+In particular:
+
+- Only daily (``TimeBucket.d1``) candle frequency is tested. Strategies
+  using hourly candles with daily TVL have a frequency mismatch that
+  requires the indicator-level ``resample().ffill()`` pattern.
+- The synthetic data uses uniform prices; real vault data has price
+  movements and outlier spikes that interact with the cleaning pipeline.
+- Only the backtest execution context is exercised. The live trading path
+  shares the same forward-fill pipeline but has additional staleness
+  concerns (24h parquet cache, CDN lag) that are not mocked here.
+- The ``autoheal_pair_limit`` skip path is not tested.
+- Vault data that arrives with non-midnight-aligned timestamps (common in
+  production) is not covered; ``convert_vault_prices_to_candles()``
+  resamples these but the interaction with forward-fill is untested.
 """
 
 import datetime
