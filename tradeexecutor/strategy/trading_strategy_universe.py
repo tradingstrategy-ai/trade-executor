@@ -2845,8 +2845,20 @@ def load_partial_data(
                         last_ts = pair_candles["timestamp"].max()
                         age = now - last_ts
                         if age > pd.Timedelta(hours=24):
+                            # Look up vault name, address and TVL from the pairs dataframe
+                            vault_row = vault_pairs_df[vault_pairs_df["pair_id"] == pair_id]
+                            vault_name = vault_row["exchange_name"].iloc[0] if len(vault_row) > 0 else "unknown"
+                            vault_address = vault_row["address"].iloc[0] if len(vault_row) > 0 else "unknown"
+                            vault_tvl = None
+                            if len(vault_row) > 0:
+                                metadata = vault_row["token_metadata"].iloc[0]
+                                if metadata is not None:
+                                    vault_tvl = metadata.tvl
                             logger.warning(
-                                "Vault candle data is stale (>24h): pair_id=%d, last_candle=%s, age=%s",
+                                "Vault candle data is stale (>24h): %s, address=%s, TVL=%s, pair_id=%d, last_candle=%s, age=%s",
+                                vault_name,
+                                vault_address,
+                                vault_tvl,
                                 pair_id,
                                 last_ts,
                                 age,
