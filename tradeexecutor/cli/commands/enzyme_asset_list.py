@@ -26,20 +26,10 @@ from tradeexecutor.ethereum.enzyme.asset import EnzymeAsset
 
 
 @app.command()
+@shared_options.with_json_rpc_options(preset="default")
 def enzyme_asset_list(
     log_level: str = shared_options.log_level,
-    json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
-    json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
-    json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
-    json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
-    json_rpc_base: Optional[str] = shared_options.json_rpc_base,
-    json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
-    json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
-    json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
-    json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
-    json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
-    json_rpc_hyperliquid: Optional[str] = shared_options.json_rpc_hyperliquid,
-    json_rpc_hyperliquid_testnet: Optional[str] = shared_options.json_rpc_hyperliquid_testnet,
+    rpc_kwargs: dict | None = None,
     end_block: Optional[int] = Option(None, envvar="END_BLOCK", help="End block to scan. If not given default to the latest block.")
 
 ):
@@ -51,17 +41,7 @@ def enzyme_asset_list(
     logging.getLogger("futureproof").setLevel(logging.ERROR)  #  Extra noise
 
     web3config = create_web3_config(
-        json_rpc_binance=json_rpc_binance,
-        json_rpc_polygon=json_rpc_polygon,
-        json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base, 
-        json_rpc_anvil=json_rpc_anvil,
-        json_rpc_arbitrum=json_rpc_arbitrum,
-        json_rpc_derive=json_rpc_derive,
-        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
-        json_rpc_base_sepolia=json_rpc_base_sepolia,
-        json_rpc_hyperliquid=json_rpc_hyperliquid,
-        json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
+        **rpc_kwargs,
     )
 
     if not web3config.has_any_connection():

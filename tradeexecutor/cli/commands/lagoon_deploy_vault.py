@@ -103,7 +103,6 @@ from tradeexecutor.ethereum.lagoon.universe_config import (
     normalise_deployment_chain_id,
     translate_trading_universe_to_lagoon_config,
 )
-from tradeexecutor.ethereum.web3config import collect_rpc_kwargs
 from tradeexecutor.monkeypatch.web3 import \
     construct_sign_and_send_raw_middleware
 from tradeexecutor.strategy.execution_context import one_off_execution_context
@@ -588,21 +587,10 @@ def _confirm_deployment(*, simulate: bool, unit_testing: bool, verifier: str, et
 
 
 @app.command()
+@shared_options.with_json_rpc_options(preset="lagoon_deploy", include_chain_name=True)
 def lagoon_deploy_vault(
     log_level: str = shared_options.log_level,
-    json_rpc_binance: str | None = shared_options.json_rpc_binance,
-    json_rpc_polygon: str | None = shared_options.json_rpc_polygon,
-    json_rpc_avalanche: str | None = shared_options.json_rpc_avalanche,
-    json_rpc_ethereum: str | None = shared_options.json_rpc_ethereum,
-    json_rpc_base: str | None = shared_options.json_rpc_base,
-    json_rpc_arbitrum: str | None = shared_options.json_rpc_arbitrum,
-    json_rpc_anvil: str | None = shared_options.json_rpc_anvil,
-    json_rpc_derive: str | None = shared_options.json_rpc_derive,
-    json_rpc_arbitrum_sepolia: str | None = shared_options.json_rpc_arbitrum_sepolia,
-    json_rpc_base_sepolia: str | None = shared_options.json_rpc_base_sepolia,
-    json_rpc_hyperliquid: str | None = shared_options.json_rpc_hyperliquid,
-    json_rpc_hyperliquid_testnet: str | None = shared_options.json_rpc_hyperliquid_testnet,
-    json_rpc_monad: str | None = shared_options.json_rpc_monad,
+    rpc_kwargs: dict | None = None,
     private_key: str = shared_options.private_key,
 
     # Vault options
@@ -668,22 +656,6 @@ def lagoon_deploy_vault(
     cache_path = prepare_cache(executor_id, cache_path, unit_testing=unit_testing)
     token_cache = prepare_token_cache(cache_path, unit_testing=unit_testing)
 
-    rpc_kwargs = collect_rpc_kwargs(
-        json_rpc_binance=json_rpc_binance,
-        json_rpc_polygon=json_rpc_polygon,
-        json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum,
-        json_rpc_base=json_rpc_base,
-        json_rpc_anvil=json_rpc_anvil,
-        json_rpc_arbitrum=json_rpc_arbitrum,
-        json_rpc_derive=json_rpc_derive,
-        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
-        json_rpc_base_sepolia=json_rpc_base_sepolia,
-        json_rpc_hyperliquid=json_rpc_hyperliquid,
-        json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
-        json_rpc_monad=json_rpc_monad,
-        chain_name=chain_name,
-    )
     web3config = create_web3_config(
         **rpc_kwargs,
         simulate=simulate,

@@ -32,6 +32,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
+@shared_options.with_json_rpc_options(preset="default")
 def check_universe(
     id: str = shared_options.id,
     strategy_file: Path = shared_options.strategy_file,
@@ -41,18 +42,7 @@ def check_universe(
     log_level: str = shared_options.log_level,
     max_workers: int | None = shared_options.max_workers,
 
-    json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
-    json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
-    json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
-    json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
-    json_rpc_base: Optional[str] = shared_options.json_rpc_base,
-    json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
-    json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
-    json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
-    json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
-    json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
-    json_rpc_hyperliquid: Optional[str] = shared_options.json_rpc_hyperliquid,
-    json_rpc_hyperliquid_testnet: Optional[str] = shared_options.json_rpc_hyperliquid_testnet,
+    rpc_kwargs: dict | None = None,
     private_key: str = shared_options.private_key,
 
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
@@ -91,18 +81,8 @@ def check_universe(
     )
 
     web3config = create_web3_config(
-        json_rpc_binance=json_rpc_binance,
-        json_rpc_polygon=json_rpc_polygon,
-        json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base,
-        json_rpc_anvil=json_rpc_anvil,
-        json_rpc_arbitrum=json_rpc_arbitrum,
-        json_rpc_derive=json_rpc_derive,
-        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
-        json_rpc_base_sepolia=json_rpc_base_sepolia,
-        json_rpc_hyperliquid=json_rpc_hyperliquid,
-        json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
         unit_testing=unit_testing,
+        **rpc_kwargs,
     )
 
     if not web3config.has_any_connection():
@@ -224,4 +204,3 @@ def check_universe(
         logger.info("Strategy module lacks create_indicators()")
 
     logger.info("All ok")
-
