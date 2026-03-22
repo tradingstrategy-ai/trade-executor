@@ -106,8 +106,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from tradeexecutor.ethereum.vault.checks import StaleVaultData, check_stale_vault_data
 from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultPricing
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.strategy.execution_context import (
     ExecutionContext,
     ExecutionMode,
@@ -217,6 +218,7 @@ def vault_a_pair(usdc, mock_exchange):
         internal_id=10,
         internal_exchange_id=mock_exchange.exchange_id,
         fee=0.0,
+        kind=TradingPairKind.vault,
     )
 
 
@@ -231,6 +233,7 @@ def vault_b_pair(usdc, mock_exchange):
         internal_id=20,
         internal_exchange_id=mock_exchange.exchange_id,
         fee=0.0,
+        kind=TradingPairKind.vault,
     )
 
 
@@ -577,3 +580,48 @@ def test_stale_share_price_logs_warning(
     stale_warnings_a = [r for r in caplog.records if "stale" in r.message.lower() and "VAULT_A" in r.message]
     assert len(stale_warnings_a) == 0, "Vault A with fresh data should NOT trigger a staleness warning"
     assert price_a == pytest.approx(1.05, abs=0.02)
+
+
+def test_check_stale_vault_data_raises_on_stale(
+    stale_universe: TradingStrategyUniverse,
+    decision_timestamp: datetime.datetime,
+):
+    """Verify check_stale_vault_data raises when vault data exceeds the tolerance.
+
+    With a tight tolerance (e.g. 1 hour), vault B's real data (which
+    stopped 2 days ago) should trigger StaleVaultData. The exception
+    must list the stale vault's name and last real timestamp.
+
+    1. Build a forward-filled universe where vault B is 2 days stale.
+    2. Call check_stale_vault_data with a 1-hour tolerance.
+    3. Assert StaleVaultData is raised and mentions VAULT_B.
+    """
+    # 2. Use a tight tolerance so the 2-day gap triggers the check.
+    with pytest.raises(StaleVaultData, match="VAULT_B"):
+        check_stale_vault_data(
+            stale_universe,
+            decision_timestamp,
+            tolerance=datetime.timedelta(hours=1),
+        )
+
+
+def test_check_stale_vault_data_passes_when_fresh(
+    stale_universe: TradingStrategyUniverse,
+    decision_timestamp: datetime.datetime,
+):
+    """Verify check_stale_vault_data passes when all vaults are within tolerance.
+
+    With the default 36-hour tolerance, vault B's 2-day-old data should
+    trigger the check. But with a generous 30-day tolerance, even the
+    stale vault is accepted.
+
+    1. Build a forward-filled universe where vault B is 2 days stale.
+    2. Call check_stale_vault_data with a 30-day tolerance.
+    3. Assert no exception is raised.
+    """
+    # 2. Generous tolerance — 2-day gap is acceptable.
+    check_stale_vault_data(
+        stale_universe,
+        decision_timestamp,
+        tolerance=datetime.timedelta(days=30),
+    )

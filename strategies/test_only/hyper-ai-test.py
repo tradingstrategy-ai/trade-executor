@@ -50,6 +50,7 @@ from tradingstrategy.utils.token_filter import filter_for_selected_pairs
 
 from tradeexecutor.analysis.vault import display_vaults
 from tradeexecutor.curator.curator import is_quarantined
+from tradeexecutor.ethereum.vault.checks import check_stale_vault_data
 from tradeexecutor.curator.hyperliquid_vault_universe import \
     build_hyperliquid_vault_universe
 from tradeexecutor.exchange_account.allocation import (
@@ -290,6 +291,14 @@ def decide_trades(
     timestamp = input.timestamp
     indicators = input.indicators
     strategy_universe = input.strategy_universe
+
+    # Guard against allocating based on stale forward-filled vault data.
+    # The framework forward-fill keeps indicators from crashing, but it
+    # also masks stale data — tvl() sees the last real TVL repeated,
+    # age() keeps growing on synthetic rows, and age_ramp_weight()
+    # increases. Bail out before the alpha model uses those values.
+    if input.execution_context.live_trading:
+        check_stale_vault_data(strategy_universe, timestamp)
 
     portfolio = position_manager.get_current_portfolio()
     equity = portfolio.get_total_equity()
