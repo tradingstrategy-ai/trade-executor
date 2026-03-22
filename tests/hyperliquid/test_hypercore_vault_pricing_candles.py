@@ -87,7 +87,7 @@ def vault_pair_no_data(usdc_asset: AssetIdentifier) -> TradingPairIdentifier:
 @pytest.fixture()
 def candle_universe() -> GroupedCandleUniverse:
     """Build a GroupedCandleUniverse with one vault's share price data."""
-    now = pd.Timestamp.utcnow().floor("h")
+    now = pd.Timestamp.utcnow().tz_localize(None).floor("h")
     timestamps = pd.date_range(end=now, periods=48, freq="h")
 
     rows = []
