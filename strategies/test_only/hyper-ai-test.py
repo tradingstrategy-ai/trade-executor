@@ -439,28 +439,15 @@ indicators = IndicatorRegistry()
 
 
 @indicators.define(source=IndicatorSource.tvl)
-def tvl(
-    close: pd.Series,
-    execution_context: ExecutionContext,
-    timestamp: pd.Timestamp,
-) -> pd.Series:
-    """Get a forward-filled TVL series for a pair."""
-    if execution_context.live_trading:
-        assert isinstance(timestamp, pd.Timestamp), (
-            f"Live trading needs forward-fill end time, got {timestamp}"
-        )
-        from tradingstrategy.utils.forward_fill import forward_fill
+def tvl(close: pd.Series) -> pd.Series:
+    """TVL series for a pair.
 
-        df = pd.DataFrame({"close": close})
-        df_ff = forward_fill(
-            df,
-            Parameters.candle_time_bucket.to_frequency(),
-            columns=("close",),
-            forward_fill_until=timestamp,
-        )
-        return df_ff["close"]
-
-    return close.resample("1h").ffill()
+    Framework forward-fill (via ``create_from_dataset(forward_fill=True,
+    forward_fill_until=timestamp)``) already extends each pair's liquidity
+    data to the decision timestamp. No manual forward-fill needed here
+    because this strategy uses daily candles with daily TVL data.
+    """
+    return close
 
 
 @indicators.define()
