@@ -161,6 +161,7 @@ def test_cli_lagoon_deploy_arbitrum_vault(
         "FUND_NAME": "Example",
         "FUND_SYMBOL": "EXAM",
         "MULTISIG_OWNERS": multisig_owners,
+        "DENOMINATION_ASSET": usdc.address,
         "ANY_ASSET": "true",
         "UNISWAP_V2": "false",
         "UNISWAP_V3": "true",
@@ -294,4 +295,3 @@ def test_lagoon_arbitrum_gmx(
         Web3.to_checksum_address(addresses.syntheticsrouter),
     ).call()
     assert allowance == 2**256 - 1, f"Expected unlimited allowance, got {allowance}"
-
