@@ -34,7 +34,7 @@ from ...utils.timer import timed_task
 
 
 @app.command()
-@shared_options.with_json_rpc_options(preset="console")
+@shared_options.with_json_rpc_options()
 def check_wallet(
     id: str = shared_options.id,
 

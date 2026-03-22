@@ -50,7 +50,7 @@ logger = logging.getLogger(__name__)
 
 
 @app.command()
-@shared_options.with_json_rpc_options(preset="default")
+@shared_options.with_json_rpc_options()
 def distribute_gas_funds(
     id: str = shared_options.id,
     strategy_file: Path = shared_options.strategy_file,

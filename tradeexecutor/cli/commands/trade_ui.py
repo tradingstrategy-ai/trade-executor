@@ -58,7 +58,7 @@ from tradeexecutor.cli.commands import shared_options
 
 
 @app.command()
-@shared_options.with_json_rpc_options(preset="lagoon")
+@shared_options.with_json_rpc_options()
 def trade_ui(
     id: str = shared_options.id,
     name: Optional[str] = shared_options.name,

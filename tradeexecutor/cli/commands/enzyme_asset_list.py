@@ -26,7 +26,7 @@ from tradeexecutor.ethereum.enzyme.asset import EnzymeAsset
 
 
 @app.command()
-@shared_options.with_json_rpc_options(preset="default")
+@shared_options.with_json_rpc_options()
 def enzyme_asset_list(
     log_level: str = shared_options.log_level,
     rpc_kwargs: dict | None = None,

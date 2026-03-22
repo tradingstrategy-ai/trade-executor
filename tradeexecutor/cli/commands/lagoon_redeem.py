@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 @app.command()
-@shared_options.with_json_rpc_options(preset="lagoon")
+@shared_options.with_json_rpc_options()
 def lagoon_redeem(
     id: str = shared_options.id,
 

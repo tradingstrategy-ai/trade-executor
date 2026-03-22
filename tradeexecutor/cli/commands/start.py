@@ -63,7 +63,7 @@ logger = logging.getLogger(__name__)
 
 
 @app.command()
-@shared_options.with_json_rpc_options(preset="console")
+@shared_options.with_json_rpc_options()
 def start(
 
     # Strategy assets

@@ -88,7 +88,7 @@ def launch_console(bindings: dict):
 
 
 @app.command()
-@shared_options.with_json_rpc_options(preset="console")
+@shared_options.with_json_rpc_options()
 def console(
     id: str = typer.Option(None, envvar="EXECUTOR_ID", help="Executor id used when programmatically referring to this instance. If not given, take the base of --strategy-file."),
 

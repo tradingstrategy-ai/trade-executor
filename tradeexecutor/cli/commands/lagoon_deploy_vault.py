@@ -587,7 +587,7 @@ def _confirm_deployment(*, simulate: bool, unit_testing: bool, verifier: str, et
 
 
 @app.command()
-@shared_options.with_json_rpc_options(preset="lagoon_deploy", include_chain_name=True)
+@shared_options.with_json_rpc_options(include_chain_name=True)
 def lagoon_deploy_vault(
     log_level: str = shared_options.log_level,
     rpc_kwargs: dict | None = None,

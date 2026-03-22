@@ -45,7 +45,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
-@shared_options.with_json_rpc_options(preset="default")
+@shared_options.with_json_rpc_options()
 def perform_test_trade(
     id: str = shared_options.id,
     name: Optional[str] = shared_options.name,
@@ -338,4 +338,3 @@ def perform_test_trade(
         logger.info("Simulation, no state changes")
 
     logger.info("All ok")
-

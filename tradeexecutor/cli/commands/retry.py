@@ -30,7 +30,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
-@shared_options.with_json_rpc_options(preset="default")
+@shared_options.with_json_rpc_options()
 def retry(
     id: str = shared_options.id,
     name: Optional[str] = shared_options.name,
@@ -169,4 +169,3 @@ def retry(
     store.sync(state)
 
     logger.info(f"Repair report:\n{report}")
-

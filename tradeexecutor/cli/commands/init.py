@@ -32,7 +32,7 @@ from . import shared_options
 
 
 @app.command()
-@shared_options.with_json_rpc_options(preset="default")
+@shared_options.with_json_rpc_options()
 def init(
     id: str = shared_options.id,
     name: str = shared_options.name,

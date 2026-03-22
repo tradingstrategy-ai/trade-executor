@@ -33,7 +33,7 @@ from ...strategy.universe_model import UniverseOptions
 from eth_defi.compat import native_datetime_utc_now
 
 @app.command()
-@shared_options.with_json_rpc_options(preset="default")
+@shared_options.with_json_rpc_options()
 def blacklist(
     id: str = shared_options.id,
 

@@ -25,22 +25,19 @@ def _get_typer_param_names(callback) -> list[str]:
 def test_with_json_rpc_options_collects_rpc_kwargs_and_hides_placeholder() -> None:
     """Test the decorator collects filtered RPC kwargs and hides the placeholder.
 
-    1. Decorate a small function with a reduced JSON-RPC preset and chain filtering enabled.
+    1. Decorate a small function with shared JSON-RPC options and chain filtering enabled.
     2. Call the decorated function with two RPC inputs and a selected chain name.
     3. Confirm the function receives filtered `rpc_kwargs` while the public signature exposes only CLI options.
     """
     captured: dict[str, object] = {}
 
-    @shared_options.with_json_rpc_options(
-        preset=("json_rpc_base", "json_rpc_arbitrum"),
-        include_chain_name=True,
-    )
+    @shared_options.with_json_rpc_options(include_chain_name=True)
     def decorated_command(
         label: str = "demo",
         chain_name: str | None = None,
         rpc_kwargs: dict | None = None,
     ) -> dict[str, object]:
-        # 1. Decorate a small function with a reduced JSON-RPC preset and chain filtering enabled.
+        # 1. Decorate a small function with shared JSON-RPC options and chain filtering enabled.
         captured["label"] = label
         captured["chain_name"] = chain_name
         captured["rpc_kwargs"] = rpc_kwargs
@@ -61,33 +58,35 @@ def test_with_json_rpc_options_collects_rpc_kwargs_and_hides_placeholder() -> No
     assert result["rpc_kwargs"]["json_rpc_arbitrum"] is None
 
     signature = inspect.signature(decorated_command)
-    assert list(signature.parameters) == ["label", "chain_name", "json_rpc_base", "json_rpc_arbitrum"]
+    signature_rpc_names = [name for name in signature.parameters if name.startswith("json_rpc_")]
+    assert signature_rpc_names == list(shared_options.JSON_RPC_OPTION_NAMES)
     assert "rpc_kwargs" not in signature.parameters
 
 
 def test_registered_commands_expose_expected_rpc_option_order() -> None:
-    """Test representative commands keep their exact RPC option ordering.
+    """Test representative commands share the same default RPC option ordering.
 
-    1. Load representative command callbacks for the default, console, Lagoon, and deploy presets.
+    1. Load representative command callbacks for the default, console, Lagoon, and deploy variants.
     2. Read the Typer-registered parameter names from each callback.
-    3. Confirm each command exposes the expected JSON-RPC order and does not leak `rpc_kwargs`.
+    3. Confirm each command exposes the same all-inclusive JSON-RPC order and does not leak `rpc_kwargs`.
     """
-    expected_by_command = {
-        "check_universe": list(shared_options.RPC_OPTION_PRESETS["default"]),
-        "start": list(shared_options.RPC_OPTION_PRESETS["console"]),
-        "lagoon_first_deposit": list(shared_options.RPC_OPTION_PRESETS["lagoon"]),
-        "lagoon_deploy_vault": list(shared_options.RPC_OPTION_PRESETS["lagoon_deploy"]),
-    }
+    expected_rpc_names = list(shared_options.JSON_RPC_OPTION_NAMES)
+    command_names = [
+        "check_universe",
+        "start",
+        "lagoon_first_deposit",
+        "lagoon_deploy_vault",
+    ]
 
-    # 1. Load representative command callbacks for the default, console, Lagoon, and deploy presets.
-    for command_name, expected_rpc_names in expected_by_command.items():
+    # 1. Load representative command callbacks for the default, console, Lagoon, and deploy variants.
+    for command_name in command_names:
         callback = _get_registered_callback(command_name)
 
         # 2. Read the Typer-registered parameter names from each callback.
         typer_param_names = _get_typer_param_names(callback)
         actual_rpc_names = [name for name in typer_param_names if name.startswith("json_rpc_")]
 
-        # 3. Confirm each command exposes the expected JSON-RPC order and does not leak `rpc_kwargs`.
+        # 3. Confirm each command exposes the same all-inclusive JSON-RPC order and does not leak `rpc_kwargs`.
         assert actual_rpc_names == expected_rpc_names
         assert "rpc_kwargs" not in typer_param_names
 

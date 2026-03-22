@@ -62,7 +62,7 @@ from tradeexecutor.cli.log import setup_logging
 
 
 @app.command()
-@shared_options.with_json_rpc_options(preset="default")
+@shared_options.with_json_rpc_options()
 def enzyme_deploy_vault(
     log_level: str = shared_options.log_level,
     rpc_kwargs: dict | None = None,
@@ -268,4 +268,3 @@ def enzyme_deploy_vault(
     )
 
     web3config.close()
-

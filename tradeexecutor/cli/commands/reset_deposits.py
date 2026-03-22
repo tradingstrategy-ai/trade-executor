@@ -17,7 +17,7 @@ from tradeexecutor.strategy.account_correction import correct_accounts as _corre
 
 
 @app.command()
-@shared_options.with_json_rpc_options(preset="default")
+@shared_options.with_json_rpc_options()
 def reset_deposits(
     id: str = shared_options.id,
     name: str = shared_options.name,
