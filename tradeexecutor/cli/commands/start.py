@@ -60,6 +60,7 @@ logger = logging.getLogger(__name__)
 
 
 @app.command()
+@shared_options.with_json_rpc_options()
 def start(
 
     # Strategy assets
@@ -88,18 +89,7 @@ def start(
     http_wait_good_startup_seconds: int = typer.Option(60, envvar="HTTP_WAIT_GOOD_STARTUP_SECONDS", help="How long we wait befor switching the web server mode where an exception does not bring the web server down"),
 
     # Web3 connection options
-    json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
-    json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
-    json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
-    json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
-    json_rpc_base: Optional[str] = shared_options.json_rpc_base,
-    json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
-    json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
-    json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
-    json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
-    json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
-    json_rpc_hyperliquid: Optional[str] = shared_options.json_rpc_hyperliquid,
-    json_rpc_hyperliquid_testnet: Optional[str] = shared_options.json_rpc_hyperliquid_testnet,
+    rpc_kwargs: dict | None = None,
 
     # Derive exchange account options
     derive_owner_private_key: Optional[str] = typer.Option(None, envvar="DERIVE_OWNER_PRIVATE_KEY", help="Derive owner wallet private key"),
@@ -267,21 +257,10 @@ def start(
 
         if asset_management_mode.is_live_trading() or asset_management_mode == AssetManagementMode.dummy:
             web3config = create_web3_config(
-                json_rpc_binance=json_rpc_binance,
-                json_rpc_polygon=json_rpc_polygon,
-                json_rpc_avalanche=json_rpc_avalanche,
-                json_rpc_ethereum=json_rpc_ethereum,
-                json_rpc_base=json_rpc_base,
-                json_rpc_anvil=json_rpc_anvil,
-                json_rpc_arbitrum=json_rpc_arbitrum,
-                json_rpc_derive=json_rpc_derive,
-                json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
-                json_rpc_base_sepolia=json_rpc_base_sepolia,
-                json_rpc_hyperliquid=json_rpc_hyperliquid,
-                json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
                 gas_price_method=gas_price_method,
                 unit_testing=unit_testing,
                 simulate=simulate,
+                **rpc_kwargs,
             )
 
             if not web3config.has_any_connection():

@@ -2,8 +2,11 @@
 
 Import from there and use in
 """
+import functools
+import inspect
 import copy
 import enum
+from collections.abc import Callable
 from typing import Optional, Any
 
 import typer
@@ -11,6 +14,7 @@ from typer import Option
 from typer.models import OptionInfo
 
 from eth_defi.gas import GasPriceMethod
+from tradeexecutor.ethereum.web3config import collect_rpc_kwargs
 
 
 class PositionType(enum.Enum):
@@ -88,6 +92,21 @@ json_rpc_base_sepolia = Option(None, envvar="JSON_RPC_BASE_SEPOLIA", help=_gen_r
 json_rpc_hyperliquid = Option(None, envvar="JSON_RPC_HYPERLIQUID", help=_gen_rpc_help("RPC: HyperEVM (Hyperliquid)"))
 json_rpc_hyperliquid_testnet = Option(None, envvar="JSON_RPC_HYPERLIQUID_TESTNET", help=_gen_rpc_help("RPC: HyperEVM testnet"))
 json_rpc_monad = Option(None, envvar="JSON_RPC_MONAD", help=_gen_rpc_help("RPC: Monad"))
+JSON_RPC_OPTION_NAMES: tuple[str, ...] = (
+    "json_rpc_binance",
+    "json_rpc_polygon",
+    "json_rpc_avalanche",
+    "json_rpc_ethereum",
+    "json_rpc_base",
+    "json_rpc_arbitrum",
+    "json_rpc_anvil",
+    "json_rpc_derive",
+    "json_rpc_arbitrum_sepolia",
+    "json_rpc_base_sepolia",
+    "json_rpc_hyperliquid",
+    "json_rpc_hyperliquid_testnet",
+    "json_rpc_monad",
+)
 
 state_file = Option(None, envvar="STATE_FILE", help="JSON file where we serialise the execution state. If not given defaults to state/{executor-id}.json for live trade execution, state/{executor-id}-backtest.json for the backtest results.")
 
@@ -147,6 +166,68 @@ position_type = Option("open_and_frozen", envvar="POSITION_TYPE", help="Which po
 max_data_delay_minutes = Option(24*60, envvar="MAX_DATA_DELAY_MINUTES", help="How fresh the OHCLV data for our strategy must be before failing")
 
 gas_price_method = Option(None, envvar="GAS_PRICE_METHOD", help="How to set the gas price for Ethereum transactions. After the Berlin hardfork Ethereum mainnet introduced base + tip cost gas model. Leave out to autodetect.")
+
+def _clone_option_parameter(
+    name: str,
+    *,
+    kind: inspect._ParameterKind,
+) -> inspect.Parameter:
+    """Create a fresh inspect.Parameter for a JSON-RPC Typer option."""
+    return inspect.Parameter(
+        name=name,
+        kind=kind,
+        annotation=str | None,
+        default=copy.copy(globals()[name]),
+    )
+
+
+def with_json_rpc_options(
+    *,
+    include_chain_name: bool = False,
+) -> Callable:
+    """Inject shared JSON-RPC Typer options and pass them to ``rpc_kwargs``.
+
+    The decorated command must expose ``rpc_kwargs`` as an internal placeholder
+    parameter. The public Typer signature replaces that placeholder with the
+    shared ordered ``json_rpc_*`` options.
+    """
+    def decorator(fn: Callable) -> Callable:
+        original_signature = inspect.signature(fn)
+        parameters: list[inspect.Parameter] = []
+        found_rpc_placeholder = False
+
+        for parameter in original_signature.parameters.values():
+            if parameter.name == "rpc_kwargs":
+                found_rpc_placeholder = True
+                parameters.extend(
+                    _clone_option_parameter(name, kind=parameter.kind)
+                    for name in JSON_RPC_OPTION_NAMES
+                )
+            else:
+                parameters.append(parameter)
+
+        if not found_rpc_placeholder:
+            raise ValueError(f"{fn.__module__}.{fn.__name__} must define rpc_kwargs placeholder")
+
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            rpc_kwargs = kwargs.pop("rpc_kwargs", None)
+            if rpc_kwargs is None:
+                rpc_values = {
+                    name: kwargs.pop(name, None)
+                    for name in JSON_RPC_OPTION_NAMES
+                }
+                rpc_kwargs = collect_rpc_kwargs(
+                    chain_name=kwargs.get("chain_name") if include_chain_name else None,
+                    **rpc_values,
+                )
+
+            return fn(*args, rpc_kwargs=rpc_kwargs, **kwargs)
+
+        wrapper.__signature__ = original_signature.replace(parameters=parameters)
+        return wrapper
+
+    return decorator
 
 def parse_comma_separated_list(ctx: typer.Context, value: str | list[str] | None) -> list[str] | Any:
     """Support comma separated, whitespaced, list as a command line argument with Typer.

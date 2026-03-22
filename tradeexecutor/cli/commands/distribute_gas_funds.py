@@ -49,6 +49,7 @@ logger = logging.getLogger(__name__)
 
 
 @app.command()
+@shared_options.with_json_rpc_options()
 def distribute_gas_funds(
     id: str = shared_options.id,
     strategy_file: Path = shared_options.strategy_file,
@@ -57,18 +58,7 @@ def distribute_gas_funds(
     log_level: str = shared_options.log_level,
     private_key: str = shared_options.private_key,
 
-    json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
-    json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
-    json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
-    json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
-    json_rpc_base: Optional[str] = shared_options.json_rpc_base,
-    json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
-    json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
-    json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
-    json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
-    json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
-    json_rpc_hyperliquid: Optional[str] = shared_options.json_rpc_hyperliquid,
-    json_rpc_hyperliquid_testnet: Optional[str] = shared_options.json_rpc_hyperliquid_testnet,
+    rpc_kwargs: dict | None = None,
 
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
     vault_address: Optional[str] = shared_options.vault_address,
@@ -125,19 +115,8 @@ def distribute_gas_funds(
     )
 
     web3config = create_web3_config(
-        json_rpc_binance=json_rpc_binance,
-        json_rpc_polygon=json_rpc_polygon,
-        json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum,
-        json_rpc_base=json_rpc_base,
-        json_rpc_anvil=json_rpc_anvil,
-        json_rpc_arbitrum=json_rpc_arbitrum,
-        json_rpc_derive=json_rpc_derive,
-        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
-        json_rpc_base_sepolia=json_rpc_base_sepolia,
-        json_rpc_hyperliquid=json_rpc_hyperliquid,
-        json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
         unit_testing=unit_testing,
+        **rpc_kwargs,
     )
 
     assert web3config.has_any_connection(), \

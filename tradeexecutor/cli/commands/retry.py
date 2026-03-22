@@ -30,6 +30,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
+@shared_options.with_json_rpc_options()
 def retry(
     id: str = shared_options.id,
     name: Optional[str] = shared_options.name,
@@ -39,18 +40,7 @@ def retry(
     cache_path: Optional[Path] = shared_options.cache_path,
 
     log_level: str = shared_options.log_level,
-    json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
-    json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
-    json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
-    json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
-    json_rpc_base: Optional[str] = shared_options.json_rpc_base,
-    json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
-    json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
-    json_rpc_derive: Optional[str] = shared_options.json_rpc_derive,
-    json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
-    json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
-    json_rpc_hyperliquid: Optional[str] = shared_options.json_rpc_hyperliquid,
-    json_rpc_hyperliquid_testnet: Optional[str] = shared_options.json_rpc_hyperliquid_testnet,
+    rpc_kwargs: dict | None = None,
     private_key: str = shared_options.private_key,
 
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
@@ -88,17 +78,7 @@ def retry(
     )
 
     web3config = create_web3_config(
-        json_rpc_binance=json_rpc_binance,
-        json_rpc_polygon=json_rpc_polygon,
-        json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum, json_rpc_base=json_rpc_base, 
-        json_rpc_anvil=json_rpc_anvil,
-        json_rpc_arbitrum=json_rpc_arbitrum,
-        json_rpc_derive=json_rpc_derive,
-        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
-        json_rpc_base_sepolia=json_rpc_base_sepolia,
-        json_rpc_hyperliquid=json_rpc_hyperliquid,
-        json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
+        **rpc_kwargs,
         unit_testing=unit_testing,
     )
 
@@ -189,4 +169,3 @@ def retry(
     store.sync(state)
 
     logger.info(f"Repair report:\n{report}")
-

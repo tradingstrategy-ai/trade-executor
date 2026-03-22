@@ -24,10 +24,10 @@ from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...utils.timer import timed_task
 from tradeexecutor.cli.settle_vault import settle_vault
 from eth_defi.compat import native_datetime_utc_now
-from tradeexecutor.ethereum.web3config import collect_rpc_kwargs
 
 
 @app.command()
+@shared_options.with_json_rpc_options()
 def lagoon_settle(
     id: str = shared_options.id,
 
@@ -37,17 +37,7 @@ def lagoon_settle(
     cache_path: Optional[Path] = shared_options.cache_path,
 
     log_level: str = shared_options.log_level,
-    json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
-    json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
-    json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
-    json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
-    json_rpc_base: Optional[str] = shared_options.json_rpc_base,
-    json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
-    json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
-    json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
-    json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
-    json_rpc_hyperliquid: Optional[str] = shared_options.json_rpc_hyperliquid,
-    json_rpc_hyperliquid_testnet: Optional[str] = shared_options.json_rpc_hyperliquid_testnet,
+    rpc_kwargs: dict | None = None,
     private_key: str = shared_options.private_key,
 
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
@@ -86,19 +76,6 @@ def lagoon_settle(
         unit_testing=unit_testing,
     )
 
-    rpc_kwargs = collect_rpc_kwargs(
-        json_rpc_binance=json_rpc_binance,
-        json_rpc_polygon=json_rpc_polygon,
-        json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum,
-        json_rpc_base=json_rpc_base,
-        json_rpc_anvil=json_rpc_anvil,
-        json_rpc_arbitrum=json_rpc_arbitrum,
-        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
-        json_rpc_base_sepolia=json_rpc_base_sepolia,
-        json_rpc_hyperliquid=json_rpc_hyperliquid,
-        json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
-    )
     web3config = create_web3_config(**rpc_kwargs, simulate=simulate)
 
     if not web3config.has_any_connection():

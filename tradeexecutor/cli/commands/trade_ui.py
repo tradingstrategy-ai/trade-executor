@@ -58,6 +58,7 @@ from tradeexecutor.cli.commands import shared_options
 
 
 @app.command()
+@shared_options.with_json_rpc_options()
 def trade_ui(
     id: str = shared_options.id,
     name: Optional[str] = shared_options.name,
@@ -68,17 +69,7 @@ def trade_ui(
     cache_path: Optional[Path] = shared_options.cache_path,
 
     log_level: str = shared_options.log_level,
-    json_rpc_binance: Optional[str] = shared_options.json_rpc_binance,
-    json_rpc_polygon: Optional[str] = shared_options.json_rpc_polygon,
-    json_rpc_avalanche: Optional[str] = shared_options.json_rpc_avalanche,
-    json_rpc_ethereum: Optional[str] = shared_options.json_rpc_ethereum,
-    json_rpc_base: Optional[str] = shared_options.json_rpc_base,
-    json_rpc_arbitrum: Optional[str] = shared_options.json_rpc_arbitrum,
-    json_rpc_anvil: Optional[str] = shared_options.json_rpc_anvil,
-    json_rpc_arbitrum_sepolia: Optional[str] = shared_options.json_rpc_arbitrum_sepolia,
-    json_rpc_base_sepolia: Optional[str] = shared_options.json_rpc_base_sepolia,
-    json_rpc_hyperliquid: Optional[str] = shared_options.json_rpc_hyperliquid,
-    json_rpc_hyperliquid_testnet: Optional[str] = shared_options.json_rpc_hyperliquid_testnet,
+    rpc_kwargs: dict | None = None,
     private_key: str = shared_options.private_key,
 
     asset_management_mode: AssetManagementMode = shared_options.asset_management_mode,
@@ -125,17 +116,7 @@ def trade_ui(
     )
 
     rpc_kwargs = dict(
-        json_rpc_binance=json_rpc_binance,
-        json_rpc_polygon=json_rpc_polygon,
-        json_rpc_avalanche=json_rpc_avalanche,
-        json_rpc_ethereum=json_rpc_ethereum,
-        json_rpc_base=json_rpc_base,
-        json_rpc_anvil=json_rpc_anvil,
-        json_rpc_arbitrum=json_rpc_arbitrum,
-        json_rpc_arbitrum_sepolia=json_rpc_arbitrum_sepolia,
-        json_rpc_base_sepolia=json_rpc_base_sepolia,
-        json_rpc_hyperliquid=json_rpc_hyperliquid,
-        json_rpc_hyperliquid_testnet=json_rpc_hyperliquid_testnet,
+        **rpc_kwargs,
     )
 
     # In simulate mode, only fork the chain the strategy needs
