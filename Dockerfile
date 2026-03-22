@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 #
 # Build trade-executor as a Docker container for live treading
 #
@@ -31,16 +32,18 @@ ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /usr/src/trade-executor
 
-# Read by VersionInfo class in trade-executor
-RUN echo $GIT_VERSION_TAG > GIT_VERSION_TAG.txt
-RUN echo $GIT_COMMIT_MESSAGE > GIT_COMMIT_MESSAGE.txt
-RUN echo $GIT_VERSION_HASH > GIT_VERSION_HASH.txt
-
-# package source code
-COPY . .
-
 RUN poetry config virtualenvs.create false
-RUN poetry install --all-extras --no-interaction --no-ansi --without=dev
+
+# Copy only dependency metadata and local path dependency source first so
+# ordinary application code changes do not invalidate the expensive dependency
+# install layer.
+COPY pyproject.toml poetry.lock README.md ./
+COPY deps/trading-strategy/pyproject.toml deps/trading-strategy/README.md deps/trading-strategy/
+COPY deps/trading-strategy/tradingstrategy deps/trading-strategy/tradingstrategy
+COPY deps/web3-ethereum-defi/pyproject.toml deps/web3-ethereum-defi/README.md deps/web3-ethereum-defi/
+COPY deps/web3-ethereum-defi/eth_defi deps/web3-ethereum-defi/eth_defi
+
+RUN poetry install --all-extras --no-interaction --no-ansi --without=dev --no-root
 
 # Clean Poetry cache to reduce image size
 RUN poetry cache clear pypi --all --no-interaction
@@ -51,16 +54,31 @@ ENV PATH="${PATH}:/root/.foundry/bin"
 RUN curl -L https://foundry.paradigm.xyz | bash
 RUN foundryup --install v1.2.1
 
+# Lagoon contract sources are needed for forge dependency installation, but we
+# still keep them separate from the main application copy to preserve cache.
+COPY deps/web3-ethereum-defi/contracts/lagoon-v0 deps/web3-ethereum-defi/contracts/lagoon-v0
+
 # We need to install Lagoon dependencies if we want to deploy Vault.sol contract.
 # Otherwise trade-executor lagoon-deploy-vault command will fail.
 # Needed only for installing the dependencies, not during run time
 RUN (cd deps/web3-ethereum-defi/contracts/lagoon-v0 && forge soldeer install --config-location foundry)
+
+# Copy the rest of the application only after dependency-heavy layers.
+COPY . .
+
+RUN poetry install --only-root --no-interaction --no-ansi
 
 # Speed up Python process startup
 RUN rm -rf ./tests
 RUN python -m compileall -q .
 # Exclude ccxt from compileall due to syntax errors in ccxt.static_dependencies.bip
 RUN python -m compileall -q -x 'ccxt/static_dependencies' /usr/local/lib/python3.14
+
+# Read by VersionInfo class in trade-executor. Write these files at the end so
+# commit metadata changes do not invalidate the dependency cache.
+RUN echo $GIT_VERSION_TAG > GIT_VERSION_TAG.txt
+RUN echo $GIT_COMMIT_MESSAGE > GIT_COMMIT_MESSAGE.txt
+RUN echo $GIT_VERSION_HASH > GIT_VERSION_HASH.txt
 
 # trade-executor /api
 # Pyramid HTTP server for webhooks at port 3456

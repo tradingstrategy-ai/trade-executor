@@ -113,9 +113,14 @@ def test_load_latest_live_cycle_end_prefers_other_data_over_uptime() -> None:
 def test_load_latest_live_cycle_end_falls_back_to_uptime() -> None:
     """Rolling live scheduling should fall back to uptime when per-cycle data is missing.
 
+    Also verifies the fallback survives a JSON round-trip, where cycles_completed_at
+    values become ISO strings instead of datetime objects. This reproduces the
+    hyper-ai production crash of 2026-03-21.
+
     1. Create a state with only uptime completion tracking populated.
     2. Load the rolling cycle anchor from state.
     3. Verify the latest uptime completion timestamp is used.
+    4. Round-trip the state through JSON and verify the fallback still returns a datetime.
     """
 
     # 1. Create a state with only uptime completion tracking populated.
@@ -128,6 +133,12 @@ def test_load_latest_live_cycle_end_falls_back_to_uptime() -> None:
 
     # 3. Verify the latest uptime completion timestamp is used.
     assert latest_cycle_end == completed_at
+
+    # 4. Round-trip the state through JSON and verify the fallback still returns a datetime.
+    state_reloaded = State.from_json(state.to_json())
+    latest_after_roundtrip = load_latest_live_cycle_end(state_reloaded)
+    assert isinstance(latest_after_roundtrip, datetime.datetime)
+    assert latest_after_roundtrip == completed_at
 
 
 def test_existing_live_trigger_modes_keep_wall_clock_alignment() -> None:
