@@ -159,7 +159,7 @@ def start(
     key_metrics_backtest_cut_off_days: float = typer.Option(90, envvar="KEY_METRIC_BACKTEST_CUT_OFF_DAYS", help="How many days live data is collected until key metrics are switched from backtest to live trading based"),
     check_accounts: bool = typer.Option(True, "--check-accounts", envvar="CHECK_ACCOUNTS", help="Do extra accounting checks to track mismatch balances"),
     sync_treasury_on_startup: bool = typer.Option(True, "--sync-treasury-on-startup", envvar="SYNC_TREASURY_ON_STARTUP", help="Sync treasury events before starting any trading"),
-    abort_lagoon_settlement_on_frozen_positions: bool = typer.Option(False, "--abort-lagoon-settlement-on-frozen-positions", envvar="ABORT_LAGOON_SETTLEMENT_ON_FROZEN_POSITIONS", help="Safety feature for Lagoon vaults: abort settlement when frozen positions exist. Resolve frozen positions manually before calculating NAV to avoid miscounting or double counting capital."),
+    abort_lagoon_settlement_on_frozen_positions: bool = typer.Option(True, "--abort-lagoon-settlement-on-frozen-positions", envvar="ABORT_LAGOON_SETTLEMENT_ON_FROZEN_POSITIONS", help="Safety feature for Lagoon vaults: abort settlement when frozen positions exist. Resolve frozen positions manually before calculating NAV to avoid miscounting or double counting capital."),
     visualisation: bool = typer.Option(True, "--visualisation", envvar="VISUALISATION", help="Disable generation of charts using Kaleido library. Helps with issues with broken installations"),
 
     run_single_cycle: bool = typer.Option(False, "--run-single-cycle", envvar="RUN_SINGLE_CYCLE", help="Run a single strategy decision cycle and exist, regardless of the current pending state."),

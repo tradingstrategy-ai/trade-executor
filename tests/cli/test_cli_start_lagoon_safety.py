@@ -27,15 +27,15 @@ class FakeWeb3Config:
         return self._default
 
 
-def test_cli_start_propagates_lagoon_frozen_position_safety_option(
+def test_cli_start_enables_lagoon_frozen_position_safety_by_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """CLI start propagates the Lagoon frozen-position safety option.
+    """CLI start enables the Lagoon frozen-position safety option by default.
 
     1. Patch CLI start-up so it runs offline with a fake Lagoon sync model.
-    2. Run `start` with the Lagoon frozen-position safety option enabled.
-    3. Verify the fake Lagoon sync model receives the propagated safety flag.
+    2. Run `start` without overriding the Lagoon frozen-position safety option.
+    3. Verify the fake Lagoon sync model receives the default enabled safety flag.
     """
     from tradeexecutor.cli.commands import start as start_module
 
@@ -81,9 +81,8 @@ def test_cli_start_propagates_lagoon_frozen_position_safety_option(
         "LOG_LEVEL": "disabled",
         "CHECK_ACCOUNTS": "false",
         "SYNC_TREASURY_ON_STARTUP": "false",
-        "ABORT_LAGOON_SETTLEMENT_ON_FROZEN_POSITIONS": "true",
     }
 
-    # 2. Run `start` with the Lagoon frozen-position safety option enabled.
+    # 2. Run `start` without overriding the Lagoon frozen-position safety option.
     with mock.patch.dict("os.environ", environment, clear=True):
         app(["start"], standalone_mode=False)
