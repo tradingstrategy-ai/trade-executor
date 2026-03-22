@@ -206,7 +206,7 @@ filterwarnings = [
   # pyramid imports deprecated pkg_resources
   "ignore::DeprecationWarning:pyramid.*:",
   # seaborn boxplot vert parameter deprecated in matplotlib
-  "ignore:vert\\: bool will be deprecated:PendingDeprecationWarning:seaborn.*:",
+  "ignore:vert.* bool will be deprecated:PendingDeprecationWarning:seaborn.*:",
   # cached_property uses deprecated asyncio.iscoroutinefunction
   "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning:cached_property.*:",
   # dataclasses_json warns about NoneType for non-optional fields in old serialised state
