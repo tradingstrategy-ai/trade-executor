@@ -214,7 +214,7 @@ filterwarnings = [
   # Legacy broadcast() function in our own code - suppressed until fully migrated to multi-node broadcasting
   "ignore:This function is deprecated. Use multi-node broadcasting instead:DeprecationWarning",
   # loky parallel executor leaks semaphores on shutdown - harmless
-  "ignore:resource_tracker\\: There appear to be \\d+ leaked semaphore:UserWarning",
+  "ignore:resource_tracker.* There appear to be .* leaked semaphore:UserWarning",
 ]
 markers = [
   "slow_test_group: manually separated group of tests that take individually long time to run",
