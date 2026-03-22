@@ -4,272 +4,250 @@ This document tracks small, low-risk cleanups that can be completed and verified
 
 ## Issues
 
-1. Fix packaging and installation metadata drift
+Completed in this branch:
+- Issues `1` to `22`
+
+Pending:
+
+23. Clean up duplicate compat imports in CLI bootstrap helpers
 
    Status:
-   - Done
+   - Pending
 
    Scope:
-   - Fix `poetry check` failure caused by the undeclared `setuptools` extra reference in `pyproject.toml`
-   - Align installation guidance in `README.md` with the current Python version and current extras
-   - Keep the change limited to packaging metadata and contributor-facing docs
+   - Remove duplicate `native_datetime_utc_now` imports and similar no-behaviour-change clutter in `tradeexecutor/cli/bootstrap.py`
+   - Keep bootstrap and metadata behaviour unchanged
 
    Verification:
-   - `poetry check`
+   - `source .local-test.env && poetry run pytest tests/enzyme/test_enzyme_webhook_api.py::test_enzyme_metadata --log-cli-level=info`
 
-2. Clean up webhook dead code and make the notify endpoint explicit
+24. Clean up duplicate compat imports in the close-position helper module
 
    Status:
-   - Done
+   - Pending
 
    Scope:
-   - Remove dead helper code in `tradeexecutor/webhook/api.py`
-   - Replace the placeholder `/notify` success response with an explicit “not implemented” API response
-   - Add or update webhook coverage for the endpoint behaviour
+   - Remove duplicate `native_datetime_utc_now` imports and similar low-risk clutter in `tradeexecutor/cli/close_position.py`
+   - Keep close-all and close-position helper behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/cli/test_close_position.py::test_close_all --log-cli-level=info`
+
+25. Clean up duplicate compat imports in the `close-all` CLI command
+
+   Status:
+   - Pending
+
+   Scope:
+   - Remove duplicate `native_datetime_utc_now` imports and obvious unused imports in `tradeexecutor/cli/commands/close_all.py`
+   - Keep command behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/cli/test_close_position.py::test_close_all --log-cli-level=info`
+
+26. Clean up duplicate compat imports in the `close-position` CLI command
+
+   Status:
+   - Pending
+
+   Scope:
+   - Remove duplicate `native_datetime_utc_now` imports and obvious unused imports in `tradeexecutor/cli/commands/close_position.py`
+   - Keep command behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/cli/test_close_position.py::test_close_position_single --log-cli-level=info`
+
+27. Clean up duplicate compat imports in the `correct-accounts` CLI command
+
+   Status:
+   - Pending
+
+   Scope:
+   - Remove duplicate compat imports and other obvious unused imports in `tradeexecutor/cli/commands/correct_accounts.py`
+   - Keep command behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/enzyme/test_enzyme_end_to_end.py::test_enzyme_correct_accounts --log-cli-level=info`
+
+28. Clean up duplicate compat imports in the `perform-test-trade` CLI command
+
+   Status:
+   - Pending
+
+   Scope:
+   - Remove duplicate `native_datetime_utc_now` imports and other obvious unused imports in `tradeexecutor/cli/commands/perform_test_trade.py`
+   - Keep command behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/enzyme/test_enzyme_end_to_end.py::test_enzyme_perform_test_trade --log-cli-level=info`
+
+29. Clean up duplicate compat imports in the `repair` CLI command
+
+   Status:
+   - Pending
+
+   Scope:
+   - Remove duplicate `native_datetime_utc_now` imports and obvious unused imports in `tradeexecutor/cli/commands/repair.py`
+   - Keep repair command behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/mainnet_fork/test_repair_frozen_credit_position.py::test_repair_frozen_credit_position --log-cli-level=info`
+
+30. Clean up duplicate compat imports in the `retry` CLI command
+
+   Status:
+   - Pending
+
+   Scope:
+   - Remove duplicate `native_datetime_utc_now` imports and obvious unused imports in `tradeexecutor/cli/commands/retry.py`
+   - Keep retry command behaviour unchanged
+
+   Verification:
+   - `source .local-test.env && poetry run pytest tests/ethereum/test_repair_rebroadcast.py::test_repair --log-cli-level=info`
+
+31. Clean up duplicate compat imports in the `webapi` CLI command
+
+   Status:
+   - Pending
+
+   Scope:
+   - Remove duplicate `native_datetime_utc_now` imports and similar low-risk clutter in `tradeexecutor/cli/commands/webapi.py`
+   - Keep web API and webhook behaviour unchanged
 
    Verification:
    - `source .local-test.env && poetry run pytest tests/web/test_webhook_api.py --log-cli-level=info`
 
-3. Remove import and startup-command clutter in active CLI modules
+32. Clean up duplicate compat imports in vault settlement helpers
 
    Status:
-   - Done
+   - Pending
 
    Scope:
-   - Remove duplicate and unused imports in `tradeexecutor/cli/commands/start.py`
-   - Remove duplicate imports in `tradeexecutor/strategy/runner.py`
-   - Keep behaviour unchanged
+   - Remove duplicate `native_datetime_utc_now` imports and similar low-risk clutter in `tradeexecutor/cli/settle_vault.py`
+   - Keep vault settlement helper behaviour unchanged
 
    Verification:
-   - `source .local-test.env && poetry run pytest tests/cli/test_cli_since_last_cycle_end.py --log-cli-level=info`
+   - `source .local-test.env && poetry run pytest tests/lagoon/test_lagoon_e2e.py::test_cli_lagoon_settle --log-cli-level=info`
 
-4. Clean up duplicate imports in the legacy Uniswap v2 execution path
+33. Clean up duplicate compat imports in test-trade helpers
 
    Status:
-   - Done
+   - Pending
 
    Scope:
-   - Remove duplicate imports and similar no-behaviour-change clutter in `tradeexecutor/ethereum/uniswap_v2/uniswap_v2_execution_v0.py`
-   - Keep the legacy code path working for strategies and tests that still import it
+   - Remove duplicate `native_datetime_utc_now` imports and similar low-risk clutter in `tradeexecutor/cli/testtrade.py`
+   - Keep test-trade helper behaviour unchanged
 
    Verification:
-   - `source .local-test.env && poetry run pytest tests/test_approval_in_terminal.py --log-cli-level=info`
+   - `source .local-test.env && poetry run pytest tests/enzyme/test_enzyme_end_to_end.py::test_enzyme_perform_test_trade --log-cli-level=info`
 
-5. Clean up import clutter in the `check-universe` CLI command
+34. Clean up duplicate compat imports in trading position state
 
    Status:
-   - Done
+   - Pending
 
    Scope:
-   - Remove duplicate imports and obvious unused imports in `tradeexecutor/cli/commands/check_universe.py`
-   - Keep behaviour unchanged
+   - Remove duplicate `native_datetime_utc_now` imports and other obvious low-risk import clutter in `tradeexecutor/state/position.py`
+   - Keep position accounting and profit calculation behaviour unchanged
 
    Verification:
-   - `source .local-test.env && poetry run pytest tests/cli/test_cli_check_universe.py --log-cli-level=info`
+   - `source .local-test.env && poetry run pytest tests/test_state.py -k test_unrealised_profit_calculation --log-cli-level=info`
 
-6. Clean up import clutter in the `blacklist` CLI command
+35. Clean up duplicate compat imports in state repair helpers
 
    Status:
-   - Done
+   - Pending
 
    Scope:
-   - Remove duplicate imports and obvious unused imports in `tradeexecutor/cli/commands/blacklist.py`
-   - Keep behaviour unchanged
+   - Remove duplicate `native_datetime_utc_now` imports and similar no-behaviour-change clutter in `tradeexecutor/state/repair.py`
+   - Keep repair behaviour unchanged
 
    Verification:
-   - `source .local-test.env && poetry run pytest tests/cli/test_cli_blacklist.py --log-cli-level=info`
+   - `source .local-test.env && poetry run pytest tests/legacy/test_legacy_repair_trade.py::test_repair_trades --log-cli-level=info`
 
-7. Clean up small logging-module clutter in webhook HTTP logging
+36. Clean up duplicate compat imports in uptime state handling
 
    Status:
-   - Done
+   - Pending
 
    Scope:
-   - Remove obvious unused imports in `tradeexecutor/webhook/http_log.py`
-   - Keep HTTP log behaviour unchanged
+   - Remove duplicate `native_datetime_utc_now` imports in `tradeexecutor/state/uptime.py`
+   - Keep cycle-completion recording behaviour unchanged
 
    Verification:
-   - `source .local-test.env && poetry run pytest tests/cli/test_http_log.py --log-cli-level=info`
+   - `source .local-test.env && poetry run pytest tests/test_live_cycle_scheduler.py --log-cli-level=info`
 
-8. Clean up duplicate imports in strategy metadata
+37. Clean up duplicate compat imports in state visualisation helpers
 
    Status:
-   - Done
+   - Pending
 
    Scope:
-   - Remove duplicate imports in `tradeexecutor/state/metadata.py`
-   - Keep metadata serialisation and webhook-facing behaviour unchanged
+   - Remove duplicate `native_datetime_utc_fromtimestamp` imports in `tradeexecutor/state/visualisation.py`
+   - Keep visualisation serialisation and plotting behaviour unchanged
 
    Verification:
-   - `source .local-test.env && poetry run pytest tests/web/test_webhook_api.py --log-cli-level=info`
+   - `source .local-test.env && poetry run pytest tests/test_strategy_state_visualisation.py::test_visualise_strategy_state --log-cli-level=info`
 
-9. Clean up import clutter in the `check-wallet` CLI command
+38. Clean up duplicate compat imports in the live execution loop
 
    Status:
-   - Done
+   - Pending
 
    Scope:
-   - Remove duplicate imports and obvious unused imports in `tradeexecutor/cli/commands/check_wallet.py`
-   - Keep behaviour unchanged
+   - Remove duplicate compat imports in `tradeexecutor/cli/loop.py`
+   - Keep live cycle scheduling behaviour unchanged
 
    Verification:
-   - `source .local-test.env && poetry run pytest tests/cli/test_check_wallet_hyper_ai.py --log-cli-level=info`
+   - `source .local-test.env && poetry run pytest tests/test_live_cycle_scheduler.py --log-cli-level=info`
 
-10. Clean up import clutter in the `export` CLI command
+39. Clean up obvious unused imports in the `lagoon-settle` CLI command
 
    Status:
-   - Done
+   - Pending
 
    Scope:
-   - Remove duplicate imports and obvious unused imports in `tradeexecutor/cli/commands/export.py`
-   - Keep behaviour unchanged
+   - Remove obvious unused imports in `tradeexecutor/cli/commands/lagoon_settle.py`
+   - Keep lagoon settlement command behaviour unchanged
 
    Verification:
-   - `source .local-test.env && poetry run pytest tests/cli/test_cli_commands.py -k test_cli_export --log-cli-level=info`
+   - `source .local-test.env && poetry run pytest tests/lagoon/test_lagoon_e2e.py::test_cli_lagoon_settle --log-cli-level=info`
 
-11. Clean up duplicate imports in state storage
-
-   Status:
-   - Done
-
-   Scope:
-   - Remove duplicate imports and obvious unused imports in `tradeexecutor/state/store.py`
-   - Keep serialisation behaviour unchanged
-
-   Verification:
-   - `source .local-test.env && poetry run pytest tests/test_store.py --log-cli-level=info`
-
-12. Clean up duplicate imports in reserve state handling
+40. Clean up obvious unused imports in the `enzyme-asset-list` CLI command
 
    Status:
-   - Done
+   - Pending
 
    Scope:
-   - Remove duplicate imports and obvious unused imports in `tradeexecutor/state/reserve.py`
-   - Keep reserve accounting behaviour unchanged
-
-   Verification:
-   - `source .local-test.env && poetry run pytest tests/test_state.py -k test_update_reserves --log-cli-level=info`
-
-13. Clean up import clutter in the `check-accounts` CLI command
-
-   Status:
-   - Done
-
-   Scope:
-   - Remove duplicate imports and obvious unused imports in `tradeexecutor/cli/commands/check_accounts.py`
+   - Remove obvious unused imports in `tradeexecutor/cli/commands/enzyme_asset_list.py`
    - Keep command behaviour unchanged
-
-   Verification:
-   - `source .local-test.env && poetry run pytest tests/enzyme/test_enzyme_end_to_end.py::test_enzyme_check_accounts --log-cli-level=info`
-
-14. Clean up import clutter in the `check-position-triggers` CLI command
-
-   Status:
-   - Done
-
-   Scope:
-   - Remove duplicate imports and obvious unused imports in `tradeexecutor/cli/commands/check_position_triggers.py`
-   - Keep command behaviour unchanged
-
-   Verification:
-   - `source .local-test.env && poetry run pytest tests/mainnet_fork/test_enzyme_credit_position.py::test_enzyme_credit_position_redemption_check_triggers --log-cli-level=info`
-
-15. Clean up import clutter in the `console` CLI command
-
-   Status:
-   - Done
-
-   Scope:
-   - Remove duplicate imports and obvious unused imports in `tradeexecutor/cli/commands/console.py`
-   - Keep console command behaviour unchanged
 
    Verification:
    - `source .local-test.env && poetry run pytest tests/cli/test_cli_commands.py -k test_cli_console --log-cli-level=info`
 
-16. Clean up import clutter in the `distribute-gas-funds` CLI command
+41. Modernise legacy `Union` usage in state type aliases
 
    Status:
-   - Done
+   - Pending
 
    Scope:
-   - Remove obvious unused imports in `tradeexecutor/cli/commands/distribute_gas_funds.py`
-   - Keep dry-run and chain selection behaviour unchanged
+   - Replace legacy `Union[...]` typing with native `|` syntax in `tradeexecutor/state/types.py`
+   - Keep runtime behaviour unchanged
 
    Verification:
-   - `source .local-test.env && poetry run pytest tests/cli/test_cli_distribute_gas_funds.py --log-cli-level=info`
+   - `source .local-test.env && poetry run pytest tests/test_state.py -k test_serialize_panda_timestamp --log-cli-level=info`
 
-17. Clean up import clutter in the `trading-pair` CLI command
+42. Modernise legacy `Union` usage in timestamp utilities
 
    Status:
-   - Done
+   - Pending
 
    Scope:
-   - Remove duplicate imports and obvious unused imports in `tradeexecutor/cli/commands/trading_pair.py`
-   - Keep command output behaviour unchanged
+   - Replace legacy `Union[...]` typing with native `|` syntax in `tradeexecutor/utils/timestamp.py`
+   - Keep timestamp conversion behaviour unchanged
 
    Verification:
-   - `source .local-test.env && poetry run pytest tests/cli/test_cli_trading_pair.py --log-cli-level=info`
-
-18. Clean up duplicate imports in the timer utility
-
-   Status:
-   - Done
-
-   Scope:
-   - Remove duplicate imports and obvious unused imports in `tradeexecutor/utils/timer.py`
-   - Keep timed task logging behaviour unchanged
-
-   Verification:
-   - `source .local-test.env && poetry run pytest tests/test_decision_trigger.py --log-cli-level=info`
-
-19. Clean up duplicate imports in trade retry helpers
-
-   Status:
-   - Done
-
-   Scope:
-   - Remove duplicate imports and obvious unused imports in `tradeexecutor/state/retry.py`
-   - Keep retry and rebroadcast behaviour unchanged
-
-   Verification:
-   - `source .local-test.env && poetry run pytest tests/ethereum/test_repair_rebroadcast.py --log-cli-level=info`
-
-20. Clean up duplicate imports in portfolio state handling
-
-   Status:
-   - Done
-
-   Scope:
-   - Remove duplicate imports and obvious unused imports in `tradeexecutor/state/portfolio.py`
-   - Keep reserve allocation and portfolio accounting behaviour unchanged
-
-   Verification:
-   - `source .local-test.env && poetry run pytest tests/test_state.py -k test_not_enough_cash --log-cli-level=info`
-
-21. Clean up duplicate imports in frozen-position handling
-
-   Status:
-   - Done
-
-   Scope:
-   - Remove duplicate imports in `tradeexecutor/state/freeze.py`
-   - Keep failed-trade freezing behaviour unchanged
-
-   Verification:
-   - `source .local-test.env && poetry run pytest tests/test_unclean_state.py --log-cli-level=info`
-
-22. Clean up duplicate imports in interest state handling
-
-   Status:
-   - Done
-
-   Scope:
-   - Remove duplicate imports in `tradeexecutor/state/interest.py`
-   - Keep interest tracking data behaviour unchanged
-
-   Verification:
-   - `source .local-test.env && poetry run pytest tests/interest/test_state_short.py -k test_open_short --log-cli-level=info`
+   - `source .local-test.env && poetry run pytest tests/test_state.py -k test_serialise_timedelta --log-cli-level=info`
 
 ## Execution notes
 
