@@ -1,15 +1,82 @@
-"""Test hyper-ai-test strategy indicators work correctly with stale/delayed data.
+"""Test hyper-ai-test strategy indicators work correctly with stale/delayed vault data.
 
-Vault price data can be up to 24h stale due to the local parquet cache
-and the upstream CDN pipeline refresh frequency. This test verifies that
-the indicator pipeline still produces valid, non-NaN results that the
-alpha model can consume when the data has gaps or is delayed relative to
-the decision cycle timestamp.
+Hypercore vault data pipeline and data healing
+===============================================
 
-The production code path uses ``create_from_dataset(forward_fill=True,
-forward_fill_until=timestamp)`` which extends every pair's candle and
-liquidity data to the decision timestamp. These tests replicate that
-behaviour so they exercise the same forward-fill pipeline.
+Raw vault share prices arrive from the on-chain scanner via the
+``eth_defi`` data pipeline as hourly snapshots with arbitrary block-level
+timestamps. They are cleaned, resampled, and published to R2 CDN as a
+parquet file (``cleaned-vault-prices-1h.parquet``).
+
+When the trade executor loads this data, it can be stale for two reasons:
+
+1. **CDN pipeline lag** — the batch pipeline (``scan-prices.py`` ->
+   ``clean-prices.py`` -> ``export-data-files.py``) runs asynchronously.
+2. **Local 24h cache** — ``fetch_vault_price_history()`` in
+   ``tradingstrategy/transport/cache.py:625`` caches the parquet for 24h
+   in ``~/.tradingstrategy/vaults/downloads/``.  ``client.clear_caches()``
+   only purges ``~/.cache/tradingstrategy/``, so vault data is unaffected.
+
+The data goes through several healing stages before indicators see it:
+
+Stage 1 — ``load_partial_data()`` fetches and converts vault data
+    ``client.fetch_vault_price_history()`` downloads the parquet from CDN
+    (or serves cached). ``convert_vault_prices_to_candles()`` resamples
+    raw share prices and TVL into OHLCV candle format (daily). Vault
+    candles are concatenated with any DEX pair candles into a single
+    ``candles_df`` (and ``liquidity_df`` for TVL).
+
+    **File**: ``tradeexecutor/strategy/trading_strategy_universe.py:2817-2836``
+
+Stage 2 — ``TradingStrategyUniverse.create_from_dataset(forward_fill=True)``
+    Passes ``forward_fill=True`` and ``forward_fill_until=timestamp`` to
+    both ``GroupedCandleUniverse`` and ``GroupedLiquidityUniverse``
+    constructors.
+
+    **File**: ``tradeexecutor/strategy/trading_strategy_universe.py:1376-1423``
+
+Stage 3 — ``GroupedCandleUniverse.__init__()`` forward-fill pipeline
+    The constructor calls ``fix_dex_price_data()`` which routes to
+    ``forward_fill()`` -> ``resample_candles_multiple_pairs()`` ->
+    ``forward_fill_ohlcv_single_pair()`` per pair. Each pair's data is:
+
+    a) Resampled to the target frequency (daily).
+    b) Extended to ``forward_fill_until`` via ``pad_dataframe_to_frequency()``
+       which appends NaN rows from the pair's last real timestamp to the
+       decision timestamp.
+    c) Forward-filled: ``close`` via ``.ffill()``, ``open``/``high``/``low``
+       filled from close, ``volume`` set to 0.
+    d) A ``forward_filled=True`` boolean column marks synthetic rows.
+
+    After this stage the DataFrame has a ``MultiIndex(pair_id, timestamp)``
+    and every pair has rows at every timestamp up to ``forward_fill_until``.
+
+    **Files**: ``tradingstrategy/utils/groupeduniverse.py:174-205``,
+    ``tradingstrategy/utils/wrangle.py:258-457``,
+    ``tradingstrategy/utils/forward_fill.py:752-894``
+
+Stage 4 — ``GroupedLiquidityUniverse.__init__()`` (same pipeline for TVL)
+    Same forward-fill chain as Stage 3, applied to the liquidity/TVL data.
+
+Stage 5 — Indicator framework reads healed data
+    ``_calculate_and_save_indicator_result()`` calls
+    ``data_universe.candles.get_samples_by_pair(pair_id)`` (for candle
+    indicators) or ``data_universe.liquidity.get_samples_by_pair(pair_id)``
+    (for TVL indicators). Both return the fully forward-filled DataFrames
+    from Stages 3-4, so indicators see complete time series with no gaps.
+
+    **File**: ``tradeexecutor/strategy/pandas_trader/indicator.py:1396-1453``
+
+Result: even if a vault's real data stopped days or weeks ago, the
+indicator functions receive a complete daily time series from the vault's
+inception to the decision timestamp. Stale rows are distinguishable via
+the ``forward_filled`` column but are otherwise valid OHLCV rows.
+
+Edge case: ``autoheal_pair_limit``
+    ``GroupedCandleUniverse`` skips forward-fill entirely if the pair count
+    exceeds ``autoheal_pair_limit`` (default 1500). Not a risk for hyper-ai
+    (~120 vaults) but would silently break for larger universes.
+    **File**: ``tradingstrategy/utils/groupeduniverse.py:174``
 """
 
 import datetime
@@ -80,9 +147,10 @@ def _build_forward_filled_universe(
     Replicates the production code path where ``create_from_dataset()``
     passes ``forward_fill=True`` and ``forward_fill_until=timestamp`` to
     ``GroupedCandleUniverse`` and ``GroupedLiquidityUniverse``. The
-    constructors then call ``fix_dex_price_data()`` which extends each
-    pair's data to ``forward_fill_until`` via ``pad_dataframe_to_frequency()``
-    and forward-fills close values.
+    constructors call ``fix_dex_price_data()`` -> ``forward_fill()`` ->
+    ``forward_fill_ohlcv_single_pair()`` -> ``pad_dataframe_to_frequency()``
+    which extends each pair's data to ``forward_fill_until`` and
+    forward-fills close values (see module docstring Stages 3-4).
     """
     candles_df = pd.concat(candle_frames, ignore_index=True)
     liquidity_df = pd.concat(liquidity_frames, ignore_index=True)
@@ -178,14 +246,15 @@ def stale_universe(
 ) -> TradingStrategyUniverse:
     """Build a universe where vault B has a 2-day data gap before the decision timestamp.
 
-    Uses the production forward-fill path so stale pairs get extended to
-    the decision timestamp, matching ``create_from_dataset(forward_fill=True)``.
+    Uses the production forward-fill path (Stages 2-4 in the module docstring)
+    so stale pairs get extended to the decision timestamp, matching
+    ``create_from_dataset(forward_fill=True)``.
 
     1. Vault A has continuous daily candles from 2025-06-01 to 2026-03-20 (decision day).
     2. Vault B has daily candles from 2025-06-01 but stops at 2026-03-18 (2 days stale).
     3. Benchmark pair has full candle coverage.
     4. TVL (liquidity) data mirrors the candle timestamps.
-    5. Framework forward-fill extends vault B's data to the decision timestamp.
+    5. Framework forward-fill (Stage 3) extends vault B's data to the decision timestamp.
     """
     start = datetime.datetime(2025, 6, 1)
     full_dates = pd.date_range(start, decision_timestamp, freq="D").to_pydatetime().tolist()
@@ -227,11 +296,10 @@ def stale_universe(
 def hyper_ai_module():
     """Load the hyper-ai-test strategy module with SUPPORTING_PAIRS cleared.
 
-    The strategy's ``inclusion_criteria`` and ``trading_pair_count`` indicators
-    look up SUPPORTING_PAIRS (Arbitrum/Ethereum Uniswap V3 pairs) in the
-    universe to exclude them from allocation decisions. Our synthetic test
-    universe does not contain those pairs, so we patch them to an empty list
-    to avoid lookup failures.
+    We mock SUPPORTING_PAIRS to an empty list because the strategy's
+    ``inclusion_criteria`` and ``trading_pair_count`` indicators look up
+    Arbitrum/Ethereum Uniswap V3 pairs in the universe to exclude them.
+    Our synthetic test universe does not contain those pairs.
     """
     strategy_path = Path(__file__).resolve().parents[2] / "strategies" / "test_only" / "hyper-ai-test.py"
     spec = importlib.util.spec_from_file_location("hyper_ai_strategy", strategy_path)
@@ -241,26 +309,19 @@ def hyper_ai_module():
     return module
 
 
-def test_indicators_with_stale_vault_data(
-    stale_universe: TradingStrategyUniverse,
+def _calculate_indicators(
     hyper_ai_module,
+    stale_universe: TradingStrategyUniverse,
     decision_timestamp: datetime.datetime,
-    vault_a_pair: TradingPairIdentifier,
-    vault_b_pair: TradingPairIdentifier,
 ):
-    """Verify all alpha-model indicators produce valid values when vault data is stale.
+    """Run create_indicators() and calculate_and_load_indicators_inline().
 
-    Framework forward-fill extends vault B's data to the decision timestamp,
-    so all indicators should return non-None values for both vaults.
-
-    1. Build a universe where vault B stops 2 days before the decision timestamp.
-    2. Calculate all indicators (framework forward-fill bridges the gap).
-    3. Assert inclusion_criteria, tvl_included_pair_count, and age_ramp_weight
-       are all valid for both fresh and stale vaults.
+    Replicates the production flow: the strategy's ``create_indicators``
+    callback builds the ``IndicatorSet`` from the decorator registry, then
+    ``calculate_and_load_indicators_inline`` computes every indicator using
+    the forward-filled universe data (Stage 5 in the module docstring).
     """
     parameters = StrategyParameters.from_class(hyper_ai_module.Parameters)
-
-    # 2. Calculate all indicators (framework forward-fill bridges the gap).
     indicator_results = calculate_and_load_indicators_inline(
         strategy_universe=stale_universe,
         parameters=parameters,
@@ -269,83 +330,105 @@ def test_indicators_with_stale_vault_data(
         storage=MemoryIndicatorStorage(stale_universe.get_cache_key()),
         strategy_cycle_timestamp=decision_timestamp,
     )
-
     indicator_results.strategy_universe = stale_universe
     indicator_results.timestamp = pd.Timestamp(decision_timestamp)
+    return indicator_results
 
-    # 3. Assert all alpha-model indicators are valid.
+
+def test_all_alpha_model_indicators_valid_with_stale_data(
+    stale_universe: TradingStrategyUniverse,
+    hyper_ai_module,
+    decision_timestamp: datetime.datetime,
+    vault_a_pair: TradingPairIdentifier,
+    vault_b_pair: TradingPairIdentifier,
+):
+    """Verify every indicator consumed by decide_trades() resolves to a usable value.
+
+    The alpha model in decide_trades() reads these indicators:
+    - ``inclusion_criteria`` (list of pair ids passing all filters)
+    - ``tvl_included_pair_count`` (int count for diagnostics)
+    - ``age_ramp_weight`` per pair (float signal weight, falls back to 1.0 if None)
+
+    With framework forward-fill active (Stages 2-4), all indicators must
+    produce non-None values for both fresh and stale vaults.
+
+    1. Build a forward-filled universe where vault B is 2 days stale.
+    2. Calculate all indicators via the strategy's create_indicators callback.
+    3. Assert inclusion_criteria is a non-empty collection containing both vaults.
+    4. Assert tvl_included_pair_count is a non-negative integer.
+    5. Assert age_ramp_weight is a positive float for both vaults.
+    """
+    # 2. Calculate all indicators via the strategy's create_indicators callback.
+    indicator_results = _calculate_indicators(hyper_ai_module, stale_universe, decision_timestamp)
+
+    # 3. Assert inclusion_criteria is a non-empty collection containing both vaults.
     inclusion = indicator_results.get_indicator_value("inclusion_criteria", na_conversion=False)
+    assert inclusion is not None, "inclusion_criteria must not be None at the decision timestamp"
+    assert isinstance(inclusion, (set, list, frozenset)), f"Expected collection, got {type(inclusion)}"
+    assert vault_a_pair.internal_id in inclusion, "Fresh vault A must be in inclusion_criteria"
+    assert vault_b_pair.internal_id in inclusion, "Stale vault B must be in inclusion_criteria (forward-filled)"
+
+    # 4. Assert tvl_included_pair_count is a non-negative integer.
     tvl_count = indicator_results.get_indicator_value("tvl_included_pair_count")
+    assert tvl_count is not None, "tvl_included_pair_count must not be None"
+    assert tvl_count >= 2, f"At least both vaults should pass TVL filter, got {tvl_count}"
+
+    # 5. Assert age_ramp_weight is a positive float for both vaults.
     age_ramp_a = indicator_results.get_indicator_value("age_ramp_weight", pair=vault_a_pair)
     age_ramp_b = indicator_results.get_indicator_value("age_ramp_weight", pair=vault_b_pair)
-
-    assert inclusion is not None, "inclusion_criteria must not be None at the decision timestamp"
-    assert isinstance(inclusion, (set, list, frozenset)), f"inclusion_criteria should be a collection, got {type(inclusion)}"
-    assert tvl_count is not None, "tvl_included_pair_count must not be None"
-    assert tvl_count >= 0
-
-    # Both vaults should have valid age_ramp_weight because framework
-    # forward-fill extends vault B's candle data to the decision timestamp.
-    assert age_ramp_a is not None, "age_ramp_weight for vault A (fresh data) must not be None"
+    assert age_ramp_a is not None, "age_ramp_weight for vault A (fresh) must not be None"
+    assert isinstance(age_ramp_a, float), f"Expected float, got {type(age_ramp_a)}"
     assert age_ramp_a > 0
-    assert age_ramp_b is not None, "age_ramp_weight for vault B (stale but forward-filled) must not be None"
+    assert age_ramp_b is not None, "age_ramp_weight for vault B (stale, forward-filled) must not be None"
+    assert isinstance(age_ramp_b, float), f"Expected float, got {type(age_ramp_b)}"
     assert age_ramp_b > 0
 
 
-def test_stale_vault_included_via_forward_fill(
+def test_stale_vault_stays_in_inclusion_criteria(
     stale_universe: TradingStrategyUniverse,
     hyper_ai_module,
     decision_timestamp: datetime.datetime,
     vault_a_pair: TradingPairIdentifier,
     vault_b_pair: TradingPairIdentifier,
 ):
-    """Verify a vault with 2-day-stale data stays in inclusion criteria via forward-fill.
+    """Verify a 2-day-stale vault remains in inclusion criteria at every relevant timestamp.
 
-    With production-style forward-fill, vault B's candle and TVL data are
-    extended to the decision timestamp. This means trading_availability_criteria
-    sees vault B at every timestamp, keeping it in the inclusion set.
+    The ``inclusion_criteria`` indicator is the intersection of three sub-criteria:
+    - ``tvl_inclusion_criteria``: TVL >= min_tvl (forward-filled TVL keeps vault visible)
+    - ``trading_availability_criteria``: candle data exists (forward-filled candles keep vault visible)
+    - ``age_inclusion_criteria``: age >= min_age (forward-filled close prices keep age growing)
 
-    1. Build a universe where vault B stops 2 days before the decision timestamp.
-    2. Calculate indicators with framework forward-fill active.
-    3. Check vault B is included at its last real data point.
-    4. Check vault B is still included at the decision timestamp (forward-filled data).
+    With framework forward-fill, vault B stays in all three sub-criteria
+    even after its real data stops.
+
+    1. Build a forward-filled universe where vault B is 2 days stale.
+    2. Calculate indicators.
+    3. Check vault B is in inclusion_criteria at its last real data point.
+    4. Check vault B is still in inclusion_criteria at the decision timestamp.
     """
-    parameters = StrategyParameters.from_class(hyper_ai_module.Parameters)
+    # 2. Calculate indicators.
+    indicator_results = _calculate_indicators(hyper_ai_module, stale_universe, decision_timestamp)
     stale_end = decision_timestamp - datetime.timedelta(days=2)
 
-    # 2. Calculate indicators with framework forward-fill active.
-    indicator_results = calculate_and_load_indicators_inline(
-        strategy_universe=stale_universe,
-        parameters=parameters,
-        create_indicators=hyper_ai_module.indicators.create_indicators,
-        execution_context=_backtest_execution_context,
-        storage=MemoryIndicatorStorage(stale_universe.get_cache_key()),
-        strategy_cycle_timestamp=decision_timestamp,
-    )
-
-    indicator_results.strategy_universe = stale_universe
-
-    # 3. Check vault B is included at its last real data point.
+    # 3. Check vault B is in inclusion_criteria at its last real data point.
     indicator_results.timestamp = pd.Timestamp(stale_end)
     inclusion_at_stale_end = indicator_results.get_indicator_value("inclusion_criteria", na_conversion=False)
-    assert inclusion_at_stale_end is not None, "inclusion_criteria must exist at vault B's last data point"
+    assert inclusion_at_stale_end is not None
     assert vault_b_pair.internal_id in inclusion_at_stale_end, (
-        f"Vault B (id={vault_b_pair.internal_id}) should be included at its last real data point {stale_end}"
+        f"Vault B must be included at its last real data point {stale_end}"
     )
 
-    # 4. Check vault B is still included at the decision timestamp (forward-filled).
+    # 4. Check vault B is still in inclusion_criteria at the decision timestamp.
     indicator_results.timestamp = pd.Timestamp(decision_timestamp)
     inclusion_at_decision = indicator_results.get_indicator_value("inclusion_criteria", na_conversion=False)
-    assert inclusion_at_decision is not None, "inclusion_criteria must not be None at decision timestamp"
-    assert vault_a_pair.internal_id in inclusion_at_decision, (
-        f"Vault A (id={vault_a_pair.internal_id}) with fresh data should always be included"
-    )
+    assert inclusion_at_decision is not None
+    assert vault_a_pair.internal_id in inclusion_at_decision, "Fresh vault A must always be included"
     assert vault_b_pair.internal_id in inclusion_at_decision, (
-        f"Vault B (id={vault_b_pair.internal_id}) should be included at decision timestamp via forward-fill"
+        "Stale vault B must be included at decision timestamp (forward-filled data)"
     )
 
 
-def test_heavily_stale_vault_still_included_with_forward_fill(
+def test_30_day_stale_vault_still_works(
     mock_exchange,
     usdc,
     vault_a_pair: TradingPairIdentifier,
@@ -353,18 +436,16 @@ def test_heavily_stale_vault_still_included_with_forward_fill(
     benchmark_pair: TradingPairIdentifier,
     hyper_ai_module,
 ):
-    """Verify even a vault with a 30-day data gap remains included when forward-fill is active.
+    """Verify a vault with a 30-day data gap still produces valid indicators.
 
-    With production-style forward-fill, even heavily stale vault data gets
-    extended to the decision timestamp. The vault stays in
-    trading_availability_criteria because forward-filled rows exist at every
-    timestamp.
+    A vault might stop reporting data because the upstream scanner
+    crashes, the CDN export stalls, or the vault becomes inactive. The
+    framework forward-fill must bridge even large gaps so the indicator
+    pipeline does not crash or return NaN.
 
     1. Build a universe where vault B has no data for the last 30 days.
-    2. Apply framework forward-fill to extend vault B's data.
-    3. Calculate indicators.
-    4. Assert vault B IS included (forward-fill bridges the 30-day gap).
-    5. Assert vault A IS included.
+    2. Apply framework forward-fill to extend vault B's data to the decision timestamp.
+    3. Calculate indicators and assert all alpha-model indicators are valid.
     """
     decision_ts = datetime.datetime(2026, 3, 20)
     start = datetime.datetime(2025, 6, 1)
@@ -401,37 +482,20 @@ def test_heavily_stale_vault_still_included_with_forward_fill(
     )
 
     stale_universe = TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
-    parameters = StrategyParameters.from_class(hyper_ai_module.Parameters)
 
-    # 3. Calculate indicators.
-    indicator_results = calculate_and_load_indicators_inline(
-        strategy_universe=stale_universe,
-        parameters=parameters,
-        create_indicators=hyper_ai_module.indicators.create_indicators,
-        execution_context=_backtest_execution_context,
-        storage=MemoryIndicatorStorage(stale_universe.get_cache_key()),
-        strategy_cycle_timestamp=decision_ts,
-    )
+    # 3. Calculate indicators and assert all alpha-model indicators are valid.
+    indicator_results = _calculate_indicators(hyper_ai_module, stale_universe, decision_ts)
 
-    indicator_results.strategy_universe = stale_universe
-    indicator_results.timestamp = pd.Timestamp(decision_ts)
-
-    # 4. Assert vault B IS included (forward-fill bridges the 30-day gap).
     inclusion = indicator_results.get_indicator_value("inclusion_criteria", na_conversion=False)
     assert inclusion is not None
+    assert vault_a_pair.internal_id in inclusion, "Fresh vault A must be included"
+    assert vault_b_pair.internal_id in inclusion, "30-day-stale vault B must be included (forward-filled)"
 
-    assert vault_a_pair.internal_id in inclusion, (
-        f"Vault A (id={vault_a_pair.internal_id}) with fresh data should be included"
-    )
-    assert vault_b_pair.internal_id in inclusion, (
-        f"Vault B (id={vault_b_pair.internal_id}) should be included via forward-fill despite 30-day gap"
-    )
-
-    # 5. Assert age_ramp_weight works for both vaults.
     age_ramp_a = indicator_results.get_indicator_value("age_ramp_weight", pair=vault_a_pair)
     age_ramp_b = indicator_results.get_indicator_value("age_ramp_weight", pair=vault_b_pair)
     assert age_ramp_a is not None, "age_ramp_weight for vault A must not be None"
-    assert age_ramp_b is not None, "age_ramp_weight for vault B must not be None (forward-filled)"
+    assert age_ramp_b is not None, "age_ramp_weight for vault B must not be None (30-day gap, forward-filled)"
+    assert age_ramp_b > 0
 
 
 def test_stale_share_price_logs_warning(
@@ -451,11 +515,11 @@ def test_stale_share_price_logs_warning(
     3. Call get_mid_price for vault B at the query timestamp.
     4. Assert a warning about stale data was logged.
     5. Assert the price is still returned (not silently dropped).
+    6. Assert vault A (fresh data) does NOT trigger a warning.
     """
     query_ts = datetime.datetime(2026, 3, 20)
     start = datetime.datetime(2025, 6, 1)
 
-    # Vault A has fresh data, vault B stops 3 days before query
     full_dates = pd.date_range(start, query_ts, freq="D").to_pydatetime().tolist()
     stale_end = query_ts - datetime.timedelta(days=3)
     stale_dates = pd.date_range(start, stale_end, freq="D").to_pydatetime().tolist()
@@ -486,7 +550,7 @@ def test_stale_share_price_logs_warning(
     # 5. Assert the price is still returned (stale data is used, not dropped)
     assert price_b == pytest.approx(1.10, abs=0.02)
 
-    # Vault A should NOT trigger a warning (fresh data)
+    # 6. Assert vault A (fresh data) does NOT trigger a warning
     caplog.clear()
     with caplog.at_level(logging.WARNING, logger="tradeexecutor.ethereum.vault.hypercore_valuation"):
         price_a = pricing.get_mid_price(query_ts, vault_a_pair)
