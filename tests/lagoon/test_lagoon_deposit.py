@@ -2,6 +2,7 @@
 import datetime
 import os
 from decimal import Decimal
+from unittest.mock import Mock
 
 import pytest
 from eth_typing import HexAddress
@@ -216,6 +217,46 @@ def test_lagoon_sync_treasury_marks_noop_startup_sync(
     assert treasury.last_block_scanned is not None
     assert treasury.last_block_scanned >= previous_block
     assert len(treasury.balance_update_refs) == previous_ref_count
+
+
+def test_lagoon_sync_treasury_aborts_when_frozen_positions_exist(
+    automated_lagoon_vault: LagoonAutomatedDeployment,
+    vault_strategy_universe: TradingStrategyUniverse,
+) -> None:
+    """Lagoon settlement aborts before NAV calculation when frozen positions exist.
+
+    1. Create an initialised Lagoon sync model with the frozen-position safety feature enabled.
+    2. Add a frozen position placeholder to the strategy state.
+    3. Verify `sync_treasury(post_valuation=True)` aborts before attempting NAV calculation.
+    """
+    vault = automated_lagoon_vault.vault
+    asset_usdc = vault_strategy_universe.get_reserve_asset()
+
+    sync_model = LagoonVaultSyncModel(
+        vault=vault,
+        hot_wallet=None,
+        abort_lagoon_settlement_on_frozen_positions=True,
+    )
+
+    state = State()
+    sync_model.sync_initial(
+        state,
+        reserve_asset=asset_usdc,
+        reserve_token_price=1.0,
+    )
+
+    # 1. Create an initialised Lagoon sync model with the frozen-position safety feature enabled.
+    # 2. Add a frozen position placeholder to the strategy state.
+    state.portfolio.frozen_positions[1] = Mock()
+    sync_model.calculate_valuation = Mock(side_effect=AssertionError("NAV calculation must not run when frozen positions block settlement"))
+
+    # 3. Verify `sync_treasury(post_valuation=True)` aborts before attempting NAV calculation.
+    with pytest.raises(RuntimeError, match="Resolve frozen positions manually before calculating NAV"):
+        sync_model.sync_treasury(
+            native_datetime_utc_now(),
+            state,
+            post_valuation=True,
+        )
 
 
 def test_lagoon_sync_redeem(
