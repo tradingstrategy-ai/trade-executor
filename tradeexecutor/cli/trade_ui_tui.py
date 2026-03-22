@@ -181,12 +181,14 @@ class TradeDialog(ModalScreen):
         reserve_symbol: str,
         default_mode: str,
         min_amount: Decimal | None = None,
+        position_value: Decimal | None = None,
     ):
         super().__init__()
         self.pair_symbol = pair_symbol
         self.reserve_symbol = reserve_symbol
         self.default_mode = default_mode
         self.min_amount = min_amount
+        self.position_value = position_value
         self.result: tuple[str, Decimal] | None = None
 
     def compose(self) -> ComposeResult:
@@ -199,7 +201,12 @@ class TradeDialog(ModalScreen):
                 yield RadioButton("Buy only (open position)", value=mode_index == 1)
                 yield RadioButton("Sell only (close position)", value=mode_index == 2)
             yield Label(f"Amount ({self.reserve_symbol}):")
-            default_amount = str(self.min_amount) if self.min_amount else "5"
+            if self.default_mode == "close" and self.position_value is not None:
+                default_amount = str(self.position_value)
+            elif self.min_amount:
+                default_amount = str(self.min_amount)
+            else:
+                default_amount = "5"
             yield Input(value=default_amount, id="amount-input", type="number")
             yield Label("", id="error-label")
             with Horizontal(id="button-row"):
@@ -245,6 +252,11 @@ class TradeDialog(ModalScreen):
         pressed_index = radio_set.pressed_index
         mode_map = {0: "open_close", 1: "open", 2: "close"}
         trade_mode = mode_map.get(pressed_index, "open_close")
+
+        # If selling >= 98% of position value, use close_all to fully close the position
+        if trade_mode == "close" and self.position_value is not None and self.position_value > 0:
+            if amount >= self.position_value * Decimal("0.98"):
+                trade_mode = "close_all"
 
         self.dismiss((trade_mode, amount))
 
@@ -389,14 +401,18 @@ class PairSelectionApp(App):
 
     def _open_trade_dialog(self, row_idx: int) -> None:
         pair = self.sorted_pairs[row_idx]
-        has_open_position = self.state.portfolio.get_position_by_trading_pair(pair) is not None
+        position = self.state.portfolio.get_position_by_trading_pair(pair)
+        has_open_position = position is not None
 
         if has_open_position:
             default_mode = "close"
-        elif self.is_hyperliquid:
-            default_mode = "open"
+            position_value = Decimal(str(position.get_value()))
         else:
-            default_mode = "open_close"
+            position_value = None
+            if self.is_hyperliquid:
+                default_mode = "open"
+            else:
+                default_mode = "open_close"
 
         # On Hyperliquid the first vault deposit requires a 2 USDC
         # activation cost on top of the 5 USDC minimum deposit.
@@ -407,6 +423,7 @@ class PairSelectionApp(App):
             reserve_symbol=self.reserve_symbol,
             default_mode=default_mode,
             min_amount=min_amount,
+            position_value=position_value,
         )
 
         def on_dialog_dismiss(result: tuple[str, Decimal] | None) -> None:
@@ -432,7 +449,9 @@ def display_pair_selection_ui(
 
     :return:
         Tuple of (selected_pair, amount, trade_mode) where trade_mode
-        is ``"open_close"``, ``"open"`` or ``"close"``.
+        is ``"open_close"``, ``"open"``, ``"close"`` or ``"close_all"``.
+        ``"close_all"`` is returned when the sell amount is >= 98%
+        of the open position value.
     """
     # Compute TVL timestamp
     tvl_now = None

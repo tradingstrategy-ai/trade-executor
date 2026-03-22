@@ -264,7 +264,7 @@ def trade_ui(
 
     # Map trade mode to make_test_trade parameters
     buy_only = trade_mode == "open"
-    close_only = trade_mode == "close"
+    close_only = trade_mode in ("close", "close_all")
 
     if simulate:
         logger.info("Simulating test trade")
