@@ -62,7 +62,6 @@ def test_cli_strategy_file_parses_multiple_asset_managers_from_env(mocker, tmp_p
     mocker.patch("tradeexecutor.cli.commands.lagoon_deploy_vault.prepare_cache", return_value=tmp_path)
     token_cache = SimpleNamespace(filename=":memory:")
     mocker.patch("tradeexecutor.cli.commands.lagoon_deploy_vault.prepare_token_cache", return_value=token_cache)
-    mocker.patch("tradeexecutor.cli.commands.lagoon_deploy_vault.collect_rpc_kwargs", return_value={})
     mocker.patch("tradeexecutor.cli.commands.lagoon_deploy_vault.create_web3_config", return_value=DummyWeb3Config())
     mocker.patch("tradeexecutor.cli.commands.lagoon_deploy_vault.create_hot_wallet", return_value=SimpleNamespace(address=deployer_address))
     mocker.patch("tradeexecutor.cli.commands.lagoon_deploy_vault._deploy_multichain", side_effect=fake_deploy_multichain)
