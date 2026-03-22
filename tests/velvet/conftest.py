@@ -58,13 +58,15 @@ def existing_shareholder() -> HexAddress:
     return "0x0C9dB006F1c7bfaA0716D70F012EC470587a8D4F"
 
 
-@pytest.mark.skipif(not JSON_RPC_BASE, reason="JSON_RPC_BASE is needed to run mainnet fork tets")
 @pytest.fixture()
 def anvil_base_fork(request, vault_owner, deposit_user, existing_shareholder) -> AnvilLaunch:
     """Create a testable fork of live BNB chain.
 
     :return: JSON-RPC URL for Web3
     """
+    if not JSON_RPC_BASE:
+        pytest.skip("JSON_RPC_BASE is needed to run mainnet fork tests")
+
     launch = fork_network_anvil(
         JSON_RPC_BASE,
         unlocked_addresses=[vault_owner, deposit_user, existing_shareholder],
