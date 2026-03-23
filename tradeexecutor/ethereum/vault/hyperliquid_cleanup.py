@@ -35,69 +35,54 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
-from tabulate import tabulate
-
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
-from eth_defi.hyperliquid.api import (
-    HyperliquidSession,
-    UserVaultEquity,
-    fetch_perp_clearinghouse_state,
-    fetch_spot_clearinghouse_state,
-    fetch_user_vault_equities,
-)
+from eth_defi.hyperliquid.api import (HyperliquidSession, UserVaultEquity,
+                                      fetch_perp_clearinghouse_state,
+                                      fetch_spot_clearinghouse_state,
+                                      fetch_user_vault_equities)
 from eth_defi.hyperliquid.core_writer import (
     build_hypercore_send_asset_to_evm_call,
-    build_hypercore_transfer_usd_class_call,
-)
-from eth_defi.hyperliquid.session import (
-    HYPERLIQUID_API_URL,
-    HYPERLIQUID_TESTNET_API_URL,
-    create_hyperliquid_session,
-)
+    build_hypercore_transfer_usd_class_call)
+from eth_defi.hyperliquid.session import (HYPERLIQUID_API_URL,
+                                          HYPERLIQUID_TESTNET_API_URL,
+                                          create_hyperliquid_session)
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_defi.token import TokenDetails
 from eth_defi.trace import assert_transaction_success_with_explanation
+from tabulate import tabulate
 from web3 import Web3
 
-from tradeexecutor.cli.bootstrap import (
-    backup_state,
-    create_client,
-    create_execution_and_sync_model,
-    create_state_store,
-    create_sync_model,
-    create_web3_config,
-    prepare_cache,
-    prepare_executor_id,
-)
+from tradeexecutor.cli.bootstrap import (backup_state, create_client,
+                                         create_execution_and_sync_model,
+                                         create_state_store, create_sync_model,
+                                         create_web3_config, prepare_cache,
+                                         prepare_executor_id)
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.state.repair import repair_trades
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.strategy.account_correction import (
-    UnknownTokenPositionFix,
-    calculate_account_corrections,
-    check_accounts,
-    check_state_internal_coherence,
-    correct_accounts,
-)
+    UnknownTokenPositionFix, calculate_account_corrections, check_accounts,
+    check_state_internal_coherence, correct_accounts)
 from tradeexecutor.strategy.bootstrap import make_factory_from_strategy_mod
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.execution_context import (ExecutionContext,
+                                                      ExecutionMode)
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.strategy.run_state import RunState
-from tradeexecutor.strategy.strategy_module import (
-    StrategyModuleInformation,
-    read_strategy_module,
-)
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
+from tradeexecutor.strategy.strategy_module import (StrategyModuleInformation,
+                                                    read_strategy_module)
+from tradeexecutor.strategy.trading_strategy_universe import \
+    TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 
 logger = logging.getLogger(__name__)
 
 BALANCE_TOLERANCE = Decimal("0.02")
+RESIDUAL_VAULT_EQUITY_THRESHOLD = Decimal("0.10")
 POLL_INTERVAL = 2.0
 BALANCE_TIMEOUT = 60.0
 SAFE_GAS_LIMIT = 650_000
@@ -133,6 +118,7 @@ class HyperliquidCleanupSnapshot:
     spot_free_usdc: Decimal
     perp_withdrawable: Decimal
     perp_account_value: Decimal
+    perp_position_count: int
     vault_equities: dict[str, Decimal]
 
 
@@ -170,6 +156,7 @@ class HyperliquidCleanupComparisonRow:
     reserve_quantity: Decimal
     spot_free_usdc: Decimal
     perp_withdrawable: Decimal
+    perp_position_count: int
     failed_trade_ids: list[int]
     classification: str
 
@@ -245,6 +232,7 @@ def _fetch_live_cleanup_snapshot(
         spot_free_usdc=spot_free_usdc,
         perp_withdrawable=perp_state.withdrawable,
         perp_account_value=perp_state.margin_summary.account_value,
+        perp_position_count=len(perp_state.asset_positions),
         vault_equities=vault_equities,
     )
 
@@ -298,12 +286,29 @@ def _classify_cleanup_row(
 ) -> str:
     """Classify one state position against live reality."""
     live_vault_equity = live_snapshot.vault_equities.get(position.vault_address, Decimal(0))
+    stranded_balance = live_snapshot.spot_free_usdc + live_snapshot.perp_withdrawable
     is_failed_close_candidate = position.state_status == "frozen" or bool(position.failed_trade_ids)
+    residual_vault_equity = live_vault_equity <= RESIDUAL_VAULT_EQUITY_THRESHOLD
+    stranded_balance_dominates = stranded_balance > live_vault_equity + BALANCE_TOLERANCE
+    quantity_mismatch_is_large = position.quantity > live_vault_equity + BALANCE_TOLERANCE
+
+    if live_snapshot.perp_position_count > 0:
+        return "manual_review_required_active_perp_positions"
+
+    if (
+        position.state_status == "open"
+        and not is_failed_close_candidate
+        and residual_vault_equity
+        and stranded_balance > BALANCE_TOLERANCE
+        and stranded_balance_dominates
+        and quantity_mismatch_is_large
+    ):
+        return "open_in_state_residual_vault_equity_stranded"
 
     if not is_failed_close_candidate:
         return "manual_review_required"
 
-    if live_vault_equity > BALANCE_TOLERANCE:
+    if live_vault_equity > RESIDUAL_VAULT_EQUITY_THRESHOLD:
         return "live_vault_open_no_action"
 
     if live_snapshot.spot_free_usdc > BALANCE_TOLERANCE and live_snapshot.perp_withdrawable > BALANCE_TOLERANCE:
@@ -337,6 +342,7 @@ def _compare_state_to_reality(
                 reserve_quantity=state_snapshot.reserve_quantity,
                 spot_free_usdc=live_snapshot.spot_free_usdc,
                 perp_withdrawable=live_snapshot.perp_withdrawable,
+                perp_position_count=live_snapshot.perp_position_count,
                 failed_trade_ids=position.failed_trade_ids,
                 classification=classification,
             )
@@ -353,7 +359,13 @@ def _plan_cleanup_actions(
         if row.classification == "live_vault_open_no_action":
             raise RuntimeError(
                 f"Refusing clean-up for position {row.position_id}: live vault equity is still "
-                f"{row.live_vault_equity}, so this looks like a genuinely open real vault position."
+                f"{row.live_vault_equity}, which is above the residual threshold "
+                f"{RESIDUAL_VAULT_EQUITY_THRESHOLD}. This looks like a genuinely open real vault position."
+            )
+        if row.classification == "manual_review_required_active_perp_positions":
+            raise RuntimeError(
+                f"Refusing clean-up for position {row.position_id}: manual review required because "
+                f"the Safe still has {row.perp_position_count} active HyperCore perp position(s)."
             )
 
     if not comparison_rows:
@@ -363,10 +375,13 @@ def _plan_cleanup_actions(
         "closed_in_reality_spot_and_perp_stranded",
         "closed_in_reality_perp_stranded",
         "closed_in_reality_spot_stranded",
+        "open_in_state_residual_vault_equity_stranded",
         "nothing_to_recover",
     }
     if not any(row.classification in actionable for row in comparison_rows):
-        raise RuntimeError("No recognised failed-close Hypercore position was found for clean-up.")
+        raise RuntimeError(
+            "No recognised stranded-balance failed-close Hypercore position was found for clean-up."
+        )
 
     actions: list[HyperliquidCleanupAction] = []
     if live_snapshot.perp_withdrawable > BALANCE_TOLERANCE:
@@ -404,6 +419,7 @@ def _print_reality_table(live_snapshot: HyperliquidCleanupSnapshot) -> list[dict
             "Spot free": f"{live_snapshot.spot_free_usdc:.6f}",
             "Perp withdrawable": f"{live_snapshot.perp_withdrawable:.6f}",
             "Perp account": f"{live_snapshot.perp_account_value:.6f}",
+            "Perp positions": live_snapshot.perp_position_count,
             "Vault equity total": f"{sum(live_snapshot.vault_equities.values(), start=Decimal(0)):.6f}",
         }
     ]
@@ -438,6 +454,7 @@ def _print_state_comparison_table(
             "Reserve": f"{row.reserve_quantity:.6f}",
             "Spot free": f"{row.spot_free_usdc:.6f}",
             "Perp withdr": f"{row.perp_withdrawable:.6f}",
+            "Perp pos": row.perp_position_count,
             "Failed trades": ",".join(str(t) for t in row.failed_trade_ids) or "-",
             "Classification": row.classification,
         }
@@ -445,6 +462,12 @@ def _print_state_comparison_table(
     ]
     print("\nState vs reality")
     print(tabulate(rows, headers="keys", tablefmt="simple"))
+    if any(row.classification == "open_in_state_residual_vault_equity_stranded" for row in comparison_rows):
+        print(
+            "\nDetected an open-in-state, effectively closed-in-reality recovery case: "
+            "the live vault equity is only residual, there are no active perp positions, "
+            "and the meaningful capital is stranded in HyperCore spot/perp."
+        )
 
 
 def _print_action_table(actions: list[HyperliquidCleanupAction]) -> None:
@@ -828,7 +851,27 @@ def run_hyperliquid_cleanup(
     unit_testing: bool = False,
     log_level: str = "info",
 ) -> HyperliquidCleanupReport:
-    """Run the closed-position Hyperliquid clean-up flow end to end."""
+    """Run the closed-position Hyperliquid clean-up flow end to end.
+
+    Example how to call this from the trade-executor console using the
+    preloaded console bindings::
+
+        import os
+        from pathlib import Path
+        from tradeexecutor.ethereum.vault.hyperliquid_cleanup import run_hyperliquid_cleanup
+
+        run_hyperliquid_cleanup(
+            state_file=Path(store.path),
+            strategy_file=Path(os.environ["STRATEGY_FILE"]),
+            private_key=os.environ["PRIVATE_KEY"],
+            json_rpc_hyperliquid=os.environ["JSON_RPC_HYPERLIQUID"],
+            vault_address=vault.address,
+            vault_adapter_address=vault.trading_strategy_module_address,
+            trading_strategy_api_key=os.environ["TRADING_STRATEGY_API_KEY"],
+            network=os.environ.get("NETWORK", "mainnet"),
+            auto_approve=False,
+        )
+    """
     context = load_cleanup_context(
         state_file=state_file,
         strategy_file=strategy_file,
@@ -863,7 +906,13 @@ def run_hyperliquid_cleanup(
 
 
 def run_hyperliquid_cleanup_from_environment() -> HyperliquidCleanupReport:
-    """Run clean-up using standard trade-executor environment variables."""
+    """Run clean-up using standard trade-executor environment variables.
+
+    Example how to call from console::
+
+        from tradeexecutor.ethereum.vault.hyperliquid_cleanup import run_hyperliquid_cleanup_from_environment
+        run_hyperliquid_cleanup_from_environment()
+    """
     state_file = Path(os.environ["STATE_FILE"])
     strategy_file = Path(os.environ["STRATEGY_FILE"])
     private_key = os.environ["PRIVATE_KEY"]
