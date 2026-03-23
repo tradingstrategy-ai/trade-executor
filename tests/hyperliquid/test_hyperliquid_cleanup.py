@@ -2,9 +2,10 @@
 
 Verifies that:
 1. A broken HyperAI failed-close state is loaded from a real fixture.
-2. Mocked Hyperliquid and HyperEVM balances produce only stranded-money recovery actions.
-3. The clean-up flow executes ``perp -> spot`` and ``spot -> EVM`` in order.
-4. The state repair and accounting correction hooks run and the state is treated as saveable.
+2. An open-in-state but effectively closed-in-reality vault is recognised as recoverable.
+3. Mocked Hyperliquid and HyperEVM balances produce only stranded-money recovery actions.
+4. The clean-up flow executes ``perp -> spot`` and ``spot -> EVM`` in order.
+5. The state repair and accounting correction hooks run and the state is treated as saveable.
 """
 
 import shutil
@@ -24,29 +25,42 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
     tmp_path: Path,
     monkeypatch,
 ):
-    """Test the mocked HyperAI failed-close clean-up flow.
+    """Test the mocked HyperAI residual-vault-equity clean-up flow.
 
-    1. Copy the broken HyperAI fixture state to a temporary location.
-    2. Mock Hyperliquid and HyperEVM balance reads so the vault is already empty but USDC is stranded.
+    1. Copy the broken HyperAI fixture state to a temporary location and force the position to look open in state.
+    2. Mock Hyperliquid and HyperEVM balance reads so the live vault equity is only residual but USDC is stranded.
     3. Run the clean-up entrypoint and execute the mocked recovery actions.
-    4. Verify the action plan, execution order, repair/correction hooks, and final save path.
+    4. Verify the new residual-vault-equity classification and planned action set.
+    5. Verify the execution order, repair/correction hooks, and final save path.
     """
     fixture_path = Path(__file__).parent / "state" / "hyperai-cleanup.json"
     state_file = tmp_path / "hyperai-cleanup.json"
     shutil.copy(fixture_path, state_file)
 
     state = State.read_json_file(state_file)
+
+    # Step 1: Force the fixture into the console shape: open in state with no trusted failed-sell marker.
+    position = state.portfolio.frozen_positions.pop(1)
+    position.frozen_at = None
+    position.unfrozen_at = None
+    state.portfolio.open_positions[position.position_id] = position
+    failed_trade = position.trades[2]
+    failed_trade.failed_at = None
+    failed_trade.executed_at = None
+    state_file.write_text(state.to_json())
+
     store = JSONFileStore(state_file)
     safe_address = "0xB136581dFB3efA76Ae71293C1A70942f0726E8fD"
     vault_address = "0x07fd993f0fa3a185f7207adccd29f7a87404689d"
 
     live_balances = {
         "evm_usdc": Decimal("1"),
-        "spot_total": Decimal("0.5"),
-        "spot_free": Decimal("0.5"),
-        "perp_withdrawable": Decimal("6.5"),
-        "perp_account_value": Decimal("6.5"),
-        "vault_equity": Decimal("0"),
+        "spot_total": Decimal("1"),
+        "spot_free": Decimal("1"),
+        "perp_withdrawable": Decimal("6.99345"),
+        "perp_account_value": Decimal("6.99345"),
+        "vault_equity": Decimal("0.065975"),
+        "perp_position_count": 0,
     }
     broadcast_order: list[str] = []
 
@@ -120,6 +134,10 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
         return SimpleNamespace(
             withdrawable=live_balances["perp_withdrawable"],
             margin_summary=SimpleNamespace(account_value=live_balances["perp_account_value"]),
+            asset_positions=[
+                SimpleNamespace()
+                for _ in range(live_balances["perp_position_count"])
+            ],
         )
 
     def fake_fetch_vault_equities(_session, user: str):
@@ -170,7 +188,7 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
     monkeypatch.setattr(hyperliquid_cleanup, "check_accounts", lambda *args, **kwargs: (True, None))
     monkeypatch.setattr(hyperliquid_cleanup, "get_almost_latest_block_number", lambda web3: 123456)
 
-    # Step 1: Run the clean-up flow end to end with mocked live balances.
+    # Step 2: Run the clean-up flow end to end with mocked live balances.
     report = hyperliquid_cleanup.run_hyperliquid_cleanup(
         state_file=state_file,
         strategy_file=Path("strategies/hyper-ai.py"),
@@ -183,18 +201,22 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
         unit_testing=False,
     )
 
-    # Step 2: Confirm the action planner only produced stranded-money recovery legs.
+    # Step 3: Confirm the open-in-state residual-vault-equity case is classified as recoverable.
+    assert len(report.comparison_rows) == 1
+    assert report.comparison_rows[0].classification == "open_in_state_residual_vault_equity_stranded"
+
+    # Step 4: Confirm the action planner only produced stranded-money recovery legs.
     assert [action.action_kind for action in report.planned_actions] == [
         "perp_to_spot",
         "spot_to_evm",
     ]
     assert "vault_to_perp" not in {action.action_kind for action in report.planned_actions}
 
-    # Step 3: Confirm the mocked broadcasts executed in the expected order.
+    # Step 5: Confirm the mocked broadcasts executed in the expected order.
     assert broadcast_order == ["perp_to_spot", "spot_to_evm"]
     assert report.executed_action_kinds == ["perp_to_spot", "spot_to_evm"]
 
-    # Step 4: Confirm repair, account correction, and final save completed.
+    # Step 6: Confirm repair, account correction, and final save completed.
     assert repair_calls == ["repair"]
     assert correct_calls == ["correct"]
     assert report.accounts_clean is True
