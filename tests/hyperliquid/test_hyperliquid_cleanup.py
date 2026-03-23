@@ -166,8 +166,34 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
     monkeypatch.setattr(hyperliquid_cleanup, "fetch_spot_clearinghouse_state", fake_fetch_spot)
     monkeypatch.setattr(hyperliquid_cleanup, "fetch_perp_clearinghouse_state", fake_fetch_perp)
     monkeypatch.setattr(hyperliquid_cleanup, "fetch_user_vault_equities", fake_fetch_vault_equities)
-    monkeypatch.setattr(hyperliquid_cleanup, "build_hypercore_transfer_usd_class_call", lambda *args, **kwargs: "perp_to_spot_fn")
-    monkeypatch.setattr(hyperliquid_cleanup, "build_hypercore_send_asset_to_evm_call", lambda *args, **kwargs: "spot_to_evm_fn")
+    def fake_build_hypercore_transfer_usd_class_call(
+        lagoon_vault_arg,
+        hypercore_usdc_amount: int,
+        to_perp: bool,
+    ):
+        assert lagoon_vault_arg is lagoon_vault
+        assert isinstance(hypercore_usdc_amount, int)
+        assert to_perp is False
+        return "perp_to_spot_fn"
+
+    def fake_build_hypercore_send_asset_to_evm_call(
+        lagoon_vault_arg,
+        evm_usdc_amount: int,
+    ):
+        assert lagoon_vault_arg is lagoon_vault
+        assert isinstance(evm_usdc_amount, int)
+        return "spot_to_evm_fn"
+
+    monkeypatch.setattr(
+        hyperliquid_cleanup,
+        "build_hypercore_transfer_usd_class_call",
+        fake_build_hypercore_transfer_usd_class_call,
+    )
+    monkeypatch.setattr(
+        hyperliquid_cleanup,
+        "build_hypercore_send_asset_to_evm_call",
+        fake_build_hypercore_send_asset_to_evm_call,
+    )
     monkeypatch.setattr(hyperliquid_cleanup, "assert_transaction_success_with_explanation", lambda *args, **kwargs: None)
     monkeypatch.setattr(hyperliquid_cleanup, "repair_trades", repair_wrapper)
     monkeypatch.setattr(

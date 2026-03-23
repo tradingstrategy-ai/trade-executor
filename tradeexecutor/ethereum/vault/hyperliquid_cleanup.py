@@ -590,7 +590,7 @@ def _execute_spot_to_evm(
     expected_evm_balance = live_snapshot.evm_usdc_balance + amount
     fn = build_hypercore_send_asset_to_evm_call(
         context.lagoon_vault,
-        hypercore_usdc_amount=context.reserve_token.convert_to_raw(amount),
+        evm_usdc_amount=context.reserve_token.convert_to_raw(amount),
     )
     tx_hash = _broadcast_bound_call(context.web3, context.hot_wallet, fn)
     _wait_for_evm_usdc_balance(context.reserve_token, safe_address, expected_evm_balance)
