@@ -60,6 +60,11 @@ Timeouts
 
 Don't format code.
 
+## Git worktrees
+
+- For git worktrees, copy `.local-test.env` from the repo root.
+- For worktrees, unless you are changing package dependencies, use `poetry run` from the parent repo virtualenv
+
 ## Pull requests
 
 - Pull request description must have sections Why (the rational of change), Lessons learnt (memory) and Summary (what was changed). No test plan or verification section. Use Markdown formatting, headings.
@@ -71,9 +76,9 @@ Don't format code.
 - When merging pull request, squash and merge commits and use the PR description as the commit message
 - If continuous integration (CI) tests fail on your PR, and they are marked flaky, run tests locally to repeat the issue if it is real flakiness or regression
 
-### datetime
+### datetime and timestamps
 
-- Use naive UTC datetimes everywhere
+- Use naive UTC datetimes everywhere: `datetime.datetime`, `pd.Timestamp` - never use timezones
 - When using datetime class use `import datetime.datetime` and use `datetime.datetime` and `datetime.timedelta` as type hints
 - Instead of `datetime.datetime.utcnow()` use `native_datetime_utc_now()` that is compatible across Python versions
 

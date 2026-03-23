@@ -143,10 +143,17 @@ from eth_defi.erc_4626.vault_protocol.lagoon.testing import (
     fund_lagoon_vault, redeem_vault_shares)
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
-from eth_defi.hyperliquid.api import fetch_user_vault_equities
+from eth_defi.hyperliquid.api import (
+    fetch_perp_clearinghouse_state,
+    fetch_spot_clearinghouse_state,
+    fetch_user_vault_equities,
+)
 from eth_defi.hyperliquid.core_writer import (
     build_hypercore_deposit_phase1,
     build_hypercore_deposit_phase2,
+    build_hypercore_send_asset_to_evm_call,
+    build_hypercore_transfer_usd_class_call,
+    build_hypercore_withdraw_from_vault_call,
 )
 from eth_defi.hyperliquid.evm_escrow import (
     DEFAULT_ACTIVATION_AMOUNT,
@@ -171,6 +178,10 @@ from tradeexecutor.ethereum.vault.hypercore_vault import HLP_VAULT_ADDRESS
 from tradeexecutor.state.state import State
 
 logger = logging.getLogger(__name__)
+
+BALANCE_TIMEOUT = 60.0
+POLL_INTERVAL = 2.0
+BALANCE_TOLERANCE = Decimal("0.02")
 
 
 def run_cli(args: list[str], env: dict):
@@ -218,6 +229,95 @@ def _print_hypercore_balances(safe_address: str, network: str = "mainnet") -> li
     else:
         print("\nHypercore vault balances: none (Safe has no vault deposits on Hypercore)")
     return equities
+
+
+def _is_within_tolerance(left: Decimal, right: Decimal) -> bool:
+    """Check whether two decimal balances are close enough for diagnostics."""
+    return abs(left - right) <= BALANCE_TOLERANCE
+
+
+def _get_spot_free_usdc_balance(session, user: str) -> Decimal:
+    """Read the Safe's free HyperCore spot USDC balance."""
+    state = fetch_spot_clearinghouse_state(session, user=user)
+    for balance in state.balances:
+        if balance.coin == "USDC":
+            return balance.total - balance.hold
+    return Decimal(0)
+
+
+def _get_perp_withdrawable_balance(session, user: str) -> Decimal:
+    """Read the Safe's HyperCore perp withdrawable USDC balance."""
+    state = fetch_perp_clearinghouse_state(session, user=user)
+    return state.withdrawable
+
+
+def _get_vault_equity(user: str, vault_address: str, network: str = "mainnet") -> Decimal:
+    """Read the Safe's current HyperCore vault equity for one vault."""
+    equities = _print_hypercore_balances(user, network=network)
+    for equity in equities:
+        if equity.vault_address.lower() == vault_address.lower():
+            return equity.equity
+    return Decimal(0)
+
+
+def _wait_for_evm_usdc_balance(
+    token: TokenDetails,
+    address: str,
+    expected_balance: Decimal,
+    timeout: float = BALANCE_TIMEOUT,
+    poll_interval: float = POLL_INTERVAL,
+) -> None:
+    """Wait until the EVM USDC balance reaches the expected level."""
+    deadline = time.time() + timeout
+    while True:
+        balance = token.fetch_balance_of(address)
+        if _is_within_tolerance(balance, expected_balance):
+            return
+        if time.time() >= deadline:
+            raise TimeoutError(
+                f"Timed out waiting for EVM USDC balance {expected_balance} for {address}, last balance was {balance}"
+            )
+        time.sleep(poll_interval)
+
+
+def _wait_for_spot_free_balance(
+    session,
+    user: str,
+    expected_balance: Decimal,
+    timeout: float = BALANCE_TIMEOUT,
+    poll_interval: float = POLL_INTERVAL,
+) -> None:
+    """Wait until the HyperCore free spot USDC balance reaches the expected level."""
+    deadline = time.time() + timeout
+    while True:
+        balance = _get_spot_free_usdc_balance(session, user)
+        if _is_within_tolerance(balance, expected_balance):
+            return
+        if time.time() >= deadline:
+            raise TimeoutError(
+                f"Timed out waiting for free spot USDC balance {expected_balance} for {user}, last balance was {balance}"
+            )
+        time.sleep(poll_interval)
+
+
+def _wait_for_perp_withdrawable_balance(
+    session,
+    user: str,
+    expected_balance: Decimal,
+    timeout: float = BALANCE_TIMEOUT,
+    poll_interval: float = POLL_INTERVAL,
+) -> None:
+    """Wait until the HyperCore perp withdrawable balance reaches the expected level."""
+    deadline = time.time() + timeout
+    while True:
+        balance = _get_perp_withdrawable_balance(session, user)
+        if _is_within_tolerance(balance, expected_balance):
+            return
+        if time.time() >= deadline:
+            raise TimeoutError(
+                f"Timed out waiting for perp withdrawable balance {expected_balance} for {user}, last balance was {balance}"
+            )
+        time.sleep(poll_interval)
 
 
 def _do_hypercore_deposit(
@@ -296,28 +396,133 @@ def _do_hypercore_withdraw(
     usdc_human: int,
     network: str = "mainnet",
 ):
-    """Execute withdrawal from Hypercore vault."""
-    from eth_defi.hyperliquid.core_writer import build_hypercore_withdraw_multicall
+    """Execute phased Hypercore withdrawal or recover existing spot/perp balance.
+
+    The older script used one batched withdrawal transaction, which made it hard
+    to recover when funds had already left the vault and were sitting in
+    HyperCore spot. This version mirrors the live phased routing:
+
+    1. ``vaultTransfer(vault -> perp)`` if the Safe still has vault equity
+    2. ``transferUsdClass(perp -> spot)`` if the Safe holds the requested USDC in perp
+    3. ``sendAsset(spot -> EVM)`` once the Safe holds the requested USDC in spot
+
+    If the previous close already left the requested USDC in HyperCore spot, the
+    script skips directly to step 3.
+    """
     from eth_defi.trace import TransactionAssertionError
 
-    logger.info("Executing Hypercore withdrawal (%d USDC)...", usdc_human)
-    fn = build_hypercore_withdraw_multicall(
-        lagoon_vault=lagoon_vault,
-        hypercore_usdc_amount=hypercore_amount_raw,
-        vault_address=vault_address,
+    api_url = HYPERLIQUID_TESTNET_API_URL if network == "testnet" else HYPERLIQUID_API_URL
+    session = create_hyperliquid_session(api_url=api_url)
+    safe_address = lagoon_vault.safe_address
+    requested_human = Decimal(hypercore_amount_raw) / Decimal(10**6)
+    safe_usdc = lagoon_vault.underlying_token
+
+    baseline_evm = safe_usdc.fetch_balance_of(safe_address)
+    baseline_spot = _get_spot_free_usdc_balance(session, safe_address)
+    baseline_perp = _get_perp_withdrawable_balance(session, safe_address)
+    current_vault_equity = _get_vault_equity(safe_address, vault_address, network=network)
+
+    logger.info(
+        "Starting phased Hypercore withdrawal for Safe %s: requested=%s USDC, vault=%s, spot=%s, perp=%s, evm=%s",
+        safe_address,
+        requested_human,
+        current_vault_equity,
+        baseline_spot,
+        baseline_perp,
+        baseline_evm,
     )
-    try:
-        tx_hash = deployer.transact_and_broadcast_with_contract(fn)
-        receipt = assert_transaction_success_with_explanation(web3, tx_hash)
-        print(f"\n  Withdrawal tx: {tx_hash.hex()} (gas: {receipt['gasUsed']})")
-    except (TransactionAssertionError, Exception) as e:
-        logger.warning("Withdrawal failed (expected if vault has lock-up period): %s", str(e)[:200])
-        print(f"\n  Withdrawal skipped: {str(e)[:200]}")
+
+    current_spot = baseline_spot
+    current_perp = baseline_perp
+
+    if current_spot < requested_human - BALANCE_TOLERANCE and current_vault_equity >= requested_human - BALANCE_TOLERANCE:
+        logger.info("Withdrawal phase 1: vault -> perp (%s USDC)", requested_human)
+        try:
+            tx_hash = deployer.transact_and_broadcast_with_contract(
+                build_hypercore_withdraw_from_vault_call(
+                    lagoon_vault=lagoon_vault,
+                    hypercore_usdc_amount=hypercore_amount_raw,
+                    vault_address=vault_address,
+                )
+            )
+            receipt = assert_transaction_success_with_explanation(web3, tx_hash)
+            print(f"\n  Withdrawal phase 1 tx: {tx_hash.hex()} (gas: {receipt['gasUsed']})")
+            _wait_for_perp_withdrawable_balance(session, safe_address, baseline_perp + requested_human)
+            current_perp = _get_perp_withdrawable_balance(session, safe_address)
+        except (TransactionAssertionError, Exception) as e:
+            logger.warning("Withdrawal phase 1 failed (vault -> perp): %s", str(e)[:200])
+            print(f"\n  Withdrawal phase 1 skipped: {str(e)[:200]}")
+            return
+    elif current_spot >= requested_human - BALANCE_TOLERANCE:
+        logger.info("Safe already has %s USDC in HyperCore spot, skipping vault -> perp", current_spot)
+    else:
+        logger.info(
+            "Skipping vault -> perp because vault equity %s is below requested %s",
+            current_vault_equity,
+            requested_human,
+        )
+
+    current_spot = _get_spot_free_usdc_balance(session, safe_address)
+    current_perp = _get_perp_withdrawable_balance(session, safe_address)
+
+    if current_spot < requested_human - BALANCE_TOLERANCE and current_perp >= requested_human - BALANCE_TOLERANCE:
+        logger.info("Withdrawal phase 2: perp -> spot (%s USDC)", requested_human)
+        try:
+            deployer.sync_nonce(web3)
+            tx_hash = deployer.transact_and_broadcast_with_contract(
+                build_hypercore_transfer_usd_class_call(
+                    lagoon_vault=lagoon_vault,
+                    hypercore_usdc_amount=hypercore_amount_raw,
+                    to_perp=False,
+                )
+            )
+            receipt = assert_transaction_success_with_explanation(web3, tx_hash)
+            print(f"\n  Withdrawal phase 2 tx: {tx_hash.hex()} (gas: {receipt['gasUsed']})")
+            _wait_for_perp_withdrawable_balance(session, safe_address, baseline_perp)
+            _wait_for_spot_free_balance(session, safe_address, baseline_spot + requested_human)
+            current_spot = _get_spot_free_usdc_balance(session, safe_address)
+        except (TransactionAssertionError, Exception) as e:
+            logger.warning("Withdrawal phase 2 failed (perp -> spot): %s", str(e)[:200])
+            print(f"\n  Withdrawal phase 2 skipped: {str(e)[:200]}")
+            return
+    elif current_spot >= requested_human - BALANCE_TOLERANCE:
+        logger.info("Safe already has %s USDC in HyperCore spot, skipping perp -> spot", current_spot)
+    else:
+        logger.info(
+            "Cannot continue with perp -> spot: spot=%s, perp=%s, requested=%s",
+            current_spot,
+            current_perp,
+            requested_human,
+        )
         return
 
-    logger.info("Waiting 10s for CoreWriter actions to settle on HyperCore...")
-    time.sleep(10)
-    _print_hypercore_balances(lagoon_vault.safe_address, network=network)
+    current_spot = _get_spot_free_usdc_balance(session, safe_address)
+    if current_spot < requested_human - BALANCE_TOLERANCE:
+        logger.warning(
+            "Cannot continue with spot -> EVM: Safe spot balance %s is below requested %s",
+            current_spot,
+            requested_human,
+        )
+        return
+
+    logger.info("Withdrawal phase 3: spot -> EVM (%s USDC)", requested_human)
+    try:
+        deployer.sync_nonce(web3)
+        tx_hash = deployer.transact_and_broadcast_with_contract(
+            build_hypercore_send_asset_to_evm_call(
+                lagoon_vault=lagoon_vault,
+                evm_usdc_amount=hypercore_amount_raw,
+            )
+        )
+        receipt = assert_transaction_success_with_explanation(web3, tx_hash)
+        print(f"\n  Withdrawal phase 3 tx: {tx_hash.hex()} (gas: {receipt['gasUsed']})")
+        _wait_for_evm_usdc_balance(safe_usdc, safe_address, baseline_evm + requested_human)
+    except (TransactionAssertionError, Exception) as e:
+        logger.warning("Withdrawal phase 3 failed (spot -> EVM): %s", str(e)[:200])
+        print(f"\n  Withdrawal phase 3 skipped: {str(e)[:200]}")
+        return
+
+    _print_hypercore_balances(safe_address, network=network)
 
 
 def _revalue_and_check(
