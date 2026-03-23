@@ -6,6 +6,7 @@ import datetime
 from dataclasses import dataclass
 from decimal import Decimal
 from types import ModuleType
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -17,13 +18,17 @@ from web3 import Web3
 
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from tradeexecutor.ethereum.vault.hypercore_routing import (
+    HypercoreVaultRouting,
+    raw_to_usdc,
+)
 from tradeexecutor.exchange_account.allocation import calculate_portfolio_target_value
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
-from tradeexecutor.strategy.generic.generic_router import GenericRouting
+from tradeexecutor.strategy.generic.generic_router import GenericRouting, GenericRoutingState
 from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -67,6 +72,130 @@ def install_hypercore_wait_failures(monkeypatch: Any) -> None:
     monkeypatch.setattr(
         "tradeexecutor.ethereum.vault.hypercore_routing.HypercoreVaultRouting._wait_for_usdc_arrival",
         _unexpected_wait,
+    )
+
+
+def install_hypercore_live_withdrawal_mocks(
+    monkeypatch: Any,
+    routing_model: GenericRouting,
+    pair: TradingPairIdentifier,
+) -> HypercoreVaultRouting:
+    """Switch one Hypercore router to phased withdrawal mode on Anvil.
+
+    1. Resolve the Hypercore router for the tested vault pair and disable
+       its simulate flag so sell trades take the live phased path.
+    2. Replace Hyperliquid API reads with deterministic local values so the
+       test does not depend on real off-chain state or bridge latency.
+    3. Return the router so the caller can toggle ``simulate`` between buy
+       and sell cycles within the same replay test.
+    """
+
+    # 1. Resolve the Hypercore router for the tested vault pair and disable
+    # its simulate flag so sell trades take the live phased path.
+    router, _ = routing_model.get_router(pair)
+    assert isinstance(router, HypercoreVaultRouting)
+    router.simulate = False
+
+    # 2. Replace Hyperliquid API reads with deterministic local values so the
+    # test does not depend on real off-chain state or bridge latency.
+    monkeypatch.setattr(
+        "tradeexecutor.ethereum.vault.hypercore_routing.is_account_activated",
+        lambda web3, user: True,
+    )
+    monkeypatch.setattr(
+        "tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_abstraction_mode",
+        lambda session, user: "default",
+    )
+    monkeypatch.setattr(
+        "tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(router, "_fetch_safe_evm_usdc_balance", lambda: 0)
+    monkeypatch.setattr(router, "_fetch_safe_perp_withdrawable_balance", lambda: Decimal("0"))
+    monkeypatch.setattr(router, "_fetch_safe_spot_free_usdc_balance", lambda: Decimal("0"))
+    monkeypatch.setattr(
+        router,
+        "_wait_for_perp_withdrawable_balance",
+        lambda baseline_balance, expected_increase_raw, timeout=30.0, poll_interval=2.0: (
+            baseline_balance + raw_to_usdc(expected_increase_raw)
+        ),
+    )
+    monkeypatch.setattr(
+        router,
+        "_wait_for_spot_free_usdc_balance",
+        lambda baseline_balance, expected_increase_raw, timeout=30.0, poll_interval=2.0: (
+            baseline_balance + raw_to_usdc(expected_increase_raw)
+        ),
+    )
+    monkeypatch.setattr(
+        router,
+        "_wait_for_usdc_arrival",
+        lambda baseline_balance_raw, expected_increase_raw, timeout=30.0, poll_interval=2.0: expected_increase_raw,
+    )
+
+    # 3. Return the router so the caller can toggle ``simulate`` between buy
+    # and sell cycles within the same replay test.
+    return router
+
+
+def install_hypercore_live_deposit_mocks(monkeypatch: Any) -> None:
+    """Short-circuit live Hypercore deposit polling for deterministic Anvil tests.
+
+    1. Replace the escrow-clear wait with a no-op because the mock Hypercore
+       contracts settle immediately on the fork.
+    2. Replace the vault-deposit confirmation poll with a deterministic
+       synthetic equity response based on the expected deposit delta.
+    """
+
+    # 1. Replace the escrow-clear wait with a no-op because the mock Hypercore
+    # contracts settle immediately on the fork.
+    monkeypatch.setattr(
+        "tradeexecutor.ethereum.vault.hypercore_routing.wait_for_evm_escrow_clear",
+        lambda *args, **kwargs: None,
+    )
+
+    # 2. Replace the vault-deposit confirmation poll with a deterministic
+    # synthetic equity response based on the expected deposit delta.
+    def _mock_wait_for_vault_deposit_confirmation(
+        session,
+        user: str,
+        vault_address: str,
+        expected_deposit: Decimal,
+        existing_equity: Decimal | None,
+        timeout: float = 60.0,
+        poll_interval: float = 2.0,
+    ) -> SimpleNamespace:
+        del session, user, vault_address, timeout, poll_interval
+        return SimpleNamespace(equity=(existing_equity or Decimal("0")) + expected_deposit)
+
+    monkeypatch.setattr(
+        "tradeexecutor.ethereum.vault.hypercore_routing.wait_for_vault_deposit_confirmation",
+        _mock_wait_for_vault_deposit_confirmation,
+    )
+
+
+def ensure_hypercore_routing_state(
+    routing_model: GenericRouting,
+    routing_state: GenericRoutingState,
+    pair: TradingPairIdentifier,
+) -> None:
+    """Ensure one replay routing state contains the Hypercore router substate.
+
+    Some Anvil replay fixtures only seed the generic ``vault`` substate up
+    front. Hypercore trades still route through ``hypercore_vault``, so these
+    tests need the corresponding router state injected before execution.
+    """
+
+    router, protocol_config = routing_model.get_router(pair)
+    router_name = protocol_config.routing_id.router_name
+
+    if router_name in routing_state.state_map:
+        return
+
+    existing_state = next(iter(routing_state.state_map.values()))
+    routing_state.state_map[router_name] = router.create_routing_state(
+        routing_state.strategy_universe,
+        {"tx_builder": existing_state.tx_builder},
     )
 
 
@@ -290,6 +419,32 @@ def assert_single_multicall_trade(
     assert tx.signed_bytes is not None
     assert tx.signed_tx_object is not None
     assert note_substring in (tx.notes or "")
+
+
+def assert_phased_withdrawal_trade(
+    trade: TradeExecution,
+    *,
+    chain_id: int = 999,
+) -> None:
+    """Assert that one Hypercore sell stored all three phased withdrawal txs."""
+
+    assert trade.is_success()
+    assert len(trade.blockchain_transactions) == 3
+
+    expected_notes = (
+        "Hypercore withdrawal phase 1",
+        "Hypercore withdrawal phase 2",
+        "Hypercore withdrawal phase 3",
+    )
+
+    for tx, note_substring in zip(trade.blockchain_transactions, expected_notes, strict=True):
+        assert tx.chain_id == chain_id
+        assert tx.function_selector == "performCall"
+        assert tx.details["function"] == "sendRawAction"
+        assert tx.tx_hash is not None
+        assert tx.signed_bytes is not None
+        assert tx.signed_tx_object is not None
+        assert note_substring in (tx.notes or "")
 
 
 def assert_hyper_ai_buy_cycle_reaches_target(

@@ -27,11 +27,15 @@ from tradeexecutor.strategy.trading_strategy_universe import \
     TradingStrategyUniverse
 from tradeexecutor.testing.hypercore import (
     assert_hyper_ai_buy_cycle_reaches_target,
+    assert_phased_withdrawal_trade,
     assert_hyper_ai_sell_cycle_reaches_target,
     assert_single_multicall_trade,
     create_hyper_ai_test_parameters,
+    ensure_hypercore_routing_state,
     finalise_lagoon_deposit,
     get_lagoon_pending_redemptions_underlying,
+    install_hypercore_live_withdrawal_mocks,
+    install_hypercore_live_deposit_mocks,
     install_hypercore_wait_failures,
     make_hyper_ai_strategy_input,
     mirror_lagoon_safe_reserve_balance,
@@ -97,6 +101,11 @@ def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
         hypercore_strategy_universe,
         hypercore_execution_model.get_routing_state_details(),
     )
+    ensure_hypercore_routing_state(
+        hypercore_routing_model,
+        routing_state,
+        pair,
+    )
     reserve_asset = hypercore_strategy_universe.get_reserve_asset()
 
     open_ts = datetime.datetime(2026, 1, 21)
@@ -143,6 +152,13 @@ def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
     assert valuation_update.new_price > 1.0
     assert valuation_update.new_value == pytest.approx(float(position.get_quantity()) * position.last_token_price)
 
+    phased_withdrawal_router = install_hypercore_live_withdrawal_mocks(
+        monkeypatch,
+        hypercore_routing_model,
+        pair,
+    )
+    phased_withdrawal_router.simulate = False
+
     close_input = StrategyInput(
         cycle=2,
         timestamp=valuation_ts,
@@ -176,7 +192,7 @@ def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
         check_balances=True,
     )
 
-    assert_single_multicall_trade(close_trade, note_substring="Hypercore withdrawal")
+    assert_phased_withdrawal_trade(close_trade)
 
     state_trades = list(state.portfolio.get_all_trades())
     assert len(state_trades) == 2
@@ -184,7 +200,6 @@ def test_hyper_ai_live_loop_hypercore_replay_lifecycle(
         assert trade.blockchain_transactions, f"Trade {trade.trade_id} has no BlockchainTransaction objects"
         for tx in trade.blockchain_transactions:
             assert tx.chain_id == 999
-            assert tx.function_selector == "multicall"
             assert tx.tx_hash is not None
             assert tx.signed_bytes is not None
             assert tx.signed_tx_object is not None
@@ -266,6 +281,11 @@ def test_hyper_ai_hypercore_open_cycle(
         hypercore_strategy_universe,
         hypercore_execution_model.get_routing_state_details(),
     )
+    ensure_hypercore_routing_state(
+        hypercore_routing_model,
+        routing_state,
+        pair,
+    )
 
     open_ts = datetime.datetime(2026, 1, 21)
     parameters = create_hyper_ai_test_parameters(
@@ -341,6 +361,11 @@ def test_hyper_ai_hypercore_close_cycle(
         hypercore_strategy_universe,
         hypercore_execution_model.get_routing_state_details(),
     )
+    ensure_hypercore_routing_state(
+        hypercore_routing_model,
+        routing_state,
+        pair,
+    )
 
     open_ts = datetime.datetime(2026, 1, 21)
     parameters = create_hyper_ai_test_parameters(
@@ -378,6 +403,13 @@ def test_hyper_ai_hypercore_close_cycle(
     valuation_update = hypercore_valuation_model(valuation_ts, position)
     assert valuation_update.new_price > 1.0
 
+    phased_withdrawal_router = install_hypercore_live_withdrawal_mocks(
+        monkeypatch,
+        hypercore_routing_model,
+        pair,
+    )
+    phased_withdrawal_router.simulate = False
+
     close_input = make_hyper_ai_strategy_input(
         hyper_ai_strategy_module=hyper_ai_strategy_module,
         make_fake_indicators=make_fake_indicators,
@@ -407,7 +439,7 @@ def test_hyper_ai_hypercore_close_cycle(
         check_balances=False,
     )
 
-    assert_single_multicall_trade(close_trade, note_substring="Hypercore withdrawal")
+    assert_phased_withdrawal_trade(close_trade)
     assert all(t.blockchain_transactions for t in state.portfolio.get_all_trades())
     assert not any(position.is_frozen() for position in state.portfolio.get_all_positions())
 
@@ -445,6 +477,11 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
     routing_state = hypercore_routing_model.create_routing_state(
         hypercore_strategy_universe,
         hypercore_execution_model.get_routing_state_details(),
+    )
+    ensure_hypercore_routing_state(
+        hypercore_routing_model,
+        routing_state,
+        pair,
     )
 
     open_ts = datetime.datetime(2026, 1, 21)
@@ -543,6 +580,13 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
     decrease_trade = decrease_trades[0]
     assert decrease_trade.is_sell()
 
+    phased_withdrawal_router = install_hypercore_live_withdrawal_mocks(
+        monkeypatch,
+        hypercore_routing_model,
+        pair,
+    )
+    phased_withdrawal_router.simulate = False
+
     hypercore_execution_model.execute_trades(
         datetime.datetime(2026, 2, 5),
         state,
@@ -556,7 +600,7 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
     assert decrease_trade.is_success()
     assert decreased_quantity < increased_quantity
     assert decreased_quantity > 0
-    assert_single_multicall_trade(decrease_trade, note_substring="Hypercore withdrawal")
+    assert_phased_withdrawal_trade(decrease_trade)
 
     final_valuation = hypercore_valuation_model(datetime.datetime(2026, 2, 5), position)
     assert final_valuation.new_price > 1.0
@@ -608,14 +652,23 @@ def test_hyper_ai_lagoon_redeem_accounting(
         hypercore_strategy_universe,
         hypercore_execution_model.get_routing_state_details(),
     )
+    ensure_hypercore_routing_state(
+        hypercore_routing_model,
+        routing_state,
+        pair,
+    )
+    install_hypercore_live_withdrawal_mocks(
+        monkeypatch,
+        hypercore_routing_model,
+        pair,
+    )
+    install_hypercore_live_deposit_mocks(monkeypatch)
     reserve_asset = hypercore_strategy_universe.get_reserve_asset()
     cycle_specs = [
         {
             "cycle": 1,
             "timestamp": datetime.datetime(2026, 1, 21),
             "pre_action": lambda: finalise_lagoon_deposit(web3_hyperevm, vault, depositor),
-            "expected_side": "buy",
-            "note_substring": "Hypercore deposit (simulate)",
             "fully_exit": False,
         },
         {
@@ -666,6 +719,8 @@ def test_hyper_ai_lagoon_redeem_accounting(
 
     cycle_results = []
     for spec in cycle_specs:
+        current_router, _ = hypercore_routing_model.get_router(pair)
+        current_router.simulate = False
         spec["pre_action"]()
         cycle_result = run_hyper_ai_cycle(
             hyper_ai_strategy_module=hyper_ai_strategy_module,
@@ -689,15 +744,17 @@ def test_hyper_ai_lagoon_redeem_accounting(
 
         if target_delta > parameters.individual_rebalance_min_threshold_usd:
             trade = assert_hyper_ai_buy_cycle_reaches_target(cycle_result)
-            note_substring = "Hypercore deposit (simulate)"
         else:
             trade = assert_hyper_ai_sell_cycle_reaches_target(
                 cycle_result,
                 fully_exit=spec["fully_exit"],
             )
-            note_substring = "Hypercore withdrawal"
 
-        assert_single_multicall_trade(trade, note_substring=note_substring)
+        if trade.is_buy():
+            assert len(trade.blockchain_transactions) == 3
+            assert all(tx.tx_hash is not None for tx in trade.blockchain_transactions)
+        else:
+            assert_phased_withdrawal_trade(trade)
         mirror_lagoon_safe_reserve_balance(
             web3_hyperevm,
             vault,
