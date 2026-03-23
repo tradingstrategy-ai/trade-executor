@@ -6,7 +6,7 @@ Hypercore vault deposits/withdrawals use a multi-phase flow:
 
 0. Activation (if needed): performed synchronously via
    :py:func:`~eth_defi.hyperliquid.evm_escrow.activate_account` in ``setup_trades()``
-1. Phase 1: ``approve`` + ``CDW.deposit`` — bridge USDC to HyperCore spot
+1. Phase 1: separate ``approve`` and ``CDW.deposit`` Safe calls — bridge USDC to HyperCore spot
 2. Escrow wait: poll ``spotClearinghouseState`` until USDC clears
 3. Phase 2: ``transferUsdClass`` + ``vaultTransfer`` — move to perp, deposit into vault
 
@@ -14,12 +14,15 @@ If the Safe is already activated, step 0 is skipped.
 
 **Withdrawal (sell)**:
 
-A single multicall transaction (``vaultTransfer`` + ``transferUsdClass`` + ``spotSend``)
-is created in ``setup_trades`` and broadcast normally.
+1. Phase 1: ``vaultTransfer`` — withdraw from vault to HyperCore perp
+2. Perp wait: poll ``clearinghouseState`` until withdrawable USDC appears
+3. Phase 2: ``transferUsdClass`` — move from perp to spot
+4. Spot wait: poll ``spotClearinghouseState`` until free USDC appears
+5. Phase 3: ``sendAsset`` — bridge USDC from HyperCore spot back to HyperEVM
 
 The build functions from :py:mod:`eth_defi.hyperliquid.core_writer` return
-``module.functions.multicall(calls)`` already wrapped through
-``TradingStrategyModuleV0.performCall()``.  Using
+either ``TradingStrategyModuleV0.performCall()`` or ``multicall()`` functions
+that are already wrapped for the Safe. Using
 :py:class:`~tradeexecutor.ethereum.lagoon.tx.LagoonTransactionBuilder`
 would double-wrap them, so we sign directly via :py:class:`~eth_defi.hotwallet.HotWallet`.
 """
@@ -39,15 +42,21 @@ from eth_defi.gas import apply_gas, estimate_gas_price
 from eth_defi.hotwallet import HotWallet
 from eth_defi.hyperliquid.api import (
     HypercoreDepositVerificationError,
+    fetch_perp_clearinghouse_state,
+    fetch_spot_clearinghouse_state,
+    fetch_user_abstraction_mode,
     fetch_user_vault_equity,
     wait_for_vault_deposit_confirmation,
 )
 from eth_defi.hyperliquid.core_writer import (
     MINIMUM_VAULT_DEPOSIT,
+    build_hypercore_approve_deposit_wallet_call,
     build_hypercore_deposit_multicall,
-    build_hypercore_deposit_phase1,
+    build_hypercore_deposit_to_spot_call,
     build_hypercore_deposit_phase2,
-    build_hypercore_withdraw_multicall,
+    build_hypercore_withdraw_from_vault_call,
+    build_hypercore_send_asset_to_evm_call,
+    build_hypercore_transfer_usd_class_call,
 )
 from eth_defi.hyperliquid.evm_escrow import (
     DEFAULT_ACTIVATION_AMOUNT,
@@ -87,16 +96,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-#: Gas limit for Hypercore multicall transactions (approve + CDW.deposit or CoreWriter actions).
+#: Gas limit for Hypercore TradingStrategyModuleV0 transactions.
 #:
 #: The batched Hypercore deposit on a HyperEVM Anvil fork currently needs a bit
-#: over 520k gas once routed through TradingStrategyModuleV0.  Keep a modest
+#: over 520k gas once routed through TradingStrategyModuleV0. Keep a modest
 #: buffer here so the live split tests do not fail due to an avoidable gas cap.
 HYPERCORE_MULTICALL_GAS = 650_000
 
 #: USDC uses 6 decimals on HyperEVM.
 USDC_DECIMALS = 6
-
 
 def usdc_to_raw(amount: Decimal) -> int:
     """Convert a human-readable USDC amount to raw 6-decimal integer."""
@@ -143,13 +151,13 @@ class HypercoreVaultRouting(RoutingModel):
 
     Creates :py:class:`~tradeexecutor.state.blockhain_transaction.BlockchainTransaction`
     objects for Hypercore native vault operations via the Lagoon vault's
-    ``TradingStrategyModuleV0`` multicall interface.
+    ``TradingStrategyModuleV0`` interface.
 
     The build functions from :py:mod:`eth_defi.hyperliquid.core_writer` return
-    ready-to-sign ``ContractFunction`` objects (``module.functions.multicall(...)``).
-    These are signed directly with the deployer :py:class:`~eth_defi.hotwallet.HotWallet`
-    rather than going through ``LagoonTransactionBuilder.sign_transaction()``
-    which would double-wrap them.
+    ready-to-sign ``ContractFunction`` objects already wrapped for the Safe.
+    These are signed directly with the deployer
+    :py:class:`~eth_defi.hotwallet.HotWallet` rather than going through
+    ``LagoonTransactionBuilder.sign_transaction()`` which would double-wrap them.
     """
 
     def __init__(
@@ -220,6 +228,28 @@ class HypercoreVaultRouting(RoutingModel):
             self._session = create_hyperliquid_session(api_url=api_url)
         return self._session
 
+    def _log_account_mode(self, context: str) -> str | None:
+        """Log the Safe's Hyperliquid account mode for diagnostics."""
+        session = self._get_session()
+        try:
+            mode = fetch_user_abstraction_mode(session, user=self.safe_address)
+        except Exception as e:
+            logger.warning(
+                "Could not read Hyperliquid account mode for Safe %s during %s: %s",
+                self.safe_address,
+                context,
+                e,
+            )
+            return None
+
+        logger.info(
+            "Safe %s Hyperliquid account mode during %s: %s",
+            self.safe_address,
+            context,
+            mode,
+        )
+        return mode
+
     def create_routing_state(
         self,
         universe: StrategyExecutionUniverse,
@@ -241,20 +271,22 @@ class HypercoreVaultRouting(RoutingModel):
     # Transaction building helpers
     # ------------------------------------------------------------------
 
-    def _sign_multicall(
+    def _sign_module_call(
         self,
         fn: ContractFunction,
         gas_limit: int = HYPERCORE_MULTICALL_GAS,
         notes: str = "",
+        logical_function_name: str | None = None,
     ) -> BlockchainTransaction:
-        """Sign a TradingStrategyModuleV0 multicall and create a BlockchainTransaction.
+        """Sign a TradingStrategyModuleV0 call and create a BlockchainTransaction.
 
         The build functions from ``eth_defi.hyperliquid.core_writer`` return
-        ``module.functions.multicall(calls)`` which is already addressed to the
-        module contract.  We sign it directly with the deployer hot wallet.
+        ``module.functions.performCall(...)`` or ``module.functions.multicall(...)``
+        objects already addressed to the module contract. We sign them directly
+        with the deployer hot wallet.
 
         :param fn:
-            Bound ``ContractFunction`` (``module.functions.multicall(...)``).
+            Bound ``ContractFunction`` already wrapped through the trading strategy module.
 
         :param gas_limit:
             Gas limit for the transaction.
@@ -277,8 +309,8 @@ class HypercoreVaultRouting(RoutingModel):
         signed_tx = self.deployer.sign_transaction_with_new_nonce(tx_data)
         signed_bytes = hexbytes_to_hex_str(signed_tx.rawTransaction)
 
-        # Needed for get_swap_transactions() compatibility
-        tx_data["function"] = "multicall"
+        # Needed for get_swap_transactions() compatibility.
+        tx_data["function"] = logical_function_name or fn.fn_name
 
         return BlockchainTransaction(
             type=BlockchainTransactionType.lagoon_vault,
@@ -324,6 +356,25 @@ class HypercoreVaultRouting(RoutingModel):
         return usdc_contract.functions.balanceOf(
             Web3.to_checksum_address(self.safe_address)
         ).call()
+
+    def _fetch_safe_spot_free_usdc_balance(self) -> Decimal:
+        """Read the Safe's free HyperCore spot USDC balance."""
+        state = fetch_spot_clearinghouse_state(
+            self._get_session(),
+            user=self.safe_address,
+        )
+        for balance in state.balances:
+            if balance.coin == "USDC":
+                return balance.total - balance.hold
+        return Decimal(0)
+
+    def _fetch_safe_perp_withdrawable_balance(self) -> Decimal:
+        """Read the Safe's HyperCore perp withdrawable USDC balance."""
+        state = fetch_perp_clearinghouse_state(
+            self._get_session(),
+            user=self.safe_address,
+        )
+        return state.withdrawable
 
     def _wait_for_usdc_arrival(
         self,
@@ -393,6 +444,98 @@ class HypercoreVaultRouting(RoutingModel):
             )
             time.sleep(min(poll_interval, remaining))
 
+    def _wait_for_perp_withdrawable_balance(
+        self,
+        baseline_balance: Decimal,
+        expected_increase_raw: int,
+        timeout: float = 30.0,
+        poll_interval: float = 2.0,
+    ) -> Decimal:
+        """Poll HyperCore perp withdrawable USDC until the withdrawal reaches perp."""
+        expected_balance = baseline_balance + raw_to_usdc(expected_increase_raw)
+        deadline = time.time() + timeout
+        attempt = 0
+
+        while True:
+            attempt += 1
+            current_balance = self._fetch_safe_perp_withdrawable_balance()
+
+            if current_balance >= expected_balance:
+                logger.info(
+                    "Perp withdrawable balance is ready for Safe %s after %d poll(s): "
+                    "%s USDC (expected at least %s USDC)",
+                    self.safe_address,
+                    attempt,
+                    current_balance,
+                    expected_balance,
+                )
+                return current_balance
+
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                raise HypercoreWithdrawalVerificationError(
+                    f"Perp withdrawable USDC did not reach {expected_balance} for Safe {self.safe_address} "
+                    f"within {timeout}s. Current balance: {current_balance} after {attempt} poll(s). "
+                    f"The vaultTransfer action may have failed silently on HyperCore."
+                )
+
+            logger.info(
+                "Waiting for perp withdrawable USDC in Safe %s: %s/%s USDC "
+                "(%.0fs remaining, poll #%d)",
+                self.safe_address,
+                current_balance,
+                expected_balance,
+                remaining,
+                attempt,
+            )
+            time.sleep(min(poll_interval, remaining))
+
+    def _wait_for_spot_free_usdc_balance(
+        self,
+        baseline_balance: Decimal,
+        expected_increase_raw: int,
+        timeout: float = 30.0,
+        poll_interval: float = 2.0,
+    ) -> Decimal:
+        """Poll HyperCore spot free USDC until the perp-to-spot move is visible."""
+        expected_balance = baseline_balance + raw_to_usdc(expected_increase_raw)
+        deadline = time.time() + timeout
+        attempt = 0
+
+        while True:
+            attempt += 1
+            current_balance = self._fetch_safe_spot_free_usdc_balance()
+
+            if current_balance >= expected_balance:
+                logger.info(
+                    "Spot free USDC is ready for Safe %s after %d poll(s): "
+                    "%s USDC (expected at least %s USDC)",
+                    self.safe_address,
+                    attempt,
+                    current_balance,
+                    expected_balance,
+                )
+                return current_balance
+
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                raise HypercoreWithdrawalVerificationError(
+                    f"Spot free USDC did not reach {expected_balance} for Safe {self.safe_address} "
+                    f"within {timeout}s. Current balance: {current_balance} after {attempt} poll(s). "
+                    f"The transferUsdClass(perp->spot) action may have failed silently on HyperCore."
+                )
+
+            logger.info(
+                "Waiting for spot free USDC in Safe %s: %s/%s USDC "
+                "(%.0fs remaining, poll #%d)",
+                self.safe_address,
+                current_balance,
+                expected_balance,
+                remaining,
+                attempt,
+            )
+            time.sleep(min(poll_interval, remaining))
+
     def _mark_stranded_usdc(
         self,
         trade: TradeExecution,
@@ -444,9 +587,9 @@ class HypercoreVaultRouting(RoutingModel):
     ) -> list[BlockchainTransaction]:
         """Create blockchain transactions for a vault deposit or withdrawal.
 
-        - **Buy (deposit)**: creates phase 1 tx only.
+        - **Buy (deposit)**: creates phase 1 approve + deposit txs.
           Phase 2 is handled in :py:meth:`_settle_deposit`.
-        - **Sell (withdrawal)**: creates the full withdraw multicall.
+        - **Sell (withdrawal)**: creates phase 1 only (vault -> perp).
 
         Activation (if needed) is handled synchronously in
         :py:meth:`setup_trades` before this method is called.
@@ -506,33 +649,59 @@ class HypercoreVaultRouting(RoutingModel):
                     chain_id=self.web3.eth.chain_id,
                     asset_address=self.reserve_token_address,
                 )
-                tx = self._sign_multicall(fn, notes=f"Hypercore deposit (simulate): {raw_amount} raw USDC")
+                tx = self._sign_module_call(fn, notes=f"Hypercore deposit (simulate): {raw_amount} raw USDC")
                 return [tx]
             else:
                 logger.info(
-                    "Building Hypercore vault deposit phase 1: %d raw USDC to vault %s",
+                    "Building Hypercore vault deposit phase 1 as separate approve + deposit calls: %d raw USDC to vault %s",
                     raw_amount,
                     vault_address,
                 )
-                fn = build_hypercore_deposit_phase1(
+                approve_fn = build_hypercore_approve_deposit_wallet_call(
                     self.lagoon_vault,
                     evm_usdc_amount=raw_amount,
                 )
-                tx = self._sign_multicall(fn, notes=f"Hypercore deposit phase 1: {raw_amount} raw USDC")
-                return [tx]
+                deposit_fn = build_hypercore_deposit_to_spot_call(
+                    self.lagoon_vault,
+                    evm_usdc_amount=raw_amount,
+                )
+                approve_tx = self._sign_module_call(
+                    approve_fn,
+                    notes=f"Hypercore deposit phase 1 approval: {raw_amount} raw USDC",
+                    logical_function_name="approve",
+                )
+                deposit_tx = self._sign_module_call(
+                    deposit_fn,
+                    notes=f"Hypercore deposit phase 1 deposit: {raw_amount} raw USDC",
+                    logical_function_name="deposit",
+                )
+                return [approve_tx, deposit_tx]
 
         else:
             logger.info(
-                "Building Hypercore vault withdrawal: %d raw USDC from vault %s",
+                "Building Hypercore vault withdrawal phase 1: %d raw USDC from vault %s",
                 raw_amount,
                 vault_address,
             )
-            fn = build_hypercore_withdraw_multicall(
-                self.lagoon_vault,
-                hypercore_usdc_amount=raw_amount,
-                vault_address=vault_address,
+            logger.info(
+                "Queueing Hypercore withdrawal steps for Safe %s: "
+                "1) vaultTransfer(vault->perp), "
+                "2) transferUsdClass(perp->spot), "
+                "3) spotSend(spot->EVM Safe) "
+                "for %d raw USDC",
+                self.safe_address,
+                raw_amount,
             )
-            tx = self._sign_multicall(fn, notes=f"Hypercore withdrawal: {raw_amount} raw USDC")
+            fn = build_hypercore_withdraw_from_vault_call(
+                self.lagoon_vault,
+                vault_address=vault_address,
+                hypercore_usdc_amount=raw_amount,
+            )
+            tx = self._sign_module_call(
+                fn,
+                notes=f"Hypercore withdrawal phase 1: {raw_amount} raw USDC from vault {vault_address}",
+                logical_function_name="sendRawAction",
+            )
             return [tx]
 
     # ------------------------------------------------------------------
@@ -607,12 +776,16 @@ class HypercoreVaultRouting(RoutingModel):
                     session=session,
                 )
                 self.deployer.sync_nonce(self.web3)
+                activated = True
                 activation_cost_raw = DEFAULT_ACTIVATION_AMOUNT
                 logger.info(
                     "Safe %s activated on HyperCore (cost %d raw USDC from Safe)",
                     self.safe_address,
                     activation_cost_raw,
                 )
+
+            if activated:
+                self._log_account_mode("setup_trades")
 
         # Only the first buy trade in the cycle bears the activation cost.
         activation_cost_applied = False
@@ -645,30 +818,6 @@ class HypercoreVaultRouting(RoutingModel):
     # Settlement helpers
     # ------------------------------------------------------------------
 
-    def _broadcast_phase1(
-        self,
-        trade: TradeExecution,
-    ) -> tuple[BlockchainTransaction, dict]:
-        """Build, sign, and broadcast phase 1 (approve + CDW.deposit).
-
-        :return:
-            Tuple of (BlockchainTransaction, receipt dict).
-        """
-        raw_amount = self._get_raw_usdc_amount(trade)
-
-        fn = build_hypercore_deposit_phase1(
-            self.lagoon_vault,
-            evm_usdc_amount=raw_amount,
-        )
-        tx = self._sign_multicall(
-            fn,
-            notes=f"Hypercore deposit phase 1: {raw_amount} raw USDC",
-        )
-
-        tx_hash = self.web3.eth.send_raw_transaction(HexBytes(tx.signed_bytes))
-        receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
-        return tx, receipt
-
     def _broadcast_phase2(
         self,
         trade: TradeExecution,
@@ -685,9 +834,48 @@ class HypercoreVaultRouting(RoutingModel):
             hypercore_usdc_amount=raw_amount,
             vault_address=vault_address,
         )
-        tx = self._sign_multicall(
+        tx = self._sign_module_call(
             fn,
             notes=f"Hypercore deposit phase 2: {raw_amount} raw USDC to vault {vault_address}",
+        )
+
+        tx_hash = self.web3.eth.send_raw_transaction(HexBytes(tx.signed_bytes))
+        receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        return tx, receipt
+
+    def _broadcast_withdrawal_phase2(
+        self,
+        raw_amount: int,
+    ) -> tuple[BlockchainTransaction, dict]:
+        """Build, sign, and broadcast withdrawal phase 2 (perp -> spot)."""
+        fn = build_hypercore_transfer_usd_class_call(
+            self.lagoon_vault,
+            hypercore_usdc_amount=raw_amount,
+            to_perp=False,
+        )
+        tx = self._sign_module_call(
+            fn,
+            notes=f"Hypercore withdrawal phase 2: {raw_amount} raw USDC perp->spot",
+            logical_function_name="sendRawAction",
+        )
+
+        tx_hash = self.web3.eth.send_raw_transaction(HexBytes(tx.signed_bytes))
+        receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        return tx, receipt
+
+    def _broadcast_withdrawal_phase3(
+        self,
+        raw_amount: int,
+    ) -> tuple[BlockchainTransaction, dict]:
+        """Build, sign, and broadcast withdrawal phase 3 (spot -> EVM)."""
+        fn = build_hypercore_send_asset_to_evm_call(
+            self.lagoon_vault,
+            evm_usdc_amount=raw_amount,
+        )
+        tx = self._sign_module_call(
+            fn,
+            notes=f"Hypercore withdrawal phase 3: {raw_amount} raw USDC spot->EVM",
+            logical_function_name="sendRawAction",
         )
 
         tx_hash = self.web3.eth.send_raw_transaction(HexBytes(tx.signed_bytes))
@@ -771,7 +959,7 @@ class HypercoreVaultRouting(RoutingModel):
     ):
         """Settle a Hypercore vault deposit (buy).
 
-        Phase 1 tx was broadcast by the execution model. This method:
+        Phase 1 approve + deposit txs were broadcast by the execution model. This method:
 
         1. Verifies the phase 1 receipt.
         2. Waits for EVM escrow to clear.
@@ -949,14 +1137,16 @@ class HypercoreVaultRouting(RoutingModel):
     ):
         """Settle a Hypercore vault withdrawal (sell).
 
-        After the withdrawal multicall tx lands on HyperEVM:
+        After the phase 1 vault-withdraw tx lands on HyperEVM:
 
-        1. Verifies the EVM receipt.
-        2. Polls the Safe's EVM USDC balance until the bridged USDC arrives
-           (the ``spotSend`` action bridges USDC from HyperCore to HyperEVM
-           with ~2-10 s latency).
-        3. Compares actual received USDC against planned amount.
-        4. Marks the trade as success or failure.
+        1. Verifies the phase 1 EVM receipt.
+        2. Waits for the withdrawn USDC to appear in HyperCore perp.
+        3. Broadcasts phase 2 (``transferUsdClass(perp->spot)``).
+        4. Waits for the USDC to appear in HyperCore spot.
+        5. Broadcasts phase 3 (``sendAsset`` / spot -> EVM).
+        6. Polls the Safe's EVM USDC balance until the bridged USDC arrives.
+        7. Compares actual received USDC against planned amount.
+        8. Marks the trade as success or failure.
 
         In simulate mode, the balance verification is skipped because
         the mock CoreWriter does not actually bridge USDC.
@@ -978,6 +1168,15 @@ class HypercoreVaultRouting(RoutingModel):
             equity_before: Decimal | None = None
             vault_address = self._get_vault_address(trade)
             session = self._get_session()
+            baseline_perp_withdrawable = self._fetch_safe_perp_withdrawable_balance()
+            baseline_spot_free = self._fetch_safe_spot_free_usdc_balance()
+            logger.info(
+                "Withdrawal settlement: Safe %s baseline HyperCore perp withdrawable = %s USDC, "
+                "baseline spot free USDC = %s",
+                self.safe_address,
+                baseline_perp_withdrawable,
+                baseline_spot_free,
+            )
             try:
                 eq_before = fetch_user_vault_equity(
                     session,
@@ -1016,7 +1215,7 @@ class HypercoreVaultRouting(RoutingModel):
             return
 
         logger.info(
-            "Hypercore vault withdrawal EVM tx succeeded (%s)",
+            "Hypercore vault withdrawal phase 1 EVM tx succeeded (%s)",
             withdraw_tx.tx_hash,
         )
 
@@ -1027,6 +1226,100 @@ class HypercoreVaultRouting(RoutingModel):
             # so skip EVM balance verification and trust planned values.
             executed_reserve = planned_reserve
         else:
+            try:
+                perp_balance = self._wait_for_perp_withdrawable_balance(
+                    baseline_balance=baseline_perp_withdrawable,
+                    expected_increase_raw=expected_raw,
+                    timeout=30.0,
+                    poll_interval=2.0,
+                )
+            except HypercoreWithdrawalVerificationError as e:
+                logger.error(
+                    "Withdrawal phase 1 verification failed for trade %s: %s",
+                    trade.trade_id, e,
+                )
+                self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
+                report_failure(ts, state, trade, stop_on_execution_failure)
+                return
+
+            logger.info(
+                "Before transferUsdClass(perp->spot), Safe %s perp withdrawable balance is %s USDC",
+                self.safe_address,
+                perp_balance,
+            )
+            assert perp_balance >= baseline_perp_withdrawable + raw_to_usdc(expected_raw), (
+                f"Cannot continue Hypercore withdrawal for Safe {self.safe_address}: "
+                f"perp withdrawable balance {perp_balance} is below expected "
+                f"{baseline_perp_withdrawable + raw_to_usdc(expected_raw)}"
+            )
+
+            self.deployer.sync_nonce(web3)
+
+            try:
+                phase2_tx, phase2_receipt = self._broadcast_withdrawal_phase2(expected_raw)
+            except Exception as e:
+                logger.error("Withdrawal phase 2 broadcast failed: %s", e)
+                self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
+                report_failure(ts, state, trade, stop_on_execution_failure)
+                return
+
+            trade.blockchain_transactions.append(phase2_tx)
+
+            if phase2_receipt["status"] != 1:
+                logger.error("Hypercore withdrawal phase 2 reverted: tx %s", phase2_tx.tx_hash)
+                self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
+                report_failure(ts, state, trade, stop_on_execution_failure)
+                return
+
+            ts = get_block_timestamp(web3, phase2_receipt["blockNumber"])
+
+            try:
+                spot_balance = self._wait_for_spot_free_usdc_balance(
+                    baseline_balance=baseline_spot_free,
+                    expected_increase_raw=expected_raw,
+                    timeout=30.0,
+                    poll_interval=2.0,
+                )
+            except HypercoreWithdrawalVerificationError as e:
+                logger.error(
+                    "Withdrawal phase 2 verification failed for trade %s: %s",
+                    trade.trade_id, e,
+                )
+                self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
+                report_failure(ts, state, trade, stop_on_execution_failure)
+                return
+
+            logger.info(
+                "Before sendAsset(spot->EVM), Safe %s spot free USDC balance is %s USDC",
+                self.safe_address,
+                spot_balance,
+            )
+            assert spot_balance >= baseline_spot_free + raw_to_usdc(expected_raw), (
+                f"Cannot continue Hypercore withdrawal for Safe {self.safe_address}: "
+                f"spot free USDC balance {spot_balance} is below expected "
+                f"{baseline_spot_free + raw_to_usdc(expected_raw)}"
+            )
+
+            self.deployer.sync_nonce(web3)
+
+            try:
+                phase3_tx, phase3_receipt = self._broadcast_withdrawal_phase3(expected_raw)
+            except Exception as e:
+                logger.error("Withdrawal phase 3 broadcast failed: %s", e)
+                self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
+                report_failure(ts, state, trade, stop_on_execution_failure)
+                return
+
+            trade.blockchain_transactions.append(phase3_tx)
+
+            if phase3_receipt["status"] != 1:
+                logger.error("Hypercore withdrawal phase 3 reverted: tx %s", phase3_tx.tx_hash)
+                self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
+                report_failure(ts, state, trade, stop_on_execution_failure)
+                return
+
+            ts = get_block_timestamp(web3, phase3_receipt["blockNumber"])
+
             # Poll for USDC arrival on EVM
             try:
                 actual_increase_raw = self._wait_for_usdc_arrival(
@@ -1040,6 +1333,7 @@ class HypercoreVaultRouting(RoutingModel):
                     "Withdrawal verification failed for trade %s: %s",
                     trade.trade_id, e,
                 )
+                self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
                 report_failure(ts, state, trade, stop_on_execution_failure)
                 return
 
