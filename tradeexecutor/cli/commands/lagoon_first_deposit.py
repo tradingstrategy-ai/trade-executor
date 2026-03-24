@@ -94,6 +94,17 @@ def lagoon_first_deposit(
     else:
         state_path, store = None, None
 
+    block_number = web3.eth.block_number
+    vault_nav = vault.fetch_total_assets(block_number) or Decimal(0)
+    vault_share_supply = vault.fetch_total_supply(block_number)
+    if vault_nav > 0 or vault_share_supply > 0:
+        raise RuntimeError(
+            "lagoon-first-deposit can only be used on a fresh vault. "
+            f"Vault already has NAV {vault_nav} {denomination_token.symbol} "
+            f"and share supply {vault_share_supply} {vault.share_token.symbol}. "
+            "Use the normal deposit flow and settle the vault instead."
+        )
+
     eth_balance = web3.eth.get_balance(hot_wallet.address)
     eth_human = eth_balance / 10**18
     logger.info("Asset manager: %s", hot_wallet.address)

@@ -627,7 +627,9 @@ def test_cli_lagoon_first_deposit(
     2. Initialise state
     3. Fund asset manager with USDC
     4. Run first-deposit command
-    5. Verify state has reserves and vault has shares
+    5. Verify a second first-deposit attempt is rejected
+    6. Verify state has reserves and vault has shares
+    7. Redeem the shares and verify cleanup
     """
 
     cache_path = persistent_test_client.transport.cache_path
@@ -706,12 +708,17 @@ def test_cli_lagoon_first_deposit(
     mocker.patch.dict("os.environ", deposit_env, clear=True)
     cli.main(args=["lagoon-first-deposit"], standalone_mode=False)
 
-    # 5. Verify state has reserves
+    # 5. Verify a second first-deposit attempt is rejected.
+    with pytest.raises(RuntimeError, match="can only be used on a fresh vault"):
+        mocker.patch.dict("os.environ", deposit_env, clear=True)
+        cli.main(args=["lagoon-first-deposit"], standalone_mode=False)
+
+    # 6. Verify state has reserves.
     state = State.read_json_file(state_file)
     reserve_position = state.portfolio.get_default_reserve_position()
     assert reserve_position.get_value() > 0, f"Expected reserves > 0, got {reserve_position.get_value()}"
 
-    # 6. Verify vault has USDC and depositor has shares
+    # 6. Verify vault has USDC and depositor has shares.
     vault = create_vault_instance(
         web3,
         vault_address,
@@ -725,11 +732,11 @@ def test_cli_lagoon_first_deposit(
     share_balance = vault.share_token.fetch_balance_of(asset_manager.address)
     assert share_balance > 0, f"Expected depositor to hold shares, got {share_balance}"
 
-    # 7. Run lagoon-redeem to cash out all shares
+    # 7. Run lagoon-redeem to cash out all shares.
     mocker.patch.dict("os.environ", base_env, clear=True)
     cli.main(args=["lagoon-redeem"], standalone_mode=False)
 
-    # 8. Verify redemption: shares gone, USDC returned, state updated
+    # 7. Verify redemption: shares gone, USDC returned, state updated.
     share_balance_after = vault.share_token.fetch_balance_of(asset_manager.address)
     assert share_balance_after == 0, f"Expected 0 shares after redeem, got {share_balance_after}"
 
