@@ -1089,9 +1089,15 @@ class HypercoreVaultRouting(RoutingModel):
                 poll_interval=2.0,
             )
             # Use the deposited amount (delta) as executed_amount, NOT the
-            # total vault equity.  Position quantity tracks cumulative USDC
+            # total vault equity. Position quantity tracks cumulative USDC
             # deposited; the valuation model then computes per-unit price
             # as equity/quantity so that value = equity.
+            #
+            # For the first HyperCore deposit, the activation fee is deducted
+            # from deposit_raw above. This means the first position absorbs
+            # the activation fee through a smaller executed_amount and thus a
+            # higher executed_price (executed_reserve / executed_amount),
+            # instead of treating the fee as a separate neutral transfer.
             executed_amount = actual_deposit_human
             logger.info(
                 "Vault equity after deposit: %s (deposited %s USDC, activation cost %s USDC)",
