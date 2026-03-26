@@ -297,3 +297,78 @@ def create_hypercore_vault_value_func(
             raise
 
     return get_hypercore_vault_value
+
+
+def create_hypercore_vault_lockup_func(
+    execution_model=None,
+    *,
+    session=None,
+    safe_address: str | None = None,
+    is_testnet: bool = False,
+) -> Callable[[TradingPairIdentifier], float | None]:
+    """Create a function that returns vault lockup remaining hours.
+
+    Uses the cached :py:func:`~eth_defi.hyperliquid.api.fetch_user_vault_equity`
+    so no extra API calls are made when used alongside
+    :py:func:`create_hypercore_vault_value_func`.
+
+    :param execution_model:
+        The execution model that provides the Safe address.
+
+    :param session:
+        Explicit Hyperliquid API session.
+
+    :param safe_address:
+        Explicit Safe address (used when no execution model available).
+
+    :param is_testnet:
+        Whether to use testnet API URL.
+
+    :return:
+        Function that takes a TradingPairIdentifier and returns
+        lockup remaining in hours, or ``None`` if no position found.
+    """
+    if execution_model is None:
+        assert session is not None and safe_address is not None, \
+            "Either execution_model or both session and safe_address must be provided"
+        _session = session
+        _safe_address = safe_address
+    else:
+        _session = None
+        _safe_address = None
+
+    def get_hypercore_vault_lockup_hours(pair: TradingPairIdentifier) -> float | None:
+        """Get remaining lockup hours for a Hypercore vault position.
+
+        :return:
+            Remaining lockup in hours, or ``None`` if no position.
+        """
+        vault_address = pair.pool_address
+        assert vault_address, f"No pool_address set for Hypercore vault pair: {pair}"
+
+        if _session is not None:
+            session = _session
+            safe_address = _safe_address
+        else:
+            safe_address = execution_model.tx_builder.get_token_delivery_address()
+            api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
+            session = create_hyperliquid_session(api_url=api_url)
+
+        eq = fetch_user_vault_equity(
+            session,
+            user=safe_address,
+            vault_address=vault_address,
+        )
+
+        if eq is None:
+            return None
+
+        remaining = eq.lockup_remaining
+        hours = remaining.total_seconds() / 3600
+        logger.debug(
+            "Hypercore vault %s lockup for %s: %.2f hours remaining (until %s)",
+            vault_address, safe_address, hours, eq.locked_until,
+        )
+        return hours
+
+    return get_hypercore_vault_lockup_hours

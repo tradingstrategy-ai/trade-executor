@@ -560,6 +560,7 @@ def create_hypercore_vault_adapter(
     simulate: bool = False,
     hypercore_market_data_source: "HypercoreVaultMarketDataSource | None" = None,
     candle_universe: "GroupedCandleUniverse | None" = None,
+    lockup_func: Callable | None = None,
 ) -> ProtocolRoutingConfig:
     """Create adapter for Hypercore native vault positions.
 
@@ -620,6 +621,7 @@ def create_hypercore_vault_adapter(
         hypercore_vault_value_func,
         simulate=simulate,
         market_data_source=hypercore_market_data_source,
+        lockup_func=lockup_func,
     )
 
     routing_model = None
@@ -868,13 +870,14 @@ class EthereumPairConfigurator(PairConfigurator):
         if hasattr(self, "hypercore_vault_value_func") and self.hypercore_vault_value_func is not None:
             return
 
-        from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_value_func
+        from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_value_func, create_hypercore_vault_lockup_func
         if not hasattr(self.execution_model, 'tx_builder') or not hasattr(self.execution_model.tx_builder, 'vault'):
             # Hot wallet mode doesn't have a vault object — value func
             # cannot be created. Pricing will fall back to candle data.
             logger.info("Hypercore vault value func not available (no vault in tx_builder, hot wallet mode?)")
             return
         self.hypercore_vault_value_func = create_hypercore_vault_value_func(self.execution_model)
+        self.hypercore_vault_lockup_func = create_hypercore_vault_lockup_func(self.execution_model)
         logger.info("Auto-discovered Hypercore vault pairs — wired up Hypercore value func")
 
     def get_web3_for_chain(self, chain_id: int) -> Web3:
@@ -932,6 +935,7 @@ class EthereumPairConfigurator(PairConfigurator):
                 simulate=simulate,
                 hypercore_market_data_source=self.hypercore_market_data_source,
                 candle_universe=self.strategy_universe.data_universe.candles if self.strategy_universe else None,
+                lockup_func=getattr(self, "hypercore_vault_lockup_func", None),
             )
         elif routing_id.router_name == "vault":
             return create_vault_adapter(

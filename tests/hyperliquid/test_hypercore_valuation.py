@@ -29,6 +29,7 @@ from tradeexecutor.ethereum.vault.hypercore_vault import (
     HLP_VAULT_ADDRESS,
     create_hypercore_vault_pair,
     create_hypercore_vault_value_func,
+    create_hypercore_vault_lockup_func,
 )
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
@@ -160,3 +161,77 @@ def test_valuation_model(value_func, vault_pair):
     assert evt.new_price > 0, f"Expected positive price, got {evt.new_price}"
     assert evt.new_value > 0, f"Expected positive value, got {evt.new_value}"
     assert position.last_token_price > 0
+
+
+def test_lockup_func_returns_hours(session, vault_pair):
+    """Lockup func returns remaining hours as a float.
+
+    1. Create a lockup func for the Trial 3 Safe
+    2. Call it with the HLP vault pair
+    3. Verify it returns a non-negative float
+    """
+    lockup_func = create_hypercore_vault_lockup_func(
+        session=session,
+        safe_address=TRIAL3_SAFE,
+        is_testnet=False,
+    )
+    hours = lockup_func(vault_pair)
+    assert hours is not None, "Expected lockup hours, got None (no vault position?)"
+    assert isinstance(hours, float)
+    assert hours >= 0
+
+
+def test_valuation_populates_lockup_hours(session, value_func, vault_pair):
+    """Valuator with lockup_func populates position.other_data with lockup hours.
+
+    1. Create a lockup func for the Trial 3 Safe
+    2. Build a position with a successful deposit trade
+    3. Run the valuator with the lockup func
+    4. Verify vault_lockup_remaining_hours is set in other_data
+    """
+    lockup_func = create_hypercore_vault_lockup_func(
+        session=session,
+        safe_address=TRIAL3_SAFE,
+        is_testnet=False,
+    )
+
+    ts = native_datetime_utc_now()
+    position = TradingPosition(
+        position_id=1,
+        pair=vault_pair,
+        opened_at=ts,
+        last_pricing_at=ts,
+        last_token_price=1.0,
+        last_reserve_price=1.0,
+        reserve_currency=vault_pair.quote,
+    )
+    trade = TradeExecution(
+        trade_id=1,
+        position_id=1,
+        trade_type=TradeType.rebalance,
+        pair=vault_pair,
+        opened_at=ts,
+        planned_quantity=Decimal(5),
+        planned_price=1.0,
+        planned_reserve=Decimal(5),
+        reserve_currency=vault_pair.quote,
+    )
+    trade.started_at = ts
+    trade.mark_broadcasted(ts)
+    trade.mark_success(
+        executed_at=ts,
+        executed_price=1.0,
+        executed_quantity=Decimal(5),
+        executed_reserve=Decimal(5),
+        lp_fees=0.0,
+        native_token_price=0.0,
+    )
+    position.trades[1] = trade
+
+    valuator = HypercoreVaultValuator(value_func, lockup_func=lockup_func)
+    valuator(ts, position)
+
+    assert "vault_lockup_remaining_hours" in position.other_data
+    hours = position.other_data["vault_lockup_remaining_hours"]
+    assert isinstance(hours, float)
+    assert hours >= 0
