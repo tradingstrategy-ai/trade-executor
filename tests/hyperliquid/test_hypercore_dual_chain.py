@@ -195,8 +195,6 @@ def test_withdrawal_equity_check_non_fatal_on_api_failure(mock_fetch_equity, moc
 
 def test_wait_for_usdc_arrival_succeeds():
     """P2: USDC arrives after 2 polls — returns actual increase."""
-    import pytest
-    from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreVaultRouting
 
     routing = _make_routing()
     # Poll 1: no increase, Poll 2: +50 USDC
@@ -214,6 +212,34 @@ def test_wait_for_usdc_arrival_succeeds():
             )
 
     assert result == 50_000_000
+
+
+def test_wait_for_usdc_arrival_accepts_follow_up_phase_tolerance():
+    """Accept EVM arrival when the bridged amount is within the temporary later-phase tolerance.
+
+    1. Create a routing object and mock the Safe EVM balance just inside the temporary tolerance.
+    2. Wait for the EVM balance increase using the withdrawal verifier.
+    3. Verify the slightly short increase is still accepted.
+    """
+    routing = _make_routing()
+
+    # 1. Create a routing object and mock the Safe EVM balance just inside the temporary tolerance.
+    routing._fetch_safe_evm_usdc_balance = MagicMock(
+        side_effect=[149_981_000],
+    )
+
+    # 2. Wait for the EVM balance increase using the withdrawal verifier.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+            result = routing._wait_for_usdc_arrival(
+                baseline_balance_raw=100_000_000,
+                expected_increase_raw=50_000_000,
+                timeout=30.0,
+                poll_interval=2.0,
+            )
+
+    # 3. Verify the slightly short increase is still accepted.
+    assert result == 49_981_000
 
 
 def test_wait_for_usdc_arrival_timeout():
@@ -249,6 +275,34 @@ def test_wait_for_usdc_arrival_timeout():
 
     assert "did not arrive" in str(exc_info.value)
     assert "50000000" in str(exc_info.value)
+
+
+def test_wait_for_spot_free_usdc_balance_accepts_follow_up_phase_tolerance():
+    """Accept spot balance when the moved amount is within the temporary later-phase tolerance.
+
+    1. Create a routing object and mock the spot free balance just inside the temporary tolerance.
+    2. Wait for the spot free USDC balance using the withdrawal verifier.
+    3. Verify the slightly short balance is still accepted.
+    """
+    routing = _make_routing()
+
+    # 1. Create a routing object and mock the spot free balance just inside the temporary tolerance.
+    routing._fetch_safe_spot_free_usdc_balance = MagicMock(
+        side_effect=[Decimal("1.980001")],
+    )
+
+    # 2. Wait for the spot free USDC balance using the withdrawal verifier.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+            result = routing._wait_for_spot_free_usdc_balance(
+                baseline_balance=Decimal("1.0"),
+                expected_increase_raw=1_000_000,
+                timeout=30.0,
+                poll_interval=2.0,
+            )
+
+    # 3. Verify the slightly short balance is still accepted.
+    assert result == Decimal("1.980001")
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")

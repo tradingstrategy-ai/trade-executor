@@ -130,6 +130,11 @@ HYPERCORE_LIKELY_CLOSE_TOLERANCE = 0.975
 #: accounting later.
 HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 10_000
 
+# Temporary stop-gap for follow-up withdrawal verification phases.
+# Proper fix: carry the actually observed amount from one phase to the next.
+# Remove this extra slack once settlement becomes amount-adaptive across phases.
+HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW = 20_000
+
 def usdc_to_raw(amount: Decimal) -> int:
     """Convert a human-readable USDC amount to raw 6-decimal integer."""
     return int(amount * 10**USDC_DECIMALS)
@@ -529,6 +534,12 @@ class HypercoreVaultRouting(RoutingModel):
         :raises HypercoreWithdrawalVerificationError:
             If USDC does not arrive within the timeout.
         """
+        # Temporary stop-gap: accept a slightly smaller bridged amount here.
+        # Proper fix: propagate the observed HyperCore spot amount into phase 3.
+        expected_increase_threshold_raw = max(
+            expected_increase_raw - HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW,
+            0,
+        )
         deadline = time.time() + timeout
         attempt = 0
 
@@ -540,12 +551,12 @@ class HypercoreVaultRouting(RoutingModel):
             current_balance_raw = self._fetch_safe_evm_usdc_balance()
             increase = current_balance_raw - baseline_balance_raw
 
-            if increase >= expected_increase_raw:
+            if increase >= expected_increase_threshold_raw:
                 logger.info(
                     "USDC arrived in Safe %s after %d poll(s): "
-                    "+%d raw (expected %d raw)",
+                    "+%d raw (expected at least %d raw, planned %d raw)",
                     self.safe_address, attempt,
-                    increase, expected_increase_raw,
+                    increase, expected_increase_threshold_raw, expected_increase_raw,
                 )
                 return increase
 
@@ -553,7 +564,8 @@ class HypercoreVaultRouting(RoutingModel):
             if remaining <= 0:
                 raise HypercoreWithdrawalVerificationError(
                     f"USDC did not arrive in Safe {self.safe_address} within {timeout}s. "
-                    f"Expected increase: {expected_increase_raw} raw, "
+                    f"Expected increase at threshold: {expected_increase_threshold_raw} raw "
+                    f"(planned {expected_increase_raw} raw), "
                     f"actual increase: {increase} raw, "
                     f"baseline: {baseline_balance_raw} raw, "
                     f"current: {current_balance_raw} raw, "
@@ -566,7 +578,7 @@ class HypercoreVaultRouting(RoutingModel):
             logger.info(
                 "Waiting for USDC in Safe %s: increase %d/%d raw "
                 "(%.0fs remaining, poll #%d)",
-                self.safe_address, increase, expected_increase_raw,
+                self.safe_address, increase, expected_increase_threshold_raw,
                 remaining, attempt,
             )
             time.sleep(min(poll_interval, remaining))
@@ -626,8 +638,13 @@ class HypercoreVaultRouting(RoutingModel):
         poll_interval: float = 2.0,
     ) -> Decimal:
         """Poll HyperCore spot free USDC until the perp-to-spot move is visible."""
-        # Allow $0.01 tolerance for Hypercore API rounding
-        expected_balance = baseline_balance + raw_to_usdc(expected_increase_raw) - Decimal("0.01")
+        # Temporary stop-gap: accept a slightly smaller spot balance here.
+        # Proper fix: propagate the observed perp balance into phase 2.
+        expected_increase_threshold_raw = max(
+            expected_increase_raw - HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW,
+            0,
+        )
+        expected_balance = baseline_balance + raw_to_usdc(expected_increase_threshold_raw)
         deadline = time.time() + timeout
         attempt = 0
 
