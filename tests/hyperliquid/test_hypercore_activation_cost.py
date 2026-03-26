@@ -206,17 +206,22 @@ def test_create_buy_transactions_split_approve_and_deposit():
 def test_create_sell_transactions_build_vault_withdraw_phase1_only():
     """Build live withdrawal phase 1 as a standalone vault-withdraw call.
 
-    1. Create one sell trade for live Hypercore routing.
+    This tests a partial sell (no TradeFlag.close), so the planned_reserve
+    is used as-is without querying live vault equity.
+
+    1. Create one sell trade for live Hypercore routing with no close flag.
     2. Mock the reusable ``eth_defi`` vault-withdraw builder plus transaction signing.
     3. Verify routing returns one phase-1 transaction for vault -> perp.
     """
     routing = _make_routing(simulate=False)
     trade = _make_trade(planned_reserve=Decimal("25.0"), is_buy=False)
     trade.pair.pool_address = "0x1111111111111111111111111111111111111111"
+    # No TradeFlag.close — this is a partial reduction, not a full close.
+    trade.flags = set()
     withdraw_fn = MagicMock()
     signed_tx = MagicMock()
 
-    # 1. Create one sell trade for live Hypercore routing.
+    # 1. Create one sell trade for live Hypercore routing with no close flag.
     # 2. Mock the reusable vault-withdraw builder and signing.
     # 3. Verify routing returns exactly one phase-1 withdrawal transaction.
     with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_withdraw_from_vault_call", return_value=withdraw_fn) as build_withdraw:
@@ -230,6 +235,91 @@ def test_create_sell_transactions_build_vault_withdraw_phase1_only():
         hypercore_usdc_amount=25_000_000,
     )
     sign_call.assert_called_once()
+
+
+def test_withdrawal_uses_live_equity_on_close():
+    """Full close withdrawal uses live vault equity instead of planned_reserve.
+
+    HyperCore's vaultTransfer silently rejects withdrawals exceeding actual
+    equity.  When TradeFlag.close is set, the routing queries live equity via
+    ``userVaultEquities`` and uses that as the withdrawal amount.  The planned
+    value is only a sanity reference.
+
+    1. Create a sell trade with TradeFlag.close and planned_reserve slightly
+       above actual vault equity (reproducing the production failure).
+    2. Mock ``fetch_user_vault_equity`` to return the lower live equity.
+    3. Verify the withdrawal tx is built with the live equity amount.
+    4. Verify the live amount is stored in ``trade.other_data`` for settlement.
+    """
+    import datetime
+    from eth_defi.hyperliquid.api import UserVaultEquity
+    from tradeexecutor.state.trade import TradeFlag
+
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("7.129505"), is_buy=False)
+    trade.pair.pool_address = "0x4dec0a851849056e259128464ef28ce78afa27f6"
+    trade.flags = {TradeFlag.close}
+    withdraw_fn = MagicMock()
+    signed_tx = MagicMock()
+
+    # 1. Live equity is slightly below planned_reserve (production scenario).
+    live_equity = UserVaultEquity(
+        vault_address="0x4dec0a851849056e259128464ef28ce78afa27f6",
+        equity=Decimal("7.128756"),
+        locked_until=datetime.datetime(2020, 1, 1),
+    )
+
+    # 2. Mock the equity fetch and tx building.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=live_equity):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_withdraw_from_vault_call", return_value=withdraw_fn) as build_withdraw:
+            with patch.object(routing, "_sign_module_call", return_value=signed_tx):
+                txs = routing._create_deposit_or_withdraw_txs(trade)
+
+    assert txs == [signed_tx]
+
+    # 3. Verify the withdrawal uses live equity (7_128_756), not planned (7_129_505).
+    build_withdraw.assert_called_once_with(
+        routing.lagoon_vault,
+        vault_address="0x4dec0a851849056e259128464ef28ce78afa27f6",
+        hypercore_usdc_amount=7_128_756,
+    )
+
+    # 4. Verify the live amount is stored for settlement to read back.
+    assert trade.other_data["hypercore_capped_withdrawal_raw"] == 7_128_756
+
+
+def test_withdrawal_rejects_large_equity_mismatch():
+    """Abort withdrawal when live equity diverges too far from planned amount.
+
+    If the live vault equity is below HYPERCORE_LIKELY_CLOSE_TOLERANCE of the
+    planned amount, something is seriously wrong and we abort rather than
+    withdraw an unexpected amount.
+
+    1. Create a sell trade with planned_reserve=100 USDC.
+    2. Mock live equity at 90 USDC (90% — below the 97.5% tolerance).
+    3. Verify the withdrawal raises AssertionError.
+    """
+    import datetime
+    import pytest
+    from eth_defi.hyperliquid.api import UserVaultEquity
+    from tradeexecutor.state.trade import TradeFlag
+
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("100.0"), is_buy=False)
+    trade.pair.pool_address = "0x1111111111111111111111111111111111111111"
+    trade.flags = {TradeFlag.close}
+
+    # 1. Live equity is only 90% of planned — below the 97.5% tolerance.
+    live_equity = UserVaultEquity(
+        vault_address="0x1111111111111111111111111111111111111111",
+        equity=Decimal("90.0"),
+        locked_until=datetime.datetime(2020, 1, 1),
+    )
+
+    # 2. The sanity check should reject this large mismatch.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=live_equity):
+        with pytest.raises(AssertionError, match="too far below"):
+            routing._create_deposit_or_withdraw_txs(trade)
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
@@ -306,3 +396,109 @@ def test_settlement_second_buy_no_activation_cost(
     # Verify _broadcast_phase2 received the full 50 USDC raw (not 48)
     deposit_raw_passed = mock_phase2.call_args[0][2]
     assert deposit_raw_passed == 50_000_000
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_settlement_uses_capped_withdrawal_amount(
+    mock_fetch_equity, mock_block_ts, mock_report_failure,
+):
+    """Withdrawal settlement uses the capped live-equity amount from phase 1.
+
+    When phase 1 stored a ``hypercore_capped_withdrawal_raw`` in
+    ``trade.other_data``, settlement must use that amount (not
+    ``planned_reserve``) for phases 2-3 and balance polling.  The
+    "Withdrawal partial" warning must NOT fire when the executed amount
+    matches the capped target.
+
+    1. Create a sell trade with planned_reserve > capped amount (simulating
+       a full close where live equity was slightly below planned).
+    2. Set ``hypercore_capped_withdrawal_raw`` in ``trade.other_data``.
+    3. Mock all settlement phases to succeed with the capped amount.
+    4. Verify phases 2-3 receive the capped raw amount.
+    5. Verify no ``report_failure`` call (trade succeeds).
+    """
+    import datetime
+    import logging
+    from decimal import Decimal
+    from eth_defi.hyperliquid.api import UserVaultEquity
+    from hexbytes import HexBytes
+
+    routing = _make_routing(simulate=False)
+    capped_raw = 7_128_756  # Live equity at phase 1 build time
+    planned_raw = 7_129_505  # Original planned_reserve (slightly higher)
+
+    trade = _make_trade(planned_reserve=Decimal("7.129505"), is_buy=False)
+    trade.pair.pool_address = "0x4dec0a851849056e259128464ef28ce78afa27f6"
+    # Phase 1 stored the capped amount
+    trade.other_data = {"hypercore_capped_withdrawal_raw": capped_raw}
+    trade.blockchain_transactions = [MagicMock(tx_hash="0xaa")]
+
+    state = MagicMock()
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+
+    # Phase 1 receipt: success
+    receipts = {HexBytes("0xaa"): {"status": 1, "blockNumber": 100}}
+
+    # Equity snapshots (before / after withdrawal)
+    mock_fetch_equity.side_effect = [
+        UserVaultEquity(
+            vault_address="0x4dec0a851849056e259128464ef28ce78afa27f6",
+            equity=Decimal("7.128756"),
+            locked_until=datetime.datetime(2030, 1, 1),
+        ),
+        UserVaultEquity(
+            vault_address="0x4dec0a851849056e259128464ef28ce78afa27f6",
+            equity=Decimal("0.0"),
+            locked_until=datetime.datetime(2030, 1, 1),
+        ),
+    ]
+
+    # Phase 2 and 3 broadcast mocks
+    phase2_tx = MagicMock(tx_hash="0xbb")
+    phase2_receipt = {"status": 1, "blockNumber": 101}
+    phase3_tx = MagicMock(tx_hash="0xcc")
+    phase3_receipt = {"status": 1, "blockNumber": 102}
+
+    captured_phase2_raw = []
+    captured_phase3_raw = []
+
+    def mock_phase2(raw):
+        captured_phase2_raw.append(raw)
+        return (phase2_tx, phase2_receipt)
+
+    def mock_phase3(raw):
+        captured_phase3_raw.append(raw)
+        return (phase3_tx, phase3_receipt)
+
+    # Mock the polling functions to return the capped amount
+    perp_balance = Decimal("7.128756")
+    spot_balance = Decimal("7.128756")
+
+    with (
+        patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=19_000_000),
+        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
+        patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0")),
+        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=perp_balance),
+        patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=spot_balance),
+        patch.object(routing, "_wait_for_usdc_arrival", return_value=capped_raw),
+        patch.object(routing, "_broadcast_withdrawal_phase2", side_effect=mock_phase2),
+        patch.object(routing, "_broadcast_withdrawal_phase3", side_effect=mock_phase3),
+    ):
+        routing._settle_withdrawal(
+            routing.web3, state, trade, receipts,
+            stop_on_execution_failure=False,
+        )
+
+    # 4. Verify phases 2-3 received the capped amount, not planned.
+    assert captured_phase2_raw == [capped_raw], (
+        f"Phase 2 should use capped amount {capped_raw}, got {captured_phase2_raw}"
+    )
+    assert captured_phase3_raw == [capped_raw], (
+        f"Phase 3 should use capped amount {capped_raw}, got {captured_phase3_raw}"
+    )
+
+    # 5. Trade succeeded — no failure reported.
+    state.mark_trade_success.assert_called_once()
+    mock_report_failure.assert_not_called()

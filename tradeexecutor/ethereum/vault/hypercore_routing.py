@@ -79,7 +79,7 @@ from tradeexecutor.state.blockhain_transaction import (
 )
 from tradeexecutor.state.pickle_over_json import encode_pickle_over_json
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeFlag
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -105,6 +105,13 @@ HYPERCORE_MULTICALL_GAS = 650_000
 
 #: USDC uses 6 decimals on HyperEVM.
 USDC_DECIMALS = 6
+
+#: When closing a Hypercore vault position, the planned withdrawal amount
+#: (from trade creation) and the live vault equity (at execution time) must
+#: agree within this tolerance.  If live equity is below this fraction of
+#: the planned amount, something is seriously wrong (wrong vault, corrupted
+#: state, major vault event) and we abort rather than risk a bad withdrawal.
+HYPERCORE_LIKELY_CLOSE_TOLERANCE = 0.975
 
 def usdc_to_raw(amount: Decimal) -> int:
     """Convert a human-readable USDC amount to raw 6-decimal integer."""
@@ -340,6 +347,93 @@ class HypercoreVaultRouting(RoutingModel):
         """Get the raw USDC amount (6 decimals) for the trade."""
         planned_reserve = trade.get_planned_reserve()
         return usdc_to_raw(planned_reserve)
+
+    def _get_live_withdrawal_amount_for_close(
+        self,
+        trade: TradeExecution,
+        planned_raw: int,
+        vault_address: str,
+    ) -> int:
+        """Query live vault equity and return the authoritative withdrawal amount.
+
+        Hyperliquid has no "withdraw all" API — ``vaultTransfer`` requires an
+        exact USD amount.  If we pass a value that exceeds the vault's current
+        equity (even by a fraction), HyperCore silently rejects the withdrawal:
+        the EVM precompile tx succeeds but zero USDC moves.
+
+        For full position closes (``TradeFlag.close``), the planned reserve set
+        at trade-creation time can drift from actual vault equity due to fees,
+        PnL, or NAV changes.  This method fetches the **live** equity from the
+        ``userVaultEquities`` API and uses it directly as the withdrawal amount.
+        The planned value serves only as a sanity reference — if the two
+        disagree by more than :py:data:`HYPERCORE_LIKELY_CLOSE_TOLERANCE`, we
+        abort because something is seriously wrong.
+
+        The live amount is stored in ``trade.other_data`` so that settlement
+        phases 2-3 use the same value that phase 1's ``vaultTransfer`` was
+        built with.
+
+        :param trade:
+            The closing trade.  Must have ``TradeFlag.close`` in its flags.
+        :param planned_raw:
+            Raw USDC amount (6 decimals) from ``trade.get_planned_reserve()``.
+        :param vault_address:
+            Hypercore vault address to query equity for.
+        :return:
+            Raw USDC amount to withdraw (the live vault equity).
+        :raises AssertionError:
+            If the vault has no position or the live equity diverges from
+            the planned amount by more than the tolerance.
+        """
+        session = self._get_session()
+
+        # 1. Fetch the live vault equity — bypass cache to get a fresh read
+        #    right before we build the withdrawal tx.
+        equity = fetch_user_vault_equity(
+            session,
+            user=self.safe_address,
+            vault_address=vault_address,
+            bypass_cache=True,
+        )
+
+        # 2. A close trade must have an existing vault position.
+        #    If the API returns None the position has already been withdrawn
+        #    or was never opened — something is very wrong.
+        assert equity is not None, (
+            f"Cannot close vault position: fetch_user_vault_equity returned None "
+            f"for Safe {self.safe_address} in vault {vault_address}. "
+            f"The position may already be withdrawn."
+        )
+
+        live_raw = usdc_to_raw(equity.equity)
+
+        # 3. Sanity check: the planned and live values must agree within
+        #    HYPERCORE_LIKELY_CLOSE_TOLERANCE (default 97.5%).  A larger
+        #    divergence signals a wrong vault address, corrupted state, or a
+        #    major vault event — abort rather than withdraw an unexpected amount.
+        assert live_raw >= planned_raw * HYPERCORE_LIKELY_CLOSE_TOLERANCE, (
+            f"Live vault equity ({equity.equity} USDC, {live_raw} raw) is too far "
+            f"below planned withdrawal ({raw_to_usdc(planned_raw)} USDC, {planned_raw} raw) "
+            f"for Safe {self.safe_address} in vault {vault_address}. "
+            f"Ratio: {live_raw / planned_raw:.4f}, "
+            f"tolerance: {HYPERCORE_LIKELY_CLOSE_TOLERANCE}. "
+            f"Aborting withdrawal to avoid unexpected behaviour."
+        )
+
+        logger.info(
+            "Full close: using live vault equity %s USDC (%d raw) instead of "
+            "planned %s USDC (%d raw) for Safe %s, vault %s",
+            equity.equity, live_raw,
+            raw_to_usdc(planned_raw), planned_raw,
+            self.safe_address, vault_address,
+        )
+
+        # 4. Store the live amount in trade.other_data so settlement can read
+        #    it back.  Phases 2-3 (transferUsdClass, sendAsset) must use the
+        #    same amount that phase 1's vaultTransfer was built with.
+        trade.other_data["hypercore_capped_withdrawal_raw"] = live_raw
+
+        return live_raw
 
     def _fetch_safe_evm_usdc_balance(self) -> int:
         """Read the Safe's EVM USDC balance (raw, 6 decimals).
@@ -678,6 +772,16 @@ class HypercoreVaultRouting(RoutingModel):
                 return [approve_tx, deposit_tx]
 
         else:
+            # For full position close, query live vault equity and use that as
+            # the withdrawal amount.  HyperCore's vaultTransfer precompile
+            # silently rejects withdrawals that exceed actual equity — the EVM
+            # tx succeeds but zero USDC moves.  The live equity is the
+            # authoritative amount; planned_reserve is only a sanity reference.
+            if TradeFlag.close in trade.flags and not self.simulate:
+                raw_amount = self._get_live_withdrawal_amount_for_close(
+                    trade, raw_amount, vault_address,
+                )
+
             logger.info(
                 "Building Hypercore vault withdrawal phase 1: %d raw USDC from vault %s",
                 raw_amount,
@@ -1166,6 +1270,21 @@ class HypercoreVaultRouting(RoutingModel):
         if not self.simulate:
             baseline_balance_raw = self._fetch_safe_evm_usdc_balance()
             expected_raw = self._get_raw_usdc_amount(trade)
+
+            # If the withdrawal amount was adjusted during phase 1 build
+            # (full close trades that use live vault equity), use that amount
+            # for all settlement phases.  Phase 1's vaultTransfer was built
+            # with this amount, so phases 2-3 must transfer exactly the same
+            # amount through the pipeline: perp → spot → EVM.
+            if "hypercore_capped_withdrawal_raw" in trade.other_data:
+                capped_raw = trade.other_data["hypercore_capped_withdrawal_raw"]
+                logger.info(
+                    "Using live equity withdrawal amount for settlement: %d raw USDC "
+                    "(planned was %d raw USDC)",
+                    capped_raw, expected_raw,
+                )
+                expected_raw = capped_raw
+
             logger.info(
                 "Withdrawal settlement: Safe %s baseline EVM USDC = %d raw, "
                 "expected increase = %d raw",
@@ -1344,10 +1463,14 @@ class HypercoreVaultRouting(RoutingModel):
                 return
 
             executed_reserve = raw_to_usdc(actual_increase_raw)
-            if executed_reserve < planned_reserve:
+            # Compare against the effective withdrawal target (live equity if
+            # capped, else planned) to avoid spurious "partial" warnings on
+            # normal capped-close trades where live equity < planned_reserve.
+            effective_reserve = raw_to_usdc(expected_raw)
+            if executed_reserve < effective_reserve:
                 logger.warning(
-                    "Withdrawal partial: received %s USDC but planned %s USDC (trade %s)",
-                    executed_reserve, planned_reserve, trade.trade_id,
+                    "Withdrawal partial: received %s USDC but expected %s USDC (trade %s)",
+                    executed_reserve, effective_reserve, trade.trade_id,
                 )
 
             # Dual-chain check: verify vault equity decreased on HyperCore

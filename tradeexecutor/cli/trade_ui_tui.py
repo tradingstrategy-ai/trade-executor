@@ -199,7 +199,7 @@ class TradeDialog(ModalScreen):
             with RadioSet(id="mode-radio"):
                 yield RadioButton("Buy and sell (open + close)", value=mode_index == 0)
                 yield RadioButton("Buy only (open position)", value=mode_index == 1)
-                yield RadioButton("Sell only (close position)", value=mode_index == 2)
+                yield RadioButton("Sell all (close full position)", value=mode_index == 2)
             yield Label(f"Amount ({self.reserve_symbol}):")
             if self.default_mode == "close" and self.position_value is not None:
                 default_amount = str(self.position_value)
@@ -207,7 +207,10 @@ class TradeDialog(ModalScreen):
                 default_amount = str(self.min_amount)
             else:
                 default_amount = "5"
-            yield Input(value=default_amount, id="amount-input", type="number")
+            # Close mode always sells the full position — the amount field
+            # is ignored, so disable it to avoid misleading the operator.
+            amount_disabled = (self.default_mode == "close")
+            yield Input(value=default_amount, id="amount-input", type="number", disabled=amount_disabled)
             yield Label("", id="error-label")
             with Horizontal(id="button-row"):
                 yield Button("Cancel", variant="default", id="cancel-btn")
@@ -215,6 +218,13 @@ class TradeDialog(ModalScreen):
 
     def on_mount(self) -> None:
         self.query_one("#amount-input", Input).focus()
+
+    @on(RadioSet.Changed)
+    def on_mode_changed(self, event: RadioSet.Changed) -> None:
+        amount_input = self.query_one("#amount-input", Input)
+        # Close mode always sells the full position — amount is ignored,
+        # so disable the input to avoid misleading the operator.
+        amount_input.disabled = (event.pressed_index == 2)
 
     @on(Button.Pressed, "#cancel-btn")
     def cancel_pressed(self) -> None:
@@ -250,13 +260,10 @@ class TradeDialog(ModalScreen):
 
         radio_set = self.query_one("#mode-radio", RadioSet)
         pressed_index = radio_set.pressed_index
-        mode_map = {0: "open_close", 1: "open", 2: "close"}
+        # Index 2 ("Sell all") always fully closes the position via
+        # close_all — the amount field is disabled and ignored.
+        mode_map = {0: "open_close", 1: "open", 2: "close_all"}
         trade_mode = mode_map.get(pressed_index, "open_close")
-
-        # If selling >= 98% of position value, use close_all to fully close the position
-        if trade_mode == "close" and self.position_value is not None and self.position_value > 0:
-            if amount >= self.position_value * Decimal("0.98"):
-                trade_mode = "close_all"
 
         self.dismiss((trade_mode, amount))
 
