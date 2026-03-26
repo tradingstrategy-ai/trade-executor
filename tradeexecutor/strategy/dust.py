@@ -39,6 +39,11 @@ DEFAULT_USD_LOW_VALUE_THRESHOLD = 0.10
 #: Set by maxRedeem() issue on Spark USDC on Morpho
 DEFAULT_VAULT_EPSILON = Decimal(10 ** -6)
 
+#: Hypercore vault withdrawal leaves ~$0.01 dust due to the safety margin
+#: subtracted from live equity (HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 10_000
+#: raw = $0.01 in 6-decimal USDC).  This epsilon must exceed that margin so
+#: can_be_closed() recognises the residual as dust.
+HYPERLIQUID_VAULT_CLOSE_EPSILON = Decimal("0.02")
 
 
 def get_dust_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
@@ -53,6 +58,9 @@ def get_dust_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
         Maximum amount of units we consider "zero".
 
     """
+
+    if pair.is_hyperliquid_vault():
+        return HYPERLIQUID_VAULT_CLOSE_EPSILON
 
     if pair.is_vault():
         return DEFAULT_VAULT_EPSILON
@@ -87,6 +95,8 @@ def get_close_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
     # Frozen positions
     if pair.is_credit_supply():
         return COLLATERAL_EPSILON
+    elif pair.is_hyperliquid_vault():
+        return HYPERLIQUID_VAULT_CLOSE_EPSILON
     elif pair.is_vault():
         return DEFAULT_VAULT_EPSILON
 
