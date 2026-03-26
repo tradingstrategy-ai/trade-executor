@@ -242,6 +242,22 @@ class TradeDialog(ModalScreen):
         self._submit()
 
     def _submit(self) -> None:
+        radio_set = self.query_one("#mode-radio", RadioSet)
+        pressed_index = radio_set.pressed_index
+        # Index 2 ("Sell all") always fully closes the position via
+        # close_all — the amount field is disabled and ignored.
+        mode_map = {0: "open_close", 1: "open", 2: "close_all"}
+        trade_mode = mode_map.get(pressed_index, "open_close")
+
+        if trade_mode == "close_all":
+            # Sell all: amount is irrelevant — the backend always closes the
+            # full position.  Use position_value as a placeholder so the
+            # downstream code has a non-zero Decimal to carry around.
+            amount = self.position_value or Decimal("0")
+            self.dismiss((trade_mode, amount))
+            return
+
+        # For buy modes, validate the amount input.
         amount_str = self.query_one("#amount-input", Input).value.strip()
         try:
             amount = Decimal(amount_str)
@@ -257,13 +273,6 @@ class TradeDialog(ModalScreen):
                 f"(includes activation cost on first deposit)"
             )
             return
-
-        radio_set = self.query_one("#mode-radio", RadioSet)
-        pressed_index = radio_set.pressed_index
-        # Index 2 ("Sell all") always fully closes the position via
-        # close_all — the amount field is disabled and ignored.
-        mode_map = {0: "open_close", 1: "open", 2: "close_all"}
-        trade_mode = mode_map.get(pressed_index, "open_close")
 
         self.dismiss((trade_mode, amount))
 

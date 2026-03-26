@@ -34,6 +34,14 @@ poetry run python scripts/logos/post-process-logo.py
 
 If we have not run tests before make sure the user has created a gitignored file `.local-test.env` in the repository root. This will use `source` shell command to include the actual test secrets which lie outside the repository structure. Note: this file does not contain actual environment variables, just a `source` command to get them from elsewhere. **Never edit this file** and always ask the user to prepare the file for Claude Code.
 
+Check that the environment is ready by running:
+
+```shell
+source .local-test.env
+```
+
+This should exit without errors.
+
 To run tests you need to use the installed Poetry environment, with given environment secrets file.
 
 To run tests use the `pytest` wrapper command:
