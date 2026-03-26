@@ -25,7 +25,7 @@ from eth_defi.event_reader.reorganisation_monitor import ReorganisationMonitor
 from eth_defi.hotwallet import HotWallet
 
 from tradeexecutor.ethereum.enzyme.tx import EnzymeTransactionBuilder
-from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
+from tradeexecutor.ethereum.multichain_balance import fetch_onchain_balances_multichain
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -503,12 +503,12 @@ class EnzymeVaultSyncModel(SyncModel):
         if block_identifier is None:
             block_identifier = get_almost_latest_block_number(self.web3)
 
-        return fetch_address_balances(
+        return fetch_onchain_balances_multichain(
             self.web3,
             self.get_key_address(),
             sorted_assets,
-            block_number=block_identifier,
             filter_zero=filter_zero,
+            block_number=block_identifier,
         )
 
     def create_event_reader(self) -> Tuple[Web3EventReader, bool]:

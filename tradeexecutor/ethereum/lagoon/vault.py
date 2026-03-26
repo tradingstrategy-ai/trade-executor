@@ -27,7 +27,7 @@ from tradingstrategy.chain import ChainId
 
 from tradeexecutor.ethereum.address_sync_model import AddressSyncModel
 from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
-from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
+from tradeexecutor.ethereum.multichain_balance import fetch_onchain_balances_multichain
 from tradeexecutor.state.balance_update import (BalanceUpdate,
                                                 BalanceUpdateCause,
                                                 BalanceUpdatePositionType)
@@ -284,12 +284,12 @@ class LagoonVaultSyncModel(AddressSyncModel):
         if block_identifier is None:
             block_identifier = self.get_safe_latest_block()
 
-        return fetch_address_balances(
+        return fetch_onchain_balances_multichain(
             self.web3,
             self.get_token_storage_address(),
             sorted_assets,
-            block_number=block_identifier,
             filter_zero=filter_zero,
+            block_number=block_identifier,
         )
 
     def calculate_valuation(self, state: State, *, block_number: int | None = None) -> USDollarPrice:
