@@ -305,6 +305,7 @@ def create_hypercore_vault_lockup_func(
     session=None,
     safe_address: str | None = None,
     is_testnet: bool = False,
+    bypass_cache: bool = False,
 ) -> Callable[[TradingPairIdentifier], float | None]:
     """Create a function that returns vault lockup remaining hours.
 
@@ -323,6 +324,9 @@ def create_hypercore_vault_lockup_func(
 
     :param is_testnet:
         Whether to use testnet API URL.
+
+    :param bypass_cache:
+        If ``True``, skip the cache and always fetch fresh data from the API.
 
     :return:
         Function that takes a TradingPairIdentifier and returns
@@ -358,6 +362,7 @@ def create_hypercore_vault_lockup_func(
             session,
             user=safe_address,
             vault_address=vault_address,
+            bypass_cache=bypass_cache,
         )
 
         if eq is None:
