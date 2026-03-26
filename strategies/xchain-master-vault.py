@@ -204,8 +204,8 @@ class Parameters:
     source_vaults = SOURCE_VAULTS
     #: Allow test-only variants change the reserve chain cleanly.
     preferred_stablecoin = PREFERRED_STABLECOIN
-    #: Synthetic CCTP bridge generation is opt-in.
-    auto_generate_cctp_bridges = False
+    #: Enable shared synthetic forward CCTP bridge generation for satellite chains.
+    auto_generate_cctp_bridges = True
 
     #: Keep the validated 20-vault basket from the notebook.
     max_assets_in_portfolio = 20
