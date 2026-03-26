@@ -452,11 +452,11 @@ class HypercoreVaultRouting(RoutingModel):
         )
 
         logger.info(
-            "Full close: using live vault equity %s USDC (%d raw), "
-            "after safety margin: %d raw, "
+            "Full close: live vault equity %s USDC (%d raw), "
+            "safety margin %d raw, withdrawal amount %d raw (%s USDC), "
             "planned %s USDC (%d raw) for Safe %s, vault %s",
             equity.equity, live_raw,
-            safe_raw,
+            HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW, safe_raw, raw_to_usdc(safe_raw),
             raw_to_usdc(planned_raw), planned_raw,
             self.safe_address, vault_address,
         )
@@ -1314,9 +1314,10 @@ class HypercoreVaultRouting(RoutingModel):
             if "hypercore_capped_withdrawal_raw" in trade.other_data:
                 capped_raw = trade.other_data["hypercore_capped_withdrawal_raw"]
                 logger.info(
-                    "Using live equity withdrawal amount for settlement: %d raw USDC "
-                    "(planned was %d raw USDC)",
-                    capped_raw, expected_raw,
+                    "Using live equity withdrawal amount for settlement: %d raw USDC (%s USDC) "
+                    "(planned was %d raw USDC, safety margin was %d raw)",
+                    capped_raw, raw_to_usdc(capped_raw),
+                    expected_raw, HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,
                 )
                 expected_raw = capped_raw
 
