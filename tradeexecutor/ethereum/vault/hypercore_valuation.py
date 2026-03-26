@@ -452,10 +452,12 @@ class HypercoreVaultValuator(ValuationModel):
         value_func: Callable[[TradingPairIdentifier], Decimal] | None,
         simulate: bool = False,
         market_data_source: HypercoreVaultMarketDataSource | None = None,
+        lockup_func: Callable[[TradingPairIdentifier], datetime.datetime | None] | None = None,
     ):
         self.value_func = value_func
         self.simulate = simulate
         self.market_data_source = market_data_source
+        self.lockup_func = lockup_func
 
     def __call__(
         self,
@@ -521,6 +523,19 @@ class HypercoreVaultValuator(ValuationModel):
         )
 
         position.last_token_price = new_price
+
+        # Populate vault lockup expiry UTC timestamp from the Hyperliquid API.
+        # The UI computes remaining hours client-side from this stable timestamp.
+        # Uses the same cached API response as the value_func, so no extra call.
+        if self.lockup_func is not None:
+            try:
+                expires_at = self.lockup_func(position.pair)
+                position.other_data["vault_lockup_expires_at"] = expires_at.isoformat() if expires_at is not None else None
+            except Exception as e:
+                logger.warning(
+                    "Failed to fetch lockup status for position %s: %s",
+                    position, e,
+                )
 
         logger.info(
             "Hypercore vault position %s, valuation updated: equity=$%.2f, old=$%.2f, new=$%.2f",
