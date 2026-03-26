@@ -320,7 +320,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 last_event = p.valuation_updates[-1] if p.valuation_updates else None
 
                 # Try to dump as much as possible information for diagnostics
-                assert updated_ago < self.valuation_data_freshness, f"Position {p} pricing was too old for Lagoon valuation update. Now: {now}, updated at: {valued_at}, diff: {updated_ago}, threshold: {self.valuation_data_freshness}, last valuation event: {last_event}"
+                assert updated_ago < self.valuation_data_freshness, f"The last valuation of this position is too old for us to comfortably update the onchain share price. Position {p}. Now: {now}, updated at: {valued_at}, diff: {updated_ago}, threshold: {self.valuation_data_freshness}, last valuation event: {last_event}"
 
         if self.calculate_valuation_func is not None:
             return self.calculate_valuation_func(state, block_number=block_number)
