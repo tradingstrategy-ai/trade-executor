@@ -27,7 +27,7 @@ from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.types import USDollarPrice, USDollarAmount
 from tradeexecutor.strategy import size_risk_model
-from tradeexecutor.strategy.alpha_model import AlphaModel
+from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignalFlags
 from tradeexecutor.strategy.fixed_size_risk import FixedSizeRiskModel
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pandas_trader.rebalance import get_existing_portfolio_weights, rebalance_portfolio_old, \
@@ -1550,6 +1550,118 @@ def test_alpha_model_vault_weights(universe):
     assert signal is not None
     assert signal.old_weight == pytest.approx(1.0, rel=0.01)  # $3000 / $3000 spot = 100%
     assert signal.old_value == pytest.approx(3000, rel=0.01)
+
+
+def test_alpha_model_carries_forward_locked_hypercore_vault(
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model: BacktestPricing,
+    aave_usdc: TradingPairIdentifier,
+    start_ts: datetime.datetime,
+    usdc: AssetIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check AlphaModel does not rebalance away capital from a locked Hypercore vault.
+
+    1. Build a portfolio with one open Hypercore vault position and some free USDC cash.
+    2. Mark the Hypercore vault as non-redeemable and carry it forward before sizing a new AAVE target.
+    3. Verify the locked vault stays pinned with zero adjustment and only the free cash becomes a buy trade.
+    """
+    state = State()
+    state.portfolio.reserves = {
+        usdc: ReservePosition(
+            asset=usdc,
+            quantity=Decimal(2500),
+            last_sync_at=start_ts,
+            reserve_token_price=USDollarAmount(1.0),
+            last_pricing_at=start_ts,
+            initial_deposit=Decimal(2500),
+        )
+    }
+
+    hypercore_vault_pair = TradingPairIdentifier(
+        base=AssetIdentifier(1, "0x1234567890123456789012345678901234567890", "pmalt", 18),
+        quote=usdc,
+        pool_address="0x1234567890123456789012345678901234567891",
+        exchange_address="0x1234567890123456789012345678901234567892",
+        internal_id=100,
+        kind=TradingPairKind.vault,
+        fee=0,
+    )
+    hypercore_vault_pair.other_data["vault_protocol"] = "hypercore"
+
+    locked_position = TradingPosition(
+        position_id=1,
+        opened_at=start_ts,
+        pair=hypercore_vault_pair,
+        last_pricing_at=start_ts,
+        last_token_price=USDollarPrice(1.0),
+        last_reserve_price=USDollarPrice(1.0),
+        reserve_currency=usdc,
+    )
+    locked_trade = TradeExecution(
+        trade_id=1,
+        position_id=1,
+        trade_type=TradeType.rebalance,
+        pair=hypercore_vault_pair,
+        opened_at=start_ts,
+        planned_quantity=Decimal(5000),
+        executed_quantity=Decimal(5000),
+        planned_price=USDollarPrice(1.0),
+        executed_price=USDollarPrice(1.0),
+        lp_fees_estimated=USDollarAmount(0),
+        planned_reserve=USDollarAmount(5000),
+        executed_reserve=USDollarAmount(5000),
+        executed_at=start_ts,
+        reserve_currency=usdc,
+    )
+    locked_position.trades[1] = locked_trade
+    state.portfolio.open_positions = {1: locked_position}
+
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),
+        strategy_universe.data_universe,
+        state,
+        pricing_model,
+    )
+
+    monkeypatch.setattr(
+        pricing_model,
+        "can_redeem",
+        lambda ts, pair: pair != hypercore_vault_pair,
+    )
+
+    alpha_model = AlphaModel(timestamp=position_manager.timestamp)
+    alpha_model.set_signal(aave_usdc, 1.0)
+
+    # 1. Build a portfolio with one open Hypercore vault position and some free USDC cash.
+    locked_position_value = alpha_model.carry_forward_non_redeemable_positions(position_manager)
+
+    # 2. Mark the Hypercore vault as non-redeemable and carry it forward before sizing a new AAVE target.
+    alpha_model.select_top_signals(count=5)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights(max_weight=1.0)
+    alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
+    alpha_model.calculate_target_positions(position_manager, investable_equity=2500.0)
+
+    trades = alpha_model.generate_rebalance_trades_and_triggers(
+        position_manager,
+        min_trade_threshold=0.01,
+        individual_rebalance_min_threshold=0.01,
+        sell_rebalance_min_threshold=0.01,
+    )
+
+    locked_signal = alpha_model.get_signal_by_pair(hypercore_vault_pair)
+    assert locked_position_value == pytest.approx(5000.0)
+    assert locked_signal is not None
+
+    # 3. Verify the locked vault stays pinned with zero adjustment and only the free cash becomes a buy trade.
+    assert locked_signal.position_adjust_usd == pytest.approx(0.0)
+    assert TradingPairSignalFlags.cannot_redeem in locked_signal.flags
+    assert all(trade.pair != hypercore_vault_pair for trade in trades)
+    assert len(trades) == 1
+    assert trades[0].is_buy()
+    assert trades[0].pair == aave_usdc
+    assert trades[0].get_planned_value() == pytest.approx(2500.0)
 
 
 def test_update_old_weights_reads_position_value_once(

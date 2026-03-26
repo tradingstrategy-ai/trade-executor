@@ -343,12 +343,14 @@ def decide_trades(
         )
         signal_count += 1
 
+    locked_position_value = alpha_model.carry_forward_non_redeemable_positions(position_manager)
     equity = position_manager.get_current_portfolio().get_total_equity()
     redeemable_capital = get_redeemable_portfolio_capital(position_manager)
     portfolio_target_value = calculate_portfolio_target_value(
         position_manager,
         parameters.allocation,
     )
+    deployable_target_value = max(portfolio_target_value - locked_position_value, 0.0)
 
     alpha_model.select_top_signals(count=parameters.max_assets_in_portfolio)
     alpha_model.assign_weights(method=weight_equal)
@@ -361,7 +363,7 @@ def decide_trades(
     )
 
     alpha_model.normalise_weights(
-        investable_equity=portfolio_target_value,
+        investable_equity=deployable_target_value,
         size_risk_model=size_risk_model,
         max_weight=parameters.max_concentration,
         max_positions=parameters.max_assets_in_portfolio,
@@ -410,6 +412,7 @@ def decide_trades(
         Total equity: {portfolio.get_total_equity():,.2f} USD
         Cash: {position_manager.get_current_cash():,.2f} USD
         Redeemable capital: {redeemable_capital:,.2f} USD
+        Locked capital carried forward: {locked_position_value:,.2f} USD
         Pending redemptions: {position_manager.get_pending_redemptions():,.2f} USD
         Investable equity: {alpha_model.investable_equity:,.2f} USD
         Accepted investable equity: {alpha_model.accepted_investable_equity:,.2f} USD

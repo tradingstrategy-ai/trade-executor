@@ -120,14 +120,13 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     }
 
     # 2. Carry any non-redeemable Hypercore positions forward at their current marked value.
-    locked_position_value = 0.0
-    for position in position_manager.get_current_portfolio().open_positions.values():
-        if get_redeemable_capital(position, timestamp=input.timestamp) > 0:
-            continue
-
-        current_value = position.get_value()
-        locked_position_value += current_value
-        alpha_model.set_signal(position.pair, current_value)
+    locked_position_value = alpha_model.carry_forward_non_redeemable_positions(
+        position_manager,
+        can_redeem=lambda position: get_redeemable_capital(
+            position,
+            timestamp=input.timestamp,
+        ) > 0,
+    )
 
     portfolio_target_value = calculate_portfolio_target_value(
         position_manager,
@@ -151,7 +150,7 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     )
     alpha_model.calculate_target_positions(
         position_manager,
-        investable_equity=portfolio_target_value,
+        investable_equity=deployable_target_value,
     )
 
     return alpha_model.generate_rebalance_trades_and_triggers(
