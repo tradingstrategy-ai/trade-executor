@@ -14,6 +14,7 @@ import pandas as pd
 from dataclasses_json import dataclass_json
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.size_risk import SizeRisk
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.types import (LeverageMultiplier, PairInternalId,
@@ -82,6 +83,9 @@ class TradingPairSignalFlags(enum.Enum):
 
     #: This signal led to closing the position (signal went to zero)
     closed = "closed"
+
+    #: This signal was carried forward because the current position cannot be redeemed now.
+    cannot_redeem = "cannot_redeem"
 
 
 @dataclass_json
@@ -279,6 +283,9 @@ class TradingPairSignal:
     #: For spot pairs, this is the pair itself.
     #:
     synthetic_pair: TradingPairIdentifier | None = None
+
+    #: Keep the current marked position value pinned for this cycle.
+    carry_forward_position: bool = False
 
     #: How much leverage we dare to take with this signal
     #:
@@ -757,9 +764,53 @@ class AlphaModel:
 
             `0.01 = 1%` signal strenght.
         """
-        filtered_signals = [s for s in self.raw_signals.values() if abs(s.signal) >= threshold]
+        carry_forward_signals = [s for s in self.raw_signals.values() if s.carry_forward_position]
+        filtered_signals = [
+            s
+            for s in self.raw_signals.values()
+            if abs(s.signal) >= threshold and not s.carry_forward_position
+        ]
         top_signals = heapq.nlargest(count, filtered_signals, key=lambda s: s.signal)
         self.signals = {s.pair.internal_id: s for s in top_signals}
+        for signal in carry_forward_signals:
+            self.signals[signal.pair.internal_id] = signal
+
+    def _get_allocatable_signals(self) -> list[TradingPairSignal]:
+        """Signals that compete for currently deployable capital."""
+        return [s for s in self.signals.values() if not s.carry_forward_position]
+
+    def carry_forward_non_redeemable_positions(
+        self,
+        position_manager: PositionManager,
+        can_redeem: Callable[[TradingPosition], bool] | None = None,
+    ) -> USDollarAmount:
+        """Pin current non-redeemable positions at their marked value for this cycle."""
+        if can_redeem is None:
+            can_redeem = lambda position: position_manager.pricing_model.can_redeem(  # noqa: E731
+                self.timestamp,
+                position.pair,
+            )
+
+        locked_position_value = 0.0
+
+        for position in position_manager.get_current_portfolio().open_positions.values():
+            if can_redeem(position):
+                continue
+
+            current_value = position.get_value()
+            signal = self.raw_signals.get(position.pair.internal_id)
+            if signal is None:
+                self.set_signal(position.pair, current_value)
+                signal = self.raw_signals[position.pair.internal_id]
+            else:
+                signal.signal = current_value
+
+            signal.carry_forward_position = True
+            signal.position_target = current_value
+            signal.flags.add(TradingPairSignalFlags.cannot_redeem)
+            locked_position_value += current_value
+
+        return locked_position_value
 
     def _normalise_weights_simple(
         self,
@@ -770,7 +821,15 @@ class AlphaModel:
 
         - Simple approach, do not deal with the US dollar size/liquidity risk
         """
-        raw_weights = {s.pair.internal_id: s.raw_weight for s in self.signals.values()}
+        raw_weights = {
+            s.pair.internal_id: s.raw_weight
+            for s in self._get_allocatable_signals()
+        }
+        if len(raw_weights) == 0:
+            for s in self.signals.values():
+                if s.carry_forward_position:
+                    s.normalised_weight = 0.0
+            return
         normalised = normalise_weights(raw_weights)
         for pair_id, normal_weight in normalised.items():
             s = self.signals[pair_id]
@@ -797,7 +856,18 @@ class AlphaModel:
         if investable_equity is not None:
             assert type(investable_equity) == float, f"Got {type(investable_equity)} instead of float"
 
-        raw_weights = {s.pair.internal_id: s.raw_weight for s in self.signals.values()}
+        raw_weights = {
+            s.pair.internal_id: s.raw_weight
+            for s in self._get_allocatable_signals()
+        }
+        if len(raw_weights) == 0:
+            self.investable_equity = investable_equity
+            self.accepted_investable_equity = 0.0
+            self.size_risk_discarded_value = 0.0
+            for s in self.signals.values():
+                if s.carry_forward_position:
+                    s.normalised_weight = 0.0
+            return
 
         # First calculate raw normals
         normalised = normalise_weights(raw_weights)
@@ -909,7 +979,18 @@ class AlphaModel:
         if investable_equity is not None:
             assert type(investable_equity) == float, f"Got {type(investable_equity)} instead of float"
 
-        raw_weights = {s.pair.internal_id: s.raw_weight for s in self.signals.values()}
+        raw_weights = {
+            s.pair.internal_id: s.raw_weight
+            for s in self._get_allocatable_signals()
+        }
+        if len(raw_weights) == 0:
+            self.investable_equity = investable_equity
+            self.accepted_investable_equity = 0.0
+            self.size_risk_discarded_value = 0.0
+            for s in self.signals.values():
+                if s.carry_forward_position:
+                    s.normalised_weight = 0.0
+            return
 
         remaining_weights = raw_weights.copy()
         equity_left = investable_equity
@@ -1039,7 +1120,18 @@ class AlphaModel:
         if investable_equity is not None:
             assert type(investable_equity) == float, f"Got {type(investable_equity)} instead of float"
 
-        raw_weights = {s.pair.internal_id: s.raw_weight for s in self.signals.values()}
+        raw_weights = {
+            s.pair.internal_id: s.raw_weight
+            for s in self._get_allocatable_signals()
+        }
+        if len(raw_weights) == 0:
+            self.investable_equity = investable_equity
+            self.accepted_investable_equity = 0.0
+            self.size_risk_discarded_value = 0.0
+            for s in self.signals.values():
+                if s.carry_forward_position:
+                    s.normalised_weight = 0.0
+            return
 
         remaining_weights = Counter(raw_weights)
         equity_left = investable_equity
@@ -1479,6 +1571,12 @@ class AlphaModel:
             self.investable_equity = investable_equity
 
         for s in self.iterate_signals():
+            if s.carry_forward_position:
+                s.position_target = s.old_value
+                s.synthetic_pair = self.map_pair_for_signal(position_manager, s)
+                s.position_adjust_usd = 0.0
+                s.position_adjust_quantity = 0.0
+                continue
 
             # Might have been calculated earlier in normalise_weights() with size risk model
             if s.position_target is None:
@@ -1540,6 +1638,14 @@ class AlphaModel:
                 signal.profit_before_trades = 0
         return current_position
 
+    def _can_redeem_position(
+        self,
+        position_manager: PositionManager,
+        position: TradingPosition,
+    ) -> bool:
+        """Check whether a current position can be reduced on this cycle."""
+        return position_manager.pricing_model.can_redeem(self.timestamp, position.pair)
+
     def _should_skip_signal_rebalance(
         self,
         signal: TradingPairSignal,
@@ -1585,6 +1691,15 @@ class AlphaModel:
         value = signal.position_target
         underlying = signal.pair
         synthetic = signal.synthetic_pair
+
+        if current_position and dollar_diff < 0 and not self._can_redeem_position(position_manager, current_position):
+            logger.info(
+                "Skipping sell-side rebalance for %s because the position is not redeemable yet",
+                current_position.pair,
+            )
+            signal.position_adjust_ignored = True
+            signal.flags.add(TradingPairSignalFlags.cannot_redeem)
+            return position_rebalance_trades
 
         if signal.normalised_weight < self.close_position_weight_epsilon:
             if current_position:
