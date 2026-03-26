@@ -9,16 +9,27 @@ Verifies that:
 
 import datetime
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from eth_defi.compat import native_datetime_utc_now
+from tradingstrategy.chain import ChainId
+
+from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultPricing, HypercoreVaultValuator
+from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_pair
+from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind, AssetIdentifier
+from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.strategy.dust import (
+    get_close_epsilon_for_pair,
+    get_dust_epsilon_for_pair,
+    HYPERLIQUID_VAULT_CLOSE_EPSILON,
+    DEFAULT_VAULT_EPSILON,
+)
 
 
 def test_valuation_computes_per_unit_price():
     """Value = quantity * (equity / quantity) = equity."""
-    from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultValuator
 
     # Position with quantity=100 (deposited 100 USDC), price=1.0
     position = MagicMock()
@@ -43,7 +54,6 @@ def test_valuation_computes_per_unit_price():
 
 def test_valuation_second_deposit_stays_correct():
     """After depositing 100 then 50, equity=155 → value should be 155."""
-    from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultValuator
 
     position = MagicMock()
     position.is_vault.return_value = True
@@ -67,7 +77,6 @@ def test_valuation_second_deposit_stays_correct():
 
 def test_valuation_zero_quantity_uses_default_price():
     """Edge case: quantity=0 should use price=1.0 to avoid division by zero."""
-    from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultValuator
 
     position = MagicMock()
     position.is_vault.return_value = True
@@ -88,8 +97,6 @@ def test_valuation_zero_quantity_uses_default_price():
 
 def test_pricing_model_returns_one():
     """Trade pricing for vault deposits/withdrawals is always 1.0 USDC."""
-    from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultPricing
-    from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind, AssetIdentifier
 
     # Even with non-zero equity, trade price should be 1.0
     def value_func(pair):
@@ -124,7 +131,6 @@ def test_lockup_func_populates_expires_at():
     3. Verify other_data contains the ISO string
     """
     import datetime as dt
-    from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultValuator
 
     position = MagicMock()
     position.is_vault.return_value = True
@@ -154,7 +160,6 @@ def test_lockup_func_none_position():
     2. Run the valuator
     3. Verify other_data contains None
     """
-    from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultValuator
 
     position = MagicMock()
     position.is_vault.return_value = True
@@ -182,7 +187,6 @@ def test_old_bug_equity_squared():
     This test verifies the specific scenario from the review: a 5 USDC deposit
     with API equity=5.5 should value at 5.5, not 27.5.
     """
-    from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultValuator
 
     position = MagicMock()
     position.is_vault.return_value = True
@@ -203,3 +207,86 @@ def test_old_bug_equity_squared():
     # Per-unit price: 5.5 / 5.0 = 1.1
     assert pytest.approx(new_price, rel=1e-6) == 1.1
     # Value would be: 5.0 * 1.1 = 5.5 (correct), NOT 5.0 * 5.5 = 27.5 (old bug)
+
+
+def test_hypercore_vault_dust_epsilon_covers_safety_margin():
+    """Hypercore vault close epsilon is large enough to cover withdrawal safety margin dust.
+
+    HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW (10_000 raw = $0.01) is subtracted
+    from live vault equity during full-close withdrawals, leaving ~$0.01 residual
+    in the position.  The close epsilon must exceed this so can_be_closed()
+    recognises the position as effectively closed.
+
+    1. Build a Hypercore vault pair using create_hypercore_vault_pair().
+    2. Verify get_close_epsilon_for_pair() and get_dust_epsilon_for_pair()
+       return the Hypercore-specific epsilon.
+    3. Create a TradingPosition with dust quantity (0.01) and assert can_be_closed().
+    4. Same position with non-dust quantity (1.0) must NOT be closeable.
+    5. Build a non-Hypercore vault pair and verify it still gets DEFAULT_VAULT_EPSILON.
+    """
+
+    # 1. Build a Hypercore vault pair
+    quote = AssetIdentifier(
+        chain_id=ChainId.hypercore.value,
+        address="0x0000000000000000000000000000000000000002",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    hypercore_pair = create_hypercore_vault_pair(
+        quote=quote,
+        vault_address="0x1111111111111111111111111111111111111111",
+    )
+    assert hypercore_pair.is_hyperliquid_vault()
+
+    # 2. Epsilon functions return Hypercore-specific value
+    assert get_close_epsilon_for_pair(hypercore_pair) == HYPERLIQUID_VAULT_CLOSE_EPSILON
+    assert get_dust_epsilon_for_pair(hypercore_pair) == HYPERLIQUID_VAULT_CLOSE_EPSILON
+
+    # 3. Position with dust quantity (0.01 USDC) can be closed
+    ts = native_datetime_utc_now()
+    position = TradingPosition(
+        position_id=1,
+        pair=hypercore_pair,
+        opened_at=ts,
+        last_pricing_at=ts,
+        last_token_price=1.0,
+        last_reserve_price=1.0,
+        reserve_currency=quote,
+    )
+    # is_spot() asserts at least one trade exists, so add a dummy
+    dummy_trade = MagicMock()
+    dummy_trade.is_spot.return_value = False
+    position.trades[1] = dummy_trade
+
+    with patch.object(position, "get_quantity", return_value=Decimal("0.01")):
+        assert position.can_be_closed() is True
+
+    # 4. Position with non-dust quantity (1.0 USDC) must NOT be closeable
+    with patch.object(position, "get_quantity", return_value=Decimal("1.0")):
+        assert position.can_be_closed() is False
+
+    # 5. Non-Hypercore vault pair still gets DEFAULT_VAULT_EPSILON
+    non_hypercore_base = AssetIdentifier(
+        chain_id=999,
+        address="0x0000000000000000000000000000000000000001",
+        token_symbol="VAULT",
+        decimals=6,
+    )
+    non_hypercore_quote = AssetIdentifier(
+        chain_id=999,
+        address="0x0000000000000000000000000000000000000002",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    non_hypercore_pair = TradingPairIdentifier(
+        base=non_hypercore_base,
+        quote=non_hypercore_quote,
+        pool_address="0x0000000000000000000000000000000000000003",
+        exchange_address="0x0000000000000000000000000000000000000004",
+        internal_id=2,
+        internal_exchange_id=1,
+        fee=0.0,
+        kind=TradingPairKind.vault,
+    )
+    assert not non_hypercore_pair.is_hyperliquid_vault()
+    assert get_close_epsilon_for_pair(non_hypercore_pair) == DEFAULT_VAULT_EPSILON
