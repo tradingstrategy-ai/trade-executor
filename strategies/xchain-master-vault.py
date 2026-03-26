@@ -1,9 +1,9 @@
 """Cross-chain master vault strategy.
 
-Based on ``15-backtest-volvol-veto-best-cagr.ipynb`` notebook.
+Based on ``16-backtest-volvol-veto-best-cagr-jan-start.ipynb`` notebook.
 
 Cross-chain vault allocation with age-ramp weighting, daily rebalancing,
-and a vol-of-vol veto that excludes vaults with unstable realised volatility.
+vol-of-vol veto, stale-data protection, and redemption-aware target sizing.
 """
 
 #
@@ -231,8 +231,8 @@ class Parameters:
     #: Vol-of-vol percentile threshold for veto.
     volvol_veto_percentile = 0.75
 
-    #: Keep the same mature-universe start as the notebook.
-    backtest_start = datetime.datetime(2025, 8, 1)
+    #: Keep the same mature-universe start as the Jan-start notebook.
+    backtest_start = datetime.datetime(2025, 1, 1)
     #: Keep the same end date so the result stays comparable.
     backtest_end = datetime.datetime(2026, 3, 11)
     #: Use a standard treasury size.
@@ -266,7 +266,13 @@ class Parameters:
 def create_trading_universe(
     input: CreateTradingUniverseInput,
 ) -> TradingStrategyUniverse:
-    """Create the cross-chain trading universe."""
+    """Create the cross-chain trading universe.
+
+    Keep the backtest trading window fixed to ``Parameters.backtest_start`` /
+    ``Parameters.backtest_end``, but let ``required_history_period`` extend the
+    data-loading window backwards so age and other history-derived indicators
+    can see the full pre-backtest history for the selected vaults.
+    """
     execution_context = input.execution_context
     client = input.client
     timestamp = input.timestamp
@@ -336,7 +342,7 @@ def _get_available_supporting_pair_ids(
 
 
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
-    """Run survivor-first capped waterfall sizing with a vol-of-vol veto."""
+    """Run survivor-first capped waterfall sizing with a redemption-aware target value."""
     parameters = input.parameters
     position_manager = input.get_position_manager()
     state = input.state
@@ -344,6 +350,11 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     indicators = input.indicators
     strategy_universe = input.strategy_universe
 
+    # Guard against allocating based on stale forward-filled vault data.
+    # The framework forward-fill keeps indicators from crashing, but it
+    # also masks stale data: tvl() sees the last real TVL repeated,
+    # age() keeps growing on synthetic rows, and age_ramp_weight()
+    # increases. Bail out before the alpha model uses those values.
     check_stale_vault_data(strategy_universe, timestamp, input.execution_context.mode)
 
     portfolio = position_manager.get_current_portfolio()
@@ -396,11 +407,13 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         alpha_model.set_signal(pair, weight_signal_value)
         signal_count += 1
 
+    locked_position_value = alpha_model.carry_forward_non_redeemable_positions(position_manager)
     redeemable_capital = get_redeemable_portfolio_capital(position_manager)
     portfolio_target_value = calculate_portfolio_target_value(
         position_manager,
         parameters.allocation_pct,
     )
+    deployable_target_value = max(portfolio_target_value - locked_position_value, 0.0)
 
     alpha_model.select_top_signals(count=parameters.max_assets_in_portfolio)
     alpha_model.assign_weights(method=weight_passthrouh)
@@ -411,7 +424,7 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     )
 
     alpha_model.normalise_weights(
-        investable_equity=portfolio_target_value,
+        investable_equity=deployable_target_value,
         size_risk_model=size_risk_model,
         max_weight=parameters.max_concentration_pct,
         max_positions=parameters.max_assets_in_portfolio,
@@ -457,6 +470,7 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
             Total equity: {portfolio.get_total_equity():,.2f} USD
             Cash: {position_manager.get_current_cash():,.2f} USD
             Redeemable capital: {redeemable_capital:,.2f} USD
+            Locked capital carried forward: {locked_position_value:,.2f} USD
             Pending redemptions: {position_manager.get_pending_redemptions():,.2f} USD
             Investable equity: {alpha_model.investable_equity:,.2f} USD
             Accepted investable equity: {alpha_model.accepted_investable_equity:,.2f} USD
@@ -494,25 +508,15 @@ indicators = IndicatorRegistry()
 
 
 @indicators.define(source=IndicatorSource.tvl)
-def tvl(
-    close: pd.Series,
-    execution_context: ExecutionContext,
-    timestamp: pd.Timestamp,
-) -> pd.Series:
-    """TVL series for a vault pair."""
-    if execution_context.live_trading:
-        from tradingstrategy.utils.forward_fill import forward_fill
+def tvl(close: pd.Series) -> pd.Series:
+    """TVL series for a pair.
 
-        df = pd.DataFrame({"close": close})
-        df_ff = forward_fill(
-            df,
-            Parameters.candle_time_bucket.to_frequency(),
-            columns=("close",),
-            forward_fill_until=timestamp,
-        )
-        return df_ff["close"]
-
-    return close.resample("1h").ffill()
+    Framework forward-fill (via ``create_from_dataset(forward_fill=True,
+    forward_fill_until=timestamp)``) already extends each pair's liquidity
+    data to the decision timestamp. No manual forward-fill needed here
+    because this strategy uses daily candles with daily TVL data.
+    """
+    return close
 
 
 @indicators.define()
@@ -798,7 +802,7 @@ tags = {StrategyTag.beta, StrategyTag.deposits_disabled}
 
 name = "Xchain master vault strategy"
 
-short_description = "Cross-chain vault allocation strategy with an age-ramp signal and vol-of-vol veto"
+short_description = "Cross-chain vault allocation strategy with age-ramp weighting, vol-of-vol veto, and redemption-aware sizing"
 
 icon = ""
 
@@ -813,7 +817,8 @@ A diversified yield strategy that allocates across a hand-curated cross-chain va
 - **Age-ramp weighting**: Younger vaults receive lower weights, ramping up over 0.75 years
 - **Vol-of-vol veto**: Excludes vaults whose realised volatility is too unstable versus peers
 - **Daily rebalancing**: Adjusts positions every day using survivor-first capped waterfall sizing
-- **Redemption-aware**: Target value accounts for redeemable capital and pending redemptions
+- **Stale-data guard**: Refuses to rebalance on forward-filled-but-stale vault data
+- **Redemption-aware**: Locked vault capital is carried forward and excluded from fresh allocation
 
 ## Risk parameters
 

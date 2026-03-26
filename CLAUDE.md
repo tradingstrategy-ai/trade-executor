@@ -12,7 +12,7 @@ You can run a notebook from the command line using `jupyter execute`.
 This supports multiprocessing (unlike `ipython` which forces single-process execution).
 
 ```shell
-poetry run jupyter execute my-notebook.ipynb --inplace --timeout=900
+source .local-test.env && poetry run jupyter execute my-notebook.ipynb --inplace --timeout=900
 ```
 
 - `--inplace` overwrites the notebook with executed results (cell outputs)
@@ -27,7 +27,7 @@ Alternative if you have IDE access, you can use the IDE to run the notebook.
 When running a Python script use `poetry run python` command instead of plain `python` command, so that the virtual environment is activated.
 
 ```shell
-poetry run python scripts/logos/post-process-logo.py
+source .local-test.env && poetry run python scripts/logos/post-process-logo.py
 ```
 
 ## Running tests
