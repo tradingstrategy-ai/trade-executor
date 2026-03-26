@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add forward-only auto-generated CCTP bridge pairs for multichain universes and fork-simulated xchain master-vault coverage (2026-03-26)
+
 - Add rolling live cycle trigger mode based on previous cycle end timestamps, with CLI integration coverage for 1s scheduler offsets (2026-03-19)
 
 - Add Hyper AI redeem-accounting helpers for staged Lagoon redemptions and deployable-cash tracking in live loop tests (2026-03-18)
