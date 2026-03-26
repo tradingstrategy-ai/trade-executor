@@ -38,45 +38,64 @@ from pathlib import Path
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
-from eth_defi.hyperliquid.api import (HyperliquidSession, UserVaultEquity,
-                                      fetch_perp_clearinghouse_state,
-                                      fetch_spot_clearinghouse_state,
-                                      fetch_user_vault_equities)
+from eth_defi.hyperliquid.api import (
+    HyperliquidSession,
+    UserVaultEquity,
+    fetch_perp_clearinghouse_state,
+    fetch_spot_clearinghouse_state,
+    fetch_user_vault_equities,
+)
+from eth_defi.hyperliquid.constants import HYPERCORE_BRIDGE_FEE_MARGIN
 from eth_defi.hyperliquid.core_writer import (
     build_hypercore_send_asset_to_evm_call,
-    build_hypercore_transfer_usd_class_call)
-from eth_defi.hyperliquid.session import (HYPERLIQUID_API_URL,
-                                          HYPERLIQUID_TESTNET_API_URL,
-                                          create_hyperliquid_session)
+    build_hypercore_transfer_usd_class_call,
+    compute_spot_to_evm_withdrawal_amount,
+)
+from eth_defi.hyperliquid.session import (
+    HYPERLIQUID_API_URL,
+    HYPERLIQUID_TESTNET_API_URL,
+    create_hyperliquid_session,
+)
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_defi.token import TokenDetails
 from eth_defi.trace import assert_transaction_success_with_explanation
 from tabulate import tabulate
 from web3 import Web3
 
-from tradeexecutor.cli.bootstrap import (backup_state, create_client,
-                                         create_execution_and_sync_model,
-                                         create_state_store, create_sync_model,
-                                         create_web3_config, prepare_cache,
-                                         prepare_executor_id)
+from tradeexecutor.cli.bootstrap import (
+    backup_state,
+    create_client,
+    create_execution_and_sync_model,
+    create_state_store,
+    create_sync_model,
+    create_web3_config,
+    prepare_cache,
+    prepare_executor_id,
+)
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.state.repair import repair_trades
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.strategy.account_correction import (
-    UnknownTokenPositionFix, calculate_account_corrections, check_accounts,
-    check_state_internal_coherence, correct_accounts)
+    UnknownTokenPositionFix,
+    calculate_account_corrections,
+    check_accounts,
+    check_state_internal_coherence,
+    correct_accounts,
+)
 from tradeexecutor.strategy.bootstrap import make_factory_from_strategy_mod
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_context import (ExecutionContext,
-                                                      ExecutionMode)
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.strategy.run_state import RunState
-from tradeexecutor.strategy.strategy_module import (StrategyModuleInformation,
-                                                    read_strategy_module)
-from tradeexecutor.strategy.trading_strategy_universe import \
-    TradingStrategyUniverseModel
+from tradeexecutor.strategy.strategy_module import (
+    StrategyModuleInformation,
+    read_strategy_module,
+)
+from tradeexecutor.strategy.trading_strategy_universe import (
+    TradingStrategyUniverseModel,
+)
 from tradeexecutor.strategy.universe_model import UniverseOptions
 
 logger = logging.getLogger(__name__)
@@ -268,7 +287,9 @@ def _build_state_snapshot(state: State) -> HyperliquidStateSnapshot:
                 state_status="frozen" if position.is_frozen() else "open",
                 quantity=position.get_quantity(),
                 vault_address=_position_vault_address(position),
-                vault_name=position.pair.other_data.get("vault_name", position.pair.get_ticker()),
+                vault_name=position.pair.other_data.get(
+                    "vault_name", position.pair.get_ticker()
+                ),
                 failed_trade_ids=failed_trade_ids,
                 stranded_metadata=stranded_metadata,
             )
@@ -285,12 +306,20 @@ def _classify_cleanup_row(
     live_snapshot: HyperliquidCleanupSnapshot,
 ) -> str:
     """Classify one state position against live reality."""
-    live_vault_equity = live_snapshot.vault_equities.get(position.vault_address, Decimal(0))
+    live_vault_equity = live_snapshot.vault_equities.get(
+        position.vault_address, Decimal(0)
+    )
     stranded_balance = live_snapshot.spot_free_usdc + live_snapshot.perp_withdrawable
-    is_failed_close_candidate = position.state_status == "frozen" or bool(position.failed_trade_ids)
+    is_failed_close_candidate = position.state_status == "frozen" or bool(
+        position.failed_trade_ids
+    )
     residual_vault_equity = live_vault_equity <= RESIDUAL_VAULT_EQUITY_THRESHOLD
-    stranded_balance_dominates = stranded_balance > live_vault_equity + BALANCE_TOLERANCE
-    quantity_mismatch_is_large = position.quantity > live_vault_equity + BALANCE_TOLERANCE
+    stranded_balance_dominates = (
+        stranded_balance > live_vault_equity + BALANCE_TOLERANCE
+    )
+    quantity_mismatch_is_large = (
+        position.quantity > live_vault_equity + BALANCE_TOLERANCE
+    )
 
     if live_snapshot.perp_position_count > 0:
         return "manual_review_required_active_perp_positions"
@@ -311,7 +340,10 @@ def _classify_cleanup_row(
     if live_vault_equity > RESIDUAL_VAULT_EQUITY_THRESHOLD:
         return "live_vault_open_no_action"
 
-    if live_snapshot.spot_free_usdc > BALANCE_TOLERANCE and live_snapshot.perp_withdrawable > BALANCE_TOLERANCE:
+    if (
+        live_snapshot.spot_free_usdc > BALANCE_TOLERANCE
+        and live_snapshot.perp_withdrawable > BALANCE_TOLERANCE
+    ):
         return "closed_in_reality_spot_and_perp_stranded"
 
     if live_snapshot.perp_withdrawable > BALANCE_TOLERANCE:
@@ -338,7 +370,9 @@ def _compare_state_to_reality(
                 vault_name=position.vault_name,
                 vault_address=position.vault_address,
                 state_quantity=position.quantity,
-                live_vault_equity=live_snapshot.vault_equities.get(position.vault_address, Decimal(0)),
+                live_vault_equity=live_snapshot.vault_equities.get(
+                    position.vault_address, Decimal(0)
+                ),
                 reserve_quantity=state_snapshot.reserve_quantity,
                 spot_free_usdc=live_snapshot.spot_free_usdc,
                 perp_withdrawable=live_snapshot.perp_withdrawable,
@@ -409,7 +443,9 @@ def _plan_cleanup_actions(
     return actions
 
 
-def _print_reality_table(live_snapshot: HyperliquidCleanupSnapshot) -> list[dict[str, str]]:
+def _print_reality_table(
+    live_snapshot: HyperliquidCleanupSnapshot,
+) -> list[dict[str, str]]:
     """Render the live balance table."""
     rows = [
         {
@@ -462,7 +498,10 @@ def _print_state_comparison_table(
     ]
     print("\nState vs reality")
     print(tabulate(rows, headers="keys", tablefmt="simple"))
-    if any(row.classification == "open_in_state_residual_vault_equity_stranded" for row in comparison_rows):
+    if any(
+        row.classification == "open_in_state_residual_vault_equity_stranded"
+        for row in comparison_rows
+    ):
         print(
             "\nDetected an open-in-state, effectively closed-in-reality recovery case: "
             "the live vault equity is only residual, there are no active perp positions, "
@@ -484,7 +523,9 @@ def _print_action_table(actions: list[HyperliquidCleanupAction]) -> None:
     if rows:
         print(tabulate(rows, headers="keys", tablefmt="simple"))
     else:
-        print("No Safe-side recovery transactions are needed; proceeding to state repair only.")
+        print(
+            "No Safe-side recovery transactions are needed; proceeding to state repair only."
+        )
 
 
 def _confirm_cleanup(auto_approve: bool) -> None:
@@ -492,7 +533,11 @@ def _confirm_cleanup(auto_approve: bool) -> None:
     if auto_approve:
         return
 
-    confirmation = input("Execute Hyperliquid clean-up actions and state repair [y/n] ").strip().lower()
+    confirmation = (
+        input("Execute Hyperliquid clean-up actions and state repair [y/n] ")
+        .strip()
+        .lower()
+    )
     if confirmation != "y":
         raise RuntimeError("Operator aborted Hyperliquid clean-up")
 
@@ -547,7 +592,9 @@ def _broadcast_bound_call(
     gas_limit: int = SAFE_GAS_LIMIT,
 ) -> str:
     """Broadcast a single Safe/module transaction and assert success."""
-    tx_hash = hot_wallet.transact_and_broadcast_with_contract(bound_func, gas_limit=gas_limit)
+    tx_hash = hot_wallet.transact_and_broadcast_with_contract(
+        bound_func, gas_limit=gas_limit
+    )
     assert_transaction_success_with_explanation(web3, tx_hash)
     return tx_hash.hex()
 
@@ -587,13 +634,29 @@ def _execute_spot_to_evm(
         f"{live_snapshot.spot_free_usdc}, expected at least {amount}"
     )
 
-    expected_evm_balance = live_snapshot.evm_usdc_balance + amount
+    # Reserve a margin for the HyperCore -> HyperEVM bridge fee which is
+    # deducted from spot *before* settlement.  Without this the withdrawal
+    # silently fails when we try to bridge the entire spot balance.
+    withdraw_amount = compute_spot_to_evm_withdrawal_amount(
+        spot_balance=live_snapshot.spot_free_usdc,
+        desired_amount=amount,
+    )
+    if withdraw_amount < BALANCE_TOLERANCE:
+        raise RuntimeError(
+            f"Spot balance {live_snapshot.spot_free_usdc} for Safe {safe_address} "
+            f"is too small to cover the HyperCore bridge fee margin "
+            f"({HYPERCORE_BRIDGE_FEE_MARGIN} USDC); cannot withdraw to EVM"
+        )
+
+    expected_evm_balance = live_snapshot.evm_usdc_balance + withdraw_amount
     fn = build_hypercore_send_asset_to_evm_call(
         context.lagoon_vault,
-        evm_usdc_amount=context.reserve_token.convert_to_raw(amount),
+        evm_usdc_amount=context.reserve_token.convert_to_raw(withdraw_amount),
     )
     tx_hash = _broadcast_bound_call(context.web3, context.hot_wallet, fn)
-    _wait_for_evm_usdc_balance(context.reserve_token, safe_address, expected_evm_balance)
+    _wait_for_evm_usdc_balance(
+        context.reserve_token, safe_address, expected_evm_balance
+    )
     return tx_hash
 
 
@@ -609,7 +672,9 @@ def _execute_cleanup_actions(
         elif action.action_kind == "spot_to_evm":
             _execute_spot_to_evm(context, action.amount)
         else:
-            raise NotImplementedError(f"Unsupported Hyperliquid clean-up action: {action.action_kind}")
+            raise NotImplementedError(
+                f"Unsupported Hyperliquid clean-up action: {action.action_kind}"
+            )
         executed.append(action.action_kind)
     return executed
 
@@ -620,33 +685,49 @@ def _build_accounting_correction_context(
     """Construct the objects needed for Python-side account correction."""
     mod: StrategyModuleInformation = read_strategy_module(context.strategy_file)
     executor_id = prepare_executor_id(None, context.strategy_file)
-    cache_path = prepare_cache(executor_id, context.cache_path, unit_testing=context.unit_testing)
+    cache_path = prepare_cache(
+        executor_id, context.cache_path, unit_testing=context.unit_testing
+    )
 
     if context.web3.eth.chain_id == 998:
         web3config = create_web3_config(
-            None, None, None, None, None, None, None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             json_rpc_hyperliquid_testnet=context.json_rpc_hyperliquid,
             unit_testing=context.unit_testing,
         )
     else:
         web3config = create_web3_config(
-            None, None, None, None, None, None, None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             json_rpc_hyperliquid=context.json_rpc_hyperliquid,
             unit_testing=context.unit_testing,
         )
     web3config.choose_single_chain()
 
-    execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
-        asset_management_mode=AssetManagementMode.lagoon,
-        private_key=context.hot_wallet.private_key.hex(),
-        web3config=web3config,
-        confirmation_timeout=datetime.timedelta(seconds=60),
-        confirmation_block_count=0,
-        max_slippage=0.013,
-        min_gas_balance=Decimal(0),
-        vault_address=context.lagoon_vault.address,
-        vault_adapter_address=context.lagoon_vault.trading_strategy_module_address,
-        routing_hint=mod.trade_routing,
+    execution_model, sync_model, valuation_model_factory, pricing_model_factory = (
+        create_execution_and_sync_model(
+            asset_management_mode=AssetManagementMode.lagoon,
+            private_key=context.hot_wallet.private_key.hex(),
+            web3config=web3config,
+            confirmation_timeout=datetime.timedelta(seconds=60),
+            confirmation_block_count=0,
+            max_slippage=0.013,
+            min_gas_balance=Decimal(0),
+            vault_address=context.lagoon_vault.address,
+            vault_adapter_address=context.lagoon_vault.trading_strategy_module_address,
+            routing_hint=mod.trade_routing,
+        )
     )
 
     client, _routing_model = create_client(
@@ -660,7 +741,9 @@ def _build_accounting_correction_context(
         clear_caches=False,
         asset_management_mode=AssetManagementMode.lagoon,
     )
-    assert client is not None, "TRADING_STRATEGY_API_KEY is required to build the strategy universe for clean-up"
+    assert client is not None, (
+        "TRADING_STRATEGY_API_KEY is required to build the strategy universe for clean-up"
+    )
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.one_off,
@@ -691,7 +774,9 @@ def _build_accounting_correction_context(
     runner = run_description.runner
     pricing_model = None
     if mod.is_version_greater_or_equal_than(0, 5, 0) and mod.trade_routing is not None:
-        _routing_state, pricing_model, _valuation_method = runner.setup_routing(strategy_universe)
+        _routing_state, pricing_model, _valuation_method = runner.setup_routing(
+            strategy_universe
+        )
 
     return HyperliquidAccountingContext(
         pair_universe=strategy_universe.data_universe.pairs,
@@ -715,7 +800,9 @@ def _repair_and_correct_state(
     )
 
     accounting_context = _build_accounting_correction_context(context)
-    block_identifier = get_almost_latest_block_number(accounting_context.sync_model.web3)
+    block_identifier = get_almost_latest_block_number(
+        accounting_context.sync_model.web3
+    )
     corrections = list(
         calculate_account_corrections(
             accounting_context.pair_universe,
@@ -860,7 +947,7 @@ def run_hyperliquid_cleanup(
         from pathlib import Path
         from tradeexecutor.ethereum.vault.hyperliquid_cleanup import run_hyperliquid_cleanup
 
-        run_hyperliquid_cleanup(
+        run_hyperliquid_cleanup(C
             state_file=Path(store.path),
             strategy_file=Path(os.environ["STRATEGY_FILE"]),
             private_key=os.environ["PRIVATE_KEY"],
@@ -922,7 +1009,9 @@ def run_hyperliquid_cleanup_from_environment() -> HyperliquidCleanupReport:
     trading_strategy_api_key = os.environ.get("TRADING_STRATEGY_API_KEY", "")
     network = os.environ.get("NETWORK", "mainnet")
     auto_approve = os.environ.get("AUTO_APPROVE", "").lower() in {"1", "true", "yes"}
-    cache_path = Path(os.environ["CACHE_PATH"]) if os.environ.get("CACHE_PATH") else None
+    cache_path = (
+        Path(os.environ["CACHE_PATH"]) if os.environ.get("CACHE_PATH") else None
+    )
     unit_testing = os.environ.get("UNIT_TESTING", "").lower() in {"1", "true", "yes"}
     log_level = os.environ.get("LOG_LEVEL", "info")
     return run_hyperliquid_cleanup(

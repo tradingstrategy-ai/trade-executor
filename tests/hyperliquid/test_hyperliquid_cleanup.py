@@ -6,6 +6,8 @@ Verifies that:
 3. Mocked Hyperliquid and HyperEVM balances produce only stranded-money recovery actions.
 4. The clean-up flow executes ``perp -> spot`` and ``spot -> EVM`` in order.
 5. The state repair and accounting correction hooks run and the state is treated as saveable.
+6. The spot -> EVM withdrawal subtracts the bridge fee margin from the bridged amount.
+7. A small spot balance (below fee margin) raises a clear operator error.
 """
 
 import shutil
@@ -14,8 +16,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
 from hexbytes import HexBytes
 
+from eth_defi.hyperliquid.constants import HYPERCORE_BRIDGE_FEE_MARGIN
 from tradeexecutor.ethereum.vault import hyperliquid_cleanup
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
@@ -63,10 +67,15 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
         "perp_position_count": 0,
     }
     broadcast_order: list[str] = []
+    captured_evm_usdc_amounts: list[int] = []
 
     reserve_token = MagicMock()
-    reserve_token.fetch_balance_of.side_effect = lambda address: live_balances["evm_usdc"]
-    reserve_token.convert_to_raw.side_effect = lambda amount: int((Decimal(amount) * Decimal(10**6)).to_integral_value())
+    reserve_token.fetch_balance_of.side_effect = lambda address: live_balances[
+        "evm_usdc"
+    ]
+    reserve_token.convert_to_raw.side_effect = lambda amount: int(
+        (Decimal(amount) * Decimal(10**6)).to_integral_value()
+    )
 
     hot_wallet = MagicMock()
 
@@ -81,13 +90,15 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
             live_balances["perp_account_value"] = Decimal("0")
             return HexBytes("0x01")
 
-        if bound_func == "spot_to_evm_fn":
+        if isinstance(bound_func, tuple) and bound_func[0] == "spot_to_evm_fn":
             # Step 4: Simulate recovery from HyperCore spot back to HyperEVM.
+            # Only the fee-adjusted amount arrives on EVM; the remainder stays
+            # on spot to cover the bridge fee.
             broadcast_order.append("spot_to_evm")
-            amount = live_balances["spot_free"]
-            live_balances["evm_usdc"] += amount
-            live_balances["spot_total"] -= amount
-            live_balances["spot_free"] -= amount
+            bridged_amount = Decimal(bound_func[1]) / Decimal(10**6)
+            live_balances["evm_usdc"] += bridged_amount
+            live_balances["spot_total"] -= bridged_amount
+            live_balances["spot_free"] -= bridged_amount
             return HexBytes("0x02")
 
         raise AssertionError(f"Unexpected bound function: {bound_func}")
@@ -133,10 +144,11 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
         assert user == safe_address
         return SimpleNamespace(
             withdrawable=live_balances["perp_withdrawable"],
-            margin_summary=SimpleNamespace(account_value=live_balances["perp_account_value"]),
+            margin_summary=SimpleNamespace(
+                account_value=live_balances["perp_account_value"]
+            ),
             asset_positions=[
-                SimpleNamespace()
-                for _ in range(live_balances["perp_position_count"])
+                SimpleNamespace() for _ in range(live_balances["perp_position_count"])
             ],
         )
 
@@ -162,10 +174,19 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
         correct_calls.append("correct")
         return iter([object()])
 
-    monkeypatch.setattr(hyperliquid_cleanup, "load_cleanup_context", lambda **kwargs: context)
-    monkeypatch.setattr(hyperliquid_cleanup, "fetch_spot_clearinghouse_state", fake_fetch_spot)
-    monkeypatch.setattr(hyperliquid_cleanup, "fetch_perp_clearinghouse_state", fake_fetch_perp)
-    monkeypatch.setattr(hyperliquid_cleanup, "fetch_user_vault_equities", fake_fetch_vault_equities)
+    monkeypatch.setattr(
+        hyperliquid_cleanup, "load_cleanup_context", lambda **kwargs: context
+    )
+    monkeypatch.setattr(
+        hyperliquid_cleanup, "fetch_spot_clearinghouse_state", fake_fetch_spot
+    )
+    monkeypatch.setattr(
+        hyperliquid_cleanup, "fetch_perp_clearinghouse_state", fake_fetch_perp
+    )
+    monkeypatch.setattr(
+        hyperliquid_cleanup, "fetch_user_vault_equities", fake_fetch_vault_equities
+    )
+
     def fake_build_hypercore_transfer_usd_class_call(
         lagoon_vault_arg,
         hypercore_usdc_amount: int,
@@ -182,7 +203,8 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
     ):
         assert lagoon_vault_arg is lagoon_vault
         assert isinstance(evm_usdc_amount, int)
-        return "spot_to_evm_fn"
+        captured_evm_usdc_amounts.append(evm_usdc_amount)
+        return ("spot_to_evm_fn", evm_usdc_amount)
 
     monkeypatch.setattr(
         hyperliquid_cleanup,
@@ -194,7 +216,11 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
         "build_hypercore_send_asset_to_evm_call",
         fake_build_hypercore_send_asset_to_evm_call,
     )
-    monkeypatch.setattr(hyperliquid_cleanup, "assert_transaction_success_with_explanation", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        hyperliquid_cleanup,
+        "assert_transaction_success_with_explanation",
+        lambda *args, **kwargs: None,
+    )
     monkeypatch.setattr(hyperliquid_cleanup, "repair_trades", repair_wrapper)
     monkeypatch.setattr(
         hyperliquid_cleanup,
@@ -202,17 +228,29 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
         lambda _context: hyperliquid_cleanup.HyperliquidAccountingContext(
             pair_universe=MagicMock(),
             reserve_assets=[MagicMock()],
-            sync_model=SimpleNamespace(web3=SimpleNamespace(), create_transaction_builder=lambda: MagicMock()),
+            sync_model=SimpleNamespace(
+                web3=SimpleNamespace(), create_transaction_builder=lambda: MagicMock()
+            ),
             tx_builder=MagicMock(),
             strategy_universe=MagicMock(),
             pricing_model=MagicMock(),
         ),
     )
-    monkeypatch.setattr(hyperliquid_cleanup, "calculate_account_corrections", lambda *args, **kwargs: [object()])
+    monkeypatch.setattr(
+        hyperliquid_cleanup,
+        "calculate_account_corrections",
+        lambda *args, **kwargs: [object()],
+    )
     monkeypatch.setattr(hyperliquid_cleanup, "correct_accounts", fake_correct_accounts)
-    monkeypatch.setattr(hyperliquid_cleanup, "check_state_internal_coherence", lambda state: None)
-    monkeypatch.setattr(hyperliquid_cleanup, "check_accounts", lambda *args, **kwargs: (True, None))
-    monkeypatch.setattr(hyperliquid_cleanup, "get_almost_latest_block_number", lambda web3: 123456)
+    monkeypatch.setattr(
+        hyperliquid_cleanup, "check_state_internal_coherence", lambda state: None
+    )
+    monkeypatch.setattr(
+        hyperliquid_cleanup, "check_accounts", lambda *args, **kwargs: (True, None)
+    )
+    monkeypatch.setattr(
+        hyperliquid_cleanup, "get_almost_latest_block_number", lambda web3: 123456
+    )
 
     # Step 2: Run the clean-up flow end to end with mocked live balances.
     report = hyperliquid_cleanup.run_hyperliquid_cleanup(
@@ -229,14 +267,19 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
 
     # Step 3: Confirm the open-in-state residual-vault-equity case is classified as recoverable.
     assert len(report.comparison_rows) == 1
-    assert report.comparison_rows[0].classification == "open_in_state_residual_vault_equity_stranded"
+    assert (
+        report.comparison_rows[0].classification
+        == "open_in_state_residual_vault_equity_stranded"
+    )
 
     # Step 4: Confirm the action planner only produced stranded-money recovery legs.
     assert [action.action_kind for action in report.planned_actions] == [
         "perp_to_spot",
         "spot_to_evm",
     ]
-    assert "vault_to_perp" not in {action.action_kind for action in report.planned_actions}
+    assert "vault_to_perp" not in {
+        action.action_kind for action in report.planned_actions
+    }
 
     # Step 5: Confirm the mocked broadcasts executed in the expected order.
     assert broadcast_order == ["perp_to_spot", "spot_to_evm"]
@@ -248,3 +291,85 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
     assert report.accounts_clean is True
     assert report.state_saved is True
     assert state_file.with_suffix(".backup-1.json").exists()
+
+    # Step 7: Confirm the spot->EVM withdrawal was reduced by the bridge fee margin.
+    # Total spot after perp->spot recovery: 1 + 6.99345 = 7.99345 USDC.
+    # The fee-adjusted withdrawal should be 7.99345 - 0.01 = 7.98345 USDC
+    # = 7_983_450 raw (6 decimals).
+    assert len(captured_evm_usdc_amounts) == 1
+    total_spot = Decimal("1") + Decimal("6.99345")
+    expected_raw = int(
+        (
+            (total_spot - HYPERCORE_BRIDGE_FEE_MARGIN) * Decimal(10**6)
+        ).to_integral_value()
+    )
+    assert captured_evm_usdc_amounts[0] == expected_raw
+
+
+def test_hyperliquid_cleanup_raises_on_dust_spot_balance(monkeypatch):
+    """Spot balance at or below the bridge fee margin raises a clear operator error.
+
+    1. Build a minimal HyperliquidCleanupContext with a dust-level spot balance.
+    2. Call _execute_spot_to_evm directly with an amount equal to the spot balance.
+    3. Assert that it raises RuntimeError instead of broadcasting a zero-amount withdrawal.
+
+    We test _execute_spot_to_evm directly because the full cleanup flow would
+    classify a dust spot balance as manual_review_required and never reach this code.
+    """
+    safe_address = "0xB136581dFB3efA76Ae71293C1A70942f0726E8fD"
+    dust_balance = Decimal("0.005")
+
+    # Step 1: Mock the live snapshot to return dust spot balance.
+    def fake_fetch_spot(_session, user: str):
+        return SimpleNamespace(
+            balances=[SimpleNamespace(coin="USDC", total=dust_balance, hold=Decimal(0))]
+        )
+
+    def fake_fetch_perp(_session, user: str):
+        return SimpleNamespace(
+            withdrawable=Decimal(0),
+            margin_summary=SimpleNamespace(account_value=Decimal(0)),
+            asset_positions=[],
+        )
+
+    def fake_fetch_vault_equities(_session, user: str):
+        return []
+
+    monkeypatch.setattr(
+        hyperliquid_cleanup, "fetch_spot_clearinghouse_state", fake_fetch_spot
+    )
+    monkeypatch.setattr(
+        hyperliquid_cleanup, "fetch_perp_clearinghouse_state", fake_fetch_perp
+    )
+    monkeypatch.setattr(
+        hyperliquid_cleanup, "fetch_user_vault_equities", fake_fetch_vault_equities
+    )
+
+    reserve_token = MagicMock()
+    reserve_token.fetch_balance_of.side_effect = lambda address: Decimal("1")
+
+    lagoon_vault = SimpleNamespace(safe_address=safe_address)
+
+    context = hyperliquid_cleanup.HyperliquidCleanupContext(
+        state_file=Path("/dev/null"),
+        strategy_file=Path("strategies/hyper-ai.py"),
+        store=MagicMock(),
+        state=MagicMock(),
+        web3=MagicMock(),
+        hot_wallet=MagicMock(),
+        lagoon_vault=lagoon_vault,
+        sync_model=MagicMock(),
+        session=object(),
+        reserve_token=reserve_token,
+        trading_strategy_api_key="test-key",
+        json_rpc_hyperliquid="https://rpc.hyperliquid.xyz/evm",
+        cache_path=None,
+        unit_testing=False,
+    )
+
+    # Step 2: Call _execute_spot_to_evm with dust-level amount.
+    # Step 3: Assert RuntimeError because spot is below fee margin.
+    with pytest.raises(
+        RuntimeError, match="too small to cover the HyperCore bridge fee margin"
+    ):
+        hyperliquid_cleanup._execute_spot_to_evm(context, dust_balance)
