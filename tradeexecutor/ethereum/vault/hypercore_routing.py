@@ -546,7 +546,8 @@ class HypercoreVaultRouting(RoutingModel):
         poll_interval: float = 2.0,
     ) -> Decimal:
         """Poll HyperCore perp withdrawable USDC until the withdrawal reaches perp."""
-        expected_balance = baseline_balance + raw_to_usdc(expected_increase_raw)
+        # Allow $0.01 tolerance for Hypercore API rounding
+        expected_balance = baseline_balance + raw_to_usdc(expected_increase_raw) - Decimal("0.01")
         deadline = time.time() + timeout
         attempt = 0
 
@@ -592,7 +593,8 @@ class HypercoreVaultRouting(RoutingModel):
         poll_interval: float = 2.0,
     ) -> Decimal:
         """Poll HyperCore spot free USDC until the perp-to-spot move is visible."""
-        expected_balance = baseline_balance + raw_to_usdc(expected_increase_raw)
+        # Allow $0.01 tolerance for Hypercore API rounding
+        expected_balance = baseline_balance + raw_to_usdc(expected_increase_raw) - Decimal("0.01")
         deadline = time.time() + timeout
         attempt = 0
 
