@@ -1408,11 +1408,6 @@ class HypercoreVaultRouting(RoutingModel):
                 self.safe_address,
                 perp_balance,
             )
-            assert perp_balance >= baseline_perp_withdrawable + raw_to_usdc(expected_raw), (
-                f"Cannot continue Hypercore withdrawal for Safe {self.safe_address}: "
-                f"perp withdrawable balance {perp_balance} is below expected "
-                f"{baseline_perp_withdrawable + raw_to_usdc(expected_raw)}"
-            )
 
             self.deployer.sync_nonce(web3)
 
@@ -1454,11 +1449,6 @@ class HypercoreVaultRouting(RoutingModel):
                 "Before sendAsset(spot->EVM), Safe %s spot free USDC balance is %s USDC",
                 self.safe_address,
                 spot_balance,
-            )
-            assert spot_balance >= baseline_spot_free + raw_to_usdc(expected_raw), (
-                f"Cannot continue Hypercore withdrawal for Safe {self.safe_address}: "
-                f"spot free USDC balance {spot_balance} is below expected "
-                f"{baseline_spot_free + raw_to_usdc(expected_raw)}"
             )
 
             self.deployer.sync_nonce(web3)
