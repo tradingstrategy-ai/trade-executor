@@ -113,6 +113,23 @@ USDC_DECIMALS = 6
 #: state, major vault event) and we abort rather than risk a bad withdrawal.
 HYPERCORE_LIKELY_CLOSE_TOLERANCE = 0.975
 
+#: Safety margin (raw USDC, 6 decimals) subtracted from live vault equity
+#: when building full-close withdrawals.
+#:
+#: HyperCore's ``vaultTransfer`` silently rejects withdrawals that exceed
+#: actual equity — the EVM tx succeeds but zero USDC moves.  Between the
+#: API read (``userVaultEquities``) and HyperCore processing the queued
+#: action, the vault NAV can fluctuate (fees, PnL, mark-to-market).  The
+#: API may also round the equity string upward vs. the on-chain value.
+#:
+#: $0.01 (10 000 raw) covers observed drift of ~$0.0002/s for typical
+#: vaults over the ~2-5 s latency window.
+#:
+#: This will leave ~$0.01 unclaimable dust in the vault (below the $5
+#: minimum vault withdrawal threshold) that must be cleaned up in
+#: accounting later.
+HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 10_000
+
 def usdc_to_raw(amount: Decimal) -> int:
     """Convert a human-readable USDC amount to raw 6-decimal integer."""
     return int(amount * 10**USDC_DECIMALS)
@@ -420,20 +437,36 @@ class HypercoreVaultRouting(RoutingModel):
             f"Aborting withdrawal to avoid unexpected behaviour."
         )
 
+        # 4. Subtract a safety margin from the live equity to account for
+        #    NAV drift between the API read and HyperCore action execution.
+        #    HyperCore silently rejects vaultTransfer withdrawals that exceed
+        #    actual equity — even by 1 raw USDC.  The vault NAV fluctuates
+        #    due to fees, PnL, and mark-to-market during the ~2-5 s between
+        #    reading the API and HyperCore processing the queued action.
+        #    This leaves ~$0.01 unclaimable dust in the vault that must be
+        #    cleaned up in accounting later.
+        safe_raw = live_raw - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+        assert safe_raw > 0, (
+            f"Live vault equity {live_raw} raw ({equity.equity} USDC) is too small to "
+            f"withdraw after subtracting safety margin {HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW} raw"
+        )
+
         logger.info(
-            "Full close: using live vault equity %s USDC (%d raw) instead of "
+            "Full close: using live vault equity %s USDC (%d raw), "
+            "after safety margin: %d raw, "
             "planned %s USDC (%d raw) for Safe %s, vault %s",
             equity.equity, live_raw,
+            safe_raw,
             raw_to_usdc(planned_raw), planned_raw,
             self.safe_address, vault_address,
         )
 
-        # 4. Store the live amount in trade.other_data so settlement can read
+        # 5. Store the safe amount in trade.other_data so settlement can read
         #    it back.  Phases 2-3 (transferUsdClass, sendAsset) must use the
         #    same amount that phase 1's vaultTransfer was built with.
-        trade.other_data["hypercore_capped_withdrawal_raw"] = live_raw
+        trade.other_data["hypercore_capped_withdrawal_raw"] = safe_raw
 
-        return live_raw
+        return safe_raw
 
     def _fetch_safe_evm_usdc_balance(self) -> int:
         """Read the Safe's EVM USDC balance (raw, 6 decimals).
