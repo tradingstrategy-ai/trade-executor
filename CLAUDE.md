@@ -30,6 +30,14 @@ When running a Python script use `poetry run python` command instead of plain `p
 source .local-test.env && poetry run python scripts/logos/post-process-logo.py
 ```
 
+## Running trade-executor
+
+E.g. to test CLI commands
+
+```shell
+source .local-test.env && poetry run trade-executor --help
+```
+
 ## Running tests
 
 If we have not run tests before make sure the user has created a gitignored file `.local-test.env` in the repository root. This will use `source` shell command to include the actual test secrets which lie outside the repository structure. Note: this file does not contain actual environment variables, just a `source` command to get them from elsewhere. **Never edit this file** and always ask the user to prepare the file for Claude Code.
@@ -92,7 +100,7 @@ Don't format code.
 
 ### Python
 
-- Always use module level imports, unless there are circular dependencies
+- Always use global, level imports, unless facing circular import exception
 
 ### Enum
 
