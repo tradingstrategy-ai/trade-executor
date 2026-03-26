@@ -44,6 +44,7 @@ from tradingstrategy.vault import VaultMetadata, VaultUniverse
 from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
+from tradeexecutor.ethereum.cctp.bridge_universe import generate_primary_to_satellite_cctp_bridge_universe
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind, AssetType
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, UniverseModel, DataTooOld, UniverseOptions, default_universe_options
 from tradeexecutor.state.types import JSONHexAddress, Percent
@@ -1262,6 +1263,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         forward_fill=False,
         forward_fill_until: datetime.datetime | None = None,
         primary_chain: ChainId = None,
+        auto_generate_cctp_bridges: bool = False,
     ):
         """Create a universe from loaded dataset.
 
@@ -1340,14 +1342,19 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         :param primary_chain:
             Enable cross-chain trading universes by defining a primary chain.
+
+        :param auto_generate_cctp_bridges:
+            Generate synthetic forward-only primary-to-satellite CCTP bridge pairs
+            for multichain universes using native USDC reserves.
         """
 
         logger.info(
-            "create_from_dataset(), forward fill: %s, until: %s, reserve: %s, dataset pairs %d",
+            "create_from_dataset(), forward fill: %s, until: %s, reserve: %s, dataset pairs %d, auto CCTP bridges: %s",
             forward_fill,
             forward_fill_until,
             reserve_asset,
-            len(dataset.pairs)
+            len(dataset.pairs),
+            auto_generate_cctp_bridges,
         )
 
         chain_ids = dataset.pairs["chain_id"].unique()
@@ -1372,6 +1379,17 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         else:
             reserve_asset_token = pairs.get_token_by_symbol(reserve_asset)
             reserve_asset = translate_token(reserve_asset_token)
+
+        exchange_universe = dataset.exchanges
+        if auto_generate_cctp_bridges and primary_chain is not None:
+            generated_bridge_universe = generate_primary_to_satellite_cctp_bridge_universe(
+                pairs=pairs,
+                exchange_universe=exchange_universe,
+                reserve_asset=reserve_asset,
+                primary_chain=primary_chain,
+            )
+            pairs = generated_bridge_universe.pair_universe
+            exchange_universe = generated_bridge_universe.exchange_universe
 
         if forward_fill:
             if forward_fill_until is None:
@@ -1426,15 +1444,21 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             liquidity_universe = None
             resampled_liquidity = None
 
+        universe_chain_ids = (
+            {ChainId(int(chain_id)) for chain_id in pairs.df["chain_id"].unique()}
+            if primary_chain is not None
+            else {chain_id}
+        )
+
         universe = Universe(
             time_bucket=dataset.time_bucket,
-            chains={chain_id},
+            chains=universe_chain_ids,
             pairs=pairs,
             candles=candle_universe,
             liquidity=liquidity_universe,
             resampled_liquidity=resampled_liquidity,
-            exchange_universe=dataset.exchanges,
-            exchanges={e for e in dataset.exchanges.exchanges.values()},
+            exchange_universe=exchange_universe,
+            exchanges={e for e in exchange_universe.exchanges.values()},
             lending_candles=dataset.lending_candles,
             forward_filled=forward_fill,
             vault_specs=dataset.vault_specs,
