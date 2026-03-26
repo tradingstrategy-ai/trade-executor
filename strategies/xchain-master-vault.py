@@ -198,6 +198,14 @@ class Parameters:
     primary_chain_id = PRIMARY_CHAIN_ID
     #: Keep the same exchange set as the notebook.
     exchanges = EXCHANGES
+    #: Allow test-only variants reuse the production universe builder.
+    supporting_pairs = SUPPORTING_PAIRS
+    #: Allow test-only variants narrow the live vault universe.
+    source_vaults = SOURCE_VAULTS
+    #: Allow test-only variants change the reserve chain cleanly.
+    preferred_stablecoin = PREFERRED_STABLECOIN
+    #: Enable shared synthetic forward CCTP bridge generation for satellite chains.
+    auto_generate_cctp_bridges = True
 
     #: Keep the validated 20-vault basket from the notebook.
     max_assets_in_portfolio = 20
@@ -285,7 +293,7 @@ def create_trading_universe(
     if execution_context.live_trading:
         supporting_pairs = []
     else:
-        supporting_pairs = SUPPORTING_PAIRS
+        supporting_pairs = parameters.supporting_pairs
 
     debug_printer(f"Preparing trading universe on chain {chain_id.get_name()}")
 
@@ -293,12 +301,15 @@ def create_trading_universe(
     pairs_df = filter_for_selected_pairs(all_pairs_df, supporting_pairs)
     debug_printer(f"We have total {len(all_pairs_df)} pairs in dataset and going to use {len(pairs_df)} pairs for the strategy")
 
-    vault_universe = load_vault_universe_with_metadata(client, vaults=SOURCE_VAULTS)
+    vault_universe = load_vault_universe_with_metadata(client, vaults=parameters.source_vaults)
     vault_universe = vault_universe.limit_to_denomination(
         ALLOWED_VAULT_DENOMINATION_TOKENS,
         check_all_vaults_found=True,
     )
-    debug_printer(f"Loaded {vault_universe.get_vault_count()} vaults from remote vault metadata, source vaults count: {len(SOURCE_VAULTS)}")
+    debug_printer(
+        f"Loaded {vault_universe.get_vault_count()} vaults from remote vault metadata, "
+        f"source vaults count: {len(parameters.source_vaults)}"
+    )
 
     dataset = load_partial_data(
         client=client,
@@ -316,10 +327,11 @@ def create_trading_universe(
 
     return TradingStrategyUniverse.create_from_dataset(
         dataset,
-        reserve_asset=PREFERRED_STABLECOIN,
+        reserve_asset=parameters.preferred_stablecoin,
         forward_fill=True,
         forward_fill_until=timestamp,
         primary_chain=parameters.primary_chain_id,
+        auto_generate_cctp_bridges=parameters.auto_generate_cctp_bridges,
     )
 
 
