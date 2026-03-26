@@ -7,8 +7,11 @@ Console usage
 
 .. code-block:: python
 
+    import os
+    from pathlib import Path
     from tradeexecutor.ethereum.vault.hyperliquid_cleanup import run_hyperliquid_cleanup
-    run_hyperliquid_cleanup(C
+
+    run_hyperliquid_cleanup(
         state_file=Path(store.path),
         strategy_file=Path(os.environ["STRATEGY_FILE"]),
         private_key=os.environ["PRIVATE_KEY"],
