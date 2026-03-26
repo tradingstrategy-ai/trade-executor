@@ -726,6 +726,7 @@ def _build_accounting_correction_context(
             min_gas_balance=Decimal(0),
             vault_address=context.lagoon_vault.address,
             vault_adapter_address=context.lagoon_vault.trading_strategy_module_address,
+            vault_payment_forwarder_address=None,
             routing_hint=mod.trade_routing,
         )
     )
