@@ -12,6 +12,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.analysis.position import display_positions
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
+from tradeexecutor.ethereum.multichain_balance import fetch_onchain_balances_multichain
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.valuation import ValuationModel
@@ -163,16 +164,25 @@ def close_single_or_all_positions(
         else:
             raise RuntimeError(f"Position #{position_id} does not exist")
 
-    for p in positions_to_close:
+    # Batch-fetch on-chain balances for all positions in one call,
+    # routing Hypercore vaults to the Hyperliquid API and ERC-20 assets
+    # to a single batched balanceOf() multicall.
+    all_pairs = [p.pair for p in positions_to_close]
+    token_storage_address = sync_model.get_token_storage_address()
+    balance_list = list(fetch_onchain_balances_multichain(
+        web3,
+        token_storage_address,
+        [pair.base for pair in all_pairs],
+        pairs=all_pairs,
+        filter_zero=False,
+    ))
+
+    for idx, p in enumerate(positions_to_close):
         logger.info("  Position: %s, quantity %s", p, p.get_quantity())
 
         trading_quantity = p.get_available_trading_quantity()
         quantity = p.get_quantity()
-        onchain_fetch_data = sync_model.fetch_onchain_balances(
-            [p.pair.base],
-            filter_zero=False,
-        )
-        onchain_balance = next(iter(onchain_fetch_data))
+        onchain_balance = balance_list[idx]
 
         if trading_quantity != quantity:
             logger.info(

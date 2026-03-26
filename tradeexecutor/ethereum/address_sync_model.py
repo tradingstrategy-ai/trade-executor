@@ -9,7 +9,7 @@ from web3.types import BlockIdentifier
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
-from tradeexecutor.ethereum.onchain_balance import fetch_address_balances
+from tradeexecutor.ethereum.multichain_balance import fetch_onchain_balances_multichain
 from tradeexecutor.state.balance_update import BalanceUpdate
 from tradingstrategy.chain import ChainId
 from tradeexecutor.ethereum.wallet import sync_reserves
@@ -152,6 +152,9 @@ class AddressSyncModel(SyncModel):
         When :py:attr:`web3config` is set, assets are grouped by ``chain_id``
         and each group is fetched from the correct chain's Web3 connection.
         Otherwise falls back to fetching all from ``self.web3``.
+
+        Off-chain assets (e.g. Hypercore vault tokens on chain 9999) are
+        silently filtered out via :py:func:`fetch_onchain_balances_multichain`.
         """
 
         address = self.get_token_storage_address()
@@ -179,7 +182,7 @@ class AddressSyncModel(SyncModel):
                     chain_block,
                     len(chain_assets),
                 )
-                yield from fetch_address_balances(
+                yield from fetch_onchain_balances_multichain(
                     chain_web3,
                     address,
                     chain_assets,
@@ -191,7 +194,7 @@ class AddressSyncModel(SyncModel):
             if block_identifier is None:
                 block_identifier = get_almost_latest_block_number(self.web3)
 
-            yield from fetch_address_balances(
+            yield from fetch_onchain_balances_multichain(
                 self.web3,
                 address,
                 assets,
