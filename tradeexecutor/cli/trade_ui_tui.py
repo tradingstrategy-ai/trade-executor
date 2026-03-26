@@ -125,6 +125,41 @@ def _get_position_info(state: State, pair: TradingPairIdentifier) -> str:
     return f"{quantity} {symbol}"
 
 
+def _format_lockup(state: State, pair: TradingPairIdentifier) -> Text:
+    """Format vault lockup time remaining from the stored expiry timestamp.
+
+    Shows remaining hours until the lockup expires, or ``Unlocked``
+    if the lockup has already passed. Non-vault pairs or positions
+    without lockup data show a dash.
+    """
+    if not pair.is_vault():
+        return Text("-", style="dim", justify="right")
+
+    position = state.portfolio.get_position_by_trading_pair(pair)
+    if position is None:
+        return Text("-", style="dim", justify="right")
+
+    expires_at_str = position.other_data.get("vault_lockup_expires_at")
+    if expires_at_str is None:
+        return Text("-", style="dim", justify="right")
+
+    try:
+        expires_at = datetime.datetime.fromisoformat(expires_at_str)
+    except (ValueError, TypeError):
+        return Text("-", style="dim", justify="right")
+
+    now = native_datetime_utc_now()
+    remaining = expires_at - now
+    if remaining.total_seconds() <= 0:
+        return Text("Unlocked", style="green", justify="right")
+
+    hours = remaining.total_seconds() / 3600
+    if hours >= 24:
+        days = hours / 24
+        return Text(f"{days:.1f}d", style="yellow", justify="right")
+    return Text(f"{hours:.1f}h", style="yellow", justify="right")
+
+
 def _get_pair_symbol(pair: TradingPairIdentifier) -> str:
     """Get display symbol for a pair."""
     if pair.is_vault():
@@ -381,6 +416,7 @@ class PairSelectionApp(App):
         table.add_column("TVL", key="tvl", width=14)
         table.add_column("Deposits", key="deposits", width=14)
         table.add_column("Position", key="position", width=20)
+        table.add_column("Lockup", key="lockup", width=10)
 
         for idx, pair in enumerate(self.sorted_pairs, 1):
             symbol = _get_pair_symbol(pair)
@@ -389,6 +425,7 @@ class PairSelectionApp(App):
             tvl = _format_tvl(self.tvl_values.get(id(pair)))
             deposits = _format_deposits_open(pair)
             position = _get_position_info(self.state, pair)
+            lockup = _format_lockup(self.state, pair)
 
             table.add_row(
                 str(idx),
@@ -398,6 +435,7 @@ class PairSelectionApp(App):
                 tvl,
                 deposits,
                 position,
+                lockup,
                 key=str(idx),
             )
 
