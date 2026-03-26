@@ -163,31 +163,31 @@ def test_valuation_model(value_func, vault_pair):
     assert position.last_token_price > 0
 
 
-def test_lockup_func_returns_hours(session, vault_pair):
-    """Lockup func returns remaining hours as a float.
+def test_lockup_func_returns_datetime(session, vault_pair):
+    """Lockup func returns the expiry as a naive UTC datetime.
 
     1. Create a lockup func for the Trial 3 Safe
     2. Call it with the HLP vault pair
-    3. Verify it returns a non-negative float
+    3. Verify it returns a datetime instance
     """
     lockup_func = create_hypercore_vault_lockup_func(
         session=session,
         safe_address=TRIAL3_SAFE,
         is_testnet=False,
     )
-    hours = lockup_func(vault_pair)
-    assert hours is not None, "Expected lockup hours, got None (no vault position?)"
-    assert isinstance(hours, float)
-    assert hours >= 0
+    expires_at = lockup_func(vault_pair)
+    assert expires_at is not None, "Expected expiry datetime, got None (no vault position?)"
+    assert isinstance(expires_at, datetime.datetime)
+    assert expires_at.tzinfo is None, "Expected naive UTC datetime"
 
 
-def test_valuation_populates_lockup_hours(session, value_func, vault_pair):
-    """Valuator with lockup_func populates position.other_data with lockup hours.
+def test_valuation_populates_lockup_expires_at(session, value_func, vault_pair):
+    """Valuator with lockup_func stores ISO timestamp in position.other_data.
 
     1. Create a lockup func for the Trial 3 Safe
     2. Build a position with a successful deposit trade
     3. Run the valuator with the lockup func
-    4. Verify vault_lockup_remaining_hours is set in other_data
+    4. Verify vault_lockup_expires_at is an ISO 8601 string in other_data
     """
     lockup_func = create_hypercore_vault_lockup_func(
         session=session,
@@ -231,7 +231,9 @@ def test_valuation_populates_lockup_hours(session, value_func, vault_pair):
     valuator = HypercoreVaultValuator(value_func, lockup_func=lockup_func)
     valuator(ts, position)
 
-    assert "vault_lockup_remaining_hours" in position.other_data
-    hours = position.other_data["vault_lockup_remaining_hours"]
-    assert isinstance(hours, float)
-    assert hours >= 0
+    assert "vault_lockup_expires_at" in position.other_data
+    iso_str = position.other_data["vault_lockup_expires_at"]
+    assert isinstance(iso_str, str)
+    # Verify it parses back to a valid datetime
+    parsed = datetime.datetime.fromisoformat(iso_str)
+    assert isinstance(parsed, datetime.datetime)

@@ -116,13 +116,14 @@ def test_pricing_model_returns_one():
     assert mid == 1.0
 
 
-def test_lockup_func_populates_other_data():
-    """Valuator with lockup_func stores lockup hours in position.other_data.
+def test_lockup_func_populates_expires_at():
+    """Valuator with lockup_func stores ISO timestamp in position.other_data.
 
-    1. Create a mock lockup func returning 12.5 hours
+    1. Create a mock lockup func returning a fixed datetime
     2. Run the valuator
-    3. Verify other_data contains the lockup hours
+    3. Verify other_data contains the ISO string
     """
+    import datetime as dt
     from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultValuator
 
     position = MagicMock()
@@ -131,17 +132,19 @@ def test_lockup_func_populates_other_data():
     position.last_token_price = 1.0
     position.other_data = {}
 
+    expires = dt.datetime(2026, 3, 27, 14, 30, 0)
+
     def value_func(pair):
         return Decimal("105.0")
 
     def lockup_func(pair):
-        return 12.5
+        return expires
 
     valuator = HypercoreVaultValuator(value_func=value_func, lockup_func=lockup_func)
     ts = native_datetime_utc_now()
     valuator(ts, position)
 
-    assert position.other_data["vault_lockup_remaining_hours"] == 12.5
+    assert position.other_data["vault_lockup_expires_at"] == "2026-03-27T14:30:00"
 
 
 def test_lockup_func_none_position():
@@ -169,7 +172,7 @@ def test_lockup_func_none_position():
     ts = native_datetime_utc_now()
     valuator(ts, position)
 
-    assert position.other_data["vault_lockup_remaining_hours"] is None
+    assert position.other_data["vault_lockup_expires_at"] is None
 
 
 def test_old_bug_equity_squared():

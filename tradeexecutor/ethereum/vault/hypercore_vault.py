@@ -306,8 +306,11 @@ def create_hypercore_vault_lockup_func(
     safe_address: str | None = None,
     is_testnet: bool = False,
     bypass_cache: bool = False,
-) -> Callable[[TradingPairIdentifier], float | None]:
-    """Create a function that returns vault lockup remaining hours.
+) -> Callable[[TradingPairIdentifier], datetime.datetime | None]:
+    """Create a function that returns the vault lockup expiry as a UTC timestamp.
+
+    The UI can compute remaining hours client-side from this stable timestamp,
+    rather than relying on a decaying "hours remaining" value.
 
     Uses the cached :py:func:`~eth_defi.hyperliquid.api.fetch_user_vault_equity`
     so no extra API calls are made when used alongside
@@ -330,7 +333,8 @@ def create_hypercore_vault_lockup_func(
 
     :return:
         Function that takes a TradingPairIdentifier and returns
-        lockup remaining in hours, or ``None`` if no position found.
+        the naive UTC datetime when the lockup expires, or ``None``
+        if no position found.
     """
     if execution_model is None:
         assert session is not None and safe_address is not None, \
@@ -341,11 +345,11 @@ def create_hypercore_vault_lockup_func(
         _session = None
         _safe_address = None
 
-    def get_hypercore_vault_lockup_hours(pair: TradingPairIdentifier) -> float | None:
-        """Get remaining lockup hours for a Hypercore vault position.
+    def get_hypercore_vault_lockup_expires_at(pair: TradingPairIdentifier) -> datetime.datetime | None:
+        """Get the UTC timestamp when the vault lockup expires.
 
         :return:
-            Remaining lockup in hours, or ``None`` if no position.
+            Naive UTC datetime of lockup expiry, or ``None`` if no position.
         """
         vault_address = pair.pool_address
         assert vault_address, f"No pool_address set for Hypercore vault pair: {pair}"
@@ -368,12 +372,10 @@ def create_hypercore_vault_lockup_func(
         if eq is None:
             return None
 
-        remaining = eq.lockup_remaining
-        hours = remaining.total_seconds() / 3600
         logger.debug(
-            "Hypercore vault %s lockup for %s: %.2f hours remaining (until %s)",
-            vault_address, safe_address, hours, eq.locked_until,
+            "Hypercore vault %s lockup for %s expires at %s",
+            vault_address, safe_address, eq.locked_until,
         )
-        return hours
+        return eq.locked_until
 
-    return get_hypercore_vault_lockup_hours
+    return get_hypercore_vault_lockup_expires_at
