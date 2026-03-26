@@ -485,12 +485,14 @@ def correct_accounts(
                 diff = current_equity - tracked_value
 
                 if diff == 0:
-                    logger.debug("Vault position %d: no change (equity=%.2f)", position.position_id, current_equity)
+                    logger.debug("Vault position %d (%s): no change (equity=%.2f)", position.position_id, position.pair.get_vault_name() or position.pair.pool_address, current_equity)
                     continue
 
+                vault_name = position.pair.get_vault_name() or "unknown"
+                vault_addr = position.pair.pool_address or "?"
                 logger.info(
-                    "Vault position %d: equity changed %.2f -> %.2f (diff=%.2f)",
-                    position.position_id, tracked_value, current_equity, diff,
+                    "Vault position %d (%s %s): equity changed %.2f -> %.2f (diff=%.2f)",
+                    position.position_id, vault_name, vault_addr, tracked_value, current_equity, diff,
                 )
 
                 event_id = state.portfolio.next_balance_update_id
