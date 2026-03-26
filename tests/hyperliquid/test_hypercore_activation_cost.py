@@ -238,22 +238,23 @@ def test_create_sell_transactions_build_vault_withdraw_phase1_only():
 
 
 def test_withdrawal_uses_live_equity_on_close():
-    """Full close withdrawal uses live vault equity instead of planned_reserve.
+    """Full close withdrawal uses live vault equity minus safety margin.
 
     HyperCore's vaultTransfer silently rejects withdrawals exceeding actual
     equity.  When TradeFlag.close is set, the routing queries live equity via
-    ``userVaultEquities`` and uses that as the withdrawal amount.  The planned
-    value is only a sanity reference.
+    ``userVaultEquities``, subtracts HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+    to avoid NAV drift rejections, and uses that as the withdrawal amount.
 
     1. Create a sell trade with TradeFlag.close and planned_reserve slightly
        above actual vault equity (reproducing the production failure).
     2. Mock ``fetch_user_vault_equity`` to return the lower live equity.
-    3. Verify the withdrawal tx is built with the live equity amount.
-    4. Verify the live amount is stored in ``trade.other_data`` for settlement.
+    3. Verify the withdrawal tx is built with live equity minus safety margin.
+    4. Verify the safe amount is stored in ``trade.other_data`` for settlement.
     """
     import datetime
     from eth_defi.hyperliquid.api import UserVaultEquity
     from tradeexecutor.state.trade import TradeFlag
+    from tradeexecutor.ethereum.vault.hypercore_routing import HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
 
     routing = _make_routing(simulate=False)
     trade = _make_trade(planned_reserve=Decimal("7.129505"), is_buy=False)
@@ -268,6 +269,8 @@ def test_withdrawal_uses_live_equity_on_close():
         equity=Decimal("7.128756"),
         locked_until=datetime.datetime(2020, 1, 1),
     )
+    live_raw = 7_128_756
+    expected_withdrawal_raw = live_raw - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
 
     # 2. Mock the equity fetch and tx building.
     with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=live_equity):
@@ -277,15 +280,15 @@ def test_withdrawal_uses_live_equity_on_close():
 
     assert txs == [signed_tx]
 
-    # 3. Verify the withdrawal uses live equity (7_128_756), not planned (7_129_505).
+    # 3. Verify the withdrawal uses live equity minus safety margin.
     build_withdraw.assert_called_once_with(
         routing.lagoon_vault,
         vault_address="0x4dec0a851849056e259128464ef28ce78afa27f6",
-        hypercore_usdc_amount=7_128_756,
+        hypercore_usdc_amount=expected_withdrawal_raw,
     )
 
-    # 4. Verify the live amount is stored for settlement to read back.
-    assert trade.other_data["hypercore_capped_withdrawal_raw"] == 7_128_756
+    # 4. Verify the safe amount is stored for settlement to read back.
+    assert trade.other_data["hypercore_capped_withdrawal_raw"] == expected_withdrawal_raw
 
 
 def test_withdrawal_rejects_large_equity_mismatch():
