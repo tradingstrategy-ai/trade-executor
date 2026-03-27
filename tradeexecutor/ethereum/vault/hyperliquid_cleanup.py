@@ -38,64 +38,47 @@ from pathlib import Path
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
-from eth_defi.hyperliquid.api import (
-    HyperliquidSession,
-    UserVaultEquity,
-    fetch_perp_clearinghouse_state,
-    fetch_spot_clearinghouse_state,
-    fetch_user_vault_equities,
-)
+from eth_defi.hyperliquid.api import (HyperliquidSession, UserVaultEquity,
+                                      fetch_perp_clearinghouse_state,
+                                      fetch_spot_clearinghouse_state,
+                                      fetch_user_vault_equities)
 from eth_defi.hyperliquid.constants import HYPERCORE_BRIDGE_FEE_MARGIN
 from eth_defi.hyperliquid.core_writer import (
     build_hypercore_send_asset_to_evm_call,
     build_hypercore_transfer_usd_class_call,
-    compute_spot_to_evm_withdrawal_amount,
-)
-from eth_defi.hyperliquid.session import (
-    HYPERLIQUID_API_URL,
-    HYPERLIQUID_TESTNET_API_URL,
-    create_hyperliquid_session,
-)
+    compute_spot_to_evm_withdrawal_amount)
+from eth_defi.hyperliquid.session import (HYPERLIQUID_API_URL,
+                                          HYPERLIQUID_TESTNET_API_URL,
+                                          create_hyperliquid_session)
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_defi.token import TokenDetails
 from eth_defi.trace import assert_transaction_success_with_explanation
 from tabulate import tabulate
 from web3 import Web3
 
-from tradeexecutor.cli.bootstrap import (
-    backup_state,
-    create_client,
-    create_execution_and_sync_model,
-    create_state_store,
-    create_sync_model,
-    create_web3_config,
-    prepare_cache,
-    prepare_executor_id,
-)
+from tradeexecutor.cli.bootstrap import (backup_state, create_client,
+                                         create_execution_and_sync_model,
+                                         create_state_store, create_sync_model,
+                                         create_web3_config, prepare_cache,
+                                         prepare_executor_id)
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.state.repair import repair_trades
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.strategy.account_correction import (
-    UnknownTokenPositionFix,
-    calculate_account_corrections,
-    check_accounts,
-    check_state_internal_coherence,
-    correct_accounts,
-)
+    UnknownTokenPositionFix, calculate_account_corrections, check_accounts,
+    check_state_internal_coherence, correct_accounts)
 from tradeexecutor.strategy.bootstrap import make_factory_from_strategy_mod
 from tradeexecutor.strategy.description import StrategyExecutionDescription
-from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.execution_context import (ExecutionContext,
+                                                      ExecutionMode)
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.strategy.run_state import RunState
-from tradeexecutor.strategy.strategy_module import (
-    StrategyModuleInformation,
-    read_strategy_module,
-)
-from tradeexecutor.strategy.trading_strategy_universe import (
-    TradingStrategyUniverseModel,
-)
+from tradeexecutor.strategy.strategy_module import (StrategyModuleInformation,
+                                                    read_strategy_module)
+from tradeexecutor.strategy.trading_strategy_universe import \
+    TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 
 logger = logging.getLogger(__name__)
@@ -948,7 +931,7 @@ def run_hyperliquid_cleanup(
         from pathlib import Path
         from tradeexecutor.ethereum.vault.hyperliquid_cleanup import run_hyperliquid_cleanup
 
-        run_hyperliquid_cleanup(C
+        run_hyperliquid_cleanup(
             state_file=Path(store.path),
             strategy_file=Path(os.environ["STRATEGY_FILE"]),
             private_key=os.environ["PRIVATE_KEY"],
