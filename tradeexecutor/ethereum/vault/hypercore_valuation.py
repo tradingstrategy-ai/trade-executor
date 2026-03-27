@@ -523,6 +523,7 @@ class HypercoreVaultValuator(ValuationModel):
         )
 
         position.last_token_price = new_price
+        position.valuation_updates.append(evt)
 
         # Populate vault lockup expiry UTC timestamp from the Hyperliquid API.
         # The UI computes remaining hours client-side from this stable timestamp.

@@ -312,15 +312,40 @@ class LagoonVaultSyncModel(AddressSyncModel):
         """
 
         now = native_datetime_utc_now()
-        for p in state.portfolio.get_open_and_frozen_positions():
+        all_positions = list(state.portfolio.get_open_and_frozen_positions())
+        logger.info(
+            "calculate_valuation() freshness check: %d open/frozen positions, now=%s, threshold=%s",
+            len(all_positions),
+            now,
+            self.valuation_data_freshness,
+        )
+        for p in all_positions:
             if p.get_quantity() != 0:
                 # Frozen positions may have quantity of 0 (failed open trades) and cannot have value
                 valued_at = p.get_last_valued_at()
                 updated_ago = now - valued_at
                 last_event = p.valuation_updates[-1] if p.valuation_updates else None
 
+                logger.info(
+                    "Freshness check position #%d %s: valued_at=%s, ago=%s, valuation_updates=%d, last_pricing_at=%s, kind=%s, qty=%s",
+                    p.position_id,
+                    p.pair.base.token_symbol,
+                    valued_at,
+                    updated_ago,
+                    len(p.valuation_updates),
+                    p.last_pricing_at,
+                    p.pair.kind.value,
+                    p.get_quantity(),
+                )
+
                 # Try to dump as much as possible information for diagnostics
                 assert updated_ago < self.valuation_data_freshness, f"The last valuation of this position is too old for us to comfortably update the onchain share price. Position {p}. Now: {now}, updated at: {valued_at}, diff: {updated_ago}, threshold: {self.valuation_data_freshness}, last valuation event: {last_event}"
+            else:
+                logger.info(
+                    "Freshness check position #%d %s: skipped (quantity=0)",
+                    p.position_id,
+                    p.pair.base.token_symbol,
+                )
 
         if self.calculate_valuation_func is not None:
             return self.calculate_valuation_func(state, block_number=block_number)
