@@ -89,7 +89,7 @@ json_rpc_anvil = Option(None, envvar="JSON_RPC_ANVIL", help="Anvil JSON-RPC url.
 json_rpc_derive = Option(None, envvar="JSON_RPC_DERIVE", help=_gen_rpc_help("RPC: Derive"))
 json_rpc_arbitrum_sepolia = Option(None, envvar="JSON_RPC_ARBITRUM_SEPOLIA", help=_gen_rpc_help("RPC: Arbitrum Sepolia"))
 json_rpc_base_sepolia = Option(None, envvar="JSON_RPC_BASE_SEPOLIA", help=_gen_rpc_help("RPC: Base Sepolia"))
-json_rpc_hyperliquid = Option(None, envvar="JSON_RPC_HYPERLIQUID", help=_gen_rpc_help("RPC: HyperEVM (Hyperliquid)"))
+json_rpc_hyperliquid = Option(None, envvar=["JSON_RPC_HYPERLIQUID", "JSON_RPC_HYPEREVM"], help=_gen_rpc_help("RPC: HyperEVM (Hyperliquid)"))
 json_rpc_hyperliquid_testnet = Option(None, envvar="JSON_RPC_HYPERLIQUID_TESTNET", help=_gen_rpc_help("RPC: HyperEVM testnet"))
 json_rpc_monad = Option(None, envvar="JSON_RPC_MONAD", help=_gen_rpc_help("RPC: Monad"))
 JSON_RPC_OPTION_NAMES: tuple[str, ...] = (

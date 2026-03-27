@@ -48,6 +48,18 @@ def _get_chain_slug(chain_id: ChainId) -> str:
     """Get the RPC kwarg slug for a chain, with overrides for broken slugs."""
     return _CHAIN_SLUG_OVERRIDES.get(chain_id, chain_id.get_slug())
 
+
+def get_rpc_env_var_name(chain_id: ChainId) -> str:
+    """Get the expected ``JSON_RPC_*`` environment variable name for a chain.
+
+    Hypercore shares the same RPC as Hyperliquid, so it maps to
+    ``JSON_RPC_HYPERLIQUID``.
+    """
+    if chain_id == ChainId.hypercore:
+        chain_id = ChainId.hyperliquid
+    return f"JSON_RPC_{_get_chain_slug(chain_id).upper()}"
+
+
 #: Funny chain ids used. e.g. with mainnet forks
 TEST_CHAIN_IDS: List[ChainId] = [
     ChainId.ethereum_tester,

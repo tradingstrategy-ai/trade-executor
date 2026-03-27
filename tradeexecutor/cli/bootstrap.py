@@ -827,7 +827,7 @@ def check_universe_chains_have_rpc(
     if web3config is None:
         return
 
-    from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
+    from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS, get_rpc_env_var_name
 
     configured_chains = set(web3config.connections.keys())
 
@@ -839,14 +839,23 @@ def check_universe_chains_have_rpc(
     universe_chains = universe.data_universe.chains
 
     missing = set(universe_chains) - configured_chains
+
+    # Hypercore (9999) shares the same RPC as Hyperliquid (999),
+    # so don't flag it as missing when Hyperliquid is configured
+    if ChainId.hypercore in missing and ChainId.hyperliquid in configured_chains:
+        missing.discard(ChainId.hypercore)
+
     if missing:
-        missing_names = ", ".join(c.get_name() for c in sorted(missing, key=lambda c: c.value))
+        missing_names = ", ".join(
+            f"{c.get_name()} ({get_rpc_env_var_name(c)})"
+            for c in sorted(missing, key=lambda c: c.value)
+        )
         configured_names = ", ".join(c.get_name() for c in sorted(configured_chains, key=lambda c: c.value))
         raise RuntimeError(
             f"Strategy universe uses chains that do not have JSON-RPC connections configured.\n"
             f"Missing RPCs for: {missing_names}\n"
             f"Configured RPCs for: {configured_names}\n"
-            f"Set the corresponding JSON_RPC_* environment variables."
+            f"Set the corresponding environment variables listed above."
         )
 
 
