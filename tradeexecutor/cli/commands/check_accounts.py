@@ -170,7 +170,12 @@ def check_accounts(
         sync_model,
     )
 
-    output = tabulate(df, headers='keys', tablefmt='rounded_outline')
+    output = tabulate(
+        df,
+        headers='keys',
+        tablefmt='rounded_outline',
+        disable_numparse=True,
+    )
 
     if clean:
         logger.info("All accounts match:\n%s", output)

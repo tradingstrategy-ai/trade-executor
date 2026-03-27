@@ -50,7 +50,7 @@ from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.asset import build_expected_asset_map
 from tradeexecutor.strategy.sync_model import SyncModel
-from eth_defi.compat import native_datetime_utc_now
+from tradeexecutor.ethereum.multichain_balance import fetch_onchain_balances_multichain
 
 
 logger = logging.getLogger(__name__)
@@ -1251,7 +1251,7 @@ def check_accounts(
     logger.info(f"Checking accounts at block {block_identifier:,}")
 
     clean = True
-    corrections = calculate_account_corrections(
+    corrections = list(calculate_account_corrections(
         pair_universe,
         reserve_assets,
         state,
@@ -1259,63 +1259,144 @@ def check_accounts(
         relative_epsilon=None,
         all_balances=True,
         block_identifier=block_identifier,
-    )
+    ))
+    corrections.extend(_build_hypercore_vault_account_checks(state, sync_model, block_identifier))
 
     idx = []
     items = []
     for c in corrections:
-        idx.append(c.asset.token_symbol)
+        row_idx, row_item = _format_account_check_row(c, state)
+        idx.append(row_idx)
+        items.append(row_item)
 
-        low_value = c.is_usd_low_value_diff()
-
-        match c.position:
-            case None:
-                position_label = "No open position"
-            case ReservePosition():
-                position_label = "Reserves"
-            case TradingPosition():
-                position_label = c.position.pair.get_ticker()
-            case _:
-                raise NotImplementedError()
-
-        dust = c.is_dusty()
-
-        if c.expected_amount:
-            relative_diff = (c.actual_amount - c.expected_amount) / c.expected_amount
-            mismatch_str = f"{relative_diff * 100:.2f}%"
-        else:
-            mismatch_str = "Y"
-
-        blacklisted = False
-        if c.position:
-            position = c.position
-            if isinstance(position, TradingPosition):
-                blacklisted = not state.is_good_pair(position.pair)
-                if blacklisted:
-                    logger.info(f"Detected blacklisted pair in accounting: {position.pair.get_ticker()}")
-
-        items.append({
-            "Address": c.asset.address,
-            "Position": position_label,
-            "Actual": f"{c.actual_amount:.6f}",
-            "Expected": f"{c.expected_amount:.6f}",
-            "Diff": f"{c.quantity:.4f}",
-            "Dusty": "Y" if dust else "N",
-            "Lowval": "Y" if low_value else "N",
-            "Misma": mismatch_str if c.mismatch else "N",
-            "Dust eps.": f"{c.dust_epsilon:.4f}",
-            "Rel eps": f"{c.relative_epsilon:.4f}",
-            "USD diff": f"{c.usd_value:,.2f}" if c.usd_value is not None else "-",
-            "Blacklisted": blacklisted,
-        })
-
-        if c.mismatch and not c.is_usd_low_value_diff():
+        if c.mismatch and row_item["Lowval"] != "Y":
             clean = False
 
     df = pd.DataFrame(items, index=idx)
     df = df.fillna("")
     df = df.replace({pd.NaT: ""})
     return clean, df
+
+
+def _build_hypercore_vault_account_checks(
+    state: State,
+    sync_model: SyncModel,
+    block_identifier: BlockIdentifier = None,
+) -> list[AccountingBalanceCheck]:
+    """Create read-only account check rows for Hypercore vault positions.
+
+    Hypercore vaults are tracked via the Hyperliquid API, not ERC-20
+    balances, so they never enter the generic asset-map based correction
+    path.  Reuse the pair-aware multichain balance helper to fetch live
+    equity for the vault pairs already present in state.
+    """
+
+    vault_positions = [
+        p for p in state.portfolio.get_open_and_frozen_positions()
+        if p.pair.is_hyperliquid_vault()
+    ]
+
+    logger.debug("Hypercore vault account checks discovered %d vault position(s)", len(vault_positions))
+
+    if not vault_positions:
+        return []
+
+    balances = list(fetch_onchain_balances_multichain(
+        sync_model.web3,
+        sync_model.get_token_storage_address(),
+        [],
+        pairs=[p.pair for p in vault_positions],
+        filter_zero=False,
+        block_number=block_identifier,
+    ))
+    assert len(balances) == len(vault_positions), \
+        f"Expected {len(vault_positions)} Hypercore balances, got {len(balances)}"
+
+    corrections: list[AccountingBalanceCheck] = []
+    for position, balance in zip(vault_positions, balances, strict=True):
+        expected_amount = position.get_quantity()
+        actual_amount = balance.amount
+        dust_epsilon = get_dust_epsilon_for_pair(position.pair)
+        relative_epsilon = get_relative_epsilon_for_asset(position.pair.base)
+        mismatch = is_relative_mismatch(
+            actual_amount,
+            expected_amount,
+            relative_epsilon,
+            dust_epsilon,
+        )
+
+        corrections.append(AccountingBalanceCheck(
+            type=AccountingCorrectionCause.unknown_cause,
+            holding_address=sync_model.get_token_storage_address(),
+            asset=position.pair.base,
+            positions={position},
+            expected_amount=expected_amount,
+            actual_amount=actual_amount,
+            dust_epsilon=dust_epsilon,
+            relative_epsilon=relative_epsilon,
+            block_number=balance.block_number,
+            timestamp=balance.timestamp,
+            usd_value=position.calculate_quantity_usd_value(actual_amount - expected_amount),
+            reserve_asset=False,
+            mismatch=mismatch,
+            price=position.last_token_price,
+            price_at=position.last_pricing_at,
+        ))
+
+    logger.debug("Built %d Hypercore vault account check row(s)", len(corrections))
+    return corrections
+
+
+def _format_account_check_row(
+    correction: AccountingBalanceCheck,
+    state: State,
+) -> tuple[str, dict]:
+    """Turn one account check into a CLI table row."""
+
+    low_value = correction.is_usd_low_value_diff()
+    position = correction.position
+
+    match position:
+        case None:
+            position_label = "No open position"
+        case ReservePosition():
+            position_label = "Reserves"
+        case TradingPosition():
+            if position.pair.is_vault():
+                position_label = position.pair.get_vault_name() or position.pair.get_ticker()
+            else:
+                position_label = position.pair.get_ticker()
+        case _:
+            raise NotImplementedError()
+
+    dust = correction.is_dusty()
+
+    if correction.expected_amount:
+        relative_diff = (correction.actual_amount - correction.expected_amount) / correction.expected_amount
+        mismatch_str = f"{relative_diff * 100:.2f}%"
+    else:
+        mismatch_str = "Y"
+
+    blacklisted = False
+    if isinstance(position, TradingPosition):
+        blacklisted = not state.is_good_pair(position.pair)
+        if blacklisted:
+            logger.info(f"Detected blacklisted pair in accounting: {position_label}")
+
+    return correction.asset.token_symbol, {
+        "Address": correction.asset.address,
+        "Position": position_label,
+        "Actual": f"{correction.actual_amount:.6f}",
+        "Expected": f"{correction.expected_amount:.6f}",
+        "Diff": f"{correction.quantity:.4f}",
+        "Dusty": "Y" if dust else "N",
+        "Lowval": "Y" if low_value else "N",
+        "Misma": mismatch_str if correction.mismatch else "N",
+        "Dust eps.": f"{correction.dust_epsilon:.4f}",
+        "Rel eps": f"{correction.relative_epsilon:.4f}",
+        "USD diff": f"{correction.usd_value:,.2f}" if correction.usd_value is not None else "-",
+        "Blacklisted": blacklisted,
+    }
 
 
 def check_state_internal_coherence(state: State):
@@ -1325,4 +1406,3 @@ def check_state_internal_coherence(state: State):
         quantity = p.get_quantity()
         trading_quantity = p.get_available_trading_quantity()
         assert quantity == trading_quantity, f"Position {p}, quantity {quantity}, available for trading {trading_quantity}, probably unexecuted trades. You need to run repair command first."
-

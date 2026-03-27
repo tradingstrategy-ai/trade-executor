@@ -40,7 +40,131 @@ from ...strategy.strategy_module import StrategyModuleInformation, read_strategy
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
 from ...utils.blockchain import get_block_timestamp
-from eth_defi.compat import native_datetime_utc_now
+
+
+def _sync_hypercore_vault_positions(
+    *,
+    asset_management_mode: AssetManagementMode,
+    universe,
+    sync_model,
+    web3,
+    state,
+) -> None:
+    """Auto-create and sync Hypercore vault positions from the Hyperliquid API."""
+
+    if not asset_management_mode.is_vault() or universe is None:
+        return
+
+    from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
+
+    has_vault_pairs = any(
+        translate_trading_pair(p).is_hyperliquid_vault()
+        for p in universe.data_universe.pairs.iterate_pairs()
+    )
+    if not has_vault_pairs:
+        return
+
+    safe_address = sync_model.get_token_storage_address()
+    chain_id = web3.eth.chain_id
+
+    from eth_defi.hyperliquid.session import (
+        HYPERLIQUID_API_URL,
+        HYPERLIQUID_TESTNET_API_URL,
+        create_hyperliquid_session,
+    )
+    from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_value_func
+    from tradeexecutor.strategy.account_correction import create_missing_vault_positions
+    from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
+    from tradeexecutor.state.sync import BalanceEventRef
+
+    is_testnet = chain_id == 998
+    api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
+    hl_session = create_hyperliquid_session(api_url=api_url)
+
+    vault_value_func = create_hypercore_vault_value_func(
+        session=hl_session,
+        safe_address=safe_address,
+        is_testnet=is_testnet,
+    )
+
+    logger.info("Checking for missing Hypercore vault positions (Safe: %s)...", safe_address)
+    vault_created_trades = create_missing_vault_positions(
+        strategy_universe=universe,
+        state=state,
+        strategy_cycle_at=native_datetime_utc_now(),
+        vault_value_func=vault_value_func,
+    )
+    if vault_created_trades:
+        logger.info("Auto-created %d Hypercore vault position(s)", len(vault_created_trades))
+        for trade in vault_created_trades:
+            logger.info("  Created vault position for %s", trade.pair)
+
+    vault_positions = [
+        p for p in state.portfolio.get_open_positions()
+        if p.pair.is_hyperliquid_vault()
+    ]
+    vault_sync_events = []
+    for position in vault_positions:
+        try:
+            current_equity = vault_value_func(position.pair)
+        except Exception as e:
+            logger.error("Failed to get vault equity for position %d: %s", position.position_id, e)
+            continue
+
+        tracked_value = position.get_quantity()
+        diff = current_equity - tracked_value
+
+        if diff == 0:
+            logger.debug(
+                "Vault position %d (%s): no change (equity=%.2f)",
+                position.position_id,
+                position.pair.get_vault_name() or position.pair.pool_address,
+                current_equity,
+            )
+            continue
+
+        vault_name = position.pair.get_vault_name() or "unknown"
+        vault_addr = position.pair.pool_address or "?"
+        logger.info(
+            "Vault position %d (%s %s): equity changed %.2f -> %.2f (diff=%.2f)",
+            position.position_id,
+            vault_name,
+            vault_addr,
+            tracked_value,
+            current_equity,
+            diff,
+        )
+
+        event_id = state.portfolio.next_balance_update_id
+        state.portfolio.next_balance_update_id += 1
+
+        evt = BalanceUpdate(
+            balance_update_id=event_id,
+            position_type=BalanceUpdatePositionType.open_position,
+            cause=BalanceUpdateCause.vault_flow,
+            asset=position.pair.base,
+            block_mined_at=native_datetime_utc_now(),
+            strategy_cycle_included_at=native_datetime_utc_now(),
+            chain_id=position.pair.base.chain_id,
+            old_balance=tracked_value,
+            usd_value=float(diff),
+            quantity=diff,
+            owner_address=None,
+            tx_hash=None,
+            log_index=None,
+            position_id=position.position_id,
+            block_number=None,
+            notes="Hypercore vault equity sync",
+        )
+
+        position.balance_updates[evt.balance_update_id] = evt
+        ref = BalanceEventRef.from_balance_update_event(evt)
+        state.sync.accounting.balance_update_refs.append(ref)
+        vault_sync_events.append(evt)
+
+    if vault_sync_events:
+        state.sync.accounting.last_updated_at = native_datetime_utc_now()
+        logger.info("Vault equity sync: %d balance update(s)", len(vault_sync_events))
 
 
 @app.command()
@@ -237,16 +361,26 @@ def correct_accounts(
     )
 
     runner = run_description.runner
-    if mod.is_version_greater_or_equal_than(0, 5, 0):
-        # Skip routing setup for strategies that don't do on-chain trading
+    routing_state = pricing_model = valuation_method = None
+
+    def ensure_routing_setup() -> None:
+        """Initialise routing lazily when downstream code truly needs it."""
+
+        nonlocal routing_state, pricing_model, valuation_method
+
+        if pricing_model is not None or routing_state is not None or valuation_method is not None:
+            return
+
+        if not mod.is_version_greater_or_equal_than(0, 5, 0):
+            logger.info("Routing setup skipped - legacy strategy compatibility mode")
+            return
+
         if mod.trade_routing == TradeRouting.ignore:
-            routing_state = pricing_model = valuation_method = None
             logger.info("Routing setup skipped - strategy uses TradeRouting.ignore")
-        else:
-            routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
-    else:
-        # Legacy unit test compatibility
-        routing_state = pricing_model = valuation_method = None
+            return
+
+        routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
+        logger.info("Lazy routing model initialised")
 
     logger.info("Engine version: %s", mod.trading_strategy_engine_version)
     logger.info("Universe contains %d pairs", universe.data_universe.pairs.get_count())
@@ -302,52 +436,6 @@ def correct_accounts(
     else:
         logger.info("No missing CCTP bridge positions")
 
-    block_number = get_almost_latest_block_number(web3)
-    logger.info(f"Correcting accounts at block {block_number:,}")
-
-    block_timestamp = get_block_timestamp(web3, block_number)
-
-    # Skip on-chain corrections when all positions are exchange account positions
-    # (their balances are synced via exchange API, not on-chain balance checks)
-    has_onchain_positions = any(
-        not p.pair.is_exchange_account()
-        for p in state.portfolio.get_open_and_frozen_positions()
-    )
-
-    if not has_onchain_positions:
-        corrections = []
-        logger.info("On-chain account correction skipped - no on-chain positions")
-    else:
-        corrections = calculate_account_corrections(
-            universe.data_universe.pairs,
-            universe.reserve_assets,
-            state,
-            sync_model,
-            block_identifier=block_number,
-        )
-        corrections = list(corrections)
-
-    if len(corrections) == 0:
-        logger.info("No account corrections found")
-
-    check_state_internal_coherence(state)
-
-    tx_builder = sync_model.create_transaction_builder()
-
-    # Set the default token dump address
-    if not unknown_token_receiver:
-        if isinstance(sync_model, EnzymeVaultSyncModel):
-            unknown_token_receiver = sync_model.get_hot_wallet().address
-
-    # TODO: No longer needed as unknown tokens should be mapped to a new opened spot position
-    #
-    # if not unknown_token_receiver:
-    #    raise RuntimeError(f"unknown_token_receiver missing and cannot deduct from the config. Please give one on the command line.")
-
-    assert hot_wallet is not None
-    hot_wallet.sync_nonce(web3)
-    logger.info("Hot wallet nonce is %d", hot_wallet.current_nonce)
-
     if not skip_interest:
         credit_positions = [p for p in state.portfolio.get_open_and_frozen_positions() if p.is_credit_supply()]
         if len(credit_positions) > 0:
@@ -356,6 +444,7 @@ def correct_accounts(
                 logger.info("Credit positions detected, syncing interest before applying accounting checks")
                 for p in credit_positions:
                     logger.info(" - Position: %s", p)
+                ensure_routing_setup()
                 balances_updates = sync_model.sync_interests(
                     timestamp=native_datetime_utc_now(),
                     state=state,
@@ -416,6 +505,7 @@ def correct_accounts(
 
         if account_value_func:
             exchange_sync_model = ExchangeAccountSyncModel(account_value_func, web3=web3)
+            ensure_routing_setup()
             exchange_events = exchange_sync_model.sync_positions(
                 timestamp=native_datetime_utc_now(),
                 state=state,
@@ -426,108 +516,59 @@ def correct_accounts(
             for evt in exchange_events:
                 logger.info("  Position %d: %s (change: %s)", evt.position_id, evt.notes, evt.quantity)
 
-    # Auto-create and sync Hypercore vault positions
-    if asset_management_mode.is_vault() and universe:
-        from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
+    _sync_hypercore_vault_positions(
+        asset_management_mode=asset_management_mode,
+        universe=universe,
+        sync_model=sync_model,
+        web3=web3,
+        state=state,
+    )
 
-        _has_vault_pairs = any(
-            translate_trading_pair(p).is_hyperliquid_vault()
-            for p in universe.data_universe.pairs.iterate_pairs()
+    block_number = get_almost_latest_block_number(web3)
+    logger.info(f"Correcting accounts at block {block_number:,}")
+
+    block_timestamp = get_block_timestamp(web3, block_number)
+
+    # Skip on-chain corrections when all positions are exchange account positions
+    # (their balances are synced via exchange API, not on-chain balance checks)
+    has_onchain_positions = any(
+        not p.pair.is_exchange_account()
+        for p in state.portfolio.get_open_and_frozen_positions()
+    )
+
+    if not has_onchain_positions:
+        corrections = []
+        logger.info("On-chain account correction skipped - no on-chain positions")
+    else:
+        corrections = calculate_account_corrections(
+            universe.data_universe.pairs,
+            universe.reserve_assets,
+            state,
+            sync_model,
+            block_identifier=block_number,
         )
-        if _has_vault_pairs:
-            safe_address = sync_model.get_token_storage_address()
-            chain_id = web3.eth.chain_id
+        corrections = list(corrections)
 
-            from eth_defi.hyperliquid.session import (
-                HYPERLIQUID_API_URL,
-                HYPERLIQUID_TESTNET_API_URL,
-                create_hyperliquid_session,
-            )
-            from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_value_func
-            from tradeexecutor.strategy.account_correction import create_missing_vault_positions
+    if len(corrections) == 0:
+        logger.info("No account corrections found")
 
-            is_testnet = chain_id == 998
-            api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
-            hl_session = create_hyperliquid_session(api_url=api_url)
+    check_state_internal_coherence(state)
 
-            vault_value_func = create_hypercore_vault_value_func(
-                session=hl_session,
-                safe_address=safe_address,
-                is_testnet=is_testnet,
-            )
+    tx_builder = sync_model.create_transaction_builder()
 
-            logger.info("Checking for missing Hypercore vault positions (Safe: %s)...", safe_address)
-            vault_created_trades = create_missing_vault_positions(
-                strategy_universe=universe,
-                state=state,
-                strategy_cycle_at=native_datetime_utc_now(),
-                vault_value_func=vault_value_func,
-            )
-            if vault_created_trades:
-                logger.info("Auto-created %d Hypercore vault position(s)", len(vault_created_trades))
-                for trade in vault_created_trades:
-                    logger.info("  Created vault position for %s", trade.pair)
+    # Set the default token dump address
+    if not unknown_token_receiver:
+        if isinstance(sync_model, EnzymeVaultSyncModel):
+            unknown_token_receiver = sync_model.get_hot_wallet().address
 
-            # Sync existing vault positions with actual API equity
-            vault_positions = [
-                p for p in state.portfolio.get_open_positions()
-                if p.pair.is_hyperliquid_vault()
-            ]
-            vault_sync_events = []
-            for position in vault_positions:
-                try:
-                    current_equity = vault_value_func(position.pair)
-                except Exception as e:
-                    logger.error("Failed to get vault equity for position %d: %s", position.position_id, e)
-                    continue
+    # TODO: No longer needed as unknown tokens should be mapped to a new opened spot position
+    #
+    # if not unknown_token_receiver:
+    #    raise RuntimeError(f"unknown_token_receiver missing and cannot deduct from the config. Please give one on the command line.")
 
-                tracked_value = position.get_quantity()
-                diff = current_equity - tracked_value
-
-                if diff == 0:
-                    logger.debug("Vault position %d (%s): no change (equity=%.2f)", position.position_id, position.pair.get_vault_name() or position.pair.pool_address, current_equity)
-                    continue
-
-                vault_name = position.pair.get_vault_name() or "unknown"
-                vault_addr = position.pair.pool_address or "?"
-                logger.info(
-                    "Vault position %d (%s %s): equity changed %.2f -> %.2f (diff=%.2f)",
-                    position.position_id, vault_name, vault_addr, tracked_value, current_equity, diff,
-                )
-
-                event_id = state.portfolio.next_balance_update_id
-                state.portfolio.next_balance_update_id += 1
-
-                from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
-                from tradeexecutor.state.sync import BalanceEventRef
-
-                evt = BalanceUpdate(
-                    balance_update_id=event_id,
-                    position_type=BalanceUpdatePositionType.open_position,
-                    cause=BalanceUpdateCause.vault_flow,
-                    asset=position.pair.base,
-                    block_mined_at=native_datetime_utc_now(),
-                    strategy_cycle_included_at=native_datetime_utc_now(),
-                    chain_id=position.pair.base.chain_id,
-                    old_balance=tracked_value,
-                    usd_value=float(diff),
-                    quantity=diff,
-                    owner_address=None,
-                    tx_hash=None,
-                    log_index=None,
-                    position_id=position.position_id,
-                    block_number=None,
-                    notes="Hypercore vault equity sync",
-                )
-
-                position.balance_updates[evt.balance_update_id] = evt
-                ref = BalanceEventRef.from_balance_update_event(evt)
-                state.sync.accounting.balance_update_refs.append(ref)
-                vault_sync_events.append(evt)
-
-            if vault_sync_events:
-                state.sync.accounting.last_updated_at = native_datetime_utc_now()
-                logger.info("Vault equity sync: %d balance update(s)", len(vault_sync_events))
+    assert hot_wallet is not None
+    hot_wallet.sync_nonce(web3)
+    logger.info("Hot wallet nonce is %d", hot_wallet.current_nonce)
 
     if process_redemption:
         timestamp = native_datetime_utc_now()
@@ -610,7 +651,12 @@ def correct_accounts(
         block_identifier=block_number,
     )
 
-    output = tabulate(df, headers='keys', tablefmt='rounded_outline')
+    output = tabulate(
+        df,
+        headers='keys',
+        tablefmt='rounded_outline',
+        disable_numparse=True,
+    )
 
     # Append exchange account positions to the summary
     exchange_positions = [
