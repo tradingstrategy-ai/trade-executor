@@ -466,7 +466,21 @@ class HypercoreVaultValuator(ValuationModel):
     ) -> ValuationUpdate:
         assert position.is_vault(), f"Not a vault position: {position}"
 
-        position.last_pricing_at = ts
+        # Use wall clock time for valued_at, not the strategy cycle timestamp.
+        # The tick passes strategy_cycle_timestamp as ts, which can be days
+        # in the past (e.g. when a daily cycle fires late). The Lagoon
+        # freshness check in calculate_valuation() compares valued_at against
+        # native_datetime_utc_now(), so we must record when the data was
+        # actually fetched.  This follows the same pattern used by
+        # ExchangeAccountValuator.
+        if self.market_data_source is not None:
+            # Backtesting / replay: use the strategy timestamp
+            valued_at = ts
+        else:
+            # Live trading: use wall clock time
+            valued_at = native_datetime_utc_now()
+
+        position.last_pricing_at = valued_at
 
         if self.market_data_source is not None:
             snapshot = self.market_data_source.get_snapshot(
@@ -509,12 +523,12 @@ class HypercoreVaultValuator(ValuationModel):
         else:
             new_price = 1.0
 
-        new_value = position.revalue_base_asset(ts, new_price)
+        new_value = position.revalue_base_asset(valued_at, new_price)
 
         evt = ValuationUpdate(
-            created_at=ts,
+            created_at=valued_at,
             position_id=position.position_id,
-            valued_at=ts,
+            valued_at=valued_at,
             old_value=old_value,
             new_value=new_value,
             old_price=old_price,
