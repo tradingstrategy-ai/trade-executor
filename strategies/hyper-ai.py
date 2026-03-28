@@ -44,55 +44,54 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.utils.token_filter import filter_for_selected_pairs
 
-from tradeexecutor.curator import build_hyperliquid_vault_universe, is_quarantined
+from tradeexecutor.curator import (build_hyperliquid_vault_universe,
+                                   is_quarantined)
 from tradeexecutor.ethereum.vault.checks import check_stale_vault_data
 from tradeexecutor.exchange_account.allocation import (
-    calculate_portfolio_target_value,
-    get_redeemable_portfolio_capital,
-)
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+    calculate_portfolio_target_value, get_redeemable_portfolio_capital)
+from tradeexecutor.state.identifier import (AssetIdentifier,
+                                            TradingPairIdentifier)
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.alpha_model import AlphaModel
-from tradeexecutor.strategy.chart.definition import ChartInput, ChartKind, ChartRegistry
-from tradeexecutor.strategy.chart.standard.alpha_model import alpha_model_diagnostics
-from tradeexecutor.strategy.chart.standard.equity_curve import (
-    equity_curve as equity_curve_chart,
-    equity_curve_with_drawdown,
-)
+from tradeexecutor.strategy.chart.definition import (ChartInput, ChartKind,
+                                                     ChartRegistry)
+from tradeexecutor.strategy.chart.standard.alpha_model import \
+    alpha_model_diagnostics
+from tradeexecutor.strategy.chart.standard.equity_curve import \
+    equity_curve as equity_curve_chart
+from tradeexecutor.strategy.chart.standard.equity_curve import \
+    equity_curve_with_drawdown
 from tradeexecutor.strategy.chart.standard.interest import vault_statistics
-from tradeexecutor.strategy.chart.standard.performance_metrics import performance_metrics
+from tradeexecutor.strategy.chart.standard.performance_metrics import \
+    performance_metrics
 from tradeexecutor.strategy.chart.standard.position import positions_at_end
-from tradeexecutor.strategy.chart.standard.profit_breakdown import trading_pair_breakdown
+from tradeexecutor.strategy.chart.standard.profit_breakdown import \
+    trading_pair_breakdown
 from tradeexecutor.strategy.chart.standard.thinking import last_messages
-from tradeexecutor.strategy.chart.standard.trading_metrics import trading_metrics
+from tradeexecutor.strategy.chart.standard.trading_metrics import \
+    trading_metrics
 from tradeexecutor.strategy.chart.standard.trading_universe import (
-    available_trading_pairs,
-    inclusion_criteria_check,
-)
+    available_trading_pairs, inclusion_criteria_check)
 from tradeexecutor.strategy.chart.standard.vault import all_vault_positions
 from tradeexecutor.strategy.chart.standard.weight import (
-    equity_curve_by_asset,
-    equity_curve_by_chain,
-    weight_allocation_statistics,
-)
+    equity_curve_by_asset, equity_curve_by_chain, weight_allocation_statistics)
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.execution_context import (ExecutionContext,
+                                                      ExecutionMode)
 from tradeexecutor.strategy.pandas_trader.indicator import (
-    IndicatorDependencyResolver,
-    IndicatorSource,
-)
-from tradeexecutor.strategy.pandas_trader.indicator_decorator import IndicatorRegistry
+    IndicatorDependencyResolver, IndicatorSource)
+from tradeexecutor.strategy.pandas_trader.indicator_decorator import \
+    IndicatorRegistry
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
-from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
+from tradeexecutor.strategy.pandas_trader.trading_universe_input import \
+    CreateTradingUniverseInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import (
-    TradingStrategyUniverse,
-    load_partial_data,
-    load_vault_universe_with_metadata,
-)
+    TradingStrategyUniverse, load_partial_data,
+    load_vault_universe_with_metadata)
 from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.strategy.weighting import weight_passthrouh
@@ -303,13 +302,17 @@ def _get_available_supporting_pair_ids(
 
     # Live universes intentionally skip SUPPORTING_PAIRS above.
     # Because of that, any later benchmark lookup must tolerate the pairs being
-    # absent instead of crashing with a KeyError.
+    # absent instead of crashing.
     # We resolve only the pairs that are really present, so both backtest and
     # live code paths can share the same indicator helpers safely.
+    #
+    # get_pair_by_human_description() raises:
+    # - KeyError when the pair itself is missing from the universe
+    # - RuntimeError when the exchange (e.g. uniswap-v3) is not in the universe at all
     for desc in SUPPORTING_PAIRS:
         try:
             pair_ids.add(strategy_universe.get_pair_by_human_description(desc).internal_id)
-        except KeyError:
+        except (KeyError, RuntimeError):
             continue
     return pair_ids
 

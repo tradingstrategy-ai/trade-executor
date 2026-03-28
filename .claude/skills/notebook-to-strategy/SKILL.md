@@ -37,6 +37,10 @@ The skill maps notebook sections to strategy module sections as defined in `stra
 6. **Format the output** with proper section comments
 7. **Verify** by running a backtest command
 
+## Check for inconsistencies
+
+- There cannot be supporting pairs that are in wrong chain: for example Hyperliquid vault strategy running on HyperEVM cannot cross-reference to pairs on Arbitrum for supporting pairs. Use Ask user tool to resolve these.
+
 ## Verification
 
 After updating the strategy module, run a backtest to verify it works:
