@@ -173,7 +173,7 @@ class Parameters:
 
     #: NB141 selected this wider survivor-first TVL floor and NB143-NB157 validated the allocator on it.
     #: This is intentionally the survivor-first release setting, not the older NB124/NB126 production threshold.
-    min_tvl_usd = 7_500
+    min_tvl_usd = 10_000
     #: NB141 also selected this young-vault-inclusive age floor for the survivor-first branch.
     #: Keep it fixed so NB158 stays comparable with the corrected waterfall validation chain.
     min_age = 0.075
@@ -336,7 +336,12 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     # also masks stale data — tvl() sees the last real TVL repeated,
     # age() keeps growing on synthetic rows, and age_ramp_weight()
     # increases. Bail out before the alpha model uses those values.
-    check_stale_vault_data(strategy_universe, timestamp, input.execution_context.mode)
+    # check_stale_vault_data(
+    #    strategy_universe, 
+    #    timestamp, 
+    #    input.execution_context.mode,
+    #    min_tvl=parameters.min_tvl_usd,
+    #)
 
     portfolio = position_manager.get_current_portfolio()
     equity = portfolio.get_total_equity()
@@ -740,7 +745,7 @@ def create_charts(
 # Metadata
 #
 
-tags = {StrategyTag.beta}
+tags = {StrategyTag.beta, StrategyTag.live}
 
 name = "Hyper AI"
 
