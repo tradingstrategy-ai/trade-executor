@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add `check-state.py` script for remote state sanity checks with Lagoon vault sync diagnostics and on-chain pending deposit/redemption queries (2026-03-30)
+
 - Populate live Hyperliquid vault lockup remaining hours in open position data for trade-ui (2026-03-26)
 
 - Add forward-only auto-generated CCTP bridge pairs for multichain universes and fork-simulated xchain master-vault coverage (2026-03-26)
