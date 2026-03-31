@@ -20,6 +20,10 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
 from tradeexecutor.state.types import JSONHexAddress, BlockNumber
+from tradeexecutor.strategy.position_internal_share_price import (
+    create_share_price_state_for_exchange_account,
+    update_share_price_state_for_balance_update,
+)
 from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -165,6 +169,14 @@ class ExchangeAccountSyncModel(SyncModel):
             diff = current_value - tracked_value
 
             if diff == 0:
+                # Still initialise share_price_state if missing (edge case
+                # where placeholder exactly matches the API value)
+                if position.share_price_state is None:
+                    total_value = float(current_value)
+                    if total_value > 0:
+                        position.share_price_state = create_share_price_state_for_exchange_account(
+                            total_value, timestamp,
+                        )
                 logger.debug(
                     "Exchange account position %d: no change (value=%.2f)",
                     position.position_id,
@@ -210,6 +222,18 @@ class ExchangeAccountSyncModel(SyncModel):
             # Track in accounting
             ref = BalanceEventRef.from_balance_update_event(evt)
             state.sync.accounting.balance_update_refs.append(ref)
+
+            # Update internal share price state for PnL tracking
+            if position.share_price_state is not None:
+                position.share_price_state = update_share_price_state_for_balance_update(
+                    position.share_price_state, evt,
+                )
+            else:
+                total_value = float(current_value)
+                if total_value > 0:
+                    position.share_price_state = create_share_price_state_for_exchange_account(
+                        total_value, timestamp,
+                    )
 
             events.append(evt)
 

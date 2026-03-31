@@ -211,29 +211,47 @@ def migrate_share_price_state(position: "TradingPosition") -> None:
         return  # Not applicable
 
     if position.is_exchange_account():
-        # Exchange accounts: skip placeholder trades, replay BUs in order.
-        # Walk through BUs accumulating balance. The first BU that brings
-        # the running balance above zero establishes the initial capital;
-        # all subsequent BUs are PnL revaluations.
+        total_bought = position.get_total_bought_usd()
+
         sorted_bus = sorted(
             position.balance_updates.values(),
             key=lambda b: b.balance_update_id,
         )
-        if not sorted_bus:
-            return  # No balance updates yet, nothing to migrate
 
-        state = None
-        for bu in sorted_bus:
-            if state is None:
-                running = float(bu.old_balance) + float(bu.quantity)
-                if running > 0:
-                    state = create_share_price_state_for_exchange_account(
-                        running, bu.block_mined_at,
-                    )
-            else:
-                state = update_share_price_state_for_balance_update(state, bu)
+        if total_bought > 1:
+            # Real capital allocation — the trade amount is the true initial
+            # investment. Replay all BUs as value changes on top of it.
+            state = None
+            for trade in position.trades.values():
+                if trade.is_success():
+                    if state is None:
+                        state = create_share_price_state(trade)
+                    else:
+                        state = update_share_price_state(state, trade)
 
-        position.share_price_state = state
+            if state is not None:
+                for bu in sorted_bus:
+                    state = update_share_price_state_for_balance_update(state, bu)
+
+            position.share_price_state = state
+        else:
+            # Placeholder trade ($0 or $1) — skip trades, use the first BU
+            # that brings the running balance above zero as initial capital.
+            if not sorted_bus:
+                return  # No balance updates yet, nothing to migrate
+
+            state = None
+            for bu in sorted_bus:
+                if state is None:
+                    running = float(bu.old_balance) + float(bu.quantity)
+                    if running > 0:
+                        state = create_share_price_state_for_exchange_account(
+                            running, bu.block_mined_at,
+                        )
+                else:
+                    state = update_share_price_state_for_balance_update(state, bu)
+
+            position.share_price_state = state
     else:
         state = None
         for trade in position.trades.values():

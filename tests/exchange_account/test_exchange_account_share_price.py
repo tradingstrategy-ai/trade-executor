@@ -352,21 +352,193 @@ def test_valuation_no_change_still_initialises(exchange_account_pair):
     This covers the edge case where the placeholder matches the actual
     exchange value (unlikely but possible).
 
-    1. Create position with $100 placeholder
-    2. Valuation returns $100 (diff=0, no BU created)
+    1. Create position with $1 placeholder (share_price_state is None)
+    2. Valuation returns $1 (diff=0, no BU created)
     3. Verify share_price_state is initialised anyway
     """
-    # 1. Create position with $100 placeholder
+    # 1. Create position with $1 placeholder (not seeded because <= 1)
     position = _create_position_with_placeholder_trade(
-        exchange_account_pair, reserve_amount=Decimal(100),
+        exchange_account_pair, reserve_amount=Decimal(1),
     )
+    assert position.share_price_state is None
 
-    # 2. Valuation returns $100 (no diff)
-    _valuate(position, Decimal("100"))
+    # 2. Valuation returns $1 (no diff)
+    _valuate(position, Decimal("1"))
 
     # 3. Share price state initialised
     sp = position.share_price_state
     assert sp is not None
-    assert sp.total_invested == pytest.approx(100)
-    assert sp.total_supply == pytest.approx(100)
+    assert sp.total_invested == pytest.approx(1)
+    assert sp.total_supply == pytest.approx(1)
     assert len(position.balance_updates) == 0  # No BU since diff was 0
+
+
+def test_real_capital_trade_seeds_share_price(exchange_account_pair):
+    """Opening with real capital (>$1) must seed share_price_state from the trade.
+
+    1. Open position with $100,000 real capital
+    2. Verify share_price_state is created with total_invested=$100,000
+    3. First valuation: $105,000 (5% profit)
+    4. Verify 5% profit, not 0%
+    """
+    # 1. Open position with $100,000 real capital
+    state = State()
+    state.portfolio.initialise_reserves(exchange_account_pair.quote, reserve_token_price=1.0)
+    state.portfolio.adjust_reserves(
+        exchange_account_pair.quote, Decimal(200_000), "seed",
+    )
+    open_exchange_account_position(
+        state=state,
+        strategy_cycle_at=datetime.datetime(2024, 1, 1),
+        pair=exchange_account_pair,
+        reserve_currency=exchange_account_pair.quote,
+        reserve_amount=Decimal(100_000),
+    )
+    position = list(state.portfolio.open_positions.values())[0]
+
+    # 2. Verify share_price_state is seeded from the trade
+    sp = position.share_price_state
+    assert sp is not None
+    assert sp.total_invested == pytest.approx(100_000)
+    assert sp.total_supply == pytest.approx(100_000)
+    assert sp.initial_share_price == 1.0
+
+    # 3. First valuation: $105,000 (5% profit)
+    _valuate(position, Decimal("105000"))
+
+    # 4. Verify 5% profit
+    assert position.get_unrealised_profit_usd() == pytest.approx(5_000, abs=0.01)
+    assert position.get_unrealised_profit_pct() == pytest.approx(0.05, abs=1e-6)
+
+
+def test_sync_model_initialises_share_price(exchange_account_pair):
+    """ExchangeAccountSyncModel.sync_positions() must initialise share_price_state.
+
+    This is the code path used by correct-accounts CLI.
+
+    1. Create position with $1 placeholder (share_price_state is None)
+    2. sync_positions with API value $100,000
+    3. Verify share_price_state created with total_invested=$100,000
+    4. sync_positions with API value $105,000
+    5. Verify 5% profit
+    """
+    from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
+
+    # 1. Create position with $1 placeholder
+    state = State()
+    position = _create_position_with_placeholder_trade(exchange_account_pair)
+    state.portfolio.open_positions[1] = position
+    assert position.share_price_state is None
+
+    # 2. sync_positions with API value $100,000
+    mock_value_func = Mock(return_value=Decimal("100000"))
+    sync_model = ExchangeAccountSyncModel(mock_value_func)
+    sync_model.sync_positions(
+        timestamp=native_datetime_utc_now(),
+        state=state,
+        strategy_universe=None,
+        pricing_model=None,
+    )
+
+    # 3. Verify share_price_state created with total_invested=$100,000
+    sp = position.share_price_state
+    assert sp is not None
+    assert sp.total_invested == pytest.approx(100_000)
+    assert position.get_unrealised_profit_usd() == pytest.approx(0, abs=0.01)
+    assert position.get_unrealised_profit_pct() == pytest.approx(0, abs=1e-6)
+
+    # 4. sync_positions with API value $105,000
+    mock_value_func.return_value = Decimal("105000")
+    sync_model.sync_positions(
+        timestamp=native_datetime_utc_now(),
+        state=state,
+        strategy_universe=None,
+        pricing_model=None,
+    )
+
+    # 5. Verify 5% profit
+    assert position.get_unrealised_profit_usd() == pytest.approx(5_000, abs=0.01)
+    assert position.get_unrealised_profit_pct() == pytest.approx(0.05, abs=1e-6)
+
+
+def test_sync_model_updates_existing_share_price(exchange_account_pair):
+    """sync_positions must update share_price_state seeded from a real capital trade.
+
+    1. Open position with $100,000 real capital (share_price_state seeded)
+    2. sync_positions with API value $110,000
+    3. Verify 10% profit
+    """
+    from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
+
+    # 1. Open with real capital
+    state = State()
+    state.portfolio.initialise_reserves(exchange_account_pair.quote, reserve_token_price=1.0)
+    state.portfolio.adjust_reserves(
+        exchange_account_pair.quote, Decimal(200_000), "seed",
+    )
+    open_exchange_account_position(
+        state=state,
+        strategy_cycle_at=datetime.datetime(2024, 1, 1),
+        pair=exchange_account_pair,
+        reserve_currency=exchange_account_pair.quote,
+        reserve_amount=Decimal(100_000),
+    )
+    position = list(state.portfolio.open_positions.values())[0]
+    assert position.share_price_state is not None
+
+    # 2. sync_positions with API value $110,000
+    mock_value_func = Mock(return_value=Decimal("110000"))
+    sync_model = ExchangeAccountSyncModel(mock_value_func)
+    sync_model.sync_positions(
+        timestamp=native_datetime_utc_now(),
+        state=state,
+        strategy_universe=None,
+        pricing_model=None,
+    )
+
+    # 3. Verify 10% profit
+    assert position.get_unrealised_profit_usd() == pytest.approx(10_000, abs=0.01)
+    assert position.get_unrealised_profit_pct() == pytest.approx(0.10, abs=1e-6)
+
+
+def test_migration_with_real_capital(exchange_account_pair):
+    """Migration must use the trade as initial capital when total_bought > 1.
+
+    1. Create position with $100,000 trade
+    2. Add BU: value goes to $105,000 (+$5,000)
+    3. Run migration
+    4. Verify 5% profit (not 0%)
+    """
+    # 1. Create position with $100,000 trade
+    position = _create_position_with_placeholder_trade(
+        exchange_account_pair, reserve_amount=Decimal(100_000),
+    )
+    # Clear any share_price_state that open helper may set (simulating pre-migration)
+    position.share_price_state = None
+
+    # 2. Add BU: $100,000 -> $105,000
+    position.balance_updates[1] = BalanceUpdate(
+        balance_update_id=1,
+        position_type=BalanceUpdatePositionType.open_position,
+        cause=BalanceUpdateCause.vault_flow,
+        asset=exchange_account_pair.base,
+        block_mined_at=datetime.datetime(2024, 1, 2),
+        strategy_cycle_included_at=datetime.datetime(2024, 1, 2),
+        chain_id=901,
+        old_balance=Decimal("100000"),
+        usd_value=5_000.0,
+        quantity=Decimal("5000"),
+        owner_address=None,
+        tx_hash=None,
+        log_index=None,
+        position_id=1,
+    )
+
+    # 3. Run migration
+    migrate_share_price_state(position)
+
+    # 4. Verify 5% profit
+    assert position.share_price_state is not None
+    assert position.share_price_state.total_invested == pytest.approx(100_000)
+    assert position.get_unrealised_profit_usd() == pytest.approx(5_000, abs=0.01)
+    assert position.get_unrealised_profit_pct() == pytest.approx(0.05, abs=1e-6)
