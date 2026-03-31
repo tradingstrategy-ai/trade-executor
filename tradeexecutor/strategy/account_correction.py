@@ -1287,8 +1287,13 @@ def _build_hypercore_vault_account_checks(
 
     Hypercore vaults are tracked via the Hyperliquid API, not ERC-20
     balances, so they never enter the generic asset-map based correction
-    path.  Reuse the pair-aware multichain balance helper to fetch live
+    path. Reuse the pair-aware multichain balance helper to fetch live
     equity for the vault pairs already present in state.
+
+    Hypercore positions keep ``quantity`` as deposited USDC and
+    ``last_token_price`` as the latest share price multiplier, so the
+    account check must compare live equity against the position's
+    expected USD equity, not against raw quantity.
     """
 
     vault_positions = [
@@ -1314,7 +1319,8 @@ def _build_hypercore_vault_account_checks(
 
     corrections: list[AccountingBalanceCheck] = []
     for position, balance in zip(vault_positions, balances, strict=True):
-        expected_amount = position.get_quantity()
+        quantity = position.get_quantity()
+        expected_amount = Decimal(str(position.calculate_quantity_usd_value(quantity)))
         actual_amount = balance.amount
         dust_epsilon = get_dust_epsilon_for_pair(position.pair)
         relative_epsilon = get_relative_epsilon_for_asset(position.pair.base)
@@ -1336,7 +1342,7 @@ def _build_hypercore_vault_account_checks(
             relative_epsilon=relative_epsilon,
             block_number=balance.block_number,
             timestamp=balance.timestamp,
-            usd_value=position.calculate_quantity_usd_value(actual_amount - expected_amount),
+            usd_value=float(actual_amount - expected_amount),
             reserve_asset=False,
             mismatch=mismatch,
             price=position.last_token_price,

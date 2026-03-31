@@ -20,12 +20,14 @@ from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultPrici
 from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_pair
 from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind, AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.strategy.account_correction import _build_hypercore_vault_account_checks
 from tradeexecutor.strategy.dust import (
     get_close_epsilon_for_pair,
     get_dust_epsilon_for_pair,
     HYPERLIQUID_VAULT_CLOSE_EPSILON,
     DEFAULT_VAULT_EPSILON,
 )
+from tradeexecutor.strategy.sync_model import OnChainBalance
 
 
 def test_valuation_computes_per_unit_price():
@@ -290,3 +292,80 @@ def test_hypercore_vault_dust_epsilon_covers_safety_margin():
     )
     assert not non_hypercore_pair.is_hyperliquid_vault()
     assert get_close_epsilon_for_pair(non_hypercore_pair) == DEFAULT_VAULT_EPSILON
+
+
+def test_hypercore_account_check_compares_equity_not_quantity() -> None:
+    """Test Hypercore account checks compare expected equity against live equity.
+
+    This covers the live Hyper-AI crash pattern where the vault checker
+    compared API equity to position quantity, even though Hypercore
+    valuation stores quantity and price separately.
+
+    1. Create a Hypercore position with quantity from deposited USDC and a price below 1.0.
+    2. Feed the account checker the live vault equity returned by the Hyperliquid API path.
+    3. Verify the check uses expected USD equity, reports zero USD diff, and stays clean.
+    """
+
+    # 1. Create a Hypercore position with quantity from deposited USDC and a price below 1.0.
+    quote = AssetIdentifier(
+        chain_id=ChainId.hypercore.value,
+        address="0x0000000000000000000000000000000000000002",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    hypercore_pair = create_hypercore_vault_pair(
+        quote=quote,
+        vault_address="0x1111111111111111111111111111111111111111",
+    )
+
+    class DummyHypercorePosition:
+        """Minimal Hypercore position stub for account-check regression coverage."""
+
+        pair = hypercore_pair
+        last_token_price = 0.9939891061405017
+        last_pricing_at = native_datetime_utc_now()
+
+        def __hash__(self) -> int:
+            return id(self)
+
+        def get_quantity(self) -> Decimal:
+            return Decimal("56.104634")
+
+        def calculate_quantity_usd_value(self, quantity: Decimal) -> float:
+            assert quantity == Decimal("56.104634")
+            return 55.767395
+
+        def get_human_readable_name(self) -> str:
+            return "Loop Fund"
+
+    position = DummyHypercorePosition()
+
+    state = MagicMock()
+    state.portfolio.get_open_and_frozen_positions.return_value = [position]
+
+    sync_model = MagicMock()
+    sync_model.web3 = MagicMock()
+    sync_model.get_token_storage_address.return_value = "0xa8F8DEbb722c6174B814b432169BF569603F673F"
+
+    live_equity = Decimal("55.767395")
+    live_balance = OnChainBalance(
+        block_number=None,
+        timestamp=native_datetime_utc_now(),
+        asset=hypercore_pair.base,
+        amount=live_equity,
+    )
+
+    # 2. Feed the account checker the live vault equity returned by the Hyperliquid API path.
+    with patch(
+        "tradeexecutor.strategy.account_correction.fetch_onchain_balances_multichain",
+        return_value=iter([live_balance]),
+    ):
+        corrections = _build_hypercore_vault_account_checks(state, sync_model)
+
+    # 3. Verify the check uses expected USD equity, reports zero USD diff, and stays clean.
+    assert len(corrections) == 1
+    correction = corrections[0]
+    assert correction.expected_amount == Decimal("55.767395")
+    assert correction.actual_amount == live_equity
+    assert correction.usd_value == 0.0
+    assert correction.mismatch is False
