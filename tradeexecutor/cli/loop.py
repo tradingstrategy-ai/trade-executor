@@ -204,6 +204,8 @@ class ExecutionLoop:
             strategy_factory: Optional[StrategyFactory],
             cycle_duration: CycleDuration,
             stats_refresh_frequency: Optional[datetime.timedelta],
+            stats_refresh_post_valuation: bool = False,
+            stats_refresh_unit_testing: bool = False,
             position_trigger_check_frequency: Optional[datetime.timedelta],
             max_data_delay: Optional[datetime.timedelta] = None,
             reset=False,
@@ -316,7 +318,7 @@ class ExecutionLoop:
 
         See `test_cli_commands.py`
         """
-        return self.max_cycles == 0
+        return self.max_cycles == 0 and not self.stats_refresh_unit_testing
 
     def init_state(self) -> State:
         """Initialize the state for this run.
@@ -1222,6 +1224,7 @@ class ExecutionLoop:
         execution_context = self.execution_context
         run_state: RunState = self.run_state
         crash_exception: Optional[Exception] = None
+        stats_refresh_shutdown_requested = False
 
         tick_offset = self.tick_offset
 
@@ -1492,6 +1495,7 @@ class ExecutionLoop:
         # Timed task to update the valuation of open positions and collect statistics
         def live_positions():
             nonlocal universe
+            nonlocal stats_refresh_shutdown_requested
 
             # We cannot update valuations until we know
             # trading pair universe, because to know the valuation of the position
@@ -1504,13 +1508,36 @@ class ExecutionLoop:
                 ts = native_datetime_utc_now()
 
                 self.update_position_valuations(ts, state, universe, execution_context.mode)
+                state.uptime.record_stats_refresh_complete()
+
+                if self.stats_refresh_post_valuation and self.sync_model.has_async_deposits():
+                    balance_updates = self.sync_model.sync_treasury(
+                        ts,
+                        state,
+                        list(universe.reserve_assets),
+                        post_valuation=True,
+                    )
+                    state.uptime.record_post_valuation_settlement_complete()
+
+                    if balance_updates:
+                        self.update_position_valuations(ts, state, universe, execution_context.mode)
+                        state.uptime.record_stats_refresh_complete()
+
+                self.store.sync(state)
 
                 self.refresh_live_run_state(state, cycle_duration=self.cycle_duration)
             except Exception as e:
                 die(e)
+                return
 
             run_state.position_revaluations += 1
             run_state.bumb_refreshed()
+
+            if self.stats_refresh_unit_testing and self.execution_context.mode == ExecutionMode.unit_testing_trading:
+                if not stats_refresh_shutdown_requested:
+                    logger.info("Stats refresh unit testing hook triggered, shutting down after the first refresh")
+                    stats_refresh_shutdown_requested = True
+                    scheduler.shutdown(wait=False)
 
         # Timed task to do the stop loss checks
         def live_trigger_checks():

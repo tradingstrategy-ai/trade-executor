@@ -137,7 +137,9 @@ def start(
     approval_type: ApprovalType = typer.Option("unchecked", envvar="APPROVAL_TYPE", help="Set a manual approval flow for trades"),
     stop_loss_check_frequency: Optional[TimeBucket] = typer.Option(None, envvar="STOP_LOSS_CYCLE_DURATION", help="Override live/backtest stop loss check frequency. If not given read from the strategy module."),
     cycle_offset_minutes: int = typer.Option(8, envvar="CYCLE_OFFSET_MINUTES", help="How many minutes we wait after the tick before executing the tick step"),
-    stats_refresh_minutes: int = typer.Option(60.0, envvar="STATS_REFRESH_MINUTES", help="How often we refresh position statistics. Default to once in an hour."),
+    stats_refresh_minutes: float = typer.Option(60.0, envvar="STATS_REFRESH_MINUTES", help="How often we refresh position statistics. Default to once in an hour."),
+    stats_refresh_post_valuation: bool = typer.Option(False, "--stats-refresh-post-valuation", envvar="STATS_REFRESH_POST_VALUATION", help="After a background stats refresh, also run the Lagoon post-valuation settlement path."),
+    stats_refresh_unit_testing: bool = typer.Option(False, "--stats-refresh-unit-testing", envvar="STATS_REFRESH_UNIT_TESTING", help="Unit testing helper: exit after the first background stats refresh has completed."),
     cycle_duration: CycleDuration = typer.Option(None, envvar="CYCLE_DURATION", help="How long strategy tick cycles use to execute the strategy. While strategy modules offer their own cycle duration value, you can override it here for unit testing."),
     position_trigger_check_minutes: int = typer.Option(3.0, envvar="POSITION_TRIGGER_CHECK_MINUTES", help="How often we check for take profit/stop loss triggers. Default to once in 3 minutes. Set 0 to disable."),
     max_data_delay_minutes: int = shared_options.max_data_delay_minutes,
@@ -571,6 +573,20 @@ def start(
             type(sync_model).__name__,
         )
 
+    if stats_refresh_post_valuation and not isinstance(sync_model, LagoonVaultSyncModel):
+        logger.warning(
+            "--stats-refresh-post-valuation only applies to Lagoon vaults; "
+            "ignoring it for sync model %s",
+            type(sync_model).__name__,
+        )
+
+    if stats_refresh_unit_testing and not unit_testing:
+        logger.warning(
+            "--stats-refresh-unit-testing only applies in unit testing mode; "
+            "ignoring it for execution mode %s",
+            execution_context.mode.name,
+        )
+
     loop = ExecutionLoop(
         name=name,
         command_queue=command_queue,
@@ -596,6 +612,8 @@ def start(
         max_data_delay=max_data_delay,
         trade_immediately=trade_immediately,
         stats_refresh_frequency=stats_refresh_frequency,
+        stats_refresh_post_valuation=stats_refresh_post_valuation,
+        stats_refresh_unit_testing=stats_refresh_unit_testing,
         position_trigger_check_frequency=position_trigger_check_frequency,
         run_state=run_state,
         strategy_cycle_trigger=strategy_cycle_trigger,

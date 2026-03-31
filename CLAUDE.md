@@ -40,7 +40,7 @@ source .local-test.env && poetry run trade-executor --help
 
 ## Running tests
 
-If we have not run tests before make sure the user has created a gitignored file `.local-test.env` in the repository root. This will use `source` shell command to include the actual test secrets which lie outside the repository structure. Note: this file does not contain actual environment variables, just a `source` command to get them from elsewhere. **Never edit this file** and always ask the user to prepare the file for Claude Code.
+Settings are sourced from `.local-test.env` in the repository root. This will use `source` shell command to include the actual test secrets which lie outside the repository structure. Note: this file does not contain actual environment variables, just a `source` command to get them from elsewhere. **Never edit this file** and always ask the user to prepare the file for Claude Code.
 
 Check that the environment is ready by running:
 
@@ -78,7 +78,7 @@ Don't format code.
 
 ## Git worktrees
 
-- For git worktrees, copy `.local-test.env` from the repo root.
+- When creating a git worktree, copy `.local-test.env` from the repo root.
 - For worktrees, unless you are changing package dependencies, use `poetry run` from the parent repo virtualenv
 
 ## Pull requests

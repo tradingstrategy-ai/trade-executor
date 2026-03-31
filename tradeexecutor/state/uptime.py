@@ -29,6 +29,12 @@ class Uptime:
     #: Contains strategy cycle number -> UTC wall clock time when a cycle was completed
     cycles_completed_at: Dict[int, datetime.datetime] = field(default_factory=dict)
 
+    #: How many background stats refreshes have completed.
+    stats_refresh_completed: int = 0
+
+    #: How many post-valuation settlements have been attempted.
+    post_valuation_settlements_completed: int = 0
+
     def record_cycle_complete(self, cycle_number: int, now_: Optional[datetime.datetime] = None):
         """Mark the execution cycle successfully completed"""
         assert isinstance(cycle_number, int)
@@ -42,3 +48,11 @@ class Uptime:
             logger.warning(f"Cycle completion for #%d already recorded", cycle_number)
 
         self.cycles_completed_at[cycle_number] = now_
+
+    def record_stats_refresh_complete(self) -> None:
+        """Mark one background stats refresh as completed."""
+        self.stats_refresh_completed += 1
+
+    def record_post_valuation_settlement_complete(self) -> None:
+        """Mark one post-valuation settlement attempt as completed."""
+        self.post_valuation_settlements_completed += 1
