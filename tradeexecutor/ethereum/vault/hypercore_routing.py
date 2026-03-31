@@ -54,6 +54,7 @@ from eth_defi.hyperliquid.core_writer import (
     build_hypercore_deposit_multicall,
     build_hypercore_deposit_to_spot_call,
     build_hypercore_deposit_phase2,
+    compute_spot_to_evm_withdrawal_amount,
     build_hypercore_withdraw_from_vault_call,
     build_hypercore_send_asset_to_evm_call,
     build_hypercore_transfer_usd_class_call,
@@ -1468,10 +1469,38 @@ class HypercoreVaultRouting(RoutingModel):
                 spot_balance,
             )
 
+            phase3_withdraw_amount = compute_spot_to_evm_withdrawal_amount(
+                spot_balance=spot_balance,
+                desired_amount=raw_to_usdc(expected_raw),
+            )
+            phase3_raw = usdc_to_raw(phase3_withdraw_amount)
+
+            if phase3_raw <= 0:
+                logger.error(
+                    "Hypercore withdrawal phase 3 cannot bridge any USDC for trade %s: "
+                    "spot free balance %s USDC is too small after reserving bridge-fee headroom",
+                    trade.trade_id,
+                    spot_balance,
+                )
+                self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
+                report_failure(ts, state, trade, stop_on_execution_failure)
+                return
+
+            if phase3_raw != expected_raw:
+                logger.info(
+                    "Adjusting Hypercore withdrawal phase 3 amount for bridge fee headroom: "
+                    "spot free %s USDC, requested %d raw (%s USDC), bridging %d raw (%s USDC)",
+                    spot_balance,
+                    expected_raw,
+                    raw_to_usdc(expected_raw),
+                    phase3_raw,
+                    phase3_withdraw_amount,
+                )
+
             self.deployer.sync_nonce(web3)
 
             try:
-                phase3_tx, phase3_receipt = self._broadcast_withdrawal_phase3(expected_raw)
+                phase3_tx, phase3_receipt = self._broadcast_withdrawal_phase3(phase3_raw)
             except Exception as e:
                 logger.error("Withdrawal phase 3 broadcast failed: %s", e)
                 self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
@@ -1492,7 +1521,7 @@ class HypercoreVaultRouting(RoutingModel):
             try:
                 actual_increase_raw = self._wait_for_usdc_arrival(
                     baseline_balance_raw=baseline_balance_raw,
-                    expected_increase_raw=expected_raw,
+                    expected_increase_raw=phase3_raw,
                     timeout=30.0,
                     poll_interval=2.0,
                 )
@@ -1509,7 +1538,7 @@ class HypercoreVaultRouting(RoutingModel):
             # Compare against the effective withdrawal target (live equity if
             # capped, else planned) to avoid spurious "partial" warnings on
             # normal capped-close trades where live equity < planned_reserve.
-            effective_reserve = raw_to_usdc(expected_raw)
+            effective_reserve = raw_to_usdc(phase3_raw)
             if executed_reserve < effective_reserve:
                 logger.warning(
                     "Withdrawal partial: received %s USDC but expected %s USDC (trade %s)",

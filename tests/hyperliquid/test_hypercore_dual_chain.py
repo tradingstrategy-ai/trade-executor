@@ -305,6 +305,62 @@ def test_wait_for_spot_free_usdc_balance_accepts_follow_up_phase_tolerance():
     assert result == Decimal("1.980001")
 
 
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_withdrawal_phase3_uses_fee_adjusted_amount(
+    mock_fetch_equity,
+    mock_block_ts,
+):
+    """Phase 3 should bridge the fee-adjusted spot amount and verify against that smaller amount.
+
+    1. Simulate a successful phased withdrawal where spot free USDC is slightly below the requested amount.
+    2. Verify phase 3 bridges the fee-adjusted amount instead of the pre-fee desired amount.
+    3. Verify EVM-arrival confirmation and trade settlement use the same adjusted amount.
+    """
+    from hexbytes import HexBytes
+
+    from tradeexecutor.ethereum.vault.hypercore_routing import raw_to_usdc, usdc_to_raw
+    from eth_defi.hyperliquid.core_writer import compute_spot_to_evm_withdrawal_amount
+
+    routing = _make_routing()
+    trade = _make_trade(planned_reserve=Decimal("50.0"))
+    state = MagicMock()
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+    mock_fetch_equity.side_effect = [
+        _make_equity(Decimal("500.0")),
+        _make_equity(Decimal("450.029")),
+    ]
+    receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
+
+    spot_balance = Decimal("49.981")
+    expected_phase3_raw = usdc_to_raw(
+        compute_spot_to_evm_withdrawal_amount(
+            spot_balance=spot_balance,
+            desired_amount=Decimal("50.0"),
+        )
+    )
+
+    with patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=100_000_000):
+        with patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")):
+            with patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0")):
+                with patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("50")):
+                    with patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=spot_balance):
+                        with patch.object(routing, "_broadcast_withdrawal_phase2", return_value=(MagicMock(tx_hash="0xdef"), {"status": 1, "blockNumber": 101})):
+                            with patch.object(routing, "_broadcast_withdrawal_phase3", return_value=(MagicMock(tx_hash="0x123"), {"status": 1, "blockNumber": 102})) as phase3:
+                                with patch.object(routing, "_wait_for_usdc_arrival", return_value=expected_phase3_raw) as wait_evm:
+                                    routing._settle_withdrawal(
+                                        routing.web3,
+                                        state,
+                                        trade,
+                                        receipts,
+                                        stop_on_execution_failure=False,
+                                    )
+
+    phase3.assert_called_once_with(expected_phase3_raw)
+    assert wait_evm.call_args.kwargs["expected_increase_raw"] == expected_phase3_raw
+    assert state.mark_trade_success.call_args.kwargs["executed_reserve"] == raw_to_usdc(expected_phase3_raw)
+
+
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
