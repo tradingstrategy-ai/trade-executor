@@ -9,6 +9,11 @@ Verifies that:
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
+from tradeexecutor.ethereum.vault.hypercore_routing import (
+    compute_spot_to_evm_withdrawal_amount,
+    usdc_to_raw,
+)
+
 def _make_routing(simulate=True):
     """Create a HypercoreVaultRouting with mocked dependencies."""
     from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreVaultRouting
@@ -494,12 +499,19 @@ def test_settlement_uses_capped_withdrawal_amount(
             stop_on_execution_failure=False,
         )
 
-    # 4. Verify phases 2-3 received the capped amount, not planned.
+    phase3_expected_raw = usdc_to_raw(
+        compute_spot_to_evm_withdrawal_amount(
+            spot_balance=spot_balance,
+            desired_amount=Decimal("7.128756"),
+        )
+    )
+
+    # 4. Verify phase 2 used the capped amount and phase 3 reserved bridge-fee headroom.
     assert captured_phase2_raw == [capped_raw], (
         f"Phase 2 should use capped amount {capped_raw}, got {captured_phase2_raw}"
     )
-    assert captured_phase3_raw == [capped_raw], (
-        f"Phase 3 should use capped amount {capped_raw}, got {captured_phase3_raw}"
+    assert captured_phase3_raw == [phase3_expected_raw], (
+        f"Phase 3 should use fee-adjusted amount {phase3_expected_raw}, got {captured_phase3_raw}"
     )
 
     # 5. Trade succeeded — no failure reported.
