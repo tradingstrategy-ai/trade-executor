@@ -25,6 +25,13 @@ either ``TradingStrategyModuleV0.performCall()`` or ``multicall()`` functions
 that are already wrapped for the Safe. Using
 :py:class:`~tradeexecutor.ethereum.lagoon.tx.LagoonTransactionBuilder`
 would double-wrap them, so we sign directly via :py:class:`~eth_defi.hotwallet.HotWallet`.
+
+For the upstream guard-side and operator-side background on these Hypercore
+deposit/withdrawal legs, see also:
+
+- ``deps/web3-ethereum-defi/eth_defi/hyperliquid/core_writer.py``
+- ``deps/web3-ethereum-defi/docs/README-Hypercore-guard.md``
+- ``deps/web3-ethereum-defi/docs/source/tutorials/lagoon-hyperliquid.rst``
 """
 
 from __future__ import annotations
@@ -540,6 +547,11 @@ class HypercoreVaultRouting(RoutingModel):
         # and the final EVM arrival, while still logging both numbers so we can
         # see whether the gap looks like ordinary fee/rounding behaviour or a
         # genuine settlement failure.
+        #
+        # Cross-reference in upstream eth_defi package:
+        # - `eth_defi.hyperliquid.core_writer.compute_spot_to_evm_withdrawal_amount()`
+        # - `eth_defi.hyperliquid.core_writer.build_hypercore_send_asset_to_evm_call()`
+        # - `deps/web3-ethereum-defi/docs/README-Hypercore-guard.md`
         expected_increase_threshold_raw = max(
             expected_increase_raw - HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW,
             0,
@@ -1492,6 +1504,13 @@ class HypercoreVaultRouting(RoutingModel):
             # Safe's spot balance before the linked USDC lands on HyperEVM. If
             # we try to bridge the entire visible spot balance, the phase 3 call
             # can succeed on HyperEVM while silently doing nothing on HyperCore.
+            #
+            # Cross-reference in upstream eth_defi package:
+            # - `eth_defi.hyperliquid.core_writer.build_hypercore_send_asset_to_evm_call()`
+            # - `eth_defi.hyperliquid.core_writer.compute_spot_to_evm_withdrawal_amount()`
+            # - `eth_defi.hyperliquid.core_writer.build_hypercore_withdraw_multicall()`
+            # - `deps/web3-ethereum-defi/docs/README-Hypercore-guard.md`
+            # - `deps/web3-ethereum-defi/docs/source/tutorials/lagoon-hyperliquid.rst`
             phase3_withdraw_amount = compute_spot_to_evm_withdrawal_amount(
                 spot_balance=spot_balance,
                 desired_amount=raw_to_usdc(expected_raw),
