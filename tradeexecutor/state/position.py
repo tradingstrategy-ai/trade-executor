@@ -1538,12 +1538,12 @@ class TradingPosition(GenericPosition):
         if self.is_exchange_account():
             # Exchange account positions track value via quantity changes
             # (balance updates), not price changes — price is always 1.0.
-            # Use internal share price when available for accurate PnL,
-            # otherwise fall back to simple value - invested calculation.
+            # Share price state is initialised on the first valuation sync,
+            # not from the placeholder trade. Until then, profit is unknown.
             if self.share_price_state is not None:
                 data = self.get_share_price_profit()
                 return data.profit_usd
-            return self.get_value() - self.get_total_bought_usd()
+            return 0
 
         avg_price = self.get_average_price()
         if avg_price is None:
@@ -2045,15 +2045,12 @@ class TradingPosition(GenericPosition):
         """
 
         if self.is_exchange_account():
-            # Use internal share price for percentage when available,
-            # otherwise fall back to USD profit / total bought
+            # Share price state is initialised on the first valuation sync.
+            # Until then, profit is unknown.
             if self.share_price_state is not None:
                 data = self.get_share_price_profit()
                 return data.profit_pct
-            total_bought = self.get_total_bought_usd()
-            if total_bought == 0:
-                return 0
-            return self.get_unrealised_profit_usd() / total_bought
+            return 0
 
         realised_profit = self.get_unrealised_profit_usd()
         if realised_profit is None:

@@ -913,8 +913,11 @@ class State:
 
             position.loan = trade.executed_loan_update
 
-        # Update share price running state for spot/vault/exchange account positions
-        if position.is_spot() or position.is_vault() or position.is_exchange_account():
+        # Update share price running state for spot/vault positions.
+        # Exchange account positions are excluded: their placeholder trades
+        # don't represent real capital. Share price state is initialised
+        # from the first valuation balance update instead (see ExchangeAccountValuator).
+        if position.is_spot() or position.is_vault():
             from tradeexecutor.strategy.position_internal_share_price import (
                 create_share_price_state,
                 update_share_price_state,

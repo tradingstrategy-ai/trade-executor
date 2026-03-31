@@ -17,6 +17,10 @@ from eth_defi.compat import native_datetime_utc_now
 from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.valuation import ValuationUpdate
+from tradeexecutor.strategy.position_internal_share_price import (
+    create_share_price_state_for_exchange_account,
+    update_share_price_state_for_balance_update,
+)
 from tradeexecutor.strategy.valuation import ValuationModel
 from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
 
@@ -190,20 +194,27 @@ class ExchangeAccountValuator(ValuationModel):
             # so that get_value() reflects the API value
             diff = api_value - tracked_amount
             if diff != 0:
-                evt = self._create_balance_update(
+                self._create_balance_update(
                     now, position, diff, tracked_amount,
                     strategy_cycle_ts=ts, block_number=block_number,
                 )
 
-                # Update internal share price state so PnL tracking
-                # reflects the value change from this balance update
-                if position.share_price_state is not None:
-                    from tradeexecutor.strategy.position_internal_share_price import (
-                        update_share_price_state_for_balance_update,
+            # Initialise or update internal share price state.
+            # The first successful valuation establishes the initial capital
+            # (share_price_state is None until then because placeholder trades
+            # from open_exchange_account_position are excluded).
+            # Subsequent valuations adjust the share price as value changes.
+            total_value = float(api_value)
+            if position.share_price_state is None:
+                if total_value > 0:
+                    position.share_price_state = create_share_price_state_for_exchange_account(
+                        total_value, now,
                     )
-                    position.share_price_state = update_share_price_state_for_balance_update(
-                        position.share_price_state, evt,
-                    )
+            elif diff != 0:
+                last_bu = position.balance_updates[max(position.balance_updates)]
+                position.share_price_state = update_share_price_state_for_balance_update(
+                    position.share_price_state, last_bu,
+                )
 
             position.last_token_price = new_price
             new_value = float(api_value)

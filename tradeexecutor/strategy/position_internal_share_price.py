@@ -44,6 +44,42 @@ def create_share_price_state(
     )
 
 
+def create_share_price_state_for_exchange_account(
+    total_value: float,
+    valued_at: datetime.datetime,
+    initial_share_price: float = 1.0,
+) -> PositionInternalSharePriceState:
+    """Create share price state for an exchange account position.
+
+    Exchange account positions use placeholder trades (typically $0 or $1)
+    that don't represent real capital. The first successful valuation from
+    the exchange API establishes the actual initial capital.
+
+    :param total_value:
+        The total account value from the exchange API (the real initial capital).
+
+    :param valued_at:
+        Timestamp of the valuation.
+
+    :param initial_share_price:
+        Starting share price, typically 1.0.
+
+    :return:
+        New PositionInternalSharePriceState treating total_value as initial capital.
+    """
+    shares = total_value / initial_share_price
+
+    return PositionInternalSharePriceState(
+        current_share_price=initial_share_price,
+        total_supply=shares,
+        cumulative_quantity=total_value,
+        total_invested=total_value,
+        peak_total_supply=shares,
+        initial_share_price=initial_share_price,
+        last_updated_at=valued_at,
+    )
+
+
 def update_share_price_state(
     state: PositionInternalSharePriceState,
     trade: TradeExecution,
@@ -155,14 +191,15 @@ def update_share_price_state_for_balance_update(
 
 
 def migrate_share_price_state(position: "TradingPosition") -> None:
-    """Populate share_price_state for existing positions by replaying trades.
+    """Populate share_price_state for existing positions by replaying events.
 
     For positions that were created before incremental share price tracking
     was added, this function rebuilds the state by replaying all successful
     trades.
 
-    For exchange account positions, also replays balance updates since value
-    changes arrive via balance updates rather than trades.
+    For exchange account positions, trades are skipped (they are placeholders).
+    The first balance update establishes the initial capital, and subsequent
+    balance updates adjust the share price.
 
     :param position:
         Position to migrate. Modified in place.
@@ -174,19 +211,26 @@ def migrate_share_price_state(position: "TradingPosition") -> None:
         return  # Not applicable
 
     if position.is_exchange_account():
-        # Exchange accounts: replay trades then balance updates in chronological order.
-        # The initial trade sets up share price state, then each balance update
-        # adjusts the share price as total_assets change.
-        state = None
-        for trade in position.trades.values():
-            if trade.is_success():
-                if state is None:
-                    state = create_share_price_state(trade)
-                else:
-                    state = update_share_price_state(state, trade)
+        # Exchange accounts: skip placeholder trades, replay BUs in order.
+        # Walk through BUs accumulating balance. The first BU that brings
+        # the running balance above zero establishes the initial capital;
+        # all subsequent BUs are PnL revaluations.
+        sorted_bus = sorted(
+            position.balance_updates.values(),
+            key=lambda b: b.balance_update_id,
+        )
+        if not sorted_bus:
+            return  # No balance updates yet, nothing to migrate
 
-        if state is not None:
-            for bu in sorted(position.balance_updates.values(), key=lambda b: b.balance_update_id):
+        state = None
+        for bu in sorted_bus:
+            if state is None:
+                running = float(bu.old_balance) + float(bu.quantity)
+                if running > 0:
+                    state = create_share_price_state_for_exchange_account(
+                        running, bu.block_mined_at,
+                    )
+            else:
                 state = update_share_price_state_for_balance_update(state, bu)
 
         position.share_price_state = state
