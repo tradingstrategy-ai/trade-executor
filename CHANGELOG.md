@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Enable internal share price PnL tracking for exchange account positions (GMX, Derive, CCXT) so the frontend displays unrealised profit instead of 0% (2026-03-31)
+
 - Add `check-state.py` script for remote state sanity checks with Lagoon vault sync diagnostics and on-chain pending deposit/redemption queries (2026-03-30)
 
 - Populate live Hyperliquid vault lockup remaining hours in open position data for trade-ui (2026-03-26)

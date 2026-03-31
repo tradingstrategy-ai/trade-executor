@@ -1535,6 +1535,16 @@ class TradingPosition(GenericPosition):
         :return:
             profit in dollar
         """
+        if self.is_exchange_account():
+            # Exchange account positions track value via quantity changes
+            # (balance updates), not price changes — price is always 1.0.
+            # Share price state is initialised on the first valuation sync,
+            # not from the placeholder trade. Until then, profit is unknown.
+            if self.share_price_state is not None:
+                data = self.get_share_price_profit()
+                return data.profit_usd
+            return 0
+
         avg_price = self.get_average_price()
         if avg_price is None:
             return 0
@@ -2033,6 +2043,14 @@ class TradingPosition(GenericPosition):
             If profit cannot be calculated yet (zero trades executed),
             return 0.
         """
+
+        if self.is_exchange_account():
+            # Share price state is initialised on the first valuation sync.
+            # Until then, profit is unknown.
+            if self.share_price_state is not None:
+                data = self.get_share_price_profit()
+                return data.profit_pct
+            return 0
 
         realised_profit = self.get_unrealised_profit_usd()
         if realised_profit is None:

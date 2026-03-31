@@ -255,4 +255,13 @@ def open_exchange_account_position(
         force=True,
     )
 
+    # Seed share price state for real capital allocations (not placeholders).
+    # Placeholder trades ($0 or $1 from correct-accounts) are excluded —
+    # their share_price_state is created from the first valuation sync instead.
+    if reserve_amount > 1:
+        from tradeexecutor.strategy.position_internal_share_price import (
+            create_share_price_state,
+        )
+        position.share_price_state = create_share_price_state(trade)
+
     return [trade]

@@ -226,6 +226,11 @@ def main():
     # 1. Download state
     print(f"Downloading state from {url}...")
     state = download_state(url)
+
+    # Backfill share price state for positions that lack it
+    from tradeexecutor.strategy.position_internal_share_price import backfill_share_price_state
+    backfill_share_price_state(state)
+
     portfolio = state.portfolio
 
     # 2. Overview
