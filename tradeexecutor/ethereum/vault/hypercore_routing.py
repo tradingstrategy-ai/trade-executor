@@ -536,13 +536,26 @@ class HypercoreVaultRouting(RoutingModel):
             If USDC does not arrive within the timeout.
         """
         # Temporary stop-gap: accept a slightly smaller bridged amount here.
-        # Proper fix: propagate the observed HyperCore spot amount into phase 3.
+        # This covers minor drift between the requested phase 3 bridge amount
+        # and the final EVM arrival, while still logging both numbers so we can
+        # see whether the gap looks like ordinary fee/rounding behaviour or a
+        # genuine settlement failure.
         expected_increase_threshold_raw = max(
             expected_increase_raw - HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW,
             0,
         )
         deadline = time.time() + timeout
         attempt = 0
+
+        logger.info(
+            "Waiting for Hypercore phase 3 USDC arrival in Safe %s: "
+            "baseline %d raw, expected %d raw, threshold %d raw, tolerance slack %d raw",
+            self.safe_address,
+            baseline_balance_raw,
+            expected_increase_raw,
+            expected_increase_threshold_raw,
+            expected_increase_raw - expected_increase_threshold_raw,
+        )
 
         # Initial delay: give the bridge time to process
         time.sleep(poll_interval)
@@ -577,10 +590,16 @@ class HypercoreVaultRouting(RoutingModel):
                 )
 
             logger.info(
-                "Waiting for USDC in Safe %s: increase %d/%d raw "
-                "(%.0fs remaining, poll #%d)",
-                self.safe_address, increase, expected_increase_threshold_raw,
-                remaining, attempt,
+                "Waiting for USDC in Safe %s: baseline %d raw, current %d raw, "
+                "increase %d/%d raw (planned %d raw, %.0fs remaining, poll #%d)",
+                self.safe_address,
+                baseline_balance_raw,
+                current_balance_raw,
+                increase,
+                expected_increase_threshold_raw,
+                expected_increase_raw,
+                remaining,
+                attempt,
             )
             time.sleep(min(poll_interval, remaining))
 
@@ -1469,18 +1488,42 @@ class HypercoreVaultRouting(RoutingModel):
                 spot_balance,
             )
 
+            # `spotSend` pays the HyperCore -> HyperEVM bridge fee out of the
+            # Safe's spot balance before the linked USDC lands on HyperEVM. If
+            # we try to bridge the entire visible spot balance, the phase 3 call
+            # can succeed on HyperEVM while silently doing nothing on HyperCore.
             phase3_withdraw_amount = compute_spot_to_evm_withdrawal_amount(
                 spot_balance=spot_balance,
                 desired_amount=raw_to_usdc(expected_raw),
             )
             phase3_raw = usdc_to_raw(phase3_withdraw_amount)
+            reserved_fee_headroom_raw = max(expected_raw - phase3_raw, 0)
+
+            logger.info(
+                "Hypercore withdrawal phase 3 planning for trade %s: "
+                "requested %d raw (%s USDC), observed spot free %s USDC, "
+                "bridging %d raw (%s USDC), reserved headroom %d raw (%s USDC)",
+                trade.trade_id,
+                expected_raw,
+                raw_to_usdc(expected_raw),
+                spot_balance,
+                phase3_raw,
+                phase3_withdraw_amount,
+                reserved_fee_headroom_raw,
+                raw_to_usdc(reserved_fee_headroom_raw),
+            )
 
             if phase3_raw <= 0:
                 logger.error(
                     "Hypercore withdrawal phase 3 cannot bridge any USDC for trade %s: "
-                    "spot free balance %s USDC is too small after reserving bridge-fee headroom",
+                    "spot free balance %s USDC is too small after reserving bridge-fee headroom. "
+                    "Requested %d raw (%s USDC), reserved headroom %d raw (%s USDC)",
                     trade.trade_id,
                     spot_balance,
+                    expected_raw,
+                    raw_to_usdc(expected_raw),
+                    reserved_fee_headroom_raw,
+                    raw_to_usdc(reserved_fee_headroom_raw),
                 )
                 self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
                 report_failure(ts, state, trade, stop_on_execution_failure)
@@ -1502,7 +1545,14 @@ class HypercoreVaultRouting(RoutingModel):
             try:
                 phase3_tx, phase3_receipt = self._broadcast_withdrawal_phase3(phase3_raw)
             except Exception as e:
-                logger.error("Withdrawal phase 3 broadcast failed: %s", e)
+                logger.error(
+                    "Withdrawal phase 3 broadcast failed for trade %s: %s. "
+                    "Requested %d raw, attempted %d raw after bridge-fee headroom",
+                    trade.trade_id,
+                    e,
+                    expected_raw,
+                    phase3_raw,
+                )
                 self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
                 report_failure(ts, state, trade, stop_on_execution_failure)
                 return
@@ -1510,12 +1560,28 @@ class HypercoreVaultRouting(RoutingModel):
             trade.blockchain_transactions.append(phase3_tx)
 
             if phase3_receipt["status"] != 1:
-                logger.error("Hypercore withdrawal phase 3 reverted: tx %s", phase3_tx.tx_hash)
+                logger.error(
+                    "Hypercore withdrawal phase 3 reverted for trade %s: tx %s, "
+                    "attempted bridge amount %d raw (%s USDC)",
+                    trade.trade_id,
+                    phase3_tx.tx_hash,
+                    phase3_raw,
+                    phase3_withdraw_amount,
+                )
                 self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
                 report_failure(ts, state, trade, stop_on_execution_failure)
                 return
 
             ts = get_block_timestamp(web3, phase3_receipt["blockNumber"])
+
+            logger.info(
+                "Hypercore withdrawal phase 3 tx succeeded for trade %s: tx %s, "
+                "bridge amount %d raw (%s USDC)",
+                trade.trade_id,
+                phase3_tx.tx_hash,
+                phase3_raw,
+                phase3_withdraw_amount,
+            )
 
             # Poll for USDC arrival on EVM
             try:
@@ -1527,8 +1593,14 @@ class HypercoreVaultRouting(RoutingModel):
                 )
             except HypercoreWithdrawalVerificationError as e:
                 logger.error(
-                    "Withdrawal verification failed for trade %s: %s",
-                    trade.trade_id, e,
+                    "Withdrawal verification failed for trade %s after phase 3 tx %s: %s. "
+                    "Requested %d raw, phase 3 attempted %d raw, baseline EVM balance %d raw",
+                    trade.trade_id,
+                    phase3_tx.tx_hash,
+                    e,
+                    expected_raw,
+                    phase3_raw,
+                    baseline_balance_raw,
                 )
                 self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
                 report_failure(ts, state, trade, stop_on_execution_failure)
