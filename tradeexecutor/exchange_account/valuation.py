@@ -190,10 +190,20 @@ class ExchangeAccountValuator(ValuationModel):
             # so that get_value() reflects the API value
             diff = api_value - tracked_amount
             if diff != 0:
-                self._create_balance_update(
+                evt = self._create_balance_update(
                     now, position, diff, tracked_amount,
                     strategy_cycle_ts=ts, block_number=block_number,
                 )
+
+                # Update internal share price state so PnL tracking
+                # reflects the value change from this balance update
+                if position.share_price_state is not None:
+                    from tradeexecutor.strategy.position_internal_share_price import (
+                        update_share_price_state_for_balance_update,
+                    )
+                    position.share_price_state = update_share_price_state_for_balance_update(
+                        position.share_price_state, evt,
+                    )
 
             position.last_token_price = new_price
             new_value = float(api_value)

@@ -7,6 +7,7 @@ See :py:class:`tradeexecutor.state.position_internal_share_price.PositionInterna
 """
 import datetime
 
+from tradeexecutor.state.balance_update import BalanceUpdate
 from tradeexecutor.state.position_internal_share_price import PositionInternalSharePriceState
 from tradeexecutor.state.trade import TradeExecution
 
@@ -112,6 +113,47 @@ def update_share_price_state(
     return state
 
 
+def update_share_price_state_for_balance_update(
+    state: PositionInternalSharePriceState,
+    balance_update: BalanceUpdate,
+) -> PositionInternalSharePriceState:
+    """Update share price state from a balance update event.
+
+    For exchange account positions, value changes arrive as balance updates
+    rather than trades. The quantity diff changes total_assets while
+    total_supply stays constant, naturally adjusting the share price.
+
+    :param state:
+        Current share price state to update.
+
+    :param balance_update:
+        The balance update event (from exchange API revaluation).
+
+    :return:
+        New PositionInternalSharePriceState with updated share price.
+    """
+    diff = float(balance_update.quantity)
+    new_cumulative = state.cumulative_quantity + diff
+
+    # total_supply is unchanged — no shares minted or burned
+    # share price moves as total_assets changes
+    new_share_price = (
+        new_cumulative / state.total_supply
+        if state.total_supply > 0
+        else state.current_share_price
+    )
+
+    return PositionInternalSharePriceState(
+        current_share_price=new_share_price,
+        total_supply=state.total_supply,
+        cumulative_quantity=new_cumulative,
+        total_invested=state.total_invested,
+        peak_total_supply=state.peak_total_supply,
+        initial_share_price=state.initial_share_price,
+        last_updated_at=balance_update.block_mined_at,
+    )
+
+
 def migrate_share_price_state(position: "TradingPosition") -> None:
     """Populate share_price_state for existing positions by replaying trades.
 
@@ -119,24 +161,45 @@ def migrate_share_price_state(position: "TradingPosition") -> None:
     was added, this function rebuilds the state by replaying all successful
     trades.
 
+    For exchange account positions, also replays balance updates since value
+    changes arrive via balance updates rather than trades.
+
     :param position:
         Position to migrate. Modified in place.
     """
     if position.share_price_state is not None:
         return  # Already has state
 
-    if not (position.is_spot() or position.is_vault()):
+    if not (position.is_spot() or position.is_vault() or position.is_exchange_account()):
         return  # Not applicable
 
-    state = None
-    for trade in position.trades.values():
-        if trade.is_success():
-            if state is None:
-                state = create_share_price_state(trade)
-            else:
-                state = update_share_price_state(state, trade)
+    if position.is_exchange_account():
+        # Exchange accounts: replay trades then balance updates in chronological order.
+        # The initial trade sets up share price state, then each balance update
+        # adjusts the share price as total_assets change.
+        state = None
+        for trade in position.trades.values():
+            if trade.is_success():
+                if state is None:
+                    state = create_share_price_state(trade)
+                else:
+                    state = update_share_price_state(state, trade)
 
-    position.share_price_state = state
+        if state is not None:
+            for bu in sorted(position.balance_updates.values(), key=lambda b: b.balance_update_id):
+                state = update_share_price_state_for_balance_update(state, bu)
+
+        position.share_price_state = state
+    else:
+        state = None
+        for trade in position.trades.values():
+            if trade.is_success():
+                if state is None:
+                    state = create_share_price_state(trade)
+                else:
+                    state = update_share_price_state(state, trade)
+
+        position.share_price_state = state
 
 
 def backfill_share_price_state(
@@ -181,7 +244,7 @@ def backfill_share_price_state(
         if position.share_price_state is not None:
             continue
 
-        if not (position.is_spot() or position.is_vault()):
+        if not (position.is_spot() or position.is_vault() or position.is_exchange_account()):
             continue
 
         # Migrate this position
