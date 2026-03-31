@@ -39,3 +39,8 @@ class StrategyTag(enum.Enum):
 
     #: The deposit box should be disabled on the website for this strategy
     deposits_disabled = "deposits_disabled"
+
+    #: This is exchange account strategy
+    #:
+    exchange_account_strategy = "exchange_account_strategy"    
+

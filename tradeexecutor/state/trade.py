@@ -159,11 +159,6 @@ class TradeFlag(enum.Enum):
     ignore_open = "ignore_open"
 
 
-    #: This is exchange account strategy
-    #:
-    exchange_account_strategy = "exchange_account_strategy"    
-
-
 @dataclass_json
 @dataclass()
 class TradeExecution:
