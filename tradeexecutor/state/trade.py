@@ -2,24 +2,25 @@
 
 import datetime
 import enum
-import pprint
 import logging
-from dataclasses import dataclass, field, asdict
+import pprint
+from dataclasses import asdict, dataclass, field
 from decimal import Decimal
-from typing import Optional, List, Set
 from types import NoneType
+from typing import List, Optional, Set
 
 from dataclasses_json import dataclass_json
-
 from eth_defi.tx import AssetDelta
 
 from tradeexecutor.ethereum.revert import clean_revert_reason_message
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
-from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.identifier import (AssetIdentifier,
+                                            TradingPairIdentifier)
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.size_risk import SizeRisk
 from tradeexecutor.state.trigger import Trigger, TriggerType
-from tradeexecutor.state.types import USDollarAmount, USDollarPrice, BPS, LeverageMultiplier, Percent
+from tradeexecutor.state.types import (BPS, LeverageMultiplier, Percent,
+                                       USDollarAmount, USDollarPrice)
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 
@@ -156,6 +157,11 @@ class TradeFlag(enum.Enum):
     #: then put it back at the end of the cycle.
     #:
     ignore_open = "ignore_open"
+
+
+    #: This is exchange account strategy
+    #:
+    exchange_account_strategy = "exchange_account_strategy"    
 
 
 @dataclass_json
