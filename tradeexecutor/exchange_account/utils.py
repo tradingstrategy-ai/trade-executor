@@ -12,6 +12,51 @@ from tradeexecutor.exchange_account.derive import DeriveNetwork
 logger = logging.getLogger(__name__)
 
 
+def resolve_derive_addresses(
+    derive_session_private_key: str,
+    derive_owner_private_key: str | None,
+    derive_wallet_address: str | None,
+    derive_network: DeriveNetwork,
+) -> dict[str, str]:
+    """Resolve public Derive addresses from credentials for metadata exposure.
+
+    Extracts only public addresses from private keys — never stores or
+    returns the private keys themselves.
+
+    :return:
+        Dict with ``derive_`` prefixed keys mapping to public addresses/config.
+    """
+    from eth_account import Account
+
+    is_testnet = (derive_network == DeriveNetwork.testnet)
+
+    result = {
+        "derive_network": derive_network.value,
+    }
+
+    # Session key public address
+    session_account = Account.from_key(derive_session_private_key)
+    result["derive_session_key_address"] = session_account.address
+
+    # Owner EOA public address (optional — not available for Safe multisig setups)
+    owner_account = None
+    if derive_owner_private_key:
+        owner_account = Account.from_key(derive_owner_private_key)
+        result["derive_owner_address"] = owner_account.address
+
+    # Derive wallet address (LightAccount smart contract wallet)
+    if derive_wallet_address:
+        result["derive_wallet_address"] = derive_wallet_address
+    elif owner_account is not None:
+        from eth_defi.derive.onboarding import fetch_derive_wallet_address
+        result["derive_wallet_address"] = fetch_derive_wallet_address(
+            owner_account.address,
+            is_testnet=is_testnet,
+        )
+
+    return result
+
+
 def _create_derive_protocol_value_func(
     positions,
     derive_owner_private_key: str | None,

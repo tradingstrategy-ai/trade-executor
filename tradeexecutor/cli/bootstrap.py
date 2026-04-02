@@ -509,6 +509,7 @@ def create_metadata(
     hot_wallet: Optional[HotWallet] = None,
     sort_priority=0,
     fees=None,
+    derive_addresses: dict[str, str] | None = None,
 ) -> Metadata:
     """Create metadata object from the configuration variables.
 
@@ -568,6 +569,9 @@ def create_metadata(
                 on_chain_data.owner = vault.safe_address
             case _:
                 raise NotImplementedError(f"Unsupported asset management mode: {asset_management_mode}")
+
+    if derive_addresses:
+        on_chain_data.smart_contracts.update(derive_addresses)
 
     if backtest_result is not None:
         backtested_state = State.read_json_file(backtest_result)

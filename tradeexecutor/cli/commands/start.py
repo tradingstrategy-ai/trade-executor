@@ -335,8 +335,9 @@ def start(
         execution_model.disable_broadcast = disable_broadcast
 
         # Wire up exchange account value function if Derive credentials provided
+        derive_addresses = None
         if derive_session_private_key:
-            from ...exchange_account.utils import create_derive_value_func_from_credentials
+            from ...exchange_account.utils import create_derive_value_func_from_credentials, resolve_derive_addresses
             account_value_func = create_derive_value_func_from_credentials(
                 derive_session_private_key=derive_session_private_key,
                 derive_owner_private_key=derive_owner_private_key,
@@ -344,7 +345,13 @@ def start(
                 derive_network=derive_network,
             )
             execution_model.account_value_func = account_value_func
-            logger.info("Exchange account value function configured for Derive")
+            derive_addresses = resolve_derive_addresses(
+                derive_session_private_key=derive_session_private_key,
+                derive_owner_private_key=derive_owner_private_key,
+                derive_wallet_address=derive_wallet_address,
+                derive_network=derive_network,
+            )
+            logger.info("Exchange account value function configured for Derive, addresses: %s", derive_addresses)
 
         approval_model = create_approval_model(approval_type)
 
@@ -413,6 +420,7 @@ def start(
             hot_wallet=sync_model.get_hot_wallet(),
             sort_priority=mod.sort_priority,
             fees=fees,
+            derive_addresses=derive_addresses,
         )
 
         # Start the queue that relays info from the web server to the strategy executor
