@@ -44,3 +44,7 @@ class StrategyTag(enum.Enum):
     #:
     exchange_account_strategy = "exchange_account_strategy"    
 
+    exchange_account_strategy_gmx = "exchange_account_strategy_gmx"    
+    exchange_account_strategy_derive = "exchange_account_strategy_derive"    
+
+
