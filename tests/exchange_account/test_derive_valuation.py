@@ -32,7 +32,11 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
 from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
-from tradeexecutor.exchange_account.derive import create_derive_account_value_func
+from tradeexecutor.exchange_account.derive import DeriveNetwork, create_derive_account_value_func
+from tradeexecutor.exchange_account.utils import resolve_derive_addresses
+from tradeexecutor.cli.bootstrap import create_metadata
+from tradeexecutor.strategy.execution_model import AssetManagementMode
+from tradingstrategy.chain import ChainId
 from eth_defi.compat import native_datetime_utc_now
 
 
@@ -233,3 +237,48 @@ def test_derive_account_value_func_direct(authenticated_client, exchange_account
 
     assert isinstance(value, Decimal), f"Expected Decimal, got {type(value)}"
     assert value >= 100_000, f"Expected at least 100k USD, got {value}"
+
+
+def test_derive_addresses_in_metadata(owner_account, derive_wallet_address):
+    """Verify Derive addresses are correctly populated in strategy metadata.
+
+    1. Resolve Derive addresses from real test credentials
+    2. Create metadata with the resolved addresses
+    3. Verify on_chain_data.smart_contracts contains all expected Derive keys
+    4. Verify no private key material leaks into the serialised output
+    """
+    # 1. Resolve addresses from real credentials
+    session_key = os.environ["DERIVE_SESSION_PRIVATE_KEY"]
+    owner_key = os.environ["DERIVE_OWNER_PRIVATE_KEY"]
+
+    derive_addresses = resolve_derive_addresses(
+        derive_session_private_key=session_key,
+        derive_owner_private_key=owner_key,
+        derive_wallet_address=derive_wallet_address,
+        derive_network=DeriveNetwork.testnet,
+    )
+
+    # 2. Create metadata
+    metadata = create_metadata(
+        name="Derive Test",
+        short_description="Test",
+        long_description=None,
+        icon_url=None,
+        asset_management_mode=AssetManagementMode.dummy,
+        chain_id=ChainId.ethereum,
+        vault=None,
+        derive_addresses=derive_addresses,
+    )
+
+    # 3. Verify all Derive keys in smart_contracts
+    sc = metadata.on_chain_data.smart_contracts
+    assert sc["derive_wallet_address"] == derive_wallet_address
+    assert sc["derive_owner_address"] == owner_account.address
+    assert sc["derive_session_key_address"].startswith("0x")
+    assert len(sc["derive_session_key_address"]) == 42
+    assert sc["derive_network"] == "testnet"
+
+    # 4. Verify no private keys in serialised output
+    serialised = metadata.to_json()
+    assert session_key not in serialised
+    assert owner_key not in serialised
