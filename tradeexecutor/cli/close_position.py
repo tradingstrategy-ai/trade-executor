@@ -13,6 +13,9 @@ from eth_defi.compat import native_datetime_utc_now
 from tradeexecutor.analysis.position import display_positions
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.multichain_balance import fetch_onchain_balances_multichain
+from tradeexecutor.state.portfolio import Portfolio
+from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.repair import close_position_with_empty_trade
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.valuation import ValuationModel
@@ -34,6 +37,37 @@ class CloseAllAborted(Exception):
     """Interactively chosen to cancel"""
 
 
+def _close_dust_position(
+    portfolio: Portfolio,
+    p: TradingPosition,
+    blacklist: bool,
+    state: State,
+):
+    """Close a dust position using a zero-quantity repair trade.
+
+    - Handles both open and frozen positions
+    - Uses close_position_with_empty_trade() for proper bookkeeping
+    - Does not attempt any on-chain withdrawal
+    """
+
+    assert not p.is_closed(), f"Was already closed: {p}"
+
+    # close_position_with_empty_trade() requires the position
+    # to be in open_positions. If it is frozen, move it first.
+    if p.is_frozen():
+        del portfolio.frozen_positions[p.position_id]
+        portfolio.open_positions[p.position_id] = p
+        p.unfrozen_at = native_datetime_utc_now()
+
+    note = f"Closed as dust with CLI command at {native_datetime_utc_now()}"
+    t = close_position_with_empty_trade(portfolio, p)
+    p.add_notes_message(note)
+    logger.info("Position %s closed as dust with repair trade %s", p, t)
+
+    if blacklist:
+        state.blacklist_asset(p.pair.base)
+
+
 def close_single_or_all_positions(
     web3: Web3,
     execution_model: ExecutionModel,
@@ -51,6 +85,7 @@ def close_single_or_all_positions(
     unit_testing=False,
     close_by_sell=True,
     blacklist_marked_down=True,
+    close_dust: bool | None = None,
 ):
     """Close single/all positions.
 
@@ -216,13 +251,22 @@ def close_single_or_all_positions(
 
         for p in positions_to_close:
 
+            assert not p.is_closed(), "Was already closed"
+
+            # Auto-detect dust positions or honour explicit --close-dust flag.
+            # Dust positions are closed with a zero-quantity repair trade
+            # instead of attempting a real sell/withdrawal.
+            should_close_as_dust = close_dust is True or (close_dust is None and p.can_be_closed())
+
+            if should_close_as_dust:
+                _close_dust_position(portfolio, p, blacklist_marked_down, state)
+                continue
+
             # The message left on the positions that were closed
             note = f"Close sell with CLI command at {native_datetime_utc_now()}"
 
             # Create trades to open the position
             logger.info("Closing position %s", p)
-
-            assert not p.is_closed(), "Was already closed"
 
             trades = position_manager.close_position(p)
 
