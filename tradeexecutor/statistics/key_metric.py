@@ -286,6 +286,21 @@ def calculate_key_metrics(
         required_history,
     )
 
+    # For Lagoon vaults, share price data provides metrics independently of trade count.
+    # The trade-history gate may fail (e.g. only 1 trade → duration 0), but share price
+    # snapshots from portfolio stats refreshes are available and sufficient.
+    if source_state is None and share_price_based:
+        share_price_df = calculate_share_price(live_state)
+        if share_price_df is not None and len(share_price_df) > 1:
+            source_state = live_state
+            source = KeyMetricSource.live_trading
+            calculation_window_start_at = live_state.created_at
+            calculation_window_end_at = native_datetime_utc_now()
+            logger.info(
+                "Trade history insufficient but share price data available (%d entries), using share price for key metrics",
+                len(share_price_df),
+            )
+
     logger.info(
         "Calcualting key metrics for source %s, calculation window %s - %s, share price based %s",
         source,
