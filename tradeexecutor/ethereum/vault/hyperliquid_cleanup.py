@@ -9,6 +9,8 @@ This module contains operator tooling for one specific recovery path:
 5. We need to recover the stranded USDC back to the Safe on HyperEVM
 6. We then repair and correct the strategy state so accounting matches reality
 
+See :py:func:`run_hyperliquid_cleanup` for usage.
+
 Safety model
 ------------
 
