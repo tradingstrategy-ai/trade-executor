@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Auto-close dusty Hypercore vault positions with repair trades instead of attempting failed withdrawals (2026-04-03)
+
 - Expose Derive public addresses (wallet, owner EOA, session key) in strategy metadata for frontend display (2026-04-03)
 
 - Enable internal share price PnL tracking for exchange account positions (GMX, Derive, CCXT) so the frontend displays unrealised profit instead of 0% (2026-03-31)
