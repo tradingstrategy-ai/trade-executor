@@ -18,27 +18,24 @@ from decimal import Decimal
 
 import pytest
 from eth_account import Account
-
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.derive.account import fetch_account_summary, fetch_subaccount_ids
 from eth_defi.derive.authentication import DeriveApiClient
 from eth_defi.derive.onboarding import fetch_derive_wallet_address
+from tradingstrategy.chain import ChainId
 
-from tradeexecutor.state.identifier import (
-    TradingPairIdentifier,
-    AssetIdentifier,
-    TradingPairKind,
-)
+from tradeexecutor.cli.bootstrap import create_metadata
+from tradeexecutor.exchange_account.derive import (
+    DeriveNetwork, create_derive_account_value_func)
+from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
+from tradeexecutor.exchange_account.utils import resolve_derive_addresses
+from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
+from tradeexecutor.state.identifier import (AssetIdentifier,
+                                            TradingPairIdentifier,
+                                            TradingPairKind)
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeType
-from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
-from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
-from tradeexecutor.exchange_account.derive import DeriveNetwork, create_derive_account_value_func
-from tradeexecutor.exchange_account.utils import resolve_derive_addresses
-from tradeexecutor.cli.bootstrap import create_metadata
 from tradeexecutor.strategy.execution_model import AssetManagementMode
-from tradingstrategy.chain import ChainId
-from eth_defi.compat import native_datetime_utc_now
-
 
 # Skip tests if credentials not configured
 pytestmark = pytest.mark.skipif(

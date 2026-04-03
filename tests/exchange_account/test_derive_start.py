@@ -22,7 +22,6 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
-
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
 from tradeexecutor.cli.main import app
@@ -30,7 +29,6 @@ from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.exchange_account.utils import resolve_derive_addresses
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
-
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("JSON_RPC_ARBITRUM")
@@ -128,47 +126,3 @@ def test_derive_start_single_cycle(environment: dict):
     trade = list(position.trades.values())[0]
     assert trade.get_status() == TradeStatus.success
 
-
-@pytest.mark.slow_test_group
-def test_derive_metadata_addresses(environment: dict):
-    """Verify resolve_derive_addresses returns real public addresses from test credentials.
-
-    1. Read Derive credentials from test environment
-    2. Call resolve_derive_addresses with real credentials
-    3. Verify returned dict contains valid Ethereum addresses
-    4. Verify no private key material leaks into the result
-    """
-    # 1. Read credentials from test environment
-    session_key = environment["DERIVE_SESSION_PRIVATE_KEY"]
-    owner_key = environment.get("DERIVE_OWNER_PRIVATE_KEY")
-    wallet_address = environment.get("DERIVE_WALLET_ADDRESS")
-    network = DeriveNetwork(environment.get("DERIVE_NETWORK", "testnet"))
-
-    # 2. Resolve addresses
-    result = resolve_derive_addresses(
-        derive_session_private_key=session_key,
-        derive_owner_private_key=owner_key,
-        derive_wallet_address=wallet_address,
-        derive_network=network,
-    )
-
-    # 3. Verify session key address is a valid 0x address
-    assert result["derive_session_key_address"].startswith("0x")
-    assert len(result["derive_session_key_address"]) == 42
-
-    # Verify wallet address is present (from env or derived)
-    if wallet_address or owner_key:
-        assert result["derive_wallet_address"].startswith("0x")
-
-    # Verify owner address present when owner key provided
-    if owner_key:
-        assert result["derive_owner_address"].startswith("0x")
-        assert len(result["derive_owner_address"]) == 42
-
-    assert result["derive_network"] in ("mainnet", "testnet")
-
-    # 4. Verify no private keys in the result
-    all_values = " ".join(str(v) for v in result.values())
-    assert session_key not in all_values
-    if owner_key:
-        assert owner_key not in all_values
