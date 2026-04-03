@@ -140,11 +140,12 @@ See Derive documentation [Depositing collateral assets](https://docs.derive.xyz/
 - [Connector address:](https://arbiscan.io/token/0x17Fc4c7ea8267044b6D0ACC17a6C049Bed6F8B21) `0x17Fc4c7ea8267044b6D0ACC17a6C049Bed6F8B21`
 
 **Bridge steps:**
-1. From the wallet account that you're bridging USDC from, approve the amount you want to bridge on [USDC contract](https://arbiscan.io/token/0xaf88d065e77c8cc2239327c5edb3a432268e5831#writeProxyContract) with the bridge address as spender.
-2. Use the [bridge contract](https://arbiscan.io/address/0x5e027ad442e031424b5a2c0ad6f656662be32882#readContract) `getMinFees` to get the estimated bridge price. Enter the above connector address and `100000` for gas limit.
-3. Use the [bridge contract](https://arbiscan.io/address/0x5e027ad442e031424b5a2c0ad6f656662be32882#writeContract) `depositToAppChain` bridge the asset:
-   - `payableAmount`: [convert](https://arbiscan.io/unitconverter) the amount from step 2 to ether
-   - `receiver`: address you're bridging to (same as address you're bridging from)
+1. From the wallet account that you're bridging USDC from, approve the amount you want to bridge on [USDC contract](https://arbiscan.io/token/0xaf88d065e77c8cc2239327c5edb3a432268e5831#writeProxyContract) with the bridge address as spender. Bridge address: `0x5e027ad442e031424b5a2c0ad6f656662be32882`
+
+2. Use the [bridge contract](https://arbiscan.io/address/0x5e027ad442e031424b5a2c0ad6f656662be32882#readContract#F5) `getMinFees` to get the estimated bridge price. Enter the above connector address and `100000` for gas limit.
+3. Use the [bridge contract](https://arbiscan.io/address/0x5e027ad442e031424b5a2c0ad6f656662be32882#writeContract#F2) `depositToAppChain` bridge the asset:
+   - `payableAmount`: [convert](https://arbiscan.io/unitconverter) the amount from step 2 to ether: `0.0000025269`
+   - `receiver`: address you're bridging to (same as address you're bridging from): ``
    - `amount`: amount USDC to bridge * 10^6 (e.g., `25` USDC = `25000000`)
    - `msgGasLimit`: `100000`
    - `connector`: `0x17Fc4c7ea8267044b6D0ACC17a6C049Bed6F8B21`
@@ -201,6 +202,19 @@ Done!
 ```
 
 </details>
+
+#### 3.d) Deposit on Derive explorer directlty
+
+You can deposit using *Write contract* on Derive explorer
+
+1) Approve USDC
+
+2) Call requestDeposit 
+
+- https://explorer.derive.xyz/address/0x0C81AD1825826eECB11E46Cb0C730b1747f07e0B?tab=write_proxy
+
+- Asset: `1500000000` (USDC amount on Derive)
+- Controll
 
 ### Step 4: Sign into Derive UI and make test trades
 
