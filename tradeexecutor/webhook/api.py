@@ -9,6 +9,7 @@ from typing import cast
 from urllib.parse import urljoin
 
 from dataclasses_json import dataclass_json
+import pandas as pd
 from pyramid.request import Request
 from pyramid.response import FileResponse, Response
 from pyramid.view import view_config
@@ -30,6 +31,88 @@ from tradeexecutor.webhook.error import exception_response
 from tradeexecutor.webhook.json_helper import NaNToNullEncoder
 
 logger = logging.getLogger(__name__)
+
+
+def _json_response(payload: dict, status_code: int = 200) -> Response:
+    """Create a JSON response payload."""
+    response = Response(content_type="application/json", status=status_code)
+    response.text = json.dumps(payload, cls=NaNToNullEncoder, allow_nan=False)
+    return response
+
+
+def _position_chart_error_response(status_code: int, detail: str) -> Response:
+    """Return a position chart error as JSON."""
+    return _json_response({"detail": detail}, status_code=status_code)
+
+
+def _serialise_chart_item_list(items: list) -> list[dict]:
+    """Serialise dataclass-json items for embedding in a JSON payload."""
+    return [item.to_dict() for item in items]
+
+
+def _convert_chart_timestamp_to_unix_seconds(timestamp) -> float:
+    """Convert Python or pandas timestamps to UNIX seconds."""
+    return timestamp.timestamp()
+
+
+def _get_position_chart_price_history(
+    run_state: RunState,
+    position,
+    warnings: list[str],
+) -> list[tuple[float, float]]:
+    """Export candle close price history for a single position."""
+    strategy_input_indicators = run_state.latest_indicators
+    if strategy_input_indicators is None:
+        warnings.append("Historical price data is not available yet because the strategy universe is not loaded.")
+        return []
+
+    strategy_universe = strategy_input_indicators.strategy_universe
+    if strategy_universe is None:
+        warnings.append("Historical price data is not available yet because the strategy universe is missing.")
+        return []
+
+    candle_universe = strategy_universe.data_universe.candles
+    if candle_universe is None:
+        warnings.append("Historical price data is not available yet because candle data is missing.")
+        return []
+
+    pair_id = position.pair.internal_id
+    if pair_id is None:
+        warnings.append("Historical price data is not available for this position because the trading pair has no internal id.")
+        return []
+
+    candle_frame = candle_universe.get_candles_by_pair(pair_id)
+    if candle_frame is None or len(candle_frame) == 0:
+        warnings.append(f"Historical price data is not available for pair id {pair_id}.")
+        return []
+
+    if "timestamp" in candle_frame.columns:
+        timestamps = pd.to_datetime(candle_frame["timestamp"])
+    elif isinstance(candle_frame.index, pd.MultiIndex):
+        timestamps = pd.to_datetime(candle_frame.index.get_level_values(-1))
+    else:
+        timestamps = pd.to_datetime(candle_frame.index)
+
+    export_frame = pd.DataFrame({
+        "timestamp": timestamps,
+        "close": candle_frame["close"].to_numpy(),
+    })
+    export_frame = export_frame.dropna(subset=["timestamp", "close"])
+
+    start_at = pd.Timestamp(position.opened_at)
+    end_at = pd.Timestamp(position.closed_at) if position.closed_at is not None else export_frame["timestamp"].max()
+    export_frame = export_frame.loc[
+        (export_frame["timestamp"] >= start_at) & (export_frame["timestamp"] <= end_at)
+    ]
+
+    if len(export_frame) == 0:
+        warnings.append("Historical price data is not available for the lifetime of this position.")
+        return []
+
+    return [
+        (_convert_chart_timestamp_to_unix_seconds(timestamp), float(close))
+        for timestamp, close in zip(export_frame["timestamp"], export_frame["close"])
+    ]
 
 
 @view_config(route_name='home', permission='view')
@@ -310,6 +393,53 @@ def web_chart(request: Request):
     r = Response(content_type="application/json")
     r.text = data.to_json()
     return r
+
+
+@view_config(route_name='web_position_chart', permission='view')
+def web_position_chart(request: Request):
+    """/position-chart/{position-number} endpoint.
+
+    Return price history, trades, and position statistics for a single position.
+    """
+    run_state: RunState = request.registry["run_state"]
+
+    position_number_str = request.matchdict.get("position_number")
+    try:
+        position_number = int(position_number_str)
+    except (TypeError, ValueError):
+        return _position_chart_error_response(400, f"Position number must be an integer, got {position_number_str!r}.")
+
+    state = run_state.read_only_state_copy
+    if state is None:
+        return _position_chart_error_response(503, "Position chart data is not available yet because the executor state has not been loaded.")
+
+    try:
+        position = state.portfolio.get_position_by_id(position_number)
+    except AssertionError:
+        return _position_chart_error_response(404, f"Position #{position_number} was not found.")
+
+    warnings: list[str] = []
+    try:
+        price_history = _get_position_chart_price_history(run_state, position, warnings)
+    except Exception as e:
+        logger.error(
+            "Failed to build position chart price history for #%d: %s",
+            position_number,
+            e,
+            exc_info=e,
+        )
+        price_history = []
+        warnings.append(f"Failed to load price history: {e}")
+
+    payload = {
+        "position_number": position_number,
+        "price_history": price_history,
+        "trades": _serialise_chart_item_list(list(position.trades.values())),
+        "position_statistics": _serialise_chart_item_list(state.stats.positions.get(position_number, [])),
+        "warnings": warnings,
+    }
+
+    return _json_response(payload)
 
 
 @view_config(route_name='web_icon', permission='view')
