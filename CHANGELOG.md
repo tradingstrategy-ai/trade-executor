@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Record underlying asset price (e.g. vault share price) in `PositionStatistics` time-series so price history is available from state without re-reading the price feed (2026-04-06)
+
 - Auto-close dusty Hypercore vault positions with repair trades instead of attempting failed withdrawals (2026-04-03)
 
 - Expose Derive public addresses (wallet, owner EOA, session key) in strategy metadata for frontend display (2026-04-03)
