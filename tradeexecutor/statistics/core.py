@@ -102,6 +102,7 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
         internal_total_supply=internal_total_supply,
         internal_profit_pct=internal_profit_pct,
         internal_profit_usd=internal_profit_usd,
+        underlying_price=position.last_token_price,
     )
 
     return stats
