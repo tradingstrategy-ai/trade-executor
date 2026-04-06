@@ -62,6 +62,7 @@ from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel
 from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse, UniverseOptions
 from tradeexecutor.strategy.valuation import ValuationModelFactory
+from tradeexecutor.strategy.webhook_data import populate_webhook_run_state
 from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
 
 try:
@@ -307,6 +308,7 @@ class ExecutionLoop:
         # We hide once-downloaded universe here for live loop
         # tests that perform live trading against forked chain in a fast cycle (1s)
         self.unit_testing_universe: StrategyExecutionUniverse | None = None
+        self.preloaded_live_universe: TradingStrategyUniverse | None = None
         self.visulisation = visualisation
 
     def is_backtest(self) -> bool:
@@ -840,6 +842,10 @@ class ExecutionLoop:
         """
 
         assert self.execution_context.mode.is_live_trading()
+        if self.preloaded_live_universe is not None:
+            logger.info("Using preloaded live trading universe")
+            return self.preloaded_live_universe
+
         universe = self.universe_model.preload_universe(
             self.universe_options,
             self.execution_context,
@@ -874,6 +880,32 @@ class ExecutionLoop:
             )
 
         logger.info("Warmed up universe %s", universe)
+        return universe
+
+    def preload_webhook_data(self, state: State) -> TradingStrategyUniverse:
+        """Preload webhook-facing data before the first live cycle."""
+
+        assert self.execution_context.mode.is_live_trading(), "Webhook preload only applies to live trading modes"
+
+        universe = self.warm_up_live_trading()
+        self.preloaded_live_universe = universe
+
+        populate_webhook_run_state(
+            self.run_state,
+            universe,
+            self.execution_context,
+            self.parameters,
+            create_charts=self.create_charts,
+            create_indicators=self.create_indicators,
+        )
+
+        self.refresh_live_run_state(
+            state,
+            visualisation=self.visulisation,
+            universe=universe,
+            cycle_duration=self.cycle_duration,
+        )
+
         return universe
 
     def run_backtest_trigger_checks(
