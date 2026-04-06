@@ -66,6 +66,11 @@ def init_web_api(config: Configurator):
     config.registry.settings["pyramid_openapi3.enable_response_validation"] = False
 
     config.pyramid_openapi3_register_routes()
+    with open(web_spec, encoding="utf-8") as spec_file:
+        web_spec_text = spec_file.read()
+
+    if "x-pyramid-route-name: web_position_chart" not in web_spec_text:
+        config.add_route("web_position_chart", "/position-chart/{position_number}")
 
     config.scan(package='tradeexecutor.webhook.api')
     config.scan(package='tradeexecutor.webhook.events')
