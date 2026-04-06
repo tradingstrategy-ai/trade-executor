@@ -85,6 +85,14 @@ class PositionStatistics:
     #:
     internal_profit_usd: USDollarAmount | None = None
 
+    #: The market price of the underlying asset at the time statistics were calculated.
+    #:
+    #: For spot positions: token price in USD.
+    #: For vault positions: vault share price in USD.
+    #: Mirrors :py:attr:`TradingPosition.last_token_price`.
+    #:
+    underlying_price: USDollarPrice | None = None
+
     def __post_init__(self):
         assert isinstance(self.calculated_at, datetime.datetime)
         assert isinstance(self.last_valuation_at, datetime.datetime)

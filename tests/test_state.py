@@ -1722,6 +1722,9 @@ def test_position_statistics_includes_share_price(usdc, weth_usdc, start_ts: dat
     assert stats.internal_profit_usd is not None
     assert stats.internal_profit_usd == pytest.approx(0.0)
 
+    # Verify underlying price is recorded (vault share price / token price)
+    assert stats.underlying_price == pytest.approx(1700.0)
+
 
 def test_share_price_state_incremental_update(usdc, weth_usdc, start_ts: datetime.datetime):
     """Verify share price state is updated incrementally on each trade."""
