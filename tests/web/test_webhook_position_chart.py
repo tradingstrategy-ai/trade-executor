@@ -267,6 +267,7 @@ def test_position_chart_happy_path(
         assert point[1] > 0
     assert [trade["trade_id"] for trade in payload["trades"]] == [1, 2]
     assert len(payload["position_statistics"]) == 2
+    assert payload["price_history_status_message"] == "Historical price data is available."
     assert payload["warnings"] == []
 
 

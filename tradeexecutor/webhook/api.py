@@ -32,6 +32,8 @@ from tradeexecutor.webhook.json_helper import NaNToNullEncoder
 
 logger = logging.getLogger(__name__)
 
+PRICE_HISTORY_AVAILABLE_MESSAGE = "Historical price data is available."
+
 
 def _json_response(payload: dict, status_code: int = 200) -> Response:
     """Create a JSON response payload."""
@@ -59,32 +61,37 @@ def _get_position_chart_price_history(
     run_state: RunState,
     position,
     warnings: list[str],
-) -> list[tuple[float, float]]:
+) -> tuple[list[tuple[float, float]], str]:
     """Export candle close price history for a single position."""
     strategy_input_indicators = run_state.latest_indicators
     if strategy_input_indicators is None:
-        warnings.append("Historical price data is not available yet because the strategy universe is not loaded.")
-        return []
+        message = "Historical price data is not available because the strategy universe is not loaded in the live executor."
+        warnings.append(message)
+        return [], message
 
     strategy_universe = strategy_input_indicators.strategy_universe
     if strategy_universe is None:
-        warnings.append("Historical price data is not available yet because the strategy universe is missing.")
-        return []
+        message = "Historical price data is not available because the strategy universe is missing."
+        warnings.append(message)
+        return [], message
 
     candle_universe = strategy_universe.data_universe.candles
     if candle_universe is None:
-        warnings.append("Historical price data is not available yet because candle data is missing.")
-        return []
+        message = "Historical price data is not available because candle data is missing."
+        warnings.append(message)
+        return [], message
 
     pair_id = position.pair.internal_id
     if pair_id is None:
-        warnings.append("Historical price data is not available for this position because the trading pair has no internal id.")
-        return []
+        message = "Historical price data is not available for this position because the trading pair has no internal id."
+        warnings.append(message)
+        return [], message
 
     candle_frame = candle_universe.get_candles_by_pair(pair_id)
     if candle_frame is None or len(candle_frame) == 0:
-        warnings.append(f"Historical price data is not available for pair id {pair_id}.")
-        return []
+        message = f"Historical price data is not available for pair id {pair_id}."
+        warnings.append(message)
+        return [], message
 
     if "timestamp" in candle_frame.columns:
         timestamps = pd.to_datetime(candle_frame["timestamp"])
@@ -106,13 +113,14 @@ def _get_position_chart_price_history(
     ]
 
     if len(export_frame) == 0:
-        warnings.append("Historical price data is not available for the lifetime of this position.")
-        return []
+        message = "Historical price data is not available for the lifetime of this position."
+        warnings.append(message)
+        return [], message
 
     return [
         (_convert_chart_timestamp_to_unix_seconds(timestamp), float(close))
         for timestamp, close in zip(export_frame["timestamp"], export_frame["close"])
-    ]
+    ], PRICE_HISTORY_AVAILABLE_MESSAGE
 
 
 @view_config(route_name='home', permission='view')
@@ -420,7 +428,7 @@ def web_position_chart(request: Request):
 
     warnings: list[str] = []
     try:
-        price_history = _get_position_chart_price_history(run_state, position, warnings)
+        price_history, price_history_status_message = _get_position_chart_price_history(run_state, position, warnings)
     except Exception as e:
         logger.error(
             "Failed to build position chart price history for #%d: %s",
@@ -429,11 +437,13 @@ def web_position_chart(request: Request):
             exc_info=e,
         )
         price_history = []
-        warnings.append(f"Failed to load price history: {e}")
+        price_history_status_message = f"Historical price data could not be loaded because of an internal error: {e}"
+        warnings.append(price_history_status_message)
 
     payload = {
         "position_number": position_number,
         "price_history": price_history,
+        "price_history_status_message": price_history_status_message,
         "trades": _serialise_chart_item_list(list(position.trades.values())),
         "position_statistics": _serialise_chart_item_list(state.stats.positions.get(position_number, [])),
         "warnings": warnings,
