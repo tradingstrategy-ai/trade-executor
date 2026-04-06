@@ -34,7 +34,7 @@ from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
 from tradeexecutor.state.trade import TradeFlag, TradeExecution, TradeType
 from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON, \
-    get_relative_epsilon_for_asset, DEFAULT_USD_LOW_VALUE_THRESHOLD
+    get_relative_epsilon_for_asset, get_relative_epsilon_for_pair, DEFAULT_USD_LOW_VALUE_THRESHOLD
 from tradeexecutor.strategy.lending_protocol_leverage import reset_credit_supply_loan
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -200,8 +200,8 @@ class AccountingBalanceCheck:
         return not is_relative_mismatch(
             self.actual_amount,
             self.expected_amount,
-            self.dust_epsilon,
             self.relative_epsilon,
+            self.dust_epsilon,
         )
 
     def is_usd_low_value_diff(self, usd_value_threshold=DEFAULT_USD_LOW_VALUE_THRESHOLD):
@@ -1323,7 +1323,7 @@ def _build_hypercore_vault_account_checks(
         expected_amount = Decimal(str(position.calculate_quantity_usd_value(quantity)))
         actual_amount = balance.amount
         dust_epsilon = get_dust_epsilon_for_pair(position.pair)
-        relative_epsilon = get_relative_epsilon_for_asset(position.pair.base)
+        relative_epsilon = get_relative_epsilon_for_pair(position.pair)
         mismatch = is_relative_mismatch(
             actual_amount,
             expected_amount,

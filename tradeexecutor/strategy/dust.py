@@ -45,6 +45,11 @@ DEFAULT_VAULT_EPSILON = Decimal(10 ** -6)
 #: can_be_closed() recognises the residual as dust.
 HYPERLIQUID_VAULT_CLOSE_EPSILON = Decimal("0.02")
 
+#: Hypercore vault equities fluctuate every block due to active trading
+#: inside the vault, so we allow 100 BPS (1%) relative drift before
+#: flagging a mismatch.
+HYPERLIQUID_VAULT_RELATIVE_EPSILON = 0.01
+
 
 def get_dust_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
     """Get the dust threshold for a trading pair.
@@ -151,5 +156,7 @@ def get_relative_epsilon_for_asset(asset: AssetIdentifier) -> Percent:
 
 
 def get_relative_epsilon_for_pair(pair: TradingPairIdentifier) -> Percent:
+    if pair.is_hyperliquid_vault():
+        return HYPERLIQUID_VAULT_RELATIVE_EPSILON
     return get_relative_epsilon_for_asset(pair.base)
 
