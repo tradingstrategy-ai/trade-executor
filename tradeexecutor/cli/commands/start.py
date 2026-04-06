@@ -87,6 +87,7 @@ def start(
     http_username: str = typer.Option(None, envvar="HTTP_USERNAME", help="Username for HTTP Basic Auth protection of webhooks"),
     http_password: str = typer.Option(None, envvar="HTTP_PASSWORD", help="Password for HTTP Basic Auth protection of webhooks"),
     http_wait_good_startup_seconds: int = typer.Option(60, envvar="HTTP_WAIT_GOOD_STARTUP_SECONDS", help="How long we wait befor switching the web server mode where an exception does not bring the web server down"),
+    preload_webhook_data: bool = typer.Option(False, "--preload-webhook-data", envvar="PRELOAD_WEBHOOK_DATA", help="Preload chart and indicator data for webhook endpoints during startup"),
 
     # Web3 connection options
     rpc_kwargs: dict | None = None,
@@ -643,6 +644,23 @@ def start(
     except Exception as e:
         logger.error("trade-executor crashed on initialisation: %s", e)
         raise e
+
+    if preload_webhook_data:
+        if not http_enabled:
+            logger.warning("PRELOAD_WEBHOOK_DATA requested, but HTTP_ENABLED=false. Skipping webhook preload.")
+        elif not execution_context.mode.is_live_trading():
+            logger.warning(
+                "PRELOAD_WEBHOOK_DATA requested, but execution mode %s is not live trading. Skipping webhook preload.",
+                execution_context.mode.name,
+            )
+        else:
+            logger.info("Preloading webhook data before the first live cycle")
+            try:
+                loop.preload_webhook_data(state)
+            except Exception:
+                if server is not None:
+                    server.shutdown()
+                raise
 
     try:
         loop.run_with_state(state)

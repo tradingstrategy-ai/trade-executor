@@ -30,14 +30,11 @@ except ImportError:
 from ...statistics.in_memory_statistics import refresh_run_state
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
-from ...strategy.pandas_trader.indicator import (MemoryIndicatorStorage,
-                                                 calculate_and_load_indicators,
-                                                 call_create_indicators)
-from ...strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import \
     DefaultTradingStrategyUniverseModel
+from ...strategy.webhook_data import populate_webhook_run_state
 from ...utils.timer import timed_task
 from ..bootstrap import (create_client, create_metadata, create_state_store,
                          create_web3_config, prepare_cache,
@@ -186,43 +183,15 @@ def webapi(
         execution_model=None,
     )
 
-    logger.info("Creating chart_registry")
-
-    run_state.chart_registry = mod.create_charts(
-        timestamp=ts,
-        parameters=mod.parameters,
-        strategy_universe=universe,
-        execution_context=execution_context,
-    )
-
-    logger.info("Creating indicators")
-    storage = MemoryIndicatorStorage(universe.get_cache_key())
-
-    indicators = call_create_indicators(
-        mod.create_indicators,
-        mod.parameters,
+    populate_webhook_run_state(
+        run_state,
         universe,
         execution_context,
-        ts,
+        mod.parameters,
+        create_charts=mod.create_charts,
+        create_indicators=mod.create_indicators,
+        timestamp=ts,
     )
-
-    indicator_results = calculate_and_load_indicators(
-        strategy_universe=universe,
-        storage=storage,
-        execution_context=execution_context,
-        indicators=indicators,
-        parameters=mod.parameters,
-        strategy_cycle_timestamp=ts,
-    )
-
-    strategy_input_indicators = StrategyInputIndicators(
-        universe,
-        indicator_results=indicator_results,
-        available_indicators=indicators,
-    )
-
-    # Pass indicator data to the web chart rendering end point
-    run_state.latest_indicators = strategy_input_indicators
 
     # Set up read-only state sync
     if not store.is_pristine():
