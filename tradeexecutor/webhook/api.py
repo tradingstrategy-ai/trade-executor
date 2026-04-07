@@ -25,6 +25,7 @@ from tradeexecutor.strategy.execution_context import \
     web_server_execution_context
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.summary import StrategySummary
+from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.visual.web_chart import (WebChartSource, WebChartType,
                                             render_web_chart)
 from tradeexecutor.webhook.error import exception_response
@@ -274,7 +275,16 @@ def web_source(request: Request):
     """/source endpoint.
 
     Return the source code of the strategy as plain text.
+
+    If the strategy has the :py:attr:`StrategyTag.closed_source` tag,
+    return an empty string.
     """
+    metadata: Metadata = request.registry["metadata"]
+    if StrategyTag.closed_source in metadata.tags:
+        r = Response(content_type="text/plain")
+        r.text = ""
+        return r
+
     execution_state: RunState = request.registry["run_state"]
     r = Response(content_type="text/plain")
     r.text = execution_state.source_code or ""
