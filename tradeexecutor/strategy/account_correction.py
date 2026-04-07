@@ -1169,6 +1169,43 @@ def create_missing_vault_positions(
             "Strategy universe must have at least one reserve asset to create vault positions"
         reserve_asset = strategy_universe.reserve_assets[0]
 
+        # Dust-level equity: create a position and immediately close it
+        # so it appears in closed positions rather than lingering as an
+        # un-trackable open position.
+        dust_epsilon = get_dust_epsilon_for_pair(pair)
+        if equity < float(dust_epsilon):
+            logger.info(
+                "Vault equity $%.4f for %s is below dust epsilon %.2f, closing as dust",
+                equity, pair.get_human_description(), dust_epsilon,
+            )
+
+            # Open a zero-quantity repair position and close it immediately
+            position, trade, created = state.create_trade(
+                strategy_cycle_at=strategy_cycle_at,
+                pair=pair,
+                quantity=Decimal(0),
+                reserve=None,
+                assumed_price=1.0,
+                trade_type=TradeType.repair,
+                reserve_currency=reserve_asset,
+                reserve_currency_price=1.0,
+                notes=f"Auto-closed as dust by correct-accounts (equity=${equity:.4f})",
+                pair_fee=0.0,
+                lp_fees_estimated=0,
+            )
+            trade.mark_success(
+                executed_at=strategy_cycle_at,
+                executed_price=1.0,
+                executed_quantity=Decimal(0),
+                executed_reserve=Decimal(0),
+                lp_fees=0,
+                native_token_price=0,
+                force=True,
+            )
+            state.portfolio.close_position(position, strategy_cycle_at)
+            created_trades.append(trade)
+            continue
+
         logger.info(
             "Creating Hypercore vault position for %s (equity=$%.2f)",
             pair.get_human_description(),
