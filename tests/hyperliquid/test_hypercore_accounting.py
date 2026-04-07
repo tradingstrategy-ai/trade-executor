@@ -214,8 +214,8 @@ def test_old_bug_equity_squared():
 def test_hypercore_vault_dust_epsilon_covers_safety_margin():
     """Hypercore vault close epsilon is large enough to cover withdrawal safety margin dust.
 
-    HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW (10_000 raw = $0.01) is subtracted
-    from live vault equity during full-close withdrawals, leaving ~$0.01 residual
+    HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW (100_000 raw = $0.10) is subtracted
+    from live vault equity during full-close withdrawals, leaving ~$0.10 residual
     in the position.  The close epsilon must exceed this so can_be_closed()
     recognises the position as effectively closed.
 
@@ -244,7 +244,7 @@ def test_hypercore_vault_dust_epsilon_covers_safety_margin():
     assert get_close_epsilon_for_pair(hypercore_pair) == HYPERLIQUID_VAULT_CLOSE_EPSILON
     assert get_dust_epsilon_for_pair(hypercore_pair) == HYPERLIQUID_VAULT_CLOSE_EPSILON
 
-    # 3. Position with dust quantity (0.01 USDC) can be closed
+    # 3. Position with dust quantity (0.10 USDC) can be closed
     ts = native_datetime_utc_now()
     position = TradingPosition(
         position_id=1,
@@ -260,7 +260,7 @@ def test_hypercore_vault_dust_epsilon_covers_safety_margin():
     dummy_trade.is_spot.return_value = False
     position.trades[1] = dummy_trade
 
-    with patch.object(position, "get_quantity", return_value=Decimal("0.01")):
+    with patch.object(position, "get_quantity", return_value=Decimal("0.10")):
         assert position.can_be_closed() is True
 
     # 4. Position with non-dust quantity (1.0 USDC) must NOT be closeable

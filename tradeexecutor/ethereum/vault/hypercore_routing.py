@@ -130,18 +130,20 @@ HYPERCORE_LIKELY_CLOSE_TOLERANCE = 0.975
 #: action, the vault NAV can fluctuate (fees, PnL, mark-to-market).  The
 #: API may also round the equity string upward vs. the on-chain value.
 #:
-#: $0.01 (10 000 raw) covers observed drift of ~$0.0002/s for typical
-#: vaults over the ~2-5 s latency window.
+#: $0.10 (100 000 raw) covers observed drift for typical vaults.
+#: The original $0.01 margin was too tight — observed shortfalls of
+#: ~$0.02 USDC on ~$7 withdrawals due to vault share price movement
+#: between the API read and HyperCore processing the queued action.
 #:
-#: This will leave ~$0.01 unclaimable dust in the vault (below the $5
+#: This will leave ~$0.10 unclaimable dust in the vault (below the $5
 #: minimum vault withdrawal threshold) that must be cleaned up in
 #: accounting later.
-HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 10_000
+HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 100_000
 
 # Temporary stop-gap for follow-up withdrawal verification phases.
 # Proper fix: carry the actually observed amount from one phase to the next.
 # Remove this extra slack once settlement becomes amount-adaptive across phases.
-HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW = 20_000
+HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW = 200_000
 
 def usdc_to_raw(amount: Decimal) -> int:
     """Convert a human-readable USDC amount to raw 6-decimal integer."""
@@ -623,8 +625,8 @@ class HypercoreVaultRouting(RoutingModel):
         poll_interval: float = 2.0,
     ) -> Decimal:
         """Poll HyperCore perp withdrawable USDC until the withdrawal reaches perp."""
-        # Allow $0.01 tolerance for Hypercore API rounding
-        expected_balance = baseline_balance + raw_to_usdc(expected_increase_raw) - Decimal("0.01")
+        # Allow $0.10 tolerance for Hypercore API rounding and vault NAV drift
+        expected_balance = baseline_balance + raw_to_usdc(expected_increase_raw) - Decimal("0.10")
         deadline = time.time() + timeout
         attempt = 0
 

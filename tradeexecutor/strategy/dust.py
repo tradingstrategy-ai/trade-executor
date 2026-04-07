@@ -39,11 +39,11 @@ DEFAULT_USD_LOW_VALUE_THRESHOLD = 0.10
 #: Set by maxRedeem() issue on Spark USDC on Morpho
 DEFAULT_VAULT_EPSILON = Decimal(10 ** -6)
 
-#: Hypercore vault withdrawal leaves ~$0.01 dust due to the safety margin
-#: subtracted from live equity (HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 10_000
-#: raw = $0.01 in 6-decimal USDC).  This epsilon must exceed that margin so
+#: Hypercore vault withdrawal leaves ~$0.10 dust due to the safety margin
+#: subtracted from live equity (HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 100_000
+#: raw = $0.10 in 6-decimal USDC).  This epsilon must exceed that margin so
 #: can_be_closed() recognises the residual as dust.
-HYPERLIQUID_VAULT_CLOSE_EPSILON = Decimal("0.02")
+HYPERLIQUID_VAULT_CLOSE_EPSILON = Decimal("0.20")
 
 #: Hypercore vault equities fluctuate every block due to active trading
 #: inside the vault, so we allow 100 BPS (1%) relative drift before
