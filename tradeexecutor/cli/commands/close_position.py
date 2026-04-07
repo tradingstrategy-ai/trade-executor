@@ -71,8 +71,9 @@ def close_position(
     blacklist: Optional[bool] = Option(False, envvar="BLACKLIST", help="Blacklist the position to block future trades."),
     slippage: Optional[float] = Option(None, envvar="SLIPPAGE", help="Override the defaukt slippage tolerance E.g. 0.05 for 5% slippage/sell tax."),
     close_dust: Optional[bool] = Option(None, envvar="CLOSE_DUST", help="Force close dusty positions with a repair trade instead of attempting withdrawal. Auto-detects by default (None)."),
+    all_test_trades: bool = Option(False, "--all-test-trades/--no-all-test-trades", envvar="ALL_TEST_TRADES", help="Close all open and frozen positions flagged as test trades."),
 ):
-    """Close a single positions.
+    """Close a single position or all test trade positions.
 
     - Syncs the latest reserve deposits and redemptions
 
@@ -186,7 +187,7 @@ def close_position(
             if mod.parameters:
                 slippage_tolerance = mod.parameters.get("slippage_tolerance", 0.01)
 
-    assert position_id
+    assert position_id or all_test_trades, "Specify either --position-id or --all-test-trades"
 
     print("Open positions are")
     df = display_positions(state.portfolio.open_positions.values())
@@ -216,6 +217,7 @@ def close_position(
         close_by_sell=close_by_sell,
         blacklist_marked_down=blacklist,
         close_dust=close_dust,
+        all_test_trades=all_test_trades,
     )
 
     # Store the test trade data in the strategy history
