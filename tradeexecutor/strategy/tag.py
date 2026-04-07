@@ -44,7 +44,10 @@ class StrategyTag(enum.Enum):
     #:
     exchange_account_strategy = "exchange_account_strategy"    
 
-    exchange_account_strategy_gmx = "exchange_account_strategy_gmx"    
-    exchange_account_strategy_derive = "exchange_account_strategy_derive"    
+    exchange_account_strategy_gmx = "exchange_account_strategy_gmx"
+    exchange_account_strategy_derive = "exchange_account_strategy_derive"
+
+    #: The strategy source code should not be publicly visible via the /source endpoint
+    closed_source = "closed_source"
 
 

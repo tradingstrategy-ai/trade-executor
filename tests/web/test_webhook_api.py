@@ -180,6 +180,40 @@ def test_source(logger, server_url):
     assert resp.text == "Foobar"
 
 
+def test_source_closed_source(logger, store):
+    """Closed-source strategies should not expose source code via /source.
+
+    1. Create a server with the closed_source tag set on metadata.
+    2. Request /source and verify it returns an empty string.
+    """
+    execution_state = RunState()
+    execution_state.source_code = "Secret sauce"
+    execution_state.read_only_state_copy = store.load()
+
+    queue = Queue()
+
+    metadata = Metadata(
+        "Foobar",
+        "Short desc",
+        "Long desc",
+        None,
+        native_datetime_utc_now(),
+        True,
+        tags={StrategyTag.closed_source},
+    )
+
+    port = find_free_port(20_000, 40_000, 20)
+    server = create_webhook_server("127.0.0.1", port, "test", "test", queue, store, metadata, execution_state)
+    url = f"http://test:test@127.0.0.1:{port}"
+
+    try:
+        resp = requests.get(f"{url}/source")
+        assert resp.status_code == 200
+        assert resp.text == ""
+    finally:
+        server.shutdown()
+
+
 def test_visulisation_small(logger, server_url):
     """Download the small strategy image."""
     resp = requests.get(f"{server_url}/visualisation", {"type": "small"})
