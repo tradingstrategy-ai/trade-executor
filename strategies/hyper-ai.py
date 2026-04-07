@@ -73,7 +73,7 @@ from tradeexecutor.strategy.chart.standard.trading_metrics import \
     trading_metrics
 from tradeexecutor.strategy.chart.standard.trading_universe import (
     available_trading_pairs, inclusion_criteria_check)
-from tradeexecutor.strategy.chart.standard.vault import all_vault_positions
+from tradeexecutor.strategy.chart.standard.vault import all_vault_positions, vault_data_freshness
 from tradeexecutor.strategy.chart.standard.weight import (
     equity_curve_by_asset, equity_curve_by_chain, weight_allocation_statistics)
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -725,6 +725,7 @@ def create_charts(
     charts = ChartRegistry(default_benchmark_pairs=default_benchmark_pairs)
     charts.register(available_trading_pairs, ChartKind.indicator_all_pairs)
     charts.register(inclusion_criteria_check_with_chain, ChartKind.indicator_all_pairs)
+    charts.register(vault_data_freshness, ChartKind.indicator_all_pairs)
     charts.register(equity_curve_with_benchmark, ChartKind.state_all_pairs)
     charts.register(equity_curve_with_drawdown, ChartKind.state_all_pairs)
     charts.register(performance_metrics, ChartKind.state_all_pairs)

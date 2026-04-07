@@ -106,7 +106,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from tradeexecutor.ethereum.vault.checks import StaleVaultData, check_stale_vault_data
+from tradeexecutor.ethereum.vault.checks import StaleVaultData, check_stale_vault_data, get_vault_data_freshness
 from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultPricing
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.strategy.execution_context import (
@@ -649,3 +649,300 @@ def test_check_stale_vault_data_skipped_in_backtest(
         execution_mode=ExecutionMode.backtesting,
         tolerance=datetime.timedelta(hours=1),
     )
+
+
+def test_get_vault_data_freshness(
+    stale_universe: TradingStrategyUniverse,
+    vault_a_pair: TradingPairIdentifier,
+    vault_b_pair: TradingPairIdentifier,
+):
+    """Verify get_vault_data_freshness returns correct freshness info for all vault pairs.
+
+    The stale_universe fixture has vault A (fresh, data up to decision timestamp)
+    and vault B (2 days stale). The benchmark pair should be excluded.
+
+    1. Call get_vault_data_freshness on the stale universe.
+    2. Assert the DataFrame has exactly 2 rows (vault pairs only, no benchmark).
+    3. Assert vault B (stalest) appears first due to descending sort.
+    4. Assert vault B has ~2 day candle and TVL data age with 2 trailing stale candles.
+    5. Assert vault A has ~0 data age and 0 trailing stale candles.
+    6. Assert Address column is present and populated.
+    7. Assert Latest TVL (USD) is populated for both vaults.
+    """
+    # 1. Call get_vault_data_freshness on the stale universe.
+    df = get_vault_data_freshness(stale_universe)
+
+    # 2. Assert the DataFrame has exactly 2 rows (vault pairs only, no benchmark).
+    assert len(df) == 2, f"Expected 2 vault rows, got {len(df)}. Columns: {df.columns.tolist()}"
+
+    # 3. Assert vault B (stalest) appears first due to descending sort.
+    row_b = df.iloc[0]
+    row_a = df.iloc[1]
+    assert "VAULT_B" in row_b["Vault"], f"Expected VAULT_B first (stalest), got {row_b['Vault']}"
+    assert "VAULT_A" in row_a["Vault"], f"Expected VAULT_A second (fresh), got {row_a['Vault']}"
+
+    # 4. Assert vault B has ~2 day candle and TVL data age with 2 trailing stale candles.
+    assert row_b["Candle data age"] == pd.Timedelta(days=2), f"Expected 2d candle age, got {row_b['Candle data age']}"
+    assert row_b["TVL data age"] == pd.Timedelta(days=2), f"Expected 2d TVL age, got {row_b['TVL data age']}"
+    assert row_b["Trailing stale candles"] == 2, f"Expected 2 trailing stale candles, got {row_b['Trailing stale candles']}"
+
+    # 5. Assert vault A has ~0 data age and 0 trailing stale candles.
+    assert row_a["Candle data age"] == pd.Timedelta(0), f"Expected 0 candle age for fresh vault, got {row_a['Candle data age']}"
+    assert row_a["Trailing stale candles"] == 0, f"Expected 0 trailing stale candles, got {row_a['Trailing stale candles']}"
+
+    # 6. Assert Address column is present and populated.
+    assert "Address" in df.columns
+    assert pd.notna(row_a["Address"])
+    assert pd.notna(row_b["Address"])
+
+    # 7. Assert Latest TVL (USD) is populated for both vaults.
+    assert row_a["Latest TVL (USD)"] == pytest.approx(500_000.0, abs=1.0)
+    assert row_b["Latest TVL (USD)"] == pytest.approx(100_000.0, abs=1.0)
+
+    # Verify timestamp columns are present and valid
+    assert pd.notna(row_a["Last real candle"])
+    assert pd.notna(row_a["Latest candle"])
+    assert pd.notna(row_b["Last real candle"])
+    assert pd.notna(row_b["Latest candle"])
+
+
+def test_vault_data_freshness_chart_renders(
+    stale_universe: TradingStrategyUniverse,
+    vault_a_pair: TradingPairIdentifier,
+    vault_b_pair: TradingPairIdentifier,
+):
+    """Verify the vault_data_freshness chart wrapper renders through the chart pipeline.
+
+    Tests the end-to-end path: chart registration, ChartInput construction,
+    and render_chart() call producing HTML output. This catches broken imports,
+    missing registration, or render-path issues.
+
+    1. Create a ChartRegistry and register vault_data_freshness.
+    2. Build a minimal StrategyInputIndicators wrapping the stale universe.
+    3. Create a ChartInput with backtest execution context.
+    4. Call render_chart and assert the result is HTML with vault data.
+    """
+    from tradeexecutor.strategy.chart.definition import ChartRegistry, ChartKind, ChartInput
+    from tradeexecutor.strategy.chart.renderer import render_chart, ChartParameters
+    from tradeexecutor.strategy.chart.standard.vault import vault_data_freshness
+    from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
+    from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
+
+    # 1. Create a ChartRegistry and register vault_data_freshness.
+    registry = ChartRegistry()
+    registry.register(vault_data_freshness, ChartKind.indicator_all_pairs)
+
+    # 2. Build a minimal StrategyInputIndicators wrapping the stale universe.
+    indicators = StrategyInputIndicators(
+        strategy_universe=stale_universe,
+        available_indicators=IndicatorSet(),
+        indicator_results={},
+    )
+
+    # 3. Create a ChartInput with backtest execution context.
+    chart_input = ChartInput(
+        execution_context=_backtest_execution_context,
+        strategy_input_indicators=indicators,
+    )
+
+    # 4. Call render_chart and assert the result is HTML with vault data.
+    params = ChartParameters()
+    result = render_chart(registry, "vault_data_freshness", params, chart_input)
+    assert result.error is None, f"Chart render failed: {result.error}"
+    assert result.data is not None, "Chart render returned no data"
+    assert result.content_type == "text/html", f"Expected HTML output, got {result.content_type}"
+
+    # Verify the HTML contains vault names from our test universe
+    html = result.data.decode("utf-8")
+    assert "VAULT_A" in html, "HTML output should contain VAULT_A"
+    assert "VAULT_B" in html, "HTML output should contain VAULT_B"
+
+
+def test_vault_data_freshness_without_forward_fill(
+    mock_exchange,
+    usdc,
+    vault_a_pair: TradingPairIdentifier,
+    vault_b_pair: TradingPairIdentifier,
+    benchmark_pair: TradingPairIdentifier,
+):
+    """Verify freshness is correctly reported when forward-fill is absent.
+
+    When the universe is built without ``forward_fill=True``, the
+    ``forward_filled`` column does not exist. Data age must still be
+    computed correctly relative to the reference timestamp (the global
+    max candle timestamp), not as ``latest - last_real`` which would
+    always be zero.
+
+    1. Build a universe without forward-fill where vault B stops 2 days early.
+    2. Call get_vault_data_freshness — reference timestamp is auto-derived.
+    3. Assert vault B shows ~2 day candle and TVL data age.
+    4. Assert vault A shows ~0 data age.
+    """
+    decision_ts = datetime.datetime(2026, 3, 20)
+    start = datetime.datetime(2025, 6, 1)
+    full_dates = pd.date_range(start, decision_ts, freq="D").to_pydatetime().tolist()
+    stale_end = decision_ts - datetime.timedelta(days=2)
+    stale_dates = pd.date_range(start, stale_end, freq="D").to_pydatetime().tolist()
+
+    candle_a = _build_daily_ohlcv(vault_a_pair.internal_id, full_dates, [1.05] * len(full_dates))
+    candle_b = _build_daily_ohlcv(vault_b_pair.internal_id, stale_dates, [1.10] * len(stale_dates))
+    candle_bench = _build_daily_ohlcv(benchmark_pair.internal_id, full_dates, [3000.0] * len(full_dates))
+
+    liq_a = _build_daily_ohlcv(vault_a_pair.internal_id, full_dates, [500_000.0] * len(full_dates))
+    liq_b = _build_daily_ohlcv(vault_b_pair.internal_id, stale_dates, [100_000.0] * len(stale_dates))
+    liq_bench = _build_daily_ohlcv(benchmark_pair.internal_id, full_dates, [1_000_000.0] * len(full_dates))
+
+    # Build WITHOUT forward-fill — no forward_filled column exists
+    candles_df = pd.concat([candle_a, candle_b, candle_bench], ignore_index=True)
+    liquidity_df = pd.concat([liq_a, liq_b, liq_bench], ignore_index=True)
+
+    candle_universe = GroupedCandleUniverse(candles_df, time_bucket=TimeBucket.d1)
+    liquidity_universe = GroupedLiquidityUniverse(liquidity_df, time_bucket=TimeBucket.d1)
+
+    pair_universe = create_pair_universe_from_code(
+        ChainId.ethereum, [vault_a_pair, vault_b_pair, benchmark_pair],
+    )
+    universe = Universe(
+        time_bucket=TimeBucket.d1,
+        chains={ChainId.ethereum},
+        exchanges={mock_exchange},
+        pairs=pair_universe,
+        candles=candle_universe,
+        liquidity=liquidity_universe,
+    )
+    no_ff_universe = TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
+
+    # 2. Call get_vault_data_freshness — reference timestamp auto-derived from global max.
+    df = get_vault_data_freshness(no_ff_universe)
+
+    assert len(df) == 2
+
+    # 3. Assert vault B shows ~2 day candle and TVL data age.
+    row_b = df[df["Vault"].str.contains("VAULT_B")].iloc[0]
+    assert row_b["Candle data age"] == pd.Timedelta(days=2), f"Expected 2d, got {row_b['Candle data age']}"
+    assert row_b["TVL data age"] == pd.Timedelta(days=2), f"Expected 2d, got {row_b['TVL data age']}"
+    assert row_b["Trailing stale candles"] == 0, "No forward_filled column, so trailing count should be 0"
+
+    # 4. Assert vault A shows ~0 data age.
+    row_a = df[df["Vault"].str.contains("VAULT_A")].iloc[0]
+    assert row_a["Candle data age"] == pd.Timedelta(0), f"Expected 0, got {row_a['Candle data age']}"
+    assert row_a["TVL data age"] == pd.Timedelta(0), f"Expected 0, got {row_a['TVL data age']}"
+
+
+def test_vault_data_freshness_asymmetric_candle_tvl_staleness(
+    mock_exchange,
+    usdc,
+    vault_a_pair: TradingPairIdentifier,
+    vault_b_pair: TradingPairIdentifier,
+    benchmark_pair: TradingPairIdentifier,
+):
+    """Verify sort considers TVL staleness when candles are fresh.
+
+    A vault with fresh candles but stale TVL should sort above a fully
+    fresh vault, because the composite sort uses the worst of candle
+    and TVL data age.
+
+    1. Build vault A with fresh candles and fresh TVL.
+    2. Build vault B with fresh candles but TVL stopping 3 days early.
+    3. Assert vault B sorts above vault A due to stale TVL.
+    """
+    decision_ts = datetime.datetime(2026, 3, 20)
+    start = datetime.datetime(2025, 6, 1)
+    full_dates = pd.date_range(start, decision_ts, freq="D").to_pydatetime().tolist()
+    tvl_stale_end = decision_ts - datetime.timedelta(days=3)
+    tvl_stale_dates = pd.date_range(start, tvl_stale_end, freq="D").to_pydatetime().tolist()
+
+    # Both vaults have full candle coverage
+    candle_a = _build_daily_ohlcv(vault_a_pair.internal_id, full_dates, [1.05] * len(full_dates))
+    candle_b = _build_daily_ohlcv(vault_b_pair.internal_id, full_dates, [1.10] * len(full_dates))
+    candle_bench = _build_daily_ohlcv(benchmark_pair.internal_id, full_dates, [3000.0] * len(full_dates))
+
+    # Vault A has full TVL, vault B has TVL stopping 3 days early
+    liq_a = _build_daily_ohlcv(vault_a_pair.internal_id, full_dates, [500_000.0] * len(full_dates))
+    liq_b = _build_daily_ohlcv(vault_b_pair.internal_id, tvl_stale_dates, [100_000.0] * len(tvl_stale_dates))
+    liq_bench = _build_daily_ohlcv(benchmark_pair.internal_id, full_dates, [1_000_000.0] * len(full_dates))
+
+    candle_universe, liquidity_universe = _build_forward_filled_universe(
+        [candle_a, candle_b, candle_bench],
+        [liq_a, liq_b, liq_bench],
+        forward_fill_until=decision_ts,
+    )
+
+    pair_universe = create_pair_universe_from_code(
+        ChainId.ethereum, [vault_a_pair, vault_b_pair, benchmark_pair],
+    )
+    universe = Universe(
+        time_bucket=TimeBucket.d1,
+        chains={ChainId.ethereum},
+        exchanges={mock_exchange},
+        pairs=pair_universe,
+        candles=candle_universe,
+        liquidity=liquidity_universe,
+    )
+    asym_universe = TradingStrategyUniverse(data_universe=universe, reserve_assets=[usdc])
+
+    df = get_vault_data_freshness(asym_universe)
+    assert len(df) == 2
+
+    # 3. Assert vault B sorts above vault A due to stale TVL.
+    assert "VAULT_B" in df.iloc[0]["Vault"], f"Expected VAULT_B first (stale TVL), got {df.iloc[0]['Vault']}"
+    assert "VAULT_A" in df.iloc[1]["Vault"], f"Expected VAULT_A second (fresh), got {df.iloc[1]['Vault']}"
+
+    row_b = df.iloc[0]
+    # Candles are fresh (0 age), but TVL is 3 days stale
+    assert row_b["Candle data age"] == pd.Timedelta(0), f"Expected 0 candle age, got {row_b['Candle data age']}"
+    assert row_b["TVL data age"] == pd.Timedelta(days=3), f"Expected 3d TVL age, got {row_b['TVL data age']}"
+
+
+def test_vault_data_freshness_chart_via_create_charts(
+    stale_universe: TradingStrategyUniverse,
+    hyper_ai_module,
+    decision_timestamp: datetime.datetime,
+):
+    """Verify vault_data_freshness is registered and renderable via create_charts().
+
+    Uses the strategy module's create_charts() to build the registry,
+    then renders the chart through the full pipeline. This catches
+    broken imports or missing registration in the actual strategy.
+
+    1. Call create_charts() from the strategy module.
+    2. Assert vault_data_freshness is in the registry.
+    3. Render the chart and assert it produces HTML output.
+    """
+    from tradeexecutor.strategy.chart.definition import ChartInput
+    from tradeexecutor.strategy.chart.renderer import render_chart, ChartParameters
+    from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
+    from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
+
+    # 1. Call create_charts() from the strategy module.
+    parameters = StrategyParameters.from_class(hyper_ai_module.Parameters)
+    registry = hyper_ai_module.create_charts(
+        timestamp=decision_timestamp,
+        parameters=parameters,
+        strategy_universe=stale_universe,
+        execution_context=_backtest_execution_context,
+    )
+
+    # 2. Assert vault_data_freshness is in the registry.
+    chart_entry = registry.get_chart_function("vault_data_freshness")
+    assert chart_entry is not None, (
+        f"vault_data_freshness not found in registry. "
+        f"Available: {list(registry.registry.keys())}"
+    )
+
+    # 3. Render the chart and assert it produces HTML output.
+    indicators = StrategyInputIndicators(
+        strategy_universe=stale_universe,
+        available_indicators=IndicatorSet(),
+        indicator_results={},
+    )
+    chart_input = ChartInput(
+        execution_context=_backtest_execution_context,
+        strategy_input_indicators=indicators,
+    )
+    result = render_chart(registry, "vault_data_freshness", ChartParameters(), chart_input)
+    assert result.error is None, f"Chart render failed: {result.error}"
+    assert result.content_type == "text/html"
+    html = result.data.decode("utf-8")
+    assert "VAULT_A" in html
+    assert "VAULT_B" in html

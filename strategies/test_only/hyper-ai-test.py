@@ -77,7 +77,7 @@ from tradeexecutor.strategy.chart.standard.trading_metrics import \
 from tradeexecutor.strategy.chart.standard.trading_universe import \
     available_trading_pairs
 from tradeexecutor.strategy.chart.standard.vault import (
-    all_vault_daily_gains_losses, all_vault_positions)
+    all_vault_daily_gains_losses, all_vault_positions, vault_data_freshness)
 from tradeexecutor.strategy.chart.standard.weight import (
     equity_curve_by_asset, weight_allocation_statistics)
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -734,6 +734,7 @@ def create_charts(
     """Define charts we use in backtesting and live trading."""
     charts = ChartRegistry(default_benchmark_pairs=BENCHMARK_PAIRS)
     charts.register(available_trading_pairs, ChartKind.indicator_all_pairs)
+    charts.register(vault_data_freshness, ChartKind.indicator_all_pairs)
     charts.register(equity_curve_with_benchmark, ChartKind.state_all_pairs)
     charts.register(equity_curve_with_drawdown, ChartKind.state_all_pairs)
     charts.register(performance_metrics, ChartKind.state_all_pairs)
