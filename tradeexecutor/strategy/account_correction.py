@@ -1202,6 +1202,7 @@ def create_missing_vault_positions(
                 native_token_price=0,
                 force=True,
             )
+            position.mark_down()
             state.portfolio.close_position(position, strategy_cycle_at)
             created_trades.append(trade)
             continue
