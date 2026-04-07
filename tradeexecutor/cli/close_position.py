@@ -86,6 +86,7 @@ def close_single_or_all_positions(
     close_by_sell=True,
     blacklist_marked_down=True,
     close_dust: bool | None = None,
+    all_test_trades: bool = False,
 ):
     """Close single/all positions.
 
@@ -102,6 +103,7 @@ def close_single_or_all_positions(
     assert isinstance(universe, TradingStrategyUniverse)
     assert isinstance(valuation_model, ValuationModel)
     assert isinstance(execution_context, ExecutionContext)
+    assert not (all_test_trades and position_id is not None), "Cannot specify both all_test_trades and position_id"
 
     if position_id is not None:
         assert type(position_id) is int, f"Got: {position_id} {type(position_id)}"
@@ -187,7 +189,19 @@ def close_single_or_all_positions(
     # on the previous run
     open_positions = list(state.portfolio.open_positions.values())
 
-    if position_id is None:
+    if all_test_trades:
+        logger.info("Performing close for all test trade positions")
+        positions_to_close = [
+            p for p in state.portfolio.open_positions.values()
+            if p.is_test()
+        ] + [
+            p for p in state.portfolio.frozen_positions.values()
+            if p.is_test()
+        ]
+        if len(positions_to_close) == 0:
+            logger.info("No open or frozen test trade positions found")
+            return
+    elif position_id is None:
         logger.info("Performing close-all for %d open positions", len(open_positions))
         positions_to_close = list(open_positions)
     else:

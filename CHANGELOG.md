@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add `--all-test-trades` flag to `close-position` CLI command to close all positions flagged as test trades (2026-04-07)
+
 - Add `StrategyTag.closed_source` to hide strategy source code from the `/source` webhook endpoint (2026-04-07)
 
 - Record underlying asset price (e.g. vault share price) in `PositionStatistics` time-series so price history is available from state without re-reading the price feed (2026-04-06)

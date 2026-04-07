@@ -165,6 +165,51 @@ def test_close_position_single(
 
 
 
+def test_close_all_test_trades(
+    environment: dict,
+    state_file: Path,
+):
+    """Close all positions flagged as test trades using --all-test-trades.
+
+    1. Initialise strategy state
+    2. Perform a buy-only test trade to create an open test position
+    3. Verify position exists and is flagged as test trade
+    4. Run close-position --all-test-trades to close it
+    5. Verify the position was closed
+    """
+
+    # 1. Initialise strategy state
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["init"])
+        assert e.value.code == 0
+
+    # 2. Perform a buy-only test trade
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["perform-test-trade", "--buy-only", "--single-pair"])
+        assert e.value.code == 0
+
+    # 3. Verify position exists and is flagged as test trade
+    state = State.read_json_file(state_file)
+    assert len(state.portfolio.open_positions) == 1
+    position = next(iter(state.portfolio.open_positions.values()))
+    assert position.is_test()
+
+    # 4. Run close-position --all-test-trades
+    cli = get_command(app)
+    with patch.dict(os.environ, environment, clear=True):
+        with pytest.raises(SystemExit) as e:
+            cli.main(args=["close-position", "--all-test-trades"])
+        assert e.value.code == 0
+
+    # 5. Verify the position was closed
+    state = State.read_json_file(state_file)
+    assert len(state.portfolio.open_positions) == 0
+
+
 def test_close_all_simulate(
     environment: dict,
     state_file: Path,
