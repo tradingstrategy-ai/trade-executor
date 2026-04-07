@@ -930,14 +930,12 @@ class TradeAnalysis:
 
             realised_profit_usd = position.get_realised_profit_usd()
 
-            # Marked down means we may have never received any profits,
-            # it was closed to zero without any sells
-            if not position.is_marked_down():
-                assert realised_profit_usd is not None, f"Realised profit calculation failed for: {position}. Marked down: {position.is_marked_down()}"
-            else:
-                # Handle marked down position
-                if realised_profit_usd is None:
-                    realised_profit_usd = 0
+            # Marked down or dust-closed positions may have never received
+            # any profits (closed to zero without any sells)
+            if realised_profit_usd is None:
+                if not position.is_marked_down():
+                    logger.warning("Realised profit calculation returned None for: %s", position)
+                realised_profit_usd = 0
 
             realised_profit_percent = position.get_realised_profit_percent()
 
