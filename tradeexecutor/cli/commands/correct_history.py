@@ -19,7 +19,7 @@ from typer import Option
 from . import shared_options
 from .app import app
 from tradeexecutor.cli.bootstrap import prepare_executor_id, backup_state
-from tradeexecutor.state.correct_history import prune_history, filter_share_price_outliers
+from tradeexecutor.state.correct_history import prune_history, detect_share_price_outliers, remove_share_price_outliers as apply_share_price_outlier_removal
 
 
 @app.command()
@@ -105,9 +105,28 @@ def correct_history(
     # Outlier removal runs first so the detector sees full neighbourhood
     # context before cutoff pruning truncates the series
     if remove_share_price_outliers:
-        print("Removing share price outliers...")
-        outliers_removed = filter_share_price_outliers(state, window_size=outlier_window_size, threshold=outlier_threshold)
-        print(f"Share price outlier entries removed: {outliers_removed}")
+        print(f"Detecting share price outliers (window={outlier_window_size}, threshold={outlier_threshold:.0%})...")
+        outlier_indices = detect_share_price_outliers(state, window_size=outlier_window_size, threshold=outlier_threshold)
+
+        if outlier_indices:
+            print(f"\nFound {len(outlier_indices)} outlier data point(s) to remove:\n")
+            print(f"  {'Timestamp':<24} {'Share price':>14} {'NAV':>14}")
+            print(f"  {'-' * 24} {'-' * 14} {'-' * 14}")
+            for idx in sorted(outlier_indices):
+                ps = state.stats.portfolio[idx]
+                nav_str = f"${ps.net_asset_value:,.2f}" if ps.net_asset_value is not None else "N/A"
+                print(f"  {str(ps.calculated_at):<24} ${ps.share_price_usd:>13,.6f} {nav_str:>14}")
+
+            if not unit_testing:
+                answer = input(f"\nRemove these {len(outlier_indices)} entries? [y/N] ").strip().lower()
+                if answer != "y":
+                    print("Aborted.")
+                    raise SystemExit(0)
+
+            removed = apply_share_price_outlier_removal(state, outlier_indices)
+            print(f"\nShare price outlier entries removed: {removed}")
+        else:
+            print("No share price outliers detected.")
 
     if parsed_cutoff is not None:
         print(f"Cutoff date: {parsed_cutoff.strftime('%Y-%m-%d')}")

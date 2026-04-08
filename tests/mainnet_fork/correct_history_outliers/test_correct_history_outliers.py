@@ -1,9 +1,8 @@
-"""GMX-AI correct-history outlier removal acceptance test.
+"""GMX-AI state correction acceptance tests.
 
-- No blockchain fork needed -- this command only modifies state statistics
+- No blockchain fork needed -- these tests only read/modify state statistics
 - State file downloaded from https://gmx-ai.tradingstrategy.ai/state
-- Tests that share price outliers (e.g. 94% drop for a few hours) are
-  detected and removed, improving max drawdown statistics
+- Tests share price outlier removal and exchange account position profit calculation
 """
 import datetime
 import os.path
@@ -14,7 +13,9 @@ from unittest import mock
 import pytest
 
 from tradeexecutor.cli.main import app
+from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
+from tradeexecutor.statistics.core import calculate_position_statistics
 
 pytestmark = pytest.mark.filterwarnings("ignore::RuntimeWarning")
 
@@ -165,3 +166,47 @@ def test_outlier_removal_with_cutoff_date(state_file: Path, strategy_file: Path)
                 f"Outlier still present after combined operation: "
                 f"{ps.calculated_at} share_price={ps.share_price_usd}"
             )
+
+
+def test_exchange_account_position_profit():
+    """Exchange account position profit uses share price method, not legacy.
+
+    Exchange account positions are created with placeholder trades ($1 reserve,
+    price=1.0) that don't represent real capital. The legacy profit calculation
+    divides by this tiny buy amount, producing absurd percentages like 9,999%.
+
+    The fix ensures exchange account positions use the internal share price
+    method for profit calculation, which tracks actual returns.
+
+    1. Load the GMX-AI state
+    2. Get exchange account position #1
+    3. Verify it uses share price method (share_price_state is set)
+    4. Verify get_total_profit_percent() returns a reasonable value
+    5. Verify calculate_position_statistics() also produces reasonable profitability
+    """
+
+    # 1. Load the GMX-AI state
+    source = Path(os.path.join(os.path.dirname(__file__), "state.json"))
+    state = State.read_json_file(source)
+
+    # 2. Get exchange account position #1
+    position = state.portfolio.open_positions[1]
+    assert position.is_exchange_account()
+
+    # 3. Verify it uses share price method
+    assert position.share_price_state is not None
+
+    # 4. Verify profit percentage is reasonable (not 9,999%)
+    profit_pct = position.get_total_profit_percent()
+    assert -1.0 < profit_pct < 10.0, (
+        f"Exchange account position profit {profit_pct:.2%} looks unreasonable, "
+        f"expected share price method to produce a value between -100% and +1000%"
+    )
+
+    # 5. Verify calculate_position_statistics() also produces reasonable profitability
+    stats = calculate_position_statistics(datetime.datetime(2026, 4, 8), position)
+    assert -1.0 < stats.profitability < 10.0, (
+        f"PositionStatistics.profitability {stats.profitability:.2%} looks unreasonable"
+    )
+    assert stats.internal_profit_pct is not None, "Exchange account should have internal_profit_pct"
+    assert stats.profitability == pytest.approx(stats.internal_profit_pct)
