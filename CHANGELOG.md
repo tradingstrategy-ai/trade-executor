@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add `--remove-share-price-outliers` flag to `correct-history` CLI command to detect and remove spurious share price data points using rolling median comparison (2026-04-08)
+
 - Add `--all-test-trades` flag to `close-position` CLI command to close all positions flagged as test trades (2026-04-07)
 
 - Add `StrategyTag.closed_source` to hide strategy source code from the `/source` webhook endpoint (2026-04-07)

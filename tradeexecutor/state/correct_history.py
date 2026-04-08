@@ -1,12 +1,17 @@
-"""History pruning functionality to remove early time-series data from state.
+"""History pruning and outlier removal for state time-series data.
 
 This module provides utilities to remove diagnostic statistics, visualisation
 data, and uptime records before a given cutoff date. This is useful for
 removing data from a vault's warming-up phase.
+
+It also provides share price outlier detection and removal using a rolling
+median approach, useful when NAV calculation failures cause temporary
+spurious share price drops that skew max drawdown and other statistics.
 """
 
 import calendar
 import datetime
+import statistics
 from typing import TypedDict
 
 from tradeexecutor.state.state import State
@@ -148,3 +153,102 @@ def prune_history(state: State, cutoff_date: datetime.datetime) -> HistoryPrunin
         uptime_checks_removed=uptime_checks_removed,
         cycles_completed_removed=cycles_removed,
     )
+
+
+def filter_share_price_outliers(
+    state: State,
+    window_size: int = 5,
+    threshold: float = 0.30,
+) -> int:
+    """Remove share price outlier entries from portfolio statistics.
+
+    Uses a two-pass rolling median approach to detect entries where
+    the share price deviates significantly from its neighbours. This
+    handles cases where NAV calculation failures cause temporary
+    spurious share price drops (e.g. 94% drop for a few hours).
+
+    Pass 1 identifies outliers. Pass 2 recomputes medians with pass-1
+    outliers excluded, catching entries adjacent to clusters that were
+    masked in the first pass. The union of both passes is removed.
+
+    After removal, ``state.initial_share_price`` is updated to match
+    the first remaining portfolio entry's share price.
+
+    :param state:
+        Trading state to modify in-place
+    :param window_size:
+        Number of entries on each side to include in the median window
+    :param threshold:
+        Maximum allowed relative deviation from the rolling median
+        (0.30 means 30% deviation triggers removal)
+    :return:
+        Number of entries removed
+    """
+    entries = state.stats.portfolio
+
+    # Build index of entries with valid share prices
+    # Each element is (original_index_into_entries, share_price_value)
+    prices: list[tuple[int, float]] = []
+    for i, e in enumerate(entries):
+        if e.share_price_usd is not None:
+            prices.append((i, e.share_price_usd))
+
+    if len(prices) < 3:
+        return 0
+
+    def _find_outliers(price_list: list[tuple[int, float]], excluded: set[int] | None = None) -> set[int]:
+        """Return set of original indices that are outliers."""
+        outliers: set[int] = set()
+
+        for pos, (idx, price) in enumerate(price_list):
+            if excluded and idx in excluded:
+                continue
+
+            # Gather neighbour prices within the window
+            neighbours: list[float] = []
+            for j in range(max(0, pos - window_size), min(len(price_list), pos + window_size + 1)):
+                if j == pos:
+                    continue
+                n_idx, n_price = price_list[j]
+                if excluded and n_idx in excluded:
+                    continue
+                neighbours.append(n_price)
+
+            if len(neighbours) == 0:
+                continue
+
+            med = statistics.median(neighbours)
+            if med == 0:
+                continue
+
+            deviation = abs(price - med) / med
+            if deviation > threshold:
+                outliers.add(idx)
+
+        return outliers
+
+    # Pass 1: identify outliers against raw data
+    first_pass = _find_outliers(prices)
+
+    # Pass 2: recompute medians with pass-1 outliers excluded
+    second_pass = _find_outliers(prices, excluded=first_pass)
+
+    # Union: first pass catches isolated outliers, second pass catches
+    # entries adjacent to clusters that were masked in the first pass
+    all_outliers = first_pass | second_pass
+
+    if not all_outliers:
+        return 0
+
+    state.stats.portfolio = [
+        e for i, e in enumerate(entries)
+        if i not in all_outliers
+    ]
+
+    # Update initial_share_price to match the first remaining entry
+    if state.stats.portfolio:
+        first_share_price = state.stats.portfolio[0].share_price_usd
+        if first_share_price is not None:
+            state.initial_share_price = first_share_price
+
+    return len(all_outliers)
