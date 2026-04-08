@@ -155,12 +155,12 @@ def prune_history(state: State, cutoff_date: datetime.datetime) -> HistoryPrunin
     )
 
 
-def filter_share_price_outliers(
+def detect_share_price_outliers(
     state: State,
     window_size: int = 5,
     threshold: float = 0.30,
-) -> int:
-    """Remove share price outlier entries from portfolio statistics.
+) -> set[int]:
+    """Detect share price outlier entries in portfolio statistics.
 
     Uses a two-pass rolling median approach to detect entries where
     the share price deviates significantly from its neighbours. This
@@ -169,20 +169,17 @@ def filter_share_price_outliers(
 
     Pass 1 identifies outliers. Pass 2 recomputes medians with pass-1
     outliers excluded, catching entries adjacent to clusters that were
-    masked in the first pass. The union of both passes is removed.
-
-    After removal, ``state.initial_share_price`` is updated to match
-    the first remaining portfolio entry's share price.
+    masked in the first pass. The union of both passes is returned.
 
     :param state:
-        Trading state to modify in-place
+        Trading state (not modified)
     :param window_size:
         Number of entries on each side to include in the median window
     :param threshold:
         Maximum allowed relative deviation from the rolling median
         (0.30 means 30% deviation triggers removal)
     :return:
-        Number of entries removed
+        Set of indices into ``state.stats.portfolio`` that are outliers
     """
     entries = state.stats.portfolio
 
@@ -194,7 +191,7 @@ def filter_share_price_outliers(
             prices.append((i, e.share_price_usd))
 
     if len(prices) < 3:
-        return 0
+        return set()
 
     def _find_outliers(price_list: list[tuple[int, float]], excluded: set[int] | None = None) -> set[int]:
         """Return set of original indices that are outliers."""
@@ -235,14 +232,32 @@ def filter_share_price_outliers(
 
     # Union: first pass catches isolated outliers, second pass catches
     # entries adjacent to clusters that were masked in the first pass
-    all_outliers = first_pass | second_pass
+    return first_pass | second_pass
 
-    if not all_outliers:
+
+def remove_share_price_outliers(
+    state: State,
+    outlier_indices: set[int],
+) -> int:
+    """Remove detected outlier entries from portfolio statistics.
+
+    After removal, ``state.initial_share_price`` is updated to match
+    the first remaining portfolio entry's share price.
+
+    :param state:
+        Trading state to modify in-place
+    :param outlier_indices:
+        Set of indices into ``state.stats.portfolio`` to remove,
+        as returned by :py:func:`detect_share_price_outliers`
+    :return:
+        Number of entries removed
+    """
+    if not outlier_indices:
         return 0
 
     state.stats.portfolio = [
-        e for i, e in enumerate(entries)
-        if i not in all_outliers
+        e for i, e in enumerate(state.stats.portfolio)
+        if i not in outlier_indices
     ]
 
     # Update initial_share_price to match the first remaining entry
@@ -251,4 +266,28 @@ def filter_share_price_outliers(
         if first_share_price is not None:
             state.initial_share_price = first_share_price
 
-    return len(all_outliers)
+    return len(outlier_indices)
+
+
+def filter_share_price_outliers(
+    state: State,
+    window_size: int = 5,
+    threshold: float = 0.30,
+) -> int:
+    """Detect and remove share price outlier entries from portfolio statistics.
+
+    Convenience wrapper that calls :py:func:`detect_share_price_outliers`
+    then :py:func:`remove_share_price_outliers`.
+
+    :param state:
+        Trading state to modify in-place
+    :param window_size:
+        Number of entries on each side to include in the median window
+    :param threshold:
+        Maximum allowed relative deviation from the rolling median
+        (0.30 means 30% deviation triggers removal)
+    :return:
+        Number of entries removed
+    """
+    outliers = detect_share_price_outliers(state, window_size=window_size, threshold=threshold)
+    return remove_share_price_outliers(state, outliers)
