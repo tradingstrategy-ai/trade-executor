@@ -69,7 +69,7 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
     internal_profit_pct = None
     internal_profit_usd = None
 
-    if position.is_spot() or position.is_vault():
+    if position.is_spot() or position.is_vault() or position.is_exchange_account():
         try:
             share_data = position.get_share_price_profit(
                 end_at=clock,

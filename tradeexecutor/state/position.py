@@ -1589,6 +1589,16 @@ class TradingPosition(GenericPosition):
             0 if profit calculation cannot be made yet
         """
 
+        # Exchange account positions use placeholder trades ($1) that don't
+        # represent real capital. The legacy calculation would divide by
+        # this tiny amount, producing absurd percentages like 9,999%.
+        # Use share price method instead, matching get_unrealised_profit_usd().
+        if self.is_exchange_account():
+            if self.share_price_state is not None:
+                data = self.get_share_price_profit()
+                return data.profit_pct
+            return 0
+
         match calculation_method:
             case "legacy":
 
