@@ -40,6 +40,18 @@ def correct_history(
         envvar="REMOVE_SHARE_PRICE_OUTLIERS",
         help="Detect and remove share price outlier entries from portfolio statistics using rolling median comparison.",
     ),
+    outlier_window_size: int = Option(
+        5,
+        "--outlier-window-size",
+        envvar="OUTLIER_WINDOW_SIZE",
+        help="Number of entries on each side to include in the rolling median window for outlier detection.",
+    ),
+    outlier_threshold: float = Option(
+        0.30,
+        "--outlier-threshold",
+        envvar="OUTLIER_THRESHOLD",
+        help="Maximum allowed relative deviation from the rolling median before an entry is flagged as an outlier (0.30 = 30%).",
+    ),
 ):
     """Remove early history and statistics data from the state file.
 
@@ -94,7 +106,7 @@ def correct_history(
     # context before cutoff pruning truncates the series
     if remove_share_price_outliers:
         print("Removing share price outliers...")
-        outliers_removed = filter_share_price_outliers(state)
+        outliers_removed = filter_share_price_outliers(state, window_size=outlier_window_size, threshold=outlier_threshold)
         print(f"Share price outlier entries removed: {outliers_removed}")
 
     if parsed_cutoff is not None:
