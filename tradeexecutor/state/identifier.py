@@ -519,6 +519,8 @@ class TradingPairIdentifier:
     #: Uniswap v2 likes are identified by their factor address.
     #:
     #: Legacy state files may have this as ``null``.
+    #: Keep this optional only for state deserialisation compatibility; live runtime code should still populate
+    #: a real exchange address because routing, reverse-universe lookups, and exchange matching assume a string.
     exchange_address: str | None
 
     #: How this asset is referred in the internal database
@@ -1471,5 +1473,4 @@ class AssetWithTrackedValue:
         self.quantity = quantity
         self.interest_rate_at_open = None
         self.last_interest_rate = None
-
 

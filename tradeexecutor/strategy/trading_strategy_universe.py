@@ -16,12 +16,11 @@ from dataclasses import dataclass, field
 import logging
 from math import isnan
 from pathlib import Path
-from typing import List, Optional, Callable, Tuple, Set, Dict, Iterable, Collection, TypeAlias, Literal
+from typing import TYPE_CHECKING, List, Optional, Callable, Tuple, Set, Dict, Iterable, Collection, TypeAlias, Literal
 
 import pandas as pd
 from tabulate import tabulate
 
-from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve, LendingProtocolType, LendingReserve
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -41,7 +40,7 @@ from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvaila
 from tradingstrategy.utils.token_extra_data import load_extra_metadata
 from tradingstrategy.utils.token_filter import add_base_quote_address_columns
 from tradingstrategy.vault import VaultMetadata, VaultUniverse
-from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history
+from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, DEFAULT_VAULT_DOWNLOAD_ROOT, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.ethereum.cctp.bridge_universe import generate_primary_to_satellite_cctp_bridge_universe
@@ -52,10 +51,10 @@ from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import call_cr
 from tradeexecutor.strategy.parameters import StrategyParameters
 
 from tradeexecutor.strategy.dex_data_translation import translate_trading_pair, translate_credit_reserve, translate_token
-from eth_defi.compat import native_datetime_utc_now
-
-
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from tradeexecutor.ethereum.vault.checks import VaultHistoryDiagnostics
 
 
 #: Unique hash string for each universe.
@@ -117,7 +116,7 @@ class Dataset:
     vault_specs: VaultUniverse | list[tuple[ChainId, JSONHexAddress]] | None = None
 
     #: Optional vault history startup diagnostics gathered during loading.
-    vault_history_diagnostics: object | None = None
+    vault_history_diagnostics: "VaultHistoryDiagnostics | None" = None
 
     def __repr__(self):
         return f"<Dataset pairs:{len(self.pairs)} candles:{len(self.candles)} start:{self.start_at} end:{self.end_at} live history period:{self.history_period}>"
@@ -227,7 +226,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     ignore_routing: bool = False
 
     #: Optional vault history startup diagnostics propagated from the dataset loader.
-    vault_history_diagnostics: object | None = None
+    vault_history_diagnostics: "VaultHistoryDiagnostics | None" = None
 
     def __repr__(self):
         pair_count = self.data_universe.pairs.get_count()
@@ -622,6 +621,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             backtest_stop_loss_candles=self.backtest_stop_loss_candles,
             reserve_assets=self.reserve_assets,
             required_history_period=self.required_history_period,
+            vault_history_diagnostics=self.vault_history_diagnostics,
         )
 
     def write_pickle(self, path: Path):
@@ -910,6 +910,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             reserve_assets=reserve_assets,
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=stop_loss_candle_universe,
+            vault_history_diagnostics=dataset.vault_history_diagnostics,
         )
 
     @staticmethod
@@ -1028,6 +1029,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             reserve_assets=reserve_assets,
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=stop_loss_candle_universe,
+            vault_history_diagnostics=dataset.vault_history_diagnostics,
         )
 
     def get_pair_by_address(self, address: str) -> Optional[TradingPairIdentifier]:
@@ -1563,6 +1565,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             reserve_assets=reserve_assets,
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=stop_loss_candle_universe,
+            vault_history_diagnostics=dataset.vault_history_diagnostics,
         )
 
     def get_credit_supply_pair(self) -> TradingPairIdentifier:
@@ -2876,8 +2879,12 @@ def load_partial_data(
                     log_vault_history_diagnostics,
                 )
 
-                vault_history_cache_path = client.transport.fetch_vault_price_history(
-                    download_root=vault_history_download_root,
+                vault_history_cache_root = vault_history_download_root or DEFAULT_VAULT_DOWNLOAD_ROOT
+                vault_history_cache_path = Path(
+                    client.transport.get_cached_file_path(
+                        "vault-price-history.parquet",
+                        cache_path=vault_history_cache_root,
+                    )
                 )
                 vault_history_diagnostics = build_vault_history_diagnostics(
                     raw_vault_price_df=raw_website_vault_prices_df,

@@ -751,6 +751,44 @@ def test_get_vault_data_freshness_includes_universe_level_history_diagnostics(
     assert (df["Vault history parquet max timestamp"] == datetime.datetime(2026, 4, 11, 13, 0, 0)).all()
 
 
+def test_clone_preserves_vault_history_diagnostics(
+    stale_universe: TradingStrategyUniverse,
+) -> None:
+    """Verify TradingStrategyUniverse.clone preserves vault history diagnostics.
+
+    1. Attach synthetic vault history startup diagnostics to the original universe.
+    2. Clone the universe.
+    3. Assert the clone still exposes the same diagnostics through get_vault_data_freshness.
+    """
+    # 1. Attach synthetic vault history startup diagnostics to the original universe.
+    stale_universe.vault_history_diagnostics = VaultHistoryDiagnostics(
+        cache_path=Path("/tmp/vault-price-history.parquet"),
+        local_cache_mtime=datetime.datetime(2026, 4, 11, 10, 0, 0),
+        local_cache_age=datetime.timedelta(hours=4),
+        remote_last_modified=datetime.datetime(2026, 4, 11, 12, 30, 0),
+        remote_last_modified_age=datetime.timedelta(hours=1, minutes=30),
+        remote_etag='"abc123"',
+        remote_content_length=12345,
+        remote_head_error=None,
+        parquet_max_timestamp=datetime.datetime(2026, 4, 11, 13, 0, 0),
+        parquet_data_age=datetime.timedelta(hours=1),
+        filtered_max_timestamp=datetime.datetime(2026, 4, 11, 12, 0, 0),
+        filtered_data_age=datetime.timedelta(hours=2),
+        resampled_max_timestamp=datetime.datetime(2026, 4, 11, 0, 0, 0),
+        resampled_data_age=datetime.timedelta(hours=14),
+        parquet_to_filtered_delta=datetime.timedelta(hours=1),
+        filtered_to_resampled_delta=datetime.timedelta(hours=12),
+    )
+
+    # 2. Clone the universe.
+    cloned_universe = stale_universe.clone()
+
+    # 3. Assert the clone still exposes the same diagnostics through get_vault_data_freshness.
+    df = get_vault_data_freshness(cloned_universe)
+    assert "Vault history cache age" in df.columns
+    assert (df["Vault history cache age"] == datetime.timedelta(hours=4)).all()
+
+
 def test_vault_data_freshness_chart_renders(
     stale_universe: TradingStrategyUniverse,
     vault_a_pair: TradingPairIdentifier,
