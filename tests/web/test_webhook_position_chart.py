@@ -11,7 +11,6 @@ from queue import Queue
 import pytest
 import requests
 from eth_defi.compat import native_datetime_utc_now
-from eth_defi.utils import find_free_port
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.metadata import Metadata
@@ -24,12 +23,13 @@ from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.tag import StrategyTag
+from tradeexecutor.testing.webhook import create_webhook_server_with_retries, get_webhook_test_url
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.testing.synthetic_universe_data import create_synthetic_single_pair_universe
-from tradeexecutor.webhook.server import WebhookServer, create_webhook_server
+from tradeexecutor.webhook.server import WebhookServer
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 
@@ -215,19 +215,9 @@ def create_position_chart_server() -> Callable[[State, TradingStrategyUniverse |
         metadata.backtest_notebook = notebook_result
         metadata.backtest_html = html_result
 
-        port = find_free_port(20_000, 40_000, 20)
-        server = create_webhook_server(
-            "127.0.0.1",
-            port,
-            "test",
-            "test",
-            Queue(),
-            store,
-            metadata,
-            run_state,
-        )
+        server = create_webhook_server_with_retries("127.0.0.1", "test", "test", Queue(), store, metadata, run_state)
         servers.append(server)
-        return f"http://test:test@127.0.0.1:{port}"
+        return get_webhook_test_url(server, "test", "test")
 
     yield _create_server
 
