@@ -517,7 +517,9 @@ class TradingPairIdentifier:
     #: Exchange address.
     #: Identifies a decentralised exchange.
     #: Uniswap v2 likes are identified by their factor address.
-    exchange_address: str
+    #:
+    #: Legacy state files may have this as ``null``.
+    exchange_address: str | None
 
     #: How this asset is referred in the internal database
     #:
@@ -607,7 +609,7 @@ class TradingPairIdentifier:
     def __repr__(self):
         fee = self.fee or 0
         type_name = self.kind.name if self.kind else "spot"
-        exchange_name = self.exchange_name if self.exchange_name else f"{self.exchange_address}"
+        exchange_name = self.exchange_name or self.exchange_address or "<unknown exchange>"
 
         if self.is_vault():
             return f"<Pair for vault {self.get_vault_name()} on {self.get_vault_protocol()},  {self.base.token_symbol}-{self.quote.token_symbol} {exchange_name}, id #{self.internal_id}>"
@@ -1469,6 +1471,5 @@ class AssetWithTrackedValue:
         self.quantity = quantity
         self.interest_rate_at_open = None
         self.last_interest_rate = None
-
 
 

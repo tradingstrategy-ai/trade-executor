@@ -116,6 +116,9 @@ class Dataset:
     #: List of vaults we loaded
     vault_specs: VaultUniverse | list[tuple[ChainId, JSONHexAddress]] | None = None
 
+    #: Optional vault history startup diagnostics gathered during loading.
+    vault_history_diagnostics: object | None = None
+
     def __repr__(self):
         return f"<Dataset pairs:{len(self.pairs)} candles:{len(self.candles)} start:{self.start_at} end:{self.end_at} live history period:{self.history_period}>"
 
@@ -222,6 +225,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     #: Allow backtest to skip routing checks to trade pairs for which we have not configured routes yet.
     ignore_routing: bool = False
+
+    #: Optional vault history startup diagnostics propagated from the dataset loader.
+    vault_history_diagnostics: object | None = None
 
     def __repr__(self):
         pair_count = self.data_universe.pairs.get_count()
@@ -1254,6 +1260,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             reserve_assets=reserve_assets,
             backtest_stop_loss_time_bucket=backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=backtest_stop_loss_candles,
+            vault_history_diagnostics=dataset.vault_history_diagnostics,
         )
 
     @staticmethod
@@ -1470,6 +1477,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
             backtest_stop_loss_candles=stop_loss_candle_universe,
             primary_chain=primary_chain,
+            vault_history_diagnostics=dataset.vault_history_diagnostics,
         )
 
     @staticmethod
@@ -2004,7 +2012,8 @@ class TradingStrategyUniverseModel(UniverseModel):
             data_universe=universe,
             reserve_assets=reserve_assets,
             backtest_stop_loss_candles=backtest_stop_loss_candles,
-            backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket)
+            backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
+            vault_history_diagnostics=dataset.vault_history_diagnostics)
 
     @abstractmethod
     def construct_universe(
@@ -2811,6 +2820,7 @@ def load_partial_data(
 
         # Include vault data for designed vaults if asked
         vault_pairs_df = None
+        vault_history_diagnostics = None
         if vaults is not None:
             logger.info("Including vaults: %s", vaults)
             vault_exchanges, vault_pairs_df = load_multiple_vaults(vaults, check_all_vaults_found=check_all_vaults_found)
@@ -2842,11 +2852,11 @@ def load_partial_data(
             assert vaults, "Vaults must be given to load Trading Strategy website vault price history"
             assert vault_pairs_df is not None, "Vault pairs must be materialised before loading Trading Strategy website vault history"
 
-            website_vault_prices_df = client.fetch_vault_price_history(
+            raw_website_vault_prices_df = client.fetch_vault_price_history(
                 download_root=vault_history_download_root,
             )
-            website_vault_prices_df = filter_vault_price_history(
-                website_vault_prices_df,
+            filtered_website_vault_prices_df = filter_vault_price_history(
+                raw_website_vault_prices_df,
                 vault_pairs_df,
                 data_load_start_at,
                 end_at,
@@ -2854,39 +2864,34 @@ def load_partial_data(
 
             offset = time_bucket.to_frequency()
             freq_string = f"{offset.n}{offset.name.lower()}"
-            vault_candle_df, vault_liquidity_df = convert_vault_prices_to_candles(website_vault_prices_df, freq_string)
+            vault_candle_df, vault_liquidity_df = convert_vault_prices_to_candles(filtered_website_vault_prices_df, freq_string)
             candles_df = _concat_optional_dataframe(candles_df, vault_candle_df)
             if liquidity_df is not None:
                 liquidity_df = _concat_optional_dataframe(liquidity_df, vault_liquidity_df)
 
-            # Log per-vault candle data freshness so stale data is visible
-            # in the logs. Warn if any vault's latest candle is more than 24h old.
-            if execution_context.mode.is_live_trading() and vault_candle_df is not None:
-                now = pd.Timestamp(native_datetime_utc_now())
-                for pair_id in vault_candle_df["pair_id"].unique():
-                    pair_candles = vault_candle_df[vault_candle_df["pair_id"] == pair_id]
-                    if len(pair_candles) > 0:
-                        last_ts = pair_candles["timestamp"].max()
-                        age = now - last_ts
-                        if age > pd.Timedelta(hours=24):
-                            # Look up vault name, address and TVL from the pairs dataframe
-                            vault_row = vault_pairs_df[vault_pairs_df["pair_id"] == pair_id]
-                            vault_name = vault_row["exchange_name"].iloc[0] if len(vault_row) > 0 else "unknown"
-                            vault_address = vault_row["address"].iloc[0] if len(vault_row) > 0 else "unknown"
-                            vault_tvl = None
-                            if len(vault_row) > 0:
-                                metadata = vault_row["token_metadata"].iloc[0]
-                                if metadata is not None:
-                                    vault_tvl = metadata.tvl
-                            logger.warning(
-                                "Vault candle data is stale (>24h): %s, address=%s, TVL=%s, pair_id=%d, last_candle=%s, age=%s",
-                                vault_name,
-                                vault_address,
-                                vault_tvl,
-                                pair_id,
-                                last_ts,
-                                age,
-                            )
+            if execution_context.mode.is_live_trading():
+                from tradeexecutor.ethereum.vault.checks import (
+                    build_vault_history_diagnostics,
+                    log_stale_vault_candle_data,
+                    log_vault_history_diagnostics,
+                )
+
+                vault_history_cache_path = client.transport.fetch_vault_price_history(
+                    download_root=vault_history_download_root,
+                )
+                vault_history_diagnostics = build_vault_history_diagnostics(
+                    raw_vault_price_df=raw_website_vault_prices_df,
+                    filtered_vault_price_df=filtered_website_vault_prices_df,
+                    resampled_vault_candle_df=vault_candle_df,
+                    cache_path=vault_history_cache_path,
+                    http_session=client.transport.requests,
+                    now=native_datetime_utc_now(),
+                )
+                log_vault_history_diagnostics(vault_history_diagnostics)
+                log_stale_vault_candle_data(
+                    vault_candle_df=vault_candle_df,
+                    vault_pairs_df=vault_pairs_df,
+                )
 
         # Collect some debug data for the first 5 pairs
         # to diagnose data loding problems
@@ -2925,6 +2930,7 @@ def load_partial_data(
             end_at=end_at,
             history_period=required_history_period,
             vault_specs=vaults,
+            vault_history_diagnostics=vault_history_diagnostics,
         )
 
 

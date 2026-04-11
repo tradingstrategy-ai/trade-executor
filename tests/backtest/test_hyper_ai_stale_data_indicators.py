@@ -106,7 +106,12 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from tradeexecutor.ethereum.vault.checks import StaleVaultData, check_stale_vault_data, get_vault_data_freshness
+from tradeexecutor.ethereum.vault.checks import (
+    StaleVaultData,
+    VaultHistoryDiagnostics,
+    check_stale_vault_data,
+    get_vault_data_freshness,
+)
 from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultPricing
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.strategy.execution_context import (
@@ -704,6 +709,46 @@ def test_get_vault_data_freshness(
     assert pd.notna(row_a["Latest candle"])
     assert pd.notna(row_b["Last real candle"])
     assert pd.notna(row_b["Latest candle"])
+
+
+def test_get_vault_data_freshness_includes_universe_level_history_diagnostics(
+    stale_universe: TradingStrategyUniverse,
+) -> None:
+    """Verify get_vault_data_freshness surfaces universe-level vault history diagnostics.
+
+    1. Attach synthetic vault history startup diagnostics to the trading universe.
+    2. Call get_vault_data_freshness on the same universe.
+    3. Assert the returned DataFrame includes the shared cache and source freshness columns.
+    """
+    # 1. Attach synthetic vault history startup diagnostics to the trading universe.
+    stale_universe.vault_history_diagnostics = VaultHistoryDiagnostics(
+        cache_path=Path("/tmp/vault-price-history.parquet"),
+        local_cache_mtime=datetime.datetime(2026, 4, 11, 10, 0, 0),
+        local_cache_age=datetime.timedelta(hours=4),
+        remote_last_modified=datetime.datetime(2026, 4, 11, 12, 30, 0),
+        remote_last_modified_age=datetime.timedelta(hours=1, minutes=30),
+        remote_etag='"abc123"',
+        remote_content_length=12345,
+        remote_head_error=None,
+        parquet_max_timestamp=datetime.datetime(2026, 4, 11, 13, 0, 0),
+        parquet_data_age=datetime.timedelta(hours=1),
+        filtered_max_timestamp=datetime.datetime(2026, 4, 11, 12, 0, 0),
+        filtered_data_age=datetime.timedelta(hours=2),
+        resampled_max_timestamp=datetime.datetime(2026, 4, 11, 0, 0, 0),
+        resampled_data_age=datetime.timedelta(hours=14),
+        parquet_to_filtered_delta=datetime.timedelta(hours=1),
+        filtered_to_resampled_delta=datetime.timedelta(hours=12),
+    )
+
+    # 2. Call get_vault_data_freshness on the same universe.
+    df = get_vault_data_freshness(stale_universe)
+
+    # 3. Assert the returned DataFrame includes the shared cache and source freshness columns.
+    assert "Vault history cache age" in df.columns
+    assert "Vault history parquet max timestamp" in df.columns
+    assert "Vault history filtered->resampled delta" in df.columns
+    assert (df["Vault history cache age"] == datetime.timedelta(hours=4)).all()
+    assert (df["Vault history parquet max timestamp"] == datetime.datetime(2026, 4, 11, 13, 0, 0)).all()
 
 
 def test_vault_data_freshness_chart_renders(

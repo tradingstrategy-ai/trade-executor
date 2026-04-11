@@ -154,8 +154,11 @@ def vault_data_freshness(input: ChartInput) -> pd.DataFrame:
     """Data freshness timestamps for all vault pairs showing candle and TVL staleness.
 
     Reports the last real (non-forward-filled) timestamp and the latest
-    timestamp for both candle and TVL data per vault. Vaults with no
-    real data at all appear at the top, followed by stalest-first ordering.
+    timestamp for both candle and TVL data per vault. When available, also
+    includes universe-level vault history startup diagnostics such as cache
+    age, remote metadata, and pre-filter / post-filter / post-resample
+    freshness markers. Vaults with no real data at all appear at the top,
+    followed by stalest-first ordering.
     """
     from tradeexecutor.ethereum.vault.checks import get_vault_data_freshness
     return get_vault_data_freshness(input.strategy_universe)
