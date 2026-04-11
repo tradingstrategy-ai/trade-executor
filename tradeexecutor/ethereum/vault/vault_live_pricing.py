@@ -214,13 +214,3 @@ class VaultPricing(PricingModel):
         if max_deposit is None:
             return True
         return max_deposit > 0
-
-    def can_redeem(
-        self,
-        ts: datetime.datetime | None,
-        pair: TradingPairIdentifier,
-    ) -> bool:
-        max_redemption = self.get_max_redemption(ts, pair)
-        if max_redemption is None:
-            return True
-        return max_redemption > 0

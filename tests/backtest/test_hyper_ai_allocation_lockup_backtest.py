@@ -22,6 +22,7 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.redemption import RedemptionCheckResult, RedemptionCheckStage
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
@@ -120,13 +121,24 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     }
 
     # 2. Carry any non-redeemable Hypercore positions forward at their current marked value.
-    locked_position_value = alpha_model.carry_forward_non_redeemable_positions(
-        position_manager,
-        can_redeem=lambda position: get_redeemable_capital(
+    def _check_redemption(ts, pair, *, stage=RedemptionCheckStage.unknown, position=None):
+        del pair
+        assert position is not None
+        redeemable_capital = get_redeemable_capital(
             position,
             timestamp=input.timestamp,
-        ) > 0,
-    )
+        )
+        return RedemptionCheckResult(
+            timestamp=ts,
+            stage=stage,
+            can_redeem=redeemable_capital > 0,
+            pair_ticker=position.pair.get_ticker(),
+            vault_address=position.pair.pool_address,
+            max_redemption=redeemable_capital,
+        )
+
+    input.pricing_model.check_redemption = _check_redemption
+    locked_position_value = alpha_model.carry_forward_non_redeemable_positions(position_manager)
 
     portfolio_target_value = calculate_portfolio_target_value(
         position_manager,

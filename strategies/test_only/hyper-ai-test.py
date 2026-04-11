@@ -92,6 +92,11 @@ from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.pandas_trader.trading_universe_input import \
     CreateTradingUniverseInput
 from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.redemption import (
+    collect_blocked_redemption_results,
+    create_redemption_cycle_diagnostics,
+    group_blocked_redemption_reasons,
+)
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import (
     TradingStrategyUniverse, load_partial_data,
@@ -388,6 +393,9 @@ def decide_trades(
     )
 
     if input.is_visualisation_enabled():
+        blocked_redemption_results = collect_blocked_redemption_results(alpha_model.signals)
+        blocked_redemption_reason_counts = group_blocked_redemption_reasons(blocked_redemption_results)
+
         try:
             top_signal = next(iter(alpha_model.get_signals_sorted_by_weight()))
             if top_signal.normalised_weight == 0:
@@ -421,6 +429,12 @@ def decide_trades(
         Rebalance volume: {rebalance_volume:,.2f} USD
         """)
 
+        if blocked_redemption_results:
+            report += dedent_any(f"""
+            Blocked redemption checks: {len(blocked_redemption_results)}
+            Blocked redemption reasons: {blocked_redemption_reason_counts}
+            """)
+
         if top_signal:
             assert top_signal.position_size_risk
             report += dedent_any(f"""
@@ -438,6 +452,17 @@ def decide_trades(
             report,
         )
         state.visualisation.set_discardable_data("alpha_model", alpha_model)
+        if input.execution_context.live_trading and blocked_redemption_results:
+            cycle_diagnostics = create_redemption_cycle_diagnostics(
+                cycle=input.cycle,
+                redeemable_capital=float(redeemable_capital),
+                locked_capital_carried_forward=float(locked_position_value),
+                blocked_results=blocked_redemption_results,
+            )
+            state.visualisation.add_calculations(
+                timestamp,
+                cycle_diagnostics.to_dict(encode_json=True),
+            )
 
     return trades
 

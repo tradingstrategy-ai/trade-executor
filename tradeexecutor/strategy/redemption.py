@@ -1,0 +1,285 @@
+"""Structured redemption diagnostics for pricing and alpha-model decisions."""
+
+import datetime
+import enum
+from collections.abc import Mapping
+from dataclasses import dataclass
+
+from dataclasses_json import dataclass_json
+from eth_defi.compat import native_datetime_utc_fromtimestamp
+
+from tradeexecutor.state.types import JSONHexAddress, Percent, USDollarAmount
+
+
+class RedemptionCheckStage(enum.Enum):
+    """Where the strategy asked whether a position can be redeemed."""
+
+    unknown = "unknown"
+    carry_forward = "carry_forward"
+    sell_rebalance = "sell_rebalance"
+
+
+class RedemptionBlockReason(enum.Enum):
+    """Stable reason codes for redemption diagnostics."""
+
+    safe_address_unavailable = "safe_address_unavailable"
+    user_equity_fetch_failed = "user_equity_fetch_failed"
+    user_lockup_not_expired = "user_lockup_not_expired"
+    vault_max_withdrawable_zero = "vault_max_withdrawable_zero"
+
+
+@dataclass_json
+@dataclass(slots=True)
+class VaultUserEquitySnapshot:
+    """Compact vault user equity payload used in diagnostics."""
+
+    #: Vault address used in the user equity lookup.
+    vault_address: JSONHexAddress | None = None
+    #: Current equity reported by Hyperliquid for this user and vault.
+    equity: USDollarAmount | None = None
+    #: Naive UTC timestamp when the user lockup expires.
+    locked_until: datetime.datetime | None = None
+    #: Whether Hyperliquid reports the user lockup as already expired.
+    is_lockup_expired: bool | None = None
+
+
+@dataclass_json
+@dataclass(slots=True)
+class VaultInfoSnapshot:
+    """Compact vault info payload used in diagnostics."""
+
+    #: Human-readable vault name from ``vaultDetails``.
+    name: str | None = None
+    #: Vault address returned by the Hyperliquid API.
+    vault_address: JSONHexAddress | None = None
+    #: Maximum currently withdrawable amount reported by the vault.
+    max_withdrawable: USDollarAmount | None = None
+    #: Maximum currently distributable amount reported by the vault.
+    max_distributable: USDollarAmount | None = None
+    #: Whether the vault is permanently closed.
+    is_closed: bool | None = None
+    #: Whether the leader currently allows deposits.
+    allow_deposits: bool | None = None
+    #: Relationship type reported by Hyperliquid for the vault.
+    relationship_type: str | None = None
+    #: Leader share of the vault capital as a float ratio.
+    leader_fraction: Percent | None = None
+    #: Number of followers returned in the API payload.
+    follower_count: int | None = None
+    #: Optional parent vault address for parent-child vault layouts.
+    parent: JSONHexAddress | None = None
+
+
+@dataclass_json
+@dataclass(slots=True)
+class VaultMetadataSnapshot:
+    """Vault pair and position metadata used in redemption checks."""
+
+    #: Protocol slug stored on the trading pair metadata.
+    vault_protocol: str | None = None
+    #: Human-readable vault name stored on the trading pair metadata.
+    vault_name: str | None = None
+    #: Human-readable reason why deposits are closed, if known.
+    deposit_closed_reason: str | None = None
+    #: Human-readable reason why redemptions are closed, if known.
+    redemption_closed_reason: str | None = None
+    #: Next known redemption-open timestamp from the pair metadata.
+    redemption_next_open: datetime.datetime | None = None
+    #: Whether this pair targets the Hyperliquid testnet API.
+    exchange_is_testnet: bool | None = None
+    #: Lockup expiry recorded earlier on the open position state.
+    position_recorded_lockup_expires_at: datetime.datetime | None = None
+
+
+@dataclass_json
+@dataclass(slots=True)
+class RedemptionApiSnapshot:
+    """Decision-relevant vault API payloads."""
+
+    #: Compact snapshot of ``vaultDetails``.
+    vault_info: VaultInfoSnapshot | None = None
+    #: Compact snapshot of ``fetch_user_vault_equity()``.
+    user_equity: VaultUserEquitySnapshot | None = None
+
+
+@dataclass_json
+@dataclass(slots=True)
+class RedemptionCheckResult:
+    """Serialisable result of a redemption check."""
+
+    #: Strategy-cycle timestamp when the check ran.
+    timestamp: datetime.datetime | None = None
+    #: Where in the alpha-model flow the check was requested.
+    stage: RedemptionCheckStage = RedemptionCheckStage.unknown
+    #: Final boolean decision used by the caller.
+    can_redeem: bool = True
+    #: Stable reason code for the decision, when available.
+    reason_code: RedemptionBlockReason | None = None
+    #: Human-readable explanation of the decision.
+    message: str | None = None
+    #: Pair ticker shown in logs and diagnostics.
+    pair_ticker: str | None = None
+    #: Vault address for the checked position.
+    vault_address: JSONHexAddress | None = None
+    #: Safe address used for the lookup, when available.
+    safe_address: JSONHexAddress | None = None
+    #: Configured redeem delay in seconds, if known.
+    configured_redeem_delay_seconds: int | None = None
+    #: Origin of the configured redeem delay field, if known.
+    configured_redeem_delay_source: str | None = None
+    #: Lockup expiry recorded earlier on the position state.
+    position_recorded_lockup_expires_at: datetime.datetime | None = None
+    #: Latest lockup expiry returned by the live user equity lookup.
+    user_lockup_expires_at: datetime.datetime | None = None
+    #: Raw vault-side max withdrawable amount used in the decision.
+    max_withdrawable: USDollarAmount | None = None
+    #: Final max redeemable amount exposed to callers.
+    max_redemption: USDollarAmount | None = None
+    #: Compact raw API payloads used for the decision.
+    raw_api_data: RedemptionApiSnapshot | None = None
+    #: Pair and position metadata used for the decision.
+    used_vault_metadata: VaultMetadataSnapshot | None = None
+
+
+@dataclass_json
+@dataclass(slots=True)
+class BlockedRedemptionSummary:
+    """Compact blocked-redemption entry persisted in cycle calculations."""
+
+    #: Pair ticker for the blocked position.
+    pair_ticker: str | None
+    #: Vault address for the blocked position.
+    vault_address: JSONHexAddress | None
+    #: Stage where the block happened.
+    stage: RedemptionCheckStage
+    #: Stable reason code for the block.
+    reason_code: RedemptionBlockReason | None
+    #: Human-readable explanation of the block.
+    message: str | None
+    #: Safe address used for the live lookup, if available.
+    safe_address: JSONHexAddress | None
+    #: Lockup expiry previously recorded on the position state.
+    position_recorded_lockup_expires_at: datetime.datetime | None
+    #: Lockup expiry returned by the latest user equity lookup.
+    user_lockup_expires_at: datetime.datetime | None
+    #: Vault max withdrawable amount stored as an approximate USD float.
+    max_withdrawable: USDollarAmount | None
+    #: Final max redemption amount stored as an approximate USD float.
+    max_redemption: USDollarAmount | None
+
+
+@dataclass_json
+@dataclass(slots=True)
+class RedemptionCycleDiagnostics:
+    """Compact per-cycle blocked-redemption diagnostics."""
+
+    #: Strategy cycle number that produced these diagnostics.
+    cycle: int
+    #: Capital that the allocator considered redeemable this cycle.
+    redeemable_capital: USDollarAmount
+    #: Capital pinned because blocked positions had to be carried forward.
+    locked_capital_carried_forward: USDollarAmount
+    #: Count of distinct signals blocked by redemption checks.
+    blocked_signal_count: int
+    #: Grouped blocked reason counts keyed by reason code value.
+    reason_counts: dict[str, int]
+    #: Compact blocked-redemption entries for this cycle.
+    blocked_redemptions: list[BlockedRedemptionSummary]
+
+
+def collect_blocked_redemption_results(
+    signals: Mapping[object, object],
+) -> list[RedemptionCheckResult]:
+    """Collect the latest blocked redemption check for each signal."""
+    results = []
+    for signal in signals.values():
+        latest_blocked_result = None
+        for result in signal.redemption_check_results:
+            if not result.can_redeem:
+                latest_blocked_result = result
+        if latest_blocked_result is not None:
+            results.append(latest_blocked_result)
+    return results
+
+
+def format_redemption_amount(value: object) -> USDollarAmount | None:
+    """Convert diagnostic money values to approximate USD floats."""
+    if value is None:
+        return None
+    return float(value)
+
+
+def make_blocked_redemption_summary(
+    result: RedemptionCheckResult,
+) -> BlockedRedemptionSummary:
+    """Convert one rich redemption result to a compact persisted summary."""
+    return BlockedRedemptionSummary(
+        pair_ticker=result.pair_ticker,
+        vault_address=result.vault_address,
+        stage=result.stage,
+        reason_code=result.reason_code,
+        message=result.message,
+        safe_address=result.safe_address,
+        position_recorded_lockup_expires_at=result.position_recorded_lockup_expires_at,
+        user_lockup_expires_at=result.user_lockup_expires_at,
+        max_withdrawable=format_redemption_amount(result.max_withdrawable),
+        max_redemption=format_redemption_amount(result.max_redemption),
+    )
+
+
+def group_blocked_redemption_reasons(
+    blocked_results: list[RedemptionCheckResult],
+) -> dict[str, int]:
+    """Group blocked redemption diagnostics by stable reason code per signal."""
+    counts: dict[str, int] = {}
+    for result in blocked_results:
+        reason_code = result.reason_code.value if result.reason_code else "unknown"
+        counts[reason_code] = counts.get(reason_code, 0) + 1
+    return counts
+
+
+def count_blocked_redemption_signals(
+    blocked_results: list[RedemptionCheckResult],
+) -> int:
+    """Count distinct blocked signals in a blocked-result list."""
+    return len({
+        (result.pair_ticker, result.vault_address)
+        for result in blocked_results
+    })
+
+
+def create_redemption_cycle_diagnostics(
+    cycle: int,
+    redeemable_capital: float,
+    locked_capital_carried_forward: float,
+    blocked_results: list[RedemptionCheckResult],
+) -> RedemptionCycleDiagnostics:
+    """Create compact per-cycle blocked-redemption diagnostics."""
+    return RedemptionCycleDiagnostics(
+        cycle=cycle,
+        redeemable_capital=redeemable_capital,
+        locked_capital_carried_forward=locked_capital_carried_forward,
+        blocked_signal_count=count_blocked_redemption_signals(blocked_results),
+        reason_counts=group_blocked_redemption_reasons(blocked_results),
+        blocked_redemptions=[
+            make_blocked_redemption_summary(result)
+            for result in blocked_results
+        ],
+    )
+
+
+def parse_recorded_lockup_expires_at(value: object) -> datetime.datetime | None:
+    """Parse a stored ISO timestamp from ``position.other_data`` if present."""
+    if value is None:
+        return None
+
+    if isinstance(value, datetime.datetime):
+        return value
+
+    if isinstance(value, str):
+        return datetime.datetime.fromisoformat(value)
+
+    if isinstance(value, (int, float)):
+        return native_datetime_utc_fromtimestamp(value)
+
+    raise TypeError(f"Unsupported lockup expiry value: {value!r}")

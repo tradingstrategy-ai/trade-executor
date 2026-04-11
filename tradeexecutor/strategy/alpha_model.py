@@ -22,6 +22,10 @@ from tradeexecutor.state.types import (LeverageMultiplier, PairInternalId,
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.position_manager import \
     PositionManager
+from tradeexecutor.strategy.redemption import (
+    RedemptionCheckResult,
+    RedemptionCheckStage,
+)
 from tradeexecutor.strategy.size_risk_model import SizeRiskModel
 from tradeexecutor.strategy.weighting import (Signal, check_normalised_weights,
                                               clip_to_normalised,
@@ -313,6 +317,9 @@ class TradingPairSignal:
     #: Debug flags for this signal, see :py:fuc:`format_signals`
     flags: set[TradingPairSignalFlags] = field(default_factory=set)
 
+    #: Structured redemption diagnostics collected for this cycle.
+    redemption_check_results: list[RedemptionCheckResult] = field(default_factory=list)
+
     def __post_init__(self):
         assert isinstance(self.pair, TradingPairIdentifier)
         if type(self.signal) != float:
@@ -327,6 +334,15 @@ class TradingPairSignal:
 
     def __repr__(self):
         return f"Signal #{self.signal_id} pair:{self.pair.get_ticker()} old weight:{self.old_weight:.4f} old value:{self.old_value:,} raw signal:{self.signal:.4f} normalised weight:{self.normalised_weight:.4f} new value:{self.position_target or 0:,} adjust:{self.position_adjust_usd:,}"
+
+    def set_redemption_check_result(self, result: RedemptionCheckResult) -> None:
+        """Store the latest redemption check result for a stage."""
+        for idx, existing in enumerate(self.redemption_check_results):
+            if existing.stage == result.stage:
+                self.redemption_check_results[idx] = result
+                return
+
+        self.redemption_check_results.append(result)
 
     def has_trades(self) -> bool:
         """Did/should this signal cause any trades to be executed.
@@ -782,19 +798,17 @@ class AlphaModel:
     def carry_forward_non_redeemable_positions(
         self,
         position_manager: PositionManager,
-        can_redeem: Callable[[TradingPosition], bool] | None = None,
     ) -> USDollarAmount:
         """Pin current non-redeemable positions at their marked value for this cycle."""
-        if can_redeem is None:
-            can_redeem = lambda position: position_manager.pricing_model.can_redeem(  # noqa: E731
-                self.timestamp,
-                position.pair,
-            )
-
         locked_position_value = 0.0
 
         for position in position_manager.get_current_portfolio().open_positions.values():
-            if can_redeem(position):
+            redemption_result = self._check_redemption_for_position(
+                position_manager,
+                position,
+                stage=RedemptionCheckStage.carry_forward,
+            )
+            if redemption_result.can_redeem:
                 continue
 
             current_value = position.get_value()
@@ -807,10 +821,55 @@ class AlphaModel:
 
             signal.carry_forward_position = True
             signal.position_target = current_value
-            signal.flags.add(TradingPairSignalFlags.cannot_redeem)
+            self._mark_signal_cannot_redeem(
+                signal,
+                redemption_result,
+                current_value=current_value,
+            )
             locked_position_value += current_value
 
         return locked_position_value
+
+    def _check_redemption_for_position(
+        self,
+        position_manager: PositionManager,
+        position: TradingPosition,
+        *,
+        stage: RedemptionCheckStage,
+    ) -> RedemptionCheckResult:
+        """Run the pricing-model redemption check for a position."""
+        return position_manager.pricing_model.check_redemption(
+            self.timestamp,
+            position.pair,
+            stage=stage,
+            position=position,
+        )
+
+    def _mark_signal_cannot_redeem(
+        self,
+        signal: TradingPairSignal,
+        redemption_result: RedemptionCheckResult,
+        *,
+        current_value: USDollarAmount | None,
+    ) -> None:
+        """Attach diagnostics and emit one searchable blocked-redemption log line."""
+        signal.flags.add(TradingPairSignalFlags.cannot_redeem)
+        signal.set_redemption_check_result(redemption_result)
+
+        logger.info(
+            "REDEMPTION_DIAGNOSTIC stage=%s pair_ticker=%s vault_address=%s safe_address=%s reason_code=%s current_value=%s position_recorded_lockup_expires_at=%s user_lockup_expires_at=%s max_withdrawable=%s max_redemption=%s message=%s",
+            redemption_result.stage.value,
+            redemption_result.pair_ticker,
+            redemption_result.vault_address,
+            redemption_result.safe_address,
+            redemption_result.reason_code.value if redemption_result.reason_code else None,
+            current_value,
+            redemption_result.position_recorded_lockup_expires_at,
+            redemption_result.user_lockup_expires_at,
+            redemption_result.max_withdrawable,
+            redemption_result.max_redemption,
+            redemption_result.message,
+        )
 
     def _normalise_weights_simple(
         self,
@@ -1638,14 +1697,6 @@ class AlphaModel:
                 signal.profit_before_trades = 0
         return current_position
 
-    def _can_redeem_position(
-        self,
-        position_manager: PositionManager,
-        position: TradingPosition,
-    ) -> bool:
-        """Check whether a current position can be reduced on this cycle."""
-        return position_manager.pricing_model.can_redeem(self.timestamp, position.pair)
-
     def _should_skip_signal_rebalance(
         self,
         signal: TradingPairSignal,
@@ -1692,13 +1743,25 @@ class AlphaModel:
         underlying = signal.pair
         synthetic = signal.synthetic_pair
 
-        if current_position and dollar_diff < 0 and not self._can_redeem_position(position_manager, current_position):
+        redemption_result = None
+        if current_position and dollar_diff < 0:
+            redemption_result = self._check_redemption_for_position(
+                position_manager,
+                current_position,
+                stage=RedemptionCheckStage.sell_rebalance,
+            )
+
+        if current_position and dollar_diff < 0 and redemption_result and not redemption_result.can_redeem:
             logger.info(
                 "Skipping sell-side rebalance for %s because the position is not redeemable yet",
                 current_position.pair,
             )
             signal.position_adjust_ignored = True
-            signal.flags.add(TradingPairSignalFlags.cannot_redeem)
+            self._mark_signal_cannot_redeem(
+                signal,
+                redemption_result,
+                current_value=current_position.get_value(),
+            )
             return position_rebalance_trades
 
         if signal.normalised_weight < self.close_position_weight_epsilon:

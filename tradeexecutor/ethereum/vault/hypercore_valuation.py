@@ -39,6 +39,16 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.redemption import (
+    RedemptionApiSnapshot,
+    RedemptionBlockReason,
+    RedemptionCheckResult,
+    RedemptionCheckStage,
+    VaultInfoSnapshot,
+    VaultMetadataSnapshot,
+    VaultUserEquitySnapshot,
+    parse_recorded_lockup_expires_at,
+)
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.valuation import ValuationModel
 from tradeexecutor.testing.hypercore_replay import (
@@ -337,11 +347,76 @@ class HypercoreVaultPricing(PricingModel):
             return Decimal(0)
         return None
 
-    def get_max_redemption(
+    def _build_metadata_snapshot(
+        self,
+        pair: TradingPairIdentifier,
+        position: TradingPosition | None = None,
+    ) -> VaultMetadataSnapshot:
+        """Capture the pair and position metadata used for diagnostics."""
+        pair_other_data = pair.other_data or {}
+        position_lockup_expires_at = None
+        if position is not None:
+            position_lockup_expires_at = parse_recorded_lockup_expires_at(
+                position.other_data.get("vault_lockup_expires_at"),
+            )
+
+        return VaultMetadataSnapshot(
+            vault_protocol=pair_other_data.get("vault_protocol"),
+            vault_name=pair_other_data.get("vault_name"),
+            deposit_closed_reason=pair_other_data.get("deposit_closed_reason"),
+            redemption_closed_reason=pair_other_data.get("redemption_closed_reason"),
+            redemption_next_open=pair_other_data.get("redemption_next_open"),
+            exchange_is_testnet=pair_other_data.get("exchange_is_testnet"),
+            position_recorded_lockup_expires_at=position_lockup_expires_at,
+        )
+
+    @staticmethod
+    def _build_vault_info_snapshot(info: VaultInfo) -> VaultInfoSnapshot:
+        """Capture the decision-relevant subset of ``vaultDetails``."""
+        return VaultInfoSnapshot(
+            name=info.name,
+            vault_address=info.vault_address,
+            max_withdrawable=float(info.max_withdrawable) if info.max_withdrawable is not None else None,
+            max_distributable=float(info.max_distributable) if info.max_distributable is not None else None,
+            is_closed=info.is_closed,
+            allow_deposits=info.allow_deposits,
+            relationship_type=info.relationship_type,
+            leader_fraction=float(info.leader_fraction) if info.leader_fraction is not None else None,
+            follower_count=len(info.followers),
+            parent=info.parent,
+        )
+
+    @staticmethod
+    def _build_user_equity_snapshot(eq) -> VaultUserEquitySnapshot:
+        """Capture the decision-relevant subset of ``fetch_user_vault_equity()``."""
+        return VaultUserEquitySnapshot(
+            vault_address=eq.vault_address,
+            equity=float(eq.equity) if eq.equity is not None else None,
+            locked_until=eq.locked_until,
+            is_lockup_expired=eq.is_lockup_expired,
+        )
+
+    def check_redemption(
         self,
         ts: datetime.datetime | None,
         pair: TradingPairIdentifier,
-    ) -> Decimal | None:
+        *,
+        stage: RedemptionCheckStage = RedemptionCheckStage.unknown,
+        position: TradingPosition | None = None,
+    ) -> RedemptionCheckResult:
+        metadata_snapshot = self._build_metadata_snapshot(pair, position)
+        result = RedemptionCheckResult(
+            timestamp=ts,
+            stage=stage,
+            can_redeem=True,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+            configured_redeem_delay_seconds=None,
+            configured_redeem_delay_source=None,
+            position_recorded_lockup_expires_at=metadata_snapshot.position_recorded_lockup_expires_at,
+            used_vault_metadata=metadata_snapshot,
+        )
+
         if self.market_data_source is not None:
             current_equity_usd = None
             if self.value_func is not None and not self.simulate:
@@ -352,26 +427,57 @@ class HypercoreVaultPricing(PricingModel):
                 pair,
                 current_equity_usd=current_equity_usd,
             )
+            result.max_withdrawable = float(snapshot.max_withdrawable_usd) if snapshot.max_withdrawable_usd is not None else None
 
             if not snapshot.lockup_expired:
-                return Decimal(0)
+                result.can_redeem = False
+                result.reason_code = RedemptionBlockReason.user_lockup_not_expired
+                result.max_redemption = 0.0
+                result.message = "Replay snapshot reports that the user lockup has not expired yet"
+                return result
 
             if snapshot.max_withdrawable_usd is None:
-                return None
+                result.max_redemption = None
+                result.message = "Replay snapshot allows redemption but does not expose a hard cap"
+                return result
 
-            return snapshot.max_withdrawable_usd
+            if snapshot.max_withdrawable_usd <= 0:
+                result.can_redeem = False
+                result.reason_code = RedemptionBlockReason.vault_max_withdrawable_zero
+                result.max_redemption = 0.0
+                result.message = "Replay snapshot reports zero max_withdrawable liquidity"
+                return result
+
+            result.max_redemption = float(snapshot.max_withdrawable_usd)
+            result.message = "Replay snapshot allows redemption and caps it by max_withdrawable"
+            return result
 
         if self.simulate:
-            return None
+            result.max_redemption = None
+            result.message = "Simulate mode assumes redemption is available"
+            return result
 
         safe_address = self._get_safe_address(pair)
+        result.safe_address = safe_address
         if safe_address is None:
             logger.warning("Cannot resolve safe address for Hypercore redemption check: %s", pair)
-            return None
+            result.reason_code = RedemptionBlockReason.safe_address_unavailable
+            result.max_redemption = None
+            result.message = "Cannot resolve safe address for Hypercore redemption check"
+            return result
 
         info = self._get_vault_info(pair)
+        result.max_withdrawable = float(info.max_withdrawable)
+        result.raw_api_data = RedemptionApiSnapshot(
+            vault_info=self._build_vault_info_snapshot(info),
+        )
+
         if info.max_withdrawable <= 0:
-            return Decimal(0)
+            result.can_redeem = False
+            result.reason_code = RedemptionBlockReason.vault_max_withdrawable_zero
+            result.max_redemption = 0.0
+            result.message = "Hypercore vault reports zero max_withdrawable liquidity"
+            return result
 
         vault_address = pair.pool_address
         assert vault_address, f"No pool_address set for Hypercore vault pair: {pair}"
@@ -382,12 +488,32 @@ class HypercoreVaultPricing(PricingModel):
             bypass_cache=True,
         )
         if eq is None:
-            return Decimal(0)
+            result.can_redeem = False
+            result.reason_code = RedemptionBlockReason.user_equity_fetch_failed
+            result.max_redemption = 0.0
+            result.message = "Hypercore user equity lookup returned no position data"
+            return result
+
+        result.raw_api_data.user_equity = self._build_user_equity_snapshot(eq)
+        result.user_lockup_expires_at = eq.locked_until
 
         if not eq.is_lockup_expired:
-            return Decimal(0)
+            result.can_redeem = False
+            result.reason_code = RedemptionBlockReason.user_lockup_not_expired
+            result.max_redemption = 0.0
+            result.message = "Hypercore user lockup has not expired yet"
+            return result
 
-        return min(eq.equity, info.max_withdrawable)
+        result.max_redemption = float(min(eq.equity, info.max_withdrawable))
+        result.message = "Redemption allowed and capped by Hypercore max_withdrawable"
+        return result
+
+    def get_max_redemption(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> Decimal | None:
+        return self.check_redemption(ts, pair).max_redemption
 
     def can_deposit(
         self,
@@ -408,29 +534,6 @@ class HypercoreVaultPricing(PricingModel):
 
         info = self._get_vault_info(pair)
         return get_hypercore_deposit_closed_reason(info) is None
-
-    def can_redeem(
-        self,
-        ts: datetime.datetime | None,
-        pair: TradingPairIdentifier,
-    ) -> bool:
-        if self.market_data_source is not None:
-            snapshot = self._get_market_snapshot(ts, pair)
-            if not snapshot.lockup_expired:
-                return False
-
-            if snapshot.max_withdrawable_usd is None:
-                return True
-
-            return snapshot.max_withdrawable_usd > 0
-
-        if self.simulate:
-            return True
-
-        max_redemption = self.get_max_redemption(ts, pair)
-        if max_redemption is None:
-            return True
-        return max_redemption > 0
 
 
 class HypercoreVaultValuator(ValuationModel):

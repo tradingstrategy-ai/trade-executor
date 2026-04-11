@@ -23,6 +23,11 @@ from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradeexecutor.strategy.pandas_trader.position_manager import \
     PositionManager
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.redemption import (
+    RedemptionBlockReason,
+    RedemptionCheckResult,
+    RedemptionCheckStage,
+)
 from tradeexecutor.strategy.trading_strategy_universe import \
     TradingStrategyUniverse
 from tradeexecutor.testing.hypercore import (
@@ -325,6 +330,149 @@ def test_hyper_ai_hypercore_open_cycle(
 
     assert_single_multicall_trade(trade, note_substring="Hypercore deposit (simulate)")
     assert len(state.portfolio.open_positions) == 1
+
+
+@pytest.mark.timeout(300)
+def test_hyper_ai_live_cycle_persists_blocked_redemption_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+    hyper_ai_strategy_module: ModuleType,
+    make_fake_indicators: IndicatorFactory,
+    deposited_hypercore_vault_state: tuple[LagoonVault, State],
+    hypercore_execution_model: LagoonExecution,
+    hypercore_pricing_model: GenericPricing,
+    hypercore_routing_model: GenericRouting,
+    hypercore_strategy_universe: TradingStrategyUniverse,
+    hypercore_sync_model: LagoonVaultSyncModel,
+    hypercore_valuation_model: GenericValuation,
+    hypercore_vault_pair: TradingPairIdentifier,
+) -> None:
+    """Persist blocked redemption diagnostics only for live-style blocked cycles.
+
+    1. Run one live-style open cycle before any lockup block is expected and verify no noisy calculations are stored.
+    2. Run a second live-style decision cycle with a deterministic blocked redemption result and the vault excluded from inclusion criteria.
+    3. Verify the blocked cycle stores compact calculations and still persists the latest alpha-model snapshot.
+    """
+    # 1. Run one live-style open cycle before any lockup block is expected and verify no noisy calculations are stored.
+    install_hypercore_wait_failures(monkeypatch)
+    monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", lambda pool_address, timestamp: False)
+
+    vault, state = deposited_hypercore_vault_state
+    del vault
+    pair = hypercore_strategy_universe.get_pair_by_id(hypercore_vault_pair.internal_id)
+    parameters = create_hyper_ai_test_parameters(
+        hyper_ai_strategy_module,
+        initial_cash=100.0,
+        allocation=0.50,
+    )
+
+    hypercore_execution_model.initialize()
+    routing_state = hypercore_routing_model.create_routing_state(
+        hypercore_strategy_universe,
+        hypercore_execution_model.get_routing_state_details(),
+    )
+    ensure_hypercore_routing_state(
+        hypercore_routing_model,
+        routing_state,
+        pair,
+    )
+
+    open_cycle = run_hyper_ai_cycle(
+        hyper_ai_strategy_module=hyper_ai_strategy_module,
+        make_fake_indicators=make_fake_indicators,
+        cycle=1,
+        timestamp=datetime.datetime(2026, 1, 21),
+        include_pair=True,
+        state=state,
+        strategy_universe=hypercore_strategy_universe,
+        sync_model=hypercore_sync_model,
+        execution_model=hypercore_execution_model,
+        pricing_model=hypercore_pricing_model,
+        routing_model=hypercore_routing_model,
+        routing_state=routing_state,
+        valuation_model=hypercore_valuation_model,
+        pair=pair,
+        parameters=parameters,
+        execution_mode=ExecutionMode.unit_testing_trading,
+    )
+
+    assert len(open_cycle.trades) == 1
+    assert state.visualisation.calculations == {}
+
+    # 2. Run a second live-style cycle with a deterministic blocked redemption result and the vault excluded from inclusion criteria.
+    monkeypatch.setattr(
+        hyper_ai_strategy_module,
+        "collect_blocked_redemption_results",
+        lambda signals: [RedemptionCheckResult(
+            timestamp=datetime.datetime(2026, 1, 28),
+            stage=RedemptionCheckStage.carry_forward,
+            can_redeem=False,
+            reason_code=RedemptionBlockReason.user_lockup_not_expired,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+            safe_address="0x0000000000000000000000000000000000000abc",
+            position_recorded_lockup_expires_at=datetime.datetime(2026, 2, 1),
+            user_lockup_expires_at=datetime.datetime(2026, 2, 1),
+            message="Vault user lockup has not expired yet",
+            max_redemption=0.0,
+        )],
+    )
+    monkeypatch.setattr(
+        hyper_ai_strategy_module,
+        "group_blocked_redemption_reasons",
+        lambda blocked_results: {"user_lockup_not_expired": len(blocked_results)},
+    )
+    monkeypatch.setattr(
+        hypercore_pricing_model,
+        "check_redemption",
+        lambda ts, checked_pair, **kwargs: RedemptionCheckResult(
+            timestamp=ts,
+            stage=kwargs["stage"],
+            can_redeem=False,
+            reason_code=RedemptionBlockReason.user_lockup_not_expired,
+            pair_ticker=checked_pair.get_ticker(),
+            vault_address=checked_pair.pool_address,
+            safe_address="0x0000000000000000000000000000000000000abc",
+            position_recorded_lockup_expires_at=datetime.datetime(2026, 2, 1),
+            user_lockup_expires_at=datetime.datetime(2026, 2, 1),
+            message="Hypercore user lockup has not expired yet",
+            max_redemption=0.0,
+        ),
+    )
+    blocked_input = make_hyper_ai_strategy_input(
+        hyper_ai_strategy_module=hyper_ai_strategy_module,
+        make_fake_indicators=make_fake_indicators,
+        state=state,
+        strategy_universe=hypercore_strategy_universe,
+        pricing_model=hypercore_pricing_model,
+        routing_model=hypercore_routing_model,
+        routing_state=routing_state,
+        pair=pair,
+        timestamp=datetime.datetime(2026, 1, 28),
+        cycle=2,
+        include_pair=False,
+        parameters=parameters,
+        execution_mode=ExecutionMode.unit_testing_trading,
+    )
+    blocked_trades = hyper_ai_strategy_module.decide_trades(blocked_input)
+
+    assert blocked_trades == []
+    assert len(state.visualisation.calculations) == 1
+
+    # 3. Verify the blocked cycle stores compact calculations and the latest alpha-model snapshot still persists.
+    calculations = next(iter(state.visualisation.calculations.values()))
+    assert calculations["blocked_signal_count"] == 1
+    assert calculations["reason_counts"]["user_lockup_not_expired"] == 1
+    assert calculations["blocked_redemptions"][0]["reason_code"] == "user_lockup_not_expired"
+    assert "lockup" in calculations["blocked_redemptions"][0]["message"].lower()
+
+    alpha_model = state.visualisation.discardable_data["alpha_model"]
+    assert alpha_model is not None
+
+    restored_state = State.read_json_blob(state.to_json_safe())
+    restored_calculations = next(iter(restored_state.visualisation.calculations.values()))
+    assert restored_calculations["blocked_redemptions"][0]["reason_code"] == "user_lockup_not_expired"
+    restored_alpha_model = restored_state.visualisation.discardable_data["alpha_model"]
+    assert restored_alpha_model is not None
 
 
 @pytest.mark.timeout(300)

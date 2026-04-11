@@ -1,14 +1,17 @@
-"""Asset pricing model."""
-
-import logging
 import abc
 import datetime
+import logging
 from decimal import Decimal, ROUND_DOWN
-from typing import Callable, Optional, Literal, Protocol
+from typing import Callable, Literal, Optional, Protocol
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, TokenAmount
 from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.redemption import (
+    RedemptionCheckResult,
+    RedemptionCheckStage,
+)
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.strategy.trade_pricing import TradePricing
@@ -236,7 +239,34 @@ class PricingModel(abc.ABC):
         The base implementation treats unknown venue-specific limits as allowed.
         Pricing models with live gating should override this method.
         """
-        return True
+        return self.check_redemption(ts, pair).can_redeem
+
+    def check_redemption(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+        *,
+        stage: RedemptionCheckStage = RedemptionCheckStage.unknown,
+        position: TradingPosition | None = None,
+    ) -> RedemptionCheckResult:
+        """Return a structured redemption check result.
+
+        The base implementation preserves the old behaviour by deriving the
+        boolean result from :py:meth:`get_max_redemption`.
+        """
+        del position
+
+        max_redemption = self.get_max_redemption(ts, pair)
+        can_redeem = True if max_redemption is None else max_redemption > 0
+
+        return RedemptionCheckResult(
+            timestamp=ts,
+            stage=stage,
+            can_redeem=can_redeem,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+            max_redemption=float(max_redemption) if max_redemption is not None else None,
+        )
 
     def is_tradeable(
         self,

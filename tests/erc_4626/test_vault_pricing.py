@@ -12,6 +12,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.strategy.redemption import RedemptionCheckStage
 from eth_defi.compat import native_datetime_utc_now
 
 
@@ -137,8 +138,16 @@ def test_vault_redemption_closed_when_max_redeem_zero(
     monkeypatch.setattr(vault_pricing, "get_vault", lambda pair: fake_vault)
 
     max_redemption = vault_pricing.get_max_redemption(None, ipor_usdc)
+    redemption_check = vault_pricing.check_redemption(
+        None,
+        ipor_usdc,
+        stage=RedemptionCheckStage.sell_rebalance,
+    )
     assert max_redemption == 0
     assert vault_pricing.can_redeem(None, ipor_usdc) is False
+    assert redemption_check.can_redeem is False
+    assert redemption_check.stage == RedemptionCheckStage.sell_rebalance
+    assert redemption_check.max_redemption == 0
 
 
 def test_vault_tradeability_defaults_to_open_when_owner_unknown(
@@ -152,6 +161,7 @@ def test_vault_tradeability_defaults_to_open_when_owner_unknown(
 
     assert vault_pricing.get_max_deposit(None, ipor_usdc) is None
     assert vault_pricing.get_max_redemption(None, ipor_usdc) is None
+    assert vault_pricing.check_redemption(None, ipor_usdc).can_redeem is True
     assert vault_pricing.can_deposit(None, ipor_usdc) is True
     assert vault_pricing.can_redeem(None, ipor_usdc) is True
     assert vault_pricing.is_tradeable(None, ipor_usdc) is True

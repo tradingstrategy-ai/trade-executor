@@ -235,11 +235,12 @@ def make_hyper_ai_strategy_input(
     cycle: int,
     include_pair: bool,
     parameters: StrategyParameters,
+    execution_mode: ExecutionMode = ExecutionMode.unit_testing,
 ) -> StrategyInput:
     """Build one Hyper AI strategy input payload for a deterministic cycle."""
 
     execution_context = ExecutionContext(
-        mode=ExecutionMode.unit_testing,
+        mode=execution_mode,
         parameters=parameters,
     )
 
@@ -338,6 +339,7 @@ def run_hyper_ai_cycle(
     valuation_model: GenericValuation,
     pair: TradingPairIdentifier,
     parameters: StrategyParameters,
+    execution_mode: ExecutionMode = ExecutionMode.unit_testing,
 ) -> HyperAiCycleResult:
     """Run one revalue + treasury-sync + Hyper AI rebalance cycle."""
 
@@ -367,6 +369,7 @@ def run_hyper_ai_cycle(
         cycle=cycle,
         include_pair=include_pair,
         parameters=parameters,
+        execution_mode=execution_mode,
     )
     trades = hyper_ai_strategy_module.decide_trades(strategy_input)
 
