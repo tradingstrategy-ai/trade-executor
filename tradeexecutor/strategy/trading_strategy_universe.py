@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, List, Optional, Callable, Tuple, Set, Dict, It
 import pandas as pd
 from tabulate import tabulate
 
+from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve, LendingProtocolType, LendingReserve
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
