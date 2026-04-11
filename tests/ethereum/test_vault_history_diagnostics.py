@@ -170,6 +170,7 @@ def test_build_vault_history_diagnostics_detects_daily_resample_floor_gap() -> N
     assert diagnostics.parquet_data_age == datetime.timedelta(hours=14)
     assert diagnostics.resampled_data_age == datetime.timedelta(days=1, hours=13, minutes=59)
     assert diagnostics.filtered_to_resampled_delta == datetime.timedelta(hours=23, minutes=59)
+    assert diagnostics.expected_daily_flooring_reason is not None
 
 
 def test_log_vault_history_diagnostics_warns_when_source_data_is_stale(caplog: pytest.LogCaptureFixture) -> None:
@@ -248,14 +249,14 @@ def test_log_vault_history_diagnostics_warns_when_remote_head_fails(caplog: pyte
     assert "RequestException: boom" in summary_record.message
 
 
-def test_log_vault_history_diagnostics_warns_for_suspicious_resample_values(
+def test_log_vault_history_diagnostics_does_not_warn_for_expected_d1_floor(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Verify suspicious 1d-resample values are highlighted in a follow-up warning.
+    """Verify expected 1d floor artefacts stay informational instead of warning.
 
     1. Build diagnostics where the parquet is still fresh but the 1d candle looks stale.
     2. Emit the startup summary log.
-    3. Assert a follow-up warning highlights the suspicious resample-only fields in a table.
+    3. Assert the summary carries the daily-floor explanation and no suspicious-values warning is emitted.
     """
     # 1. Build diagnostics where the parquet is still fresh but the 1d candle looks stale.
     diagnostics = build_vault_history_diagnostics(
@@ -281,6 +282,7 @@ def test_log_vault_history_diagnostics_warns_for_suspicious_resample_values(
                 }
             )
         ),
+        vault_history_filter_end_at=datetime.datetime(2026, 4, 11, 16, 43, 33),
         now=datetime.datetime(2026, 4, 11, 16, 43, 33),
     )
 
@@ -288,13 +290,53 @@ def test_log_vault_history_diagnostics_warns_for_suspicious_resample_values(
     with caplog.at_level("INFO"):
         log_vault_history_diagnostics(diagnostics)
 
-    # 3. Assert a follow-up warning highlights the suspicious resample-only fields in a table.
+    # 3. Assert the summary carries the explanation and no suspicious-values warning is emitted.
+    summary_record = next(record for record in caplog.records if "Vault history freshness summary" in record.message)
+    assert summary_record.levelname == "INFO"
+    assert "expected_daily_flooring_reason=Expected 1d floor artefact" in summary_record.message
+    assert not any("Vault history freshness has suspicious values" in record.message for record in caplog.records)
+
+
+def test_log_vault_history_diagnostics_warns_for_unexpected_parquet_to_filtered_gap(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify fresh source rows lost before filtering still trigger a warning.
+
+    1. Build diagnostics where the source parquet is fresh but the filtered max timestamp trails unexpectedly.
+    2. Emit the startup summary log.
+    3. Assert the suspicious-values warning highlights the parquet-to-filter gap.
+    """
+    # 1. Build diagnostics where the source parquet is fresh but the filtered max timestamp trails unexpectedly.
+    diagnostics = build_vault_history_diagnostics(
+        raw_vault_price_df=_build_vault_price_history_df(
+            "0xface000000000000000000000000000000000000",
+            [datetime.datetime(2026, 4, 11, 12, 0, 0)],
+        ),
+        filtered_vault_price_df=_build_vault_price_history_df(
+            "0xface000000000000000000000000000000000000",
+            [datetime.datetime(2026, 4, 11, 9, 30, 0)],
+        ),
+        resampled_vault_candle_df=pd.DataFrame(
+            {
+                "timestamp": [pd.Timestamp(datetime.datetime(2026, 4, 11, 9, 30, 0))],
+                "pair_id": [1],
+            }
+        ),
+        cache_path=None,
+        http_session=_MockSession(response=_MockResponse({})),
+        vault_history_filter_end_at=datetime.datetime(2026, 4, 11, 13, 0, 0),
+        now=datetime.datetime(2026, 4, 11, 13, 30, 0),
+    )
+
+    # 2. Emit the startup summary log.
+    with caplog.at_level("INFO"):
+        log_vault_history_diagnostics(diagnostics)
+
+    # 3. Assert the suspicious-values warning highlights the parquet-to-filter gap.
     warning_record = next(record for record in caplog.records if "Vault history freshness has suspicious values" in record.message)
     assert warning_record.levelname == "WARNING"
-    assert "\nfield" in warning_record.message
-    assert "resampled_data_age" in warning_record.message
-    assert "filtered_to_resampled_delta" in warning_record.message
-    assert "Looks stale after 1d resampling floor" in warning_record.message
+    assert "parquet_to_filtered_delta" in warning_record.message
+    assert "Selected vault history trails the freshest parquet row" in warning_record.message
 
 
 def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(

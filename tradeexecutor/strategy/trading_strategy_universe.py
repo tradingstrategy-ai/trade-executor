@@ -2363,6 +2363,27 @@ def _concat_optional_dataframe(
     return pd.concat([original_df, additional_df])
 
 
+def _resolve_live_end_timestamps(
+    time_bucket: TimeBucket,
+    explicit_end_at: datetime.datetime | None,
+    round_start_end: bool,
+) -> tuple[datetime.datetime, datetime.datetime]:
+    """Return live dataset and vault-history end timestamps."""
+    live_end_at = explicit_end_at or native_datetime_utc_now()
+
+    if not round_start_end:
+        return live_end_at, live_end_at
+
+    flooring_time_bucket = time_bucket if time_bucket < TimeBucket.d7 else TimeBucket.d1
+    dataset_end_at = flooring_time_bucket.floor_datetime(live_end_at)
+    vault_history_filter_end_at = live_end_at
+    assert vault_history_filter_end_at >= dataset_end_at, (
+        f"Vault history filter end {vault_history_filter_end_at} must be on or after "
+        f"dataset end {dataset_end_at}"
+    )
+    return dataset_end_at, vault_history_filter_end_at
+
+
 def load_partial_data(
     client: BaseClient,
     execution_context: ExecutionContext,
@@ -2629,6 +2650,8 @@ def load_partial_data(
     else:
         data_load_start_at = start_at or (native_datetime_utc_now() - required_history_period)
 
+    vault_history_filter_end_at = end_at
+
     # Generate a rounded range of the latest data
     if round_start_end and execution_context.mode.is_live_trading():
 
@@ -2644,16 +2667,20 @@ def load_partial_data(
         )
 
         start_at = data_load_start_at = floored_start
-        if not end_at:
-            end_at = native_datetime_utc_now()
-            floored_end = flooring_time_bucket.floor_datetime(end_at)
-            logger.info(
-                "Floored end timestamp %s -> %s for bucket %s",
-                end_at,
-                floored_end,
-                time_bucket.value,
-            )
-            end_at = floored_end
+        original_end_at = end_at
+        dataset_end_at, vault_history_filter_end_at = _resolve_live_end_timestamps(
+            time_bucket=time_bucket,
+            explicit_end_at=original_end_at,
+            round_start_end=round_start_end,
+        )
+        logger.info(
+            "Resolved live end timestamps %s -> dataset=%s, vault_history_filter=%s for bucket %s",
+            original_end_at,
+            dataset_end_at,
+            vault_history_filter_end_at,
+            time_bucket.value,
+        )
+        end_at = dataset_end_at
 
     logger.info(
         "load_partial_data(): data_load_start_at: %s, start_at: %s, end_at: %s, required_history_period: %s",
@@ -2863,7 +2890,7 @@ def load_partial_data(
                 raw_website_vault_prices_df,
                 vault_pairs_df,
                 data_load_start_at,
-                end_at,
+                vault_history_filter_end_at,
             )
 
             offset = time_bucket.to_frequency()
@@ -2893,6 +2920,7 @@ def load_partial_data(
                     resampled_vault_candle_df=vault_candle_df,
                     cache_path=vault_history_cache_path,
                     http_session=client.transport.requests,
+                    vault_history_filter_end_at=vault_history_filter_end_at,
                     now=native_datetime_utc_now(),
                 )
                 log_vault_history_diagnostics(vault_history_diagnostics)
