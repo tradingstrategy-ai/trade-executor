@@ -4,6 +4,7 @@ import datetime
 import enum
 from dataclasses import dataclass
 from decimal import Decimal
+from collections.abc import Mapping
 
 from dataclasses_json import dataclass_json
 from eth_defi.compat import native_datetime_utc_fromtimestamp
@@ -183,6 +184,87 @@ class RedemptionCycleDiagnostics:
     reason_counts: dict[str, int]
     #: Compact blocked-redemption entries for this cycle.
     blocked_redemptions: list[BlockedRedemptionSummary]
+
+
+def collect_blocked_redemption_results(
+    signals: Mapping[object, object],
+) -> list[RedemptionCheckResult]:
+    """Collect the latest blocked redemption check for each signal."""
+    results = []
+    for signal in signals.values():
+        latest_blocked_result = None
+        for result in signal.redemption_check_results:
+            if not result.can_redeem:
+                latest_blocked_result = result
+        if latest_blocked_result is not None:
+            results.append(latest_blocked_result)
+    return results
+
+
+def format_redemption_decimal(value: Decimal | None) -> str | None:
+    """Format Decimal-like diagnostics without widening state payloads."""
+    if value is None:
+        return None
+    return str(value)
+
+
+def make_blocked_redemption_summary(
+    result: RedemptionCheckResult,
+) -> BlockedRedemptionSummary:
+    """Convert one rich redemption result to a compact persisted summary."""
+    return BlockedRedemptionSummary(
+        pair_ticker=result.pair_ticker,
+        vault_address=result.vault_address,
+        stage=result.stage.value,
+        reason_code=result.reason_code.value if result.reason_code else None,
+        message=result.message,
+        safe_address=result.safe_address,
+        position_recorded_lockup_expires_at=result.position_recorded_lockup_expires_at,
+        user_lockup_expires_at=result.user_lockup_expires_at,
+        max_withdrawable=format_redemption_decimal(result.max_withdrawable),
+        max_redemption=format_redemption_decimal(result.max_redemption),
+    )
+
+
+def group_blocked_redemption_reasons(
+    blocked_results: list[RedemptionCheckResult],
+) -> dict[str, int]:
+    """Group blocked redemption diagnostics by stable reason code per signal."""
+    counts: dict[str, int] = {}
+    for result in blocked_results:
+        reason_code = result.reason_code.value if result.reason_code else "unknown"
+        counts[reason_code] = counts.get(reason_code, 0) + 1
+    return counts
+
+
+def count_blocked_redemption_signals(
+    blocked_results: list[RedemptionCheckResult],
+) -> int:
+    """Count distinct blocked signals in a blocked-result list."""
+    return len({
+        (result.pair_ticker, result.vault_address)
+        for result in blocked_results
+    })
+
+
+def create_redemption_cycle_diagnostics(
+    cycle: int,
+    redeemable_capital: float,
+    locked_capital_carried_forward: float,
+    blocked_results: list[RedemptionCheckResult],
+) -> RedemptionCycleDiagnostics:
+    """Create compact per-cycle blocked-redemption diagnostics."""
+    return RedemptionCycleDiagnostics(
+        cycle=cycle,
+        redeemable_capital=redeemable_capital,
+        locked_capital_carried_forward=locked_capital_carried_forward,
+        blocked_signal_count=count_blocked_redemption_signals(blocked_results),
+        reason_counts=group_blocked_redemption_reasons(blocked_results),
+        blocked_redemptions=[
+            make_blocked_redemption_summary(result)
+            for result in blocked_results
+        ],
+    )
 
 
 def parse_recorded_lockup_expires_at(value: object) -> datetime.datetime | None:

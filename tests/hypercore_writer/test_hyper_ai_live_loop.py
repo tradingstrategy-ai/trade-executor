@@ -401,9 +401,9 @@ def test_hyper_ai_live_cycle_persists_blocked_redemption_diagnostics(
     # 2. Run a second live-style cycle with a deterministic blocked redemption result and the vault excluded from inclusion criteria.
     monkeypatch.setattr(
         hyper_ai_strategy_module,
-        "_get_blocked_redemption_results",
-        lambda alpha_model: [RedemptionCheckResult(
-            timestamp=alpha_model.timestamp,
+        "collect_blocked_redemption_results",
+        lambda signals: [RedemptionCheckResult(
+            timestamp=datetime.datetime(2026, 1, 28),
             stage=RedemptionCheckStage.carry_forward,
             can_redeem=False,
             reason_code=RedemptionBlockReason.user_lockup_not_expired,
@@ -418,7 +418,7 @@ def test_hyper_ai_live_cycle_persists_blocked_redemption_diagnostics(
     )
     monkeypatch.setattr(
         hyper_ai_strategy_module,
-        "_group_blocked_redemption_reasons",
+        "group_blocked_redemption_reasons",
         lambda blocked_results: {"user_lockup_not_expired": len(blocked_results)},
     )
     monkeypatch.setattr(

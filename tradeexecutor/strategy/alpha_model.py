@@ -798,31 +798,18 @@ class AlphaModel:
     def carry_forward_non_redeemable_positions(
         self,
         position_manager: PositionManager,
-        can_redeem: Callable[[TradingPosition], bool] | None = None,
     ) -> USDollarAmount:
         """Pin current non-redeemable positions at their marked value for this cycle."""
         locked_position_value = 0.0
 
         for position in position_manager.get_current_portfolio().open_positions.values():
-            if can_redeem is None:
-                redemption_result = self._check_redemption_for_position(
-                    position_manager,
-                    position,
-                    stage=RedemptionCheckStage.carry_forward,
-                )
-                if redemption_result.can_redeem:
-                    continue
-            else:
-                if can_redeem(position):
-                    continue
-                redemption_result = RedemptionCheckResult(
-                    timestamp=self.timestamp,
-                    stage=RedemptionCheckStage.carry_forward,
-                    can_redeem=False,
-                    pair_ticker=position.pair.get_ticker(),
-                    vault_address=position.pair.pool_address,
-                    message="Position cannot be redeemed according to the strategy callback",
-                )
+            redemption_result = self._check_redemption_for_position(
+                position_manager,
+                position,
+                stage=RedemptionCheckStage.carry_forward,
+            )
+            if redemption_result.can_redeem:
+                continue
 
             current_value = position.get_value()
             signal = self.raw_signals.get(position.pair.internal_id)
@@ -870,7 +857,7 @@ class AlphaModel:
         signal.set_redemption_check_result(redemption_result)
 
         logger.info(
-            "HYPERCORE_REDEMPTION_DIAGNOSTIC stage=%s pair_ticker=%s vault_address=%s safe_address=%s reason_code=%s current_value=%s position_recorded_lockup_expires_at=%s user_lockup_expires_at=%s max_withdrawable=%s max_redemption=%s message=%s",
+            "REDEMPTION_DIAGNOSTIC stage=%s pair_ticker=%s vault_address=%s safe_address=%s reason_code=%s current_value=%s position_recorded_lockup_expires_at=%s user_lockup_expires_at=%s max_withdrawable=%s max_redemption=%s message=%s",
             redemption_result.stage.value,
             redemption_result.pair_ticker,
             redemption_result.vault_address,

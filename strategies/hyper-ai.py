@@ -36,7 +36,6 @@ Calmar                            11.62      -1.12   -0.98
 import datetime
 import logging
 import re
-from collections import Counter
 
 import pandas as pd
 from eth_defi.token import USDC_NATIVE_TOKEN
@@ -90,9 +89,9 @@ from tradeexecutor.strategy.pandas_trader.trading_universe_input import \
     CreateTradingUniverseInput
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.redemption import (
-    BlockedRedemptionSummary,
-    RedemptionCheckResult,
-    RedemptionCycleDiagnostics,
+    collect_blocked_redemption_results,
+    create_redemption_cycle_diagnostics,
+    group_blocked_redemption_reasons,
 )
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import (
@@ -322,52 +321,6 @@ def _get_available_supporting_pair_ids(
             continue
     return pair_ids
 
-
-def _get_blocked_redemption_results(alpha_model: AlphaModel) -> list[RedemptionCheckResult]:
-    """Collect blocked redemption checks from the current alpha model."""
-    results = []
-    for signal in alpha_model.signals.values():
-        for result in signal.redemption_check_results:
-            if not result.can_redeem:
-                results.append(result)
-    return results
-
-
-def _format_decimal(value) -> str | None:
-    """Format Decimal-like diagnostics without widening state payloads."""
-    if value is None:
-        return None
-    return str(value)
-
-
-def _make_blocked_redemption_summary(
-    result: RedemptionCheckResult,
-) -> BlockedRedemptionSummary:
-    """Convert one rich redemption result to a compact persisted summary."""
-    return BlockedRedemptionSummary(
-        pair_ticker=result.pair_ticker,
-        vault_address=result.vault_address,
-        stage=result.stage.value,
-        reason_code=result.reason_code.value if result.reason_code else None,
-        message=result.message,
-        safe_address=result.safe_address,
-        position_recorded_lockup_expires_at=result.position_recorded_lockup_expires_at,
-        user_lockup_expires_at=result.user_lockup_expires_at,
-        max_withdrawable=_format_decimal(result.max_withdrawable),
-        max_redemption=_format_decimal(result.max_redemption),
-    )
-
-
-def _group_blocked_redemption_reasons(
-    blocked_results: list[RedemptionCheckResult],
-) -> dict[str, int]:
-    """Group blocked redemption diagnostics by stable reason code."""
-    counts = Counter()
-    for result in blocked_results:
-        counts[result.reason_code.value if result.reason_code else "unknown"] += 1
-    return dict(counts)
-
-
 #
 # Strategy logic
 #
@@ -459,8 +412,8 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     )
 
     if input.is_visualisation_enabled():
-        blocked_redemption_results = _get_blocked_redemption_results(alpha_model)
-        blocked_redemption_reason_counts = _group_blocked_redemption_reasons(blocked_redemption_results)
+        blocked_redemption_results = collect_blocked_redemption_results(alpha_model.signals)
+        blocked_redemption_reason_counts = group_blocked_redemption_reasons(blocked_redemption_results)
 
         try:
             top_signal = next(iter(alpha_model.get_signals_sorted_by_weight()))
@@ -522,20 +475,11 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         state.visualisation.add_message(timestamp, report)
         state.visualisation.set_discardable_data("alpha_model", alpha_model)
         if input.execution_context.live_trading and blocked_redemption_results:
-            blocked_signal_count = len({
-                (result.pair_ticker, result.vault_address)
-                for result in blocked_redemption_results
-            })
-            cycle_diagnostics = RedemptionCycleDiagnostics(
+            cycle_diagnostics = create_redemption_cycle_diagnostics(
                 cycle=input.cycle,
                 redeemable_capital=float(redeemable_capital),
                 locked_capital_carried_forward=float(locked_position_value),
-                blocked_signal_count=blocked_signal_count,
-                reason_counts=blocked_redemption_reason_counts,
-                blocked_redemptions=[
-                    _make_blocked_redemption_summary(result)
-                    for result in blocked_redemption_results
-                ],
+                blocked_results=blocked_redemption_results,
             )
             state.visualisation.add_calculations(
                 timestamp,
