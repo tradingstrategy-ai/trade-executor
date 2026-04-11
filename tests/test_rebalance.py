@@ -1666,7 +1666,7 @@ def test_alpha_model_carries_forward_locked_hypercore_vault(
                 if pair == hypercore_vault_pair
                 else None
             ),
-            max_redemption=Decimal(0) if pair == hypercore_vault_pair else None,
+            max_redemption=0.0 if pair == hypercore_vault_pair else None,
         ),
     )
 
@@ -1793,7 +1793,7 @@ def test_alpha_model_skips_sell_rebalance_for_non_redeemable_position(
             position_recorded_lockup_expires_at=datetime.datetime(2022, 1, 3),
             user_lockup_expires_at=datetime.datetime(2022, 1, 3),
             message="Hypercore user lockup has not expired yet",
-            max_redemption=Decimal(0),
+            max_redemption=0.0,
         ),
     )
 

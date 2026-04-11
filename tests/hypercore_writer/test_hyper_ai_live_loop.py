@@ -413,7 +413,7 @@ def test_hyper_ai_live_cycle_persists_blocked_redemption_diagnostics(
             position_recorded_lockup_expires_at=datetime.datetime(2026, 2, 1),
             user_lockup_expires_at=datetime.datetime(2026, 2, 1),
             message="Vault user lockup has not expired yet",
-            max_redemption=Decimal(0),
+            max_redemption=0.0,
         )],
     )
     monkeypatch.setattr(
@@ -435,7 +435,7 @@ def test_hyper_ai_live_cycle_persists_blocked_redemption_diagnostics(
             position_recorded_lockup_expires_at=datetime.datetime(2026, 2, 1),
             user_lockup_expires_at=datetime.datetime(2026, 2, 1),
             message="Hypercore user lockup has not expired yet",
-            max_redemption=Decimal(0),
+            max_redemption=0.0,
         ),
     )
     blocked_input = make_hyper_ai_strategy_input(

@@ -483,7 +483,7 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
             )
             state.visualisation.add_calculations(
                 timestamp,
-                cycle_diagnostics.to_dict(),
+                cycle_diagnostics.to_dict(encode_json=True),
             )
 
     return trades

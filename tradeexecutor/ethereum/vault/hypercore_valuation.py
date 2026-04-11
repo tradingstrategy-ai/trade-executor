@@ -376,8 +376,8 @@ class HypercoreVaultPricing(PricingModel):
         return VaultInfoSnapshot(
             name=info.name,
             vault_address=info.vault_address,
-            max_withdrawable=info.max_withdrawable,
-            max_distributable=info.max_distributable,
+            max_withdrawable=float(info.max_withdrawable) if info.max_withdrawable is not None else None,
+            max_distributable=float(info.max_distributable) if info.max_distributable is not None else None,
             is_closed=info.is_closed,
             allow_deposits=info.allow_deposits,
             relationship_type=info.relationship_type,
@@ -391,7 +391,7 @@ class HypercoreVaultPricing(PricingModel):
         """Capture the decision-relevant subset of ``fetch_user_vault_equity()``."""
         return VaultUserEquitySnapshot(
             vault_address=eq.vault_address,
-            equity=eq.equity,
+            equity=float(eq.equity) if eq.equity is not None else None,
             locked_until=eq.locked_until,
             is_lockup_expired=eq.is_lockup_expired,
         )
@@ -427,12 +427,12 @@ class HypercoreVaultPricing(PricingModel):
                 pair,
                 current_equity_usd=current_equity_usd,
             )
-            result.max_withdrawable = snapshot.max_withdrawable_usd
+            result.max_withdrawable = float(snapshot.max_withdrawable_usd) if snapshot.max_withdrawable_usd is not None else None
 
             if not snapshot.lockup_expired:
                 result.can_redeem = False
                 result.reason_code = RedemptionBlockReason.user_lockup_not_expired
-                result.max_redemption = Decimal(0)
+                result.max_redemption = 0.0
                 result.message = "Replay snapshot reports that the user lockup has not expired yet"
                 return result
 
@@ -444,11 +444,11 @@ class HypercoreVaultPricing(PricingModel):
             if snapshot.max_withdrawable_usd <= 0:
                 result.can_redeem = False
                 result.reason_code = RedemptionBlockReason.vault_max_withdrawable_zero
-                result.max_redemption = Decimal(0)
+                result.max_redemption = 0.0
                 result.message = "Replay snapshot reports zero max_withdrawable liquidity"
                 return result
 
-            result.max_redemption = snapshot.max_withdrawable_usd
+            result.max_redemption = float(snapshot.max_withdrawable_usd)
             result.message = "Replay snapshot allows redemption and caps it by max_withdrawable"
             return result
 
@@ -467,7 +467,7 @@ class HypercoreVaultPricing(PricingModel):
             return result
 
         info = self._get_vault_info(pair)
-        result.max_withdrawable = info.max_withdrawable
+        result.max_withdrawable = float(info.max_withdrawable)
         result.raw_api_data = RedemptionApiSnapshot(
             vault_info=self._build_vault_info_snapshot(info),
         )
@@ -475,7 +475,7 @@ class HypercoreVaultPricing(PricingModel):
         if info.max_withdrawable <= 0:
             result.can_redeem = False
             result.reason_code = RedemptionBlockReason.vault_max_withdrawable_zero
-            result.max_redemption = Decimal(0)
+            result.max_redemption = 0.0
             result.message = "Hypercore vault reports zero max_withdrawable liquidity"
             return result
 
@@ -490,7 +490,7 @@ class HypercoreVaultPricing(PricingModel):
         if eq is None:
             result.can_redeem = False
             result.reason_code = RedemptionBlockReason.user_equity_fetch_failed
-            result.max_redemption = Decimal(0)
+            result.max_redemption = 0.0
             result.message = "Hypercore user equity lookup returned no position data"
             return result
 
@@ -500,11 +500,11 @@ class HypercoreVaultPricing(PricingModel):
         if not eq.is_lockup_expired:
             result.can_redeem = False
             result.reason_code = RedemptionBlockReason.user_lockup_not_expired
-            result.max_redemption = Decimal(0)
+            result.max_redemption = 0.0
             result.message = "Hypercore user lockup has not expired yet"
             return result
 
-        result.max_redemption = min(eq.equity, info.max_withdrawable)
+        result.max_redemption = float(min(eq.equity, info.max_withdrawable))
         result.message = "Redemption allowed and capped by Hypercore max_withdrawable"
         return result
 

@@ -170,7 +170,7 @@ def test_hypercore_redemption_closed_during_lockup(
     assert result.reason_code == RedemptionBlockReason.user_lockup_not_expired
     assert result.stage == RedemptionCheckStage.carry_forward
     assert result.user_lockup_expires_at is not None
-    assert result.max_redemption == 0
+    assert result.max_redemption == pytest.approx(0.0)
 
 
 def test_hypercore_redemption_closed_when_vault_has_no_withdrawable_liquidity(
@@ -205,8 +205,8 @@ def test_hypercore_redemption_closed_when_vault_has_no_withdrawable_liquidity(
     # 3. Verify the structured result records the vault-liquidity block reason.
     assert result.reason_code == RedemptionBlockReason.vault_max_withdrawable_zero
     assert result.stage == RedemptionCheckStage.sell_rebalance
-    assert result.max_withdrawable == 0
-    assert result.max_redemption == 0
+    assert result.max_withdrawable == pytest.approx(0.0)
+    assert result.max_redemption == pytest.approx(0.0)
 
 
 def test_hypercore_redemption_allowed_when_lockup_expired(
@@ -239,7 +239,7 @@ def test_hypercore_redemption_allowed_when_lockup_expired(
     assert pricing.is_tradeable(None, pair) is True
     assert result.can_redeem is True
     assert result.reason_code is None
-    assert result.max_redemption == Decimal("40")
+    assert result.max_redemption == pytest.approx(40.0)
     assert result.raw_api_data is not None
     assert result.raw_api_data.vault_info is not None
     assert result.raw_api_data.user_equity is not None
@@ -248,7 +248,7 @@ def test_hypercore_redemption_allowed_when_lockup_expired(
     restored = RedemptionCheckResult.from_json(result.to_json())
     assert restored.can_redeem is True
     assert restored.stage == RedemptionCheckStage.sell_rebalance
-    assert restored.max_redemption == Decimal("40")
+    assert restored.max_redemption == pytest.approx(40.0)
     assert restored.raw_api_data is not None
     assert restored.raw_api_data.user_equity is not None
 

@@ -265,7 +265,7 @@ class PricingModel(abc.ABC):
             can_redeem=can_redeem,
             pair_ticker=pair.get_ticker(),
             vault_address=pair.pool_address,
-            max_redemption=max_redemption,
+            max_redemption=float(max_redemption) if max_redemption is not None else None,
         )
 
     def is_tradeable(
