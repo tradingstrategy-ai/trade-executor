@@ -63,7 +63,7 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
     #if value == 0:
     #        logger.warning(f"Position {position} reported value {value}. Last token price: {position.last_token_price}. Last reserve price: {position.last_reserve_price}")
 
-    # Calculate share price data for spot/vault positions
+    # Calculate share price data for spot/vault/exchange account positions
     internal_share_price = None
     internal_total_supply = None
     internal_profit_pct = None
