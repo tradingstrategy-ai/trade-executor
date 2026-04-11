@@ -7,7 +7,6 @@ from queue import Queue
 import flaky
 import pytest
 import requests
-from eth_defi.utils import find_free_port
 
 from tradeexecutor.cli.log import (get_ring_buffer_handler,
                                    setup_in_memory_logging)
@@ -15,10 +14,10 @@ from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
+from tradeexecutor.testing.webhook import create_webhook_server_with_retries, get_webhook_test_url
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.webhook.api import web_notify
-from tradeexecutor.webhook.server import create_webhook_server
 from eth_defi.compat import native_datetime_utc_now
 
 
@@ -70,9 +69,8 @@ def server_url(store):
     metadata.backtest_notebook = notebook_result
     metadata.backtest_html = html_result
 
-    port = find_free_port(20_000, 40_000, 20)
-    server = create_webhook_server("127.0.0.1", port, "test", "test", queue, store, metadata, execution_state)
-    server_url = f"http://test:test@127.0.0.1:{port}"
+    server = create_webhook_server_with_retries("127.0.0.1", "test", "test", queue, store, metadata, execution_state)
+    server_url = get_webhook_test_url(server, "test", "test")
     yield server_url
     server.shutdown()
 
@@ -202,9 +200,8 @@ def test_source_closed_source(logger, store):
         tags={StrategyTag.closed_source},
     )
 
-    port = find_free_port(20_000, 40_000, 20)
-    server = create_webhook_server("127.0.0.1", port, "test", "test", queue, store, metadata, execution_state)
-    url = f"http://test:test@127.0.0.1:{port}"
+    server = create_webhook_server_with_retries("127.0.0.1", "test", "test", queue, store, metadata, execution_state)
+    url = get_webhook_test_url(server, "test", "test")
 
     try:
         resp = requests.get(f"{url}/source")

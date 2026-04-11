@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 import pytest
 import requests
-from eth_defi.utils import find_free_port
 import plotly.graph_objects as go
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
@@ -25,13 +24,13 @@ from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.tag import StrategyTag
+from tradeexecutor.testing.webhook import create_webhook_server_with_retries, get_webhook_test_url
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradeexecutor.testing.synthetic_exchange_data import generate_exchange
 from tradeexecutor.testing.synthetic_lending_data import generate_lending_reserve, generate_lending_universe
 from tradeexecutor.testing.synthetic_price_data import generate_ohlcv_candles
 from tradeexecutor.testing.synthetic_universe_data import create_synthetic_single_pair_universe
-from tradeexecutor.webhook.server import create_webhook_server
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
 from eth_defi.compat import native_datetime_utc_now
@@ -187,9 +186,8 @@ def server_url(store, chart_registry, strategy_input_indicators):
     metadata.backtest_notebook = notebook_result
     metadata.backtest_html = html_result
 
-    port = find_free_port(20_000, 40_000, 20)
-    server = create_webhook_server("127.0.0.1", port, "test", "test", queue, store, metadata, execution_state)
-    server_url = f"http://test:test@127.0.0.1:{port}"
+    server = create_webhook_server_with_retries("127.0.0.1", "test", "test", queue, store, metadata, execution_state)
+    server_url = get_webhook_test_url(server, "test", "test")
     yield server_url
     server.shutdown()
 
