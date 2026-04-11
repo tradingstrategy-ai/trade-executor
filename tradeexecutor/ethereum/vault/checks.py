@@ -29,6 +29,7 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+from tabulate import tabulate
 
 from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
 from tradingstrategy.alternative_data.vault import CLEANED_VAULT_PRICE_PARQUET_URL
@@ -230,6 +231,105 @@ def log_vault_history_diagnostics(
         diagnostics.remote_head_error,
     )
 
+    warning_rows = _build_vault_history_warning_rows(
+        diagnostics=diagnostics,
+        stale_tolerance=stale_tolerance,
+    )
+    if warning_rows:
+        warning_table = tabulate(
+            pd.DataFrame(warning_rows),
+            headers="keys",
+            tablefmt="plain",
+            showindex=False,
+        )
+        logger.warning(
+            "Vault history freshness has suspicious values:\n%s",
+            warning_table,
+        )
+
+
+def _build_vault_history_warning_rows(
+    diagnostics: VaultHistoryDiagnostics,
+    stale_tolerance: datetime.timedelta,
+) -> list[dict[str, object]]:
+    """Build warning rows for suspicious vault-history freshness values."""
+    warning_rows: list[dict[str, object]] = []
+
+    if diagnostics.remote_head_error:
+        warning_rows.append(
+            {
+                "field": "remote_head_error",
+                "value": diagnostics.remote_head_error,
+                "reason": "Remote metadata check failed",
+            }
+        )
+
+    if diagnostics.local_cache_age is not None and diagnostics.local_cache_age > stale_tolerance:
+        warning_rows.append(
+            {
+                "field": "local_cache_age",
+                "value": diagnostics.local_cache_age,
+                "reason": "Local cached parquet is older than the warning tolerance",
+            }
+        )
+
+    if diagnostics.remote_last_modified_age is not None and diagnostics.remote_last_modified_age > stale_tolerance:
+        warning_rows.append(
+            {
+                "field": "remote_last_modified_age",
+                "value": diagnostics.remote_last_modified_age,
+                "reason": "Remote parquet object itself looks old",
+            }
+        )
+
+    if diagnostics.parquet_data_age is not None and diagnostics.parquet_data_age > stale_tolerance:
+        warning_rows.append(
+            {
+                "field": "parquet_data_age",
+                "value": diagnostics.parquet_data_age,
+                "reason": "Source parquet data is older than the warning tolerance",
+            }
+        )
+
+    if diagnostics.filtered_data_age is not None and diagnostics.filtered_data_age > stale_tolerance:
+        warning_rows.append(
+            {
+                "field": "filtered_data_age",
+                "value": diagnostics.filtered_data_age,
+                "reason": "Filtered vault history is older than the warning tolerance",
+            }
+        )
+
+    if (
+        diagnostics.resampled_data_age is not None
+        and diagnostics.resampled_data_age > stale_tolerance
+        and diagnostics.parquet_data_age is not None
+        and diagnostics.parquet_data_age <= stale_tolerance
+    ):
+        warning_rows.append(
+            {
+                "field": "resampled_data_age",
+                "value": diagnostics.resampled_data_age,
+                "reason": "Looks stale after 1d resampling floor, but the source parquet is fresher",
+            }
+        )
+
+    if (
+        diagnostics.filtered_to_resampled_delta is not None
+        and diagnostics.filtered_to_resampled_delta > datetime.timedelta(hours=12)
+        and diagnostics.parquet_data_age is not None
+        and diagnostics.parquet_data_age <= stale_tolerance
+    ):
+        warning_rows.append(
+            {
+                "field": "filtered_to_resampled_delta",
+                "value": diagnostics.filtered_to_resampled_delta,
+                "reason": "Large gap caused by 1d candle flooring to 00:00 UTC",
+            }
+        )
+
+    return warning_rows
+
 
 def log_stale_vault_candle_data(
     vault_candle_df: pd.DataFrame | None,
@@ -264,14 +364,28 @@ def log_stale_vault_candle_data(
                 vault_tvl = metadata.tvl
 
         stale_entries.append(
-            f"{vault_name}, address={vault_address}, TVL={vault_tvl}, pair_id={pair_id}, last_candle={last_ts}, age={age}"
+            {
+                "vault": vault_name,
+                "address": vault_address,
+                "tvl": vault_tvl,
+                "pair_id": pair_id,
+                "last_candle": last_ts,
+                "age": age,
+            }
         )
 
     if stale_entries:
+        stale_entries_df = pd.DataFrame(stale_entries)
+        stale_entries_table = tabulate(
+            stale_entries_df,
+            headers="keys",
+            tablefmt="plain",
+            showindex=False,
+        )
         logger.warning(
-            "Vault candle data is stale (>24h after 1d resampling floor) for %d vault(s): %s",
+            "Vault candle data is stale (>24h after 1d resampling floor) for %d vault(s):\n%s",
             len(stale_entries),
-            " | ".join(stale_entries),
+            stale_entries_table,
         )
 
 

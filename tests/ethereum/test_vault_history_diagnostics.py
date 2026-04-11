@@ -248,6 +248,55 @@ def test_log_vault_history_diagnostics_warns_when_remote_head_fails(caplog: pyte
     assert "RequestException: boom" in summary_record.message
 
 
+def test_log_vault_history_diagnostics_warns_for_suspicious_resample_values(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify suspicious 1d-resample values are highlighted in a follow-up warning.
+
+    1. Build diagnostics where the parquet is still fresh but the 1d candle looks stale.
+    2. Emit the startup summary log.
+    3. Assert a follow-up warning highlights the suspicious resample-only fields in a table.
+    """
+    # 1. Build diagnostics where the parquet is still fresh but the 1d candle looks stale.
+    diagnostics = build_vault_history_diagnostics(
+        raw_vault_price_df=_build_vault_price_history_df(
+            "0xcafe000000000000000000000000000000000000",
+            [datetime.datetime(2026, 4, 10, 22, 7, 51)],
+        ),
+        filtered_vault_price_df=_build_vault_price_history_df(
+            "0xcafe000000000000000000000000000000000000",
+            [datetime.datetime(2026, 4, 10, 22, 7, 49)],
+        ),
+        resampled_vault_candle_df=pd.DataFrame(
+            {
+                "timestamp": [pd.Timestamp(datetime.datetime(2026, 4, 10, 0, 0, 0))],
+                "pair_id": [1],
+            }
+        ),
+        cache_path=None,
+        http_session=_MockSession(
+            response=_MockResponse(
+                {
+                    "Last-Modified": "Fri, 10 Apr 2026 22:19:05 GMT",
+                }
+            )
+        ),
+        now=datetime.datetime(2026, 4, 11, 16, 43, 33),
+    )
+
+    # 2. Emit the startup summary log.
+    with caplog.at_level("INFO"):
+        log_vault_history_diagnostics(diagnostics)
+
+    # 3. Assert a follow-up warning highlights the suspicious resample-only fields in a table.
+    warning_record = next(record for record in caplog.records if "Vault history freshness has suspicious values" in record.message)
+    assert warning_record.levelname == "WARNING"
+    assert "\nfield" in warning_record.message
+    assert "resampled_data_age" in warning_record.message
+    assert "filtered_to_resampled_delta" in warning_record.message
+    assert "Looks stale after 1d resampling floor" in warning_record.message
+
+
 def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -310,4 +359,5 @@ def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(
     assert "Vault history freshness summary" in relevant_records[0].message
     assert relevant_records[1].levelname == "WARNING"
     assert "Vault candle data is stale (>24h after 1d resampling floor) for 1 vault(s)" in relevant_records[1].message
+    assert "\nvault" in relevant_records[1].message
     assert "MirVault" in relevant_records[1].message
