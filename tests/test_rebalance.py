@@ -32,6 +32,11 @@ from tradeexecutor.strategy.fixed_size_risk import FixedSizeRiskModel
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pandas_trader.rebalance import get_existing_portfolio_weights, rebalance_portfolio_old, \
     get_weight_diffs
+from tradeexecutor.strategy.redemption import (
+    RedemptionBlockReason,
+    RedemptionCheckResult,
+    RedemptionCheckStage,
+)
 from tradeexecutor.strategy.weighting import BadWeightsException, clip_to_normalised, weight_passthrouh
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
@@ -1615,6 +1620,7 @@ def test_alpha_model_carries_forward_locked_hypercore_vault(
         reserve_currency=usdc,
     )
     locked_position.trades[1] = locked_trade
+    locked_position.other_data["vault_lockup_expires_at"] = "2022-01-03T00:00:00"
     state.portfolio.open_positions = {1: locked_position}
 
     position_manager = PositionManager(
@@ -1623,11 +1629,45 @@ def test_alpha_model_carries_forward_locked_hypercore_vault(
         state,
         pricing_model,
     )
+    original_get_mid_price = pricing_model.get_mid_price
+    monkeypatch.setattr(
+        pricing_model,
+        "get_mid_price",
+        lambda ts, pair: 1.0 if pair == hypercore_vault_pair else original_get_mid_price(ts, pair),
+    )
 
     monkeypatch.setattr(
         pricing_model,
-        "can_redeem",
-        lambda ts, pair: pair != hypercore_vault_pair,
+        "check_redemption",
+        lambda ts, pair, **kwargs: RedemptionCheckResult(
+            timestamp=ts,
+            stage=kwargs["stage"],
+            can_redeem=pair != hypercore_vault_pair,
+            reason_code=(
+                RedemptionBlockReason.user_lockup_not_expired
+                if pair == hypercore_vault_pair
+                else None
+            ),
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+            safe_address="0x0000000000000000000000000000000000000abc",
+            position_recorded_lockup_expires_at=(
+                datetime.datetime(2022, 1, 3)
+                if pair == hypercore_vault_pair
+                else None
+            ),
+            user_lockup_expires_at=(
+                datetime.datetime(2022, 1, 3)
+                if pair == hypercore_vault_pair
+                else None
+            ),
+            message=(
+                "Hypercore user lockup has not expired yet"
+                if pair == hypercore_vault_pair
+                else None
+            ),
+            max_redemption=Decimal(0) if pair == hypercore_vault_pair else None,
+        ),
     )
 
     alpha_model = AlphaModel(timestamp=position_manager.timestamp)
@@ -1657,11 +1697,134 @@ def test_alpha_model_carries_forward_locked_hypercore_vault(
     # 3. Verify the locked vault stays pinned with zero adjustment and only the free cash becomes a buy trade.
     assert locked_signal.position_adjust_usd == pytest.approx(0.0)
     assert TradingPairSignalFlags.cannot_redeem in locked_signal.flags
+    assert len(locked_signal.redemption_check_results) == 1
+    assert locked_signal.redemption_check_results[0].stage == RedemptionCheckStage.carry_forward
+    assert locked_signal.redemption_check_results[0].reason_code == RedemptionBlockReason.user_lockup_not_expired
+
+    restored_signal = locked_signal.__class__.from_json(locked_signal.to_json())
+    assert len(restored_signal.redemption_check_results) == 1
+    assert restored_signal.redemption_check_results[0].stage == RedemptionCheckStage.carry_forward
+
     assert all(trade.pair != hypercore_vault_pair for trade in trades)
     assert len(trades) == 1
     assert trades[0].is_buy()
     assert trades[0].pair == aave_usdc
     assert trades[0].get_planned_value() == pytest.approx(2500.0)
+
+
+def test_alpha_model_skips_sell_rebalance_for_non_redeemable_position(
+    start_ts: datetime.datetime,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model: BacktestPricing,
+    usdc: AssetIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check AlphaModel stores sell-side redemption diagnostics when a reduction is blocked.
+
+    1. Build a portfolio with one open Hypercore vault position and no carry-forward pinning.
+    2. Ask the alpha model to shrink that position while the pricing model reports it as non-redeemable.
+    3. Verify the sell rebalance is skipped and the signal stores the sell-stage diagnostics.
+    """
+    state = State()
+    hypercore_vault_pair = TradingPairIdentifier(
+        base=AssetIdentifier(1, "0x1234567890123456789012345678901234567890", "pmalt", 18),
+        quote=usdc,
+        pool_address="0x1234567890123456789012345678901234567891",
+        exchange_address="0x1234567890123456789012345678901234567892",
+        internal_id=101,
+        kind=TradingPairKind.vault,
+        fee=0,
+    )
+    hypercore_vault_pair.other_data["vault_protocol"] = "hypercore"
+
+    locked_position = TradingPosition(
+        position_id=1,
+        opened_at=start_ts,
+        pair=hypercore_vault_pair,
+        last_pricing_at=start_ts,
+        last_token_price=USDollarPrice(1.0),
+        last_reserve_price=USDollarPrice(1.0),
+        reserve_currency=usdc,
+    )
+    locked_position.other_data["vault_lockup_expires_at"] = "2022-01-03T00:00:00"
+    locked_trade = TradeExecution(
+        trade_id=1,
+        position_id=1,
+        trade_type=TradeType.rebalance,
+        pair=hypercore_vault_pair,
+        opened_at=start_ts,
+        planned_quantity=Decimal(5000),
+        executed_quantity=Decimal(5000),
+        planned_price=USDollarPrice(1.0),
+        executed_price=USDollarPrice(1.0),
+        lp_fees_estimated=USDollarAmount(0),
+        planned_reserve=USDollarAmount(5000),
+        executed_reserve=USDollarAmount(5000),
+        executed_at=start_ts,
+        reserve_currency=usdc,
+    )
+    locked_position.trades[1] = locked_trade
+    state.portfolio.open_positions = {1: locked_position}
+
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),
+        strategy_universe.data_universe,
+        state,
+        pricing_model,
+    )
+    original_get_mid_price = pricing_model.get_mid_price
+    monkeypatch.setattr(
+        pricing_model,
+        "get_mid_price",
+        lambda ts, pair: 1.0 if pair == hypercore_vault_pair else original_get_mid_price(ts, pair),
+    )
+
+    monkeypatch.setattr(
+        pricing_model,
+        "check_redemption",
+        lambda ts, pair, **kwargs: RedemptionCheckResult(
+            timestamp=ts,
+            stage=kwargs["stage"],
+            can_redeem=False,
+            reason_code=RedemptionBlockReason.user_lockup_not_expired,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+            safe_address="0x0000000000000000000000000000000000000abc",
+            position_recorded_lockup_expires_at=datetime.datetime(2022, 1, 3),
+            user_lockup_expires_at=datetime.datetime(2022, 1, 3),
+            message="Hypercore user lockup has not expired yet",
+            max_redemption=Decimal(0),
+        ),
+    )
+
+    alpha_model = AlphaModel(timestamp=position_manager.timestamp)
+    alpha_model.set_signal(hypercore_vault_pair, 1.0)
+
+    # 1. Build a portfolio with one open Hypercore vault position and no carry-forward pinning.
+    alpha_model.select_top_signals(count=5)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights(max_weight=1.0)
+    alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
+    alpha_model.calculate_target_positions(position_manager, investable_equity=1000.0)
+
+    # 2. Ask the alpha model to shrink that position while the pricing model reports it as non-redeemable.
+    trades = alpha_model.generate_rebalance_trades_and_triggers(
+        position_manager,
+        min_trade_threshold=0.01,
+        individual_rebalance_min_threshold=0.01,
+        sell_rebalance_min_threshold=0.01,
+    )
+
+    signal = alpha_model.get_signal_by_pair(hypercore_vault_pair)
+    assert signal is not None
+
+    # 3. Verify the sell rebalance is skipped and the signal stores the sell-stage diagnostics.
+    assert trades == []
+    assert signal.position_adjust_ignored is True
+    assert TradingPairSignalFlags.cannot_redeem in signal.flags
+    assert len(signal.redemption_check_results) == 1
+    assert signal.redemption_check_results[0].stage == RedemptionCheckStage.sell_rebalance
+    assert signal.redemption_check_results[0].reason_code == RedemptionBlockReason.user_lockup_not_expired
 
 
 def test_update_old_weights_reads_position_value_once(

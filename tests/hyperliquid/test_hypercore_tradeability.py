@@ -18,6 +18,11 @@ from tradeexecutor.ethereum.vault.hypercore_vault import (
     create_hypercore_vault_pair,
 )
 from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.strategy.redemption import (
+    RedemptionBlockReason,
+    RedemptionCheckResult,
+    RedemptionCheckStage,
+)
 
 
 def _make_pair() -> object:
@@ -136,6 +141,12 @@ def test_hypercore_redemption_closed_during_lockup(
     pricing: HypercoreVaultPricing,
     monkeypatch: pytest.MonkeyPatch,
 ):
+    """Check Hypercore lockup diagnostics report a blocked user lockup.
+
+    1. Mock a vault with withdrawable liquidity but a user lockup still in force.
+    2. Run both the legacy and structured redemption checks.
+    3. Verify the structured result records the user-lockup reason and stage.
+    """
     pair = _make_pair()
     monkeypatch.setattr(pricing, "_get_vault_info", lambda pair: _make_info())
     monkeypatch.setattr(
@@ -147,14 +158,31 @@ def test_hypercore_redemption_closed_during_lockup(
         ),
     )
 
+    # 1. Mock a vault with withdrawable liquidity but a user lockup still in force.
+    result = pricing.check_redemption(None, pair, stage=RedemptionCheckStage.carry_forward)
+
+    # 2. Run both the legacy and structured redemption checks.
     assert pricing.get_max_redemption(None, pair) == 0
     assert pricing.can_redeem(None, pair) is False
+    assert result.can_redeem is False
+
+    # 3. Verify the structured result records the user-lockup reason and stage.
+    assert result.reason_code == RedemptionBlockReason.user_lockup_not_expired
+    assert result.stage == RedemptionCheckStage.carry_forward
+    assert result.user_lockup_expires_at is not None
+    assert result.max_redemption == 0
 
 
 def test_hypercore_redemption_closed_when_vault_has_no_withdrawable_liquidity(
     pricing: HypercoreVaultPricing,
     monkeypatch: pytest.MonkeyPatch,
 ):
+    """Check Hypercore diagnostics report a zero-withdrawable vault block.
+
+    1. Mock a vault whose user lockup is expired but whose max withdrawable value is zero.
+    2. Run both the legacy and structured redemption checks.
+    3. Verify the structured result records the vault-liquidity block reason.
+    """
     pair = _make_pair()
     monkeypatch.setattr(pricing, "_get_vault_info", lambda pair: _make_info(max_withdrawable=Decimal("0")))
     monkeypatch.setattr(
@@ -166,14 +194,31 @@ def test_hypercore_redemption_closed_when_vault_has_no_withdrawable_liquidity(
         ),
     )
 
+    # 1. Mock a vault whose user lockup is expired but whose max withdrawable value is zero.
+    result = pricing.check_redemption(None, pair, stage=RedemptionCheckStage.sell_rebalance)
+
+    # 2. Run both the legacy and structured redemption checks.
     assert pricing.get_max_redemption(None, pair) == 0
     assert pricing.can_redeem(None, pair) is False
+    assert result.can_redeem is False
+
+    # 3. Verify the structured result records the vault-liquidity block reason.
+    assert result.reason_code == RedemptionBlockReason.vault_max_withdrawable_zero
+    assert result.stage == RedemptionCheckStage.sell_rebalance
+    assert result.max_withdrawable == 0
+    assert result.max_redemption == 0
 
 
 def test_hypercore_redemption_allowed_when_lockup_expired(
     pricing: HypercoreVaultPricing,
     monkeypatch: pytest.MonkeyPatch,
 ):
+    """Check Hypercore diagnostics report an allowed redemption and round-trip cleanly.
+
+    1. Mock a vault with an expired user lockup and positive withdrawable liquidity.
+    2. Run both the legacy and structured redemption checks.
+    3. Verify the structured result round-trips through dataclasses-json intact.
+    """
     pair = _make_pair()
     monkeypatch.setattr(pricing, "_get_vault_info", lambda pair: _make_info(max_withdrawable=Decimal("40")))
     monkeypatch.setattr(
@@ -185,10 +230,27 @@ def test_hypercore_redemption_allowed_when_lockup_expired(
         ),
     )
 
+    # 1. Mock a vault with an expired user lockup and positive withdrawable liquidity.
+    result = pricing.check_redemption(None, pair, stage=RedemptionCheckStage.sell_rebalance)
+
+    # 2. Run both the legacy and structured redemption checks.
     assert pricing.get_max_redemption(None, pair) == Decimal("40")
     assert pricing.can_redeem(None, pair) is True
     assert pricing.is_tradeable(None, pair) is True
+    assert result.can_redeem is True
+    assert result.reason_code is None
+    assert result.max_redemption == Decimal("40")
+    assert result.raw_api_data is not None
+    assert result.raw_api_data.vault_info is not None
+    assert result.raw_api_data.user_equity is not None
 
+    # 3. Verify the structured result round-trips through dataclasses-json intact.
+    restored = RedemptionCheckResult.from_json(result.to_json())
+    assert restored.can_redeem is True
+    assert restored.stage == RedemptionCheckStage.sell_rebalance
+    assert restored.max_redemption == Decimal("40")
+    assert restored.raw_api_data is not None
+    assert restored.raw_api_data.user_equity is not None
 
 def test_hypercore_redemption_defaults_to_open_when_safe_unknown(
     monkeypatch: pytest.MonkeyPatch,

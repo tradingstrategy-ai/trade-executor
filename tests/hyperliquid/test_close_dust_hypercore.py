@@ -24,6 +24,7 @@ from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hyperliquid.api import UserVaultEquity
 
 from tradeexecutor.cli.close_position import close_single_or_all_positions
+from tradeexecutor.analysis.redemption_audit import audit_redemption_state
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.strategy.account_correction import _build_hypercore_vault_account_checks
@@ -222,3 +223,26 @@ def test_close_dust_hypercore_and_account_correction(
     for p in remaining_vault_positions:
         assert p.position_id in checked_position_ids, \
             f"Open position #{p.position_id} should appear in account corrections"
+
+
+def test_sample_state_audit_reports_blocked_redemption_rows() -> None:
+    """Audit the sample Hyper AI state for blocked redemption rows.
+
+    1. Load the sample Hyper AI state fixture that already contains cannot_redeem signals.
+    2. Run the read-only audit helper against a far-future timestamp so expired recorded lockups are easy to detect.
+    3. Verify the helper returns blocked rows with readable identifiers and at least one mismatch candidate.
+    """
+    # 1. Load the sample Hyper AI state fixture that already contains cannot_redeem signals.
+    state = State.read_json_file(SAMPLE_STATE_FILE)
+
+    # 2. Run the read-only audit helper against a far-future timestamp so expired recorded lockups are easy to detect.
+    rows, mismatch_count = audit_redemption_state(
+        state,
+        now=datetime.datetime(2026, 12, 31),
+    )
+
+    # 3. Verify the helper returns blocked rows with readable identifiers and at least one mismatch candidate.
+    assert rows, "Expected at least one blocked redemption row from the sample state"
+    assert mismatch_count >= 1
+    assert rows[0].pair_ticker is not None
+    assert rows[0].vault_address is not None
