@@ -251,11 +251,11 @@ def test_log_vault_history_diagnostics_warns_when_remote_head_fails(caplog: pyte
 def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Verify the startup summary is logged before per-vault stale entries.
+    """Verify the startup summary is logged before the aggregated stale-vault warning.
 
     1. Build fresh summary diagnostics and a stale per-vault candle snapshot.
-    2. Emit the summary log and then the per-vault stale log.
-    3. Assert the summary message appears before the per-vault stale entry.
+    2. Emit the summary log and then the aggregated stale-vault warning.
+    3. Assert the summary message appears before the stale-vault warning and the stale warning is at warning level.
     """
     # 1. Build fresh summary diagnostics and a stale per-vault candle snapshot.
     diagnostics = build_vault_history_diagnostics(
@@ -292,7 +292,7 @@ def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(
         }
     )
 
-    # 2. Emit the summary log and then the per-vault stale log.
+    # 2. Emit the summary log and then the aggregated stale-vault warning.
     with caplog.at_level("INFO"):
         log_vault_history_diagnostics(diagnostics)
         log_stale_vault_candle_data(
@@ -301,11 +301,13 @@ def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(
             now=datetime.datetime(2026, 4, 11, 13, 59, 0),
         )
 
-    # 3. Assert the summary message appears before the per-vault stale entry.
-    relevant_messages = [
-        record.message
+    # 3. Assert the summary message appears before the stale-vault warning and the stale warning is at warning level.
+    relevant_records = [
+        record
         for record in caplog.records
         if "Vault history freshness summary" in record.message or "Vault candle data is stale" in record.message
     ]
-    assert "Vault history freshness summary" in relevant_messages[0]
-    assert "Vault candle data is stale (>24h after 1d resampling floor)" in relevant_messages[1]
+    assert "Vault history freshness summary" in relevant_records[0].message
+    assert relevant_records[1].levelname == "WARNING"
+    assert "Vault candle data is stale (>24h after 1d resampling floor) for 1 vault(s)" in relevant_records[1].message
+    assert "MirVault" in relevant_records[1].message

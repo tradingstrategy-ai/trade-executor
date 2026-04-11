@@ -237,11 +237,12 @@ def log_stale_vault_candle_data(
     now: datetime.datetime | None = None,
     stale_tolerance: datetime.timedelta = datetime.timedelta(hours=24),
 ) -> None:
-    """Log per-vault stale candle entries for live startup diagnostics."""
+    """Log stale vault candle data as a single warning for live startup diagnostics."""
     if vault_candle_df is None or len(vault_candle_df) == 0:
         return
 
     reference_now = pd.Timestamp(now or native_datetime_utc_now())
+    stale_entries = []
 
     for pair_id in vault_candle_df["pair_id"].unique():
         pair_candles = vault_candle_df[vault_candle_df["pair_id"] == pair_id]
@@ -262,14 +263,15 @@ def log_stale_vault_candle_data(
             if metadata is not None:
                 vault_tvl = metadata.tvl
 
-        logger.info(
-            "Vault candle data is stale (>24h after 1d resampling floor): %s, address=%s, TVL=%s, pair_id=%d, last_candle=%s, age=%s",
-            vault_name,
-            vault_address,
-            vault_tvl,
-            pair_id,
-            last_ts,
-            age,
+        stale_entries.append(
+            f"{vault_name}, address={vault_address}, TVL={vault_tvl}, pair_id={pair_id}, last_candle={last_ts}, age={age}"
+        )
+
+    if stale_entries:
+        logger.warning(
+            "Vault candle data is stale (>24h after 1d resampling floor) for %d vault(s): %s",
+            len(stale_entries),
+            " | ".join(stale_entries),
         )
 
 
