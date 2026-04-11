@@ -232,7 +232,7 @@ class PricingModel(abc.ABC):
     def can_redeem(
         self,
         ts: datetime.datetime | None,
-        pair: TradingPairIdentifier,
+        pair: TradingPairIdentifier | None,
     ) -> bool:
         """Check whether a redemption or position reduction is currently possible.
 
@@ -244,7 +244,7 @@ class PricingModel(abc.ABC):
     def check_redemption(
         self,
         ts: datetime.datetime | None,
-        pair: TradingPairIdentifier,
+        pair: TradingPairIdentifier | None,
         *,
         stage: RedemptionCheckStage = RedemptionCheckStage.unknown,
         position: TradingPosition | None = None,
@@ -263,15 +263,15 @@ class PricingModel(abc.ABC):
             timestamp=ts,
             stage=stage,
             can_redeem=can_redeem,
-            pair_ticker=pair.get_ticker(),
-            vault_address=pair.pool_address,
+            pair_ticker=pair.get_ticker() if pair else None,
+            vault_address=pair.pool_address if pair else None,
             max_redemption=float(max_redemption) if max_redemption is not None else None,
         )
 
     def is_tradeable(
         self,
         ts: datetime.datetime | None,
-        pair: TradingPairIdentifier,
+        pair: TradingPairIdentifier | None,
     ) -> bool:
         """Check whether both deposit and redemption are currently possible."""
         return self.can_deposit(ts, pair) and self.can_redeem(ts, pair)

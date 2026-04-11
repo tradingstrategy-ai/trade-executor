@@ -23,12 +23,19 @@ dashboards and strategy chart registries.
 
 import datetime
 import logging
+from dataclasses import dataclass
+from email.utils import parsedate_to_datetime
+from pathlib import Path
 
 import pandas as pd
+import requests
 
+from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
+from tradingstrategy.alternative_data.vault import CLEANED_VAULT_PRICE_PARQUET_URL
+
+from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.state.types import USDollarAmount
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +43,236 @@ logger = logging.getLogger(__name__)
 class StaleVaultData(Exception):
     """Raised when one or more vaults have data older than the tolerance."""
     pass
+
+
+@dataclass(slots=True)
+class VaultHistoryDiagnostics:
+    """Summarise vault history freshness across cache, source, filter and resample stages."""
+
+    cache_path: Path | None
+    local_cache_mtime: datetime.datetime | None
+    local_cache_age: datetime.timedelta | None
+    remote_last_modified: datetime.datetime | None
+    remote_last_modified_age: datetime.timedelta | None
+    remote_etag: str | None
+    remote_content_length: int | None
+    remote_head_error: str | None
+    parquet_max_timestamp: datetime.datetime | None
+    parquet_data_age: datetime.timedelta | None
+    filtered_max_timestamp: datetime.datetime | None
+    filtered_data_age: datetime.timedelta | None
+    resampled_max_timestamp: datetime.datetime | None
+    resampled_data_age: datetime.timedelta | None
+    parquet_to_filtered_delta: datetime.timedelta | None
+    filtered_to_resampled_delta: datetime.timedelta | None
+
+
+def _coerce_naive_utc_datetime(value: pd.Timestamp | datetime.datetime | None) -> datetime.datetime | None:
+    """Convert pandas and aware datetimes to naive UTC datetimes."""
+    if value is None:
+        return None
+
+    if isinstance(value, pd.Timestamp):
+        if pd.isna(value):
+            return None
+        value = value.to_pydatetime()
+
+    if value.tzinfo is not None:
+        value = value.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+
+    return value
+
+
+def _get_max_timestamp(df: pd.DataFrame | None) -> datetime.datetime | None:
+    """Get the maximum timestamp from a DataFrame if available."""
+    if df is None or len(df) == 0:
+        return None
+
+    if "timestamp" in df.columns:
+        return _coerce_naive_utc_datetime(pd.Timestamp(df["timestamp"].max()))
+
+    if df.index.name == "timestamp" and len(df.index) > 0:
+        return _coerce_naive_utc_datetime(pd.Timestamp(df.index.max()))
+
+    return None
+
+
+def _calculate_age(
+    timestamp: datetime.datetime | None,
+    reference_now: datetime.datetime,
+) -> datetime.timedelta | None:
+    """Calculate age from a timestamp to the reference time."""
+    if timestamp is None:
+        return None
+    return reference_now - timestamp
+
+
+def _calculate_delta(
+    older: datetime.datetime | None,
+    newer: datetime.datetime | None,
+) -> datetime.timedelta | None:
+    """Calculate the gap between two timestamps when both are present."""
+    if older is None or newer is None:
+        return None
+    return older - newer
+
+
+def _parse_last_modified_header(header_value: str | None) -> datetime.datetime | None:
+    """Parse an HTTP Last-Modified header to a naive UTC datetime."""
+    if not header_value:
+        return None
+
+    parsed = parsedate_to_datetime(header_value)
+    return _coerce_naive_utc_datetime(parsed)
+
+
+def _fetch_remote_vault_history_metadata(
+    http_session: requests.Session | None,
+    remote_url: str,
+) -> tuple[datetime.datetime | None, str | None, int | None, str | None]:
+    """Fetch remote vault parquet metadata with a lightweight HEAD request."""
+    if http_session is None:
+        return None, None, None, "No HTTP session available for remote vault metadata HEAD request"
+
+    try:
+        response = http_session.head(remote_url, allow_redirects=True, timeout=30)
+        response.raise_for_status()
+        last_modified = _parse_last_modified_header(response.headers.get("Last-Modified"))
+        etag = response.headers.get("ETag")
+        content_length_header = response.headers.get("Content-Length")
+        content_length = int(content_length_header) if content_length_header is not None else None
+        return last_modified, etag, content_length, None
+    except Exception as exc:
+        return None, None, None, f"{exc.__class__.__name__}: {exc}"
+
+
+def build_vault_history_diagnostics(
+    raw_vault_price_df: pd.DataFrame,
+    filtered_vault_price_df: pd.DataFrame,
+    resampled_vault_candle_df: pd.DataFrame | None,
+    cache_path: Path | None,
+    http_session: requests.Session | None,
+    remote_url: str = CLEANED_VAULT_PRICE_PARQUET_URL,
+    now: datetime.datetime | None = None,
+) -> VaultHistoryDiagnostics:
+    """Build startup diagnostics for vault history freshness."""
+    reference_now = now or native_datetime_utc_now()
+
+    local_cache_mtime = None
+    local_cache_age = None
+    if cache_path is not None and cache_path.exists():
+        local_cache_mtime = native_datetime_utc_fromtimestamp(cache_path.stat().st_mtime)
+        local_cache_age = reference_now - local_cache_mtime
+
+    remote_last_modified, remote_etag, remote_content_length, remote_head_error = _fetch_remote_vault_history_metadata(
+        http_session=http_session,
+        remote_url=remote_url,
+    )
+
+    parquet_max_timestamp = _get_max_timestamp(raw_vault_price_df)
+    filtered_max_timestamp = _get_max_timestamp(filtered_vault_price_df)
+    resampled_max_timestamp = _get_max_timestamp(resampled_vault_candle_df)
+
+    return VaultHistoryDiagnostics(
+        cache_path=cache_path,
+        local_cache_mtime=local_cache_mtime,
+        local_cache_age=local_cache_age,
+        remote_last_modified=remote_last_modified,
+        remote_last_modified_age=_calculate_age(remote_last_modified, reference_now),
+        remote_etag=remote_etag,
+        remote_content_length=remote_content_length,
+        remote_head_error=remote_head_error,
+        parquet_max_timestamp=parquet_max_timestamp,
+        parquet_data_age=_calculate_age(parquet_max_timestamp, reference_now),
+        filtered_max_timestamp=filtered_max_timestamp,
+        filtered_data_age=_calculate_age(filtered_max_timestamp, reference_now),
+        resampled_max_timestamp=resampled_max_timestamp,
+        resampled_data_age=_calculate_age(resampled_max_timestamp, reference_now),
+        parquet_to_filtered_delta=_calculate_delta(parquet_max_timestamp, filtered_max_timestamp),
+        filtered_to_resampled_delta=_calculate_delta(filtered_max_timestamp, resampled_max_timestamp),
+    )
+
+
+def log_vault_history_diagnostics(
+    diagnostics: VaultHistoryDiagnostics,
+    stale_tolerance: datetime.timedelta = datetime.timedelta(hours=24),
+) -> None:
+    """Log a one-line startup summary for vault history freshness."""
+    level = logging.INFO
+    if diagnostics.remote_head_error:
+        level = logging.WARNING
+    elif diagnostics.parquet_data_age is not None and diagnostics.parquet_data_age > stale_tolerance:
+        level = logging.WARNING
+
+    logger.log(
+        level,
+        "Vault history freshness summary: cache_path=%s, local_cache_mtime=%s, local_cache_age=%s, "
+        "remote_last_modified=%s, remote_last_modified_age=%s, remote_etag=%s, remote_content_length=%s, "
+        "parquet_max_timestamp=%s, parquet_data_age=%s, filtered_max_timestamp=%s, filtered_data_age=%s, "
+        "resampled_max_timestamp=%s, resampled_data_age=%s, parquet_to_filtered_delta=%s, "
+        "filtered_to_resampled_delta=%s, remote_head_error=%s. When using 1d resampling, the latest candle "
+        "is floored to 00:00 UTC, so a candle timestamp can still reflect materially newer source data.",
+        diagnostics.cache_path,
+        diagnostics.local_cache_mtime,
+        diagnostics.local_cache_age,
+        diagnostics.remote_last_modified,
+        diagnostics.remote_last_modified_age,
+        diagnostics.remote_etag,
+        diagnostics.remote_content_length,
+        diagnostics.parquet_max_timestamp,
+        diagnostics.parquet_data_age,
+        diagnostics.filtered_max_timestamp,
+        diagnostics.filtered_data_age,
+        diagnostics.resampled_max_timestamp,
+        diagnostics.resampled_data_age,
+        diagnostics.parquet_to_filtered_delta,
+        diagnostics.filtered_to_resampled_delta,
+        diagnostics.remote_head_error,
+    )
+
+
+def log_stale_vault_candle_data(
+    vault_candle_df: pd.DataFrame | None,
+    vault_pairs_df: pd.DataFrame,
+    now: datetime.datetime | None = None,
+    stale_tolerance: datetime.timedelta = datetime.timedelta(hours=24),
+) -> None:
+    """Log stale vault candle data as a single warning for live startup diagnostics."""
+    if vault_candle_df is None or len(vault_candle_df) == 0:
+        return
+
+    reference_now = pd.Timestamp(now or native_datetime_utc_now())
+    stale_entries = []
+
+    for pair_id in vault_candle_df["pair_id"].unique():
+        pair_candles = vault_candle_df[vault_candle_df["pair_id"] == pair_id]
+        if len(pair_candles) == 0:
+            continue
+
+        last_ts = pair_candles["timestamp"].max()
+        age = reference_now - last_ts
+        if age <= pd.Timedelta(stale_tolerance):
+            continue
+
+        vault_row = vault_pairs_df[vault_pairs_df["pair_id"] == pair_id]
+        vault_name = vault_row["exchange_name"].iloc[0] if len(vault_row) > 0 else "unknown"
+        vault_address = vault_row["address"].iloc[0] if len(vault_row) > 0 else "unknown"
+        vault_tvl = None
+        if len(vault_row) > 0:
+            metadata = vault_row["token_metadata"].iloc[0]
+            if metadata is not None:
+                vault_tvl = metadata.tvl
+
+        stale_entries.append(
+            f"{vault_name}, address={vault_address}, TVL={vault_tvl}, pair_id={pair_id}, last_candle={last_ts}, age={age}"
+        )
+
+    if stale_entries:
+        logger.warning(
+            "Vault candle data is stale (>24h after 1d resampling floor) for %d vault(s): %s",
+            len(stale_entries),
+            " | ".join(stale_entries),
+        )
 
 
 def check_stale_vault_data(
@@ -318,5 +555,25 @@ def get_vault_data_freshness(
     df["_sort_key"] = df[["Candle data age", "TVL data age"]].max(axis=1)
     df = df.sort_values("_sort_key", ascending=False, na_position="first")
     df = df.drop(columns=["_sort_key"])
+
+    diagnostics = getattr(strategy_universe, "vault_history_diagnostics", None)
+    if diagnostics is not None:
+        df["Vault history cache path"] = str(diagnostics.cache_path) if diagnostics.cache_path is not None else None
+        df["Vault history cache mtime"] = diagnostics.local_cache_mtime
+        df["Vault history cache age"] = diagnostics.local_cache_age
+        df["Vault history remote last modified"] = diagnostics.remote_last_modified
+        df["Vault history remote last modified age"] = diagnostics.remote_last_modified_age
+        df["Vault history remote ETag"] = diagnostics.remote_etag
+        df["Vault history remote Content-Length"] = diagnostics.remote_content_length
+        df["Vault history remote HEAD error"] = diagnostics.remote_head_error
+        df["Vault history parquet max timestamp"] = diagnostics.parquet_max_timestamp
+        df["Vault history parquet data age"] = diagnostics.parquet_data_age
+        df["Vault history filtered max timestamp"] = diagnostics.filtered_max_timestamp
+        df["Vault history filtered data age"] = diagnostics.filtered_data_age
+        df["Vault history resampled max timestamp"] = diagnostics.resampled_max_timestamp
+        df["Vault history resampled data age"] = diagnostics.resampled_data_age
+        df["Vault history parquet->filtered delta"] = diagnostics.parquet_to_filtered_delta
+        df["Vault history filtered->resampled delta"] = diagnostics.filtered_to_resampled_delta
+
     df = df.reset_index(drop=True)
     return df
