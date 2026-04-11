@@ -738,6 +738,8 @@ def test_get_vault_data_freshness_includes_universe_level_history_diagnostics(
         resampled_data_age=datetime.timedelta(hours=14),
         parquet_to_filtered_delta=datetime.timedelta(hours=1),
         filtered_to_resampled_delta=datetime.timedelta(hours=12),
+        vault_history_filter_end_at=datetime.datetime(2026, 4, 11, 14, 0, 0),
+        expected_daily_flooring_reason="Expected 1d floor artefact: the resampled candle timestamp is floored to 00:00 UTC",
     )
 
     # 2. Call get_vault_data_freshness on the same universe.
@@ -778,6 +780,8 @@ def test_clone_preserves_vault_history_diagnostics(
         resampled_data_age=datetime.timedelta(hours=14),
         parquet_to_filtered_delta=datetime.timedelta(hours=1),
         filtered_to_resampled_delta=datetime.timedelta(hours=12),
+        vault_history_filter_end_at=datetime.datetime(2026, 4, 11, 14, 0, 0),
+        expected_daily_flooring_reason="Expected 1d floor artefact: the resampled candle timestamp is floored to 00:00 UTC",
     )
 
     # 2. Clone the universe.

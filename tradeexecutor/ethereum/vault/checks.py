@@ -41,6 +41,9 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_VAULT_HISTORY_STALE_TOLERANCE = datetime.timedelta(hours=24)
+
+
 class StaleVaultData(Exception):
     """Raised when one or more vaults have data older than the tolerance."""
     pass
@@ -66,6 +69,8 @@ class VaultHistoryDiagnostics:
     resampled_data_age: datetime.timedelta | None
     parquet_to_filtered_delta: datetime.timedelta | None
     filtered_to_resampled_delta: datetime.timedelta | None
+    vault_history_filter_end_at: datetime.datetime | None
+    expected_daily_flooring_reason: str | None
 
 
 def _coerce_naive_utc_datetime(value: pd.Timestamp | datetime.datetime | None) -> datetime.datetime | None:
@@ -127,6 +132,39 @@ def _parse_last_modified_header(header_value: str | None) -> datetime.datetime |
     return _coerce_naive_utc_datetime(parsed)
 
 
+def _calculate_expected_daily_flooring_reason(
+    parquet_data_age: datetime.timedelta | None,
+    filtered_data_age: datetime.timedelta | None,
+    filtered_max_timestamp: datetime.datetime | None,
+    resampled_max_timestamp: datetime.datetime | None,
+    vault_history_filter_end_at: datetime.datetime | None,
+    stale_tolerance: datetime.timedelta = DEFAULT_VAULT_HISTORY_STALE_TOLERANCE,
+) -> str | None:
+    """Explain when a stale-looking resampled timestamp is an expected daily floor artefact."""
+    if (
+        parquet_data_age is None
+        or filtered_data_age is None
+        or parquet_data_age > stale_tolerance
+        or filtered_data_age > stale_tolerance
+        or filtered_max_timestamp is None
+        or resampled_max_timestamp is None
+        or filtered_max_timestamp <= resampled_max_timestamp
+    ):
+        return None
+
+    filtered_floor = filtered_max_timestamp.replace(hour=0, minute=0, second=0, microsecond=0)
+    if resampled_max_timestamp != filtered_floor:
+        return None
+
+    if vault_history_filter_end_at is not None:
+        return (
+            "Expected 1d floor artefact: vault history kept intraday source data until "
+            f"{vault_history_filter_end_at}, but the resampled candle timestamp is floored to 00:00 UTC"
+        )
+
+    return "Expected 1d floor artefact: the resampled candle timestamp is floored to 00:00 UTC"
+
+
 def _fetch_remote_vault_history_metadata(
     http_session: requests.Session | None,
     remote_url: str,
@@ -153,6 +191,7 @@ def build_vault_history_diagnostics(
     resampled_vault_candle_df: pd.DataFrame | None,
     cache_path: Path | None,
     http_session: requests.Session | None,
+    vault_history_filter_end_at: datetime.datetime | None = None,
     remote_url: str = CLEANED_VAULT_PRICE_PARQUET_URL,
     now: datetime.datetime | None = None,
 ) -> VaultHistoryDiagnostics:
@@ -173,6 +212,8 @@ def build_vault_history_diagnostics(
     parquet_max_timestamp = _get_max_timestamp(raw_vault_price_df)
     filtered_max_timestamp = _get_max_timestamp(filtered_vault_price_df)
     resampled_max_timestamp = _get_max_timestamp(resampled_vault_candle_df)
+    parquet_data_age = _calculate_age(parquet_max_timestamp, reference_now)
+    filtered_data_age = _calculate_age(filtered_max_timestamp, reference_now)
 
     return VaultHistoryDiagnostics(
         cache_path=cache_path,
@@ -184,19 +225,27 @@ def build_vault_history_diagnostics(
         remote_content_length=remote_content_length,
         remote_head_error=remote_head_error,
         parquet_max_timestamp=parquet_max_timestamp,
-        parquet_data_age=_calculate_age(parquet_max_timestamp, reference_now),
+        parquet_data_age=parquet_data_age,
         filtered_max_timestamp=filtered_max_timestamp,
-        filtered_data_age=_calculate_age(filtered_max_timestamp, reference_now),
+        filtered_data_age=filtered_data_age,
         resampled_max_timestamp=resampled_max_timestamp,
         resampled_data_age=_calculate_age(resampled_max_timestamp, reference_now),
         parquet_to_filtered_delta=_calculate_delta(parquet_max_timestamp, filtered_max_timestamp),
         filtered_to_resampled_delta=_calculate_delta(filtered_max_timestamp, resampled_max_timestamp),
+        vault_history_filter_end_at=vault_history_filter_end_at,
+        expected_daily_flooring_reason=_calculate_expected_daily_flooring_reason(
+            parquet_data_age=parquet_data_age,
+            filtered_data_age=filtered_data_age,
+            filtered_max_timestamp=filtered_max_timestamp,
+            resampled_max_timestamp=resampled_max_timestamp,
+            vault_history_filter_end_at=vault_history_filter_end_at,
+        ),
     )
 
 
 def log_vault_history_diagnostics(
     diagnostics: VaultHistoryDiagnostics,
-    stale_tolerance: datetime.timedelta = datetime.timedelta(hours=24),
+    stale_tolerance: datetime.timedelta = DEFAULT_VAULT_HISTORY_STALE_TOLERANCE,
 ) -> None:
     """Log a one-line startup summary for vault history freshness."""
     level = logging.INFO
@@ -211,8 +260,9 @@ def log_vault_history_diagnostics(
         "remote_last_modified=%s, remote_last_modified_age=%s, remote_etag=%s, remote_content_length=%s, "
         "parquet_max_timestamp=%s, parquet_data_age=%s, filtered_max_timestamp=%s, filtered_data_age=%s, "
         "resampled_max_timestamp=%s, resampled_data_age=%s, parquet_to_filtered_delta=%s, "
-        "filtered_to_resampled_delta=%s, remote_head_error=%s. When using 1d resampling, the latest candle "
-        "is floored to 00:00 UTC, so a candle timestamp can still reflect materially newer source data.",
+        "filtered_to_resampled_delta=%s, vault_history_filter_end_at=%s, expected_daily_flooring_reason=%s, "
+        "remote_head_error=%s. When using 1d resampling, the latest candle is floored to 00:00 UTC, "
+        "so a candle timestamp can still reflect materially newer source data.",
         diagnostics.cache_path,
         diagnostics.local_cache_mtime,
         diagnostics.local_cache_age,
@@ -228,6 +278,8 @@ def log_vault_history_diagnostics(
         diagnostics.resampled_data_age,
         diagnostics.parquet_to_filtered_delta,
         diagnostics.filtered_to_resampled_delta,
+        diagnostics.vault_history_filter_end_at,
+        diagnostics.expected_daily_flooring_reason,
         diagnostics.remote_head_error,
     )
 
@@ -301,10 +353,28 @@ def _build_vault_history_warning_rows(
         )
 
     if (
+        diagnostics.parquet_to_filtered_delta is not None
+        and diagnostics.parquet_to_filtered_delta > datetime.timedelta(hours=1)
+        and diagnostics.parquet_data_age is not None
+        and diagnostics.parquet_data_age <= stale_tolerance
+        and diagnostics.filtered_data_age is not None
+        and diagnostics.filtered_data_age <= stale_tolerance
+        and diagnostics.expected_daily_flooring_reason is None
+    ):
+        warning_rows.append(
+            {
+                "field": "parquet_to_filtered_delta",
+                "value": diagnostics.parquet_to_filtered_delta,
+                "reason": "Selected vault history trails the freshest parquet row even though the source parquet is still fresh",
+            }
+        )
+
+    if (
         diagnostics.resampled_data_age is not None
         and diagnostics.resampled_data_age > stale_tolerance
         and diagnostics.parquet_data_age is not None
         and diagnostics.parquet_data_age <= stale_tolerance
+        and diagnostics.expected_daily_flooring_reason is None
     ):
         warning_rows.append(
             {
@@ -319,6 +389,7 @@ def _build_vault_history_warning_rows(
         and diagnostics.filtered_to_resampled_delta > datetime.timedelta(hours=12)
         and diagnostics.parquet_data_age is not None
         and diagnostics.parquet_data_age <= stale_tolerance
+        and diagnostics.expected_daily_flooring_reason is None
     ):
         warning_rows.append(
             {
@@ -688,6 +759,8 @@ def get_vault_data_freshness(
         df["Vault history resampled data age"] = diagnostics.resampled_data_age
         df["Vault history parquet->filtered delta"] = diagnostics.parquet_to_filtered_delta
         df["Vault history filtered->resampled delta"] = diagnostics.filtered_to_resampled_delta
+        df["Vault history filter end timestamp"] = diagnostics.vault_history_filter_end_at
+        df["Vault history expected daily flooring reason"] = diagnostics.expected_daily_flooring_reason
 
     df = df.reset_index(drop=True)
     return df
