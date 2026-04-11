@@ -22,6 +22,7 @@ from eth_defi.vault.base import VaultSpec
 from tradeexecutor.cli.main import app
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
 
 from eth_typing import HexAddress
 
@@ -204,6 +205,8 @@ def test_cli_lagoon_deploy_arbitrum_vault(
     cli.main(args=["perform-test-trade", "--pair", "(arbitrum, 0x4b6f1c9e5d470b97181786b26da0d0945a7cf027)"], standalone_mode=False)
 
     # 4. Start executor and run 1s cycle
+    # This test exercises Lagoon deploy/start wiring, not remote market-data freshness.
+    mocker.patch.object(TradingStrategyUniverseModel, "check_data_age", return_value=None)
     cli.main(args=["start"], standalone_mode=False)
 
     # 4.b Check the 1s cycle has been run by inspecting the saved state
