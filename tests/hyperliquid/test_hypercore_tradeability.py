@@ -79,7 +79,7 @@ def test_hypercore_deposit_closed_when_vault_closed(
     monkeypatch: pytest.MonkeyPatch,
 ):
     pair = _make_pair()
-    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair: _make_info(is_closed=True))
+    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair, user=None: _make_info(is_closed=True))
 
     assert pricing.get_max_deposit(None, pair) == 0
     assert pricing.can_deposit(None, pair) is False
@@ -90,7 +90,7 @@ def test_hypercore_deposit_closed_when_leader_disables_deposits(
     monkeypatch: pytest.MonkeyPatch,
 ):
     pair = _make_pair()
-    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair: _make_info(allow_deposits=False))
+    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair, user=None: _make_info(allow_deposits=False))
 
     assert pricing.get_max_deposit(None, pair) == 0
     assert pricing.can_deposit(None, pair) is False
@@ -101,7 +101,7 @@ def test_hypercore_deposit_closed_when_leader_fraction_too_low(
     monkeypatch: pytest.MonkeyPatch,
 ):
     pair = _make_pair()
-    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair: _make_info(leader_fraction=0.04))
+    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair, user=None: _make_info(leader_fraction=0.04))
 
     assert pricing.get_max_deposit(None, pair) == 0
     assert pricing.can_deposit(None, pair) is False
@@ -115,7 +115,7 @@ def test_hypercore_parent_vault_ignores_allow_deposits_flag(
     monkeypatch.setattr(
         pricing,
         "_get_vault_info",
-        lambda pair: _make_info(allow_deposits=False, relationship_type="parent"),
+        lambda pair, user=None: _make_info(allow_deposits=False, relationship_type="parent"),
     )
 
     assert pricing.get_max_deposit(None, pair) is None
@@ -127,7 +127,7 @@ def test_hypercore_redemption_closed_without_position(
     monkeypatch: pytest.MonkeyPatch,
 ):
     pair = _make_pair()
-    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair: _make_info())
+    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair, user=None: _make_info())
     monkeypatch.setattr(
         "tradeexecutor.ethereum.vault.hypercore_valuation.fetch_user_vault_equity",
         lambda session, user, vault_address, **kwargs: None,
@@ -148,7 +148,7 @@ def test_hypercore_redemption_closed_during_lockup(
     3. Verify the structured result records the user-lockup reason and stage.
     """
     pair = _make_pair()
-    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair: _make_info())
+    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair, user=None: _make_info())
     monkeypatch.setattr(
         "tradeexecutor.ethereum.vault.hypercore_valuation.fetch_user_vault_equity",
         lambda session, user, vault_address, **kwargs: UserVaultEquity(
@@ -184,7 +184,7 @@ def test_hypercore_redemption_closed_when_vault_has_no_withdrawable_liquidity(
     3. Verify the structured result records the vault-liquidity block reason.
     """
     pair = _make_pair()
-    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair: _make_info(max_withdrawable=Decimal("0")))
+    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair, user=None: _make_info(max_withdrawable=Decimal("0")))
     monkeypatch.setattr(
         "tradeexecutor.ethereum.vault.hypercore_valuation.fetch_user_vault_equity",
         lambda session, user, vault_address, **kwargs: UserVaultEquity(
@@ -220,7 +220,7 @@ def test_hypercore_redemption_allowed_when_lockup_expired(
     3. Verify the structured result round-trips through dataclasses-json intact.
     """
     pair = _make_pair()
-    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair: _make_info(max_withdrawable=Decimal("40")))
+    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair, user=None: _make_info(max_withdrawable=Decimal("40")))
     monkeypatch.setattr(
         "tradeexecutor.ethereum.vault.hypercore_valuation.fetch_user_vault_equity",
         lambda session, user, vault_address, **kwargs: UserVaultEquity(
@@ -262,7 +262,7 @@ def test_hypercore_redemption_defaults_to_open_when_safe_unknown(
         session_factory=lambda pair: MagicMock(),
     )
 
-    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair: _make_info())
+    monkeypatch.setattr(pricing, "_get_vault_info", lambda pair, user=None: _make_info())
 
     assert pricing.get_max_redemption(None, pair) is None
     assert pricing.can_redeem(None, pair) is True

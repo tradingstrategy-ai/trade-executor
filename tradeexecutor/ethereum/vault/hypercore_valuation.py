@@ -281,11 +281,14 @@ class HypercoreVaultPricing(PricingModel):
             self._session_cache[api_url] = session
         return session
 
-    def _get_vault_info(self, pair: TradingPairIdentifier) -> VaultInfo:
+    def _get_vault_info(self, pair: TradingPairIdentifier, user: str | None = None) -> VaultInfo:
         vault_address = pair.pool_address
         assert vault_address, f"No pool_address set for Hypercore vault pair: {pair}"
         session = self._get_session(pair)
-        return HyperliquidVault(session=session, vault_address=vault_address).fetch_info()
+        vault = HyperliquidVault(session=session, vault_address=vault_address)
+        if user is not None:
+            return vault.fetch_info(user=user)
+        return vault.fetch_metadata()
 
     def _get_market_snapshot(
         self,
@@ -466,7 +469,7 @@ class HypercoreVaultPricing(PricingModel):
             result.message = "Cannot resolve safe address for Hypercore redemption check"
             return result
 
-        info = self._get_vault_info(pair)
+        info = self._get_vault_info(pair, user=safe_address)
         result.max_withdrawable = float(info.max_withdrawable)
         result.raw_api_data = RedemptionApiSnapshot(
             vault_info=self._build_vault_info_snapshot(info),
