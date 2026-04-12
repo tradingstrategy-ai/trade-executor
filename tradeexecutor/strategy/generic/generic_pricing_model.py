@@ -11,8 +11,10 @@ from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfig
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, TokenAmount
 from tradeexecutor.strategy.pricing_model import PricingModel, PricingModelFactory
+from tradeexecutor.strategy.redemption import RedemptionCheckResult, RedemptionCheckStage
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
 
@@ -158,6 +160,17 @@ class GenericPricing(PricingModel):
     ) -> bool:
         route = self.route(pair)
         return route.can_deposit(ts, pair)
+
+    def check_redemption(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier | None,
+        *,
+        stage: RedemptionCheckStage = RedemptionCheckStage.unknown,
+        position: TradingPosition | None = None,
+    ) -> RedemptionCheckResult:
+        route = self.route(pair)
+        return route.check_redemption(ts, pair, stage=stage, position=position)
 
     def can_redeem(
         self,

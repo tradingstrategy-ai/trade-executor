@@ -1827,6 +1827,146 @@ def test_alpha_model_skips_sell_rebalance_for_non_redeemable_position(
     assert signal.redemption_check_results[0].reason_code == RedemptionBlockReason.user_lockup_not_expired
 
 
+def test_generic_pricing_delegates_check_redemption_with_diagnostics(
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model: BacktestPricing,
+    start_ts: datetime.datetime,
+    usdc: AssetIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GenericPricing must delegate check_redemption to the route so that
+    carry-forward diagnostics propagate to collect_blocked_redemption_results.
+
+    1. Build a GenericPricing that routes vault pairs to a mock Hypercore pricing model.
+    2. Use GenericPricing in a PositionManager and run carry_forward_non_redeemable_positions.
+    3. Verify collect_blocked_redemption_results returns the rich result with reason_code intact.
+    """
+    from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
+    from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator
+    from tradeexecutor.strategy.redemption import collect_blocked_redemption_results
+
+    hypercore_vault_pair = TradingPairIdentifier(
+        base=AssetIdentifier(1, "0x1234567890123456789012345678901234567890", "pmalt", 18),
+        quote=usdc,
+        pool_address="0x1234567890123456789012345678901234567891",
+        exchange_address="0x1234567890123456789012345678901234567892",
+        internal_id=100,
+        kind=TradingPairKind.vault,
+        fee=0,
+    )
+    hypercore_vault_pair.other_data["vault_protocol"] = "hypercore"
+
+    # 1. Build a GenericPricing that routes vault pairs to a mock Hypercore pricing model.
+    class MockHypercorePricing:
+        """Mimics HypercoreVaultPricing returning a rich blocked result."""
+
+        def get_mid_price(self, ts, pair):
+            return 1.0
+
+        def check_redemption(self, ts, pair, *, stage=RedemptionCheckStage.unknown, position=None):
+            return RedemptionCheckResult(
+                timestamp=ts,
+                stage=stage,
+                can_redeem=False,
+                reason_code=RedemptionBlockReason.user_lockup_not_expired,
+                pair_ticker=pair.get_ticker(),
+                vault_address=pair.pool_address,
+                safe_address="0x0000000000000000000000000000000000000abc",
+                position_recorded_lockup_expires_at=datetime.datetime(2022, 1, 3),
+                user_lockup_expires_at=datetime.datetime(2022, 1, 3),
+                message="Hypercore user lockup has not expired yet",
+                max_redemption=0.0,
+            )
+
+    mock_hypercore = MockHypercorePricing()
+
+    class MockConfigurator(PairConfigurator):
+        """Routes vault pairs to the mock Hypercore pricing model."""
+
+        def __init__(self):
+            pass
+
+        def get_pricing(self, pair):
+            return mock_hypercore
+
+        def get_supported_routers(self):
+            return set()
+
+        def match_router(self, pair):
+            return None
+
+        def create_config(self, routing_id, **kwargs):
+            return None
+
+    generic_pricing = GenericPricing(MockConfigurator())
+
+    state = State()
+    state.portfolio.reserves = {
+        usdc: ReservePosition(
+            asset=usdc,
+            quantity=Decimal(2500),
+            last_sync_at=start_ts,
+            reserve_token_price=USDollarAmount(1.0),
+            last_pricing_at=start_ts,
+            initial_deposit=Decimal(2500),
+        )
+    }
+
+    locked_position = TradingPosition(
+        position_id=1,
+        opened_at=start_ts,
+        pair=hypercore_vault_pair,
+        last_pricing_at=start_ts,
+        last_token_price=USDollarPrice(1.0),
+        last_reserve_price=USDollarPrice(1.0),
+        reserve_currency=usdc,
+    )
+    locked_trade = TradeExecution(
+        trade_id=1,
+        position_id=1,
+        trade_type=TradeType.rebalance,
+        pair=hypercore_vault_pair,
+        opened_at=start_ts,
+        planned_quantity=Decimal(5000),
+        executed_quantity=Decimal(5000),
+        planned_price=USDollarPrice(1.0),
+        executed_price=USDollarPrice(1.0),
+        lp_fees_estimated=USDollarAmount(0),
+        planned_reserve=USDollarAmount(5000),
+        executed_reserve=USDollarAmount(5000),
+        executed_at=start_ts,
+        reserve_currency=usdc,
+    )
+    locked_position.trades[1] = locked_trade
+    state.portfolio.open_positions = {1: locked_position}
+
+    # 2. Use GenericPricing in a PositionManager and run carry_forward_non_redeemable_positions.
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),
+        strategy_universe.data_universe,
+        state,
+        generic_pricing,
+    )
+    alpha_model = AlphaModel(timestamp=position_manager.timestamp)
+    locked_value = alpha_model.carry_forward_non_redeemable_positions(position_manager)
+    alpha_model.select_top_signals(count=5)
+
+    # 3. Verify collect_blocked_redemption_results returns the rich result with reason_code.
+    assert locked_value == pytest.approx(5000.0)
+    locked_signal = alpha_model.get_signal_by_pair(hypercore_vault_pair)
+    assert locked_signal is not None
+    assert TradingPairSignalFlags.cannot_redeem in locked_signal.flags
+    assert len(locked_signal.redemption_check_results) == 1
+    assert locked_signal.redemption_check_results[0].reason_code == RedemptionBlockReason.user_lockup_not_expired
+    assert locked_signal.redemption_check_results[0].safe_address == "0x0000000000000000000000000000000000000abc"
+    assert locked_signal.redemption_check_results[0].stage == RedemptionCheckStage.carry_forward
+
+    blocked_results = collect_blocked_redemption_results(alpha_model.signals)
+    assert len(blocked_results) == 1
+    assert blocked_results[0].reason_code == RedemptionBlockReason.user_lockup_not_expired
+    assert blocked_results[0].message == "Hypercore user lockup has not expired yet"
+
+
 def test_update_old_weights_reads_position_value_once(
     single_asset_portfolio: Portfolio,
     weth_usdc: TradingPairIdentifier,
