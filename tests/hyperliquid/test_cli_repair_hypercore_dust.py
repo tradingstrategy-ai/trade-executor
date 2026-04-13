@@ -231,3 +231,45 @@ def test_repair_hypercore_dust_cli_infers_default_state_file_from_id() -> None:
         assert dust_position_id in repaired_state.portfolio.closed_positions
         assert dust_position_id not in repaired_state.portfolio.open_positions
         assert live_position_id in repaired_state.portfolio.open_positions
+
+
+def test_repair_hypercore_dust_cli_creates_backup_before_saving(
+    tmp_path: Path,
+) -> None:
+    """Test the CLI follows the normal mutating-command backup pattern before saving state.
+
+    1. Create a state file with a closeable Hypercore dust duplicate.
+    2. Run the CLI repair command without unit-testing mode so backup creation stays enabled.
+    3. Verify the repair succeeds and a dedicated backup file is created alongside the state file.
+    """
+
+    # 1. Create a state file with a closeable Hypercore dust duplicate.
+    state, dust_position_id, live_position_id = _build_hypercore_duplicate_state(
+        dust_quantity=Decimal("0.10"),
+    )
+    state_file = tmp_path / "hypercore-backup-state.json"
+    JSONFileStore(state_file).sync(state)
+
+    # 2. Run the CLI repair command without unit-testing mode so backup creation stays enabled.
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "repair-hypercore-dust",
+            "--state-file",
+            str(state_file),
+            "--auto-approve",
+            "--log-level",
+            "disabled",
+        ],
+    )
+
+    # 3. Verify the repair succeeds and a dedicated backup file is created alongside the state file.
+    assert result.exit_code == 0, result.stdout
+
+    repaired_state = State.read_json_file(state_file)
+    assert dust_position_id in repaired_state.portfolio.closed_positions
+    assert live_position_id in repaired_state.portfolio.open_positions
+
+    backup_file = state_file.with_suffix(".repair-hypercore-dust-backup-1.json")
+    assert backup_file.exists()

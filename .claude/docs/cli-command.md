@@ -51,15 +51,19 @@ Typical pattern:
 1. Accept `id`, optional `strategy_file`, and optional `state_file`
 2. Resolve `id` with `prepare_executor_id()` if needed
 3. Default `state_file` to `state/{id}.json`
-4. Load state via `create_state_store()`
-5. Mutate or inspect state
-6. Save with `store.sync(state)` if the command changes state
+4. Call `setup_logging()` early unless the command is intentionally print-only
+5. Open the state via `create_state_store()` and assert it exists
+6. If the command mutates state, take a backup with `backup_state()` before changing anything
+7. Mutate or inspect state
+8. Save with `store.sync(state)` if the command changes state
+9. End with `logger.info("All ok")` if the command has a clear repair or verification outcome
 
 Representative code:
 
 - `tradeexecutor/cli/commands/show_positions.py`
 - `tradeexecutor/cli/commands/prune.py`
 - `tradeexecutor/cli/commands/correct_history.py`
+- `tradeexecutor/cli/commands/repair_hypercore_dust.py`
 
 ### Live or chain-aware commands
 
@@ -156,6 +160,21 @@ if not state_file:
 
 Use `create_state_store(state_file)` to open it. Many commands then assert that the store is not pristine before proceeding.
 
+For mutating local-state commands, a stronger operator-safe pattern is:
+
+```python
+store = create_state_store(Path(state_file))
+assert not store.is_pristine(), f"State file does not exist: {state_file}"
+
+store, state = backup_state(
+    state_file,
+    backup_suffix="my-command-backup",
+    unit_testing=unit_testing,
+)
+```
+
+This is now the preferred approach for repair-style commands because it gives both an explicit existence check and a recoverable backup before mutation.
+
 ### `cache_path`
 
 Helper:
@@ -235,12 +254,14 @@ Common logging practice in commands:
 1. Call `setup_logging()` very early
 2. Use `logger.info(...)` for progress and summary lines
 3. Use `logger.error(...)` before exiting on failure
-4. Use `print(...)` only for intentionally user-facing tabular or ad-hoc console output in local tools
+4. Log important inferred paths such as the resolved `state_file` or `cache_path`
+5. Use `print(...)` only for intentionally user-facing tabular or ad-hoc console output in local tools
 
 Examples:
 
 - `check_wallet` uses structured progress logging and ends with `logger.info("All ok")`
 - `correct_accounts` logs the correction summary and only prints `All ok` when the final verification passes
+- `repair_hypercore_dust` logs the resolved state path, duplicate diagnostics, save step, and final `All ok`
 - `show_positions` is intentionally print-heavy because it is a pure inspection command
 
 ## How `All ok` happens
@@ -277,6 +298,8 @@ logger.info("All ok")
 ```
 
 Use `All ok` when the command has a meaningful final pass/fail state, especially after verification against chain state or final saved state. Do not add it to every inspection-only command.
+
+For purely informational commands, `All ok` is optional. For commands that repair, validate, or close out an operator workflow, it is strongly preferred.
 
 ## Shared option injection
 
@@ -330,18 +353,23 @@ Examples:
 
 If a command mutates state:
 
-- usually use `create_state_store()` if writing directly
-- use `backup_state()` first if the mutation is risky or operator-facing
+- usually resolve and log the target path first
+- use `create_state_store()` to confirm the state exists
+- use `backup_state()` before saving if the mutation is operator-facing
 
 Typical safe mutation pattern:
 
 ```python
+store = create_state_store(Path(state_file))
+assert not store.is_pristine()
 store, state = backup_state(state_file, unit_testing=unit_testing)
 ...
 store.sync(state)
 ```
 
 This is common in repair and correction commands.
+
+When choosing a backup suffix, prefer a command-specific name such as `correct-history-backup` or `repair-hypercore-dust-backup`, so operators can immediately see which tool created the snapshot.
 
 ## Exit and failure conventions
 
@@ -381,6 +409,10 @@ For RPC and state mutation:
 - `close_position.py`
 - `repair.py`
 
+For local repair with duplicate diagnostics:
+
+- `repair_hypercore_dust.py`
+
 For long-running daemon entry:
 
 - `start.py`
@@ -400,3 +432,13 @@ Before opening a PR for a new CLI command, check:
 8. Does it back up state first if the mutation is risky?
 9. Does it provide a final success message only when there is a meaningful verified success state?
 10. Does the command help output look like the other commands in the repo?
+
+## Findings from review
+
+Comparing `repair_hypercore_dust` against `prune_state`, `correct_history`, `check_wallet`, `correct_accounts`, and `close_position` reinforced a few practical rules:
+
+- Local repair commands should still look like first-class operator commands, not one-off scripts.
+- Inferring `state/{id}.json` and logging the resolved path makes Docker and ad-hoc operator use much safer.
+- The normal mutation pattern is `create_state_store()` for existence checking, then `backup_state()` before edits, then `store.sync(state)`.
+- Commands with a crisp success contract should end with `logger.info("All ok")`; operators look for that line.
+- `strategy_file` can be optional for local-state-only commands, but `id` inference should still route through `prepare_executor_id()` when `state_file` is omitted.

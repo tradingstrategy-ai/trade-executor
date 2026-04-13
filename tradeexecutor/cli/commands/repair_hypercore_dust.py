@@ -8,7 +8,7 @@ from typer import Option
 
 from . import shared_options
 from .app import app
-from ..bootstrap import create_state_store, prepare_executor_id
+from ..bootstrap import backup_state, create_state_store, prepare_executor_id
 from ..double_position import check_double_position, get_duplicate_position_groups
 from ..log import setup_logging
 from ...state.repair import close_hypercore_dust_positions
@@ -61,7 +61,13 @@ def repair_hypercore_dust(
     assert isinstance(store, JSONFileStore)
     assert not store.is_pristine(), f"State file does not exist: {state_file}"
 
-    state = store.load()
+    # Follow the standard mutating-command pattern: take a backup first, then
+    # operate on the live state file copy.
+    store, state = backup_state(
+        state_file,
+        backup_suffix="repair-hypercore-dust-backup",
+        unit_testing=unit_testing,
+    )
 
     duplicate_group_count_before = _count_duplicate_hypercore_groups(state)
     if duplicate_group_count_before:
@@ -88,6 +94,7 @@ def repair_hypercore_dust(
         )
         for trade in created_trades:
             logger.info("Created repair trade %s for position %s", trade.trade_id, trade.position_id)
+        logger.info("Saving repaired state to %s", store.path)
         store.sync(state)
     else:
         logger.info("No closeable Hypercore dust positions were found")
@@ -105,3 +112,4 @@ def repair_hypercore_dust(
         )
 
     logger.info("No Hypercore duplicate position groups remain after dust cleanup")
+    logger.info("All ok")
