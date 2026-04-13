@@ -1278,7 +1278,14 @@ class TradingPosition(GenericPosition):
         - It has planned trades taking the position to zero
         """
         epsilon = get_close_epsilon_for_pair(self.pair)
-        return self.get_quantity(planned=True) < epsilon
+        # A small live residual alone is not enough here. Hypercore vaults in
+        # particular can keep dust in the position because the protocol refuses
+        # exact full withdrawals when NAV moves between planning and execution.
+        # Only treat the position as "about to close" when this cycle has
+        # actually planned trades that take the planned quantity to zero.
+        if not self.has_planned_trades():
+            return False
+        return abs(self.get_quantity(planned=True)) <= epsilon
 
     def can_be_closed(self) -> bool:
         """There are no tied tokens in this position.

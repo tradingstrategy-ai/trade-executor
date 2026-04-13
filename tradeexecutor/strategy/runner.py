@@ -51,6 +51,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeFlag
 from tradeexecutor.state.reserve import ReservePosition
+from tradeexecutor.state.repair import close_hypercore_dust_positions
 from tradeexecutor.strategy.valuation import ValuationModelFactory, ValuationModel, revalue_state
 
 logger = logging.getLogger(__name__)
@@ -696,6 +697,12 @@ class StrategyRunner(abc.ABC):
             else:
                 end_block = self.execution_model.get_safe_latest_block()
             logger.info("Post-trade accounts balance check for block %s, cycle %d", end_block, cycle)
+            closed_dust_trades = close_hypercore_dust_positions(state.portfolio)
+            if closed_dust_trades:
+                logger.info(
+                    "Auto-closed %d Hypercore dust position(s) before post-trade account checks",
+                    len(closed_dust_trades),
+                )
             self.check_accounts(
                 universe,
                 state,
@@ -794,6 +801,13 @@ class StrategyRunner(abc.ABC):
                     end_block,
                     long_short_metrics_latest=long_short_metrics_latest,
                     post_valuation=True,
+                )
+
+            closed_dust_trades = close_hypercore_dust_positions(state.portfolio)
+            if closed_dust_trades:
+                logger.info(
+                    "Auto-closed %d Hypercore dust position(s) before pre-trade account checks",
+                    len(closed_dust_trades),
                 )
 
             # Double check we handled deposits correctly
@@ -1178,6 +1192,16 @@ class StrategyRunner(abc.ABC):
             return
 
         if self.accounting_checks:
+            logger.info("Double open position tripwire check before account checks")
+            try:
+                check_double_position(
+                    state,
+                    printer=logger.error,
+                    crash=True,
+                )
+            except AssertionError as e:
+                raise UnexpectedAccountingCorrectionIssue(str(e)) from e
+
             clean, df = check_accounts(
                 universe.data_universe.pairs,
                 [universe.get_reserve_asset()],
