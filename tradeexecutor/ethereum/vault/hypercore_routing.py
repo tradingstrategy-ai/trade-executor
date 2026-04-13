@@ -431,9 +431,10 @@ class HypercoreVaultRouting(RoutingModel):
         at trade-creation time can drift from actual vault equity due to fees,
         PnL, or NAV changes.  This method fetches the **live** equity from the
         ``userVaultEquities`` API and uses it directly as the withdrawal amount.
-        The planned value serves only as a sanity reference — if the two
+        The planned value serves only as a stale reference — if the two
         disagree by more than :py:data:`HYPERCORE_LIKELY_CLOSE_TOLERANCE`, we
-        abort because something is seriously wrong.
+        log a loud warning but still trust the live equity because aborting
+        here can freeze a legitimate close on ordinary NAV drift alone.
 
         The live amount is stored in ``trade.other_data`` so that settlement
         phases 2-3 use the same value that phase 1's ``vaultTransfer`` was
@@ -448,8 +449,7 @@ class HypercoreVaultRouting(RoutingModel):
         :return:
             Raw USDC amount to withdraw (the live vault equity).
         :raises AssertionError:
-            If the vault has no position or the live equity diverges from
-            the planned amount by more than the tolerance.
+            If the vault has no position.
         """
         session = self._get_session()
 
@@ -473,18 +473,27 @@ class HypercoreVaultRouting(RoutingModel):
 
         live_raw = usdc_to_raw(equity.equity)
 
-        # 3. Sanity check: the planned and live values must agree within
-        #    HYPERCORE_LIKELY_CLOSE_TOLERANCE (default 97.5%).  A larger
-        #    divergence signals a wrong vault address, corrupted state, or a
-        #    major vault event — abort rather than withdraw an unexpected amount.
-        assert live_raw >= planned_raw * HYPERCORE_LIKELY_CLOSE_TOLERANCE, (
-            f"Live vault equity ({equity.equity} USDC, {live_raw} raw) is too far "
-            f"below planned withdrawal ({raw_to_usdc(planned_raw)} USDC, {planned_raw} raw) "
-            f"for Safe {self.safe_address} in vault {vault_address}. "
-            f"Ratio: {live_raw / planned_raw:.4f}, "
-            f"tolerance: {HYPERCORE_LIKELY_CLOSE_TOLERANCE}. "
-            f"Aborting withdrawal to avoid unexpected behaviour."
-        )
+        # 3. WARNING: Do not abort a live close just because planned_reserve
+        #    drifted too far from current vault equity.
+        #    Planned reserve is created earlier in the cycle and can become
+        #    stale on real HyperCore vaults.  The live API read is the
+        #    authoritative amount for phase 1.  We keep the ratio check only
+        #    as a loud operator signal in logs so unexpected drift is visible.
+        if planned_raw > 0 and live_raw < planned_raw * HYPERCORE_LIKELY_CLOSE_TOLERANCE:
+            logger.warning(
+                "Full close planned/live drift is large for Safe %s in vault %s: "
+                "planned %s USDC (%d raw), live %s USDC (%d raw), ratio %.4f, "
+                "warning threshold %.4f. Continuing with live equity because "
+                "aborting here can freeze a legitimate close on NAV drift alone.",
+                self.safe_address,
+                vault_address,
+                raw_to_usdc(planned_raw),
+                planned_raw,
+                equity.equity,
+                live_raw,
+                live_raw / planned_raw,
+                HYPERCORE_LIKELY_CLOSE_TOLERANCE,
+            )
 
         # 4. Subtract a safety margin from the live equity to account for
         #    NAV drift between the API read and HyperCore action execution.
@@ -704,6 +713,31 @@ class HypercoreVaultRouting(RoutingModel):
                 attempt,
             )
             time.sleep(min(poll_interval, remaining))
+
+    def _is_withdrawal_already_reflected_in_vault_equity(
+        self,
+        position_quantity_before: Decimal,
+        current_vault_equity: Decimal,
+        expected_increase_raw: int,
+    ) -> bool:
+        """Check whether a withdrawal already appears as reduced vault equity.
+
+        HyperCore phase 1 (``vaultTransfer(vault->perp)``) can settle quickly
+        enough that by the time we start polling, the vault equity has already
+        dropped and the perp withdrawable balance baseline is effectively
+        post-withdrawal. In that case, waiting for another increase in perp
+        withdrawable would be a false failure.
+        """
+        expected_increase = raw_to_usdc(expected_increase_raw)
+        accepted_tolerance = max(
+            Decimal("0.10"),
+            expected_increase * HYPERCORE_RELATIVE_BALANCE_TOLERANCE,
+        )
+        inferred_decrease = max(
+            position_quantity_before - current_vault_equity,
+            Decimal(0),
+        )
+        return inferred_decrease >= expected_increase - accepted_tolerance
 
     def _wait_for_spot_free_usdc_balance(
         self,
@@ -1397,6 +1431,25 @@ class HypercoreVaultRouting(RoutingModel):
         if not self.simulate:
             baseline_balance_raw = self._fetch_safe_evm_usdc_balance()
             expected_raw = self._get_raw_usdc_amount(trade)
+            position_quantity_before: Decimal | None = None
+            try:
+                candidate_position_quantity = state.portfolio.get_position_by_id(
+                    trade.position_id
+                ).get_quantity()
+                if isinstance(candidate_position_quantity, Decimal):
+                    position_quantity_before = candidate_position_quantity
+                else:
+                    logger.warning(
+                        "Could not use state position quantity for withdrawal verification: "
+                        "position %s returned non-Decimal value %r",
+                        trade.position_id,
+                        candidate_position_quantity,
+                    )
+            except Exception as e:
+                logger.warning(
+                    "Could not read state position quantity for withdrawal verification: %s",
+                    e,
+                )
 
             # If the withdrawal amount was adjusted during phase 1 build
             # (full close trades that use live vault equity), use that amount
@@ -1418,7 +1471,7 @@ class HypercoreVaultRouting(RoutingModel):
                 "expected increase = %d raw",
                 self.safe_address, baseline_balance_raw, expected_raw,
             )
-            equity_before: Decimal | None = None
+            vault_equity_after_phase1_snapshot: Decimal | None = None
             vault_address = self._get_vault_address(trade)
             session = self._get_session()
             baseline_perp_withdrawable = self._fetch_safe_perp_withdrawable_balance()
@@ -1438,13 +1491,14 @@ class HypercoreVaultRouting(RoutingModel):
                     bypass_cache=True,
                 )
                 if eq_before is not None:
-                    equity_before = eq_before.equity
+                    vault_equity_after_phase1_snapshot = eq_before.equity
                     logger.info(
-                        "Vault equity before withdrawal: %s", equity_before,
+                        "Vault equity snapshot after phase 1 tx: %s",
+                        vault_equity_after_phase1_snapshot,
                     )
             except Exception as e:
                 logger.warning(
-                    "Could not snapshot vault equity before withdrawal: %s", e,
+                    "Could not snapshot vault equity after phase 1 tx: %s", e,
                 )
 
         withdraw_tx = trade.blockchain_transactions[-1]
@@ -1487,13 +1541,46 @@ class HypercoreVaultRouting(RoutingModel):
                     poll_interval=2.0,
                 )
             except HypercoreWithdrawalVerificationError as e:
-                logger.error(
-                    "Withdrawal phase 1 verification failed for trade %s: %s",
-                    trade.trade_id, e,
-                )
-                self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
-                report_failure(ts, state, trade, stop_on_execution_failure)
-                return
+                current_vault_equity = vault_equity_after_phase1_snapshot
+                try:
+                    eq_after_phase1 = fetch_user_vault_equity(
+                        session,
+                        user=self.safe_address,
+                        vault_address=vault_address,
+                        bypass_cache=True,
+                    )
+                    current_vault_equity = (
+                        eq_after_phase1.equity if eq_after_phase1 is not None else Decimal(0)
+                    )
+                except Exception as snapshot_error:
+                    logger.warning(
+                        "Could not refresh vault equity after phase 1 timeout: %s",
+                        snapshot_error,
+                    )
+
+                if position_quantity_before is not None and current_vault_equity is not None and self._is_withdrawal_already_reflected_in_vault_equity(
+                    position_quantity_before=position_quantity_before,
+                    current_vault_equity=current_vault_equity,
+                    expected_increase_raw=expected_raw,
+                ):
+                    perp_balance = self._fetch_safe_perp_withdrawable_balance()
+                    logger.info(
+                        "Withdrawal phase 1 already reflected in vault equity for trade %s: "
+                        "state position quantity %s USDC, current vault equity %s USDC, "
+                        "current perp withdrawable %s USDC. Continuing with phase 2.",
+                        trade.trade_id,
+                        position_quantity_before,
+                        current_vault_equity,
+                        perp_balance,
+                    )
+                else:
+                    logger.error(
+                        "Withdrawal phase 1 verification failed for trade %s: %s",
+                        trade.trade_id, e,
+                    )
+                    self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
+                    report_failure(ts, state, trade, stop_on_execution_failure)
+                    return
 
             logger.info(
                 "Before transferUsdClass(perp->spot), Safe %s perp withdrawable balance is %s USDC",
@@ -1691,8 +1778,10 @@ class HypercoreVaultRouting(RoutingModel):
                 )
                 remaining_equity = eq_after.equity if eq_after else Decimal(0)
 
-                if equity_before is not None:
-                    equity_decrease = equity_before - remaining_equity
+                if vault_equity_after_phase1_snapshot is not None:
+                    equity_decrease = (
+                        vault_equity_after_phase1_snapshot - remaining_equity
+                    )
                     expected_decrease = executed_reserve
                     tolerance = expected_decrease * Decimal("0.01")
                     if equity_decrease < expected_decrease - tolerance:
@@ -1701,14 +1790,14 @@ class HypercoreVaultRouting(RoutingModel):
                             "but HyperCore equity decreased by only %s (expected ~%s). "
                             "Before: %s, after: %s",
                             executed_reserve, equity_decrease, expected_decrease,
-                            equity_before, remaining_equity,
+                            vault_equity_after_phase1_snapshot, remaining_equity,
                         )
                     else:
                         logger.info(
                             "Withdrawal dual-chain verified: EVM USDC arrived (+%s), "
                             "HyperCore equity decreased by %s. Before: %s, after: %s",
                             executed_reserve, equity_decrease,
-                            equity_before, remaining_equity,
+                            vault_equity_after_phase1_snapshot, remaining_equity,
                         )
                 else:
                     logger.info(

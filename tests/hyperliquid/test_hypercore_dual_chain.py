@@ -50,6 +50,7 @@ def _make_trade(planned_reserve=Decimal("50.0"), is_buy=False):
     trade.is_vault.return_value = True
     trade.get_planned_reserve.return_value = planned_reserve
     trade.trade_id = 1
+    trade.position_id = 1
     trade.blockchain_transactions = [MagicMock(tx_hash="0xabc")]
     trade.other_data = {}
     trade.pair = MagicMock()
@@ -373,6 +374,88 @@ def test_wait_for_perp_withdrawable_balance_rejects_large_shortfall():
                 )
 
     assert "did not reach" in str(exc_info.value)
+
+
+def test_withdrawal_already_reflected_in_vault_equity_is_detected():
+    """Detect a phase 1 withdrawal that already reduced vault equity.
+
+    1. Create a routing object with a state position quantity from before settlement.
+    2. Feed the helper a vault equity snapshot that matches the expected post-withdrawal residual.
+    3. Verify the helper recognises phase 1 as already applied.
+    """
+    routing = _make_routing()
+
+    # 1. Create a routing object with a state position quantity from before settlement.
+    position_quantity_before = Decimal("630.007301")
+    current_vault_equity = Decimal("77.748241")
+
+    # 2. Feed the helper a vault equity snapshot that matches the expected post-withdrawal residual.
+    result = routing._is_withdrawal_already_reflected_in_vault_equity(
+        position_quantity_before=position_quantity_before,
+        current_vault_equity=current_vault_equity,
+        expected_increase_raw=552_259_060,
+    )
+
+    # 3. Verify the helper recognises phase 1 as already applied.
+    assert result is True
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_withdrawal_phase1_timeout_uses_vault_equity_fallback(
+    mock_fetch_equity,
+    mock_block_ts,
+):
+    """Continue withdrawal settlement when phase 1 already shows as residual vault equity.
+
+    1. Simulate a timeout while waiting for perp withdrawable balance after phase 1.
+    2. Return a vault equity snapshot that already matches the expected post-withdrawal residual.
+    3. Verify settlement continues to phase 2 and marks the trade successful instead of freezing it.
+    """
+    from hexbytes import HexBytes
+
+    from tradeexecutor.ethereum.vault.hypercore_routing import (
+        HypercoreWithdrawalVerificationError,
+    )
+
+    routing = _make_routing()
+    trade = _make_trade(planned_reserve=Decimal("552.259060"))
+    state = MagicMock()
+    state.portfolio.get_position_by_id.return_value.get_quantity.return_value = Decimal("630.007301")
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+    mock_fetch_equity.side_effect = [
+        _make_equity(Decimal("77.748241")),
+        _make_equity(Decimal("77.748241")),
+        _make_equity(Decimal("77.748241")),
+    ]
+    receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
+
+    phase2_tx = MagicMock(tx_hash="0xdef")
+    phase3_tx = MagicMock(tx_hash="0x123")
+
+    with patch.object(routing, "_fetch_safe_evm_usdc_balance", side_effect=[820_762_276, 1_373_021_336]):
+        with patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("761.147434")):
+            with patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0.009157")):
+                with patch.object(
+                    routing,
+                    "_wait_for_perp_withdrawable_balance",
+                    side_effect=HypercoreWithdrawalVerificationError("phase 1 timed out"),
+                ):
+                    with patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=Decimal("552.268217")):
+                        with patch.object(routing, "_broadcast_withdrawal_phase2", return_value=(phase2_tx, {"status": 1, "blockNumber": 101})):
+                            with patch.object(routing, "_broadcast_withdrawal_phase3", return_value=(phase3_tx, {"status": 1, "blockNumber": 102})):
+                                with patch.object(routing, "_wait_for_usdc_arrival", return_value=552_259_060):
+                                    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+                                        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+                                            routing._settle_withdrawal(
+                                                routing.web3,
+                                                state,
+                                                trade,
+                                                receipts,
+                                                stop_on_execution_failure=False,
+                                            )
+
+    state.mark_trade_success.assert_called_once()
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")

@@ -437,3 +437,68 @@ def test_hyperliquid_cleanup_allows_live_vault_rows_when_stranded_recovery_exist
     ]
     assert actions[0].amount == Decimal("4177.73")
     assert actions[1].amount == Decimal("4177.739252")
+
+
+def test_wait_for_spot_free_balance_accepts_threshold_instead_of_exact_match(
+    monkeypatch,
+):
+    """Cleanup spot wait should accept threshold arrival instead of exact final balance.
+
+    1. Mock HyperCore spot balance slightly above the threshold implied by the expected increase.
+    2. Wait for the cleanup helper to confirm the spot balance increase.
+    3. Verify the helper accepts the observed balance without requiring an exact final match.
+    """
+
+    # Step 1: Mock HyperCore spot balance slightly above the threshold implied by the expected increase.
+    monkeypatch.setattr(
+        hyperliquid_cleanup,
+        "fetch_spot_clearinghouse_state",
+        lambda _session, user: SimpleNamespace(
+            balances=[
+                SimpleNamespace(
+                    coin="USDC",
+                    total=Decimal("11.497"),
+                    hold=Decimal("0"),
+                )
+            ]
+        ),
+    )
+
+    # Step 2: Wait for the cleanup helper to confirm the spot balance increase.
+    result = hyperliquid_cleanup._wait_for_spot_free_balance(
+        session=object(),
+        user="0x123",
+        baseline_balance=Decimal("10.0"),
+        expected_increase=Decimal("1.5"),
+        timeout=0.1,
+        poll_interval=0.01,
+    )
+
+    # Step 3: Verify the helper accepts the observed balance without requiring an exact final match.
+    assert result == Decimal("11.497")
+
+
+def test_wait_for_evm_usdc_balance_accepts_threshold_instead_of_exact_match():
+    """Cleanup EVM wait should accept threshold arrival instead of exact final balance.
+
+    1. Mock a token balance slightly above the threshold implied by the expected bridged increase.
+    2. Wait for the cleanup helper to confirm the EVM USDC balance increase.
+    3. Verify the helper accepts the observed balance without requiring an exact final match.
+    """
+    token = MagicMock()
+
+    # Step 1: Mock a token balance slightly above the threshold implied by the expected bridged increase.
+    token.fetch_balance_of.return_value = Decimal("108.992")
+
+    # Step 2: Wait for the cleanup helper to confirm the EVM USDC balance increase.
+    result = hyperliquid_cleanup._wait_for_evm_usdc_balance(
+        token=token,
+        address="0x123",
+        baseline_balance=Decimal("100.0"),
+        expected_increase=Decimal("9.0"),
+        timeout=0.1,
+        poll_interval=0.01,
+    )
+
+    # Step 3: Verify the helper accepts the observed balance without requiring an exact final match.
+    assert result == Decimal("108.992")

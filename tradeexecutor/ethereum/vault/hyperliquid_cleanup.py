@@ -86,6 +86,7 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 logger = logging.getLogger(__name__)
 
 BALANCE_TOLERANCE = Decimal("0.02")
+CLEANUP_WAIT_RELATIVE_TOLERANCE = Decimal("0.001")
 RESIDUAL_VAULT_EQUITY_THRESHOLD = Decimal("0.10")
 POLL_INTERVAL = 2.0
 BALANCE_TIMEOUT = 60.0
@@ -201,6 +202,18 @@ class HyperliquidAccountingContext:
 def _is_within_tolerance(left: Decimal, right: Decimal) -> bool:
     """Check whether two balances are close enough."""
     return abs(left - right) <= BALANCE_TOLERANCE
+
+
+def _get_cleanup_wait_threshold(
+    baseline_balance: Decimal,
+    expected_increase: Decimal,
+) -> tuple[Decimal, Decimal]:
+    """Calculate the minimum balance increase that cleanup waits should accept."""
+    accepted_tolerance = max(
+        BALANCE_TOLERANCE,
+        expected_increase * CLEANUP_WAIT_RELATIVE_TOLERANCE,
+    )
+    return baseline_balance + expected_increase - accepted_tolerance, accepted_tolerance
 
 
 def _position_vault_address(position) -> str:
@@ -524,20 +537,31 @@ def _confirm_cleanup(auto_approve: bool) -> None:
 def _wait_for_spot_free_balance(
     session: HyperliquidSession,
     user: str,
-    expected_balance: Decimal,
+    baseline_balance: Decimal,
+    expected_increase: Decimal,
     timeout: float = BALANCE_TIMEOUT,
     poll_interval: float = POLL_INTERVAL,
 ) -> Decimal:
     """Wait until free spot USDC reaches the expected balance."""
+    # WARNING: Do not wait for an exact final spot balance here.
+    # Cleanup is an operator recovery flow and the Safe can already have spot
+    # dust or receive nearby balance changes while we are polling.  We only
+    # need to prove that the expected recovery amount arrived within a modest
+    # tolerance, not that the final balance matches one exact snapshot.
+    expected_balance, accepted_tolerance = _get_cleanup_wait_threshold(
+        baseline_balance=baseline_balance,
+        expected_increase=expected_increase,
+    )
     deadline = time.time() + timeout
     while True:
         spot_state = fetch_spot_clearinghouse_state(session, user=user)
         _spot_total, spot_free = _get_spot_usdc_balances(spot_state)
-        if _is_within_tolerance(spot_free, expected_balance):
+        if spot_free >= expected_balance:
             return spot_free
         if time.time() >= deadline:
             raise AssertionError(
-                f"Timed out waiting for HyperCore free spot USDC {expected_balance} for {user}, "
+                f"Timed out waiting for HyperCore free spot USDC threshold {expected_balance} "
+                f"for {user} (expected increase {expected_increase}, tolerance {accepted_tolerance}), "
                 f"last observed balance was {spot_free}"
             )
         time.sleep(poll_interval)
@@ -546,19 +570,30 @@ def _wait_for_spot_free_balance(
 def _wait_for_evm_usdc_balance(
     token: TokenDetails,
     address: str,
-    expected_balance: Decimal,
+    baseline_balance: Decimal,
+    expected_increase: Decimal,
     timeout: float = BALANCE_TIMEOUT,
     poll_interval: float = POLL_INTERVAL,
 ) -> Decimal:
     """Wait until EVM USDC reaches the expected balance."""
+    # WARNING: Do not wait for one exact final EVM balance here.
+    # The cleanup bridge confirmation only needs to prove that the expected
+    # increase arrived.  Requiring an exact final balance causes false
+    # failures when the Safe balance is slightly higher than the snapshot we
+    # started from or when minor bridge-side rounding drifts occur.
+    expected_balance, accepted_tolerance = _get_cleanup_wait_threshold(
+        baseline_balance=baseline_balance,
+        expected_increase=expected_increase,
+    )
     deadline = time.time() + timeout
     while True:
         balance = token.fetch_balance_of(address)
-        if _is_within_tolerance(balance, expected_balance):
+        if balance >= expected_balance:
             return balance
         if time.time() >= deadline:
             raise AssertionError(
-                f"Timed out waiting for HyperEVM USDC {expected_balance} for {address}, "
+                f"Timed out waiting for HyperEVM USDC threshold {expected_balance} "
+                f"for {address} (expected increase {expected_increase}, tolerance {accepted_tolerance}), "
                 f"last observed balance was {balance}"
             )
         time.sleep(poll_interval)
@@ -590,14 +625,19 @@ def _execute_perp_to_spot(
         f"{live_snapshot.perp_withdrawable}, expected at least {amount}"
     )
 
-    expected_spot_free = live_snapshot.spot_free_usdc + amount
+    baseline_spot_free = live_snapshot.spot_free_usdc
     fn = build_hypercore_transfer_usd_class_call(
         context.lagoon_vault,
         hypercore_usdc_amount=context.reserve_token.convert_to_raw(amount),
         to_perp=False,
     )
     tx_hash = _broadcast_bound_call(context.web3, context.hot_wallet, fn)
-    _wait_for_spot_free_balance(context.session, safe_address, expected_spot_free)
+    _wait_for_spot_free_balance(
+        context.session,
+        safe_address,
+        baseline_balance=baseline_spot_free,
+        expected_increase=amount,
+    )
     return tx_hash
 
 
@@ -627,14 +667,17 @@ def _execute_spot_to_evm(
             f"({HYPERCORE_BRIDGE_FEE_MARGIN} USDC); cannot withdraw to EVM"
         )
 
-    expected_evm_balance = live_snapshot.evm_usdc_balance + withdraw_amount
+    baseline_evm_balance = live_snapshot.evm_usdc_balance
     fn = build_hypercore_send_asset_to_evm_call(
         context.lagoon_vault,
         evm_usdc_amount=context.reserve_token.convert_to_raw(withdraw_amount),
     )
     tx_hash = _broadcast_bound_call(context.web3, context.hot_wallet, fn)
     _wait_for_evm_usdc_balance(
-        context.reserve_token, safe_address, expected_evm_balance
+        context.reserve_token,
+        safe_address,
+        baseline_balance=baseline_evm_balance,
+        expected_increase=withdraw_amount,
     )
     return tx_hash
 
