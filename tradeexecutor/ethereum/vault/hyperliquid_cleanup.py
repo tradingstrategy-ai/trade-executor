@@ -24,9 +24,9 @@ The clean-up flow therefore only ever performs these actions:
 
 It never performs ``vaultTransfer(vault -> perp)``.
 
-If the failed close candidate still has meaningful live vault equity on
-Hyperliquid, this module aborts and tells the operator to review the
-position manually.
+If some Hyperliquid vault positions are still genuinely live, this
+module leaves them untouched. It only aborts when the Safe still has
+active perp positions, because that requires manual review.
 """
 
 import datetime
@@ -375,12 +375,6 @@ def _plan_cleanup_actions(
 ) -> list[HyperliquidCleanupAction]:
     """Create a safe action plan from current live balances."""
     for row in comparison_rows:
-        if row.classification == "live_vault_open_no_action":
-            raise RuntimeError(
-                f"Refusing clean-up for position {row.position_id}: live vault equity is still "
-                f"{row.live_vault_equity}, which is above the residual threshold "
-                f"{RESIDUAL_VAULT_EQUITY_THRESHOLD}. This looks like a genuinely open real vault position."
-            )
         if row.classification == "manual_review_required_active_perp_positions":
             raise RuntimeError(
                 f"Refusing clean-up for position {row.position_id}: manual review required because "
