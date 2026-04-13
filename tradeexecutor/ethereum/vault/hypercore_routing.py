@@ -130,15 +130,15 @@ HYPERCORE_LIKELY_CLOSE_TOLERANCE = 0.975
 #: action, the vault NAV can fluctuate (fees, PnL, mark-to-market).  The
 #: API may also round the equity string upward vs. the on-chain value.
 #:
-#: $0.10 (100 000 raw) covers observed drift for typical vaults.
-#: The original $0.01 margin was too tight — observed shortfalls of
-#: ~$0.02 USDC on ~$7 withdrawals due to vault share price movement
+#: $1.00 (1 000 000 raw) covers larger observed drift for volatile vaults.
+#: The original $0.01 margin was too tight, and even the later $0.10 margin
+#: proved insufficient for some live withdrawals when vault share price moved
 #: between the API read and HyperCore processing the queued action.
 #:
-#: This will leave ~$0.10 unclaimable dust in the vault (below the $5
+#: This will leave up to ~$1.00 unclaimable dust in the vault (below the $5
 #: minimum vault withdrawal threshold) that must be cleaned up in
 #: accounting later.
-HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 100_000
+HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 1_000_000
 
 # Temporary stop-gap for follow-up withdrawal verification phases.
 # Proper fix: carry the actually observed amount from one phase to the next.
