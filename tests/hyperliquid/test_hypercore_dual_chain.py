@@ -305,6 +305,76 @@ def test_wait_for_spot_free_usdc_balance_accepts_follow_up_phase_tolerance():
     assert result == Decimal("1.980001")
 
 
+def test_wait_for_perp_withdrawable_balance_accepts_relative_tolerance():
+    """Accept perp withdrawable balance when the shortfall stays within relative tolerance.
+
+    1. Create a routing object and mock a large perp withdrawable balance increase with a small relative shortfall.
+    2. Wait for the perp withdrawable balance using the withdrawal verifier.
+    3. Verify the slightly short increase is still accepted.
+    """
+    routing = _make_routing()
+
+    # 1. Create a routing object and mock a large perp withdrawable balance increase with a small relative shortfall.
+    routing._fetch_safe_perp_withdrawable_balance = MagicMock(
+        side_effect=[Decimal("629.998483")],
+    )
+
+    # 2. Wait for the perp withdrawable balance using the withdrawal verifier.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+            result = routing._wait_for_perp_withdrawable_balance(
+                baseline_balance=Decimal("59.559287"),
+                expected_increase_raw=570_690_753,
+                timeout=30.0,
+                poll_interval=2.0,
+            )
+
+    # 3. Verify the slightly short increase is still accepted.
+    assert result == Decimal("629.998483")
+
+
+def test_wait_for_perp_withdrawable_balance_rejects_large_shortfall():
+    """Reject perp withdrawable balance when the shortfall exceeds relative tolerance.
+
+    1. Create a routing object and mock a large perp withdrawable balance increase with a material shortfall.
+    2. Wait for the perp withdrawable balance using the withdrawal verifier.
+    3. Verify the helper times out and raises a withdrawal verification error.
+    """
+    import pytest
+    from tradeexecutor.ethereum.vault.hypercore_routing import (
+        HypercoreWithdrawalVerificationError,
+    )
+
+    routing = _make_routing()
+
+    # 1. Create a routing object and mock a large perp withdrawable balance increase with a material shortfall.
+    routing._fetch_safe_perp_withdrawable_balance = MagicMock(
+        return_value=Decimal("620.0"),
+    )
+
+    call_count = [0]
+
+    def fake_time():
+        call_count[0] += 1
+        if call_count[0] <= 2:
+            return 0.0
+        return 999.0
+
+    # 2. Wait for the perp withdrawable balance using the withdrawal verifier.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=fake_time):
+            # 3. Verify the helper times out and raises a withdrawal verification error.
+            with pytest.raises(HypercoreWithdrawalVerificationError) as exc_info:
+                routing._wait_for_perp_withdrawable_balance(
+                    baseline_balance=Decimal("59.559287"),
+                    expected_increase_raw=570_690_753,
+                    timeout=30.0,
+                    poll_interval=2.0,
+                )
+
+    assert "did not reach" in str(exc_info.value)
+
+
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
 def test_withdrawal_phase3_uses_fee_adjusted_amount(

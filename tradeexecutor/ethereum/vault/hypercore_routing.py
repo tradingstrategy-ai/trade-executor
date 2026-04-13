@@ -145,6 +145,13 @@ HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 1_000_000
 # Remove this extra slack once settlement becomes amount-adaptive across phases.
 HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW = 200_000
 
+# Relative tolerance for live HyperCore balance waits.
+#
+# Existing vault equity and withdrawable balances can drift during the
+# confirmation window, so larger amounts need more than a fixed-cent
+# tolerance to avoid false failures.
+HYPERCORE_RELATIVE_BALANCE_TOLERANCE = Decimal("0.01")
+
 def usdc_to_raw(amount: Decimal) -> int:
     """Convert a human-readable USDC amount to raw 6-decimal integer."""
     return int(amount * 10**USDC_DECIMALS)
@@ -652,8 +659,12 @@ class HypercoreVaultRouting(RoutingModel):
         poll_interval: float = 2.0,
     ) -> Decimal:
         """Poll HyperCore perp withdrawable USDC until the withdrawal reaches perp."""
-        # Allow $0.10 tolerance for Hypercore API rounding and vault NAV drift
-        expected_balance = baseline_balance + raw_to_usdc(expected_increase_raw) - Decimal("0.10")
+        expected_increase = raw_to_usdc(expected_increase_raw)
+        accepted_tolerance = max(
+            Decimal("0.10"),
+            expected_increase * HYPERCORE_RELATIVE_BALANCE_TOLERANCE,
+        )
+        expected_balance = baseline_balance + expected_increase - accepted_tolerance
         deadline = time.time() + timeout
         attempt = 0
 
@@ -664,11 +675,12 @@ class HypercoreVaultRouting(RoutingModel):
             if current_balance >= expected_balance:
                 logger.info(
                     "Perp withdrawable balance is ready for Safe %s after %d poll(s): "
-                    "%s USDC (expected at least %s USDC)",
+                    "%s USDC (expected at least %s USDC, tolerance %s USDC)",
                     self.safe_address,
                     attempt,
                     current_balance,
                     expected_balance,
+                    accepted_tolerance,
                 )
                 return current_balance
 
@@ -676,16 +688,18 @@ class HypercoreVaultRouting(RoutingModel):
             if remaining <= 0:
                 raise HypercoreWithdrawalVerificationError(
                     f"Perp withdrawable USDC did not reach {expected_balance} for Safe {self.safe_address} "
-                    f"within {timeout}s. Current balance: {current_balance} after {attempt} poll(s). "
+                    f"within {timeout}s. Current balance: {current_balance}, tolerance: {accepted_tolerance} "
+                    f"after {attempt} poll(s). "
                     f"The vaultTransfer action may have failed silently on HyperCore."
                 )
 
             logger.info(
                 "Waiting for perp withdrawable USDC in Safe %s: %s/%s USDC "
-                "(%.0fs remaining, poll #%d)",
+                "(tolerance %s USDC, %.0fs remaining, poll #%d)",
                 self.safe_address,
                 current_balance,
                 expected_balance,
+                accepted_tolerance,
                 remaining,
                 attempt,
             )
