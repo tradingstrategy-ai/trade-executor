@@ -1058,6 +1058,19 @@ class HypercoreVaultRouting(RoutingModel):
         for trade in trades:
             assert trade.is_vault(), f"Not a vault trade: {trade}"
 
+            if trade.is_buy() and not self.simulate:
+                if not hasattr(trade, "other_data") or trade.other_data is None:
+                    trade.other_data = {}
+
+                # WARNING: Capture the Safe's HyperCore spot balance before
+                # phase 1 is even broadcast. The escrow settlement can finish
+                # quickly enough that taking this snapshot later, during
+                # receipt handling, would already be post-deposit and make the
+                # observed spot increase look like zero.
+                trade.other_data["hypercore_phase1_spot_baseline_usdc"] = str(
+                    self._fetch_safe_spot_free_usdc_balance()
+                )
+
             if not self.simulate and not trade.is_buy() and not activated:
                 raise AssertionError(
                     f"Cannot withdraw from Hypercore vault: Safe {self.safe_address} "
@@ -1261,6 +1274,13 @@ class HypercoreVaultRouting(RoutingModel):
         deposit_raw = self._get_raw_usdc_amount(trade) - activation_cost
         session = self._get_session()
         planned_reserve = trade.get_planned_reserve()
+        baseline_spot_usdc: Decimal | None = None
+        if hasattr(trade, "other_data") and trade.other_data:
+            baseline_spot_usdc_str = trade.other_data.get(
+                "hypercore_phase1_spot_baseline_usdc"
+            )
+            if baseline_spot_usdc_str is not None:
+                baseline_spot_usdc = Decimal(baseline_spot_usdc_str)
 
         logger.info(
             "Hypercore deposit phase 1 succeeded (tx %s). Waiting for escrow to clear...",
@@ -1270,6 +1290,9 @@ class HypercoreVaultRouting(RoutingModel):
         # --- Escrow wait ---
         # Pass expected USDC so the escrow wait also verifies that USDC
         # appeared in the HyperCore spot balance, not just that escrows cleared.
+        # WARNING: Prefer the pre-phase-1 spot baseline captured during
+        # setup_trades() when it exists. Capturing a fresh baseline here can
+        # already be too late on fast HyperCore settlements.
         expected_usdc_human = raw_to_usdc(deposit_raw)
         try:
             wait_for_evm_escrow_clear(
@@ -1278,6 +1301,7 @@ class HypercoreVaultRouting(RoutingModel):
                 timeout=60.0,
                 poll_interval=2.0,
                 expected_usdc=expected_usdc_human,
+                baseline_usdc=baseline_spot_usdc,
             )
         except TimeoutError as e:
             logger.error("EVM escrow did not clear: %s", e)

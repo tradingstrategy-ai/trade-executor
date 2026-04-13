@@ -54,7 +54,12 @@ def _make_routing_state():
 
 
 def test_activation_cost_only_deducted_from_first_buy():
-    """Two buy trades in the same cycle: only the first bears activation cost."""
+    """Two buy trades in the same cycle: only the first bears activation cost.
+
+    1. Create two buy trades in the same cycle.
+    2. Mock activation, pre-phase-1 spot baseline reads, and transaction creation.
+    3. Verify only the first trade bears the activation cost while both trades persist a spot baseline.
+    """
     routing = _make_routing(simulate=False)
     state = MagicMock()
     trade1 = _make_trade(planned_reserve=Decimal("100.0"))
@@ -66,14 +71,15 @@ def test_activation_cost_only_deducted_from_first_buy():
         costs_seen.append(activation_cost_raw)
         return [MagicMock()]
 
-    # 1. Build two buy trades in the same cycle.
-    # 2. Simulate activation followed by transaction creation.
-    # 3. Verify only the first trade carries the activation cost.
+    # 1. Create two buy trades in the same cycle.
+    # 2. Mock activation, pre-phase-1 spot baseline reads, and transaction creation.
+    # 3. Verify only the first trade carries the activation cost while both trades persist a spot baseline.
     with patch.object(routing, "_create_deposit_or_withdraw_txs", side_effect=capture_cost):
-        with patch("tradeexecutor.ethereum.vault.hypercore_routing.is_account_activated", return_value=False):
-            with patch("tradeexecutor.ethereum.vault.hypercore_routing.activate_account"):
-                with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_abstraction_mode", return_value="standard"):
-                    routing.setup_trades(state, _make_routing_state(), [trade1, trade2])
+        with patch.object(routing, "_fetch_safe_spot_free_usdc_balance", side_effect=[Decimal("0"), Decimal("0")]):
+            with patch("tradeexecutor.ethereum.vault.hypercore_routing.is_account_activated", return_value=False):
+                with patch("tradeexecutor.ethereum.vault.hypercore_routing.activate_account"):
+                    with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_abstraction_mode", return_value="standard"):
+                        routing.setup_trades(state, _make_routing_state(), [trade1, trade2])
 
     # First buy gets the activation cost, second does not
     assert costs_seen[0] == 2_000_000
@@ -82,6 +88,8 @@ def test_activation_cost_only_deducted_from_first_buy():
     # Only the first trade has activation cost persisted
     assert trade1.other_data.get("hypercore_activation_cost_raw") == 2_000_000
     assert "hypercore_activation_cost_raw" not in trade2.other_data
+    assert trade1.other_data.get("hypercore_phase1_spot_baseline_usdc") == "0"
+    assert trade2.other_data.get("hypercore_phase1_spot_baseline_usdc") == "0"
 
 
 def test_activation_cost_not_applied_to_sell():
@@ -125,9 +133,10 @@ def test_setup_trades_logs_account_mode_without_blocking(caplog):
     # 3. Verify transaction creation still proceeds and the mode is logged.
     with caplog.at_level(logging.INFO):
         with patch.object(routing, "_create_deposit_or_withdraw_txs", return_value=[MagicMock()]) as create_txs:
-            with patch("tradeexecutor.ethereum.vault.hypercore_routing.is_account_activated", return_value=True):
-                with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_abstraction_mode", return_value="unifiedAccount"):
-                    routing.setup_trades(state, _make_routing_state(), [trade])
+            with patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0")):
+                with patch("tradeexecutor.ethereum.vault.hypercore_routing.is_account_activated", return_value=True):
+                    with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_abstraction_mode", return_value="unifiedAccount"):
+                        routing.setup_trades(state, _make_routing_state(), [trade])
 
     create_txs.assert_called_once()
     assert any("unifiedAccount" in r.message for r in caplog.records)
@@ -148,9 +157,10 @@ def test_setup_trades_tolerates_account_mode_lookup_failure():
     # 2. Simulate an account-mode lookup failure.
     # 3. Verify transaction creation still proceeds.
     with patch.object(routing, "_create_deposit_or_withdraw_txs", return_value=[MagicMock()]) as create_txs:
-        with patch("tradeexecutor.ethereum.vault.hypercore_routing.is_account_activated", return_value=True):
-            with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_abstraction_mode", side_effect=RuntimeError("boom")):
-                routing.setup_trades(state, _make_routing_state(), [trade])
+        with patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0")):
+            with patch("tradeexecutor.ethereum.vault.hypercore_routing.is_account_activated", return_value=True):
+                with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_abstraction_mode", side_effect=RuntimeError("boom")):
+                    routing.setup_trades(state, _make_routing_state(), [trade])
 
     create_txs.assert_called_once()
 
@@ -170,14 +180,38 @@ def test_setup_trades_checks_mode_after_activation():
     # 2. Simulate successful activation and a unified mode read.
     # 3. Verify the trade is built only after activation completes.
     with patch.object(routing, "_create_deposit_or_withdraw_txs", return_value=[MagicMock()]) as create_txs:
-        with patch("tradeexecutor.ethereum.vault.hypercore_routing.is_account_activated", return_value=False):
-            with patch("tradeexecutor.ethereum.vault.hypercore_routing.activate_account") as activate:
-                with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_abstraction_mode", return_value="unifiedAccount") as fetch_mode:
-                    routing.setup_trades(state, _make_routing_state(), [trade])
+        with patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0")):
+            with patch("tradeexecutor.ethereum.vault.hypercore_routing.is_account_activated", return_value=False):
+                with patch("tradeexecutor.ethereum.vault.hypercore_routing.activate_account") as activate:
+                    with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_abstraction_mode", return_value="unifiedAccount") as fetch_mode:
+                        routing.setup_trades(state, _make_routing_state(), [trade])
 
     activate.assert_called_once()
     fetch_mode.assert_called_once()
     create_txs.assert_called_once()
+
+
+def test_setup_trades_stores_pre_phase1_spot_baseline_for_buy():
+    """Persist the pre-phase-1 HyperCore spot baseline for later settlement checks.
+
+    1. Create one live buy trade for an already activated Safe.
+    2. Mock the pre-phase-1 HyperCore spot read before transaction creation.
+    3. Verify setup stores the captured spot baseline in ``trade.other_data``.
+    """
+    routing = _make_routing(simulate=False)
+    state = MagicMock()
+    trade = _make_trade(planned_reserve=Decimal("25.0"))
+
+    # 1. Create one live buy trade for an already activated Safe.
+    # 2. Mock the pre-phase-1 HyperCore spot read before transaction creation.
+    # 3. Verify setup stores the captured spot baseline in trade.other_data.
+    with patch.object(routing, "_create_deposit_or_withdraw_txs", return_value=[MagicMock()]):
+        with patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("12.345678")):
+            with patch("tradeexecutor.ethereum.vault.hypercore_routing.is_account_activated", return_value=True):
+                with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_abstraction_mode", return_value="standard"):
+                    routing.setup_trades(state, _make_routing_state(), [trade])
+
+    assert trade.other_data["hypercore_phase1_spot_baseline_usdc"] == "12.345678"
 
 
 def test_create_buy_transactions_split_approve_and_deposit():
@@ -368,7 +402,7 @@ def test_settlement_second_buy_no_activation_cost(
     # Second buy: no activation cost in other_data
     trade = _make_trade(planned_reserve=Decimal("50.0"))
     trade.blockchain_transactions = [MagicMock(tx_hash="0xaa")]
-    trade.other_data = {}
+    trade.other_data = {"hypercore_phase1_spot_baseline_usdc": "12.34"}
     # Crucially, NO "hypercore_activation_cost_raw" key
 
     state = MagicMock()
@@ -418,6 +452,15 @@ def test_settlement_second_buy_no_activation_cost(
     # Verify _broadcast_phase2 received the full 50 USDC raw (not 48)
     deposit_raw_passed = mock_phase2.call_args[0][2]
     assert deposit_raw_passed == 50_000_000
+
+    mock_escrow.assert_called_once_with(
+        routing._get_session(),
+        user=routing.safe_address,
+        timeout=60.0,
+        poll_interval=2.0,
+        expected_usdc=Decimal("50.0"),
+        baseline_usdc=Decimal("12.34"),
+    )
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
