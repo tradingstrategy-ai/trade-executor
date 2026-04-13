@@ -306,6 +306,33 @@ class HypercoreVaultRouting(RoutingModel):
         logger.info("Hypercore vault routing details")
         self.reserve_asset_logging(pair_universe)
 
+    def needs_sequential_trade_execution(
+        self,
+        trades: list[TradeExecution],
+    ) -> bool:
+        """Hypercore trades must settle before the next trade is prepared.
+
+        Hypercore deposits and withdrawals can:
+
+        - release spendable capital only during settlement, not at phase 1 receipt
+        - append extra follow-up transactions during settlement
+
+        Because of this, batching multiple Hypercore trades before settling the
+        earlier ones can mis-sequence capital reuse and nonce allocation.
+        """
+        return len(trades) > 0
+
+    def get_sequential_trade_execution_reason(
+        self,
+        trades: list[TradeExecution],
+    ) -> str | None:
+        if not trades:
+            return None
+        return (
+            "Hypercore vault trades release spendable capital only after settlement "
+            "and may create follow-up settlement transactions"
+        )
+
     # ------------------------------------------------------------------
     # Transaction building helpers
     # ------------------------------------------------------------------

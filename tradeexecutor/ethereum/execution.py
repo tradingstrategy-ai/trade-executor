@@ -573,6 +573,124 @@ class EthereumExecution(ExecutionModel):
             stop_on_execution_failure=stop_on_execution_failure
         )
 
+    def _execute_trade_batch(
+        self,
+        routing_model: RoutingModel,
+        state: State,
+        trades: List[TradeExecution],
+        rebroadcast: bool,
+    ) -> None:
+        """Broadcast and settle one prepared trade batch."""
+        force_sequential_broadcast = self.force_sequential_broadcast
+
+        if isinstance(self.web3.provider, MEVBlockerProvider) or force_sequential_broadcast:
+            self.broadcast_and_resolve_mev_blocker(
+                routing_model,
+                state,
+                trades,
+                # Explicitly set to False here to keep execution going
+                stop_on_execution_failure=False,
+            )
+        elif isinstance(self.web3.provider, (FallbackProvider)):
+            self.broadcast_and_resolve_multiple_nodes(
+                routing_model,
+                state,
+                trades,
+                confirmation_timeout=self.confirmation_timeout,
+                confirmation_block_count=self.confirmation_block_count,
+                rebroadcast=rebroadcast,
+            )
+        else:
+            self.broadcast_and_resolve_old(
+                state,
+                trades,
+                routing_model,
+                confirmation_timeout=self.confirmation_timeout,
+                confirmation_block_count=self.confirmation_block_count,
+            )
+
+    @staticmethod
+    def _log_trade_outcome(trade: TradeExecution) -> None:
+        """Log the final trade status after settlement and freeze handling."""
+        status = trade.get_status().value
+        route = trade.route or "-"
+        revert_reason = trade.get_revert_reason()
+        logger.info(
+            "Trade outcome resolved: trade_id=%s status=%s route=%s tx_count=%d failed=%s revert_reason=%s",
+            trade.trade_id,
+            status,
+            route,
+            len(trade.blockchain_transactions),
+            trade.is_failed(),
+            revert_reason,
+        )
+
+    def _execute_trades_sequentially(
+        self,
+        ts: datetime.datetime,
+        state: State,
+        trades: List[TradeExecution],
+        routing_model: RoutingModel,
+        routing_state: RoutingState,
+        check_balances: bool,
+        rebroadcast: bool,
+        triggered: bool,
+    ) -> None:
+        """Prepare, broadcast, settle, and freeze one trade at a time."""
+        reason = routing_model.get_sequential_trade_execution_reason(trades)
+        logger.warning(
+            "Sequential trade execution enabled for %d trade(s)%s",
+            len(trades),
+            f": {reason}" if reason else "",
+        )
+
+        for idx, trade in enumerate(trades, start=1):
+            logger.info(
+                "Sequential trade execution %d/%d: preparing trade_id=%s planned_value=%.6f pair=%s",
+                idx,
+                len(trades),
+                trade.trade_id,
+                trade.get_planned_value(),
+                trade.pair.get_ticker(),
+            )
+
+            if not rebroadcast:
+                state.start_execution(
+                    native_datetime_utc_now(),
+                    trade,
+                    underflow_check=check_balances,
+                    triggered=triggered,
+                )
+                if self.max_slippage is not None:
+                    trade.planned_max_slippage = self.max_slippage
+
+            routing_model.setup_trades(
+                state=state,
+                routing_state=routing_state,
+                trades=[trade],
+                check_balances=check_balances,
+                rebroadcast=rebroadcast,
+            )
+
+            self._execute_trade_batch(
+                routing_model,
+                state,
+                [trade],
+                rebroadcast=rebroadcast,
+            )
+
+            freeze_position_on_failed_trade(ts, state, [trade])
+            self._log_trade_outcome(trade)
+
+            if trade.is_failed():
+                remaining_trade_ids = [remaining.trade_id for remaining in trades[idx:]]
+                raise ExecutionHaltableIssue(
+                    "Sequential trade execution stopped after trade failure. "
+                    f"Failed trade_id={trade.trade_id}, route={trade.route or '-'}, "
+                    f"pair={trade.pair.get_ticker()}, revert_reason={trade.get_revert_reason()}, "
+                    f"remaining_trade_ids={remaining_trade_ids}"
+                )
+
     def execute_trades(
         self,
         ts: datetime.datetime,
@@ -595,6 +713,19 @@ class EthereumExecution(ExecutionModel):
             if not self.mainnet_fork:
                 assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
 
+        if routing_model.needs_sequential_trade_execution(trades) and not rebroadcast:
+            self._execute_trades_sequentially(
+                ts=ts,
+                state=state,
+                trades=trades,
+                routing_model=routing_model,
+                routing_state=routing_state,
+                check_balances=check_balances,
+                rebroadcast=rebroadcast,
+                triggered=triggered,
+            )
+            return
+
         if not rebroadcast:
             state.start_execution_all(
                 native_datetime_utc_now(),
@@ -611,39 +742,17 @@ class EthereumExecution(ExecutionModel):
             rebroadcast=rebroadcast,
         )
 
-        force_sequential_broadcast = self.force_sequential_broadcast
-
-        if isinstance(self.web3.provider, MEVBlockerProvider) or force_sequential_broadcast:
-            self.broadcast_and_resolve_mev_blocker(
-                routing_model,
-                state,
-                trades,
-                # explicitly set to False here to keep execution going
-                stop_on_execution_failure=False,
-            )
-        elif isinstance(self.web3.provider, (FallbackProvider)):
-            # Multi node broadcast
-            self.broadcast_and_resolve_multiple_nodes(
-                routing_model,
-                state,
-                trades,
-                confirmation_timeout=self.confirmation_timeout,
-                confirmation_block_count=self.confirmation_block_count,
-                rebroadcast=rebroadcast,
-            )
-
-        else:
-            # Rebroadcast not supported for the old code path
-            self.broadcast_and_resolve_old(
-                state,
-                trades,
-                routing_model,
-                confirmation_timeout=self.confirmation_timeout,
-                confirmation_block_count=self.confirmation_block_count,
-            )
+        self._execute_trade_batch(
+            routing_model,
+            state,
+            trades,
+            rebroadcast=rebroadcast,
+        )
 
         # Clean up failed trades
         freeze_position_on_failed_trade(ts, state, trades)
+        for trade in trades:
+            self._log_trade_outcome(trade)
 
     def get_routing_state_details(self) -> RoutingStateDetails:
         return {
@@ -744,14 +853,16 @@ def update_confirmation_status(
             status = receipt["status"] == 1
             block_number = receipt["blockNumber"]
             logger.info(
-                f"Resolved as %s tx nonce: %d, hash: %s, function: %s(), contract %s, gas limit %s, block {block_number:,} for trade %s",
+                "Resolved tx receipt as %s tx nonce: %d, hash: %s, function: %s(), contract %s, gas limit %s, block %s for trade %s; final trade outcome pending settlement",
                 "success" if status else "reverted",
                 tx.nonce,
                 tx_hash.hex(),
                 tx.function_selector,
                 tx.contract_address,
                 tx.get_gas_limit(),
-                trade)
+                f"{block_number:,}",
+                trade,
+            )
 
             reason = None
             stack_trace = None

@@ -267,6 +267,26 @@ class RoutingModel(abc.ABC):
             If a trade cannot be executed, e.g. due to an unsupported pair or an exchange,
         """
 
+    def needs_sequential_trade_execution(
+        self,
+        trades: List[TradeExecution],
+    ) -> bool:
+        """Does this router require trade-by-trade execution for the batch.
+
+        Some routers only release spendable capital during settlement and may
+        also create extra follow-up transactions while settling a trade.
+        Those routers must be executed one trade at a time so later trades are
+        prepared against the up-to-date on-chain and portfolio state.
+        """
+        return False
+
+    def get_sequential_trade_execution_reason(
+        self,
+        trades: List[TradeExecution],
+    ) -> str | None:
+        """Return a human-readable reason for sequential execution, if any."""
+        return None
+
     def settle_trade(
         self,
         web3,

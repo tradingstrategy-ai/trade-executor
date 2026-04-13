@@ -230,6 +230,29 @@ class GenericRouting(RoutingModel):
             if original_web3 is not None:
                 router_state.web3 = original_web3
 
+    def needs_sequential_trade_execution(
+        self,
+        trades: List[TradeExecution],
+    ) -> bool:
+        """Return ``True`` if any underlying router needs per-trade settlement."""
+        for trade in trades:
+            router, _ = self.get_router(trade.pair)
+            if router.needs_sequential_trade_execution([trade]):
+                return True
+        return False
+
+    def get_sequential_trade_execution_reason(
+        self,
+        trades: List[TradeExecution],
+    ) -> str | None:
+        """Return the first underlying router reason, if any."""
+        for trade in trades:
+            router, _ = self.get_router(trade.pair)
+            reason = router.get_sequential_trade_execution_reason([trade])
+            if reason:
+                return reason
+        return None
+
     def settle_trade(
         self,
         web3: Web3,
