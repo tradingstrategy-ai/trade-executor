@@ -373,3 +373,67 @@ def test_hyperliquid_cleanup_raises_on_dust_spot_balance(monkeypatch):
         RuntimeError, match="too small to cover the HyperCore bridge fee margin"
     ):
         hyperliquid_cleanup._execute_spot_to_evm(context, dust_balance)
+
+
+def test_hyperliquid_cleanup_allows_live_vault_rows_when_stranded_recovery_exists():
+    """Mixed live-vault and stranded-balance rows should still plan Safe-side recovery.
+
+    1. Build one genuinely live vault row and one closed-in-reality stranded row.
+    2. Run the clean-up action planner for a Safe with stranded HyperCore perp USDC.
+    3. Assert the planner ignores the live vault row and keeps the stranded recovery actions.
+    """
+    comparison_rows = [
+        hyperliquid_cleanup.HyperliquidCleanupComparisonRow(
+            position_id=34,
+            state_status="frozen",
+            vault_name="Still live vault",
+            vault_address="0x0000000000000000000000000000000000000034",
+            state_quantity=Decimal("591.373"),
+            live_vault_equity=Decimal("0.47309"),
+            reserve_quantity=Decimal("110.635"),
+            spot_free_usdc=Decimal("0.009252"),
+            perp_withdrawable=Decimal("4177.73"),
+            perp_position_count=0,
+            failed_trade_ids=[65],
+            classification="live_vault_open_no_action",
+        ),
+        hyperliquid_cleanup.HyperliquidCleanupComparisonRow(
+            position_id=33,
+            state_status="frozen",
+            vault_name="Closed in reality",
+            vault_address="0x0000000000000000000000000000000000000033",
+            state_quantity=Decimal("591.373"),
+            live_vault_equity=Decimal("0.099999"),
+            reserve_quantity=Decimal("110.635"),
+            spot_free_usdc=Decimal("0.009252"),
+            perp_withdrawable=Decimal("4177.73"),
+            perp_position_count=0,
+            failed_trade_ids=[64],
+            classification="closed_in_reality_perp_stranded",
+        ),
+    ]
+    live_snapshot = hyperliquid_cleanup.HyperliquidCleanupSnapshot(
+        safe_address="0xB136581dFB3efA76Ae71293C1A70942f0726E8fD",
+        evm_usdc_balance=Decimal("110.635"),
+        spot_total_usdc=Decimal("0.009252"),
+        spot_free_usdc=Decimal("0.009252"),
+        perp_withdrawable=Decimal("4177.73"),
+        perp_account_value=Decimal("4177.73"),
+        perp_position_count=0,
+        vault_equities={
+            "0x0000000000000000000000000000000000000034": Decimal("0.47309"),
+            "0x0000000000000000000000000000000000000033": Decimal("0.099999"),
+        },
+    )
+
+    # Step 1: Build a mixed live-vault and stranded-balance comparison.
+    # Step 2: Plan the clean-up actions from the Safe-level balances.
+    actions = hyperliquid_cleanup._plan_cleanup_actions(comparison_rows, live_snapshot)
+
+    # Step 3: Confirm we still recover the stranded Safe balances.
+    assert [action.action_kind for action in actions] == [
+        "perp_to_spot",
+        "spot_to_evm",
+    ]
+    assert actions[0].amount == Decimal("4177.73")
+    assert actions[1].amount == Decimal("4177.739252")
