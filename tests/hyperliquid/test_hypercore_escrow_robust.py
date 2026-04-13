@@ -1,7 +1,8 @@
 """Test P15: Robust escrow wait with spot balance verification."""
 
+import itertools
 from decimal import Decimal
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 from eth_defi.hyperliquid.api import SpotBalance, SpotClearinghouseState, EvmEscrow
 from eth_defi.hyperliquid.evm_escrow import _get_usdc_spot_balance, wait_for_evm_escrow_clear
@@ -11,6 +12,12 @@ def _make_state(usdc_balance: Decimal, escrows: list[EvmEscrow] | None = None) -
     """Helper to build a SpotClearinghouseState with a USDC balance."""
     balances = [SpotBalance(coin="USDC", token=0, total=usdc_balance, hold=Decimal(0))]
     return SpotClearinghouseState(balances=balances, evm_escrows=escrows or [])
+
+
+def _monotonic_time():
+    """Return a callable that yields steadily increasing timestamps for tests."""
+    counter = itertools.count()
+    return lambda: float(next(counter))
 
 
 def test_get_usdc_spot_balance_found():
@@ -45,12 +52,7 @@ def test_escrow_wait_with_expected_usdc_succeeds(monkeypatch):
         "eth_defi.hyperliquid.evm_escrow.fetch_spot_clearinghouse_state",
         side_effect=[baseline, pending, cleared],
     ), patch("eth_defi.hyperliquid.evm_escrow.time") as mock_time:
-        mock_time.time.side_effect = [
-            0,    # deadline = 0 + 60
-            0.5,  # after initial sleep: baseline capture is before this
-            2,    # first poll remaining check
-            4,    # second poll remaining check
-        ]
+        mock_time.time.side_effect = _monotonic_time()
         mock_time.sleep = MagicMock()
 
         wait_for_evm_escrow_clear(
@@ -62,26 +64,33 @@ def test_escrow_wait_with_expected_usdc_succeeds(monkeypatch):
         )
 
 
-def test_escrow_wait_with_expected_usdc_warns_on_shortfall(monkeypatch, caplog):
-    """Escrow clears but spot USDC increase is less than expected — logs warning."""
+def test_escrow_wait_with_expected_usdc_keeps_polling_after_shortfall(caplog):
+    """Escrow clear should keep polling until the expected spot USDC increase arrives.
+
+    1. Build a baseline with escrow and then return a cleared state with too little spot USDC.
+    2. Return a later cleared state where the expected spot increase has finally arrived.
+    3. Verify the helper logs the shortfall warning but still succeeds once spot catches up.
+    """
     import logging
+
     session = MagicMock()
 
     escrow_entry = EvmEscrow(coin="USDC", token=0, total=Decimal("50"))
 
-    # Baseline: 100 USDC
+    # Step 1: Build a baseline with escrow and then return a cleared state with too little spot USDC.
     baseline = _make_state(Decimal("100"), [escrow_entry])
-    # Cleared but only +20 instead of +50
-    cleared = _make_state(Decimal("120"))
+    shortfall = _make_state(Decimal("120"))
+    reached = _make_state(Decimal("150"))
 
     with patch(
         "eth_defi.hyperliquid.evm_escrow.fetch_spot_clearinghouse_state",
-        side_effect=[baseline, cleared],
+        side_effect=[baseline, shortfall, reached],
     ), patch("eth_defi.hyperliquid.evm_escrow.time") as mock_time:
-        mock_time.time.side_effect = [0, 2]
+        mock_time.time.side_effect = _monotonic_time()
         mock_time.sleep = MagicMock()
 
         with caplog.at_level(logging.WARNING):
+            # Step 2: Return a later cleared state where the expected spot increase has finally arrived.
             wait_for_evm_escrow_clear(
                 session,
                 user="0xABC",
@@ -90,7 +99,8 @@ def test_escrow_wait_with_expected_usdc_warns_on_shortfall(monkeypatch, caplog):
                 expected_usdc=Decimal("50"),
             )
 
-        assert "Possible silent bridge failure" in caplog.text
+        # Step 3: Verify the helper logs the shortfall warning but still succeeds once spot catches up.
+        assert "Waiting for the actual spot balance update instead of returning success yet." in caplog.text
 
 
 def test_escrow_wait_without_expected_usdc_backward_compatible():
@@ -103,7 +113,7 @@ def test_escrow_wait_without_expected_usdc_backward_compatible():
         "eth_defi.hyperliquid.evm_escrow.fetch_spot_clearinghouse_state",
         return_value=cleared,
     ), patch("eth_defi.hyperliquid.evm_escrow.time") as mock_time:
-        mock_time.time.side_effect = [0, 2]
+        mock_time.time.side_effect = _monotonic_time()
         mock_time.sleep = MagicMock()
 
         # Should work fine without expected_usdc

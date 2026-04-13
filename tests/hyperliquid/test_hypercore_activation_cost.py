@@ -296,26 +296,25 @@ def test_withdrawal_uses_live_equity_on_close():
     assert trade.other_data["hypercore_capped_withdrawal_raw"] == expected_withdrawal_raw
 
 
-def test_withdrawal_rejects_large_equity_mismatch():
-    """Abort withdrawal when live equity diverges too far from planned amount.
-
-    If the live vault equity is below HYPERCORE_LIKELY_CLOSE_TOLERANCE of the
-    planned amount, something is seriously wrong and we abort rather than
-    withdraw an unexpected amount.
+def test_withdrawal_logs_large_equity_mismatch_but_uses_live_amount(caplog):
+    """Large planned/live drift should warn loudly but still use live equity.
 
     1. Create a sell trade with planned_reserve=100 USDC.
-    2. Mock live equity at 90 USDC (90% — below the 97.5% tolerance).
-    3. Verify the withdrawal raises AssertionError.
+    2. Mock live equity at 90 USDC so the planned/live drift breaches the warning threshold.
+    3. Verify the withdrawal still uses live equity minus safety margin.
+    4. Verify the warning is logged so the operator can inspect the drift.
     """
     import datetime
-    import pytest
     from eth_defi.hyperliquid.api import UserVaultEquity
     from tradeexecutor.state.trade import TradeFlag
+    from tradeexecutor.ethereum.vault.hypercore_routing import HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
 
     routing = _make_routing(simulate=False)
     trade = _make_trade(planned_reserve=Decimal("100.0"), is_buy=False)
     trade.pair.pool_address = "0x1111111111111111111111111111111111111111"
     trade.flags = {TradeFlag.close}
+    withdraw_fn = MagicMock()
+    signed_tx = MagicMock()
 
     # 1. Live equity is only 90% of planned — below the 97.5% tolerance.
     live_equity = UserVaultEquity(
@@ -323,11 +322,26 @@ def test_withdrawal_rejects_large_equity_mismatch():
         equity=Decimal("90.0"),
         locked_until=datetime.datetime(2020, 1, 1),
     )
+    expected_withdrawal_raw = 90_000_000 - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
 
-    # 2. The sanity check should reject this large mismatch.
-    with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=live_equity):
-        with pytest.raises(AssertionError, match="too far below"):
-            routing._create_deposit_or_withdraw_txs(trade)
+    # Step 2: Mock the live equity so the drift warning path is exercised.
+    with caplog.at_level("WARNING"):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=live_equity):
+            with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_withdraw_from_vault_call", return_value=withdraw_fn) as build_withdraw:
+                with patch.object(routing, "_sign_module_call", return_value=signed_tx):
+                    txs = routing._create_deposit_or_withdraw_txs(trade)
+
+    # Step 3: Verify the withdrawal still uses live equity minus safety margin.
+    assert txs == [signed_tx]
+    build_withdraw.assert_called_once_with(
+        routing.lagoon_vault,
+        vault_address="0x1111111111111111111111111111111111111111",
+        hypercore_usdc_amount=expected_withdrawal_raw,
+    )
+    assert trade.other_data["hypercore_capped_withdrawal_raw"] == expected_withdrawal_raw
+
+    # Step 4: Verify the warning is logged so the operator can inspect the drift.
+    assert any("planned/live drift is large" in record.message for record in caplog.records)
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
