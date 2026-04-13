@@ -26,6 +26,7 @@ from .commands.token_cache import token_cache
 from .commands.trading_pair import trading_pair
 from .commands.version import version
 from .commands.repair import repair
+from .commands.repair_hypercore_dust import repair_hypercore_dust
 from .commands.retry import retry
 from .commands.visualise import visualise
 from .commands.init import init
@@ -48,7 +49,7 @@ __all__ = [
     check_universe, check_wallet, close_all, close_position, console,
     correct_accounts, correct_history, deploy_guard, distribute_gas_funds, enzyme_asset_list, enzyme_deploy_vault,
     export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_redeem, lagoon_settle, perform_test_trade, prepare_report, prune_state,
-    repair, reset, reset_deposits, retry, send_log_message, show_positions,
+    repair, repair_hypercore_dust, reset, reset_deposits, retry, send_log_message, show_positions,
     show_valuation, start, token_cache, trade_ui, trading_pair,
     version, visualise, webapi
 ]
