@@ -1328,6 +1328,11 @@ def _build_hypercore_vault_account_checks(
     path. Reuse the pair-aware multichain balance helper to fetch live
     equity for the vault pairs already present in state.
 
+    Duplicate open positions for the same Hypercore vault must be rejected
+    here. One live vault equity reading cannot be mapped to multiple state
+    positions, and allowing that would produce a misleading accounting
+    mismatch table instead of pointing at the real state corruption.
+
     Hypercore positions keep ``quantity`` as deposited USDC and
     ``last_token_price`` as the latest share price multiplier, so the
     account check must compare live equity against the position's
@@ -1343,6 +1348,51 @@ def _build_hypercore_vault_account_checks(
 
     if not vault_positions:
         return []
+
+    positions_by_vault: dict[str, list[TradingPosition]] = {}
+    for position in vault_positions:
+        vault_address = Web3.to_checksum_address(
+            position.pair.pool_address or position.pair.base.address
+        )
+        positions_by_vault.setdefault(vault_address, []).append(position)
+
+    duplicate_vault_positions = {
+        vault_address: positions
+        for vault_address, positions in positions_by_vault.items()
+        if len(positions) > 1
+    }
+    if duplicate_vault_positions:
+        logger.error(
+            "Duplicate Hypercore vault positions detected before account checks. "
+            "Hypercore full withdrawals can leave residual dust, so this usually means a stale dust "
+            "position stayed open and a later cycle opened a second live position for the same vault."
+        )
+        for vault_address, positions in duplicate_vault_positions.items():
+            sample_pair = positions[0].pair
+            logger.error(
+                "Hypercore vault %s at %s has %d open/frozen positions",
+                sample_pair.get_vault_name() or sample_pair.get_ticker(),
+                vault_address,
+                len(positions),
+            )
+            for position in positions:
+                logger.error(
+                    "Position #%s: quantity=%s, planned_quantity=%s, has_planned_trades=%s, "
+                    "is_about_to_close=%s, can_be_closed=%s",
+                    position.position_id,
+                    position.get_quantity(),
+                    position.get_quantity(planned=True),
+                    position.has_planned_trades(),
+                    position.is_about_to_close(),
+                    position.can_be_closed(),
+                )
+
+        raise UnexpectedAccountingCorrectionIssue(
+            "Duplicate Hypercore vault positions detected in state. "
+            "This usually means a stale Hypercore dust residual stayed open and a later cycle opened "
+            "a second live position for the same vault. Repair or close the residual state before "
+            "running account checks."
+        )
 
     balances = list(fetch_onchain_balances_multichain(
         sync_model.web3,

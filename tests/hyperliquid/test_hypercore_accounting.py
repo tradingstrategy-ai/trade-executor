@@ -18,9 +18,20 @@ from tradingstrategy.chain import ChainId
 
 from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultPricing, HypercoreVaultValuator
 from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_pair
+from tradeexecutor.state.balance_update import (
+    BalanceUpdate,
+    BalanceUpdateCause,
+    BalanceUpdatePositionType,
+)
 from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind, AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.strategy.account_correction import _build_hypercore_vault_account_checks
+from tradeexecutor.state.repair import close_hypercore_dust_positions
+from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeFlag, TradeType
+from tradeexecutor.strategy.account_correction import (
+    UnexpectedAccountingCorrectionIssue,
+    _build_hypercore_vault_account_checks,
+)
 from tradeexecutor.strategy.dust import (
     get_close_epsilon_for_pair,
     get_dust_epsilon_for_pair,
@@ -369,3 +380,354 @@ def test_hypercore_account_check_compares_equity_not_quantity() -> None:
     assert correction.actual_amount == live_equity
     assert correction.usd_value == 0.0
     assert correction.mismatch is False
+
+
+def test_hypercore_dust_position_is_reused_without_planned_close() -> None:
+    """Test Hypercore dust positions are reused unless the cycle is already closing them.
+
+    1. Build a state with one open Hypercore vault position whose residual quantity is below the dust epsilon.
+    2. Create a second buy trade for the same vault without any planned closing trade on the old position.
+    3. Verify the trade reuses the existing position instead of opening a duplicate position.
+    """
+
+    # 1. Build a state with one open Hypercore vault dust position.
+    reserve_asset = AssetIdentifier(
+        chain_id=999,
+        address="0xb88339cb7199b77e23db6e890353e22632ba630f",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    pair = create_hypercore_vault_pair(
+        quote=reserve_asset,
+        vault_address="0x1111111111111111111111111111111111111111",
+    )
+    state = State()
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    state.portfolio.adjust_reserves(reserve_asset, Decimal("100"), "Initial reserve")
+
+    position, trade, created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 4, 13),
+        pair=pair,
+        quantity=None,
+        reserve=Decimal("1.00"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        notes="Create dust Hypercore position",
+    )
+    trade.mark_success(
+        executed_at=datetime.datetime(2026, 4, 13, 0, 1),
+        executed_price=1.0,
+        executed_quantity=Decimal("1.00"),
+        executed_reserve=Decimal("1.00"),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+    position.balance_updates[1] = BalanceUpdate(
+        balance_update_id=1,
+        cause=BalanceUpdateCause.vault_flow,
+        position_type=BalanceUpdatePositionType.open_position,
+        asset=pair.base,
+        block_mined_at=datetime.datetime(2026, 4, 13, 0, 2),
+        strategy_cycle_included_at=datetime.datetime(2026, 4, 13),
+        chain_id=pair.base.chain_id,
+        quantity=Decimal("-0.90"),
+        old_balance=Decimal("1.00"),
+        usd_value=-0.90,
+        position_id=position.position_id,
+        notes="Simulate Hypercore withdrawal dust",
+        block_number=1,
+    )
+
+    assert created is True
+    assert position.can_be_closed()
+    assert len(state.portfolio.open_positions) == 1
+
+    # 2. Create a second buy trade for the same vault.
+    position2, trade2, created2 = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 4, 14),
+        pair=pair,
+        quantity=None,
+        reserve=Decimal("10"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        notes="Increase the same Hypercore position",
+    )
+
+    # 3. Verify the existing position is reused and no duplicate is opened.
+    assert created2 is False
+    assert position2.position_id == position.position_id
+    assert trade2.position_id == position.position_id
+    assert len(state.portfolio.open_positions) == 1
+
+
+def test_hypercore_dust_position_is_not_about_to_close_without_planned_trades() -> None:
+    """Test Hypercore dust does not look like a planned close unless the cycle really has closing trades.
+
+    1. Build a Hypercore position whose live quantity is below the close epsilon.
+    2. Verify is_about_to_close() stays false while there are no planned trades.
+    3. Mock a planned closing state and verify is_about_to_close() turns true.
+    """
+
+    # 1. Build a Hypercore position whose live quantity is below the close epsilon.
+    reserve_asset = AssetIdentifier(
+        chain_id=999,
+        address="0xb88339cb7199b77e23db6e890353e22632ba630f",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    pair = create_hypercore_vault_pair(
+        quote=reserve_asset,
+        vault_address="0x3333333333333333333333333333333333333333",
+    )
+    state = State()
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    state.portfolio.adjust_reserves(reserve_asset, Decimal("100"), "Initial reserve")
+
+    position, trade, _created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 4, 13),
+        pair=pair,
+        quantity=None,
+        reserve=Decimal("1.00"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        notes="Create dust Hypercore position",
+    )
+    trade.mark_success(
+        executed_at=datetime.datetime(2026, 4, 13, 0, 1),
+        executed_price=1.0,
+        executed_quantity=Decimal("1.00"),
+        executed_reserve=Decimal("1.00"),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+    position.balance_updates[1] = BalanceUpdate(
+        balance_update_id=1,
+        cause=BalanceUpdateCause.vault_flow,
+        position_type=BalanceUpdatePositionType.open_position,
+        asset=pair.base,
+        block_mined_at=datetime.datetime(2026, 4, 13, 0, 2),
+        strategy_cycle_included_at=datetime.datetime(2026, 4, 13),
+        chain_id=pair.base.chain_id,
+        quantity=Decimal("-0.90"),
+        old_balance=Decimal("1.00"),
+        usd_value=-0.90,
+        position_id=position.position_id,
+        notes="Simulate Hypercore withdrawal dust",
+        block_number=1,
+    )
+
+    # 2. Verify is_about_to_close() stays false while there are no planned trades.
+    assert position.can_be_closed()
+    assert position.has_planned_trades() is False
+    assert position.is_about_to_close() is False
+
+    # 3. Mock a planned closing state and verify is_about_to_close() turns true.
+    #    We mock here because create_trade() quite rightly refuses dust-sized
+    #    execution trades. This regression targets the helper semantics only:
+    #    dust must not look "about to close" until the cycle really has a
+    #    planned closing trade against the position.
+    with patch.object(position, "has_planned_trades", return_value=True):
+        assert position.is_about_to_close() is True
+
+
+def test_hypercore_account_check_rejects_duplicate_vault_positions() -> None:
+    """Test Hypercore account checks fail early with a direct duplicate-vault diagnosis.
+
+    1. Build a state with a dusty Hypercore position and a forced second open position for the same vault.
+    2. Run the Hypercore account-check builder.
+    3. Verify it raises the targeted duplicate-Hypercore error instead of producing a misleading diff table.
+    """
+
+    # 1. Build a state with one dust position and one live duplicate position.
+    reserve_asset = AssetIdentifier(
+        chain_id=999,
+        address="0xb88339cb7199b77e23db6e890353e22632ba630f",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    pair = create_hypercore_vault_pair(
+        quote=reserve_asset,
+        vault_address="0x4444444444444444444444444444444444444444",
+    )
+    state = State()
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    state.portfolio.adjust_reserves(reserve_asset, Decimal("100"), "Initial reserve")
+
+    dust_position, dust_trade, _created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 4, 13),
+        pair=pair,
+        quantity=None,
+        reserve=Decimal("1.00"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        notes="Create dust Hypercore position",
+    )
+    dust_trade.mark_success(
+        executed_at=datetime.datetime(2026, 4, 13, 0, 1),
+        executed_price=1.0,
+        executed_quantity=Decimal("1.00"),
+        executed_reserve=Decimal("1.00"),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+    dust_position.balance_updates[1] = BalanceUpdate(
+        balance_update_id=1,
+        cause=BalanceUpdateCause.vault_flow,
+        position_type=BalanceUpdatePositionType.open_position,
+        asset=pair.base,
+        block_mined_at=datetime.datetime(2026, 4, 13, 0, 2),
+        strategy_cycle_included_at=datetime.datetime(2026, 4, 13),
+        chain_id=pair.base.chain_id,
+        quantity=Decimal("-0.90"),
+        old_balance=Decimal("1.00"),
+        usd_value=-0.90,
+        position_id=dust_position.position_id,
+        notes="Simulate Hypercore withdrawal dust",
+        block_number=1,
+    )
+
+    _live_position, live_trade, live_created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 4, 14),
+        pair=pair,
+        quantity=None,
+        reserve=Decimal("25"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        notes="Force a second open Hypercore position for regression coverage",
+        flags={TradeFlag.ignore_open},
+    )
+    live_trade.mark_success(
+        executed_at=datetime.datetime(2026, 4, 14, 0, 1),
+        executed_price=1.0,
+        executed_quantity=Decimal("25"),
+        executed_reserve=Decimal("25"),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+
+    assert live_created is True
+    assert len(state.portfolio.open_positions) == 2
+
+    sync_model = MagicMock()
+    sync_model.web3 = MagicMock()
+    sync_model.get_token_storage_address.return_value = "0xa8F8DEbb722c6174B814b432169BF569603F673F"
+
+    # 2. Run the Hypercore account-check builder.
+    # 3. Verify it raises the targeted duplicate-Hypercore error.
+    with pytest.raises(UnexpectedAccountingCorrectionIssue, match="Duplicate Hypercore vault positions detected"):
+        _build_hypercore_vault_account_checks(state, sync_model)
+
+
+def test_close_hypercore_dust_positions_closes_duplicate_residual_state() -> None:
+    """Test Hypercore dust cleanup closes the stale residual position and keeps the live one open.
+
+    1. Build a state with a dusty Hypercore position and a forced second open position for the same vault.
+    2. Run the Hypercore dust cleanup helper.
+    3. Verify the residual dust position is closed with a repair trade while the live position stays open.
+    """
+
+    # 1. Build a state with one dust position and one live duplicate position.
+    reserve_asset = AssetIdentifier(
+        chain_id=999,
+        address="0xb88339cb7199b77e23db6e890353e22632ba630f",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    pair = create_hypercore_vault_pair(
+        quote=reserve_asset,
+        vault_address="0x2222222222222222222222222222222222222222",
+    )
+    state = State()
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    state.portfolio.adjust_reserves(reserve_asset, Decimal("100"), "Initial reserve")
+
+    dust_position, dust_trade, _created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 4, 13),
+        pair=pair,
+        quantity=None,
+        reserve=Decimal("1.00"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        notes="Create dust Hypercore position",
+    )
+    dust_trade.mark_success(
+        executed_at=datetime.datetime(2026, 4, 13, 0, 1),
+        executed_price=1.0,
+        executed_quantity=Decimal("1.00"),
+        executed_reserve=Decimal("1.00"),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+    dust_position.balance_updates[1] = BalanceUpdate(
+        balance_update_id=1,
+        cause=BalanceUpdateCause.vault_flow,
+        position_type=BalanceUpdatePositionType.open_position,
+        asset=pair.base,
+        block_mined_at=datetime.datetime(2026, 4, 13, 0, 2),
+        strategy_cycle_included_at=datetime.datetime(2026, 4, 13),
+        chain_id=pair.base.chain_id,
+        quantity=Decimal("-0.90"),
+        old_balance=Decimal("1.00"),
+        usd_value=-0.90,
+        position_id=dust_position.position_id,
+        notes="Simulate Hypercore withdrawal dust",
+        block_number=1,
+    )
+
+    live_position, live_trade, live_created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 4, 14),
+        pair=pair,
+        quantity=None,
+        reserve=Decimal("25"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        notes="Force a second open Hypercore position for regression coverage",
+        flags={TradeFlag.ignore_open},
+    )
+    live_trade.mark_success(
+        executed_at=datetime.datetime(2026, 4, 14, 0, 1),
+        executed_price=1.0,
+        executed_quantity=Decimal("25"),
+        executed_reserve=Decimal("25"),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+
+    assert live_created is True
+    assert len(state.portfolio.open_positions) == 2
+    assert dust_position.can_be_closed()
+    assert not live_position.can_be_closed()
+
+    # 2. Run the Hypercore dust cleanup helper.
+    created_trades = close_hypercore_dust_positions(
+        state.portfolio,
+        now=datetime.datetime(2026, 4, 15),
+    )
+
+    # 3. Verify only the dust position is closed and the live one remains open.
+    assert len(created_trades) == 1
+    assert dust_position.position_id in state.portfolio.closed_positions
+    assert dust_position.position_id not in state.portfolio.open_positions
+    assert live_position.position_id in state.portfolio.open_positions
+    assert live_position.position_id not in state.portfolio.closed_positions
+    assert created_trades[0].trade_type == TradeType.repair

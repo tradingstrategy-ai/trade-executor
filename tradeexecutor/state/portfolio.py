@@ -550,7 +550,26 @@ class Portfolio:
             # and the first trade closes the position.
             # 1. Recall credit
             # 2. Supply credit
-            if position:
+            #
+            # Only planned closing trades may make the old position replaceable.
+            # Hypercore vault withdrawals intentionally leave a small residual
+            # dust balance, and that dust can stay open across cycles with no
+            # planned trades at all. Treating the residual as "already
+            # closing" would create a second live position for the same vault
+            # and later confuse accounting checks.
+            if (
+                position
+                and pair.is_hyperliquid_vault()
+                and not position.has_planned_trades()
+                and abs(position.get_quantity()) <= dust_epsilon
+            ):
+                logger.info(
+                    "Reusing Hypercore dust position #%d for %s because there is no planned closing trade. "
+                    "Opening a new position here would create a duplicate vault entry.",
+                    position.position_id,
+                    pair.get_human_description(),
+                )
+            if position and position.has_planned_trades():
                 planned_quantity_this_cycle =  position.get_quantity(planned=True)
                 if abs(planned_quantity_this_cycle) < dust_epsilon:
                     # We cannot trade against the old position as it is goint to be closed

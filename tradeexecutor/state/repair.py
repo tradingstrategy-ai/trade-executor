@@ -239,6 +239,61 @@ def close_position_with_empty_trade(portfolio: Portfolio, p: TradingPosition) ->
     return c
 
 
+def close_hypercore_dust_positions(
+    portfolio: Portfolio,
+    now: datetime.datetime | None = None,
+) -> List[TradeExecution]:
+    """Close Hypercore vault dust positions with repair trades.
+
+    Hypercore full withdrawals intentionally leave a small residual balance
+    because the protocol rejects exact full redemptions when vault NAV drifts
+    between quote and execution.  These dust leftovers should not stay open in
+    the state because later cycles may try to trade around them as if they were
+    still meaningful live positions.
+
+    1. Scan open and frozen positions for Hypercore vault entries.
+    2. Identify positions that are already within the close epsilon.
+    3. Close each dust position locally with a zero-quantity repair trade.
+
+    :return:
+        Repair trades created for the auto-closed dust positions.
+    """
+
+    now = now or native_datetime_utc_now()
+    created_trades: List[TradeExecution] = []
+
+    positions = list(chain(
+        portfolio.open_positions.values(),
+        portfolio.frozen_positions.values(),
+    ))
+
+    for position in positions:
+        if not position.pair.is_hyperliquid_vault():
+            continue
+
+        if not position.can_be_closed():
+            continue
+
+        if position.is_frozen():
+            del portfolio.frozen_positions[position.position_id]
+            portfolio.open_positions[position.position_id] = position
+            position.unfrozen_at = now
+
+        trade = close_position_with_empty_trade(portfolio, position)
+        position.add_notes_message(
+            "Auto-closed Hypercore dust position because Hypercore vault "
+            f"withdrawals cannot fully redeem the final residual balance ({now.isoformat()})"
+        )
+        logger.info(
+            "Auto-closed Hypercore dust position %s with repair trade %s",
+            position,
+            trade,
+        )
+        created_trades.append(trade)
+
+    return created_trades
+
+
 def find_trades_to_be_repaired(state: State) -> List[TradeExecution]:
     trades_to_be_repaired = []
     # Closed trades do not need attention
