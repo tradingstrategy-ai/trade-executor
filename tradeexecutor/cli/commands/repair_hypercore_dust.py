@@ -1,13 +1,14 @@
 """Repair Hypercore dust positions from a state file."""
 
 from pathlib import Path
+from typing import Optional
 
 import typer
 from typer import Option
 
 from . import shared_options
 from .app import app
-from ..bootstrap import create_state_store
+from ..bootstrap import create_state_store, prepare_executor_id
 from ..double_position import check_double_position, get_duplicate_position_groups
 from ..log import setup_logging
 from ...state.repair import close_hypercore_dust_positions
@@ -25,11 +26,9 @@ def _count_duplicate_hypercore_groups(state) -> int:
 
 @app.command()
 def repair_hypercore_dust(
-    state_file: Path = Option(
-        ...,
-        envvar="STATE_FILE",
-        help=shared_options.state_file.help,
-    ),
+    id: str = shared_options.id,
+    strategy_file: Optional[Path] = shared_options.optional_strategy_file,
+    state_file: Optional[Path] = shared_options.state_file,
     log_level: str = shared_options.log_level,
     unit_testing: bool = shared_options.unit_testing,
     auto_approve: bool = Option(
@@ -50,6 +49,13 @@ def repair_hypercore_dust(
     """
 
     logger = setup_logging(log_level=log_level)
+
+    if not state_file:
+        id = prepare_executor_id(id, strategy_file)
+        assert id, "Executor id must be given if state file path is not given"
+        state_file = Path(f"state/{id}.json")
+
+    logger.info("Repairing Hypercore dust positions in state file %s", state_file)
 
     store = create_state_store(Path(state_file))
     assert isinstance(store, JSONFileStore)

@@ -188,3 +188,46 @@ def test_repair_hypercore_dust_cli_warns_for_non_dust_duplicates(
     repaired_state = State.read_json_file(state_file)
     assert first_position_id in repaired_state.portfolio.open_positions
     assert second_position_id in repaired_state.portfolio.open_positions
+
+
+def test_repair_hypercore_dust_cli_infers_default_state_file_from_id() -> None:
+    """Test the CLI uses the standard inferred ``state/{id}.json`` path when state file is omitted.
+
+    1. Create a state file under the default ``state/`` directory for a chosen executor id.
+    2. Run the CLI repair command with only ``--id`` and no explicit state path.
+    3. Verify the inferred state file is repaired successfully.
+    """
+
+    # 1. Create a state file under the default ``state/`` directory for a chosen executor id.
+    state, dust_position_id, live_position_id = _build_hypercore_duplicate_state(
+        dust_quantity=Decimal("0.10"),
+    )
+    runner = CliRunner()
+
+    with runner.isolated_filesystem():
+        state_dir = Path("state")
+        state_dir.mkdir()
+        state_file = state_dir / "hyper-ai.json"
+        JSONFileStore(state_file).sync(state)
+
+        # 2. Run the CLI repair command with only ``--id`` and no explicit state path.
+        result = runner.invoke(
+            app,
+            [
+                "repair-hypercore-dust",
+                "--id",
+                "hyper-ai",
+                "--auto-approve",
+                "--unit-testing",
+                "--log-level",
+                "disabled",
+            ],
+        )
+
+        # 3. Verify the inferred state file is repaired successfully.
+        assert result.exit_code == 0, result.stdout
+
+        repaired_state = State.read_json_file(state_file)
+        assert dust_position_id in repaired_state.portfolio.closed_positions
+        assert dust_position_id not in repaired_state.portfolio.open_positions
+        assert live_position_id in repaired_state.portfolio.open_positions
