@@ -34,6 +34,52 @@ def _format_position_diagnostics(position) -> str:
     return ", ".join(details)
 
 
+def get_duplicate_position_groups(state: State) -> list[list]:
+    """Get position groups that are considered duplicates.
+
+    Hypercore vaults are stricter than generic pairs: any repeated open/frozen
+    position for the same vault address is treated as a duplicate, because even
+    one stale residual can break later accounting and execution paths.
+    """
+
+    grouped_positions = {}
+    for position in state.portfolio.get_open_and_frozen_positions():
+        grouping_key = _get_position_grouping_key(position)
+        grouped_positions.setdefault(grouping_key, []).append(position)
+
+    duplicate_groups = []
+    for positions in grouped_positions.values():
+        if len(positions) < 2:
+            continue
+
+        pair = positions[0].pair
+        not_about_to_close = [p for p in positions if not p.is_about_to_close()]
+        hypercore_duplicate = pair.is_hyperliquid_vault()
+        generic_duplicate = len(not_about_to_close) >= 2
+        if generic_duplicate or hypercore_duplicate:
+            duplicate_groups.append(positions)
+
+    return duplicate_groups
+
+
+def _print_duplicate_position_group(positions: list, printer=print) -> None:
+    """Print diagnostics for one duplicate-position group."""
+    pair = positions[0].pair
+
+    if pair.is_hyperliquid_vault():
+        printer(
+            "Warning: Hypercore vault pair "
+            f"{pair} has multiple open/frozen positions: {len(positions)}. "
+            "This usually means a residual dust position stayed open and a later cycle "
+            "opened a second live position for the same vault."
+        )
+    else:
+        printer(f"Warning: pair {pair} has multiple open positions: {len(positions)}")
+
+    for position in positions:
+        printer(f"Position {position}: {_format_position_diagnostics(position)}")
+
+
 def check_double_position(state: State, printer=print, crash=False) -> bool:
     """Check that we do not have multiple positions open for the same trading pair.
 
@@ -46,52 +92,28 @@ def check_double_position(state: State, printer=print, crash=False) -> bool:
     :return:
         True if there are double positions
     """
-    # Warn about pairs appearing twice in the portfolio
     double_positions = False
-    grouped_positions = {}
-    for position in state.portfolio.get_open_and_frozen_positions():
-        grouping_key = _get_position_grouping_key(position)
-        grouped_positions.setdefault(grouping_key, []).append(position)
+    duplicate_groups = get_duplicate_position_groups(state)
 
-    for positions in grouped_positions.values():
-        if len(positions) < 2:
-            continue
-
+    for positions in duplicate_groups:
         pair = positions[0].pair
-        not_about_to_close = [p for p in positions if not p.is_about_to_close()]
-        hypercore_duplicate = pair.is_hyperliquid_vault()
-        generic_duplicate = len(not_about_to_close) >= 2
+        double_positions = True
+        _print_duplicate_position_group(positions, printer=printer)
 
-        if generic_duplicate or hypercore_duplicate:
-            if hypercore_duplicate:
-                printer(
-                    "Warning: Hypercore vault pair "
-                    f"{pair} has multiple open/frozen positions: {len(positions)}. "
-                    "This usually means a residual dust position stayed open and a later cycle "
-                    "opened a second live position for the same vault."
-                )
-            else:
-                printer(f"Warning: pair {pair} has multiple open positions: {len(positions)}")
-
-            for p in positions:
-                printer(f"Position {p}: {_format_position_diagnostics(p)}")
-
-            double_positions = True
-
-            if crash:
-                if hypercore_duplicate:
-                    raise AssertionError(
-                        f"Duplicate Hypercore vault positions detected for pair {pair}. "
-                        "This usually means a stale Hypercore dust residual was left open and a later cycle "
-                        "opened a second live position for the same vault. "
-                        "Diagnose the duplicate positions from the logs and repair or close the residual state "
-                        "before continuing."
-                    )
+        if crash:
+            if pair.is_hyperliquid_vault():
                 raise AssertionError(
-                    f"Double positions detected for pair {pair} - crashing for safety reasons.\n"
-                    f"Positions: {positions}\n"
-                    "Diagnose what is causing the double position creation and manually clean up with close-position CLI command.\n"
-                    "See logs for more details."
+                    f"Duplicate Hypercore vault positions detected for pair {pair}. "
+                    "This usually means a stale Hypercore dust residual was left open and a later cycle "
+                    "opened a second live position for the same vault. "
+                    "Diagnose the duplicate positions from the logs and repair or close the residual state "
+                    "before continuing."
                 )
+            raise AssertionError(
+                f"Double positions detected for pair {pair} - crashing for safety reasons.\n"
+                f"Positions: {positions}\n"
+                "Diagnose what is causing the double position creation and manually clean up with close-position CLI command.\n"
+                "See logs for more details."
+            )
 
     return double_positions
