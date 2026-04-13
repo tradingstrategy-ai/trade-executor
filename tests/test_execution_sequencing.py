@@ -104,7 +104,7 @@ def test_execute_trades_runs_sequential_router_one_trade_at_a_time(
 
     1. Build an execution model and a routing model that declares sequential settlement.
     2. Execute two trades and verify start/setup/broadcast happen per trade, not per batch.
-    3. Verify freeze handling and final outcome logging also happen per trade.
+    3. Verify slippage, freeze handling, and final outcome logging also happen per trade.
     """
     # 1. Build an execution model and a routing model that declares sequential settlement.
     execution = RecordingExecution()
@@ -137,10 +137,11 @@ def test_execute_trades_runs_sequential_router_one_trade_at_a_time(
         check_balances=True,
     )
 
-    # 3. Verify freeze handling and final outcome logging also happen per trade.
+    # 3. Verify slippage, freeze handling, and final outcome logging also happen per trade.
     state.start_execution_all.assert_not_called()
     assert [call.args[1].trade_id for call in state.start_execution.call_args_list] == [1, 2]
     assert all(call.kwargs["underflow_check"] is True for call in state.start_execution.call_args_list)
+    assert [trade.planned_max_slippage for trade in trades] == [execution.max_slippage, execution.max_slippage]
     assert [call.kwargs["trades"][0].trade_id for call in routing_model.setup_trades.call_args_list] == [1, 2]
     assert execution.executed_batches == [[1], [2]]
     assert frozen_batches == [[1], [2]]

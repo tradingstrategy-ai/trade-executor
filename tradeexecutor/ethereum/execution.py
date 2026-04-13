@@ -661,6 +661,8 @@ class EthereumExecution(ExecutionModel):
                     underflow_check=check_balances,
                     triggered=triggered,
                 )
+                if self.max_slippage is not None:
+                    trade.planned_max_slippage = self.max_slippage
 
             routing_model.setup_trades(
                 state=state,
