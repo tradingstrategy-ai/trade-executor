@@ -414,12 +414,14 @@ def log_stale_vault_candle_data(
 
     reference_now = pd.Timestamp(now or native_datetime_utc_now())
     stale_entries = []
+    checked_vault_count = 0
 
     for pair_id in vault_candle_df["pair_id"].unique():
         pair_candles = vault_candle_df[vault_candle_df["pair_id"] == pair_id]
         if len(pair_candles) == 0:
             continue
 
+        checked_vault_count += 1
         last_ts = pair_candles["timestamp"].max()
         age = reference_now - last_ts
         if age <= pd.Timedelta(stale_tolerance):
@@ -446,6 +448,7 @@ def log_stale_vault_candle_data(
         )
 
     if stale_entries:
+        up_to_date_vault_count = checked_vault_count - len(stale_entries)
         stale_entries_df = pd.DataFrame(stale_entries)
         stale_entries_table = tabulate(
             stale_entries_df,
@@ -454,8 +457,9 @@ def log_stale_vault_candle_data(
             showindex=False,
         )
         logger.warning(
-            "Vault candle data is stale (>24h after 1d resampling floor) for %d vault(s):\n%s",
+            "Vault candle data is stale (>24h after 1d resampling floor) for %d vault(s); %d vault(s) are up to date:\n%s",
             len(stale_entries),
+            up_to_date_vault_count,
             stale_entries_table,
         )
 

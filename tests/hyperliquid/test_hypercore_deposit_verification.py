@@ -153,3 +153,51 @@ def test_deposit_verification_existing_no_increase_times_out(mock_fetch, mock_ti
 
     err_msg = str(exc_info.value)
     assert "silently rejected" in err_msg
+
+
+@patch("eth_defi.hyperliquid.api.time.sleep")
+@patch("eth_defi.hyperliquid.api.fetch_user_vault_equity")
+def test_deposit_verification_tolerates_relative_existing_position_drift(
+    mock_fetch, mock_sleep,
+):
+    """Large existing-vault deposit passes when the shortfall is within relative tolerance."""
+    mock_fetch.return_value = _make_equity(Decimal("629.998483"))
+
+    session = MagicMock()
+    result = wait_for_vault_deposit_confirmation(
+        session,
+        user=USER_ADDR,
+        vault_address=VAULT_ADDR,
+        expected_deposit=Decimal("570.690753"),
+        existing_equity=Decimal("59.559287"),
+        timeout=10.0,
+        poll_interval=1.0,
+    )
+
+    assert result.equity == Decimal("629.998483")
+
+
+@patch("eth_defi.hyperliquid.api.time.sleep")
+@patch("eth_defi.hyperliquid.api.time.time")
+@patch("eth_defi.hyperliquid.api.fetch_user_vault_equity")
+def test_deposit_verification_rejects_large_existing_position_shortfall(
+    mock_fetch, mock_time, mock_sleep,
+):
+    """Existing-vault deposit still fails when the shortfall exceeds relative tolerance."""
+    mock_fetch.return_value = _make_equity(Decimal("620.0"))
+    mock_time.side_effect = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+
+    session = MagicMock()
+    with pytest.raises(HypercoreDepositVerificationError) as exc_info:
+        wait_for_vault_deposit_confirmation(
+            session,
+            user=USER_ADDR,
+            vault_address=VAULT_ADDR,
+            expected_deposit=Decimal("570.690753"),
+            existing_equity=Decimal("59.559287"),
+            timeout=3.0,
+            poll_interval=1.0,
+        )
+
+    err_msg = str(exc_info.value)
+    assert "could not be verified" in err_msg

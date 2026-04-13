@@ -344,11 +344,11 @@ def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(
 ) -> None:
     """Verify the startup summary is logged before the aggregated stale-vault warning.
 
-    1. Build fresh summary diagnostics and a stale per-vault candle snapshot.
+    1. Build fresh summary diagnostics and per-vault candle snapshots with one stale vault and one fresh vault.
     2. Emit the summary log and then the aggregated stale-vault warning.
-    3. Assert the summary message appears before the stale-vault warning and the stale warning is at warning level.
+    3. Assert the summary message appears before the stale-vault warning, which includes stale and up-to-date vault counts.
     """
-    # 1. Build fresh summary diagnostics and a stale per-vault candle snapshot.
+    # 1. Build fresh summary diagnostics and per-vault candle snapshots with one stale vault and one fresh vault.
     diagnostics = build_vault_history_diagnostics(
         raw_vault_price_df=_build_vault_price_history_df(
             "0xcafe000000000000000000000000000000000000",
@@ -370,16 +370,25 @@ def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(
     )
     vault_candle_df = pd.DataFrame(
         {
-            "pair_id": [272079929],
-            "timestamp": [pd.Timestamp(datetime.datetime(2026, 4, 10, 0, 0, 0))],
+            "pair_id": [272079929, 272079930],
+            "timestamp": [
+                pd.Timestamp(datetime.datetime(2026, 4, 10, 0, 0, 0)),
+                pd.Timestamp(datetime.datetime(2026, 4, 11, 12, 30, 0)),
+            ],
         }
     )
     vault_pairs_df = pd.DataFrame(
         {
-            "pair_id": [272079929],
-            "exchange_name": ["MirVault"],
-            "address": ["0x10aa8b767d0742de206bfafe36b8556634379c39"],
-            "token_metadata": [SimpleNamespace(tvl=80_107.73)],
+            "pair_id": [272079929, 272079930],
+            "exchange_name": ["MirVault", "FreshVault"],
+            "address": [
+                "0x10aa8b767d0742de206bfafe36b8556634379c39",
+                "0x20aa8b767d0742de206bfafe36b8556634379c40",
+            ],
+            "token_metadata": [
+                SimpleNamespace(tvl=80_107.73),
+                SimpleNamespace(tvl=10_000.0),
+            ],
         }
     )
 
@@ -392,7 +401,7 @@ def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(
             now=datetime.datetime(2026, 4, 11, 13, 59, 0),
         )
 
-    # 3. Assert the summary message appears before the stale-vault warning and the stale warning is at warning level.
+    # 3. Assert the summary message appears before the stale-vault warning, which includes stale and up-to-date vault counts.
     relevant_records = [
         record
         for record in caplog.records
@@ -400,6 +409,9 @@ def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(
     ]
     assert "Vault history freshness summary" in relevant_records[0].message
     assert relevant_records[1].levelname == "WARNING"
-    assert "Vault candle data is stale (>24h after 1d resampling floor) for 1 vault(s)" in relevant_records[1].message
+    assert (
+        "Vault candle data is stale (>24h after 1d resampling floor) for 1 vault(s); "
+        "1 vault(s) are up to date"
+    ) in relevant_records[1].message
     assert "\nvault" in relevant_records[1].message
     assert "MirVault" in relevant_records[1].message
