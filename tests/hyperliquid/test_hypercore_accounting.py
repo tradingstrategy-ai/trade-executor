@@ -18,6 +18,7 @@ from tradingstrategy.chain import ChainId
 
 from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultPricing, HypercoreVaultValuator
 from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_pair
+from tradeexecutor.cli.double_position import check_double_position
 from tradeexecutor.state.balance_update import (
     BalanceUpdate,
     BalanceUpdateCause,
@@ -536,6 +537,65 @@ def test_hypercore_dust_position_is_not_about_to_close_without_planned_trades() 
     #    planned closing trade against the position.
     with patch.object(position, "has_planned_trades", return_value=True):
         assert position.is_about_to_close() is True
+
+
+def test_check_double_position_distinguishes_different_hypercore_vaults() -> None:
+    """Test duplicate-position checks do not merge distinct Hypercore vaults.
+
+    1. Build two open Hypercore positions with the same synthetic pair metadata but different vault addresses.
+    2. Verify Hypercore pair equality still reproduces the broad identifier semantics.
+    3. Verify the duplicate-position tripwire does not report a duplicate because the vault addresses differ.
+    """
+
+    # 1. Build two open Hypercore positions with different vault addresses.
+    reserve_asset = AssetIdentifier(
+        chain_id=999,
+        address="0xb88339cb7199b77e23db6e890353e22632ba630f",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    pair_1 = create_hypercore_vault_pair(
+        quote=reserve_asset,
+        vault_address="0x5555555555555555555555555555555555555555",
+    )
+    pair_2 = create_hypercore_vault_pair(
+        quote=reserve_asset,
+        vault_address="0x6666666666666666666666666666666666666666",
+    )
+
+    state = State()
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    state.portfolio.adjust_reserves(reserve_asset, Decimal("100"), "Initial reserve")
+
+    for idx, pair in enumerate((pair_1, pair_2), start=1):
+        _position, trade, _created = state.create_trade(
+            strategy_cycle_at=datetime.datetime(2026, 4, 13, idx),
+            pair=pair,
+            quantity=None,
+            reserve=Decimal("10"),
+            assumed_price=1.0,
+            trade_type=TradeType.rebalance,
+            reserve_currency=reserve_asset,
+            reserve_currency_price=1.0,
+            notes=f"Create Hypercore position {idx}",
+            flags={TradeFlag.ignore_open},
+        )
+        trade.mark_success(
+            executed_at=datetime.datetime(2026, 4, 13, idx, 1),
+            executed_price=1.0,
+            executed_quantity=Decimal("10"),
+            executed_reserve=Decimal("10"),
+            lp_fees=0,
+            native_token_price=0,
+            force=True,
+        )
+
+    # 2. Verify Hypercore pair equality still reproduces the broad identifier semantics.
+    assert pair_1 == pair_2
+    assert pair_1.get_identifier() != pair_2.get_identifier()
+
+    # 3. Verify the duplicate-position tripwire does not report a duplicate.
+    assert check_double_position(state, crash=True) is False
 
 
 def test_hypercore_account_check_rejects_duplicate_vault_positions() -> None:

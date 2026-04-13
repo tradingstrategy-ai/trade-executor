@@ -65,7 +65,7 @@ from tradeexecutor.cli.bootstrap import (backup_state, create_client,
                                          prepare_executor_id)
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
-from tradeexecutor.state.repair import repair_trades
+from tradeexecutor.state.repair import close_hypercore_dust_positions, repair_trades
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
 from tradeexecutor.strategy.account_correction import (
@@ -821,6 +821,12 @@ def _repair_and_correct_state(
         attempt_repair=True,
         interactive=False,
     )
+    closed_dust_trades = close_hypercore_dust_positions(state.portfolio)
+    if closed_dust_trades:
+        logger.info(
+            "Auto-closed %d Hypercore dust position(s) before cleanup account correction",
+            len(closed_dust_trades),
+        )
 
     accounting_context = _build_accounting_correction_context(context)
     block_identifier = get_almost_latest_block_number(
@@ -853,6 +859,13 @@ def _repair_and_correct_state(
             pricing_model=accounting_context.pricing_model,
         )
     )
+
+    closed_dust_trades = close_hypercore_dust_positions(state.portfolio)
+    if closed_dust_trades:
+        logger.info(
+            "Auto-closed %d Hypercore dust position(s) after cleanup account correction",
+            len(closed_dust_trades),
+        )
 
     check_state_internal_coherence(state)
     accounts_clean, dataframe = check_accounts(

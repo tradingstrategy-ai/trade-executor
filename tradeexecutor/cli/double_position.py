@@ -2,6 +2,19 @@
 from tradeexecutor.state.state import State
 
 
+def _get_position_grouping_key(position):
+    """Get the duplicate-detection grouping key for a position."""
+    pair = position.pair
+
+    # Hypercore vault pair equality intentionally ignores ``pool_address``,
+    # but duplicate-position diagnostics must distinguish different vaults.
+    # Group these positions by their actual vault address instead.
+    if pair.is_hyperliquid_vault():
+        return ("hyperliquid_vault", (pair.pool_address or pair.base.address).lower())
+
+    return pair
+
+
 def _format_position_diagnostics(position) -> str:
     """Format one position for duplicate-position diagnostics."""
     pair = position.pair
@@ -35,13 +48,16 @@ def check_double_position(state: State, printer=print, crash=False) -> bool:
     """
     # Warn about pairs appearing twice in the portfolio
     double_positions = False
-    pairs = {p.pair for p in state.portfolio.get_open_and_frozen_positions()}
-    for pair in pairs:
+    grouped_positions = {}
+    for position in state.portfolio.get_open_and_frozen_positions():
+        grouping_key = _get_position_grouping_key(position)
+        grouped_positions.setdefault(grouping_key, []).append(position)
 
-        positions = [p for p in state.portfolio.get_open_and_frozen_positions() if p.pair == pair]
+    for positions in grouped_positions.values():
         if len(positions) < 2:
             continue
 
+        pair = positions[0].pair
         not_about_to_close = [p for p in positions if not p.is_about_to_close()]
         hypercore_duplicate = pair.is_hyperliquid_vault()
         generic_duplicate = len(not_about_to_close) >= 2

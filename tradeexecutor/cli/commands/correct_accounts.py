@@ -27,6 +27,7 @@ from ...ethereum.enzyme.tx import EnzymeTransactionBuilder
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from ...ethereum.tx import HotWalletTransactionBuilder
+from ...state.repair import close_hypercore_dust_positions
 from ...state.state import UncleanState
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.account_correction import calculate_account_corrections
@@ -524,6 +525,13 @@ def correct_accounts(
         state=state,
     )
 
+    closed_dust_trades = close_hypercore_dust_positions(state.portfolio)
+    if closed_dust_trades:
+        logger.info(
+            "Auto-closed %d Hypercore dust position(s) before duplicate and accounting checks",
+            len(closed_dust_trades),
+        )
+
     block_number = get_almost_latest_block_number(web3)
     logger.info(f"Correcting accounts at block {block_number:,}")
 
@@ -614,6 +622,13 @@ def correct_accounts(
     )
     balance_updates = list(balance_updates)  # Side effect: this will force execution of all actions stuck in the iterator
     logger.info(f"We did {len(corrections)} accounting corrections, of which {len(balance_updates)} internal state balance updates, new block height is {block_number:,} at {block_timestamp}")
+
+    closed_dust_trades = close_hypercore_dust_positions(state.portfolio)
+    if closed_dust_trades:
+        logger.info(
+            "Auto-closed %d Hypercore dust position(s) after accounting corrections",
+            len(closed_dust_trades),
+        )
 
     if not skip_save:
         logger.info("Saving state to %s", store.path)
