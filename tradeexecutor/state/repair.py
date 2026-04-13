@@ -31,7 +31,7 @@ from eth_defi.compat import native_datetime_utc_now
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeType, TradeStatus
+from tradeexecutor.state.trade import TradeExecution, TradeType, TradeStatus, TradeFlag
 from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,10 @@ logger = logging.getLogger(__name__)
 
 class RepairAborted(Exception):
     """User chose no"""
+
+
+class HypercoreDuplicateSuppressionError(Exception):
+    """A Hypercore duplicate group was not safe to suppress automatically."""
 
 
 @dataclass(slots=True)
@@ -59,6 +63,170 @@ class RepairResult:
 
     #: New trades we made to fix the accounting
     new_trades: List[TradeExecution]
+
+
+@dataclass(slots=True)
+class HypercoreDuplicateSuppressionCandidate:
+    """One safe Hypercore duplicate-clone suppression candidate."""
+
+    vault_address: str
+    vault_name: str
+    survivor_position: TradingPosition
+    clone_position: TradingPosition
+
+
+def _get_hypercore_vault_address(position: TradingPosition) -> str:
+    """Get the canonical vault address for a Hypercore position."""
+
+    return (position.pair.pool_address or position.pair.base.address).lower()
+
+
+def _get_position_expected_usd_equity(position: TradingPosition) -> Decimal:
+    """Get the expected USD equity using the position valuation semantics."""
+
+    value = position.get_value(include_interest=False)
+    return Decimal(str(value))
+
+
+def _validate_hypercore_duplicate_clone_group(
+    positions: list[TradingPosition],
+) -> HypercoreDuplicateSuppressionCandidate:
+    """Validate that a duplicate group is safe to suppress as a later phantom clone."""
+
+    if len(positions) != 2:
+        raise HypercoreDuplicateSuppressionError(
+            f"Expected exactly 2 duplicate positions, got {len(positions)}"
+        )
+
+    survivor_position, clone_position = sorted(positions, key=lambda p: p.position_id)
+    reasons: list[str] = []
+
+    if survivor_position.is_frozen() or clone_position.is_frozen():
+        reasons.append("group contains frozen positions")
+
+    if survivor_position.has_planned_trades() or clone_position.has_planned_trades():
+        reasons.append("group contains planned trades")
+
+    if survivor_position.is_about_to_close() or clone_position.is_about_to_close():
+        reasons.append("group contains positions about to close")
+
+    if survivor_position.loan is not None or clone_position.loan is not None:
+        reasons.append("group contains loan-backed state")
+
+    if survivor_position.is_loan_based() or clone_position.is_loan_based():
+        reasons.append("group contains loan-based positions")
+
+    if clone_position.balance_updates:
+        reasons.append("clone candidate has balance updates")
+
+    if len(clone_position.trades) != 1:
+        reasons.append("clone candidate does not have exactly one trade")
+    else:
+        clone_trade = clone_position.get_first_trade()
+        clone_flags = clone_trade.flags or set()
+        if not clone_trade.is_success():
+            reasons.append("clone candidate opening trade is not successful")
+        if clone_trade.is_sell():
+            reasons.append("clone candidate trade is a sell")
+        if clone_trade.is_failed():
+            reasons.append("clone candidate trade is failed")
+        if clone_trade.is_repair_trade() or clone_trade.trade_type == TradeType.repair:
+            reasons.append("clone candidate trade is a repair trade")
+        if TradeFlag.ignore_open not in clone_flags:
+            reasons.append("clone candidate opening trade lacks ignore_open flag")
+
+    survivor_trade = survivor_position.get_first_trade()
+    clone_trade = clone_position.get_first_trade()
+
+    if survivor_position.pair.pool_address != clone_position.pair.pool_address:
+        reasons.append("pool addresses differ")
+    if survivor_position.pair.base != clone_position.pair.base:
+        reasons.append("base assets differ")
+    if survivor_position.pair.quote != clone_position.pair.quote:
+        reasons.append("quote assets differ")
+    if survivor_trade.reserve_currency != clone_trade.reserve_currency:
+        reasons.append("reserve currencies differ")
+
+    if survivor_position.get_quantity(planned=False) != clone_position.get_quantity(planned=False):
+        reasons.append("current quantities differ")
+    if survivor_position.get_quantity(planned=True) != clone_position.get_quantity(planned=True):
+        reasons.append("planned quantities differ")
+    if survivor_position.last_token_price != clone_position.last_token_price:
+        reasons.append("last_token_price differs")
+    if survivor_position.last_reserve_price != clone_position.last_reserve_price:
+        reasons.append("last_reserve_price differs")
+    if _get_position_expected_usd_equity(survivor_position) != _get_position_expected_usd_equity(clone_position):
+        reasons.append("expected USD equity differs")
+
+    if reasons:
+        raise HypercoreDuplicateSuppressionError(
+            f"Vault {_get_hypercore_vault_address(survivor_position)} "
+            f"positions #{survivor_position.position_id} and #{clone_position.position_id} "
+            f"are not safe to suppress automatically: {', '.join(reasons)}"
+        )
+
+    return HypercoreDuplicateSuppressionCandidate(
+        vault_address=_get_hypercore_vault_address(survivor_position),
+        vault_name=survivor_position.pair.get_vault_name() or survivor_position.pair.get_ticker(),
+        survivor_position=survivor_position,
+        clone_position=clone_position,
+    )
+
+
+def find_hypercore_duplicate_clone_candidates(
+    portfolio: Portfolio,
+) -> tuple[list[HypercoreDuplicateSuppressionCandidate], list[str]]:
+    """Find Hypercore duplicate groups that are safe to suppress as later clones."""
+
+    positions_by_vault: dict[str, list[TradingPosition]] = {}
+    for position in portfolio.get_open_and_frozen_positions():
+        if not position.pair.is_hyperliquid_vault():
+            continue
+        positions_by_vault.setdefault(_get_hypercore_vault_address(position), []).append(position)
+
+    candidates: list[HypercoreDuplicateSuppressionCandidate] = []
+    rejected_groups: list[str] = []
+
+    for positions in positions_by_vault.values():
+        if len(positions) < 2:
+            continue
+        try:
+            candidates.append(_validate_hypercore_duplicate_clone_group(positions))
+        except HypercoreDuplicateSuppressionError as e:
+            rejected_groups.append(str(e))
+
+    return candidates, rejected_groups
+
+
+def suppress_hypercore_duplicate_clone(
+    portfolio: Portfolio,
+    candidate: HypercoreDuplicateSuppressionCandidate,
+    now: datetime.datetime | None = None,
+) -> TradingPosition:
+    """Suppress a later Hypercore duplicate clone from active accounting."""
+
+    now = now or native_datetime_utc_now()
+    survivor_position = candidate.survivor_position
+    clone_position = candidate.clone_position
+
+    clone_position.add_notes_message(
+        f"Suppressed as duplicate clone of position #{survivor_position.position_id} "
+        f"during Hypercore duplicate repair ({now.isoformat()})"
+    )
+    survivor_position.add_notes_message(
+        f"Suppressed duplicate position #{clone_position.position_id} during Hypercore duplicate repair "
+        f"({now.isoformat()})"
+    )
+    clone_position.other_data["suppressed_duplicate_survivor_position_id"] = survivor_position.position_id
+    portfolio.suppress_duplicate_position(clone_position, now)
+    logger.info(
+        "Suppressed Hypercore duplicate clone position #%d and kept survivor #%d for vault %s at %s",
+        clone_position.position_id,
+        survivor_position.position_id,
+        candidate.vault_name,
+        candidate.vault_address,
+    )
+    return clone_position
 
 
 def make_counter_trade(portfolio: Portfolio, p: TradingPosition, t: TradeExecution) -> TradeExecution:
