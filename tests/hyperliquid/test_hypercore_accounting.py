@@ -29,7 +29,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.repair import (
     close_hypercore_duplicate_clone,
     close_hypercore_dust_positions,
-    find_hypercore_duplicate_clone_candidates,
+    find_hypercore_duplicate_close_candidates,
 )
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeFlag, TradeType
@@ -889,19 +889,19 @@ def test_close_hypercore_dust_positions_closes_duplicate_residual_state() -> Non
     assert created_trades[0].trade_type == TradeType.repair
 
 
-def test_hypercore_duplicate_clone_suppression_keeps_canonical_position() -> None:
+def test_hypercore_duplicate_clone_close_keeps_canonical_position() -> None:
     """Test safe Hypercore later-clone repair closes the clone and keeps the older canonical position active.
 
     1. Build a state with one canonical Hypercore position and one later duplicate clone.
-    2. Discover the strict suppression candidate and apply it.
+    2. Discover the strict close candidate and apply it.
     3. Verify the canonical position stays open and the later clone is closed with a flagged repair trade.
     """
 
     # 1. Build a state with one canonical Hypercore position and one later duplicate clone.
     state, survivor_position, clone_position = _build_hypercore_clone_duplicate_state()
 
-    # 2. Discover the strict suppression candidate and apply it.
-    candidates, rejected_groups = find_hypercore_duplicate_clone_candidates(state.portfolio)
+    # 2. Discover the strict close candidate and apply it.
+    candidates, rejected_groups = find_hypercore_duplicate_close_candidates(state.portfolio)
     assert rejected_groups == []
     assert len(candidates) == 1
 
@@ -925,12 +925,12 @@ def test_hypercore_duplicate_clone_suppression_keeps_canonical_position() -> Non
     assert note in (clone_position.notes or "")
 
 
-def test_hypercore_duplicate_clone_suppression_rejects_clone_without_ignore_open() -> None:
-    """Test later-clone suppression rejects duplicates whose later trade lacks `ignore_open`.
+def test_hypercore_duplicate_clone_close_rejects_clone_without_ignore_open() -> None:
+    """Test later-clone closing rejects duplicates whose later trade lacks `ignore_open`.
 
     1. Build a state with a later Hypercore duplicate whose opening trade lacks `ignore_open`.
-    2. Discover suppression candidates.
-    3. Verify the group is rejected and no safe suppression candidate is returned.
+    2. Discover close candidates.
+    3. Verify the group is rejected and no safe close candidate is returned.
     """
 
     # 1. Build a state with a later Hypercore duplicate whose opening trade lacks `ignore_open`.
@@ -938,20 +938,20 @@ def test_hypercore_duplicate_clone_suppression_rejects_clone_without_ignore_open
         duplicate_flags=set(),
     )
 
-    # 2. Discover suppression candidates.
-    candidates, rejected_groups = find_hypercore_duplicate_clone_candidates(state.portfolio)
+    # 2. Discover close candidates.
+    candidates, rejected_groups = find_hypercore_duplicate_close_candidates(state.portfolio)
 
-    # 3. Verify the group is rejected and no safe suppression candidate is returned.
+    # 3. Verify the group is rejected and no safe close candidate is returned.
     assert candidates == []
     assert len(rejected_groups) == 1
     assert "lacks ignore_open flag" in rejected_groups[0]
 
 
-def test_hypercore_duplicate_clone_suppression_rejects_clone_with_balance_updates() -> None:
-    """Test later-clone suppression rejects duplicates when the clone already has balance updates.
+def test_hypercore_duplicate_clone_close_rejects_clone_with_balance_updates() -> None:
+    """Test later-clone closing rejects duplicates when the clone already has balance updates.
 
     1. Build a state with a later Hypercore duplicate clone that has balance updates.
-    2. Discover suppression candidates.
+    2. Discover close candidates.
     3. Verify the group is rejected because the later position is no longer a clean phantom clone.
     """
 
@@ -960,8 +960,8 @@ def test_hypercore_duplicate_clone_suppression_rejects_clone_with_balance_update
         duplicate_balance_update_quantity=Decimal("0.01"),
     )
 
-    # 2. Discover suppression candidates.
-    candidates, rejected_groups = find_hypercore_duplicate_clone_candidates(state.portfolio)
+    # 2. Discover close candidates.
+    candidates, rejected_groups = find_hypercore_duplicate_close_candidates(state.portfolio)
 
     # 3. Verify the group is rejected because the later position is no longer a clean phantom clone.
     assert candidates == []
@@ -969,11 +969,11 @@ def test_hypercore_duplicate_clone_suppression_rejects_clone_with_balance_update
     assert "has balance updates" in rejected_groups[0]
 
 
-def test_hypercore_duplicate_clone_suppression_rejects_expected_equity_mismatch() -> None:
-    """Test later-clone suppression rejects duplicates when expected USD equity differs.
+def test_hypercore_duplicate_clone_close_rejects_expected_equity_mismatch() -> None:
+    """Test later-clone closing rejects duplicates when expected USD equity differs.
 
     1. Build a state whose later Hypercore clone keeps the same quantity but has different valuation metadata.
-    2. Discover suppression candidates.
+    2. Discover close candidates.
     3. Verify the group is rejected because expected USD equity no longer matches.
     """
 
@@ -982,8 +982,8 @@ def test_hypercore_duplicate_clone_suppression_rejects_expected_equity_mismatch(
         duplicate_last_token_price=1.1,
     )
 
-    # 2. Discover suppression candidates.
-    candidates, rejected_groups = find_hypercore_duplicate_clone_candidates(state.portfolio)
+    # 2. Discover close candidates.
+    candidates, rejected_groups = find_hypercore_duplicate_close_candidates(state.portfolio)
 
     # 3. Verify the group is rejected because expected USD equity no longer matches.
     assert candidates == []
@@ -991,12 +991,12 @@ def test_hypercore_duplicate_clone_suppression_rejects_expected_equity_mismatch(
     assert "expected USD equity differs" in rejected_groups[0]
 
 
-def test_hypercore_duplicate_clone_suppression_rejects_frozen_group() -> None:
-    """Test later-clone suppression rejects duplicate groups that contain frozen positions.
+def test_hypercore_duplicate_clone_close_rejects_frozen_group() -> None:
+    """Test later-clone closing rejects duplicate groups that contain frozen positions.
 
     1. Build a state with one canonical Hypercore position and one later clone.
     2. Move the later clone into frozen positions to simulate an unsafe repair case.
-    3. Verify the duplicate group is rejected for automatic suppression.
+    3. Verify the duplicate group is rejected for automatic closing.
     """
 
     # 1. Build a state with one canonical Hypercore position and one later clone.
@@ -1007,8 +1007,8 @@ def test_hypercore_duplicate_clone_suppression_rejects_frozen_group() -> None:
     del state.portfolio.open_positions[clone_position.position_id]
     state.portfolio.frozen_positions[clone_position.position_id] = clone_position
 
-    # 3. Verify the duplicate group is rejected for automatic suppression.
-    candidates, rejected_groups = find_hypercore_duplicate_clone_candidates(state.portfolio)
+    # 3. Verify the duplicate group is rejected for automatic closing.
+    candidates, rejected_groups = find_hypercore_duplicate_close_candidates(state.portfolio)
     assert candidates == []
     assert len(rejected_groups) == 1
     assert "contains frozen positions" in rejected_groups[0]

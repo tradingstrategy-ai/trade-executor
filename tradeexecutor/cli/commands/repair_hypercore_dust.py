@@ -14,7 +14,7 @@ from ..log import setup_logging
 from ...state.repair import (
     close_hypercore_duplicate_clone,
     close_hypercore_dust_positions,
-    find_hypercore_duplicate_clone_candidates,
+    find_hypercore_duplicate_close_candidates,
 )
 from ...state.store import JSONFileStore
 
@@ -55,9 +55,9 @@ def repair_hypercore_dust(
         False,
         envvar="MERGE_DUSTLESS_DUPLICATES",
         help=(
-            "Suppress a later phantom Hypercore duplicate clone when the duplicate group "
+            "Close a later phantom Hypercore duplicate clone when the duplicate group "
             "passes strict safety checks. This always requires an explicit y/n confirmation "
-            "for each dangerous suppression."
+            "for each dangerous duplicate close."
         ),
     ),
     auto_approve: bool = Option(
@@ -66,7 +66,7 @@ def repair_hypercore_dust(
         help="Approve Hypercore dust cleanup without asking for confirmation.",
     ),
 ):
-    """Close Hypercore dust positions and optionally suppress safe duplicate clones.
+    """Close Hypercore dust positions and optionally close safe duplicate clones.
 
     This command is intentionally local-state only. It does not attempt any
     on-chain execution; instead it creates repair trades for Hypercore vault
@@ -132,34 +132,34 @@ def repair_hypercore_dust(
     duplicate_group_count_after = _count_duplicate_hypercore_groups(state)
 
     if duplicate_group_count_after and merge_dustless_duplicates:
-        candidates, rejected_groups = find_hypercore_duplicate_clone_candidates(state.portfolio)
+        candidates, rejected_groups = find_hypercore_duplicate_close_candidates(state.portfolio)
 
         if rejected_groups:
             logger.warning(
-                "Hypercore duplicate groups remaining after dust cleanup are not safe for automatic suppression"
+                "Hypercore duplicate groups remaining after dust cleanup are not safe for automatic closing"
             )
             for reason in rejected_groups:
                 logger.warning(reason)
             raise RuntimeError(
                 "Hypercore duplicate positions still remain after dust cleanup, and at least one duplicate "
-                "group is not safe for automatic suppression. The state file was not updated."
+                "group is not safe for automatic closing. The state file was not updated."
             )
 
         if candidates:
             if auto_approve and not unit_testing:
                 raise RuntimeError(
                     "--auto-approve cannot be used with --merge-dustless-duplicates because "
-                    "each dangerous duplicate suppression requires an explicit y/n confirmation."
+                    "each dangerous duplicate close requires an explicit y/n confirmation."
                 )
 
             logger.warning(
-                "Detected %d Hypercore duplicate clone group(s) that are eligible for strict suppression",
+                "Detected %d Hypercore duplicate clone group(s) that are eligible for strict closing",
                 len(candidates),
             )
 
             for candidate in candidates:
                 logger.warning(
-                    "Eligible Hypercore duplicate clone suppression for vault %s at %s",
+                    "Eligible Hypercore duplicate clone close for vault %s at %s",
                     candidate.vault_name,
                     candidate.vault_address,
                 )
@@ -168,19 +168,19 @@ def repair_hypercore_dust(
                     _format_candidate_position(candidate.survivor_position),
                 )
                 logger.warning(
-                    "Suppressing clone position: %s",
+                    "Closing clone position: %s",
                     _format_candidate_position(candidate.clone_position),
                 )
 
                 if not unit_testing:
                     confirmation = typer.confirm(
-                        f"Suppress duplicate clone position #{candidate.clone_position.position_id} "
+                        f"Close duplicate clone position #{candidate.clone_position.position_id} "
                         f"and keep survivor #{candidate.survivor_position.position_id} for vault "
                         f"{candidate.vault_name}?"
                     )
                     if not confirmation:
                         raise RuntimeError(
-                            "Operator aborted Hypercore duplicate-clone suppression. "
+                            "Operator aborted Hypercore duplicate-clone close. "
                             "The state file was not updated."
                         )
 
@@ -200,7 +200,7 @@ def repair_hypercore_dust(
         check_double_position(state, printer=logger.warning, crash=False)
         raise RuntimeError(
             "Hypercore duplicate positions still remain after dust cleanup. "
-            "Any remaining duplicates are not closeable dust or safe clone suppressions, "
+            "Any remaining duplicates are not closeable dust or safe clone closes, "
             "and require manual repair. The state file was not updated."
         )
 

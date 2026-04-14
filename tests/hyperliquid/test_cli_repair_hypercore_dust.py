@@ -328,7 +328,7 @@ def test_repair_hypercore_dust_cli_warns_for_non_dust_duplicates(
     assert second_position_id in repaired_state.portfolio.open_positions
 
 
-def test_repair_hypercore_dust_cli_suppresses_safe_later_clone_with_confirmation(
+def test_repair_hypercore_dust_cli_closes_safe_later_clone_with_confirmation(
     tmp_path: Path,
 ) -> None:
     """Test the CLI closes a safe later Hypercore clone after explicit confirmation.
@@ -380,7 +380,7 @@ def test_repair_hypercore_dust_cli_safe_clone_still_fails_without_merge_flag(
 
     1. Create a state file with one older Hypercore position and one exact-match later clone.
     2. Run the CLI repair command without ``--merge-dustless-duplicates``.
-    3. Verify both positions remain open because the command refuses to suppress duplicates by default.
+    3. Verify both positions remain open because the command refuses to close duplicate clones by default.
     """
 
     # 1. Create a state file with one older Hypercore position and one exact-match later clone.
@@ -407,7 +407,7 @@ def test_repair_hypercore_dust_cli_safe_clone_still_fails_without_merge_flag(
         ],
     )
 
-    # 3. Verify both positions remain open because the command refuses to suppress duplicates by default.
+    # 3. Verify both positions remain open because the command refuses to close duplicate clones by default.
     assert result.exit_code != 0
 
     repaired_state = State.read_json_file(state_file)
@@ -415,14 +415,14 @@ def test_repair_hypercore_dust_cli_safe_clone_still_fails_without_merge_flag(
     assert clone_position_id in repaired_state.portfolio.open_positions
 
 
-def test_repair_hypercore_dust_cli_combines_dust_cleanup_and_clone_suppression(
+def test_repair_hypercore_dust_cli_combines_dust_cleanup_and_clone_close(
     tmp_path: Path,
 ) -> None:
     """Test the CLI can finish one dust cleanup group and one safe clone group in one transactional save.
 
     1. Create a state file with one dust duplicate group and one safe later-clone duplicate group.
     2. Run the CLI repair command with merge mode and explicit confirmations.
-    3. Verify the dust residual is closed, the clone is suppressed, and the survivors remain open.
+    3. Verify the dust residual is closed, the clone is closed, and the survivors remain open.
     """
 
     # 1. Create a state file with one dust duplicate group and one safe later-clone duplicate group.
@@ -453,7 +453,7 @@ def test_repair_hypercore_dust_cli_combines_dust_cleanup_and_clone_suppression(
         input="y\ny\n",
     )
 
-    # 3. Verify the dust residual is closed, the clone is suppressed, and the survivors remain open.
+    # 3. Verify the dust residual is closed, the clone is closed, and the survivors remain open.
     assert result.exit_code == 0, result.stdout
 
     repaired_state = State.read_json_file(state_file)
@@ -520,11 +520,11 @@ def test_repair_hypercore_dust_cli_does_not_save_partial_results_when_unsafe_gro
 def test_repair_hypercore_dust_cli_rejects_auto_approve_for_merge_mode(
     tmp_path: Path,
 ) -> None:
-    """Test merge mode refuses ``--auto-approve`` because dangerous suppressions require explicit `y/n`.
+    """Test merge mode refuses ``--auto-approve`` because dangerous duplicate closes require explicit `y/n`.
 
     1. Create a state file with a safe later-clone duplicate group.
     2. Run the CLI repair command with both merge mode and ``--auto-approve``.
-    3. Verify the command fails and does not suppress the duplicate clone.
+    3. Verify the command fails and does not close the duplicate clone.
     """
 
     # 1. Create a state file with a safe later-clone duplicate group.
@@ -552,7 +552,7 @@ def test_repair_hypercore_dust_cli_rejects_auto_approve_for_merge_mode(
         input="y\n",
     )
 
-    # 3. Verify the command fails and does not suppress the duplicate clone.
+    # 3. Verify the command fails and does not close the duplicate clone.
     assert result.exit_code != 0
     assert "requires an explicit y/n confirmation" in str(result.exception)
 

@@ -41,8 +41,8 @@ class RepairAborted(Exception):
     """User chose no"""
 
 
-class HypercoreDuplicateSuppressionError(Exception):
-    """A Hypercore duplicate group was not safe to suppress automatically."""
+class HypercoreDuplicateCloseError(Exception):
+    """A Hypercore duplicate group was not safe to close automatically."""
 
 
 @dataclass(slots=True)
@@ -66,8 +66,8 @@ class RepairResult:
 
 
 @dataclass(slots=True)
-class HypercoreDuplicateSuppressionCandidate:
-    """One safe Hypercore duplicate-clone suppression candidate."""
+class HypercoreDuplicateCloseCandidate:
+    """One safe Hypercore duplicate-clone close candidate."""
 
     vault_address: str
     vault_name: str
@@ -90,11 +90,11 @@ def _get_position_expected_usd_equity(position: TradingPosition) -> Decimal:
 
 def _validate_hypercore_duplicate_clone_group(
     positions: list[TradingPosition],
-) -> HypercoreDuplicateSuppressionCandidate:
-    """Validate that a duplicate group is safe to suppress as a later phantom clone."""
+) -> HypercoreDuplicateCloseCandidate:
+    """Validate that a duplicate group is safe to close as a later phantom clone."""
 
     if len(positions) != 2:
-        raise HypercoreDuplicateSuppressionError(
+        raise HypercoreDuplicateCloseError(
             f"Expected exactly 2 duplicate positions, got {len(positions)}"
         )
 
@@ -159,13 +159,13 @@ def _validate_hypercore_duplicate_clone_group(
         reasons.append("expected USD equity differs")
 
     if reasons:
-        raise HypercoreDuplicateSuppressionError(
+        raise HypercoreDuplicateCloseError(
             f"Vault {_get_hypercore_vault_address(survivor_position)} "
             f"positions #{survivor_position.position_id} and #{clone_position.position_id} "
-            f"are not safe to suppress automatically: {', '.join(reasons)}"
+            f"are not safe to close automatically: {', '.join(reasons)}"
         )
 
-    return HypercoreDuplicateSuppressionCandidate(
+    return HypercoreDuplicateCloseCandidate(
         vault_address=_get_hypercore_vault_address(survivor_position),
         vault_name=survivor_position.pair.get_vault_name() or survivor_position.pair.get_ticker(),
         survivor_position=survivor_position,
@@ -173,10 +173,10 @@ def _validate_hypercore_duplicate_clone_group(
     )
 
 
-def find_hypercore_duplicate_clone_candidates(
+def find_hypercore_duplicate_close_candidates(
     portfolio: Portfolio,
-) -> tuple[list[HypercoreDuplicateSuppressionCandidate], list[str]]:
-    """Find Hypercore duplicate groups that are safe to suppress as later clones."""
+) -> tuple[list[HypercoreDuplicateCloseCandidate], list[str]]:
+    """Find Hypercore duplicate groups that are safe to close as later clones."""
 
     positions_by_vault: dict[str, list[TradingPosition]] = {}
     for position in portfolio.get_open_and_frozen_positions():
@@ -184,7 +184,7 @@ def find_hypercore_duplicate_clone_candidates(
             continue
         positions_by_vault.setdefault(_get_hypercore_vault_address(position), []).append(position)
 
-    candidates: list[HypercoreDuplicateSuppressionCandidate] = []
+    candidates: list[HypercoreDuplicateCloseCandidate] = []
     rejected_groups: list[str] = []
 
     for positions in positions_by_vault.values():
@@ -192,7 +192,7 @@ def find_hypercore_duplicate_clone_candidates(
             continue
         try:
             candidates.append(_validate_hypercore_duplicate_clone_group(positions))
-        except HypercoreDuplicateSuppressionError as e:
+        except HypercoreDuplicateCloseError as e:
             rejected_groups.append(str(e))
 
     return candidates, rejected_groups
@@ -200,7 +200,7 @@ def find_hypercore_duplicate_clone_candidates(
 
 def close_hypercore_duplicate_clone(
     portfolio: Portfolio,
-    candidate: HypercoreDuplicateSuppressionCandidate,
+    candidate: HypercoreDuplicateCloseCandidate,
     now: datetime.datetime | None = None,
 ) -> TradeExecution:
     """Close a later Hypercore duplicate clone with a flagged repair trade."""
