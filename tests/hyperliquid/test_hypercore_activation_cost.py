@@ -6,8 +6,14 @@ Verifies that:
 3. Settlement reads the per-trade value, not a stale instance variable.
 """
 
+import datetime
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
+
+import pytest
+from eth_defi.compat import native_datetime_utc_now
+from eth_defi.hyperliquid.api import UserVaultEquity
 
 from tradeexecutor.ethereum.vault.hypercore_routing import (
     compute_spot_to_evm_withdrawal_amount,
@@ -263,11 +269,17 @@ def test_create_sell_transactions_build_vault_withdraw_phase1_only():
     # 1. Create one sell trade for live Hypercore routing with no close flag.
     # 2. Mock the reusable vault-withdraw builder and signing.
     # 3. Verify routing returns exactly one phase-1 withdrawal transaction.
-    with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_withdraw_from_vault_call", return_value=withdraw_fn) as build_withdraw:
-        with patch.object(routing, "_sign_module_call", return_value=signed_tx) as sign_call:
-            txs = routing._create_deposit_or_withdraw_txs(trade)
+    with patch.object(routing, "_check_live_withdrawal_preconditions") as preflight_check:
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_withdraw_from_vault_call", return_value=withdraw_fn) as build_withdraw:
+            with patch.object(routing, "_sign_module_call", return_value=signed_tx) as sign_call:
+                txs = routing._create_deposit_or_withdraw_txs(trade)
 
     assert txs == [signed_tx]
+    preflight_check.assert_called_once_with(
+        trade=trade,
+        requested_raw=25_000_000,
+        vault_address="0x1111111111111111111111111111111111111111",
+    )
     build_withdraw.assert_called_once_with(
         routing.lagoon_vault,
         vault_address="0x1111111111111111111111111111111111111111",
@@ -290,8 +302,6 @@ def test_withdrawal_uses_live_equity_on_close():
     3. Verify the withdrawal tx is built with live equity minus safety margin.
     4. Verify the safe amount is stored in ``trade.other_data`` for settlement.
     """
-    import datetime
-    from eth_defi.hyperliquid.api import UserVaultEquity
     from tradeexecutor.state.trade import TradeFlag
     from tradeexecutor.ethereum.vault.hypercore_routing import HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
 
@@ -313,11 +323,17 @@ def test_withdrawal_uses_live_equity_on_close():
 
     # 2. Mock the equity fetch and tx building.
     with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=live_equity):
-        with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_withdraw_from_vault_call", return_value=withdraw_fn) as build_withdraw:
-            with patch.object(routing, "_sign_module_call", return_value=signed_tx):
-                txs = routing._create_deposit_or_withdraw_txs(trade)
+        with patch.object(routing, "_check_live_withdrawal_preconditions") as preflight_check:
+            with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_withdraw_from_vault_call", return_value=withdraw_fn) as build_withdraw:
+                with patch.object(routing, "_sign_module_call", return_value=signed_tx):
+                    txs = routing._create_deposit_or_withdraw_txs(trade)
 
     assert txs == [signed_tx]
+    preflight_check.assert_called_once_with(
+        trade=trade,
+        requested_raw=expected_withdrawal_raw,
+        vault_address="0x4dec0a851849056e259128464ef28ce78afa27f6",
+    )
 
     # 3. Verify the withdrawal uses live equity minus safety margin.
     build_withdraw.assert_called_once_with(
@@ -338,8 +354,6 @@ def test_withdrawal_logs_large_equity_mismatch_but_uses_live_amount(caplog):
     3. Verify the withdrawal still uses live equity minus safety margin.
     4. Verify the warning is logged so the operator can inspect the drift.
     """
-    import datetime
-    from eth_defi.hyperliquid.api import UserVaultEquity
     from tradeexecutor.state.trade import TradeFlag
     from tradeexecutor.ethereum.vault.hypercore_routing import HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
 
@@ -361,12 +375,18 @@ def test_withdrawal_logs_large_equity_mismatch_but_uses_live_amount(caplog):
     # Step 2: Mock the live equity so the drift warning path is exercised.
     with caplog.at_level("WARNING"):
         with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=live_equity):
-            with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_withdraw_from_vault_call", return_value=withdraw_fn) as build_withdraw:
-                with patch.object(routing, "_sign_module_call", return_value=signed_tx):
-                    txs = routing._create_deposit_or_withdraw_txs(trade)
+            with patch.object(routing, "_check_live_withdrawal_preconditions") as preflight_check:
+                with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_withdraw_from_vault_call", return_value=withdraw_fn) as build_withdraw:
+                    with patch.object(routing, "_sign_module_call", return_value=signed_tx):
+                        txs = routing._create_deposit_or_withdraw_txs(trade)
 
     # Step 3: Verify the withdrawal still uses live equity minus safety margin.
     assert txs == [signed_tx]
+    preflight_check.assert_called_once_with(
+        trade=trade,
+        requested_raw=expected_withdrawal_raw,
+        vault_address="0x1111111111111111111111111111111111111111",
+    )
     build_withdraw.assert_called_once_with(
         routing.lagoon_vault,
         vault_address="0x1111111111111111111111111111111111111111",
@@ -376,6 +396,74 @@ def test_withdrawal_logs_large_equity_mismatch_but_uses_live_amount(caplog):
 
     # Step 4: Verify the warning is logged so the operator can inspect the drift.
     assert any("planned/live drift is large" in record.message for record in caplog.records)
+
+
+def test_live_withdrawal_preflight_blocks_active_lockup():
+    """Live withdrawal preflight must block users still inside lock-up.
+
+    1. Create one live Hypercore sell trade and keep the requested withdrawal below the vault liquidity cap.
+    2. Mock Hyperliquid to report an active user lock-up for the Safe.
+    3. Verify the preflight raises before any withdrawal can be broadcast.
+    """
+    from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreWithdrawalPreflightError
+
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("25.0"), is_buy=False)
+
+    locked_equity = UserVaultEquity(
+        vault_address="0xVAULT",
+        equity=Decimal("50.0"),
+        locked_until=native_datetime_utc_now() + datetime.timedelta(hours=6),
+    )
+
+    # 1. Create one live Hypercore sell trade and keep the request below the liquidity cap.
+    # 2. Mock Hyperliquid to report an active user lock-up.
+    # 3. Verify the preflight raises before broadcast.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault.fetch_info", return_value=SimpleNamespace(max_withdrawable=Decimal("100.0"))):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=locked_equity):
+            with patch.object(routing, "_get_session", return_value=routing._session):
+                with pytest.raises(HypercoreWithdrawalPreflightError) as exc_info:
+                    routing._check_live_withdrawal_preconditions(
+                        trade=trade,
+                        requested_raw=25_000_000,
+                        vault_address="0xVAULT",
+                    )
+
+    assert "lock-up remains active" in str(exc_info.value)
+
+
+def test_live_withdrawal_preflight_blocks_requests_above_max_withdrawable():
+    """Live withdrawal preflight must block requests above current withdrawable liquidity.
+
+    1. Create one live Hypercore sell trade whose requested amount exceeds the vault liquidity cap.
+    2. Mock Hyperliquid to report an expired lock-up and a smaller ``max_withdrawable``.
+    3. Verify the preflight raises before any withdrawal can be broadcast.
+    """
+    from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreWithdrawalPreflightError
+
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("25.0"), is_buy=False)
+
+    unlocked_equity = UserVaultEquity(
+        vault_address="0xVAULT",
+        equity=Decimal("50.0"),
+        locked_until=native_datetime_utc_now() - datetime.timedelta(days=1),
+    )
+
+    # 1. Create one live Hypercore sell trade whose request exceeds max_withdrawable.
+    # 2. Mock Hyperliquid to report unlocked equity but insufficient vault liquidity.
+    # 3. Verify the preflight raises before broadcast.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault.fetch_info", return_value=SimpleNamespace(max_withdrawable=Decimal("20.0"))):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=unlocked_equity):
+            with patch.object(routing, "_get_session", return_value=routing._session):
+                with pytest.raises(HypercoreWithdrawalPreflightError) as exc_info:
+                    routing._check_live_withdrawal_preconditions(
+                        trade=trade,
+                        requested_raw=25_000_000,
+                        vault_address="0xVAULT",
+                    )
+
+    assert "exceeds current max_withdrawable" in str(exc_info.value)
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")

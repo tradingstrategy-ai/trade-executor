@@ -78,6 +78,7 @@ from eth_defi.hyperliquid.session import (
     HyperliquidSession,
     create_hyperliquid_session,
 )
+from eth_defi.hyperliquid.vault import HyperliquidVault
 
 from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.state.blockhain_transaction import (
@@ -130,15 +131,15 @@ HYPERCORE_LIKELY_CLOSE_TOLERANCE = 0.975
 #: action, the vault NAV can fluctuate (fees, PnL, mark-to-market).  The
 #: API may also round the equity string upward vs. the on-chain value.
 #:
-#: $1.00 (1 000 000 raw) covers larger observed drift for volatile vaults.
+#: $1.50 (1 500 000 raw) covers larger observed drift for volatile vaults.
 #: The original $0.01 margin was too tight, and even the later $0.10 margin
 #: proved insufficient for some live withdrawals when vault share price moved
 #: between the API read and HyperCore processing the queued action.
 #:
-#: This will leave up to ~$1.00 unclaimable dust in the vault (below the $5
+#: This will leave up to ~$1.50 unclaimable dust in the vault (below the $5
 #: minimum vault withdrawal threshold) that must be cleaned up in
 #: accounting later.
-HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 1_000_000
+HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 1_500_000
 
 # Temporary stop-gap for follow-up withdrawal verification phases.
 # Proper fix: carry the actually observed amount from one phase to the next.
@@ -171,6 +172,10 @@ class HypercoreWithdrawalVerificationError(Exception):
     (``vaultTransfer``, ``transferUsdClass``, ``spotSend``) fail silently
     on HyperCore, or when the HyperCore-to-EVM bridge is delayed or dry.
     """
+
+
+class HypercoreWithdrawalPreflightError(Exception):
+    """Raised when a live Hypercore withdrawal is blocked before broadcast."""
 
 
 class HypercoreVaultRoutingState(RoutingState):
@@ -501,7 +506,7 @@ class HypercoreVaultRouting(RoutingModel):
         #    actual equity — even by 1 raw USDC.  The vault NAV fluctuates
         #    due to fees, PnL, and mark-to-market during the ~2-5 s between
         #    reading the API and HyperCore processing the queued action.
-        #    This leaves ~$0.01 unclaimable dust in the vault that must be
+        #    This leaves ~$1.50 unclaimable dust in the vault that must be
         #    cleaned up in accounting later.
         safe_raw = live_raw - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
         assert safe_raw > 0, (
@@ -525,6 +530,66 @@ class HypercoreVaultRouting(RoutingModel):
         trade.other_data["hypercore_capped_withdrawal_raw"] = safe_raw
 
         return safe_raw
+
+    def _check_live_withdrawal_preconditions(
+        self,
+        trade: TradeExecution,
+        requested_raw: int,
+        vault_address: str,
+    ) -> None:
+        """Check live Hypercore withdrawal eligibility before broadcasting.
+
+        HyperCore withdrawals can be blocked by per-user lock-up periods and
+        per-vault liquidity constraints. The strategy model already checks
+        these when planning trades, but the state can change before the live
+        execution phase, so re-check right before building phase 1.
+        """
+        session = self._get_session()
+        vault = HyperliquidVault(session=session, vault_address=vault_address)
+        vault_info = vault.fetch_info(user=self.safe_address)
+        max_withdrawable_raw = usdc_to_raw(vault_info.max_withdrawable)
+
+        if vault_info.max_withdrawable <= 0:
+            raise HypercoreWithdrawalPreflightError(
+                f"Hypercore withdrawal blocked for Safe {self.safe_address} in vault {vault_address}: "
+                "vault reports zero max_withdrawable liquidity."
+            )
+
+        user_equity = fetch_user_vault_equity(
+            session,
+            user=self.safe_address,
+            vault_address=vault_address,
+            bypass_cache=True,
+        )
+        if user_equity is None:
+            raise HypercoreWithdrawalPreflightError(
+                f"Hypercore withdrawal blocked for Safe {self.safe_address} in vault {vault_address}: "
+                "user equity lookup returned no position data."
+            )
+
+        if not user_equity.is_lockup_expired:
+            raise HypercoreWithdrawalPreflightError(
+                f"Hypercore withdrawal blocked for Safe {self.safe_address} in vault {vault_address}: "
+                f"user lock-up remains active until {user_equity.locked_until} "
+                f"({user_equity.lockup_remaining} remaining)."
+            )
+
+        if requested_raw > max_withdrawable_raw:
+            raise HypercoreWithdrawalPreflightError(
+                f"Hypercore withdrawal blocked for Safe {self.safe_address} in vault {vault_address}: "
+                f"requested {raw_to_usdc(requested_raw)} USDC exceeds current max_withdrawable "
+                f"{vault_info.max_withdrawable} USDC."
+            )
+
+        logger.info(
+            "Hypercore withdrawal preflight ok for Safe %s in vault %s: "
+            "requested %s USDC, max_withdrawable %s USDC, lock-up expired at %s",
+            self.safe_address,
+            vault_address,
+            raw_to_usdc(requested_raw),
+            vault_info.max_withdrawable,
+            user_equity.locked_until,
+        )
 
     def _fetch_safe_evm_usdc_balance(self) -> int:
         """Read the Safe's EVM USDC balance (raw, 6 decimals).
@@ -941,6 +1006,12 @@ class HypercoreVaultRouting(RoutingModel):
             if TradeFlag.close in trade.flags and not self.simulate:
                 raw_amount = self._get_live_withdrawal_amount_for_close(
                     trade, raw_amount, vault_address,
+                )
+            if not self.simulate:
+                self._check_live_withdrawal_preconditions(
+                    trade=trade,
+                    requested_raw=raw_amount,
+                    vault_address=vault_address,
                 )
 
             logger.info(
