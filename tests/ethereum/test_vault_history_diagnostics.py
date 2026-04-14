@@ -410,8 +410,95 @@ def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(
     assert "Vault history freshness summary" in relevant_records[0].message
     assert relevant_records[1].levelname == "WARNING"
     assert (
-        "Vault candle data is stale (>24h after 1d resampling floor) for 1 vault(s); "
+        "Vault candle data is stale (>24h after source-history check) for 1 vault(s); "
         "1 vault(s) are up to date"
     ) in relevant_records[1].message
     assert "\nvault" in relevant_records[1].message
     assert "MirVault" in relevant_records[1].message
+
+
+def test_log_stale_vault_candle_data_ignores_daily_floor_when_source_is_fresh(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify fresh per-vault source history suppresses false stale daily-candle warnings.
+
+    1. Build a daily resampled vault candle that looks older than 24 hours after midnight.
+    2. Attach fresher filtered source history for the same vault on the previous UTC day.
+    3. Assert no stale-vault warning is emitted because the source history is still fresh.
+    """
+    vault_candle_df = pd.DataFrame(
+        {
+            "pair_id": [272079929],
+            "timestamp": [pd.Timestamp(datetime.datetime(2026, 4, 13, 0, 0, 0))],
+        }
+    )
+    source_vault_price_df = _build_vault_price_history_df(
+        "0x10aa8b767d0742de206bfafe36b8556634379c39",
+        [datetime.datetime(2026, 4, 13, 21, 22, 4, 28000)],
+    )
+    vault_pairs_df = pd.DataFrame(
+        {
+            "pair_id": [272079929],
+            "exchange_name": ["MirVault"],
+            "address": ["0x10aa8b767d0742de206bfafe36b8556634379c39"],
+            "token_metadata": [SimpleNamespace(tvl=80_107.73)],
+        }
+    )
+
+    # 1. Build a daily resampled vault candle that looks older than 24 hours after midnight.
+    # 2. Attach fresher filtered source history for the same vault on the previous UTC day.
+    with caplog.at_level("INFO"):
+        log_stale_vault_candle_data(
+            vault_candle_df=vault_candle_df,
+            vault_pairs_df=vault_pairs_df,
+            source_vault_price_df=source_vault_price_df,
+            now=datetime.datetime(2026, 4, 14, 1, 21, 40),
+        )
+
+    # 3. Assert no stale-vault warning is emitted because the source history is still fresh.
+    assert not any("Vault candle data is stale" in record.message for record in caplog.records)
+
+
+def test_log_stale_vault_candle_data_warns_when_source_history_is_stale(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify stale per-vault source history still triggers the aggregated warning.
+
+    1. Build a daily resampled vault candle and matching source history that are both older than 24 hours.
+    2. Emit the aggregated stale-vault warning with the source history attached.
+    3. Assert the warning is logged and includes the stale source timestamp column.
+    """
+    vault_candle_df = pd.DataFrame(
+        {
+            "pair_id": [272079929],
+            "timestamp": [pd.Timestamp(datetime.datetime(2026, 4, 12, 0, 0, 0))],
+        }
+    )
+    source_vault_price_df = _build_vault_price_history_df(
+        "0x10aa8b767d0742de206bfafe36b8556634379c39",
+        [datetime.datetime(2026, 4, 12, 2, 0, 0)],
+    )
+    vault_pairs_df = pd.DataFrame(
+        {
+            "pair_id": [272079929],
+            "exchange_name": ["MirVault"],
+            "address": ["0x10aa8b767d0742de206bfafe36b8556634379c39"],
+            "token_metadata": [SimpleNamespace(tvl=80_107.73)],
+        }
+    )
+
+    # 1. Build a daily resampled vault candle and matching source history that are both older than 24 hours.
+    # 2. Emit the aggregated stale-vault warning with the source history attached.
+    with caplog.at_level("INFO"):
+        log_stale_vault_candle_data(
+            vault_candle_df=vault_candle_df,
+            vault_pairs_df=vault_pairs_df,
+            source_vault_price_df=source_vault_price_df,
+            now=datetime.datetime(2026, 4, 14, 12, 0, 0),
+        )
+
+    # 3. Assert the warning is logged and includes the stale source timestamp column.
+    warning_record = next(record for record in caplog.records if "Vault candle data is stale" in record.message)
+    assert warning_record.levelname == "WARNING"
+    assert "last_source" in warning_record.message
+    assert "2026-04-12 02:00:00" in warning_record.message

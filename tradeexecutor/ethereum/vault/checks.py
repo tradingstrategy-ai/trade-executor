@@ -405,6 +405,7 @@ def _build_vault_history_warning_rows(
 def log_stale_vault_candle_data(
     vault_candle_df: pd.DataFrame | None,
     vault_pairs_df: pd.DataFrame,
+    source_vault_price_df: pd.DataFrame | None = None,
     now: datetime.datetime | None = None,
     stale_tolerance: datetime.timedelta = datetime.timedelta(hours=24),
 ) -> None:
@@ -415,6 +416,28 @@ def log_stale_vault_candle_data(
     reference_now = pd.Timestamp(now or native_datetime_utc_now())
     stale_entries = []
     checked_vault_count = 0
+    source_max_timestamp_by_pair_id: dict[int, pd.Timestamp] = {}
+
+    if (
+        source_vault_price_df is not None
+        and len(source_vault_price_df) > 0
+        and "timestamp" in source_vault_price_df.columns
+        and "address" in source_vault_price_df.columns
+        and "pair_id" in vault_pairs_df.columns
+        and "address" in vault_pairs_df.columns
+    ):
+        pair_lookup = vault_pairs_df[["pair_id", "address"]].copy()
+        pair_lookup["address"] = pair_lookup["address"].astype(str).str.lower()
+
+        source_with_pairs = source_vault_price_df.copy()
+        source_with_pairs["address"] = source_with_pairs["address"].astype(str).str.lower()
+        source_with_pairs["timestamp"] = pd.to_datetime(source_with_pairs["timestamp"])
+        source_with_pairs = source_with_pairs.merge(pair_lookup, on="address", how="inner")
+
+        if len(source_with_pairs) > 0:
+            source_max_timestamp_by_pair_id = (
+                source_with_pairs.groupby("pair_id")["timestamp"].max().to_dict()
+            )
 
     for pair_id in vault_candle_df["pair_id"].unique():
         pair_candles = vault_candle_df[vault_candle_df["pair_id"] == pair_id]
@@ -423,7 +446,9 @@ def log_stale_vault_candle_data(
 
         checked_vault_count += 1
         last_ts = pair_candles["timestamp"].max()
-        age = reference_now - last_ts
+        last_source_ts = source_max_timestamp_by_pair_id.get(pair_id)
+        reference_ts = last_source_ts if last_source_ts is not None else last_ts
+        age = reference_now - reference_ts
         if age <= pd.Timedelta(stale_tolerance):
             continue
 
@@ -443,6 +468,7 @@ def log_stale_vault_candle_data(
                 "tvl": vault_tvl,
                 "pair_id": pair_id,
                 "last_candle": last_ts,
+                "last_source": last_source_ts,
                 "age": age,
             }
         )
@@ -457,7 +483,7 @@ def log_stale_vault_candle_data(
             showindex=False,
         )
         logger.warning(
-            "Vault candle data is stale (>24h after 1d resampling floor) for %d vault(s); %d vault(s) are up to date:\n%s",
+            "Vault candle data is stale (>24h after source-history check) for %d vault(s); %d vault(s) are up to date:\n%s",
             len(stale_entries),
             up_to_date_vault_count,
             stale_entries_table,

@@ -2927,6 +2927,7 @@ def load_partial_data(
                 log_stale_vault_candle_data(
                     vault_candle_df=vault_candle_df,
                     vault_pairs_df=vault_pairs_df,
+                    source_vault_price_df=filtered_website_vault_prices_df,
                 )
 
         # Collect some debug data for the first 5 pairs
