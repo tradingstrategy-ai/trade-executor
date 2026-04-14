@@ -459,6 +459,51 @@ def test_log_stale_vault_candle_data_ignores_daily_floor_when_source_is_fresh(
     assert not any("Vault candle data is stale" in record.message for record in caplog.records)
 
 
+def test_log_stale_vault_candle_data_handles_source_history_with_existing_pair_id(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify stale-vault logging handles source history that already carries pair ids.
+
+    1. Build fresh source history and run candle conversion that mutates the source frame to include ``pair_id``.
+    2. Call ``log_stale_vault_candle_data()`` with the mutated source history and a daily candle timestamp.
+    3. Assert the logging path does not raise and still suppresses the stale warning for fresh source data.
+    """
+    vault_candle_df = pd.DataFrame(
+        {
+            "pair_id": [272079929],
+            "timestamp": [pd.Timestamp(datetime.datetime(2026, 4, 13, 0, 0, 0))],
+        }
+    )
+    source_vault_price_df = _build_vault_price_history_df(
+        "0x10aa8b767d0742de206bfafe36b8556634379c39",
+        [datetime.datetime(2026, 4, 13, 21, 22, 4, 28000)],
+    )
+    vault_pairs_df = pd.DataFrame(
+        {
+            "pair_id": [272079929],
+            "exchange_name": ["MirVault"],
+            "address": ["0x10aa8b767d0742de206bfafe36b8556634379c39"],
+            "token_metadata": [SimpleNamespace(tvl=80_107.73)],
+        }
+    )
+
+    # 1. Build fresh source history and mutate it through candle conversion.
+    convert_vault_prices_to_candles(source_vault_price_df, "1d")
+    assert "pair_id" in source_vault_price_df.columns
+
+    # 2. Call the stale-vault logger with the mutated source history.
+    with caplog.at_level("INFO"):
+        log_stale_vault_candle_data(
+            vault_candle_df=vault_candle_df,
+            vault_pairs_df=vault_pairs_df,
+            source_vault_price_df=source_vault_price_df,
+            now=datetime.datetime(2026, 4, 14, 1, 21, 40),
+        )
+
+    # 3. Assert the fresh source history still suppresses the stale warning.
+    assert not any("Vault candle data is stale" in record.message for record in caplog.records)
+
+
 def test_log_stale_vault_candle_data_warns_when_source_history_is_stale(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
