@@ -90,7 +90,9 @@ def get_redeemable_capital(
 
     For normal positions, assume the full marked value is redeemable.
     For Hyperliquid vaults, return zero until the known lock-up window has
-    expired for the latest capital inflow.
+    expired for the latest capital inflow. Once unlocked, return the actual
+    cash that could be released by redeeming the position, not the marked
+    position value.
 
     :param position:
         Position whose currently redeemable marked value is being estimated.
@@ -100,7 +102,7 @@ def get_redeemable_capital(
         current naive UTC time when omitted.
 
     :return:
-        Redeemable marked value in US dollars for the given cycle.
+        Redeemable cash amount in US dollars for the given cycle.
     """
 
     if timestamp is None:
@@ -112,6 +114,9 @@ def get_redeemable_capital(
     unlock_at = get_latest_capital_inflow_at(position) + get_redemption_delay(position)
     if timestamp < unlock_at:
         return 0.0
+
+    if hasattr(position, "get_available_trading_quantity"):
+        return float(position.get_available_trading_quantity())
 
     return position.get_value()
 

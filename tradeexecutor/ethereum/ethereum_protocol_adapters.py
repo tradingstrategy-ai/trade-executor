@@ -876,7 +876,10 @@ class EthereumPairConfigurator(PairConfigurator):
             # cannot be created. Pricing will fall back to candle data.
             logger.info("Hypercore vault value func not available (no vault in tx_builder, hot wallet mode?)")
             return
-        self.hypercore_vault_value_func = create_hypercore_vault_value_func(self.execution_model)
+        self.hypercore_vault_value_func = create_hypercore_vault_value_func(
+            self.execution_model,
+            bypass_cache=True,
+        )
         self.hypercore_vault_lockup_func = create_hypercore_vault_lockup_func(self.execution_model)
         logger.info("Auto-discovered Hypercore vault pairs — wired up Hypercore value func")
 

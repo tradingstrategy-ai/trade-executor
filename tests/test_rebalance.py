@@ -17,6 +17,10 @@ from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
+from tradeexecutor.ethereum.vault.hypercore_vault import (
+    HLP_VAULT_ADDRESS,
+    create_hypercore_vault_pair,
+)
 from tradeexecutor.state.size_risk import SizeRisk
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.portfolio import Portfolio
@@ -29,7 +33,7 @@ from tradeexecutor.state.types import USDollarPrice, USDollarAmount
 from tradeexecutor.strategy import size_risk_model
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignalFlags
 from tradeexecutor.strategy.fixed_size_risk import FixedSizeRiskModel
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
+from tradeexecutor.strategy.pandas_trader.position_manager import NotEnoughCasForBuys, PositionManager
 from tradeexecutor.strategy.pandas_trader.rebalance import get_existing_portfolio_weights, rebalance_portfolio_old, \
     get_weight_diffs
 from tradeexecutor.strategy.redemption import (
@@ -37,6 +41,7 @@ from tradeexecutor.strategy.redemption import (
     RedemptionCheckResult,
     RedemptionCheckStage,
 )
+from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.weighting import BadWeightsException, clip_to_normalised, weight_passthrouh
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
@@ -1825,6 +1830,273 @@ def test_alpha_model_skips_sell_rebalance_for_non_redeemable_position(
     assert len(signal.redemption_check_results) == 1
     assert signal.redemption_check_results[0].stage == RedemptionCheckStage.sell_rebalance
     assert signal.redemption_check_results[0].reason_code == RedemptionBlockReason.user_lockup_not_expired
+
+
+def _create_hypercore_position_for_rebalance_test(
+    state: State,
+    start_ts: datetime.datetime,
+    usdc: AssetIdentifier,
+) -> TradingPairIdentifier:
+    """Create one open Hypercore vault position for alpha-model rebalance tests."""
+    pair = create_hypercore_vault_pair(
+        quote=usdc,
+        vault_address=HLP_VAULT_ADDRESS["mainnet"],
+        internal_id=101,
+    )
+
+    state.portfolio.initialise_reserves(usdc, reserve_token_price=1.0)
+
+    position, trade, _created = state.create_trade(
+        strategy_cycle_at=start_ts,
+        pair=pair,
+        quantity=None,
+        reserve=Decimal(50),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        reserve_currency_price=1.0,
+        notes="Test Hypercore vault position",
+    )
+    trade.mark_success(
+        executed_at=start_ts,
+        executed_price=1.0,
+        executed_quantity=Decimal(50),
+        executed_reserve=Decimal(50),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+    position.last_token_price = 2.0
+    position.last_reserve_price = 1.0
+    position.last_pricing_at = start_ts
+    return pair
+
+
+def _patch_hypercore_pricing(
+    monkeypatch: pytest.MonkeyPatch,
+    pricing_model: BacktestPricing,
+    hypercore_vault_pair: TradingPairIdentifier,
+) -> None:
+    """Patch Hypercore pricing calls to stay deterministic in unit tests."""
+    original_get_mid_price = pricing_model.get_mid_price
+    original_get_sell_price = pricing_model.get_sell_price
+
+    monkeypatch.setattr(
+        pricing_model,
+        "get_mid_price",
+        lambda ts, pair: 1.0 if pair == hypercore_vault_pair else original_get_mid_price(ts, pair),
+    )
+    monkeypatch.setattr(
+        pricing_model,
+        "get_sell_price",
+        lambda ts, pair, quantity: (
+            TradePricing(price=1.0, mid_price=1.0, lp_fee=[0.0], pair_fee=[0.0])
+            if pair == hypercore_vault_pair
+            else original_get_sell_price(ts, pair, quantity)
+        ),
+    )
+
+
+def test_alpha_model_caps_profitable_hypercore_sell_before_trade_generation(
+    start_ts: datetime.datetime,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model: BacktestPricing,
+    usdc: AssetIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check Hypercore sell sizing uses live position price and capped quantity before trade creation.
+
+    1. Create a profitable Hypercore position whose marked value is above its stored quantity.
+    2. Cap redemption below the requested sell so the alpha model must recompute the effective sell.
+    3. Verify the signal stores the capped marked-value delta, while the sell trade stores the smaller released cash amount.
+    """
+    state = State()
+    hypercore_vault_pair = _create_hypercore_position_for_rebalance_test(state, start_ts, usdc)
+
+    # 1. Create a profitable Hypercore position whose marked value is above its stored quantity.
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),
+        strategy_universe.data_universe,
+        state,
+        pricing_model,
+    )
+    _patch_hypercore_pricing(monkeypatch, pricing_model, hypercore_vault_pair)
+    monkeypatch.setattr(
+        pricing_model,
+        "check_redemption",
+        lambda ts, pair, **kwargs: RedemptionCheckResult(
+            timestamp=ts,
+            stage=kwargs["stage"],
+            can_redeem=True,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+            safe_address="0x0000000000000000000000000000000000000abc",
+            max_withdrawable=10.0,
+            max_redemption=10.0,
+            message="Hypercore sell is partially redeemable",
+        ),
+    )
+
+    alpha_model = AlphaModel(timestamp=position_manager.timestamp)
+    alpha_model.set_signal(hypercore_vault_pair, 1.0)
+    alpha_model.select_top_signals(count=5)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights(max_weight=1.0)
+    alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
+    alpha_model.calculate_target_positions(position_manager, investable_equity=20.0)
+
+    # 2. Cap redemption below the requested sell so the alpha model must recompute the effective sell.
+    trades = alpha_model.generate_rebalance_trades_and_triggers(
+        position_manager,
+        min_trade_threshold=0.01,
+        individual_rebalance_min_threshold=0.01,
+        sell_rebalance_min_threshold=0.01,
+    )
+
+    signal = alpha_model.get_signal_by_pair(hypercore_vault_pair)
+    assert signal is not None
+
+    # 3. Verify the signal stores the capped marked-value delta, while the sell trade stores the smaller released cash amount.
+    assert signal.position_adjust_usd == pytest.approx(-20.0)
+    assert signal.position_adjust_quantity == pytest.approx(-10.0)
+    assert len(trades) == 1
+    assert trades[0].is_sell()
+    assert trades[0].planned_quantity == Decimal("-10")
+    assert trades[0].planned_reserve == Decimal("10")
+
+
+def test_alpha_model_skips_hypercore_sell_below_threshold_after_capping(
+    start_ts: datetime.datetime,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model: BacktestPricing,
+    usdc: AssetIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check Hypercore sell thresholds are evaluated after the live redemption cap is applied.
+
+    1. Create a profitable Hypercore position whose requested marked-value reduction is large.
+    2. Cap the redeemable quantity so the effective sell becomes smaller than the sell threshold.
+    3. Verify the alpha model skips the trade instead of emitting a dust Hypercore withdrawal.
+    """
+    state = State()
+    hypercore_vault_pair = _create_hypercore_position_for_rebalance_test(state, start_ts, usdc)
+
+    # 1. Create a profitable Hypercore position whose requested marked-value reduction is large.
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),
+        strategy_universe.data_universe,
+        state,
+        pricing_model,
+    )
+    _patch_hypercore_pricing(monkeypatch, pricing_model, hypercore_vault_pair)
+    monkeypatch.setattr(
+        pricing_model,
+        "check_redemption",
+        lambda ts, pair, **kwargs: RedemptionCheckResult(
+            timestamp=ts,
+            stage=kwargs["stage"],
+            can_redeem=True,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+            safe_address="0x0000000000000000000000000000000000000abc",
+            max_withdrawable=2.0,
+            max_redemption=2.0,
+            message="Hypercore sell is capped to dust size",
+        ),
+    )
+
+    alpha_model = AlphaModel(timestamp=position_manager.timestamp)
+    alpha_model.set_signal(hypercore_vault_pair, 1.0)
+    alpha_model.select_top_signals(count=5)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights(max_weight=1.0)
+    alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
+    alpha_model.calculate_target_positions(position_manager, investable_equity=20.0)
+
+    # 2. Cap the redeemable quantity so the effective sell becomes smaller than the sell threshold.
+    trades = alpha_model.generate_rebalance_trades_and_triggers(
+        position_manager,
+        min_trade_threshold=0.01,
+        individual_rebalance_min_threshold=5.0,
+        sell_rebalance_min_threshold=5.0,
+    )
+
+    signal = alpha_model.get_signal_by_pair(hypercore_vault_pair)
+    assert signal is not None
+
+    # 3. Verify the alpha model skips the trade instead of emitting a dust Hypercore withdrawal.
+    assert trades == []
+    assert signal.position_adjust_usd == pytest.approx(-4.0)
+    assert signal.position_adjust_quantity == pytest.approx(-2.0)
+    assert TradingPairSignalFlags.individual_trade_size_too_small in signal.flags
+
+
+def test_alpha_model_uses_capped_hypercore_cash_release_for_buy_checks(
+    start_ts: datetime.datetime,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model: BacktestPricing,
+    aave_usdc: TradingPairIdentifier,
+    usdc: AssetIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check same-cycle cash planning uses capped Hypercore cash release, not marked value reduction.
+
+    1. Create a profitable Hypercore position and a second buy signal competing for the released cash.
+    2. Cap the Hypercore sell so its released cash is smaller than the buy that follows in the same cycle.
+    3. Verify check_enough_cash() fails against the capped planned reserve instead of the larger marked-value reduction.
+    """
+    state = State()
+    hypercore_vault_pair = _create_hypercore_position_for_rebalance_test(state, start_ts, usdc)
+
+    # 1. Create a profitable Hypercore position and a second buy signal competing for the released cash.
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),
+        strategy_universe.data_universe,
+        state,
+        pricing_model,
+    )
+    _patch_hypercore_pricing(monkeypatch, pricing_model, hypercore_vault_pair)
+    monkeypatch.setattr(
+        pricing_model,
+        "check_redemption",
+        lambda ts, pair, **kwargs: RedemptionCheckResult(
+            timestamp=ts,
+            stage=kwargs["stage"],
+            can_redeem=True,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+            safe_address="0x0000000000000000000000000000000000000abc",
+            max_withdrawable=10.0,
+            max_redemption=10.0,
+            message="Hypercore sell is partially redeemable",
+        ),
+    )
+
+    alpha_model = AlphaModel(timestamp=position_manager.timestamp)
+    alpha_model.set_signal(hypercore_vault_pair, 2.0)
+    alpha_model.set_signal(aave_usdc, 1.0)
+    alpha_model.select_top_signals(count=5)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights(max_weight=1.0)
+    alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
+    alpha_model.calculate_target_positions(position_manager, investable_equity=45.0)
+
+    # 2. Cap the Hypercore sell so its released cash is smaller than the buy that follows in the same cycle.
+    trades = alpha_model.generate_rebalance_trades_and_triggers(
+        position_manager,
+        min_trade_threshold=0.01,
+        individual_rebalance_min_threshold=0.01,
+        sell_rebalance_min_threshold=0.01,
+    )
+
+    hypercore_sell = next(t for t in trades if t.pair == hypercore_vault_pair)
+    aave_buy = next(t for t in trades if t.pair == aave_usdc)
+
+    # 3. Verify check_enough_cash() fails against the capped planned reserve instead of the larger marked-value reduction.
+    assert hypercore_sell.planned_reserve == Decimal("10")
+    assert aave_buy.planned_reserve == Decimal("15")
+    with pytest.raises(NotEnoughCasForBuys):
+        position_manager.check_enough_cash(trades)
 
 
 def test_generic_pricing_delegates_check_redemption_with_diagnostics(

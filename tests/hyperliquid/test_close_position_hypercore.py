@@ -24,6 +24,7 @@ from tradeexecutor.ethereum.multichain_balance import (
 from tradeexecutor.ethereum.vault.hypercore_vault import (
     HLP_VAULT_ADDRESS,
     create_hypercore_vault_pair,
+    create_hypercore_vault_value_func,
 )
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
@@ -246,6 +247,44 @@ def test_fetch_onchain_balances_multichain_handles_none_equity(
     assert len(results) == 1
     assert results[0].amount == Decimal(0)
     assert results[0].asset == hypercore_vault_pair.base
+
+
+def test_create_hypercore_value_func_can_bypass_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    hypercore_vault_pair: TradingPairIdentifier,
+) -> None:
+    """Verify live Hypercore valuation can force a fresh equity lookup.
+
+    1. Create a Hypercore value function with bypass_cache enabled.
+    2. Mock fetch_user_vault_equity and capture the bypass_cache argument.
+    3. Assert the generated value function requests a fresh lookup and returns the live equity.
+    """
+    calls: list[bool] = []
+
+    # 1. Create a Hypercore value function with bypass_cache enabled.
+    def mock_fetch_user_vault_equity(session, user, vault_address, bypass_cache=False):
+        # 2. Mock fetch_user_vault_equity and capture the bypass_cache argument.
+        calls.append(bypass_cache)
+        return UserVaultEquity(
+            vault_address=vault_address,
+            equity=Decimal("42"),
+            locked_until=datetime.datetime(2026, 3, 25),
+        )
+
+    monkeypatch.setattr(
+        "tradeexecutor.ethereum.vault.hypercore_vault.fetch_user_vault_equity",
+        mock_fetch_user_vault_equity,
+    )
+
+    value_func = create_hypercore_vault_value_func(
+        session=MagicMock(),
+        safe_address=FAKE_SAFE_ADDRESS,
+        bypass_cache=True,
+    )
+
+    # 3. Assert the generated value function requests a fresh lookup and returns the live equity.
+    assert value_func(hypercore_vault_pair) == Decimal("42")
+    assert calls == [True]
 
 
 def test_fetch_onchain_balances_multichain_routes_erc20(
