@@ -426,17 +426,39 @@ def log_stale_vault_candle_data(
         and "pair_id" in vault_pairs_df.columns
         and "address" in vault_pairs_df.columns
     ):
-        pair_lookup = vault_pairs_df[["pair_id", "address"]].copy()
-        pair_lookup["address"] = pair_lookup["address"].astype(str).str.lower()
-
         source_with_pairs = source_vault_price_df.copy()
         source_with_pairs["address"] = source_with_pairs["address"].astype(str).str.lower()
         source_with_pairs["timestamp"] = pd.to_datetime(source_with_pairs["timestamp"])
-        source_with_pairs = source_with_pairs.merge(pair_lookup, on="address", how="inner")
 
-        if len(source_with_pairs) > 0:
+        pair_id_column = "pair_id" if "pair_id" in source_with_pairs.columns else None
+
+        if pair_id_column is None:
+            merge_columns = ["address"]
+            pair_lookup = vault_pairs_df[["pair_id", "address"]].copy()
+
+            if "chain" in source_with_pairs.columns and "chain_id" in vault_pairs_df.columns:
+                merge_columns = ["chain", "address"]
+                pair_lookup = vault_pairs_df[["pair_id", "chain_id", "address"]].copy()
+                pair_lookup = pair_lookup.rename(columns={"chain_id": "chain"})
+                pair_lookup["chain"] = pd.to_numeric(pair_lookup["chain"], errors="coerce")
+                source_with_pairs["chain"] = pd.to_numeric(source_with_pairs["chain"], errors="coerce")
+
+            pair_lookup["address"] = pair_lookup["address"].astype(str).str.lower()
+            source_with_pairs = source_with_pairs.merge(
+                pair_lookup,
+                on=merge_columns,
+                how="inner",
+                suffixes=("", "_lookup"),
+            )
+
+            if "pair_id" in source_with_pairs.columns:
+                pair_id_column = "pair_id"
+            elif "pair_id_lookup" in source_with_pairs.columns:
+                pair_id_column = "pair_id_lookup"
+
+        if len(source_with_pairs) > 0 and pair_id_column is not None:
             source_max_timestamp_by_pair_id = (
-                source_with_pairs.groupby("pair_id")["timestamp"].max().to_dict()
+                source_with_pairs.groupby(pair_id_column)["timestamp"].max().to_dict()
             )
 
     for pair_id in vault_candle_df["pair_id"].unique():
