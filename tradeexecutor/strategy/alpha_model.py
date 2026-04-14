@@ -21,7 +21,7 @@ from tradeexecutor.state.types import (LeverageMultiplier, PairInternalId,
                                        Percent, USDollarAmount)
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.position_manager import \
-    PositionManager
+    HypercorePositionReductionPlan, PositionManager
 from tradeexecutor.strategy.redemption import (
     RedemptionCheckResult,
     RedemptionCheckStage,
@@ -1656,12 +1656,17 @@ class AlphaModel:
                 s.position_adjust_usd = s.position_target - s.old_value
 
                 if s.position_adjust_usd < 0:
-                    # Decreasing positions by selling the token
-                    # A lot of options here how to go about this.
-                    # We might get some minor position size skew here because fees not included
-                    # for these transactions
-                    s.position_adjust_quantity = position_manager.estimate_asset_quantity(s.pair, s.position_adjust_usd)
-                    assert type(s.position_adjust_quantity) == float
+                    if s.pair.is_hyperliquid_vault():
+                        # Hypercore sell quantity is derived later from the fresh
+                        # position valuation and live redeemable amount.
+                        s.position_adjust_quantity = 0.0
+                    else:
+                        # Decreasing positions by selling the token
+                        # A lot of options here how to go about this.
+                        # We might get some minor position size skew here because fees not included
+                        # for these transactions
+                        s.position_adjust_quantity = position_manager.estimate_asset_quantity(s.pair, s.position_adjust_usd)
+                        assert type(s.position_adjust_quantity) == float
 
     def map_pair_for_signal(
         self,
@@ -1714,6 +1719,10 @@ class AlphaModel:
             logger.warning("Does not generate trades for a pair with frozen positions: %s", signal.pair)
             return True
 
+        if signal.position_adjust_usd == 0:
+            signal.position_adjust_ignored = True
+            return True
+
         if individual_rebalance_min_threshold:
             trade_size = abs(signal.position_adjust_usd)
             if signal.position_adjust_usd < 0:
@@ -1728,12 +1737,73 @@ class AlphaModel:
 
         return False
 
+    def _prepare_hypercore_sell_signals(
+        self,
+        position_manager: PositionManager,
+    ) -> tuple[
+        dict[int, TradingPosition | None],
+        dict[int, RedemptionCheckResult],
+        dict[int, HypercorePositionReductionPlan],
+    ]:
+        """Refresh Hypercore sell signals before thresholds and cash checks."""
+        current_positions: dict[int, TradingPosition | None] = {}
+        redemption_results: dict[int, RedemptionCheckResult] = {}
+        reduction_plans: dict[int, HypercorePositionReductionPlan] = {}
+
+        for signal in self.iterate_signals():
+            current_positions[signal.pair.internal_id] = self._get_current_position_for_signal(
+                position_manager,
+                signal,
+            )
+
+        for signal in self.iterate_signals():
+            if not signal.pair.is_hyperliquid_vault():
+                continue
+
+            if signal.position_adjust_usd >= 0:
+                continue
+
+            current_position = current_positions[signal.pair.internal_id]
+            if current_position is None:
+                continue
+
+            redemption_result = self._check_redemption_for_position(
+                position_manager,
+                current_position,
+                stage=RedemptionCheckStage.sell_rebalance,
+            )
+            redemption_results[signal.pair.internal_id] = redemption_result
+
+            if not redemption_result.can_redeem:
+                signal.position_adjust_usd = 0.0
+                signal.position_adjust_quantity = 0.0
+                signal.position_adjust_ignored = True
+                self._mark_signal_cannot_redeem(
+                    signal,
+                    redemption_result,
+                    current_value=current_position.get_value(),
+                )
+                continue
+
+            reduction_plan = position_manager.prepare_hypercore_position_reduction(
+                current_position,
+                signal.position_adjust_usd,
+                redemption_result.max_redemption,
+            )
+            reduction_plans[signal.pair.internal_id] = reduction_plan
+            signal.position_adjust_usd = reduction_plan.effective_marked_value_delta
+            signal.position_adjust_quantity = reduction_plan.effective_quantity_delta
+
+        return current_positions, redemption_results, reduction_plans
+
     def _generate_signal_rebalance_trades(
         self,
         signal: TradingPairSignal,
         position_manager: PositionManager,
         current_position,
         execution_context: ExecutionContext | None,
+        redemption_result: RedemptionCheckResult | None = None,
+        hypercore_reduction_plan: HypercorePositionReductionPlan | None = None,
     ) -> list[TradeExecution]:
         """Generate the concrete rebalance trades for a single signal."""
         position_rebalance_trades = []
@@ -1743,8 +1813,7 @@ class AlphaModel:
         underlying = signal.pair
         synthetic = signal.synthetic_pair
 
-        redemption_result = None
-        if current_position and dollar_diff < 0:
+        if current_position and dollar_diff < 0 and redemption_result is None:
             redemption_result = self._check_redemption_for_position(
                 position_manager,
                 current_position,
@@ -1766,19 +1835,33 @@ class AlphaModel:
 
         if signal.normalised_weight < self.close_position_weight_epsilon:
             if current_position:
-                logger.info("Closing the position fully: %s", current_position)
-                position_rebalance_trades += position_manager.close_position(
-                    current_position,
-                    TradeType.rebalance,
-                    notes=f"Closing position, because the signal weight is below close position weight threshold: {signal}"
+                use_partial_hypercore_close = (
+                    current_position.pair.is_hyperliquid_vault()
+                    and hypercore_reduction_plan is not None
+                    and not hypercore_reduction_plan.treat_as_full_close
                 )
-                signal.position_id = current_position.position_id
-                signal.flags.add(TradingPairSignalFlags.closed)
+                if use_partial_hypercore_close:
+                    logger.info(
+                        "Hypercore close signal capped to a partial reduction because live redemption limits are binding: %s",
+                        current_position,
+                    )
+                else:
+                    logger.info("Closing the position fully: %s", current_position)
+                    position_rebalance_trades += position_manager.close_position(
+                        current_position,
+                        TradeType.rebalance,
+                        notes=f"Closing position, because the signal weight is below close position weight threshold: {signal}"
+                    )
+                    signal.position_id = current_position.position_id
+                    signal.flags.add(TradingPairSignalFlags.closed)
+                    signal.flags.add(TradingPairSignalFlags.close_position_weight_limit)
+                    return position_rebalance_trades
             else:
                 logger.info("Zero signal, but no position to close")
                 signal.position_adjust_ignored = True
+                signal.flags.add(TradingPairSignalFlags.close_position_weight_limit)
+                return position_rebalance_trades
             signal.flags.add(TradingPairSignalFlags.close_position_weight_limit)
-            return position_rebalance_trades
 
         if signal.is_flipping():
             logger.info("Alpha model signal flipping for %s: %s, new strength %f", signal.pair.get_pricing_pair().base.token_symbol, signal.get_flip_label(), signal.signal)
@@ -1922,6 +2005,8 @@ class AlphaModel:
             len(self.signals),
         )
 
+        current_positions, redemption_results, reduction_plans = self._prepare_hypercore_sell_signals(position_manager)
+
         #
         # Would the portfolio value change enough to justify the rebalance.
         # We calculate this by taking the highest adjust,
@@ -1961,7 +2046,7 @@ class AlphaModel:
 
             # Do backtesting record keeping, so that
             # it is later easier to display alpha model thinking
-            current_position = self._get_current_position_for_signal(position_manager, signal)
+            current_position = current_positions.get(signal.pair.internal_id)
 
             logger.info("Rebalancing %s, trading as %s, signal #%d, old position %s, old weight: %f, new weight: %f, size diff: %f USD",
                         underlying.base.token_symbol,
@@ -1971,6 +2056,13 @@ class AlphaModel:
                         signal.old_weight,
                         signal.normalised_weight,
                         dollar_diff)
+
+            if TradingPairSignalFlags.cannot_redeem in signal.flags and signal.position_adjust_usd == 0:
+                logger.info(
+                    "Skipping sell-side rebalance for %s because the position is not redeemable yet",
+                    signal.pair,
+                )
+                continue
 
             if self._should_skip_signal_rebalance(
                 signal,
@@ -1986,6 +2078,8 @@ class AlphaModel:
                 position_manager,
                 current_position,
                 execution_context,
+                redemption_result=redemption_results.get(signal.pair.internal_id),
+                hypercore_reduction_plan=reduction_plans.get(signal.pair.internal_id),
             )
 
             if position_rebalance_trades:

@@ -209,11 +209,12 @@ def create_hypercore_vault_value_func(
     session=None,
     safe_address: str | None = None,
     is_testnet: bool = False,
+    bypass_cache: bool = False,
 ) -> Callable[[TradingPairIdentifier], Decimal]:
     """Create Hypercore vault account value function.
 
     The returned function queries the Hyperliquid info API for the
-    user's vault equity position using the cached
+    user's vault equity position using
     :py:func:`~eth_defi.hyperliquid.api.fetch_user_vault_equity`,
     returning the USDC equity for the specific vault address stored
     in ``pair.pool_address``.
@@ -233,6 +234,10 @@ def create_hypercore_vault_value_func(
 
     :param is_testnet:
         Whether to use testnet API URL (only used when creating session lazily).
+
+    :param bypass_cache:
+        Force fresh Hyperliquid equity lookups instead of the default session cache.
+        Used in live trading so that rebalance calculations see up-to-date vault equity.
 
     :return:
         Function that takes a TradingPairIdentifier and returns
@@ -274,6 +279,7 @@ def create_hypercore_vault_value_func(
                 session,
                 user=safe_address,
                 vault_address=vault_address,
+                bypass_cache=bypass_cache,
             )
 
             if eq is not None:

@@ -2,6 +2,7 @@
 
 import datetime
 import warnings
+from dataclasses import dataclass
 from decimal import Decimal
 from io import StringIO
 from typing import List, Optional, Union, Set, Literal
@@ -26,6 +27,7 @@ from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType, TradeExecution, TradeFlag, TradeStatus
 from tradeexecutor.state.types import USDollarAmount, Percent, LeverageMultiplier, USDollarPrice
+from tradeexecutor.strategy.dust import get_close_epsilon_for_pair
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
@@ -57,6 +59,22 @@ class NotEnoughCasForBuys(Exception):
 
     See :py:meth:`PositionManager.check_enough_case.
     """
+
+
+@dataclass(slots=True, frozen=True)
+class HypercorePositionReductionPlan:
+    """Describe a live-capped Hypercore sell reduction.
+
+    The plan distinguishes between:
+
+    - marked value reduction, driven by live position valuation
+    - quantity reduction / cash release, driven by Hypercore withdrawal sizing
+    """
+
+    effective_quantity_delta: float
+    effective_marked_value_delta: float
+    redemption_cap_bound: bool
+    treat_as_full_close: bool
 
 
 class PositionManager:
@@ -1547,6 +1565,43 @@ class PositionManager:
         pricing_model = self.pricing_model
         price = pricing_model.get_mid_price(timestamp, pair)
         return float(dollar_amount / price)
+
+    def prepare_hypercore_position_reduction(
+        self,
+        position: TradingPosition,
+        dollar_delta: USDollarAmount,
+        max_redemption: USDollarAmount | None,
+    ) -> HypercorePositionReductionPlan:
+        """Convert a marked-value Hypercore reduction to a live-capped quantity plan."""
+        assert position.pair.is_hyperliquid_vault(), f"Not a Hypercore position: {position}"
+        assert dollar_delta < 0, f"Expected negative Hypercore reduction delta, got {dollar_delta}"
+
+        current_price = Decimal(str(position.get_current_price()))
+        assert current_price > 0, f"Hypercore position price must be positive, got {current_price} for {position}"
+
+        requested_marked_value = abs(Decimal(str(dollar_delta)))
+        requested_quantity = requested_marked_value / current_price
+        available_quantity = position.get_available_trading_quantity()
+
+        effective_quantity = min(requested_quantity, available_quantity)
+        redemption_cap_bound = False
+
+        if max_redemption is not None:
+            max_redeemable_quantity = Decimal(str(max_redemption))
+            if effective_quantity > max_redeemable_quantity:
+                effective_quantity = max_redeemable_quantity
+                redemption_cap_bound = True
+
+        remaining_quantity = max(Decimal(0), available_quantity - effective_quantity)
+        close_epsilon = get_close_epsilon_for_pair(position.pair)
+        treat_as_full_close = not redemption_cap_bound and remaining_quantity <= close_epsilon
+
+        return HypercorePositionReductionPlan(
+            effective_quantity_delta=-float(effective_quantity),
+            effective_marked_value_delta=-float(effective_quantity * current_price),
+            redemption_cap_bound=redemption_cap_bound,
+            treat_as_full_close=treat_as_full_close,
+        )
 
     def update_stop_loss(
         self, position: TradingPosition,
