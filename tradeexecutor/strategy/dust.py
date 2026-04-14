@@ -46,9 +46,18 @@ DEFAULT_VAULT_EPSILON = Decimal(10 ** -6)
 HYPERLIQUID_VAULT_CLOSE_EPSILON = Decimal("0.20")
 
 #: Hypercore vault equities fluctuate every block due to active trading
-#: inside the vault, so we allow 100 BPS (1%) relative drift before
-#: flagging a mismatch.
-HYPERLIQUID_VAULT_RELATIVE_EPSILON = 0.01
+#: inside the vault, and live cycles can spend a long time in sequential
+#: settlement before the final accounting read happens.
+#:
+#: This is problematic because even small absolute NAV moves on tiny vault
+#: positions can become multi-percent relative drift by the time we compare the
+#: fresh API equity against our state mark. We now refresh Hypercore marks right
+#: before post-trade checks, but still keep a wider 2% tolerance here because
+#: the live API and the state read are not truly atomic.
+#:
+#: This must stay a compromise, not the main fix: widening the tolerance too
+#: much would hide genuine settlement failures and stale-state bugs.
+HYPERLIQUID_VAULT_RELATIVE_EPSILON = 0.02
 
 
 def get_dust_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
@@ -159,4 +168,3 @@ def get_relative_epsilon_for_pair(pair: TradingPairIdentifier) -> Percent:
     if pair.is_hyperliquid_vault():
         return HYPERLIQUID_VAULT_RELATIVE_EPSILON
     return get_relative_epsilon_for_asset(pair.base)
-
