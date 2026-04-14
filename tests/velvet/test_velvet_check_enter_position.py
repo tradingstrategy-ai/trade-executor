@@ -11,7 +11,7 @@ from web3 import Web3
 from eth_defi.abi import ZERO_ADDRESS_STR
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
-from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
 JSON_RPC_BINANCE = os.environ.get("JSON_RPC_BINANCE")
