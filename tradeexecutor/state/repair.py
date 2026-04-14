@@ -73,6 +73,7 @@ class HypercoreDuplicateCloseCandidate:
     vault_name: str
     survivor_position: TradingPosition
     clone_position: TradingPosition
+    close_reason: str
 
 
 def _get_hypercore_vault_address(position: TradingPosition) -> str:
@@ -88,88 +89,169 @@ def _get_position_expected_usd_equity(position: TradingPosition) -> Decimal:
     return Decimal(str(value))
 
 
+def _is_close_enough(left: Decimal, right: Decimal, tolerance: Decimal = Decimal("0.000001")) -> bool:
+    """Check whether two Decimal values are close enough for duplicate repair."""
+
+    return abs(left - right) <= tolerance
+
+
+def _has_repaired_close_trade(position: TradingPosition) -> bool:
+    """Check whether a position has a repaired closing trade in its history."""
+
+    return any(
+        trade.is_repaired() and trade.is_sell()
+        for trade in position.trades.values()
+    )
+
+
 def _validate_hypercore_duplicate_clone_group(
     positions: list[TradingPosition],
 ) -> HypercoreDuplicateCloseCandidate:
-    """Validate that a duplicate group is safe to close as a later phantom clone."""
+    """Validate that a duplicate group is safe to close automatically."""
 
     if len(positions) != 2:
         raise HypercoreDuplicateCloseError(
             f"Expected exactly 2 duplicate positions, got {len(positions)}"
         )
 
-    survivor_position, clone_position = sorted(positions, key=lambda p: p.position_id)
-    reasons: list[str] = []
+    older_position, newer_position = sorted(positions, key=lambda p: p.position_id)
 
-    if survivor_position.is_frozen() or clone_position.is_frozen():
-        reasons.append("group contains frozen positions")
+    base_reasons: list[str] = []
+    for position in (older_position, newer_position):
+        if position.is_frozen():
+            base_reasons.append("group contains frozen positions")
+        if position.has_planned_trades():
+            base_reasons.append("group contains planned trades")
+        if position.is_about_to_close():
+            base_reasons.append("group contains positions about to close")
+        if position.loan is not None:
+            base_reasons.append("group contains loan-backed state")
+        if position.is_loan_based():
+            base_reasons.append("group contains loan-based positions")
 
-    if survivor_position.has_planned_trades() or clone_position.has_planned_trades():
-        reasons.append("group contains planned trades")
+    older_trade = older_position.get_first_trade()
+    newer_trade = newer_position.get_first_trade()
 
-    if survivor_position.is_about_to_close() or clone_position.is_about_to_close():
-        reasons.append("group contains positions about to close")
+    if older_position.pair.pool_address != newer_position.pair.pool_address:
+        base_reasons.append("pool addresses differ")
+    if older_position.pair.base != newer_position.pair.base:
+        base_reasons.append("base assets differ")
+    if older_position.pair.quote != newer_position.pair.quote:
+        base_reasons.append("quote assets differ")
+    if older_trade.reserve_currency != newer_trade.reserve_currency:
+        base_reasons.append("reserve currencies differ")
 
-    if survivor_position.loan is not None or clone_position.loan is not None:
-        reasons.append("group contains loan-backed state")
+    if older_position.get_quantity(planned=False) != newer_position.get_quantity(planned=False):
+        base_reasons.append("current quantities differ")
+    if older_position.get_quantity(planned=True) != newer_position.get_quantity(planned=True):
+        base_reasons.append("planned quantities differ")
+    if older_position.last_token_price != newer_position.last_token_price:
+        base_reasons.append("last_token_price differs")
+    if older_position.last_reserve_price != newer_position.last_reserve_price:
+        base_reasons.append("last_reserve_price differs")
+    if not _is_close_enough(
+        _get_position_expected_usd_equity(older_position),
+        _get_position_expected_usd_equity(newer_position),
+    ):
+        base_reasons.append("expected USD equity differs")
 
-    if survivor_position.is_loan_based() or clone_position.is_loan_based():
-        reasons.append("group contains loan-based positions")
-
-    if clone_position.balance_updates:
-        reasons.append("clone candidate has balance updates")
-
-    if len(clone_position.trades) != 1:
-        reasons.append("clone candidate does not have exactly one trade")
-    else:
-        clone_trade = clone_position.get_first_trade()
-        clone_flags = clone_trade.flags or set()
-        if not clone_trade.is_success():
-            reasons.append("clone candidate opening trade is not successful")
-        if clone_trade.is_sell():
-            reasons.append("clone candidate trade is a sell")
-        if clone_trade.is_failed():
-            reasons.append("clone candidate trade is failed")
-        if clone_trade.is_repair_trade() or clone_trade.trade_type == TradeType.repair:
-            reasons.append("clone candidate trade is a repair trade")
-        if TradeFlag.ignore_open not in clone_flags:
-            reasons.append("clone candidate opening trade lacks ignore_open flag")
-
-    survivor_trade = survivor_position.get_first_trade()
-    clone_trade = clone_position.get_first_trade()
-
-    if survivor_position.pair.pool_address != clone_position.pair.pool_address:
-        reasons.append("pool addresses differ")
-    if survivor_position.pair.base != clone_position.pair.base:
-        reasons.append("base assets differ")
-    if survivor_position.pair.quote != clone_position.pair.quote:
-        reasons.append("quote assets differ")
-    if survivor_trade.reserve_currency != clone_trade.reserve_currency:
-        reasons.append("reserve currencies differ")
-
-    if survivor_position.get_quantity(planned=False) != clone_position.get_quantity(planned=False):
-        reasons.append("current quantities differ")
-    if survivor_position.get_quantity(planned=True) != clone_position.get_quantity(planned=True):
-        reasons.append("planned quantities differ")
-    if survivor_position.last_token_price != clone_position.last_token_price:
-        reasons.append("last_token_price differs")
-    if survivor_position.last_reserve_price != clone_position.last_reserve_price:
-        reasons.append("last_reserve_price differs")
-    if _get_position_expected_usd_equity(survivor_position) != _get_position_expected_usd_equity(clone_position):
-        reasons.append("expected USD equity differs")
-
-    if reasons:
+    if base_reasons:
         raise HypercoreDuplicateCloseError(
-            f"Vault {_get_hypercore_vault_address(survivor_position)} "
-            f"positions #{survivor_position.position_id} and #{clone_position.position_id} "
-            f"are not safe to close automatically: {', '.join(reasons)}"
+            f"Vault {_get_hypercore_vault_address(older_position)} "
+            f"positions #{older_position.position_id} and #{newer_position.position_id} "
+            f"are not safe to close automatically: {', '.join(dict.fromkeys(base_reasons))}"
         )
 
-    return HypercoreDuplicateCloseCandidate(
-        vault_address=_get_hypercore_vault_address(survivor_position),
-        vault_name=survivor_position.pair.get_vault_name() or survivor_position.pair.get_ticker(),
-        survivor_position=survivor_position,
-        clone_position=clone_position,
+    older_has_repaired_close = _has_repaired_close_trade(older_position)
+    newer_has_repaired_close = _has_repaired_close_trade(newer_position)
+
+    # Case 1: a later phantom clone opened alongside the older canonical position.
+    clone_reasons: list[str] = []
+    if len(newer_position.trades) != 1:
+        clone_reasons.append("clone candidate does not have exactly one trade")
+    else:
+        clone_trade = newer_position.get_first_trade()
+        clone_flags = clone_trade.flags or set()
+        if not clone_trade.is_success():
+            clone_reasons.append("clone candidate opening trade is not successful")
+        if clone_trade.is_sell():
+            clone_reasons.append("clone candidate trade is a sell")
+        if clone_trade.is_failed():
+            clone_reasons.append("clone candidate trade is failed")
+        if clone_trade.is_repair_trade() or clone_trade.trade_type == TradeType.repair:
+            clone_reasons.append("clone candidate trade is a repair trade")
+        if TradeFlag.ignore_open not in clone_flags:
+            clone_reasons.append("clone candidate opening trade lacks ignore_open flag")
+
+    if not newer_position.balance_updates:
+        pass
+    elif len(newer_position.balance_updates) == 1:
+        update = next(iter(newer_position.balance_updates.values()))
+        if getattr(update.cause, "value", update.cause) != "vault_flow":
+            clone_reasons.append("clone candidate has non-vault-flow balance updates")
+    else:
+        clone_reasons.append("clone candidate has multiple balance updates")
+
+    if not clone_reasons and not older_has_repaired_close and not newer_has_repaired_close:
+        return HypercoreDuplicateCloseCandidate(
+            vault_address=_get_hypercore_vault_address(older_position),
+            vault_name=older_position.pair.get_vault_name() or older_position.pair.get_ticker(),
+            survivor_position=older_position,
+            clone_position=newer_position,
+            close_reason="later phantom duplicate clone",
+        )
+
+    # Case 2: an older stale repaired-close position remained open and a newer reopen became the live position.
+    reopen_reasons: list[str] = []
+    if not older_has_repaired_close:
+        reopen_reasons.append("older position does not contain a repaired close trade")
+    if newer_has_repaired_close:
+        reopen_reasons.append("newer position unexpectedly contains a repaired close trade")
+    if len(newer_position.trades) != 1:
+        reopen_reasons.append("newer survivor candidate does not have exactly one trade")
+    else:
+        reopen_trade = newer_position.get_first_trade()
+        if not reopen_trade.is_success():
+            reopen_reasons.append("newer survivor candidate opening trade is not successful")
+        if reopen_trade.is_sell():
+            reopen_reasons.append("newer survivor candidate trade is a sell")
+        if reopen_trade.is_failed():
+            reopen_reasons.append("newer survivor candidate trade is failed")
+        if reopen_trade.is_repair_trade() or reopen_trade.trade_type == TradeType.repair:
+            reopen_reasons.append("newer survivor candidate trade is a repair trade")
+
+    if len(newer_position.balance_updates) != 1:
+        reopen_reasons.append("newer survivor candidate does not have exactly one balance update")
+    else:
+        update = next(iter(newer_position.balance_updates.values()))
+        if getattr(update.cause, "value", update.cause) != "vault_flow":
+            reopen_reasons.append("newer survivor candidate balance update is not vault_flow")
+
+    repaired_close_trade = next(
+        (trade for trade in older_position.trades.values() if trade.is_repaired() and trade.is_sell()),
+        None,
+    )
+    if repaired_close_trade is None:
+        reopen_reasons.append("older position repaired close trade could not be located")
+    else:
+        if newer_trade.opened_at is not None and repaired_close_trade.executed_at is not None:
+            if newer_trade.opened_at <= repaired_close_trade.executed_at:
+                reopen_reasons.append("newer survivor candidate was not opened after the repaired close")
+
+    if not reopen_reasons:
+        return HypercoreDuplicateCloseCandidate(
+            vault_address=_get_hypercore_vault_address(older_position),
+            vault_name=older_position.pair.get_vault_name() or older_position.pair.get_ticker(),
+            survivor_position=newer_position,
+            clone_position=older_position,
+            close_reason="stale repaired-close duplicate after later reopen",
+        )
+
+    reasons = clone_reasons or reopen_reasons
+    raise HypercoreDuplicateCloseError(
+        f"Vault {_get_hypercore_vault_address(older_position)} "
+        f"positions #{older_position.position_id} and #{newer_position.position_id} "
+        f"are not safe to close automatically: {', '.join(dict.fromkeys(reasons))}"
     )
 
 
@@ -211,7 +293,7 @@ def close_hypercore_duplicate_clone(
     opening_trade = clone_position.get_first_trade()
     note = (
         f"Closed as duplicate Hypercore clone of position #{survivor_position.position_id} "
-        f"during Hypercore duplicate repair ({now.isoformat()})"
+        f"because {candidate.close_reason} ({now.isoformat()})"
     )
 
     position, counter_trade, created = portfolio.create_trade(
@@ -253,10 +335,11 @@ def close_hypercore_duplicate_clone(
     counter_trade.add_note(note)
     clone_position.add_notes_message(note)
     survivor_position.add_notes_message(
-        f"Kept canonical Hypercore position while closing duplicate clone position "
-        f"#{clone_position.position_id} ({now.isoformat()})"
+        f"Kept surviving Hypercore position while closing duplicate clone position "
+        f"#{clone_position.position_id} because {candidate.close_reason} ({now.isoformat()})"
     )
     clone_position.other_data["closed_duplicate_survivor_position_id"] = survivor_position.position_id
+    clone_position.other_data["hypercore_duplicate_close_reason"] = candidate.close_reason
     portfolio.close_position(clone_position, now)
     logger.info(
         "Closed Hypercore duplicate clone position #%d with repair trade #%d and kept survivor #%d for vault %s at %s",
