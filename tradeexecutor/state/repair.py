@@ -198,35 +198,75 @@ def find_hypercore_duplicate_clone_candidates(
     return candidates, rejected_groups
 
 
-def suppress_hypercore_duplicate_clone(
+def close_hypercore_duplicate_clone(
     portfolio: Portfolio,
     candidate: HypercoreDuplicateSuppressionCandidate,
     now: datetime.datetime | None = None,
-) -> TradingPosition:
-    """Suppress a later Hypercore duplicate clone from active accounting."""
+) -> TradeExecution:
+    """Close a later Hypercore duplicate clone with a flagged repair trade."""
 
     now = now or native_datetime_utc_now()
     survivor_position = candidate.survivor_position
     clone_position = candidate.clone_position
-
-    clone_position.add_notes_message(
-        f"Suppressed as duplicate clone of position #{survivor_position.position_id} "
+    opening_trade = clone_position.get_first_trade()
+    note = (
+        f"Closed as duplicate Hypercore clone of position #{survivor_position.position_id} "
         f"during Hypercore duplicate repair ({now.isoformat()})"
     )
-    survivor_position.add_notes_message(
-        f"Suppressed duplicate position #{clone_position.position_id} during Hypercore duplicate repair "
-        f"({now.isoformat()})"
+
+    position, counter_trade, created = portfolio.create_trade(
+        strategy_cycle_at=opening_trade.strategy_cycle_at,
+        pair=clone_position.pair,
+        quantity=Decimal(0),
+        assumed_price=opening_trade.planned_price,
+        trade_type=TradeType.repair,
+        reserve_currency=opening_trade.reserve_currency,
+        planned_mid_price=opening_trade.planned_mid_price,
+        price_structure=opening_trade.price_structure,
+        reserve=None,
+        reserve_currency_price=opening_trade.get_reserve_currency_exchange_rate(),
+        position=clone_position,
     )
-    clone_position.other_data["suppressed_duplicate_survivor_position_id"] = survivor_position.position_id
-    portfolio.suppress_duplicate_position(clone_position, now)
+    counter_trade.started_at = now
+    assert created is False
+    assert position == clone_position
+
+    counter_trade.flags = (counter_trade.flags or set()) | {
+        TradeFlag.close,
+        TradeFlag.hypercore_duplicate_close,
+    }
+    counter_trade.mark_success(
+        now,
+        opening_trade.planned_price,
+        Decimal(0),
+        Decimal(0),
+        0,
+        opening_trade.native_token_price,
+        force=True,
+    )
+    assert counter_trade.is_success()
+
+    counter_trade.repaired_trade_id = opening_trade.trade_id
+    opening_trade.add_note(
+        f"Closed duplicate Hypercore clone at {now.strftime('%Y-%m-%d %H:%M')}, by #{counter_trade.trade_id}"
+    )
+    counter_trade.add_note(note)
+    clone_position.add_notes_message(note)
+    survivor_position.add_notes_message(
+        f"Kept canonical Hypercore position while closing duplicate clone position "
+        f"#{clone_position.position_id} ({now.isoformat()})"
+    )
+    clone_position.other_data["closed_duplicate_survivor_position_id"] = survivor_position.position_id
+    portfolio.close_position(clone_position, now)
     logger.info(
-        "Suppressed Hypercore duplicate clone position #%d and kept survivor #%d for vault %s at %s",
+        "Closed Hypercore duplicate clone position #%d with repair trade #%d and kept survivor #%d for vault %s at %s",
         clone_position.position_id,
+        counter_trade.trade_id,
         survivor_position.position_id,
         candidate.vault_name,
         candidate.vault_address,
     )
-    return clone_position
+    return counter_trade
 
 
 def make_counter_trade(portfolio: Portfolio, p: TradingPosition, t: TradeExecution) -> TradeExecution:

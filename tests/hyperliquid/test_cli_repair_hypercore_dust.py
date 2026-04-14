@@ -331,11 +331,11 @@ def test_repair_hypercore_dust_cli_warns_for_non_dust_duplicates(
 def test_repair_hypercore_dust_cli_suppresses_safe_later_clone_with_confirmation(
     tmp_path: Path,
 ) -> None:
-    """Test the CLI suppresses a safe later Hypercore clone after explicit confirmation.
+    """Test the CLI closes a safe later Hypercore clone after explicit confirmation.
 
     1. Create a state file with two exact-match non-dust Hypercore positions for the same vault.
     2. Run the CLI repair command with ``--merge-dustless-duplicates`` and explicit `y` confirmations.
-    3. Verify the older position stays open and the later clone moves to suppressed duplicates.
+    3. Verify the older position stays open and the later clone is closed with a flagged repair trade.
     """
 
     # 1. Create a state file with two exact-match non-dust Hypercore positions for the same vault.
@@ -362,13 +362,15 @@ def test_repair_hypercore_dust_cli_suppresses_safe_later_clone_with_confirmation
         input="y\ny\n",
     )
 
-    # 3. Verify the older position stays open and the later clone moves to suppressed duplicates.
+    # 3. Verify the older position stays open and the later clone is closed with a flagged repair trade.
     assert result.exit_code == 0, result.stdout
 
     repaired_state = State.read_json_file(state_file)
     assert survivor_position_id in repaired_state.portfolio.open_positions
     assert clone_position_id not in repaired_state.portfolio.open_positions
-    assert clone_position_id in repaired_state.portfolio.suppressed_duplicate_positions
+    assert clone_position_id in repaired_state.portfolio.closed_positions
+    clone_position = repaired_state.portfolio.closed_positions[clone_position_id]
+    assert TradeFlag.hypercore_duplicate_close in (clone_position.get_last_trade().flags or set())
 
 
 def test_repair_hypercore_dust_cli_safe_clone_still_fails_without_merge_flag(
@@ -459,7 +461,7 @@ def test_repair_hypercore_dust_cli_combines_dust_cleanup_and_clone_suppression(
     assert dust_live_position_id in repaired_state.portfolio.open_positions
     assert clone_survivor_position_id in repaired_state.portfolio.open_positions
     assert clone_position_id not in repaired_state.portfolio.open_positions
-    assert clone_position_id in repaired_state.portfolio.suppressed_duplicate_positions
+    assert clone_position_id in repaired_state.portfolio.closed_positions
 
 
 def test_repair_hypercore_dust_cli_does_not_save_partial_results_when_unsafe_group_remains(
@@ -512,7 +514,7 @@ def test_repair_hypercore_dust_cli_does_not_save_partial_results_when_unsafe_gro
     assert safe_clone_position_id in repaired_state.portfolio.open_positions
     assert unsafe_first_position_id in repaired_state.portfolio.open_positions
     assert unsafe_second_position_id in repaired_state.portfolio.open_positions
-    assert len(repaired_state.portfolio.suppressed_duplicate_positions) == 0
+    assert len(repaired_state.portfolio.closed_positions) == 0
 
 
 def test_repair_hypercore_dust_cli_rejects_auto_approve_for_merge_mode(

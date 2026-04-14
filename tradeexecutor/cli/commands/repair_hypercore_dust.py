@@ -12,9 +12,9 @@ from ..bootstrap import backup_state, create_state_store, prepare_executor_id
 from ..double_position import check_double_position, get_duplicate_position_groups
 from ..log import setup_logging
 from ...state.repair import (
+    close_hypercore_duplicate_clone,
     close_hypercore_dust_positions,
     find_hypercore_duplicate_clone_candidates,
-    suppress_hypercore_duplicate_clone,
 )
 from ...state.store import JSONFileStore
 
@@ -128,7 +128,7 @@ def repair_hypercore_dust(
     else:
         logger.info("No closeable Hypercore dust positions were found")
 
-    suppressed_positions: list = []
+    duplicate_close_trades: list = []
     duplicate_group_count_after = _count_duplicate_hypercore_groups(state)
 
     if duplicate_group_count_after and merge_dustless_duplicates:
@@ -184,11 +184,11 @@ def repair_hypercore_dust(
                             "The state file was not updated."
                         )
 
-                suppressed_position = suppress_hypercore_duplicate_clone(
+                duplicate_close_trade = close_hypercore_duplicate_clone(
                     state.portfolio,
                     candidate,
                 )
-                suppressed_positions.append(suppressed_position)
+                duplicate_close_trades.append(duplicate_close_trade)
 
             duplicate_group_count_after = _count_duplicate_hypercore_groups(state)
 
@@ -204,7 +204,7 @@ def repair_hypercore_dust(
             "and require manual repair. The state file was not updated."
         )
 
-    state_changed = bool(created_trades) or bool(suppressed_positions)
+    state_changed = bool(created_trades) or bool(duplicate_close_trades)
     if state_changed:
         logger.info("Saving repaired state to %s", store.path)
         store.sync(state)

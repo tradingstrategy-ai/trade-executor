@@ -27,9 +27,9 @@ from tradeexecutor.state.balance_update import (
 from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind, AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.repair import (
+    close_hypercore_duplicate_clone,
     close_hypercore_dust_positions,
     find_hypercore_duplicate_clone_candidates,
-    suppress_hypercore_duplicate_clone,
 )
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeFlag, TradeType
@@ -890,11 +890,11 @@ def test_close_hypercore_dust_positions_closes_duplicate_residual_state() -> Non
 
 
 def test_hypercore_duplicate_clone_suppression_keeps_canonical_position() -> None:
-    """Test safe Hypercore later-clone suppression keeps the older canonical position active.
+    """Test safe Hypercore later-clone repair closes the clone and keeps the older canonical position active.
 
     1. Build a state with one canonical Hypercore position and one later duplicate clone.
     2. Discover the strict suppression candidate and apply it.
-    3. Verify the canonical position stays open and the later clone moves to suppressed duplicates.
+    3. Verify the canonical position stays open and the later clone is closed with a flagged repair trade.
     """
 
     # 1. Build a state with one canonical Hypercore position and one later duplicate clone.
@@ -905,17 +905,24 @@ def test_hypercore_duplicate_clone_suppression_keeps_canonical_position() -> Non
     assert rejected_groups == []
     assert len(candidates) == 1
 
-    suppress_hypercore_duplicate_clone(
+    closing_trade = close_hypercore_duplicate_clone(
         state.portfolio,
         candidates[0],
         now=datetime.datetime(2026, 4, 15),
     )
 
-    # 3. Verify the canonical position stays open and the later clone moves to suppressed duplicates.
+    # 3. Verify the canonical position stays open and the later clone is closed with a flagged repair trade.
     assert survivor_position.position_id in state.portfolio.open_positions
     assert clone_position.position_id not in state.portfolio.open_positions
-    assert clone_position.position_id in state.portfolio.suppressed_duplicate_positions
+    assert clone_position.position_id in state.portfolio.closed_positions
     assert state.portfolio.get_position_by_id(clone_position.position_id) == clone_position
+    assert TradeFlag.hypercore_duplicate_close in (closing_trade.flags or set())
+    note = (
+        f"Closed as duplicate Hypercore clone of position #{survivor_position.position_id} "
+        f"during Hypercore duplicate repair (2026-04-15T00:00:00)"
+    )
+    assert note in (closing_trade.notes or "")
+    assert note in (clone_position.notes or "")
 
 
 def test_hypercore_duplicate_clone_suppression_rejects_clone_without_ignore_open() -> None:

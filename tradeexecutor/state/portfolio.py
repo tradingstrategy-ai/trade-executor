@@ -109,12 +109,6 @@ class Portfolio:
     #: - rug pull token - transfer disabled
     frozen_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
-    #: Duplicate positions intentionally removed from active accounting.
-    #:
-    #: These entries are preserved for audit/debugging, but they must not
-    #: participate in normal analytics, duplicate checks, or trade routing.
-    suppressed_duplicate_positions: Dict[int, TradingPosition] = field(default_factory=dict)
-
     #: Mark positions that we cannot value as zero
     #:
     #: This is a backtesting issue workaround flag for disappearing markets.
@@ -141,22 +135,11 @@ class Portfolio:
     def __repr__(self):
         reserve_asset, _ = self.get_default_reserve_asset()
         reserve_position = self.get_reserve_position(reserve_asset)
-        return (
-            f"<Portfolio with positions open:{len(self.open_positions)} "
-            f"frozen:{len(self.frozen_positions)} "
-            f"closed:{len(self.closed_positions)} "
-            f"suppressed:{len(self.suppressed_duplicate_positions)} "
-            f"and reserve {reserve_position.quantity} {reserve_position.asset.token_symbol}>"
-        )
+        return f"<Portfolio with positions open:{len(self.open_positions)} frozen:{len(self.frozen_positions)} closed:{len(self.closed_positions)} and reserve {reserve_position.quantity} {reserve_position.asset.token_symbol}>"
 
     def is_empty(self):
         """This portfolio has no open or past trades or any reserves."""
-        return (
-            len(self.open_positions) == 0
-            and len(self.reserves) == 0
-            and len(self.closed_positions) == 0
-            and len(self.suppressed_duplicate_positions) == 0
-        )
+        return len(self.open_positions) == 0 and len(self.reserves) == 0 and len(self.closed_positions) == 0
 
     def get_position_by_id(self, position_id: int) -> TradingPosition:
         """Get any position open/closed/frozen by id.
@@ -185,14 +168,9 @@ class Portfolio:
         if p3:
             # Sanity check we do not have the same position in multiple tables
             assert not (p1 or p2)
-        p4 = self.suppressed_duplicate_positions.get(position_id)
-        if p4:
-            # Sanity check we do not have the same position in multiple tables
-            assert not (p1 or p2 or p3)
+        assert p1 or p2 or p3, f"Did not have position with id {position_id}"
 
-        assert p1 or p2 or p3 or p4, f"Did not have position with id {position_id}"
-
-        return p1 or p2 or p3 or p4
+        return p1 or p2 or p3
 
     def get_trade_by_id(self, trade_id: int) -> Optional[TradeExecution]:
         """Look up any trade in all positions.
@@ -204,7 +182,7 @@ class Portfolio:
         :return:
             Found trade or
         """
-        for p in self.get_all_positions(include_suppressed=True):
+        for p in self.get_all_positions():
             t = p.trades.get(trade_id)
             if t is not None:
                 return t
@@ -220,32 +198,28 @@ class Portfolio:
         :return:
             None if the portfolio does not contain such a trade
         """
-        for t in self.get_all_trades(include_suppressed=True):
+        for t in self.get_all_trades():
             for b in t.blockchain_transactions:
                 if b.tx_hash == tx_hash:
                     return t
 
         return None
 
-    def get_all_positions(self, pending=False, include_suppressed=False) -> Iterable[TradingPosition]:
+    def get_all_positions(self, pending=False) -> Iterable[TradingPosition]:
         """Get open, closed and frozen, positions.
 
         :param pending:
             Include hypotethical market limit positions.
         """
-        positions = [
-            self.open_positions.values(),
-            self.closed_positions.values(),
-            self.frozen_positions.values(),
-        ]
-        if include_suppressed:
-            positions.append(self.suppressed_duplicate_positions.values())
-
         if pending:
-            positions.append(self.pending_positions.values())
-            return chain(*positions)
+            return chain(
+                self.open_positions.values(),
+                self.closed_positions.values(),
+                self.frozen_positions.values(),
+                self.pending_positions.values(),
+            )
         else:
-            return chain(*positions)
+            return chain(self.open_positions.values(), self.closed_positions.values(), self.frozen_positions.values())
 
     def get_open_loans(self) -> Iterable[Loan]:
         """Get loans across all positions."""
@@ -928,23 +902,6 @@ class Portfolio:
 
         assert position.is_closed()
 
-    def suppress_duplicate_position(
-        self,
-        position: TradingPosition,
-        suppressed_at: datetime.datetime,
-    ) -> None:
-        """Move a duplicate position out of active accounting into the audit bucket."""
-
-        assert position.position_id in self.open_positions, f"Not in open positions: {position}"
-        assert position.position_id not in self.suppressed_duplicate_positions, (
-            f"Already suppressed: {position}"
-        )
-
-        logger.info("Suppressing duplicate position: %s at %s", position, suppressed_at)
-        position.other_data["suppressed_duplicate_at"] = suppressed_at
-        del self.open_positions[position.position_id]
-        self.suppressed_duplicate_positions[position.position_id] = position
-
     def adjust_reserves(
         self,
         asset: AssetIdentifier,
@@ -1164,10 +1121,10 @@ class Portfolio:
         res_pos = next(iter(self.reserves.values()))
         return res_pos.asset, res_pos.reserve_token_price
 
-    def get_all_trades(self, include_suppressed=False) -> Iterable[TradeExecution]:
+    def get_all_trades(self) -> Iterable[TradeExecution]:
         """Iterate through all trades: completed, failed and in progress"""
         pos: TradingPosition
-        for pos in self.get_all_positions(include_suppressed=include_suppressed):
+        for pos in self.get_all_positions():
             for t in pos.trades.values():
                 yield t
 
