@@ -703,12 +703,65 @@ class StrategyRunner(abc.ABC):
                     "Auto-closed %d Hypercore dust position(s) before post-trade account checks",
                     len(closed_dust_trades),
                 )
+            self._revalue_open_hypercore_positions_before_post_trade_account_check(
+                universe,
+                state,
+            )
             self.check_accounts(
                 universe,
                 state,
                 end_block=end_block,
                 cycle=cycle,
             )
+
+    def _has_open_hypercore_vault_positions(self, state: State) -> bool:
+        """Check if the portfolio currently has any open Hypercore vault positions."""
+        return any(
+            position.pair.is_hyperliquid_vault()
+            for position in state.portfolio.open_positions.values()
+        )
+
+    def _revalue_open_hypercore_positions_before_post_trade_account_check(
+        self,
+        universe: StrategyExecutionUniverse,
+        state: State,
+    ) -> None:
+        """Refresh Hypercore vault marks right before post-trade accounting checks.
+
+        Hypercore account checks compare a fresh live Hyperliquid API equity
+        reading against the state-side marked value ``quantity * last_token_price``.
+        A long live cycle can execute sequential Hypercore trades for many minutes,
+        so the earlier cycle-start valuation can be stale enough to trip the
+        post-trade accounting guard even when settlement itself succeeded.
+
+        Only run this extra pass when we still have an open Hypercore vault
+        position. This keeps the normal non-Hypercore path untouched and avoids
+        an extra live valuation round on cycles that cannot benefit from it.
+        """
+
+        if not self._has_open_hypercore_vault_positions(state):
+            return
+
+        hypercore_positions = [
+            position
+            for position in state.portfolio.get_open_and_frozen_positions()
+            if position.pair.is_hyperliquid_vault()
+        ]
+
+        if not hypercore_positions:
+            return
+
+        logger.info(
+            "Refreshing %d Hypercore vault position(s) immediately before post-trade account checks",
+            len(hypercore_positions),
+        )
+
+        routing_setup = self.setup_routing_context(universe)
+        valuation_model = routing_setup.valuation_model
+        valuation_timestamp = native_datetime_utc_now()
+
+        for position in hypercore_positions:
+            valuation_model(valuation_timestamp, position)
 
     def tick(
         self,
