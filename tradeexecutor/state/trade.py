@@ -148,6 +148,12 @@ class TradeFlag(enum.Enum):
     #:
     partial_take_profit = "partial_take_profit"
 
+    #: This repair trade closes a later phantom Hypercore duplicate clone.
+    #:
+    #: Used by the Hypercore duplicate repair CLI to distinguish a synthetic
+    #: duplicate-clone close from dust closes and other repair flows.
+    hypercore_duplicate_close = "hypercore_duplicate_close"
+
     #: If there is an existing open position, do not try to match the trade for an open position.
     #:
     #: We trade by pair. If in same cycle we close and open position for the same pair, the trade

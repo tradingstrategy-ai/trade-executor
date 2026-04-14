@@ -168,7 +168,6 @@ class Portfolio:
         if p3:
             # Sanity check we do not have the same position in multiple tables
             assert not (p1 or p2)
-
         assert p1 or p2 or p3, f"Did not have position with id {position_id}"
 
         return p1 or p2 or p3

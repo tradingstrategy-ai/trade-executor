@@ -11,7 +11,11 @@ from .app import app
 from ..bootstrap import backup_state, create_state_store, prepare_executor_id
 from ..double_position import check_double_position, get_duplicate_position_groups
 from ..log import setup_logging
-from ...state.repair import close_hypercore_dust_positions
+from ...state.repair import (
+    close_hypercore_duplicate_clone,
+    close_hypercore_dust_positions,
+    find_hypercore_duplicate_close_candidates,
+)
 from ...state.store import JSONFileStore
 
 
@@ -24,6 +28,22 @@ def _count_duplicate_hypercore_groups(state) -> int:
     )
 
 
+def _format_candidate_position(position) -> str:
+    """Format one Hypercore duplicate-clone candidate position for CLI logging."""
+
+    return (
+        f"position_id={position.position_id}, "
+        f"quantity={position.get_quantity(planned=False)}, "
+        f"planned_quantity={position.get_quantity(planned=True)}, "
+        f"expected_usd_equity={position.get_value(include_interest=False)}, "
+        f"last_token_price={position.last_token_price}, "
+        f"has_planned_trades={position.has_planned_trades()}, "
+        f"is_about_to_close={position.is_about_to_close()}, "
+        f"balance_updates={len(position.balance_updates)}, "
+        f"trades={len(position.trades)}"
+    )
+
+
 @app.command()
 def repair_hypercore_dust(
     id: str = shared_options.id,
@@ -31,13 +51,22 @@ def repair_hypercore_dust(
     state_file: Optional[Path] = shared_options.state_file,
     log_level: str = shared_options.log_level,
     unit_testing: bool = shared_options.unit_testing,
+    merge_dustless_duplicates: bool = Option(
+        False,
+        envvar="MERGE_DUSTLESS_DUPLICATES",
+        help=(
+            "Close a later phantom Hypercore duplicate clone when the duplicate group "
+            "passes strict safety checks. This always requires an explicit y/n confirmation "
+            "for each dangerous duplicate close."
+        ),
+    ),
     auto_approve: bool = Option(
         False,
         envvar="AUTO_APPROVE",
         help="Approve Hypercore dust cleanup without asking for confirmation.",
     ),
 ):
-    """Close Hypercore dust positions and warn about duplicate vault entries.
+    """Close Hypercore dust positions and optionally close safe duplicate clones.
 
     This command is intentionally local-state only. It does not attempt any
     on-chain execution; instead it creates repair trades for Hypercore vault
@@ -61,8 +90,6 @@ def repair_hypercore_dust(
     assert isinstance(store, JSONFileStore)
     assert not store.is_pristine(), f"State file does not exist: {state_file}"
 
-    # Follow the standard mutating-command pattern: take a backup first, then
-    # operate on the live state file copy.
     store, state = backup_state(
         state_file,
         backup_suffix="repair-hypercore-dust-backup",
@@ -93,13 +120,78 @@ def repair_hypercore_dust(
             len(created_trades),
         )
         for trade in created_trades:
-            logger.info("Created repair trade %s for position %s", trade.trade_id, trade.position_id)
-        logger.info("Saving repaired state to %s", store.path)
-        store.sync(state)
+            logger.info(
+                "Created repair trade %s for position %s",
+                trade.trade_id,
+                trade.position_id,
+            )
     else:
         logger.info("No closeable Hypercore dust positions were found")
 
+    duplicate_close_trades: list = []
     duplicate_group_count_after = _count_duplicate_hypercore_groups(state)
+
+    if duplicate_group_count_after and merge_dustless_duplicates:
+        candidates, rejected_groups = find_hypercore_duplicate_close_candidates(state.portfolio)
+
+        if rejected_groups:
+            logger.warning(
+                "Hypercore duplicate groups remaining after dust cleanup are not safe for automatic closing"
+            )
+            for reason in rejected_groups:
+                logger.warning(reason)
+            raise RuntimeError(
+                "Hypercore duplicate positions still remain after dust cleanup, and at least one duplicate "
+                "group is not safe for automatic closing. The state file was not updated."
+            )
+
+        if candidates:
+            if auto_approve and not unit_testing:
+                raise RuntimeError(
+                    "--auto-approve cannot be used with --merge-dustless-duplicates because "
+                    "each dangerous duplicate close requires an explicit y/n confirmation."
+                )
+
+            logger.warning(
+                "Detected %d Hypercore duplicate clone group(s) that are eligible for strict closing",
+                len(candidates),
+            )
+
+            for candidate in candidates:
+                logger.warning(
+                    "Eligible Hypercore duplicate clone close for vault %s at %s",
+                    candidate.vault_name,
+                    candidate.vault_address,
+                )
+                logger.warning(
+                    "Keeping survivor position: %s",
+                    _format_candidate_position(candidate.survivor_position),
+                )
+                logger.warning(
+                    "Closing clone position: %s",
+                    _format_candidate_position(candidate.clone_position),
+                )
+
+                if not unit_testing:
+                    confirmation = typer.confirm(
+                        f"Close duplicate clone position #{candidate.clone_position.position_id} "
+                        f"and keep survivor #{candidate.survivor_position.position_id} for vault "
+                        f"{candidate.vault_name}?"
+                    )
+                    if not confirmation:
+                        raise RuntimeError(
+                            "Operator aborted Hypercore duplicate-clone close. "
+                            "The state file was not updated."
+                        )
+
+                duplicate_close_trade = close_hypercore_duplicate_clone(
+                    state.portfolio,
+                    candidate,
+                )
+                duplicate_close_trades.append(duplicate_close_trade)
+
+            duplicate_group_count_after = _count_duplicate_hypercore_groups(state)
+
     if duplicate_group_count_after:
         logger.warning(
             "Hypercore duplicate position groups remaining after dust cleanup: %d",
@@ -108,8 +200,16 @@ def repair_hypercore_dust(
         check_double_position(state, printer=logger.warning, crash=False)
         raise RuntimeError(
             "Hypercore duplicate positions still remain after dust cleanup. "
-            "Any remaining duplicates are not closeable dust and require manual repair."
+            "Any remaining duplicates are not closeable dust or safe clone closes, "
+            "and require manual repair. The state file was not updated."
         )
+
+    state_changed = bool(created_trades) or bool(duplicate_close_trades)
+    if state_changed:
+        logger.info("Saving repaired state to %s", store.path)
+        store.sync(state)
+    else:
+        logger.info("No state changes were needed")
 
     logger.info("No Hypercore duplicate position groups remain after dust cleanup")
     logger.info("All ok")
