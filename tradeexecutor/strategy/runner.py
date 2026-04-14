@@ -715,10 +715,17 @@ class StrategyRunner(abc.ABC):
             )
 
     def _has_open_hypercore_vault_positions(self, state: State) -> bool:
-        """Check if the portfolio currently has any open Hypercore vault positions."""
+        """Check if the portfolio currently has any live Hypercore vault positions.
+
+        Hypercore account checks cover both open and frozen positions, so the
+        post-trade revaluation guard must mirror that same scope. Otherwise a
+        portfolio that currently has only frozen Hypercore vault positions would
+        skip the refresh and still compare stale state marks against fresh live
+        API equity during account checks.
+        """
         return any(
             position.pair.is_hyperliquid_vault()
-            for position in state.portfolio.open_positions.values()
+            for position in state.portfolio.get_open_and_frozen_positions()
         )
 
     def _revalue_open_hypercore_positions_before_post_trade_account_check(

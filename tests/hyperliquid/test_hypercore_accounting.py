@@ -394,7 +394,8 @@ def test_post_trade_hypercore_revaluation_runs_only_for_open_hypercore_positions
 
     1. Build a minimal runner with one open Hypercore vault position and one non-Hypercore position.
     2. Run the post-trade Hypercore refresh helper and verify only the Hypercore position is revalued.
-    3. Remove the open Hypercore position and verify the helper skips the extra valuation pass entirely.
+    3. Leave only a frozen Hypercore vault position and verify the helper still performs the refresh.
+    4. Remove all Hypercore positions and verify the helper skips the extra valuation pass entirely.
     """
 
     class DummyRunner(StrategyRunner):
@@ -446,6 +447,8 @@ def test_post_trade_hypercore_revaluation_runs_only_for_open_hypercore_positions
 
     hypercore_position = MagicMock()
     hypercore_position.pair = hypercore_pair
+    frozen_hypercore_position = MagicMock()
+    frozen_hypercore_position.pair = hypercore_pair
     spot_position = MagicMock()
     spot_position.pair = spot_pair
 
@@ -474,10 +477,26 @@ def test_post_trade_hypercore_revaluation_runs_only_for_open_hypercore_positions
     assert valuation_model.call_count == 1
     assert valuation_model.call_args[0][1] is hypercore_position
 
-    # 3. Remove the open Hypercore position and verify the helper skips the extra valuation pass entirely.
+    # 3. Leave only a frozen Hypercore position and verify the helper still refreshes it.
     valuation_model.reset_mock()
     runner.setup_routing_context.reset_mock()
     state.portfolio.open_positions = {2: spot_position}
+    state.portfolio.get_open_and_frozen_positions.return_value = [
+        spot_position,
+        frozen_hypercore_position,
+    ]
+
+    runner._revalue_open_hypercore_positions_before_post_trade_account_check(
+        universe,
+        state,
+    )
+
+    assert valuation_model.call_count == 1
+    assert valuation_model.call_args[0][1] is frozen_hypercore_position
+
+    # 4. Remove all Hypercore positions and verify the helper skips the extra valuation pass entirely.
+    valuation_model.reset_mock()
+    runner.setup_routing_context.reset_mock()
     state.portfolio.get_open_and_frozen_positions.return_value = [spot_position]
 
     runner._revalue_open_hypercore_positions_before_post_trade_account_check(
