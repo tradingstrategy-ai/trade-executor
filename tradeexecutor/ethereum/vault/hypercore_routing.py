@@ -157,6 +157,23 @@ HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 1_500_000
 #: shortages.
 HYPERCORE_WITHDRAWAL_PREFLIGHT_CAP_TOLERANCE_RAW = 500_000
 
+#: Number of phase-1 retry attempts after HyperCore silently no-ops a
+#: ``vaultTransfer`` withdrawal.
+#:
+#: Incident reference:
+#:
+#: - HyperAI crashed on 2026-04-15 during trade #376, DOEZOE.
+#: - The EVM wrapper transaction succeeded, but perp withdrawable stayed flat.
+#: - The fresh vault-equity snapshot was 11.725107 USDC while settlement was
+#:   waiting for 11.737146 USDC to appear in perp.
+#: - That means the queued ``vaultTransfer`` was very likely above live equity
+#:   by 0.012039 USDC by the time HyperCore processed it, so HyperCore accepted
+#:   the EVM tx but silently did nothing.
+#:
+#: Keep this deliberately low. If the retry also no-ops, we want operator
+#: intervention instead of repeatedly spending gas on a moving vault.
+HYPERCORE_WITHDRAWAL_PHASE1_RETRY_ATTEMPTS = 1
+
 # Temporary stop-gap for follow-up withdrawal verification phases.
 # Proper fix: carry the actually observed amount from one phase to the next.
 # Remove this extra slack once settlement becomes amount-adaptive across phases.
@@ -882,6 +899,53 @@ class HypercoreVaultRouting(RoutingModel):
         )
         return inferred_decrease >= expected_increase - accepted_tolerance
 
+    def _get_phase1_noop_retry_raw(
+        self,
+        current_vault_equity: Decimal,
+        previous_raw: int,
+    ) -> int | None:
+        """Return a smaller phase-1 retry amount after a suspected silent no-op.
+
+        HyperCore ``vaultTransfer(vault->perp)`` has no "withdraw all" mode.
+        If we ask for even slightly more than the user's current vault equity,
+        the EVM wrapper transaction can still succeed while HyperCore moves no
+        funds. This helper turns the fresh post-timeout equity read into one
+        conservative retry amount.
+
+        :return:
+            Raw USDC retry amount, or ``None`` if retrying would be unsafe or
+            pointless.
+        """
+        current_raw = usdc_to_raw(current_vault_equity)
+
+        # 2026-04-15 DOEZOE incident:
+        #
+        # - Previous phase-1 amount was 11.737146 USDC.
+        # - Post-timeout live vault equity was 11.725107 USDC.
+        # - Retrying at the same amount would just repeat the silent no-op.
+        #
+        # Subtract the normal full-close safety margin from the fresh equity so
+        # the second queued action has room for another small NAV move before
+        # HyperCore processes it.
+        retry_raw = current_raw - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+
+        # Hyperliquid silently rejects vault transfers below the same 5 USDC
+        # floor used for deposits.  If the retry amount is below the floor, the
+        # right answer is to leave the position as dust for accounting cleanup,
+        # not to spend another tx that we already know will no-op.
+        if retry_raw < MINIMUM_VAULT_DEPOSIT:
+            return None
+
+        # Only retry when the fresh-equity-based amount is actually smaller
+        # than the amount that failed to appear in perp.  If the fresh equity is
+        # still above the previous request, the timeout is not explained by the
+        # DOEZOE over-equity no-op pattern and retrying with a larger amount
+        # would make the situation more ambiguous.
+        if retry_raw >= previous_raw:
+            return None
+
+        return retry_raw
+
     def _wait_for_spot_free_usdc_balance(
         self,
         baseline_balance: Decimal,
@@ -1283,6 +1347,27 @@ class HypercoreVaultRouting(RoutingModel):
         tx = self._sign_module_call(
             fn,
             notes=f"Hypercore withdrawal phase 2: {raw_amount} raw USDC perp->spot",
+            logical_function_name="sendRawAction",
+        )
+
+        tx_hash = self.web3.eth.send_raw_transaction(HexBytes(tx.signed_bytes))
+        receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        return tx, receipt
+
+    def _broadcast_withdrawal_phase1_retry(
+        self,
+        vault_address: str,
+        raw_amount: int,
+    ) -> tuple[BlockchainTransaction, dict]:
+        """Build, sign, and broadcast a retry of withdrawal phase 1."""
+        fn = build_hypercore_withdraw_from_vault_call(
+            self.lagoon_vault,
+            vault_address=vault_address,
+            hypercore_usdc_amount=raw_amount,
+        )
+        tx = self._sign_module_call(
+            fn,
+            notes=f"Hypercore withdrawal phase 1 retry: {raw_amount} raw USDC from vault {vault_address}",
             logical_function_name="sendRawAction",
         )
 
@@ -1747,13 +1832,112 @@ class HypercoreVaultRouting(RoutingModel):
                         perp_balance,
                     )
                 else:
-                    logger.error(
-                        "Withdrawal phase 1 verification failed for trade %s: %s",
-                        trade.trade_id, e,
-                    )
-                    self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
-                    report_failure(ts, state, trade, stop_on_execution_failure)
-                    return
+                    retry_raw = None
+                    if current_vault_equity is not None:
+                        retry_raw = self._get_phase1_noop_retry_raw(
+                            current_vault_equity=current_vault_equity,
+                            previous_raw=expected_raw,
+                        )
+
+                    if retry_raw is not None and HYPERCORE_WITHDRAWAL_PHASE1_RETRY_ATTEMPTS > 0:
+                        # 2026-04-15 DOEZOE incident:
+                        #
+                        # The first phase-1 tx had EVM status=1, but perp
+                        # withdrawable stayed flat for 30 seconds. The fresh
+                        # vault-equity snapshot was slightly below the amount
+                        # we had asked HyperCore to withdraw, which is the
+                        # known silent no-op pattern for ``vaultTransfer``.
+                        #
+                        # Retry once using the latest equity minus the same
+                        # safety margin used for full closes. This salvages the
+                        # trade and keeps the sequential rebalance moving,
+                        # while still leaving meaningful repeated failures for
+                        # operator recovery.
+                        logger.warning(
+                            "Withdrawal phase 1 for trade %s appears to have silently no-opped: %s. "
+                            "Fresh vault equity is %s USDC, previous phase-1 amount was %d raw "
+                            "(%s USDC). Retrying phase 1 (%d/%d) with %d raw (%s USDC).",
+                            trade.trade_id,
+                            e,
+                            current_vault_equity,
+                            expected_raw,
+                            raw_to_usdc(expected_raw),
+                            1,
+                            HYPERCORE_WITHDRAWAL_PHASE1_RETRY_ATTEMPTS,
+                            retry_raw,
+                            raw_to_usdc(retry_raw),
+                        )
+
+                        self.deployer.sync_nonce(web3)
+                        try:
+                            retry_tx, retry_receipt = self._broadcast_withdrawal_phase1_retry(
+                                vault_address=vault_address,
+                                raw_amount=retry_raw,
+                            )
+                        except Exception as retry_error:
+                            logger.error(
+                                "Withdrawal phase 1 retry broadcast failed for trade %s: %s",
+                                trade.trade_id,
+                                retry_error,
+                            )
+                            report_failure(ts, state, trade, stop_on_execution_failure)
+                            return
+
+                        trade.blockchain_transactions.append(retry_tx)
+
+                        if retry_receipt["status"] != 1:
+                            logger.error(
+                                "Withdrawal phase 1 retry tx %s reverted for trade %s",
+                                retry_tx.tx_hash,
+                                trade.trade_id,
+                            )
+                            report_failure(ts, state, trade, stop_on_execution_failure)
+                            return
+
+                        expected_raw = retry_raw
+                        trade.other_data["hypercore_capped_withdrawal_raw"] = retry_raw
+                        vault_equity_after_phase1_snapshot = current_vault_equity
+
+                        try:
+                            perp_balance = self._wait_for_perp_withdrawable_balance(
+                                baseline_balance=baseline_perp_withdrawable,
+                                expected_increase_raw=expected_raw,
+                                timeout=30.0,
+                                poll_interval=2.0,
+                            )
+                        except HypercoreWithdrawalVerificationError as retry_wait_error:
+                            logger.error(
+                                "Withdrawal phase 1 retry verification failed for trade %s: %s",
+                                trade.trade_id,
+                                retry_wait_error,
+                            )
+                            self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
+                            report_failure(ts, state, trade, stop_on_execution_failure)
+                            return
+                    else:
+                        logger.error(
+                            "Withdrawal phase 1 verification failed for trade %s: %s",
+                            trade.trade_id, e,
+                        )
+
+                        if current_vault_equity is not None and usdc_to_raw(current_vault_equity) < expected_raw:
+                            logger.error(
+                                "Not marking %s raw USDC as stranded in perp for trade %s because "
+                                "fresh vault equity %s USDC is below the requested phase-1 amount "
+                                "%s USDC. This matches a silent vaultTransfer no-op, not stranded perp USDC.",
+                                expected_raw,
+                                trade.trade_id,
+                                current_vault_equity,
+                                raw_to_usdc(expected_raw),
+                            )
+                            trade.add_note(
+                                f"HyperCore vaultTransfer likely no-opped: fresh vault equity "
+                                f"{current_vault_equity} USDC was below requested {raw_to_usdc(expected_raw)} USDC"
+                            )
+                        else:
+                            self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
+                        report_failure(ts, state, trade, stop_on_execution_failure)
+                        return
 
             logger.info(
                 "Before transferUsdClass(perp->spot), Safe %s perp withdrawable balance is %s USDC",
