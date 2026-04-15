@@ -561,3 +561,103 @@ def test_withdrawal_aborts_if_perp_balance_does_not_appear(
     phase2.assert_not_called()
     mock_report_failure.assert_called_once()
     assert trade.other_data["hypercore_stranded_usdc"]["location"] == "hypercore_perp"
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_withdrawal_phase1_retry_handles_silent_noop_from_equity_drift(
+    mock_fetch_equity,
+    mock_block_ts,
+    mock_report_failure,
+):
+    """Retry withdrawal phase 1 when fresh vault equity explains a silent HyperCore no-op.
+
+    1. Simulate the 2026-04-15 HyperAI DOEZOE crash where phase 1 asks for slightly more than fresh vault equity.
+    2. Make the first perp-balance wait time out, matching a silent ``vaultTransfer`` no-op.
+    3. Retry phase 1 once using fresh vault equity minus the safety margin.
+    4. Continue phases 2 and 3 with the retry amount.
+    5. Verify the trade succeeds and no stranded-USDC failure is reported.
+    """
+    from hexbytes import HexBytes
+
+    from tradeexecutor.ethereum.vault.hypercore_routing import (
+        HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,
+        HypercoreWithdrawalVerificationError,
+        usdc_to_raw,
+    )
+
+    routing = _make_routing()
+    trade = _make_trade(planned_reserve=Decimal("11.737146"))
+    state = MagicMock()
+    state.portfolio.get_position_by_id.return_value.get_quantity.return_value = Decimal("11.790353")
+    mock_block_ts.return_value = datetime.datetime(2026, 4, 15, 13, 44, 29)
+    current_equity = Decimal("11.725107")
+    retry_raw = usdc_to_raw(current_equity) - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+    receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
+
+    phase1_retry_tx = MagicMock(tx_hash="0xretry")
+    phase2_tx = MagicMock(tx_hash="0xdef")
+    phase3_tx = MagicMock(tx_hash="0x123")
+    captured_phase2_raw = []
+    captured_phase3_raw = []
+
+    def capture_phase2(raw_amount: int):
+        captured_phase2_raw.append(raw_amount)
+        return phase2_tx, {"status": 1, "blockNumber": 102}
+
+    def capture_phase3(raw_amount: int):
+        captured_phase3_raw.append(raw_amount)
+        return phase3_tx, {"status": 1, "blockNumber": 103}
+
+    # 1. Simulate the DOEZOE crash shape: post-phase-1 equity is below the requested amount.
+    # 2. Make the first perp-balance wait time out before retrying.
+    # 3. Retry phase 1 with fresh equity minus the safety margin.
+    # 4. Continue phases 2 and 3 with the retry amount.
+    # 5. Verify the trade succeeds and no stranded-USDC failure is reported.
+    mock_fetch_equity.side_effect = [
+        _make_equity(current_equity),
+        _make_equity(current_equity),
+        _make_equity(Decimal("1.500000")),
+    ]
+    with (
+        patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=358_883_523),
+        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("760.927156")),
+        patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("33.620982")),
+        patch.object(
+            routing,
+            "_wait_for_perp_withdrawable_balance",
+            side_effect=[
+                HypercoreWithdrawalVerificationError("phase 1 timed out"),
+                Decimal("771.152263"),
+            ],
+        ) as wait_perp,
+        patch.object(
+            routing,
+            "_broadcast_withdrawal_phase1_retry",
+            return_value=(phase1_retry_tx, {"status": 1, "blockNumber": 101}),
+        ) as phase1_retry,
+        patch.object(routing, "_broadcast_withdrawal_phase2", side_effect=capture_phase2),
+        patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=Decimal("43.846089")),
+        patch.object(routing, "_broadcast_withdrawal_phase3", side_effect=capture_phase3),
+        patch.object(routing, "_wait_for_usdc_arrival", return_value=retry_raw),
+    ):
+        routing._settle_withdrawal(
+            routing.web3,
+            state,
+            trade,
+            receipts,
+            stop_on_execution_failure=False,
+        )
+
+    phase1_retry.assert_called_once_with(
+        vault_address=VAULT_ADDR,
+        raw_amount=retry_raw,
+    )
+    assert wait_perp.call_count == 2
+    assert captured_phase2_raw == [retry_raw]
+    assert captured_phase3_raw == [retry_raw]
+    assert trade.other_data["hypercore_capped_withdrawal_raw"] == retry_raw
+    assert phase1_retry_tx in trade.blockchain_transactions
+    state.mark_trade_success.assert_called_once()
+    mock_report_failure.assert_not_called()
