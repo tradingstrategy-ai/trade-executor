@@ -1,7 +1,7 @@
 """Test closing dusty Hypercore vault positions and verify account correction ignores them.
 
 Uses a downloaded production state (hyper-ai) that contains dust positions
-(positions #1, #2, #3 with quantities below HYPERLIQUID_VAULT_CLOSE_EPSILON = 0.02).
+(positions #1, #2, #3 with quantities below HYPERLIQUID_VAULT_CLOSE_EPSILON).
 
 1. Load production state and identify dust Hypercore vault positions.
 2. Verify can_be_closed() returns True for dust positions.

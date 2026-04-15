@@ -231,16 +231,16 @@ def test_old_bug_equity_squared():
 def test_hypercore_vault_dust_epsilon_covers_safety_margin():
     """Hypercore vault close epsilon is large enough to cover withdrawal safety margin dust.
 
-    HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW (100_000 raw = $0.10) is subtracted
-    from live vault equity during full-close withdrawals, leaving ~$0.10 residual
+    HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW (1_500_000 raw = $1.50) is subtracted
+    from live vault equity during full-close withdrawals, leaving ~$1.50 residual
     in the position.  The close epsilon must exceed this so can_be_closed()
     recognises the position as effectively closed.
 
     1. Build a Hypercore vault pair using create_hypercore_vault_pair().
     2. Verify get_close_epsilon_for_pair() and get_dust_epsilon_for_pair()
        return the Hypercore-specific epsilon.
-    3. Create a TradingPosition with dust quantity (0.01) and assert can_be_closed().
-    4. Same position with non-dust quantity (1.0) must NOT be closeable.
+    3. Create a TradingPosition with safety-margin dust quantity (1.50) and assert can_be_closed().
+    4. Same position with non-dust quantity (2.50) must NOT be closeable.
     5. Build a non-Hypercore vault pair and verify it still gets DEFAULT_VAULT_EPSILON.
     """
 
@@ -261,7 +261,7 @@ def test_hypercore_vault_dust_epsilon_covers_safety_margin():
     assert get_close_epsilon_for_pair(hypercore_pair) == HYPERLIQUID_VAULT_CLOSE_EPSILON
     assert get_dust_epsilon_for_pair(hypercore_pair) == HYPERLIQUID_VAULT_CLOSE_EPSILON
 
-    # 3. Position with dust quantity (0.10 USDC) can be closed
+    # 3. Position with safety-margin dust quantity (1.50 USDC) can be closed
     ts = native_datetime_utc_now()
     position = TradingPosition(
         position_id=1,
@@ -277,11 +277,11 @@ def test_hypercore_vault_dust_epsilon_covers_safety_margin():
     dummy_trade.is_spot.return_value = False
     position.trades[1] = dummy_trade
 
-    with patch.object(position, "get_quantity", return_value=Decimal("0.10")):
+    with patch.object(position, "get_quantity", return_value=Decimal("1.50")):
         assert position.can_be_closed() is True
 
-    # 4. Position with non-dust quantity (1.0 USDC) must NOT be closeable
-    with patch.object(position, "get_quantity", return_value=Decimal("1.0")):
+    # 4. Position with non-dust quantity (2.50 USDC) must NOT be closeable
+    with patch.object(position, "get_quantity", return_value=Decimal("2.50")):
         assert position.can_be_closed() is False
 
     # 5. Non-Hypercore vault pair still gets DEFAULT_VAULT_EPSILON
@@ -535,7 +535,7 @@ def test_hypercore_dust_position_is_reused_without_planned_close() -> None:
         strategy_cycle_at=datetime.datetime(2026, 4, 13),
         pair=pair,
         quantity=None,
-        reserve=Decimal("1.00"),
+        reserve=Decimal("5.00"),
         assumed_price=1.0,
         trade_type=TradeType.rebalance,
         reserve_currency=reserve_asset,
@@ -545,8 +545,8 @@ def test_hypercore_dust_position_is_reused_without_planned_close() -> None:
     trade.mark_success(
         executed_at=datetime.datetime(2026, 4, 13, 0, 1),
         executed_price=1.0,
-        executed_quantity=Decimal("1.00"),
-        executed_reserve=Decimal("1.00"),
+        executed_quantity=Decimal("5.00"),
+        executed_reserve=Decimal("5.00"),
         lp_fees=0,
         native_token_price=0,
         force=True,
@@ -559,9 +559,9 @@ def test_hypercore_dust_position_is_reused_without_planned_close() -> None:
         block_mined_at=datetime.datetime(2026, 4, 13, 0, 2),
         strategy_cycle_included_at=datetime.datetime(2026, 4, 13),
         chain_id=pair.base.chain_id,
-        quantity=Decimal("-0.90"),
-        old_balance=Decimal("1.00"),
-        usd_value=-0.90,
+        quantity=Decimal("-3.50"),
+        old_balance=Decimal("5.00"),
+        usd_value=-3.50,
         position_id=position.position_id,
         notes="Simulate Hypercore withdrawal dust",
         block_number=1,
@@ -618,7 +618,7 @@ def test_hypercore_dust_position_is_not_about_to_close_without_planned_trades() 
         strategy_cycle_at=datetime.datetime(2026, 4, 13),
         pair=pair,
         quantity=None,
-        reserve=Decimal("1.00"),
+        reserve=Decimal("5.00"),
         assumed_price=1.0,
         trade_type=TradeType.rebalance,
         reserve_currency=reserve_asset,
@@ -628,8 +628,8 @@ def test_hypercore_dust_position_is_not_about_to_close_without_planned_trades() 
     trade.mark_success(
         executed_at=datetime.datetime(2026, 4, 13, 0, 1),
         executed_price=1.0,
-        executed_quantity=Decimal("1.00"),
-        executed_reserve=Decimal("1.00"),
+        executed_quantity=Decimal("5.00"),
+        executed_reserve=Decimal("5.00"),
         lp_fees=0,
         native_token_price=0,
         force=True,
@@ -642,9 +642,9 @@ def test_hypercore_dust_position_is_not_about_to_close_without_planned_trades() 
         block_mined_at=datetime.datetime(2026, 4, 13, 0, 2),
         strategy_cycle_included_at=datetime.datetime(2026, 4, 13),
         chain_id=pair.base.chain_id,
-        quantity=Decimal("-0.90"),
-        old_balance=Decimal("1.00"),
-        usd_value=-0.90,
+        quantity=Decimal("-3.50"),
+        old_balance=Decimal("5.00"),
+        usd_value=-3.50,
         position_id=position.position_id,
         notes="Simulate Hypercore withdrawal dust",
         block_number=1,
@@ -750,7 +750,7 @@ def test_hypercore_account_check_rejects_duplicate_vault_positions() -> None:
         strategy_cycle_at=datetime.datetime(2026, 4, 13),
         pair=pair,
         quantity=None,
-        reserve=Decimal("1.00"),
+        reserve=Decimal("5.00"),
         assumed_price=1.0,
         trade_type=TradeType.rebalance,
         reserve_currency=reserve_asset,
@@ -760,8 +760,8 @@ def test_hypercore_account_check_rejects_duplicate_vault_positions() -> None:
     dust_trade.mark_success(
         executed_at=datetime.datetime(2026, 4, 13, 0, 1),
         executed_price=1.0,
-        executed_quantity=Decimal("1.00"),
-        executed_reserve=Decimal("1.00"),
+        executed_quantity=Decimal("5.00"),
+        executed_reserve=Decimal("5.00"),
         lp_fees=0,
         native_token_price=0,
         force=True,
@@ -774,9 +774,9 @@ def test_hypercore_account_check_rejects_duplicate_vault_positions() -> None:
         block_mined_at=datetime.datetime(2026, 4, 13, 0, 2),
         strategy_cycle_included_at=datetime.datetime(2026, 4, 13),
         chain_id=pair.base.chain_id,
-        quantity=Decimal("-0.90"),
-        old_balance=Decimal("1.00"),
-        usd_value=-0.90,
+        quantity=Decimal("-3.50"),
+        old_balance=Decimal("5.00"),
+        usd_value=-3.50,
         position_id=dust_position.position_id,
         notes="Simulate Hypercore withdrawal dust",
         block_number=1,
@@ -844,7 +844,7 @@ def test_close_hypercore_dust_positions_closes_duplicate_residual_state() -> Non
         strategy_cycle_at=datetime.datetime(2026, 4, 13),
         pair=pair,
         quantity=None,
-        reserve=Decimal("1.00"),
+        reserve=Decimal("5.00"),
         assumed_price=1.0,
         trade_type=TradeType.rebalance,
         reserve_currency=reserve_asset,
@@ -854,8 +854,8 @@ def test_close_hypercore_dust_positions_closes_duplicate_residual_state() -> Non
     dust_trade.mark_success(
         executed_at=datetime.datetime(2026, 4, 13, 0, 1),
         executed_price=1.0,
-        executed_quantity=Decimal("1.00"),
-        executed_reserve=Decimal("1.00"),
+        executed_quantity=Decimal("5.00"),
+        executed_reserve=Decimal("5.00"),
         lp_fees=0,
         native_token_price=0,
         force=True,
@@ -868,9 +868,9 @@ def test_close_hypercore_dust_positions_closes_duplicate_residual_state() -> Non
         block_mined_at=datetime.datetime(2026, 4, 13, 0, 2),
         strategy_cycle_included_at=datetime.datetime(2026, 4, 13),
         chain_id=pair.base.chain_id,
-        quantity=Decimal("-0.90"),
-        old_balance=Decimal("1.00"),
-        usd_value=-0.90,
+        quantity=Decimal("-3.50"),
+        old_balance=Decimal("5.00"),
+        usd_value=-3.50,
         position_id=dust_position.position_id,
         notes="Simulate Hypercore withdrawal dust",
         block_number=1,
