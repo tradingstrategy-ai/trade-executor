@@ -141,6 +141,22 @@ HYPERCORE_LIKELY_CLOSE_TOLERANCE = 0.975
 #: accounting later.
 HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 1_500_000
 
+#: Tiny live preflight cap tolerance (raw USDC, 6 decimals).
+#:
+#: Incident reference:
+#:
+#: - HyperAI crashed on 2026-04-15 during trade #336, Jay Pennie.
+#: - Planned withdrawal was 13.104554 USDC.
+#: - Live HyperCore ``max_withdrawable`` had drifted to 13.104323 USDC.
+#: - The difference was only 231 raw USDC (0.000231 USDC).
+#: - Treating that dust-sized drift as fatal stopped the whole 21-trade
+#:   sequential rebalance and left the executor down.
+#:
+#: Keep this tolerance deliberately small. It is only for raw-unit/API/NAV
+#: drift between decision making and live execution, not for real liquidity
+#: shortages.
+HYPERCORE_WITHDRAWAL_PREFLIGHT_CAP_TOLERANCE_RAW = 500_000
+
 # Temporary stop-gap for follow-up withdrawal verification phases.
 # Proper fix: carry the actually observed amount from one phase to the next.
 # Remove this extra slack once settlement becomes amount-adaptive across phases.
@@ -536,13 +552,18 @@ class HypercoreVaultRouting(RoutingModel):
         trade: TradeExecution,
         requested_raw: int,
         vault_address: str,
-    ) -> None:
+    ) -> int:
         """Check live Hypercore withdrawal eligibility before broadcasting.
 
         HyperCore withdrawals can be blocked by per-user lock-up periods and
         per-vault liquidity constraints. The strategy model already checks
         these when planning trades, but the state can change before the live
         execution phase, so re-check right before building phase 1.
+
+        :return:
+            Raw USDC amount to use for the withdrawal. This is normally the
+            requested amount, but can be capped to the live max-withdrawable
+            when the over-request is only dust-sized.
         """
         session = self._get_session()
         vault = HyperliquidVault(session=session, vault_address=vault_address)
@@ -574,11 +595,67 @@ class HypercoreVaultRouting(RoutingModel):
                 f"({user_equity.lockup_remaining} remaining)."
             )
 
+        # Start with the strategy-planned amount. In the common path the live
+        # preflight is only a check and this value is returned unchanged.
+        effective_requested_raw = requested_raw
         if requested_raw > max_withdrawable_raw:
+            # HyperCore reports the live withdrawal cap in USDC decimals.
+            # Between trade planning and setup_trades() this can move by tiny
+            # raw amounts because vault equity and max_withdrawable are live
+            # HyperCore values, while the trade was planned from state/pricing
+            # snapshots taken slightly earlier.
+            overshoot_raw = requested_raw - max_withdrawable_raw
+            if overshoot_raw <= HYPERCORE_WITHDRAWAL_PREFLIGHT_CAP_TOLERANCE_RAW:
+                # 2026-04-15 HyperAI incident:
+                # - Trade #336 requested 13.104554 USDC.
+                # - Live max_withdrawable was 13.104323 USDC.
+                # - Overshoot was 231 raw units, i.e. 0.000231 USDC.
+                #
+                # A strict abort here is worse than a tiny live cap because
+                # sequential execution stops at the first exception. The
+                # earlier trades may already have executed, while the remaining
+                # planned trades are stranded and the executor exits.
+                logger.warning(
+                    "Hypercore withdrawal request for Safe %s in vault %s is %d raw USDC "
+                    "(%s USDC) above current max_withdrawable %s USDC; capping withdrawal "
+                    "from %d raw (%s USDC) to %d raw (%s USDC)",
+                    self.safe_address,
+                    vault_address,
+                    overshoot_raw,
+                    raw_to_usdc(overshoot_raw),
+                    vault_info.max_withdrawable,
+                    requested_raw,
+                    raw_to_usdc(requested_raw),
+                    max_withdrawable_raw,
+                    raw_to_usdc(max_withdrawable_raw),
+                )
+                # Use the live cap for the phase-1 vaultTransfer call. This is
+                # the amount HyperCore says can be withdrawn now, so it avoids
+                # the silent no-op behaviour seen when vaultTransfer is asked
+                # for even a tiny amount above the live cap.
+                effective_requested_raw = max_withdrawable_raw
+                # Settlement phases 2-3 must use exactly the same amount that
+                # phase 1 was built with. Reuse the existing key used by
+                # full-close live-equity caps so downstream code remains on a
+                # single path.
+                trade.other_data["hypercore_capped_withdrawal_raw"] = effective_requested_raw
+            else:
+                # A larger gap is not the 2026-04-15 dust-drift incident.
+                # Preserve the original fail-fast behaviour for material
+                # liquidity shortages, wrong vault/state issues, or genuinely
+                # stale strategy decisions.
+                raise HypercoreWithdrawalPreflightError(
+                    f"Hypercore withdrawal blocked for Safe {self.safe_address} in vault {vault_address}: "
+                    f"requested {raw_to_usdc(requested_raw)} USDC exceeds current max_withdrawable "
+                    f"{vault_info.max_withdrawable} USDC."
+                )
+
+        if effective_requested_raw <= 0:
+            # Defensive guard: if the live cap ever rounds down to zero, do not
+            # build a meaningless HyperCore withdrawal action.
             raise HypercoreWithdrawalPreflightError(
                 f"Hypercore withdrawal blocked for Safe {self.safe_address} in vault {vault_address}: "
-                f"requested {raw_to_usdc(requested_raw)} USDC exceeds current max_withdrawable "
-                f"{vault_info.max_withdrawable} USDC."
+                f"effective withdrawal after live cap is {raw_to_usdc(effective_requested_raw)} USDC."
             )
 
         logger.info(
@@ -586,10 +663,11 @@ class HypercoreVaultRouting(RoutingModel):
             "requested %s USDC, max_withdrawable %s USDC, lock-up expired at %s",
             self.safe_address,
             vault_address,
-            raw_to_usdc(requested_raw),
+            raw_to_usdc(effective_requested_raw),
             vault_info.max_withdrawable,
             user_equity.locked_until,
         )
+        return effective_requested_raw
 
     def _fetch_safe_evm_usdc_balance(self) -> int:
         """Read the Safe's EVM USDC balance (raw, 6 decimals).
@@ -1008,7 +1086,7 @@ class HypercoreVaultRouting(RoutingModel):
                     trade, raw_amount, vault_address,
                 )
             if not self.simulate:
-                self._check_live_withdrawal_preconditions(
+                raw_amount = self._check_live_withdrawal_preconditions(
                     trade=trade,
                     requested_raw=raw_amount,
                     vault_address=vault_address,

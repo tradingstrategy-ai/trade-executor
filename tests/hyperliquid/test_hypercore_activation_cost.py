@@ -270,6 +270,7 @@ def test_create_sell_transactions_build_vault_withdraw_phase1_only():
     # 2. Mock the reusable vault-withdraw builder and signing.
     # 3. Verify routing returns exactly one phase-1 withdrawal transaction.
     with patch.object(routing, "_check_live_withdrawal_preconditions") as preflight_check:
+        preflight_check.return_value = 25_000_000
         with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_withdraw_from_vault_call", return_value=withdraw_fn) as build_withdraw:
             with patch.object(routing, "_sign_module_call", return_value=signed_tx) as sign_call:
                 txs = routing._create_deposit_or_withdraw_txs(trade)
@@ -324,6 +325,7 @@ def test_withdrawal_uses_live_equity_on_close():
     # 2. Mock the equity fetch and tx building.
     with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=live_equity):
         with patch.object(routing, "_check_live_withdrawal_preconditions") as preflight_check:
+            preflight_check.return_value = expected_withdrawal_raw
             with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_withdraw_from_vault_call", return_value=withdraw_fn) as build_withdraw:
                 with patch.object(routing, "_sign_module_call", return_value=signed_tx):
                     txs = routing._create_deposit_or_withdraw_txs(trade)
@@ -376,6 +378,7 @@ def test_withdrawal_logs_large_equity_mismatch_but_uses_live_amount(caplog):
     with caplog.at_level("WARNING"):
         with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=live_equity):
             with patch.object(routing, "_check_live_withdrawal_preconditions") as preflight_check:
+                preflight_check.return_value = expected_withdrawal_raw
                 with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_withdraw_from_vault_call", return_value=withdraw_fn) as build_withdraw:
                     with patch.object(routing, "_sign_module_call", return_value=signed_tx):
                         txs = routing._create_deposit_or_withdraw_txs(trade)
@@ -464,6 +467,38 @@ def test_live_withdrawal_preflight_blocks_requests_above_max_withdrawable():
                     )
 
     assert "exceeds current max_withdrawable" in str(exc_info.value)
+
+
+def test_live_withdrawal_preflight_caps_tiny_max_withdrawable_drift():
+    """Live withdrawal preflight caps dust-sized max-withdrawable drift instead of crashing.
+
+    1. Create one live Hypercore sell trade whose request is only tiny raw units above max_withdrawable.
+    2. Mock Hyperliquid to report an expired lock-up and the slightly lower live max_withdrawable.
+    3. Verify the preflight returns the live max_withdrawable and stores it for settlement.
+    """
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("13.104554"), is_buy=False)
+
+    unlocked_equity = UserVaultEquity(
+        vault_address="0xVAULT",
+        equity=Decimal("13.104323"),
+        locked_until=native_datetime_utc_now() - datetime.timedelta(days=1),
+    )
+
+    # 1. Create one live Hypercore sell trade whose request is only tiny raw units above max_withdrawable.
+    # 2. Mock Hyperliquid to report an expired lock-up and the slightly lower live max_withdrawable.
+    # 3. Verify the preflight returns the live max_withdrawable and stores it for settlement.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault.fetch_info", return_value=SimpleNamespace(max_withdrawable=Decimal("13.104323"))):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=unlocked_equity):
+            with patch.object(routing, "_get_session", return_value=routing._session):
+                effective_raw = routing._check_live_withdrawal_preconditions(
+                    trade=trade,
+                    requested_raw=13_104_554,
+                    vault_address="0xVAULT",
+                )
+
+    assert effective_raw == 13_104_323
+    assert trade.other_data["hypercore_capped_withdrawal_raw"] == 13_104_323
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
