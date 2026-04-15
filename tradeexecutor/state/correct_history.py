@@ -17,6 +17,12 @@ from typing import TypedDict
 from tradeexecutor.state.state import State
 
 
+DEFAULT_SHARE_PRICE_OUTLIER_THRESHOLD = 0.20
+DEFAULT_NAV_SYNC_OUTLIER_WINDOW_SIZE = 24
+DEFAULT_NAV_SYNC_OUTLIER_THRESHOLD = 0.15
+DEFAULT_NAV_SYNC_MIN_COMPONENT_CHANGE = 0.10
+
+
 class HistoryPruningStats(TypedDict):
     """Statistics from history pruning operations."""
     portfolio_stats_removed: int
@@ -158,7 +164,7 @@ def prune_history(state: State, cutoff_date: datetime.datetime) -> HistoryPrunin
 def detect_share_price_outliers(
     state: State,
     window_size: int = 5,
-    threshold: float = 0.30,
+    threshold: float = DEFAULT_SHARE_PRICE_OUTLIER_THRESHOLD,
 ) -> set[int]:
     """Detect share price outlier entries in portfolio statistics.
 
@@ -177,21 +183,177 @@ def detect_share_price_outliers(
         Number of entries on each side to include in the median window
     :param threshold:
         Maximum allowed relative deviation from the rolling median
-        (0.30 means 30% deviation triggers removal)
+        (0.20 means 20% deviation triggers removal)
     :return:
         Set of indices into ``state.stats.portfolio`` that are outliers
     """
-    entries = state.stats.portfolio
-
-    # Build index of entries with valid share prices
-    # Each element is (original_index_into_entries, share_price_value)
-    prices: list[tuple[int, float]] = []
-    for i, e in enumerate(entries):
-        if e.share_price_usd is not None:
-            prices.append((i, e.share_price_usd))
-
+    prices = _get_share_price_points(state)
     if len(prices) < 3:
         return set()
+
+    return _detect_rolling_median_outliers(prices, window_size=window_size, threshold=threshold)
+
+
+def detect_nav_sync_outliers(
+    state: State,
+    window_size: int = DEFAULT_NAV_SYNC_OUTLIER_WINDOW_SIZE,
+    threshold: float = DEFAULT_NAV_SYNC_OUTLIER_THRESHOLD,
+    min_component_change: float = DEFAULT_NAV_SYNC_MIN_COMPONENT_CHANGE,
+    max_passes: int = 3,
+) -> set[int]:
+    """Detect clustered NAV/share price discontinuities caused by sync lag.
+
+    This detector is intended for exchange-account vaults where reserve cash
+    and external account equity can be briefly counted out of phase. The
+    resulting NAV/share price points are often clustered, so a short rolling
+    median window can miss them.
+
+    A point is flagged when:
+
+    1. Its share price deviates from a wider rolling median by ``threshold``
+    2. A nearby reserve cash or open position equity component jumps by at
+       least ``min_component_change`` relative to NAV
+
+    :param state:
+        Trading state (not modified)
+    :param window_size:
+        Number of priced entries on each side to use for the wide median and
+        nearby component jump lookup.
+    :param threshold:
+        Maximum allowed relative deviation from the wide rolling median
+        (0.15 means 15% deviation triggers removal)
+    :param min_component_change:
+        Minimum nearby free cash or open position equity change, relative to
+        NAV, required to treat the deviation as a sync issue.
+    :param max_passes:
+        Maximum virtual removal passes to run. Large sync clusters can mask a
+        nearby bad point until the first cluster has been removed.
+    :return:
+        Set of indices into ``state.stats.portfolio`` that are outliers
+    """
+    prices = _get_share_price_points(state)
+    if len(prices) < 3:
+        return set()
+
+    outliers: set[int] = set()
+
+    for _ in range(max_passes):
+        remaining_prices = [
+            (idx, price) for idx, price in prices
+            if idx not in outliers
+        ]
+        candidates = _detect_rolling_median_outliers(remaining_prices, window_size=window_size, threshold=threshold)
+        if not candidates:
+            break
+
+        position_by_index = {idx: pos for pos, (idx, _) in enumerate(remaining_prices)}
+        filtered_candidates = {
+            idx for idx in candidates
+            if _has_nearby_component_jump(
+                state,
+                remaining_prices,
+                position_by_index[idx],
+                window_size=window_size,
+                min_component_change=min_component_change,
+            )
+        }
+        new_outliers = filtered_candidates - outliers
+        if not new_outliers:
+            break
+        outliers.update(new_outliers)
+
+    return outliers
+
+
+def remove_portfolio_stat_indices(
+    state: State,
+    indices: set[int],
+) -> int:
+    """Remove entries from portfolio statistics.
+
+    After removal, ``state.initial_share_price`` is updated to match
+    the first remaining portfolio entry's share price.
+
+    :param state:
+        Trading state to modify in-place
+    :param indices:
+        Set of indices into ``state.stats.portfolio`` to remove.
+    :return:
+        Number of entries removed
+    """
+    if not indices:
+        return 0
+
+    state.stats.portfolio = [
+        e for i, e in enumerate(state.stats.portfolio)
+        if i not in indices
+    ]
+
+    # Update initial_share_price to match the first remaining entry
+    if state.stats.portfolio:
+        first_share_price = state.stats.portfolio[0].share_price_usd
+        if first_share_price is not None:
+            state.initial_share_price = first_share_price
+
+    return len(indices)
+
+
+def remove_share_price_outliers(
+    state: State,
+    outlier_indices: set[int],
+) -> int:
+    """Remove detected share price outlier entries from portfolio statistics.
+
+    :param state:
+        Trading state to modify in-place
+    :param outlier_indices:
+        Set of indices into ``state.stats.portfolio`` to remove,
+        as returned by :py:func:`detect_share_price_outliers`
+    :return:
+        Number of entries removed
+    """
+    return remove_portfolio_stat_indices(state, outlier_indices)
+
+
+def filter_share_price_outliers(
+    state: State,
+    window_size: int = 5,
+    threshold: float = DEFAULT_SHARE_PRICE_OUTLIER_THRESHOLD,
+) -> int:
+    """Detect and remove share price outlier entries from portfolio statistics.
+
+    Convenience wrapper that calls :py:func:`detect_share_price_outliers`
+    then :py:func:`remove_share_price_outliers`.
+
+    :param state:
+        Trading state to modify in-place
+    :param window_size:
+        Number of entries on each side to include in the median window
+    :param threshold:
+        Maximum allowed relative deviation from the rolling median
+        (0.20 means 20% deviation triggers removal)
+    :return:
+        Number of entries removed
+    """
+    outliers = detect_share_price_outliers(state, window_size=window_size, threshold=threshold)
+    return remove_share_price_outliers(state, outliers)
+
+
+def _get_share_price_points(state: State) -> list[tuple[int, float]]:
+    """Build index of entries with valid share prices."""
+    prices: list[tuple[int, float]] = []
+    for i, e in enumerate(state.stats.portfolio):
+        if e.share_price_usd is not None:
+            prices.append((i, e.share_price_usd))
+    return prices
+
+
+def _detect_rolling_median_outliers(
+    prices: list[tuple[int, float]],
+    window_size: int,
+    threshold: float,
+) -> set[int]:
+    """Detect outliers in an indexed price series using two median passes."""
 
     def _find_outliers(price_list: list[tuple[int, float]], excluded: set[int] | None = None) -> set[int]:
         """Return set of original indices that are outliers."""
@@ -224,70 +386,49 @@ def detect_share_price_outliers(
 
         return outliers
 
-    # Pass 1: identify outliers against raw data
+    # Pass 1 identifies isolated outliers.
     first_pass = _find_outliers(prices)
 
-    # Pass 2: recompute medians with pass-1 outliers excluded
+    # Pass 2 recomputes medians with pass-1 outliers excluded, catching
+    # entries adjacent to clusters that were masked in the first pass.
     second_pass = _find_outliers(prices, excluded=first_pass)
 
-    # Union: first pass catches isolated outliers, second pass catches
-    # entries adjacent to clusters that were masked in the first pass
     return first_pass | second_pass
 
 
-def remove_share_price_outliers(
+def _has_nearby_component_jump(
     state: State,
-    outlier_indices: set[int],
-) -> int:
-    """Remove detected outlier entries from portfolio statistics.
+    prices: list[tuple[int, float]],
+    pos: int,
+    window_size: int,
+    min_component_change: float,
+) -> bool:
+    """Check if a priced point is near a reserve/account component jump."""
+    entries = state.stats.portfolio
+    start = max(1, pos - window_size)
+    end = min(len(prices), pos + window_size + 1)
 
-    After removal, ``state.initial_share_price`` is updated to match
-    the first remaining portfolio entry's share price.
+    for point_pos in range(start, end):
+        previous_idx = prices[point_pos - 1][0]
+        current_idx = prices[point_pos][0]
+        previous = entries[previous_idx]
+        current = entries[current_idx]
+        base = max(
+            abs(previous.net_asset_value or previous.total_equity or 0),
+            abs(current.net_asset_value or current.total_equity or 0),
+            1,
+        )
 
-    :param state:
-        Trading state to modify in-place
-    :param outlier_indices:
-        Set of indices into ``state.stats.portfolio`` to remove,
-        as returned by :py:func:`detect_share_price_outliers`
-    :return:
-        Number of entries removed
-    """
-    if not outlier_indices:
+        free_cash_jump = _relative_component_jump(previous.free_cash, current.free_cash, base)
+        open_position_jump = _relative_component_jump(previous.open_position_equity, current.open_position_equity, base)
+        if max(free_cash_jump, open_position_jump) >= min_component_change:
+            return True
+
+    return False
+
+
+def _relative_component_jump(previous: float | None, current: float | None, base: float) -> float:
+    """Calculate a component jump as a fraction of NAV."""
+    if previous is None or current is None:
         return 0
-
-    state.stats.portfolio = [
-        e for i, e in enumerate(state.stats.portfolio)
-        if i not in outlier_indices
-    ]
-
-    # Update initial_share_price to match the first remaining entry
-    if state.stats.portfolio:
-        first_share_price = state.stats.portfolio[0].share_price_usd
-        if first_share_price is not None:
-            state.initial_share_price = first_share_price
-
-    return len(outlier_indices)
-
-
-def filter_share_price_outliers(
-    state: State,
-    window_size: int = 5,
-    threshold: float = 0.30,
-) -> int:
-    """Detect and remove share price outlier entries from portfolio statistics.
-
-    Convenience wrapper that calls :py:func:`detect_share_price_outliers`
-    then :py:func:`remove_share_price_outliers`.
-
-    :param state:
-        Trading state to modify in-place
-    :param window_size:
-        Number of entries on each side to include in the median window
-    :param threshold:
-        Maximum allowed relative deviation from the rolling median
-        (0.30 means 30% deviation triggers removal)
-    :return:
-        Number of entries removed
-    """
-    outliers = detect_share_price_outliers(state, window_size=window_size, threshold=threshold)
-    return remove_share_price_outliers(state, outliers)
+    return abs(current - previous) / base
