@@ -110,10 +110,203 @@ Visit the [Derive Safe(Wallet) UI](https://safe.derive.xyz) and connect a wallet
    [{"inputs":[{"internalType":"address","name":"sessionKey","type":"address"},{"internalType":"uint256","name":"expiry","type":"uint256"}],"name":"registerSessionKey","outputs":[],"stateMutability":"nonpayable","type":"function"}]
    ```
 - Session key: `0x123...` (session key address from step 2.b.)
-- Expiry: `1777593600` (timestamp - e.g., 3 months from now)
+- Expiry: Unix timestamp in seconds, for example 30-90 days from now. See [Choose the expiry timestamp](#2-choose-the-expiry-timestamp).
 </details>
 
 After you've created and signed the transaction batch, request signatures from the other Trading Strategy Safe signers. Once there are sufficient signatures, use the Deployer hot wallet to execute (since this account has some ETH for gas).
+
+### Rotating an existing Derive session key
+
+Use this process when the current `DERIVE_SESSION_PRIVATE_KEY` is expiring, has been exposed, or needs to be replaced for a trader. The Derive exchange account is owned by the vault Safe, so the Safe must authorise the new session key on the Derive Matching contract. The session key wallet itself does not need ETH, because the Safe transaction executor pays gas.
+
+#### Rotation checklist
+
+1. Create a new session key wallet.
+2. Register the new session key address from the Safe.
+3. Update the runtime secret that contains the session key private key.
+4. Verify Derive API access using the Safe address as `DERIVE_WALLET_ADDRESS`.
+5. Optionally deregister the old session key.
+
+#### 1. Create a new session key wallet
+
+Create a fresh Ethereum account. Do not reuse the asset manager key, Derive deployer key, or any Safe signer key.
+
+```bash
+cast wallet new
+```
+
+Store both values:
+
+- Address: used in the Safe transaction as `sessionKey`
+- Private key: used later as `DERIVE_SESSION_PRIVATE_KEY`
+
+If a human trader needs UI access, import the private key to Rabby or another wallet and use the Derive UI session key login flow in [Step 4.a](#4a-sign-into-derive-ui-with-session-key).
+
+#### 2. Choose the expiry timestamp
+
+`registerSessionKey()` takes an explicit Unix timestamp in seconds. There is no implicit Derive contract default: every Safe transaction must set `expiry`.
+
+Our operational default is 90 days. Set this by changing `EXPIRY_DAYS` below before generating the timestamp:
+
+```bash
+poetry run python - <<'PY'
+import time
+
+EXPIRY_DAYS = 90
+
+expiry = int(time.time()) + EXPIRY_DAYS * 24 * 60 * 60
+print(expiry)
+print(time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(expiry)))
+PY
+```
+
+Use a shorter value, such as 30 days, for high-risk rotations or temporary trader access. The Matching contract stores the expiry as a Solidity `uint256`, so the on-chain maximum is `2**256 - 1`, i.e. `115792089237316195423570985008687907853269984665640564039457584007913129639935`. Treat this as a technical limit, not an operational recommendation. Do not use a non-expiring or far-future key for production vaults; rotate keys before expiry.
+
+#### 3. Register the new key from the Safe
+
+You can prepare the Safe Transaction Builder inputs from a `trade-executor console` session. This snippet creates a new session key, sets a five-year expiry, and prints both raw calldata and ABI-based input values.
+
+> [!IMPORTANT]
+> The snippet prints the new session key private key. Store it in the deployment secret manager as `DERIVE_SESSION_PRIVATE_KEY` and do not paste it to Safe, Derive UI chat, pull requests, or tickets. Only the session key **address** and expiry go to the Safe transaction.
+
+```python
+import json
+import os
+import time
+
+from eth_account import Account
+from web3 import Web3
+
+
+DERIVE_MATCHING_CONTRACT = Web3.to_checksum_address("0xeB8d770ec18DB98Db922E9D83260A585b9F0DeAD")
+SAFE_ADDRESS = os.environ.get("DERIVE_WALLET_ADDRESS", "<vault Safe address>")
+EXPIRY_YEARS = 5
+EXPIRY_SECONDS = EXPIRY_YEARS * 365 * 24 * 60 * 60
+
+REGISTER_SESSION_KEY_ABI = [
+    {
+        "inputs": [
+            {"internalType": "address", "name": "sessionKey", "type": "address"},
+            {"internalType": "uint256", "name": "expiry", "type": "uint256"},
+        ],
+        "name": "registerSessionKey",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    }
+]
+
+session_key = Account.create()
+session_key_private_key = session_key.key.hex()
+session_key_address = Web3.to_checksum_address(session_key.address)
+expiry = int(time.time()) + EXPIRY_SECONDS
+
+matching = Web3().eth.contract(
+    address=DERIVE_MATCHING_CONTRACT,
+    abi=REGISTER_SESSION_KEY_ABI,
+)
+raw_hex = matching.encode_abi(
+    "registerSessionKey",
+    args=[session_key_address, expiry],
+)
+
+print("Secret material, store in deployment secrets")
+print("DERIVE_SESSION_PRIVATE_KEY=" + session_key_private_key)
+print()
+
+print("Safe Transaction Builder - raw hex mode")
+print("Safe / from: " + SAFE_ADDRESS)
+print("To: " + DERIVE_MATCHING_CONTRACT)
+print("Value: 0")
+print("Data: " + raw_hex)
+print()
+
+print("Safe Transaction Builder - ABI mode")
+print("Contract address: " + DERIVE_MATCHING_CONTRACT)
+print("ABI:")
+print(json.dumps(REGISTER_SESSION_KEY_ABI, separators=(",", ":")))
+print("Function: registerSessionKey")
+print("sessionKey: " + session_key_address)
+print("expiry: " + str(expiry))
+print("expiry UTC: " + time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(expiry)))
+```
+
+In Gnosis Safe Transaction Builder, either paste `To`, `Value`, and `Data` as a raw transaction, or paste `Contract address`, `ABI`, `Function`, `sessionKey`, and `expiry` as an ABI-based contract interaction. Make sure the selected Safe is the vault Safe printed as `Safe / from`.
+
+Open the [Derive Safe(Wallet) UI](https://safe.derive.xyz), select the vault Safe, and open Transaction Builder.
+
+Add a contract interaction:
+
+- Address: `0xeB8d770ec18DB98Db922E9D83260A585b9F0DeAD` (Derive Matching contract)
+- Value: `0`
+- ABI:
+   ```
+   [{"inputs":[{"internalType":"address","name":"sessionKey","type":"address"},{"internalType":"uint256","name":"expiry","type":"uint256"}],"name":"registerSessionKey","outputs":[],"stateMutability":"nonpayable","type":"function"}]
+   ```
+- `sessionKey`: new session key address from step 1
+- `expiry`: Unix timestamp from step 2
+
+Submit the batch, collect enough Safe signatures, then execute it with a wallet that has ETH on Derive chain for gas. The Trading Strategy Derive Deployer hot wallet is commonly used for execution because it is already funded.
+
+> [!NOTE]
+> The Matching contract stores session key permissions as `sessionKeys(sessionKey, owner) -> expiry`, where `owner` is the Safe address. Registering a different new key does not require deregistering the old key first.
+
+#### 4. Update trade executor secrets
+
+Update the deployed environment after the Safe transaction has executed:
+
+```bash
+export DERIVE_SESSION_PRIVATE_KEY="0x..."  # New session key private key
+export DERIVE_WALLET_ADDRESS="0x..."       # Vault Safe address, not the vault contract
+export DERIVE_NETWORK="mainnet"
+```
+
+For Lagoon vault deployments, `DERIVE_OWNER_PRIVATE_KEY` is not needed when `DERIVE_WALLET_ADDRESS` is set to the Safe address. If you also use the integration-test variables, update `DERIVE_INTEGRATION_TEST_SESSION_KEY` to the new private key.
+
+Restart the trade executor process after updating the secret.
+
+#### 5. Verify the new key
+
+Run a read-only API check from the repository root:
+
+```bash
+source .local-test.env
+export DERIVE_SESSION_PRIVATE_KEY="0x..."
+export DERIVE_WALLET_ADDRESS="0x..."  # Vault Safe address
+export DERIVE_NETWORK="mainnet"
+
+poetry run python - <<'PY'
+from tradeexecutor.exchange_account.derive import discover_derive_subaccount_id
+
+print(discover_derive_subaccount_id())
+PY
+```
+
+The command should print the Safe-owned Derive subaccount ID. A `403 Forbidden` response usually means the new key has not been registered for this Safe, the wrong Safe address was used, or the old private key is still configured.
+
+You can also verify on the Matching contract by reading:
+
+- Function: `sessionKeys(address signer, address owner)`
+- `signer`: new session key address
+- `owner`: vault Safe address
+
+The return value is the registered expiry timestamp.
+
+#### 6. Deregister the old key
+
+If the old key has not yet expired and should no longer trade, create another Safe transaction:
+
+- Address: `0xeB8d770ec18DB98Db922E9D83260A585b9F0DeAD` (Derive Matching contract)
+- Value: `0`
+- ABI:
+   ```
+   [{"inputs":[{"internalType":"address","name":"sessionKey","type":"address"}],"name":"deregisterSessionKey","outputs":[],"stateMutability":"nonpayable","type":"function"}]
+   ```
+- `sessionKey`: old session key address
+
+`deregisterSessionKey()` does not revoke instantly. It sets the old key to expire after Derive's deregistration cooldown, currently 10 minutes on mainnet. If the old key has already expired, omit this transaction because it will revert.
+
+If you need to shorten the expiry of the same session key address, deregister it first, wait for the cooldown to pass, and then register it again with the lower expiry. Calling `registerSessionKey()` with an expiry lower than or equal to the existing expiry reverts with `OV_NeedDeregister`.
 
 ### Step 3: Make a test deposit (USDC)
 
