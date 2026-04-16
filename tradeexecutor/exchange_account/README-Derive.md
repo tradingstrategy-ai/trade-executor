@@ -172,6 +172,8 @@ The Ethereum wallet that controls the Derive account. Used to derive the Derive 
 
 A separate key pair used for API authentication. Created during Derive onboarding. Allows API access without exposing the owner wallet private key.
 
+For Safe-owned Lagoon vault accounts, see [Rotating an existing Derive session key](./README-Derive-Vault.md#rotating-an-existing-derive-session-key) for the Safe multisig transaction flow.
+
 ### Subaccount
 
 Derive accounts can have multiple subaccounts for isolated margin. Each subaccount has a unique integer ID. The `exchange_subaccount_id` in the trading pair metadata specifies which subaccount to track.
