@@ -18,7 +18,7 @@ from queue import Queue
 from typing import Optional, Callable, List, cast, Tuple
 
 import pandas as pd
-from apscheduler.events import EVENT_JOB_ERROR
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MAX_INSTANCES, EVENT_JOB_MISSED
 
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.client import BaseClient
@@ -1538,11 +1538,17 @@ class ExecutionLoop:
 
             try:
                 ts = native_datetime_utc_now()
+                logger.info(
+                    "Starting live position valuation refresh at %s, post valuation settlement: %s",
+                    ts,
+                    self.stats_refresh_post_valuation,
+                )
 
                 self.update_position_valuations(ts, state, universe, execution_context.mode)
                 state.uptime.record_stats_refresh_complete()
 
                 if self.stats_refresh_post_valuation and self.sync_model.has_async_deposits():
+                    logger.info("Running post-valuation treasury settlement after live position valuation refresh")
                     balance_updates = self.sync_model.sync_treasury(
                         ts,
                         state,
@@ -1559,11 +1565,17 @@ class ExecutionLoop:
 
                 self.refresh_live_run_state(state, cycle_duration=self.cycle_duration)
             except Exception as e:
+                logger.exception("Live position valuation refresh failed")
                 die(e)
                 return
 
             run_state.position_revaluations += 1
             run_state.bumb_refreshed()
+            logger.info(
+                "Live position valuation refresh finished, position_revaluations=%d, stats_refresh_completed=%d",
+                run_state.position_revaluations,
+                state.uptime.stats_refresh_completed,
+            )
 
             if self.stats_refresh_unit_testing and self.execution_context.mode == ExecutionMode.unit_testing_trading:
                 if not stats_refresh_shutdown_requested:
@@ -1597,6 +1609,16 @@ class ExecutionLoop:
             'stats': ThreadPoolExecutor(1),  # Background executor for statistics calculations and visualisations
         }
         start_time = datetime.datetime(1970, 1, 1)
+        logger.info(
+            "Live scheduler configuration: cycle_duration=%s, strategy_cycle_trigger=%s, "
+            "stats_refresh_frequency=%s, stats_refresh_post_valuation=%s, "
+            "position_trigger_check_frequency=%s",
+            self.cycle_duration,
+            self.strategy_cycle_trigger,
+            self.stats_refresh_frequency,
+            self.stats_refresh_post_valuation,
+            self.position_trigger_check_frequency,
+        )
 
         # We use a single thread scheduler to run our various tasks.
         # Any task blocks other tasks - there is no parallerism or multithread support at the moment.
@@ -1621,6 +1643,7 @@ class ExecutionLoop:
                 run_date=run_at,
                 args=[strategy_cycle_timestamp],
                 id="live_cycle_rolling",
+                executor="default",
                 replace_existing=True,
                 misfire_grace_time=None,
             )
@@ -1648,6 +1671,9 @@ class ExecutionLoop:
                 hour=0,
                 minute=0,
                 second=0,
+                id="live_cycle_cron",
+                executor="default",
+                replace_existing=True,
                 misfire_grace_time=None,  # Will always run the job no matter how late it is
             )
         else:
@@ -1664,6 +1690,9 @@ class ExecutionLoop:
                 'interval',
                 seconds=seconds,
                 start_date=start_time + tick_offset,
+                id="live_cycle_interval",
+                executor="default",
+                replace_existing=True,
                 misfire_grace_time=None,  # Will always run the job no matter how late it is
             )
 
@@ -1672,22 +1701,49 @@ class ExecutionLoop:
                 live_positions,
                 'interval',
                 seconds=self.stats_refresh_frequency.total_seconds(),
-                start_date=start_time)
+                start_date=start_time,
+                id="live_positions",
+                executor="stats",
+                replace_existing=True,
+                misfire_grace_time=None,
+            )
+        else:
+            logger.info("Live position valuation refresh job disabled: stats_refresh_frequency=%s", self.stats_refresh_frequency)
 
         if self.position_trigger_check_frequency not in (datetime.timedelta(0), None):
             scheduler.add_job(
                 live_trigger_checks,
                 'interval',
                 seconds=self.position_trigger_check_frequency.total_seconds(),
-                start_date=start_time)
+                start_date=start_time,
+                id="live_trigger_checks",
+                executor="default",
+                replace_existing=True,
+                misfire_grace_time=None,
+            )
+        else:
+            logger.info("Live trigger check job disabled: position_trigger_check_frequency=%s", self.position_trigger_check_frequency)
+
+        for job in scheduler.get_jobs():
+            logger.info(
+                "Scheduled live job: id=%s, trigger=%s, executor=%s, next_run_time=%s",
+                job.id,
+                job.trigger,
+                job.executor,
+                getattr(job, "next_run_time", None),
+            )
 
         def listen_error(event):
             if event.exception:
-                logger.info("Scheduled task received exception. event: %s, execption: %s", event, event.exception)
+                logger.info("Scheduled task received exception. event: %s, exception: %s", event, event.exception)
+            elif event.code == EVENT_JOB_MISSED:
+                logger.warning("Scheduled task missed its run time. event: %s", event)
+            elif event.code == EVENT_JOB_MAX_INSTANCES:
+                logger.warning("Scheduled task skipped because max instances are already running. event: %s", event)
             else:
                 logger.error("Should not happen")
 
-        scheduler.add_listener(listen_error, EVENT_JOB_ERROR)
+        scheduler.add_listener(listen_error, EVENT_JOB_ERROR | EVENT_JOB_MISSED | EVENT_JOB_MAX_INSTANCES)
 
         # Display version information on the trade log
         version_info = self.run_state.version
