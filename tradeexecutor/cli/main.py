@@ -4,6 +4,7 @@ from .commands import enzyme_deploy_vault
 from .commands.app import app
 from .commands.backtest import backtest
 from .commands.check_accounts import check_accounts
+from .commands.claim_hypercore_vault_dust import claim_hypercore_vault_dust
 from .commands.check_universe import check_universe
 from .commands.check_wallet import check_wallet
 from .commands.close_all import close_all
@@ -45,11 +46,11 @@ from .commands.trade_ui import trade_ui
 # Dummy export commands even though they are already registered
 # to make the linter happy
 __all__ = [
-    app, backtest, blacklist, check_accounts, check_position_triggers,
+    app, backtest, blacklist, check_accounts, claim_hypercore_vault_dust, check_position_triggers,
     check_universe, check_wallet, close_all, close_position, console,
     correct_accounts, correct_history, deploy_guard, distribute_gas_funds, enzyme_asset_list, enzyme_deploy_vault,
     export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_redeem, lagoon_settle, perform_test_trade, prepare_report, prune_state,
     repair, repair_hypercore_dust, reset, reset_deposits, retry, send_log_message, show_positions,
     show_valuation, start, token_cache, trade_ui, trading_pair,
-    version, visualise, webapi
+    version, visualise, webapi,
 ]

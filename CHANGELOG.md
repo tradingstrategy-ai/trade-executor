@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add `claim-hypercore-vault-dust` CLI command to recover untracked Hypercore vault dust into Lagoon reserves with operator safety guards (2026-04-16)
+
 - Add `--remove-share-price-outliers` flag to `correct-history` CLI command to detect and remove spurious share price data points using rolling median comparison (2026-04-08)
 
 - Add `--all-test-trades` flag to `close-position` CLI command to close all positions flagged as test trades (2026-04-07)
