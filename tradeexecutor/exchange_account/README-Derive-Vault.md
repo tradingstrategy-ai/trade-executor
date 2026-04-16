@@ -229,9 +229,11 @@ print("Function: registerSessionKey")
 print("sessionKey: " + session_key_address)
 print("expiry: " + str(expiry))
 print("expiry UTC: " + time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(expiry)))
+print()
+print("Final check - selected Safe must be: " + SAFE_ADDRESS)
 ```
 
-In Gnosis Safe Transaction Builder, either paste `To`, `Value`, and `Data` as a raw transaction, or paste `Contract address`, `ABI`, `Function`, `sessionKey`, and `expiry` as an ABI-based contract interaction. Make sure the selected Safe is the vault Safe printed as `Safe / from`.
+In Gnosis Safe Transaction Builder, either paste `To`, `Value`, and `Data` as a raw transaction, or paste `Contract address`, `ABI`, `Function`, `sessionKey`, and `expiry` as an ABI-based contract interaction. Make sure the selected Safe is the vault Safe printed as `Safe / from` and repeated at the end.
 
 Open the [Derive Safe(Wallet) UI](https://safe.derive.xyz), select the vault Safe, and open Transaction Builder.
 
