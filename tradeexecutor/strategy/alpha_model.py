@@ -5,6 +5,7 @@ import heapq
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
+from decimal import Decimal
 from io import StringIO
 from types import NoneType
 from typing import Callable, Dict, Iterable, List, Literal, Optional
@@ -19,6 +20,7 @@ from tradeexecutor.state.size_risk import SizeRisk
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.types import (LeverageMultiplier, PairInternalId,
                                        Percent, USDollarAmount)
+from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.position_manager import \
     HypercorePositionReductionPlan, PositionManager
@@ -74,6 +76,9 @@ class TradingPairSignalFlags(enum.Enum):
 
     #: This pair was not adjusted because the trade to rebalance would be too small dollar wise
     individual_trade_size_too_small = "individual_trade_size_too_small"
+
+    #: This pair was not adjusted because the trade quantity would be below the pair dust threshold
+    individual_trade_quantity_too_small = "individual_trade_quantity_too_small"
 
     #: Position was not opened/was closed because its weight % in the portfolio is too small
     close_position_weight_limit = "close_position_weight_limit"
@@ -1733,6 +1738,18 @@ class AlphaModel:
             if trade_size < threshold:
                 logger.info("Individual trade size too small, trade size is %s, our threshold %s", trade_size, individual_rebalance_min_threshold)
                 signal.flags.add(TradingPairSignalFlags.individual_trade_size_too_small)
+                return True
+
+        if signal.leverage is None and signal.position_adjust_usd < 0:
+            trade_quantity = abs(Decimal(str(signal.position_adjust_quantity)))
+            dust_epsilon = get_dust_epsilon_for_pair(signal.synthetic_pair or signal.pair)
+            if trade_quantity <= dust_epsilon:
+                logger.info(
+                    "Individual trade quantity too small, trade quantity is %s, dust epsilon is %s",
+                    trade_quantity,
+                    dust_epsilon,
+                )
+                signal.flags.add(TradingPairSignalFlags.individual_trade_quantity_too_small)
                 return True
 
         return False

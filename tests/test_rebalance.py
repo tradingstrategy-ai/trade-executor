@@ -1836,6 +1836,7 @@ def _create_hypercore_position_for_rebalance_test(
     state: State,
     start_ts: datetime.datetime,
     usdc: AssetIdentifier,
+    last_token_price: float = 2.0,
 ) -> TradingPairIdentifier:
     """Create one open Hypercore vault position for alpha-model rebalance tests."""
     pair = create_hypercore_vault_pair(
@@ -1866,7 +1867,7 @@ def _create_hypercore_position_for_rebalance_test(
         native_token_price=0,
         force=True,
     )
-    position.last_token_price = 2.0
+    position.last_token_price = last_token_price
     position.last_reserve_price = 1.0
     position.last_pricing_at = start_ts
     return pair
@@ -2029,6 +2030,77 @@ def test_alpha_model_skips_hypercore_sell_below_threshold_after_capping(
     assert signal.position_adjust_usd == pytest.approx(-4.0)
     assert signal.position_adjust_quantity == pytest.approx(-2.0)
     assert TradingPairSignalFlags.individual_trade_size_too_small in signal.flags
+
+
+def test_alpha_model_skips_hypercore_sell_below_quantity_dust(
+    start_ts: datetime.datetime,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model: BacktestPricing,
+    usdc: AssetIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check Hypercore sell quantity dust is skipped even when its USD value passes trade thresholds.
+
+    1. Create a high-share-price Hypercore position that needs a small rebalance sell.
+    2. Keep the USD sell above the configured sell threshold but the vault quantity below dust epsilon.
+    3. Verify the alpha model skips the trade before low-level trade creation rejects it.
+    """
+    state = State()
+    hypercore_vault_pair = _create_hypercore_position_for_rebalance_test(
+        state,
+        start_ts,
+        usdc,
+        last_token_price=60.0,
+    )
+
+    # 1. Create a high-share-price Hypercore position that needs a small rebalance sell.
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),
+        strategy_universe.data_universe,
+        state,
+        pricing_model,
+    )
+    _patch_hypercore_pricing(monkeypatch, pricing_model, hypercore_vault_pair)
+    monkeypatch.setattr(
+        pricing_model,
+        "check_redemption",
+        lambda ts, pair, **kwargs: RedemptionCheckResult(
+            timestamp=ts,
+            stage=kwargs["stage"],
+            can_redeem=True,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+            safe_address="0x0000000000000000000000000000000000000abc",
+            max_withdrawable=None,
+            max_redemption=None,
+            message="Hypercore sell is redeemable",
+        ),
+    )
+
+    alpha_model = AlphaModel(timestamp=position_manager.timestamp)
+    alpha_model.set_signal(hypercore_vault_pair, 1.0)
+    alpha_model.select_top_signals(count=5)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights(max_weight=1.0)
+    alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
+    alpha_model.calculate_target_positions(position_manager, investable_equity=2958.0)
+
+    # 2. Keep the USD sell above the configured sell threshold but the vault quantity below dust epsilon.
+    trades = alpha_model.generate_rebalance_trades_and_triggers(
+        position_manager,
+        min_trade_threshold=0.01,
+        individual_rebalance_min_threshold=10.0,
+        sell_rebalance_min_threshold=10.0,
+    )
+
+    signal = alpha_model.get_signal_by_pair(hypercore_vault_pair)
+    assert signal is not None
+
+    # 3. Verify the alpha model skips the trade before low-level trade creation rejects it.
+    assert trades == []
+    assert signal.position_adjust_usd == pytest.approx(-42.0)
+    assert signal.position_adjust_quantity == pytest.approx(-0.7)
+    assert TradingPairSignalFlags.individual_trade_quantity_too_small in signal.flags
 
 
 def test_alpha_model_uses_capped_hypercore_cash_release_for_buy_checks(
