@@ -17,6 +17,7 @@ Requires environment variables:
 import os
 import secrets
 from contextlib import redirect_stdout
+from decimal import Decimal
 from io import StringIO
 from pathlib import Path
 from unittest import mock
@@ -114,12 +115,48 @@ def environment(
 
 
 def test_distribute_gas_funds_dry_run(environment: dict):
-    """distribute-gas-funds in dry-run mode displays balances and proposed swaps."""
+    """distribute-gas-funds dry-run mode displays balances and proposed swaps without external quote dependency.
+
+    The Li.Fi quote API is mocked because dry-run control-flow coverage should
+    not fail CI when the external quote endpoint is slow or unavailable.
+
+    1. Patch the process environment for a dry-run CCTP bridge strategy.
+    2. Mock the Li.Fi balance and quote boundaries.
+    3. Run the command and verify it reaches the dry-run branch.
+    """
+    quote = mock.MagicMock()
+    quote.execution_duration = 30
+    quote.get_age_seconds.return_value = 0
+    swap = mock.MagicMock()
+    swap.source_chain_id = 42161
+    swap.target_chain_id = 8453
+    swap.target_balance_usd = Decimal("0")
+    swap.from_amount_usd = Decimal("10")
+    swap.from_amount_raw = 10**16
+    swap.quote = quote
+
+    def display_mock_balances(*args, **kwargs):
+        print("\nCurrent gas balances:")
+        print("mocked balances")
+
     f = StringIO()
+    # 1. Patch the process environment for a dry-run CCTP bridge strategy.
+    # 2. Mock the Li.Fi balance and quote boundaries.
+    # 3. Run the command and verify it reaches the dry-run branch.
     with mock.patch.dict("os.environ", environment, clear=True):
-        with redirect_stdout(f):
-            app(["distribute-gas-funds"], standalone_mode=False)
+        with mock.patch(
+            "tradeexecutor.cli.commands.distribute_gas_funds.display_balances",
+            side_effect=display_mock_balances,
+        ):
+            with mock.patch(
+                "tradeexecutor.cli.commands.distribute_gas_funds.prepare_crosschain_swaps",
+                return_value=[swap],
+            ) as prepare_swaps:
+                with redirect_stdout(f):
+                    app(["distribute-gas-funds"], standalone_mode=False)
 
     output = f.getvalue()
     assert "Current gas balances" in output
+    assert "Proposed swaps" in output
     assert "Dry run mode" in output
+    prepare_swaps.assert_called_once()
