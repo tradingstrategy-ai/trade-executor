@@ -612,6 +612,14 @@ class HypercoreVaultRouting(RoutingModel):
                 f"({user_equity.lockup_remaining} remaining)."
             )
 
+        # 2026-04-16 HyperAI incident:
+        # Keep this pre-phase-1 vault equity snapshot. Do not replace this with
+        # a settlement-time API read, because fast ``vaultTransfer`` settlement
+        # can already have reduced vault equity before receipt handling starts.
+        if not hasattr(trade, "other_data") or trade.other_data is None:
+            trade.other_data = {}
+        trade.other_data["hypercore_phase1_vault_equity_usdc"] = str(user_equity.equity)
+
         # Start with the strategy-planned amount. In the common path the live
         # preflight is only a check and this value is returned unchanged.
         effective_requested_raw = requested_raw
@@ -1284,6 +1292,20 @@ class HypercoreVaultRouting(RoutingModel):
                     self._fetch_safe_spot_free_usdc_balance()
                 )
 
+            if not trade.is_buy() and not self.simulate:
+                if not hasattr(trade, "other_data") or trade.other_data is None:
+                    trade.other_data = {}
+
+                # 2026-04-16 HyperAI incident:
+                # Capture this before phase 1 is broadcast. HyperCore can apply
+                # ``vaultTransfer`` before receipt settlement starts, so a later
+                # "baseline" may already include the withdrawn USDC. If we take
+                # the baseline after receipt handling starts, the verifier waits
+                # for a second perp-balance increase that will never arrive.
+                trade.other_data["hypercore_phase1_perp_baseline_usdc"] = str(
+                    self._fetch_safe_perp_withdrawable_balance()
+                )
+
             if not self.simulate and not trade.is_buy() and not activated:
                 raise AssertionError(
                     f"Cannot withdraw from Hypercore vault: Safe {self.safe_address} "
@@ -1729,10 +1751,29 @@ class HypercoreVaultRouting(RoutingModel):
                 "expected increase = %d raw",
                 self.safe_address, baseline_balance_raw, expected_raw,
             )
-            vault_equity_after_phase1_snapshot: Decimal | None = None
+            vault_equity_before_phase1_snapshot: Decimal | None = None
+            has_pre_phase1_vault_equity_snapshot = False
             vault_address = self._get_vault_address(trade)
             session = self._get_session()
-            baseline_perp_withdrawable = self._fetch_safe_perp_withdrawable_balance()
+            stored_perp_baseline = trade.other_data.get("hypercore_phase1_perp_baseline_usdc")
+            if stored_perp_baseline is not None:
+                # Prefer the setup-time baseline. A settlement-time baseline is
+                # unsafe for fast HyperCore withdrawals because it can already
+                # include the phase-1 ``vaultTransfer`` amount.
+                baseline_perp_withdrawable = Decimal(str(stored_perp_baseline))
+                logger.info(
+                    "Using pre-phase-1 HyperCore perp baseline for Safe %s: %s USDC",
+                    self.safe_address,
+                    baseline_perp_withdrawable,
+                )
+            else:
+                baseline_perp_withdrawable = self._fetch_safe_perp_withdrawable_balance()
+                logger.warning(
+                    "Missing pre-phase-1 HyperCore perp baseline for trade %s; "
+                    "using settlement-time perp balance %s USDC",
+                    trade.trade_id,
+                    baseline_perp_withdrawable,
+                )
             baseline_spot_free = self._fetch_safe_spot_free_usdc_balance()
             logger.info(
                 "Withdrawal settlement: Safe %s baseline HyperCore perp withdrawable = %s USDC, "
@@ -1741,23 +1782,39 @@ class HypercoreVaultRouting(RoutingModel):
                 baseline_perp_withdrawable,
                 baseline_spot_free,
             )
-            try:
-                eq_before = fetch_user_vault_equity(
-                    session,
-                    user=self.safe_address,
-                    vault_address=vault_address,
-                    bypass_cache=True,
+            stored_vault_equity = trade.other_data.get("hypercore_phase1_vault_equity_usdc")
+            if stored_vault_equity is not None:
+                # Prefer the preflight equity snapshot. It is the closest live
+                # "before" value for phase 1 and avoids comparing post-phase-1
+                # vault equity against stale state position quantity.
+                vault_equity_before_phase1_snapshot = Decimal(str(stored_vault_equity))
+                has_pre_phase1_vault_equity_snapshot = True
+                logger.info(
+                    "Using pre-phase-1 vault equity snapshot for Safe %s in vault %s: %s USDC",
+                    self.safe_address,
+                    vault_address,
+                    vault_equity_before_phase1_snapshot,
                 )
-                if eq_before is not None:
-                    vault_equity_after_phase1_snapshot = eq_before.equity
-                    logger.info(
-                        "Vault equity snapshot after phase 1 tx: %s",
-                        vault_equity_after_phase1_snapshot,
+            else:
+                try:
+                    eq_before = fetch_user_vault_equity(
+                        session,
+                        user=self.safe_address,
+                        vault_address=vault_address,
+                        bypass_cache=True,
                     )
-            except Exception as e:
-                logger.warning(
-                    "Could not snapshot vault equity after phase 1 tx: %s", e,
-                )
+                    if eq_before is not None:
+                        vault_equity_before_phase1_snapshot = eq_before.equity
+                        logger.warning(
+                            "Missing pre-phase-1 vault equity snapshot for trade %s; "
+                            "using settlement-time vault equity %s USDC",
+                            trade.trade_id,
+                            vault_equity_before_phase1_snapshot,
+                        )
+                except Exception as e:
+                    logger.warning(
+                        "Could not snapshot vault equity after phase 1 tx: %s", e,
+                    )
 
         withdraw_tx = trade.blockchain_transactions[-1]
         try:
@@ -1799,7 +1856,7 @@ class HypercoreVaultRouting(RoutingModel):
                     poll_interval=2.0,
                 )
             except HypercoreWithdrawalVerificationError as e:
-                current_vault_equity = vault_equity_after_phase1_snapshot
+                current_vault_equity: Decimal | None = None
                 try:
                     eq_after_phase1 = fetch_user_vault_equity(
                         session,
@@ -1816,18 +1873,23 @@ class HypercoreVaultRouting(RoutingModel):
                         snapshot_error,
                     )
 
-                if position_quantity_before is not None and current_vault_equity is not None and self._is_withdrawal_already_reflected_in_vault_equity(
-                    position_quantity_before=position_quantity_before,
+                phase1_equity_baseline = (
+                    vault_equity_before_phase1_snapshot
+                    if has_pre_phase1_vault_equity_snapshot
+                    else position_quantity_before
+                )
+                if phase1_equity_baseline is not None and current_vault_equity is not None and self._is_withdrawal_already_reflected_in_vault_equity(
+                    position_quantity_before=phase1_equity_baseline,
                     current_vault_equity=current_vault_equity,
                     expected_increase_raw=expected_raw,
                 ):
                     perp_balance = self._fetch_safe_perp_withdrawable_balance()
                     logger.info(
                         "Withdrawal phase 1 already reflected in vault equity for trade %s: "
-                        "state position quantity %s USDC, current vault equity %s USDC, "
+                        "phase-1 equity baseline %s USDC, current vault equity %s USDC, "
                         "current perp withdrawable %s USDC. Continuing with phase 2.",
                         trade.trade_id,
-                        position_quantity_before,
+                        phase1_equity_baseline,
                         current_vault_equity,
                         perp_balance,
                     )
@@ -1896,7 +1958,8 @@ class HypercoreVaultRouting(RoutingModel):
 
                         expected_raw = retry_raw
                         trade.other_data["hypercore_capped_withdrawal_raw"] = retry_raw
-                        vault_equity_after_phase1_snapshot = current_vault_equity
+                        vault_equity_before_phase1_snapshot = current_vault_equity
+                        has_pre_phase1_vault_equity_snapshot = True
 
                         try:
                             perp_balance = self._wait_for_perp_withdrawable_balance(
@@ -2135,9 +2198,9 @@ class HypercoreVaultRouting(RoutingModel):
                 )
                 remaining_equity = eq_after.equity if eq_after else Decimal(0)
 
-                if vault_equity_after_phase1_snapshot is not None:
+                if vault_equity_before_phase1_snapshot is not None:
                     equity_decrease = (
-                        vault_equity_after_phase1_snapshot - remaining_equity
+                        vault_equity_before_phase1_snapshot - remaining_equity
                     )
                     expected_decrease = executed_reserve
                     tolerance = expected_decrease * Decimal("0.01")
@@ -2147,14 +2210,14 @@ class HypercoreVaultRouting(RoutingModel):
                             "but HyperCore equity decreased by only %s (expected ~%s). "
                             "Before: %s, after: %s",
                             executed_reserve, equity_decrease, expected_decrease,
-                            vault_equity_after_phase1_snapshot, remaining_equity,
+                            vault_equity_before_phase1_snapshot, remaining_equity,
                         )
                     else:
                         logger.info(
                             "Withdrawal dual-chain verified: EVM USDC arrived (+%s), "
                             "HyperCore equity decreased by %s. Before: %s, after: %s",
                             executed_reserve, equity_decrease,
-                            vault_equity_after_phase1_snapshot, remaining_equity,
+                            vault_equity_before_phase1_snapshot, remaining_equity,
                         )
                 else:
                     logger.info(

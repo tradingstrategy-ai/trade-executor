@@ -114,11 +114,13 @@ def test_activation_cost_not_applied_to_sell():
     # 2. Simulate an already activated Safe in standard mode.
     # 3. Verify no activation cost is applied.
     with patch.object(routing, "_create_deposit_or_withdraw_txs", side_effect=capture_cost):
-        with patch("tradeexecutor.ethereum.vault.hypercore_routing.is_account_activated", return_value=True):
-            with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_abstraction_mode", return_value="standard"):
-                routing.setup_trades(state, _make_routing_state(), [sell_trade])
+        with patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("12.345678")):
+            with patch("tradeexecutor.ethereum.vault.hypercore_routing.is_account_activated", return_value=True):
+                with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_abstraction_mode", return_value="standard"):
+                    routing.setup_trades(state, _make_routing_state(), [sell_trade])
 
     assert costs_seen[0] == 0
+    assert sell_trade.other_data["hypercore_phase1_perp_baseline_usdc"] == "12.345678"
 
 
 def test_setup_trades_logs_account_mode_without_blocking(caplog):

@@ -458,6 +458,70 @@ def test_withdrawal_phase1_timeout_uses_vault_equity_fallback(
     state.mark_trade_success.assert_called_once()
 
 
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_withdrawal_uses_pre_phase1_perp_baseline_for_fast_settlement(
+    mock_fetch_equity,
+    mock_block_ts,
+    mock_report_failure,
+):
+    """Use the pre-phase-1 perp baseline when vaultTransfer settles before receipt handling.
+
+    1. Simulate the 2026-04-16 HyperAI partial withdrawal where phase 1 has already increased perp by settlement time.
+    2. Store the setup-time perp and vault-equity baselines in ``trade.other_data``.
+    3. Verify settlement continues to phase 2 instead of waiting for a second perp increase.
+    """
+    from hexbytes import HexBytes
+
+    from tradeexecutor.ethereum.vault.hypercore_routing import raw_to_usdc
+
+    routing = _make_routing()
+    trade = _make_trade(planned_reserve=Decimal("9.223899"))
+    trade.other_data = {
+        "hypercore_phase1_perp_baseline_usdc": "759.651993",
+        "hypercore_phase1_vault_equity_usdc": "497.830378",
+    }
+    state = MagicMock()
+    state.portfolio.get_position_by_id.return_value.get_quantity.return_value = Decimal("497.562464")
+    mock_block_ts.return_value = datetime.datetime(2026, 4, 16, 14, 35, 33)
+    mock_fetch_equity.return_value = _make_equity(Decimal("488.606479"))
+    receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 32630331}}
+
+    phase2_tx = MagicMock(tx_hash="0xdef")
+    phase3_tx = MagicMock(tx_hash="0x123")
+    captured_phase2_raw = []
+
+    def capture_phase2(raw_amount: int):
+        captured_phase2_raw.append(raw_amount)
+        return phase2_tx, {"status": 1, "blockNumber": 32630332}
+
+    # 1. Simulate the HyperAI fast-settlement shape: current perp already includes phase 1.
+    # 2. Store setup-time baselines in trade.other_data.
+    # 3. Verify settlement continues to phase 2 without a false failure.
+    with (
+        patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=92_058_215),
+        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("768.875892")),
+        patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("33.611598")),
+        patch.object(routing, "_broadcast_withdrawal_phase2", side_effect=capture_phase2),
+        patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=Decimal("42.835497")),
+        patch.object(routing, "_broadcast_withdrawal_phase3", return_value=(phase3_tx, {"status": 1, "blockNumber": 32630333})),
+        patch.object(routing, "_wait_for_usdc_arrival", return_value=9_223_899),
+    ):
+        routing._settle_withdrawal(
+            routing.web3,
+            state,
+            trade,
+            receipts,
+            stop_on_execution_failure=False,
+        )
+
+    assert captured_phase2_raw == [9_223_899]
+    assert state.mark_trade_success.call_args.kwargs["executed_reserve"] == raw_to_usdc(9_223_899)
+    state.mark_trade_success.assert_called_once()
+    mock_report_failure.assert_not_called()
+
+
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
 def test_withdrawal_phase3_uses_fee_adjusted_amount(
