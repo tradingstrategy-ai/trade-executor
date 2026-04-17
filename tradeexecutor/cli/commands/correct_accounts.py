@@ -26,6 +26,7 @@ from ..log import setup_logging
 from ...ethereum.enzyme.tx import EnzymeTransactionBuilder
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.hot_wallet_sync_model import HotWalletSyncModel
+from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.tx import HotWalletTransactionBuilder
 from ...state.repair import close_hypercore_dust_positions
 from ...state.state import UncleanState
@@ -168,6 +169,103 @@ def _sync_hypercore_vault_positions(
         logger.info("Vault equity sync: %d balance update(s)", len(vault_sync_events))
 
 
+def _has_closed_hypercore_positions(state) -> bool:
+    """Check whether state has closed Hypercore vault positions."""
+    return any(
+        position.pair.is_hyperliquid_vault()
+        for position in state.portfolio.closed_positions.values()
+    )
+
+
+def _recover_hypercore_transit_balances(
+    *,
+    asset_management_mode: AssetManagementMode,
+    sync_model,
+    web3,
+    hot_wallet: HotWallet | None,
+    state,
+    skip_hypercore_transit_recovery: bool,
+) -> list[str]:
+    """Recover Safe-level HyperCore spot/perp USDC before account correction."""
+    if not asset_management_mode.is_vault():
+        return []
+
+    if not _has_closed_hypercore_positions(state):
+        return []
+
+    if skip_hypercore_transit_recovery:
+        logger.info(
+            "Skipping HyperCore transit recovery although closed Hypercore positions exist"
+        )
+        return []
+
+    if not isinstance(sync_model, LagoonVaultSyncModel):
+        raise RuntimeError(
+            "Closed Hypercore positions exist, but automatic HyperCore transit recovery "
+            f"is only implemented for Lagoon vaults. Got sync model {type(sync_model)}."
+        )
+
+    if hot_wallet is None:
+        raise RuntimeError(
+            "Closed Hypercore positions exist and HyperCore transit recovery is needed, "
+            "but no hot wallet/private key is configured for broadcasting Safe transactions."
+        )
+
+    from eth_defi.hyperliquid.session import (
+        HYPERLIQUID_API_URL,
+        HYPERLIQUID_TESTNET_API_URL,
+        create_hyperliquid_session,
+    )
+    from tradeexecutor.ethereum.vault.hypercore_transit_recovery import (
+        execute_hypercore_transit_recovery_actions,
+        fetch_hypercore_transit_balances,
+        plan_hypercore_transit_recovery_actions,
+    )
+
+    is_testnet = web3.eth.chain_id == 998
+    api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
+    session = create_hyperliquid_session(api_url=api_url)
+    safe_address = sync_model.get_token_storage_address()
+    reserve_token = sync_model.vault.underlying_token
+
+    logger.info(
+        "Closed Hypercore positions detected; checking Safe-level HyperCore transit balances for %s",
+        safe_address,
+    )
+    snapshot = fetch_hypercore_transit_balances(
+        session=session,
+        safe_address=safe_address,
+        reserve_token=reserve_token,
+    )
+    actions = plan_hypercore_transit_recovery_actions(snapshot)
+    if not actions:
+        logger.info("No HyperCore spot/perp transit balances need recovery")
+        return []
+
+    for action in actions:
+        logger.info(
+            "HyperCore transit recovery planned: %s %.6f USDC (%s)",
+            action.action_kind,
+            action.amount,
+            action.reason,
+        )
+
+    hot_wallet.sync_nonce(web3)
+    executed_action_kinds = execute_hypercore_transit_recovery_actions(
+        web3=web3,
+        hot_wallet=hot_wallet,
+        lagoon_vault=sync_model.vault,
+        session=session,
+        reserve_token=reserve_token,
+        actions=actions,
+    )
+    logger.info(
+        "HyperCore transit recovery completed: %s",
+        ", ".join(executed_action_kinds),
+    )
+    return executed_action_kinds
+
+
 @app.command()
 @shared_options.with_json_rpc_options()
 def correct_accounts(
@@ -205,6 +303,7 @@ def correct_accounts(
     process_redemption_end_block_hint: int = Option(None, "--process-redemption-end-block-hint", envvar="PROCESS_REDEMPTION_END_BLOCK_HINT", help="Used in integration testing."),
     transfer_away: bool = Option(False, "--transfer-away", envvar="TRANSFER_AWAY", help="For tokens without assigned position, scoop them to the hot wallet instead of trying to construct a new position"),
     raise_on_unclean: bool = typer.Option(False, is_flag=True, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
+    skip_hypercore_transit_recovery: bool = Option(False, "--skip-hypercore-transit-recovery", envvar="SKIP_HYPERCORE_TRANSIT_RECOVERY", help="Skip automatic Safe-level HyperCore spot/perp USDC recovery before account correction."),
 
     # Derive exchange account options
     derive_owner_private_key: Optional[str] = Option(None, envvar="DERIVE_OWNER_PRIVATE_KEY", help="Derive owner wallet private key"),
@@ -531,6 +630,15 @@ def correct_accounts(
             "Auto-closed %d Hypercore dust position(s) before duplicate and accounting checks",
             len(closed_dust_trades),
         )
+
+    _recover_hypercore_transit_balances(
+        asset_management_mode=asset_management_mode,
+        sync_model=sync_model,
+        web3=web3,
+        hot_wallet=hot_wallet,
+        state=state,
+        skip_hypercore_transit_recovery=skip_hypercore_transit_recovery,
+    )
 
     block_number = get_almost_latest_block_number(web3)
     logger.info(f"Correcting accounts at block {block_number:,}")

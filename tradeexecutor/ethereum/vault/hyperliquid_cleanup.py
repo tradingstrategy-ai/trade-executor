@@ -32,7 +32,6 @@ active perp positions, because that requires manual review.
 import datetime
 import logging
 import os
-import time
 from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
@@ -40,21 +39,13 @@ from pathlib import Path
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
-from eth_defi.hyperliquid.api import (HyperliquidSession, UserVaultEquity,
-                                      fetch_perp_clearinghouse_state,
-                                      fetch_spot_clearinghouse_state,
+from eth_defi.hyperliquid.api import (HyperliquidSession,
                                       fetch_user_vault_equities)
-from eth_defi.hyperliquid.constants import HYPERCORE_BRIDGE_FEE_MARGIN
-from eth_defi.hyperliquid.core_writer import (
-    build_hypercore_send_asset_to_evm_call,
-    build_hypercore_transfer_usd_class_call,
-    compute_spot_to_evm_withdrawal_amount)
 from eth_defi.hyperliquid.session import (HYPERLIQUID_API_URL,
                                           HYPERLIQUID_TESTNET_API_URL,
                                           create_hyperliquid_session)
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_defi.token import TokenDetails
-from eth_defi.trace import assert_transaction_success_with_explanation
 from tabulate import tabulate
 from web3 import Web3
 
@@ -65,6 +56,22 @@ from tradeexecutor.cli.bootstrap import (backup_state, create_client,
                                          prepare_executor_id)
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from tradeexecutor.ethereum.vault.hypercore_transit_recovery import (
+    BALANCE_TIMEOUT,
+    BALANCE_TOLERANCE,
+    HypercoreTransitRecoveryAction,
+    POLL_INTERVAL,
+    SAFE_GAS_LIMIT,
+    execute_hypercore_transit_recovery_actions,
+    execute_perp_to_spot,
+    execute_spot_to_evm,
+    fetch_hypercore_transit_balances,
+    get_spot_usdc_balances,
+    get_wait_threshold,
+    plan_hypercore_transit_recovery_actions,
+    wait_for_evm_usdc_balance,
+    wait_for_spot_free_balance,
+)
 from tradeexecutor.state.repair import close_hypercore_dust_positions, repair_trades
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
@@ -85,12 +92,7 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 
 logger = logging.getLogger(__name__)
 
-BALANCE_TOLERANCE = Decimal("0.02")
-CLEANUP_WAIT_RELATIVE_TOLERANCE = Decimal("0.001")
 RESIDUAL_VAULT_EQUITY_THRESHOLD = Decimal("0.10")
-POLL_INTERVAL = 2.0
-BALANCE_TIMEOUT = 60.0
-SAFE_GAS_LIMIT = 650_000
 
 
 @dataclass(slots=True)
@@ -209,11 +211,7 @@ def _get_cleanup_wait_threshold(
     expected_increase: Decimal,
 ) -> tuple[Decimal, Decimal]:
     """Calculate the minimum balance increase that cleanup waits should accept."""
-    accepted_tolerance = max(
-        BALANCE_TOLERANCE,
-        expected_increase * CLEANUP_WAIT_RELATIVE_TOLERANCE,
-    )
-    return baseline_balance + expected_increase - accepted_tolerance, accepted_tolerance
+    return get_wait_threshold(baseline_balance, expected_increase)
 
 
 def _position_vault_address(position) -> str:
@@ -224,10 +222,7 @@ def _position_vault_address(position) -> str:
 
 def _get_spot_usdc_balances(spot_state) -> tuple[Decimal, Decimal]:
     """Extract total and free spot USDC from HyperCore state."""
-    for balance in spot_state.balances:
-        if balance.coin == "USDC":
-            return balance.total, balance.total - balance.hold
-    return Decimal(0), Decimal(0)
+    return get_spot_usdc_balances(spot_state)
 
 
 def _fetch_live_cleanup_snapshot(
@@ -235,21 +230,23 @@ def _fetch_live_cleanup_snapshot(
 ) -> HyperliquidCleanupSnapshot:
     """Read live Safe balances from HyperEVM and Hyperliquid."""
     safe_address = context.lagoon_vault.safe_address
-    spot_state = fetch_spot_clearinghouse_state(context.session, user=safe_address)
-    perp_state = fetch_perp_clearinghouse_state(context.session, user=safe_address)
+    transit_snapshot = fetch_hypercore_transit_balances(
+        session=context.session,
+        safe_address=safe_address,
+        reserve_token=context.reserve_token,
+    )
     vault_equities = {
         Web3.to_checksum_address(entry.vault_address): entry.equity
         for entry in fetch_user_vault_equities(context.session, user=safe_address)
     }
-    spot_total_usdc, spot_free_usdc = _get_spot_usdc_balances(spot_state)
     return HyperliquidCleanupSnapshot(
         safe_address=safe_address,
-        evm_usdc_balance=context.reserve_token.fetch_balance_of(safe_address),
-        spot_total_usdc=spot_total_usdc,
-        spot_free_usdc=spot_free_usdc,
-        perp_withdrawable=perp_state.withdrawable,
-        perp_account_value=perp_state.margin_summary.account_value,
-        perp_position_count=len(perp_state.asset_positions),
+        evm_usdc_balance=transit_snapshot.evm_usdc_balance,
+        spot_total_usdc=transit_snapshot.spot_total_usdc,
+        spot_free_usdc=transit_snapshot.spot_free_usdc,
+        perp_withdrawable=transit_snapshot.perp_withdrawable,
+        perp_account_value=transit_snapshot.perp_account_value,
+        perp_position_count=transit_snapshot.perp_position_count,
         vault_equities=vault_equities,
     )
 
@@ -261,10 +258,11 @@ def _build_state_snapshot(state: State) -> HyperliquidStateSnapshot:
         reserve_quantity = state.portfolio.get_default_reserve_position().quantity
 
     positions: list[HyperliquidStatePositionSnapshot] = []
-    for position in state.portfolio.get_open_and_frozen_positions():
-        if not position.is_vault():
-            continue
-        if position.pair.other_data.get("vault_protocol") != "hyperliquid":
+    state_positions = list(state.portfolio.get_open_and_frozen_positions())
+    state_positions.extend(state.portfolio.closed_positions.values())
+
+    for position in state_positions:
+        if not position.pair.is_hyperliquid_vault():
             continue
 
         failed_trade_ids = [
@@ -282,7 +280,13 @@ def _build_state_snapshot(state: State) -> HyperliquidStateSnapshot:
         positions.append(
             HyperliquidStatePositionSnapshot(
                 position_id=position.position_id,
-                state_status="frozen" if position.is_frozen() else "open",
+                state_status=(
+                    "closed"
+                    if position.is_closed()
+                    else "frozen"
+                    if position.is_frozen()
+                    else "open"
+                ),
                 quantity=position.get_quantity(),
                 vault_address=_position_vault_address(position),
                 vault_name=position.pair.other_data.get(
@@ -308,8 +312,10 @@ def _classify_cleanup_row(
         position.vault_address, Decimal(0)
     )
     stranded_balance = live_snapshot.spot_free_usdc + live_snapshot.perp_withdrawable
-    is_failed_close_candidate = position.state_status == "frozen" or bool(
-        position.failed_trade_ids
+    is_failed_close_candidate = (
+        position.state_status in {"frozen", "closed"}
+        or bool(position.failed_trade_ids)
+        or bool(position.stranded_metadata)
     )
     residual_vault_equity = live_vault_equity <= RESIDUAL_VAULT_EQUITY_THRESHOLD
     stranded_balance_dominates = (
@@ -409,30 +415,27 @@ def _plan_cleanup_actions(
             "No recognised stranded-balance failed-close Hypercore position was found for clean-up."
         )
 
-    actions: list[HyperliquidCleanupAction] = []
-    if live_snapshot.perp_withdrawable > BALANCE_TOLERANCE:
-        actions.append(
-            HyperliquidCleanupAction(
-                action_kind="perp_to_spot",
-                amount=live_snapshot.perp_withdrawable,
-                reason="Recover stranded HyperCore perp USDC back to HyperCore spot",
-            )
+    transit_actions = plan_hypercore_transit_recovery_actions(live_snapshot)
+    return [
+        HyperliquidCleanupAction(
+            action_kind=action.action_kind,
+            amount=action.amount,
+            reason=action.reason,
         )
+        for action in transit_actions
+    ]
 
-    total_spot_to_recover = live_snapshot.spot_free_usdc
-    if live_snapshot.perp_withdrawable > BALANCE_TOLERANCE:
-        total_spot_to_recover += live_snapshot.perp_withdrawable
 
-    if total_spot_to_recover > BALANCE_TOLERANCE:
-        actions.append(
-            HyperliquidCleanupAction(
-                action_kind="spot_to_evm",
-                amount=total_spot_to_recover,
-                reason="Recover stranded HyperCore spot USDC back to the Safe on HyperEVM",
-            )
+def _as_transit_actions(actions: list[HyperliquidCleanupAction]) -> list[HypercoreTransitRecoveryAction]:
+    """Convert historical clean-up actions to shared transit actions."""
+    return [
+        HypercoreTransitRecoveryAction(
+            action_kind=action.action_kind,
+            amount=action.amount,
+            reason=action.reason,
         )
-
-    return actions
+        for action in actions
+    ]
 
 
 def _print_reality_table(
@@ -543,28 +546,14 @@ def _wait_for_spot_free_balance(
     poll_interval: float = POLL_INTERVAL,
 ) -> Decimal:
     """Wait until free spot USDC reaches the expected balance."""
-    # WARNING: Do not wait for an exact final spot balance here.
-    # Cleanup is an operator recovery flow and the Safe can already have spot
-    # dust or receive nearby balance changes while we are polling.  We only
-    # need to prove that the expected recovery amount arrived within a modest
-    # tolerance, not that the final balance matches one exact snapshot.
-    expected_balance, accepted_tolerance = _get_cleanup_wait_threshold(
+    return wait_for_spot_free_balance(
+        session,
+        user,
         baseline_balance=baseline_balance,
         expected_increase=expected_increase,
+        timeout=timeout,
+        poll_interval=poll_interval,
     )
-    deadline = time.time() + timeout
-    while True:
-        spot_state = fetch_spot_clearinghouse_state(session, user=user)
-        _spot_total, spot_free = _get_spot_usdc_balances(spot_state)
-        if spot_free >= expected_balance:
-            return spot_free
-        if time.time() >= deadline:
-            raise AssertionError(
-                f"Timed out waiting for HyperCore free spot USDC threshold {expected_balance} "
-                f"for {user} (expected increase {expected_increase}, tolerance {accepted_tolerance}), "
-                f"last observed balance was {spot_free}"
-            )
-        time.sleep(poll_interval)
 
 
 def _wait_for_evm_usdc_balance(
@@ -576,27 +565,14 @@ def _wait_for_evm_usdc_balance(
     poll_interval: float = POLL_INTERVAL,
 ) -> Decimal:
     """Wait until EVM USDC reaches the expected balance."""
-    # WARNING: Do not wait for one exact final EVM balance here.
-    # The cleanup bridge confirmation only needs to prove that the expected
-    # increase arrived.  Requiring an exact final balance causes false
-    # failures when the Safe balance is slightly higher than the snapshot we
-    # started from or when minor bridge-side rounding drifts occur.
-    expected_balance, accepted_tolerance = _get_cleanup_wait_threshold(
+    return wait_for_evm_usdc_balance(
+        token,
+        address,
         baseline_balance=baseline_balance,
         expected_increase=expected_increase,
+        timeout=timeout,
+        poll_interval=poll_interval,
     )
-    deadline = time.time() + timeout
-    while True:
-        balance = token.fetch_balance_of(address)
-        if balance >= expected_balance:
-            return balance
-        if time.time() >= deadline:
-            raise AssertionError(
-                f"Timed out waiting for HyperEVM USDC threshold {expected_balance} "
-                f"for {address} (expected increase {expected_increase}, tolerance {accepted_tolerance}), "
-                f"last observed balance was {balance}"
-            )
-        time.sleep(poll_interval)
 
 
 def _broadcast_bound_call(
@@ -606,11 +582,9 @@ def _broadcast_bound_call(
     gas_limit: int = SAFE_GAS_LIMIT,
 ) -> str:
     """Broadcast a single Safe/module transaction and assert success."""
-    tx_hash = hot_wallet.transact_and_broadcast_with_contract(
-        bound_func, gas_limit=gas_limit
-    )
-    assert_transaction_success_with_explanation(web3, tx_hash)
-    return tx_hash.hex()
+    from tradeexecutor.ethereum.vault.hypercore_transit_recovery import broadcast_bound_call
+
+    return broadcast_bound_call(web3, hot_wallet, bound_func, gas_limit=gas_limit)
 
 
 def _execute_perp_to_spot(
@@ -618,27 +592,14 @@ def _execute_perp_to_spot(
     amount: Decimal,
 ) -> str:
     """Recover stranded USDC from HyperCore perp back to spot."""
-    safe_address = context.lagoon_vault.safe_address
-    live_snapshot = _fetch_live_cleanup_snapshot(context)
-    assert live_snapshot.perp_withdrawable + BALANCE_TOLERANCE >= amount, (
-        f"Before transferUsdClass(perp->spot), Safe {safe_address} perp withdrawable balance is "
-        f"{live_snapshot.perp_withdrawable}, expected at least {amount}"
+    return execute_perp_to_spot(
+        web3=context.web3,
+        hot_wallet=context.hot_wallet,
+        lagoon_vault=context.lagoon_vault,
+        session=context.session,
+        reserve_token=context.reserve_token,
+        amount=amount,
     )
-
-    baseline_spot_free = live_snapshot.spot_free_usdc
-    fn = build_hypercore_transfer_usd_class_call(
-        context.lagoon_vault,
-        hypercore_usdc_amount=context.reserve_token.convert_to_raw(amount),
-        to_perp=False,
-    )
-    tx_hash = _broadcast_bound_call(context.web3, context.hot_wallet, fn)
-    _wait_for_spot_free_balance(
-        context.session,
-        safe_address,
-        baseline_balance=baseline_spot_free,
-        expected_increase=amount,
-    )
-    return tx_hash
 
 
 def _execute_spot_to_evm(
@@ -646,40 +607,14 @@ def _execute_spot_to_evm(
     amount: Decimal,
 ) -> str:
     """Recover stranded USDC from HyperCore spot back to HyperEVM."""
-    safe_address = context.lagoon_vault.safe_address
-    live_snapshot = _fetch_live_cleanup_snapshot(context)
-    assert live_snapshot.spot_free_usdc + BALANCE_TOLERANCE >= amount, (
-        f"Before spotSend(spot->EVM), Safe {safe_address} free spot USDC balance is "
-        f"{live_snapshot.spot_free_usdc}, expected at least {amount}"
+    return execute_spot_to_evm(
+        web3=context.web3,
+        hot_wallet=context.hot_wallet,
+        lagoon_vault=context.lagoon_vault,
+        session=context.session,
+        reserve_token=context.reserve_token,
+        amount=amount,
     )
-
-    # Reserve a margin for the HyperCore -> HyperEVM bridge fee which is
-    # deducted from spot *before* settlement.  Without this the withdrawal
-    # silently fails when we try to bridge the entire spot balance.
-    withdraw_amount = compute_spot_to_evm_withdrawal_amount(
-        spot_balance=live_snapshot.spot_free_usdc,
-        desired_amount=amount,
-    )
-    if withdraw_amount < BALANCE_TOLERANCE:
-        raise RuntimeError(
-            f"Spot balance {live_snapshot.spot_free_usdc} for Safe {safe_address} "
-            f"is too small to cover the HyperCore bridge fee margin "
-            f"({HYPERCORE_BRIDGE_FEE_MARGIN} USDC); cannot withdraw to EVM"
-        )
-
-    baseline_evm_balance = live_snapshot.evm_usdc_balance
-    fn = build_hypercore_send_asset_to_evm_call(
-        context.lagoon_vault,
-        evm_usdc_amount=context.reserve_token.convert_to_raw(withdraw_amount),
-    )
-    tx_hash = _broadcast_bound_call(context.web3, context.hot_wallet, fn)
-    _wait_for_evm_usdc_balance(
-        context.reserve_token,
-        safe_address,
-        baseline_balance=baseline_evm_balance,
-        expected_increase=withdraw_amount,
-    )
-    return tx_hash
 
 
 def _execute_cleanup_actions(
@@ -687,18 +622,14 @@ def _execute_cleanup_actions(
     actions: list[HyperliquidCleanupAction],
 ) -> list[str]:
     """Execute Safe-side recovery actions in order."""
-    executed: list[str] = []
-    for action in actions:
-        if action.action_kind == "perp_to_spot":
-            _execute_perp_to_spot(context, action.amount)
-        elif action.action_kind == "spot_to_evm":
-            _execute_spot_to_evm(context, action.amount)
-        else:
-            raise NotImplementedError(
-                f"Unsupported Hyperliquid clean-up action: {action.action_kind}"
-            )
-        executed.append(action.action_kind)
-    return executed
+    return execute_hypercore_transit_recovery_actions(
+        web3=context.web3,
+        hot_wallet=context.hot_wallet,
+        lagoon_vault=context.lagoon_vault,
+        session=context.session,
+        reserve_token=context.reserve_token,
+        actions=_as_transit_actions(actions),
+    )
 
 
 def _build_accounting_correction_context(

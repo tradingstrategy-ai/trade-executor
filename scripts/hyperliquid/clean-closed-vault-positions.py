@@ -30,7 +30,7 @@ from tradeexecutor.ethereum.vault.hyperliquid_cleanup import \
 
 def main() -> None:
     """Run the Hyperliquid clean-up flow from environment variables."""
-    raise NotImplementedError()
+    run_hyperliquid_cleanup_from_environment()
 
 
 if __name__ == "__main__":

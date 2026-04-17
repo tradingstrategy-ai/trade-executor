@@ -174,6 +174,7 @@ from eth_defi.utils import setup_console_logging
 from eth_defi.vault.base import VaultSpec
 
 from tradeexecutor.cli.main import app
+from tradeexecutor.ethereum.vault.hypercore_transit_recovery import get_spot_usdc_balances
 from tradeexecutor.ethereum.vault.hypercore_vault import HLP_VAULT_ADDRESS
 from tradeexecutor.state.state import State
 
@@ -239,10 +240,8 @@ def _is_within_tolerance(left: Decimal, right: Decimal) -> bool:
 def _get_spot_free_usdc_balance(session, user: str) -> Decimal:
     """Read the Safe's free HyperCore spot USDC balance."""
     state = fetch_spot_clearinghouse_state(session, user=user)
-    for balance in state.balances:
-        if balance.coin == "USDC":
-            return balance.total - balance.hold
-    return Decimal(0)
+    _spot_total, spot_free = get_spot_usdc_balances(state)
+    return spot_free
 
 
 def _get_perp_withdrawable_balance(session, user: str) -> Decimal:
