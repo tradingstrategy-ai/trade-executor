@@ -104,6 +104,12 @@ from tradeexecutor.utils.dedent import dedent_any
 
 logger = logging.getLogger(__name__)
 
+
+def calculate_rebalance_volume(trades: list[TradeExecution]) -> USDollarAmount:
+    """Calculate decision-time rebalance volume for reporting."""
+    return sum(trade.get_planned_value() for trade in trades)
+
+
 #
 # Trading universe constants
 #
@@ -422,7 +428,7 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         except StopIteration:
             top_signal = None
 
-        rebalance_volume = sum(trade.get_value() for trade in trades)
+        rebalance_volume = calculate_rebalance_volume(trades)
         report = dedent_any(
             f"""
             Cycle: #{input.cycle}
