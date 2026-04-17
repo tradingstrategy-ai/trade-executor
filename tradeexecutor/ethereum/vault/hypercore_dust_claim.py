@@ -38,10 +38,13 @@ from tradeexecutor.ethereum.vault.hypercore_routing import (
     raw_to_usdc,
     usdc_to_raw,
 )
-from tradeexecutor.ethereum.vault.hyperliquid_cleanup import (
+from tradeexecutor.ethereum.vault.hypercore_transit_recovery import (
     BALANCE_TIMEOUT,
     BALANCE_TOLERANCE,
     CLEANUP_WAIT_RELATIVE_TOLERANCE,
+    get_spot_usdc_balances,
+)
+from tradeexecutor.ethereum.vault.hyperliquid_cleanup import (
     HyperliquidCleanupContext,
     load_cleanup_context,
 )
@@ -123,10 +126,7 @@ def _normalise_vault_address(address: str) -> str:
 
 def _get_spot_usdc_balances(spot_state) -> tuple[Decimal, Decimal]:
     """Extract total and free spot USDC from HyperCore state."""
-    for balance in spot_state.balances:
-        if balance.coin == "USDC":
-            return balance.total, balance.total - balance.hold
-    return Decimal(0), Decimal(0)
+    return get_spot_usdc_balances(spot_state)
 
 
 def _fetch_live_snapshot(

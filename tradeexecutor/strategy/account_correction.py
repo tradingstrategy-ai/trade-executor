@@ -487,7 +487,7 @@ def apply_accounting_correction(
         block_mined_at=correction.timestamp,
         strategy_cycle_included_at=strategy_cycle_included_at,
         chain_id=asset.chain_id,
-        old_balance=correction.actual_amount,
+        old_balance=correction.expected_amount,
         usd_value=correction.usd_value,
         quantity=correction.quantity,
         owner_address=None,
