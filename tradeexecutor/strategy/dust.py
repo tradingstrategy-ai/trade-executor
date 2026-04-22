@@ -82,9 +82,6 @@ def get_dust_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
 
     """
 
-    if pair.is_hyperliquid_vault():
-        return HYPERLIQUID_VAULT_CLOSE_EPSILON
-
     if pair.is_vault():
         return DEFAULT_VAULT_EPSILON
 

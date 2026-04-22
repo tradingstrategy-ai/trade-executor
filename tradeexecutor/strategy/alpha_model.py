@@ -20,7 +20,7 @@ from tradeexecutor.state.size_risk import SizeRisk
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.types import (LeverageMultiplier, PairInternalId,
                                        Percent, USDollarAmount)
-from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
+from tradeexecutor.strategy.dust import get_close_epsilon_for_pair
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.position_manager import \
     HypercorePositionReductionPlan, PositionManager
@@ -1742,7 +1742,7 @@ class AlphaModel:
 
         if signal.leverage is None and signal.position_adjust_usd < 0:
             trade_quantity = abs(Decimal(str(signal.position_adjust_quantity)))
-            dust_epsilon = get_dust_epsilon_for_pair(signal.synthetic_pair or signal.pair)
+            dust_epsilon = get_close_epsilon_for_pair(signal.synthetic_pair or signal.pair)
             if trade_quantity <= dust_epsilon:
                 logger.info(
                     "Individual trade quantity too small, trade quantity is %s, dust epsilon is %s",
