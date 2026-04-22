@@ -962,8 +962,8 @@ class HypercoreVaultRouting(RoutingModel):
         poll_interval: float = 2.0,
     ) -> Decimal:
         """Poll HyperCore spot free USDC until the perp-to-spot move is visible."""
-        # Temporary stop-gap: accept a slightly smaller spot balance here.
-        # Proper fix: propagate the observed perp balance into phase 2.
+        # Accept a slightly smaller spot balance to cover minor drift between
+        # the requested amount and what HyperCore actually delivers.
         expected_increase_threshold_raw = max(
             expected_increase_raw - HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW,
             0,
@@ -2008,6 +2008,22 @@ class HypercoreVaultRouting(RoutingModel):
                 perp_balance,
             )
 
+            # Propagate the observed perp balance into the phase 2 amount.
+            # Phase 1 may have delivered slightly less USDC than expected
+            # (HyperCore fees/rounding).  If we request more than what the
+            # perp account holds, HyperCore silently rejects the
+            # transferUsdClass action (EVM tx status=1 but nothing moves).
+            actual_perp_increase_raw = usdc_to_raw(perp_balance - baseline_perp_withdrawable)
+            if actual_perp_increase_raw > 0 and actual_perp_increase_raw < expected_raw:
+                logger.info(
+                    "Capping phase 2 amount to observed perp increase for trade %s: "
+                    "%d raw (%s USDC) vs planned %d raw (%s USDC)",
+                    trade.trade_id,
+                    actual_perp_increase_raw, raw_to_usdc(actual_perp_increase_raw),
+                    expected_raw, raw_to_usdc(expected_raw),
+                )
+                expected_raw = actual_perp_increase_raw
+
             self.deployer.sync_nonce(web3)
 
             try:
@@ -2040,7 +2056,16 @@ class HypercoreVaultRouting(RoutingModel):
                     "Withdrawal phase 2 verification failed for trade %s: %s",
                     trade.trade_id, e,
                 )
-                self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
+                # Determine where the USDC actually is: if perp balance is
+                # still elevated above the pre-phase-1 baseline, the
+                # transferUsdClass silently no-opped and USDC is in perp.
+                current_perp = self._fetch_safe_perp_withdrawable_balance()
+                perp_increase = current_perp - baseline_perp_withdrawable
+                if usdc_to_raw(perp_increase) > expected_raw // 2:
+                    stranded_location = "hypercore_perp"
+                else:
+                    stranded_location = "hypercore_spot"
+                self._mark_stranded_usdc(trade, expected_raw, stranded_location)
                 report_failure(ts, state, trade, stop_on_execution_failure)
                 return
 
