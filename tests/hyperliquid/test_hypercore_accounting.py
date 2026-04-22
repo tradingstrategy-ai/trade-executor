@@ -237,8 +237,8 @@ def test_hypercore_vault_dust_epsilon_covers_safety_margin():
     recognises the position as effectively closed.
 
     1. Build a Hypercore vault pair using create_hypercore_vault_pair().
-    2. Verify get_close_epsilon_for_pair() and get_dust_epsilon_for_pair()
-       return the Hypercore-specific epsilon.
+    2. Verify get_close_epsilon_for_pair() returns the Hypercore-specific epsilon
+       and get_dust_epsilon_for_pair() returns the smaller vault default.
     3. Create a TradingPosition with safety-margin dust quantity (1.50) and assert can_be_closed().
     4. Same position with non-dust quantity (2.50) must NOT be closeable.
     5. Build a non-Hypercore vault pair and verify it still gets DEFAULT_VAULT_EPSILON.
@@ -257,9 +257,10 @@ def test_hypercore_vault_dust_epsilon_covers_safety_margin():
     )
     assert hypercore_pair.is_hyperliquid_vault()
 
-    # 2. Epsilon functions return Hypercore-specific value
+    # 2. Close epsilon returns Hypercore-specific value; dust epsilon uses
+    #    the smaller vault default so that buy trades are not rejected
     assert get_close_epsilon_for_pair(hypercore_pair) == HYPERLIQUID_VAULT_CLOSE_EPSILON
-    assert get_dust_epsilon_for_pair(hypercore_pair) == HYPERLIQUID_VAULT_CLOSE_EPSILON
+    assert get_dust_epsilon_for_pair(hypercore_pair) == DEFAULT_VAULT_EPSILON
 
     # 3. Position with safety-margin dust quantity (1.50 USDC) can be closed
     ts = native_datetime_utc_now()

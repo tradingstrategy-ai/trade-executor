@@ -33,7 +33,7 @@ from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
 from tradeexecutor.state.trade import TradeFlag, TradeExecution, TradeType
-from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_dust_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON, \
+from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_close_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON, \
     get_relative_epsilon_for_asset, get_relative_epsilon_for_pair, DEFAULT_USD_LOW_VALUE_THRESHOLD
 from tradeexecutor.strategy.lending_protocol_leverage import reset_credit_supply_loan
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -378,7 +378,7 @@ def calculate_account_corrections(
             position = mapping.get_only_position()
 
             if isinstance(position, TradingPosition):
-                dust_epsilon = get_dust_epsilon_for_pair(position.pair)
+                dust_epsilon = get_close_epsilon_for_pair(position.pair)
             elif isinstance(position, ReservePosition):
                 dust_epsilon = get_dust_epsilon_for_asset(position.asset)
             elif position is None:
@@ -1172,7 +1172,7 @@ def create_missing_vault_positions(
         # Dust-level equity: create a position and immediately close it
         # so it appears in closed positions rather than lingering as an
         # un-trackable open position.
-        dust_epsilon = get_dust_epsilon_for_pair(pair)
+        dust_epsilon = get_close_epsilon_for_pair(pair)
         if equity < float(dust_epsilon):
             logger.info(
                 "Vault equity $%.4f for %s is below dust epsilon %.2f, closing as dust",
@@ -1410,7 +1410,7 @@ def _build_hypercore_vault_account_checks(
         quantity = position.get_quantity()
         expected_amount = Decimal(str(position.calculate_quantity_usd_value(quantity)))
         actual_amount = balance.amount
-        dust_epsilon = get_dust_epsilon_for_pair(position.pair)
+        dust_epsilon = get_close_epsilon_for_pair(position.pair)
         relative_epsilon = get_relative_epsilon_for_pair(position.pair)
         mismatch = is_relative_mismatch(
             actual_amount,
