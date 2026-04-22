@@ -1734,12 +1734,12 @@ class ExecutionLoop:
             )
 
         def listen_error(event):
-            if event.exception:
-                logger.info("Scheduled task received exception. event: %s, exception: %s", event, event.exception)
+            if event.code == EVENT_JOB_MAX_INSTANCES:
+                logger.warning("Scheduled task skipped because max instances are already running. event: %s", event)
             elif event.code == EVENT_JOB_MISSED:
                 logger.warning("Scheduled task missed its run time. event: %s", event)
-            elif event.code == EVENT_JOB_MAX_INSTANCES:
-                logger.warning("Scheduled task skipped because max instances are already running. event: %s", event)
+            elif hasattr(event, 'exception') and event.exception:
+                logger.info("Scheduled task received exception. event: %s, exception: %s", event, event.exception)
             else:
                 logger.error("Should not happen")
 
