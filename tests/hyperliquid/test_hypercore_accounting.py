@@ -16,6 +16,7 @@ import pytest
 from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.chain import ChainId
 
+from tradeexecutor.cli.commands.correct_accounts import _sync_hypercore_vault_positions
 from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultPricing, HypercoreVaultValuator
 from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_pair
 from tradeexecutor.cli.double_position import check_double_position
@@ -42,6 +43,7 @@ from tradeexecutor.strategy.dust import (
     HYPERLIQUID_VAULT_RELATIVE_EPSILON,
     DEFAULT_VAULT_EPSILON,
 )
+from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.sync_model import OnChainBalance
@@ -92,6 +94,88 @@ def test_valuation_second_deposit_stays_correct():
     call_args = position.revalue_base_asset.call_args
     new_price = call_args[0][1]
     assert pytest.approx(new_price, rel=1e-4) == 155.0 / 150.0
+
+
+def test_correct_accounts_marks_hypercore_equity_without_vault_flow() -> None:
+    """Test Hypercore account correction does not book vault performance as a balance flow.
+
+    1. Create an open Hypercore vault position with 100 USDC deposited.
+    2. Mock the Hyperliquid equity API to report 105 USDC.
+    3. Run the Hypercore account correction sync helper.
+    4. Verify the position is revalued to 105 USDC without creating a vault_flow balance update.
+    """
+
+    # 1. Create an open Hypercore vault position with 100 USDC deposited.
+    reserve_asset = AssetIdentifier(
+        chain_id=999,
+        address="0xb88339cb7199b77e23db6e890353e22632ba630f",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    pair = create_hypercore_vault_pair(
+        quote=reserve_asset,
+        vault_address="0x1111111111111111111111111111111111111111",
+    )
+    state = State()
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    state.portfolio.adjust_reserves(reserve_asset, Decimal("200"), "Initial reserve")
+    position, trade, _created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 4, 28),
+        pair=pair,
+        quantity=None,
+        reserve=Decimal("100"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        notes="Open Hypercore vault position",
+    )
+    trade.mark_success(
+        executed_at=datetime.datetime(2026, 4, 28, 0, 1),
+        executed_price=1.0,
+        executed_quantity=Decimal("100"),
+        executed_reserve=Decimal("100"),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+
+    # 2. Mock the Hyperliquid equity API to report 105 USDC.
+    universe = MagicMock()
+    dex_pair = object()
+    universe.data_universe.pairs.iterate_pairs.return_value = [dex_pair]
+    sync_model = MagicMock()
+    sync_model.get_token_storage_address.return_value = "0xa8F8DEbb722c6174B814b432169BF569603F673F"
+    web3 = MagicMock()
+    web3.eth.chain_id = 999
+    next_balance_update_id = state.portfolio.next_balance_update_id
+
+    with (
+        patch("tradeexecutor.strategy.trading_strategy_universe.translate_trading_pair", return_value=pair),
+        patch("tradeexecutor.strategy.account_correction.translate_trading_pair", return_value=pair),
+        patch("eth_defi.hyperliquid.session.create_hyperliquid_session", return_value=MagicMock()),
+        patch(
+            "tradeexecutor.ethereum.vault.hypercore_vault.create_hypercore_vault_value_func",
+            return_value=lambda pair: Decimal("105"),
+        ),
+    ):
+        # 3. Run the Hypercore account correction sync helper.
+        _sync_hypercore_vault_positions(
+            asset_management_mode=AssetManagementMode.lagoon,
+            universe=universe,
+            sync_model=sync_model,
+            web3=web3,
+            state=state,
+        )
+
+    # 4. Verify the position is revalued to 105 USDC without creating a vault_flow balance update.
+    assert position.get_quantity() == Decimal("100")
+    assert position.get_value() == pytest.approx(105)
+    assert position.last_token_price == pytest.approx(1.05)
+    assert len(position.valuation_updates) == 1
+    assert len(position.balance_updates) == 0
+    assert state.portfolio.next_balance_update_id == next_balance_update_id
+    assert len(state.sync.accounting.balance_update_refs) == 0
 
 
 def test_valuation_zero_quantity_uses_default_price():
