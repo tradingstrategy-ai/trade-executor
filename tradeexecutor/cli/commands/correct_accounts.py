@@ -2,6 +2,7 @@
 
 """
 import datetime
+import logging
 import sys
 import time
 from _decimal import Decimal
@@ -44,6 +45,9 @@ from ...strategy.universe_model import UniverseOptions
 from ...utils.blockchain import get_block_timestamp
 
 
+logger = logging.getLogger(__name__)
+
+
 def _sync_hypercore_vault_positions(
     *,
     asset_management_mode: AssetManagementMode,
@@ -52,7 +56,7 @@ def _sync_hypercore_vault_positions(
     web3,
     state,
 ) -> None:
-    """Auto-create and sync Hypercore vault positions from the Hyperliquid API."""
+    """Auto-create and mark Hypercore vault positions from the Hyperliquid API."""
 
     if not asset_management_mode.is_vault() or universe is None:
         return
@@ -76,8 +80,7 @@ def _sync_hypercore_vault_positions(
     )
     from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_value_func
     from tradeexecutor.strategy.account_correction import create_missing_vault_positions
-    from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
-    from tradeexecutor.state.sync import BalanceEventRef
+    from tradeexecutor.state.valuation import ValuationUpdate
 
     is_testnet = chain_id == 998
     api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
@@ -105,7 +108,6 @@ def _sync_hypercore_vault_positions(
         p for p in state.portfolio.get_open_positions()
         if p.pair.is_hyperliquid_vault()
     ]
-    vault_sync_events = []
     for position in vault_positions:
         try:
             current_equity = vault_value_func(position.pair)
@@ -113,8 +115,9 @@ def _sync_hypercore_vault_positions(
             logger.error("Failed to get vault equity for position %d: %s", position.position_id, e)
             continue
 
-        tracked_value = position.get_quantity()
-        diff = current_equity - tracked_value
+        quantity = position.get_quantity()
+        old_value = position.get_value()
+        diff = float(current_equity) - old_value
 
         if diff == 0:
             logger.debug(
@@ -125,48 +128,44 @@ def _sync_hypercore_vault_positions(
             )
             continue
 
+        if quantity <= 0:
+            logger.warning(
+                "Vault position %d (%s) has equity %.2f but no positive state quantity (%s)",
+                position.position_id,
+                position.pair.get_vault_name() or position.pair.pool_address,
+                current_equity,
+                quantity,
+            )
+            continue
+
         vault_name = position.pair.get_vault_name() or "unknown"
         vault_addr = position.pair.pool_address or "?"
         logger.info(
-            "Vault position %d (%s %s): equity changed %.2f -> %.2f (diff=%.2f)",
+            "Vault position %d (%s %s): marking equity %.2f -> %.2f (diff=%.2f)",
             position.position_id,
             vault_name,
             vault_addr,
-            tracked_value,
+            old_value,
             current_equity,
             diff,
         )
 
-        event_id = state.portfolio.next_balance_update_id
-        state.portfolio.next_balance_update_id += 1
-
-        evt = BalanceUpdate(
-            balance_update_id=event_id,
-            position_type=BalanceUpdatePositionType.open_position,
-            cause=BalanceUpdateCause.vault_flow,
-            asset=position.pair.base,
-            block_mined_at=native_datetime_utc_now(),
-            strategy_cycle_included_at=native_datetime_utc_now(),
-            chain_id=position.pair.base.chain_id,
-            old_balance=tracked_value,
-            usd_value=float(diff),
-            quantity=diff,
-            owner_address=None,
-            tx_hash=None,
-            log_index=None,
-            position_id=position.position_id,
-            block_number=None,
-            notes="Hypercore vault equity sync",
+        valued_at = native_datetime_utc_now()
+        old_price = position.last_token_price
+        new_price = float(current_equity / quantity)
+        new_value = position.revalue_base_asset(valued_at, new_price)
+        position.valuation_updates.append(
+            ValuationUpdate(
+                created_at=valued_at,
+                position_id=position.position_id,
+                valued_at=valued_at,
+                old_value=old_value,
+                new_value=new_value,
+                old_price=old_price,
+                new_price=new_price,
+                quantity=quantity,
+            )
         )
-
-        position.balance_updates[evt.balance_update_id] = evt
-        ref = BalanceEventRef.from_balance_update_event(evt)
-        state.sync.accounting.balance_update_refs.append(ref)
-        vault_sync_events.append(evt)
-
-    if vault_sync_events:
-        state.sync.accounting.last_updated_at = native_datetime_utc_now()
-        logger.info("Vault equity sync: %d balance update(s)", len(vault_sync_events))
 
 
 def _has_closed_hypercore_positions(state) -> bool:

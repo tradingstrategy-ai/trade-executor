@@ -165,6 +165,7 @@ def environment(
 
 # ERROR tests/mainnet_fork/test_price_impact_crash.py::test_price_impact_crash - requests.exceptions.ReadTimeout: HTTPConnectionPool(host='localhost', port=25535): Read timed out. (read timeout=10)
 @flaky.flaky
+@pytest.mark.skip(reason="Skipped due to Polygon Uniswap trading pairs are dead")
 def test_price_impact_crash(
     environment: dict,
     state_file: Path,
@@ -187,4 +188,3 @@ def test_price_impact_crash(
     # Run a single cycle of the strategy
     with pytest.raises(PriceImpactToleranceExceeded):
         app(["start"], standalone_mode=False)
-
