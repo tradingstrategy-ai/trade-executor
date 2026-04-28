@@ -117,7 +117,7 @@ def _sync_hypercore_vault_positions(
 
         quantity = position.get_quantity()
         old_value = position.get_value()
-        diff = current_equity - Decimal(str(old_value))
+        diff = float(current_equity) - old_value
 
         if diff == 0:
             logger.debug(

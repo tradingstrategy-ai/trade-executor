@@ -1,6 +1,5 @@
 """Trading position state info."""
 import datetime
-import enum
 import logging
 import pprint
 import statistics
@@ -1549,8 +1548,6 @@ class TradingPosition(GenericPosition):
         if self.uses_internal_share_price_profit():
             # Exchange account positions track value via quantity changes
             # (balance updates), not price changes — price is always 1.0.
-            # Hypercore vault positions can have legacy vault_flow updates
-            # that should be interpreted through internal share price state.
             # Share price state is initialised on the first valuation sync,
             # not from the placeholder trade. Until then, profit is unknown.
             if self.share_price_state is not None:
@@ -1609,9 +1606,6 @@ class TradingPosition(GenericPosition):
         """
 
         # Exchange account positions use placeholder trades ($1) that don't represent real capital.
-        # Hypercore vault positions can carry legacy vault_flow balance updates.
-        # The legacy calculation would produce absurd percentages or wash out vault performance.
-        # Use share price method instead, matching get_unrealised_profit_usd().
         if self.uses_internal_share_price_profit():
             if self.share_price_state is not None:
                 data = self.get_share_price_profit()
