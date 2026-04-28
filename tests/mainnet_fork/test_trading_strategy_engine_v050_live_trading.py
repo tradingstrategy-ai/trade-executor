@@ -141,6 +141,7 @@ def hot_wallet(
 
 
 @flaky.flaky
+@pytest.mark.skip(reason="Skipped due to Polygon Uniswap trading pairs are dead")
 def test_trading_strategy_engine_v050_live_trading(
     logger: logging.Logger,
     anvil_polygon_chain_fork_rpc,
