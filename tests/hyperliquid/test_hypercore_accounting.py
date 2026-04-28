@@ -130,10 +130,11 @@ def test_correct_accounts_marks_hypercore_equity_without_vault_flow() -> None:
         reserve_currency_price=1.0,
         notes="Open Hypercore vault position",
     )
-    trade.mark_success(
+    state.mark_trade_success(
         executed_at=datetime.datetime(2026, 4, 28, 0, 1),
+        trade=trade,
         executed_price=1.0,
-        executed_quantity=Decimal("100"),
+        executed_amount=Decimal("100"),
         executed_reserve=Decimal("100"),
         lp_fees=0,
         native_token_price=0,
@@ -176,6 +177,76 @@ def test_correct_accounts_marks_hypercore_equity_without_vault_flow() -> None:
     assert len(position.balance_updates) == 0
     assert state.portfolio.next_balance_update_id == next_balance_update_id
     assert len(state.sync.accounting.balance_update_refs) == 0
+
+
+def test_hypercore_profit_uses_internal_share_price_with_vault_flow() -> None:
+    """Test Hypercore vault profit is calculated from internal share price state.
+
+    1. Create an open Hypercore vault position with 100 USDC deposited.
+    2. Add a legacy vault_flow balance update that increases tracked quantity by 20 USDC.
+    3. Verify profit uses internal share price state instead of spot average-price logic.
+    """
+
+    # 1. Create an open Hypercore vault position with 100 USDC deposited.
+    reserve_asset = AssetIdentifier(
+        chain_id=999,
+        address="0xb88339cb7199b77e23db6e890353e22632ba630f",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    pair = create_hypercore_vault_pair(
+        quote=reserve_asset,
+        vault_address="0x2222222222222222222222222222222222222222",
+    )
+    state = State()
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    state.portfolio.adjust_reserves(reserve_asset, Decimal("200"), "Initial reserve")
+    position, trade, _created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 4, 28),
+        pair=pair,
+        quantity=None,
+        reserve=Decimal("100"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        notes="Open Hypercore vault position",
+    )
+    state.mark_trade_success(
+        executed_at=datetime.datetime(2026, 4, 28, 0, 1),
+        trade=trade,
+        executed_price=1.0,
+        executed_amount=Decimal("100"),
+        executed_reserve=Decimal("100"),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+
+    # 2. Add a legacy vault_flow balance update that increases tracked quantity by 20 USDC.
+    position.balance_updates[1] = BalanceUpdate(
+        balance_update_id=1,
+        cause=BalanceUpdateCause.vault_flow,
+        position_type=BalanceUpdatePositionType.open_position,
+        asset=pair.base,
+        block_mined_at=datetime.datetime(2026, 4, 28, 0, 2),
+        strategy_cycle_included_at=datetime.datetime(2026, 4, 28),
+        chain_id=pair.base.chain_id,
+        quantity=Decimal("20"),
+        old_balance=Decimal("100"),
+        usd_value=20,
+        position_id=position.position_id,
+        notes="Legacy Hypercore vault equity sync",
+        block_number=1,
+    )
+
+    # 3. Verify profit uses internal share price state instead of spot average-price logic.
+    assert position.share_price_state is not None
+    assert position.get_quantity() == Decimal("120")
+    assert position.get_unrealised_profit_usd() == pytest.approx(20)
+    assert position.get_total_profit_usd() == pytest.approx(20)
+    assert position.get_unrealised_profit_pct() == pytest.approx(0.20)
+    assert position.get_total_profit_percent() == pytest.approx(0.20)
 
 
 def test_valuation_zero_quantity_uses_default_price():

@@ -474,6 +474,10 @@ class TradingPosition(GenericPosition):
         """Is this an exchange account position (Derive, Hyperliquid, etc.)."""
         return self.pair.is_exchange_account()
 
+    def uses_internal_share_price_profit(self) -> bool:
+        """Use internal share price state for profit calculations."""
+        return self.is_exchange_account() or self.pair.is_hyperliquid_vault()
+
     def is_long(self) -> bool:
         """Is this position long on the underlying base asset.
 
@@ -1542,9 +1546,11 @@ class TradingPosition(GenericPosition):
         :return:
             profit in dollar
         """
-        if self.is_exchange_account():
+        if self.uses_internal_share_price_profit():
             # Exchange account positions track value via quantity changes
             # (balance updates), not price changes — price is always 1.0.
+            # Hypercore vault positions can have legacy vault_flow updates
+            # that should be interpreted through internal share price state.
             # Share price state is initialised on the first valuation sync,
             # not from the placeholder trade. Until then, profit is unknown.
             if self.share_price_state is not None:
@@ -1573,6 +1579,12 @@ class TradingPosition(GenericPosition):
 
     def get_total_profit_usd(self) -> USDollarAmount:
         """Realised + unrealised profit."""
+        if self.uses_internal_share_price_profit():
+            if self.share_price_state is not None:
+                data = self.get_share_price_profit()
+                return data.profit_usd
+            return 0
+
         realised_profit = self.get_realised_profit_usd() or 0
         unrealised_profit = self.get_unrealised_profit_usd() or 0
         total_profit = realised_profit + unrealised_profit
@@ -1596,11 +1608,11 @@ class TradingPosition(GenericPosition):
             0 if profit calculation cannot be made yet
         """
 
-        # Exchange account positions use placeholder trades ($1) that don't
-        # represent real capital. The legacy calculation would divide by
-        # this tiny amount, producing absurd percentages like 9,999%.
+        # Exchange account positions use placeholder trades ($1) that don't represent real capital.
+        # Hypercore vault positions can carry legacy vault_flow balance updates.
+        # The legacy calculation would produce absurd percentages or wash out vault performance.
         # Use share price method instead, matching get_unrealised_profit_usd().
-        if self.is_exchange_account():
+        if self.uses_internal_share_price_profit():
             if self.share_price_state is not None:
                 data = self.get_share_price_profit()
                 return data.profit_pct
@@ -2061,7 +2073,7 @@ class TradingPosition(GenericPosition):
             return 0.
         """
 
-        if self.is_exchange_account():
+        if self.uses_internal_share_price_profit():
             # Share price state is initialised on the first valuation sync.
             # Until then, profit is unknown.
             if self.share_price_state is not None:
