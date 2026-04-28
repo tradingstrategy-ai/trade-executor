@@ -214,6 +214,7 @@ def test_generic_routing_test_trade_spot_and_short(
 
 @flaky.flaky
 @pytest.mark.slow_test_group
+@pytest.mark.skip(reason="Skipped due to Polygon Uniswap trading pairs are dead")
 def test_generic_routing_live_trading_start_spot_only(
     environment: dict,
     state_file: Path,
