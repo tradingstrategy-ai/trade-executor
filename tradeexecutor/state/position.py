@@ -473,7 +473,7 @@ class TradingPosition(GenericPosition):
         """Is this an exchange account position (Derive, Hyperliquid, etc.)."""
         return self.pair.is_exchange_account()
 
-    def uses_internal_share_price_profit(self) -> bool:
+    def is_using_internal_share_price_profit(self) -> bool:
         """Use internal share price state for profit calculations."""
         return self.is_exchange_account() or self.pair.is_hyperliquid_vault()
 
@@ -1545,7 +1545,7 @@ class TradingPosition(GenericPosition):
         :return:
             profit in dollar
         """
-        if self.uses_internal_share_price_profit():
+        if self.is_using_internal_share_price_profit():
             # Exchange account positions track value via quantity changes
             # (balance updates), not price changes — price is always 1.0.
             # Share price state is initialised on the first valuation sync,
@@ -1576,7 +1576,7 @@ class TradingPosition(GenericPosition):
 
     def get_total_profit_usd(self) -> USDollarAmount:
         """Realised + unrealised profit."""
-        if self.uses_internal_share_price_profit():
+        if self.is_using_internal_share_price_profit():
             if self.share_price_state is not None:
                 data = self.get_share_price_profit()
                 return data.profit_usd
@@ -1606,7 +1606,7 @@ class TradingPosition(GenericPosition):
         """
 
         # Exchange account positions use placeholder trades ($1) that don't represent real capital.
-        if self.uses_internal_share_price_profit():
+        if self.is_using_internal_share_price_profit():
             if self.share_price_state is not None:
                 data = self.get_share_price_profit()
                 return data.profit_pct
@@ -2067,7 +2067,7 @@ class TradingPosition(GenericPosition):
             return 0.
         """
 
-        if self.uses_internal_share_price_profit():
+        if self.is_using_internal_share_price_profit():
             # Share price state is initialised on the first valuation sync.
             # Until then, profit is unknown.
             if self.share_price_state is not None:
