@@ -45,15 +45,22 @@ class CctpBridgeRouting(RoutingModel):
         When ``None``, the source chain ``tx_builder`` balance address is
         used as a fallback (correct for hot-wallet deployments where the
         same address exists on every chain).
+
+    :param attestation_timeout:
+        Maximum seconds to wait for Circle's Iris API attestation during
+        settlement.  Defaults to 1800 (30 minutes).
     """
 
     def __init__(
         self,
         web3config: Web3Config,
         custody_address_resolver: Callable[[int], str] | None = None,
+        attestation_timeout: float = 1800.0,
     ):
         self.web3config = web3config
         self.custody_address_resolver = custody_address_resolver
+        self.attestation_timeout = attestation_timeout
+        self._hot_wallet = None
 
     def create_routing_state(
         self,
@@ -95,6 +102,8 @@ class CctpBridgeRouting(RoutingModel):
         assert isinstance(routing_state, CctpBridgeRoutingState)
         tx_builder = routing_state.tx_builder
         assert tx_builder is not None, "CctpBridgeRoutingState missing tx_builder"
+
+        self._hot_wallet = tx_builder.hot_wallet
 
         for trade in trades:
             assert trade.pair.is_cctp_bridge(), \
@@ -185,6 +194,14 @@ class CctpBridgeRouting(RoutingModel):
                 dest_chain_id,
             )
 
+    def needs_sequential_trade_execution(self, trades: list[TradeExecution]) -> bool:
+        """CCTP bridges must settle before the next trade starts.
+
+        The attestation wait and ``receiveMessage`` broadcast happen during
+        settlement — later trades may depend on the minted USDC.
+        """
+        return len(trades) > 0
+
     def settle_trade(
         self,
         web3,
@@ -195,30 +212,116 @@ class CctpBridgeRouting(RoutingModel):
     ):
         """Settle a CCTP bridge trade after broadcast.
 
-        CCTP bridge is always 1:1, so we just check the receipt status
-        and mark the trade at face value.
-        """
-        from tradeexecutor.ethereum.execution import report_failure
-        from tradeexecutor.ethereum.swap import get_swap_transactions
+        Performs a multi-phase settlement:
 
+        1. Verify the burn receipt succeeded on the source chain.
+        2. Poll Circle's Iris API for attestation (Phase 2).
+        3. Broadcast ``receiveMessage`` on the destination chain (Phase 3).
+        4. Mark the trade as success only when both burn and receive are confirmed.
+
+        If the attestation times out or ``receiveMessage`` reverts, the trade
+        is marked as in-transit so it can be retried later.
+
+        :param web3:
+            Web3 connection to the **source** chain (where the burn happened).
+
+        :param state:
+            Current strategy state.
+
+        :param trade:
+            The CCTP bridge trade to settle.
+
+        :param receipts:
+            Mapping of tx hash → receipt for broadcasted transactions.
+
+        :param stop_on_execution_failure:
+            If ``True``, raise on failure instead of marking trade failed.
+        """
+        from eth_defi.cctp.attestation import fetch_attestation
+        from eth_defi.cctp.receive import prepare_receive_message
+        from eth_defi.cctp.transfer import _resolve_cctp_domain, get_message_transmitter_v2
+        from eth_defi.hotwallet import HotWallet as EthHotWallet
+        from tradingstrategy.chain import ChainId
+
+        from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
+        from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
+
+        # Phase 1: verify burn
         swap_tx = get_swap_transactions(trade)
         receipt = receipts[HexBytes(swap_tx.tx_hash)]
 
-        if receipt["status"] == 1:
-            ts = fetch_block_timestamp(web3, receipt["blockNumber"])
-            state.mark_trade_success(
-                ts,
-                trade,
-                executed_price=1.0,
-                executed_amount=trade.planned_quantity,
-                executed_reserve=trade.planned_reserve,
-                lp_fees=0,
-                native_token_price=0,
-            )
+        if receipt["status"] != 1:
+            report_failure(native_datetime_utc_now(), state, trade, stop_on_execution_failure)
+            return
+
+        ts = fetch_block_timestamp(web3, receipt["blockNumber"])
+
+        # Determine chains
+        pair = trade.pair
+        if trade.is_buy():
+            source_chain_id = pair.quote.chain_id
+            dest_chain_id = pair.base.chain_id
         else:
-            report_failure(
-                native_datetime_utc_now(),
-                state,
-                trade,
-                stop_on_execution_failure,
+            source_chain_id = pair.base.chain_id
+            dest_chain_id = pair.quote.chain_id
+
+        # Phase 2: attestation
+        source_domain = _resolve_cctp_domain(source_chain_id)
+        assert source_domain is not None, f"No CCTP domain for chain {source_chain_id}"
+
+        try:
+            attestation = fetch_attestation(
+                source_domain=source_domain,
+                transaction_hash=swap_tx.tx_hash,
+                timeout=self.attestation_timeout,
             )
+        except TimeoutError:
+            logger.warning("CCTP attestation timed out for trade %s, marking in-transit", trade.trade_id)
+            state.mark_bridge_in_transit(ts, trade)
+            return
+
+        # Phase 3: receiveMessage on destination chain
+        dest_web3 = self.web3config.get_connection(ChainId(dest_chain_id))
+        dest_wallet = EthHotWallet(self._hot_wallet.account)
+        dest_wallet.sync_nonce(dest_web3)
+
+        message_transmitter = get_message_transmitter_v2(dest_web3)
+        receive_fn = prepare_receive_message(dest_web3, attestation.message, attestation.attestation)
+
+        dest_tx_builder = HotWalletTransactionBuilder(dest_web3, dest_wallet)
+        receive_tx = dest_tx_builder.sign_transaction(
+            message_transmitter,
+            receive_fn,
+            gas_limit=200_000,
+            asset_deltas=[],
+            notes=f"CCTP receiveMessage chain {source_chain_id} -> {dest_chain_id}",
+        )
+
+        trade.blockchain_transactions.append(receive_tx)
+
+        try:
+            dest_web3.eth.send_raw_transaction(HexBytes(receive_tx.signed_bytes))
+            receive_tx.broadcasted_at = native_datetime_utc_now()
+            receive_receipt = dest_web3.eth.wait_for_transaction_receipt(
+                HexBytes(receive_tx.tx_hash), timeout=120
+            )
+        except Exception as e:
+            logger.warning("CCTP receiveMessage failed for trade %s: %s", trade.trade_id, e)
+            state.mark_bridge_in_transit(ts, trade)
+            return
+
+        if receive_receipt["status"] != 1:
+            logger.warning("CCTP receiveMessage reverted for trade %s", trade.trade_id)
+            state.mark_bridge_in_transit(ts, trade)
+            return
+
+        # Success: both burn and receive confirmed
+        state.mark_trade_success(
+            ts,
+            trade,
+            executed_price=1.0,
+            executed_amount=trade.planned_quantity,
+            executed_reserve=trade.planned_reserve,
+            lp_fees=0,
+            native_token_price=0,
+        )
