@@ -275,14 +275,8 @@ def create_trading_universe(
         risk_score=Parameters.min_token_sniffer_score,
     )
 
-    # Check if we accidentally get rid of benchmark pairs we need for the strategy
-    difference = set(benchmark_pair_ids).difference(set(risk_filtered_pairs_df["pair_id"]))
-    if difference:
-        first_dropped_id = next(iter(difference))
-        first_dropped_data = pairs_df.loc[pairs_df.pair_id == first_dropped_id]
-        assert len(first_dropped_data) == 1, f"Got {len(first_dropped_data)} entries: {first_dropped_data}"
-        raise AssertionError(f"Benchmark trading pair dropped in filter_by_token_sniffer_score() check: {first_dropped_data.iloc[0]}")
-    pairs_df = risk_filtered_pairs_df.sort_values("volume", ascending=False)
+    pairs_df = pd.concat([risk_filtered_pairs_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
+    pairs_df = pairs_df.sort_values("volume", ascending=False)
     logger.info(f"After TokenSniffer risk filter we have {len(pairs_df)} pairs")
 
     uni_v2 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v2"]

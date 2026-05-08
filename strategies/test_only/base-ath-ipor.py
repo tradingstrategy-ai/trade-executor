@@ -285,14 +285,8 @@ def create_trading_universe(
         printer=debug_printer,
     )
 
-    # Check if we accidentally get rid of benchmark pairs we need for the strategy
-    difference = set(benchmark_pair_ids).difference(set(risk_filtered_pairs_df["pair_id"]))
-    if difference:
-        first_dropped_id = next(iter(difference))
-        first_dropped_data = pairs_df.loc[pairs_df.pair_id == first_dropped_id]
-        assert len(first_dropped_data) == 1, f"Got {len(first_dropped_data)} entries: {first_dropped_data}"
-        raise AssertionError(f"Benchmark trading pair dropped in filter_by_token_sniffer_score() check: {first_dropped_data.iloc[0]}")
-    pairs_df = risk_filtered_pairs_df.sort_values("volume", ascending=False)
+    pairs_df = pd.concat([risk_filtered_pairs_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
+    pairs_df = pairs_df.sort_values("volume", ascending=False)
     debug_printer(f"After TokenSniffer risk filter we have {len(pairs_df)} pairs")
 
     # Remove extra pairs from the TVL data,
