@@ -1340,6 +1340,36 @@ class ExecutionLoop:
         else:
             logger.info("Startup accounting check disabled (CHECK_ACCOUNTS=false)")
 
+        # Check for CCTP bridge trades stuck in transit from a previous run.
+        # Must resolve these before starting new cycles, otherwise capital
+        # accounting is incorrect.
+        web3config = getattr(self.execution_model, 'web3config', None)
+        if web3config is not None:
+            from tradeexecutor.ethereum.cctp.retry import check_and_retry_cctp_in_transit
+            resolved = check_and_retry_cctp_in_transit(
+                state=state,
+                execution_model=self.execution_model,
+                web3config=web3config,
+            )
+            if resolved:
+                logger.trade("Resolved %d CCTP in-transit trade(s) on startup", len(resolved))
+                self.store.sync(state)
+
+            # Check if any remain unresolved — halt if so
+            from tradeexecutor.state.trade import TradeStatus
+            unresolved = []
+            for position in state.portfolio.open_positions.values():
+                for trade in position.trades.values():
+                    if trade.get_status() == TradeStatus.cctp_in_transit:
+                        unresolved.append(trade)
+            if unresolved:
+                trade_ids = [t.trade_id for t in unresolved]
+                raise RuntimeError(
+                    f"Cannot start live trading: {len(unresolved)} CCTP bridge trade(s) "
+                    f"still in transit after startup retry. Trade IDs: {trade_ids}. "
+                    f"Resolve manually with trade-executor bridge-retry or receiveMessage."
+                )
+
         # Store summary statistics in memory before doing anything else
         self.refresh_live_run_state(state, visualisation=self.visulisation, universe=universe, cycle_duration=self.cycle_duration)
 

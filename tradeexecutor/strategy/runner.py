@@ -957,6 +957,21 @@ class StrategyRunner(abc.ABC):
                     max_price_impact=self.max_price_impact,
                 )
 
+                # Inject CCTP bridge trades for cross-chain rebalancing.
+                # Only applies to cross-chain universes with a primary chain set.
+                if hasattr(universe, 'get_reserve_asset') and hasattr(universe, 'primary_chain'):
+                    from tradeexecutor.ethereum.cctp.planner import inject_cctp_bridge_trades
+                    primary_chain = getattr(universe, 'primary_chain', None)
+                    if primary_chain is not None and len(rebalance_trades) > 0:
+                        rebalance_trades = inject_cctp_bridge_trades(
+                            state=state,
+                            trades=rebalance_trades,
+                            strategy_universe=universe,
+                            primary_chain_id=primary_chain.value,
+                            ts=strategy_cycle_timestamp,
+                            reserve_asset=universe.get_reserve_asset(),
+                        )
+
                 # If we have no trades, then we are done
                 # Log what our strategy decided
                 if self.is_progress_report_needed():

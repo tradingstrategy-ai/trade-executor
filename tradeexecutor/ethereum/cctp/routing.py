@@ -310,6 +310,18 @@ class CctpBridgeRouting(RoutingModel):
             state.mark_bridge_in_transit(ts, trade)
             return
 
+        # Populate confirmation metadata on the receive tx
+        receive_ts = fetch_block_timestamp(dest_web3, receive_receipt["blockNumber"])
+        receive_tx.set_confirmation_information(
+            ts=receive_ts,
+            block_number=receive_receipt["blockNumber"],
+            block_hash=receive_receipt["blockHash"].hex() if isinstance(receive_receipt["blockHash"], bytes) else str(receive_receipt["blockHash"]),
+            realised_gas_units_consumed=receive_receipt["gasUsed"],
+            realised_gas_price=receive_receipt.get("effectiveGasPrice", 0),
+            status=receive_receipt["status"] == 1,
+            revert_reason=None,
+        )
+
         if receive_receipt["status"] != 1:
             logger.warning("CCTP receiveMessage reverted for trade %s", trade.trade_id)
             state.mark_bridge_in_transit(ts, trade)

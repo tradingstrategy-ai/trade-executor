@@ -448,18 +448,26 @@ class BacktestExecution(ExecutionModel):
             check_balances=check_balances,
         )
 
-        # Re-sort so bridge trades execute before the satellite trades that
-        # depend on them.  Bridge-out buys go first (sort key 0), everything
-        # else keeps its original execution sort position (bumped by 1 so it
-        # always comes after bridges).
+        # Sort trades for sequential execution.  The standard sort phases
+        # (PR 1) place bridge-outs at +30M, between regular buys and vault
+        # deposits.  But in a sequential backtest, bridge-out buys must
+        # execute BEFORE any satellite trade that will allocate from the
+        # resulting bridge position.  We use the standard sort as a base
+        # but promote bridge-out buys to run right after all sells/redeems
+        # complete (sort key 0) and demote bridge-backs to run last (after
+        # vault deposits return capital).
         def _sequential_sort_key(t):
-            if t.pair.is_cctp_bridge() and t.is_buy():
-                return (0, t.trade_id)
-            elif t.pair.is_cctp_bridge() and t.is_sell():
-                # Bridge-backs go last (return capital to source)
-                return (2, t.trade_id)
-            else:
-                return (1, t.get_execution_sort_position())
+            base = t.get_execution_sort_position()
+            if t.pair.is_cctp_bridge():
+                if t.is_buy():
+                    # Bridge-out buys: after all sells (negative range)
+                    # but before any regular/vault buys (positive range)
+                    return 0
+                else:
+                    # Bridge-back sells: after vault redeems but before
+                    # bridge-outs.  Use the standard -30M position.
+                    return base
+            return base
 
         trades = sorted(trades, key=_sequential_sort_key)
 

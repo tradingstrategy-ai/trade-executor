@@ -241,7 +241,10 @@ def test_settle_trade_receive_revert(
     mock_receive_tx.signed_bytes = "0xcafe"
 
     # 4. Set the receive receipt status to 0 (revert)
-    mock_dest_web3.eth.wait_for_transaction_receipt.return_value = {"status": 0}
+    mock_dest_web3.eth.wait_for_transaction_receipt.return_value = {
+        "status": 0, "blockNumber": 200, "blockHash": b"\x00" * 32,
+        "gasUsed": 100_000, "effectiveGasPrice": 1_000_000_000,
+    }
 
     with (
         patch("tradeexecutor.ethereum.cctp.routing.fetch_block_timestamp", return_value=mock_ts),
@@ -314,7 +317,10 @@ def test_settle_trade_success_flow(
     mock_receive_tx.signed_bytes = "0xcafe"
 
     # 4. Set the receive receipt status to 1 (success)
-    mock_dest_web3.eth.wait_for_transaction_receipt.return_value = {"status": 1}
+    mock_dest_web3.eth.wait_for_transaction_receipt.return_value = {
+        "status": 1, "blockNumber": 200, "blockHash": b"\x00" * 32,
+        "gasUsed": 100_000, "effectiveGasPrice": 1_000_000_000,
+    }
 
     with (
         patch("tradeexecutor.ethereum.cctp.routing.fetch_block_timestamp", return_value=mock_ts),

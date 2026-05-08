@@ -38,6 +38,7 @@ def _make_cctp_custody_resolver(
     satellite_vaults: dict | None,
     primary_custody_address: str | None,
     fallback_address: str | None,
+    primary_chain_id: int | None = None,
 ) -> Callable[[int], str] | None:
     """Build a chain_id -> custody address resolver for CCTP mint recipients.
 
@@ -54,6 +55,11 @@ def _make_cctp_custody_resolver(
         Address used when no satellite or primary match is found
         (e.g. the hot wallet address).
 
+    :param primary_chain_id:
+        Chain ID of the primary chain.  When set with satellite_vaults,
+        the resolver raises for unknown non-primary destinations instead
+        of silently falling back to the primary address.
+
     :return:
         A resolver callable, or ``None`` when no addresses are available.
     """
@@ -65,6 +71,16 @@ def _make_cctp_custody_resolver(
             satellite = satellite_vaults.get(chain_id)
             if satellite is not None:
                 return satellite.safe_address
+            # If we have satellites configured, only fall back to primary
+            # for the primary chain itself.  An unknown satellite destination
+            # means a misconfigured deployment — raise instead of silently
+            # minting to the wrong Safe.
+            if primary_chain_id is not None and chain_id != primary_chain_id:
+                raise ValueError(
+                    f"No satellite vault configured for chain {chain_id}. "
+                    f"Primary chain is {primary_chain_id}, "
+                    f"configured satellites: {list(satellite_vaults.keys())}"
+                )
         if primary_custody_address is not None:
             return primary_custody_address
         if fallback_address is not None:
@@ -1010,10 +1026,18 @@ class EthereumPairConfigurator(PairConfigurator):
                     else:
                         fallback_address = tx_builder.get_erc_20_balance_address()
 
+            # Determine primary chain ID for strict satellite validation
+            primary_chain_id = None
+            if hasattr(self, 'strategy_universe') and self.strategy_universe is not None:
+                primary_chain = getattr(self.strategy_universe, 'primary_chain', None)
+                if primary_chain is not None:
+                    primary_chain_id = primary_chain.value
+
             custody_resolver = _make_cctp_custody_resolver(
                 satellite_vaults=self.satellite_vaults or None,
                 primary_custody_address=primary_custody_address,
                 fallback_address=fallback_address,
+                primary_chain_id=primary_chain_id,
             )
             return create_cctp_bridge_adapter(self.web3config, routing_id, custody_address_resolver=custody_resolver)
         else:
