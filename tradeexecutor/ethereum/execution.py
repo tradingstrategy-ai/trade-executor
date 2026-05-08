@@ -691,6 +691,28 @@ class EthereumExecution(ExecutionModel):
                     f"remaining_trade_ids={remaining_trade_ids}"
                 )
 
+            if trade.get_status() == TradeStatus.cctp_in_transit:
+                # Expire remaining planned trades and clean up orphan positions
+                for remaining_trade in trades[idx:]:
+                    if remaining_trade.get_status() == TradeStatus.planned:
+                        remaining_trade.mark_expired(native_datetime_utc_now())
+                        # Clean up orphan positions created by now-expired trades
+                        pos = state.portfolio.open_positions.get(remaining_trade.position_id)
+                        if pos is not None and pos.get_quantity() == 0:
+                            all_expired = all(
+                                t.get_status() == TradeStatus.expired
+                                for t in pos.trades.values()
+                            )
+                            if all_expired:
+                                del state.portfolio.open_positions[remaining_trade.position_id]
+
+                remaining_ids = [t.trade_id for t in trades[idx:]]
+                raise ExecutionHaltableIssue(
+                    f"CCTP bridge in transit — halting batch. "
+                    f"In-transit trade_id={trade.trade_id}, "
+                    f"remaining_trade_ids={remaining_ids}"
+                )
+
     def execute_trades(
         self,
         ts: datetime.datetime,
