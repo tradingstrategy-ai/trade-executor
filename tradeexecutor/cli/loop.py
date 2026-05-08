@@ -1605,8 +1605,7 @@ class ExecutionLoop:
 
         # Set up live trading tasks using APScheduler
         executors = {
-            'default': ThreadPoolExecutor(1),  # Background executor for core tasks
-            'stats': ThreadPoolExecutor(1),  # Background executor for statistics calculations and visualisations
+            'default': ThreadPoolExecutor(1),  # Background executor for all state-mutating tasks
         }
         start_time = datetime.datetime(1970, 1, 1)
         logger.info(
@@ -1620,8 +1619,8 @@ class ExecutionLoop:
             self.position_trigger_check_frequency,
         )
 
-        # We use a single thread scheduler to run our various tasks.
-        # Any task blocks other tasks - there is no parallerism or multithread support at the moment.
+        # We use a single worker thread to run our various tasks.
+        # Any task blocks other tasks - there is no parallelism or multithread support at the moment.
         # Multithread support would need making the architecture more complex with various locks
         # that could then be additional source of bugs.
         scheduler = BlockingScheduler(
@@ -1703,7 +1702,7 @@ class ExecutionLoop:
                 seconds=self.stats_refresh_frequency.total_seconds(),
                 start_date=start_time,
                 id="live_positions",
-                executor="stats",
+                executor="default",
                 replace_existing=True,
                 misfire_grace_time=None,
             )

@@ -1,14 +1,27 @@
 """Test live cycle scheduling helpers."""
 
 import datetime
+from queue import Queue
+from types import SimpleNamespace
 
+import pandas as pd
+import pytest
+
+from tradeexecutor.cli import loop as loop_module
 from tradeexecutor.cli.loop import (
+    ExecutionLoop,
     calculate_live_strategy_cycle_timestamp,
     calculate_since_last_cycle_end_schedule,
     load_latest_live_cycle_end,
 )
 from tradeexecutor.state.state import State
+from tradeexecutor.state.store import NoneStore
+from tradeexecutor.strategy.approval import UncheckedApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_previous_tick
+from tradeexecutor.strategy.dummy import DummyExecutionModel
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.run_state import RunState
+from tradeexecutor.strategy.sync_model import DummySyncModel
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
 
 
@@ -195,3 +208,79 @@ def test_since_last_cycle_end_timestamp_uses_due_time_not_current_wall_clock() -
     # 3. Verify the timestamp uses the due time instead of the current wall clock.
     assert strategy_cycle_timestamp == datetime.datetime(2026, 3, 19, 23, 59, 58)
     assert strategy_cycle_timestamp != now_
+
+
+def test_live_scheduler_state_mutating_jobs_share_single_executor(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Live scheduled state mutations should not run in parallel.
+
+    1. Replace live-loop infrastructure with no-op test doubles.
+    2. Start the live scheduler far enough to record configured jobs.
+    3. Verify all jobs that mutate and save `State` use the same APScheduler executor.
+    """
+
+    created_schedulers = []
+
+    def create_recording_scheduler(*args, **kwargs):
+        jobs = []
+
+        def add_job(func, trigger, *add_args, **add_kwargs) -> None:
+            jobs.append(SimpleNamespace(
+                id=add_kwargs["id"],
+                trigger=trigger,
+                executor=add_kwargs["executor"],
+            ))
+
+        scheduler = SimpleNamespace(
+            add_job=add_job,
+            get_jobs=lambda: jobs,
+            add_listener=lambda *listener_args, **listener_kwargs: None,
+            start=lambda: None,
+            shutdown=lambda wait=False: None,
+        )
+        created_schedulers.append(scheduler)
+        return scheduler
+
+    # 1. Replace live-loop infrastructure with no-op test doubles.
+    monkeypatch.setattr(loop_module, "BlockingScheduler", create_recording_scheduler)
+    monkeypatch.setattr(loop_module, "create_watchdog_registry", lambda mode: SimpleNamespace())
+    monkeypatch.setattr(loop_module, "start_background_watchdog", lambda registry: None)
+    monkeypatch.setattr(loop_module, "register_worker", lambda registry, name, delay: None)
+    monkeypatch.setattr(loop_module, "display_strategy_universe", lambda universe: pd.DataFrame())
+    monkeypatch.setattr(loop_module.logger, "trade", lambda *args, **kwargs: None, raising=False)
+    monkeypatch.setattr(ExecutionLoop, "warm_up_live_trading", lambda self: SimpleNamespace())
+    monkeypatch.setattr(ExecutionLoop, "refresh_live_run_state", lambda self, state, visualisation=False, universe=None, cycle_duration=None: None)
+
+    loop = ExecutionLoop(
+        name="test_live_scheduler",
+        command_queue=Queue(),
+        execution_model=DummyExecutionModel(SimpleNamespace()),
+        execution_context=ExecutionContext(mode=ExecutionMode.unit_testing_trading),
+        sync_model=DummySyncModel(),
+        approval_model=UncheckedApprovalModel(),
+        pricing_model_factory=None,
+        valuation_model_factory=None,
+        store=NoneStore(),
+        client=None,
+        strategy_factory=None,
+        cycle_duration=CycleDuration.cycle_1h,
+        stats_refresh_frequency=datetime.timedelta(minutes=1),
+        position_trigger_check_frequency=datetime.timedelta(seconds=30),
+        run_state=RunState(),
+        check_accounts=False,
+        max_cycles=1,
+    )
+
+    # 2. Start the live scheduler far enough to record configured jobs.
+    loop.run_live(State())
+
+    scheduler = created_schedulers[0]
+    job_executors = {
+        job.id: job.executor
+        for job in scheduler.get_jobs()
+    }
+
+    # 3. Verify all jobs that mutate and save `State` use the same APScheduler executor.
+    assert job_executors["live_cycle_interval"] == "default"
+    assert job_executors["live_positions"] == "default"
+    assert job_executors["live_trigger_checks"] == "default"
+    assert set(job_executors.values()) == {"default"}
