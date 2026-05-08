@@ -11,7 +11,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from eth_defi.compat import native_datetime_utc_now
@@ -45,6 +45,9 @@ def rebroadcast_all(
 
     for t in all_trades:
         # only rebroadcast trades that are not failed and unfinished
+        # Skip CCTP in-transit trades: they have a dedicated retry path
+        if t.get_status() == TradeStatus.cctp_in_transit:
+            continue
         if t.is_unfinished() and not t.is_failed():
             logger.info("Marking trade %s for rebroadcast", t)
             assert t.blockchain_transactions, f"Trade marked unfinished, did not have any txs: {t}"
