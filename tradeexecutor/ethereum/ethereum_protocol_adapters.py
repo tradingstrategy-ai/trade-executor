@@ -755,6 +755,7 @@ def create_cctp_bridge_adapter(
     web3config: "Web3Config",
     routing_id: ProtocolRoutingId,
     custody_address_resolver: Callable[[int], str] | None = None,
+    skip_attestation: bool = False,
 ) -> ProtocolRoutingConfig:
     """Create adapter for CCTP bridge pairs.
 
@@ -773,7 +774,11 @@ def create_cctp_bridge_adapter(
     from tradeexecutor.ethereum.cctp.routing import CctpBridgeRouting
     from tradeexecutor.ethereum.cctp.valuation import CctpBridgeValuationModel
 
-    routing_model = CctpBridgeRouting(web3config, custody_address_resolver=custody_address_resolver)
+    routing_model = CctpBridgeRouting(
+        web3config,
+        custody_address_resolver=custody_address_resolver,
+        skip_attestation=skip_attestation,
+    )
     pricing_model = CctpBridgePricingModel()
     valuation_model = CctpBridgeValuationModel()
 
@@ -1039,7 +1044,14 @@ class EthereumPairConfigurator(PairConfigurator):
                 fallback_address=fallback_address,
                 primary_chain_id=primary_chain_id,
             )
-            return create_cctp_bridge_adapter(self.web3config, routing_id, custody_address_resolver=custody_resolver)
+            # Skip attestation polling on Anvil forks where Circle's Iris API
+            # is unavailable.  The test environment spoofs the receive manually.
+            skip_attestation = getattr(self.execution_model, 'mainnet_fork', False)
+            return create_cctp_bridge_adapter(
+                self.web3config, routing_id,
+                custody_address_resolver=custody_resolver,
+                skip_attestation=skip_attestation,
+            )
         else:
             raise NotImplementedError(f"Cannot route exchange {routing_id}")
 

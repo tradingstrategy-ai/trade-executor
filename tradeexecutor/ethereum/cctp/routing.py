@@ -56,10 +56,16 @@ class CctpBridgeRouting(RoutingModel):
         web3config: Web3Config,
         custody_address_resolver: Callable[[int], str] | None = None,
         attestation_timeout: float = 1800.0,
+        skip_attestation: bool = False,
     ):
         self.web3config = web3config
         self.custody_address_resolver = custody_address_resolver
         self.attestation_timeout = attestation_timeout
+        #: When True, settle_trade() marks success after burn confirmation
+        #: without polling attestation or broadcasting receiveMessage.
+        #: Used for Anvil fork tests where Circle's Iris API is unavailable
+        #: and the test spoofs the receive via replace_attester_on_fork().
+        self.skip_attestation = skip_attestation
         self._hot_wallet = None
 
     def create_routing_state(
@@ -264,6 +270,20 @@ class CctpBridgeRouting(RoutingModel):
         else:
             source_chain_id = pair.base.chain_id
             dest_chain_id = pair.quote.chain_id
+
+        # Fork/simulation mode: skip attestation and receiveMessage entirely.
+        # The test environment spoofs the receive via replace_attester_on_fork().
+        if self.skip_attestation:
+            state.mark_trade_success(
+                ts,
+                trade,
+                executed_price=1.0,
+                executed_amount=trade.planned_quantity,
+                executed_reserve=trade.planned_reserve,
+                lp_fees=0,
+                native_token_price=0,
+            )
+            return
 
         # Phase 2: attestation
         source_domain = _resolve_cctp_domain(source_chain_id)
