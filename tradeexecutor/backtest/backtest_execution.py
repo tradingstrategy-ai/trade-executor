@@ -123,7 +123,15 @@ class BacktestExecution(ExecutionModel):
         #
         base = trade.pair.base
         # quote = trade.pair.quote
-        reserve = trade.reserve_currency
+
+        # For satellite chain trades funded via a CCTP bridge, the on-chain
+        # token spent is the pair's quote token (e.g. USDC on Base), not the
+        # portfolio reserve currency (e.g. USDC on Arbitrum).
+        bridge_position = state.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+        if bridge_position is not None:
+            reserve = trade.pair.quote
+        else:
+            reserve = trade.reserve_currency
 
         base_balance = self.wallet.get_balance(base.address)
         # quote_balance = self.wallet.get_balance(quote.address)
@@ -255,6 +263,42 @@ class BacktestExecution(ExecutionModel):
         # so return executed_collateral_quantity here to correctly calculate the price
         return executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption
 
+    def simulate_bridge(self, state: State, trade: TradeExecution) -> Tuple[Decimal, Decimal]:
+        """CCTP bridge simulation with a simulated wallet.
+
+        Bridge trades transfer USDC 1:1 between chains. In the simulated
+        wallet we debit the source chain USDC (reserve/quote) and credit the
+        destination chain USDC (base).
+
+        :param state:
+            Backtester state
+
+        :param trade:
+            Trade to be executed (must be a CCTP bridge trade)
+
+        :return:
+            (executed_quantity, executed_reserve) tuple
+        """
+        assert trade.pair.is_cctp_bridge(), f"simulate_bridge(): received a non-bridge trade {trade}"
+
+        base = trade.pair.base        # destination chain USDC
+        reserve = trade.reserve_currency  # source chain USDC
+
+        if trade.is_buy():
+            # Bridge out: burn USDC on source, mint on destination
+            executed_reserve = trade.planned_reserve
+            executed_quantity = trade.planned_quantity
+            self.wallet.update_balance(base, executed_quantity, f"bridge out trade #{trade.trade_id}")
+            self.wallet.update_balance(reserve, -executed_reserve, f"bridge out trade #{trade.trade_id}")
+        else:
+            # Bridge back: burn USDC on destination, mint on source
+            executed_quantity = trade.planned_quantity
+            executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
+            self.wallet.update_balance(base, executed_quantity, f"bridge back trade #{trade.trade_id}")
+            self.wallet.update_balance(reserve, executed_reserve, f"bridge back trade #{trade.trade_id}")
+
+        return executed_quantity, executed_reserve
+
     def simulate_trade(
         self,
         ts: datetime.datetime,
@@ -300,7 +344,8 @@ class BacktestExecution(ExecutionModel):
                 executed_quantity, executed_reserve, sell_amount_epsilon_fix = self.simulate_spot(state, trade)
             elif trade.is_leverage():
                 executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption = self.simulate_leverage(state, trade)
-
+            elif trade.pair.is_cctp_bridge():
+                executed_quantity, executed_reserve = self.simulate_bridge(state, trade)
             else:
                 raise NotImplementedError(f"Does not know how to simulate: {trade}")
 
@@ -352,6 +397,129 @@ class BacktestExecution(ExecutionModel):
 
         return executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption
 
+    def _execute_trades_sequentially(
+        self,
+        ts: datetime.datetime,
+        state: State,
+        trades: list[TradeExecution],
+        routing_model,
+        routing_state,
+        check_balances: bool,
+        triggered: bool,
+    ):
+        """Execute trades one at a time for CCTP-dependent batches.
+
+        Each trade is started, simulated, and settled before the next
+        trade begins. This ensures bridge positions exist before
+        satellite vault deposits try to allocate from them.
+
+        The normal batch path calls ``start_execution_all()`` which
+        allocates capital for every trade upfront. That fails when a
+        satellite trade needs ``get_bridge_position_for_chain()`` to
+        find a bridge position that has not been created yet.
+
+        :param ts:
+            Strategy cycle timestamp
+
+        :param state:
+            Current backtesting state
+
+        :param trades:
+            Trades to execute, already sorted by execution sort position
+
+        :param routing_model:
+            The routing model (calculates prices)
+
+        :param routing_state:
+            Routing state for the current execution
+
+        :param check_balances:
+            Whether to check wallet balances during setup
+
+        :param triggered:
+            True if this execution is from stop loss trigger checks
+        """
+
+        # Calculate prices for all trades upfront — this does not allocate capital
+        routing_model.setup_trades(
+            state,
+            routing_state,
+            trades,
+            check_balances=check_balances,
+        )
+
+        # Re-sort so bridge trades execute before the satellite trades that
+        # depend on them.  Bridge-out buys go first (sort key 0), everything
+        # else keeps its original execution sort position (bumped by 1 so it
+        # always comes after bridges).
+        def _sequential_sort_key(t):
+            if t.pair.is_cctp_bridge() and t.is_buy():
+                return (0, t.trade_id)
+            elif t.pair.is_cctp_bridge() and t.is_sell():
+                # Bridge-backs go last (return capital to source)
+                return (2, t.trade_id)
+            else:
+                return (1, t.get_execution_sort_position())
+
+        trades = sorted(trades, key=_sequential_sort_key)
+
+        for idx, trade in enumerate(trades):
+            # Start execution (allocate capital) for this trade only
+            state.start_execution(ts, trade, triggered=triggered)
+
+            # Simulate
+            try:
+                executed_quantity, executed_reserve, executed_collateral_allocation, executed_collateral_consumption = self.simulate_trade(ts, state, idx, trade)
+            except BacktestExecutionFailed as e:
+                logger.info("Simulating %d. trade %s failed: %s", idx + 1, trade.get_short_label(), e)
+                raise BacktestExecutionFailed(f"Trade #{idx + 1} out of {len(trades)} trades failed") from e
+
+            # Settle immediately so the next trade can see the results
+            if executed_quantity:
+                if trade.is_short():
+                    executed_price = trade.planned_price
+                else:
+                    executed_price = float(abs(executed_reserve / executed_quantity))
+            else:
+                executed_price = 0
+
+            state.mark_trade_success(
+                ts,
+                trade,
+                executed_price,
+                executed_quantity,
+                executed_reserve,
+                lp_fees=trade.lp_fees_estimated,
+                native_token_price=1,
+                executed_collateral_allocation=executed_collateral_allocation,
+                executed_collateral_consumption=executed_collateral_consumption,
+            )
+
+        # Verify wallet balances after all trades
+        all_assets = calculate_total_assets(state.portfolio)
+        clean, asset_df = self.wallet.verify_balances(all_assets)
+        if not clean:
+            logger.error("Backtest sync issue (sequential path)")
+            logger.error("All portfolio assets were")
+            for a, v in all_assets.items():
+                logger.error("Asset %s: %s", a, v)
+            logger.error("Trades were")
+            for t in trades:
+                logger.error("Trade: %s", t)
+            logger.error("Positions are")
+            for p in state.portfolio.get_open_and_frozen_positions():
+                logger.error("Position: %s", p)
+
+            error_msg = f"Backtest simulated wallet and portfolio out of sync at {ts} after executing trades:\n{asset_df}"
+            logger.error("Current chain status:\n%s", error_msg)
+
+            raise RuntimeError(error_msg)
+
+        # Set the check point interest balances for new positions
+        set_interest_checkpoint(state, ts, None)
+
+        logger.info("Finished sequential backtest execution for %s", ts)
+
     def execute_trades(
         self,
         ts: datetime.datetime,
@@ -373,6 +541,15 @@ class BacktestExecution(ExecutionModel):
         assert isinstance(ts, datetime.datetime)
         assert isinstance(routing_model, (BacktestRoutingModel, GenericRouting))
         assert isinstance(routing_state, (BacktestRoutingState, GenericRoutingState))
+
+        # When the batch contains CCTP bridge trades, we must execute each
+        # trade sequentially (start -> simulate -> settle) so that bridge
+        # positions exist before satellite trades try to allocate from them.
+        has_bridge_trades = any(t.pair.is_cctp_bridge() for t in trades)
+
+        if has_bridge_trades:
+            self._execute_trades_sequentially(ts, state, trades, routing_model, routing_state, check_balances, triggered)
+            return
 
         state.start_execution_all(ts, trades, max_slippage=0, triggered=triggered)
 
