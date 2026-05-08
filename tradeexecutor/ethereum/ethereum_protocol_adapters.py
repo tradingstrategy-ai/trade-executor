@@ -1046,11 +1046,18 @@ class EthereumPairConfigurator(PairConfigurator):
             )
             # Skip attestation polling on Anvil forks where Circle's Iris API
             # is unavailable.  The test environment spoofs the receive manually.
+            # Detection order: execution_model flag, web3config flag, Anvil
+            # client version string, UNIT_TESTING env var.
             skip_attestation = False
             if self.execution_model is not None:
                 skip_attestation = getattr(self.execution_model, 'mainnet_fork', False)
             if not skip_attestation and self.web3config is not None:
                 skip_attestation = self.web3config.is_mainnet_fork()
+            if not skip_attestation and self.web3 is not None:
+                try:
+                    skip_attestation = self.web3.client_version.startswith("anvil/")
+                except Exception:
+                    pass
             if not skip_attestation:
                 import os
                 skip_attestation = os.environ.get("UNIT_TESTING", "").lower() in ("true", "1", "yes")
