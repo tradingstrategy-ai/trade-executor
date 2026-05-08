@@ -34,6 +34,46 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _make_cctp_custody_resolver(
+    satellite_vaults: dict | None,
+    primary_custody_address: str | None,
+    fallback_address: str | None,
+) -> Callable[[int], str] | None:
+    """Build a chain_id -> custody address resolver for CCTP mint recipients.
+
+    For Lagoon vaults, returns the per-chain Safe address.
+    For hot wallet, returns the same address for all chains.
+
+    :param satellite_vaults:
+        Mapping of chain_id -> AutomatedSafe for satellite chains.
+
+    :param primary_custody_address:
+        The custody address on the primary chain (e.g. the Lagoon Safe).
+
+    :param fallback_address:
+        Address used when no satellite or primary match is found
+        (e.g. the hot wallet address).
+
+    :return:
+        A resolver callable, or ``None`` when no addresses are available.
+    """
+    if satellite_vaults is None and primary_custody_address is None:
+        return None
+
+    def resolver(chain_id: int) -> str:
+        if satellite_vaults:
+            satellite = satellite_vaults.get(chain_id)
+            if satellite is not None:
+                return satellite.safe_address
+        if primary_custody_address is not None:
+            return primary_custody_address
+        if fallback_address is not None:
+            return fallback_address
+        raise ValueError(f"No custody address for chain {chain_id}")
+
+    return resolver
+
+
 def _make_token_delivery_address_resolver(execution_model) -> Callable[[TradingPairIdentifier], str] | None:
     """Resolve the correct token delivery address for a pair.
 
@@ -698,6 +738,7 @@ def create_exchange_account_adapter(
 def create_cctp_bridge_adapter(
     web3config: "Web3Config",
     routing_id: ProtocolRoutingId,
+    custody_address_resolver: Callable[[int], str] | None = None,
 ) -> ProtocolRoutingConfig:
     """Create adapter for CCTP bridge pairs.
 
@@ -708,12 +749,15 @@ def create_cctp_bridge_adapter(
         Web3Config with connections to all chains involved in bridging.
     :param routing_id:
         The protocol routing identifier.
+    :param custody_address_resolver:
+        Optional callable mapping chain_id to the custody address on that
+        chain.  Built by :py:func:`_make_cctp_custody_resolver`.
     """
     from tradeexecutor.ethereum.cctp.pricing import CctpBridgePricingModel
     from tradeexecutor.ethereum.cctp.routing import CctpBridgeRouting
     from tradeexecutor.ethereum.cctp.valuation import CctpBridgeValuationModel
 
-    routing_model = CctpBridgeRouting(web3config)
+    routing_model = CctpBridgeRouting(web3config, custody_address_resolver=custody_address_resolver)
     pricing_model = CctpBridgePricingModel()
     valuation_model = CctpBridgeValuationModel()
 
@@ -953,7 +997,25 @@ class EthereumPairConfigurator(PairConfigurator):
         elif routing_id.router_name == "exchange_account":
             return create_exchange_account_adapter(routing_id, self.account_value_func, web3=self.web3)
         elif routing_id.router_name == "cctp-bridge":
-            return create_cctp_bridge_adapter(self.web3config, routing_id)
+            # Resolve primary custody address from the execution model's
+            # vault (Lagoon Safe) or tx_builder (hot wallet).
+            primary_custody_address = None
+            fallback_address = None
+            if self.execution_model is not None:
+                tx_builder = getattr(self.execution_model, "tx_builder", None)
+                if tx_builder is not None:
+                    vault = getattr(tx_builder, "vault", None)
+                    if vault is not None:
+                        primary_custody_address = vault.safe_address
+                    else:
+                        fallback_address = tx_builder.get_erc_20_balance_address()
+
+            custody_resolver = _make_cctp_custody_resolver(
+                satellite_vaults=self.satellite_vaults or None,
+                primary_custody_address=primary_custody_address,
+                fallback_address=fallback_address,
+            )
+            return create_cctp_bridge_adapter(self.web3config, routing_id, custody_address_resolver=custody_resolver)
         else:
             raise NotImplementedError(f"Cannot route exchange {routing_id}")
 

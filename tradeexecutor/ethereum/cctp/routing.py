@@ -5,6 +5,7 @@ on the source chain and receive transactions on the destination chain.
 """
 
 import logging
+from typing import Callable
 
 from eth_defi.chain import fetch_block_timestamp
 from eth_defi.compat import native_datetime_utc_now
@@ -35,10 +36,24 @@ class CctpBridgeRouting(RoutingModel):
 
     :param web3config:
         Web3Config with connections to all chains involved in bridging.
+
+    :param custody_address_resolver:
+        Optional callable that maps a chain_id to the custody address on
+        that chain.  For Lagoon/Safe multichain setups each chain has its
+        own Safe; the resolver returns the correct one so that
+        ``depositForBurn`` mints USDC to the right destination.
+        When ``None``, the source chain ``tx_builder`` balance address is
+        used as a fallback (correct for hot-wallet deployments where the
+        same address exists on every chain).
     """
 
-    def __init__(self, web3config: Web3Config):
+    def __init__(
+        self,
+        web3config: Web3Config,
+        custody_address_resolver: Callable[[int], str] | None = None,
+    ):
         self.web3config = web3config
+        self.custody_address_resolver = custody_address_resolver
 
     def create_routing_state(
         self,
@@ -103,9 +118,20 @@ class CctpBridgeRouting(RoutingModel):
 
             amount_raw = int(trade.planned_reserve * (10 ** pair.quote.decimals))
 
-            # Get the address that holds USDC — for vault setups (Lagoon, Enzyme)
-            # this is the Safe/vault custody address, not the ERC-4626 wrapper.
-            token_storage = tx_builder.get_erc_20_balance_address()
+            # Resolve mint recipient based on trade direction.
+            # The destination depends on buy vs sell:
+            # - Buy (forward): mint on base chain (satellite)
+            # - Sell (reverse): mint on quote chain (primary)
+            if trade.is_buy():
+                mint_dest_chain_id = pair.base.chain_id
+            else:
+                mint_dest_chain_id = pair.quote.chain_id
+
+            if self.custody_address_resolver is not None:
+                token_storage = self.custody_address_resolver(mint_dest_chain_id)
+            else:
+                # Fallback: hot wallet address (same on all chains)
+                token_storage = tx_builder.get_erc_20_balance_address()
 
             # Resolve burn token address (source chain USDC)
             burn_token_address = USDC_NATIVE_TOKEN.get(source_chain_id)
