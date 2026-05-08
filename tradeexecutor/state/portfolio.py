@@ -721,9 +721,24 @@ class Portfolio:
         """
         # Any trading positions we have one
         # spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_leverage()])
-        return self.get_position_equity_and_loan_nav() + self.get_cash()
+        return self.get_position_equity_and_loan_nav() + self.get_cash() + self.get_in_transit_value()
 
     get_total_equity = calculate_total_equity
+
+    def get_in_transit_value(self) -> float:
+        """Get the total value of USDC currently in CCTP transit.
+
+        Sums planned_reserve for all trades in cctp_in_transit status.
+        This value represents USDC burned on-chain but not yet received
+        on the destination chain.
+        """
+        from tradeexecutor.state.trade import TradeStatus
+        total = 0.0
+        for position in self.open_positions.values():
+            for trade in position.trades.values():
+                if trade.get_status() == TradeStatus.cctp_in_transit:
+                    total += float(trade.planned_reserve)
+        return total
 
     def calculate_total_equity_chain(self) -> dict[ChainId, USDollarAmount]:
         """Get the value of the portfolio broken down by chain.
@@ -752,6 +767,16 @@ class Portfolio:
                 continue
             chain = ChainId(p.pair.chain_id)
             result[chain] = result.get(chain, 0) + p.get_equity()
+
+        # In-transit CCTP value attributed to destination chain
+        from tradeexecutor.state.trade import TradeStatus
+        for p in self.open_positions.values():
+            for trade in p.trades.values():
+                if trade.get_status() == TradeStatus.cctp_in_transit:
+                    dest_chain_id = trade.other_data.get("cctp_dest_chain_id")
+                    if dest_chain_id is not None:
+                        chain = ChainId(dest_chain_id)
+                        result[chain] = result.get(chain, 0) + float(trade.planned_reserve)
 
         return result
 

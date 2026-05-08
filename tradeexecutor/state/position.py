@@ -2480,7 +2480,14 @@ class TradingPosition(GenericPosition):
             (Asset id, amount) iterables
         """
         assert self.is_open() or self.is_frozen()
-        if self.is_spot():
+        if self.pair.is_cctp_bridge():
+            # Bridge positions hold destination chain USDC.
+            # Only the available (unallocated) portion is still in the wallet;
+            # the rest has been moved to satellite trade positions.
+            available = self.get_available_bridge_capital()
+            if available > 0:
+                yield self.pair.base, available
+        elif self.is_spot():
             yield self.pair.base, self.get_quantity()
         elif self.is_credit_supply():
             yield self.loan.collateral.asset, self.loan.get_collateral_quantity()

@@ -90,10 +90,17 @@ class TradeStatus(enum.Enum):
     #:
     repair_entry = "repair_entry"
 
-    #: Trade is bound to triggers (like partial take profit) 
+    #: Trade is bound to triggers (like partial take profit)
     #: but all trigger was expired
     #:
     expired = "expired"
+
+    #: CCTP bridge burn confirmed on source chain, receive pending on destination chain.
+    #:
+    #: The trade has a dedicated retry path and is not considered "unfinished"
+    #: in the generic sense.
+    #:
+    cctp_in_transit = "cctp_in_transit"
 
 
 class TradeFlag(enum.Enum):
@@ -677,6 +684,10 @@ class TradeExecution:
     #:
     expired_at: Optional[datetime.datetime] = None
 
+    #: CCTP bridge burn confirmed on source chain, receive pending on destination chain.
+    #:
+    cctp_in_transit_at: datetime.datetime | None = None
+
     #: After the trade has been assigned to the execution, track
     #: it's execution sort index here.
     #:
@@ -1079,6 +1090,8 @@ class TradeExecution:
             return TradeStatus.failed
         elif self.executed_at:
             return TradeStatus.success
+        elif self.cctp_in_transit_at:
+            return TradeStatus.cctp_in_transit
         elif self.broadcasted_at:
             return TradeStatus.broadcasted
         elif self.started_at:
@@ -1313,6 +1326,15 @@ class TradeExecution:
         credit_order_bump = 200_000_000
         close_order_bump = 100_000_000
         vault_order_bump = 50_000_000
+        bridge_order_bump = 30_000_000
+
+        if self.pair.is_cctp_bridge():
+            if self.is_sell():
+                # Bridge-backs: after vault withdrawals (-50M), before spot sells
+                return -self.trade_id - bridge_order_bump
+            else:
+                # Bridge-outs: after regular buys, before vault deposits (+50M)
+                return self.trade_id + bridge_order_bump
 
         if self.is_credit_supply() and TradeFlag.close in self.flags:
             # Always withdraw credit to cash in hand first,
@@ -1468,6 +1490,14 @@ class TradeExecution:
         assert self.get_status() in (TradeStatus.broadcasted, TradeStatus.started), f"Cannot mark trade failed if it is not broadcasted or started. Current status: {self.get_status()}"
         assert failed_at.tzinfo is None
         self.failed_at = failed_at
+
+    def mark_expired(self, ts: datetime.datetime):
+        """Mark this trade as expired.
+
+        Only planned trades can be expired (e.g. all triggers have lapsed).
+        """
+        assert self.get_status() == TradeStatus.planned, f"Only planned trades can be expired. Current status: {self.get_status()}"
+        self.expired_at = ts
 
     def set_blockchain_transactions(self, txs: List[BlockchainTransaction]):
         """Set the physical transactions needed to perform this trade."""

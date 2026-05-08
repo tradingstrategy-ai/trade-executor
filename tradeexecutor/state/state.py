@@ -1030,6 +1030,32 @@ class State:
                 f"Trade failed, allocated reserve was not used:\n{trade}"
             )
 
+    def mark_bridge_in_transit(self, ts: datetime.datetime, trade: TradeExecution):
+        """Mark a CCTP bridge trade as in-transit (burn confirmed, receive pending).
+
+        Does NOT adjust reserves — the burn already consumed them on-chain.
+        For bridge-back sells, locks the burned capital on the bridge position.
+        """
+        assert trade.pair.is_cctp_bridge()
+        trade.cctp_in_transit_at = ts
+
+        # Store metadata for retry
+        burn_tx = trade.blockchain_transactions[1] if len(trade.blockchain_transactions) > 1 else None
+        trade.other_data["cctp_burn_tx_hash"] = burn_tx.tx_hash if burn_tx else None
+        if trade.is_buy():
+            trade.other_data["cctp_source_chain_id"] = trade.pair.quote.chain_id
+            trade.other_data["cctp_dest_chain_id"] = trade.pair.base.chain_id
+        else:
+            trade.other_data["cctp_source_chain_id"] = trade.pair.base.chain_id
+            trade.other_data["cctp_dest_chain_id"] = trade.pair.quote.chain_id
+
+        # For bridge-back sells: lock the burned capital on the bridge position
+        # so get_available_bridge_capital() returns zero for it
+        if trade.is_sell():
+            bridge_position = self.portfolio.get_position_by_id(trade.position_id)
+            if bridge_position is not None:
+                bridge_position.bridge_capital_allocated += abs(trade.planned_quantity)
+
     def update_reserves(self, new_reserves: List[ReservePosition]):
         self.portfolio.update_reserves(new_reserves)
 

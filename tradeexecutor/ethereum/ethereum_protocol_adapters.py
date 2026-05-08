@@ -34,6 +34,62 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _make_cctp_custody_resolver(
+    satellite_vaults: dict | None,
+    primary_custody_address: str | None,
+    fallback_address: str | None,
+    primary_chain_id: int | None = None,
+) -> Callable[[int], str] | None:
+    """Build a chain_id -> custody address resolver for CCTP mint recipients.
+
+    For Lagoon vaults, returns the per-chain Safe address.
+    For hot wallet, returns the same address for all chains.
+
+    :param satellite_vaults:
+        Mapping of chain_id -> AutomatedSafe for satellite chains.
+
+    :param primary_custody_address:
+        The custody address on the primary chain (e.g. the Lagoon Safe).
+
+    :param fallback_address:
+        Address used when no satellite or primary match is found
+        (e.g. the hot wallet address).
+
+    :param primary_chain_id:
+        Chain ID of the primary chain.  When set with satellite_vaults,
+        the resolver raises for unknown non-primary destinations instead
+        of silently falling back to the primary address.
+
+    :return:
+        A resolver callable, or ``None`` when no addresses are available.
+    """
+    if satellite_vaults is None and primary_custody_address is None:
+        return None
+
+    def resolver(chain_id: int) -> str:
+        if satellite_vaults:
+            satellite = satellite_vaults.get(chain_id)
+            if satellite is not None:
+                return satellite.safe_address
+            # If we have satellites configured, only fall back to primary
+            # for the primary chain itself.  An unknown satellite destination
+            # means a misconfigured deployment — raise instead of silently
+            # minting to the wrong Safe.
+            if primary_chain_id is not None and chain_id != primary_chain_id:
+                raise ValueError(
+                    f"No satellite vault configured for chain {chain_id}. "
+                    f"Primary chain is {primary_chain_id}, "
+                    f"configured satellites: {list(satellite_vaults.keys())}"
+                )
+        if primary_custody_address is not None:
+            return primary_custody_address
+        if fallback_address is not None:
+            return fallback_address
+        raise ValueError(f"No custody address for chain {chain_id}")
+
+    return resolver
+
+
 def _make_token_delivery_address_resolver(execution_model) -> Callable[[TradingPairIdentifier], str] | None:
     """Resolve the correct token delivery address for a pair.
 
@@ -698,6 +754,8 @@ def create_exchange_account_adapter(
 def create_cctp_bridge_adapter(
     web3config: "Web3Config",
     routing_id: ProtocolRoutingId,
+    custody_address_resolver: Callable[[int], str] | None = None,
+    skip_attestation: bool = False,
 ) -> ProtocolRoutingConfig:
     """Create adapter for CCTP bridge pairs.
 
@@ -708,12 +766,19 @@ def create_cctp_bridge_adapter(
         Web3Config with connections to all chains involved in bridging.
     :param routing_id:
         The protocol routing identifier.
+    :param custody_address_resolver:
+        Optional callable mapping chain_id to the custody address on that
+        chain.  Built by :py:func:`_make_cctp_custody_resolver`.
     """
     from tradeexecutor.ethereum.cctp.pricing import CctpBridgePricingModel
     from tradeexecutor.ethereum.cctp.routing import CctpBridgeRouting
     from tradeexecutor.ethereum.cctp.valuation import CctpBridgeValuationModel
 
-    routing_model = CctpBridgeRouting(web3config)
+    routing_model = CctpBridgeRouting(
+        web3config,
+        custody_address_resolver=custody_address_resolver,
+        skip_attestation=skip_attestation,
+    )
     pricing_model = CctpBridgePricingModel()
     valuation_model = CctpBridgeValuationModel()
 
@@ -953,7 +1018,54 @@ class EthereumPairConfigurator(PairConfigurator):
         elif routing_id.router_name == "exchange_account":
             return create_exchange_account_adapter(routing_id, self.account_value_func, web3=self.web3)
         elif routing_id.router_name == "cctp-bridge":
-            return create_cctp_bridge_adapter(self.web3config, routing_id)
+            # Resolve primary custody address from the execution model's
+            # vault (Lagoon Safe) or tx_builder (hot wallet).
+            primary_custody_address = None
+            fallback_address = None
+            if self.execution_model is not None:
+                tx_builder = getattr(self.execution_model, "tx_builder", None)
+                if tx_builder is not None:
+                    vault = getattr(tx_builder, "vault", None)
+                    if vault is not None:
+                        primary_custody_address = vault.safe_address
+                    else:
+                        fallback_address = tx_builder.get_erc_20_balance_address()
+
+            # Determine primary chain ID for strict satellite validation
+            primary_chain_id = None
+            if hasattr(self, 'strategy_universe') and self.strategy_universe is not None:
+                primary_chain = getattr(self.strategy_universe, 'primary_chain', None)
+                if primary_chain is not None:
+                    primary_chain_id = primary_chain.value
+
+            custody_resolver = _make_cctp_custody_resolver(
+                satellite_vaults=self.satellite_vaults or None,
+                primary_custody_address=primary_custody_address,
+                fallback_address=fallback_address,
+                primary_chain_id=primary_chain_id,
+            )
+            # Skip attestation polling on Anvil forks where Circle's Iris API
+            # is unavailable.  The test environment spoofs the receive manually.
+            # Detection order: execution_model flag, web3config flag, Anvil
+            # client version string, UNIT_TESTING env var.
+            skip_attestation = False
+            if self.execution_model is not None:
+                skip_attestation = getattr(self.execution_model, 'mainnet_fork', False)
+            if not skip_attestation and self.web3config is not None:
+                skip_attestation = self.web3config.is_mainnet_fork()
+            if not skip_attestation and self.web3 is not None:
+                try:
+                    skip_attestation = self.web3.client_version.startswith("anvil/")
+                except Exception:
+                    pass
+            if not skip_attestation:
+                import os
+                skip_attestation = os.environ.get("UNIT_TESTING", "").lower() in ("true", "1", "yes")
+            return create_cctp_bridge_adapter(
+                self.web3config, routing_id,
+                custody_address_resolver=custody_resolver,
+                skip_attestation=skip_attestation,
+            )
         else:
             raise NotImplementedError(f"Cannot route exchange {routing_id}")
 
