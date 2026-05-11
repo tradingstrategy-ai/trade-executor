@@ -51,6 +51,23 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
 
         chain_id = next(iter(self.strategy_universe.data_universe.chains))
 
+        if routing_id.router_name == "cctp-bridge":
+            from tradeexecutor.ethereum.cctp.pricing import CctpBridgePricingModel
+            from tradeexecutor.ethereum.cctp.valuation import CctpBridgeValuationModel
+
+            routing_model = BacktestRoutingIgnoredModel(
+                reserve.address,
+            )
+            pricing_model = CctpBridgePricingModel()
+            valuation_model = CctpBridgeValuationModel()
+
+            return ProtocolRoutingConfig(
+                routing_id=routing_id,
+                routing_model=routing_model,
+                pricing_model=pricing_model,
+                valuation_model=valuation_model,
+            )
+
         if routing_id.router_name in ("vault", "hypercore_vault", "aave-v3", "1delta"):
             routing_model = BacktestRoutingIgnoredModel(
                 reserve.address,

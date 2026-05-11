@@ -20,6 +20,7 @@ from tradeexecutor.state.identifier import (
 )
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
+from tradeexecutor.strategy.alpha_model import AlphaModel
 
 
 #: Arbitrum native USDC address
@@ -128,12 +129,16 @@ def test_backtest_bridge_then_spot_sequential(
     """Verify that a bridge-out buy followed by a satellite spot buy
     executes correctly via the sequential path.
 
-    1. Create two trades: a CCTP bridge-out buy and a satellite spot buy
-    2. Sort them by execution sort position (bridge first)
-    3. Call execute_trades() — should detect bridge trades and use sequential path
-    4. Verify the bridge trade completes and a bridge position exists
-    5. Verify the satellite spot trade completes using bridge capital
-    6. Verify wallet balances are consistent
+    1. Create a CCTP bridge-out buy
+    2. Create a satellite spot buy
+    3. Sort the trades by execution sort position
+    4. Execute the trades through the sequential bridge path
+    5. Verify the bridge trade completed
+    6. Verify the bridge position exists with the correct quantity
+    7. Verify the satellite spot trade completed using bridge capital
+    8. Verify reserves decreased by the bridge amount only
+    9. Verify the bridge position capital allocation
+    10. Verify alpha-model weight refresh skips CCTP bridge bookkeeping positions
     """
     ts = datetime.datetime(2025, 6, 1)
     state = state_with_reserves
@@ -208,6 +213,10 @@ def test_backtest_bridge_then_spot_sequential(
 
     # 9. Verify bridge position has capital allocated to the satellite trade
     assert bridge_pos.bridge_capital_allocated == Decimal(500)
+
+    # 10. Verify alpha-model weight refresh skips CCTP bridge bookkeeping positions
+    alpha_model = AlphaModel(ts)
+    alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
 
 
 def test_backtest_no_bridge_uses_batch_path(

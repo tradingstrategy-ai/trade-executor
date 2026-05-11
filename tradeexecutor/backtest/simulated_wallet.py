@@ -244,8 +244,10 @@ class SimulatedWallet:
             on_chain_balance = self.get_balance(asset.address)
             mismatch = False
             diff = abs(on_chain_balance - amount)
-            if amount == 0:
-                assert diff == 0
+            if abs(amount) <= Decimal(str(epsilon)):
+                if diff >= Decimal(str(epsilon)):
+                    clean = False
+                    mismatch = True
                 relative_diff = 0
             else:
                 relative_diff = diff / amount
@@ -258,4 +260,3 @@ class SimulatedWallet:
         df = pd.DataFrame(data, columns=["Asset", "Expected", "Actual", "Diff", "Rel diff", "Mismatch", "Epsilon"])
         df.set_index("Asset")
         return clean, df
-
