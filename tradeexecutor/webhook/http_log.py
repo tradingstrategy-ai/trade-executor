@@ -40,7 +40,14 @@ def log_tween_factory(handler, registry: Registry):
         ip_addr = request.headers.get("CF-Connecting-IP") or "<no CF IP>"  # IPv4 or IPv6
         user_agent = request.user_agent
 
-        http_logger.info("HTTP request #%d %s (%s): %s by %s", req_id, ip_addr, country, request.url, user_agent)
+        # request.url may raise UnicodeDecodeError on malformed request paths
+        # (e.g. exploit scanners sending invalid UTF-8 bytes)
+        try:
+            url = request.url
+        except UnicodeDecodeError:
+            url = request.environ.get("RAW_URI") or request.environ.get("REQUEST_URI") or "<malformed URL>"
+
+        http_logger.info("HTTP request #%d %s (%s): %s by %s", req_id, ip_addr, country, url, user_agent)
 
         start = native_datetime_utc_now()
         try:
@@ -48,7 +55,7 @@ def log_tween_factory(handler, registry: Registry):
             code = response.status_code
             end = native_datetime_utc_now()
             duration = end - start
-            http_logger.info("HTTP response #%d %s duration:%s %s", req_id, code, duration, request.url)
+            http_logger.info("HTTP response #%d %s duration:%s %s", req_id, code, duration, url)
             return response
         except Exception as e:
             http_logger.error("HTTP response #%d failed: %s", req_id, e)
