@@ -877,6 +877,7 @@ class ExecutionLoop:
                 rounded_ts,
                 universe,
                 self.max_data_delay,
+                best_before_duration_liquidity=self.max_data_delay,
             )
 
         logger.info("Warmed up universe %s", universe)
