@@ -477,7 +477,7 @@ def close_position_with_empty_trade(portfolio: Portfolio, p: TradingPosition) ->
 
     opening_trade = p.get_first_trade()
 
-    assert opening_trade.is_success(), f"Cannot make a repairing trade, because opening trade {t} was not success"
+    assert opening_trade.is_success(), f"Cannot make a repairing trade, because opening trade {opening_trade} was not success"
 
     # We copy any price structure from opening trade, though it should be meaningfull
     position, counter_trade, created = portfolio.create_trade(
