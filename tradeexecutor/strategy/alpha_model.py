@@ -1554,6 +1554,9 @@ class AlphaModel:
         # - include only portfolio_pairs if given
         alpha_model_positions = []
         for position in portfolio.open_positions.values():
+            if position.pair.is_cctp_bridge():
+                continue
+
             if ignore_credit and (position.is_credit_supply() or position.is_vault()):
                 continue
 

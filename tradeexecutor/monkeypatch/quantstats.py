@@ -5,6 +5,20 @@ import numpy as _np
 if not hasattr(_np, "product"):
     _np.product = _np.prod
 
+# IPython 9.x removed InteractiveShell.magic(); quantstats still uses it
+try:
+    from IPython import get_ipython
+
+    _shell = get_ipython()
+    if _shell is not None and not hasattr(_shell, "magic") and hasattr(_shell, "run_line_magic"):
+        def _magic(command):
+            name, _, argument = command.strip().partition(" ")
+            return _shell.run_line_magic(name, argument)
+
+        _shell.magic = _magic
+except ImportError:
+    pass
+
 from quantstats import utils as _utils
 from quantstats import stats as _stats
 from quantstats.stats import comp

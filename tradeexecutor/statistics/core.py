@@ -54,7 +54,13 @@ def calculate_position_statistics(clock: datetime.datetime, position: TradingPos
     """Generate a historical record of the current position state."""
     # first_trade = position.get_first_trade()
 
-    value = position.get_value()
+    if position.pair.is_cctp_bridge():
+        # CCTP bridge positions are synthetic funding buckets for satellite chains.
+        # Use net economic equity so chart/stat totals do not double-count capital
+        # already allocated to satellite vault positions.
+        value = position.get_equity()
+    else:
+        value = position.get_value()
 
     # TODO: Ignore. Common occurence. Position may lack open value if it was never properly opened.
     #
