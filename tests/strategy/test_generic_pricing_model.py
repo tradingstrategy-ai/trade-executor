@@ -27,6 +27,36 @@ def test_pricing_model_tradeability_defaults_to_true():
     assert pricing_model.is_tradeable(None, pair=None) is True
 
 
+def test_generic_pricing_delegates_can_deposit():
+    """Check GenericPricing keeps the route-specific deposit gate intact.
+
+    1. Build a child pricing model that reports deposits as closed.
+    2. Route all pairs from GenericPricing to that child pricing model.
+    3. Verify GenericPricing returns the child model's deposit availability.
+    """
+
+    class ClosedDepositPricingModel(DummyPricingModel):
+        def can_deposit(self, ts, pair) -> bool:
+            return False
+
+    child_pricing = ClosedDepositPricingModel()
+
+    class FakePairConfigurator:
+        def get_pricing(self, pair):
+            return child_pricing
+
+    pricing_model = GenericPricing(FakePairConfigurator())
+
+    # 1. Build a child pricing model that reports deposits as closed.
+    pair = object()
+
+    # 2. Route all pairs from GenericPricing to that child pricing model.
+    can_deposit = pricing_model.can_deposit(None, pair)
+
+    # 3. Verify GenericPricing returns the child model's deposit availability.
+    assert can_deposit is False
+
+
 def test_ethereum_generic_pricing_factory_passes_execution_model(monkeypatch):
     captured: dict[str, object] = {}
 

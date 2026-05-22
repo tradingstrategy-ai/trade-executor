@@ -32,7 +32,10 @@ from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.alpha_model import AlphaModel
 from tradeexecutor.strategy.chart.definition import ChartInput, ChartKind, ChartRegistry
-from tradeexecutor.strategy.chart.standard.alpha_model import alpha_model_diagnostics
+from tradeexecutor.strategy.chart.standard.alpha_model import (
+    alpha_model_diagnostics,
+    missed_vault_deposit_redemption_events,
+)
 from tradeexecutor.strategy.chart.standard.equity_curve import (
     equity_curve as equity_curve_chart,
     equity_curve_with_drawdown,
@@ -452,6 +455,14 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         sell_rebalance_min_threshold=parameters.sell_rebalance_min_threshold_usd,
         execution_context=input.execution_context,
     )
+    missed_vault_events = alpha_model.get_missed_vault_events()
+    if missed_vault_events:
+        state.visualisation.add_calculations(
+            timestamp,
+            {
+                "missed_vault_events": missed_vault_events,
+            },
+        )
 
     if input.is_visualisation_enabled():
         try:
@@ -799,6 +810,7 @@ def create_charts(
     charts.register(positions_at_end, ChartKind.state_all_pairs)
     charts.register(last_messages, ChartKind.state_all_pairs)
     charts.register(alpha_model_diagnostics, ChartKind.state_all_pairs)
+    charts.register(missed_vault_deposit_redemption_events, ChartKind.state_all_pairs)
     charts.register(trading_pair_breakdown_with_chain, ChartKind.state_all_pairs)
     charts.register(trading_metrics, ChartKind.state_all_pairs)
     charts.register(vault_statistics, ChartKind.state_all_pairs)
