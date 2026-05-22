@@ -96,6 +96,9 @@ class TradingPairSignalFlags(enum.Enum):
     #: This signal was carried forward because the current position cannot be redeemed now.
     cannot_redeem = "cannot_redeem"
 
+    #: This signal was skipped because the venue currently does not accept deposits.
+    cannot_deposit = "cannot_deposit"
+
 
 @dataclass_json
 @dataclass(slots=True)
@@ -860,6 +863,11 @@ class AlphaModel:
         """Attach diagnostics and emit one searchable blocked-redemption log line."""
         signal.flags.add(TradingPairSignalFlags.cannot_redeem)
         signal.set_redemption_check_result(redemption_result)
+        if "missed_redemption_usd" not in signal.other_data:
+            if signal.position_adjust_usd < 0:
+                signal.other_data["missed_redemption_usd"] = abs(signal.position_adjust_usd)
+            elif current_value is not None:
+                signal.other_data["missed_redemption_usd"] = float(current_value)
 
         logger.info(
             "REDEMPTION_DIAGNOSTIC stage=%s pair_ticker=%s vault_address=%s safe_address=%s reason_code=%s current_value=%s position_recorded_lockup_expires_at=%s user_lockup_expires_at=%s max_withdrawable=%s max_redemption=%s message=%s",
@@ -1731,6 +1739,19 @@ class AlphaModel:
             signal.position_adjust_ignored = True
             return True
 
+        if (
+            signal.position_adjust_usd > 0
+            and not position_manager.pricing_model.can_deposit(self.timestamp, signal.pair)
+        ):
+            logger.info(
+                "Skipping buy-side rebalance for %s because deposits are not open",
+                signal.pair,
+            )
+            signal.position_adjust_ignored = True
+            signal.flags.add(TradingPairSignalFlags.cannot_deposit)
+            signal.other_data["missed_deposit_usd"] = signal.position_adjust_usd
+            return True
+
         if individual_rebalance_min_threshold:
             trade_size = abs(signal.position_adjust_usd)
             if signal.position_adjust_usd < 0:
@@ -1795,6 +1816,7 @@ class AlphaModel:
             redemption_results[signal.pair.internal_id] = redemption_result
 
             if not redemption_result.can_redeem:
+                signal.other_data["missed_redemption_usd"] = abs(signal.position_adjust_usd)
                 signal.position_adjust_usd = 0.0
                 signal.position_adjust_quantity = 0.0
                 signal.position_adjust_ignored = True
@@ -1846,6 +1868,9 @@ class AlphaModel:
                 current_position.pair,
             )
             signal.position_adjust_ignored = True
+            signal.other_data["missed_redemption_usd"] = abs(dollar_diff)
+            signal.position_adjust_usd = 0.0
+            signal.position_adjust_quantity = 0.0
             self._mark_signal_cannot_redeem(
                 signal,
                 redemption_result,
@@ -2118,6 +2143,37 @@ class AlphaModel:
 
         # Return all rebalance trades
         return trades
+
+    def get_missed_vault_events(self) -> list[dict]:
+        """Return compact missed vault deposit/redemption diagnostics for this cycle."""
+        rows = []
+        for signal in self.iterate_signals():
+            if not signal.pair.kind.is_vault():
+                continue
+
+            base_row = {
+                "vault_name": signal.pair.get_vault_name() or signal.pair.get_ticker(),
+                "pair_ticker": signal.pair.get_ticker(),
+                "vault_address": signal.pair.pool_address,
+            }
+
+            missed_deposit_usd = signal.other_data.get("missed_deposit_usd")
+            if missed_deposit_usd:
+                rows.append({
+                    **base_row,
+                    "event_type": "deposit",
+                    "missed_usd": float(missed_deposit_usd),
+                })
+
+            missed_redemption_usd = signal.other_data.get("missed_redemption_usd")
+            if missed_redemption_usd:
+                rows.append({
+                    **base_row,
+                    "event_type": "redemption",
+                    "missed_usd": float(missed_redemption_usd),
+                })
+
+        return rows
 
     def get_flag_diagnostics_data(self) -> dict:
         """Get statistics explanation to add to the report of alpha model thinking.

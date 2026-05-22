@@ -10,6 +10,7 @@ import datetime
 import random
 from decimal import Decimal
 
+import pandas as pd
 import pytest
 from hexbytes import HexBytes
 
@@ -30,6 +31,11 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.types import USDollarPrice, USDollarAmount
+from tradeexecutor.analysis.vault_missed_events import (
+    analyse_missed_vault_deposit_redemption_event_timeline,
+    analyse_missed_vault_deposit_redemption_events,
+    format_missed_vault_deposit_redemption_events,
+)
 from tradeexecutor.strategy import size_risk_model
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignalFlags
 from tradeexecutor.strategy.fixed_size_risk import FixedSizeRiskModel
@@ -1705,6 +1711,16 @@ def test_alpha_model_carries_forward_locked_hypercore_vault(
     assert len(locked_signal.redemption_check_results) == 1
     assert locked_signal.redemption_check_results[0].stage == RedemptionCheckStage.carry_forward
     assert locked_signal.redemption_check_results[0].reason_code == RedemptionBlockReason.user_lockup_not_expired
+    assert locked_signal.other_data["missed_redemption_usd"] == pytest.approx(5000.0)
+    assert alpha_model.get_missed_vault_events() == [
+        {
+            "vault_name": locked_signal.pair.get_vault_name() or locked_signal.pair.get_ticker(),
+            "pair_ticker": locked_signal.pair.get_ticker(),
+            "vault_address": locked_signal.pair.pool_address,
+            "event_type": "redemption",
+            "missed_usd": 5000.0,
+        }
+    ]
 
     restored_signal = locked_signal.__class__.from_json(locked_signal.to_json())
     assert len(restored_signal.redemption_check_results) == 1
@@ -1826,7 +1842,10 @@ def test_alpha_model_skips_sell_rebalance_for_non_redeemable_position(
     # 3. Verify the sell rebalance is skipped and the signal stores the sell-stage diagnostics.
     assert trades == []
     assert signal.position_adjust_ignored is True
+    assert signal.position_adjust_usd == pytest.approx(0.0)
+    assert signal.position_adjust_quantity == pytest.approx(0.0)
     assert TradingPairSignalFlags.cannot_redeem in signal.flags
+    assert signal.other_data["missed_redemption_usd"] == pytest.approx(4000.0)
     assert len(signal.redemption_check_results) == 1
     assert signal.redemption_check_results[0].stage == RedemptionCheckStage.sell_rebalance
     assert signal.redemption_check_results[0].reason_code == RedemptionBlockReason.user_lockup_not_expired
@@ -1896,6 +1915,163 @@ def _patch_hypercore_pricing(
             else original_get_sell_price(ts, pair, quantity)
         ),
     )
+
+
+def test_alpha_model_skips_buy_when_vault_deposits_closed(
+    start_ts: datetime.datetime,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model: BacktestPricing,
+    usdc: AssetIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check AlphaModel does not add capital to a vault whose deposits are closed.
+
+    1. Build an empty portfolio with free USDC and one Hypercore vault buy signal.
+    2. Mock the pricing model so the vault has deterministic pricing but closed deposits.
+    3. Verify no buy trade is generated and the signal records the deposit block.
+    """
+    state = State()
+    state.portfolio.reserves = {
+        usdc: ReservePosition(
+            asset=usdc,
+            quantity=Decimal(2500),
+            last_sync_at=start_ts,
+            reserve_token_price=USDollarAmount(1.0),
+            last_pricing_at=start_ts,
+            initial_deposit=Decimal(2500),
+        )
+    }
+    hypercore_vault_pair = create_hypercore_vault_pair(
+        quote=usdc,
+        vault_address=HLP_VAULT_ADDRESS["mainnet"],
+        internal_id=102,
+    )
+
+    # 1. Build an empty portfolio with free USDC and one Hypercore vault buy signal.
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),
+        strategy_universe.data_universe,
+        state,
+        pricing_model,
+    )
+    _patch_hypercore_pricing(monkeypatch, pricing_model, hypercore_vault_pair)
+
+    # 2. Mock the pricing model so the vault has deterministic pricing but closed deposits.
+    # PricingModel is the shared live/backtest gate for venue-specific deposit availability.
+    monkeypatch.setattr(
+        pricing_model,
+        "can_deposit",
+        lambda ts, pair: pair != hypercore_vault_pair,
+    )
+
+    alpha_model = AlphaModel(timestamp=position_manager.timestamp)
+    alpha_model.set_signal(hypercore_vault_pair, 1.0)
+    alpha_model.select_top_signals(count=5)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights(max_weight=1.0)
+    alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
+    alpha_model.calculate_target_positions(position_manager, investable_equity=2500.0)
+
+    trades = alpha_model.generate_rebalance_trades_and_triggers(
+        position_manager,
+        min_trade_threshold=0.01,
+        individual_rebalance_min_threshold=0.01,
+        sell_rebalance_min_threshold=0.01,
+    )
+
+    signal = alpha_model.get_signal_by_pair(hypercore_vault_pair)
+    assert signal is not None
+
+    # 3. Verify no buy trade is generated and the signal records the deposit block.
+    assert trades == []
+    assert signal.position_adjust_ignored is True
+    assert TradingPairSignalFlags.cannot_deposit in signal.flags
+    assert TradingPairSignalFlags.cannot_redeem not in signal.flags
+    assert signal.other_data["missed_deposit_usd"] == pytest.approx(2500.0)
+    missed_events = alpha_model.get_missed_vault_events()
+    assert missed_events == [
+        {
+            "vault_name": signal.pair.get_vault_name() or signal.pair.get_ticker(),
+            "pair_ticker": signal.pair.get_ticker(),
+            "vault_address": signal.pair.pool_address,
+            "event_type": "deposit",
+            "missed_usd": 2500.0,
+        }
+    ]
+
+
+def test_alpha_model_allows_sell_when_vault_deposits_closed_but_redemptions_open(
+    start_ts: datetime.datetime,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model: BacktestPricing,
+    usdc: AssetIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check a deposit-closed vault can still be reduced when redemptions are open.
+
+    1. Create an open Hypercore vault position that needs to be reduced.
+    2. Mock deposits as closed but redemptions as open for the same vault.
+    3. Verify the alpha model emits a sell and does not mark the signal deposit-blocked.
+    """
+    state = State()
+    hypercore_vault_pair = _create_hypercore_position_for_rebalance_test(state, start_ts, usdc)
+
+    # 1. Create an open Hypercore vault position that needs to be reduced.
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),
+        strategy_universe.data_universe,
+        state,
+        pricing_model,
+    )
+    _patch_hypercore_pricing(monkeypatch, pricing_model, hypercore_vault_pair)
+
+    # 2. Mock deposits as closed but redemptions as open for the same vault.
+    # This separates the buy-side deposit gate from the sell-side redemption gate.
+    monkeypatch.setattr(
+        pricing_model,
+        "can_deposit",
+        lambda ts, pair: pair != hypercore_vault_pair,
+    )
+    monkeypatch.setattr(
+        pricing_model,
+        "check_redemption",
+        lambda ts, pair, **kwargs: RedemptionCheckResult(
+            timestamp=ts,
+            stage=kwargs["stage"],
+            can_redeem=True,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+            safe_address="0x0000000000000000000000000000000000000abc",
+            max_withdrawable=None,
+            max_redemption=None,
+            message="Vault redemptions are open",
+        ),
+    )
+
+    alpha_model = AlphaModel(timestamp=position_manager.timestamp)
+    alpha_model.set_signal(hypercore_vault_pair, 1.0)
+    alpha_model.select_top_signals(count=5)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights(max_weight=1.0)
+    alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
+    alpha_model.calculate_target_positions(position_manager, investable_equity=20.0)
+
+    trades = alpha_model.generate_rebalance_trades_and_triggers(
+        position_manager,
+        min_trade_threshold=0.01,
+        individual_rebalance_min_threshold=0.01,
+        sell_rebalance_min_threshold=0.01,
+    )
+
+    signal = alpha_model.get_signal_by_pair(hypercore_vault_pair)
+    assert signal is not None
+
+    # 3. Verify the alpha model emits a sell and does not mark the signal deposit-blocked.
+    assert len(trades) == 1
+    assert trades[0].is_sell()
+    assert TradingPairSignalFlags.cannot_deposit not in signal.flags
+    assert TradingPairSignalFlags.cannot_redeem not in signal.flags
+    assert alpha_model.get_missed_vault_events() == []
 
 
 def test_alpha_model_caps_profitable_hypercore_sell_before_trade_generation(
@@ -2309,6 +2485,127 @@ def test_generic_pricing_delegates_check_redemption_with_diagnostics(
     assert len(blocked_results) == 1
     assert blocked_results[0].reason_code == RedemptionBlockReason.user_lockup_not_expired
     assert blocked_results[0].message == "Hypercore user lockup has not expired yet"
+
+
+def test_analyse_missed_vault_deposit_redemption_events(start_ts: datetime.datetime) -> None:
+    """Check missed vault deposit and redemption event analysis table.
+
+    1. Store compact missed vault events for two strategy cycles.
+    2. Build the missed event analysis table from state visualisation calculations.
+    3. Verify deposit and redemption counts and US dollar sums are grouped by vault name.
+    """
+    state = State()
+
+    # 1. Store compact missed vault events for two strategy cycles.
+    state.visualisation.add_calculations(
+        start_ts,
+        {
+            "missed_vault_events": [
+                {
+                    "vault_name": "Vault A",
+                    "event_type": "deposit",
+                    "missed_usd": 100.0,
+                },
+                {
+                    "vault_name": "Vault A",
+                    "event_type": "redemption",
+                    "missed_usd": 40.0,
+                },
+            ],
+        },
+    )
+    state.visualisation.add_calculations(
+        start_ts + datetime.timedelta(days=1),
+        {
+            "missed_vault_events": [
+                {
+                    "vault_name": "Vault A",
+                    "event_type": "deposit",
+                    "missed_usd": 25.0,
+                },
+                {
+                    "vault_name": "Vault B",
+                    "event_type": "redemption",
+                    "missed_usd": 300.0,
+                },
+            ],
+        },
+    )
+
+    # 2. Build the missed event analysis table from state visualisation calculations.
+    df = analyse_missed_vault_deposit_redemption_events(state)
+
+    # 3. Verify deposit and redemption counts and US dollar sums are grouped by vault name.
+    rows = df.set_index("Vault name").to_dict("index")
+    assert rows["Vault A"]["Missed deposit count"] == 2
+    assert rows["Vault A"]["Missed deposit US dollar"] == pytest.approx(125.0)
+    assert rows["Vault A"]["Missed redemption count"] == 1
+    assert rows["Vault A"]["Missed redemption US dollar"] == pytest.approx(40.0)
+    assert rows["Vault B"]["Missed deposit count"] == 0
+    assert rows["Vault B"]["Missed deposit US dollar"] == pytest.approx(0.0)
+    assert rows["Vault B"]["Missed redemption count"] == 1
+    assert rows["Vault B"]["Missed redemption US dollar"] == pytest.approx(300.0)
+
+
+def test_analyse_missed_vault_deposit_redemption_event_timeline(start_ts: datetime.datetime) -> None:
+    """Check missed vault event timeline analysis and currency table formatting.
+
+    1. Store compact missed vault events for two strategy cycles.
+    2. Build the missed event timeline from state visualisation calculations.
+    3. Verify events are grouped by cycle, vault, and event type.
+    4. Format the summary table and verify dollar values are rendered as currency.
+    """
+    state = State()
+
+    # 1. Store compact missed vault events for two strategy cycles.
+    state.visualisation.add_calculations(
+        start_ts,
+        {
+            "missed_vault_events": [
+                {
+                    "vault_name": "Vault A",
+                    "event_type": "deposit",
+                    "missed_usd": 1000.0,
+                },
+                {
+                    "vault_name": "Vault A",
+                    "event_type": "deposit",
+                    "missed_usd": 250.0,
+                },
+            ],
+        },
+    )
+    state.visualisation.add_calculations(
+        start_ts + datetime.timedelta(days=1),
+        {
+            "missed_vault_events": [
+                {
+                    "vault_name": "Vault B",
+                    "event_type": "redemption",
+                    "missed_usd": 300.0,
+                },
+            ],
+        },
+    )
+
+    # 2. Build the missed event timeline from state visualisation calculations.
+    timeline_df = analyse_missed_vault_deposit_redemption_event_timeline(state)
+
+    # 3. Verify events are grouped by cycle, vault, and event type.
+    rows = timeline_df.set_index(["Timestamp", "Event type", "Vault name"]).to_dict("index")
+    deposit_row = rows[(pd.Timestamp(start_ts), "deposit", "Vault A")]
+    redemption_row = rows[(pd.Timestamp(start_ts + datetime.timedelta(days=1)), "redemption", "Vault B")]
+    assert deposit_row["Missed event count"] == 2
+    assert deposit_row["Missed US dollar"] == pytest.approx(1250.0)
+    assert redemption_row["Missed event count"] == 1
+    assert redemption_row["Missed US dollar"] == pytest.approx(300.0)
+
+    # 4. Format the summary table and verify dollar values are rendered as currency.
+    summary_df = analyse_missed_vault_deposit_redemption_events(state)
+    html = format_missed_vault_deposit_redemption_events(summary_df).to_html()
+    assert "$1,250.00" in html
+    assert "$300.00" in html
+    assert "1.250000e+03" not in html
 
 
 def test_update_old_weights_reads_position_value_once(
