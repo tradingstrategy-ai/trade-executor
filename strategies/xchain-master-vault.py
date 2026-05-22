@@ -35,6 +35,7 @@ from tradeexecutor.strategy.chart.definition import ChartInput, ChartKind, Chart
 from tradeexecutor.strategy.chart.standard.alpha_model import (
     alpha_model_diagnostics,
     missed_vault_deposit_redemption_events,
+    missed_vault_deposit_redemption_timeline,
 )
 from tradeexecutor.strategy.chart.standard.equity_curve import (
     equity_curve as equity_curve_chart,
@@ -811,6 +812,7 @@ def create_charts(
     charts.register(last_messages, ChartKind.state_all_pairs)
     charts.register(alpha_model_diagnostics, ChartKind.state_all_pairs)
     charts.register(missed_vault_deposit_redemption_events, ChartKind.state_all_pairs)
+    charts.register(missed_vault_deposit_redemption_timeline, ChartKind.state_all_pairs)
     charts.register(trading_pair_breakdown_with_chain, ChartKind.state_all_pairs)
     charts.register(trading_metrics, ChartKind.state_all_pairs)
     charts.register(vault_statistics, ChartKind.state_all_pairs)

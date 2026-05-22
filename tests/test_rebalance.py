@@ -10,6 +10,7 @@ import datetime
 import random
 from decimal import Decimal
 
+import pandas as pd
 import pytest
 from hexbytes import HexBytes
 
@@ -30,7 +31,11 @@ from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.types import USDollarPrice, USDollarAmount
-from tradeexecutor.analysis.vault_missed_events import analyse_missed_vault_deposit_redemption_events
+from tradeexecutor.analysis.vault_missed_events import (
+    analyse_missed_vault_deposit_redemption_event_timeline,
+    analyse_missed_vault_deposit_redemption_events,
+    format_missed_vault_deposit_redemption_events,
+)
 from tradeexecutor.strategy import size_risk_model
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignalFlags
 from tradeexecutor.strategy.fixed_size_risk import FixedSizeRiskModel
@@ -2540,6 +2545,67 @@ def test_analyse_missed_vault_deposit_redemption_events(start_ts: datetime.datet
     assert rows["Vault B"]["Missed deposit US dollar"] == pytest.approx(0.0)
     assert rows["Vault B"]["Missed redemption count"] == 1
     assert rows["Vault B"]["Missed redemption US dollar"] == pytest.approx(300.0)
+
+
+def test_analyse_missed_vault_deposit_redemption_event_timeline(start_ts: datetime.datetime) -> None:
+    """Check missed vault event timeline analysis and currency table formatting.
+
+    1. Store compact missed vault events for two strategy cycles.
+    2. Build the missed event timeline from state visualisation calculations.
+    3. Verify events are grouped by cycle, vault, and event type.
+    4. Format the summary table and verify dollar values are rendered as currency.
+    """
+    state = State()
+
+    # 1. Store compact missed vault events for two strategy cycles.
+    state.visualisation.add_calculations(
+        start_ts,
+        {
+            "missed_vault_events": [
+                {
+                    "vault_name": "Vault A",
+                    "event_type": "deposit",
+                    "missed_usd": 1000.0,
+                },
+                {
+                    "vault_name": "Vault A",
+                    "event_type": "deposit",
+                    "missed_usd": 250.0,
+                },
+            ],
+        },
+    )
+    state.visualisation.add_calculations(
+        start_ts + datetime.timedelta(days=1),
+        {
+            "missed_vault_events": [
+                {
+                    "vault_name": "Vault B",
+                    "event_type": "redemption",
+                    "missed_usd": 300.0,
+                },
+            ],
+        },
+    )
+
+    # 2. Build the missed event timeline from state visualisation calculations.
+    timeline_df = analyse_missed_vault_deposit_redemption_event_timeline(state)
+
+    # 3. Verify events are grouped by cycle, vault, and event type.
+    rows = timeline_df.set_index(["Timestamp", "Event type", "Vault name"]).to_dict("index")
+    deposit_row = rows[(pd.Timestamp(start_ts), "deposit", "Vault A")]
+    redemption_row = rows[(pd.Timestamp(start_ts + datetime.timedelta(days=1)), "redemption", "Vault B")]
+    assert deposit_row["Missed event count"] == 2
+    assert deposit_row["Missed US dollar"] == pytest.approx(1250.0)
+    assert redemption_row["Missed event count"] == 1
+    assert redemption_row["Missed US dollar"] == pytest.approx(300.0)
+
+    # 4. Format the summary table and verify dollar values are rendered as currency.
+    summary_df = analyse_missed_vault_deposit_redemption_events(state)
+    html = format_missed_vault_deposit_redemption_events(summary_df).to_html()
+    assert "$1,250.00" in html
+    assert "$300.00" in html
+    assert "1.250000e+03" not in html
 
 
 def test_update_old_weights_reads_position_value_once(
