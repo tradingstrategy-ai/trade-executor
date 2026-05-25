@@ -49,6 +49,7 @@ from web3.contract.contract import ContractFunction
 from eth_defi.confirmation import wait_and_broadcast_multiple_nodes
 from eth_defi.gas import apply_gas, estimate_gas_price
 from eth_defi.hotwallet import HotWallet, SignedTransactionWithNonce
+from eth_defi.provider.fallback import get_fallback_provider
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.hyperliquid.api import (
     HypercoreDepositVerificationError,
@@ -98,6 +99,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.utils.blockchain import get_block_timestamp
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
+from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
@@ -496,8 +498,6 @@ class HypercoreVaultRouting(RoutingModel):
             On broadcast or confirmation failure.  The ``tx`` object will have
             error information set before the exception propagates.
         """
-        from tradeexecutor.utils.timestamp import native_datetime_utc_now
-
         signed_tx = SignedTransactionWithNonce(
             rawTransaction=HexBytes(tx.signed_bytes),
             hash=HexBytes(tx.tx_hash),
@@ -513,7 +513,6 @@ class HypercoreVaultRouting(RoutingModel):
         # MEVBlockerProvider → FallbackProvider, so we cover both direct and
         # wrapped setups.  Fall back to single-node only when no fallback
         # provider exists at all (e.g. plain Anvil in tests).
-        from eth_defi.provider.fallback import get_fallback_provider
         has_fallback = True
         try:
             get_fallback_provider(self.web3)
