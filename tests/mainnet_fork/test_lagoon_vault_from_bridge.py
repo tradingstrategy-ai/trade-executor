@@ -73,6 +73,13 @@ DEPOSIT_AMOUNT = Decimal("10")  # Total USDC deposited
 BRIDGE_AMOUNT = Decimal("5")    # USDC bridged to Base
 VAULT_AMOUNT = Decimal("3")     # USDC deposited into vault
 
+#: Pin Base fork to a block where the IPOR Fusion vault has sufficient
+#: deposit headroom.  The vault's ``totalSupplyCap`` has been nearly full
+#: since mid-May 2026 (``maxDeposit`` < 4 USDC at latest blocks), causing
+#: ``ERC4626ExceededMaxDeposit`` reverts on unpinned forks.  At this block
+#: the vault has ~14 000 USDC of headroom.
+BASE_FORK_BLOCK = 45_960_642
+
 pytestmark = pytest.mark.skipif(
     not JSON_RPC_ARBITRUM or not JSON_RPC_BASE,
     reason="JSON_RPC_ARBITRUM and JSON_RPC_BASE environment variables required",
@@ -93,7 +100,7 @@ def arb_anvil() -> AnvilLaunch:
 
 @pytest.fixture()
 def base_anvil() -> AnvilLaunch:
-    launch = fork_network_anvil(JSON_RPC_BASE)
+    launch = fork_network_anvil(JSON_RPC_BASE, fork_block_number=BASE_FORK_BLOCK)
     try:
         yield launch
     finally:
