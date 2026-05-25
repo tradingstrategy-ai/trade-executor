@@ -49,7 +49,6 @@ from web3.contract.contract import ContractFunction
 from eth_defi.confirmation import wait_and_broadcast_multiple_nodes
 from eth_defi.gas import apply_gas, estimate_gas_price
 from eth_defi.hotwallet import HotWallet, SignedTransactionWithNonce
-from eth_defi.provider.fallback import FallbackProvider
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.hyperliquid.api import (
     HypercoreDepositVerificationError,
@@ -510,8 +509,19 @@ class HypercoreVaultRouting(RoutingModel):
             source=tx.details,
         )
 
+        # Detect multi-node availability.  get_fallback_provider() unwraps
+        # MEVBlockerProvider → FallbackProvider, so we cover both direct and
+        # wrapped setups.  Fall back to single-node only when no fallback
+        # provider exists at all (e.g. plain Anvil in tests).
+        from eth_defi.provider.fallback import get_fallback_provider
+        has_fallback = True
         try:
-            if isinstance(self.web3.provider, FallbackProvider):
+            get_fallback_provider(self.web3)
+        except AssertionError:
+            has_fallback = False
+
+        try:
+            if has_fallback:
                 receipts = wait_and_broadcast_multiple_nodes(
                     self.web3,
                     [signed_tx],
