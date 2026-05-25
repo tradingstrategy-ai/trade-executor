@@ -36,6 +36,7 @@ deposit/withdrawal legs, see also:
 
 from __future__ import annotations
 
+import datetime
 import logging
 import time
 from decimal import Decimal
@@ -45,8 +46,11 @@ from hexbytes import HexBytes
 from web3 import Web3
 from web3.contract.contract import ContractFunction
 
+from eth_defi.confirmation import wait_and_broadcast_multiple_nodes
 from eth_defi.gas import apply_gas, estimate_gas_price
-from eth_defi.hotwallet import HotWallet
+from eth_defi.hotwallet import HotWallet, SignedTransactionWithNonce
+from eth_defi.provider.fallback import get_fallback_provider
+from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.hyperliquid.api import (
     HypercoreDepositVerificationError,
     fetch_perp_clearinghouse_state,
@@ -95,6 +99,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 from tradeexecutor.utils.blockchain import get_block_timestamp
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
+from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
@@ -209,6 +214,20 @@ class HypercoreWithdrawalVerificationError(Exception):
 
 class HypercoreWithdrawalPreflightError(Exception):
     """Raised when a live Hypercore withdrawal is blocked before broadcast."""
+
+
+class SettlementBroadcastError(Exception):
+    """Raised when a settlement phase transaction fails to broadcast or confirm.
+
+    Carries the :py:class:`~tradeexecutor.state.blockhain_transaction.BlockchainTransaction`
+    so callers can always append it to the trade for diagnostics, even when the
+    broadcast itself failed.
+    """
+
+    def __init__(self, tx: "BlockchainTransaction", cause: Exception):
+        super().__init__(str(cause))
+        #: The signed transaction with error info already set.
+        self.tx = tx
 
 
 class HypercoreVaultRoutingState(RoutingState):
@@ -446,6 +465,105 @@ class HypercoreVaultRouting(RoutingModel):
         vault_addr = trade.pair.pool_address
         assert vault_addr, f"No pool_address set for Hypercore vault pair: {trade.pair}"
         return vault_addr
+
+    def _broadcast_and_confirm_settlement_tx(
+        self,
+        tx: BlockchainTransaction,
+        timeout: float = 120,
+    ) -> dict:
+        """Broadcast a settlement phase tx through all RPC nodes and wait for receipt.
+
+        Settlement phase transactions (phase 2/3 of deposits and withdrawals) were
+        previously sent through a single RPC node via ``send_raw_transaction`` +
+        ``wait_for_transaction_receipt``.  If that single node dropped the tx or
+        HyperEVM was momentarily congested, the transaction was never picked up by
+        other nodes and the 120 s timeout expired, stranding USDC.
+
+        This method uses :py:func:`~eth_defi.confirmation.wait_and_broadcast_multiple_nodes`
+        to broadcast through all configured :py:class:`~eth_defi.provider.fallback.FallbackProvider`
+        nodes, matching the reliability of phase 1 broadcasts.
+
+        On success, sets confirmation information on the ``BlockchainTransaction``.
+        On failure, sets error information (``revert_reason``) on the transaction
+        so that :py:meth:`~tradeexecutor.state.trade.TradeExecution.get_revert_reason`
+        returns a meaningful message.
+
+        :param tx:
+            Signed :py:class:`BlockchainTransaction` to broadcast.
+        :param timeout:
+            Maximum seconds to wait for confirmation.
+        :return:
+            Transaction receipt dict.
+        :raises Exception:
+            On broadcast or confirmation failure.  The ``tx`` object will have
+            error information set before the exception propagates.
+        """
+        signed_tx = SignedTransactionWithNonce(
+            rawTransaction=HexBytes(tx.signed_bytes),
+            hash=HexBytes(tx.tx_hash),
+            r=0,
+            s=0,
+            v=0,
+            address=tx.from_address,
+            nonce=tx.nonce,
+            source=tx.details,
+        )
+
+        # Detect multi-node availability.  get_fallback_provider() unwraps
+        # MEVBlockerProvider → FallbackProvider, so we cover both direct and
+        # wrapped setups.  Fall back to single-node only when no fallback
+        # provider exists at all (e.g. plain Anvil in tests).
+        has_fallback = True
+        try:
+            get_fallback_provider(self.web3)
+        except AssertionError:
+            has_fallback = False
+
+        try:
+            if has_fallback:
+                receipts = wait_and_broadcast_multiple_nodes(
+                    self.web3,
+                    [signed_tx],
+                    max_timeout=datetime.timedelta(seconds=timeout),
+                    confirmation_block_count=0,
+                    node_switch_timeout=datetime.timedelta(minutes=1),
+                    check_nonce_validity=False,
+                )
+                receipt = receipts[HexBytes(tx.tx_hash)]
+            else:
+                # Single-provider fallback (e.g. Anvil tests)
+                self.web3.eth.send_raw_transaction(HexBytes(tx.signed_bytes))
+                receipt = self.web3.eth.wait_for_transaction_receipt(
+                    HexBytes(tx.tx_hash), timeout=timeout,
+                )
+        except Exception as e:
+            # Set error info on the tx so get_revert_reason() works
+            tx.revert_reason = f"Settlement tx broadcast/confirmation failed: {e}"
+            tx.status = False
+            raise
+
+        ts = native_datetime_utc_now()
+
+        revert_reason = None
+        if receipt["status"] != 1:
+            try:
+                revert_reason = fetch_transaction_revert_reason(
+                    self.web3, HexBytes(tx.tx_hash),
+                )
+            except Exception:
+                revert_reason = "Transaction reverted (revert reason unavailable)"
+
+        tx.set_confirmation_information(
+            ts=ts,
+            block_number=receipt["blockNumber"],
+            block_hash=receipt["blockHash"].hex(),
+            realised_gas_price=receipt.get("effectiveGasPrice", 0),
+            realised_gas_units_consumed=receipt["gasUsed"],
+            status=receipt["status"] == 1,
+            revert_reason=revert_reason,
+        )
+
+        return receipt
 
     def _get_raw_usdc_amount(self, trade: TradeExecution) -> int:
         """Get the raw USDC amount (6 decimals) for the trade."""
@@ -1341,6 +1459,9 @@ class HypercoreVaultRouting(RoutingModel):
 
         :return:
             Tuple of (BlockchainTransaction, receipt dict).
+        :raises SettlementBroadcastError:
+            If the broadcast or confirmation fails.  The exception carries
+            the signed ``BlockchainTransaction`` with error info.
         """
         fn = build_hypercore_deposit_phase2(
             self.lagoon_vault,
@@ -1352,15 +1473,21 @@ class HypercoreVaultRouting(RoutingModel):
             notes=f"Hypercore deposit phase 2: {raw_amount} raw USDC to vault {vault_address}",
         )
 
-        tx_hash = self.web3.eth.send_raw_transaction(HexBytes(tx.signed_bytes))
-        receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        try:
+            receipt = self._broadcast_and_confirm_settlement_tx(tx)
+        except Exception as e:
+            raise SettlementBroadcastError(tx, e) from e
         return tx, receipt
 
     def _broadcast_withdrawal_phase2(
         self,
         raw_amount: int,
     ) -> tuple[BlockchainTransaction, dict]:
-        """Build, sign, and broadcast withdrawal phase 2 (perp -> spot)."""
+        """Build, sign, and broadcast withdrawal phase 2 (perp -> spot).
+
+        :raises SettlementBroadcastError:
+            If the broadcast or confirmation fails.
+        """
         fn = build_hypercore_transfer_usd_class_call(
             self.lagoon_vault,
             hypercore_usdc_amount=raw_amount,
@@ -1372,8 +1499,10 @@ class HypercoreVaultRouting(RoutingModel):
             logical_function_name="sendRawAction",
         )
 
-        tx_hash = self.web3.eth.send_raw_transaction(HexBytes(tx.signed_bytes))
-        receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        try:
+            receipt = self._broadcast_and_confirm_settlement_tx(tx)
+        except Exception as e:
+            raise SettlementBroadcastError(tx, e) from e
         return tx, receipt
 
     def _broadcast_withdrawal_phase1_retry(
@@ -1381,7 +1510,11 @@ class HypercoreVaultRouting(RoutingModel):
         vault_address: str,
         raw_amount: int,
     ) -> tuple[BlockchainTransaction, dict]:
-        """Build, sign, and broadcast a retry of withdrawal phase 1."""
+        """Build, sign, and broadcast a retry of withdrawal phase 1.
+
+        :raises SettlementBroadcastError:
+            If the broadcast or confirmation fails.
+        """
         fn = build_hypercore_withdraw_from_vault_call(
             self.lagoon_vault,
             vault_address=vault_address,
@@ -1393,15 +1526,21 @@ class HypercoreVaultRouting(RoutingModel):
             logical_function_name="sendRawAction",
         )
 
-        tx_hash = self.web3.eth.send_raw_transaction(HexBytes(tx.signed_bytes))
-        receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        try:
+            receipt = self._broadcast_and_confirm_settlement_tx(tx)
+        except Exception as e:
+            raise SettlementBroadcastError(tx, e) from e
         return tx, receipt
 
     def _broadcast_withdrawal_phase3(
         self,
         raw_amount: int,
     ) -> tuple[BlockchainTransaction, dict]:
-        """Build, sign, and broadcast withdrawal phase 3 (spot -> EVM)."""
+        """Build, sign, and broadcast withdrawal phase 3 (spot -> EVM).
+
+        :raises SettlementBroadcastError:
+            If the broadcast or confirmation fails.
+        """
         fn = build_hypercore_send_asset_to_evm_call(
             self.lagoon_vault,
             evm_usdc_amount=raw_amount,
@@ -1412,8 +1551,10 @@ class HypercoreVaultRouting(RoutingModel):
             logical_function_name="sendRawAction",
         )
 
-        tx_hash = self.web3.eth.send_raw_transaction(HexBytes(tx.signed_bytes))
-        receipt = self.web3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
+        try:
+            receipt = self._broadcast_and_confirm_settlement_tx(tx)
+        except Exception as e:
+            raise SettlementBroadcastError(tx, e) from e
         return tx, receipt
 
     def _settle_deposit_simulate(
@@ -1599,8 +1740,9 @@ class HypercoreVaultRouting(RoutingModel):
 
         try:
             phase2_tx, phase2_receipt = self._broadcast_phase2(trade, vault_address, deposit_raw)
-        except Exception as e:
-            logger.error("Phase 2 broadcast failed: %s", e)
+        except SettlementBroadcastError as e:
+            logger.error("Phase 2 broadcast failed: %s", e.__cause__)
+            trade.blockchain_transactions.append(e.tx)
             self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot")
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
@@ -1936,12 +2078,13 @@ class HypercoreVaultRouting(RoutingModel):
                                 vault_address=vault_address,
                                 raw_amount=retry_raw,
                             )
-                        except Exception as retry_error:
+                        except SettlementBroadcastError as retry_error:
                             logger.error(
                                 "Withdrawal phase 1 retry broadcast failed for trade %s: %s",
                                 trade.trade_id,
-                                retry_error,
+                                retry_error.__cause__,
                             )
+                            trade.blockchain_transactions.append(retry_error.tx)
                             report_failure(ts, state, trade, stop_on_execution_failure)
                             return
 
@@ -2028,8 +2171,9 @@ class HypercoreVaultRouting(RoutingModel):
 
             try:
                 phase2_tx, phase2_receipt = self._broadcast_withdrawal_phase2(expected_raw)
-            except Exception as e:
-                logger.error("Withdrawal phase 2 broadcast failed: %s", e)
+            except SettlementBroadcastError as e:
+                logger.error("Withdrawal phase 2 broadcast failed: %s", e.__cause__)
+                trade.blockchain_transactions.append(e.tx)
                 self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
                 report_failure(ts, state, trade, stop_on_execution_failure)
                 return
@@ -2138,15 +2282,16 @@ class HypercoreVaultRouting(RoutingModel):
 
             try:
                 phase3_tx, phase3_receipt = self._broadcast_withdrawal_phase3(phase3_raw)
-            except Exception as e:
+            except SettlementBroadcastError as e:
                 logger.error(
                     "Withdrawal phase 3 broadcast failed for trade %s: %s. "
                     "Requested %d raw, attempted %d raw after bridge-fee headroom",
                     trade.trade_id,
-                    e,
+                    e.__cause__,
                     expected_raw,
                     phase3_raw,
                 )
+                trade.blockchain_transactions.append(e.tx)
                 self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
                 report_failure(ts, state, trade, stop_on_execution_failure)
                 return
