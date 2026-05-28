@@ -306,10 +306,13 @@ def create_trading_universe(
     debug_printer(f"We have total {len(all_pairs_df)} pairs in dataset and going to use {len(pairs_df)} pairs for the strategy")
 
     vault_universe = load_vault_universe_with_metadata(client, vaults=parameters.source_vaults)
-    vault_universe = vault_universe.limit_to_denomination(
-        ALLOWED_VAULT_DENOMINATION_TOKENS,
-        check_all_vaults_found=True,
-    )
+    if parameters.auto_generate_cctp_bridges:
+        vault_universe = vault_universe.limit_to_native_usdc()
+    else:
+        vault_universe = vault_universe.limit_to_denomination(
+            ALLOWED_VAULT_DENOMINATION_TOKENS,
+            check_all_vaults_found=True,
+        )
     debug_printer(
         f"Loaded {vault_universe.get_vault_count()} vaults from remote vault metadata, "
         f"source vaults count: {len(parameters.source_vaults)}"
