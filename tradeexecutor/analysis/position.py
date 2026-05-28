@@ -288,3 +288,53 @@ def display_position_valuations(positions: Iterable[TradingPosition]) -> pd.Data
         df = df.set_index("Id")
         df = df.replace({pd.NaT: ""})
     return df
+
+
+def build_chain_exposure_snapshot(
+    positions: Iterable[TradingPosition],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Build a per-position and per-chain exposure summary from open positions.
+
+    Bridge positions (CCTP) are excluded so the result shows only
+    vault/spot exposure.
+
+    :param positions:
+        Open and frozen positions, e.g. from
+        ``state.portfolio.get_open_and_frozen_positions()``.
+
+    :return:
+        Tuple of (positions_df, chain_exposure_df).
+
+        *positions_df* has columns: position_id, chain_id, pair, value_usd,
+        opened_at — one row per non-bridge position, sorted by value descending.
+
+        *chain_exposure_df* has columns: chain_id, positions, value_usd,
+        weight — one row per chain.
+    """
+    rows = []
+    for position in positions:
+        if position.pair.is_cctp_bridge():
+            continue
+        rows.append({
+            "position_id": position.position_id,
+            "chain_id": position.pair.chain_id,
+            "pair": position.pair.get_ticker(),
+            "value_usd": position.get_value(),
+            "opened_at": position.opened_at,
+        })
+
+    positions_df = pd.DataFrame(rows)
+    if positions_df.empty:
+        chain_exposure_df = pd.DataFrame(columns=["chain_id", "positions", "value_usd", "weight"])
+        return positions_df, chain_exposure_df
+
+    positions_df = positions_df.sort_values("value_usd", ascending=False)
+
+    chain_exposure_df = positions_df.groupby("chain_id").agg(
+        positions=("position_id", "count"),
+        value_usd=("value_usd", "sum"),
+    ).reset_index()
+    total = chain_exposure_df["value_usd"].sum()
+    chain_exposure_df["weight"] = chain_exposure_df["value_usd"] / total if total > 0 else 0
+
+    return positions_df, chain_exposure_df
