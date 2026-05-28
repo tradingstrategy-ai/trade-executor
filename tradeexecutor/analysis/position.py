@@ -338,3 +338,38 @@ def build_chain_exposure_snapshot(
     chain_exposure_df["weight"] = chain_exposure_df["value_usd"] / total if total > 0 else 0
 
     return positions_df, chain_exposure_df
+
+
+def position_duration_summary(
+    state,
+    backtest_end: datetime.datetime | None = None,
+) -> dict:
+    """Compute position duration statistics from a backtest state.
+
+    :param state:
+        Completed backtest state.
+
+    :param backtest_end:
+        End timestamp for open positions that have no ``closed_at``.
+        Defaults to now if not given.
+
+    :return:
+        Dict with keys: position_count, positions_lt_3d,
+        share_positions_lt_3d, median_position_days.
+    """
+    if backtest_end is None:
+        backtest_end = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
+
+    positions = [p for p in state.portfolio.get_all_positions() if not p.is_credit_supply()]
+    durations = []
+    for position in positions:
+        closed_at = position.closed_at if position.closed_at is not None else backtest_end
+        durations.append((closed_at - position.opened_at).total_seconds() / 86400)
+
+    duration_series = pd.Series(durations, dtype="float64")
+    return {
+        "position_count": len(positions),
+        "positions_lt_3d": int((duration_series < 3).sum()),
+        "share_positions_lt_3d": float((duration_series < 3).mean()) if len(duration_series) else float("nan"),
+        "median_position_days": float(duration_series.median()) if len(duration_series) else float("nan"),
+    }
