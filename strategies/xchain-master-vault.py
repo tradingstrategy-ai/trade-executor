@@ -385,6 +385,13 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
             Candidate signals: {signal_count}
             Total equity: {portfolio.get_total_equity():,.2f} USD
             Cash: {position_manager.get_current_cash():,.2f} USD
+            Redeemable capital: {redeemable_capital:,.2f} USD
+            Locked capital carried forward: {locked_position_value:,.2f} USD
+            Pending redemptions: {position_manager.get_pending_redemptions():,.2f} USD
+            Investable equity: {alpha_model.investable_equity:,.2f} USD
+            Accepted investable equity: {alpha_model.accepted_investable_equity:,.2f} USD
+            Allocated to signals: {alpha_model.get_allocated_value():,.2f} USD
+            Discarded allocation because of lack of lit liquidity: {alpha_model.size_risk_discarded_value:,.2f} USD
             Rebalance volume: {rebalance_volume:,.2f} USD
         """)
 
