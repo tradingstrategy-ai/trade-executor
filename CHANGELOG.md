@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Update cross-chain master vault strategy from 01-initial.ipynb notebook with Ethereum/Base/Arbitrum CCTP vault universe (2026-05-29)
+
 - Add `claim-hypercore-vault-dust` CLI command to recover untracked Hypercore vault dust into Lagoon reserves with operator safety guards (2026-04-16)
 
 - Add `--remove-share-price-outliers` flag to `correct-history` CLI command to detect and remove spurious share price data points using rolling median comparison (2026-04-08)
