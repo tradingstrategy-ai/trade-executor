@@ -1392,6 +1392,8 @@ class TradeExecution:
         """Get the transaction failure reason.
 
         Extract the EVM revert reason from the underlying transactions.
+        Falls back to HyperCore logical failure diagnosis when all EVM
+        transactions succeeded but HyperCore silently rejected an action.
 
         - Each trade can consist of multiple transactions
 
@@ -1407,6 +1409,12 @@ class TradeExecution:
         tx = self.get_failed_transaction()
         if tx:
             return clean_revert_reason_message(tx.revert_reason)
+
+        # HyperCore silent no-ops: all EVM txs have status=True but
+        # HyperCore did not move funds.  The diagnostic is stored in
+        # other_data by diagnose_hyperliquid_vault_redemption_failure().
+        if self.other_data and self.other_data.get("hypercore_failure_diagnosis"):
+            return self.other_data["hypercore_failure_diagnosis"]
 
         return None
 
