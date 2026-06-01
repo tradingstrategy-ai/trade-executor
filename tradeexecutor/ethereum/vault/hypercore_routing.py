@@ -57,6 +57,7 @@ from eth_defi.hyperliquid.api import (
     fetch_spot_clearinghouse_state,
     fetch_user_abstraction_mode,
     fetch_user_vault_equity,
+    fetch_user_vault_equities,
     wait_for_vault_deposit_confirmation,
 )
 from eth_defi.hyperliquid.core_writer import (
@@ -1168,6 +1169,205 @@ class HypercoreVaultRouting(RoutingModel):
             human_amount, location, self.safe_address, trade.trade_id,
         )
 
+    def diagnose_hyperliquid_vault_redemption_failure(
+        self,
+        trade: TradeExecution,
+        vault_address: str,
+        failed_phase: str,
+        original_error: str = "",
+    ) -> str:
+        """Collect HyperCore state for diagnosing a vault redemption failure.
+
+        Called when a withdrawal or deposit settlement fails on HyperCore
+        (typically a silent no-op where the EVM tx succeeds but HyperCore
+        does not move funds).  Queries every relevant API endpoint and
+        assembles a structured diagnostic string.
+
+        The result is:
+
+        - logged at ``ERROR`` level,
+        - stored in ``trade.notes``, and
+        - set as ``revert_reason`` on the last blockchain transaction so
+          it appears in the ``ExecutionHaltableIssue`` message.
+
+        Each API call is wrapped in its own try/except so one failing
+        endpoint does not prevent the rest of the diagnostics from being
+        collected.
+
+        :param trade:
+            The trade that failed settlement.
+        :param vault_address:
+            Hypercore vault address involved in the trade.
+        :param failed_phase:
+            Human-readable label for which settlement phase failed
+            (e.g. ``"phase1_perp_wait"``, ``"phase2_spot_wait"``).
+        :param original_error:
+            String representation of the original exception/error.
+        :return:
+            Multi-line diagnostic string.
+        """
+        session = self._get_session()
+        lines: list[str] = []
+        lines.append(f"=== Hypercore vault redemption failure diagnosis ===")
+        lines.append(f"Trade: #{trade.trade_id} {trade.pair.get_ticker()}")
+        lines.append(f"Failed phase: {failed_phase}")
+        lines.append(f"Safe: {self.safe_address}")
+        lines.append(f"Vault: {vault_address}")
+        if original_error:
+            lines.append(f"Original error: {original_error}")
+        lines.append("")
+
+        # 1. Vault info (name, max_withdrawable, is_closed, allow_deposits)
+        lines.append("--- Vault info ---")
+        try:
+            vault_obj = HyperliquidVault(session=session, vault_address=vault_address)
+            vault_info = vault_obj.fetch_info(user=self.safe_address)
+            lines.append(f"  Name: {vault_info.name}")
+            lines.append(f"  Is closed: {vault_info.is_closed}")
+            lines.append(f"  Allow deposits: {vault_info.allow_deposits}")
+            lines.append(f"  Max withdrawable: {vault_info.max_withdrawable} USDC")
+            lines.append(f"  Max distributable: {vault_info.max_distributable} USDC")
+            lines.append(f"  Relationship type: {vault_info.relationship_type}")
+            if vault_info.leader_fraction is not None:
+                lines.append(f"  Leader fraction: {vault_info.leader_fraction}")
+            # Find our follower entry for lockup info
+            for follower in vault_info.followers:
+                if follower.user.lower() == self.safe_address.lower():
+                    lines.append(f"  Our equity (from followers): {follower.vault_equity} USDC")
+                    lines.append(f"  Our PnL: {follower.pnl} USDC")
+                    lines.append(f"  Days following: {follower.days_following}")
+                    if follower.lockup_until is not None:
+                        lockup_dt = datetime.datetime.utcfromtimestamp(follower.lockup_until / 1000)
+                        lines.append(f"  Lockup until: {lockup_dt} (raw ms: {follower.lockup_until})")
+                    break
+            else:
+                lines.append(f"  Safe not found in vault followers list")
+        except Exception as e:
+            lines.append(f"  ERROR fetching vault info: {e}")
+        lines.append("")
+
+        # 2. User vault equity (current, from dedicated endpoint)
+        lines.append("--- User vault equity ---")
+        try:
+            user_equity = fetch_user_vault_equity(
+                session,
+                user=self.safe_address,
+                vault_address=vault_address,
+                bypass_cache=True,
+            )
+            if user_equity is not None:
+                lines.append(f"  Equity: {user_equity.equity} USDC")
+                lines.append(f"  Locked until: {user_equity.locked_until}")
+                lines.append(f"  Lockup expired: {user_equity.is_lockup_expired}")
+                lines.append(f"  Lockup remaining: {user_equity.lockup_remaining}")
+            else:
+                lines.append(f"  No vault position found (returned None)")
+        except Exception as e:
+            lines.append(f"  ERROR fetching user vault equity: {e}")
+        lines.append("")
+
+        # 3. All user vault equities (to spot other positions)
+        lines.append("--- All user vault positions ---")
+        try:
+            all_equities = fetch_user_vault_equities(
+                session,
+                user=self.safe_address,
+            )
+            lines.append(f"  Total vault positions: {len(all_equities)}")
+            total_equity = sum(eq.equity for eq in all_equities)
+            lines.append(f"  Total equity across all vaults: {total_equity} USDC")
+        except Exception as e:
+            lines.append(f"  ERROR fetching all vault equities: {e}")
+        lines.append("")
+
+        # 4. Perp clearinghouse state
+        lines.append("--- HyperCore perp account ---")
+        try:
+            perp_state = fetch_perp_clearinghouse_state(
+                session,
+                user=self.safe_address,
+            )
+            lines.append(f"  Account value: {perp_state.margin_summary.account_value} USDC")
+            lines.append(f"  Withdrawable: {perp_state.withdrawable} USDC")
+            lines.append(f"  Total notional pos: {perp_state.margin_summary.total_ntl_pos}")
+            lines.append(f"  Total raw USD: {perp_state.margin_summary.total_raw_usd}")
+            lines.append(f"  Total margin used: {perp_state.margin_summary.total_margin_used}")
+            if perp_state.asset_positions:
+                lines.append(f"  Open perp positions: {len(perp_state.asset_positions)}")
+                for pos in perp_state.asset_positions[:5]:
+                    lines.append(f"    {pos.coin}: size={pos.size}, value={pos.position_value}, upnl={pos.unrealised_pnl}")
+            else:
+                lines.append(f"  No open perp positions")
+        except Exception as e:
+            lines.append(f"  ERROR fetching perp state: {e}")
+        lines.append("")
+
+        # 5. Spot clearinghouse state
+        lines.append("--- HyperCore spot account ---")
+        try:
+            spot_state = fetch_spot_clearinghouse_state(
+                session,
+                user=self.safe_address,
+            )
+            if spot_state.balances:
+                for bal in spot_state.balances:
+                    lines.append(f"  {bal.coin}: total={bal.total}, hold={bal.hold}, free={bal.total - bal.hold}")
+            else:
+                lines.append(f"  No spot balances")
+            if spot_state.evm_escrows:
+                for esc in spot_state.evm_escrows:
+                    lines.append(f"  EVM escrow {esc.coin}: {esc.total}")
+            else:
+                lines.append(f"  No EVM escrows")
+        except Exception as e:
+            lines.append(f"  ERROR fetching spot state: {e}")
+        lines.append("")
+
+        # 6. Safe EVM USDC balance
+        lines.append("--- Safe EVM balance ---")
+        try:
+            evm_balance_raw = self._fetch_safe_evm_usdc_balance()
+            lines.append(f"  USDC: {raw_to_usdc(evm_balance_raw)} ({evm_balance_raw} raw)")
+        except Exception as e:
+            lines.append(f"  ERROR fetching EVM balance: {e}")
+        lines.append("")
+
+        # 7. Trade context from other_data
+        lines.append("--- Trade context ---")
+        lines.append(f"  Direction: {'buy' if trade.is_buy() else 'sell'}")
+        lines.append(f"  Planned reserve: {trade.get_planned_reserve()} USDC")
+        lines.append(f"  Flags: {trade.flags}")
+        if trade.other_data:
+            for key in sorted(trade.other_data.keys()):
+                if key.startswith("hypercore_"):
+                    lines.append(f"  {key}: {trade.other_data[key]}")
+        lines.append(f"  Blockchain txs: {len(trade.blockchain_transactions)}")
+        for i, tx in enumerate(trade.blockchain_transactions):
+            lines.append(f"    tx[{i}]: hash={tx.tx_hash}, nonce={tx.nonce}, status={tx.status}, notes={tx.notes}")
+
+        diagnosis = "\n".join(lines)
+
+        # Log at error level
+        logger.error(
+            "Vault redemption failure diagnosis for trade %s:\n%s",
+            trade.trade_id,
+            diagnosis,
+        )
+
+        # Store on trade notes
+        trade.add_note(diagnosis)
+
+        # Set as revert_reason on the last tx so it appears in
+        # ExecutionHaltableIssue and get_revert_reason().
+        # For HyperCore silent no-ops, all EVM txs have status=True,
+        # so get_revert_reason() would otherwise return None.
+        if trade.blockchain_transactions:
+            last_tx = trade.blockchain_transactions[-1]
+            last_tx.revert_reason = f"HyperCore {failed_phase}: {diagnosis}"
+            last_tx.status = False
+
+        return diagnosis
+
     def _create_deposit_or_withdraw_txs(
         self,
         trade: TradeExecution,
@@ -1702,6 +1902,10 @@ class HypercoreVaultRouting(RoutingModel):
             )
         except TimeoutError as e:
             logger.error("EVM escrow did not clear: %s", e)
+            self.diagnose_hyperliquid_vault_redemption_failure(
+                trade, vault_address, "deposit_escrow_timeout",
+                str(e),
+            )
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
 
@@ -1730,6 +1934,10 @@ class HypercoreVaultRouting(RoutingModel):
                 e,
             )
             self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot")
+            self.diagnose_hyperliquid_vault_redemption_failure(
+                trade, vault_address, "deposit_equity_snapshot_failed",
+                str(e),
+            )
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
 
@@ -1744,6 +1952,10 @@ class HypercoreVaultRouting(RoutingModel):
             logger.error("Phase 2 broadcast failed: %s", e.__cause__)
             trade.blockchain_transactions.append(e.tx)
             self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot")
+            self.diagnose_hyperliquid_vault_redemption_failure(
+                trade, vault_address, "deposit_phase2_broadcast",
+                str(e.__cause__),
+            )
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
 
@@ -1752,6 +1964,10 @@ class HypercoreVaultRouting(RoutingModel):
         if phase2_receipt["status"] != 1:
             logger.error("Hypercore deposit phase 2 reverted: tx %s", phase2_tx.tx_hash)
             self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot_or_perp")
+            self.diagnose_hyperliquid_vault_redemption_failure(
+                trade, vault_address, "deposit_phase2_reverted",
+                f"tx {phase2_tx.tx_hash} reverted",
+            )
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
 
@@ -1799,6 +2015,10 @@ class HypercoreVaultRouting(RoutingModel):
             )
             # Deposit silently rejected — USDC stranded in spot or perp
             self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot_or_perp")
+            self.diagnose_hyperliquid_vault_redemption_failure(
+                trade, vault_address, "deposit_verification",
+                str(e),
+            )
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
 
@@ -2085,6 +2305,10 @@ class HypercoreVaultRouting(RoutingModel):
                                 retry_error.__cause__,
                             )
                             trade.blockchain_transactions.append(retry_error.tx)
+                            self.diagnose_hyperliquid_vault_redemption_failure(
+                                trade, vault_address, "phase1_retry_broadcast",
+                                str(retry_error.__cause__),
+                            )
                             report_failure(ts, state, trade, stop_on_execution_failure)
                             return
 
@@ -2118,6 +2342,10 @@ class HypercoreVaultRouting(RoutingModel):
                                 retry_wait_error,
                             )
                             self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
+                            self.diagnose_hyperliquid_vault_redemption_failure(
+                                trade, vault_address, "phase1_retry_perp_wait",
+                                str(retry_wait_error),
+                            )
                             report_failure(ts, state, trade, stop_on_execution_failure)
                             return
                     else:
@@ -2142,6 +2370,10 @@ class HypercoreVaultRouting(RoutingModel):
                             )
                         else:
                             self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
+                        self.diagnose_hyperliquid_vault_redemption_failure(
+                            trade, vault_address, "phase1_perp_wait",
+                            str(e),
+                        )
                         report_failure(ts, state, trade, stop_on_execution_failure)
                         return
 
@@ -2175,6 +2407,10 @@ class HypercoreVaultRouting(RoutingModel):
                 logger.error("Withdrawal phase 2 broadcast failed: %s", e.__cause__)
                 trade.blockchain_transactions.append(e.tx)
                 self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
+                self.diagnose_hyperliquid_vault_redemption_failure(
+                    trade, vault_address, "phase2_broadcast",
+                    str(e.__cause__),
+                )
                 report_failure(ts, state, trade, stop_on_execution_failure)
                 return
 
@@ -2183,6 +2419,10 @@ class HypercoreVaultRouting(RoutingModel):
             if phase2_receipt["status"] != 1:
                 logger.error("Hypercore withdrawal phase 2 reverted: tx %s", phase2_tx.tx_hash)
                 self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
+                self.diagnose_hyperliquid_vault_redemption_failure(
+                    trade, vault_address, "phase2_reverted",
+                    f"tx {phase2_tx.tx_hash} reverted",
+                )
                 report_failure(ts, state, trade, stop_on_execution_failure)
                 return
 
@@ -2210,6 +2450,10 @@ class HypercoreVaultRouting(RoutingModel):
                 else:
                     stranded_location = "hypercore_spot"
                 self._mark_stranded_usdc(trade, expected_raw, stranded_location)
+                self.diagnose_hyperliquid_vault_redemption_failure(
+                    trade, vault_address, "phase2_spot_wait",
+                    str(e),
+                )
                 report_failure(ts, state, trade, stop_on_execution_failure)
                 return
 
@@ -2264,6 +2508,10 @@ class HypercoreVaultRouting(RoutingModel):
                     raw_to_usdc(reserved_fee_headroom_raw),
                 )
                 self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
+                self.diagnose_hyperliquid_vault_redemption_failure(
+                    trade, vault_address, "phase3_zero_bridge_amount",
+                    f"spot free {spot_balance} USDC too small after bridge-fee headroom",
+                )
                 report_failure(ts, state, trade, stop_on_execution_failure)
                 return
 
@@ -2293,6 +2541,10 @@ class HypercoreVaultRouting(RoutingModel):
                 )
                 trade.blockchain_transactions.append(e.tx)
                 self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
+                self.diagnose_hyperliquid_vault_redemption_failure(
+                    trade, vault_address, "phase3_broadcast",
+                    str(e.__cause__),
+                )
                 report_failure(ts, state, trade, stop_on_execution_failure)
                 return
 
@@ -2308,6 +2560,10 @@ class HypercoreVaultRouting(RoutingModel):
                     phase3_withdraw_amount,
                 )
                 self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
+                self.diagnose_hyperliquid_vault_redemption_failure(
+                    trade, vault_address, "phase3_reverted",
+                    f"tx {phase3_tx.tx_hash} reverted",
+                )
                 report_failure(ts, state, trade, stop_on_execution_failure)
                 return
 
@@ -2342,6 +2598,10 @@ class HypercoreVaultRouting(RoutingModel):
                     baseline_balance_raw,
                 )
                 self._mark_stranded_usdc(trade, expected_raw, "hypercore_spot")
+                self.diagnose_hyperliquid_vault_redemption_failure(
+                    trade, vault_address, "phase3_evm_arrival",
+                    str(e),
+                )
                 report_failure(ts, state, trade, stop_on_execution_failure)
                 return
 
