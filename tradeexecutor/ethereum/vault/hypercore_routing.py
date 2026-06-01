@@ -1357,14 +1357,13 @@ class HypercoreVaultRouting(RoutingModel):
         # Store on trade notes
         trade.add_note(diagnosis)
 
-        # Set as revert_reason on the last tx so it appears in
-        # ExecutionHaltableIssue and get_revert_reason().
-        # For HyperCore silent no-ops, all EVM txs have status=True,
-        # so get_revert_reason() would otherwise return None.
-        if trade.blockchain_transactions:
-            last_tx = trade.blockchain_transactions[-1]
-            last_tx.revert_reason = f"HyperCore {failed_phase}: {diagnosis}"
-            last_tx.status = False
+        # Store as a logical failure reason in other_data so
+        # get_revert_reason() can surface it without mutating the
+        # EVM receipt status (which should remain True for txs that
+        # actually succeeded on-chain).
+        if not hasattr(trade, "other_data") or trade.other_data is None:
+            trade.other_data = {}
+        trade.other_data["hypercore_failure_diagnosis"] = f"HyperCore {failed_phase}: {diagnosis}"
 
         return diagnosis
 
