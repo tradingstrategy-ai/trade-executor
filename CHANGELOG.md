@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Add `diagnose_hyperliquid_vault_redemption_failure()` to capture full HyperCore state on vault settlement failures, replacing uninformative `revert_reason=None` errors (2026-06-01)
+
 - Update cross-chain master vault strategy from 01-initial.ipynb notebook with Ethereum/Base/Arbitrum CCTP vault universe (2026-05-29)
 
 - Add `claim-hypercore-vault-dust` CLI command to recover untracked Hypercore vault dust into Lagoon reserves with operator safety guards (2026-04-16)
