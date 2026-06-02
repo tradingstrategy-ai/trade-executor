@@ -47,6 +47,33 @@ from eth_defi.compat import native_datetime_utc_now
 logger = logging.getLogger(__name__)
 
 
+def assert_source_chain_has_balance(
+    source_web3,
+    wallet: HotWallet,
+    strategy_parameter_id: str,
+    source_chain_name: str,
+    source_chain_id: int,
+) -> int:
+    """Check the source chain can pay for bridge transaction gas."""
+    balance_wei = source_web3.eth.get_balance(wallet.address)
+    balance_native = Decimal(balance_wei) / Decimal(10**18)
+    assert balance_wei > 0, (
+        f"Cannot distribute gas funds for strategy Parameters.id={strategy_parameter_id!r}: "
+        f"source chain {source_chain_name} (chain_id={source_chain_id}) has zero native token balance "
+        f"for hot wallet {wallet.address}. "
+        "The source chain is selected from universe.get_reserve_asset().chain_id. "
+        "Fund this wallet on the source chain or change the strategy reserve/source configuration "
+        "before running distribute-gas-funds."
+    )
+    logger.info(
+        "Source chain %s (ID: %s) hot wallet balance before gas distribution: %s native",
+        source_chain_name,
+        source_chain_id,
+        balance_native,
+    )
+    return balance_wei
+
+
 @app.command()
 @shared_options.with_json_rpc_options()
 def distribute_gas_funds(
@@ -211,6 +238,14 @@ def distribute_gas_funds(
 
     # Create hot wallet
     wallet = HotWallet.from_private_key(private_key)
+    strategy_parameter_id = mod.parameters.get("id", "<missing Parameters.id>")
+    assert_source_chain_has_balance(
+        source_web3=source_web3,
+        wallet=wallet,
+        strategy_parameter_id=strategy_parameter_id,
+        source_chain_name=source_chain_name,
+        source_chain_id=source_chain_id,
+    )
 
     # Build TopUpConfig for display functions
     config = TopUpConfig(
