@@ -49,10 +49,21 @@ def _normalise_wallet_check_chain_id(chain_id: ChainId | int) -> ChainId:
     return chain_id
 
 
-def _collect_wallet_check_chains(universe, default_chain_id: ChainId) -> list[ChainId]:
+def _collect_wallet_check_pairs(universe) -> list:
+    """Collect trading pairs once so one-shot iterators cannot be exhausted."""
+    iterate_pairs = getattr(universe, "iterate_pairs", None)
+    if iterate_pairs is None:
+        return []
+
+    if callable(iterate_pairs):
+        return list(iterate_pairs())
+
+    return list(iterate_pairs)
+
+
+def _collect_wallet_check_chains(universe, default_chain_id: ChainId, pairs: list) -> list[ChainId]:
     """Collect chain ids that need a wallet balance section."""
     chain_ids: set[ChainId] = set()
-    iterate_pairs = getattr(universe, "iterate_pairs", None)
 
     data_universe = getattr(universe, "data_universe", None)
     if data_universe is not None:
@@ -62,10 +73,9 @@ def _collect_wallet_check_chains(universe, default_chain_id: ChainId) -> list[Ch
     for asset in getattr(universe, "reserve_assets", []) or []:
         chain_ids.add(_normalise_wallet_check_chain_id(asset.chain_id))
 
-    if iterate_pairs is not None:
-        for pair in iterate_pairs():
-            chain_ids.add(_normalise_wallet_check_chain_id(pair.base.chain_id))
-            chain_ids.add(_normalise_wallet_check_chain_id(pair.quote.chain_id))
+    for pair in pairs:
+        chain_ids.add(_normalise_wallet_check_chain_id(pair.base.chain_id))
+        chain_ids.add(_normalise_wallet_check_chain_id(pair.quote.chain_id))
 
     if not chain_ids:
         chain_ids.add(default_chain_id)
@@ -73,10 +83,9 @@ def _collect_wallet_check_chains(universe, default_chain_id: ChainId) -> list[Ch
     return sorted(chain_ids, key=lambda chain_id: (chain_id != default_chain_id, chain_id.value))
 
 
-def _collect_wallet_check_assets_by_chain(universe) -> dict[ChainId, list[AssetIdentifier]]:
+def _collect_wallet_check_assets_by_chain(universe, pairs: list) -> dict[ChainId, list[AssetIdentifier]]:
     """Collect reserve-like assets to check, keyed by their EVM chain."""
     assets_by_key: dict[tuple[ChainId, str], AssetIdentifier] = {}
-    iterate_pairs = getattr(universe, "iterate_pairs", None)
 
     def add_asset(asset: AssetIdentifier) -> None:
         chain_id = _normalise_wallet_check_chain_id(asset.chain_id)
@@ -85,11 +94,10 @@ def _collect_wallet_check_assets_by_chain(universe) -> dict[ChainId, list[AssetI
     for asset in universe.reserve_assets:
         add_asset(asset)
 
-    if iterate_pairs is not None:
-        for pair in iterate_pairs():
-            if pair.is_cctp_bridge():
-                add_asset(pair.base)
-                add_asset(pair.quote)
+    for pair in pairs:
+        if pair.is_cctp_bridge():
+            add_asset(pair.base)
+            add_asset(pair.quote)
 
     assets_by_chain: dict[ChainId, list[AssetIdentifier]] = {}
     for (chain_id, _), asset in assets_by_key.items():
@@ -272,8 +280,9 @@ def check_wallet(
         wallet_check_chains = [ChainId.anvil]
         assets_by_chain = {ChainId.anvil: list(universe.reserve_assets)}
     else:
-        wallet_check_chains = _collect_wallet_check_chains(universe, default_chain_id)
-        assets_by_chain = _collect_wallet_check_assets_by_chain(universe)
+        wallet_check_pairs = _collect_wallet_check_pairs(universe)
+        wallet_check_chains = _collect_wallet_check_chains(universe, default_chain_id, wallet_check_pairs)
+        assets_by_chain = _collect_wallet_check_assets_by_chain(universe, wallet_check_pairs)
 
     for chain_id in wallet_check_chains:
         web3 = _get_chain_web3(web3config, chain_id)

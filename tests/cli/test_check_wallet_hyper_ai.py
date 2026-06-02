@@ -177,6 +177,7 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
         quote=reserve_asset,
         is_cctp_bridge=lambda: True,
     )
+    pair_iterator = iter([cctp_pair])
     fake_universe = SimpleNamespace(
         reserve_assets=[reserve_asset],
         cross_chain=True,
@@ -184,7 +185,7 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
             pairs=[],
             chains={ChainId.hyperliquid, ChainId.base},
         ),
-        iterate_pairs=lambda: iter([cctp_pair]),
+        iterate_pairs=pair_iterator,
     )
     fake_execution_model = FakeExecutionModel()
     fake_execution_model.satellite_vaults = {
@@ -234,7 +235,7 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
     monkeypatch.setattr(
         check_wallet_module,
         "fetch_erc20_balances_by_token_list",
-        lambda web3, address, tokens: {tokens[0]: 11},
+        lambda web3, address, tokens: {token: 11 for token in tokens},
     )
 
     runner = CliRunner()
@@ -250,6 +251,8 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
     messages = [record.getMessage() for record in caplog.records]
     assert any("-" * 80 in message for message in messages)
     assert any("Base (chain id 8453)" in message for message in messages)
+    assert any(f"Vault address is {VAULT_ADDRESS}" in message for message in messages)
+    assert any(f"Safe address is {SAFE_ADDRESS}" in message for message in messages)
     assert any(f"Safe address is {BASE_SAFE_ADDRESS}" in message for message in messages)
     assert any("Hot wallet reserve balance of USD Coin" in message for message in messages)
     assert any("Vault reserve balance of USD Coin" in message for message in messages)
