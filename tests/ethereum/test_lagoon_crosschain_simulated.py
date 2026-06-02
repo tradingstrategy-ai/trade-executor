@@ -26,8 +26,12 @@ logger = logging.getLogger(__name__)
 
 JSON_RPC_ARBITRUM = os.environ.get("JSON_RPC_ARBITRUM")
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
+TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
 
-pytestmark = pytest.mark.skip(reason="Known to be broken - TODO - needs to be fixed later")
+pytestmark = pytest.mark.skipif(
+    not JSON_RPC_ARBITRUM or not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY,
+    reason="JSON_RPC_ARBITRUM, JSON_RPC_BASE and TRADING_STRATEGY_API_KEY environment variables required",
+)
 
 
 def _load_script_module():
@@ -111,12 +115,20 @@ def simulation_setup():
             launch.close(log_level=logging.ERROR)
 
 
-@pytest.mark.timeout(300)
+@pytest.mark.slow_test_group
+@pytest.mark.timeout(600)
 def test_cctp_bridge_round_trip(simulation_setup, strategy_file):
-    """Full CCTP bridge round-trip: bridge forward, bridge back, verify equity."""
-    s = simulation_setup
-    trading_strategy_api_key = os.environ.get("TRADING_STRATEGY_API_KEY", "")
+    """Full CCTP bridge round-trip: bridge forward, bridge back, verify equity.
 
+    1. Deploy and initialise a Lagoon multichain vault on Arbitrum and Base Anvil forks.
+    2. Deposit USDC and bridge it to Base using forged CCTP attestation.
+    3. Bridge USDC back to Arbitrum, settle, redeem, and verify final equity.
+    """
+    s = simulation_setup
+
+    # 1. Deploy and initialise a Lagoon multichain vault on Arbitrum and Base Anvil forks.
+    # 2. Deposit USDC and bridge it to Base using forged CCTP attestation.
+    # 3. Bridge USDC back to Arbitrum, settle, redeem, and verify final equity.
     s["mod"]._run_test_lifecycle(
         simulate=True,
         test_attesters=s["test_attesters"],
@@ -133,6 +145,6 @@ def test_cctp_bridge_round_trip(simulation_setup, strategy_file):
         bridge_amount="3",
         swap_amount="0",
         reverse_bridge_amount="3",
-        trading_strategy_api_key=trading_strategy_api_key,
+        trading_strategy_api_key=TRADING_STRATEGY_API_KEY,
         attestation_timeout=60,
     )
