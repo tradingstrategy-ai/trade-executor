@@ -160,3 +160,40 @@ def test_distribute_gas_funds_dry_run_without_deployed_vault(environment: dict):
     assert "Proposed swaps" in output
     assert "Dry run mode" in output
     prepare_swaps.assert_called_once()
+
+
+def test_distribute_gas_funds_dry_run_fails_when_source_chain_has_no_balance(
+    environment: dict,
+    anvil_arbitrum: AnvilLaunch,
+    hot_wallet_address: str,
+) -> None:
+    """distribute-gas-funds dry-run mode fails early if source chain has no gas balance.
+
+    We mock display and quote functions because the assertion must fire before
+    user-facing output or external Li.Fi quote preparation is attempted.
+
+    1. Set the selected source chain hot wallet native balance to zero.
+    2. Patch the process environment for a dry-run CCTP bridge strategy.
+    3. Run the command and verify the source balance assertion fires before distribution.
+    """
+    web3 = Web3(HTTPProvider(anvil_arbitrum.json_rpc_url))
+
+    # 1. Set the selected source chain hot wallet native balance to zero.
+    web3.provider.make_request("anvil_setBalance", [hot_wallet_address, hex(0)])
+    assert web3.eth.get_balance(hot_wallet_address) == 0
+
+    # 2. Patch the process environment for a dry-run CCTP bridge strategy.
+    # 3. Run the command and verify the source balance assertion fires before distribution.
+    with mock.patch.dict("os.environ", environment, clear=True):
+        with mock.patch("tradeexecutor.cli.commands.distribute_gas_funds.display_balances") as display_balances:
+            with mock.patch("tradeexecutor.cli.commands.distribute_gas_funds.prepare_crosschain_swaps") as prepare_swaps:
+                with pytest.raises(AssertionError) as exc_info:
+                    app(["distribute-gas-funds"], standalone_mode=False)
+
+    message = str(exc_info.value)
+    assert "<missing Parameters.id>" in message
+    assert "Arbitrum" in message
+    assert "chain_id=42161" in message
+    assert hot_wallet_address in message
+    display_balances.assert_not_called()
+    prepare_swaps.assert_not_called()
