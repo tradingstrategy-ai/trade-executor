@@ -26,12 +26,13 @@ from tradeexecutor.cli.commands.lagoon_utils import (
     sync_reserve_balance_to_state,
 )
 from tradeexecutor.cli.log import setup_logging
+from tradeexecutor.strategy.strategy_module import read_strategy_module
 
 logger = logging.getLogger(__name__)
 
 
 @app.command()
-@shared_options.with_json_rpc_options(include_chain_name=True)
+@shared_options.with_json_rpc_options()
 def lagoon_first_deposit(
     id: str = shared_options.id,
 
@@ -50,7 +51,6 @@ def lagoon_first_deposit(
     simulate: bool = shared_options.simulate,
 
     deposit_amount: float = Option(..., envvar="DEPOSIT_AMOUNT", help="Amount of denomination token (e.g. USDC) to deposit into the vault."),
-    chain_name: str | None = shared_options.chain_name,
 ):
     """Make the first deposit into a Lagoon vault.
 
@@ -68,6 +68,8 @@ def lagoon_first_deposit(
     assert vault_adapter_address, "VAULT_ADAPTER_ADDRESS is required"
     assert deposit_amount > 0, f"DEPOSIT_AMOUNT must be positive, got {deposit_amount}"
 
+    mod = read_strategy_module(strategy_file)
+
     cache_path, token_cache = prepare_cache_and_token_cache(
         id,
         cache_path,
@@ -75,6 +77,7 @@ def lagoon_first_deposit(
     )
 
     context = create_lagoon_command_context(
+        mod=mod,
         private_key=private_key,
         vault_address=vault_address,
         token_cache=token_cache,

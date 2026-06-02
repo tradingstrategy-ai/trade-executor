@@ -10,8 +10,8 @@ from typing import Optional
 from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, create_client
-from .lagoon_utils import choose_single_chain, resolve_state_store
+    create_execution_and_sync_model, create_client, configure_default_chain
+from .lagoon_utils import resolve_state_store
 from ..log import setup_logging
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -27,7 +27,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
-@shared_options.with_json_rpc_options(include_chain_name=True)
+@shared_options.with_json_rpc_options()
 def lagoon_settle(
     id: str = shared_options.id,
 
@@ -57,7 +57,6 @@ def lagoon_settle(
     unit_testing: bool = shared_options.unit_testing,
     simulate: bool = shared_options.simulate,
     sync_interest: bool = True,
-    chain_name: str | None = shared_options.chain_name,
 ):
     """Settle the Lagoon vault NAV and deposits.
 
@@ -82,7 +81,7 @@ def lagoon_settle(
     if not web3config.has_any_connection():
         raise RuntimeError("Vault deploy requires that you pass JSON-RPC connection to one of the networks")
 
-    choose_single_chain(web3config)
+    configure_default_chain(web3config, mod)
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=asset_management_mode,
