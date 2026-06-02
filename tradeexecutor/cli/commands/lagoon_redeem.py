@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 @app.command()
-@shared_options.with_json_rpc_options()
+@shared_options.with_json_rpc_options(include_chain_name=True)
 def lagoon_redeem(
     id: str = shared_options.id,
 
@@ -48,6 +48,7 @@ def lagoon_redeem(
 
     unit_testing: bool = shared_options.unit_testing,
     simulate: bool = shared_options.simulate,
+    chain_name: str | None = shared_options.chain_name,
 ):
     """Redeem all vault shares from a Lagoon vault for the asset manager.
 
