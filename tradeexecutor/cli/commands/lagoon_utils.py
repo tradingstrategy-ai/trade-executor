@@ -14,9 +14,9 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.token import TokenDiskCache
 from web3 import Web3
 
-from tradeexecutor.cli.bootstrap import create_state_store, create_web3_config
+from tradeexecutor.cli.bootstrap import configure_default_chain, create_state_store, create_web3_config
 from tradeexecutor.ethereum.token import translate_token_details
-from tradeexecutor.ethereum.web3config import collect_rpc_kwargs
+from tradeexecutor.strategy.strategy_module import StrategyModuleInformation
 from tradeexecutor.utils.key import ensure_0x_prefixed_private_key
 
 
@@ -30,29 +30,22 @@ class LagoonCommandContext:
     vault: LagoonVault
 
 
-def create_single_chain_web3_config(*, simulate: bool = False, chain_name: str | None = None, **rpc_kwargs):
-    """Build a single-chain Web3 config from shared RPC kwargs."""
-    collected = collect_rpc_kwargs(chain_name=chain_name, **rpc_kwargs)
+def create_single_chain_web3_config(*, mod: StrategyModuleInformation, simulate: bool = False, **rpc_kwargs):
+    """Build a single-chain Web3 config from shared RPC kwargs.
+
+    Uses the strategy module's ``get_default_chain_id()`` to select
+    the correct chain when multiple JSON-RPC connections are configured.
+    """
     web3config = create_web3_config(
-        **collected,
+        **rpc_kwargs,
         simulate=simulate,
     )
 
     if not web3config.has_any_connection():
         raise RuntimeError("This command requires that you pass a JSON-RPC connection to one of the networks")
 
-    choose_single_chain(web3config)
+    configure_default_chain(web3config, mod)
     return web3config
-
-
-def choose_single_chain(web3config, default_chain_id=None):
-    """Choose a single chain even if multiple RPC connections are configured."""
-    if default_chain_id is not None:
-        web3config.choose_single_chain(default_chain_id=default_chain_id)
-    elif len(web3config.connections) > 1:
-        web3config.choose_single_chain(default_chain_id=next(iter(web3config.connections.keys())))
-    else:
-        web3config.choose_single_chain()
 
 
 def create_hot_wallet(web3: Web3, private_key: str) -> HotWallet:
@@ -82,17 +75,17 @@ def load_lagoon_vault(
 
 def create_lagoon_command_context(
     *,
+    mod: StrategyModuleInformation,
     private_key: str,
     vault_address: str,
     token_cache: TokenDiskCache | None = None,
     simulate: bool = False,
-    chain_name: str | None = None,
     **rpc_kwargs,
 ) -> LagoonCommandContext:
     """Create the common single-chain context for simple Lagoon commands."""
     web3config = create_single_chain_web3_config(
+        mod=mod,
         simulate=simulate,
-        chain_name=chain_name,
         **rpc_kwargs,
     )
     web3 = web3config.get_default()

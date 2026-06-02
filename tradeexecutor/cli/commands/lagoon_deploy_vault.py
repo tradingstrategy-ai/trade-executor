@@ -90,7 +90,7 @@ from tradeexecutor.cli.bootstrap import (create_web3_config, prepare_cache,
                                          prepare_token_cache)
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
-from tradeexecutor.cli.commands.lagoon_utils import choose_single_chain, create_hot_wallet
+from tradeexecutor.cli.commands.lagoon_utils import create_hot_wallet
 from tradeexecutor.cli.commands.shared_options import \
     parse_comma_separated_list
 from tradeexecutor.cli.log import setup_logging
@@ -724,7 +724,7 @@ def lagoon_deploy_vault(
         return
 
     # Single-chain deployment path (original flow)
-    choose_single_chain(web3config)
+    web3config.choose_single_chain()
 
     web3 = web3config.get_default()
     chain_id = ChainId(web3.eth.chain_id)

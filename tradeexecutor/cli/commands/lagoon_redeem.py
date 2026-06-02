@@ -26,12 +26,13 @@ from tradeexecutor.cli.commands.lagoon_utils import (
     sync_reserve_balance_to_state,
 )
 from tradeexecutor.cli.log import setup_logging
+from tradeexecutor.strategy.strategy_module import read_strategy_module
 
 logger = logging.getLogger(__name__)
 
 
 @app.command()
-@shared_options.with_json_rpc_options(include_chain_name=True)
+@shared_options.with_json_rpc_options()
 def lagoon_redeem(
     id: str = shared_options.id,
 
@@ -48,7 +49,6 @@ def lagoon_redeem(
 
     unit_testing: bool = shared_options.unit_testing,
     simulate: bool = shared_options.simulate,
-    chain_name: str | None = shared_options.chain_name,
 ):
     """Redeem all vault shares from a Lagoon vault for the asset manager.
 
@@ -66,6 +66,8 @@ def lagoon_redeem(
     assert vault_address, "VAULT_ADDRESS is required"
     assert vault_adapter_address, "VAULT_ADAPTER_ADDRESS is required"
 
+    mod = read_strategy_module(strategy_file)
+
     cache_path, token_cache = prepare_cache_and_token_cache(
         id,
         cache_path,
@@ -73,6 +75,7 @@ def lagoon_redeem(
     )
 
     context = create_lagoon_command_context(
+        mod=mod,
         private_key=private_key,
         vault_address=vault_address,
         token_cache=token_cache,
