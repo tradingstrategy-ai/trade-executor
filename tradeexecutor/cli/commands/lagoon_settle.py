@@ -27,7 +27,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
-@shared_options.with_json_rpc_options()
+@shared_options.with_json_rpc_options(include_chain_name=True)
 def lagoon_settle(
     id: str = shared_options.id,
 
@@ -57,6 +57,7 @@ def lagoon_settle(
     unit_testing: bool = shared_options.unit_testing,
     simulate: bool = shared_options.simulate,
     sync_interest: bool = True,
+    chain_name: str | None = shared_options.chain_name,
 ):
     """Settle the Lagoon vault NAV and deposits.
 

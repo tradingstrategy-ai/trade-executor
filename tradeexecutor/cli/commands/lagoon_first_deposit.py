@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 
 @app.command()
-@shared_options.with_json_rpc_options()
+@shared_options.with_json_rpc_options(include_chain_name=True)
 def lagoon_first_deposit(
     id: str = shared_options.id,
 
@@ -50,6 +50,7 @@ def lagoon_first_deposit(
     simulate: bool = shared_options.simulate,
 
     deposit_amount: float = Option(..., envvar="DEPOSIT_AMOUNT", help="Amount of denomination token (e.g. USDC) to deposit into the vault."),
+    chain_name: str | None = shared_options.chain_name,
 ):
     """Make the first deposit into a Lagoon vault.
 
