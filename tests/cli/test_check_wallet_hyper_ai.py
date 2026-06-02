@@ -77,6 +77,8 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
             return self._safe_address
 
     class FakeExecutionModel:
+        satellite_vaults = {}
+
         def preflight_check(self) -> None:
             return None
 
@@ -100,13 +102,22 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
     class FakeWeb3Config:
         def __init__(self):
             self.default_chain_id = None
-            self._web3 = SimpleNamespace(
-                eth=SimpleNamespace(
-                    chain_id=999,
-                    block_number=30_000_000,
-                    get_balance=lambda address: 0,
-                )
-            )
+            self.connections = {
+                ChainId.hyperliquid: SimpleNamespace(
+                    eth=SimpleNamespace(
+                        chain_id=ChainId.hyperliquid.value,
+                        block_number=30_000_000,
+                        get_balance=lambda address: 0,
+                    )
+                ),
+                ChainId.base: SimpleNamespace(
+                    eth=SimpleNamespace(
+                        chain_id=ChainId.base.value,
+                        block_number=40_000_000,
+                        get_balance=lambda address: 0,
+                    )
+                ),
+            }
 
         def has_chain_configured(self) -> bool:
             return True
@@ -117,8 +128,11 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
         def check_default_chain_id(self) -> None:
             return None
 
+        def get_connection(self, chain_id: ChainId):
+            return self.connections[chain_id]
+
         def get_default(self):
-            return self._web3
+            return self.connections[self.default_chain_id]
 
         def close(self) -> None:
             return None
@@ -141,8 +155,10 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
 
     HOT_WALLET_ADDRESS = "0xFA093b13C04c5E16e7a2A75d1279C58Df1Fbac62"
     SAFE_ADDRESS = "0x49Be988d2090aa221586e9A51cacBA3D3A1eA087"
+    BASE_SAFE_ADDRESS = "0x2222222222222222222222222222222222222222"
     VAULT_ADDRESS = "0x1111111111111111111111111111111111111111"
     USDC_ADDRESS = "0xb88339cb7199b77e23db6e890353e22632ba630f"
+    BASE_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 
     reserve_asset = AssetIdentifier(
         chain_id=ChainId.hyperliquid.value,
@@ -150,11 +166,31 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
         token_symbol="USDC",
         decimals=6,
     )
+    base_reserve_asset = AssetIdentifier(
+        chain_id=ChainId.base.value,
+        address=BASE_USDC_ADDRESS,
+        token_symbol="USDC",
+        decimals=6,
+    )
+    cctp_pair = SimpleNamespace(
+        base=base_reserve_asset,
+        quote=reserve_asset,
+        is_cctp_bridge=lambda: True,
+    )
+    pair_iterator = iter([cctp_pair])
     fake_universe = SimpleNamespace(
         reserve_assets=[reserve_asset],
         cross_chain=True,
-        data_universe=SimpleNamespace(pairs=[]),
+        data_universe=SimpleNamespace(
+            pairs=[],
+            chains={ChainId.hyperliquid, ChainId.base},
+        ),
+        iterate_pairs=pair_iterator,
     )
+    fake_execution_model = FakeExecutionModel()
+    fake_execution_model.satellite_vaults = {
+        ChainId.base.value: SimpleNamespace(safe_address=BASE_SAFE_ADDRESS),
+    }
     fake_sync_model = FakeLagoonVaultSyncModel(
         hot_wallet_address=HOT_WALLET_ADDRESS,
         safe_address=SAFE_ADDRESS,
@@ -188,7 +224,7 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
     monkeypatch.setattr(
         check_wallet_module,
         "create_execution_and_sync_model",
-        lambda **kwargs: (FakeExecutionModel(), fake_sync_model, None, None),
+        lambda **kwargs: (fake_execution_model, fake_sync_model, None, None),
     )
     monkeypatch.setattr(
         check_wallet_module,
@@ -199,7 +235,7 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
     monkeypatch.setattr(
         check_wallet_module,
         "fetch_erc20_balances_by_token_list",
-        lambda web3, address, tokens: {tokens[0]: 11},
+        lambda web3, address, tokens: {token: 11 for token in tokens},
     )
 
     runner = CliRunner()
@@ -213,5 +249,13 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
         raise result.exception
     assert result.exit_code == 0, result.stdout
     messages = [record.getMessage() for record in caplog.records]
+    assert any("-" * 80 in message for message in messages)
+    assert any("HyperEVM (chain id 999)" in message for message in messages)
+    assert any("Base (chain id 8453)" in message for message in messages)
+    assert any(f"Vault address is {VAULT_ADDRESS}" in message for message in messages)
+    assert any(f"Safe address is {SAFE_ADDRESS}" in message for message in messages)
+    assert any(f"Safe address is {BASE_SAFE_ADDRESS}" in message for message in messages)
     assert any("Hot wallet reserve balance of USD Coin" in message for message in messages)
     assert any("Vault reserve balance of USD Coin" in message for message in messages)
+    assert any(f"Vault reserve balance of USD Coin ({USDC_ADDRESS})" in message for message in messages)
+    assert any(f"Safe reserve balance of USD Coin ({BASE_USDC_ADDRESS.lower()})" in message for message in messages)

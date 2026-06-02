@@ -1,6 +1,7 @@
 """check-wallet command"""
 
 import datetime
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -8,7 +9,6 @@ import typer
 from web3 import Web3
 
 from eth_defi.balances import fetch_erc20_balances_by_token_list
-from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
 
@@ -22,6 +22,8 @@ from ..log import setup_logging
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
+from ...ethereum.web3config import TEST_CHAIN_IDS
+from ...state.identifier import AssetIdentifier
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -31,6 +33,128 @@ from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
 from ...utils.fullname import get_object_full_name
 from ...utils.timer import timed_task
+
+
+logger = logging.getLogger(__name__)
+WALLET_CHECK_SEPARATOR = "-" * 80
+
+
+def _normalise_wallet_check_chain_id(chain_id: ChainId | int) -> ChainId:
+    """Normalise synthetic trading chain ids to the EVM chain used for wallet checks."""
+    if isinstance(chain_id, int):
+        chain_id = ChainId(chain_id)
+
+    if chain_id == ChainId.hypercore:
+        return ChainId.hyperliquid
+
+    return chain_id
+
+
+def _collect_wallet_check_pairs(universe) -> list:
+    """Collect trading pairs once so one-shot iterators cannot be exhausted."""
+    iterate_pairs = getattr(universe, "iterate_pairs", None)
+    if iterate_pairs is None:
+        return []
+
+    if callable(iterate_pairs):
+        return list(iterate_pairs())
+
+    return list(iterate_pairs)
+
+
+def _collect_wallet_check_chains(universe, default_chain_id: ChainId, pairs: list) -> list[ChainId]:
+    """Collect chain ids that need a wallet balance section."""
+    chain_ids: set[ChainId] = set()
+
+    data_universe = getattr(universe, "data_universe", None)
+    if data_universe is not None:
+        for chain_id in getattr(data_universe, "chains", set()) or set():
+            chain_ids.add(_normalise_wallet_check_chain_id(chain_id))
+
+    for asset in getattr(universe, "reserve_assets", []) or []:
+        chain_ids.add(_normalise_wallet_check_chain_id(asset.chain_id))
+
+    for pair in pairs:
+        chain_ids.add(_normalise_wallet_check_chain_id(pair.base.chain_id))
+        chain_ids.add(_normalise_wallet_check_chain_id(pair.quote.chain_id))
+
+    if not chain_ids:
+        chain_ids.add(default_chain_id)
+
+    return sorted(chain_ids, key=lambda chain_id: (chain_id != default_chain_id, chain_id.value))
+
+
+def _collect_wallet_check_assets_by_chain(universe, pairs: list) -> dict[ChainId, list[AssetIdentifier]]:
+    """Collect reserve-like assets to check, keyed by their EVM chain."""
+    assets_by_key: dict[tuple[ChainId, str], AssetIdentifier] = {}
+
+    def add_asset(asset: AssetIdentifier) -> None:
+        chain_id = _normalise_wallet_check_chain_id(asset.chain_id)
+        assets_by_key[(chain_id, asset.address.lower())] = asset
+
+    for asset in universe.reserve_assets:
+        add_asset(asset)
+
+    for pair in pairs:
+        if pair.is_cctp_bridge():
+            add_asset(pair.base)
+            add_asset(pair.quote)
+
+    assets_by_chain: dict[ChainId, list[AssetIdentifier]] = {}
+    for (chain_id, _), asset in assets_by_key.items():
+        assets_by_chain.setdefault(chain_id, []).append(asset)
+
+    for chain_assets in assets_by_chain.values():
+        chain_assets.sort(key=lambda asset: (asset.token_symbol, asset.address))
+
+    return assets_by_chain
+
+
+def _get_chain_web3(web3config, chain_id: ChainId):
+    """Get the Web3 connection for a wallet check chain."""
+    get_connection = getattr(web3config, "get_connection", None)
+    if get_connection is None:
+        return web3config.get_default()
+
+    try:
+        return get_connection(chain_id)
+    except KeyError as e:
+        raise RuntimeError(
+            f"No JSON-RPC connection configured for {chain_id.get_name()} "
+            f"(chain id {chain_id.value})."
+        ) from e
+
+
+def _get_lagoon_satellite_vault(execution_model, chain_id: ChainId):
+    """Get the Lagoon satellite vault object for this chain, if any."""
+    satellite_vaults = getattr(execution_model, "satellite_vaults", {}) or {}
+    return satellite_vaults.get(chain_id.value)
+
+
+def _get_chain_reserve_address(sync_model, execution_model, chain_id: ChainId) -> str:
+    """Get the address that stores reserve tokens on this chain."""
+    satellite_vault = _get_lagoon_satellite_vault(execution_model, chain_id)
+    if satellite_vault is not None:
+        return satellite_vault.safe_address
+
+    return sync_model.get_token_storage_address() or sync_model.get_hot_wallet().address
+
+
+def _log_chain_custody_details(sync_model, execution_model, chain_id: ChainId) -> None:
+    """Log vault and custody addresses for a chain."""
+    satellite_vault = _get_lagoon_satellite_vault(execution_model, chain_id)
+    if satellite_vault is not None:
+        logger.info("  Vault address is N/A (satellite chain)")
+        logger.info("  Safe address is %s", satellite_vault.safe_address)
+    elif isinstance(sync_model, EnzymeVaultSyncModel):
+        logger.info("  Vault address is %s", sync_model.get_key_address())
+    elif isinstance(sync_model, VelvetVaultSyncModel):
+        logger.info("  Vault address is %s", sync_model.vault_address)
+    elif isinstance(sync_model, LagoonVaultSyncModel):
+        logger.info("  Vault address is %s", sync_model.vault_address)
+        logger.info("  Safe address is %s", sync_model.get_token_storage_address())
+    else:
+        logger.info("  Vault address lookup not implemented")
 
 
 @app.command()
@@ -110,10 +234,11 @@ def check_wallet(
 
     # Check that we are connected to the chain strategy assumes
     if unit_test_force_anvil:
-        web3config.set_default_chain(ChainId.anvil)
+        default_chain_id = ChainId.anvil
     else:
-        web3config.set_default_chain(mod.get_default_chain_id())
+        default_chain_id = mod.get_default_chain_id()
 
+    web3config.set_default_chain(default_chain_id)
     web3config.check_default_chain_id()
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
@@ -152,71 +277,84 @@ def check_wallet(
     )
 
     # Get all tokens from the universe
-    reserve_assets = universe.reserve_assets
-    web3 = web3config.get_default()
-    tokens = [Web3.to_checksum_address(a.address) for a in reserve_assets]
-
-    logger.info("RPC details")
-
-    # Check the chain is online
-    logger.info(f"  Chain id is {web3.eth.chain_id:,}")
-    logger.info(f"  Latest block is {web3.eth.block_number:,}")
-
-    tx_builder = sync_model
-
-    # Check balances
-    reserve_address = sync_model.get_token_storage_address() or sync_model.get_hot_wallet().address
-    logger.info("Balance details")
-    logger.info("  Hot wallet is %s", sync_model.get_hot_wallet().address)
-    gas_balance = web3.eth.get_balance(hot_wallet.address) / 10**18
-    if isinstance(sync_model, EnzymeVaultSyncModel):
-        logger.info("  Vault address is %s", sync_model.get_key_address())
-    elif isinstance(sync_model, VelvetVaultSyncModel):
-        logger.info("  Vault address is %s", sync_model.vault_address)
-    elif isinstance(sync_model, LagoonVaultSyncModel):
-        logger.info("  Vault address is %s", sync_model.vault_address)
-        logger.info("  Safe address is %s", sync_model.get_token_storage_address())
+    if unit_test_force_anvil:
+        wallet_check_chains = [ChainId.anvil]
+        assets_by_chain = {ChainId.anvil: list(universe.reserve_assets)}
     else:
-        logger.info("  Vault address lookup not implemented", )
+        wallet_check_pairs = _collect_wallet_check_pairs(universe)
+        wallet_check_chains = _collect_wallet_check_chains(universe, default_chain_id, wallet_check_pairs)
+        assets_by_chain = _collect_wallet_check_assets_by_chain(universe, wallet_check_pairs)
 
-    logger.info("  Hot wallet %s has %f native gas tokens", hot_wallet.address, gas_balance)
-    logger.info("  The gas error limit is %f tokens", min_gas_balance)
+    for chain_id in wallet_check_chains:
+        web3 = _get_chain_web3(web3config, chain_id)
+        reserve_assets = assets_by_chain.get(chain_id, [])
+        tokens = [Web3.to_checksum_address(a.address) for a in reserve_assets]
 
-    token_details_by_address = {}
-    for asset in reserve_assets:
-        logger.info("  Reserve asset: %s (%s)", asset.token_symbol, asset.address)
-        details = fetch_erc20_details(web3, asset.address, cache=token_cache)
-        token_details_by_address[Web3.to_checksum_address(asset.address)] = details
-        hot_wallet_reserve_balance = details.fetch_balance_of(hot_wallet.address)
-        logger.info(
-            "  Hot wallet reserve balance of %s (%s): %s %s",
-            details.name,
-            details.address,
-            hot_wallet_reserve_balance,
-            details.symbol,
-        )
+        logger.info(WALLET_CHECK_SEPARATOR)
+        logger.info("%s (chain id %d)", chain_id.get_name(), chain_id.value)
+        logger.info("RPC details")
 
-    balances = fetch_erc20_balances_by_token_list(web3, reserve_address, tokens)
+        # Check the chain is online
+        logger.info(f"  Chain id is {web3.eth.chain_id:,}")
+        logger.info(f"  Latest block is {web3.eth.block_number:,}")
+        if chain_id not in TEST_CHAIN_IDS:
+            assert web3.eth.chain_id == chain_id.value, (
+                f"Wallet check expected chain id {chain_id} ({chain_id.value}), "
+                f"RPC says we got {web3.eth.chain_id}"
+            )
 
-    for address, balance in balances.items():
-        details = token_details_by_address.get(Web3.to_checksum_address(address))
-        if details is None:
-            details = fetch_erc20_details(web3, address, cache=token_cache)
+        # Check balances
+        reserve_address = _get_chain_reserve_address(sync_model, execution_model, chain_id)
+        logger.info("Balance details")
+        logger.info("  Hot wallet is %s", sync_model.get_hot_wallet().address)
+        gas_balance = web3.eth.get_balance(hot_wallet.address) / 10**18
+        _log_chain_custody_details(sync_model, execution_model, chain_id)
 
-        if reserve_address != hot_wallet.address:
-            if isinstance(sync_model, (EnzymeVaultSyncModel, VelvetVaultSyncModel, LagoonVaultSyncModel)):
-                balance_owner = "Vault"
-            else:
-                balance_owner = "Token storage"
+        logger.info("  Hot wallet %s has %f native gas tokens", hot_wallet.address, gas_balance)
+        logger.info("  The gas error limit is %f tokens", min_gas_balance)
+
+        token_details_by_address = {}
+        for asset in reserve_assets:
+            logger.info("  Reserve asset: %s (%s)", asset.token_symbol, asset.address)
+            details = fetch_erc20_details(web3, asset.address, cache=token_cache)
+            token_details_by_address[Web3.to_checksum_address(asset.address)] = details
+            hot_wallet_reserve_balance = details.fetch_balance_of(hot_wallet.address)
             logger.info(
-                "  %s reserve balance of %s (%s) at address %s: %s %s",
-                balance_owner,
+                "  Hot wallet reserve balance of %s (%s): %s %s",
                 details.name,
                 details.address,
-                reserve_address,
-                details.convert_to_decimals(balance),
+                hot_wallet_reserve_balance,
                 details.symbol,
             )
+
+        if not tokens:
+            logger.info("  No reserve assets detected for this chain")
+            continue
+
+        balances = fetch_erc20_balances_by_token_list(web3, reserve_address, tokens)
+
+        for address, balance in balances.items():
+            details = token_details_by_address.get(Web3.to_checksum_address(address))
+            if details is None:
+                details = fetch_erc20_details(web3, address, cache=token_cache)
+
+            if reserve_address != hot_wallet.address:
+                satellite_vault = _get_lagoon_satellite_vault(execution_model, chain_id)
+                if satellite_vault is not None:
+                    balance_owner = "Safe"
+                elif isinstance(sync_model, (EnzymeVaultSyncModel, VelvetVaultSyncModel, LagoonVaultSyncModel)):
+                    balance_owner = "Vault"
+                else:
+                    balance_owner = "Token storage"
+                logger.info(
+                    "  %s reserve balance of %s (%s) at address %s: %s %s",
+                    balance_owner,
+                    details.name,
+                    details.address,
+                    reserve_address,
+                    details.convert_to_decimals(balance),
+                    details.symbol,
+                )
 
     # Check that the routing looks sane
     # E.g. there is no mismatch between strategy reserve token, wallet and pair universe
