@@ -1011,9 +1011,13 @@ def _deploy_multichain(
 
     logger.info("Multichain deployment: chains=%s, strategy=%s", list(chain_web3.keys()), strategy_file)
 
-    # Sync hot wallet nonce on each chain
+    # Create independent HotWallet per chain to avoid cross-chain nonce conflicts
+    # (each chain has its own nonce counter for the same address)
+    chain_hot_wallets: dict[str, HotWallet] = {}
     for slug, web3 in chain_web3.items():
-        hot_wallet.sync_nonce(web3)
+        hw = HotWallet(hot_wallet.account)
+        hw.sync_nonce(web3)
+        chain_hot_wallets[slug] = hw
         web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
         logger.info("  Chain %s: block %d", slug, web3.eth.block_number)
 
@@ -1063,6 +1067,7 @@ def _deploy_multichain(
 
     log_deployment_preflight_report(
         hot_wallet=hot_wallet,
+        chain_hot_wallets=chain_hot_wallets,
         chain_web3=chain_web3,
         fund_name=resolved_fund_name,
         fund_symbol=resolved_fund_symbol,

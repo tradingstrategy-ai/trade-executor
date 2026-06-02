@@ -31,6 +31,10 @@ def log_deployment_preflight_report(
     verifier_url: str | None = None,
     # Multichain: per-chain LagoonConfig objects
     chain_configs: dict[str, LagoonConfig] | None = None,
+    # Per-chain HotWallet instances (multichain path); avoids
+    # cross-chain nonce conflicts when the same address is used
+    # on multiple chains with different nonce counters.
+    chain_hot_wallets: dict[str, HotWallet] | None = None,
     # Legacy single-chain fields (when chain_configs is None)
     denomination_token: TokenDetails | None = None,
     any_asset: bool = False,
@@ -111,10 +115,13 @@ def log_deployment_preflight_report(
         logger.info("Chain: %s (id %d)", slug, web3.eth.chain_id)
         logger.info("  Latest block: %s", f"{web3.eth.block_number:,}")
 
-        # Balance & nonce — sync nonce first so the value is up-to-date
-        hot_wallet.sync_nonce(web3)
-        balance = hot_wallet.get_native_currency_balance(web3)
-        logger.info("  Deployer balance: %f, nonce %d", balance, hot_wallet.current_nonce)
+        # Use per-chain HotWallet when available to avoid cross-chain
+        # nonce conflicts; fall back to the shared instance for
+        # single-chain deployments.
+        chain_hw = chain_hot_wallets[slug] if chain_hot_wallets else hot_wallet
+        chain_hw.sync_nonce(web3)
+        balance = chain_hw.get_native_currency_balance(web3)
+        logger.info("  Deployer balance: %f, nonce %d", balance, chain_hw.current_nonce)
 
         if chain_configs and slug in chain_configs:
             _log_chain_config_section(chain_configs[slug], logger)
