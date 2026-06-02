@@ -257,3 +257,5 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
     assert any(f"Safe address is {BASE_SAFE_ADDRESS}" in message for message in messages)
     assert any("Hot wallet reserve balance of USD Coin" in message for message in messages)
     assert any("Vault reserve balance of USD Coin" in message for message in messages)
+    assert any(f"Vault reserve balance of USD Coin ({USDC_ADDRESS})" in message for message in messages)
+    assert any(f"Safe reserve balance of USD Coin ({BASE_USDC_ADDRESS.lower()})" in message for message in messages)

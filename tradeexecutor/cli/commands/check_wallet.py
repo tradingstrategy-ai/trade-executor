@@ -339,7 +339,10 @@ def check_wallet(
                 details = fetch_erc20_details(web3, address, cache=token_cache)
 
             if reserve_address != hot_wallet.address:
-                if isinstance(sync_model, (EnzymeVaultSyncModel, VelvetVaultSyncModel, LagoonVaultSyncModel)):
+                satellite_vault = _get_lagoon_satellite_vault(execution_model, chain_id)
+                if satellite_vault is not None:
+                    balance_owner = "Safe"
+                elif isinstance(sync_model, (EnzymeVaultSyncModel, VelvetVaultSyncModel, LagoonVaultSyncModel)):
                     balance_owner = "Vault"
                 else:
                     balance_owner = "Token storage"
