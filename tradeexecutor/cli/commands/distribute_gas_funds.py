@@ -4,7 +4,6 @@ Distribute native gas tokens to hot wallets across all chains
 in the strategy's trading universe using LI.FI cross-chain bridging.
 """
 
-import datetime
 import logging
 from decimal import Decimal
 from pathlib import Path
@@ -30,7 +29,7 @@ from tradingstrategy.chain import ChainId
 from .app import app
 from .shared_options import unit_testing
 from . import shared_options
-from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_client, create_execution_and_sync_model, configure_default_chain
+from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_client, configure_default_chain
 from ..log import setup_logging
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -122,29 +121,11 @@ def distribute_gas_funds(
     assert web3config.has_any_connection(), \
         "At least one JSON-RPC connection is required. Set JSON_RPC_* environment variables."
 
-    # Set the default chain (used by create_execution_and_sync_model)
-    # but do NOT call choose_single_chain() — we need all connections.
+    # Set the default chain but do not call choose_single_chain() - we need all connections.
     configure_default_chain(web3config, mod)
 
     if asset_management_mode is None:
         asset_management_mode = AssetManagementMode.hot_wallet
-
-    if web3config.has_any_connection():
-        execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
-            asset_management_mode=asset_management_mode,
-            private_key=private_key,
-            web3config=web3config,
-            min_gas_balance=0,
-            max_slippage=99,
-            vault_address=vault_address,
-            vault_adapter_address=vault_adapter_address,
-            vault_payment_forwarder_address=vault_payment_forwarder_address,
-            routing_hint=mod.trade_routing,
-            confirmation_block_count=0,
-            confirmation_timeout=datetime.timedelta(seconds=60),
-        )
-    else:
-        execution_model = sync_model = valuation_model_factory = pricing_model_factory = None
 
     client, routing_model = create_client(
         mod=mod,
@@ -160,12 +141,12 @@ def distribute_gas_funds(
 
     factory = make_factory_from_strategy_mod(mod)
     run_description: StrategyExecutionDescription = factory(
-        execution_model=execution_model,
+        execution_model=None,
         execution_context=execution_context,
         timed_task_context_manager=execution_context.timed_task_context_manager,
-        sync_model=sync_model,
-        valuation_model_factory=valuation_model_factory,
-        pricing_model_factory=pricing_model_factory,
+        sync_model=None,
+        valuation_model_factory=None,
+        pricing_model_factory=None,
         approval_model=UncheckedApprovalModel(),
         client=client,
         routing_model=routing_model,
@@ -180,7 +161,7 @@ def distribute_gas_funds(
         ExecutionMode.preflight_check,
         universe_options,
         strategy_parameters=mod.parameters,
-        execution_model=execution_model,
+        execution_model=None,
     )
 
     # Determine source chain from reserve asset

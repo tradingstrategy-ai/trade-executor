@@ -105,7 +105,7 @@ def environment(
         "JSON_RPC_ARBITRUM": anvil_arbitrum.json_rpc_url,
         "JSON_RPC_BASE": anvil_base.json_rpc_url,
         "TRADING_STRATEGY_API_KEY": os.environ["TRADING_STRATEGY_API_KEY"],
-        "ASSET_MANAGEMENT_MODE": "hot_wallet",
+        "ASSET_MANAGEMENT_MODE": "lagoon",
         "DRY_RUN": "true",
         "MIN_GAS_USD": "1000000",
         "UNIT_TESTING": "true",
@@ -114,13 +114,13 @@ def environment(
     }
 
 
-def test_distribute_gas_funds_dry_run(environment: dict):
-    """distribute-gas-funds dry-run mode displays balances and proposed swaps without external quote dependency.
+def test_distribute_gas_funds_dry_run_without_deployed_vault(environment: dict):
+    """distribute-gas-funds dry-run mode works for Lagoon strategy before vault deployment.
 
     The Li.Fi quote API is mocked because dry-run control-flow coverage should
     not fail CI when the external quote endpoint is slow or unavailable.
 
-    1. Patch the process environment for a dry-run CCTP bridge strategy.
+    1. Patch the process environment for a dry-run Lagoon CCTP bridge strategy without vault addresses.
     2. Mock the Li.Fi balance and quote boundaries.
     3. Run the command and verify it reaches the dry-run branch.
     """
@@ -140,7 +140,7 @@ def test_distribute_gas_funds_dry_run(environment: dict):
         print("mocked balances")
 
     f = StringIO()
-    # 1. Patch the process environment for a dry-run CCTP bridge strategy.
+    # 1. Patch the process environment for a dry-run Lagoon CCTP bridge strategy without vault addresses.
     # 2. Mock the Li.Fi balance and quote boundaries.
     # 3. Run the command and verify it reaches the dry-run branch.
     with mock.patch.dict("os.environ", environment, clear=True):
