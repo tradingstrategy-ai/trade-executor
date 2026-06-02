@@ -1,6 +1,7 @@
 """check-wallet command"""
 
 import datetime
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -8,7 +9,6 @@ import typer
 from web3 import Web3
 
 from eth_defi.balances import fetch_erc20_balances_by_token_list
-from eth_defi.gas import GasPriceMethod
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details
 
@@ -35,6 +35,7 @@ from ...utils.fullname import get_object_full_name
 from ...utils.timer import timed_task
 
 
+logger = logging.getLogger(__name__)
 WALLET_CHECK_SEPARATOR = "-" * 80
 
 
@@ -289,8 +290,8 @@ def check_wallet(
         reserve_assets = assets_by_chain.get(chain_id, [])
         tokens = [Web3.to_checksum_address(a.address) for a in reserve_assets]
 
-        logger.info("%s (chain id %d)", chain_id.get_name(), chain_id.value)
         logger.info(WALLET_CHECK_SEPARATOR)
+        logger.info("%s (chain id %d)", chain_id.get_name(), chain_id.value)
         logger.info("RPC details")
 
         # Check the chain is online

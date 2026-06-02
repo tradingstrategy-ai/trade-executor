@@ -250,6 +250,7 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
     assert result.exit_code == 0, result.stdout
     messages = [record.getMessage() for record in caplog.records]
     assert any("-" * 80 in message for message in messages)
+    assert any("HyperEVM (chain id 999)" in message for message in messages)
     assert any("Base (chain id 8453)" in message for message in messages)
     assert any(f"Vault address is {VAULT_ADDRESS}" in message for message in messages)
     assert any(f"Safe address is {SAFE_ADDRESS}" in message for message in messages)
