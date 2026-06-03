@@ -107,21 +107,56 @@ def generate_primary_to_satellite_cctp_bridge_universe(
         name="CCTP Bridge",
     )
 
+    # Resolve USDC decimals from the pair universe by address lookup.
+    # The reserve_asset.decimals can be wrong (e.g. 18) when the
+    # DEXPair symbol-based decimal resolution is ambiguous (both tokens
+    # share the same symbol in vault pairs).
+    primary_usdc_address = USDC_NATIVE_TOKEN[primary_chain.value]
+    primary_usdc_token = pairs.get_token(primary_usdc_address.lower(), chain_id=primary_chain)
+    if primary_usdc_token is not None and primary_usdc_token.decimals is not None:
+        usdc_decimals = primary_usdc_token.decimals
+    else:
+        usdc_decimals = reserve_asset.decimals
+
+    if usdc_decimals != reserve_asset.decimals:
+        logger.warning(
+            "Reserve asset decimals mismatch: reserve_asset.decimals=%d, "
+            "pair universe USDC decimals=%d for %s on chain %s. "
+            "Using pair universe value.",
+            reserve_asset.decimals,
+            usdc_decimals,
+            primary_usdc_address,
+            primary_chain.get_name(),
+        )
+
     for satellite_chain in satellite_chain_ids:
         route = (primary_chain.value, satellite_chain.value)
         if route in existing_routes:
             continue
 
+        # Resolve satellite USDC decimals from the pair universe too
+        sat_usdc_address = USDC_NATIVE_TOKEN[satellite_chain.value]
+        sat_usdc_token = pairs.get_token(sat_usdc_address.lower(), chain_id=satellite_chain)
+        sat_decimals = sat_usdc_token.decimals if (sat_usdc_token and sat_usdc_token.decimals) else usdc_decimals
+
         destination_asset = AssetIdentifier(
             chain_id=satellite_chain.value,
-            address=USDC_NATIVE_TOKEN[satellite_chain.value],
+            address=sat_usdc_address,
             token_symbol=reserve_asset.token_symbol,
-            decimals=reserve_asset.decimals,
+            decimals=sat_decimals,
         )
+        # Use corrected decimals for the quote (primary chain USDC) too
+        quote_asset = AssetIdentifier(
+            chain_id=reserve_asset.chain_id,
+            address=reserve_asset.address,
+            token_symbol=reserve_asset.token_symbol,
+            decimals=usdc_decimals,
+        )
+
         generated_pairs.append(
             TradingPairIdentifier(
                 base=destination_asset,
-                quote=reserve_asset,
+                quote=quote_asset,
                 pool_address=TOKEN_MESSENGER_V2,
                 exchange_address=TOKEN_MESSENGER_V2,
                 internal_id=next_pair_id,

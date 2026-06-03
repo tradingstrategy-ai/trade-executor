@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Fix CCTP bridge USDC decimals: resolve token decimals from pair universe instead of trusting `reserve_asset.decimals` which could be wrong (18 instead of 6) in ERC-4626 vault pair universes (2026-06-03)
+
 - Add cross-chain CCTP bridge support to `perform-test-trade` and `trade-ui` for satellite-chain vault pairs (2026-06-03)
 
 - Add `diagnose_hyperliquid_vault_redemption_failure()` to capture full HyperCore state on vault settlement failures, replacing uninformative `revert_reason=None` errors (2026-06-01)
