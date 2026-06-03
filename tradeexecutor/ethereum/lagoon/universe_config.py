@@ -23,6 +23,7 @@ from copy import deepcopy
 
 from eth_defi.cctp.constants import TESTNET_CHAIN_IDS
 from eth_defi.cctp.whitelist import CCTPDeployment
+from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
     LagoonConfig, LagoonDeploymentParameters)
 from eth_defi.gmx.whitelist import GMXDeployment, fetch_all_gmx_markets
@@ -106,6 +107,25 @@ def _collect_universe_metadata(universe: TradingStrategyUniverse, all_chain_ids:
         if exchange.exchange_type == ExchangeType.uniswap_v3
     }
     return cctp_destinations, has_cctp, uniswap_v3_chain_ids, gmx_chain_ids, hypercore_vaults_per_chain
+
+
+def _collect_erc4626_vault_addresses(universe: TradingStrategyUniverse, all_chain_ids: set[int]) -> dict[int, list[str]]:
+    """Collect on-chain ERC-4626 vault addresses per chain from the trading universe.
+
+    These vaults need explicit guard whitelisting via ``whitelistERC4626()``
+    regardless of the ``anyAsset`` setting, because ``anyAsset`` only bypasses
+    token-level checks — not target and approval destination checks.
+
+    Excludes Hyperliquid native vaults which have their own whitelist path.
+    """
+    vaults_per_chain: dict[int, list[str]] = {}
+    for pair in universe.iterate_pairs():
+        if pair.is_vault() and not pair.is_hyperliquid_vault():
+            chain_id = normalise_deployment_chain_id(pair.base.chain_id)
+            if chain_id is not None and chain_id in all_chain_ids and pair.pool_address:
+                addr = Web3.to_checksum_address(pair.pool_address)
+                vaults_per_chain.setdefault(chain_id, []).append(addr)
+    return vaults_per_chain
 
 
 def _collect_chain_token_addresses(universe: TradingStrategyUniverse, all_chain_ids: set[int], any_asset: bool) -> dict[int, set[str]]:
@@ -305,15 +325,17 @@ def translate_trading_universe_to_lagoon_config(
         all_chain_ids,
     )
     chain_token_addresses = _collect_chain_token_addresses(universe, all_chain_ids, any_asset)
+    erc4626_vaults_per_chain = _collect_erc4626_vault_addresses(universe, all_chain_ids)
 
     logger.info(
-        "Universe analysis: source_chain=%s, chains=%s, cctp=%s, uniswap_v3_chains=%s, gmx_chains=%s, hypercore_vault_chains=%s, testnet=%s, any_asset=%s",
+        "Universe analysis: source_chain=%s, chains=%s, cctp=%s, uniswap_v3_chains=%s, gmx_chains=%s, hypercore_vault_chains=%s, erc4626_vault_chains=%s, testnet=%s, any_asset=%s",
         source_chain_slug,
         list(chain_id_to_slug.values()),
         has_cctp,
         [chain_id_to_slug[cid] for cid in uniswap_v3_chain_ids],
         [chain_id_to_slug[cid] for cid in gmx_chain_ids],
         [chain_id_to_slug[cid] for cid in hypercore_vaults_per_chain],
+        [chain_id_to_slug[cid] for cid in erc4626_vaults_per_chain],
         is_testnet,
         any_asset,
     )
@@ -375,6 +397,20 @@ def translate_trading_universe_to_lagoon_config(
             hypercore_vaults_per_chain=hypercore_vaults_per_chain,
             any_asset=any_asset,
         )
+
+        # Resolve ERC-4626 vault pairs into vault instances for guard whitelisting.
+        # This must happen regardless of any_asset because anyAsset only bypasses
+        # token-level checks — target and approval destination whitelisting is
+        # always required.
+        vault_addresses = erc4626_vaults_per_chain.get(chain_id, [])
+        if vault_addresses:
+            erc4626_vaults = []
+            for addr in vault_addresses:
+                vault_instance = create_vault_instance(chain_web3[slug], addr)
+                assert vault_instance is not None, f"Failed to create vault instance for {addr}"
+                erc4626_vaults.append(vault_instance)
+            config.erc_4626_vaults = erc4626_vaults
+            logger.info("ERC-4626 vaults configured for %s: %d vault(s) %s", slug, len(erc4626_vaults), vault_addresses)
 
         configs[slug] = config
 
