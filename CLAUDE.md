@@ -80,6 +80,13 @@ Don't format code.
 
 - When creating a git worktree, copy `.local-test.env` from the repo root.
 - For worktrees, unless you are changing package dependencies, use `poetry run` from the parent repo virtualenv
+- The editable install `.pth` file hardcodes the parent repo path, so Python imports resolve to parent repo source instead of worktree source. When running tests or scripts in a worktree, always prepend `PYTHONPATH="$(pwd):$PYTHONPATH"` so the worktree path takes priority:
+
+```shell
+source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest tests/my_test.py
+```
+
+- Never use `importlib` hacks in tests to work around this — use normal imports and set `PYTHONPATH` instead
 
 ## Pull requests
 
