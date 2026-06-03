@@ -23,7 +23,8 @@ from tradingstrategy.chain import ChainId
 from .app import app
 from .pair_mapping import parse_pair_data
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, create_client, configure_default_chain
+    create_execution_and_sync_model, create_client, configure_default_chain, \
+    check_universe_chains_have_rpc, check_universe_chains_have_gas
 from ..log import setup_logging
 from ..slippage import configure_max_slippage_tolerance
 from ..testtrade import make_test_trade
@@ -228,6 +229,13 @@ def perform_test_trade(
         strategy_parameters=mod.parameters,
         execution_model=execution_model,
     )
+
+    # Validate all universe chains have RPC and gas before starting trades.
+    # This prevents bridging USDC to a chain we cannot reach.
+    check_universe_chains_have_rpc(web3config, universe)
+    wallet_address = execution_model.tx_builder.get_gas_wallet_address()
+    min_gas = getattr(execution_model, 'min_balance_threshold', 0)
+    check_universe_chains_have_gas(web3config, universe, wallet_address, min_gas)
 
     if single_pair:
         pair = universe.get_single_pair()

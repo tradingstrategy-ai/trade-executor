@@ -38,6 +38,8 @@ from ..bootstrap import (
     create_execution_and_sync_model,
     create_client,
     configure_default_chain,
+    check_universe_chains_have_rpc,
+    check_universe_chains_have_gas,
 )
 from ..log import setup_logging
 from ..slippage import configure_max_slippage_tolerance
@@ -208,6 +210,13 @@ def trade_ui(
         strategy_parameters=mod.parameters,
         execution_model=execution_model,
     )
+
+    # Validate all universe chains have RPC and gas before starting trades.
+    # This prevents bridging USDC to a chain we cannot reach.
+    check_universe_chains_have_rpc(web3config, universe)
+    wallet_address = execution_model.tx_builder.get_gas_wallet_address()
+    min_gas = getattr(execution_model, 'min_balance_threshold', 0)
+    check_universe_chains_have_gas(web3config, universe, wallet_address, min_gas)
 
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
