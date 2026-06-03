@@ -12,7 +12,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 from . import shared_options
 from .app import app
-from ..bootstrap import prepare_executor_id, create_state_store, create_execution_and_sync_model, prepare_cache, create_web3_config, create_client
+from ..bootstrap import prepare_executor_id, create_state_store, create_execution_and_sync_model, prepare_cache, create_web3_config, create_client, configure_default_chain
 from ..log import setup_logging
 from ...ethereum.rebroadcast import rebroadcast_all
 from ...ethereum.velvet.execution import VelvetExecution
@@ -103,13 +103,10 @@ def repair(
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
 
-    # Check that we are connected to the chain strategy assumes
-    web3config.set_default_chain(mod.get_default_chain_id())
-
     if not web3config.has_any_connection():
-        raise RuntimeError("Vault deploy requires that you pass JSON-RPC connection to one of the networks")
+        raise RuntimeError("Repair requires that you pass JSON-RPC connection to one of the networks")
 
-    web3config.choose_single_chain()
+    configure_default_chain(web3config, mod)
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=asset_management_mode,
