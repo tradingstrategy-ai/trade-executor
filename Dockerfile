@@ -7,12 +7,7 @@
 # To test building the image: docker build .
 #
 #
-FROM python:3.14
-
-# Passed from Github Actions
-ARG GIT_VERSION_TAG=unspecified
-ARG GIT_COMMIT_MESSAGE=unspecified
-ARG GIT_VERSION_HASH=unspecified
+FROM python:3.14 AS runtime-base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -22,7 +17,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # node.js and g++ libssl1.0.0 libssl-dev needed for enzyme below - remove when enzyme dep has been factored out
 # https://github.com/nodejs/node-gyp/issues/1195#issuecomment-371954099
 # https://stackoverflow.com/questions/40075271/gmpy2-not-installing-mpir-h-not-found
-RUN apt-get update && apt-get install -y curl jq chromium ca-certificates gnupg libmpfr-dev libmpc-dev libxml2-dev libxslt-dev \
+RUN apt-get update && apt-get install -y --no-install-recommends curl jq chromium ca-certificates gnupg libmpfr-dev libmpc-dev libxml2-dev libxslt-dev \
   && rm -rf /var/lib/apt/lists/*
 
 # Install Python Poetry - pinned version
@@ -33,6 +28,14 @@ ENV PATH="/root/.local/bin:$PATH"
 WORKDIR /usr/src/trade-executor
 
 RUN poetry config virtualenvs.create false
+
+# Anvil is needed for the transaction simulation e.g. by trade-executor enzyme-deploy-vault command
+# For the latest pindowns check Github test workflow
+ENV PATH="${PATH}:/root/.foundry/bin"
+RUN curl -L https://foundry.paradigm.xyz | bash
+RUN foundryup --install v1.2.1
+
+FROM runtime-base AS tradeexecutor
 
 # Copy only dependency metadata and local path dependency source first so
 # ordinary application code changes do not invalidate the expensive dependency
@@ -45,14 +48,8 @@ COPY deps/web3-ethereum-defi/eth_defi deps/web3-ethereum-defi/eth_defi
 
 RUN poetry install --all-extras --no-interaction --no-ansi --without=dev --no-root
 
-# Clean Poetry cache to reduce image size
+# Clean Poetry cache to reduce image size.
 RUN poetry cache clear pypi --all --no-interaction
-
-# Anvil is needed for the transaction simulation e.g. by trade-executor enzyme-deploy-vault command
-# For the latest pindowns check Github test workflow
-ENV PATH="${PATH}:/root/.foundry/bin"
-RUN curl -L https://foundry.paradigm.xyz | bash
-RUN foundryup --install v1.2.1
 
 # Lagoon contract sources are needed for forge dependency installation, but we
 # still keep them separate from the main application copy to preserve cache.
@@ -63,8 +60,10 @@ COPY deps/web3-ethereum-defi/contracts/lagoon-v0 deps/web3-ethereum-defi/contrac
 # Needed only for installing the dependencies, not during run time
 RUN (cd deps/web3-ethereum-defi/contracts/lagoon-v0 && forge soldeer install --config-location foundry)
 
-# Copy the rest of the application only after dependency-heavy layers.
-COPY . .
+# Copy the application only after dependency-heavy layers.
+COPY tradeexecutor tradeexecutor
+COPY spec spec
+COPY scripts/docker-entrypoint.sh scripts/docker-entrypoint.sh
 
 RUN poetry install --only-root --no-interaction --no-ansi
 
@@ -73,6 +72,11 @@ RUN rm -rf ./tests
 RUN python -m compileall -q .
 # Exclude ccxt from compileall due to syntax errors in ccxt.static_dependencies.bip
 RUN python -m compileall -q -x 'ccxt/static_dependencies' /usr/local/lib/python3.14
+
+# Passed from Github Actions
+ARG GIT_VERSION_TAG=unspecified
+ARG GIT_COMMIT_MESSAGE=unspecified
+ARG GIT_VERSION_HASH=unspecified
 
 # Read by VersionInfo class in trade-executor. Write these files at the end so
 # commit metadata changes do not invalidate the dependency cache.
