@@ -101,6 +101,7 @@ Don't format code.
 ### Python
 
 - Always use global, level imports, unless facing circular import exception
+- Using `assert` is ok, we never run with `python -O` 
 
 ### Enum
 

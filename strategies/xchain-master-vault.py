@@ -171,7 +171,7 @@ class Parameters:
     candle_time_bucket = TimeBucket.d1
     cycle_duration = CycleDuration.cycle_1d
     chain_id = ChainId.cross_chain
-    primary_chain_id = ChainId.ethereum
+    primary_chain_id = ChainId.arbitrum
     supporting_pairs = SUPPORTING_PAIRS
     source_vaults = SOURCE_VAULTS
     preferred_stablecoin = USDC_NATIVE_TOKEN[ChainId.ethereum].lower()
