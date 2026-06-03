@@ -372,12 +372,19 @@ def make_test_trade(
 
             pair = translate_trading_pair(raw_pair)
 
-        # Detect if this pair is on a satellite chain (cross-chain trade)
-        home_chain_id = web3config.default_chain_id.value if web3config else web3.eth.chain_id
-        is_cross_chain = (
-            not pair.is_cctp_bridge()
-            and pair.chain_id != home_chain_id
-        )
+        # Detect if this pair is on a satellite chain (cross-chain trade).
+        # Only attempt cross-chain when web3config is explicitly provided
+        # (callers managing bridging themselves pass web3config=None).
+        # Also skip when the default chain is a test chain (Anvil fork)
+        # because the fork chain_id won't match real pair chain_ids.
+        from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
+        is_cross_chain = False
+        if web3config is not None and web3config.default_chain_id not in TEST_CHAIN_IDS:
+            home_chain_id = web3config.default_chain_id.value
+            is_cross_chain = (
+                not pair.is_cctp_bridge()
+                and pair.chain_id != home_chain_id
+            )
 
         if is_cross_chain:
             chain_name = ChainId(pair.chain_id).get_name()
