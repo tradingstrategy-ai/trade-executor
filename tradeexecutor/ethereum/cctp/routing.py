@@ -131,8 +131,6 @@ class CctpBridgeRouting(RoutingModel):
             assert source_web3 is not None, \
                 f"No web3 connection for source chain {source_chain_id}"
 
-            amount_raw = int(trade.planned_reserve * (10 ** pair.quote.decimals))
-
             # Resolve mint recipient based on trade direction.
             # The destination depends on buy vs sell:
             # - Buy (forward): mint on base chain (satellite)
@@ -152,6 +150,8 @@ class CctpBridgeRouting(RoutingModel):
             burn_token_address = USDC_NATIVE_TOKEN.get(source_chain_id)
             assert burn_token_address is not None, \
                 f"No USDC address known for source chain {source_chain_id}"
+
+            amount_raw = int(trade.planned_reserve * (10 ** pair.quote.decimals))
 
             # Load contract objects needed for signing
             usdc_contract = get_deployed_contract(
