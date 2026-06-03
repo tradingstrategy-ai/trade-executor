@@ -34,6 +34,8 @@ from textual.widgets import (
 from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.liquidity import LiquidityDataUnavailable
 
+from tradingstrategy.chain import ChainId
+
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -359,6 +361,8 @@ class PairSelectionApp(App):
         pricing_model=None,
     ):
         super().__init__()
+        # Filter out CCTP bridge pairs — they are handled automatically
+        pairs = [p for p in pairs if not p.is_cctp_bridge()]
         self.pairs = pairs
         self.strategy_universe = strategy_universe
         self.state = state
@@ -368,6 +372,9 @@ class PairSelectionApp(App):
         self.gas_balance = gas_balance
         self.is_hyperliquid = is_hyperliquid
         self.pricing_model = pricing_model
+
+        # Detect multichain universe for chain column display
+        self.is_multichain = len(strategy_universe.data_universe.chains) > 1
 
         # Compute TVL values and sort by TVL descending
         self.tvl_values = {
@@ -410,6 +417,8 @@ class PairSelectionApp(App):
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
         table.add_column("#", key="idx", width=5)
+        if self.is_multichain:
+            table.add_column("Chain", key="chain", width=12)
         table.add_column("Symbol", key="symbol", width=40)
         table.add_column("Exchange", key="exchange", width=20)
         table.add_column("Price", key="price", width=14)
@@ -427,17 +436,13 @@ class PairSelectionApp(App):
             position = _get_position_info(self.state, pair)
             lockup = _format_lockup(self.state, pair)
 
-            table.add_row(
-                str(idx),
-                symbol,
-                exchange,
-                price,
-                tvl,
-                deposits,
-                position,
-                lockup,
-                key=str(idx),
-            )
+            row_values = [str(idx)]
+            if self.is_multichain:
+                chain_name = ChainId(pair.base.chain_id).get_name()
+                row_values.append(chain_name)
+            row_values.extend([symbol, exchange, price, tvl, deposits, position, lockup])
+
+            table.add_row(*row_values, key=str(idx))
 
         table.focus()
 

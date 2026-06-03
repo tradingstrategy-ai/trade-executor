@@ -38,6 +38,8 @@ from ..bootstrap import (
     create_execution_and_sync_model,
     create_client,
     configure_default_chain,
+    check_universe_chains_have_rpc,
+    check_universe_chains_have_gas,
 )
 from ..log import setup_logging
 from ..slippage import configure_max_slippage_tolerance
@@ -209,6 +211,13 @@ def trade_ui(
         execution_model=execution_model,
     )
 
+    # Validate all universe chains have RPC and gas before starting trades.
+    # This prevents bridging USDC to a chain we cannot reach.
+    check_universe_chains_have_rpc(web3config, universe)
+    wallet_address = execution_model.tx_builder.get_gas_wallet_address()
+    min_gas = getattr(execution_model, 'min_balance_threshold', 0)
+    check_universe_chains_have_gas(web3config, universe, wallet_address, min_gas)
+
     runner = run_description.runner
     routing_state, pricing_model, valuation_method = runner.setup_routing(universe)
 
@@ -239,9 +248,9 @@ def trade_ui(
     chain_id = ChainId(web3.eth.chain_id)
     is_hyperliquid = chain_id in (ChainId.hyperliquid, ChainId.hyperliquid_testnet)
 
-    # Collect pairs for the TUI
-    pairs = list(universe.iterate_pairs())
-    assert len(pairs) > 0, "Trading universe has no pairs"
+    # Collect pairs for the TUI — filter out CCTP bridge pairs (handled automatically)
+    pairs = [p for p in universe.iterate_pairs() if not p.is_cctp_bridge()]
+    assert len(pairs) > 0, "Trading universe has no tradeable pairs (after filtering bridge pairs)"
 
     # Display TUI and get user selections
     if unit_testing:
@@ -293,6 +302,7 @@ def trade_ui(
             close_only=close_only,
             test_short=test_short,
             amount=amount,
+            web3config=web3config,
         )
     except OutOfBalance as e:
         raise RuntimeError(

@@ -7,7 +7,8 @@ from web3 import Web3
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.provider.anvil import is_anvil, mine
-from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind
+from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingReserveDescription
 from tradingstrategy.universe import Universe
 from tradingstrategy.pair import HumanReadableTradingPairDescription
@@ -32,6 +33,273 @@ from eth_defi.compat import native_datetime_utc_now
 logger = logging.getLogger(__name__)
 
 
+def _materialise_bridge_on_anvil(
+    web3config,
+    routing_model: RoutingModel,
+    bridge_pair: TradingPairIdentifier,
+    dest_chain_id: int,
+    fallback_recipient: str,
+    bridge_trade,
+):
+    """Mint USDC on destination Anvil fork to simulate bridge completion.
+
+    On Anvil forks, CctpBridgeRouting uses skip_attestation=True which marks
+    the bridge trade as success after burn confirmation, but USDC does not
+    physically arrive on the destination chain. This helper materialises
+    the tokens by minting directly on the destination Anvil fork.
+
+    The mint recipient is resolved from the CCTP routing model's
+    custody_address_resolver, matching what CctpBridgeRouting.setup_trades()
+    uses for the real depositForBurn call. For Lagoon/Safe multichain setups
+    this is the per-chain Safe address, not the hot wallet.
+    """
+    from eth_defi.provider.anvil import fund_erc20_on_anvil
+    from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
+
+    # Resolve mint recipient from CCTP routing config
+    pair_config = routing_model.pair_configurator.get_config(
+        routing_model.pair_configurator.match_router(bridge_pair)
+    )
+    cctp_routing = pair_config.routing_model
+    if hasattr(cctp_routing, 'custody_address_resolver') and cctp_routing.custody_address_resolver:
+        recipient = cctp_routing.custody_address_resolver(dest_chain_id)
+    else:
+        recipient = fallback_recipient
+
+    dest_web3 = web3config.get_connection(ChainId(dest_chain_id))
+    usdc_address = USDC_NATIVE_TOKEN[dest_chain_id]
+
+    # Derive raw amount from executed trade using token decimals.
+    # fund_erc20_on_anvil uses anvil_setStorageAt which OVERWRITES the balance,
+    # so we must read the existing balance first and add to it.
+    dest_usdc = fetch_erc20_details(dest_web3, usdc_address)
+    bridge_amount_raw = dest_usdc.convert_to_raw(bridge_trade.executed_reserve)
+    existing_balance_raw = dest_usdc.contract.functions.balanceOf(
+        Web3.to_checksum_address(recipient)
+    ).call()
+    total_raw = existing_balance_raw + bridge_amount_raw
+
+    logger.info(
+        "Anvil fork: materialising %s USDC on chain %s for %s (existing balance: %s)",
+        bridge_trade.executed_reserve, ChainId(dest_chain_id).get_name(), recipient,
+        dest_usdc.convert_to_decimals(existing_balance_raw),
+    )
+    fund_erc20_on_anvil(dest_web3, usdc_address, recipient, total_raw)
+
+
+def _make_cross_chain_test_trade(
+    web3: "Web3",
+    web3config,
+    execution_model: ExecutionModel,
+    pricing_model: "PricingModel",
+    sync_model: "SyncModel",
+    state: State,
+    universe: TradingStrategyUniverse,
+    routing_model: RoutingModel,
+    routing_state: RoutingState,
+    position_manager: PositionManager,
+    pair: TradingPairIdentifier,
+    bridge_pair: TradingPairIdentifier,
+    amount: Decimal,
+    max_slippage: float,
+    buy_only: bool,
+    close_only: bool,
+    gas_at_start,
+    hot_wallet,
+    reserve_currency: str,
+    reserve_currency_at_start: float,
+    anvil_time_skip_seconds: int = 24 * 3600,
+):
+    """Cross-chain test trade: bridge in, open position, close position, bridge out.
+
+    Handles satellite-chain pairs by automatically injecting CCTP bridge
+    trades before opening and after closing positions.
+
+    On real mainnet, CctpBridgeRouting.settle_trade() handles attestation
+    and receiveMessage automatically. On Anvil forks, USDC is materialised
+    via fund_erc20_on_anvil() after bridge trades succeed.
+    """
+    from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
+
+    assert isinstance(pricing_model, GenericPricing), \
+        f"Cross-chain test trades require GenericPricing, got {type(pricing_model)}"
+    assert hasattr(routing_model, 'pair_configurator'), \
+        f"Cross-chain test trades require GenericRouting with pair_configurator, got {type(routing_model)}"
+
+    # Verify both pairs are routable
+    try:
+        pricing_model.route(bridge_pair)
+        pricing_model.route(pair)
+    except Exception as e:
+        raise RuntimeError(
+            f"Pricing model cannot route cross-chain pairs. "
+            f"Bridge pair: {bridge_pair.get_ticker()}, satellite pair: {pair.get_ticker()}"
+        ) from e
+
+    assert web3config is not None, "Cross-chain test trades require web3config"
+
+    ts = native_datetime_utc_now()
+    chain_name = ChainId(pair.chain_id).get_name()
+    notes = "A test trade created with perform-test-trade command line command"
+    on_anvil = is_anvil(web3)
+    dest_chain_id = pair.chain_id
+
+    if close_only:
+        # Close-only: find existing positions and close them
+        satellite_position = state.portfolio.get_position_by_trading_pair(pair)
+        if satellite_position is None or not satellite_position.is_open():
+            raise RuntimeError(
+                f"Close-only mode but no open position for {pair.get_ticker()} on {chain_name}."
+            )
+
+        bridge_position = state.portfolio.get_bridge_position_for_chain(dest_chain_id)
+        if bridge_position is None or not bridge_position.is_open():
+            raise RuntimeError(
+                f"Close-only mode but no open bridge position for chain {chain_name}."
+            )
+
+        # Step 1: Close satellite position
+        logger.info("Cross-chain close step 1: closing %s on %s", pair.get_ticker(), chain_name)
+        ts = native_datetime_utc_now()
+        position_manager = PositionManager(
+            ts, universe, state, pricing_model,
+            default_slippage_tolerance=max_slippage,
+        )
+        trades = position_manager.close_position(
+            satellite_position, notes=notes, flags={TradeFlag.test_trade},
+        )
+        execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
+        assert trades[0].is_success(), f"Satellite close failed: {trades[0].get_revert_reason()}"
+
+        # Step 2: Bridge back — sized by get_available_bridge_capital()
+        logger.info("Cross-chain close step 2: bridging back from %s", chain_name)
+        ts = native_datetime_utc_now()
+        position_manager = PositionManager(
+            ts, universe, state, pricing_model,
+            default_slippage_tolerance=max_slippage,
+        )
+        bridge_back_trades = position_manager.close_position(
+            bridge_position, notes=notes, flags={TradeFlag.test_trade},
+        )
+        execution_model.execute_trades(ts, state, bridge_back_trades, routing_model, routing_state)
+        assert bridge_back_trades[0].is_success(), \
+            f"Bridge back failed: {bridge_back_trades[0].get_revert_reason()}"
+
+        if on_anvil:
+            home_chain_id = web3config.default_chain_id.value
+            _materialise_bridge_on_anvil(
+                web3config, routing_model, bridge_pair,
+                home_chain_id, hot_wallet.address, bridge_back_trades[0],
+            )
+            sync_model.sync_treasury(
+                native_datetime_utc_now(), state, list(universe.reserve_assets),
+            )
+
+    else:
+        # Buy flow: bridge in, then open satellite position
+
+        # Step 1: Bridge USDC to satellite chain
+        logger.info("Cross-chain step 1: bridge %s USDC to %s via CCTP", amount, chain_name)
+        bridge_trades = position_manager.open_spot(
+            bridge_pair, float(amount), notes=notes, flags={TradeFlag.test_trade},
+        )
+        execution_model.execute_trades(ts, state, bridge_trades, routing_model, routing_state)
+        bridge_buy_trade = bridge_trades[0]
+        assert bridge_buy_trade.is_success(), \
+            f"Bridge in failed: {bridge_buy_trade.get_revert_reason()}"
+
+        # Materialise USDC on Anvil fork
+        if on_anvil:
+            _materialise_bridge_on_anvil(
+                web3config, routing_model, bridge_pair,
+                dest_chain_id, hot_wallet.address, bridge_buy_trade,
+            )
+
+        # Step 2: Open position on satellite chain
+        logger.info("Cross-chain step 2: open %s on %s", pair.get_ticker(), chain_name)
+        ts = native_datetime_utc_now()
+        position_manager = PositionManager(
+            ts, universe, state, pricing_model,
+            default_slippage_tolerance=max_slippage,
+        )
+        satellite_trades = position_manager.open_spot(
+            pair, float(amount), notes=notes, flags={TradeFlag.test_trade},
+        )
+        execution_model.execute_trades(ts, state, satellite_trades, routing_model, routing_state)
+        satellite_buy_trade = satellite_trades[0]
+        assert satellite_buy_trade.is_success(), \
+            f"Satellite open failed: {satellite_buy_trade.get_revert_reason()}"
+
+        satellite_position = state.portfolio.get_position_by_id(satellite_buy_trade.position_id)
+        bridge_position = state.portfolio.get_position_by_id(bridge_buy_trade.position_id)
+
+        long_short_metrics_latest = serialise_long_short_stats_as_json_table(state, None)
+        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio,
+                          ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+
+        if not buy_only:
+            # Sell flow: close satellite, then bridge back
+
+            if on_anvil:
+                logger.info("Skipping time forward by %d seconds", anvil_time_skip_seconds)
+                dest_web3 = web3config.get_connection(ChainId(dest_chain_id))
+                mine(dest_web3, increase_timestamp=anvil_time_skip_seconds)
+
+            # Step 3: Close satellite position
+            logger.info("Cross-chain step 3: close %s on %s", pair.get_ticker(), chain_name)
+            ts = native_datetime_utc_now()
+            position_manager = PositionManager(
+                ts, universe, state, pricing_model,
+                default_slippage_tolerance=max_slippage,
+            )
+            close_trades = position_manager.close_position(
+                satellite_position, notes=notes, flags={TradeFlag.test_trade},
+            )
+            execution_model.execute_trades(ts, state, close_trades, routing_model, routing_state)
+            assert close_trades[0].is_success(), \
+                f"Satellite close failed: {close_trades[0].get_revert_reason()}"
+
+            # Step 4: Bridge back — sized by get_available_bridge_capital()
+            logger.info("Cross-chain step 4: bridge back from %s", chain_name)
+            ts = native_datetime_utc_now()
+            position_manager = PositionManager(
+                ts, universe, state, pricing_model,
+                default_slippage_tolerance=max_slippage,
+            )
+            bridge_back_trades = position_manager.close_position(
+                bridge_position, notes=notes, flags={TradeFlag.test_trade},
+            )
+            execution_model.execute_trades(
+                ts, state, bridge_back_trades, routing_model, routing_state,
+            )
+            assert bridge_back_trades[0].is_success(), \
+                f"Bridge back failed: {bridge_back_trades[0].get_revert_reason()}"
+
+            if on_anvil:
+                home_chain_id = web3config.default_chain_id.value
+                _materialise_bridge_on_anvil(
+                    web3config, routing_model, bridge_pair,
+                    home_chain_id, hot_wallet.address, bridge_back_trades[0],
+                )
+                sync_model.sync_treasury(
+                    native_datetime_utc_now(), state, list(universe.reserve_assets),
+                )
+
+            long_short_metrics_latest = serialise_long_short_stats_as_json_table(state, None)
+            update_statistics(native_datetime_utc_now(), state.stats, state.portfolio,
+                              ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+
+    # Final report
+    gas_at_end = hot_wallet.get_native_currency_balance(web3)
+    reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
+
+    logger.info("Cross-chain test trade report")
+    logger.info("  Chain: %s", chain_name)
+    logger.info("  Gas spent: %s", gas_at_start - gas_at_end)
+    logger.info("  Trades done: %d", len(list(state.portfolio.get_all_trades())))
+    logger.info("  Reserves: %s %s (was %s)", reserve_currency_at_end, reserve_currency, reserve_currency_at_start)
+
+
 def make_test_trade(
     web3: Web3,
     execution_model: ExecutionModel,
@@ -49,6 +317,7 @@ def make_test_trade(
     close_only: bool = False,
     test_short: bool = True,
     anvil_time_skip_seconds: int = 24*3600,
+    web3config=None,
 ):
     """Perform a test trade.
 
@@ -80,6 +349,8 @@ def make_test_trade(
 
     reserve_asset = universe.get_reserve_asset()
 
+    is_cross_chain = False
+
     if pair:
         assert not lending_reserve_description
 
@@ -101,23 +372,42 @@ def make_test_trade(
 
             pair = translate_trading_pair(raw_pair)
 
-        logger.info("Getting price for pair %s using %s", pair, pricing_model)
-        # Get estimated price for the asset we are going to buy
-        assumed_price_structure = pricing_model.get_buy_price(
-            ts,
-            pair,
-            amount,
-        )
+        # Detect if this pair is on a satellite chain (cross-chain trade).
+        # Only attempt cross-chain when web3config is explicitly provided
+        # (callers managing bridging themselves pass web3config=None).
+        # Also skip when the default chain is a test chain (Anvil fork)
+        # because the fork chain_id won't match real pair chain_ids.
+        from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
+        is_cross_chain = False
+        if web3config is not None and web3config.default_chain_id not in TEST_CHAIN_IDS:
+            home_chain_id = web3config.default_chain_id.value
+            is_cross_chain = (
+                not pair.is_cctp_bridge()
+                and pair.chain_id != home_chain_id
+            )
 
-        logger.info(
-            "Making a test trade on pair: %s, for %f %s price is %f %s/%s",
-            pair,
-            amount,
-            reserve_asset.token_symbol,
-            assumed_price_structure.mid_price,
-            pair.base.token_symbol,
-            reserve_asset.token_symbol,
-        )
+        if is_cross_chain:
+            chain_name = ChainId(pair.chain_id).get_name()
+            logger.info("Cross-chain pair detected: %s on %s (home chain: %s)",
+                        pair.get_ticker(), chain_name, ChainId(home_chain_id).get_name())
+        else:
+            logger.info("Getting price for pair %s using %s", pair, pricing_model)
+            # Get estimated price for the asset we are going to buy
+            assumed_price_structure = pricing_model.get_buy_price(
+                ts,
+                pair,
+                amount,
+            )
+
+            logger.info(
+                "Making a test trade on pair: %s, for %f %s price is %f %s/%s",
+                pair,
+                amount,
+                reserve_asset.token_symbol,
+                assumed_price_structure.mid_price,
+                pair.base.token_symbol,
+                reserve_asset.token_symbol,
+            )
 
     elif lending_reserve_description:
         # Convert description to TradingPairIdentifier used in PositionManager
@@ -181,6 +471,43 @@ def make_test_trade(
         pricing_model,
         default_slippage_tolerance=max_slippage,
     )
+
+    # Cross-chain dispatch: if the target pair is on a satellite chain,
+    # delegate to the cross-chain helper that handles bridge in/out
+    if is_cross_chain:
+        from tradeexecutor.ethereum.cctp.planner import _find_bridge_pair
+
+        all_pairs = list(universe.iterate_pairs())
+        bridge_pair = _find_bridge_pair(all_pairs, pair.chain_id)
+        if bridge_pair is None:
+            raise RuntimeError(
+                f"Cross-chain pair detected on {ChainId(pair.chain_id).get_name()} but no CCTP bridge pair found. "
+                f"Ensure auto_generate_cctp_bridges=True in your strategy."
+            )
+
+        return _make_cross_chain_test_trade(
+            web3=web3,
+            web3config=web3config,
+            execution_model=execution_model,
+            pricing_model=pricing_model,
+            sync_model=sync_model,
+            state=state,
+            universe=universe,
+            routing_model=routing_model,
+            routing_state=routing_state,
+            position_manager=position_manager,
+            pair=pair,
+            bridge_pair=bridge_pair,
+            amount=amount,
+            max_slippage=max_slippage,
+            buy_only=buy_only,
+            close_only=close_only,
+            gas_at_start=gas_at_start,
+            hot_wallet=hot_wallet,
+            reserve_currency=reserve_currency,
+            reserve_currency_at_start=reserve_currency_at_start,
+            anvil_time_skip_seconds=anvil_time_skip_seconds,
+        )
 
     # The message left on the test positions and trades
     notes = "A test trade created with perform-test-trade command line command"
