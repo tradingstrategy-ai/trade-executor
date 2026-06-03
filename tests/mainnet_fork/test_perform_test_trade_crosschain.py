@@ -28,12 +28,13 @@ from eth_defi.token import USDC_NATIVE_TOKEN
 from eth_defi.cctp.constants import TOKEN_MESSENGER_V2
 
 from tradingstrategy.chain import ChainId
-from tradingstrategy.exchange import Exchange, ExchangeType
+from tradingstrategy.exchange import Exchange, ExchangeType, ExchangeUniverse
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.cli.testtrade import make_test_trade
 from tradeexecutor.cli.trade_ui_tui import PairSelectionApp
+from tradeexecutor.ethereum.cctp.bridge_universe import generate_primary_to_satellite_cctp_bridge_universe
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
@@ -581,3 +582,205 @@ def test_make_test_trade_crosschain_close_only(
     final_equity = _get_total_equity(state)
     assert final_equity == pytest.approx(initial_equity, rel=0.05), \
         f"Equity dropped from {initial_equity} to {final_equity}"
+
+
+@pytest.mark.timeout(600)
+def test_bridge_generation_corrects_wrong_reserve_decimals(
+    arb_web3,
+    base_web3,
+    execution_model: EthereumExecution,
+    sync_model: HotWalletSyncModel,
+    funded_wallet: HotWallet,
+    web3config: Web3Config,
+):
+    """Regression test: bridge pair generation corrects wrong reserve_asset decimals.
+
+    Replicates a production failure where DEXPair.quote_token_decimals returned 18
+    instead of 6 for ERC-4626 vault pairs (both tokens share the "USDC" symbol).
+    The wrong decimals propagated into bridge pairs, causing depositForBurn to
+    be called with amount=N*10^18 instead of N*10^6, reverting with
+    "ERC20: transfer amount exceeds balance".
+
+    1. Create a pair universe with vault pairs containing USDC with correct decimals (6)
+    2. Create a reserve_asset with WRONG decimals (18) simulating the production bug
+    3. Generate bridge pairs via generate_primary_to_satellite_cctp_bridge_universe()
+    4. Assert generated bridge pair has correct decimals (6, not 18)
+    5. Build a trading universe and routing model from the generated bridge pair
+    6. Execute a bridge test trade on Anvil forks via make_test_trade()
+    7. Verify the bridge trade succeeds (amount_raw was calculated correctly)
+    """
+
+    # 1. Create pair universe with pairs on both chains so USDC with
+    #    correct decimals (6) is available via pairs.get_token()
+
+    # Arbitrum spot pair — puts USDC(6) into the pair universe on Arbitrum
+    usdc_arb = AssetIdentifier(
+        chain_id=ARBITRUM_CHAIN_ID,
+        address=USDC_NATIVE_TOKEN[ARBITRUM_CHAIN_ID],
+        token_symbol="USDC",
+        decimals=6,
+    )
+    weth_arb = AssetIdentifier(
+        chain_id=ARBITRUM_CHAIN_ID,
+        address="0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+        token_symbol="WETH",
+        decimals=18,
+    )
+    arb_spot_pair = TradingPairIdentifier(
+        base=weth_arb,
+        quote=usdc_arb,
+        pool_address="0xC31E54c7a869B9FcBEcc14363CF510d1c41fa443",
+        exchange_address="0xC31E54c7a869B9FcBEcc14363CF510d1c41fa443",
+        internal_id=10,
+        internal_exchange_id=10,
+        fee=0.0005,
+        kind=TradingPairKind.spot_market_hold,
+    )
+
+    # Base vault pair — puts USDC(6) into the pair universe on Base
+    usdc_base = AssetIdentifier(
+        chain_id=BASE_CHAIN_ID,
+        address=USDC_NATIVE_TOKEN[BASE_CHAIN_ID],
+        token_symbol="USDC",
+        decimals=6,
+    )
+    ipor_share = AssetIdentifier(
+        chain_id=BASE_CHAIN_ID,
+        address=IPOR_VAULT_ADDRESS,
+        token_symbol="ipfUSDC",
+        decimals=18,
+    )
+    base_vault_pair = TradingPairIdentifier(
+        base=ipor_share,
+        quote=usdc_base,
+        pool_address=IPOR_VAULT_ADDRESS,
+        exchange_address=IPOR_VAULT_ADDRESS,
+        internal_id=11,
+        internal_exchange_id=11,
+        fee=0.0,
+        kind=TradingPairKind.vault,
+        exchange_name="IPOR Fusion",
+        other_data={"vault_protocol": "ipor_fusion"},
+    )
+
+    initial_pair_universe = create_pair_universe_from_code(
+        ChainId.arbitrum, [arb_spot_pair, base_vault_pair],
+    )
+
+    arb_exchange = Exchange(
+        chain_id=ChainId.arbitrum,
+        chain_slug="arbitrum",
+        exchange_id=10,
+        exchange_slug="uniswap-v3-arb",
+        address="0xC31E54c7a869B9FcBEcc14363CF510d1c41fa443",
+        exchange_type=ExchangeType.uniswap_v3,
+        pair_count=1,
+    )
+    vault_exchange = Exchange(
+        chain_id=ChainId.base,
+        chain_slug="base",
+        exchange_id=11,
+        exchange_slug="ipor-fusion",
+        address=IPOR_VAULT_ADDRESS,
+        exchange_type=ExchangeType.erc_4626_vault,
+        pair_count=1,
+    )
+    initial_exchange_universe = ExchangeUniverse(
+        exchanges={10: arb_exchange, 11: vault_exchange},
+    )
+
+    # 2. Create reserve_asset with WRONG decimals (18) — simulates the production
+    #    bug where DEXPair.quote_token_decimals picks 18 from the vault share token
+    wrong_reserve = AssetIdentifier(
+        chain_id=ARBITRUM_CHAIN_ID,
+        address=USDC_NATIVE_TOKEN[ARBITRUM_CHAIN_ID],
+        token_symbol="USDC",
+        decimals=18,
+    )
+
+    # 3. Generate bridge pairs — the fix resolves decimals from the pair universe
+    result = generate_primary_to_satellite_cctp_bridge_universe(
+        pairs=initial_pair_universe,
+        exchange_universe=initial_exchange_universe,
+        reserve_asset=wrong_reserve,
+        primary_chain=ChainId.arbitrum,
+    )
+
+    # 4. Assert the fix: bridge pair USDC decimals are 6, not 18
+    assert len(result.generated_pairs) == 1
+    bridge_pair = result.generated_pairs[0]
+    assert bridge_pair.kind == TradingPairKind.cctp_bridge
+    assert bridge_pair.quote.decimals == 6, (
+        f"Bridge quote.decimals={bridge_pair.quote.decimals}, expected 6. "
+        "Wrong decimals cause amount_raw to be off by 10^12, "
+        "producing the 'ERC20: transfer amount exceeds balance' revert."
+    )
+    assert bridge_pair.base.decimals == 6, (
+        f"Bridge base.decimals={bridge_pair.base.decimals}, expected 6."
+    )
+
+    # 5. Build trading universe using the generated bridge pair + vault pair
+    data_universe = Universe(
+        time_bucket=TimeBucket.d1,
+        chains={ChainId.arbitrum, ChainId.base},
+        exchanges=set(result.exchange_universe.exchanges.values()),
+        pairs=result.pair_universe,
+        exchange_universe=result.exchange_universe,
+        candles=None,
+        liquidity=None,
+    )
+
+    universe = TradingStrategyUniverse(
+        data_universe=data_universe,
+        reserve_assets=[usdc_arb],
+    )
+
+    pair_configurator = EthereumPairConfigurator(
+        arb_web3,
+        universe,
+        web3config=web3config,
+    )
+    routing_model = GenericRouting(pair_configurator)
+    pricing_model = GenericPricing(pair_configurator)
+
+    state = State()
+    sync_model.init()
+    sync_model.sync_initial(state, reserve_currency=usdc_arb, reserve_token_price=1.0)
+    sync_model.sync_treasury(native_datetime_utc_now(), state, [usdc_arb])
+
+    routing_state = routing_model.create_routing_state(
+        universe, {"tx_builder": execution_model.tx_builder},
+    )
+
+    # 6. Execute bridge test trade via make_test_trade()
+    #    This calls CctpBridgeRouting.setup_trades() which computes:
+    #      amount_raw = int(trade.planned_reserve * (10 ** pair.quote.decimals))
+    #    With correct decimals=6: amount_raw = 3 * 10^6  = 3_000_000 (OK)
+    #    With wrong   decimals=18: amount_raw = 3 * 10^18 (reverts on-chain)
+    make_test_trade(
+        web3=arb_web3,
+        execution_model=execution_model,
+        pricing_model=pricing_model,
+        sync_model=sync_model,
+        state=state,
+        universe=universe,
+        routing_model=routing_model,
+        routing_state=routing_state,
+        max_slippage=0.05,
+        amount=TEST_TRADE_AMOUNT,
+        pair=base_vault_pair,
+        buy_only=True,
+        web3config=web3config,
+    )
+
+    # 7. Verify bridge trade succeeded (not reverted with wrong amount)
+    bridge_positions = [
+        p for p in state.portfolio.open_positions.values()
+        if p.pair.kind == TradingPairKind.cctp_bridge
+    ]
+    assert len(bridge_positions) == 1
+    bridge_trade = list(bridge_positions[0].trades.values())[0]
+    assert bridge_trade.is_success(), (
+        f"Bridge trade failed: {bridge_trade.get_revert_reason()}. "
+        "This indicates wrong USDC decimals in the bridge pair."
+    )
