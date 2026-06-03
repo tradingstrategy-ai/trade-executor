@@ -784,3 +784,78 @@ def test_bridge_generation_corrects_wrong_reserve_decimals(
         f"Bridge trade failed: {bridge_trade.get_revert_reason()}. "
         "This indicates wrong USDC decimals in the bridge pair."
     )
+
+
+def test_bridge_generation_primary_chain_not_in_pairs():
+    """Regression: bridge pair decimals correct when primary chain has no pairs.
+
+    When the pair universe only has satellite-chain pairs (e.g. Base vault
+    pairs), the primary chain USDC is not in the pair universe. The
+    generation function must still produce bridge pairs with decimals=6,
+    never falling back to reserve_asset.decimals which may be wrong.
+
+    1. Create a pair universe with ONLY Base vault pairs (no Arbitrum pairs)
+    2. Pass a reserve_asset with wrong decimals (18) for Arbitrum USDC
+    3. Call generate_primary_to_satellite_cctp_bridge_universe()
+    4. Assert both quote (primary) and base (satellite) decimals are 6
+    """
+
+    # 1. Base-only pair universe — no Arbitrum pairs at all
+    usdc_base = AssetIdentifier(
+        chain_id=BASE_CHAIN_ID,
+        address=USDC_NATIVE_TOKEN[BASE_CHAIN_ID],
+        token_symbol="USDC",
+        decimals=6,
+    )
+    ipor_share = AssetIdentifier(
+        chain_id=BASE_CHAIN_ID,
+        address=IPOR_VAULT_ADDRESS,
+        token_symbol="ipfUSDC",
+        decimals=18,
+    )
+    base_vault_pair = TradingPairIdentifier(
+        base=ipor_share,
+        quote=usdc_base,
+        pool_address=IPOR_VAULT_ADDRESS,
+        exchange_address=IPOR_VAULT_ADDRESS,
+        internal_id=11,
+        internal_exchange_id=11,
+        fee=0.0,
+        kind=TradingPairKind.vault,
+        exchange_name="IPOR Fusion",
+        other_data={"vault_protocol": "ipor_fusion"},
+    )
+
+    pair_universe = create_pair_universe_from_code(
+        ChainId.arbitrum, [base_vault_pair],
+    )
+    exchange_universe = ExchangeUniverse(exchanges={})
+
+    # 2. Wrong reserve_asset — primary chain USDC with decimals=18
+    wrong_reserve = AssetIdentifier(
+        chain_id=ARBITRUM_CHAIN_ID,
+        address=USDC_NATIVE_TOKEN[ARBITRUM_CHAIN_ID],
+        token_symbol="USDC",
+        decimals=18,
+    )
+
+    # 3. Generate bridge pairs — primary USDC is NOT in pair universe
+    result = generate_primary_to_satellite_cctp_bridge_universe(
+        pairs=pair_universe,
+        exchange_universe=exchange_universe,
+        reserve_asset=wrong_reserve,
+        primary_chain=ChainId.arbitrum,
+    )
+
+    # 4. Assert correct decimals despite missing primary USDC in pairs
+    assert len(result.generated_pairs) == 1
+    bridge_pair = result.generated_pairs[0]
+    assert bridge_pair.quote.decimals == 6, (
+        f"Bridge quote (primary USDC) decimals={bridge_pair.quote.decimals}, "
+        "expected 6. Must not fall back to reserve_asset.decimals=18 "
+        "when primary chain USDC is absent from the pair universe."
+    )
+    assert bridge_pair.base.decimals == 6, (
+        f"Bridge base (satellite USDC) decimals={bridge_pair.base.decimals}, "
+        "expected 6."
+    )
