@@ -960,15 +960,12 @@ class TradingPairIdentifier:
         instead.
 
         - Asserts this pair is a vault.
-        - For Hyperliquid vaults, checks ``deposit_closed_reason`` in
-          :py:attr:`other_data`.
-        - For other vault types returns ``True`` (no static metadata
-          available yet).
+        - Checks ``deposit_closed_reason`` in :py:attr:`other_data`.
+        - If the data-pipeline metadata does not expose a closed reason,
+          treats deposits as open.
         """
         assert self.is_vault(), f"Not a vault pair: {self}"
-        if self.is_hyperliquid_vault():
-            return self.other_data.get("deposit_closed_reason") is None
-        return True
+        return self.other_data.get("deposit_closed_reason") is None
 
     def get_vault_metadata(self) -> "VaultMetadata | None":
         """Get the full vault metadata object.
@@ -1473,4 +1470,3 @@ class AssetWithTrackedValue:
         self.quantity = quantity
         self.interest_rate_at_open = None
         self.last_interest_rate = None
-
