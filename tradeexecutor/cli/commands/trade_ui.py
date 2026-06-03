@@ -239,9 +239,9 @@ def trade_ui(
     chain_id = ChainId(web3.eth.chain_id)
     is_hyperliquid = chain_id in (ChainId.hyperliquid, ChainId.hyperliquid_testnet)
 
-    # Collect pairs for the TUI
-    pairs = list(universe.iterate_pairs())
-    assert len(pairs) > 0, "Trading universe has no pairs"
+    # Collect pairs for the TUI — filter out CCTP bridge pairs (handled automatically)
+    pairs = [p for p in universe.iterate_pairs() if not p.is_cctp_bridge()]
+    assert len(pairs) > 0, "Trading universe has no tradeable pairs (after filtering bridge pairs)"
 
     # Display TUI and get user selections
     if unit_testing:
@@ -293,6 +293,7 @@ def trade_ui(
             close_only=close_only,
             test_short=test_short,
             amount=amount,
+            web3config=web3config,
         )
     except OutOfBalance as e:
         raise RuntimeError(

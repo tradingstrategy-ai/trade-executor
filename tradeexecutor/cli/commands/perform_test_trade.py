@@ -18,11 +18,12 @@ from typing import Optional
 from typer import Option
 
 from eth_defi.compat import native_datetime_utc_now
+from tradingstrategy.chain import ChainId
 
 from .app import app
-from .pair_mapping import parse_pair_data, construct_identifier_from_pair
+from .pair_mapping import parse_pair_data
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, create_client
+    create_execution_and_sync_model, create_client, configure_default_chain
 from ..log import setup_logging
 from ..slippage import configure_max_slippage_tolerance
 from ..testtrade import make_test_trade
@@ -156,7 +157,7 @@ def perform_test_trade(
     if not web3config.has_any_connection():
         raise RuntimeError("perform-test-trade requires that you pass JSON-RPC connection to one of the networks")
 
-    web3config.choose_single_chain()
+    configure_default_chain(web3config, mod)
 
     max_slippage = configure_max_slippage_tolerance(max_slippage, mod)
 
@@ -276,19 +277,19 @@ def perform_test_trade(
                     buy_only=buy_only,
                     test_short=test_short,
                     amount=Decimal(amount),
+                    web3config=web3config,
                 )
         elif all_pairs:
-            logger.info("Testing all pairs, we have %d pairs", universe.get_pair_count())
+            tradeable_pairs = [p for p in universe.iterate_pairs() if not p.is_cctp_bridge()]
+            logger.info("Testing all pairs, we have %d tradeable pairs (excluding bridge pairs)", len(tradeable_pairs))
 
             if not simulate:
-                assert universe.get_pair_count() < 10, "Too many pairs to test"
+                assert len(tradeable_pairs) < 10, "Too many pairs to test"
 
-            for pair in universe.data_universe.pairs.iterate_pairs():
+            for pair in tradeable_pairs:
 
-                logger.info("Making test trade for %s", pair)
-
-                _p = construct_identifier_from_pair(pair)
-                p = parse_pair_data(_p)
+                chain_name = ChainId(pair.chain_id).get_name()
+                logger.info("Making test trade for %s on %s", pair, chain_name)
 
                 make_test_trade(
                     web3config.get_default(),
@@ -300,10 +301,11 @@ def perform_test_trade(
                     runner.routing_model,
                     routing_state,
                     max_slippage=max_slippage,
-                    pair=p,
+                    pair=pair,
                     buy_only=buy_only,
                     test_short=test_short,
                     amount=Decimal(amount),
+                    web3config=web3config,
                 )
         else:
 
@@ -325,6 +327,7 @@ def perform_test_trade(
                 buy_only=buy_only,
                 test_short=test_short,
                 amount=Decimal(amount),
+                web3config=web3config,
             )
     except OutOfBalance as e:
         raise RuntimeError(f"Failed to a test trade, as we run out of balance. Make sure vault has enough stablecoins deposited for the test trades.") from e
