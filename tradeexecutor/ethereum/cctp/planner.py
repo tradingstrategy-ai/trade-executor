@@ -116,6 +116,11 @@ def inject_cctp_bridge_trades(
         if trade_chain_id == primary_chain_id:
             continue
 
+        # HyperCore vault trades (chain_id 9999) have their own multi-phase
+        # settlement mechanism and do not need CCTP bridging.
+        if trade.pair.is_hyperliquid_vault():
+            continue
+
         if trade.is_sell():
             # Sell frees up capital — positive flow means excess to bridge back
             sell_value = trade.planned_reserve if trade.planned_reserve else Decimal(str(trade.get_planned_value()))
