@@ -21,7 +21,7 @@ from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.exchange_account.utils import create_exchange_account_value_func
 from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts, UnknownTokenPositionFix, check_state_internal_coherence
 from .app import app
-from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_client, backup_state, create_execution_and_sync_model
+from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_client, backup_state, create_execution_and_sync_model, configure_default_chain
 from ..double_position import check_double_position
 from ..log import setup_logging
 from ...ethereum.enzyme.tx import EnzymeTransactionBuilder
@@ -346,17 +346,12 @@ def correct_accounts(
 
     assert web3config, "No RPC endpoints given. A working JSON-RPC connection is needed for check-wallet"
 
-    # Set default chain but allow multiple connections for multichain strategies
-    if len(web3config.connections) == 1:
-        web3config.choose_single_chain()
-    else:
-        default_chain_id = next(iter(web3config.connections.keys()))
-        web3config.set_default_chain(default_chain_id)
-        logger.info(
-            "Multichain mode: default chain %s, %d chain(s) connected",
-            default_chain_id.name,
-            len(web3config.connections),
-        )
+    # Read strategy module early so we can use its default chain id
+    mod: StrategyModuleInformation = read_strategy_module(strategy_file)
+
+    # Set default chain using the strategy module's declared chain,
+    # so the correct Web3 instance is used for vault contract calls
+    configure_default_chain(web3config, mod)
 
     if private_key is not None:
         hot_wallet = HotWallet.from_private_key(private_key)
@@ -395,8 +390,6 @@ def correct_accounts(
         state_file = f"state/{id}.json"
 
     store, state = backup_state(state_file, unit_testing=unit_testing)
-
-    mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 
     slippage_tolerance = 0.013
     if mod:
