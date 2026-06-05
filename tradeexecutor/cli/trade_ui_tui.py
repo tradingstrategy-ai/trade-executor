@@ -42,6 +42,34 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 
 logger = logging.getLogger(__name__)
 
+# Sentinel to distinguish "no live status was queried" (fall back to pair
+# metadata) from an explicit ``None`` (live check failed → show unknown).
+_NO_LIVE_STATUS = object()
+
+
+def _get_deposit_status(pricing_model, pair: TradingPairIdentifier, ts: datetime.datetime | None = None) -> bool | None:
+    """Get the current deposit status for a vault pair.
+
+    Uses the live pricing model when available, falling back to the
+    data-pipeline metadata snapshot stored on the pair.
+
+    Returns ``True`` (open), ``False`` (closed), or ``None`` (unknown /
+    live check failed).
+    """
+    if not pair.is_vault():
+        return None
+
+    if pricing_model is not None:
+        try:
+            return pricing_model.can_deposit(ts, pair)
+        except Exception as e:
+            logger.warning("Could not get live deposit status for %s, showing unknown: %s", pair, e)
+            if pair.get_deposit_closed_reason() is not None:
+                return False
+            return None
+
+    return pair.can_deposit()
+
 
 def _get_tvl_value(strategy_universe: TradingStrategyUniverse, pair: TradingPairIdentifier, tvl_now) -> float | None:
     """Look up raw TVL value for a pair."""
@@ -66,18 +94,21 @@ def _format_tvl(tvl: float | None) -> Text:
     return Text(f"${tvl:,.0f}", justify="right")
 
 
-def _format_deposits_open(pair: TradingPairIdentifier) -> Text:
+def _format_deposits_open(pair: TradingPairIdentifier, deposit_status=_NO_LIVE_STATUS) -> Text:
     """Format the deposit status for a vault pair.
 
     Non-vault pairs show a dash.  Vault pairs show ``Yes`` / ``No``
-    based on :py:meth:`TradingPairIdentifier.can_deposit`.
+    based on the live pricing model status or pair metadata.
     """
     if not pair.is_vault():
         return Text("-", style="dim", justify="center")
-    if pair.can_deposit():
+    if deposit_status is _NO_LIVE_STATUS:
+        deposit_status = pair.can_deposit()
+    if deposit_status is None:
+        return Text("?", style="yellow", justify="center")
+    if deposit_status:
         return Text("Yes", style="green", justify="center")
-    reason = pair.get_deposit_closed_reason() or "closed"
-    return Text(f"No", style="red bold", justify="center")
+    return Text("No", style="red bold", justify="center")
 
 
 def _get_price(pricing_model, pair: TradingPairIdentifier, ts: datetime.datetime | None = None) -> float | None:
@@ -391,12 +422,15 @@ class PairSelectionApp(App):
         # Non-vault pairs would trigger on-chain price queries that fail
         # or retry endlessly on Anvil forks.
         self.prices = {}
+        self.deposit_statuses = {}
         price_ts = native_datetime_utc_now()
         for pair in self.sorted_pairs:
             if pair.is_vault():
                 self.prices[id(pair)] = _get_price(pricing_model, pair, ts=price_ts)
+                self.deposit_statuses[id(pair)] = _get_deposit_status(pricing_model, pair, ts=price_ts)
             else:
                 self.prices[id(pair)] = None
+                self.deposit_statuses[id(pair)] = None
 
         # Result set by the trade dialog
         self.selected_pair: TradingPairIdentifier | None = None
@@ -432,7 +466,7 @@ class PairSelectionApp(App):
             exchange = pair.exchange_name or ""
             price = _format_price(self.prices.get(id(pair)))
             tvl = _format_tvl(self.tvl_values.get(id(pair)))
-            deposits = _format_deposits_open(pair)
+            deposits = _format_deposits_open(pair, self.deposit_statuses.get(id(pair)))
             position = _get_position_info(self.state, pair)
             lockup = _format_lockup(self.state, pair)
 
