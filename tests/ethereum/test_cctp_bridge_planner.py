@@ -26,6 +26,8 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeType
 
 
+from tradingstrategy.chain import ChainId
+
 USDC_ARBITRUM_ADDRESS = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
 USDC_BASE_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 USDC_AVALANCHE_ADDRESS = "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"
@@ -33,6 +35,7 @@ USDC_AVALANCHE_ADDRESS = "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"
 PRIMARY_CHAIN_ID = 42161  # Arbitrum
 BASE_CHAIN_ID = 8453
 AVALANCHE_CHAIN_ID = 43114
+HYPERCORE_CHAIN_ID = ChainId.hypercore.value  # 9999
 
 TS = datetime.datetime(2025, 6, 1)
 
@@ -583,3 +586,74 @@ def test_multiple_satellite_chains(
 
     assert avax_bridge[0].is_buy()
     assert avax_bridge[0].planned_reserve == Decimal("2000")
+
+
+@pytest.fixture()
+def vault_pair_hypercore(usdc_arbitrum: AssetIdentifier) -> TradingPairIdentifier:
+    """A HyperCore vault pair (chain_id 9999)."""
+    vault_token = AssetIdentifier(
+        chain_id=HYPERCORE_CHAIN_ID,
+        address="0x0000000000000000000000000000000000000abc",
+        token_symbol="HCvault",
+        decimals=6,
+    )
+    return TradingPairIdentifier(
+        base=vault_token,
+        quote=AssetIdentifier(
+            chain_id=HYPERCORE_CHAIN_ID,
+            address="0x0000000000000000000000000000000000000def",
+            token_symbol="USDC",
+            decimals=6,
+        ),
+        pool_address="0x0000000000000000000000000000000000000aaa",
+        exchange_address="0x0000000000000000000000000000000000000bbb",
+        fee=0,
+        kind=TradingPairKind.vault,
+    )
+
+
+def test_no_bridge_for_hypercore_vaults(
+    usdc_arbitrum: AssetIdentifier,
+    cctp_pair_base: TradingPairIdentifier,
+    vault_pair_hypercore: TradingPairIdentifier,
+):
+    """Verify that HyperCore vault trades do not trigger CCTP bridge injection.
+
+    HyperCore vaults (chain_id 9999) have their own multi-phase settlement
+    mechanism and do not need CCTP bridging.
+
+    1. Create a state with reserves
+    2. Create a HyperCore vault buy trade (chain_id 9999)
+    3. Call inject_cctp_bridge_trades
+    4. Assert no bridge trades were injected
+    """
+    # 1. Create state
+    state = _make_state_with_reserves(usdc_arbitrum)
+    universe = _make_mock_universe([cctp_pair_base, vault_pair_hypercore])
+
+    # 2. Create a HyperCore vault buy
+    _, vault_buy, _ = state.create_trade(
+        strategy_cycle_at=TS,
+        pair=vault_pair_hypercore,
+        quantity=None,
+        reserve=Decimal(5000),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc_arbitrum,
+        reserve_currency_price=1.0,
+    )
+
+    # 3. Inject bridge trades
+    result = inject_cctp_bridge_trades(
+        state=state,
+        trades=[vault_buy],
+        strategy_universe=universe,
+        primary_chain_id=PRIMARY_CHAIN_ID,
+        ts=TS,
+        reserve_asset=usdc_arbitrum,
+    )
+
+    # 4. No bridge trades injected — HyperCore handles its own settlement
+    bridge_trades = [t for t in result if t.pair.is_cctp_bridge()]
+    assert len(bridge_trades) == 0
+    assert result == [vault_buy]

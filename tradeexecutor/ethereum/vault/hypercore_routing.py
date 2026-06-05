@@ -47,7 +47,7 @@ from web3 import Web3
 from web3.contract.contract import ContractFunction
 
 from eth_defi.confirmation import wait_and_broadcast_multiple_nodes
-from eth_defi.gas import apply_gas, estimate_gas_price
+from eth_defi.gas import GasPriceMethod, GasPriceSuggestion, apply_gas
 from eth_defi.hotwallet import HotWallet, SignedTransactionWithNonce
 from eth_defi.provider.fallback import get_fallback_provider
 from eth_defi.revert_reason import fetch_transaction_revert_reason
@@ -191,6 +191,24 @@ HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW = 200_000
 # confirmation window, so larger amounts need more than a fixed-cent
 # tolerance to avoid false failures.
 HYPERCORE_RELATIVE_BALANCE_TOLERANCE = Decimal("0.01")
+
+#: Fixed ``maxFeePerGas`` for HyperEVM transactions (in wei).
+#:
+#: HyperEVM base fees are typically 0.1–0.5 gwei. Using dynamic
+#: ``estimate_gas_price()`` per phase caused phase 3 of trade #842
+#: (2026-06-04) to get a ``maxFeePerGas`` of 0.66 gwei while the chain
+#: needed ~0.65 gwei effective — the tx eventually landed 18 minutes
+#: later but exceeded the 2-minute confirmation timeout, stranding USDC.
+#:
+#: A fixed 4 gwei is ~20× typical base fee and costs <0.003 HYPE per
+#: 650k-gas transaction — negligible.  Overpayment is refunded by EIP-1559.
+HYPERCORE_FIXED_MAX_FEE_PER_GAS = 4_000_000_000  # 4 gwei
+
+#: Fixed ``maxPriorityFeePerGas`` for HyperEVM transactions (in wei).
+#:
+#: HyperEVM does not have a meaningful priority fee market.
+#: A small tip helps with inclusion without overpaying.
+HYPERCORE_FIXED_MAX_PRIORITY_FEE_PER_GAS = 100_000_000  # 0.1 gwei
 
 def usdc_to_raw(amount: Decimal) -> int:
     """Convert a human-readable USDC amount to raw 6-decimal integer."""
@@ -416,6 +434,9 @@ class HypercoreVaultRouting(RoutingModel):
         objects already addressed to the module contract. We sign them directly
         with the deployer hot wallet.
 
+        Uses fixed gas pricing to avoid underpricing during multi-phase
+        settlement.  See :py:data:`HYPERCORE_FIXED_MAX_FEE_PER_GAS`.
+
         :param fn:
             Bound ``ContractFunction`` already wrapped through the trading strategy module.
 
@@ -434,8 +455,44 @@ class HypercoreVaultRouting(RoutingModel):
             "gas": gas_limit,
         })
 
-        gas_price_suggestion = estimate_gas_price(self.web3)
+        # Use fixed gas pricing to guarantee inclusion during multi-phase
+        # settlement.  Dynamic estimation caused phase 3 tx drops when the
+        # base fee crept above the per-phase estimate between signing and mining.
+        gas_price_suggestion = GasPriceSuggestion(
+            method=GasPriceMethod.london,
+            base_fee=0,
+            max_priority_fee_per_gas=HYPERCORE_FIXED_MAX_PRIORITY_FEE_PER_GAS,
+            max_fee_per_gas=HYPERCORE_FIXED_MAX_FEE_PER_GAS,
+        )
         apply_gas(tx_data, gas_price_suggestion)
+
+        # Sanity-check: warn if the current base fee exceeds our fixed cap.
+        try:
+            latest_block = self.web3.eth.get_block("latest")
+            current_base_fee = latest_block.get("baseFeePerGas", 0)
+            logger.info(
+                "HyperEVM gas for %s: fixed maxFeePerGas=%d (%.2f gwei), "
+                "fixed maxPriorityFeePerGas=%d (%.2f gwei), "
+                "current baseFee=%d (%.2f gwei)",
+                notes or fn.fn_name,
+                HYPERCORE_FIXED_MAX_FEE_PER_GAS,
+                HYPERCORE_FIXED_MAX_FEE_PER_GAS / 1e9,
+                HYPERCORE_FIXED_MAX_PRIORITY_FEE_PER_GAS,
+                HYPERCORE_FIXED_MAX_PRIORITY_FEE_PER_GAS / 1e9,
+                current_base_fee,
+                current_base_fee / 1e9,
+            )
+            if current_base_fee > HYPERCORE_FIXED_MAX_FEE_PER_GAS:
+                logger.warning(
+                    "HyperEVM base fee %d (%.2f gwei) exceeds fixed maxFeePerGas %d (%.2f gwei). "
+                    "Transaction may not be included. Consider raising HYPERCORE_FIXED_MAX_FEE_PER_GAS.",
+                    current_base_fee,
+                    current_base_fee / 1e9,
+                    HYPERCORE_FIXED_MAX_FEE_PER_GAS,
+                    HYPERCORE_FIXED_MAX_FEE_PER_GAS / 1e9,
+                )
+        except Exception as e:
+            logger.warning("Could not fetch HyperEVM base fee for sanity check: %s", e)
 
         signed_tx = self.deployer.sign_transaction_with_new_nonce(tx_data)
         signed_bytes = hexbytes_to_hex_str(signed_tx.rawTransaction)
