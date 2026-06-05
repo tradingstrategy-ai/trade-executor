@@ -20,6 +20,7 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import is_anvil
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from eth_defi.provider.mev_blocker import MEVBlockerProvider
+from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_typing import BlockIdentifier, HexAddress
@@ -585,6 +586,8 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 [signed_tx_1, signed_tx_2],
             )
             settle_tx_hash = signed_tx_2.hash
+
+        wait_for_transaction_receipt_robust(web3, settle_tx_hash)
 
         analysis = analyse_vault_flow_in_settlement(
             vault,
