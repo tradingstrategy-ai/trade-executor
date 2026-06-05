@@ -19,7 +19,7 @@ import os
 import secrets
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 from eth_account import Account
@@ -32,10 +32,11 @@ from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 from eth_defi.chain import install_chain_middleware
 from eth_defi.token import create_token
 from eth_defi.trace import assert_transaction_success_with_explanation
+from tradingstrategy.chain import ChainId
 from typer.main import get_command
 
 from tradeexecutor.cli.main import app
-from tradeexecutor.state.identifier import TradingPairKind
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairKind
 from tradeexecutor.state.state import State
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
@@ -279,3 +280,78 @@ def test_correct_accounts_cctp_bridge(
         f"Expected 1 balance update for bridge position, got {len(bridge_position.balance_updates)}"
     assert len(final_state.sync.accounting.balance_update_refs) >= 1, \
         f"Expected balance update refs, got {len(final_state.sync.accounting.balance_update_refs)}"
+
+
+def test_lagoon_fetch_onchain_balances_multichain_routing(
+    web3_source: Web3,
+    web3_dest: Web3,
+    hot_wallet: HotWallet,
+    usdc_source: Contract,
+    usdc_dest: Contract,
+):
+    """Verify LagoonVaultSyncModel routes balance queries to the correct chain.
+
+    Regression test: LagoonVaultSyncModel.fetch_onchain_balances previously
+    overrode the parent's multichain routing and queried all assets on the
+    home chain. CCTP bridge assets (e.g. Base USDC) don't exist on the home
+    chain (Arbitrum), causing TokenDetailError.
+
+    1. Create a mock LagoonVaultSyncModel with web3_source as home chain.
+    2. Set web3config with connections for source (Arbitrum) and dest (Base).
+    3. Create assets: source-chain USDC and dest-chain USDC.
+    4. Call fetch_onchain_balances with both assets.
+    5. Verify both balances are correctly detected on their respective chains.
+    """
+    from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
+    from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+    from tradeexecutor.ethereum.web3config import Web3Config
+
+    # 1. Create mock vault backed by the source chain web3
+    mock_vault = MagicMock(spec=LagoonVault)
+    mock_vault.web3 = web3_source
+    mock_vault.safe_address = hot_wallet.address
+    mock_vault.trading_strategy_module = "fake_module"
+    mock_vault.name = "TestVault"
+
+    sync_model = LagoonVaultSyncModel(
+        vault=mock_vault,
+        hot_wallet=hot_wallet,
+        unit_testing=True,
+    )
+
+    # 2. Set web3config with both chains
+    web3config = Web3Config()
+    web3config.connections = {
+        ChainId.arbitrum: web3_source,
+        ChainId.base: web3_dest,
+    }
+    sync_model.web3config = web3config
+
+    # 3. Create assets from both chains
+    source_usdc = AssetIdentifier(
+        chain_id=ChainId.arbitrum.value,
+        address=usdc_source.address,
+        token_symbol="USDC",
+        decimals=6,
+    )
+    dest_usdc = AssetIdentifier(
+        chain_id=ChainId.base.value,
+        address=usdc_dest.address,
+        token_symbol="USDC",
+        decimals=6,
+    )
+
+    # 4. Call fetch_onchain_balances with assets from both chains.
+    #    Before the fix, this crashed with TokenDetailError because
+    #    dest_usdc was queried on the source chain where it doesn't exist.
+    balances = list(sync_model.fetch_onchain_balances(
+        [source_usdc, dest_usdc],
+        filter_zero=False,
+    ))
+
+    # 5. Verify both balances detected correctly (5000 each from hot_wallet fixture)
+    balance_map = {b.asset.chain_id: float(b.amount) for b in balances}
+    assert ChainId.arbitrum.value in balance_map, "Source chain balance not found"
+    assert ChainId.base.value in balance_map, "Dest chain balance not found"
+    assert balance_map[ChainId.arbitrum.value] == pytest.approx(5_000, rel=0.02)
+    assert balance_map[ChainId.base.value] == pytest.approx(5_000, rel=0.02)
