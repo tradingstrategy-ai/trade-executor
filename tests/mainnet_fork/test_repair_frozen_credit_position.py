@@ -65,7 +65,7 @@ def environment(
     environment = {
         "STRATEGY_FILE": strategy_file.as_posix(),
         "PRIVATE_KEY": hexbytes_to_hex_str(secrets.token_bytes(32)),
-        "JSON_RPC_ANVIL": anvil.json_rpc_url,
+        "JSON_RPC_POLYGON": anvil.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "enzyme",
         "UNIT_TESTING": "true",
