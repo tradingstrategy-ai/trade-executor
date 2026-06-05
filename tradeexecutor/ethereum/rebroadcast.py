@@ -69,6 +69,9 @@ def rebroadcast_all(
 
     logger.info("%d unfinished trades, %d total trades", len(trades), len(all_trades))
 
+    if not trades:
+        return trades, txs
+
     execution_model.execute_trades(
         native_datetime_utc_now(),
         state,

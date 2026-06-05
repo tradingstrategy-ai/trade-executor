@@ -724,6 +724,9 @@ class EthereumExecution(ExecutionModel):
         rebroadcast=False,
         triggered=False,
     ):
+        if not trades:
+            return
+
         for t in trades:
             assert not t.pair.is_exchange_account(), \
                 f"Unsupported: exchange account trades must not reach execute_trades(). Trade: {t}"
