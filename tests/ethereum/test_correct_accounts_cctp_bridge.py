@@ -103,7 +103,15 @@ def usdc_source(web3_source, deployer_source) -> Contract:
 
 @pytest.fixture()
 def usdc_dest(web3_dest, deployer_dest) -> Contract:
-    """USDC token on destination chain (bridged currency)."""
+    """USDC token on destination chain (bridged currency).
+
+    Burn a nonce first so the token deploys at a different address than
+    ``usdc_source``.  Both Anvil chains share the same default deployer
+    account and start at the same nonce, so without this the two tokens
+    would land at the same address — making multichain routing tests
+    pass even when all queries go to the wrong chain.
+    """
+    web3_dest.eth.send_transaction({"from": deployer_dest, "to": deployer_dest, "value": 0})
     token = create_token(web3_dest, deployer_dest, "USD Coin Bridged", "USDC-BRIDGED", 100_000_000 * 10**6, decimals=6)
     return token
 
