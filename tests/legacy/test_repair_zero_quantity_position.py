@@ -8,7 +8,7 @@ import pytest
 from pytest import FixtureRequest
 
 from eth_defi.provider.anvil import launch_anvil, AnvilLaunch
-from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
 

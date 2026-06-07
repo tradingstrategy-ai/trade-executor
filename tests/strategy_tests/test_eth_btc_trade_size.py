@@ -5,7 +5,7 @@ from unittest import mock
 
 import pytest
 
-from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.main import app
 from tradeexecutor.cli.log import setup_pytest_logging
 from tradeexecutor.state.state import State
 
