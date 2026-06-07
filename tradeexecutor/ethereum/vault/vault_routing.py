@@ -15,7 +15,7 @@ from eth_defi.erc_4626.profit_and_loss import estimate_4626_recent_profitability
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.token import fetch_erc20_details, TokenDiskCache
 from eth_defi.trade import TradeSuccess
-
+from eth_defi.vault.deposit_redeem import VaultDepositManager
 
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
 from tradeexecutor.ethereum.token_cache import get_default_token_cache
@@ -222,6 +222,19 @@ class VaultRouting(RoutingModel):
 
         asset_deltas = trade.calculate_asset_deltas()
 
+        deposit_manager = target_vault.get_deposit_manager()
+
+        # Async vault flow (Ostium V1.5, ERC-7540 Lagoon)
+        if trade.is_buy() and not deposit_manager.has_synchronous_deposit():
+            return self._build_async_deposit_txs(
+                tx_builder, target_vault, deposit_manager, trade, address, swap_amount,
+            )
+        elif trade.is_sell() and not deposit_manager.has_synchronous_redemption():
+            return self._build_async_redeem_txs(
+                tx_builder, target_vault, deposit_manager, trade, address, swap_amount,
+            )
+
+        # Synchronous vault flow (standard ERC-4626)
         if trade.is_buy():
             approve_call, swap_call = approve_and_deposit_4626(
                 vault=target_vault,
@@ -255,6 +268,83 @@ class VaultRouting(RoutingModel):
             notes=trade.notes,
         )
         return [tx_1, tx_2]
+
+    def _build_async_deposit_txs(
+        self,
+        tx_builder: TransactionBuilder,
+        target_vault: ERC4626Vault,
+        deposit_manager: VaultDepositManager,
+        trade: TradeExecution,
+        address: HexAddress,
+        swap_amount: Decimal,
+    ) -> list[BlockchainTransaction]:
+        """Build approve + requestDeposit transactions for async vault deposit."""
+
+        deposit_request = deposit_manager.create_deposit_request(
+            owner=address,
+            amount=swap_amount,
+        )
+        approve_call = target_vault.denomination_token.approve(
+            target_vault.vault_address,
+            swap_amount,
+        )
+        request_call = deposit_request.funcs[0]
+
+        # Mark trade for async handling
+        trade.other_data["vault_async_flow"] = True
+        trade.other_data["vault_raw_amount"] = deposit_request.raw_amount
+        trade.other_data["vault_owner_address"] = address
+
+        tx_1 = tx_builder.sign_transaction(
+            contract=target_vault.denomination_token.contract,
+            args_bound_func=approve_call,
+            gas_limit=500_000,
+            asset_deltas=[],
+            notes=trade.notes,
+        )
+        tx_2 = tx_builder.sign_transaction(
+            contract=target_vault.vault_contract,
+            args_bound_func=request_call,
+            gas_limit=self.vault_interaction_gas_limit,
+            asset_deltas=[],
+            notes=trade.notes,
+        )
+
+        trade.other_data["vault_request_tx_count"] = 2
+        return [tx_1, tx_2]
+
+    def _build_async_redeem_txs(
+        self,
+        tx_builder: TransactionBuilder,
+        target_vault: ERC4626Vault,
+        deposit_manager: VaultDepositManager,
+        trade: TradeExecution,
+        address: HexAddress,
+        swap_amount: Decimal,
+    ) -> list[BlockchainTransaction]:
+        """Build requestWithdraw transaction for async vault redemption."""
+
+        redemption_request = deposit_manager.create_redemption_request(
+            owner=address,
+            shares=swap_amount,
+        )
+        request_call = redemption_request.funcs[0]
+
+        # Mark trade for async handling
+        trade.other_data["vault_async_flow"] = True
+        trade.other_data["vault_raw_amount"] = redemption_request.raw_shares
+        trade.other_data["vault_owner_address"] = address
+
+        tx_1 = tx_builder.sign_transaction(
+            contract=target_vault.vault_contract,
+            args_bound_func=request_call,
+            gas_limit=self.vault_interaction_gas_limit,
+            asset_deltas=[],
+            notes=trade.notes,
+        )
+
+        trade.other_data["vault_request_tx_count"] = 1
+        return [tx_1]
 
     def setup_trades(
         self,
@@ -299,15 +389,6 @@ class VaultRouting(RoutingModel):
         )
         logger.info(f"Settling vault trade: #{trade.trade_id} for {vault}")
 
-        base_token_details = fetch_erc20_details(
-            web3,
-            trade.pair.base.checksum_address,
-            cache=self.token_cache,
-            chain_id=trade.pair.base.chain_id,
-        )
-        # quote_token_details = fetch_erc20_details(web3, trade.pair.quote.checksum_address)
-        reserve = trade.reserve_currency
-
         swap_tx = get_swap_transactions(trade)
 
         try:
@@ -315,6 +396,49 @@ class VaultRouting(RoutingModel):
         except KeyError as e:
             raise KeyError(f"Could not find hash: {swap_tx.tx_hash} in {receipts}") from e
 
+        ts = get_block_timestamp(web3, receipt["blockNumber"])
+
+        # Async vault flow — parse request event and mark as pending settlement
+        if trade.other_data.get("vault_async_flow"):
+            if receipt["status"] == 0:
+                report_failure(ts, state, trade, stop_on_execution_failure)
+                return
+
+            deposit_manager = vault.get_deposit_manager()
+            direction = trade.other_data.get("vault_direction", "deposit" if trade.is_buy() else "redeem")
+            owner_address = HexAddress(trade.other_data["vault_owner_address"])
+            tx_hashes = [HexBytes(tx.tx_hash) for tx in trade.blockchain_transactions if tx.tx_hash]
+
+            if direction == "deposit":
+                deposit_request = deposit_manager.create_deposit_request(
+                    owner=owner_address,
+                    raw_amount=trade.other_data["vault_raw_amount"],
+                )
+                ticket = deposit_request.parse_deposit_transaction(tx_hashes)
+                ticket_data = deposit_manager.serialize_deposit_ticket(ticket)
+            else:
+                redemption_request = deposit_manager.create_redemption_request(
+                    owner=owner_address,
+                    raw_shares=trade.other_data["vault_raw_amount"],
+                )
+                ticket = redemption_request.parse_redeem_transaction(tx_hashes)
+                ticket_data = deposit_manager.serialize_redemption_ticket(ticket)
+
+            state.mark_vault_settlement_pending(ts, trade, ticket_data)
+            logger.info(
+                "Vault trade #%d marked as settlement pending (direction=%s, ticket=%s)",
+                trade.trade_id, direction, ticket_data,
+            )
+            return
+
+        # Synchronous vault flow — analyse the deposit/redeem result
+        base_token_details = fetch_erc20_details(
+            web3,
+            trade.pair.base.checksum_address,
+            cache=self.token_cache,
+            chain_id=trade.pair.base.chain_id,
+        )
+        reserve = trade.reserve_currency
         direction = "deposit" if trade.is_buy() else "redeem"
 
         try:
@@ -328,8 +452,6 @@ class VaultRouting(RoutingModel):
         except Exception as e:
             raise RuntimeError(f"Failed to analyse vault tx: {swap_tx.wrapped_function_selector}: {swap_tx.tx_hash} direction: {direction}, receipt: {receipt}, vault: {vault}") from e
 
-        ts = get_block_timestamp(web3, receipt["blockNumber"])
-
         if isinstance(result, TradeSuccess):
 
             path = result.path
@@ -342,17 +464,14 @@ class VaultRouting(RoutingModel):
             if trade.is_buy():
                 assert path[0] == expected_quote_addr, f"Was expecting the route path to start with quote token {trade.pair.quote}, got path {result.path}"
 
-                # price = result.get_human_price(quote_token_details.address == result.token0.address)
                 executed_reserve = result.amount_in / Decimal(10 ** reserve.decimals)
                 executed_amount = result.amount_out / Decimal(10 ** base_token_details.decimals)
 
                 price = executed_reserve / executed_amount
 
             else:
-                # Ordered other way around
                 assert path[0] == base_token_details.address.lower(), f"Path is {path}, base token is {base_token_details}"
                 assert path[-1] == expected_quote_addr, f"Path is {path}, expected quote token {trade.pair.quote}"
-                # price = result.get_human_price(quote_token_details.address == result.token0.address)
                 executed_amount = -result.amount_in / Decimal(10 ** base_token_details.decimals)
                 executed_reserve = result.amount_out / Decimal(10 ** reserve.decimals)
                 price = -executed_reserve / executed_amount
@@ -361,7 +480,6 @@ class VaultRouting(RoutingModel):
 
             logger.info("Executed amount: %s, executed reserve: %s, price: %s", executed_amount, executed_reserve, price)
 
-            # Mark as success
             state.mark_trade_success(
                 ts,
                 trade,

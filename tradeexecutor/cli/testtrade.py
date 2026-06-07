@@ -15,7 +15,7 @@ from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.exchange import ExchangeUniverse
 
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
-from tradeexecutor.state.trade import TradeFlag
+from tradeexecutor.state.trade import TradeFlag, TradeStatus
 from tradeexecutor.state.types import Percent
 from tradeexecutor.statistics.core import update_statistics
 from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
@@ -300,6 +300,50 @@ def _make_cross_chain_test_trade(
     logger.info("  Reserves: %s %s (was %s)", reserve_currency_at_end, reserve_currency, reserve_currency_at_start)
 
 
+def _force_vault_settlement_and_resolve(web3, state, trade, execution_model):
+    """Force settlement on Anvil for an async vault test trade and resolve it.
+
+    Uses protocol-specific settlement forcing (e.g. tryNewSettlement for Ostium V1.5,
+    force_lagoon_settle for ERC-7540) then runs the generic settlement retry.
+    """
+    from eth_defi.erc_4626.vault_protocol.gains.vault import OstiumVault, OstiumVersion
+    from eth_defi.erc_4626.vault_protocol.gains.testing import force_ostium_v15_settlement
+    from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
+    from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
+
+    vault = get_vault_for_pair(web3, trade.pair)
+    owner = trade.other_data.get("vault_owner_address")
+
+    # Protocol-specific settlement forcing
+    if isinstance(vault, OstiumVault) and vault.version == OstiumVersion.v1_5:
+        # May need multiple settlements for withdrawal
+        direction = trade.other_data.get("vault_direction", "deposit")
+        settlements_needed = 1
+        if direction == "redeem":
+            withdraw_target = vault.vault_contract.functions.targetSettlementId(False).call()
+            last_id = vault.vault_contract.functions.lastSettlementId().call()
+            settlements_needed = max(withdraw_target - last_id, 1)
+        for _ in range(settlements_needed):
+            force_ostium_v15_settlement(vault, owner)
+    else:
+        # ERC-7540 (Lagoon) — use force_lagoon_settle if available
+        from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
+        if isinstance(vault, LagoonVault):
+            from eth_defi.erc_4626.vault_protocol.lagoon.testing import force_lagoon_settle
+            # Need the vault manager address — for test trades this is typically the owner
+            force_lagoon_settle(vault, owner)
+
+    # Now run the generic settlement retry
+    resolved = check_and_resolve_vault_settlements(
+        state=state,
+        execution_model=execution_model,
+    )
+    if resolved:
+        logger.info("Test trade vault settlement resolved: %d trade(s)", len(resolved))
+    else:
+        logger.warning("Test trade vault settlement NOT resolved after forcing — may need manual intervention")
+
+
 def make_test_trade(
     web3: Web3,
     execution_model: ExecutionModel,
@@ -566,6 +610,22 @@ def make_test_trade(
 
         assert trade.is_test()
         assert position.is_test()
+
+        # For async vaults (Ostium V1.5, ERC-7540), the trade enters
+        # vault_settlement_pending after execute. On Anvil we can force
+        # settlement and resolve; on mainnet we just report the status.
+        if trade.get_status() == TradeStatus.vault_settlement_pending:
+            from eth_defi.provider.anvil import is_anvil
+            if is_anvil(web3):
+                logger.info("Test trade #%d is vault_settlement_pending on Anvil, forcing settlement...", trade.trade_id)
+                _force_vault_settlement_and_resolve(web3, state, trade, execution_model)
+            else:
+                logger.info(
+                    "Test trade #%d is vault_settlement_pending — settlement happens off-chain. "
+                    "Re-run perform-test-trade after settlement to complete the cycle.",
+                    trade.trade_id,
+                )
+                return
 
         if not trade.is_success() or not position.is_open():
             # Alot of diagnostics to debug Arbitrum / WBTC issues

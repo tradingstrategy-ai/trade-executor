@@ -102,6 +102,15 @@ class TradeStatus(enum.Enum):
     #:
     cctp_in_transit = "cctp_in_transit"
 
+    #: ERC-4626 vault deposit/redeem request confirmed, awaiting settlement.
+    #:
+    #: The trade has a dedicated retry path (settlement retry module) and
+    #: is not considered "unfinished" in the generic sense.
+    #:
+    #: Used for async vaults like Ostium V1.5 and ERC-7540 (Lagoon).
+    #:
+    vault_settlement_pending = "vault_settlement_pending"
+
 
 class TradeFlag(enum.Enum):
     """Trade execution flags.
@@ -688,6 +697,10 @@ class TradeExecution:
     #:
     cctp_in_transit_at: datetime.datetime | None = None
 
+    #: ERC-4626 vault deposit/redeem request confirmed, awaiting settlement.
+    #:
+    vault_settlement_pending_at: datetime.datetime | None = None
+
     #: After the trade has been assigned to the execution, track
     #: it's execution sort index here.
     #:
@@ -1090,6 +1103,8 @@ class TradeExecution:
             return TradeStatus.failed
         elif self.executed_at:
             return TradeStatus.success
+        elif self.vault_settlement_pending_at:
+            return TradeStatus.vault_settlement_pending
         elif self.cctp_in_transit_at:
             return TradeStatus.cctp_in_transit
         elif self.broadcasted_at:

@@ -1371,6 +1371,20 @@ class ExecutionLoop:
                     f"Resolve manually with trade-executor bridge-retry or receiveMessage."
                 )
 
+        # Check for vault trades stuck in settlement pending from a previous run.
+        # Unlike CCTP, do NOT halt on unresolved — vault settlements can take
+        # hours/days and will resolve on a future tick.
+        from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
+        vault_web3config = getattr(self.execution_model, 'web3config', None)
+        vault_resolved = check_and_resolve_vault_settlements(
+            state=state,
+            execution_model=self.execution_model,
+            web3config=vault_web3config,
+        )
+        if vault_resolved:
+            logger.trade("Resolved %d vault settlement pending trade(s) on startup", len(vault_resolved))
+            self.store.sync(state)
+
         # Store summary statistics in memory before doing anything else
         self.refresh_live_run_state(state, visualisation=self.visulisation, universe=universe, cycle_duration=self.cycle_duration)
 

@@ -840,7 +840,14 @@ def repair_tx_not_generated(state: State, interactive=True):
 
 def repair_zero_quantity(state: State, interactive=True):
     """Scan for positions that failed to open and need to be cleaned up."""
-    zero_quantity_positions = [p for p in state.portfolio.get_open_positions() if p.get_quantity() == 0]
+    zero_quantity_positions = [
+        p for p in state.portfolio.get_open_positions()
+        if p.get_quantity() == 0
+        # Async vault positions (Ostium V1.5, ERC-7540) have quantity 0 while
+        # awaiting settlement — they are NOT broken and must not be repaired.
+        # Settlement retry will resolve them on the next tick.
+        and not any(t.get_status() == TradeStatus.vault_settlement_pending for t in p.trades.values())
+    ]
     if not zero_quantity_positions:
         print("No zero quantity positions found")
         return

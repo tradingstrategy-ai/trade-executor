@@ -25,9 +25,12 @@ def is_swap_function(name: str):
         # Aave
         "supply",
         "withdraw",
-        # ERC-4626
+        # ERC-4626 synchronous
         "deposit",
         "redeem",
+        # ERC-4626 async (Ostium V1.5, ERC-7540)
+        "requestDeposit",
+        "requestWithdraw",
         # CCTP bridge
         "depositForBurn",
     }
