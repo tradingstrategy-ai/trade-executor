@@ -288,30 +288,35 @@ class VaultRouting(RoutingModel):
             target_vault.vault_address,
             swap_amount,
         )
-        request_call = deposit_request.funcs[0]
 
-        # Mark trade for async handling
+        # Mark trade for async handling — store both raw and decimal amounts
+        # so we can reconstruct the request during settle_trade() parsing
         trade.other_data["vault_async_flow"] = True
         trade.other_data["vault_raw_amount"] = deposit_request.raw_amount
+        trade.other_data["vault_deposit_amount"] = str(swap_amount)
         trade.other_data["vault_owner_address"] = address
 
-        tx_1 = tx_builder.sign_transaction(
+        # Sign approve tx first
+        txs = [tx_builder.sign_transaction(
             contract=target_vault.denomination_token.contract,
             args_bound_func=approve_call,
             gas_limit=500_000,
             asset_deltas=[],
             notes=trade.notes,
-        )
-        tx_2 = tx_builder.sign_transaction(
-            contract=target_vault.vault_contract,
-            args_bound_func=request_call,
-            gas_limit=self.vault_interaction_gas_limit,
-            asset_deltas=[],
-            notes=trade.notes,
-        )
+        )]
 
-        trade.other_data["vault_request_tx_count"] = 2
-        return [tx_1, tx_2]
+        # Sign all request funcs (most adapters have 1, but support multiple)
+        for func in deposit_request.funcs:
+            txs.append(tx_builder.sign_transaction(
+                contract=target_vault.vault_contract,
+                args_bound_func=func,
+                gas_limit=self.vault_interaction_gas_limit,
+                asset_deltas=[],
+                notes=trade.notes,
+            ))
+
+        trade.other_data["vault_request_tx_count"] = len(txs)
+        return txs
 
     def _build_async_redeem_txs(
         self,
@@ -328,23 +333,28 @@ class VaultRouting(RoutingModel):
             owner=address,
             shares=swap_amount,
         )
-        request_call = redemption_request.funcs[0]
 
-        # Mark trade for async handling
+        # Mark trade for async handling — store both raw and decimal amounts.
+        # We store vault_redeem_shares (Decimal) for adapters like Lagoon that
+        # assert `not raw_shares` and require the decimal form for reconstruction.
         trade.other_data["vault_async_flow"] = True
         trade.other_data["vault_raw_amount"] = redemption_request.raw_shares
+        trade.other_data["vault_redeem_shares"] = str(swap_amount)
         trade.other_data["vault_owner_address"] = address
 
-        tx_1 = tx_builder.sign_transaction(
-            contract=target_vault.vault_contract,
-            args_bound_func=request_call,
-            gas_limit=self.vault_interaction_gas_limit,
-            asset_deltas=[],
-            notes=trade.notes,
-        )
+        # Sign all request funcs (most adapters have 1, but support multiple)
+        txs = []
+        for func in redemption_request.funcs:
+            txs.append(tx_builder.sign_transaction(
+                contract=target_vault.vault_contract,
+                args_bound_func=func,
+                gas_limit=self.vault_interaction_gas_limit,
+                asset_deltas=[],
+                notes=trade.notes,
+            ))
 
-        trade.other_data["vault_request_tx_count"] = 1
-        return [tx_1]
+        trade.other_data["vault_request_tx_count"] = len(txs)
+        return txs
 
     def setup_trades(
         self,
@@ -410,6 +420,8 @@ class VaultRouting(RoutingModel):
             tx_hashes = [HexBytes(tx.tx_hash) for tx in trade.blockchain_transactions if tx.tx_hash]
 
             if direction == "deposit":
+                # Reconstruct deposit request using raw_amount (int) —
+                # all adapters support this path for deposits.
                 deposit_request = deposit_manager.create_deposit_request(
                     owner=owner_address,
                     raw_amount=trade.other_data["vault_raw_amount"],
@@ -417,10 +429,21 @@ class VaultRouting(RoutingModel):
                 ticket = deposit_request.parse_deposit_transaction(tx_hashes)
                 ticket_data = deposit_manager.serialize_deposit_ticket(ticket)
             else:
-                redemption_request = deposit_manager.create_redemption_request(
-                    owner=owner_address,
-                    raw_shares=trade.other_data["vault_raw_amount"],
-                )
+                # Reconstruct redemption request using shares (Decimal) —
+                # Lagoon asserts `not raw_shares` so we must pass the decimal form.
+                # Fall back to raw_shares for adapters that only support raw form.
+                redeem_shares_str = trade.other_data.get("vault_redeem_shares")
+                if redeem_shares_str:
+                    redemption_request = deposit_manager.create_redemption_request(
+                        owner=owner_address,
+                        shares=Decimal(redeem_shares_str),
+                    )
+                else:
+                    # Legacy path: older trades stored only vault_raw_amount
+                    redemption_request = deposit_manager.create_redemption_request(
+                        owner=owner_address,
+                        raw_shares=trade.other_data["vault_raw_amount"],
+                    )
                 ticket = redemption_request.parse_redeem_transaction(tx_hashes)
                 ticket_data = deposit_manager.serialize_redemption_ticket(ticket)
 
