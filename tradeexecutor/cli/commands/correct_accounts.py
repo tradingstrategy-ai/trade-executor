@@ -31,6 +31,7 @@ from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.tx import HotWalletTransactionBuilder
 from ...state.repair import close_hypercore_dust_positions
 from ...state.state import UncleanState
+from ...state.trade import TradeType
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.account_correction import calculate_account_corrections
 from ...strategy.description import StrategyExecutionDescription
@@ -118,6 +119,83 @@ def _sync_hypercore_vault_positions(
         quantity = position.get_quantity()
         old_value = position.get_value()
         diff = float(current_equity) - old_value
+        vault_name = position.pair.get_vault_name() or "unknown"
+        vault_addr = position.pair.pool_address or "?"
+
+        # Detect phantom positions: the Hyperliquid API reports zero equity
+        # but the state still tracks positive deposited USDC.
+        #
+        # This happens when a Hypercore vault withdrawal completed on
+        # Hyperliquid but the executor failed to confirm it (e.g. timeout
+        # or restart during the 3-phase settlement in _settle_withdrawal).
+        # The repair command zeroes out the unconfirmed trade, leaving a
+        # phantom position with quantity > 0 but no on-chain equity.
+        #
+        # It can also happen when a vault's trading losses wipe out the
+        # follower's deposit entirely — the userVaultEquities API omits
+        # zero-equity vaults, so the value function returns Decimal(0).
+        #
+        # We cannot distinguish these two cases here. The safe approach is
+        # to close the position as a zero-proceeds loss. If USDC actually
+        # returned to the Safe (untracked withdrawal), the generic reserve
+        # balance correction later in correct-accounts will detect the
+        # surplus and credit reserves.
+        #
+        # This check must run before the diff==0 early return below,
+        # because a previous valuator tick may have already set
+        # last_token_price=0.0, making old_value=0 and diff=0.
+        if float(current_equity) == 0 and float(quantity) > 0:
+            logger.warning(
+                "Vault position %d (%s %s): Hyperliquid API reports zero equity "
+                "but state has %s USDC deposited. "
+                "Closing as zero-proceeds loss (phantom position). "
+                "If USDC was returned to the Safe, the reserve correction will credit it.",
+                position.position_id,
+                vault_name,
+                vault_addr,
+                quantity,
+            )
+
+            valued_at = native_datetime_utc_now()
+            reserve_asset = state.portfolio.get_default_reserve_position().asset
+            _position_ref, correction_trade, _created = state.portfolio.create_trade(
+                strategy_cycle_at=valued_at,
+                pair=position.pair,
+                quantity=-quantity,
+                reserve=None,
+                assumed_price=1.0,
+                trade_type=TradeType.repair,
+                reserve_currency=reserve_asset,
+                reserve_currency_price=1.0,
+                position=position,
+                notes=(
+                    f"correct-accounts: closing phantom Hypercore vault position. "
+                    f"Hyperliquid API reports zero equity but state has {quantity} USDC deposited. "
+                    f"This is either an untracked withdrawal or a total vault trading loss. "
+                    f"Any returned USDC will be reconciled by the reserve balance correction."
+                ),
+            )
+            # Use trade.mark_success() directly (not state.mark_trade_success())
+            # to bypass return_capital_to_reserves(). We don't know whether USDC
+            # actually returned to the Safe; the generic reserve correction
+            # handles that separately based on actual on-chain balances.
+            correction_trade.mark_success(
+                executed_at=valued_at,
+                executed_price=0.0,
+                executed_quantity=-quantity,
+                executed_reserve=Decimal(0),
+                lp_fees=0,
+                native_token_price=0.0,
+                force=True,
+            )
+            state.portfolio.close_position(position, valued_at)
+
+            logger.info(
+                "Closed phantom vault position %d with repair trade %d",
+                position.position_id,
+                correction_trade.trade_id,
+            )
+            continue
 
         if diff == 0:
             logger.debug(
@@ -138,8 +216,6 @@ def _sync_hypercore_vault_positions(
             )
             continue
 
-        vault_name = position.pair.get_vault_name() or "unknown"
-        vault_addr = position.pair.pool_address or "?"
         logger.info(
             "Vault position %d (%s %s): marking equity %.2f -> %.2f (diff=%.2f)",
             position.position_id,
@@ -637,11 +713,16 @@ def correct_accounts(
 
     block_timestamp = get_block_timestamp(web3, block_number)
 
-    # Skip on-chain corrections when all positions are exchange account positions
-    # (their balances are synced via exchange API, not on-chain balance checks)
-    has_onchain_positions = any(
-        not p.pair.is_exchange_account()
-        for p in state.portfolio.get_open_and_frozen_positions()
+    # Skip on-chain corrections only when there are no on-chain positions
+    # AND no reserve assets to check. Reserve balance checks must always run
+    # because the Safe may hold USDC from untracked vault withdrawals or
+    # other out-of-band transfers that need to be reconciled.
+    has_onchain_positions = (
+        any(
+            not p.pair.is_exchange_account()
+            for p in state.portfolio.get_open_and_frozen_positions()
+        )
+        or len(universe.reserve_assets) > 0
     )
 
     if not has_onchain_positions:

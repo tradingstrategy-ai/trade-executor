@@ -1983,12 +1983,16 @@ class TradingPosition(GenericPosition):
                 quantity_left_sell = self.get_quantity()
                 if quantity_left_sell:
 
-                    if not valuation_price:
+                    if valuation_price is None:
                         valuation_price = self.last_token_price
 
-                    # Marked down positions need to have special handling
+                    # Marked down positions need to have special handling.
+                    # Use `is not None` instead of truthiness: a valuation price
+                    # of 0.0 is valid (position lost all value, e.g. a Hypercore
+                    # vault where the deposit was wiped out by trading losses or
+                    # an untracked withdrawal zeroed the on-chain equity).
                     if not self.is_marked_down():
-                        assert valuation_price, f"Cannot value unrealised PnL without an explicit valuation price for the unsold portion.\n" \
+                        assert valuation_price is not None, f"Cannot value unrealised PnL without an explicit valuation price for the unsold portion.\n" \
                                                 f"Position was: {self}, quantity left: {quantity_left_sell}, valuation price: {valuation_price}"
                     unrealised_equity = valuation_price * float(quantity_left_sell)
 

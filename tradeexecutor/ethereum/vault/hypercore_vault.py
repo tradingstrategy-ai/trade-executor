@@ -255,11 +255,19 @@ def create_hypercore_vault_value_func(
     def get_hypercore_vault_value(pair: TradingPairIdentifier) -> Decimal:
         """Get Hypercore vault equity for the given pair.
 
+        Uses the Hyperliquid ``userVaultEquities`` info endpoint under the hood.
+        This endpoint only returns vaults where the user has **positive equity**;
+        vaults where the user's equity has been drawn down to zero (e.g. from
+        trading losses distributed to followers) are omitted from the response
+        entirely, causing :py:func:`~eth_defi.hyperliquid.api.fetch_user_vault_equity`
+        to return ``None``.
+
         :param pair:
             Vault trading pair with Hypercore metadata in other_data.
 
         :return:
-            Vault equity in USD, or ``Decimal(0)`` if no deposit found.
+            Vault equity in USD, or ``Decimal(0)`` if the user has no position
+            or zero equity in the vault (the API omits zero-equity entries).
         """
         assert pair.is_hyperliquid_vault(), f"Not a Hypercore vault pair: {pair}"
 
@@ -289,8 +297,17 @@ def create_hypercore_vault_value_func(
                 )
                 return eq.equity
 
+            # userVaultEquities omits vaults where the user's equity is zero,
+            # so None means either:
+            # 1. The deposit was fully lost to vault trading losses.
+            # 2. An untracked withdrawal zeroed the on-chain equity (the
+            #    executor failed to confirm a 3-phase withdrawal, repair
+            #    zeroed the trade, but the withdrawal completed on HL).
+            # 3. The user never deposited into this vault.
+            # Return 0 so the valuator prices the position at $0.
             logger.debug(
-                "No Hypercore vault position found for %s in vault %s",
+                "No Hypercore vault position found for %s in vault %s "
+                "(user equity is zero or no deposit exists)",
                 safe_address, vault_address,
             )
             return Decimal(0)
