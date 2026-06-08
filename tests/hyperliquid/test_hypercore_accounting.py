@@ -47,6 +47,7 @@ from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.sync_model import OnChainBalance
+from tradeexecutor.visual.equity_curve import calculate_compounding_unrealised_trading_profitability
 
 
 def test_valuation_computes_per_unit_price():
@@ -1072,3 +1073,268 @@ def test_close_hypercore_dust_positions_closes_duplicate_residual_state() -> Non
     assert live_position.position_id in state.portfolio.open_positions
     assert live_position.position_id not in state.portfolio.closed_positions
     assert created_trades[0].trade_type == TradeType.repair
+
+
+def test_correct_accounts_closes_phantom_position_from_untracked_withdrawal() -> None:
+    """Test that correct-accounts detects and closes a phantom Hypercore vault position.
+
+    A phantom position occurs when a Hypercore vault withdrawal completed
+    on Hyperliquid but the executor failed to confirm it (timeout/restart
+    during the 3-phase settlement). The repair command zeroes out the
+    unconfirmed trade, leaving the state with positive quantity but zero
+    on-chain equity.
+
+    1. Create an open Hypercore vault position with 304 USDC deposited.
+    2. Record reserve quantity after setup.
+    3. Mock Hyperliquid equity API to return 0 (no position found).
+    4. Run the Hypercore account correction sync helper.
+    5. Verify the position is closed with a zero-proceeds repair trade.
+    6. Verify reserves were not changed (USDC reconciliation is deferred).
+    7. Verify equity curve calculation does not crash.
+    """
+
+    # 1. Create an open Hypercore vault position with 304 USDC deposited.
+    reserve_asset = AssetIdentifier(
+        chain_id=999,
+        address="0xb88339cb7199b77e23db6e890353e22632ba630f",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    pair = create_hypercore_vault_pair(
+        quote=reserve_asset,
+        vault_address="0xf6f3d773e11023e3e686cbda883ecba631fefc15",
+    )
+    state = State()
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    state.portfolio.adjust_reserves(reserve_asset, Decimal("500"), "Initial reserve")
+    position, trade, _created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 3, 30),
+        pair=pair,
+        quantity=None,
+        reserve=Decimal("304"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        notes="Open Hypercore vault position (simulating YEELON deposit)",
+    )
+    state.mark_trade_success(
+        executed_at=datetime.datetime(2026, 3, 30, 0, 1),
+        trade=trade,
+        executed_price=1.0,
+        executed_amount=Decimal("304"),
+        executed_reserve=Decimal("304"),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+    assert position.get_quantity() == Decimal("304")
+    assert position.is_open()
+
+    # 2. Record reserve quantity after setup.
+    reserve_position = state.portfolio.get_default_reserve_position()
+    reserves_after_setup = reserve_position.quantity
+
+    # 3. Mock Hyperliquid equity API to return 0 (no position found).
+    universe = MagicMock()
+    dex_pair = object()
+    universe.data_universe.pairs.iterate_pairs.return_value = [dex_pair]
+    sync_model = MagicMock()
+    sync_model.get_token_storage_address.return_value = "0xa8F8DEbb722c6174B814b432169BF569603F673F"
+    web3 = MagicMock()
+    web3.eth.chain_id = 999
+
+    with (
+        patch("tradeexecutor.strategy.trading_strategy_universe.translate_trading_pair", return_value=pair),
+        patch("tradeexecutor.strategy.account_correction.translate_trading_pair", return_value=pair),
+        patch("eth_defi.hyperliquid.session.create_hyperliquid_session", return_value=MagicMock()),
+        patch(
+            "tradeexecutor.ethereum.vault.hypercore_vault.create_hypercore_vault_value_func",
+            return_value=lambda pair: Decimal("0"),
+        ),
+    ):
+        # 4. Run the Hypercore account correction sync helper.
+        _sync_hypercore_vault_positions(
+            asset_management_mode=AssetManagementMode.lagoon,
+            universe=universe,
+            sync_model=sync_model,
+            web3=web3,
+            state=state,
+        )
+
+    # 5. Verify the position is closed with a zero-proceeds repair trade.
+    assert position.position_id in state.portfolio.closed_positions
+    assert position.position_id not in state.portfolio.open_positions
+    assert position.get_quantity() == Decimal(0)
+
+    last_trade = list(position.trades.values())[-1]
+    assert last_trade.trade_type == TradeType.repair
+    assert last_trade.executed_quantity == Decimal("-304")
+    assert last_trade.executed_reserve == Decimal(0)
+    assert last_trade.is_success()
+
+    # 6. Verify reserves were not changed (USDC reconciliation is deferred).
+    assert reserve_position.quantity == reserves_after_setup
+
+    # 7. Verify equity curve calculation does not crash.
+    result = calculate_compounding_unrealised_trading_profitability(state)
+    assert result is not None
+
+
+def test_correct_accounts_closes_phantom_position_already_valued_at_zero() -> None:
+    """Test that correct-accounts closes a phantom position even when already valued at zero.
+
+    In production, the valuator tick runs before correct-accounts and sets
+    last_token_price=0.0 when the Hyperliquid API returns zero equity. This
+    makes old_value=0 and diff=0. The phantom position detection must still
+    fire despite the diff==0 condition.
+
+    1. Create an open Hypercore vault position with 304 USDC deposited.
+    2. Set last_token_price=0.0 to simulate a prior valuator tick.
+    3. Record reserve quantity after setup.
+    4. Mock Hyperliquid equity API to return 0.
+    5. Run the Hypercore account correction sync helper.
+    6. Verify the position is closed despite diff==0.
+    7. Verify reserves were not changed.
+    """
+
+    # 1. Create an open Hypercore vault position with 304 USDC deposited.
+    reserve_asset = AssetIdentifier(
+        chain_id=999,
+        address="0xb88339cb7199b77e23db6e890353e22632ba630f",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    pair = create_hypercore_vault_pair(
+        quote=reserve_asset,
+        vault_address="0xf6f3d773e11023e3e686cbda883ecba631fefc15",
+    )
+    state = State()
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    state.portfolio.adjust_reserves(reserve_asset, Decimal("500"), "Initial reserve")
+    position, trade, _created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 3, 30),
+        pair=pair,
+        quantity=None,
+        reserve=Decimal("304"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+    )
+    state.mark_trade_success(
+        executed_at=datetime.datetime(2026, 3, 30, 0, 1),
+        trade=trade,
+        executed_price=1.0,
+        executed_amount=Decimal("304"),
+        executed_reserve=Decimal("304"),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+
+    # 2. Set last_token_price=0.0 to simulate a prior valuator tick.
+    position.last_token_price = 0.0
+    position.revalue_base_asset(datetime.datetime(2026, 6, 8), 0.0)
+
+    # 3. Record reserve quantity after setup.
+    reserve_position = state.portfolio.get_default_reserve_position()
+    reserves_after_setup = reserve_position.quantity
+
+    # 4. Mock Hyperliquid equity API to return 0.
+    universe = MagicMock()
+    dex_pair = object()
+    universe.data_universe.pairs.iterate_pairs.return_value = [dex_pair]
+    sync_model = MagicMock()
+    sync_model.get_token_storage_address.return_value = "0xa8F8DEbb722c6174B814b432169BF569603F673F"
+    web3 = MagicMock()
+    web3.eth.chain_id = 999
+
+    with (
+        patch("tradeexecutor.strategy.trading_strategy_universe.translate_trading_pair", return_value=pair),
+        patch("tradeexecutor.strategy.account_correction.translate_trading_pair", return_value=pair),
+        patch("eth_defi.hyperliquid.session.create_hyperliquid_session", return_value=MagicMock()),
+        patch(
+            "tradeexecutor.ethereum.vault.hypercore_vault.create_hypercore_vault_value_func",
+            return_value=lambda pair: Decimal("0"),
+        ),
+    ):
+        # 5. Run the Hypercore account correction sync helper.
+        _sync_hypercore_vault_positions(
+            asset_management_mode=AssetManagementMode.lagoon,
+            universe=universe,
+            sync_model=sync_model,
+            web3=web3,
+            state=state,
+        )
+
+    # 6. Verify the position is closed despite diff==0.
+    assert position.position_id in state.portfolio.closed_positions
+    assert position.position_id not in state.portfolio.open_positions
+    assert position.get_quantity() == Decimal(0)
+
+    last_trade = list(position.trades.values())[-1]
+    assert last_trade.trade_type == TradeType.repair
+    assert last_trade.executed_quantity == Decimal("-304")
+
+    # 7. Verify reserves were not changed.
+    assert reserve_position.quantity == reserves_after_setup
+
+
+def test_valuation_accepts_zero_price() -> None:
+    """Test that the valuation PnL calculation accepts a zero valuation price.
+
+    A valuation price of 0.0 is valid when a Hypercore vault position has
+    lost all value (trading losses or untracked withdrawal). The code must
+    use ``is not None`` checks instead of truthiness to avoid crashing on
+    zero prices.
+
+    1. Create a mock position with last_token_price=0.0 and positive quantity.
+    2. Call get_unrealised_and_realised_profit_percent().
+    3. Verify no AssertionError is raised and the result is sensible.
+    """
+
+    # 1. Create a mock position with last_token_price=0.0 and positive quantity.
+    reserve_asset = AssetIdentifier(
+        chain_id=999,
+        address="0xb88339cb7199b77e23db6e890353e22632ba630f",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    pair = create_hypercore_vault_pair(
+        quote=reserve_asset,
+        vault_address="0xf6f3d773e11023e3e686cbda883ecba631fefc15",
+    )
+    state = State()
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    state.portfolio.adjust_reserves(reserve_asset, Decimal("500"), "Initial reserve")
+    position, trade, _created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 3, 30),
+        pair=pair,
+        quantity=None,
+        reserve=Decimal("100"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+    )
+    state.mark_trade_success(
+        executed_at=datetime.datetime(2026, 3, 30, 0, 1),
+        trade=trade,
+        executed_price=1.0,
+        executed_amount=Decimal("100"),
+        executed_reserve=Decimal("100"),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+
+    # Simulate zero valuation (total loss)
+    position.last_token_price = 0.0
+
+    # 2. Call get_unrealised_and_realised_profit_percent().
+    # This previously crashed with AssertionError because 0.0 is falsy.
+    result = position.get_unrealised_and_realised_profit_percent()
+
+    # 3. Verify no AssertionError is raised and the result is sensible.
+    assert result is not None

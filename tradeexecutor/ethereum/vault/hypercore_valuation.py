@@ -548,6 +548,12 @@ class HypercoreVaultValuator(ValuationModel):
     - **quantity** = cumulative USDC deposited minus withdrawn
     - **price** = equity / quantity (return multiplier per deposited USDC)
 
+    The underlying ``userVaultEquities`` API endpoint only returns vaults
+    where the user has positive equity. When a vault's trading losses wipe
+    out a follower's deposit entirely, the endpoint omits that vault and
+    the value function returns ``Decimal(0)``, producing ``price = 0.0``.
+    This is a legitimate state, not a data error.
+
     :param simulate:
         When ``True``, skip the Hyperliquid API and use 1.0 USDC per unit.
         Used in Anvil fork mode where the API has no data for the forked Safe.
@@ -624,6 +630,26 @@ class HypercoreVaultValuator(ValuationModel):
         # Position quantity tracks cumulative USDC deposited/withdrawn;
         # the price reflects the return on each deposited USDC.
         quantity = position.get_quantity()
+
+        # The userVaultEquities endpoint omits vaults where the follower's
+        # equity has been drawn down to zero.  This can happen from:
+        # 1. Trading losses wiping out the deposit entirely.
+        # 2. An untracked withdrawal: the executor failed to confirm a
+        #    3-phase withdrawal (see _settle_withdrawal known failure mode),
+        #    the repair command zeroed out the trade, but the withdrawal
+        #    actually completed on Hyperliquid.
+        # In both cases equity=0 and price=0 is correct here.
+        # correct-accounts handles closing the phantom position.
+        if float(equity) == 0 and float(quantity) > 0:
+            logger.warning(
+                "Hyperliquid API returned zero equity for position %s "
+                "which has quantity %s deposited. "
+                "The position will be valued at $0. "
+                "This may be an untracked withdrawal or a total vault trading loss. "
+                "Run correct-accounts to close the phantom position.",
+                position, quantity,
+            )
+
         if float(quantity) > 0:
             new_price = float(equity) / float(quantity)
         else:

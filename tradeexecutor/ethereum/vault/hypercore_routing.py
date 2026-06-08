@@ -2119,6 +2119,28 @@ class HypercoreVaultRouting(RoutingModel):
 
         In simulate mode, the balance verification is skipped because
         the mock CoreWriter does not actually bridge USDC.
+
+        **Known failure mode — untracked withdrawals:**
+
+        If the executor fails to complete this 3-phase settlement (e.g.
+        timeout, restart, or network error between phases), the withdrawal
+        may have already completed on Hyperliquid (the ``vaultTransfer``
+        in phase 1 is irreversible once confirmed on HyperEVM) but this
+        method never reaches the ``mark_trade_success()`` call with the
+        actual amounts.  The trade ends up with ``executed_quantity=0``
+        and no ``blockchain_transactions``.
+
+        The ``repair`` command then creates a counter-trade (also with
+        ``executed_quantity=0``), effectively nullifying the planned trade
+        without realising the withdrawal actually went through on
+        Hyperliquid.  This leaves a "phantom position" in the state:
+        positive quantity in the executor but zero equity on-chain.
+
+        ``correct-accounts`` detects this mismatch (Hyperliquid API
+        reports zero equity for a position with positive state quantity)
+        and creates a zero-proceeds repair sell trade to close the
+        phantom position.  Any USDC that returned to the Safe is
+        reconciled separately by the generic reserve balance correction.
         """
         # Capture baseline USDC balance before processing receipt.
         # The withdrawal multicall has already been mined but spotSend's
