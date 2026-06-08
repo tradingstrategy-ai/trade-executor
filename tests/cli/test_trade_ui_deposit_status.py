@@ -8,6 +8,8 @@ consulted the live pricing model.
 
 import datetime
 
+from eth_defi.erc_4626.core import ERC4626Feature
+
 from tradeexecutor.cli.trade_ui_tui import (
     _format_deposits_open,
     _get_deposit_status,
@@ -26,6 +28,8 @@ def _make_erc4626_vault_pair(
     vault_name: str = "Test USDC Vault",
     protocol_slug: str = "lagoon-finance",
     deposit_closed_reason: str | None = None,
+    vault_features: list[str] | None = None,
+    token_metadata: dict | None = None,
     internal_id: int = 1,
 ) -> TradingPairIdentifier:
     """Create a vault pair resembling xchain-master-vault ERC-4626 vaults."""
@@ -55,6 +59,8 @@ def _make_erc4626_vault_pair(
             "vault_protocol": "erc4626",
             "vault_name": vault_name,
             "deposit_closed_reason": deposit_closed_reason,
+            "vault_features": vault_features,
+            "token_metadata": token_metadata,
         },
     )
 
@@ -90,3 +96,38 @@ def test_tui_erc4626_deposit_status_respects_closed_reason() -> None:
     assert closed_status is False
     assert _format_deposits_open(open_vault, open_status).plain == "Yes"
     assert _format_deposits_open(closed_vault, closed_status).plain == "No"
+
+
+def test_tui_erc4626_vault_features_are_normalised_from_remote_metadata() -> None:
+    """ERC-4626 vault feature strings resolve to enum values needed by routing.
+
+    This covers the production metadata shape from the xchain-master-vault
+    trade-ui failure. The older Ostium async integration tests used a live
+    autodetected vault instance, so they carried ``ERC4626Feature`` enum
+    objects directly and did not exercise JSON-style remote metadata.
+
+    1. Create an Ostium vault pair whose top-level vault_features are strings.
+    2. Create another Ostium vault pair whose features only exist in token_metadata.
+    3. Verify both pairs expose enum features for vault routing.
+    """
+    # 1. Create an Ostium vault pair whose top-level vault_features are strings.
+    top_level_features = _make_erc4626_vault_pair(
+        chain_id=42161,
+        vault_address="0x20d419a8e12c45f88fda7c5760bb6923cee27f98",
+        vault_name="Ostium Liquidity Pool Vault",
+        protocol_slug="ostium",
+        vault_features=["ostium_like"],
+    )
+
+    # 2. Create another Ostium vault pair whose features only exist in token_metadata.
+    nested_features = _make_erc4626_vault_pair(
+        chain_id=42161,
+        vault_address="0x20d419a8e12c45f88fda7c5760bb6923cee27f98",
+        vault_name="Ostium Liquidity Pool Vault",
+        protocol_slug="ostium",
+        token_metadata={"features": ["ostium_like"]},
+    )
+
+    # 3. Verify both pairs expose enum features for vault routing.
+    assert top_level_features.get_vault_features() == {ERC4626Feature.ostium_like}
+    assert nested_features.get_vault_features() == {ERC4626Feature.ostium_like}
