@@ -91,6 +91,7 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 ## Pull requests
 
 - Pull request description must have sections Why (the rational of change), Lessons learnt (memory) and Summary (what was changed). No test plan or verification section. Use Markdown formatting, headings.
+- When updating a pull request description, prefer `gh api` with the REST pull request endpoint instead of `gh pr edit --body`, because `gh pr edit` can fail with `GraphQL: Projects (classic) is being deprecated ... (repository.pullRequest.projectCards)`. Write longer descriptions to a temporary Markdown file and run `gh api repos/:owner/:repo/pulls/{pr-number} --method PATCH -F body=@/tmp/pr-body.md`.
 - Only push changes to remote when asked, never update pull requess automatically.
 - Never push directly to a master if not told explicitly
 - If the user ask to open a pull request as feature then start the PR title with "feat:" prefix and also add one line about the feature into `CHANGELOG.md`
@@ -98,6 +99,7 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 - Before opening or updating a pull request, format the code
 - When merging pull request, squash and merge commits and use the PR description as the commit message
 - If continuous integration (CI) tests fail on your PR, and they are marked flaky, run tests locally to repeat the issue if it is real flakiness or regression
+- If we add unrelated test fixes to the PR, include a section "Unrelated test fixes for CI green" in the PR description
 
 ### datetime and timestamps
 
@@ -107,7 +109,7 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 
 ### Python
 
-- Always use global, level imports, unless facing circular import exception
+- Always use global, level imports, unless facing circular import exception. NEVER USE FUNCTION LOCAL IMPORTS UNLESS TOLD SO OR ABSOLUTE NECESSARAY TO AVOID CIRCULAR IMPORTS.
 - Using `assert` is ok, we never run with `python -O` 
 
 ### Enum
@@ -129,7 +131,7 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 - Have Python type hints for used pytest fixtures
 - We cannot import from tests sub-tree: helper functions must go to live in `testing` submodules in the actual source tree
 - Never set log level to `info` in pytest tests permanently, as it clogs CI output
-
+- Don't write worktree path hacks into test - instead run Python using PYTHONPATH environment variable set to workaround worktree issues. Test and other Python modules should never contain refernces to worktrees.
 
 ### pyproject.toml
 
@@ -170,5 +172,4 @@ Prerequisites:
 Browser tools are automatically available when the Chrome extension is connected. Use `@browser` in your Visual Studio Code prompt to activate the connection.
 
 When using browser tools, Claude may ask for permission to visit specific domains. **Approve these prompts** to allow browser automation. You can also pre-approve domains in the Chrome extension settings.
-
 
