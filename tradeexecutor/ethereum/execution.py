@@ -625,6 +625,76 @@ class EthereumExecution(ExecutionModel):
             revert_reason,
         )
 
+    def _maybe_cap_hypercore_vault_buy(
+        self,
+        state: State,
+        trade: "TradeExecution",
+        cumulative_vault_sell_shortfall: Decimal,
+    ) -> bool:
+        """Cap or expire a Hypercore vault buy if sell proceeds fell short.
+
+        Hypercore vault withdrawals incur a leader performance fee (typically
+        10% of profits) that reduces the actual USDC received.  When sells in
+        the same rebalance cycle return less than planned, later buys can
+        exceed available capital.  This helper caps or expires the buy to
+        prevent ``NotEnoughMoney`` failures.
+
+        :return:
+            ``True`` if the trade was expired and should be skipped.
+        """
+        # Matches MINIMUM_VAULT_DEPOSIT (5_000_000 raw) from
+        # eth_defi.hyperliquid.core_writer
+        HYPERCORE_MIN_VAULT_BUY_DECIMAL = Decimal("5")
+
+        # Mirror start_execution()'s funding source: bridge position first,
+        # then reserves.
+        bridge_position = state.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+        if bridge_position is not None:
+            available = bridge_position.get_quantity()
+        else:
+            try:
+                reserve_pos = state.portfolio.get_reserve_position(trade.reserve_currency)
+                available = reserve_pos.quantity
+            except KeyError:
+                available = Decimal(0)
+
+        if available >= trade.planned_reserve:
+            return False
+
+        if not hasattr(trade, "other_data") or trade.other_data is None:
+            trade.other_data = {}
+        trade.other_data["original_planned_reserve"] = str(trade.planned_reserve)
+        trade.other_data["original_planned_quantity"] = str(trade.planned_quantity)
+
+        if available >= HYPERCORE_MIN_VAULT_BUY_DECIMAL:
+            ratio = available / trade.planned_reserve
+            logger.warning(
+                "Reducing Hypercore vault buy trade %s planned_reserve from %s to %s USDC "
+                "(ratio %.4f) due to cumulative vault sell commission shortfall of %s USDC",
+                trade.trade_id, trade.planned_reserve, available,
+                ratio, cumulative_vault_sell_shortfall,
+            )
+            trade.planned_quantity = trade.planned_quantity * ratio
+            trade.planned_reserve = available
+            return False
+        else:
+            logger.warning(
+                "Expiring Hypercore vault buy trade %s: available %s USDC below "
+                "minimum %s USDC after cumulative vault sell commission shortfall of %s USDC",
+                trade.trade_id, available, HYPERCORE_MIN_VAULT_BUY_DECIMAL,
+                cumulative_vault_sell_shortfall,
+            )
+            trade.mark_expired(native_datetime_utc_now())
+            pos = state.portfolio.open_positions.get(trade.position_id)
+            if pos is not None and pos.get_quantity() == 0:
+                all_expired = all(
+                    t.get_status() == TradeStatus.expired
+                    for t in pos.trades.values()
+                )
+                if all_expired:
+                    del state.portfolio.open_positions[trade.position_id]
+            return True
+
     def _execute_trades_sequentially(
         self,
         ts: datetime.datetime,
@@ -644,6 +714,8 @@ class EthereumExecution(ExecutionModel):
             f": {reason}" if reason else "",
         )
 
+        cumulative_vault_sell_shortfall = Decimal(0)
+
         for idx, trade in enumerate(trades, start=1):
             logger.info(
                 "Sequential trade execution %d/%d: preparing trade_id=%s planned_value=%.6f pair=%s",
@@ -653,6 +725,17 @@ class EthereumExecution(ExecutionModel):
                 trade.get_planned_value(),
                 trade.pair.get_ticker(),
             )
+
+            # Cap Hypercore vault buys when preceding vault sells returned
+            # less than planned due to performance fees.
+            if (
+                not rebroadcast
+                and trade.pair.is_hyperliquid_vault()
+                and trade.is_buy()
+                and cumulative_vault_sell_shortfall > 0
+            ):
+                if self._maybe_cap_hypercore_vault_buy(state, trade, cumulative_vault_sell_shortfall):
+                    continue
 
             if not rebroadcast:
                 state.start_execution(
@@ -681,6 +764,22 @@ class EthereumExecution(ExecutionModel):
 
             freeze_position_on_failed_trade(ts, state, [trade])
             self._log_trade_outcome(trade)
+
+            # Track Hypercore vault sell shortfall from performance fees.
+            if (
+                trade.pair.is_hyperliquid_vault()
+                and not trade.is_buy()
+                and not trade.is_failed()
+                and trade.executed_reserve is not None
+            ):
+                shortfall = trade.planned_reserve - trade.executed_reserve
+                if shortfall > 0:
+                    cumulative_vault_sell_shortfall += shortfall
+                    logger.info(
+                        "Hypercore vault sell shortfall for trade %s: %s USDC "
+                        "(cumulative: %s USDC)",
+                        trade.trade_id, shortfall, cumulative_vault_sell_shortfall,
+                    )
 
             if trade.is_failed():
                 remaining_trade_ids = [remaining.trade_id for remaining in trades[idx:]]
