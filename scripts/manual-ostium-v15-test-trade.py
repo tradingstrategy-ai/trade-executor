@@ -29,7 +29,10 @@ Without ``SIMULATE=true``, the script runs against real Arbitrum mainnet.
 Set ``ACTION`` to control what happens:
 
 - ``status``: Show vault state and owner balances (default)
-- ``deposit``: Deposit USDC into the vault (requires confirmation)
+- ``deposit``: Deposit USDC into the vault (requires confirmation).
+  Saves state to ``STATE_FILE`` so ``claim`` can resume later.
+- ``claim``: Load state from ``STATE_FILE`` and run settlement retry
+  to claim any resolved deposits/withdrawals.
 - ``redeem``: Redeem vault shares (requires confirmation)
 
 Environment variables
@@ -39,7 +42,7 @@ Environment variables
     Set to ``true`` to use an Anvil fork with auto-funded test wallet.
 
 ``ACTION``
-    One of: ``status``, ``deposit``, ``redeem``, ``simulate_all``.
+    One of: ``status``, ``deposit``, ``claim``, ``redeem``, ``simulate_all``.
     Default: ``simulate_all`` if SIMULATE, else ``status``.
 
 ``JSON_RPC_ARBITRUM``
@@ -56,6 +59,10 @@ Environment variables
 ``AMOUNT``
     USDC amount for deposit, or OLP share amount for redeem.
     Default: ``5``.
+
+``STATE_FILE``
+    Path to save/load trade-executor state for deposit→claim lifecycle.
+    Default: ``/tmp/ostium-v15-test-trade-state.json``.
 
 Usage
 -----
@@ -75,12 +82,21 @@ Live deposit:
     source .local-test.env && ACTION=deposit AMOUNT=5 \\
     PRIVATE_KEY=GMX_PRIVATE_KEY \\
     poetry run python scripts/manual-ostium-v15-test-trade.py
+
+Claim after settlement (~24h later):
+
+.. code-block:: shell
+
+    source .local-test.env && ACTION=claim \\
+    PRIVATE_KEY=GMX_PRIVATE_KEY \\
+    poetry run python scripts/manual-ostium-v15-test-trade.py
 """
 
 import logging
 import os
 import sys
 from decimal import Decimal
+from pathlib import Path
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.classification import create_vault_instance_autodetect
@@ -224,20 +240,24 @@ def print_vault_state(vault, web3, owner_address=None):
     print()
 
 
-def do_test_trade(web3, hot_wallet, vault, arb_usdc, amount, action="deposit"):
-    """Execute a test trade (deposit or redeem) through the trade-executor pipeline.
+def do_test_trade(web3, hot_wallet, vault, arb_usdc, amount, state_file_path, is_live=False):
+    """Execute a test deposit through the trade-executor pipeline.
 
     Uses PositionManager → EthereumExecution → VaultRouting — the exact same
     code path that the ``start`` CLI command uses for live trading.
+
+    On live mode, saves state to ``state_file_path`` so the ``claim`` action
+    can load it later and run settlement retry after off-chain settlement.
     """
     # Build self-contained universe from on-chain vault data
     strategy_universe, vault_pair = build_universe(vault, arb_usdc)
 
-    # Create execution model (same as CLI start uses)
+    # Create execution model — mainnet_fork=False for live Arbitrum so the
+    # confirmation helper doesn't call Anvil-only evm_mine on slow receipts.
     tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
     execution_model = EthereumExecution(
         tx_builder,
-        mainnet_fork=True,
+        mainnet_fork=not is_live,
         confirmation_block_count=0,
     )
     sync_model = HotWalletSyncModel(web3, hot_wallet)
@@ -264,40 +284,97 @@ def do_test_trade(web3, hot_wallet, vault, arb_usdc, amount, action="deposit"):
     routing_state = routing_model.create_routing_state(strategy_universe, routing_state_details)
     execution_model.initialize()
 
-    if action == "deposit":
-        # ── DEPOSIT ──────────────────────────────────────────────────
-        print(f"\n--- Depositing {amount} USDC into Ostium vault ---")
-        ts = native_datetime_utc_now()
-        pm = PositionManager(
-            ts, universe=strategy_universe, state=state,
-            pricing_model=pricing_model, default_slippage_tolerance=0.10,
-        )
-        trades = pm.open_spot(vault_pair, value=float(amount))
-        execution_model.execute_trades(ts, state, trades, routing_model, routing_state, check_balances=True)
+    # ── DEPOSIT ──────────────────────────────────────────────────
+    print(f"\n--- Depositing {amount} USDC into Ostium vault ---")
+    ts = native_datetime_utc_now()
+    pm = PositionManager(
+        ts, universe=strategy_universe, state=state,
+        pricing_model=pricing_model, default_slippage_tolerance=0.10,
+    )
+    trades = pm.open_spot(vault_pair, value=float(amount))
+    execution_model.execute_trades(ts, state, trades, routing_model, routing_state, check_balances=True)
 
-        buy_trade = trades[0]
-        status = buy_trade.get_status()
-        print(f"Trade status: {status.value}")
+    buy_trade = trades[0]
+    status = buy_trade.get_status()
+    print(f"Trade status: {status.value}")
 
-        if status == TradeStatus.vault_settlement_pending:
-            print(f"Settlement ID stored in trade.other_data")
-            pending_value = state.portfolio.get_vault_settlement_pending_value()
-            equity = state.portfolio.calculate_total_equity()
-            print(f"Pending value: {pending_value:.2f} USDC")
-            print(f"Total equity:  {equity:.2f} USDC (should ≈ starting)")
-        elif status == TradeStatus.success:
-            print(f"Deposit completed synchronously (unexpected for V1.5)")
-        else:
-            print(f"ERROR: Unexpected status {status.value}")
-            print(f"Revert: {buy_trade.get_revert_reason()}")
-            sys.exit(1)
+    if status == TradeStatus.vault_settlement_pending:
+        print(f"Settlement ID stored in trade.other_data")
+        pending_value = state.portfolio.get_vault_settlement_pending_value()
+        equity = state.portfolio.calculate_total_equity()
+        print(f"Pending value: {pending_value:.2f} USDC")
+        print(f"Total equity:  {equity:.2f} USDC (should ≈ starting)")
 
-        return state, execution_model
-
-    elif action == "redeem":
-        # For redeem, we need an existing position — not implemented as standalone
-        print("ERROR: Use simulate_all for full deposit+redeem cycle")
+        # Save state so the claim action can load it later
+        state.write_json_file(state_file_path)
+        print(f"\nState saved to: {state_file_path}")
+        print(f"After settlement (~24h), claim with: ACTION=claim")
+    elif status == TradeStatus.success:
+        print(f"Deposit completed synchronously (unexpected for V1.5)")
+    else:
+        print(f"ERROR: Unexpected status {status.value}")
+        print(f"Revert: {buy_trade.get_revert_reason()}")
         sys.exit(1)
+
+    return state, execution_model
+
+
+def do_claim(web3, hot_wallet, vault, arb_usdc, state_file_path):
+    """Load saved state and run settlement retry to claim resolved deposits/withdrawals.
+
+    After a live deposit enters vault_settlement_pending, settlement happens
+    off-chain (~24h). This action loads the state saved by the deposit action,
+    runs settlement retry to check on-chain status, and claims if resolved.
+    """
+    if not state_file_path.exists():
+        print(f"ERROR: State file not found: {state_file_path}")
+        print(f"Run ACTION=deposit first to create a pending deposit.")
+        sys.exit(1)
+
+    # Load state with pending vault trades
+    state = State.read_json_file(state_file_path)
+    pending_trades = [
+        t for p in state.portfolio.open_positions.values()
+        for t in p.trades.values()
+        if t.get_status() == TradeStatus.vault_settlement_pending
+    ]
+    if not pending_trades:
+        print("No vault_settlement_pending trades found in state.")
+        print("All trades may have already been resolved.")
+        sys.exit(0)
+
+    print(f"Found {len(pending_trades)} pending vault trade(s)")
+    for t in pending_trades:
+        print(f"  Trade #{t.trade_id}: {t.other_data.get('vault_direction', '?')} — settlement pending")
+
+    # Create execution model for claiming (live mode, no Anvil mine)
+    strategy_universe, _ = build_universe(vault, arb_usdc)
+    tx_builder = HotWalletTransactionBuilder(web3, hot_wallet)
+    execution_model = EthereumExecution(
+        tx_builder,
+        mainnet_fork=False,
+        confirmation_block_count=0,
+    )
+    execution_model.initialize()
+
+    # Run settlement retry — checks on-chain status and broadcasts claim txs
+    resolved = check_and_resolve_vault_settlements(state=state, execution_model=execution_model)
+
+    if resolved:
+        print(f"\nResolved {len(resolved)} trade(s):")
+        for t in resolved:
+            print(f"  Trade #{t.trade_id}: {t.get_status().value}")
+            if t.is_buy():
+                print(f"    Received: {t.executed_quantity} shares")
+            else:
+                print(f"    Received: {t.executed_reserve:.2f} USDC")
+
+        # Save updated state
+        state.write_json_file(state_file_path)
+        print(f"\nState updated: {state_file_path}")
+    else:
+        print("\nNo trades resolved — settlement may not have happened yet.")
+        print("Try again after the next Ostium settlement epoch (~24h).")
 
 
 def do_simulate_all(web3, hot_wallet, vault, arb_usdc, amount):
@@ -432,6 +509,8 @@ simulate = os.environ.get("SIMULATE", "").lower() in ("true", "1", "yes")
 action = os.environ.get("ACTION", "simulate_all" if simulate else "status").lower()
 vault_address = os.environ.get("VAULT_ADDRESS", OSTIUM_VAULT_ADDRESS)
 amount = Decimal(os.environ.get("AMOUNT", "5"))
+# State file persists vault_settlement_pending trade metadata between deposit and claim
+state_file_path = Path(os.environ.get("STATE_FILE", "/tmp/ostium-v15-test-trade-state.json"))
 anvil_launch = None
 
 # Reserve asset identifier for Arbitrum USDC
@@ -482,7 +561,7 @@ try:
         if action == "simulate_all":
             do_simulate_all(web3, hot_wallet, vault, arb_usdc, amount)
         elif action == "deposit":
-            do_test_trade(web3, hot_wallet, vault, arb_usdc, amount, action="deposit")
+            do_test_trade(web3, hot_wallet, vault, arb_usdc, amount, state_file_path, is_live=False)
         elif action == "status":
             pass
         else:
@@ -507,7 +586,7 @@ try:
                     owner = HotWallet.from_private_key(pk).address
             print_vault_state(vault, web3, owner)
 
-        elif action in ("deposit", "redeem"):
+        elif action in ("deposit", "claim", "redeem"):
             private_key = resolve_private_key()
             hot_wallet = HotWallet.from_private_key(private_key)
             hot_wallet.sync_nonce(web3)
@@ -517,17 +596,24 @@ try:
             if action == "deposit":
                 if not confirm(f"Deposit {amount} USDC into Ostium vault via trade-executor?"):
                     sys.exit(0)
-                state, execution_model = do_test_trade(
-                    web3, hot_wallet, vault, arb_usdc, amount, action="deposit",
+                # Execute deposit — state is saved to STATE_FILE for later claim
+                do_test_trade(
+                    web3, hot_wallet, vault, arb_usdc, amount, state_file_path, is_live=True,
                 )
                 print(f"\nDeposit request submitted. The trade is vault_settlement_pending.")
                 print(f"Settlement happens off-chain every ~24h.")
-                print(f"After settlement, use the trade-executor settlement retry to claim.")
+                print(f"After settlement, claim with:")
+                print(f"  ACTION=claim PRIVATE_KEY=... poetry run python {sys.argv[0]}")
+
+            elif action == "claim":
+                # Load saved state and run settlement retry to claim
+                do_claim(web3, hot_wallet, vault, arb_usdc, state_file_path)
+
             elif action == "redeem":
                 print("ERROR: Live redeem not yet supported as standalone — use the start CLI command")
                 sys.exit(1)
         else:
-            print(f"Unknown ACTION: {action}. Use: status, deposit, redeem, simulate_all")
+            print(f"Unknown ACTION: {action}. Use: status, deposit, claim, redeem, simulate_all")
             sys.exit(1)
 
 finally:
