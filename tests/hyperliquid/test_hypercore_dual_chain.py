@@ -725,3 +725,132 @@ def test_withdrawal_phase1_retry_handles_silent_noop_from_equity_drift(
     assert phase1_retry_tx in trade.blockchain_transactions
     state.mark_trade_success.assert_called_once()
     mock_report_failure.assert_not_called()
+
+
+def test_wait_for_perp_withdrawable_balance_commission_aware():
+    """Commission-aware tolerance accepts shortfall within vault performance fee range.
+
+    1. Create a routing object with a large withdrawal and 10% commission rate.
+    2. Mock a perp balance increase that is 8% short (within 10% commission tolerance).
+    3. Verify the wait accepts the balance without timeout.
+    """
+    routing = _make_routing()
+
+    # 1. Mock balance: 570 USDC withdrawal, perp shows 530 (8% short, within 10%).
+    routing._fetch_safe_perp_withdrawable_balance = MagicMock(
+        side_effect=[Decimal("589.56")],
+    )
+
+    # 2. Wait with commission_rate=10%.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+            result = routing._wait_for_perp_withdrawable_balance(
+                baseline_balance=Decimal("59.56"),
+                expected_increase_raw=570_000_000,
+                timeout=30.0,
+                poll_interval=2.0,
+                commission_rate=Decimal("0.10"),
+            )
+
+    # 3. Accepted on first poll (530 increase >= 570 - 57 commission tolerance = 513).
+    assert result == Decimal("589.56")
+
+
+def test_wait_for_perp_withdrawable_balance_protocol_vault_stays_tight():
+    """Protocol vaults (no commission) keep tight 1% tolerance.
+
+    1. Create the same scenario as the commission-aware test but with no commission rate.
+    2. Verify the helper times out because the 8% shortfall exceeds 1% tolerance.
+    """
+    import pytest
+    from tradeexecutor.ethereum.vault.hypercore_routing import (
+        HypercoreWithdrawalVerificationError,
+    )
+
+    routing = _make_routing()
+
+    # 1. Same balance as commission-aware test: 8% short.
+    routing._fetch_safe_perp_withdrawable_balance = MagicMock(
+        return_value=Decimal("589.56"),
+    )
+
+    call_count = [0]
+
+    def fake_time():
+        call_count[0] += 1
+        if call_count[0] <= 2:
+            return 0.0
+        return 999.0
+
+    # 2. Without commission_rate, tolerance is only 1%. 8% shortfall should time out.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=fake_time):
+            with pytest.raises(HypercoreWithdrawalVerificationError):
+                routing._wait_for_perp_withdrawable_balance(
+                    baseline_balance=Decimal("59.56"),
+                    expected_increase_raw=570_000_000,
+                    timeout=30.0,
+                    poll_interval=2.0,
+                    commission_rate=None,
+                )
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_withdrawal_dual_chain_fee_warning(mock_fetch_equity, mock_block_ts, caplog):
+    """Vault fee detected when equity decreased MORE than USDC received.
+
+    1. Set up a withdrawal where vault equity decreases by 55 but only 50 USDC arrives.
+    2. Verify a "vault fee detected" warning is logged.
+    3. Verify cost breakdown is stored in trade.other_data.
+    4. Verify lp_fees kwarg passed to mark_trade_success includes the total cost.
+    """
+    from hexbytes import HexBytes
+
+    routing = _make_routing()
+
+    # Equity before: 500, after: 445 (decreased by 55, but only 50 received)
+    mock_fetch_equity.side_effect = [
+        _make_equity(Decimal("500.0")),
+        _make_equity(Decimal("445.0")),
+    ]
+
+    trade = _make_trade(planned_reserve=Decimal("50.0"))
+    trade.other_data["hypercore_vault_commission_rate"] = "0.1"
+    state = MagicMock()
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+
+    receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
+
+    phase2_tx = MagicMock(tx_hash="0xdef")
+    phase3_tx = MagicMock(tx_hash="0x123")
+
+    with caplog.at_level(logging.WARNING):
+        with patch.object(routing, "_fetch_safe_evm_usdc_balance", side_effect=[100_000_000, 150_000_000]):
+            with patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")):
+                with patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0")):
+                    with patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("50")):
+                        with patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=Decimal("50")):
+                            with patch.object(routing, "_broadcast_withdrawal_phase2", return_value=(phase2_tx, {"status": 1, "blockNumber": 101})):
+                                with patch.object(routing, "_broadcast_withdrawal_phase3", return_value=(phase3_tx, {"status": 1, "blockNumber": 102})):
+                                    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+                                        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+                                            routing._settle_withdrawal(
+                                                routing.web3, state, trade, receipts,
+                                                stop_on_execution_failure=False,
+                                            )
+
+    # 2. Verify "vault fee detected" warning
+    assert any("vault fee detected" in r.message.lower() for r in caplog.records)
+
+    # 3. Verify cost breakdown in other_data
+    costs = trade.other_data.get("hypercore_withdrawal_costs")
+    assert costs is not None
+    assert costs["commission_rate"] == "0.1"
+    assert Decimal(costs["total_withdrawal_cost"]) == Decimal("5")
+
+    # 4. Verify lp_fees kwarg includes the total cost
+    state.mark_trade_success.assert_called_once()
+    call_kwargs = state.mark_trade_success.call_args
+    lp_fees_value = call_kwargs.kwargs.get("lp_fees") if call_kwargs.kwargs else call_kwargs[1].get("lp_fees")
+    assert abs(lp_fees_value - 5.0) < 0.01
