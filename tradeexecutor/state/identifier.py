@@ -52,6 +52,19 @@ class AssetType(enum.Enum):
     borrowed = "borrowed"
 
 
+def _normalise_erc_4626_features(features) -> set[ERC4626Feature] | None:
+    """Normalise persisted vault feature metadata to enum values."""
+    if not features:
+        return None
+
+    if isinstance(features, (str, ERC4626Feature)):
+        features = [features]
+
+    return {
+        feature if isinstance(feature, ERC4626Feature) else ERC4626Feature(feature)
+        for feature in features
+    }
+
 
 @dataclass_json
 @dataclass
@@ -879,9 +892,14 @@ class TradingPairIdentifier:
         Needed for ERC-4626 compatibility.
         """
         feats = self.other_data.get("vault_features")
-        if feats:
-            return set(feats)
-        return None
+        if not feats:
+            metadata = self.other_data.get("token_metadata")
+            if isinstance(metadata, dict):
+                feats = metadata.get("features")
+            else:
+                feats = getattr(metadata, "features", None)
+
+        return _normalise_erc_4626_features(feats)
 
     def get_vault_protocol(self) -> str | None:
         """Get the vault protocol name.
@@ -1470,4 +1488,3 @@ class AssetWithTrackedValue:
         self.quantity = quantity
         self.interest_rate_at_open = None
         self.last_interest_rate = None
-
