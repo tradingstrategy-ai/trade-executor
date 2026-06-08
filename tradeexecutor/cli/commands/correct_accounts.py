@@ -56,11 +56,18 @@ def _sync_hypercore_vault_positions(
     sync_model,
     web3,
     state,
-) -> None:
-    """Auto-create and mark Hypercore vault positions from the Hyperliquid API."""
+) -> bool:
+    """Auto-create and mark Hypercore vault positions from the Hyperliquid API.
+
+    :return:
+        True if any phantom positions were closed (zero-proceeds repair).
+        The caller should ensure the reserve balance correction runs
+        afterwards, because USDC from untracked withdrawals may be
+        sitting in the Safe without being reflected in state reserves.
+    """
 
     if not asset_management_mode.is_vault() or universe is None:
-        return
+        return False
 
     from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair
 
@@ -69,7 +76,7 @@ def _sync_hypercore_vault_positions(
         for p in universe.data_universe.pairs.iterate_pairs()
     )
     if not has_vault_pairs:
-        return
+        return False
 
     safe_address = sync_model.get_token_storage_address()
     chain_id = web3.eth.chain_id
@@ -109,6 +116,7 @@ def _sync_hypercore_vault_positions(
         p for p in state.portfolio.get_open_positions()
         if p.pair.is_hyperliquid_vault()
     ]
+    closed_phantom = False
     for position in vault_positions:
         try:
             current_equity = vault_value_func(position.pair)
@@ -195,6 +203,7 @@ def _sync_hypercore_vault_positions(
                 position.position_id,
                 correction_trade.trade_id,
             )
+            closed_phantom = True
             continue
 
         if diff == 0:
@@ -242,6 +251,8 @@ def _sync_hypercore_vault_positions(
                 quantity=quantity,
             )
         )
+
+    return closed_phantom
 
 
 def _has_closed_hypercore_positions(state) -> bool:
@@ -684,7 +695,7 @@ def correct_accounts(
             for evt in exchange_events:
                 logger.info("  Position %d: %s (change: %s)", evt.position_id, evt.notes, evt.quantity)
 
-    _sync_hypercore_vault_positions(
+    closed_phantom_positions = _sync_hypercore_vault_positions(
         asset_management_mode=asset_management_mode,
         universe=universe,
         sync_model=sync_model,
@@ -713,16 +724,16 @@ def correct_accounts(
 
     block_timestamp = get_block_timestamp(web3, block_number)
 
-    # Skip on-chain corrections only when there are no on-chain positions
-    # AND no reserve assets to check. Reserve balance checks must always run
-    # because the Safe may hold USDC from untracked vault withdrawals or
-    # other out-of-band transfers that need to be reconciled.
+    # Skip on-chain corrections when all positions are exchange account positions
+    # (their balances are synced via exchange API, not on-chain balance checks).
+    # Exception: if we just closed a phantom Hypercore vault position, the Safe
+    # may hold USDC from an untracked withdrawal that needs reserve reconciliation.
     has_onchain_positions = (
         any(
             not p.pair.is_exchange_account()
             for p in state.portfolio.get_open_and_frozen_positions()
         )
-        or len(universe.reserve_assets) > 0
+        or closed_phantom_positions
     )
 
     if not has_onchain_positions:
