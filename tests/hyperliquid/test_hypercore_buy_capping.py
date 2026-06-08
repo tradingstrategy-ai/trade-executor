@@ -14,13 +14,13 @@ import pytest
 
 from eth_defi.compat import native_datetime_utc_now
 
+from tradeexecutor.ethereum.execution import EthereumExecution
+from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.state.types import USDollarAmount
 
 
 def _make_execution_model():
     """Create a minimal EthereumExecution with mocked dependencies."""
-    from tradeexecutor.ethereum.execution import EthereumExecution
-
     model = object.__new__(EthereumExecution)
     model.max_slippage = None
     return model
@@ -99,8 +99,6 @@ def test_vault_buy_expired_when_below_minimum():
     2. Verify the trade is expired (not failed).
     3. Verify orphan pending position cleanup (opening buys live in pending_positions).
     """
-    from tradeexecutor.state.trade import TradeStatus
-
     model = _make_execution_model()
     state = MagicMock()
 
