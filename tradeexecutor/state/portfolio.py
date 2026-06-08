@@ -721,7 +721,7 @@ class Portfolio:
         """
         # Any trading positions we have one
         # spot_values = sum([p.get_equity() for p in self.open_positions.values() if not p.is_leverage()])
-        return self.get_position_equity_and_loan_nav() + self.get_cash() + self.get_in_transit_value()
+        return self.get_position_equity_and_loan_nav() + self.get_cash() + self.get_in_transit_value() + self.get_vault_settlement_pending_value()
 
     get_total_equity = calculate_total_equity
 
@@ -737,6 +737,23 @@ class Portfolio:
         for position in self.open_positions.values():
             for trade in position.trades.values():
                 if trade.get_status() == TradeStatus.cctp_in_transit:
+                    total += float(trade.planned_reserve)
+        return total
+
+    def get_vault_settlement_pending_value(self) -> float:
+        """Get total value of capital locked in pending async vault deposit requests.
+
+        Only counts BUYS (requestDeposit), not sells (requestWithdraw).
+        For sells, the position's share equity already covers the value.
+        Scans both open_positions and pending_positions.
+        """
+        from itertools import chain as ichain
+        from tradeexecutor.state.trade import TradeStatus
+        total = 0.0
+        all_positions = ichain(self.open_positions.values(), self.pending_positions.values())
+        for position in all_positions:
+            for trade in position.trades.values():
+                if trade.get_status() == TradeStatus.vault_settlement_pending and trade.is_buy():
                     total += float(trade.planned_reserve)
         return total
 

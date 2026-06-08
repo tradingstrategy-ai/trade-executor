@@ -863,6 +863,18 @@ class StrategyRunner(abc.ABC):
                     post_valuation=True,
                 )
 
+            # Resolve any pending async vault settlements (Ostium V1.5, ERC-7540 Lagoon)
+            with self.timed_task_context_manager("settle_pending_vault_trades"):
+                from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
+                web3config = getattr(self.execution_model, 'web3config', None)
+                vault_resolved = check_and_resolve_vault_settlements(
+                    state=state,
+                    execution_model=self.execution_model,
+                    web3config=web3config,
+                )
+                if vault_resolved:
+                    logger.info("Resolved %d pending vault settlement(s)", len(vault_resolved))
+
             closed_dust_trades = close_hypercore_dust_positions(state.portfolio)
             if closed_dust_trades:
                 logger.info(

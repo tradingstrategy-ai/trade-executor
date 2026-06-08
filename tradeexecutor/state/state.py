@@ -1056,6 +1056,29 @@ class State:
             if bridge_position is not None:
                 bridge_position.bridge_capital_allocated += abs(trade.planned_quantity)
 
+    def mark_vault_settlement_pending(
+        self,
+        ts: datetime.datetime,
+        trade: TradeExecution,
+        ticket_data: dict,
+    ):
+        """Mark a vault trade as pending settlement (request confirmed, claim pending).
+
+        Does NOT adjust reserves — they were already debited at trade start.
+        Stores serialised ticket data from deposit_manager.serialize_deposit/redemption_ticket().
+
+        :param ticket_data:
+            Dict from deposit_manager.serialize_deposit_ticket() or
+            deposit_manager.serialize_redemption_ticket().
+            Protocol-specific fields (e.g. settlement_id) are included by the adapter.
+        """
+        trade.vault_settlement_pending_at = ts
+        trade.other_data["vault_async_flow"] = True
+        trade.other_data["vault_chain_id"] = trade.pair.chain_id
+        trade.other_data["vault_direction"] = "deposit" if trade.is_buy() else "redeem"
+        # Merge adapter-serialised ticket data into other_data
+        trade.other_data.update(ticket_data)
+
     def update_reserves(self, new_reserves: List[ReservePosition]):
         self.portfolio.update_reserves(new_reserves)
 

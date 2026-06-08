@@ -24,7 +24,7 @@ from tradeexecutor.state.interest import Interest
 from tradeexecutor.state.loan import Loan
 from tradeexecutor.state.position_internal_share_price import PositionInternalSharePriceState
 from tradeexecutor.state.trade import TradeType, TradeFlag
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.trigger import Trigger
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier, LegacyDataException
 from tradeexecutor.state.valuation import ValuationUpdate
@@ -735,9 +735,17 @@ class TradingPosition(GenericPosition):
             ])
 
         live = self.get_quantity()  # What was the position quantity before executing any of planned trades
-        # Temporary logging to track down SAND token errors
-        # logger.info("get_available_trading_quantity(): Figuring out available position size to trade. Planned quantity: %s, live quantity: %s", planned, live)
-        return planned + live
+
+        # Async vault sell trades (vault_settlement_pending) have already submitted
+        # a requestWithdraw() on-chain but aren't counted by get_quantity() (only is_success counts).
+        # Subtract their quantity so strategies don't submit duplicate withdrawal requests.
+        vault_pending_sells = sum_decimal([
+            t.get_position_quantity()
+            for t in self.trades.values()
+            if t.get_status() == TradeStatus.vault_settlement_pending and t.is_sell()
+        ])
+
+        return planned + live + vault_pending_sells
 
     def get_current_price(self) -> USDollarAmount:
         """Get the price of the base asset based on the latest valuation."""
