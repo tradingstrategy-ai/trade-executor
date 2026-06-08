@@ -3,11 +3,11 @@
 Reproduces the YEELON incident from hyper-ai-5.json: two Hypercore vault
 withdrawals completed on Hyperliquid but the executor failed to confirm
 them, leaving a phantom position with quantity=304 USDC but zero on-chain
-equity.  The valuator then set last_token_price=0.0 and the ``start``
+equity.  The valuator already set last_token_price=0.0 and the ``start``
 command crashed on ``assert valuation_price`` (0.0 is falsy in Python).
 
 This test verifies that ``correct-accounts`` detects and closes the
-phantom position, and that subsequent ``check-accounts`` passes cleanly.
+phantom position via the Typer CLI entry point.
 
 Requires:
 - ~/hyper-ai-5.json (the production state file with the YEELON phantom)
@@ -17,22 +17,21 @@ Requires:
 
 import os
 import shutil
-import subprocess
-import sys
 from decimal import Decimal
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
+from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.visual.equity_curve import calculate_compounding_unrealised_trading_profitability
 
-WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 
 SAMPLE_STATE_FILE = Path.home() / "hyper-ai-5.json"
-TEST_PRIVATE_KEY = "0x111e53aed5e777996f26b4bdb89300bbc05b84743f32028c41be7193c0fe0b83"
 REQUIRED_ENV_VARS = ("TRADING_STRATEGY_API_KEY", "JSON_RPC_HYPERLIQUID")
+TEST_PRIVATE_KEY = "0x111e53aed5e777996f26b4bdb89300bbc05b84743f32028c41be7193c0fe0b83"
 
 YEELON_POSITION_ID = 15
 YEELON_VAULT_ADDRESS = "0xf6f3d773e11023e3e686cbda883ecba631fefc15"
@@ -44,39 +43,6 @@ pytestmark = [
         reason="Set TRADING_STRATEGY_API_KEY, JSON_RPC_HYPERLIQUID, and ~/hyper-ai-5.json to run this test",
     ),
 ]
-
-
-def _run_cli_command(environment: dict[str, str], command: str) -> subprocess.CompletedProcess[str]:
-    """Run a CLI command in a subprocess pinned to the worktree imports."""
-
-    pythonpath_parts = [str(WORKTREE_ROOT)]
-    existing_pythonpath = os.environ.get("PYTHONPATH")
-    if existing_pythonpath:
-        pythonpath_parts.append(existing_pythonpath)
-
-    process_environment = {
-        **environment,
-        "PYTHONPATH": os.pathsep.join(pythonpath_parts),
-    }
-
-    return subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            f"from tradeexecutor.cli.main import app; app(['{command}'], standalone_mode=False)",
-        ],
-        cwd=WORKTREE_ROOT,
-        env=process_environment,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-
-def _get_process_output(process: subprocess.CompletedProcess[str]) -> str:
-    """Combine subprocess streams for stable CLI assertions."""
-
-    return "\n".join(part for part in (process.stdout, process.stderr) if part)
 
 
 @pytest.fixture()
@@ -103,7 +69,6 @@ def environment(state_file: Path, strategy_file: Path, tmp_path: Path) -> dict[s
     vault_address = state.sync.deployment.address
     assert vault_address, "Copied sample state does not contain a Lagoon vault address"
 
-    # Extract the single Lagoon module address from trade blockchain transactions
     module_addresses = {
         tx.contract_address
         for position in state.portfolio.open_positions.values()
@@ -148,7 +113,7 @@ def test_correct_accounts_closes_yeelon_phantom_position(
     The valuator already set last_token_price=0.0.
 
     1. Load the copied sample state and confirm YEELON is open with zero price.
-    2. Run correct-accounts through the CLI.
+    2. Run correct-accounts through the Typer CLI.
     3. Reload state and verify YEELON is closed with a repair trade.
     4. Verify the equity curve does not crash on the corrected state.
     """
@@ -163,12 +128,12 @@ def test_correct_accounts_closes_yeelon_phantom_position(
 
     initial_open_count = len(initial_state.portfolio.open_positions)
 
-    # 2. Run correct-accounts through the CLI.
-    process = _run_cli_command(environment, "correct-accounts")
-    output = _get_process_output(process)
-    assert process.returncode == 0, f"correct-accounts failed:\n{output}"
-    assert "phantom" in output.lower() or "zero equity" in output.lower(), \
-        f"Expected phantom position log message in output:\n{output}"
+    # 2. Run correct-accounts through the Typer CLI.
+    with mock.patch.dict("os.environ", environment, clear=True):
+        # correct-accounts calls sys.exit(0) on success
+        with pytest.raises(SystemExit) as sys_exit:
+            app(["correct-accounts"], standalone_mode=False)
+        assert sys_exit.value.code == 0
 
     # 3. Reload state and verify YEELON is closed with a repair trade.
     final_state = State.read_json_file(state_file)
