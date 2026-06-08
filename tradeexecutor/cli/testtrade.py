@@ -614,8 +614,8 @@ def make_test_trade(
         # For async vaults (Ostium V1.5, ERC-7540), the trade enters
         # vault_settlement_pending after execute. On Anvil we can force
         # settlement and resolve; on mainnet we just report the status.
+        # is_anvil is already imported at module level
         if trade.get_status() == TradeStatus.vault_settlement_pending:
-            from eth_defi.provider.anvil import is_anvil
             if is_anvil(web3):
                 logger.info("Test trade #%d is vault_settlement_pending on Anvil, forcing settlement...", trade.trade_id)
                 _force_vault_settlement_and_resolve(web3, state, trade, execution_model)
