@@ -1,6 +1,6 @@
 """Route trades for Hypercore native vaults on HyperEVM.
 
-Hypercore vault deposits/withdrawals use a multi-phase flow:
+Hypercore vault deposits and withdrawals use a multi-phase flow:
 
 **Deposit (buy)**:
 
