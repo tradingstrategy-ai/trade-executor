@@ -97,7 +97,7 @@ def test_vault_buy_expired_when_below_minimum():
 
     1. Create a buy trade with insufficient capital (only $3 available).
     2. Verify the trade is expired (not failed).
-    3. Verify orphan position cleanup.
+    3. Verify orphan pending position cleanup (opening buys live in pending_positions).
     """
     from tradeexecutor.state.trade import TradeStatus
 
@@ -112,6 +112,15 @@ def test_vault_buy_expired_when_below_minimum():
 
     buy_trade = _make_mock_trade(is_buy=True, planned_reserve=Decimal("50"), trade_id=2)
 
+    # Mock pending position with all trades expired (opening buy).
+    pending_pos = MagicMock()
+    pending_pos.get_quantity.return_value = Decimal(0)
+    expired_trade_mock = MagicMock()
+    expired_trade_mock.get_status.return_value = TradeStatus.expired
+    pending_pos.trades = {1: expired_trade_mock}
+    state.portfolio.pending_positions = {buy_trade.position_id: pending_pos}
+    state.portfolio.open_positions = {}
+
     # 2. Should expire.
     expired = model._maybe_cap_hypercore_vault_buy(
         state, buy_trade, cumulative_vault_sell_shortfall=Decimal("47"),
@@ -119,6 +128,9 @@ def test_vault_buy_expired_when_below_minimum():
 
     assert expired
     buy_trade.mark_expired.assert_called_once()
+
+    # 3. Verify pending position was cleaned up.
+    assert buy_trade.position_id not in state.portfolio.pending_positions
 
 
 def test_non_hypercore_buy_unaffected_by_hypercore_sell_shortfall():

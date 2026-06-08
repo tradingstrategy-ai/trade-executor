@@ -650,7 +650,7 @@ class EthereumExecution(ExecutionModel):
         # then reserves.
         bridge_position = state.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
         if bridge_position is not None:
-            available = bridge_position.get_quantity()
+            available = bridge_position.get_available_bridge_capital()
         else:
             try:
                 reserve_pos = state.portfolio.get_reserve_position(trade.reserve_currency)
@@ -685,14 +685,19 @@ class EthereumExecution(ExecutionModel):
                 cumulative_vault_sell_shortfall,
             )
             trade.mark_expired(native_datetime_utc_now())
-            pos = state.portfolio.open_positions.get(trade.position_id)
-            if pos is not None and pos.get_quantity() == 0:
-                all_expired = all(
-                    t.get_status() == TradeStatus.expired
-                    for t in pos.trades.values()
-                )
-                if all_expired:
-                    del state.portfolio.open_positions[trade.position_id]
+            # Clean up the position if all its trades are expired.
+            # Opening buys live in pending_positions until mark_trade_success
+            # moves them; existing positions live in open_positions.
+            for positions_dict in (state.portfolio.pending_positions, state.portfolio.open_positions):
+                pos = positions_dict.get(trade.position_id)
+                if pos is not None and pos.get_quantity() == 0:
+                    all_expired = all(
+                        t.get_status() == TradeStatus.expired
+                        for t in pos.trades.values()
+                    )
+                    if all_expired:
+                        del positions_dict[trade.position_id]
+                    break
             return True
 
     def _execute_trades_sequentially(
