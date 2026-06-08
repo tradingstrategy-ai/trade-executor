@@ -1,6 +1,6 @@
 """Route trades for Hypercore native vaults on HyperEVM.
 
-Hypercore vault deposits/withdrawals use a multi-phase flow:
+Hypercore vault deposits and withdrawals use a multi-phase flow:
 
 **Deposit (buy)**:
 
@@ -83,7 +83,7 @@ from eth_defi.hyperliquid.session import (
     HyperliquidSession,
     create_hyperliquid_session,
 )
-from eth_defi.hyperliquid.vault import HyperliquidVault
+from eth_defi.hyperliquid.vault import HyperliquidVault, estimate_max_withdrawal_commission
 
 from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.state.blockhain_transaction import (
@@ -795,6 +795,11 @@ class HypercoreVaultRouting(RoutingModel):
         if not hasattr(trade, "other_data") or trade.other_data is None:
             trade.other_data = {}
         trade.other_data["hypercore_phase1_vault_equity_usdc"] = str(user_equity.equity)
+        trade.other_data["hypercore_vault_commission_rate"] = (
+            str(getattr(vault_info, "commission_rate", None))
+            if getattr(vault_info, "commission_rate", None) is not None
+            else None
+        )
 
         # Start with the strategy-planned amount. In the common path the live
         # preflight is only a check and this value is returned unchanged.
@@ -1010,12 +1015,15 @@ class HypercoreVaultRouting(RoutingModel):
         expected_increase_raw: int,
         timeout: float = 30.0,
         poll_interval: float = 2.0,
+        commission_rate: Decimal | None = None,
     ) -> Decimal:
         """Poll HyperCore perp withdrawable USDC until the withdrawal reaches perp."""
         expected_increase = raw_to_usdc(expected_increase_raw)
+        max_commission = estimate_max_withdrawal_commission(expected_increase, commission_rate)
         accepted_tolerance = max(
             Decimal("0.10"),
             expected_increase * HYPERCORE_RELATIVE_BALANCE_TOLERANCE,
+            max_commission,
         )
         expected_balance = baseline_balance + expected_increase - accepted_tolerance
         deadline = time.time() + timeout
@@ -1536,6 +1544,20 @@ class HypercoreVaultRouting(RoutingModel):
                     trade=trade,
                     requested_raw=raw_amount,
                     vault_address=vault_address,
+                )
+
+            if not self.simulate:
+                cr = trade.other_data.get("hypercore_vault_commission_rate")
+                cr_dec = Decimal(cr) if cr is not None else None
+                effective_gross = raw_to_usdc(raw_amount)
+                estimated_commission = estimate_max_withdrawal_commission(effective_gross, cr_dec)
+                estimated_net = effective_gross - estimated_commission
+                trade.other_data["estimated_net_withdrawal_reserve"] = str(estimated_net)
+                trade.other_data["estimated_withdrawal_commission"] = str(estimated_commission)
+                logger.info(
+                    "Estimated net withdrawal for trade %s: %s USDC "
+                    "(effective gross %s, estimated commission %s, rate %s)",
+                    trade.trade_id, estimated_net, effective_gross, estimated_commission, cr,
                 )
 
             logger.info(
@@ -2120,6 +2142,22 @@ class HypercoreVaultRouting(RoutingModel):
         In simulate mode, the balance verification is skipped because
         the mock CoreWriter does not actually bridge USDC.
         """
+        # Cost-tracking variables — initialised before the simulate/live
+        # branch so they are always in scope for mark_trade_success.
+        equity_decrease: Decimal | None = None
+        total_withdrawal_cost: Decimal | None = None
+        vault_performance_fee: Decimal | None = None
+        bridge_and_rounding_cost: Decimal | None = None
+        actual_perp_increase_raw: int = 0
+        stored_commission_rate = (
+            trade.other_data.get("hypercore_vault_commission_rate")
+            if hasattr(trade, "other_data") and trade.other_data
+            else None
+        )
+        commission_rate: Decimal | None = (
+            Decimal(stored_commission_rate) if stored_commission_rate is not None else None
+        )
+
         # Capture baseline USDC balance before processing receipt.
         # The withdrawal multicall has already been mined but spotSend's
         # bridge delivery takes 2-10 seconds, so USDC hasn't arrived yet.
@@ -2272,6 +2310,7 @@ class HypercoreVaultRouting(RoutingModel):
                     expected_increase_raw=expected_raw,
                     timeout=30.0,
                     poll_interval=2.0,
+                    commission_rate=commission_rate,
                 )
             except HypercoreWithdrawalVerificationError as e:
                 current_vault_equity: Decimal | None = None
@@ -2390,6 +2429,7 @@ class HypercoreVaultRouting(RoutingModel):
                                 expected_increase_raw=expected_raw,
                                 timeout=30.0,
                                 poll_interval=2.0,
+                                commission_rate=commission_rate,
                             )
                         except HypercoreWithdrawalVerificationError as retry_wait_error:
                             logger.error(
@@ -2682,9 +2722,9 @@ class HypercoreVaultRouting(RoutingModel):
                     vault_address=vault_address,
                     bypass_cache=True,
                 )
-                remaining_equity = eq_after.equity if eq_after else Decimal(0)
 
-                if vault_equity_before_phase1_snapshot is not None:
+                if vault_equity_before_phase1_snapshot is not None and eq_after is not None:
+                    remaining_equity = eq_after.equity
                     equity_decrease = (
                         vault_equity_before_phase1_snapshot - remaining_equity
                     )
@@ -2698,6 +2738,16 @@ class HypercoreVaultRouting(RoutingModel):
                             executed_reserve, equity_decrease, expected_decrease,
                             vault_equity_before_phase1_snapshot, remaining_equity,
                         )
+                    elif equity_decrease > expected_decrease + tolerance:
+                        fee_absorbed = equity_decrease - expected_decrease
+                        logger.warning(
+                            "Withdrawal vault fee detected: HyperCore equity decreased by %s "
+                            "but only %s USDC arrived on EVM. Estimated commission absorbed: "
+                            "%s USDC. Before: %s, after: %s (commission_rate: %s)",
+                            equity_decrease, executed_reserve, fee_absorbed,
+                            vault_equity_before_phase1_snapshot, remaining_equity,
+                            stored_commission_rate,
+                        )
                     else:
                         logger.info(
                             "Withdrawal dual-chain verified: EVM USDC arrived (+%s), "
@@ -2705,7 +2755,15 @@ class HypercoreVaultRouting(RoutingModel):
                             executed_reserve, equity_decrease,
                             vault_equity_before_phase1_snapshot, remaining_equity,
                         )
+                elif vault_equity_before_phase1_snapshot is not None:
+                    remaining_equity = eq_after.equity if eq_after is not None else None
+                    logger.info(
+                        "Withdrawal dual-chain check (no post-withdrawal equity): "
+                        "EVM USDC arrived (+%s), remaining equity: %s",
+                        executed_reserve, remaining_equity,
+                    )
                 else:
+                    remaining_equity = eq_after.equity if eq_after is not None else None
                     logger.info(
                         "Withdrawal dual-chain check (no baseline): "
                         "EVM USDC arrived (+%s), HyperCore equity remaining: %s",
@@ -2716,21 +2774,48 @@ class HypercoreVaultRouting(RoutingModel):
                     "Could not verify vault equity after withdrawal: %s", e,
                 )
 
+            # Compute withdrawal cost breakdown for analytics.
+            if equity_decrease is not None:
+                total_withdrawal_cost = max(equity_decrease - executed_reserve, Decimal(0))
+                perp_increase = raw_to_usdc(actual_perp_increase_raw) if actual_perp_increase_raw > 0 else None
+                if perp_increase is not None:
+                    vault_performance_fee = max(equity_decrease - perp_increase, Decimal(0))
+                    bridge_and_rounding_cost = max(perp_increase - executed_reserve, Decimal(0))
+                else:
+                    vault_performance_fee = total_withdrawal_cost
+                    bridge_and_rounding_cost = Decimal(0)
+
+            if not hasattr(trade, "other_data") or trade.other_data is None:
+                trade.other_data = {}
+            trade.other_data["hypercore_withdrawal_costs"] = {
+                "planned_gross_reserve": str(planned_reserve),
+                "executed_net_reserve": str(executed_reserve),
+                "vault_equity_decreased": str(equity_decrease) if equity_decrease is not None else None,
+                "total_withdrawal_cost": str(total_withdrawal_cost) if total_withdrawal_cost is not None else None,
+                "vault_performance_fee": str(vault_performance_fee) if vault_performance_fee is not None else None,
+                "bridge_and_rounding_cost": str(bridge_and_rounding_cost) if bridge_and_rounding_cost is not None else None,
+                "commission_rate": stored_commission_rate,
+                "estimated_commission": trade.other_data.get("estimated_withdrawal_commission"),
+            }
+
         executed_amount = -executed_reserve  # Negative for sells
 
+        vault_fee = float(total_withdrawal_cost) if total_withdrawal_cost is not None else 0
         state.mark_trade_success(
             ts,
             trade,
             executed_price=1.0,
             executed_amount=executed_amount,
             executed_reserve=executed_reserve,
-            lp_fees=0,
+            lp_fees=vault_fee,
             native_token_price=0,
         )
 
         logger.info(
-            "Hypercore vault withdrawal settled: %s USDC withdrawn (planned %s)",
+            "Hypercore vault withdrawal settled: %s USDC withdrawn (planned %s), "
+            "vault fee %s",
             executed_reserve, planned_reserve,
+            total_withdrawal_cost if total_withdrawal_cost is not None else "unknown",
         )
 
     # ------------------------------------------------------------------

@@ -10,7 +10,19 @@ import logging
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
+import pytest
+from hexbytes import HexBytes
+
 from eth_defi.hyperliquid.api import UserVaultEquity
+from eth_defi.hyperliquid.core_writer import compute_spot_to_evm_withdrawal_amount
+
+from tradeexecutor.ethereum.vault.hypercore_routing import (
+    HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,
+    HypercoreVaultRouting,
+    HypercoreWithdrawalVerificationError,
+    raw_to_usdc,
+    usdc_to_raw,
+)
 
 
 VAULT_ADDR = "0xdfc24b077bc1425ad1dea75bcb6f8158e10df303"
@@ -28,8 +40,6 @@ def _make_equity(equity: Decimal) -> UserVaultEquity:
 
 def _make_routing(simulate=False):
     """Create a minimal HypercoreVaultRouting with mocked dependencies."""
-    from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreVaultRouting
-
     routing = object.__new__(HypercoreVaultRouting)
     routing.web3 = MagicMock()
     routing.lagoon_vault = MagicMock()
@@ -87,7 +97,6 @@ def test_withdrawal_dual_chain_verified(mock_fetch_equity, mock_block_ts):
     state = MagicMock()
     mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
 
-    from hexbytes import HexBytes
     receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
 
     phase2_tx = MagicMock(tx_hash="0xdef")
@@ -128,7 +137,6 @@ def test_withdrawal_dual_chain_mismatch_logs_warning(mock_fetch_equity, mock_blo
     state = MagicMock()
     mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
 
-    from hexbytes import HexBytes
     receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
 
     with caplog.at_level(logging.WARNING):
@@ -168,7 +176,6 @@ def test_withdrawal_equity_check_non_fatal_on_api_failure(mock_fetch_equity, moc
     state = MagicMock()
     mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
 
-    from hexbytes import HexBytes
     receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
 
     with caplog.at_level(logging.WARNING):
@@ -245,12 +252,6 @@ def test_wait_for_usdc_arrival_accepts_follow_up_phase_tolerance():
 
 def test_wait_for_usdc_arrival_timeout():
     """P2: USDC never arrives — raises HypercoreWithdrawalVerificationError."""
-    import pytest
-    from tradeexecutor.ethereum.vault.hypercore_routing import (
-        HypercoreVaultRouting,
-        HypercoreWithdrawalVerificationError,
-    )
-
     routing = _make_routing()
     # Balance never increases
     routing._fetch_safe_evm_usdc_balance = MagicMock(return_value=100_000_000)
@@ -341,11 +342,6 @@ def test_wait_for_perp_withdrawable_balance_rejects_large_shortfall():
     2. Wait for the perp withdrawable balance using the withdrawal verifier.
     3. Verify the helper times out and raises a withdrawal verification error.
     """
-    import pytest
-    from tradeexecutor.ethereum.vault.hypercore_routing import (
-        HypercoreWithdrawalVerificationError,
-    )
-
     routing = _make_routing()
 
     # 1. Create a routing object and mock a large perp withdrawable balance increase with a material shortfall.
@@ -412,12 +408,6 @@ def test_withdrawal_phase1_timeout_uses_vault_equity_fallback(
     2. Return a vault equity snapshot that already matches the expected post-withdrawal residual.
     3. Verify settlement continues to phase 2 and marks the trade successful instead of freezing it.
     """
-    from hexbytes import HexBytes
-
-    from tradeexecutor.ethereum.vault.hypercore_routing import (
-        HypercoreWithdrawalVerificationError,
-    )
-
     routing = _make_routing()
     trade = _make_trade(planned_reserve=Decimal("552.259060"))
     state = MagicMock()
@@ -472,10 +462,6 @@ def test_withdrawal_uses_pre_phase1_perp_baseline_for_fast_settlement(
     2. Store the setup-time perp and vault-equity baselines in ``trade.other_data``.
     3. Verify settlement continues to phase 2 instead of waiting for a second perp increase.
     """
-    from hexbytes import HexBytes
-
-    from tradeexecutor.ethereum.vault.hypercore_routing import raw_to_usdc
-
     routing = _make_routing()
     trade = _make_trade(planned_reserve=Decimal("9.223899"))
     trade.other_data = {
@@ -534,10 +520,7 @@ def test_withdrawal_phase3_uses_fee_adjusted_amount(
     2. Verify phase 3 bridges the fee-adjusted amount instead of the pre-fee desired amount.
     3. Verify EVM-arrival confirmation and trade settlement use the same adjusted amount.
     """
-    from hexbytes import HexBytes
 
-    from tradeexecutor.ethereum.vault.hypercore_routing import raw_to_usdc, usdc_to_raw
-    from eth_defi.hyperliquid.core_writer import compute_spot_to_evm_withdrawal_amount
 
     routing = _make_routing()
     trade = _make_trade(planned_reserve=Decimal("50.0"))
@@ -592,9 +575,6 @@ def test_withdrawal_aborts_if_perp_balance_does_not_appear(
     2. Make the perp-balance wait fail before phase 2 can start.
     3. Verify the trade is failed with stranded-USDC recovery metadata.
     """
-    from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreWithdrawalVerificationError
-    from hexbytes import HexBytes
-
     routing = _make_routing()
     trade = _make_trade(planned_reserve=Decimal("50.0"))
     state = MagicMock()
@@ -643,14 +623,6 @@ def test_withdrawal_phase1_retry_handles_silent_noop_from_equity_drift(
     4. Continue phases 2 and 3 with the retry amount.
     5. Verify the trade succeeds and no stranded-USDC failure is reported.
     """
-    from hexbytes import HexBytes
-
-    from tradeexecutor.ethereum.vault.hypercore_routing import (
-        HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,
-        HypercoreWithdrawalVerificationError,
-        usdc_to_raw,
-    )
-
     routing = _make_routing()
     trade = _make_trade(planned_reserve=Decimal("11.737146"))
     state = MagicMock()
@@ -725,3 +697,127 @@ def test_withdrawal_phase1_retry_handles_silent_noop_from_equity_drift(
     assert phase1_retry_tx in trade.blockchain_transactions
     state.mark_trade_success.assert_called_once()
     mock_report_failure.assert_not_called()
+
+
+def test_wait_for_perp_withdrawable_balance_commission_aware():
+    """Commission-aware tolerance accepts shortfall within vault performance fee range.
+
+    1. Create a routing object with a large withdrawal and 10% commission rate.
+    2. Mock a perp balance increase that is 8% short (within 10% commission tolerance).
+    3. Verify the wait accepts the balance without timeout.
+    """
+    routing = _make_routing()
+
+    # 1. Mock balance: 570 USDC withdrawal, perp shows 530 (8% short, within 10%).
+    routing._fetch_safe_perp_withdrawable_balance = MagicMock(
+        side_effect=[Decimal("589.56")],
+    )
+
+    # 2. Wait with commission_rate=10%.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+            result = routing._wait_for_perp_withdrawable_balance(
+                baseline_balance=Decimal("59.56"),
+                expected_increase_raw=570_000_000,
+                timeout=30.0,
+                poll_interval=2.0,
+                commission_rate=Decimal("0.10"),
+            )
+
+    # 3. Accepted on first poll (530 increase >= 570 - 57 commission tolerance = 513).
+    assert result == Decimal("589.56")
+
+
+def test_wait_for_perp_withdrawable_balance_protocol_vault_stays_tight():
+    """Protocol vaults (no commission) keep tight 1% tolerance.
+
+    1. Create the same scenario as the commission-aware test but with no commission rate.
+    2. Verify the helper times out because the 8% shortfall exceeds 1% tolerance.
+    """
+    routing = _make_routing()
+
+    # 1. Same balance as commission-aware test: 8% short.
+    routing._fetch_safe_perp_withdrawable_balance = MagicMock(
+        return_value=Decimal("589.56"),
+    )
+
+    call_count = [0]
+
+    def fake_time():
+        call_count[0] += 1
+        if call_count[0] <= 2:
+            return 0.0
+        return 999.0
+
+    # 2. Without commission_rate, tolerance is only 1%. 8% shortfall should time out.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=fake_time):
+            with pytest.raises(HypercoreWithdrawalVerificationError):
+                routing._wait_for_perp_withdrawable_balance(
+                    baseline_balance=Decimal("59.56"),
+                    expected_increase_raw=570_000_000,
+                    timeout=30.0,
+                    poll_interval=2.0,
+                    commission_rate=None,
+                )
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_withdrawal_dual_chain_fee_warning(mock_fetch_equity, mock_block_ts, caplog):
+    """Vault fee detected when equity decreased MORE than USDC received.
+
+    1. Set up a withdrawal where vault equity decreases by 55 but only 50 USDC arrives.
+    2. Verify a "vault fee detected" warning is logged.
+    3. Verify cost breakdown is stored in trade.other_data.
+    4. Verify lp_fees kwarg passed to mark_trade_success includes the total cost.
+    """
+
+
+    routing = _make_routing()
+
+    # Equity before: 500, after: 445 (decreased by 55, but only 50 received)
+    mock_fetch_equity.side_effect = [
+        _make_equity(Decimal("500.0")),
+        _make_equity(Decimal("445.0")),
+    ]
+
+    trade = _make_trade(planned_reserve=Decimal("50.0"))
+    trade.other_data["hypercore_vault_commission_rate"] = "0.1"
+    state = MagicMock()
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+
+    receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
+
+    phase2_tx = MagicMock(tx_hash="0xdef")
+    phase3_tx = MagicMock(tx_hash="0x123")
+
+    with caplog.at_level(logging.WARNING):
+        with patch.object(routing, "_fetch_safe_evm_usdc_balance", side_effect=[100_000_000, 150_000_000]):
+            with patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")):
+                with patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0")):
+                    with patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("50")):
+                        with patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=Decimal("50")):
+                            with patch.object(routing, "_broadcast_withdrawal_phase2", return_value=(phase2_tx, {"status": 1, "blockNumber": 101})):
+                                with patch.object(routing, "_broadcast_withdrawal_phase3", return_value=(phase3_tx, {"status": 1, "blockNumber": 102})):
+                                    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+                                        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+                                            routing._settle_withdrawal(
+                                                routing.web3, state, trade, receipts,
+                                                stop_on_execution_failure=False,
+                                            )
+
+    # 2. Verify "vault fee detected" warning
+    assert any("vault fee detected" in r.message.lower() for r in caplog.records)
+
+    # 3. Verify cost breakdown in other_data
+    costs = trade.other_data.get("hypercore_withdrawal_costs")
+    assert costs is not None
+    assert costs["commission_rate"] == "0.1"
+    assert Decimal(costs["total_withdrawal_cost"]) == Decimal("5")
+
+    # 4. Verify lp_fees kwarg includes the total cost
+    state.mark_trade_success.assert_called_once()
+    call_kwargs = state.mark_trade_success.call_args
+    lp_fees_value = call_kwargs.kwargs.get("lp_fees") if call_kwargs.kwargs else call_kwargs[1].get("lp_fees")
+    assert abs(lp_fees_value - 5.0) < 0.01
