@@ -269,7 +269,24 @@ def do_test_trade(web3, hot_wallet, vault, arb_usdc, amount, state_file_path, is
     )
     pricing_model = GenericPricing(pair_configurator)
 
-    # Initialise state and sync on-chain reserves
+    # Refuse to overwrite a state file that has unresolved pending trades —
+    # a second deposit would lose the first trade's ticket metadata, making
+    # the first deposit unclaimable via the script's claim action.
+    if is_live and state_file_path.exists():
+        existing = State.read_json_file(state_file_path)
+        pending = [
+            t for p in existing.portfolio.open_positions.values()
+            for t in p.trades.values()
+            if t.get_status() == TradeStatus.vault_settlement_pending
+        ]
+        if pending:
+            print(f"ERROR: State file {state_file_path} has {len(pending)} unresolved pending trade(s).")
+            print(f"Run ACTION=claim first, or delete the file to discard the old state.")
+            for t in pending:
+                print(f"  Trade #{t.trade_id}: {t.other_data.get('vault_direction', '?')}")
+            sys.exit(1)
+
+    # Initialise fresh state and sync on-chain reserves
     state = State()
     sync_model.sync_initial(state, reserve_asset=arb_usdc, reserve_token_price=1.0)
     sync_model.sync_treasury(native_datetime_utc_now(), state, supported_reserves=[arb_usdc])
