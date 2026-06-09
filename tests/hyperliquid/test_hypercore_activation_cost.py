@@ -1139,3 +1139,47 @@ def test_settlement_capped_deposit_refunds_bridge_not_reserves(
     )
     state.portfolio.adjust_reserves.assert_not_called()
     mock_report_failure.assert_not_called()
+
+
+def test_deposit_cap_skipped_when_balance_below_minimum():
+    """Skip capping when the Safe balance is below MINIMUM_VAULT_DEPOSIT.
+
+    If capping would drop the deposit below 5 USDC, the cap is skipped and
+    the original planned amount is used.  The on-chain deposit will revert,
+    triggering the normal report_failure / mark_trade_failed path which
+    correctly unrolls allocated capital.
+
+    1. Create a live buy trade for 100 USDC.
+    2. Mock Safe EVM USDC balance to 3 USDC (below the 5 USDC minimum).
+    3. Verify deposit is built with the original 100 USDC (no capping).
+    4. Verify no capping key is stored in trade.other_data.
+    """
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("100.0"))
+
+    approve_fn = MagicMock()
+    deposit_fn = MagicMock()
+    approve_tx = MagicMock()
+    deposit_tx = MagicMock()
+
+    # 1. Create a live buy trade for 100 USDC.
+    # 2. Mock Safe balance to 3 USDC, below the 5 USDC minimum.
+    # 3. Verify original amount is used (cap skipped).
+    # 4. Verify no capping key stored.
+    with patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=3_000_000):
+        with patch(
+            "tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_approve_deposit_wallet_call",
+            return_value=approve_fn,
+        ) as build_approve:
+            with patch(
+                "tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_deposit_to_spot_call",
+                return_value=deposit_fn,
+            ) as build_deposit:
+                with patch.object(routing, "_sign_module_call", side_effect=[approve_tx, deposit_tx]):
+                    txs = routing._create_deposit_or_withdraw_txs(trade)
+
+    assert txs == [approve_tx, deposit_tx]
+    # Original 100 USDC used, not capped to 3
+    build_approve.assert_called_once_with(routing.lagoon_vault, evm_usdc_amount=100_000_000)
+    build_deposit.assert_called_once_with(routing.lagoon_vault, evm_usdc_amount=100_000_000)
+    assert "hypercore_capped_deposit_raw" not in trade.other_data

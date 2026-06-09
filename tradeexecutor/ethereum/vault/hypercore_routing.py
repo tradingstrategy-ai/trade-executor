@@ -1482,10 +1482,29 @@ class HypercoreVaultRouting(RoutingModel):
                     shortfall_raw,
                     raw_to_usdc(shortfall_raw),
                 )
-                raw_amount = available_balance_raw
-                if not hasattr(trade, "other_data") or trade.other_data is None:
-                    trade.other_data = {}
-                trade.other_data["hypercore_capped_deposit_raw"] = raw_amount
+                # Only cap if the result stays above MINIMUM_VAULT_DEPOSIT.
+                # If below, skip the cap and let the original amount go
+                # through — the on-chain deposit will revert, triggering the
+                # normal report_failure() → mark_trade_failed() path which
+                # correctly unrolls allocated capital.  Asserting here would
+                # bypass that failure handling and leave capital locked.
+                if available_balance_raw >= MINIMUM_VAULT_DEPOSIT:
+                    raw_amount = available_balance_raw
+                    if not hasattr(trade, "other_data") or trade.other_data is None:
+                        trade.other_data = {}
+                    trade.other_data["hypercore_capped_deposit_raw"] = raw_amount
+                else:
+                    logger.error(
+                        "Hypercore deposit preflight: Safe %s available balance %d raw USDC "
+                        "(%s USDC) is below MINIMUM_VAULT_DEPOSIT after capping; "
+                        "proceeding with original amount %d raw to let on-chain revert "
+                        "trigger normal failure handling for trade %s",
+                        self.safe_address,
+                        available_balance_raw,
+                        raw_to_usdc(available_balance_raw),
+                        raw_amount,
+                        trade.trade_id,
+                    )
 
         # Enforce Hyperliquid minimum vault deposit/withdrawal amounts.
         # Hyperliquid silently rejects vault transfers below the minimum
