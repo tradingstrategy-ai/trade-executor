@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Fix CCTP bridge burning 10^12x too much USDC ("ERC20: transfer amount exceeds balance") in vault-only universes: native USDC is pinned to 6 decimals when generating synthetic bridge pairs, and the burn amount is converted from authoritative on-chain token decimals (`TokenDetails.convert_to_raw()`) instead of trusting pair metadata. This supersedes the 2026-06-03 fix, which trusted `PandasPairUniverse.get_token()` decimals that are themselves wrong (18) when the upstream vault dataset omits decimals (2026-06-09)
+
 - Fix Hypercore vault deposit reverts when Safe EVM USDC balance is less than planned deposit due to cumulative withdrawal drift (2026-06-09)
 
 - Add vault share balance and total supply to `check-wallet` command output; fix `lagoon-redeem` to claim unclaimed redemptions before starting and poll `maxRedeem` to avoid stale-read failures (2026-06-09)

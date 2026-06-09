@@ -107,39 +107,26 @@ def generate_primary_to_satellite_cctp_bridge_universe(
         name="CCTP Bridge",
     )
 
-    # Resolve USDC decimals from the pair universe by address lookup.
-    # The reserve_asset.decimals can be wrong (e.g. 18) when the
-    # DEXPair symbol-based decimal resolution is ambiguous (both tokens
-    # share the same symbol in vault pairs).
-    #
-    # Fallback hierarchy:
-    # 1. Pair universe lookup (most accurate — reads from actual DEXPair data)
-    # 2. Hardcoded 6 (native USDC is always 6 decimals on all CCTP chains)
-    # Never fall back to reserve_asset.decimals — it may be wrong.
+    # Native USDC is always 6 decimals on every CCTP-supported chain, so we
+    # hardcode it rather than reading the pair universe or reserve_asset.
+    # Both of those sources can report a wrong 18 decimals on a vault-only
+    # universe (DEXPair token decimals default to 18 when there is no DEX
+    # token metadata), which would feed a 10**12x-too-large burn amount into
+    # CctpBridgeRouting and revert with "transfer amount exceeds balance".
     NATIVE_USDC_DECIMALS = 6
     primary_usdc_address = USDC_NATIVE_TOKEN[primary_chain.value]
-    primary_usdc_token = pairs.get_token(primary_usdc_address.lower(), chain_id=primary_chain)
-    if primary_usdc_token is not None and primary_usdc_token.decimals is not None:
-        usdc_decimals = primary_usdc_token.decimals
-    else:
-        usdc_decimals = NATIVE_USDC_DECIMALS
-        logger.info(
-            "Primary chain USDC not found in pair universe for %s on %s, "
-            "using known native USDC decimals (%d)",
-            primary_usdc_address,
-            primary_chain.get_name(),
-            NATIVE_USDC_DECIMALS,
-        )
+    usdc_decimals = NATIVE_USDC_DECIMALS
 
     if usdc_decimals != reserve_asset.decimals:
         logger.warning(
             "Reserve asset decimals mismatch: reserve_asset.decimals=%d, "
-            "pair universe USDC decimals=%d for %s on chain %s. "
-            "Using pair universe value.",
+            "native USDC decimals=%d for %s on chain %s. "
+            "Using native USDC value (%d).",
             reserve_asset.decimals,
             usdc_decimals,
             primary_usdc_address,
             primary_chain.get_name(),
+            NATIVE_USDC_DECIMALS,
         )
 
     for satellite_chain in satellite_chain_ids:
@@ -147,11 +134,9 @@ def generate_primary_to_satellite_cctp_bridge_universe(
         if route in existing_routes:
             continue
 
-        # Resolve satellite USDC decimals from the pair universe too.
-        # Falls back to NATIVE_USDC_DECIMALS (6) if not in the universe.
+        # Native USDC on the satellite chain is also always 6 decimals.
         sat_usdc_address = USDC_NATIVE_TOKEN[satellite_chain.value]
-        sat_usdc_token = pairs.get_token(sat_usdc_address.lower(), chain_id=satellite_chain)
-        sat_decimals = sat_usdc_token.decimals if (sat_usdc_token and sat_usdc_token.decimals) else NATIVE_USDC_DECIMALS
+        sat_decimals = NATIVE_USDC_DECIMALS
 
         destination_asset = AssetIdentifier(
             chain_id=satellite_chain.value,
