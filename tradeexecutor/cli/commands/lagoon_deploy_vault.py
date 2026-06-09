@@ -258,6 +258,42 @@ def _write_markdown_report(vault_record_file: Path | None, markdown_report: str,
     logger.info("Wrote deployment report to %s", os.path.abspath(md_path))
 
 
+def _write_state_sibling_deployment_artifact(
+    strategy_file: Path | None,
+    json_payload: Any,
+    *,
+    simulate: bool,
+    logger,
+) -> None:
+    """Copy the machine-readable deployment JSON next to the strategy state file.
+
+    The runtime reads ``state/{id}.deployment.json`` to auto-discover satellite
+    Lagoon modules (see :py:func:`tradeexecutor.cli.bootstrap.resolve_satellite_modules`),
+    so every CLI command picks them up without a manual ``SATELLITE_MODULES`` env var.
+
+    The executor id is derived from the strategy module, matching the
+    ``state/{id}.json`` convention used by all commands.
+    """
+    if simulate or not strategy_file:
+        return
+
+    from tradeexecutor.cli.bootstrap import prepare_executor_id
+
+    # Resolve the executor id the same way the runtime commands do (EXECUTOR_ID
+    # env, falling back to the strategy filename) so the artifact filename matches
+    # what start / perform-test-trade look for.
+    executor_id = prepare_executor_id(os.environ.get("EXECUTOR_ID"), strategy_file)
+    # Honour an explicit STATE_FILE location so the artifact lands next to the
+    # state file (and tests don't pollute the repo's state/ dir). Default to the
+    # state/ convention used by all CLI commands.
+    state_file_env = os.environ.get("STATE_FILE")
+    state_dir = Path(state_file_env).parent if state_file_env else Path("state")
+    state_dir.mkdir(parents=True, exist_ok=True)
+    path = state_dir / f"{executor_id}.deployment.json"
+    _write_json_file(path, json_payload, indent=2)
+    logger.info("Wrote deployment artifact for runtime satellite discovery to %s", os.path.abspath(path))
+
+
 def _get_deployment_mode_label(*, guard_only: bool) -> str:
     """Human-readable label for persisted deployment records."""
     return "guard redeploy" if guard_only else "fresh deployment"
@@ -1147,6 +1183,10 @@ def _deploy_multichain(
         simulate=simulate,
         logger=logger,
     )
+
+    # Also place the artifact next to the strategy state file so the runtime
+    # auto-discovers satellite modules without a manual SATELLITE_MODULES env var.
+    _write_state_sibling_deployment_artifact(strategy_file, json_payload, simulate=simulate, logger=logger)
 
     _write_markdown_report(vault_record_file, markdown_report, logger)
 

@@ -269,6 +269,52 @@ def create_execution_model(
     return execution_model, valuation_model_factory, pricing_model_factory
 
 
+def resolve_satellite_modules(deployment_file: "Path | None") -> dict:
+    """Resolve ``{chain_slug: module_address}`` for multichain Lagoon satellites.
+
+    Source priority:
+
+    1. ``SATELLITE_MODULES`` env var (explicit JSON override), e.g.
+       ``{"base": "0x<module address>"}``.
+    2. The deployment artifact (``state/{id}.deployment.json``) emitted by
+       ``lagoon-deploy-vault``, auto-discovered next to the state file. Satellite
+       chains are the ``deployments`` entries flagged ``is_satellite``.
+
+    Deploying a guard with ``lagoon-deploy-vault`` does not wire satellites into
+    the running executor by itself; this discovery removes that manual hand-off so
+    every CLI command picks up satellites from the deployment artifact.
+
+    :param deployment_file:
+        Path to the deployment JSON next to the state file, or ``None`` to rely on
+        the env var only.
+
+    :return:
+        Mapping of chain slug to satellite trading strategy module address. Empty
+        when neither source provides satellites.
+    """
+    import json
+
+    env_json = os.environ.get("SATELLITE_MODULES")
+    if env_json:
+        return json.loads(env_json)
+
+    if deployment_file is not None and deployment_file.exists():
+        data = json.loads(deployment_file.read_text())
+        if data.get("multichain"):
+            modules = {}
+            for slug, dep in (data.get("deployments") or {}).items():
+                if dep.get("is_satellite") and dep.get("module_address"):
+                    modules[slug] = dep["module_address"]
+            if modules:
+                logger.info(
+                    "Discovered %d satellite module(s) from deployment artifact %s",
+                    len(modules), deployment_file,
+                )
+            return modules
+
+    return {}
+
+
 def create_execution_and_sync_model(
     asset_management_mode: AssetManagementMode,
     private_key: str,
@@ -283,6 +329,7 @@ def create_execution_and_sync_model(
     routing_hint: Optional[TradeRouting] = None,
     unit_testing: bool = False,
     token_cache: "TokenDiskCache | None" = None,
+    deployment_file: "Path | None" = None,
 ) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory]:
     """Set up the wallet sync and execution mode for the command line client."""
 
@@ -338,13 +385,14 @@ def create_execution_and_sync_model(
         execution_model.web3config = web3config
         execution_model.token_cache = token_cache
 
-        # Populate satellite vaults for multichain Lagoon deployments
+        # Populate satellite vaults for multichain Lagoon deployments.
+        # Satellites come from the SATELLITE_MODULES env var (explicit override) or
+        # the deployment artifact written next to the state file by
+        # lagoon-deploy-vault. See resolve_satellite_modules().
         if isinstance(execution_model, LagoonExecution):
-            satellite_modules_json = os.environ.get("SATELLITE_MODULES")
-            if satellite_modules_json:
-                import json as _json
+            satellite_modules = resolve_satellite_modules(deployment_file)
+            if satellite_modules:
                 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonSatelliteVault
-                satellite_modules = _json.loads(satellite_modules_json)
                 # The Safe address is shared across all chains (CREATE2)
                 safe_address = sync_model.vault.safe_address
                 satellite_vaults = {}
@@ -937,4 +985,128 @@ def check_universe_chains_have_gas(
             f"Minimum required: {min_gas_balance} native tokens per chain.\n"
             f"Low balance chains:\n{details}\n"
             f"Top up the wallet or adjust MIN_GAS_BALANCE environment variable."
+        )
+
+
+def check_universe_contracts_resolve(
+    web3config: "Web3Config",
+    universe: "TradingStrategyUniverse",
+    execution_model,
+):
+    """Validate that every on-chain contract the universe will trade resolves before trading.
+
+    Cross-chain (CCTP) trades bridge USDC to a destination chain and then deposit
+    into a destination-chain vault. The bridge burn is irreversible, so we must
+    fail fast here rather than stranding funds on a chain whose satellite Lagoon
+    module is missing or whose contracts do not exist.
+
+    For a multichain Lagoon deployment this checks:
+
+    1. Every non-primary chain that carries a tradeable pair has a satellite Lagoon
+       vault configured. Satellites come from the ``SATELLITE_MODULES`` env var
+       (see :py:func:`create_execution_and_sync_model`); deploying the guard with
+       ``lagoon-deploy-vault`` does NOT wire this up automatically.
+    2. Each configured satellite Safe and its trading strategy module have on-chain
+       code on their chain (catches CREATE2 mismatches and wrong module addresses).
+    3. Each tradeable vault contract has on-chain code on its chain.
+
+    :param web3config:
+        Web3 configuration with RPC connections.
+
+    :param universe:
+        Trading universe constructed for the run.
+
+    :param execution_model:
+        Execution model; satellite vaults and the primary chain are read from it.
+
+    :raises RuntimeError:
+        With actionable guidance when a chain is unconfigured or a contract does
+        not resolve on-chain.
+    """
+    if web3config is None or universe is None:
+        return
+
+    from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
+
+    configured_chains = set(web3config.connections.keys())
+
+    # Skip on Anvil forks: forked addresses differ from the chain they simulate.
+    if configured_chains & set(TEST_CHAIN_IDS):
+        return
+
+    satellite_vaults = getattr(execution_model, "satellite_vaults", {}) or {}
+
+    # Primary chain = the master vault chain. Fall back to the first universe chain.
+    primary_chain_id = None
+    tx_builder = getattr(execution_model, "tx_builder", None)
+    if tx_builder is not None:
+        primary_chain_id = getattr(tx_builder, "chain_id", None)
+    if primary_chain_id is None:
+        primary_chain_id = universe.get_primary_chain().value
+
+    errors: list[str] = []
+
+    def _has_code(chain_id_value: int, address: str) -> bool | None:
+        # Returns True/False, or None when the chain has no RPC
+        # (already reported by check_universe_chains_have_rpc()).
+        try:
+            web3 = web3config.get_connection(ChainId(chain_id_value))
+        except KeyError:
+            return None
+        if web3 is None:
+            return None
+        code = web3.eth.get_code(web3.to_checksum_address(address))
+        return code is not None and len(code) > 0
+
+    # Collect chains that carry tradeable (non-bridge) pairs, and check vault contracts.
+    tradeable_chains: set[int] = set()
+    for pair in universe.iterate_pairs():
+        if pair.is_cctp_bridge():
+            continue
+        tradeable_chains.add(pair.chain_id)
+
+        # (3) The vault contract must resolve on its own chain.
+        if pair.is_vault():
+            resolved = _has_code(pair.chain_id, pair.base.address)
+            if resolved is False:
+                errors.append(
+                    f"Vault contract {pair.base.address} ({pair.get_vault_name()}) "
+                    f"has no code on {ChainId(pair.chain_id).get_name()}."
+                )
+
+    # (1) Every non-primary tradeable chain needs a satellite Lagoon module.
+    for chain_id_value in sorted(c for c in tradeable_chains if c != primary_chain_id):
+        if chain_id_value not in satellite_vaults:
+            configured = [ChainId(c).get_slug() for c in satellite_vaults] or ["none"]
+            errors.append(
+                f"Universe trades on {ChainId(chain_id_value).get_name()} "
+                f"(chain {chain_id_value}) but no Lagoon satellite module is configured for it. "
+                f"Cross-chain trades bridge USDC there irreversibly and then cannot deposit. "
+                f"Add this chain to the SATELLITE_MODULES env var "
+                f'(JSON like {{"{ChainId(chain_id_value).get_slug()}": "0x<module address>"}}); '
+                f"the module address is in your lagoon-deploy-vault report. "
+                f"Configured satellite chains: {configured}."
+            )
+
+    # (2) Configured satellite Safe + trading strategy module must resolve on-chain.
+    for chain_id_value, satellite_vault in satellite_vaults.items():
+        safe_address = getattr(satellite_vault, "safe_address", None)
+        module_address = getattr(satellite_vault, "trading_strategy_module_address", None)
+        if safe_address and _has_code(chain_id_value, safe_address) is False:
+            errors.append(
+                f"Satellite Safe {safe_address} has no code on "
+                f"{ChainId(chain_id_value).get_name()} - the master Safe may not be "
+                f"deployed there (CREATE2 mismatch)."
+            )
+        if module_address and _has_code(chain_id_value, module_address) is False:
+            errors.append(
+                f"Satellite trading strategy module {module_address} has no code on "
+                f"{ChainId(chain_id_value).get_name()}."
+            )
+
+    if errors:
+        bullet = "\n".join(f"  - {e}" for e in errors)
+        raise RuntimeError(
+            "perform-test-trade cannot resolve all required contracts before trading:\n"
+            f"{bullet}"
         )

@@ -24,7 +24,7 @@ from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import fork_network_anvil, AnvilLaunch, set_balance, fund_erc20_on_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
-from eth_defi.token import USDC_NATIVE_TOKEN
+from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
 from eth_defi.cctp.constants import TOKEN_MESSENGER_V2
 
 from tradingstrategy.chain import ChainId
@@ -582,6 +582,98 @@ def test_make_test_trade_crosschain_close_only(
     final_equity = _get_total_equity(state)
     assert final_equity == pytest.approx(initial_equity, rel=0.05), \
         f"Equity dropped from {initial_equity} to {final_equity}"
+
+
+@pytest.mark.timeout(600)
+def test_crosschain_bridge_resolution_and_deposit_simulation(
+    arb_web3,
+    base_web3,
+    execution_model: EthereumExecution,
+    sync_model: HotWalletSyncModel,
+    routing_model: GenericRouting,
+    state: State,
+    universe: TradingStrategyUniverse,
+    bridge_pair: TradingPairIdentifier,
+    vault_pair: TradingPairIdentifier,
+    ipor_share_token: AssetIdentifier,
+    funded_wallet: HotWallet,
+    web3config: Web3Config,
+):
+    """Resolve CCTP bridge routing and simulate a cross-chain vault deposit in-process.
+
+    Same in-process API as the other perform-test-trade tests (``make_test_trade()``),
+    but it asserts the routing resolution explicitly and verifies the deposit
+    physically settled on the Base fork, not just in portfolio state. This is the
+    path the ``perform-test-trade`` CLI exercises when given a satellite-chain
+    vault pair: the bridge is resolved to a CctpBridgeRouting and the bridged USDC
+    is deposited into the Base vault.
+
+    1. Resolve the CCTP bridge pair -> "cctp-bridge" router (CctpBridgeRouting)
+    2. Resolve the Base vault pair -> "vault" router
+    3. Confirm the bridge pair targets the Base destination domain
+    4. Run a buy-only cross-chain make_test_trade() (bridge in + open vault)
+    5. Assert a CCTP bridge position and a Base vault position were opened, bridge OK
+    6. Assert the deposit physically settled on Base: the hot wallet holds IPOR
+       vault shares on the Base fork
+    """
+    from tradeexecutor.ethereum.cctp.routing import CctpBridgeRouting
+
+    pair_configurator = routing_model.pair_configurator
+
+    # 1. CCTP bridge pair resolves to the CCTP bridge router
+    bridge_routing_id = pair_configurator.match_router(bridge_pair)
+    assert bridge_routing_id.router_name == "cctp-bridge"
+    assert isinstance(pair_configurator.get_routing(bridge_pair), CctpBridgeRouting)
+
+    # 2. Satellite vault pair resolves to the vault router
+    assert pair_configurator.match_router(vault_pair).router_name == "vault"
+
+    # 3. Bridge pair targets the Base destination domain (forward Arbitrum -> Base)
+    assert bridge_pair.other_data["destination_chain_id"] == BASE_CHAIN_ID
+
+    # 4. Buy-only cross-chain test trade: bridge in + open vault on Base
+    routing_state = routing_model.create_routing_state(
+        universe, {"tx_builder": execution_model.tx_builder},
+    )
+    pricing_model = GenericPricing(routing_model.pair_configurator)
+
+    make_test_trade(
+        web3=arb_web3,
+        execution_model=execution_model,
+        pricing_model=pricing_model,
+        sync_model=sync_model,
+        state=state,
+        universe=universe,
+        routing_model=routing_model,
+        routing_state=routing_state,
+        max_slippage=0.05,
+        amount=TEST_TRADE_AMOUNT,
+        pair=vault_pair,
+        buy_only=True,
+        web3config=web3config,
+    )
+
+    # 5. Bridge + vault positions opened, bridge trade succeeded
+    bridge_positions = [
+        p for p in state.portfolio.open_positions.values()
+        if p.pair.is_cctp_bridge()
+    ]
+    vault_positions = [
+        p for p in state.portfolio.open_positions.values()
+        if p.pair.kind == TradingPairKind.vault
+    ]
+    assert len(bridge_positions) == 1
+    assert len(vault_positions) == 1
+    bridge_trade = list(bridge_positions[0].trades.values())[0]
+    assert bridge_trade.is_success(), \
+        f"Bridge trade failed: {bridge_trade.get_revert_reason()}"
+
+    # 6. Cross-chain deposit physically settled on Base: hot wallet holds vault shares
+    base_vault_shares = fetch_erc20_details(
+        base_web3, ipor_share_token.address, chain_id=BASE_CHAIN_ID,
+    ).fetch_balance_of(funded_wallet.address)
+    assert base_vault_shares > 0, \
+        "Expected IPOR vault shares on the Base fork after the cross-chain deposit"
 
 
 @pytest.mark.timeout(600)

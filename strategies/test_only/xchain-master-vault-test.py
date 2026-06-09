@@ -22,9 +22,9 @@ def _load_base_strategy():
 _base = _load_base_strategy()
 
 TEST_SOURCE_VAULTS = [
-    (ChainId.arbitrum, "0x0df2e3a0b5997adc69f8768e495fd98a4d00f134"),  # ycUSDC
+    (ChainId.arbitrum, "0xbe6a65325a073490d0a2999529633f1ae88bb091"),  # Harvest USDC (instant withdrawal, analyses cleanly)
     (ChainId.base, "0x3094b241aade60f91f1c82b0628a10d9501462f9"),  # maxUSD
-    (ChainId.hyperliquid, "0x8a862fd6c12f9ad34c9c2ff45ab2b6712e8cea27"),  # feUSDC
+    (ChainId.hyperliquid, "0xf9bb65e113418292d1a3555515fbd64637a0be18"),  # Clearstar Yield (Euler, instant withdrawal, deposit liquidity)
 ]
 
 TEST_SUPPORTING_PAIRS = [
