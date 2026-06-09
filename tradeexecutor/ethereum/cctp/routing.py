@@ -102,7 +102,7 @@ class CctpBridgeRouting(RoutingModel):
             prepare_approve_for_burn,
             prepare_deposit_for_burn,
         )
-        from eth_defi.token import USDC_NATIVE_TOKEN
+        from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
         from tradingstrategy.chain import ChainId
 
         assert isinstance(routing_state, CctpBridgeRoutingState)
@@ -151,7 +151,14 @@ class CctpBridgeRouting(RoutingModel):
             assert burn_token_address is not None, \
                 f"No USDC address known for source chain {source_chain_id}"
 
-            amount_raw = int(trade.planned_reserve * (10 ** pair.quote.decimals))
+            # Convert the bridged amount to raw units using the burn token's
+            # authoritative on-chain decimals. We must NOT trust
+            # pair.quote.decimals here: synthetic CCTP bridge pairs built on
+            # vault-only universes can carry a wrong 18-decimal USDC metadata
+            # (DEXPair token decimals default to 18), which would burn 10**12x
+            # too much and revert with "ERC20: transfer amount exceeds balance".
+            burn_token = fetch_erc20_details(source_web3, burn_token_address)
+            amount_raw = burn_token.convert_to_raw(trade.planned_reserve)
 
             # Load contract objects needed for signing
             usdc_contract = get_deployed_contract(
