@@ -1044,6 +1044,14 @@ def check_universe_contracts_resolve(
     if primary_chain_id is None:
         primary_chain_id = universe.get_primary_chain().value
 
+    # Satellite modules are only required for vault/Safe custody (e.g. Lagoon),
+    # where each chain needs its own Safe + guard module. Hot-wallet custody uses
+    # the same EOA on every chain, so cross-chain bridging needs no satellites and
+    # must not be flagged. This mirrors the custody resolver: a tx_builder with a
+    # ``vault`` resolves the mint recipient to the per-chain Safe, whereas a plain
+    # hot-wallet tx_builder uses its own address everywhere.
+    requires_satellites = tx_builder is not None and getattr(tx_builder, "vault", None) is not None
+
     errors: list[str] = []
 
     def _has_code(chain_id_value: int, address: str) -> bool | None:
@@ -1074,9 +1082,11 @@ def check_universe_contracts_resolve(
                     f"has no code on {ChainId(pair.chain_id).get_name()}."
                 )
 
-    # (1) Every non-primary tradeable chain needs a satellite Lagoon module.
+    # (1) For vault/Safe custody, every non-primary tradeable chain needs a
+    #     satellite Lagoon module. Skipped for hot-wallet custody (same EOA on all
+    #     chains, so no satellite is required for cross-chain bridging).
     for chain_id_value in sorted(c for c in tradeable_chains if c != primary_chain_id):
-        if chain_id_value not in satellite_vaults:
+        if requires_satellites and chain_id_value not in satellite_vaults:
             configured = [ChainId(c).get_slug() for c in satellite_vaults] or ["none"]
             errors.append(
                 f"Universe trades on {ChainId(chain_id_value).get_name()} "
@@ -1107,6 +1117,6 @@ def check_universe_contracts_resolve(
     if errors:
         bullet = "\n".join(f"  - {e}" for e in errors)
         raise RuntimeError(
-            "perform-test-trade cannot resolve all required contracts before trading:\n"
+            "Cannot resolve all required contracts before trading:\n"
             f"{bullet}"
         )

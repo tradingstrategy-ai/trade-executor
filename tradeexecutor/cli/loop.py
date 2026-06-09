@@ -532,14 +532,22 @@ class ExecutionLoop:
                     strategy_parameters=self.parameters,
                 )
 
-                # Validate all universe chains have RPC connections and gas
+                # Validate all universe chains have RPC connections and gas, and that
+                # every cross-chain custody/vault/satellite contract resolves before we
+                # trade — so a missing satellite module fails fast here rather than after
+                # an irreversible CCTP bridge.
                 web3config = getattr(self.execution_model, 'web3config', None)
                 if live and web3config is not None:
-                    from tradeexecutor.cli.bootstrap import check_universe_chains_have_rpc, check_universe_chains_have_gas
+                    from tradeexecutor.cli.bootstrap import (
+                        check_universe_chains_have_rpc,
+                        check_universe_chains_have_gas,
+                        check_universe_contracts_resolve,
+                    )
                     check_universe_chains_have_rpc(web3config, universe)
                     wallet_address = self.execution_model.tx_builder.get_gas_wallet_address()
                     min_gas_balance = getattr(self.execution_model, 'min_balance_threshold', 0)
                     check_universe_chains_have_gas(web3config, universe, wallet_address, min_gas_balance)
+                    check_universe_contracts_resolve(web3config, universe, self.execution_model)
 
                 # Check if our data is stagnated and we cannot execute the strategy
                 if self.max_data_delay is not None:
