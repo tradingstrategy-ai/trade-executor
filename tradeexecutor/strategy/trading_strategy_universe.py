@@ -2301,10 +2301,16 @@ def resolve_persisted_vault_download_root(
 
     The trade-executor dataset cache (``client.transport.cache_path``, e.g.
     ``cache/master-vault-v2``) is a mounted, persistent volume. We redirect vault
-    downloads to a sibling ``vaults/`` directory under the same mount root, so the
-    cache persists across container restarts and is shared across strategies on the
-    same host. The library guards each download with ``wait_other_writers()``, so a
-    shared directory is safe for concurrent strategies.
+    downloads to a ``vaults/`` subdirectory *inside* ``cache_path`` so the cache
+    persists across container restarts. A subdirectory (rather than a sibling) is
+    used deliberately: it stays inside the mounted volume regardless of how the
+    operator configures ``--cache-path`` / ``CACHE_PATH`` — whether that points at
+    the per-strategy dir (``cache/<executor_id>``) or at the mounted cache root
+    itself (``cache`` / ``/usr/src/trade-executor/cache``). Deriving a sibling via
+    ``cache_path.parent`` would escape the volume in the root-cache case and
+    reintroduce the re-download-on-every-start bug. The library guards each
+    download with ``wait_other_writers()``, so the directory is safe for concurrent
+    strategies.
 
     :param explicit_root:
         Caller-provided root. Returned as-is when set (e.g. tests redirecting
@@ -2322,8 +2328,9 @@ def resolve_persisted_vault_download_root(
         # library default (shared user home cache).
         return DEFAULT_VAULT_DOWNLOAD_ROOT
 
-    # cache_path is e.g. cache/<executor_id>; put downloads in the shared cache/vaults
-    return Path(cache_path).parent / "vaults"
+    # Place downloads inside cache_path so they always inherit its persistence,
+    # regardless of whether cache_path is the per-strategy dir or the mount root.
+    return Path(cache_path) / "vaults"
 
 
 def load_vault_universe_with_metadata(
