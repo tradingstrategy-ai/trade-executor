@@ -23,6 +23,7 @@ from decimal import Decimal
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.trace import assert_transaction_success_with_explanation
 from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -90,7 +91,10 @@ print(f"Settlement events: {events}")
 
 print(f"\nFinalising deposit for {depositor}...")
 tx_hash = vault.finalise_deposit(depositor).transact({"from": depositor})
-assert_transaction_success_with_explanation(web3, tx_hash)
+# Wait for all read RPCs to sync before reading balanceOf,
+# to avoid stale-provider zero-balance reads on multi-provider setups
+receipt = wait_for_transaction_receipt_robust(web3, tx_hash, confirmation_block_count=2, extra_sleep=2.0)
+assert receipt["status"] == 1, f"Finalise deposit failed: {tx_hash.hex()}"
 print(f"Finalise deposit tx: {tx_hash.hex()}")
 
 # --- Verify ---

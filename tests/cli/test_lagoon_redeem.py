@@ -39,7 +39,7 @@ def test_claim_leftover_redemptions() -> None:
     vault.vault_contract.functions.maxRedeem.return_value.call.return_value = settled_raw
     vault.vault_contract.functions.pendingRedeemRequest.return_value.call.return_value = 0
 
-    with patch("tradeexecutor.cli.commands.lagoon_redeem.assert_transaction_success_with_explanation"):
+    with patch("tradeexecutor.cli.commands.lagoon_redeem._broadcast_and_wait"):
         _claim_leftover_redemptions(vault, hot_wallet, web3, share_token)
 
     vault.finalise_redeem.assert_called_once_with("0xABCD", raw_amount=settled_raw)
@@ -57,7 +57,7 @@ def test_claim_leftover_redemptions() -> None:
     vault.vault_contract.functions.pendingRedeemRequest.return_value.call.return_value = pending_raw
 
     with (
-        patch("tradeexecutor.cli.commands.lagoon_redeem.assert_transaction_success_with_explanation"),
+        patch("tradeexecutor.cli.commands.lagoon_redeem._broadcast_and_wait"),
         patch("tradeexecutor.cli.commands.lagoon_redeem.time.sleep") as mock_sleep,
     ):
         _claim_leftover_redemptions(vault, hot_wallet, web3, share_token)
@@ -82,7 +82,7 @@ def test_claim_leftover_redemptions() -> None:
 def test_claim_leftover_deposits() -> None:
     """Pre-flight claims unclaimed deposits so shares move from vault contract to hot wallet.
 
-    1. Call with maxDeposit() > 0: verify finalise_deposit is called with explicit raw_amount.
+    1. Call with maxDeposit() > 0: verify 3-arg deposit() called via _broadcast_and_wait.
     2. Call with maxDeposit() == 0: verify no transactions broadcast.
     """
     tx_hash = b"\x00" * 32
@@ -105,11 +105,11 @@ def test_claim_leftover_deposits() -> None:
     deposit_raw = 10_000_000
     vault.vault_contract.functions.maxDeposit.return_value.call.return_value = deposit_raw
 
-    with patch("tradeexecutor.cli.commands.lagoon_redeem.assert_transaction_success_with_explanation"):
+    with patch("tradeexecutor.cli.commands.lagoon_redeem._broadcast_and_wait") as mock_bw:
         _claim_leftover_deposits(vault, hot_wallet, web3)
 
     vault.vault_contract.functions.deposit.assert_called_once_with(deposit_raw, "0xABCD", "0xABCD")
-    hot_wallet.transact_and_broadcast_with_contract.assert_called_once()
+    mock_bw.assert_called_once()
 
     # 2. No unclaimed deposits: maxDeposit == 0 — no transactions
     vault, hot_wallet, web3 = make_mocks()

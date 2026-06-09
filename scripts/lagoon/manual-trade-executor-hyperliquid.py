@@ -169,7 +169,8 @@ from eth_defi.hyperliquid.session import (
 from eth_defi.provider.broken_provider import _latest_delayed_block_number_cache
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import USDC_NATIVE_TOKEN, TokenDetails, fetch_erc20_details
-from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
+from eth_defi.trace import TransactionAssertionError
 from eth_defi.utils import setup_console_logging
 from eth_defi.vault.base import VaultSpec
 
@@ -357,7 +358,10 @@ def _do_hypercore_deposit(
         evm_usdc_amount=usdc_amount_raw,
     )
     tx_hash = deployer.transact_and_broadcast_with_contract(fn1)
-    receipt = assert_transaction_success_with_explanation(web3, tx_hash)
+    # Wait for all read RPCs to sync before reading on-chain state,
+    # to avoid stale-provider reads on multi-provider setups
+    receipt = wait_for_transaction_receipt_robust(web3, tx_hash, confirmation_block_count=2, extra_sleep=2.0)
+    assert receipt["status"] == 1, f"Transaction failed: {tx_hash.hex()}"
     logger.info("Phase 1 tx: %s (gas: %d)", tx_hash.hex(), receipt["gasUsed"])
 
     # Wait for EVM escrow to clear
@@ -373,7 +377,10 @@ def _do_hypercore_deposit(
         vault_address=vault_address,
     )
     tx_hash = deployer.transact_and_broadcast_with_contract(fn2)
-    receipt = assert_transaction_success_with_explanation(web3, tx_hash)
+    # Wait for all read RPCs to sync before reading on-chain state,
+    # to avoid stale-provider reads on multi-provider setups
+    receipt = wait_for_transaction_receipt_robust(web3, tx_hash, confirmation_block_count=2, extra_sleep=2.0)
+    assert receipt["status"] == 1, f"Transaction failed: {tx_hash.hex()}"
     logger.info("Phase 2 tx: %s (gas: %d)", tx_hash.hex(), receipt["gasUsed"])
 
     # Wait for CoreWriter actions to settle
@@ -444,7 +451,10 @@ def _do_hypercore_withdraw(
                     vault_address=vault_address,
                 )
             )
-            receipt = assert_transaction_success_with_explanation(web3, tx_hash)
+            # Wait for all read RPCs to sync before reading on-chain state,
+            # to avoid stale-provider reads on multi-provider setups
+            receipt = wait_for_transaction_receipt_robust(web3, tx_hash, confirmation_block_count=2, extra_sleep=2.0)
+            assert receipt["status"] == 1, f"Transaction failed: {tx_hash.hex()}"
             print(f"\n  Withdrawal phase 1 tx: {tx_hash.hex()} (gas: {receipt['gasUsed']})")
             _wait_for_perp_withdrawable_balance(session, safe_address, baseline_perp + requested_human)
             current_perp = _get_perp_withdrawable_balance(session, safe_address)
@@ -475,7 +485,10 @@ def _do_hypercore_withdraw(
                     to_perp=False,
                 )
             )
-            receipt = assert_transaction_success_with_explanation(web3, tx_hash)
+            # Wait for all read RPCs to sync before reading on-chain state,
+            # to avoid stale-provider reads on multi-provider setups
+            receipt = wait_for_transaction_receipt_robust(web3, tx_hash, confirmation_block_count=2, extra_sleep=2.0)
+            assert receipt["status"] == 1, f"Transaction failed: {tx_hash.hex()}"
             print(f"\n  Withdrawal phase 2 tx: {tx_hash.hex()} (gas: {receipt['gasUsed']})")
             _wait_for_perp_withdrawable_balance(session, safe_address, baseline_perp)
             _wait_for_spot_free_balance(session, safe_address, baseline_spot + requested_human)
@@ -513,7 +526,10 @@ def _do_hypercore_withdraw(
                 evm_usdc_amount=hypercore_amount_raw,
             )
         )
-        receipt = assert_transaction_success_with_explanation(web3, tx_hash)
+        # Wait for all read RPCs to sync before reading on-chain state,
+        # to avoid stale-provider reads on multi-provider setups
+        receipt = wait_for_transaction_receipt_robust(web3, tx_hash, confirmation_block_count=2, extra_sleep=2.0)
+        assert receipt["status"] == 1, f"Transaction failed: {tx_hash.hex()}"
         print(f"\n  Withdrawal phase 3 tx: {tx_hash.hex()} (gas: {receipt['gasUsed']})")
         _wait_for_evm_usdc_balance(safe_usdc, safe_address, baseline_evm + requested_human)
     except (TransactionAssertionError, Exception) as e:
@@ -753,7 +769,10 @@ def _run_test_lifecycle(
                     usdc_token.transfer(safe_address, transfer_amount),
                     gas_limit=100_000,
                 )
-                assert_transaction_success_with_explanation(web3, tx_hash)
+                # Wait for all read RPCs to see the USDC transfer before
+                # proceeding to HyperCore deposit which reads the Safe balance
+                receipt = wait_for_transaction_receipt_robust(web3, tx_hash, confirmation_block_count=2, extra_sleep=2.0)
+                assert receipt["status"] == 1, f"USDC transfer failed: {tx_hash.hex()}"
 
             deployer.sync_nonce(web3)
             _do_hypercore_deposit(
