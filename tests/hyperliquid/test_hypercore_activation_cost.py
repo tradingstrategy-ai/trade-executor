@@ -237,12 +237,13 @@ def test_create_buy_transactions_split_approve_and_deposit():
     deposit_tx = MagicMock()
 
     # 1. Create one buy trade for live Hypercore routing.
-    # 2. Mock the separate approve and deposit builders and signing.
+    # 2. Mock the Safe EVM USDC balance, approve and deposit builders, and signing.
     # 3. Verify routing returns the two phase-1 transactions in order.
-    with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_approve_deposit_wallet_call", return_value=approve_fn) as build_approve:
-        with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_deposit_to_spot_call", return_value=deposit_fn) as build_deposit:
-            with patch.object(routing, "_sign_module_call", side_effect=[approve_tx, deposit_tx]) as sign_call:
-                txs = routing._create_deposit_or_withdraw_txs(trade)
+    with patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=200_000_000):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_approve_deposit_wallet_call", return_value=approve_fn) as build_approve:
+            with patch("tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_deposit_to_spot_call", return_value=deposit_fn) as build_deposit:
+                with patch.object(routing, "_sign_module_call", side_effect=[approve_tx, deposit_tx]) as sign_call:
+                    txs = routing._create_deposit_or_withdraw_txs(trade)
 
     assert txs == [approve_tx, deposit_tx]
     build_approve.assert_called_once()
@@ -699,3 +700,486 @@ def test_settlement_uses_capped_withdrawal_amount(
     # 5. Trade succeeded — no failure reported.
     state.mark_trade_success.assert_called_once()
     mock_report_failure.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Deposit balance preflight cap tests
+# ---------------------------------------------------------------------------
+
+
+def test_deposit_capped_when_safe_has_insufficient_usdc():
+    """Cap deposit amount when Safe EVM USDC balance is below planned deposit.
+
+    1. Create a live buy trade for 100 USDC.
+    2. Mock Safe EVM USDC balance to 80 USDC (80_000_000 raw).
+    3. Verify the deposit transactions are built with 80_000_000 raw.
+    4. Verify trade.other_data stores the capped amount.
+    """
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("100.0"))
+
+    approve_fn = MagicMock()
+    deposit_fn = MagicMock()
+    approve_tx = MagicMock()
+    deposit_tx = MagicMock()
+
+    # 1. Create a live buy trade for 100 USDC.
+    # 2. Mock Safe EVM USDC balance to 80 USDC.
+    # 3. Verify deposit built with capped amount.
+    # 4. Verify capped amount stored in trade.other_data.
+    with patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=80_000_000):
+        with patch(
+            "tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_approve_deposit_wallet_call",
+            return_value=approve_fn,
+        ) as build_approve:
+            with patch(
+                "tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_deposit_to_spot_call",
+                return_value=deposit_fn,
+            ) as build_deposit:
+                with patch.object(routing, "_sign_module_call", side_effect=[approve_tx, deposit_tx]):
+                    txs = routing._create_deposit_or_withdraw_txs(trade)
+
+    assert txs == [approve_tx, deposit_tx]
+    build_approve.assert_called_once_with(routing.lagoon_vault, evm_usdc_amount=80_000_000)
+    build_deposit.assert_called_once_with(routing.lagoon_vault, evm_usdc_amount=80_000_000)
+    assert trade.other_data["hypercore_capped_deposit_raw"] == 80_000_000
+
+
+def test_deposit_not_capped_when_safe_has_sufficient_usdc():
+    """Full deposit amount used when Safe has enough USDC.
+
+    1. Create a live buy trade for 100 USDC.
+    2. Mock Safe EVM USDC balance to 200 USDC.
+    3. Verify deposit built with the full planned amount.
+    4. Verify no capped amount stored in trade.other_data.
+    """
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("100.0"))
+
+    approve_fn = MagicMock()
+    deposit_fn = MagicMock()
+    approve_tx = MagicMock()
+    deposit_tx = MagicMock()
+
+    # 1. Create a live buy trade for 100 USDC.
+    # 2. Mock Safe EVM USDC balance to 200 USDC.
+    # 3. Verify deposit uses the full 100 USDC.
+    # 4. Verify no capping key in trade.other_data.
+    with patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=200_000_000):
+        with patch(
+            "tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_approve_deposit_wallet_call",
+            return_value=approve_fn,
+        ) as build_approve:
+            with patch(
+                "tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_deposit_to_spot_call",
+                return_value=deposit_fn,
+            ) as build_deposit:
+                with patch.object(routing, "_sign_module_call", side_effect=[approve_tx, deposit_tx]):
+                    txs = routing._create_deposit_or_withdraw_txs(trade)
+
+    build_approve.assert_called_once_with(routing.lagoon_vault, evm_usdc_amount=100_000_000)
+    build_deposit.assert_called_once_with(routing.lagoon_vault, evm_usdc_amount=100_000_000)
+    assert "hypercore_capped_deposit_raw" not in trade.other_data
+
+
+def test_deposit_balance_check_skipped_in_simulate_mode():
+    """Simulate mode skips the live EVM USDC balance check.
+
+    1. Create a simulate-mode buy trade for 100 USDC.
+    2. Do NOT mock _fetch_safe_evm_usdc_balance (it should not be called).
+    3. Verify deposit uses the full planned amount without checking balance.
+    """
+    routing = _make_routing(simulate=True)
+    trade = _make_trade(planned_reserve=Decimal("100.0"))
+
+    multicall_fn = MagicMock()
+    multicall_tx = MagicMock()
+
+    # 1. Create a simulate-mode buy trade for 100 USDC.
+    # 2. Verify _fetch_safe_evm_usdc_balance is never called.
+    # 3. Verify deposit uses the full planned amount.
+    with patch(
+        "tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_deposit_multicall",
+        return_value=multicall_fn,
+    ):
+        with patch.object(routing, "_sign_module_call", return_value=multicall_tx):
+            with patch.object(routing, "_fetch_safe_evm_usdc_balance") as mock_balance:
+                txs = routing._create_deposit_or_withdraw_txs(trade)
+
+    mock_balance.assert_not_called()
+    assert "hypercore_capped_deposit_raw" not in trade.other_data
+
+
+def test_deposit_capped_for_large_shortfall():
+    """Large shortfall still caps instead of raising an error.
+
+    1. Create a live buy trade for 500 USDC.
+    2. Mock Safe EVM USDC balance to 100 USDC (shortfall 400 USDC).
+    3. Verify deposit built with 100_000_000 raw and capping key stored.
+    """
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("500.0"))
+
+    approve_fn = MagicMock()
+    deposit_fn = MagicMock()
+    approve_tx = MagicMock()
+    deposit_tx = MagicMock()
+
+    # 1. Create a live buy trade for 500 USDC.
+    # 2. Mock Safe EVM USDC balance to 100 USDC.
+    # 3. Verify deposit capped to 100 USDC.
+    with patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=100_000_000):
+        with patch(
+            "tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_approve_deposit_wallet_call",
+            return_value=approve_fn,
+        ) as build_approve:
+            with patch(
+                "tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_deposit_to_spot_call",
+                return_value=deposit_fn,
+            ) as build_deposit:
+                with patch.object(routing, "_sign_module_call", side_effect=[approve_tx, deposit_tx]):
+                    txs = routing._create_deposit_or_withdraw_txs(trade)
+
+    build_approve.assert_called_once_with(routing.lagoon_vault, evm_usdc_amount=100_000_000)
+    build_deposit.assert_called_once_with(routing.lagoon_vault, evm_usdc_amount=100_000_000)
+    assert trade.other_data["hypercore_capped_deposit_raw"] == 100_000_000
+
+
+def test_deposit_capped_with_activation_cost():
+    """Deposit capping after activation cost deduction uses post-activation balance.
+
+    Planned 100 USDC, activation cost 2 USDC, Safe has 95 USDC after
+    activation. The deposit amount (after activation deduction) is 98 USDC,
+    which exceeds the 95 USDC available. Phase 1 should use 95 USDC.
+
+    1. Create a live buy trade for 100 USDC with activation cost.
+    2. Mock Safe EVM USDC balance to 95 USDC (post-activation).
+    3. Verify approve+deposit use 95_000_000 raw.
+    4. Verify capped amount stored in trade.other_data.
+    """
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("100.0"))
+
+    approve_fn = MagicMock()
+    deposit_fn = MagicMock()
+    approve_tx = MagicMock()
+    deposit_tx = MagicMock()
+
+    # 1. Create a live buy trade for 100 USDC with 2 USDC activation cost.
+    # 2. Mock Safe EVM USDC balance to 95 USDC.
+    # 3. Verify approve+deposit use 95_000_000 raw.
+    # 4. Verify capped amount stored.
+    with patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=95_000_000):
+        with patch(
+            "tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_approve_deposit_wallet_call",
+            return_value=approve_fn,
+        ) as build_approve:
+            with patch(
+                "tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_deposit_to_spot_call",
+                return_value=deposit_fn,
+            ) as build_deposit:
+                with patch.object(routing, "_sign_module_call", side_effect=[approve_tx, deposit_tx]):
+                    txs = routing._create_deposit_or_withdraw_txs(
+                        trade, activation_cost_raw=2_000_000,
+                    )
+
+    # After activation deduction: 100M - 2M = 98M raw, then capped to 95M
+    build_approve.assert_called_once_with(routing.lagoon_vault, evm_usdc_amount=95_000_000)
+    build_deposit.assert_called_once_with(routing.lagoon_vault, evm_usdc_amount=95_000_000)
+    assert trade.other_data["hypercore_capped_deposit_raw"] == 95_000_000
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_evm_escrow_clear")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_vault_deposit_confirmation")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_settlement_uses_capped_deposit_and_refunds_reserve(
+    mock_fetch_equity, mock_wait_confirm, mock_escrow, mock_block_ts,
+    mock_report_failure,
+):
+    """Settlement uses the capped deposit amount and refunds unused reserve.
+
+    Planned 100 USDC, no activation, capped deposit 80 USDC. Settlement must:
+    - Pass 80_000_000 to phase 2
+    - Mark success with executed_amount=80, executed_reserve=80
+    - Refund 20 USDC back to reserves
+
+    1. Create a buy trade with capped deposit in other_data.
+    2. Mock all settlement phases to succeed.
+    3. Verify phase 2 uses capped amount, mark_trade_success uses correct values.
+    4. Verify reserve refund of 20 USDC.
+    """
+    from hexbytes import HexBytes
+
+    routing = _make_routing(simulate=False)
+
+    trade = _make_trade(planned_reserve=Decimal("100.0"))
+    trade.blockchain_transactions = [MagicMock(tx_hash="0xaa")]
+    trade.other_data = {
+        "hypercore_phase1_spot_baseline_usdc": "0",
+        "hypercore_capped_deposit_raw": 80_000_000,
+    }
+    trade.reserve_currency = MagicMock()
+
+    state = MagicMock()
+    # No bridge position → refund goes to reserves
+    state.portfolio.get_bridge_position_for_chain.return_value = None
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+    mock_escrow.return_value = None
+
+    receipts = {HexBytes("0xaa"): {"status": 1, "blockNumber": 100}}
+
+    # 1. Equity snapshot before phase 2.
+    mock_fetch_equity.return_value = UserVaultEquity(
+        vault_address="0xVAULT",
+        equity=Decimal("200.0"),
+        locked_until=datetime.datetime(2030, 1, 1),
+    )
+
+    # 2. Phase 2 broadcast.
+    phase2_tx = MagicMock(tx_hash="0xbb")
+    phase2_receipt = {"status": 1, "blockNumber": 101}
+
+    # 3. Deposit confirmation.
+    confirmed_eq = UserVaultEquity(
+        vault_address="0xVAULT",
+        equity=Decimal("280.0"),
+        locked_until=datetime.datetime(2030, 1, 1),
+    )
+    mock_wait_confirm.return_value = confirmed_eq
+
+    mock_phase2 = MagicMock(return_value=(phase2_tx, phase2_receipt))
+    with patch.object(routing, "_broadcast_phase2", mock_phase2):
+        routing._settle_deposit(
+            routing.web3, state, trade, receipts,
+            stop_on_execution_failure=False,
+        )
+
+    # 3. Verify phase 2 received capped amount.
+    deposit_raw_passed = mock_phase2.call_args[0][2]
+    assert deposit_raw_passed == 80_000_000
+
+    # 4. Verify mark_trade_success with correct values.
+    state.mark_trade_success.assert_called_once()
+    call_kwargs = state.mark_trade_success.call_args
+    executed_amount = call_kwargs[1].get("executed_amount") or call_kwargs[0][2]
+    executed_reserve = call_kwargs[1].get("executed_reserve") or call_kwargs[0][3]
+    assert executed_amount == Decimal("80")
+    assert executed_reserve == Decimal("80")
+
+    # 5. Verify reserve refund of 20 USDC.
+    state.portfolio.adjust_reserves.assert_called_once_with(
+        trade.reserve_currency,
+        Decimal("20"),
+        "Vault partial deposit refund: trade #1",
+    )
+    mock_report_failure.assert_not_called()
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_evm_escrow_clear")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_vault_deposit_confirmation")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_settlement_capped_deposit_with_activation_cost(
+    mock_fetch_equity, mock_wait_confirm, mock_escrow, mock_block_ts,
+    mock_report_failure,
+):
+    """Capped deposit with activation: executed_reserve includes activation cost.
+
+    Planned 100 USDC, activation 2 USDC, capped deposit 95 USDC. Settlement must:
+    - Pass 95_000_000 to phase 2
+    - Mark success with executed_amount=95, executed_reserve=97 (deposit+activation)
+    - Refund 3 USDC (not 5) back to reserves
+
+    1. Create a buy trade with capped deposit and activation cost in other_data.
+    2. Mock all settlement phases to succeed.
+    3. Verify phase 2 uses capped amount, executed_reserve includes activation.
+    4. Verify reserve refund of 3 USDC.
+    """
+    from hexbytes import HexBytes
+
+    routing = _make_routing(simulate=False)
+
+    trade = _make_trade(planned_reserve=Decimal("100.0"))
+    trade.blockchain_transactions = [MagicMock(tx_hash="0xaa")]
+    trade.other_data = {
+        "hypercore_phase1_spot_baseline_usdc": "0",
+        "hypercore_capped_deposit_raw": 95_000_000,
+        "hypercore_activation_cost_raw": 2_000_000,
+    }
+    trade.reserve_currency = MagicMock()
+
+    state = MagicMock()
+    # No bridge position → refund goes to reserves
+    state.portfolio.get_bridge_position_for_chain.return_value = None
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+    mock_escrow.return_value = None
+
+    receipts = {HexBytes("0xaa"): {"status": 1, "blockNumber": 100}}
+
+    # 1. Equity snapshot before phase 2.
+    mock_fetch_equity.return_value = UserVaultEquity(
+        vault_address="0xVAULT",
+        equity=Decimal("200.0"),
+        locked_until=datetime.datetime(2030, 1, 1),
+    )
+
+    # 2. Phase 2 broadcast.
+    phase2_tx = MagicMock(tx_hash="0xbb")
+    phase2_receipt = {"status": 1, "blockNumber": 101}
+
+    # 3. Deposit confirmation.
+    confirmed_eq = UserVaultEquity(
+        vault_address="0xVAULT",
+        equity=Decimal("295.0"),
+        locked_until=datetime.datetime(2030, 1, 1),
+    )
+    mock_wait_confirm.return_value = confirmed_eq
+
+    mock_phase2 = MagicMock(return_value=(phase2_tx, phase2_receipt))
+    with patch.object(routing, "_broadcast_phase2", mock_phase2):
+        routing._settle_deposit(
+            routing.web3, state, trade, receipts,
+            stop_on_execution_failure=False,
+        )
+
+    # 3. Verify phase 2 received capped deposit amount (not including activation).
+    deposit_raw_passed = mock_phase2.call_args[0][2]
+    assert deposit_raw_passed == 95_000_000
+
+    # 4. Verify mark_trade_success with correct values.
+    state.mark_trade_success.assert_called_once()
+    call_kwargs = state.mark_trade_success.call_args
+    executed_amount = call_kwargs[1].get("executed_amount") or call_kwargs[0][2]
+    executed_reserve = call_kwargs[1].get("executed_reserve") or call_kwargs[0][3]
+    # executed_amount = just the deposit (95), not including activation
+    assert executed_amount == Decimal("95")
+    # executed_reserve = deposit + activation (95 + 2 = 97)
+    assert executed_reserve == Decimal("97")
+
+    # 5. Verify reserve refund of 3 USDC (100 planned - 97 executed, NOT 5).
+    state.portfolio.adjust_reserves.assert_called_once_with(
+        trade.reserve_currency,
+        Decimal("3"),
+        "Vault partial deposit refund: trade #1",
+    )
+    mock_report_failure.assert_not_called()
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_evm_escrow_clear")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_vault_deposit_confirmation")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_settlement_capped_deposit_refunds_bridge_not_reserves(
+    mock_fetch_equity, mock_wait_confirm, mock_escrow, mock_block_ts,
+    mock_report_failure,
+):
+    """Bridge-funded capped deposit refunds the bridge position, not reserves.
+
+    Vault buys can be funded via a CCTP bridge position instead of home
+    reserves.  When the deposit is capped, the unused portion must be
+    returned to the bridge position's allocated capital, not to reserves.
+
+    1. Create a capped buy trade (planned 100, capped 80) with a bridge position.
+    2. Mock all settlement phases to succeed.
+    3. Verify refund goes to bridge_position.adjust_bridge_capital_allocated,
+       NOT to state.portfolio.adjust_reserves.
+    """
+    from hexbytes import HexBytes
+
+    routing = _make_routing(simulate=False)
+
+    trade = _make_trade(planned_reserve=Decimal("100.0"))
+    trade.blockchain_transactions = [MagicMock(tx_hash="0xaa")]
+    trade.other_data = {
+        "hypercore_phase1_spot_baseline_usdc": "0",
+        "hypercore_capped_deposit_raw": 80_000_000,
+    }
+    trade.reserve_currency = MagicMock()
+
+    # 1. Set up state with a bridge position for this chain.
+    state = MagicMock()
+    mock_bridge_position = MagicMock()
+    state.portfolio.get_bridge_position_for_chain.return_value = mock_bridge_position
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+    mock_escrow.return_value = None
+
+    receipts = {HexBytes("0xaa"): {"status": 1, "blockNumber": 100}}
+
+    mock_fetch_equity.return_value = UserVaultEquity(
+        vault_address="0xVAULT",
+        equity=Decimal("200.0"),
+        locked_until=datetime.datetime(2030, 1, 1),
+    )
+
+    phase2_tx = MagicMock(tx_hash="0xbb")
+    phase2_receipt = {"status": 1, "blockNumber": 101}
+
+    confirmed_eq = UserVaultEquity(
+        vault_address="0xVAULT",
+        equity=Decimal("280.0"),
+        locked_until=datetime.datetime(2030, 1, 1),
+    )
+    mock_wait_confirm.return_value = confirmed_eq
+
+    # 2. Run settlement.
+    mock_phase2 = MagicMock(return_value=(phase2_tx, phase2_receipt))
+    with patch.object(routing, "_broadcast_phase2", mock_phase2):
+        routing._settle_deposit(
+            routing.web3, state, trade, receipts,
+            stop_on_execution_failure=False,
+        )
+
+    # 3. Verify refund goes to bridge position, NOT reserves.
+    mock_bridge_position.adjust_bridge_capital_allocated.assert_called_once_with(
+        -Decimal("20"),
+    )
+    state.portfolio.adjust_reserves.assert_not_called()
+    mock_report_failure.assert_not_called()
+
+
+def test_deposit_cap_skipped_when_balance_below_minimum():
+    """Skip capping when the Safe balance is below MINIMUM_VAULT_DEPOSIT.
+
+    If capping would drop the deposit below 5 USDC, the cap is skipped and
+    the original planned amount is used.  The on-chain deposit will revert,
+    triggering the normal report_failure / mark_trade_failed path which
+    correctly unrolls allocated capital.
+
+    1. Create a live buy trade for 100 USDC.
+    2. Mock Safe EVM USDC balance to 3 USDC (below the 5 USDC minimum).
+    3. Verify deposit is built with the original 100 USDC (no capping).
+    4. Verify no capping key is stored in trade.other_data.
+    """
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("100.0"))
+
+    approve_fn = MagicMock()
+    deposit_fn = MagicMock()
+    approve_tx = MagicMock()
+    deposit_tx = MagicMock()
+
+    # 1. Create a live buy trade for 100 USDC.
+    # 2. Mock Safe balance to 3 USDC, below the 5 USDC minimum.
+    # 3. Verify original amount is used (cap skipped).
+    # 4. Verify no capping key stored.
+    with patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=3_000_000):
+        with patch(
+            "tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_approve_deposit_wallet_call",
+            return_value=approve_fn,
+        ) as build_approve:
+            with patch(
+                "tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_deposit_to_spot_call",
+                return_value=deposit_fn,
+            ) as build_deposit:
+                with patch.object(routing, "_sign_module_call", side_effect=[approve_tx, deposit_tx]):
+                    txs = routing._create_deposit_or_withdraw_txs(trade)
+
+    assert txs == [approve_tx, deposit_tx]
+    # Original 100 USDC used, not capped to 3
+    build_approve.assert_called_once_with(routing.lagoon_vault, evm_usdc_amount=100_000_000)
+    build_deposit.assert_called_once_with(routing.lagoon_vault, evm_usdc_amount=100_000_000)
+    assert "hypercore_capped_deposit_raw" not in trade.other_data
