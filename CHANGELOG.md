@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Fix vault universe and price history being re-downloaded on every `trade-ui` start by redirecting downloads from the non-persisted `~/.tradingstrategy` to the mounted `cache/vaults` directory, so the existing 24h cache survives container restarts (2026-06-09)
+
 - Fix Hypercore vault deposit reverts when Safe EVM USDC balance is less than planned deposit due to cumulative withdrawal drift (2026-06-09)
 
 - Add vault share balance and total supply to `check-wallet` command output; fix `lagoon-redeem` to claim unclaimed redemptions before starting and poll `maxRedeem` to avoid stale-read failures (2026-06-09)

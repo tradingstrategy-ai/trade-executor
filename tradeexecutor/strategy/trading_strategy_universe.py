@@ -2285,6 +2285,47 @@ def load_all_data(
         )
 
 
+def resolve_persisted_vault_download_root(
+    client: BaseClient,
+    explicit_root: str | Path | None,
+) -> str | Path:
+    """Pick a vault download directory that survives container restarts.
+
+    The trading-strategy library defaults vault downloads to
+    ``~/.tradingstrategy/vaults/downloads``
+    (:py:data:`tradingstrategy.alternative_data.vault.DEFAULT_VAULT_DOWNLOAD_ROOT`).
+    Under ``docker compose run`` that path lives on the ephemeral container
+    filesystem, so the library's 24h download cache is wiped on every start and
+    the ~200 MB vault universe + price history get re-downloaded each ``trade-ui``
+    (or any other) launch.
+
+    The trade-executor dataset cache (``client.transport.cache_path``, e.g.
+    ``cache/master-vault-v2``) is a mounted, persistent volume. We redirect vault
+    downloads to a sibling ``vaults/`` directory under the same mount root, so the
+    cache persists across container restarts and is shared across strategies on the
+    same host. The library guards each download with ``wait_other_writers()``, so a
+    shared directory is safe for concurrent strategies.
+
+    :param explicit_root:
+        Caller-provided root. Returned as-is when set (e.g. tests redirecting
+        downloads under ``tmp_path``), so this only changes the default behaviour.
+
+    :return:
+        Directory to use as the vault download root.
+    """
+    if explicit_root is not None:
+        return explicit_root
+
+    cache_path = getattr(getattr(client, "transport", None), "cache_path", None)
+    if not cache_path:
+        # Backtest / dummy clients without a persistent transport cache: keep the
+        # library default (shared user home cache).
+        return DEFAULT_VAULT_DOWNLOAD_ROOT
+
+    # cache_path is e.g. cache/<executor_id>; put downloads in the shared cache/vaults
+    return Path(cache_path).parent / "vaults"
+
+
 def load_vault_universe_with_metadata(
     client: Client,
     vaults: list[tuple[ChainId, JSONHexAddress]] | None = None,
@@ -2341,6 +2382,7 @@ def load_vault_universe_with_metadata(
     :return:
         VaultUniverse containing Vault instances with full VaultMetadata.
     """
+    download_root = resolve_persisted_vault_download_root(client, download_root)
     vault_universe = client.fetch_vault_universe(url=url, download_root=download_root)
 
     if vaults is not None:
@@ -2883,6 +2925,9 @@ def load_partial_data(
             assert vaults, "Vaults must be given to load Trading Strategy website vault price history"
             assert vault_pairs_df is not None, "Vault pairs must be materialised before loading Trading Strategy website vault history"
 
+            vault_history_download_root = resolve_persisted_vault_download_root(
+                client, vault_history_download_root,
+            )
             raw_website_vault_prices_df = client.fetch_vault_price_history(
                 download_root=vault_history_download_root,
             )
@@ -2907,7 +2952,7 @@ def load_partial_data(
                     log_vault_history_diagnostics,
                 )
 
-                vault_history_cache_root = vault_history_download_root or DEFAULT_VAULT_DOWNLOAD_ROOT
+                vault_history_cache_root = vault_history_download_root
                 vault_history_cache_path = Path(
                     client.transport.get_cached_file_path(
                         "vault-price-history.parquet",
