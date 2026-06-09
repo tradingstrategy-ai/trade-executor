@@ -64,16 +64,20 @@ def test_resolve_satellite_modules_precedence(tmp_path: Path, monkeypatch: pytes
 class _FakePair:
     """Minimal trading pair stub for the preflight check."""
 
-    def __init__(self, chain_id: int, *, vault: bool = False, bridge: bool = False):
+    def __init__(self, chain_id: int, *, vault: bool = False, bridge: bool = False, hypercore: bool = False):
         self.chain_id = chain_id
-        self._vault = vault
+        self._vault = vault or hypercore
         self._bridge = bridge
+        self._hypercore = hypercore
 
     def is_cctp_bridge(self) -> bool:
         return self._bridge
 
     def is_vault(self) -> bool:
         return self._vault
+
+    def is_hyperliquid_vault(self) -> bool:
+        return self._hypercore
 
 
 class _FakeUniverse:
@@ -141,3 +145,34 @@ def test_check_universe_contracts_resolve_custody_gating():
     )
     with pytest.raises(RuntimeError, match="satellite"):
         check_universe_contracts_resolve(web3config, universe, lagoon_model)
+
+
+def test_check_universe_contracts_resolve_skips_hypercore_vaults():
+    """HyperCore vault pairs are skipped — no satellite or EVM code requirement.
+
+    HyperCore (Hyperliquid) vault pairs are kind=vault but use the synthetic chain
+    id 9999 and are not EVM contracts. The preflight must not require a satellite
+    for chain 9999 nor try to read on-chain code for them, so a Lagoon strategy
+    that trades a HyperCore vault must not be blocked.
+
+    1. Build a Lagoon-custody universe with the primary chain plus a HyperCore
+       vault pair (synthetic chain 9999, no EVM code)
+    2. Assert the preflight does not raise even though no satellite is configured
+    """
+
+    # 1. Lagoon custody, HyperCore vault pair on synthetic chain 9999, no satellites
+    web3config = _FakeWeb3Config()
+    universe = _FakeUniverse(
+        pairs=[
+            _FakePair(ChainId.arbitrum.value),
+            _FakePair(ChainId.hypercore.value, hypercore=True),
+        ],
+        primary_chain=ChainId.arbitrum,
+    )
+    lagoon_model = _FakeExecutionModel(
+        tx_builder=_FakeTxBuilder(ChainId.arbitrum.value, vault=object()),
+        satellite_vaults={},
+    )
+
+    # 2. HyperCore vault is skipped -> no satellite required, no get_code() -> no raise
+    check_universe_contracts_resolve(web3config, universe, lagoon_model)

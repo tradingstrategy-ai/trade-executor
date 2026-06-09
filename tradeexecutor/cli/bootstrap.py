@@ -1071,6 +1071,12 @@ def check_universe_contracts_resolve(
     for pair in universe.iterate_pairs():
         if pair.is_cctp_bridge():
             continue
+        # HyperCore (Hyperliquid) vault pairs use a synthetic chain id (9999) and
+        # are not EVM contracts — they have their own multi-phase settlement and
+        # need no CCTP satellite. The CCTP planner skips them for the same reason,
+        # so they must neither require a satellite module nor be get_code()-checked.
+        if pair.is_hyperliquid_vault():
+            continue
         tradeable_chains.add(pair.chain_id)
 
         # (3) The vault contract must resolve on its own chain.
