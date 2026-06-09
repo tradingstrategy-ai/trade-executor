@@ -7,6 +7,8 @@
 
 - Fix vault universe and price history being re-downloaded on every `trade-ui` start by redirecting downloads from the non-persisted `~/.tradingstrategy` to a `vaults/` subdirectory inside the mounted dataset cache, so the existing 24h cache survives container restarts (2026-06-09)
 
+- Show estimated settlement time for pending async vault deposits in the trade-ui Lockup column — Ostium V1.5 shows a countdown (`settles 18.0h`), operator-driven ERC-7540 vaults (Lagoon) show `pending` (2026-06-09)
+
 - Fix Hypercore vault deposit reverts when Safe EVM USDC balance is less than planned deposit due to cumulative withdrawal drift (2026-06-09)
 
 - Add vault share balance and total supply to `check-wallet` command output; fix `lagoon-redeem` to claim unclaimed redemptions before starting and poll `maxRedeem` to avoid stale-read failures (2026-06-09)
