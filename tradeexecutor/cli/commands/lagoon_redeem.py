@@ -64,9 +64,14 @@ def _poll_and_finalise_redeem(vault, hot_wallet, web3, share_token, max_attempts
 def _claim_leftover_deposits(vault, hot_wallet, web3):
     """Claim any leftover deposits from a previous interrupted run.
 
-    When a deposit was settled but ``finalise_deposit()`` was never called,
+    When a deposit was settled but the deposit was never finalised,
     ``maxDeposit(owner)`` returns the claimable amount and shares sit in the
     vault contract waiting to be moved to the hot wallet.
+
+    Uses the 3-argument ERC-7540 ``deposit(assets, receiver, controller)``
+    instead of the 2-argument ERC-4626 ``deposit(assets, receiver)``, because
+    Lagoon vaults require the controller parameter to identify the original
+    deposit request.
     """
     denomination_token = vault.denomination_token
     max_deposit_raw = vault.vault_contract.functions.maxDeposit(hot_wallet.address).call()
@@ -77,8 +82,15 @@ def _claim_leftover_deposits(vault, hot_wallet, web3):
             deposit_human, denomination_token.symbol,
         )
         hot_wallet.sync_nonce(web3)
+        # ERC-7540 requires deposit(assets, receiver, controller) to claim
+        # async deposits. The 2-arg ERC-4626 deposit() does not work here.
+        bound_func = vault.vault_contract.functions.deposit(
+            max_deposit_raw,
+            hot_wallet.address,
+            hot_wallet.address,
+        )
         tx_hash = hot_wallet.transact_and_broadcast_with_contract(
-            vault.finalise_deposit(hot_wallet.address, raw_amount=max_deposit_raw),
+            bound_func,
             gas_limit=1_000_000,
         )
         assert_transaction_success_with_explanation(web3, tx_hash)
