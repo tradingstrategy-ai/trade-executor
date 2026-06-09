@@ -100,7 +100,7 @@ def test_claim_leftover_deposits() -> None:
         web3 = MagicMock()
         return vault, hot_wallet, web3
 
-    # 1. Unclaimed deposit: maxDeposit > 0 — finalise_deposit called
+    # 1. Unclaimed deposit: maxDeposit > 0 — 3-arg deposit() called
     vault, hot_wallet, web3 = make_mocks()
     deposit_raw = 10_000_000
     vault.vault_contract.functions.maxDeposit.return_value.call.return_value = deposit_raw
@@ -108,7 +108,7 @@ def test_claim_leftover_deposits() -> None:
     with patch("tradeexecutor.cli.commands.lagoon_redeem.assert_transaction_success_with_explanation"):
         _claim_leftover_deposits(vault, hot_wallet, web3)
 
-    vault.finalise_deposit.assert_called_once_with("0xABCD", raw_amount=deposit_raw)
+    vault.vault_contract.functions.deposit.assert_called_once_with(deposit_raw, "0xABCD", "0xABCD")
     hot_wallet.transact_and_broadcast_with_contract.assert_called_once()
 
     # 2. No unclaimed deposits: maxDeposit == 0 — no transactions
@@ -117,5 +117,4 @@ def test_claim_leftover_deposits() -> None:
 
     _claim_leftover_deposits(vault, hot_wallet, web3)
 
-    vault.finalise_deposit.assert_not_called()
     hot_wallet.transact_and_broadcast_with_contract.assert_not_called()
