@@ -140,6 +140,39 @@ def _get_chain_reserve_address(sync_model, execution_model, chain_id: ChainId) -
     return sync_model.get_token_storage_address() or sync_model.get_hot_wallet().address
 
 
+def _log_vault_share_details(sync_model, hot_wallet_address: str) -> None:
+    """Log vault share token balance and total supply for the asset manager."""
+    vault = getattr(sync_model, "vault", None)
+    if vault is None:
+        return
+
+    # Enzyme uses shares_token (plural), Lagoon/Velvet use share_token (singular).
+    # Velvet exposes fetch_share_token() but not a cached share_token property,
+    # so fall back to calling it directly.
+    share_token = getattr(vault, "share_token", None) or getattr(vault, "shares_token", None)
+    if share_token is None:
+        fetch_fn = getattr(vault, "fetch_share_token", None)
+        if callable(fetch_fn):
+            share_token = fetch_fn()
+    if share_token is None:
+        return
+
+    share_balance = share_token.fetch_balance_of(hot_wallet_address)
+
+    # Total supply: Enzyme exposes get_total_supply() returning raw int,
+    # Lagoon/Velvet share_token is a standard ERC-20 so use contract.functions.totalSupply()
+    raw_total_supply_fn = getattr(vault, "get_total_supply", None)
+    if callable(raw_total_supply_fn):
+        total_supply = share_token.convert_to_decimals(raw_total_supply_fn())
+    else:
+        raw = share_token.contract.functions.totalSupply().call()
+        total_supply = share_token.convert_to_decimals(raw)
+
+    logger.info("  Share token: %s (%s)", share_token.symbol, share_token.address)
+    logger.info("  Asset manager share balance: %s %s", share_balance, share_token.symbol)
+    logger.info("  Total share supply: %s %s", total_supply, share_token.symbol)
+
+
 def _log_chain_custody_details(sync_model, execution_model, chain_id: ChainId) -> None:
     """Log vault and custody addresses for a chain."""
     satellite_vault = _get_lagoon_satellite_vault(execution_model, chain_id)
@@ -285,6 +318,8 @@ def check_wallet(
         wallet_check_chains = _collect_wallet_check_chains(universe, default_chain_id, wallet_check_pairs)
         assets_by_chain = _collect_wallet_check_assets_by_chain(universe, wallet_check_pairs)
 
+    default_wallet_check_chain_id = _normalise_wallet_check_chain_id(default_chain_id)
+
     for chain_id in wallet_check_chains:
         web3 = _get_chain_web3(web3config, chain_id)
         reserve_assets = assets_by_chain.get(chain_id, [])
@@ -309,6 +344,8 @@ def check_wallet(
         logger.info("  Hot wallet is %s", sync_model.get_hot_wallet().address)
         gas_balance = web3.eth.get_balance(hot_wallet.address) / 10**18
         _log_chain_custody_details(sync_model, execution_model, chain_id)
+        if chain_id == default_wallet_check_chain_id:
+            _log_vault_share_details(sync_model, hot_wallet.address)
 
         logger.info("  Hot wallet %s has %f native gas tokens", hot_wallet.address, gas_balance)
         logger.info("  The gas error limit is %f tokens", min_gas_balance)

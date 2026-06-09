@@ -7,6 +7,8 @@
 
 - Fix Hypercore vault deposit reverts when Safe EVM USDC balance is less than planned deposit due to cumulative withdrawal drift (2026-06-09)
 
+- Add vault share balance and total supply to `check-wallet` command output; fix `lagoon-redeem` to claim unclaimed redemptions before starting and poll `maxRedeem` to avoid stale-read failures (2026-06-09)
+
 - Fix phantom Hypercore vault positions from untracked withdrawals: detect and close positions where the Hyperliquid API reports zero equity but state has positive deposited USDC (2026-06-08)
 
 - Fix CCTP bridge USDC decimals: resolve token decimals from pair universe instead of trusting `reserve_asset.decimals` which could be wrong (18 instead of 6) in ERC-4626 vault pair universes (2026-06-03)
