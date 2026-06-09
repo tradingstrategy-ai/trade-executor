@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 from eth_defi.erc_4626.vault_protocol.lagoon.testing import redeem_vault_shares
-from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 
 from tradeexecutor.cli.bootstrap import prepare_cache_and_token_cache, prepare_executor_id
 from tradeexecutor.cli.commands import shared_options
@@ -30,6 +30,26 @@ from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 
 logger = logging.getLogger(__name__)
+
+
+def _broadcast_and_wait(web3, hot_wallet, func, gas_limit=1_000_000):
+    """Broadcast a transaction and wait until all read RPC providers see it.
+
+    Production multi-provider setups (e.g. Arbitrum with sequencer + read RPCs)
+    have propagation delays between write and read providers. Without waiting
+    for all providers, state reads immediately after a transaction (like
+    ``balanceOf``) may hit a stale provider and return zero.
+    """
+    tx_hash = hot_wallet.transact_and_broadcast_with_contract(func, gas_limit=gas_limit)
+    receipt = wait_for_transaction_receipt_robust(
+        web3, tx_hash,
+        confirmation_block_count=2,
+        extra_sleep=2.0,
+    )
+    assert receipt["status"] == 1, (
+        f"Transaction {tx_hash.hex()} failed with status 0. "
+        f"Block: {receipt.get('blockNumber')}, gas used: {receipt.get('gasUsed')}"
+    )
 
 
 def _poll_and_finalise_redeem(vault, hot_wallet, web3, share_token, max_attempts=12, poll_delay=5):
@@ -54,11 +74,11 @@ def _poll_and_finalise_redeem(vault, hot_wallet, web3, share_token, max_attempts
     redeemable_human = share_token.convert_to_decimals(max_redeemable_raw)
     logger.info("  Finalising redemption of %s %s", redeemable_human, share_token.symbol)
     hot_wallet.sync_nonce(web3)
-    tx_hash = hot_wallet.transact_and_broadcast_with_contract(
+    # Wait for all read RPCs to see the receipt before reading balances
+    _broadcast_and_wait(
+        web3, hot_wallet,
         vault.finalise_redeem(hot_wallet.address, raw_amount=max_redeemable_raw),
-        gas_limit=1_000_000,
     )
-    assert_transaction_success_with_explanation(web3, tx_hash)
 
 
 def _claim_leftover_deposits(vault, hot_wallet, web3):
@@ -89,11 +109,8 @@ def _claim_leftover_deposits(vault, hot_wallet, web3):
             hot_wallet.address,
             hot_wallet.address,
         )
-        tx_hash = hot_wallet.transact_and_broadcast_with_contract(
-            bound_func,
-            gas_limit=1_000_000,
-        )
-        assert_transaction_success_with_explanation(web3, tx_hash)
+        # Wait for all read RPCs to sync before reading the share balance
+        _broadcast_and_wait(web3, hot_wallet, bound_func)
         share_balance = vault.share_token.fetch_balance_of(hot_wallet.address)
         logger.info("  Claimed deposit — share balance is now %s %s", share_balance, vault.share_token.symbol)
 
@@ -117,11 +134,11 @@ def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token):
             redeemable_human, share_token.symbol,
         )
         hot_wallet.sync_nonce(web3)
-        tx_hash = hot_wallet.transact_and_broadcast_with_contract(
+        # Wait for all read RPCs to sync so subsequent balance reads are fresh
+        _broadcast_and_wait(
+            web3, hot_wallet,
             vault.finalise_redeem(hot_wallet.address, raw_amount=max_redeemable_raw),
-            gas_limit=1_000_000,
         )
-        assert_transaction_success_with_explanation(web3, tx_hash)
         logger.info("  Claimed previous redemption")
 
     # State B: pending unsettled
@@ -136,16 +153,12 @@ def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token):
         )
         nav = vault.fetch_nav()
         hot_wallet.sync_nonce(web3)
-        tx_hash = hot_wallet.transact_and_broadcast_with_contract(
-            vault.post_new_valuation(nav), gas_limit=1_000_000,
-        )
-        assert_transaction_success_with_explanation(web3, tx_hash)
+        # Wait for all read RPCs to see valuation before settling
+        _broadcast_and_wait(web3, hot_wallet, vault.post_new_valuation(nav))
 
         hot_wallet.sync_nonce(web3)
-        tx_hash = hot_wallet.transact_and_broadcast_with_contract(
-            vault.settle_via_trading_strategy_module(nav), gas_limit=1_000_000,
-        )
-        assert_transaction_success_with_explanation(web3, tx_hash)
+        # Wait for all read RPCs to see settlement before polling maxRedeem
+        _broadcast_and_wait(web3, hot_wallet, vault.settle_via_trading_strategy_module(nav))
 
         _poll_and_finalise_redeem(vault, hot_wallet, web3, share_token)
         logger.info("  Settled and claimed previous pending redemption")
@@ -246,16 +259,12 @@ def lagoon_redeem(
     logger.info("  Current NAV: %s %s", nav, denomination_token.symbol)
 
     hot_wallet.sync_nonce(web3)
-    tx_hash = hot_wallet.transact_and_broadcast_with_contract(
-        vault.post_new_valuation(nav), gas_limit=1_000_000,
-    )
-    assert_transaction_success_with_explanation(web3, tx_hash)
+    # Wait for all read RPCs to see valuation before settling
+    _broadcast_and_wait(web3, hot_wallet, vault.post_new_valuation(nav))
 
     hot_wallet.sync_nonce(web3)
-    tx_hash = hot_wallet.transact_and_broadcast_with_contract(
-        vault.settle_via_trading_strategy_module(nav), gas_limit=1_000_000,
-    )
-    assert_transaction_success_with_explanation(web3, tx_hash)
+    # Wait for all read RPCs to see settlement before polling maxRedeem
+    _broadcast_and_wait(web3, hot_wallet, vault.settle_via_trading_strategy_module(nav))
 
     # Phase 3: Claim redeemed denomination tokens
     logger.info("Phase 3: Finalising redemption")

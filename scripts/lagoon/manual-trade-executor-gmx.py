@@ -119,7 +119,7 @@ from eth_defi.provider.anvil import (AnvilLaunch, fork_network_anvil,
 from eth_defi.provider.broken_provider import _latest_delayed_block_number_cache
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import USDC_NATIVE_TOKEN, TokenDetails, fetch_erc20_details
-from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.utils import setup_console_logging
 from eth_defi.vault.base import VaultSpec
 
@@ -155,8 +155,11 @@ def _broadcast_and_wait(
 
     signed_tx = lagoon_wallet.sign_transaction_with_new_nonce(tx)
     tx_hash = web3.eth.send_raw_transaction(signed_tx.rawTransaction)
-    assert_transaction_success_with_explanation(web3, tx_hash)
-    return web3.eth.wait_for_transaction_receipt(tx_hash)
+    # Wait for all read RPCs to see the receipt before returning,
+    # to avoid stale-provider reads on multi-provider setups
+    receipt = wait_for_transaction_receipt_robust(web3, tx_hash, confirmation_block_count=2, extra_sleep=2.0)
+    assert receipt["status"] == 1, f"Transaction failed: {tx_hash.hex()}"
+    return receipt
 
 
 def _check_shares(web3: Web3, vault_address: str, deployer_address: str, label: str):

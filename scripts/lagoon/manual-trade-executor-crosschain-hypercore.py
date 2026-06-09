@@ -131,7 +131,7 @@ from eth_defi.provider.anvil import (
 from eth_defi.provider.broken_provider import _latest_delayed_block_number_cache
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
-from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.utils import setup_console_logging
 
 from tradeexecutor.cli.main import app
@@ -224,7 +224,10 @@ def spoof_cctp_attestation(
 
     deployer.current_nonce = dest_web3.eth.get_transaction_count(deployer.address)
     tx_hash = deployer.transact_and_broadcast_with_contract(receive_fn)
-    assert_transaction_success_with_explanation(dest_web3, tx_hash)
+    # Wait for all read RPCs to see the CCTP receive receipt before
+    # reading token balances, to avoid stale-provider reads
+    receipt = wait_for_transaction_receipt_robust(dest_web3, tx_hash, confirmation_block_count=2, extra_sleep=2.0)
+    assert receipt["status"] == 1, f"receiveMessage failed: {tx_hash.hex()}"
 
     logger.info("receiveMessage successful: %s", tx_hash.hex() if hasattr(tx_hash, "hex") else tx_hash)
 
@@ -262,7 +265,10 @@ def complete_cctp_bridge(
 
     deployer.current_nonce = dest_web3.eth.get_transaction_count(deployer.address)
     tx_hash = deployer.transact_and_broadcast_with_contract(receive_fn)
-    assert_transaction_success_with_explanation(dest_web3, tx_hash)
+    # Wait for all read RPCs to see the CCTP receive receipt before
+    # reading token balances, to avoid stale-provider reads
+    receipt = wait_for_transaction_receipt_robust(dest_web3, tx_hash, confirmation_block_count=2, extra_sleep=2.0)
+    assert receipt["status"] == 1, f"receiveMessage failed: {tx_hash.hex()}"
 
     logger.info("receiveMessage successful: %s", tx_hash.hex() if hasattr(tx_hash, "hex") else tx_hash)
 

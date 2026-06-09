@@ -161,6 +161,7 @@ from eth_defi.provider.anvil import (AnvilLaunch, fork_network_anvil,
                                      fund_erc20_on_anvil, set_balance)
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
+from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.utils import setup_console_logging
 
@@ -1135,7 +1136,10 @@ def _run_test_lifecycle(
         deployer.sync_nonce(arb_web3)
         finalise_fn = vault.finalise_redeem(deployer.address)
         tx_hash = deployer.transact_and_broadcast_with_contract(finalise_fn)
-        assert_transaction_success_with_explanation(arb_web3, tx_hash)
+        # Wait for all read RPCs to sync before reading the USDC balance,
+        # otherwise fetch_balance_of may return stale data on multi-provider setups
+        receipt = wait_for_transaction_receipt_robust(arb_web3, tx_hash, confirmation_block_count=2, extra_sleep=2.0)
+        assert receipt["status"] == 1, f"finalise_redeem failed: {tx_hash.hex()}"
 
         deployer_usdc_after = arb_usdc.fetch_balance_of(deployer.address)
         redeemed_usdc = deployer_usdc_after - deployer_usdc_before
