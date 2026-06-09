@@ -72,7 +72,8 @@ class Deployment:
     initialised_at: Optional[datetime.datetime] = None
 
     def __repr__(self):
-        return f"<Deployment chain:{self.chain_id.name} address:{self.address} name:{self.vault_token_name} token:{self.vault_token_symbol}>"
+        chain = self.chain_id.name if self.chain_id is not None else None
+        return f"<Deployment chain:{chain} address:{self.address} name:{self.vault_token_name} token:{self.vault_token_symbol}>"
 
 
 @dataclass_json
