@@ -3,7 +3,7 @@ import secrets
 
 import pytest
 
-from tradeexecutor.cli.commands.app import app
+from tradeexecutor.cli.main import app  # cli.main import registers all @app.command()s
 
 pytestmark = pytest.mark.skipif(os.environ.get("JSON_RPC_ETHEREUM") is None, reason="Set JSON_RPC_ETHEREUM environment variable torun this test")
 

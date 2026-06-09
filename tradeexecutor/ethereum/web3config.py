@@ -401,6 +401,13 @@ class Web3Config:
         """Check that we are connected to the correct chain.
 
         The JSON-RPC node chain id should be the same as in the strategy module.
+
+        Skipped in test environments: when the strategy's default chain is a test
+        chain (see :py:data:`TEST_CHAIN_IDS`), or when the connected node itself
+        reports a test chain id. The latter covers multichain unit tests where a
+        plain Anvil node (chain id 31337) stands in for a real chain like Arbitrum.
+        Production nodes always report their real chain id (Anvil mainnet forks
+        preserve the forked chain id), so the validation still applies there.
         """
 
         assert self.default_chain_id, "default_chain_id not set"
@@ -409,9 +416,11 @@ class Web3Config:
         if self.default_chain_id not in TEST_CHAIN_IDS:
             actual = web3.eth.chain_id
             expected = self.default_chain_id.value
-            assert actual == expected, \
-                f"Strategy expected chain id {self.default_chain_id} ({expected}), " \
-                f"RPC says we got {actual}"
+            test_chain_id_values = {c.value for c in TEST_CHAIN_IDS}
+            if actual not in test_chain_id_values:
+                assert actual == expected, \
+                    f"Strategy expected chain id {self.default_chain_id} ({expected}), " \
+                    f"RPC says we got {actual}"
 
     @classmethod
     def setup_from_environment(

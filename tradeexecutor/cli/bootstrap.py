@@ -798,12 +798,20 @@ def configure_default_chain(
 
         if isinstance(mod, StrategyModuleInformation):
             # This path is not enabled for legacy strategy modules
-            if mod.get_default_chain_id():
-                # Strategy tells what chain to use
-                web3config.set_default_chain(mod.get_default_chain_id())
+            default_chain_id = mod.get_default_chain_id()
+            if default_chain_id and default_chain_id in web3config.connections:
+                # Strategy tells what chain to use and we have a matching connection.
+                # For multichain strategies this picks the right chain for vault
+                # contract calls instead of the first connection (see #1483).
+                web3config.set_default_chain(default_chain_id)
                 web3config.check_default_chain_id()
             else:
-                # User has configured only one chain, use it
+                # Fall back to the single configured connection. This covers:
+                # - unit tests using a local Anvil mainnet fork passed as
+                #   JSON_RPC_ANVIL, which is keyed as ChainId.anvil even though it forks
+                #   the strategy's real chain (e.g. Ethereum), so the strategy's
+                #   declared chain is not present as a connection key
+                # - single-chain setups where the strategy declares no default chain
                 web3config.choose_single_chain()
 
         else:
