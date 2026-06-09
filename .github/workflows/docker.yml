@@ -37,13 +37,14 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          target: tradeexecutor
           # platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # experimental: https://github.com/docker/build-push-action/blob/master/docs/advanced/cache.md#cache-backend-api
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=tradeexecutor
+          cache-to: type=gha,mode=max,scope=tradeexecutor
           # https://stackoverflow.com/questions/67051284/how-to-set-a-dockerfile-arg-in-github-actions
           # https://stackoverflow.com/a/63619526/315168
           build-args: |
