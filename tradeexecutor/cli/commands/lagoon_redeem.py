@@ -11,6 +11,7 @@ Redeems all vault shares held by the asset manager from a Lagoon vault:
 """
 
 import logging
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -29,6 +30,88 @@ from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 
 logger = logging.getLogger(__name__)
+
+
+def _poll_and_finalise_redeem(vault, hot_wallet, web3, share_token, max_attempts=12, poll_delay=5):
+    """Poll maxRedeem after settlement and finalise once claimable.
+
+    Avoids the stale-read problem where ``finalise_redeem()`` does a hidden
+    ``maxRedeem()`` call immediately after settlement, which can return 0 due
+    to RPC lag on live chains.
+    """
+    max_redeemable_raw = 0
+    for attempt in range(1, max_attempts + 1):
+        max_redeemable_raw = vault.vault_contract.functions.maxRedeem(hot_wallet.address).call()
+        if max_redeemable_raw > 0:
+            break
+        logger.info("  Waiting for settlement to propagate (attempt %d/%d)...", attempt, max_attempts)
+        time.sleep(poll_delay)
+
+    assert max_redeemable_raw > 0, (
+        f"Settlement completed but maxRedeem is still 0 for {hot_wallet.address} after polling"
+    )
+
+    redeemable_human = share_token.convert_to_decimals(max_redeemable_raw)
+    logger.info("  Finalising redemption of %s %s", redeemable_human, share_token.symbol)
+    hot_wallet.sync_nonce(web3)
+    tx_hash = hot_wallet.transact_and_broadcast_with_contract(
+        vault.finalise_redeem(hot_wallet.address, raw_amount=max_redeemable_raw),
+        gas_limit=1_000_000,
+    )
+    assert_transaction_success_with_explanation(web3, tx_hash)
+
+
+def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token):
+    """Claim any leftover redemptions from a previous interrupted run.
+
+    Handles two states:
+
+    - **State A** (settled but unclaimed): ``maxRedeem() > 0`` — finalise
+      immediately to claim denomination tokens.
+    - **State B** (pending unsettled): ``pendingRedeemRequest() > 0`` — post
+      valuation, settle, poll ``maxRedeem``, then finalise.
+    """
+    # State A: settled but unclaimed
+    max_redeemable_raw = vault.vault_contract.functions.maxRedeem(hot_wallet.address).call()
+    if max_redeemable_raw > 0:
+        redeemable_human = share_token.convert_to_decimals(max_redeemable_raw)
+        logger.info(
+            "Found %s %s settled but unclaimed shares from a previous redemption — claiming now",
+            redeemable_human, share_token.symbol,
+        )
+        hot_wallet.sync_nonce(web3)
+        tx_hash = hot_wallet.transact_and_broadcast_with_contract(
+            vault.finalise_redeem(hot_wallet.address, raw_amount=max_redeemable_raw),
+            gas_limit=1_000_000,
+        )
+        assert_transaction_success_with_explanation(web3, tx_hash)
+        logger.info("  Claimed previous redemption")
+
+    # State B: pending unsettled
+    pending_redeem_raw = vault.vault_contract.functions.pendingRedeemRequest(
+        0, hot_wallet.address
+    ).call()
+    if pending_redeem_raw > 0:
+        pending_human = share_token.convert_to_decimals(pending_redeem_raw)
+        logger.info(
+            "Found %s %s pending unsettled redemption — settling and claiming now",
+            pending_human, share_token.symbol,
+        )
+        nav = vault.fetch_nav()
+        hot_wallet.sync_nonce(web3)
+        tx_hash = hot_wallet.transact_and_broadcast_with_contract(
+            vault.post_new_valuation(nav), gas_limit=1_000_000,
+        )
+        assert_transaction_success_with_explanation(web3, tx_hash)
+
+        hot_wallet.sync_nonce(web3)
+        tx_hash = hot_wallet.transact_and_broadcast_with_contract(
+            vault.settle_via_trading_strategy_module(nav), gas_limit=1_000_000,
+        )
+        assert_transaction_success_with_explanation(web3, tx_hash)
+
+        _poll_and_finalise_redeem(vault, hot_wallet, web3, share_token)
+        logger.info("  Settled and claimed previous pending redemption")
 
 
 @app.command()
@@ -100,6 +183,8 @@ def lagoon_redeem(
     logger.info("  ETH balance: %.6f", eth_human)
     assert eth_human >= 0.001, f"Asset manager has {eth_human:.6f} ETH, need at least 0.001 for gas"
 
+    _claim_leftover_redemptions(vault, hot_wallet, web3, share_token)
+
     share_balance = share_token.fetch_balance_of(hot_wallet.address)
     logger.info("  Share balance: %s %s", share_balance, share_token.symbol)
     assert share_balance > 0, f"Asset manager has no vault shares to redeem"
@@ -136,11 +221,7 @@ def lagoon_redeem(
 
     # Phase 3: Claim redeemed denomination tokens
     logger.info("Phase 3: Finalising redemption")
-    hot_wallet.sync_nonce(web3)
-    tx_hash = hot_wallet.transact_and_broadcast_with_contract(
-        vault.finalise_redeem(hot_wallet.address), gas_limit=1_000_000,
-    )
-    assert_transaction_success_with_explanation(web3, tx_hash)
+    _poll_and_finalise_redeem(vault, hot_wallet, web3, share_token)
 
     # Report on-chain balances after redemption
     safe_balance = denomination_token.fetch_balance_of(vault.safe_address)

@@ -61,14 +61,39 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
     1. Patch the CLI dependencies so `check-wallet` runs against `hyper-ai-test.py` with a fake Lagoon sync model.
     2. Run the CLI command and capture its log output.
     3. Confirm the reserve token balance is logged separately for the hot wallet and the vault.
+    4. Confirm share token balance and total supply are logged for the default chain.
     """
     from tradeexecutor.cli.commands import check_wallet as check_wallet_module
+
+    SHARE_TOKEN_ADDRESS = "0x3333333333333333333333333333333333333333"
+    SHARE_TOKEN_SYMBOL = "lagVault"
+    SHARE_BALANCE = 42
+    SHARE_TOTAL_SUPPLY = 1000
+
+    class FakeShareToken:
+        def __init__(self):
+            self.address = SHARE_TOKEN_ADDRESS
+            self.symbol = SHARE_TOKEN_SYMBOL
+            self.contract = SimpleNamespace(
+                functions=SimpleNamespace(
+                    totalSupply=lambda: SimpleNamespace(call=lambda: SHARE_TOTAL_SUPPLY),
+                ),
+            )
+
+        def fetch_balance_of(self, address: str) -> int:
+            if address == HOT_WALLET_ADDRESS:
+                return SHARE_BALANCE
+            return 0
+
+        def convert_to_decimals(self, balance: int) -> int:
+            return balance
 
     class FakeLagoonVaultSyncModel:
         def __init__(self, hot_wallet_address: str, safe_address: str, vault_address: str):
             self._hot_wallet_address = hot_wallet_address
             self._safe_address = safe_address
             self.vault_address = vault_address
+            self.vault = SimpleNamespace(share_token=FakeShareToken())
 
         def get_hot_wallet(self):
             return SimpleNamespace(address=self._hot_wallet_address)
@@ -259,3 +284,8 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
     assert any("Vault reserve balance of USD Coin" in message for message in messages)
     assert any(f"Vault reserve balance of USD Coin ({USDC_ADDRESS})" in message for message in messages)
     assert any(f"Safe reserve balance of USD Coin ({BASE_USDC_ADDRESS.lower()})" in message for message in messages)
+
+    # 4. Confirm share token balance and total supply are logged for the default chain.
+    assert any(f"Share token: {SHARE_TOKEN_SYMBOL} ({SHARE_TOKEN_ADDRESS})" in message for message in messages)
+    assert any(f"Asset manager share balance: {SHARE_BALANCE} {SHARE_TOKEN_SYMBOL}" in message for message in messages)
+    assert any(f"Total share supply: {SHARE_TOTAL_SUPPLY} {SHARE_TOKEN_SYMBOL}" in message for message in messages)
