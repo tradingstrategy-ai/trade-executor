@@ -1,11 +1,11 @@
-"""CLI coverage for lagoon-redeem pre-flight redemption claiming."""
+"""CLI coverage for lagoon-redeem pre-flight deposit and redemption claiming."""
 
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tradeexecutor.cli.commands.lagoon_redeem import _claim_leftover_redemptions
+from tradeexecutor.cli.commands.lagoon_redeem import _claim_leftover_deposits, _claim_leftover_redemptions
 
 
 @pytest.mark.timeout(30)
@@ -75,4 +75,47 @@ def test_claim_leftover_redemptions() -> None:
     _claim_leftover_redemptions(vault, hot_wallet, web3, share_token)
 
     vault.finalise_redeem.assert_not_called()
+    hot_wallet.transact_and_broadcast_with_contract.assert_not_called()
+
+
+@pytest.mark.timeout(30)
+def test_claim_leftover_deposits() -> None:
+    """Pre-flight claims unclaimed deposits so shares move from vault contract to hot wallet.
+
+    1. Call with maxDeposit() > 0: verify finalise_deposit is called with explicit raw_amount.
+    2. Call with maxDeposit() == 0: verify no transactions broadcast.
+    """
+    tx_hash = b"\x00" * 32
+
+    def make_mocks():
+        vault = MagicMock()
+        vault.finalise_deposit.return_value = "mock_finalise_deposit"
+        vault.denomination_token.symbol = "USDC"
+        vault.denomination_token.convert_to_decimals.return_value = Decimal("10")
+        vault.share_token.symbol = "MASTER"
+        vault.share_token.fetch_balance_of.return_value = Decimal("10")
+        hot_wallet = MagicMock()
+        hot_wallet.address = "0xABCD"
+        hot_wallet.transact_and_broadcast_with_contract.return_value = tx_hash
+        web3 = MagicMock()
+        return vault, hot_wallet, web3
+
+    # 1. Unclaimed deposit: maxDeposit > 0 — finalise_deposit called
+    vault, hot_wallet, web3 = make_mocks()
+    deposit_raw = 10_000_000
+    vault.vault_contract.functions.maxDeposit.return_value.call.return_value = deposit_raw
+
+    with patch("tradeexecutor.cli.commands.lagoon_redeem.assert_transaction_success_with_explanation"):
+        _claim_leftover_deposits(vault, hot_wallet, web3)
+
+    vault.finalise_deposit.assert_called_once_with("0xABCD", raw_amount=deposit_raw)
+    hot_wallet.transact_and_broadcast_with_contract.assert_called_once()
+
+    # 2. No unclaimed deposits: maxDeposit == 0 — no transactions
+    vault, hot_wallet, web3 = make_mocks()
+    vault.vault_contract.functions.maxDeposit.return_value.call.return_value = 0
+
+    _claim_leftover_deposits(vault, hot_wallet, web3)
+
+    vault.finalise_deposit.assert_not_called()
     hot_wallet.transact_and_broadcast_with_contract.assert_not_called()

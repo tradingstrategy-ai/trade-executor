@@ -172,6 +172,73 @@ def _log_vault_share_details(sync_model, hot_wallet_address: str) -> None:
     logger.info("  Asset manager share balance: %s %s", share_balance, share_token.symbol)
     logger.info("  Total share supply: %s %s", total_supply, share_token.symbol)
 
+    _log_lagoon_unclaimed_shares(vault, share_token, hot_wallet_address)
+
+
+def _log_lagoon_unclaimed_shares(vault, share_token, hot_wallet_address: str) -> None:
+    """Check and log unclaimed Lagoon vault deposits and redemptions for the asset manager.
+
+    Lagoon vaults use ERC-7540 async deposit/redeem with intermediate states:
+
+    Deposits:
+    - Settled but unclaimed (maxDeposit > 0): shares ready to claim via finalise_deposit
+
+    Redemptions:
+    - Settled but unclaimed (maxRedeem > 0): denomination tokens ready to claim via finalise_redeem
+    - Pending unsettled (pendingRedeemRequest > 0): redemption requested but not yet settled
+    """
+    vault_contract = getattr(vault, "vault_contract", None)
+    if vault_contract is None:
+        return
+
+    denomination_token = getattr(vault, "denomination_token", None)
+
+    # Check unclaimed deposits (settled deposit, shares not yet claimed)
+    try:
+        max_deposit_raw = vault_contract.functions.maxDeposit(hot_wallet_address).call()
+    except Exception:
+        max_deposit_raw = 0
+
+    if max_deposit_raw > 0:
+        if denomination_token is not None:
+            deposit_human = denomination_token.convert_to_decimals(max_deposit_raw)
+            deposit_symbol = denomination_token.symbol
+        else:
+            deposit_human = max_deposit_raw
+            deposit_symbol = "raw"
+        logger.warning(
+            "  UNCLAIMED DEPOSIT: %s %s settled but unclaimed (run lagoon-redeem to claim shares)",
+            deposit_human, deposit_symbol,
+        )
+
+    # Check settled but unclaimed redemptions
+    try:
+        max_redeemable_raw = vault_contract.functions.maxRedeem(hot_wallet_address).call()
+    except Exception:
+        max_redeemable_raw = 0
+
+    if max_redeemable_raw > 0:
+        redeemable_human = share_token.convert_to_decimals(max_redeemable_raw)
+        logger.warning(
+            "  UNCLAIMED REDEMPTION: %s %s settled but unclaimed shares (run lagoon-redeem to claim)",
+            redeemable_human, share_token.symbol,
+        )
+
+    # Check pending unsettled redemptions
+    try:
+        pending_redeem_raw = vault_contract.functions.pendingRedeemRequest(
+            0, hot_wallet_address
+        ).call()
+    except Exception:
+        pending_redeem_raw = 0
+
+    if pending_redeem_raw > 0:
+        pending_human = share_token.convert_to_decimals(pending_redeem_raw)
+        logger.warning(
+            "  PENDING REDEMPTION: %s %s pending unsettled shares (run lagoon-redeem to settle and claim)",
+            pending_human, share_token.symbol,
+        )
+
 
 def _log_chain_custody_details(sync_model, execution_model, chain_id: ChainId) -> None:
     """Log vault and custody addresses for a chain."""

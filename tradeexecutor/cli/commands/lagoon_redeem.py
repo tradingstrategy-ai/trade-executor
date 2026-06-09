@@ -61,6 +61,31 @@ def _poll_and_finalise_redeem(vault, hot_wallet, web3, share_token, max_attempts
     assert_transaction_success_with_explanation(web3, tx_hash)
 
 
+def _claim_leftover_deposits(vault, hot_wallet, web3):
+    """Claim any leftover deposits from a previous interrupted run.
+
+    When a deposit was settled but ``finalise_deposit()`` was never called,
+    ``maxDeposit(owner)`` returns the claimable amount and shares sit in the
+    vault contract waiting to be moved to the hot wallet.
+    """
+    denomination_token = vault.denomination_token
+    max_deposit_raw = vault.vault_contract.functions.maxDeposit(hot_wallet.address).call()
+    if max_deposit_raw > 0:
+        deposit_human = denomination_token.convert_to_decimals(max_deposit_raw)
+        logger.info(
+            "Found %s %s settled but unclaimed deposit — claiming shares now",
+            deposit_human, denomination_token.symbol,
+        )
+        hot_wallet.sync_nonce(web3)
+        tx_hash = hot_wallet.transact_and_broadcast_with_contract(
+            vault.finalise_deposit(hot_wallet.address, raw_amount=max_deposit_raw),
+            gas_limit=1_000_000,
+        )
+        assert_transaction_success_with_explanation(web3, tx_hash)
+        share_balance = vault.share_token.fetch_balance_of(hot_wallet.address)
+        logger.info("  Claimed deposit — share balance is now %s %s", share_balance, vault.share_token.symbol)
+
+
 def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token):
     """Claim any leftover redemptions from a previous interrupted run.
 
@@ -183,6 +208,7 @@ def lagoon_redeem(
     logger.info("  ETH balance: %.6f", eth_human)
     assert eth_human >= 0.001, f"Asset manager has {eth_human:.6f} ETH, need at least 0.001 for gas"
 
+    _claim_leftover_deposits(vault, hot_wallet, web3)
     _claim_leftover_redemptions(vault, hot_wallet, web3, share_token)
 
     share_balance = share_token.fetch_balance_of(hot_wallet.address)
