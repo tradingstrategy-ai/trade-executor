@@ -1455,6 +1455,38 @@ class HypercoreVaultRouting(RoutingModel):
                 raw_amount,
             )
 
+        # --- Live deposit balance preflight check ---
+        # In sequential execution, preceding withdrawals have already settled
+        # and returned USDC to the Safe.  Read the actual EVM USDC balance
+        # and cap the deposit if the Safe has less than planned.
+        #
+        # Cumulative shortfalls arise from withdrawal bridge fees, PnL drift
+        # between valuation and execution, and HyperCore withdrawal safety
+        # margins.  Without this cap the ERC-4626 deposit reverts with
+        # "ERC20: transfer amount exceeds balance" and crashes the batch.
+        if trade.is_buy() and not self.simulate:
+            available_balance_raw = self._fetch_safe_evm_usdc_balance()
+            if raw_amount > available_balance_raw:
+                shortfall_raw = raw_amount - available_balance_raw
+                logger.warning(
+                    "Hypercore deposit preflight: Safe %s has %d raw USDC (%s USDC) "
+                    "but deposit needs %d raw USDC (%s USDC); capping deposit "
+                    "from %d to %d raw USDC (shortfall %d raw, %s USDC)",
+                    self.safe_address,
+                    available_balance_raw,
+                    raw_to_usdc(available_balance_raw),
+                    raw_amount,
+                    raw_to_usdc(raw_amount),
+                    raw_amount,
+                    available_balance_raw,
+                    shortfall_raw,
+                    raw_to_usdc(shortfall_raw),
+                )
+                raw_amount = available_balance_raw
+                if not hasattr(trade, "other_data") or trade.other_data is None:
+                    trade.other_data = {}
+                trade.other_data["hypercore_capped_deposit_raw"] = raw_amount
+
         # Enforce Hyperliquid minimum vault deposit/withdrawal amounts.
         # Hyperliquid silently rejects vault transfers below the minimum
         # threshold — no error, no event, the USDC just stays in the
@@ -1924,7 +1956,22 @@ class HypercoreVaultRouting(RoutingModel):
         activation_cost = 0
         if hasattr(trade, "other_data") and trade.other_data:
             activation_cost = trade.other_data.get("hypercore_activation_cost_raw", 0)
-        deposit_raw = self._get_raw_usdc_amount(trade) - activation_cost
+
+        # If the deposit was capped during preflight (Safe had less USDC
+        # than planned), use the capped amount.  Phase 1's approve + deposit
+        # was built with this amount, so escrow wait and phase 2 must use
+        # exactly the same value.
+        if hasattr(trade, "other_data") and trade.other_data and "hypercore_capped_deposit_raw" in trade.other_data:
+            deposit_raw = trade.other_data["hypercore_capped_deposit_raw"]
+            logger.info(
+                "Using capped deposit amount for settlement: %d raw USDC (%s USDC) "
+                "(planned was %d raw USDC, activation cost was %d raw)",
+                deposit_raw, raw_to_usdc(deposit_raw),
+                self._get_raw_usdc_amount(trade), activation_cost,
+            )
+        else:
+            deposit_raw = self._get_raw_usdc_amount(trade) - activation_cost
+
         session = self._get_session()
         planned_reserve = trade.get_planned_reserve()
         baseline_spot_usdc: Decimal | None = None
@@ -2034,7 +2081,13 @@ class HypercoreVaultRouting(RoutingModel):
         # CoreWriter actions are NOT atomic: the EVM tx can succeed but the
         # deposit may be silently rejected by HyperCore.  We poll the API
         # until vault equity appears/increases, or fail the trade.
-        executed_reserve = planned_reserve
+        # If the deposit was capped, executed_reserve is the capped deposit
+        # plus activation cost (the total USDC that left the Safe for this
+        # trade).  Otherwise use the full planned_reserve.
+        if hasattr(trade, "other_data") and trade.other_data and "hypercore_capped_deposit_raw" in trade.other_data:
+            executed_reserve = raw_to_usdc(deposit_raw + activation_cost)
+        else:
+            executed_reserve = planned_reserve
         actual_deposit_human = raw_to_usdc(deposit_raw)
 
         try:
@@ -2089,6 +2142,33 @@ class HypercoreVaultRouting(RoutingModel):
             lp_fees=0,
             native_token_price=0,
         )
+
+        # Refund the unused portion of planned reserve back to the same
+        # source that funded the trade.  start_execution() allocates the full
+        # planned_reserve from either reserves or a CCTP bridge position;
+        # mark_trade_success() zeroes reserve_currency_allocated but does NOT
+        # return any unused portion.
+        if executed_reserve < planned_reserve:
+            refund_amount = planned_reserve - executed_reserve
+            # Bridge-funded trades: return capital to the bridge position,
+            # not to home-chain reserves.
+            bridge_position = state.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+            if bridge_position is not None:
+                bridge_position.adjust_bridge_capital_allocated(-refund_amount)
+                logger.info(
+                    "Refunded %s USDC to bridge position (planned %s, executed %s) for trade %s",
+                    refund_amount, planned_reserve, executed_reserve, trade.trade_id,
+                )
+            else:
+                state.portfolio.adjust_reserves(
+                    trade.reserve_currency,
+                    refund_amount,
+                    f"Vault partial deposit refund: trade #{trade.trade_id}",
+                )
+                logger.info(
+                    "Refunded %s USDC to reserves (planned %s, executed %s) for trade %s",
+                    refund_amount, planned_reserve, executed_reserve, trade.trade_id,
+                )
 
         logger.info(
             "Hypercore vault deposit settled: %s USDC deposited, equity %s",
