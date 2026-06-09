@@ -51,7 +51,7 @@ from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import uniswap_v3
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import uniswap_v3_sell_valuation_factory
 from tradeexecutor.ethereum.velvet.execution import VelvetExecution
 from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
-from tradeexecutor.ethereum.web3config import Web3Config
+from tradeexecutor.ethereum.web3config import Web3Config, get_rpc_env_var_name
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata, OnChainData
 from tradeexecutor.state.state import State
@@ -805,13 +805,25 @@ def configure_default_chain(
                 # contract calls instead of the first connection (see #1483).
                 web3config.set_default_chain(default_chain_id)
                 web3config.check_default_chain_id()
+            elif default_chain_id and ChainId.anvil in web3config.connections:
+                # The strategy's chain is not directly connected, but we have a local
+                # Anvil mainnet fork passed as JSON_RPC_ANVIL. It is keyed as
+                # ChainId.anvil even though it forks the strategy's real chain (e.g.
+                # Ethereum), so use that single fork connection. Used by unit tests.
+                web3config.choose_single_chain()
+            elif default_chain_id:
+                # Strategy declares a live chain we have no JSON-RPC connection for, and
+                # this is not a test/fork setup. Fail fast instead of silently running
+                # on whatever single chain happens to be configured.
+                raise RuntimeError(
+                    f"Strategy default chain {default_chain_id.name} ({default_chain_id.value}) "
+                    f"has no JSON-RPC connection configured. "
+                    f"Connected chains: {[c.name for c in web3config.connections]}. "
+                    f"Set {get_rpc_env_var_name(default_chain_id)}."
+                )
             else:
-                # Fall back to the single configured connection. This covers:
-                # - unit tests using a local Anvil mainnet fork passed as
-                #   JSON_RPC_ANVIL, which is keyed as ChainId.anvil even though it forks
-                #   the strategy's real chain (e.g. Ethereum), so the strategy's
-                #   declared chain is not present as a connection key
-                # - single-chain setups where the strategy declares no default chain
+                # Strategy declares no default chain: single-chain setup, use the sole
+                # configured connection.
                 web3config.choose_single_chain()
 
         else:
