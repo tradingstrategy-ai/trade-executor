@@ -168,6 +168,12 @@ class Web3Config:
     #: Is this mainnet fork for simulation deployment
     mainnet_fork_simulation = False
 
+    #: Are we running under unit tests (``UNIT_TESTING`` env var).
+    #:
+    #: Used to relax chain-id validation when a plain Anvil node (chain id 31337)
+    #: stands in for a real chain in tests. Never set on live commands.
+    unit_testing = False
+
     @property
     def anvil(self) -> Optional[AnvilLaunch]:
         """Backward-compatible single Anvil accessor."""
@@ -401,6 +407,15 @@ class Web3Config:
         """Check that we are connected to the correct chain.
 
         The JSON-RPC node chain id should be the same as in the strategy module.
+
+        Skipped when the strategy's default chain is itself a test chain (see
+        :py:data:`TEST_CHAIN_IDS`).
+
+        Additionally, **only in unit testing or fork simulation mode**, the check is
+        relaxed when the connected node reports a test chain id (e.g. a plain Anvil
+        node, chain id 31337, standing in for a real chain like Arbitrum in a
+        multichain test). Live commands always enforce the match: pointing a live
+        ``JSON_RPC_*`` at a plain Anvil node still fails fast.
         """
 
         assert self.default_chain_id, "default_chain_id not set"
@@ -409,9 +424,14 @@ class Web3Config:
         if self.default_chain_id not in TEST_CHAIN_IDS:
             actual = web3.eth.chain_id
             expected = self.default_chain_id.value
-            assert actual == expected, \
-                f"Strategy expected chain id {self.default_chain_id} ({expected}), " \
-                f"RPC says we got {actual}"
+            test_chain_id_values = {c.value for c in TEST_CHAIN_IDS}
+            # Only tolerate a test-chain node (e.g. plain Anvil 31337) standing in for
+            # a real chain when explicitly in unit testing or fork simulation mode.
+            in_test_or_fork = self.unit_testing or self.mainnet_fork_simulation
+            if not (in_test_or_fork and actual in test_chain_id_values):
+                assert actual == expected, \
+                    f"Strategy expected chain id {self.default_chain_id} ({expected}), " \
+                    f"RPC says we got {actual}"
 
     @classmethod
     def setup_from_environment(
@@ -443,6 +463,7 @@ class Web3Config:
 
         web3config.gas_price_method = gas_price_method
         web3config.mainnet_fork_simulation = simulate
+        web3config.unit_testing = unit_testing
 
         # Lowercase all key names
         kwargs = {k.lower(): v for k, v in kwargs.items()}

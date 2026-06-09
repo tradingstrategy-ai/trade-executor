@@ -2,6 +2,8 @@ import os
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from eth_defi.gas import GasPriceMethod
 from eth_defi.hyperliquid.block import HYPEREVM_BIG_BLOCK_GAS_LIMIT
 from eth_defi.provider.multi_provider import MultiProviderWeb3
@@ -92,3 +94,32 @@ def test_configure_web3_simulate_hyperliquid_uses_big_block_gas_limit():
     # 3. Confirm the Anvil launcher receives the HyperEVM large-block gas limit override.
     assert config.connections[ChainId.hyperliquid] is fake_web3
     assert launch_anvil_mock.call_args.kwargs["gas_limit"] == HYPEREVM_BIG_BLOCK_GAS_LIMIT
+
+
+def test_check_default_chain_id_live_strict_vs_unit_testing():
+    """check_default_chain_id() only tolerates a test-chain node in test/fork mode.
+
+    A node reporting a test chain id (e.g. plain Anvil 31337) may stand in for a
+    real chain in unit tests, but a live command pointing a ``JSON_RPC_*`` at such a
+    node is a misconfiguration that must fail fast.
+
+    1. A live command (unit_testing=False) where the node reports Anvil 31337 but the
+       strategy expects Arbitrum must raise.
+    2. The same configuration is tolerated when unit_testing=True.
+    """
+
+    # Fake web3 reporting the plain Anvil chain id, mapped as if it were Arbitrum.
+    fake_web3 = SimpleNamespace(eth=SimpleNamespace(chain_id=ChainId.anvil.value))
+
+    config = Web3Config()
+    config.connections[ChainId.arbitrum] = fake_web3
+    config.set_default_chain(ChainId.arbitrum)
+
+    # 1. Live command must fail fast on the chain mismatch.
+    config.unit_testing = False
+    with pytest.raises(AssertionError):
+        config.check_default_chain_id()
+
+    # 2. Under unit testing the test-chain node is tolerated.
+    config.unit_testing = True
+    config.check_default_chain_id()

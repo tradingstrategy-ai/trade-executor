@@ -296,6 +296,17 @@ class VaultRouting(RoutingModel):
         trade.other_data["vault_deposit_amount"] = str(swap_amount)
         trade.other_data["vault_owner_address"] = address
 
+        # Estimate when this async deposit will settle, so the trade-ui can show
+        # an ETA while the request is in vault_settlement_pending. Ostium V1.5
+        # returns a real timestamp; operator-driven ERC-7540 vaults (Lagoon)
+        # return None (no deterministic on-chain schedule).
+        try:
+            settles_at = deposit_manager.get_deposit_delay_over(address)
+        except Exception as e:
+            logger.warning("Could not estimate vault deposit settlement time for %s: %s", target_vault.vault_address, e)
+            settles_at = None
+        trade.other_data["vault_settlement_estimated_at"] = settles_at.isoformat() if settles_at else None
+
         # Sign approve tx first
         txs = [tx_builder.sign_transaction(
             contract=target_vault.denomination_token.contract,

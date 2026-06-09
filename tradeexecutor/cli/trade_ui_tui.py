@@ -37,7 +37,9 @@ from tradingstrategy.liquidity import LiquidityDataUnavailable
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
@@ -158,20 +160,68 @@ def _get_position_info(state: State, pair: TradingPairIdentifier) -> str:
     return f"{quantity} {symbol}"
 
 
-def _format_lockup(state: State, pair: TradingPairIdentifier) -> Text:
-    """Format vault lockup time remaining from the stored expiry timestamp.
+def _format_remaining(remaining: datetime.timedelta, prefix: str = "") -> str:
+    """Format a positive timedelta as a compact ``18.5h`` / ``2.1d`` string."""
+    hours = remaining.total_seconds() / 3600
+    if hours >= 24:
+        return f"{prefix}{hours / 24:.1f}d"
+    return f"{prefix}{hours:.1f}h"
 
-    Shows remaining hours until the lockup expires, or ``Unlocked``
-    if the lockup has already passed. Non-vault pairs or positions
-    without lockup data show a dash.
+
+def _get_pending_settlement_trade(position: TradingPosition):
+    """Return the first pending async-deposit trade for a position, or ``None``.
+
+    A deposit that has been requested on-chain but not yet settled sits in
+    :py:attr:`TradeStatus.vault_settlement_pending`.
+    """
+    for trade in position.trades.values():
+        if trade.is_buy() and trade.get_status() == TradeStatus.vault_settlement_pending:
+            return trade
+    return None
+
+
+def _format_lockup(state: State, pair: TradingPairIdentifier) -> Text:
+    """Format the Lockup column for a vault pair.
+
+    Priority:
+
+    1. If an async deposit is pending settlement, show the estimated
+       settlement time (``settles 18.5h``), ``settling`` when the stored
+       estimate has already passed, or ``pending`` when no on-chain ETA is
+       available (operator-driven ERC-7540 vaults like Lagoon).
+    2. Otherwise show the lockup time remaining from the stored expiry
+       timestamp, or ``Unlocked`` once it has passed.
+
+    Non-vault pairs or positions without any of this data show a dash.
     """
     if not pair.is_vault():
         return Text("-", style="dim", justify="right")
 
-    position = state.portfolio.get_position_by_trading_pair(pair)
+    # Include pending positions — an unsettled first deposit may not yet be
+    # an open position.
+    position = state.portfolio.get_position_by_trading_pair(pair, pending=True)
     if position is None:
         return Text("-", style="dim", justify="right")
 
+    now = native_datetime_utc_now()
+
+    # 1. Pending async deposit settlement takes priority over lockup.
+    pending_trade = _get_pending_settlement_trade(position)
+    if pending_trade is not None:
+        settles_at_str = pending_trade.other_data.get("vault_settlement_estimated_at")
+        if settles_at_str is None:
+            return Text("pending", style="yellow", justify="right")
+        try:
+            settles_at = datetime.datetime.fromisoformat(settles_at_str)
+        except (ValueError, TypeError):
+            return Text("pending", style="yellow", justify="right")
+        remaining = settles_at - now
+        if remaining.total_seconds() <= 0:
+            # Estimate has passed — settlement is due / in progress.
+            return Text("settling", style="yellow", justify="right")
+        return Text(_format_remaining(remaining, prefix="settles "), style="yellow", justify="right")
+
+    # 2. Fall back to lockup expiry.
     expires_at_str = position.other_data.get("vault_lockup_expires_at")
     if expires_at_str is None:
         return Text("-", style="dim", justify="right")
@@ -181,16 +231,11 @@ def _format_lockup(state: State, pair: TradingPairIdentifier) -> Text:
     except (ValueError, TypeError):
         return Text("-", style="dim", justify="right")
 
-    now = native_datetime_utc_now()
     remaining = expires_at - now
     if remaining.total_seconds() <= 0:
         return Text("Unlocked", style="green", justify="right")
 
-    hours = remaining.total_seconds() / 3600
-    if hours >= 24:
-        days = hours / 24
-        return Text(f"{days:.1f}d", style="yellow", justify="right")
-    return Text(f"{hours:.1f}h", style="yellow", justify="right")
+    return Text(_format_remaining(remaining), style="yellow", justify="right")
 
 
 def _get_pair_symbol(pair: TradingPairIdentifier) -> str:
@@ -459,7 +504,7 @@ class PairSelectionApp(App):
         table.add_column("TVL", key="tvl", width=14)
         table.add_column("Deposits", key="deposits", width=14)
         table.add_column("Position", key="position", width=20)
-        table.add_column("Lockup", key="lockup", width=10)
+        table.add_column("Lockup", key="lockup", width=14)
 
         for idx, pair in enumerate(self.sorted_pairs, 1):
             symbol = _get_pair_symbol(pair)
