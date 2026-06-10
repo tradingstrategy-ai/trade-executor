@@ -11,6 +11,7 @@ import datetime
 
 from eth_defi.compat import native_datetime_utc_now
 
+from tradeexecutor.ethereum.cctp.routing import estimate_receive_message_gas
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 
@@ -195,7 +196,7 @@ def check_and_retry_cctp_in_transit(
                 receive_tx = dest_tx_builder.sign_transaction(
                     message_transmitter,
                     receive_fn,
-                    gas_limit=200_000,
+                    gas_limit=estimate_receive_message_gas(receive_fn, dest_wallet.address),
                     asset_deltas=[],
                     notes=f"CCTP receiveMessage retry chain {source_chain_id} -> {dest_chain_id}",
                 )

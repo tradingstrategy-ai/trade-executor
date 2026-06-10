@@ -20,6 +20,49 @@ from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 logger = logging.getLogger(__name__)
 
 
+#: Gas limit fallback for CCTP ``receiveMessage`` on the destination chain.
+#:
+#: ``receiveMessage`` verifies Circle's attestation signature(s) and then mints
+#: USDC through the TokenMinter — strictly more work than ``depositForBurn``
+#: (which we sign with a 300_000 limit). A cold ``SSTORE`` when the recipient
+#: Safe holds no USDC yet pushes real usage past the old hardcoded 200_000
+#: limit, so the mint runs out of gas and reverts on-chain. The burn is then
+#: stranded ``cctp_in_transit`` with no funds minted on the destination chain.
+#: eth_defi's reference ``bridge.py`` uses 1_000_000 for the same call.
+CCTP_RECEIVE_GAS_FALLBACK = 1_000_000
+
+
+def estimate_receive_message_gas(receive_fn, sender: str) -> int:
+    """Estimate gas for a CCTP ``receiveMessage`` call with a safety buffer.
+
+    We estimate against the live node and double the result to cover cold vs.
+    warm storage differences between estimation and inclusion. On any failure
+    (e.g. a transient RPC error like the one that originally masked this bug)
+    we fall back to :data:`CCTP_RECEIVE_GAS_FALLBACK` so a flaky node never
+    blocks settlement. Gas is only charged for what is consumed, so an
+    over-estimate is safe.
+
+    :param receive_fn:
+        Bound ``receiveMessage()`` contract function on the destination chain.
+
+    :param sender:
+        Address that will broadcast the transaction.
+
+    :return:
+        Gas limit to use when signing the receive transaction.
+    """
+    try:
+        estimated = receive_fn.estimate_gas({"from": sender})
+        return max(int(estimated * 2), 300_000)
+    except Exception as e:
+        logger.warning(
+            "CCTP receiveMessage gas estimation failed, using fallback %d: %s",
+            CCTP_RECEIVE_GAS_FALLBACK,
+            e,
+        )
+        return CCTP_RECEIVE_GAS_FALLBACK
+
+
 class CctpBridgeRoutingState(RoutingState):
     """Tracks CCTP bridge transactions for the current cycle."""
 
@@ -319,7 +362,7 @@ class CctpBridgeRouting(RoutingModel):
         receive_tx = dest_tx_builder.sign_transaction(
             message_transmitter,
             receive_fn,
-            gas_limit=200_000,
+            gas_limit=estimate_receive_message_gas(receive_fn, dest_wallet.address),
             asset_deltas=[],
             notes=f"CCTP receiveMessage chain {source_chain_id} -> {dest_chain_id}",
         )

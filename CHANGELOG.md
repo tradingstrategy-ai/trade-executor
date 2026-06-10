@@ -5,6 +5,10 @@
 
 - Breaking API changes
 
+- Add `lagoon-reclaim-satellites` CLI command that consolidates capital scattered across multichain Lagoon satellite Safes back into the master vault: it displays a table of all on-chain Safe USDC balances, auto-detects unreceived CCTP burns by scanning `DepositForBurn` events from our Safes and checking Circle's Iris API plus the destination chain's `usedNonces()`, lists the planned reclaim actions and asks for y/n confirmation, completes any in-transit CCTP transfers (including burns missing from the state file, auto-detected or given via `--complete-burn-tx <chain>:<tx_hash>`), bridges each satellite Safe's USDC back to the master Safe via CCTP, and verifies every destination-chain mint confirmed. Supports `--dry-run` to stop after the action list without moving funds (2026-06-10)
+
+- Fix CCTP `receiveMessage` reverting out-of-gas on the destination chain: the mint was signed with a hardcoded 200,000 gas limit (less than the 300,000 used for the lighter `depositForBurn`), so the attestation-verify-plus-mint ran out of gas and stranded the burn `cctp_in_transit`. Gas is now estimated live with a 2x buffer and a generous fixed fallback, in both the live settlement and startup-retry paths (2026-06-10)
+
 - Speed up Docker release image builds: use a registry-backed BuildKit cache (a dedicated `:buildcache` ghcr tag) instead of the GitHub Actions cache that was being LRU-evicted between releases, add a Poetry cache mount so PyPI wheels survive `eth_defi`/`trading-strategy` dependency bumps, and check out only the `lagoon-v0` contracts submodule instead of all 23 of web3-ethereum-defi's nested submodules (2026-06-10)
 
 - Auto-discover multichain Lagoon satellite vault modules from the `lagoon-deploy-vault` deployment artifact placed next to the state file, removing the manual `SATELLITE_MODULES` env hand-off that stranded bridged USDC on satellite chains. `perform-test-trade` and `start` now fail fast with an actionable error when a cross-chain destination has no satellite module configured, before any irreversible CCTP bridge (2026-06-10)

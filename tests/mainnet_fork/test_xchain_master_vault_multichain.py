@@ -853,3 +853,142 @@ def test_xchain_master_vault_lagoon_cli_bridged_deposit(
         "Bridged USDC was not deposited into the Base vault under the master Safe — "
         "the CCTP mint recipient / custody resolution did not target the real Safe contract."
     )
+
+
+@pytest.mark.timeout(900)
+def test_xchain_master_vault_lagoon_cli_reclaim_satellites(
+    anvil_arbitrum: AnvilLaunch,
+    anvil_base: AnvilLaunch,
+    anvil_hyperevm: AnvilLaunch,
+    arb_web3: Web3,
+    base_web3: Web3,
+    hyper_web3: Web3,
+    strategy_file: Path,
+    tmp_path: Path,
+):
+    """CLI integration: reclaim satellite Safe capital back into the master vault.
+
+    Pure Typer-CLI in-process integration — everything is driven through
+    ``cli.main([...])`` and only on-chain state / the state file are read to
+    assert. Exercises the operational recovery flow for capital scattered
+    across satellite chains (e.g. stranded by a failed CCTP receive):
+
+    1. Deploy a multichain Lagoon vault via ``lagoon-deploy-vault`` (master Safe
+       on Arbitrum, satellite guard modules on Base + HyperEVM) and seed it
+       through ``init`` + ``lagoon-first-deposit``.
+    2. Simulate capital stranded on the Base satellite by minting USDC directly
+       to the shared Safe address on the Base fork. HyperEVM stays empty to
+       exercise the dust-skip branch.
+    3. Dry run: ``lagoon-reclaim-satellites --dry-run`` must report balances
+       without moving any funds on either chain.
+    4. Live run: ``lagoon-reclaim-satellites`` burns the Base Safe USDC through
+       the satellite guard module and the master Safe balance increases by the
+       stranded amount (the mint is materialised on the Anvil fork as Circle's
+       Iris API cannot attest fork burns).
+    5. Verify the Base satellite Safe is empty, the master Safe custodies the
+       reclaimed USDC, and the state file reserve matches the on-chain balance.
+    """
+
+    reclaim_amount = Decimal("5")
+
+    # 1. Deploy the multichain Lagoon vault via the CLI and seed it.
+    deployer = Account.from_key(DEPLOYER_PRIVATE_KEY)
+    for w3 in (arb_web3, base_web3, hyper_web3):
+        w3.provider.make_request("anvil_setBalance", [deployer.address, hex(100 * 10**18)])
+
+    state_file = tmp_path / "reclaim_cli_state.json"
+    vault_record_file = tmp_path / "reclaim-cli-vault-record.txt"
+
+    base_env = {
+        "PATH": os.environ["PATH"],
+        "EXECUTOR_ID": "test_xchain_lagoon_cli_reclaim",
+        "NAME": "test_xchain_lagoon_cli_reclaim",
+        "STRATEGY_FILE": strategy_file.as_posix(),
+        "JSON_RPC_ARBITRUM": anvil_arbitrum.json_rpc_url,
+        "JSON_RPC_BASE": anvil_base.json_rpc_url,
+        "JSON_RPC_HYPERLIQUID": anvil_hyperevm.json_rpc_url,
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "warning",
+        "PRIVATE_KEY": DEPLOYER_PRIVATE_KEY,
+        "STATE_FILE": state_file.as_posix(),
+        "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "CACHE_PATH": str(tmp_path / "cache"),
+        # Disable the unreceived-burn auto-scan: fork-local burns are never
+        # indexed by Circle's Iris API, and scanning days of pre-fork history
+        # proxies eth_getLogs to the upstream RPC, slowing the test.
+        "BURN_SCAN_LOOKBACK_DAYS": "0",
+    }
+
+    cli = get_command(app)
+
+    deploy_env = {
+        **base_env,
+        "VAULT_RECORD_FILE": str(vault_record_file),
+        "FUND_NAME": "Xchain lagoon CLI reclaim test",
+        "FUND_SYMBOL": "XLRT",
+        "ANY_ASSET": "true",
+        "SAFE_SALT_NONCE": "88",
+    }
+    with mock.patch.dict("os.environ", deploy_env, clear=True):
+        cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
+
+    deploy_record = json.load(vault_record_file.with_suffix(".json").open("rt"))
+    deployments = deploy_record["deployments"]
+    master_vault_address = deployments["arbitrum"]["vault_address"]
+    master_safe = deployments["arbitrum"]["safe_address"]
+    assert deployments["base"]["is_satellite"] is True
+
+    reclaim_env = {
+        **base_env,
+        "VAULT_ADDRESS": master_vault_address,
+        "VAULT_ADAPTER_ADDRESS": deployments["arbitrum"]["module_address"],
+    }
+
+    fund_erc20_on_anvil(
+        arb_web3,
+        USDC_NATIVE_TOKEN[ARBITRUM_CHAIN_ID],
+        deployer.address,
+        int(DEPOSIT_AMOUNT * 10**6),
+    )
+    with mock.patch.dict("os.environ", reclaim_env, clear=True):
+        cli.main(args=["init"], standalone_mode=False)
+
+    deposit_env = {**reclaim_env, "DEPOSIT_AMOUNT": str(int(DEPOSIT_AMOUNT))}
+    with mock.patch.dict("os.environ", deposit_env, clear=True):
+        cli.main(args=["lagoon-first-deposit"], standalone_mode=False)
+
+    # 2. Simulate capital stranded on the Base satellite Safe (the shared
+    #    CREATE2 Safe address). HyperEVM keeps a zero balance — dust skip.
+    fund_erc20_on_anvil(
+        base_web3,
+        USDC_NATIVE_TOKEN[BASE_CHAIN_ID],
+        base_web3.to_checksum_address(master_safe),
+        int(reclaim_amount * 10**6),
+    )
+
+    arb_usdc = fetch_erc20_details(arb_web3, USDC_NATIVE_TOKEN[ARBITRUM_CHAIN_ID], chain_id=ARBITRUM_CHAIN_ID)
+    base_usdc = fetch_erc20_details(base_web3, USDC_NATIVE_TOKEN[BASE_CHAIN_ID], chain_id=BASE_CHAIN_ID)
+    master_balance_before = arb_usdc.fetch_balance_of(master_safe)
+    assert base_usdc.fetch_balance_of(master_safe) == reclaim_amount
+
+    # 3. Dry run must not move funds on either chain.
+    with mock.patch.dict("os.environ", reclaim_env, clear=True):
+        cli.main(args=["lagoon-reclaim-satellites", "--dry-run"], standalone_mode=False)
+
+    assert base_usdc.fetch_balance_of(master_safe) == reclaim_amount, "Dry run must not touch the satellite Safe"
+    assert arb_usdc.fetch_balance_of(master_safe) == master_balance_before, "Dry run must not touch the master Safe"
+
+    # 4. Live run: burn through the Base satellite guard, mint to the master Safe.
+    with mock.patch.dict("os.environ", reclaim_env, clear=True):
+        cli.main(args=["lagoon-reclaim-satellites"], standalone_mode=False)
+
+    # 5. Satellite swept, master Safe custodies the reclaimed USDC, state reserve synced.
+    assert base_usdc.fetch_balance_of(master_safe) == pytest.approx(Decimal(0), abs=Decimal("0.000001")), \
+        "Base satellite Safe still holds USDC after reclaim"
+    master_balance_after = arb_usdc.fetch_balance_of(master_safe)
+    assert master_balance_after == pytest.approx(master_balance_before + reclaim_amount, abs=Decimal("0.01"))
+
+    state = State.from_json(open(state_file, "rt").read())
+    reserve_position = state.portfolio.get_default_reserve_position()
+    assert float(reserve_position.quantity) == pytest.approx(float(master_balance_after), rel=0.01)
