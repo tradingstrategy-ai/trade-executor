@@ -44,8 +44,9 @@ import typer
 from eth_defi.cctp.attestation import fetch_attestation
 from eth_defi.cctp.bridge import burn_usdc_cctp, receive_usdc_cctp
 from eth_defi.cctp.constants import CCTP_DOMAIN_TO_CHAIN_ID
+from eth_defi.cctp.events import fetch_deposit_for_burn_events
 from eth_defi.cctp.monitor import CCTPTransferStatus, fetch_transfer_status
-from eth_defi.cctp.transfer import _resolve_cctp_domain, get_message_transmitter_v2, get_token_messenger_v2
+from eth_defi.cctp.transfer import _resolve_cctp_domain, get_message_transmitter_v2
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import fund_erc20_on_anvil, is_anvil
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
@@ -74,17 +75,6 @@ from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.utils.key import ensure_0x_prefixed_private_key
 
 logger = logging.getLogger(__name__)
-
-
-#: keccak256 topic0 of the CCTP V2 ``DepositForBurn`` event.
-#:
-#: Hardcoded because the bundled ``TokenMessengerV2.json`` ABI carries the
-#: stale V1 event signature (``uint64 indexed nonce`` first), which produces a
-#: different topic hash and matches nothing on-chain. Verified against the
-#: production burn tx 0x7a3c7ba8b770bb7db401e47cf916ceb7592a82335744ee0b4f6f838f7c1b2834
-#: on Arbitrum. Indexed params: topic1=burnToken, topic2=depositor,
-#: topic3=minFinalityThreshold.
-DEPOSIT_FOR_BURN_TOPIC0 = "0x0c8c1cbdc5190613ebd485511d4e2812cfa45eecb79d845893331fedad5130a5"
 
 
 def plan_reclaims(
@@ -199,62 +189,23 @@ def _estimate_lookback_blocks(web3, days: float, sample_span: int = 5_000) -> in
     return int(days * 86_400 / max(block_time, 0.05))
 
 
-def _scan_safe_burn_txs(web3, depositor: str, lookback_blocks: int) -> list[str]:
-    """Find ``DepositForBurn`` transactions sent by a Safe via chunked ``eth_getLogs``.
-
-    Providers cap the ``eth_getLogs`` block range (e.g. dRPC rejects ~1M-block
-    requests), so the scan starts with the full range and quarters the chunk
-    size on a range error until the provider accepts it.
-
-    :return:
-        Deduplicated burn transaction hashes, oldest first.
-    """
-    token_messenger = get_token_messenger_v2(web3)
-    depositor_topic = "0x" + depositor[2:].lower().rjust(64, "0")
-    latest = web3.eth.block_number
-    from_block = max(1, latest - lookback_blocks)
-
-    tx_hashes: list[str] = []
-    chunk = lookback_blocks
-    start = from_block
-    while start <= latest:
-        end = min(start + chunk - 1, latest)
-        try:
-            logs = web3.eth.get_logs({
-                "address": token_messenger.address,
-                "fromBlock": start,
-                "toBlock": end,
-                "topics": [DEPOSIT_FOR_BURN_TOPIC0, None, depositor_topic],
-            })
-        except Exception as e:
-            if chunk <= 1_000:
-                raise
-            chunk //= 4
-            logger.info("eth_getLogs range %d-%d rejected (%s), retrying with %d-block chunks", start, end, e, chunk)
-            continue
-        for log in logs:
-            tx_hash = "0x" + log["transactionHash"].hex().removeprefix("0x")
-            if tx_hash not in tx_hashes:
-                tx_hashes.append(tx_hash)
-        start = end + 1
-    return tx_hashes
-
-
 def _discover_unreceived_burns(
     web3config,
     scan_safes: dict[int, str],
     lookback_days: float,
     known_burn_tx_hashes: set[str],
+    hypersync_api_key: str | None = None,
 ) -> list[dict]:
     """Auto-detect CCTP burns from our Safes whose mint never happened.
 
     For every chain, scans ``DepositForBurn`` events where the depositor is
-    our Safe, then checks each burn against Circle's Iris API and the
-    destination chain's ``MessageTransmitterV2.usedNonces()``. A burn whose
-    attestation is ready but whose nonce is unused on the destination chain is
-    stuck mid-bridge — typically because ``receiveMessage`` reverted or the
-    process died before broadcasting it — and is returned as an actionable
-    completion.
+    our Safe (via :func:`eth_defi.cctp.events.fetch_deposit_for_burn_events` —
+    HyperSync when available, chunked ``eth_getLogs`` fallback otherwise),
+    then checks each burn against Circle's Iris API and the destination
+    chain's ``MessageTransmitterV2.usedNonces()``. A burn whose attestation
+    is ready but whose nonce is unused on the destination chain is stuck
+    mid-bridge — typically because ``receiveMessage`` reverted or the process
+    died before broadcasting it — and is returned as an actionable completion.
 
     Unlike explicit ``--complete-burn-tx`` entries, non-actionable burns
     (not indexed by Iris, attestation pending, already received) are logged
@@ -287,7 +238,15 @@ def _discover_unreceived_burns(
 
         lookback_blocks = _estimate_lookback_blocks(web3, lookback_days)
         logger.info("Scanning %s for unreceived CCTP burns from Safe %s (%d blocks)", slug, safe_address, lookback_blocks)
-        for burn_tx_hash in _scan_safe_burn_txs(web3, safe_address, lookback_blocks):
+        burn_events = fetch_deposit_for_burn_events(
+            web3,
+            depositor=web3.to_checksum_address(safe_address),
+            start_block=max(1, web3.eth.block_number - lookback_blocks),
+            hypersync_api_key=hypersync_api_key,
+        )
+        # One Iris lookup per transaction — dedupe, oldest first
+        burn_tx_hashes = list(dict.fromkeys(event.transaction_hash for event in burn_events))
+        for burn_tx_hash in burn_tx_hashes:
             if burn_tx_hash.lower() in known_burn_tx_hashes:
                 continue
 
@@ -520,6 +479,7 @@ def lagoon_reclaim_satellites(
         help="Auto-detect unreceived CCTP burns by scanning DepositForBurn events from our Safes this many days back on every chain, "
              "checking each against Circle's Iris API and the destination chain's usedNonces(). Set 0 to disable the scan.",
     ),
+    hypersync_api_key: Optional[str] = shared_options.hypersync_api_key,
     dry_run: bool = typer.Option(
         False,
         envvar="DRY_RUN",
@@ -645,6 +605,7 @@ def lagoon_reclaim_satellites(
             scan_safes,
             burn_scan_lookback_days,
             known_burn_tx_hashes,
+            hypersync_api_key=hypersync_api_key,
         )
 
     satellite_usdc, usdc_tokens = _read_satellite_balances(web3config, satellite_vaults)
