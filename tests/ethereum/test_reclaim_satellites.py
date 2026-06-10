@@ -8,7 +8,9 @@ gas/fee cost is not wasted.
 
 from decimal import Decimal
 
-from tradeexecutor.cli.commands.reclaim_satellites import plan_reclaims
+import pytest
+
+from tradeexecutor.cli.commands.reclaim_satellites import parse_burn_tx_entries, plan_reclaims
 
 
 def test_plan_reclaims_selects_above_threshold_only():
@@ -44,3 +46,32 @@ def test_plan_reclaims_empty_when_all_dust():
 
     # 2. Nothing to reclaim
     assert plan_reclaims(balances, Decimal("1.0")) == []
+
+
+def test_parse_burn_tx_entries():
+    """--complete-burn-tx entries are parsed into (chain_slug, tx_hash) pairs.
+
+    1. None/empty input yields no entries.
+    2. A single entry and a comma-separated list parse correctly, with
+       whitespace trimmed and the slug lower-cased.
+    3. Malformed entries (missing colon, missing 0x prefix) are rejected.
+    """
+
+    burn_tx = "0x7a3c7ba8b770bb7db401e47cf916ceb7592a82335744ee0b4f6f838f7c1b2834"
+
+    # 1. No input
+    assert parse_burn_tx_entries(None) == []
+    assert parse_burn_tx_entries("") == []
+
+    # 2. Single and multiple entries
+    assert parse_burn_tx_entries(f"arbitrum:{burn_tx}") == [("arbitrum", burn_tx)]
+    assert parse_burn_tx_entries(f" Arbitrum:{burn_tx} , base:{burn_tx} ") == [
+        ("arbitrum", burn_tx),
+        ("base", burn_tx),
+    ]
+
+    # 3. Malformed entries are rejected
+    with pytest.raises(AssertionError):
+        parse_burn_tx_entries("arbitrum")
+    with pytest.raises(AssertionError):
+        parse_burn_tx_entries("arbitrum:deadbeef")

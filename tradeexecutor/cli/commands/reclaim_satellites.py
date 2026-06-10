@@ -4,23 +4,35 @@ Consolidates capital scattered across multichain Lagoon satellite Safes back
 into the master vault Safe. This is the manual recovery counterpart to the
 automatic cross-chain bridging that ``start`` performs during live trading.
 
-For every satellite chain configured in the deployment artifact the command:
+The command first gathers a full picture without broadcasting anything:
 
-1. Completes any incomplete (``cctp_in_transit``) CCTP transfers recorded in
-   the state file, so capital that was burned but never minted is recovered
-   first and swept along with the rest.
-2. Reads the USDC balance held by the satellite Safe.
-3. Bridges that USDC back to the master Safe via CCTP (burn on the satellite
-   chain through the Lagoon guard module, then ``receiveMessage`` on the master
-   chain) — the same shared Safe address custodies funds on every chain.
-4. Verifies each CCTP retrieve (the master-chain mint) confirmed successfully.
+1. Reads the USDC balance held by every satellite Safe and the master Safe,
+   and displays them as a table.
+2. Finds incomplete (``cctp_in_transit``) CCTP transfers recorded in the state
+   file, and resolves any ``--complete-burn-tx`` burns (transfers whose burn
+   confirmed but which were never written to the state file, e.g. when the
+   process crashed before the state was saved) against Circle's Iris API.
+3. Lists every action it is about to perform and asks for y/n confirmation.
 
-Use ``--dry-run`` to report satellite balances and in-transit trades without
+Then it executes:
+
+4. Completes the in-transit and unrecorded transfers (``receiveMessage`` on
+   their destination chains), so capital that was burned but never minted
+   lands in a Safe first.
+5. Re-reads satellite balances and bridges everything above the dust threshold
+   back to the master Safe via CCTP (burn on the satellite chain through the
+   Lagoon guard module, then ``receiveMessage`` on the master chain) — the
+   same shared Safe address custodies funds on every chain.
+6. Verifies each retrieve (the master-chain mint) confirmed and syncs the
+   state file reserve to the new on-chain balance.
+
+Use ``--dry-run`` to stop after the table and action list without
 broadcasting anything.
 """
 
 import datetime
 import logging
+import sys
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional
@@ -28,10 +40,13 @@ from typing import Optional
 import typer
 from eth_defi.cctp.attestation import fetch_attestation
 from eth_defi.cctp.bridge import burn_usdc_cctp, receive_usdc_cctp
+from eth_defi.cctp.constants import CCTP_DOMAIN_TO_CHAIN_ID
+from eth_defi.cctp.monitor import CCTPTransferStatus, fetch_transfer_status
 from eth_defi.cctp.transfer import _resolve_cctp_domain
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import fund_erc20_on_anvil, is_anvil
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
+from tabulate import tabulate
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.cli.bootstrap import (
@@ -80,6 +95,110 @@ def plan_reclaims(
         chain_id
         for chain_id, balance in satellite_usdc.items()
         if balance > min_reclaim_amount
+    )
+
+
+def parse_burn_tx_entries(complete_burn_tx: str | None) -> list[tuple[str, str]]:
+    """Parse ``--complete-burn-tx`` entries into ``(chain_slug, tx_hash)`` pairs.
+
+    Pure parsing helper, separated from Iris API I/O so it can be unit tested.
+
+    :param complete_burn_tx:
+        Comma-separated ``<chain_slug>:<burn_tx_hash>`` entries, e.g.
+        ``arbitrum:0x7a3c...`` — or ``None``/empty for no entries.
+
+    :return:
+        List of ``(chain_slug, burn_tx_hash)`` tuples.
+    """
+    entries: list[tuple[str, str]] = []
+    if not complete_burn_tx:
+        return entries
+
+    for raw in complete_burn_tx.split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        slug, sep, burn_tx_hash = raw.partition(":")
+        slug = slug.strip().lower()
+        burn_tx_hash = burn_tx_hash.strip()
+        assert sep and slug and burn_tx_hash.startswith("0x"), (
+            f"--complete-burn-tx entries must be <chain_slug>:<burn_tx_hash>, got {raw!r}. "
+            f"Example: arbitrum:0x7a3c7ba8b770bb7db401e47cf916ceb7592a82335744ee0b4f6f838f7c1b2834"
+        )
+        entries.append((slug, burn_tx_hash))
+    return entries
+
+
+def _resolve_unrecorded_burns(complete_burn_tx: str | None) -> list[dict]:
+    """Resolve ``--complete-burn-tx`` entries against Circle's Iris API.
+
+    Fails fast (before any confirmation prompt) when a burn is not indexed,
+    still pending block finality, or its attestation is not signed yet, so the
+    operator never confirms an action list that cannot execute.
+
+    :return:
+        List of dicts with ``slug``, ``burn_tx_hash``, ``source_chain_id``,
+        ``dest_chain_id``, ``dest_slug`` and the Iris ``status``
+        (:class:`CCTPTransferStatus`).
+    """
+    burns: list[dict] = []
+    for slug, burn_tx_hash in parse_burn_tx_entries(complete_burn_tx):
+        try:
+            source_chain_id = ChainId[slug].value
+        except KeyError:
+            raise RuntimeError(f"Unknown chain slug in --complete-burn-tx: {slug!r}")
+
+        source_domain = _resolve_cctp_domain(source_chain_id)
+        assert source_domain is not None, f"Chain {slug} is not CCTP-enabled"
+
+        status = fetch_transfer_status(source_domain, burn_tx_hash)
+        assert status is not None, (
+            f"Circle Iris API has not indexed burn {burn_tx_hash} on {slug}. "
+            f"Check the tx hash, or wait if the burn is very recent."
+        )
+        assert status.is_complete, (
+            f"Attestation for burn {burn_tx_hash} on {slug} is not ready: "
+            f"status={status.status}, delay_reason={status.delay_reason}. Retry later."
+        )
+
+        dest_chain_id = CCTP_DOMAIN_TO_CHAIN_ID.get(status.dest_domain)
+        assert dest_chain_id is not None, f"Unknown CCTP destination domain {status.dest_domain} for burn {burn_tx_hash}"
+
+        burns.append({
+            "slug": slug,
+            "burn_tx_hash": burn_tx_hash,
+            "source_chain_id": source_chain_id,
+            "dest_chain_id": dest_chain_id,
+            "dest_slug": ChainId(dest_chain_id).get_slug(),
+            "status": status,
+        })
+    return burns
+
+
+def _complete_unrecorded_burn(*, web3config, burn: dict, private_key: str) -> str:
+    """Broadcast ``receiveMessage`` for a burn that is missing from the state file.
+
+    The mint recipient and amount are encoded in the attested message, so this
+    simply relays Circle's attestation to the destination chain. If the message
+    was already received, the transaction reverts with a nonce-already-used
+    error and the command stops with that explanation.
+
+    :return:
+        Receive transaction hash as hex string.
+    """
+    status: CCTPTransferStatus = burn["status"]
+    dest_web3 = web3config.get_connection(ChainId(burn["dest_chain_id"]))
+    assert dest_web3 is not None, f"No JSON-RPC connection configured for destination chain {burn['dest_slug']}"
+
+    wallet = HotWallet.from_private_key(ensure_0x_prefixed_private_key(private_key))
+    wallet.sync_nonce(dest_web3)
+    return receive_usdc_cctp(
+        dest_web3=dest_web3,
+        message=status.message,
+        attestation=status.attestation,
+        sender=wallet.address,
+        hot_wallet=wallet,
+        gas=CCTP_RECEIVE_GAS_FALLBACK,
     )
 
 
@@ -176,6 +295,26 @@ def _bridge_satellite_to_master(
     }
 
 
+def _read_satellite_balances(web3config, satellite_vaults: dict) -> tuple[dict[int, Decimal], dict]:
+    """Read the on-chain USDC balance of every satellite Safe.
+
+    :return:
+        Tuple of ``({chain_id: balance}, {chain_id: TokenDetails})``.
+    """
+    satellite_usdc: dict[int, Decimal] = {}
+    usdc_tokens: dict = {}
+    for chain_id_value, sat_vault in satellite_vaults.items():
+        sat_web3 = web3config.get_connection(ChainId(chain_id_value))
+        assert sat_web3 is not None, f"No Web3 connection for satellite chain {chain_id_value}"
+
+        usdc_address = USDC_NATIVE_TOKEN.get(chain_id_value)
+        assert usdc_address is not None, f"No native USDC known for satellite chain {chain_id_value}"
+        usdc = fetch_erc20_details(sat_web3, usdc_address)
+        usdc_tokens[chain_id_value] = usdc
+        satellite_usdc[chain_id_value] = usdc.fetch_balance_of(sat_vault.safe_address)
+    return satellite_usdc, usdc_tokens
+
+
 @app.command()
 @shared_options.with_json_rpc_options()
 def lagoon_reclaim_satellites(
@@ -205,10 +344,17 @@ def lagoon_reclaim_satellites(
         envvar="CCTP_ATTESTATION_TIMEOUT",
         help="Maximum seconds to wait for Circle's CCTP attestation per bridge.",
     ),
+    complete_burn_tx: Optional[str] = typer.Option(
+        None,
+        envvar="COMPLETE_BURN_TX",
+        help="Complete CCTP burns that are missing from the state file (e.g. the process crashed before the state was saved). "
+             "Comma-separated <chain_slug>:<burn_tx_hash> entries, e.g. arbitrum:0x7a3c... "
+             "The attestation is fetched from Circle's Iris API and receiveMessage is broadcast on the destination chain.",
+    ),
     dry_run: bool = typer.Option(
         False,
         envvar="DRY_RUN",
-        help="Report satellite balances and in-transit transfers without broadcasting any transaction.",
+        help="Show the balance table and planned actions without broadcasting any transaction.",
     ),
 
     unit_testing: bool = shared_options.unit_testing,
@@ -216,7 +362,10 @@ def lagoon_reclaim_satellites(
 ):
     """Reclaim capital from multichain Lagoon satellite Safes into the master vault.
 
-    - Completes any CCTP transfers stuck in transit (burned but not yet minted).
+    - Displays a table of all on-chain Safe USDC balances.
+    - Lists the planned reclaim actions and asks for y/n confirmation.
+    - Completes CCTP transfers stuck in transit (burned but not yet minted),
+      including burns missing from the state file via --complete-burn-tx.
     - Bridges each satellite Safe's USDC back to the master Safe via CCTP.
     - Verifies every retrieve (master-chain mint) confirmed on-chain.
 
@@ -282,6 +431,7 @@ def lagoon_reclaim_satellites(
     satellite_vaults = getattr(execution_model, "satellite_vaults", {}) or {}
     master_safe_address = sync_model.vault.safe_address
     master_chain_id = default_chain_id.value
+    master_slug = default_chain_id.get_slug()
     master_web3 = web3config.get_default()
 
     logger.info("Reclaiming satellite capital into master vault")
@@ -291,25 +441,109 @@ def lagoon_reclaim_satellites(
     if no_broadcast:
         logger.info("  Dry run — no transactions will be broadcast")
 
-    if not satellite_vaults:
+    if not satellite_vaults and not complete_burn_tx:
         logger.info("No satellite vaults configured — nothing to reclaim")
         return
 
     state_path, store = ensure_state_store_exists(id, state_file, simulate=simulate)
     state = store.load()
 
-    # Step 1: finish any CCTP transfers burned but never minted, so the recovered
-    # USDC lands in a Safe and is swept along with the rest below.
+    # Gather phase (read-only): in-transit transfers recorded in the state
+    # file, unrecorded burns from --complete-burn-tx resolved against Iris,
+    # and all on-chain Safe USDC balances.
+    in_transit = [
+        trade
+        for position in state.portfolio.open_positions.values()
+        for trade in position.trades.values()
+        if trade.get_status() == TradeStatus.cctp_in_transit
+    ]
+    unrecorded_burns = _resolve_unrecorded_burns(complete_burn_tx)
+    satellite_usdc, usdc_tokens = _read_satellite_balances(web3config, satellite_vaults)
+
+    master_usdc_address = USDC_NATIVE_TOKEN.get(master_chain_id)
+    assert master_usdc_address is not None, f"No native USDC known for master chain {master_chain_id}"
+    master_usdc = fetch_erc20_details(master_web3, master_usdc_address)
+    master_balance_before = master_usdc.fetch_balance_of(master_safe_address)
+
+    # Display the on-chain Safe balance table.
+    min_reclaim = Decimal(str(min_reclaim_amount))
+    to_reclaim = plan_reclaims(satellite_usdc, min_reclaim)
+    rows = [(master_slug, "master", master_safe_address, f"{master_balance_before:,.6f}", "receives reclaimed USDC")]
+    for chain_id_value in sorted(satellite_usdc):
+        balance = satellite_usdc[chain_id_value]
+        if chain_id_value in to_reclaim:
+            action = "bridge back to master"
+        elif balance > 0:
+            action = f"leave (dust <= {min_reclaim_amount} USDC)"
+        else:
+            action = "nothing to do"
+        rows.append((
+            ChainId(chain_id_value).get_slug(),
+            "satellite",
+            satellite_vaults[chain_id_value].safe_address,
+            f"{balance:,.6f}",
+            action,
+        ))
+    table = tabulate(rows, headers=["Chain", "Role", "Safe address", "USDC", "Planned action"], tablefmt="rounded_outline")
+    logger.info("On-chain Safe USDC balances:\n%s", table)
+
+    # Build and display the action list.
+    actions: list[str] = []
+    for burn in unrecorded_burns:
+        actions.append(
+            f"Complete unrecorded CCTP burn {burn['burn_tx_hash']} "
+            f"({burn['slug']} -> {burn['dest_slug']}, attestation ready) via receiveMessage"
+        )
+    for trade in in_transit:
+        actions.append(
+            f"Complete in-transit CCTP transfer for trade #{trade.trade_id} "
+            f"(burn tx {trade.other_data.get('cctp_burn_tx_hash')})"
+        )
+    for chain_id_value in to_reclaim:
+        actions.append(
+            f"Bridge {satellite_usdc[chain_id_value]} USDC from {ChainId(chain_id_value).get_slug()} "
+            f"Safe back to the master Safe on {master_slug}"
+        )
+    if unrecorded_burns or in_transit:
+        actions.append(
+            f"Re-read satellite balances after the completions above and sweep "
+            f"any newly minted USDC above the {min_reclaim_amount} USDC threshold"
+        )
+
+    if not actions:
+        logger.info("Nothing to reclaim — no in-transit transfers and all satellite Safes are at or below the dust threshold")
+        return
+
+    logger.info("Planned reclaim actions:")
+    for index, action in enumerate(actions, start=1):
+        logger.info("  %d. %s", index, action)
+
     if no_broadcast:
-        in_transit = [
-            trade
-            for position in state.portfolio.open_positions.values()
-            for trade in position.trades.values()
-            if trade.get_status() == TradeStatus.cctp_in_transit
-        ]
-        logger.info("Step 1: %d CCTP in-transit trade(s) found (skipped in dry run)", len(in_transit))
-    else:
-        logger.info("Step 1: completing in-transit CCTP transfers")
+        logger.info("Dry run complete — no funds moved. State file: %s", state_path)
+        return
+
+    # Confirmation — skipped in unit testing, where stdin is not interactive.
+    if not unit_testing:
+        confirm = input(f"Proceed with these {len(actions)} action(s)? [y/n] ")
+        if not confirm.lower().startswith("y"):
+            print("Aborted")
+            sys.exit(1)
+
+    # Execute: complete unrecorded burns first (mints land in a Safe).
+    for burn in unrecorded_burns:
+        receive_tx_hash = _complete_unrecorded_burn(
+            web3config=web3config,
+            burn=burn,
+            private_key=private_key,
+        )
+        logger.info(
+            "Completed unrecorded burn %s on %s — receive tx %s on %s",
+            burn["burn_tx_hash"], burn["slug"], receive_tx_hash, burn["dest_slug"],
+        )
+
+    # Complete in-transit transfers recorded in the state file.
+    if in_transit:
+        logger.info("Completing %d in-transit CCTP transfer(s)", len(in_transit))
         resolved = check_and_retry_cctp_in_transit(
             state=state,
             execution_model=execution_model,
@@ -320,39 +554,13 @@ def lagoon_reclaim_satellites(
             store.sync(state)
         logger.info("  Resolved %d in-transit transfer(s)", len(resolved))
 
-    # Step 2: read each satellite Safe's USDC balance.
-    logger.info("Step 2: reading satellite Safe USDC balances")
-    satellite_usdc: dict[int, Decimal] = {}
-    usdc_tokens = {}
-    for chain_id_value, sat_vault in satellite_vaults.items():
-        sat_web3 = web3config.get_connection(ChainId(chain_id_value))
-        assert sat_web3 is not None, f"No Web3 connection for satellite chain {chain_id_value}"
+    # Re-read balances: completions above may have minted USDC to satellite
+    # Safes, which must be swept home along with the previously seen balances.
+    if unrecorded_burns or in_transit:
+        satellite_usdc, usdc_tokens = _read_satellite_balances(web3config, satellite_vaults)
+        to_reclaim = plan_reclaims(satellite_usdc, min_reclaim)
 
-        usdc_address = USDC_NATIVE_TOKEN.get(chain_id_value)
-        assert usdc_address is not None, f"No native USDC known for satellite chain {chain_id_value}"
-        usdc = fetch_erc20_details(sat_web3, usdc_address)
-        usdc_tokens[chain_id_value] = usdc
-
-        balance = usdc.fetch_balance_of(sat_vault.safe_address)
-        satellite_usdc[chain_id_value] = balance
-        logger.info(
-            "  %s: Safe %s holds %s USDC",
-            ChainId(chain_id_value).get_slug(), sat_vault.safe_address, balance,
-        )
-
-    # Step 3: bridge reclaimable balances back to the master Safe.
-    to_reclaim = plan_reclaims(satellite_usdc, Decimal(str(min_reclaim_amount)))
-    logger.info(
-        "Step 3: %d satellite(s) above the %s USDC threshold: %s",
-        len(to_reclaim), min_reclaim_amount,
-        [ChainId(c).get_slug() for c in to_reclaim] or ["none"],
-    )
-
-    master_usdc_address = USDC_NATIVE_TOKEN.get(master_chain_id)
-    assert master_usdc_address is not None, f"No native USDC known for master chain {master_chain_id}"
-    master_usdc = fetch_erc20_details(master_web3, master_usdc_address)
-    master_balance_before = master_usdc.fetch_balance_of(master_safe_address)
-
+    # Bridge reclaimable balances back to the master Safe.
     results: list[dict] = []
     for chain_id_value in to_reclaim:
         sat_vault = satellite_vaults[chain_id_value]
@@ -362,11 +570,7 @@ def lagoon_reclaim_satellites(
         amount_raw = usdc.convert_to_raw(balance)
         slug = ChainId(chain_id_value).get_slug()
 
-        if no_broadcast:
-            logger.info("  Would bridge %s USDC from %s back to master Safe", balance, slug)
-            continue
-
-        logger.info("  Bridging %s USDC from %s back to master Safe", balance, slug)
+        logger.info("Bridging %s USDC from %s back to master Safe", balance, slug)
         bridged = _bridge_satellite_to_master(
             sat_web3=sat_web3,
             sat_vault=sat_vault,
@@ -383,14 +587,10 @@ def lagoon_reclaim_satellites(
             balance, slug, bridged["burn_tx_hash"], bridged["receive_tx_hash"],
         )
 
-    # Step 4: verify the retrieve(s) landed on the master Safe.
-    if no_broadcast:
-        logger.info("Dry run complete — no funds moved. State file: %s", state_path)
-        return
-
+    # Verify the retrieve(s) landed on the master Safe.
     master_balance_after = master_usdc.fetch_balance_of(master_safe_address)
     reclaimed_total = master_balance_after - master_balance_before
-    logger.info("Step 4: verifying retrieve on master Safe")
+    logger.info("Verifying retrieve on master Safe")
     logger.info("  Master Safe USDC before: %s", master_balance_before)
     logger.info("  Master Safe USDC after:  %s", master_balance_after)
     logger.info("  Net reclaimed:           %s USDC across %d bridge(s)", reclaimed_total, len(results))
