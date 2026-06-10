@@ -330,6 +330,9 @@ def start(
             routing_hint=mod.trade_routing,
             unit_testing=unit_testing,
             token_cache=token_cache,
+            # Auto-discover satellite modules from the deployment artifact next to
+            # the state file. Honour a custom STATE_FILE location (matches deploy).
+            deployment_file=(Path(os.environ["STATE_FILE"]) if os.environ.get("STATE_FILE") else Path(f"state/{id}.json")).with_name(f"{id}.deployment.json"),
         )
 
         # TODO: Unit test hack

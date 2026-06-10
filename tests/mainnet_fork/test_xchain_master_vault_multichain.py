@@ -15,6 +15,7 @@ import logging
 import os
 from decimal import Decimal
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from eth_account import Account
@@ -38,6 +39,7 @@ from web3 import Web3
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 
+from tradeexecutor.cli.bootstrap import resolve_satellite_modules
 from tradeexecutor.cli.main import app
 from tradeexecutor.cli.testtrade import make_test_trade
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
@@ -75,9 +77,9 @@ DEPLOYER_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d
 HOT_WALLET_PRIVATE_KEY = "0x7b5b648bde0b4ef1ceb56d2c3e1fb938a6b8fb3d399fa6320ef1639705c2df08"
 
 TEST_VAULTS = {
-    ARBITRUM_CHAIN_ID: "0x0df2e3a0b5997adc69f8768e495fd98a4d00f134",
+    ARBITRUM_CHAIN_ID: "0xbe6a65325a073490d0a2999529633f1ae88bb091",
     BASE_CHAIN_ID: "0x3094b241aade60f91f1c82b0628a10d9501462f9",
-    HYPEREVM_CHAIN_ID: "0x8a862fd6c12f9ad34c9c2ff45ab2b6712e8cea27",
+    HYPEREVM_CHAIN_ID: "0xf9bb65e113418292d1a3555515fbd64637a0be18",
 }
 
 DEPOSIT_AMOUNT = Decimal("20")
@@ -428,10 +430,16 @@ def test_xchain_master_vault_multichain_round_trip(
 ):
     """Exercise the full forward-bridge vault lifecycle across three chains.
 
-    1. Create the auto-bridge universe and deploy the Lagoon multichain vault.
-    2. Open bridge positions and vault positions with ``make_test_trade()``.
-    3. Close vaults, sell bridge positions, receive CCTP transfers back on
-       Arbitrum, and verify the portfolio is flat.
+    1. Create the auto-bridge universe and deploy the Lagoon multichain vault,
+       generating the deployment report and asserting the runtime auto-discovers
+       the Base + HyperEVM satellite modules from the deployment artifact (no
+       SATELLITE_MODULES env var).
+    2. Buy: open bridge positions and satellite vault positions with
+       ``make_test_trade()`` (bridge USDC out, deposit into destination vaults).
+    3. Sell + bridge back: close the vault positions, sell the forward bridge
+       positions to return capital from the satellite chains to the master vault
+       on Arbitrum, receive the CCTP transfers, and verify the portfolio is flat
+       with all equity back on the primary chain.
     """
 
     # 1. Create the auto-bridge universe and deploy the Lagoon multichain vault.
@@ -459,6 +467,7 @@ def test_xchain_master_vault_multichain_round_trip(
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "warning",
         "PRIVATE_KEY": DEPLOYER_PRIVATE_KEY,
+        "STATE_FILE": str(tmp_path / "state.json"),
         "VAULT_RECORD_FILE": str(vault_record_file),
         "FUND_NAME": "Xchain master vault test",
         "FUND_SYMBOL": "XMVT",
@@ -473,6 +482,36 @@ def test_xchain_master_vault_multichain_round_trip(
     deploy_record = json.load(vault_record_file.with_suffix(".json").open("rt"))
     assert deploy_record["multichain"] is True
     assert set(deploy_record["deployments"].keys()) == {"arbitrum", "base", "hyperliquid"}
+
+    # 1b. The deployment report carries satellite info: the primary chain
+    #     (Arbitrum) is not a satellite; Base and HyperEVM are, each with a
+    #     trading strategy module address. The Safe address is shared across all
+    #     chains (CREATE2), so bridging to a satellite IS bridging to the master
+    #     vault's Safe on that chain.
+    deployments = deploy_record["deployments"]
+    master_safe = deployments["arbitrum"]["safe_address"]
+    assert deployments["arbitrum"]["is_satellite"] is False
+    assert deployments["base"]["is_satellite"] is True
+    assert deployments["hyperliquid"]["is_satellite"] is True
+    assert deployments["base"]["module_address"]
+    assert deployments["hyperliquid"]["module_address"]
+    assert deployments["base"]["safe_address"].lower() == master_safe.lower()
+    assert deployments["hyperliquid"]["safe_address"].lower() == master_safe.lower()
+
+    # 1c. Automatic discovery: the deploy also drops the artifact next to the
+    #     state file, and the runtime discovers satellites from it WITHOUT a
+    #     SATELLITE_MODULES env var (the bug that stranded funds in production).
+    assert "SATELLITE_MODULES" not in environment, \
+        "Discovery must come from the deployment artifact, not a manual env var"
+    state_dir = Path(environment["STATE_FILE"]).parent
+    sibling_artifacts = list(state_dir.glob("*.deployment.json"))
+    assert len(sibling_artifacts) == 1, \
+        f"Expected one deployment artifact next to the state file, got {sibling_artifacts}"
+    discovered_satellites = resolve_satellite_modules(sibling_artifacts[0])
+    assert set(discovered_satellites.keys()) == {"base", "hyperliquid"}, \
+        f"Expected Base + HyperEVM satellites auto-discovered, got {discovered_satellites}"
+    assert discovered_satellites["base"] == deployments["base"]["module_address"]
+    assert discovered_satellites["hyperliquid"] == deployments["hyperliquid"]["module_address"]
 
     routing_state = routing_model.create_routing_state(
         strategy_universe,
@@ -662,3 +701,155 @@ def test_xchain_master_vault_multichain_round_trip(
     assert chain_equity.get(ChainId.base, 0) == pytest.approx(0, abs=0.05)
     assert chain_equity.get(ChainId.hyperliquid, 0) == pytest.approx(0, abs=0.05)
     assert chain_equity.get(ChainId.arbitrum, 0) == pytest.approx(float(DEPOSIT_AMOUNT), rel=0.05)
+
+
+@pytest.mark.timeout(900)
+def test_xchain_master_vault_lagoon_cli_bridged_deposit(
+    anvil_arbitrum: AnvilLaunch,
+    anvil_base: AnvilLaunch,
+    anvil_hyperevm: AnvilLaunch,
+    arb_web3: Web3,
+    base_web3: Web3,
+    hyper_web3: Web3,
+    strategy_file: Path,
+    tmp_path: Path,
+):
+    """CLI integration: bridged ERC-4626 deposit through the Lagoon guard.
+
+    Pure Typer-CLI in-process integration — the test drives everything through
+    ``app([...])`` and only reads on-chain state / artifacts to assert. It does
+    NOT call ``make_test_trade`` or any execution-model helper, so it exercises
+    the same production path that stranded funds in production:
+
+    1. Deploy a multichain Lagoon vault via ``lagoon-deploy-vault`` (master Safe on
+       Arbitrum, satellite modules on Base + HyperEVM). The deploy writes the
+       discovery artifact next to the state file.
+    2. Negative startup guard (Q1.4): with the deployment artifact removed and no
+       SATELLITE_MODULES env var, ``perform-test-trade`` for a Base satellite vault
+       must fail fast with the "no satellite module configured" error before any
+       irreversible bridge.
+    3. Restore the artifact, fund the master Safe with USDC (fork setup).
+    4. Positive run: ``perform-test-trade --buy-only`` for the Base vault in lagoon
+       mode. This runs the startup guard (Q1.4), auto-discovers the Base satellite
+       from the artifact, bridges USDC Arbitrum -> Base through the
+       TradingStrategyModuleV0 guard with the CCTP mint recipient resolved to the
+       master Safe (Q1.1, Q1.3), and deposits into the Base vault via the satellite
+       guard.
+    5. Separate verification step on the real receiving contract (Q2.2): the master
+       Safe is a deployed contract on Base and now custodies the Base vault
+       position — the bridged USDC was received by the Safe, not an EOA.
+    """
+
+    # 1. Deploy the multichain Lagoon vault via the CLI.
+    deployer = Account.from_key(DEPLOYER_PRIVATE_KEY)
+    for w3 in (arb_web3, base_web3, hyper_web3):
+        w3.provider.make_request("anvil_setBalance", [deployer.address, hex(100 * 10**18)])
+
+    state_file = tmp_path / "lagoon_cli_state.json"
+    vault_record_file = tmp_path / "lagoon-cli-vault-record.txt"
+    base_vault_address = TEST_VAULTS[BASE_CHAIN_ID]
+
+    base_env = {
+        "PATH": os.environ["PATH"],
+        "EXECUTOR_ID": "test_xchain_lagoon_cli",
+        "NAME": "test_xchain_lagoon_cli",
+        "STRATEGY_FILE": strategy_file.as_posix(),
+        "JSON_RPC_ARBITRUM": anvil_arbitrum.json_rpc_url,
+        "JSON_RPC_BASE": anvil_base.json_rpc_url,
+        "JSON_RPC_HYPERLIQUID": anvil_hyperevm.json_rpc_url,
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "warning",
+        "PRIVATE_KEY": DEPLOYER_PRIVATE_KEY,
+        "STATE_FILE": state_file.as_posix(),
+        "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "CACHE_PATH": str(tmp_path / "cache"),
+    }
+
+    cli = get_command(app)
+
+    deploy_env = {
+        **base_env,
+        "VAULT_RECORD_FILE": str(vault_record_file),
+        "FUND_NAME": "Xchain lagoon CLI test",
+        "FUND_SYMBOL": "XLCT",
+        "ANY_ASSET": "true",
+        "SAFE_SALT_NONCE": "77",
+    }
+    with mock.patch.dict("os.environ", deploy_env, clear=True):
+        cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
+
+    deploy_record = json.load(vault_record_file.with_suffix(".json").open("rt"))
+    deployments = deploy_record["deployments"]
+    master_vault_address = deployments["arbitrum"]["vault_address"]
+    master_safe = deployments["arbitrum"]["safe_address"]
+
+    # The deploy drops the discovery artifact next to the state file.
+    deployment_artifact = state_file.with_name("test_xchain_lagoon_cli.deployment.json")
+    assert deployment_artifact.exists(), f"Deployment artifact missing: {deployment_artifact}"
+
+    trade_env = {
+        **base_env,
+        "VAULT_ADDRESS": master_vault_address,
+        "VAULT_ADAPTER_ADDRESS": deployments["arbitrum"]["module_address"],
+    }
+
+    # 2. Negative startup guard (Q1.4): a run whose deployment artifact is absent
+    #    (a different EXECUTOR_ID, so no sibling artifact and no SATELLITE_MODULES)
+    #    leaves the Base satellite unconfigured. perform-test-trade must fail fast
+    #    with the "no satellite module configured" guard before any irreversible bridge.
+    neg_env = {
+        **trade_env,
+        "EXECUTOR_ID": "test_xchain_lagoon_cli_neg",
+        "NAME": "test_xchain_lagoon_cli_neg",
+        "STATE_FILE": (tmp_path / "lagoon_cli_neg_state.json").as_posix(),
+    }
+    with mock.patch.dict("os.environ", neg_env, clear=True):
+        with pytest.raises(RuntimeError, match="satellite"):
+            cli.main(
+                args=["perform-test-trade", "--pair", f"(base, {base_vault_address})", "--buy-only", "--amount", "4"],
+                standalone_mode=False,
+            )
+
+    # 3. Seed the master vault through the real Lagoon deposit flow: fund the
+    #    depositor with USDC, then `lagoon-first-deposit` (approve + deposit + settle)
+    #    so the vault has consistent assets/shares and a valid valuation. Then
+    #    initialise the state so the treasury sync is set up.
+    fund_erc20_on_anvil(
+        arb_web3,
+        USDC_NATIVE_TOKEN[ARBITRUM_CHAIN_ID],
+        deployer.address,
+        int(DEPOSIT_AMOUNT * 10**6),
+    )
+    with mock.patch.dict("os.environ", trade_env, clear=True):
+        cli.main(args=["init"], standalone_mode=False)
+
+    deposit_env = {**trade_env, "DEPOSIT_AMOUNT": str(int(DEPOSIT_AMOUNT))}
+    with mock.patch.dict("os.environ", deposit_env, clear=True):
+        cli.main(args=["lagoon-first-deposit"], standalone_mode=False)
+
+    # 4. Positive run: bridge + deposit through the Lagoon guard.
+    with mock.patch.dict("os.environ", trade_env, clear=True):
+        cli.main(
+            args=["perform-test-trade", "--pair", f"(base, {base_vault_address})", "--buy-only", "--amount", "4"],
+            standalone_mode=False,
+        )
+
+    state = State.from_json(open(state_file, "rt").read())
+    bridge_positions = [p for p in state.portfolio.open_positions.values() if p.pair.is_cctp_bridge()]
+    vault_positions = [p for p in state.portfolio.open_positions.values() if p.pair.kind == TradingPairKind.vault]
+    assert len(bridge_positions) == 1, f"Expected 1 bridge position, got {len(bridge_positions)}"
+    assert len(vault_positions) == 1, f"Expected 1 Base vault position, got {len(vault_positions)}"
+    bridge_trade = list(bridge_positions[0].trades.values())[0]
+    assert bridge_trade.is_success(), f"Bridge trade failed: {bridge_trade.get_revert_reason()}"
+
+    # 5. Separate step — verify the real receiving contract (master Safe on Base).
+    base_safe_code = base_web3.eth.get_code(base_web3.to_checksum_address(master_safe))
+    assert len(base_safe_code) > 0, "Master Safe is not a deployed contract on Base"
+    base_vault_shares = fetch_erc20_details(
+        base_web3, base_vault_address, chain_id=BASE_CHAIN_ID,
+    ).fetch_balance_of(master_safe)
+    assert base_vault_shares > 0, (
+        "Bridged USDC was not deposited into the Base vault under the master Safe — "
+        "the CCTP mint recipient / custody resolution did not target the real Safe contract."
+    )

@@ -24,7 +24,8 @@ from .app import app
 from .pair_mapping import parse_pair_data
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
     create_execution_and_sync_model, create_client, configure_default_chain, \
-    check_universe_chains_have_rpc, check_universe_chains_have_gas
+    check_universe_chains_have_rpc, check_universe_chains_have_gas, \
+    check_universe_contracts_resolve
 from ..log import setup_logging
 from ..slippage import configure_max_slippage_tolerance
 from ..testtrade import make_test_trade
@@ -175,6 +176,10 @@ def perform_test_trade(
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
         token_cache=token_cache,
+        # Auto-discover satellite modules from the deployment artifact written
+        # next to the state file by lagoon-deploy-vault. Derive from state_file so
+        # a custom STATE_FILE location is honoured (matches the deploy side).
+        deployment_file=(Path(state_file) if state_file else Path(f"state/{id}.json")).with_name(f"{id}.deployment.json"),
     )
 
     client, routing_model = create_client(
@@ -236,6 +241,11 @@ def perform_test_trade(
     wallet_address = execution_model.tx_builder.get_gas_wallet_address()
     min_gas = getattr(execution_model, 'min_balance_threshold', 0)
     check_universe_chains_have_gas(web3config, universe, wallet_address, min_gas)
+
+    # Resolve every vault, satellite Safe and trading strategy module on-chain
+    # before trading, so a missing SATELLITE_MODULES entry fails fast here rather
+    # than after an irreversible cross-chain CCTP bridge.
+    check_universe_contracts_resolve(web3config, universe, execution_model)
 
     if single_pair:
         pair = universe.get_single_pair()

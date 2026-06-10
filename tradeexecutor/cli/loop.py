@@ -430,6 +430,32 @@ class ExecutionLoop:
         # Mark last refreshed
         run_state.bumb_refreshed()
 
+    def _run_live_preflight(self, universe, live: bool):
+        """Validate chains, gas and cross-chain contracts before a live cycle trades.
+
+        Runs on every live tick — not only when a fresh universe is constructed —
+        because ``run_live()`` warms the universe up front and reuses it across
+        cycles. A missing Lagoon satellite module must fail fast here rather than
+        after an irreversible CCTP bridge.
+        """
+        if not live:
+            return
+
+        web3config = getattr(self.execution_model, 'web3config', None)
+        if web3config is None:
+            return
+
+        from tradeexecutor.cli.bootstrap import (
+            check_universe_chains_have_rpc,
+            check_universe_chains_have_gas,
+            check_universe_contracts_resolve,
+        )
+        check_universe_chains_have_rpc(web3config, universe)
+        wallet_address = self.execution_model.tx_builder.get_gas_wallet_address()
+        min_gas_balance = getattr(self.execution_model, 'min_balance_threshold', 0)
+        check_universe_chains_have_gas(web3config, universe, wallet_address, min_gas_balance)
+        check_universe_contracts_resolve(web3config, universe, self.execution_model)
+
     def tick(
             self,
             unrounded_timestamp: datetime.datetime,
@@ -532,15 +558,6 @@ class ExecutionLoop:
                     strategy_parameters=self.parameters,
                 )
 
-                # Validate all universe chains have RPC connections and gas
-                web3config = getattr(self.execution_model, 'web3config', None)
-                if live and web3config is not None:
-                    from tradeexecutor.cli.bootstrap import check_universe_chains_have_rpc, check_universe_chains_have_gas
-                    check_universe_chains_have_rpc(web3config, universe)
-                    wallet_address = self.execution_model.tx_builder.get_gas_wallet_address()
-                    min_gas_balance = getattr(self.execution_model, 'min_balance_threshold', 0)
-                    check_universe_chains_have_gas(web3config, universe, wallet_address, min_gas_balance)
-
                 # Check if our data is stagnated and we cannot execute the strategy
                 if self.max_data_delay is not None:
                     self.universe_model.check_data_age(ts, universe, self.max_data_delay)
@@ -552,6 +569,12 @@ class ExecutionLoop:
             # Recycle the universe instance
             logger.info("Reusing previously loaded universe: %s", existing_universe)
             universe = existing_universe
+
+        # Validate chains, gas and cross-chain custody/vault/satellite contracts
+        # before trading. Runs on every live tick, including the warmed-up universe
+        # reused by run_live(), so a missing satellite module fails fast here rather
+        # than after an irreversible CCTP bridge.
+        self._run_live_preflight(universe, live)
 
         # Run cycle checks
         if live:
