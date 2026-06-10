@@ -914,6 +914,10 @@ def test_xchain_master_vault_lagoon_cli_reclaim_satellites(
         "STATE_FILE": state_file.as_posix(),
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
         "CACHE_PATH": str(tmp_path / "cache"),
+        # Disable the unreceived-burn auto-scan: fork-local burns are never
+        # indexed by Circle's Iris API, and scanning days of pre-fork history
+        # proxies eth_getLogs to the upstream RPC, slowing the test.
+        "BURN_SCAN_LOOKBACK_DAYS": "0",
     }
 
     cli = get_command(app)

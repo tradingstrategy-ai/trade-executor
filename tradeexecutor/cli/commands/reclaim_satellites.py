@@ -9,9 +9,12 @@ The command first gathers a full picture without broadcasting anything:
 1. Reads the USDC balance held by every satellite Safe and the master Safe,
    and displays them as a table.
 2. Finds incomplete (``cctp_in_transit``) CCTP transfers recorded in the state
-   file, and resolves any ``--complete-burn-tx`` burns (transfers whose burn
-   confirmed but which were never written to the state file, e.g. when the
-   process crashed before the state was saved) against Circle's Iris API.
+   file, auto-detects unreceived burns by scanning ``DepositForBurn`` events
+   from our Safes on every chain (checking Circle's Iris API and the
+   destination chain's ``usedNonces()``), and resolves any explicit
+   ``--complete-burn-tx`` burns — covering transfers that were never written
+   to the state file, e.g. when the process crashed before the state was
+   saved.
 3. Lists every action it is about to perform and asks for y/n confirmation.
 
 Then it executes:
@@ -42,7 +45,7 @@ from eth_defi.cctp.attestation import fetch_attestation
 from eth_defi.cctp.bridge import burn_usdc_cctp, receive_usdc_cctp
 from eth_defi.cctp.constants import CCTP_DOMAIN_TO_CHAIN_ID
 from eth_defi.cctp.monitor import CCTPTransferStatus, fetch_transfer_status
-from eth_defi.cctp.transfer import _resolve_cctp_domain
+from eth_defi.cctp.transfer import _resolve_cctp_domain, get_message_transmitter_v2, get_token_messenger_v2
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import fund_erc20_on_anvil, is_anvil
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
@@ -71,6 +74,17 @@ from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.utils.key import ensure_0x_prefixed_private_key
 
 logger = logging.getLogger(__name__)
+
+
+#: keccak256 topic0 of the CCTP V2 ``DepositForBurn`` event.
+#:
+#: Hardcoded because the bundled ``TokenMessengerV2.json`` ABI carries the
+#: stale V1 event signature (``uint64 indexed nonce`` first), which produces a
+#: different topic hash and matches nothing on-chain. Verified against the
+#: production burn tx 0x7a3c7ba8b770bb7db401e47cf916ceb7592a82335744ee0b4f6f838f7c1b2834
+#: on Arbitrum. Indexed params: topic1=burnToken, topic2=depositor,
+#: topic3=minFinalityThreshold.
+DEPOSIT_FOR_BURN_TOPIC0 = "0x0c8c1cbdc5190613ebd485511d4e2812cfa45eecb79d845893331fedad5130a5"
 
 
 def plan_reclaims(
@@ -171,7 +185,156 @@ def _resolve_unrecorded_burns(complete_burn_tx: str | None) -> list[dict]:
             "dest_chain_id": dest_chain_id,
             "dest_slug": ChainId(dest_chain_id).get_slug(),
             "status": status,
+            "auto": False,
         })
+    return burns
+
+
+def _estimate_lookback_blocks(web3, days: float, sample_span: int = 5_000) -> int:
+    """Convert a lookback in days to a block count using the chain's recent block time."""
+    latest = web3.eth.get_block("latest")
+    past = web3.eth.get_block(max(1, latest["number"] - sample_span))
+    span = latest["number"] - past["number"]
+    block_time = (latest["timestamp"] - past["timestamp"]) / span if span else 12.0
+    return int(days * 86_400 / max(block_time, 0.05))
+
+
+def _scan_safe_burn_txs(web3, depositor: str, lookback_blocks: int) -> list[str]:
+    """Find ``DepositForBurn`` transactions sent by a Safe via chunked ``eth_getLogs``.
+
+    Providers cap the ``eth_getLogs`` block range (e.g. dRPC rejects ~1M-block
+    requests), so the scan starts with the full range and quarters the chunk
+    size on a range error until the provider accepts it.
+
+    :return:
+        Deduplicated burn transaction hashes, oldest first.
+    """
+    token_messenger = get_token_messenger_v2(web3)
+    depositor_topic = "0x" + depositor[2:].lower().rjust(64, "0")
+    latest = web3.eth.block_number
+    from_block = max(1, latest - lookback_blocks)
+
+    tx_hashes: list[str] = []
+    chunk = lookback_blocks
+    start = from_block
+    while start <= latest:
+        end = min(start + chunk - 1, latest)
+        try:
+            logs = web3.eth.get_logs({
+                "address": token_messenger.address,
+                "fromBlock": start,
+                "toBlock": end,
+                "topics": [DEPOSIT_FOR_BURN_TOPIC0, None, depositor_topic],
+            })
+        except Exception as e:
+            if chunk <= 1_000:
+                raise
+            chunk //= 4
+            logger.info("eth_getLogs range %d-%d rejected (%s), retrying with %d-block chunks", start, end, e, chunk)
+            continue
+        for log in logs:
+            tx_hash = "0x" + log["transactionHash"].hex().removeprefix("0x")
+            if tx_hash not in tx_hashes:
+                tx_hashes.append(tx_hash)
+        start = end + 1
+    return tx_hashes
+
+
+def _discover_unreceived_burns(
+    web3config,
+    scan_safes: dict[int, str],
+    lookback_days: float,
+    known_burn_tx_hashes: set[str],
+) -> list[dict]:
+    """Auto-detect CCTP burns from our Safes whose mint never happened.
+
+    For every chain, scans ``DepositForBurn`` events where the depositor is
+    our Safe, then checks each burn against Circle's Iris API and the
+    destination chain's ``MessageTransmitterV2.usedNonces()``. A burn whose
+    attestation is ready but whose nonce is unused on the destination chain is
+    stuck mid-bridge — typically because ``receiveMessage`` reverted or the
+    process died before broadcasting it — and is returned as an actionable
+    completion.
+
+    Unlike explicit ``--complete-burn-tx`` entries, non-actionable burns
+    (not indexed by Iris, attestation pending, already received) are logged
+    and skipped rather than failing the command.
+
+    :param scan_safes:
+        Mapping of ``chain_id`` to the Safe address to scan on that chain.
+
+    :param lookback_days:
+        How far back to scan on every chain.
+
+    :param known_burn_tx_hashes:
+        Lowercased burn tx hashes already handled elsewhere (explicit
+        ``--complete-burn-tx`` entries, in-transit state trades) — skipped.
+
+    :return:
+        List of burn dicts in the same shape as :func:`_resolve_unrecorded_burns`,
+        with ``auto=True``.
+    """
+    burns: list[dict] = []
+    for chain_id_value, safe_address in scan_safes.items():
+        slug = ChainId(chain_id_value).get_slug()
+        web3 = web3config.get_connection(ChainId(chain_id_value))
+        if web3 is None:
+            continue
+
+        source_domain = _resolve_cctp_domain(chain_id_value)
+        if source_domain is None:
+            continue
+
+        lookback_blocks = _estimate_lookback_blocks(web3, lookback_days)
+        logger.info("Scanning %s for unreceived CCTP burns from Safe %s (%d blocks)", slug, safe_address, lookback_blocks)
+        for burn_tx_hash in _scan_safe_burn_txs(web3, safe_address, lookback_blocks):
+            if burn_tx_hash.lower() in known_burn_tx_hashes:
+                continue
+
+            status = fetch_transfer_status(source_domain, burn_tx_hash)
+            if status is None:
+                logger.warning("Burn %s on %s not indexed by Circle Iris API — skipping", burn_tx_hash, slug)
+                continue
+            if not status.is_complete:
+                logger.warning(
+                    "Burn %s on %s attestation not ready (status=%s, delay_reason=%s) — skipping, retry later",
+                    burn_tx_hash, slug, status.status, status.delay_reason,
+                )
+                continue
+            if status.nonce is None or (status.cctp_version or 2) != 2:
+                logger.warning("Burn %s on %s is not a CCTP V2 message — skipping", burn_tx_hash, slug)
+                continue
+
+            dest_chain_id = CCTP_DOMAIN_TO_CHAIN_ID.get(status.dest_domain)
+            if dest_chain_id is None:
+                logger.warning("Burn %s on %s has unknown destination domain %d — skipping", burn_tx_hash, slug, status.dest_domain)
+                continue
+            dest_web3 = web3config.get_connection(ChainId(dest_chain_id))
+            if dest_web3 is None:
+                logger.warning("Burn %s on %s targets chain %d with no JSON-RPC connection — skipping", burn_tx_hash, slug, dest_chain_id)
+                continue
+
+            message_transmitter = get_message_transmitter_v2(dest_web3)
+            nonce_used = message_transmitter.functions.usedNonces(
+                bytes.fromhex(status.nonce.removeprefix("0x"))
+            ).call()
+            if nonce_used:
+                logger.info("Burn %s on %s already received on destination — ok", burn_tx_hash, slug)
+                continue
+
+            logger.warning(
+                "Detected unreceived CCTP burn %s: %s -> %s, attestation ready but receiveMessage never landed",
+                burn_tx_hash, slug, ChainId(dest_chain_id).get_slug(),
+            )
+            burns.append({
+                "slug": slug,
+                "burn_tx_hash": burn_tx_hash,
+                "source_chain_id": chain_id_value,
+                "dest_chain_id": dest_chain_id,
+                "dest_slug": ChainId(dest_chain_id).get_slug(),
+                "status": status,
+                "auto": True,
+            })
     return burns
 
 
@@ -351,6 +514,12 @@ def lagoon_reclaim_satellites(
              "Comma-separated <chain_slug>:<burn_tx_hash> entries, e.g. arbitrum:0x7a3c... "
              "The attestation is fetched from Circle's Iris API and receiveMessage is broadcast on the destination chain.",
     ),
+    burn_scan_lookback_days: float = typer.Option(
+        7.0,
+        envvar="BURN_SCAN_LOOKBACK_DAYS",
+        help="Auto-detect unreceived CCTP burns by scanning DepositForBurn events from our Safes this many days back on every chain, "
+             "checking each against Circle's Iris API and the destination chain's usedNonces(). Set 0 to disable the scan.",
+    ),
     dry_run: bool = typer.Option(
         False,
         envvar="DRY_RUN",
@@ -450,7 +619,8 @@ def lagoon_reclaim_satellites(
 
     # Gather phase (read-only): in-transit transfers recorded in the state
     # file, unrecorded burns from --complete-burn-tx resolved against Iris,
-    # and all on-chain Safe USDC balances.
+    # unreceived burns auto-detected from on-chain events, and all on-chain
+    # Safe USDC balances.
     in_transit = [
         trade
         for position in state.portfolio.open_positions.values()
@@ -458,6 +628,25 @@ def lagoon_reclaim_satellites(
         if trade.get_status() == TradeStatus.cctp_in_transit
     ]
     unrecorded_burns = _resolve_unrecorded_burns(complete_burn_tx)
+
+    if burn_scan_lookback_days > 0:
+        # Burns already handled by explicit entries or the state-based retry
+        # must not be double-completed by the auto-scan.
+        known_burn_tx_hashes = {burn["burn_tx_hash"].lower() for burn in unrecorded_burns}
+        known_burn_tx_hashes |= {
+            str(trade.other_data.get("cctp_burn_tx_hash", "")).lower()
+            for trade in in_transit
+        }
+        scan_safes = {master_chain_id: master_safe_address}
+        for chain_id_value, sat_vault in satellite_vaults.items():
+            scan_safes[chain_id_value] = sat_vault.safe_address
+        unrecorded_burns += _discover_unreceived_burns(
+            web3config,
+            scan_safes,
+            burn_scan_lookback_days,
+            known_burn_tx_hashes,
+        )
+
     satellite_usdc, usdc_tokens = _read_satellite_balances(web3config, satellite_vaults)
 
     master_usdc_address = USDC_NATIVE_TOKEN.get(master_chain_id)
@@ -490,9 +679,10 @@ def lagoon_reclaim_satellites(
     # Build and display the action list.
     actions: list[str] = []
     for burn in unrecorded_burns:
+        origin = "auto-detected" if burn["auto"] else "from --complete-burn-tx"
         actions.append(
-            f"Complete unrecorded CCTP burn {burn['burn_tx_hash']} "
-            f"({burn['slug']} -> {burn['dest_slug']}, attestation ready) via receiveMessage"
+            f"Complete unreceived CCTP burn {burn['burn_tx_hash']} "
+            f"({burn['slug']} -> {burn['dest_slug']}, attestation ready, {origin}) via receiveMessage"
         )
     for trade in in_transit:
         actions.append(
