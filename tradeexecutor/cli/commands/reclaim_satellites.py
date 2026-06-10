@@ -26,7 +26,11 @@ from pathlib import Path
 from typing import Optional
 
 import typer
+from eth_defi.cctp.attestation import fetch_attestation
+from eth_defi.cctp.bridge import burn_usdc_cctp, receive_usdc_cctp
+from eth_defi.cctp.transfer import _resolve_cctp_domain
 from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.anvil import fund_erc20_on_anvil, is_anvil
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
 from tradingstrategy.chain import ChainId
 
@@ -38,11 +42,15 @@ from tradeexecutor.cli.bootstrap import (
 )
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
-from tradeexecutor.cli.commands.lagoon_utils import ensure_state_store_exists
+from tradeexecutor.cli.commands.lagoon_utils import (
+    ensure_state_store_exists,
+    sync_reserve_balance_to_state,
+)
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.ethereum.cctp.retry import check_and_retry_cctp_in_transit
 from tradeexecutor.ethereum.cctp.routing import CCTP_RECEIVE_GAS_FALLBACK
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
+from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.utils.key import ensure_0x_prefixed_private_key
@@ -94,13 +102,14 @@ def _bridge_satellite_to_master(
     chains. Source and destination nonces differ on live chains, so we sign with
     a freshly nonce-synced wallet per chain — mirroring the production routing.
 
+    On Anvil forks Circle's Iris API cannot attest the burn, so after the real
+    burn through the guard the mint is materialised on the master chain with
+    ``fund_erc20_on_anvil()`` — the same simulation approach
+    ``perform-test-trade`` uses for cross-chain test trades.
+
     :return:
         Dict with ``burn_tx_hash`` and ``receive_tx_hash``.
     """
-    from eth_defi.cctp.attestation import fetch_attestation
-    from eth_defi.cctp.bridge import burn_usdc_cctp, receive_usdc_cctp
-    from eth_defi.cctp.transfer import _resolve_cctp_domain
-
     source_chain_id = sat_web3.eth.chain_id
 
     # Burn on the satellite chain through the Lagoon guard module.
@@ -115,6 +124,30 @@ def _bridge_satellite_to_master(
         sender=source_wallet.address,
         hot_wallet=source_wallet,
     )
+
+    if is_anvil(master_web3):
+        # Anvil fork: no Iris attestation available — materialise the mint.
+        # fund_erc20_on_anvil() overwrites the balance via anvil_setStorageAt,
+        # so read the existing balance first and add to it.
+        master_usdc_address = USDC_NATIVE_TOKEN[master_chain_id]
+        master_usdc = fetch_erc20_details(master_web3, master_usdc_address)
+        existing_raw = master_usdc.contract.functions.balanceOf(
+            master_web3.to_checksum_address(master_safe_address)
+        ).call()
+        logger.info(
+            "Anvil fork: materialising CCTP mint of %d raw USDC on master chain %d",
+            amount_raw, master_chain_id,
+        )
+        fund_erc20_on_anvil(
+            master_web3,
+            master_usdc_address,
+            master_web3.to_checksum_address(master_safe_address),
+            existing_raw + amount_raw,
+        )
+        return {
+            "burn_tx_hash": burn_result.burn_tx_hash,
+            "receive_tx_hash": "<anvil fork simulated mint>",
+        }
 
     # Wait for Circle's attestation on the burn.
     source_domain = _resolve_cctp_domain(source_chain_id)
@@ -268,7 +301,6 @@ def lagoon_reclaim_satellites(
     # Step 1: finish any CCTP transfers burned but never minted, so the recovered
     # USDC lands in a Safe and is swept along with the rest below.
     if no_broadcast:
-        from tradeexecutor.state.trade import TradeStatus
         in_transit = [
             trade
             for position in state.portfolio.open_positions.values()
@@ -366,7 +398,6 @@ def lagoon_reclaim_satellites(
     # Sweeping into the master Safe increases the on-chain reserve held by the
     # vault. Reflect that in the state file so accounting stays consistent.
     if results:
-        from tradeexecutor.cli.commands.lagoon_utils import sync_reserve_balance_to_state
         sync_reserve_balance_to_state(store, master_usdc, master_balance_after)
         logger.info("  State file reserve updated: %s", state_path)
 

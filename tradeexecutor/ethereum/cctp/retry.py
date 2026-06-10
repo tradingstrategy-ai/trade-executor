@@ -11,6 +11,7 @@ import datetime
 
 from eth_defi.compat import native_datetime_utc_now
 
+from tradeexecutor.ethereum.cctp.routing import estimate_receive_message_gas
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 
@@ -68,7 +69,6 @@ def check_and_retry_cctp_in_transit(
     from hexbytes import HexBytes
     from tradingstrategy.chain import ChainId
 
-    from tradeexecutor.ethereum.cctp.routing import estimate_receive_message_gas
     from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 
     resolved: list[TradeExecution] = []
