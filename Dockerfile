@@ -46,10 +46,15 @@ COPY deps/trading-strategy/tradingstrategy deps/trading-strategy/tradingstrategy
 COPY deps/web3-ethereum-defi/pyproject.toml deps/web3-ethereum-defi/README.md deps/web3-ethereum-defi/
 COPY deps/web3-ethereum-defi/eth_defi deps/web3-ethereum-defi/eth_defi
 
-RUN poetry install --all-extras --no-interaction --no-ansi --without=dev --no-root
-
-# Clean Poetry cache to reduce image size.
-RUN poetry cache clear pypi --all --no-interaction
+# Use a BuildKit cache mount for the Poetry download/build cache. The cache
+# lives in a persistent BuildKit volume, not in the image layer, so:
+#  - rebuilds reuse already-downloaded/built wheels even when this layer is
+#    invalidated by a path-dependency (eth_defi / trading-strategy) bump, which
+#    happens on almost every release;
+#  - the image stays small because the cache is never written into the layer,
+#    so no separate "poetry cache clear" step is needed.
+RUN --mount=type=cache,target=/root/.cache/pypoetry \
+    poetry install --all-extras --no-interaction --no-ansi --without=dev --no-root
 
 # Lagoon contract sources are needed for forge dependency installation, but we
 # still keep them separate from the main application copy to preserve cache.
