@@ -746,9 +746,12 @@ def lagoon_reclaim_satellites(
     logger.info("  Master Safe USDC after:  %s", master_balance_after)
     logger.info("  Net reclaimed:           %s USDC across %d bridge(s)", reclaimed_total, len(results))
 
-    # Sweeping into the master Safe increases the on-chain reserve held by the
-    # vault. Reflect that in the state file so accounting stays consistent.
-    if results:
+    # Any inflow to the master Safe increases the on-chain reserve held by the
+    # vault — not just satellite sweeps, but also completed burns whose mint
+    # recipient was the master Safe itself (e.g. a missing-state satellite ->
+    # master bridge-back finished via --complete-burn-tx or auto-detection).
+    # Reflect it in the state file so accounting stays consistent.
+    if master_balance_after != master_balance_before:
         sync_reserve_balance_to_state(store, master_usdc, master_balance_after)
         logger.info("  State file reserve updated: %s", state_path)
 
