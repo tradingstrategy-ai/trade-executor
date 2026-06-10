@@ -16,16 +16,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Only the top-level submodules (trading-strategy, web3-ethereum-defi,
-          # spec) are needed. Avoid 'recursive', which would also clone all 23
-          # of web3-ethereum-defi's contract submodules (uniswap, aave, enzyme,
-          # openzeppelin, ...) — most are excluded from the Docker build context
-          # by .dockerignore anyway, so cloning them wastes ~2 minutes.
+          # Fetch the top-level submodules (trading-strategy, web3-ethereum-defi,
+          # spec). The two nested submodules the image actually needs are checked
+          # out explicitly in the next step. Avoid 'recursive', which would also
+          # clone all 23 of web3-ethereum-defi's contract submodules (uniswap,
+          # aave, enzyme, openzeppelin, ...) and the chains 'website' submodule —
+          # most are excluded from the Docker build context by .dockerignore
+          # anyway, so cloning them wastes ~2 minutes.
           submodules: true
-      - name: Check out only the Lagoon contracts submodule needed for the image
-        # The image build runs `forge soldeer install` inside contracts/lagoon-v0,
-        # so we need that one nested submodule (it has no further submodules).
-        run: git -C deps/web3-ethereum-defi submodule update --init --depth 1 contracts/lagoon-v0
+      - name: Check out the nested submodules the image needs
+        # 'submodules: true' is not recursive, so it does not fetch nested
+        # submodules. Two of them are COPY'd into the image and must be present:
+        #  - web3-ethereum-defi/contracts/lagoon-v0: `forge soldeer install` runs
+        #    here during the build (no further nested submodules).
+        #  - trading-strategy/tradingstrategy/chains: chain metadata read at
+        #    runtime — Chain.get_slug() loads chains/_data/chains/*.json. Without
+        #    it the image builds but crashes on first chain lookup. A non-recursive
+        #    init fetches the _data we need while skipping the chains 'website'
+        #    submodule, which the image never uses.
+        run: |
+          git -C deps/web3-ethereum-defi submodule update --init --depth 1 contracts/lagoon-v0
+          git -C deps/trading-strategy submodule update --init --depth 1 tradingstrategy/chains
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Read metadata
