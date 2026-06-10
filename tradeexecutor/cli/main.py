@@ -17,6 +17,7 @@ from .commands.enzyme_asset_list import enzyme_asset_list
 from .commands.export import export
 from .commands.hello import hello
 from .commands.lagoon_settle import lagoon_settle
+from .commands.reclaim_satellites import lagoon_reclaim_satellites
 from .commands.reset import reset
 from .commands.reset_deposits import reset_deposits
 from .commands.show_positions import show_positions
@@ -49,7 +50,7 @@ __all__ = [
     app, backtest, blacklist, check_accounts, claim_hypercore_vault_dust, check_position_triggers,
     check_universe, check_wallet, close_all, close_position, console,
     correct_accounts, correct_history, deploy_guard, distribute_gas_funds, enzyme_asset_list, enzyme_deploy_vault,
-    export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_redeem, lagoon_settle, perform_test_trade, prepare_report, prune_state,
+    export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_reclaim_satellites, lagoon_redeem, lagoon_settle, perform_test_trade, prepare_report, prune_state,
     repair, repair_hypercore_dust, reset, reset_deposits, retry, send_log_message, show_positions,
     show_valuation, start, token_cache, trade_ui, trading_pair,
     version, visualise, webapi,

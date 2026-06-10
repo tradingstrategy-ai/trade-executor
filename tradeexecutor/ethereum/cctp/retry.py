@@ -68,6 +68,7 @@ def check_and_retry_cctp_in_transit(
     from hexbytes import HexBytes
     from tradingstrategy.chain import ChainId
 
+    from tradeexecutor.ethereum.cctp.routing import estimate_receive_message_gas
     from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 
     resolved: list[TradeExecution] = []
@@ -195,7 +196,7 @@ def check_and_retry_cctp_in_transit(
                 receive_tx = dest_tx_builder.sign_transaction(
                     message_transmitter,
                     receive_fn,
-                    gas_limit=200_000,
+                    gas_limit=estimate_receive_message_gas(receive_fn, dest_wallet.address),
                     asset_deltas=[],
                     notes=f"CCTP receiveMessage retry chain {source_chain_id} -> {dest_chain_id}",
                 )

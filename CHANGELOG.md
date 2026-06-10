@@ -5,6 +5,10 @@
 
 - Breaking API changes
 
+- Add `lagoon-reclaim-satellites` CLI command that consolidates capital scattered across multichain Lagoon satellite Safes back into the master vault: it completes any in-transit CCTP transfers, bridges each satellite Safe's USDC back to the master Safe via CCTP, and verifies every destination-chain mint confirmed. Supports `--dry-run` to report balances without moving funds (2026-06-10)
+
+- Fix CCTP `receiveMessage` reverting out-of-gas on the destination chain: the mint was signed with a hardcoded 200,000 gas limit (less than the 300,000 used for the lighter `depositForBurn`), so the attestation-verify-plus-mint ran out of gas and stranded the burn `cctp_in_transit`. Gas is now estimated live with a 2x buffer and a generous fixed fallback, in both the live settlement and startup-retry paths (2026-06-10)
+
 - Auto-discover multichain Lagoon satellite vault modules from the `lagoon-deploy-vault` deployment artifact placed next to the state file, removing the manual `SATELLITE_MODULES` env hand-off that stranded bridged USDC on satellite chains. `perform-test-trade` and `start` now fail fast with an actionable error when a cross-chain destination has no satellite module configured, before any irreversible CCTP bridge (2026-06-10)
 
 - Fix CCTP bridge burning 10^12x too much USDC ("ERC20: transfer amount exceeds balance") in vault-only universes: native USDC is pinned to 6 decimals when generating synthetic bridge pairs, and the burn amount is converted from authoritative on-chain token decimals (`TokenDetails.convert_to_raw()`) instead of trusting pair metadata. This supersedes the 2026-06-03 fix, which trusted `PandasPairUniverse.get_token()` decimals that are themselves wrong (18) when the upstream vault dataset omits decimals (2026-06-09)
