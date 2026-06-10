@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Fix Docker release image (v1392) crashing at runtime with "Chain data folder ... not found": the build-time submodule optimisation switched to a non-recursive checkout but missed the nested `trading-strategy/tradingstrategy/chains` submodule (ethereum-lists/chains), whose `_data/chains/*.json` is read by `Chain.get_slug()`. The release workflow now explicitly checks out the chains submodule alongside `lagoon-v0` (still skipping the unused chains `website` submodule and eth_defi's other contract submodules) (2026-06-11)
+
 - Add `lagoon-reclaim-satellites` CLI command that consolidates capital scattered across multichain Lagoon satellite Safes back into the master vault: it displays a table of all on-chain Safe USDC balances, auto-detects unreceived CCTP burns by scanning `DepositForBurn` events from our Safes and checking Circle's Iris API plus the destination chain's `usedNonces()`, lists the planned reclaim actions and asks for y/n confirmation, completes any in-transit CCTP transfers (including burns missing from the state file, auto-detected or given via `--complete-burn-tx <chain>:<tx_hash>`), bridges each satellite Safe's USDC back to the master Safe via CCTP, and verifies every destination-chain mint confirmed. Supports `--dry-run` to stop after the action list without moving funds (2026-06-10)
 
 - Fix CCTP `receiveMessage` reverting out-of-gas on the destination chain: the mint was signed with a hardcoded 200,000 gas limit (less than the 300,000 used for the lighter `depositForBurn`), so the attestation-verify-plus-mint ran out of gas and stranded the burn `cctp_in_transit`. Gas is now estimated live with a 2x buffer and a generous fixed fallback, in both the live settlement and startup-retry paths (2026-06-10)
