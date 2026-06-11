@@ -411,6 +411,12 @@ class EthereumExecution(ExecutionModel):
             # Anvil test path
             mev_blocker = web3.provider
 
+        # Cache the (web3, broadcast provider) per chain so cross-chain (satellite) txs are
+        # broadcast through their own chain's provider instead of the home-chain one. The MEV
+        # blocker only exists on the home chain; satellite chains broadcast through their own
+        # provider. Mirrors the per-chain selection in broadcast_and_resolve_multiple_nodes().
+        chain_providers: dict[int, tuple] = {self.chain_id: (web3, mev_blocker)}
+
         asset, _ = state.portfolio.get_default_reserve_asset()
         treasury_token = fetch_erc20_details(
             self.web3,
@@ -449,6 +455,17 @@ class EthereumExecution(ExecutionModel):
 
             for tx in t.blockchain_transactions:
 
+                # Resolve which chain this tx belongs to, so cross-chain (satellite) txs are
+                # broadcast through their own provider instead of the home-chain one.
+                tx_chain_id = tx.chain_id or self.chain_id
+                if tx_chain_id not in chain_providers:
+                    assert self.web3config, f"web3config required to broadcast satellite-chain tx on chain {tx_chain_id}"
+                    satellite_web3 = self.web3config.get_connection(ChainId(tx_chain_id))
+                    satellite_provider = get_mev_blocker_provider(satellite_web3) or satellite_web3.provider
+                    chain_providers[tx_chain_id] = (satellite_web3, satellite_provider)
+                    logger.info("Sequential broadcast for tx on satellite chain %d", tx_chain_id)
+                tx_web3, tx_provider = chain_providers[tx_chain_id]
+
                 logger.info(
                     "MEV blocker resolve, tx: %s, nonce %d, trade: #%d, timeout %s",
                     tx.tx_hash,
@@ -470,13 +487,13 @@ class EthereumExecution(ExecutionModel):
 
                 # Fail if we have many txs and looks like we are low on gas.
                 # This is additional check for perform_gas_level_check() that is only a warning
-                gas_balance = web3.eth.get_balance(tx.from_address)
+                gas_balance = tx_web3.eth.get_balance(tx.from_address)
                 if gas_balance < self.min_balance_threshold * 10**18:
                     raise OutOfGasFunds(f"Out of gas - do not attempt to broadcast transactions. {tx.from_address} gas balance is {gas_balance/10**18}, needed {self.min_balance_threshold}")
 
                 try:
                     receipts = wait_and_broadcast_multiple_nodes_mev_blocker(
-                        mev_blocker,
+                        tx_provider,
                         [signed_tx],
                         max_timeout=confirmation_timeout,
                     )
