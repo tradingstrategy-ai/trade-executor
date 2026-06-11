@@ -261,6 +261,7 @@ def _log_chain_custody_details(sync_model, execution_model, chain_id: ChainId) -
 @shared_options.with_json_rpc_options()
 def check_wallet(
     id: str = shared_options.id,
+    state_file: Optional[Path] = shared_options.state_file,
 
     strategy_file: Path = shared_options.strategy_file,
     private_key: str = shared_options.private_key,
@@ -354,7 +355,7 @@ def check_wallet(
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
         token_cache=token_cache,
-        deployment_file=resolve_deployment_file(id),
+        deployment_file=resolve_deployment_file(id, state_file),
     )
 
     assert asset_management_mode.is_live_trading(), f"Cannot perform check wallet for non-real modes"
