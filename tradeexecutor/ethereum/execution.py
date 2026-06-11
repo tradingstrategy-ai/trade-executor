@@ -307,6 +307,76 @@ class EthereumExecution(ExecutionModel):
             receipts,
             stop_on_execution_failure=stop_on_execution_failure)
 
+    def _raise_if_insufficient_buy_treasury(
+        self,
+        t: TradeExecution,
+        onchain_treasury_balance,
+        needed_usd,
+        completed_trades: list,
+        total_trade_count: int,
+    ) -> None:
+        """Abort the batch if a spot buy cannot be funded from the on-chain treasury.
+
+        The next transaction would not go through even if we try, so better to abort here
+        and inspect why this is happening.
+
+        Cross-chain (satellite) trades are skipped: their reserve has been bridged to another
+        chain via CCTP, so the home-chain treasury balance read via ``self.web3`` is
+        legitimately empty and the comparison would always falsely trip.
+
+        :raise ExecutionHaltableIssue:
+            If a same-chain spot buy is underfunded. This is a special type of exception that
+            causes ``store.sync()`` to save state in the ``start.py`` main loop exit.
+        """
+
+        is_cross_chain = t.pair.chain_id != self.chain_id
+        if not t.is_spot() or not t.is_buy() or is_cross_chain:
+            return
+
+        if onchain_treasury_balance > needed_usd:
+            return
+
+        trades_done = len(completed_trades)
+        total_sales = sum(c.get_executed_value() for c in completed_trades if c.is_sell())
+        expected_sales = sum(c.planned_reserve for c in completed_trades if c.is_sell())
+        total_sales = float(total_sales)
+        expected_sales = float(expected_sales)
+        total_sell_trades = len([c for c in completed_trades if c.is_sell()])
+        total_sell_trades_failed = len([c for c in completed_trades if c.is_sell() and c.is_failed()])
+        total_buy_trades = len([c for c in completed_trades if c.is_buy()])
+        if expected_sales != 0:
+            diff = (total_sales - expected_sales) / expected_sales
+        else:
+            diff = 0
+
+        failed_trade = None
+        failed_tx = None
+        for c in completed_trades:
+            failed_tx = c.get_failed_transaction()
+            if failed_tx:
+                tx_hash = failed_tx.tx_hash
+                failed_trade = c
+            else:
+                tx_hash = None
+
+            logger.error(
+                "Completed trade: %s, expected reserve: %s, executed reserve: %s, price: %s, hash %s\nPrice structure: %s",
+                c,
+                c.planned_reserve,
+                c.executed_reserve,
+                c.executed_price,
+                tx_hash,
+                c.price_structure,
+            )
+
+        raise ExecutionHaltableIssue(
+            f"Not enough treasury to buy token  in the middle of rebalance run, should not happen.\n" \
+            f"Trades done: {trades_done}, total trades: {total_trade_count}, total sell trades: {total_sell_trades}, total sell trades failed: {total_sell_trades_failed}, total buy trades: {total_buy_trades}\n" \
+            f"Balance: {onchain_treasury_balance:.2f}, USD needed: {needed_usd:.2f}\n" \
+            f"Total sales: {total_sales:.2f} USD, expected sales: {expected_sales:.2f} USD, diff {diff:.2%}\n" \
+            f"Failed trade: {failed_trade}, with failed tx {failed_tx}"
+        )
+
     def broadcast_and_resolve_mev_blocker(
         self,
         routing_model: RoutingModel,
@@ -341,6 +411,12 @@ class EthereumExecution(ExecutionModel):
             # Anvil test path
             mev_blocker = web3.provider
 
+        # Cache the (web3, broadcast provider) per chain so cross-chain (satellite) txs are
+        # broadcast through their own chain's provider instead of the home-chain one. The MEV
+        # blocker only exists on the home chain; satellite chains broadcast through their own
+        # provider. Mirrors the per-chain selection in broadcast_and_resolve_multiple_nodes().
+        chain_providers: dict[int, tuple] = {self.chain_id: (web3, mev_blocker)}
+
         asset, _ = state.portfolio.get_default_reserve_asset()
         treasury_token = fetch_erc20_details(
             self.web3,
@@ -369,52 +445,26 @@ class EthereumExecution(ExecutionModel):
             )
 
             # Trip wire if we have somehow miscalculated USD allocation for buy trades.
-            # The next transaction would not go through even if we try, so better to abort here
-            # and inspect why is this happening.
-            if t.is_spot():
-                if t.is_buy():
-                    if onchain_treasury_balance <= needed_usd:
-                        trades_done = len(completed_trades)
-                        total_sales = sum(t.get_executed_value() for t in completed_trades if t.is_sell())
-                        expected_sales = sum(t.planned_reserve for t in completed_trades if t.is_sell())
-                        total_sales = float(total_sales)
-                        expected_sales = float(expected_sales)
-                        total_sell_trades = len([t for t in completed_trades if t.is_sell()])
-                        total_sell_trades_failed = len([t for t in completed_trades if t.is_sell() and t.is_failed()])
-                        total_buy_trades = len([t for t in completed_trades if t.is_buy()])
-                        if expected_sales != 0:
-                            diff = (total_sales - expected_sales) / expected_sales
-                        else:
-                            diff = 0
-
-                        failed_trade = None
-                        for t in completed_trades:
-                            failed_tx = t.get_failed_transaction()
-                            if failed_tx:
-                                tx_hash = failed_tx.tx_hash
-                                failed_trade = t
-                            else:
-                                tx_hash = None
-
-                            logger.error(
-                                "Completed trade: %s, expected reserve: %s, executed reserve: %s, price: %s, hash %s\nPrice structure: %s",
-                                t,
-                                t.planned_reserve,
-                                t.executed_reserve,
-                                t.executed_price,
-                                tx_hash,
-                                t.price_structure,
-                            )
-                        # This is a special type of exception that will cause store.sync() to save state in start.py main loop exit
-                        raise ExecutionHaltableIssue(
-                            f"Not enough treasury to buy token  in the middle of rebalance run, should not happen.\n" \
-                            f"Trades done: {trades_done}, total trades: {len(trades)}, total sell trades: {total_sell_trades}, total sell trades failed: {total_sell_trades_failed}, total buy trades: {total_buy_trades}\n" \
-                            f"Balance: {onchain_treasury_balance:.2f}, USD needed: {needed_usd:.2f}\n" \
-                            f"Total sales: {total_sales:.2f} USD, expected sales: {expected_sales:.2f} USD, diff {diff:.2%}\n" \
-                            f"Failed trade: {failed_trade}, with failed tx {failed_tx}"
-                        )
+            self._raise_if_insufficient_buy_treasury(
+                t,
+                onchain_treasury_balance,
+                needed_usd,
+                completed_trades,
+                len(trades),
+            )
 
             for tx in t.blockchain_transactions:
+
+                # Resolve which chain this tx belongs to, so cross-chain (satellite) txs are
+                # broadcast through their own provider instead of the home-chain one.
+                tx_chain_id = tx.chain_id or self.chain_id
+                if tx_chain_id not in chain_providers:
+                    assert self.web3config, f"web3config required to broadcast satellite-chain tx on chain {tx_chain_id}"
+                    satellite_web3 = self.web3config.get_connection(ChainId(tx_chain_id))
+                    satellite_provider = get_mev_blocker_provider(satellite_web3) or satellite_web3.provider
+                    chain_providers[tx_chain_id] = (satellite_web3, satellite_provider)
+                    logger.info("Sequential broadcast for tx on satellite chain %d", tx_chain_id)
+                tx_web3, tx_provider = chain_providers[tx_chain_id]
 
                 logger.info(
                     "MEV blocker resolve, tx: %s, nonce %d, trade: #%d, timeout %s",
@@ -437,13 +487,13 @@ class EthereumExecution(ExecutionModel):
 
                 # Fail if we have many txs and looks like we are low on gas.
                 # This is additional check for perform_gas_level_check() that is only a warning
-                gas_balance = web3.eth.get_balance(tx.from_address)
+                gas_balance = tx_web3.eth.get_balance(tx.from_address)
                 if gas_balance < self.min_balance_threshold * 10**18:
                     raise OutOfGasFunds(f"Out of gas - do not attempt to broadcast transactions. {tx.from_address} gas balance is {gas_balance/10**18}, needed {self.min_balance_threshold}")
 
                 try:
                     receipts = wait_and_broadcast_multiple_nodes_mev_blocker(
-                        mev_blocker,
+                        tx_provider,
                         [signed_tx],
                         max_timeout=confirmation_timeout,
                     )
