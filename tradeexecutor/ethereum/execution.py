@@ -307,6 +307,76 @@ class EthereumExecution(ExecutionModel):
             receipts,
             stop_on_execution_failure=stop_on_execution_failure)
 
+    def _raise_if_insufficient_buy_treasury(
+        self,
+        t: TradeExecution,
+        onchain_treasury_balance,
+        needed_usd,
+        completed_trades: list,
+        total_trade_count: int,
+    ) -> None:
+        """Abort the batch if a spot buy cannot be funded from the on-chain treasury.
+
+        The next transaction would not go through even if we try, so better to abort here
+        and inspect why this is happening.
+
+        Cross-chain (satellite) trades are skipped: their reserve has been bridged to another
+        chain via CCTP, so the home-chain treasury balance read via ``self.web3`` is
+        legitimately empty and the comparison would always falsely trip.
+
+        :raise ExecutionHaltableIssue:
+            If a same-chain spot buy is underfunded. This is a special type of exception that
+            causes ``store.sync()`` to save state in the ``start.py`` main loop exit.
+        """
+
+        is_cross_chain = t.pair.chain_id != self.chain_id
+        if not t.is_spot() or not t.is_buy() or is_cross_chain:
+            return
+
+        if onchain_treasury_balance > needed_usd:
+            return
+
+        trades_done = len(completed_trades)
+        total_sales = sum(c.get_executed_value() for c in completed_trades if c.is_sell())
+        expected_sales = sum(c.planned_reserve for c in completed_trades if c.is_sell())
+        total_sales = float(total_sales)
+        expected_sales = float(expected_sales)
+        total_sell_trades = len([c for c in completed_trades if c.is_sell()])
+        total_sell_trades_failed = len([c for c in completed_trades if c.is_sell() and c.is_failed()])
+        total_buy_trades = len([c for c in completed_trades if c.is_buy()])
+        if expected_sales != 0:
+            diff = (total_sales - expected_sales) / expected_sales
+        else:
+            diff = 0
+
+        failed_trade = None
+        failed_tx = None
+        for c in completed_trades:
+            failed_tx = c.get_failed_transaction()
+            if failed_tx:
+                tx_hash = failed_tx.tx_hash
+                failed_trade = c
+            else:
+                tx_hash = None
+
+            logger.error(
+                "Completed trade: %s, expected reserve: %s, executed reserve: %s, price: %s, hash %s\nPrice structure: %s",
+                c,
+                c.planned_reserve,
+                c.executed_reserve,
+                c.executed_price,
+                tx_hash,
+                c.price_structure,
+            )
+
+        raise ExecutionHaltableIssue(
+            f"Not enough treasury to buy token  in the middle of rebalance run, should not happen.\n" \
+            f"Trades done: {trades_done}, total trades: {total_trade_count}, total sell trades: {total_sell_trades}, total sell trades failed: {total_sell_trades_failed}, total buy trades: {total_buy_trades}\n" \
+            f"Balance: {onchain_treasury_balance:.2f}, USD needed: {needed_usd:.2f}\n" \
+            f"Total sales: {total_sales:.2f} USD, expected sales: {expected_sales:.2f} USD, diff {diff:.2%}\n" \
+            f"Failed trade: {failed_trade}, with failed tx {failed_tx}"
+        )
+
     def broadcast_and_resolve_mev_blocker(
         self,
         routing_model: RoutingModel,
@@ -369,50 +439,13 @@ class EthereumExecution(ExecutionModel):
             )
 
             # Trip wire if we have somehow miscalculated USD allocation for buy trades.
-            # The next transaction would not go through even if we try, so better to abort here
-            # and inspect why is this happening.
-            if t.is_spot():
-                if t.is_buy():
-                    if onchain_treasury_balance <= needed_usd:
-                        trades_done = len(completed_trades)
-                        total_sales = sum(t.get_executed_value() for t in completed_trades if t.is_sell())
-                        expected_sales = sum(t.planned_reserve for t in completed_trades if t.is_sell())
-                        total_sales = float(total_sales)
-                        expected_sales = float(expected_sales)
-                        total_sell_trades = len([t for t in completed_trades if t.is_sell()])
-                        total_sell_trades_failed = len([t for t in completed_trades if t.is_sell() and t.is_failed()])
-                        total_buy_trades = len([t for t in completed_trades if t.is_buy()])
-                        if expected_sales != 0:
-                            diff = (total_sales - expected_sales) / expected_sales
-                        else:
-                            diff = 0
-
-                        failed_trade = None
-                        for t in completed_trades:
-                            failed_tx = t.get_failed_transaction()
-                            if failed_tx:
-                                tx_hash = failed_tx.tx_hash
-                                failed_trade = t
-                            else:
-                                tx_hash = None
-
-                            logger.error(
-                                "Completed trade: %s, expected reserve: %s, executed reserve: %s, price: %s, hash %s\nPrice structure: %s",
-                                t,
-                                t.planned_reserve,
-                                t.executed_reserve,
-                                t.executed_price,
-                                tx_hash,
-                                t.price_structure,
-                            )
-                        # This is a special type of exception that will cause store.sync() to save state in start.py main loop exit
-                        raise ExecutionHaltableIssue(
-                            f"Not enough treasury to buy token  in the middle of rebalance run, should not happen.\n" \
-                            f"Trades done: {trades_done}, total trades: {len(trades)}, total sell trades: {total_sell_trades}, total sell trades failed: {total_sell_trades_failed}, total buy trades: {total_buy_trades}\n" \
-                            f"Balance: {onchain_treasury_balance:.2f}, USD needed: {needed_usd:.2f}\n" \
-                            f"Total sales: {total_sales:.2f} USD, expected sales: {expected_sales:.2f} USD, diff {diff:.2%}\n" \
-                            f"Failed trade: {failed_trade}, with failed tx {failed_tx}"
-                        )
+            self._raise_if_insufficient_buy_treasury(
+                t,
+                onchain_treasury_balance,
+                needed_usd,
+                completed_trades,
+                len(trades),
+            )
 
             for tx in t.blockchain_transactions:
 
