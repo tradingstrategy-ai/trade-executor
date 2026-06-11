@@ -277,19 +277,19 @@ def _write_state_sibling_deployment_artifact(
     if simulate or not strategy_file:
         return
 
-    from tradeexecutor.cli.bootstrap import prepare_executor_id
+    from tradeexecutor.cli.bootstrap import prepare_executor_id, resolve_deployment_file
 
     # Resolve the executor id the same way the runtime commands do (EXECUTOR_ID
     # env, falling back to the strategy filename) so the artifact filename matches
     # what start / perform-test-trade look for.
     executor_id = prepare_executor_id(os.environ.get("EXECUTOR_ID"), strategy_file)
-    # Honour an explicit STATE_FILE location so the artifact lands next to the
-    # state file (and tests don't pollute the repo's state/ dir). Default to the
-    # state/ convention used by all CLI commands.
-    state_file_env = os.environ.get("STATE_FILE")
-    state_dir = Path(state_file_env).parent if state_file_env else Path("state")
-    state_dir.mkdir(parents=True, exist_ok=True)
-    path = state_dir / f"{executor_id}.deployment.json"
+    # Derive the artifact path through the same helper the readers use, so writer
+    # and readers share a single source of truth and can never drift apart. It
+    # honours an explicit STATE_FILE location (artifact lands next to the state
+    # file, and tests don't pollute the repo's state/ dir) and otherwise defaults
+    # to the state/ convention used by all CLI commands.
+    path = resolve_deployment_file(executor_id, os.environ.get("STATE_FILE"))
+    path.parent.mkdir(parents=True, exist_ok=True)
     _write_json_file(path, json_payload, indent=2)
     logger.info("Wrote deployment artifact for runtime satellite discovery to %s", os.path.abspath(path))
 
