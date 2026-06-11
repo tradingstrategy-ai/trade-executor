@@ -10,7 +10,7 @@ from typing import Optional
 from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, create_client, configure_default_chain
+    create_execution_and_sync_model, resolve_deployment_file, create_client, configure_default_chain
 from .lagoon_utils import resolve_state_store
 from ..log import setup_logging
 from ...strategy.approval import UncheckedApprovalModel
@@ -97,6 +97,7 @@ def lagoon_settle(
         routing_hint=mod.trade_routing,
         unit_testing=unit_testing,
         token_cache=token_cache,
+        deployment_file=resolve_deployment_file(id, state_file),
     )
 
     client, routing_model = create_client(

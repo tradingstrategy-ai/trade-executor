@@ -23,7 +23,7 @@ from tradingstrategy.timebucket import TimeBucket
 from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, create_metadata, create_approval_model, create_client, configure_default_chain
+    create_execution_and_sync_model, resolve_deployment_file, create_metadata, create_approval_model, create_client, configure_default_chain
 from ...exchange_account.derive import DeriveNetwork
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, setup_telegram_logging, setup_sentry_logging
 from ..loop import ExecutionLoop
@@ -332,7 +332,7 @@ def start(
             token_cache=token_cache,
             # Auto-discover satellite modules from the deployment artifact next to
             # the state file. Honour a custom STATE_FILE location (matches deploy).
-            deployment_file=(Path(os.environ["STATE_FILE"]) if os.environ.get("STATE_FILE") else Path(f"state/{id}.json")).with_name(f"{id}.deployment.json"),
+            deployment_file=resolve_deployment_file(id, os.environ.get("STATE_FILE")),
         )
 
         # TODO: Unit test hack

@@ -34,7 +34,7 @@ from tradingstrategy.timebucket import TimeBucket
 from . import shared_options
 
 from .app import app
-from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_execution_and_sync_model, \
+from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_execution_and_sync_model, resolve_deployment_file, \
     create_state_store, create_client, configure_default_chain
 from ..log import setup_logging
 from ..version_info import VersionInfo
@@ -204,6 +204,7 @@ def console(
         vault_adapter_address=vault_adapter_address,
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
+        deployment_file=resolve_deployment_file(id, state_file),
     )
 
     logger.info("Valuation model factory is %s, pricing model factory is %s", valuation_model_factory, pricing_model_factory)

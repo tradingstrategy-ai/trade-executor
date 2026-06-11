@@ -55,6 +55,7 @@ from tradingstrategy.chain import ChainId
 
 from tradeexecutor.cli.bootstrap import (
     create_execution_and_sync_model,
+    resolve_deployment_file,
     create_web3_config,
     prepare_cache_and_token_cache,
     prepare_executor_id,
@@ -532,9 +533,7 @@ def lagoon_reclaim_satellites(
     web3config.set_default_chain(default_chain_id)
     web3config.check_default_chain_id()
 
-    deployment_file = (
-        Path(state_file) if state_file else Path(f"state/{id}.json")
-    ).with_name(f"{id}.deployment.json")
+    deployment_file = resolve_deployment_file(id, state_file)
 
     execution_model, sync_model, _valuation_factory, _pricing_factory = create_execution_and_sync_model(
         asset_management_mode=asset_management_mode,

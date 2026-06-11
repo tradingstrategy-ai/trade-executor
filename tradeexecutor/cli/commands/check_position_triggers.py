@@ -7,7 +7,7 @@ from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
 
 from .app import app
-from ..bootstrap import prepare_executor_id, create_web3_config, create_state_store, create_client, create_execution_and_sync_model
+from ..bootstrap import prepare_executor_id, create_web3_config, create_state_store, create_client, create_execution_and_sync_model, resolve_deployment_file
 from ..log import setup_logging
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -93,6 +93,7 @@ def check_position_triggers(
         vault_adapter_address=vault_adapter_address,
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
+        deployment_file=resolve_deployment_file(id, state_file),
     )
 
     logger.info("RPC details")

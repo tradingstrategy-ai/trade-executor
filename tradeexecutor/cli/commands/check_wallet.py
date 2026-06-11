@@ -17,7 +17,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
 from . import shared_options
 from .app import app
-from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_execution_and_sync_model
+from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_execution_and_sync_model, resolve_deployment_file
 from ..log import setup_logging
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
@@ -354,6 +354,7 @@ def check_wallet(
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
         token_cache=token_cache,
+        deployment_file=resolve_deployment_file(id),
     )
 
     assert asset_management_mode.is_live_trading(), f"Cannot perform check wallet for non-real modes"

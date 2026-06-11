@@ -23,7 +23,7 @@ from tradingstrategy.chain import ChainId
 from .app import app
 from .pair_mapping import parse_pair_data
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, create_client, configure_default_chain, \
+    create_execution_and_sync_model, resolve_deployment_file, create_client, configure_default_chain, \
     check_universe_chains_have_rpc, check_universe_chains_have_gas, \
     check_universe_contracts_resolve
 from ..log import setup_logging
@@ -179,7 +179,7 @@ def perform_test_trade(
         # Auto-discover satellite modules from the deployment artifact written
         # next to the state file by lagoon-deploy-vault. Derive from state_file so
         # a custom STATE_FILE location is honoured (matches the deploy side).
-        deployment_file=(Path(state_file) if state_file else Path(f"state/{id}.json")).with_name(f"{id}.deployment.json"),
+        deployment_file=resolve_deployment_file(id, state_file),
     )
 
     client, routing_model = create_client(

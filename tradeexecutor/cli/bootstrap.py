@@ -315,6 +315,34 @@ def resolve_satellite_modules(deployment_file: "Path | None") -> dict:
     return {}
 
 
+def resolve_deployment_file(id: str, state_file: "str | Path | None" = None) -> Path:
+    """Resolve the path to the ``{id}.deployment.json`` artifact next to the state file.
+
+    The deployment artifact is written by ``lagoon-deploy-vault`` alongside the
+    state file and carries the multichain satellite module addresses consumed by
+    :py:func:`resolve_satellite_modules`. Every CLI command that builds an
+    execution model for a potentially-multichain Lagoon vault must pass this path
+    into :py:func:`create_execution_and_sync_model`, otherwise ``satellite_vaults``
+    is left empty and cross-chain (CCTP) trades — or valuation of satellite-chain
+    positions — crash with "No satellite vault configured for chain ...".
+
+    :param id:
+        Executor id, used to derive the default ``state/{id}.json`` path when
+        ``state_file`` is not given.
+
+    :param state_file:
+        Explicit state file path (CLI ``--state-file`` / ``STATE_FILE`` env), or
+        ``None`` to use the ``state/{id}.json`` default. The deployment artifact is
+        always resolved as a sibling named ``{id}.deployment.json``.
+
+    :return:
+        Path to the deployment artifact. The file need not exist;
+        :py:func:`resolve_satellite_modules` tolerates a missing artifact.
+    """
+    base = Path(state_file) if state_file else Path(f"state/{id}.json")
+    return base.with_name(f"{id}.deployment.json")
+
+
 def create_execution_and_sync_model(
     asset_management_mode: AssetManagementMode,
     private_key: str,

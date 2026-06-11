@@ -18,7 +18,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, create_client
+    create_execution_and_sync_model, resolve_deployment_file, create_client
 from ..log import setup_logging
 from ...analysis.position import display_positions
 from ...strategy.approval import UncheckedApprovalModel
@@ -109,6 +109,7 @@ def close_position(
         vault_adapter_address=vault_adapter_address,
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
+        deployment_file=resolve_deployment_file(id, state_file),
     )
 
     client, routing_model = create_client(
