@@ -21,7 +21,7 @@ from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.exchange_account.utils import create_exchange_account_value_func
 from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts, UnknownTokenPositionFix, check_state_internal_coherence
 from .app import app
-from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_client, backup_state, create_execution_and_sync_model, configure_default_chain
+from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_client, backup_state, create_execution_and_sync_model, resolve_deployment_file, configure_default_chain
 from ..double_position import check_double_position
 from ..log import setup_logging
 from ...ethereum.enzyme.tx import EnzymeTransactionBuilder
@@ -516,6 +516,7 @@ def correct_accounts(
         max_slippage=slippage_tolerance,
         min_gas_balance=Decimal(0),
         vault_payment_forwarder_address=vault_payment_forwarder,
+        deployment_file=resolve_deployment_file(id, state_file),
     )
 
     run_description: StrategyExecutionDescription = strategy_factory(

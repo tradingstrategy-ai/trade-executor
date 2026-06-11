@@ -12,7 +12,7 @@ from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.chain import ChainId
 from .app import app
 from .shared_options import unit_testing
-from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_client, create_execution_and_sync_model
+from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_client, create_execution_and_sync_model, resolve_deployment_file
 from ..log import setup_logging
 from ...analysis.pair import display_strategy_universe
 from ...strategy.approval import UncheckedApprovalModel
@@ -34,6 +34,7 @@ from ...utils.timer import timed_task
 @shared_options.with_json_rpc_options()
 def check_universe(
     id: str = shared_options.id,
+    state_file: Optional[Path] = shared_options.state_file,
     strategy_file: Path = shared_options.strategy_file,
     trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
     cache_path: Optional[Path] = shared_options.cache_path,
@@ -113,6 +114,7 @@ def check_universe(
             confirmation_block_count=0,  # Not used
             confirmation_timeout=datetime.timedelta(seconds=60),  # Not used
             token_cache=token_cache,
+            deployment_file=resolve_deployment_file(id, state_file),
         )
     else:
         execution_model = sync_model = valuation_model_factory = pricing_model_factory = None

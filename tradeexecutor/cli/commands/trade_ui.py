@@ -36,6 +36,7 @@ from ..bootstrap import (
     create_web3_config,
     create_state_store,
     create_execution_and_sync_model,
+    resolve_deployment_file,
     create_client,
     configure_default_chain,
     check_universe_chains_have_rpc,
@@ -156,6 +157,7 @@ def trade_ui(
         vault_payment_forwarder_address=vault_payment_forwarder_address,
         routing_hint=mod.trade_routing,
         token_cache=token_cache,
+        deployment_file=resolve_deployment_file(id, state_file),
     )
 
     client, routing_model = create_client(

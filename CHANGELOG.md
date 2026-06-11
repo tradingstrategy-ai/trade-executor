@@ -5,6 +5,8 @@
 
 - Breaking API changes
 
+- Fix multichain Lagoon cross-chain (CCTP) trades crashing with "No satellite vault configured for chain X" in every CLI command except `start`, `perform-test-trade` and `lagoon-reclaim-satellites`: satellite vault modules were only populated when `create_execution_and_sync_model()` received the deployment-artifact path, which most commands (notably `trade-ui`, the path that stranded a production test trade) never passed. A shared `resolve_deployment_file()` helper now derives the `{id}.deployment.json` path and all live-trading commands pass it (2026-06-11)
+
 - Fix master test failures when translating Hypercore-native vault pairs (e.g. HLP): the vault metrics data server now emits `share_token_decimals=null` for these vaults because they have no on-chain ERC-20 share token, so `base_token_decimals` arrived as `None` and `translate_trading_pair()` asserted. We now default only the base/share token of a Hypercore-native vault to 18 decimals — never the quote/denomination token (defaulting 6-decimal USDC to 18 scales raw amounts by 10\*\*12 and reverts CCTP transfers) and never a non-Hypercore vault, whose missing decimals still surface as an error (2026-06-11)
 
 - Fix Docker release image (v1392) crashing at runtime with "Chain data folder ... not found": the build-time submodule optimisation switched to a non-recursive checkout but missed the nested `trading-strategy/tradingstrategy/chains` submodule (ethereum-lists/chains), whose `_data/chains/*.json` is read by `Chain.get_slug()`. The release workflow now explicitly checks out the chains submodule alongside `lagoon-v0` (still skipping the unused chains `website` submodule and eth_defi's other contract submodules) (2026-06-11)

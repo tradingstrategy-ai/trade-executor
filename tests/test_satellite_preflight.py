@@ -18,6 +18,7 @@ from tradingstrategy.chain import ChainId
 
 from tradeexecutor.cli.bootstrap import (
     resolve_satellite_modules,
+    resolve_deployment_file,
     check_universe_contracts_resolve,
 )
 
@@ -59,6 +60,34 @@ def test_resolve_satellite_modules_precedence(tmp_path: Path, monkeypatch: pytes
     # 5. SATELLITE_MODULES env var overrides the artifact
     monkeypatch.setenv("SATELLITE_MODULES", json.dumps({"base": "0xENV"}))
     assert resolve_satellite_modules(artifact) == {"base": "0xENV"}
+
+
+def test_resolve_deployment_file():
+    """resolve_deployment_file points at the ``{id}.deployment.json`` sibling of the state file.
+
+    Every CLI command that builds an execution model must pass this path into
+    ``create_execution_and_sync_model`` so satellite vaults are populated; a command
+    that omits it (the production ``trade-ui`` bug that left cross-chain Lagoon trades
+    unrouteable with "No satellite vault configured for chain ...") regresses silently.
+    This locks the path derivation now shared by all commands.
+
+    1. id only -> default ``state/{id}.deployment.json``
+    2. explicit None state_file -> same default
+    3. default state_file path -> sibling deployment artifact
+    4. custom state_file location -> deployment artifact next to it
+    """
+
+    # 1. id only -> default state/{id}.deployment.json
+    assert resolve_deployment_file("master-vault-v2") == Path("state/master-vault-v2.deployment.json")
+
+    # 2. explicit None state_file -> same default
+    assert resolve_deployment_file("master-vault-v2", None) == Path("state/master-vault-v2.deployment.json")
+
+    # 3. default state_file path -> sibling deployment artifact
+    assert resolve_deployment_file("master-vault-v2", "state/master-vault-v2.json") == Path("state/master-vault-v2.deployment.json")
+
+    # 4. custom state_file location -> deployment artifact next to it
+    assert resolve_deployment_file("foo", "/custom/dir/foo.json") == Path("/custom/dir/foo.deployment.json")
 
 
 class _FakePair:

@@ -64,6 +64,10 @@ def environment(
     return multipair_environment
 
 
+@pytest.mark.skipif(
+    os.environ.get("CI") == "true",
+    reason="Flaky on CI: the upstream pair dataset intermittently omits the WETH-USDC mainnet pair (exchange_id 1), raising PairNotFoundError during universe load. Passes reliably locally.",
+)
 def test_cli_add_blacklist(
     environment: dict,
     state_file: Path,
