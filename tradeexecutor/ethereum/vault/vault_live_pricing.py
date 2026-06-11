@@ -5,7 +5,6 @@ from decimal import Decimal
 from typing import Callable
 
 from eth_defi.compat import native_datetime_utc_now
-from eth_defi.erc_4626.estimate import estimate_4626_redeem, estimate_4626_deposit
 from eth_defi.erc_4626.vault import ERC4626Vault
 from web3 import Web3
 
@@ -20,6 +19,12 @@ logger = logging.getLogger(__name__)
 
 class VaultPricing(PricingModel):
     """Always pull the latest live share price of a vault.
+
+    Deposit and redeem estimations go through the protocol-specific
+    :py:class:`~eth_defi.vault.base.VaultDepositManager`, so both synchronous
+    ERC-4626 vaults (``previewDeposit()``/``previewRedeem()``) and asynchronous
+    ERC-7540 vaults such as Lagoon (``convertToShares()``/``convertToAssets()``,
+    as previews are disabled on-chain) are supported.
 
     .. note::
 
@@ -77,10 +82,10 @@ class VaultPricing(PricingModel):
         block_number = web3.eth.block_number
         vault = self.get_vault(pair)
 
-        estimated_usd = estimate_4626_redeem(
-            vault=vault,
-            owner=None,
-            share_amount=quantity,
+        deposit_manager = vault.get_deposit_manager()
+        estimated_usd = deposit_manager.estimate_redeem(
+            owner=self.get_owner_address(pair),
+            shares=quantity,
             block_identifier=block_number,
         )
 
@@ -115,9 +120,10 @@ class VaultPricing(PricingModel):
         block_number = web3.eth.block_number
         vault = self.get_vault(pair)
 
-        estimated_shares = estimate_4626_deposit(
-            vault=vault,
-            denomination_token_amount=reserve,
+        deposit_manager = vault.get_deposit_manager()
+        estimated_shares = deposit_manager.estimate_deposit(
+            owner=self.get_owner_address(pair),
+            amount=reserve,
             block_identifier=block_number,
         )
 
@@ -186,6 +192,13 @@ class VaultPricing(PricingModel):
         web3 = self.get_web3_for_pair(pair)
         block_number = web3.eth.block_number
         vault = self.get_vault(pair)
+
+        if not vault.get_deposit_manager().has_synchronous_deposit():
+            # On asynchronous vaults (ERC-7540) maxDeposit() returns the claimable
+            # amount of settled deposit requests, not the deposit capacity.
+            # Request-based deposits have no on-chain capacity limit.
+            return None
+
         raw_amount = vault.vault_contract.functions.maxDeposit(owner).call(block_identifier=block_number)
         return vault.denomination_token.convert_to_decimals(raw_amount)
 
@@ -202,6 +215,13 @@ class VaultPricing(PricingModel):
         web3 = self.get_web3_for_pair(pair)
         block_number = web3.eth.block_number
         vault = self.get_vault(pair)
+
+        if not vault.get_deposit_manager().has_synchronous_redemption():
+            # On asynchronous vaults (ERC-7540) maxRedeem() returns the claimable
+            # amount of settled redemption requests, not how many shares can be
+            # requested for redemption.
+            return None
+
         raw_amount = vault.vault_contract.functions.maxRedeem(owner).call(block_identifier=block_number)
         return vault.share_token.convert_to_decimals(raw_amount)
 
