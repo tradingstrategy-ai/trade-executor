@@ -19,10 +19,12 @@ import pytest
 
 from eth_defi.erc_4626.core import ERC4626Feature
 
+from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.loop import ExecutionTestHook
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import PortfolioStatistics
 from tradeexecutor.state.trade import TradeExecution, TradeStatus, TradeType
@@ -34,6 +36,7 @@ from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionMode, unit_test_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
@@ -1462,3 +1465,137 @@ def test_pending_vault_settlements_chart_metadata_matrix():
     assert df.loc[START_AT + 3 * one_day, deposit_column] == pytest.approx(3 * deposit_unit)    # t1 + t3 + t4
     assert df.loc[START_AT + 4 * one_day, deposit_column] == pytest.approx(2 * deposit_unit)    # t4 reclaimed
     assert df.loc[START_AT + 7 * one_day, deposit_column] == pytest.approx(2 * deposit_unit)    # t1 + t3 still pending
+
+
+@pytest.mark.timeout(60)
+def test_alpha_model_values_broadcasted_async_requests():
+    """A live broadcast-but-unconfirmed async request is valued, pinned and diagnosed correctly.
+
+    Live routing stamps vault_async_flow at transaction-build time, but the
+    vault_settlement_pending status appears only after confirmation parsing.
+    A deposit caught in that window has zero shares and zero pending-status
+    value - if the alpha model valued it by status alone it would pin the
+    position at $0, understate equity and lose its diagnostics, while the
+    request may already be live on-chain.
+
+    1. Build a live-like state: VA holds a broadcasted deposit request
+       (vault_async_flow, no pending marker, quantity 0, reserve already
+       debited from cash); VB holds settled shares plus a broadcasted redeem
+       request for all of them.
+    2. Run the xchain AlphaModel sequence: carry-forward -> locked subtraction
+       -> update_old_weights(ignore_credit=False) -> calculate_target_positions
+       -> trade generation.
+    3. Both positions are pinned at full committed value: locked covers the
+       in-flight deposit reserve and the settled share value, old values match,
+       update_old_weights does not crash on an all-pending portfolio, and no
+       duplicate trades are generated.
+    4. Diagnostics are direction-specific (pending_deposit_usd for VA,
+       pending_redemption_usd for VB) and appear in the format_signals() table.
+    5. Equity counts the in-flight deposit; VB has no shares available to
+       redeem twice.
+    """
+    strategy_universe, pairs = _make_multi_vault_universe([
+        ("VA", VAULT_A_ADDRESS, {ERC4626Feature.erc_7540_like}),
+        ("VB", VAULT_B_ADDRESS, {ERC4626Feature.erc_7540_like}),
+    ])
+    va_pair = pairs["VA"]
+    vb_pair = pairs["VB"]
+    reserve_asset = strategy_universe.reserve_assets[0]
+    ts = START_AT + datetime.timedelta(days=1)
+    committed_usd = 5_000.0
+    share_quantity = Decimal(committed_usd) / Decimal(FIXED_PRICE)
+
+    # 1. Live-like state: all cash committed, VA deposit broadcast, VB redeem broadcast.
+    state = State()
+    reserve = ReservePosition(reserve_asset, Decimal(0), START_AT, 1.0, START_AT)
+    state.portfolio.reserves[reserve.get_identifier()] = reserve
+
+    va_position = TradingPosition(
+        position_id=1,
+        pair=va_pair,
+        opened_at=START_AT,
+        last_pricing_at=START_AT,
+        last_token_price=FIXED_PRICE,
+        last_reserve_price=1.0,
+        reserve_currency=reserve_asset,
+    )
+    va_deposit = _make_async_trade(va_pair, 1, share_quantity, started_at=START_AT, broadcasted_at=START_AT)
+    va_position.trades[va_deposit.trade_id] = va_deposit
+
+    vb_position = TradingPosition(
+        position_id=2,
+        pair=vb_pair,
+        opened_at=START_AT,
+        last_pricing_at=START_AT,
+        last_token_price=FIXED_PRICE,
+        last_reserve_price=1.0,
+        reserve_currency=reserve_asset,
+    )
+    vb_buy = _make_async_trade(
+        vb_pair, 2, share_quantity,
+        started_at=START_AT,
+        executed_at=START_AT,
+        executed_quantity=share_quantity,
+        executed_price=float(FIXED_PRICE),
+        executed_reserve=Decimal(committed_usd),
+    )
+    vb_redeem = _make_async_trade(vb_pair, 3, -share_quantity, started_at=ts, broadcasted_at=ts)
+    vb_position.trades[vb_buy.trade_id] = vb_buy
+    vb_position.trades[vb_redeem.trade_id] = vb_redeem
+
+    state.portfolio.open_positions = {1: va_position, 2: vb_position}
+
+    pricing_model = BacktestPricing(
+        strategy_universe.data_universe.candles,
+        generate_simple_routing_model(strategy_universe),
+        allow_missing_fees=True,
+    )
+    pm = PositionManager(ts, strategy_universe.data_universe, state, pricing_model)
+
+    # 2. The xchain AlphaModel sequence with no manual pending guard.
+    alpha_model = AlphaModel(ts, close_position_weight_epsilon=0.001)
+    alpha_model.set_signal(va_pair, 1.0)
+    alpha_model.set_signal(vb_pair, 1.0)
+    locked = alpha_model.carry_forward_non_redeemable_positions(pm)
+    portfolio = state.portfolio
+    deployable = max(portfolio.calculate_total_equity() * 0.9 - locked, 0.0)
+    alpha_model.select_top_signals(count=2)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights(max_weight=1.0)
+    alpha_model.update_old_weights(portfolio, ignore_credit=False)
+    alpha_model.calculate_target_positions(pm, investable_equity=deployable)
+    trades = alpha_model.generate_rebalance_trades_and_triggers(
+        pm,
+        min_trade_threshold=1.0,
+        individual_rebalance_min_threshold=1.0,
+        sell_rebalance_min_threshold=1.0,
+        execution_context=unit_test_execution_context,
+    )
+
+    # 3. Pinned at committed value, sane old weights, no duplicate trades.
+    assert locked == pytest.approx(2 * committed_usd)
+    va_signal = alpha_model.raw_signals[va_pair.internal_id]
+    vb_signal = alpha_model.raw_signals[vb_pair.internal_id]
+    assert va_signal.old_value == pytest.approx(committed_usd)
+    assert vb_signal.old_value == pytest.approx(committed_usd)
+    assert trades == [], f"Broadcasted async requests must not produce new trades: {trades}"
+
+    # 4. Direction-specific diagnostics, visible in the diagnostics table.
+    assert TradingPairSignalFlags.settlement_pending in va_signal.flags
+    assert TradingPairSignalFlags.settlement_pending in vb_signal.flags
+    assert va_signal.other_data["pending_deposit_usd"] == pytest.approx(committed_usd)
+    assert "pending_redemption_usd" not in va_signal.other_data
+    assert vb_signal.other_data["pending_redemption_usd"] == pytest.approx(committed_usd)
+    assert "pending_deposit_usd" not in vb_signal.other_data
+    df = format_signals(alpha_model, signal_type="all")
+    va_row = df.loc[df.index.str.startswith("VA")].iloc[0]
+    vb_row = df.loc[df.index.str.startswith("VB")].iloc[0]
+    assert va_row["Pending deposit USD"] == pytest.approx(committed_usd)
+    assert va_row["Pending redemption USD"] == "-"
+    assert vb_row["Pending redemption USD"] == pytest.approx(committed_usd)
+    assert vb_row["Pending deposit USD"] == "-"
+
+    # 5. Equity counts the in-flight deposit; escrow-bound shares are not re-sellable.
+    assert portfolio.get_vault_settlement_pending_value() == pytest.approx(committed_usd)
+    assert portfolio.calculate_total_equity() == pytest.approx(2 * committed_usd)
+    assert float(vb_position.get_available_trading_quantity()) == pytest.approx(0.0)

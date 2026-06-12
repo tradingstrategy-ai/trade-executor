@@ -906,7 +906,7 @@ class AlphaModel:
         pending_redemption_usd = sum(
             abs(float(t.planned_quantity)) * float(t.planned_price or 0)
             for t in position.trades.values()
-            if t.get_status() == TradeStatus.vault_settlement_pending and t.is_sell()
+            if t.is_vault_settlement_in_flight() and t.is_sell()
         )
         if pending_redemption_usd > 0:
             signal.other_data["pending_redemption_usd"] = pending_redemption_usd
