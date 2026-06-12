@@ -75,7 +75,11 @@ def fix_sell_token_amount(
 #: backtested with the two-stage flow, and a realistic default delay makes the
 #: behaviour change from older instant-settlement backtests explicit rather
 #: than a silent one-cycle shift.
-DEFAULT_VAULT_SETTLEMENT_DELAY = datetime.timedelta(days=1)
+#:
+#: Two days rather than one: with the common one-day decision cycle a one-day
+#: delay settles every request exactly on the next cycle, so the pending
+#: window never spans a full cycle and the queue dynamics stay invisible.
+DEFAULT_VAULT_SETTLEMENT_DELAY = datetime.timedelta(days=2)
 
 #: Hour of day (UTC, naive) when Ostium-style vaults settle in backtesting.
 #:
@@ -104,7 +108,7 @@ class BacktestExecution(ExecutionModel):
 
         #: Global default settlement delay for async (ERC-7540 / Ostium) vault
         #: deposit and redeem requests. Defaults to
-        #: :py:data:`DEFAULT_VAULT_SETTLEMENT_DELAY` (one day). An explicit
+        #: :py:data:`DEFAULT_VAULT_SETTLEMENT_DELAY` (two days). An explicit
         #: ``timedelta(0)`` means the request settles on the next cycle that
         #: runs the resolver (a one-cycle minimum, because the request is
         #: created after the resolver step within a tick). Ostium-style vaults
@@ -352,13 +356,7 @@ class BacktestExecution(ExecutionModel):
             return False
         if pair.pool_address and pair.pool_address.lower() in self.vault_settlement_delay_overrides:
             return True
-        features = pair.get_vault_features() or set()
-        async_features = {
-            ERC4626Feature.erc_7540_like,
-            ERC4626Feature.lagoon_like,
-            ERC4626Feature.ostium_like,
-        }
-        return bool(features & async_features)
+        return pair.is_async_vault()
 
     def _get_settlement_due(self, pair, ts: datetime.datetime) -> datetime.datetime:
         """When does an async vault request made at ``ts`` become claimable?
@@ -482,6 +480,12 @@ class BacktestExecution(ExecutionModel):
             else:
                 settlement_price = float(trade.planned_price)
             executed_reserve = trade.planned_reserve
+            # Decimal rounding drift between the state cash ledger and the
+            # simulated wallet accumulates over many settlements; settle with
+            # what the wallet holds when the difference is dust.
+            reserve_balance = self.wallet.get_balance(reserve.address)
+            if reserve_balance < executed_reserve <= reserve_balance + Decimal("0.000001"):
+                executed_reserve = reserve_balance
             executed_quantity = executed_reserve / Decimal(str(settlement_price))
             # Wallet: receive shares, pay the committed reserve. The state cash
             # ledger was already debited at request time (start_execution); this

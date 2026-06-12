@@ -736,16 +736,81 @@ class TradingPosition(GenericPosition):
 
         live = self.get_quantity()  # What was the position quantity before executing any of planned trades
 
-        # Async vault sell trades (vault_settlement_pending) have already submitted
-        # a requestWithdraw() on-chain but aren't counted by get_quantity() (only is_success counts).
-        # Subtract their quantity so strategies don't submit duplicate withdrawal requests.
+        # Async vault sell trades with an in-flight request (confirmed and queued,
+        # or broadcast but not yet parsed) may have already submitted a
+        # requestWithdraw() on-chain but aren't counted by get_quantity()
+        # (only is_success counts). Subtract their quantity so strategies
+        # don't submit duplicate withdrawal requests.
         vault_pending_sells = sum_decimal([
             t.get_position_quantity()
             for t in self.trades.values()
-            if t.get_status() == TradeStatus.vault_settlement_pending and t.is_sell()
+            if t.is_vault_settlement_in_flight() and t.is_sell()
         ])
 
         return planned + live + vault_pending_sells
+
+    def has_pending_vault_settlement(self) -> bool:
+        """Does this position have an async vault deposit/redeem request in flight?
+
+        ERC-7540 (Lagoon) and Ostium-style vaults use a two-stage request/claim
+        flow. Between the request and the claim the trade sits in
+        :py:attr:`tradeexecutor.state.trade.TradeStatus.vault_settlement_pending`.
+        While any such trade is in flight the position must not be traded:
+        a pending deposit has committed capital but zero shares, and a pending
+        redeem has its shares escrowed by the vault.
+
+        A live request transaction that has been built or broadcast but whose
+        confirmation has not yet been parsed into the settlement ticket counts
+        as in flight too (``vault_async_flow`` is stamped at transaction-build
+        time, ``vault_settlement_pending_at`` only after confirmation): the
+        request may already be live on-chain, so trading the position before
+        its status is known risks a duplicate request.
+
+        See :py:meth:`tradeexecutor.state.trade.TradeExecution.is_vault_settlement_in_flight`.
+
+        :return:
+            True if any trade of this position is an async vault request that
+            has not yet been settled or failed.
+        """
+        return any(t.is_vault_settlement_in_flight() for t in self.trades.values())
+
+    def has_async_vault_flow(self) -> bool:
+        """Has any trade of this position gone through the two-stage async vault flow?
+
+        Every deposit/redeem request routed through the request/claim queue is
+        stamped with ``other_data["vault_async_flow"]``, in live trading and in
+        backtests alike. This catches vaults simulated as asynchronous via a
+        backtest settlement-delay override even when their metadata carries no
+        async feature flags (``TradingPairIdentifier.is_async_vault()`` is
+        False for those).
+
+        :return:
+            True if any trade of this position was an async settlement request.
+        """
+        return any(t.other_data.get("vault_async_flow") for t in self.trades.values())
+
+    def get_vault_settlement_pending_value(self) -> float:
+        """Get capital committed to in-flight async vault deposit requests on this position.
+
+        Only counts BUYS (requestDeposit), not sells (requestWithdraw):
+        for sells, the position's share equity already covers the value.
+
+        Uses the same in-flight definition as :py:meth:`has_pending_vault_settlement`,
+        so a live request that is broadcast but not yet confirmed is valued at
+        its committed reserve rather than zero - reserves were already debited
+        when the trade started.
+
+        See also :py:meth:`tradeexecutor.state.portfolio.Portfolio.get_vault_settlement_pending_value`
+        for the portfolio-wide sum.
+
+        :return:
+            US dollar amount debited from reserves and waiting in the vault's deposit queue.
+        """
+        return sum(
+            float(t.planned_reserve)
+            for t in self.trades.values()
+            if t.is_vault_settlement_in_flight() and t.is_buy()
+        )
 
     def get_current_price(self) -> USDollarAmount:
         """Get the price of the base asset based on the latest valuation."""

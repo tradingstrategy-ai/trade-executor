@@ -164,7 +164,11 @@ def calculate_statistics(
 
     open_position_equity = portfolio.get_position_equity_and_loan_nav()
     free_cash = float(portfolio.get_cash())
-    total_equity = open_position_equity + free_cash
+    # Capital committed to pending async vault deposit requests is neither
+    # cash nor position equity, but it is still ours - without it the equity
+    # curve dips at every deposit request and jumps back at settlement.
+    vault_settlement_pending_value = portfolio.get_vault_settlement_pending_value()
+    total_equity = open_position_equity + free_cash + vault_settlement_pending_value
     net_asset_value = portfolio.get_net_asset_value()
 
     # May not available for non-live execution and non-vault strategies
