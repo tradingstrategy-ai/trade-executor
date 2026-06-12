@@ -52,6 +52,17 @@ class AssetType(enum.Enum):
     borrowed = "borrowed"
 
 
+#: Vault feature flags that mark a two-stage (request/claim) deposit and
+#: redemption flow. Capital sent to such a vault is queued until the vault
+#: operator or epoch settles the request - see
+#: :py:meth:`TradingPairIdentifier.is_async_vault`.
+ASYNC_VAULT_FEATURES = {
+    ERC4626Feature.erc_7540_like,
+    ERC4626Feature.lagoon_like,
+    ERC4626Feature.ostium_like,
+}
+
+
 def _normalise_erc_4626_features(features) -> set[ERC4626Feature] | None:
     """Normalise persisted vault feature metadata to enum values."""
     if not features:
@@ -900,6 +911,23 @@ class TradingPairIdentifier:
                 feats = getattr(metadata, "features", None)
 
         return _normalise_erc_4626_features(feats)
+
+    def is_async_vault(self) -> bool:
+        """Does this vault use a two-stage (async) deposit/redeem flow?
+
+        ERC-7540 (Lagoon) and Ostium-style vaults queue deposit and redemption
+        requests for a later claim instead of settling in the same transaction.
+        Capital committed to such a request is unavailable until the vault
+        operator (or epoch) settles the queue.
+
+        :return:
+            True if the pair is a vault whose feature flags mark a
+            request/claim settlement queue.
+        """
+        if not self.is_vault():
+            return False
+        features = self.get_vault_features() or set()
+        return bool(features & ASYNC_VAULT_FEATURES)
 
     def get_vault_protocol(self) -> str | None:
         """Get the vault protocol name.

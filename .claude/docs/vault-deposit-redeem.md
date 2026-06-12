@@ -112,19 +112,47 @@ backtesting section below.)
 
 ### Writing a strategy against an async vault
 
-For the strategy author the rules are short:
+**AlphaModel-based strategies need no special handling** — the framework is
+settlement-aware:
+
+- `carry_forward_non_redeemable_positions()` pins any position with an
+  in-flight settlement at its committed value (settled shares plus pending
+  deposit capital) and counts it into the returned `locked_position_value`,
+  so the standard `deployable = portfolio_target − locked` pattern
+  automatically excludes in-flight capital from fresh allocation.
+- `update_old_weights()` values pending deposit capital into the position's
+  old value, so adjustment sizing never sees a phantom zero-value position.
+- Trade generation skips any signal whose position has a pending settlement
+  (the `settlement_pending` flag), even for strategies that never call
+  carry-forward. The skipped signal carries `pending_deposit_usd` /
+  `pending_redemption_usd` diagnostics, shown as columns in the
+  `format_signals()` table and the `alpha_model_diagnostics` chart, and the
+  `pending_vault_settlements` chart plots the queued buffers over time.
+- Same-cycle financing is settlement-aware: rebalance buys are normally
+  funded by the cycle's sells executing first, but a redemption requested
+  from an async vault pays out only after settlement. The alpha model scales
+  buys down to the cash that actually arrives this cycle (the
+  `capped_by_pending_settlement_cash` flag) and redeploys the withheld
+  capital on a later cycle once the redemption settles. Async vaults are
+  recognised by their feature flags (`pair.is_async_vault()`) or, for vaults
+  simulated as async only via a backtest delay override, by the
+  `vault_async_flow` stamp on the position's earlier settlement requests
+  (`position.has_async_vault_flow()`).
+
+For hand-rolled (non-AlphaModel) `decide_trades` the manual rules still
+apply:
 
 - After requesting a deposit the position already exists and `is_any_open()`
   is true; the position simply has quantity zero until settlement. Do not
-  open it again.
+  open it again. Check `position.has_pending_vault_settlement()` before
+  touching a position.
 - `get_cash()` is already safe to spend — committed capital is excluded.
 - If you size positions from `calculate_total_equity()`, subtract
   `get_vault_settlement_pending_value()` first, otherwise you allocate the
   in-flight capital a second time.
-- The simplest robust portfolio-construction pattern is to skip rebalancing
-  entirely while any trade is in `vault_settlement_pending`, and rebalance on
-  the next cycle once capital has actually moved. The alpha-model test listed
-  below demonstrates this.
+- The simplest robust pattern is to skip rebalancing entirely while any
+  trade is in `vault_settlement_pending`, and rebalance on the next cycle
+  once capital has actually moved.
 
 ## Backtesting
 
@@ -133,7 +161,10 @@ Two parameters on the backtest entry points (`run_backtest_inline()` and
 friends) control it:
 
 - `vault_settlement_delay` — the default delay for every async vault.
-  Defaults to **one day** (`DEFAULT_VAULT_SETTLEMENT_DELAY`).
+  Defaults to **two days** (`DEFAULT_VAULT_SETTLEMENT_DELAY`): with the
+  common one-day decision cycle a one-day delay would settle every request
+  exactly on the next cycle, hiding the multi-cycle pending window the
+  simulation exists to model.
 - `vault_settlement_delay_overrides` — per-vault delays, keyed by vault
   address. These take precedence over everything else, and giving a vault an
   override also marks it as asynchronous even if its metadata carries no
@@ -149,7 +180,7 @@ from the vault's on-chain `lastSettlementTs` and `maxSettlementInterval`.
 **Note a behaviour change for older backtests.** The two-stage simulation
 switches on *automatically* for any vault whose metadata carries async
 features — there is no separate opt-in. A vault pair that used to settle
-instantly in an old backtest now requests on one cycle and settles a day
+instantly in an old backtest now requests on one cycle and settles days
 later (at the settlement-time price), so results for such pairs change once
 their dataset metadata gains async feature flags. The defaults are
 deliberately non-zero to make this visible; pass an explicit
@@ -326,7 +357,9 @@ The execution layer, in trade-executor:
 | [tradeexecutor/strategy/execution_model.py](../../tradeexecutor/strategy/execution_model.py) | The polymorphic settlement hook called by the runner each cycle |
 | [tradeexecutor/backtest/backtest_execution.py](../../tradeexecutor/backtest/backtest_execution.py) | Simulated requests and delayed settlement; delay configuration |
 | [tradeexecutor/state/trade.py](../../tradeexecutor/state/trade.py), [state.py](../../tradeexecutor/state/state.py) | The `vault_settlement_pending` status and its bookkeeping |
-| [tradeexecutor/state/portfolio.py](../../tradeexecutor/state/portfolio.py), [position.py](../../tradeexecutor/state/position.py) | `get_vault_settlement_pending_value()` in equity; available-quantity guard against double redemption |
+| [tradeexecutor/state/portfolio.py](../../tradeexecutor/state/portfolio.py), [position.py](../../tradeexecutor/state/position.py) | `get_vault_settlement_pending_value()` in equity; `has_pending_vault_settlement()` and the per-position pending value; available-quantity guard against double redemption |
+| [tradeexecutor/strategy/alpha_model.py](../../tradeexecutor/strategy/alpha_model.py) | Settlement-aware carry-forward pinning, pending-inclusive old weights, the `settlement_pending` rebalance skip, and the pending columns in `format_signals()` |
+| [tradeexecutor/strategy/chart/standard/vault.py](../../tradeexecutor/strategy/chart/standard/vault.py) | `pending_vault_settlements` chart: queued deposit/redemption buffers per cycle |
 | [tradeexecutor/strategy/asset.py](../../tradeexecutor/strategy/asset.py) | Escrow-aware expected balances for account reconciliation |
 | [tradeexecutor/ethereum/vault/vault_utils.py](../../tradeexecutor/ethereum/vault/vault_utils.py) | Turning a vault into a tradeable pair identifier |
 | [tradeexecutor/cli/loop.py](../../tradeexecutor/cli/loop.py) | Startup-time settlement retry (non-halting, unlike CCTP) |
@@ -342,6 +375,12 @@ Each test doubles as a worked example:
   cycle, settlement pricing, several vaults with different delays, partial
   redemptions, the double-deposit guard, the alpha-model wait-for-settlement
   pattern, and a backtest that ends while a request is still queued.
+  `test_backtest_async_vault_alpha_model_native_settlement_handling` is the
+  worked example of the framework-native handling: an alpha model rebalances
+  every cycle with no manual pending guard, gradually entering and exiting
+  async vaults on different settlement schedules;
+  `test_backtest_async_vault_naive_alpha_model_guarded` shows the
+  trade-generation safety net for strategies without carry-forward.
 - [tests/erc_4626/test_vault_async_lagoon_erc_7540.py](../../tests/erc_4626/test_vault_async_lagoon_erc_7540.py)
   — the live flow against a real Lagoon ERC-7540 vault on an Anvil fork. The
   test plays the vault operator, first holding the queue and then settling

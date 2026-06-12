@@ -17,7 +17,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.size_risk import SizeRisk
-from tradeexecutor.state.trade import TradeExecution, TradeType
+from tradeexecutor.state.trade import TradeExecution, TradeStatus, TradeType
 from tradeexecutor.state.types import (LeverageMultiplier, PairInternalId,
                                        Percent, USDollarAmount)
 from tradeexecutor.strategy.dust import get_close_epsilon_for_pair
@@ -98,6 +98,15 @@ class TradingPairSignalFlags(enum.Enum):
 
     #: This signal was skipped because the venue currently does not accept deposits.
     cannot_deposit = "cannot_deposit"
+
+    #: This signal was carried forward because the position has an async vault
+    #: deposit/redeem request awaiting settlement (ERC-7540/Ostium two-stage flow).
+    #: The position is untradeable until the request is claimed.
+    settlement_pending = "settlement_pending"
+
+    #: This buy was scaled down because the rebalance sells funding it are
+    #: queued async vault redemptions whose cash arrives only after settlement.
+    capped_by_pending_settlement_cash = "capped_by_pending_settlement_cash"
 
 
 @dataclass_json
@@ -807,10 +816,49 @@ class AlphaModel:
         self,
         position_manager: PositionManager,
     ) -> USDollarAmount:
-        """Pin current non-redeemable positions at their marked value for this cycle."""
+        """Pin current non-redeemable positions at their marked value for this cycle.
+
+        Covers two kinds of untradeable positions:
+
+        - Positions whose async vault deposit/redeem request is awaiting settlement
+          (ERC-7540/Ostium two-stage flow). The pinned value includes capital
+          committed to a pending deposit request, which is not yet visible in
+          :py:meth:`TradingPosition.get_value` (the position has no shares until
+          the claim).
+
+        - Positions the pricing model reports as non-redeemable this cycle
+          (e.g. Hyperliquid lock-ups).
+
+        :return:
+            Total US dollar value pinned this cycle. Subtract this from the
+            portfolio target value before allocating fresh capital.
+        """
         locked_position_value = 0.0
 
         for position in position_manager.get_current_portfolio().open_positions.values():
+
+            # The settlement check must run before the redemption check:
+            # the base pricing model always reports can_redeem=True, and live
+            # redemption checks may do RPC we can skip for pinned positions.
+            if position.has_pending_vault_settlement():
+                pinned_value = position.get_value() + position.get_vault_settlement_pending_value()
+                signal = self.raw_signals.get(position.pair.internal_id)
+                if signal is None:
+                    self.set_signal(position.pair, pinned_value)
+                    # set_signal() drops zero-valued signals - in that case the
+                    # rebalance trade generator still skips the position.
+                    signal = self.raw_signals.get(position.pair.internal_id)
+                else:
+                    signal.signal = pinned_value
+
+                if signal is not None:
+                    signal.carry_forward_position = True
+                    signal.position_target = pinned_value
+                    self._mark_signal_settlement_pending(signal, position)
+
+                locked_position_value += pinned_value
+                continue
+
             redemption_result = self._check_redemption_for_position(
                 position_manager,
                 position,
@@ -837,6 +885,103 @@ class AlphaModel:
             locked_position_value += current_value
 
         return locked_position_value
+
+    def _mark_signal_settlement_pending(
+        self,
+        signal: "TradingPairSignal",
+        position: TradingPosition,
+    ) -> None:
+        """Attach in-flight vault settlement diagnostics to a signal.
+
+        Sets direction-aware dollar amounts so the alpha model diagnostics
+        table shows what capital is queued in each direction. Never writes
+        zero-valued keys.
+        """
+        signal.flags.add(TradingPairSignalFlags.settlement_pending)
+
+        pending_deposit_usd = position.get_vault_settlement_pending_value()
+        if pending_deposit_usd > 0:
+            signal.other_data["pending_deposit_usd"] = pending_deposit_usd
+
+        pending_redemption_usd = sum(
+            abs(float(t.planned_quantity)) * float(t.planned_price or 0)
+            for t in position.trades.values()
+            if t.get_status() == TradeStatus.vault_settlement_pending and t.is_sell()
+        )
+        if pending_redemption_usd > 0:
+            signal.other_data["pending_redemption_usd"] = pending_redemption_usd
+
+        logger.info(
+            "SETTLEMENT_PENDING pair_ticker=%s position_id=%s pending_deposit_usd=%s pending_redemption_usd=%s",
+            signal.pair.get_ticker(),
+            position.position_id,
+            pending_deposit_usd,
+            pending_redemption_usd,
+        )
+
+    def _cap_buys_by_async_sell_proceeds(
+        self,
+        position_manager: PositionManager,
+    ) -> None:
+        """Do not fund this cycle's buys with proceeds of queued vault redemptions.
+
+        Rebalance buys are financed by the rebalance sells executing first in
+        the same cycle. A sell on an async (ERC-7540 / Ostium) vault only
+        *requests* the redemption - the cash arrives cycles later - so its
+        proceeds cannot fund this cycle's buys. Scale all buy adjustments down
+        proportionally so they fit in the cash actually available: current
+        cash plus synchronous sell proceeds. The withheld capital is
+        redeployed by a later rebalance once the redemption settles.
+        """
+        async_sell_usd = 0.0
+        sync_sell_usd = 0.0
+        buy_usd = 0.0
+        for s in self.iterate_signals():
+            if s.position_adjust_ignored:
+                continue
+            adjust = s.position_adjust_usd
+            if adjust < 0:
+                # Feature flags catch real async vaults; the position's own
+                # settlement history catches vaults simulated as async via a
+                # backtest delay override with no async metadata.
+                is_async = s.pair.is_async_vault()
+                if not is_async:
+                    position = position_manager.get_current_position_for_pair(
+                        s.synthetic_pair or s.pair,
+                        pending=True,
+                    )
+                    is_async = position is not None and position.has_async_vault_flow()
+                if is_async:
+                    async_sell_usd += -adjust
+                else:
+                    sync_sell_usd += -adjust
+            elif adjust > 0:
+                buy_usd += adjust
+
+        if buy_usd <= 0 or async_sell_usd <= 0:
+            return
+
+        cash = position_manager.get_current_cash()
+        budget = max(cash + sync_sell_usd, 0.0)
+        if buy_usd <= budget:
+            return
+
+        scale = budget / buy_usd
+        logger.info(
+            "Buys of %f USD exceed the %f USD settling this cycle (cash %f + synchronous sells %f); "
+            "%f USD of queued redemptions pays out only after settlement - scaling buys by %f",
+            buy_usd,
+            budget,
+            cash,
+            sync_sell_usd,
+            async_sell_usd,
+            scale,
+        )
+        for s in self.iterate_signals():
+            if s.position_adjust_ignored or s.position_adjust_usd <= 0:
+                continue
+            s.position_adjust_usd *= scale
+            s.flags.add(TradingPairSignalFlags.capped_by_pending_settlement_cash)
 
     def _check_redemption_for_position(
         self,
@@ -1573,8 +1718,11 @@ class AlphaModel:
 
             alpha_model_positions.append(position)
 
+        # Include capital committed to pending async vault deposit requests:
+        # the position has no shares until the claim, so get_value() alone
+        # would report 0 and the next cycle would allocate the same capital twice.
         position_values = [
-            (position, position.get_value())
+            (position, position.get_value() + position.get_vault_settlement_pending_value())
             for position in alpha_model_positions
         ]
         total = sum(value for _, value in position_values)
@@ -1855,6 +2003,32 @@ class AlphaModel:
         underlying = signal.pair
         synthetic = signal.synthetic_pair
 
+        # Never trade a position with an async vault deposit/redeem awaiting
+        # settlement: a pending deposit has committed capital but no shares,
+        # a pending redeem has its shares escrowed by the vault. This is a
+        # safety net for strategies that do not pin such positions via
+        # carry_forward_non_redeemable_positions(). Resolve the position
+        # directly from the portfolio because signal.old_pair (and thus
+        # current_position) is only populated when the strategy calls
+        # update_old_weights(ignore_credit=False).
+        settlement_position = current_position
+        if settlement_position is None:
+            settlement_position = position_manager.get_current_position_for_pair(
+                synthetic or underlying,
+                pending=True,
+            )
+        if settlement_position is not None and settlement_position.has_pending_vault_settlement():
+            logger.info(
+                "Skipping rebalance for %s because a vault settlement is pending on position #%d",
+                settlement_position.pair,
+                settlement_position.position_id,
+            )
+            signal.position_adjust_ignored = True
+            signal.position_adjust_usd = 0.0
+            signal.position_adjust_quantity = 0.0
+            self._mark_signal_settlement_pending(signal, settlement_position)
+            return position_rebalance_trades
+
         if current_position and dollar_diff < 0 and redemption_result is None:
             redemption_result = self._check_redemption_for_position(
                 position_manager,
@@ -2082,6 +2256,11 @@ class AlphaModel:
 
         frozen_pairs = {p.pair for p in position_manager.state.portfolio.frozen_positions.values()}
 
+        # Buys are normally financed by this cycle's sells executing first;
+        # async vault redemptions only enter the queue and pay out cycles later,
+        # so buys must fit in the cash that actually arrives this cycle.
+        self._cap_buys_by_async_sell_proceeds(position_manager)
+
         for signal in self.iterate_signals():
 
             dollar_diff = signal.position_adjust_usd
@@ -2197,7 +2376,7 @@ class AlphaModel:
 
 def format_signals(
     alpha_model: AlphaModel,
-    signal_type: Literal["chosen", "raw"] = "chosen",
+    signal_type: Literal["chosen", "all"] = "chosen",
     column_mode: Literal["spot", "leveraged"] = "spot",
     sort_key="Signal",
 ) -> pd.DataFrame:
@@ -2249,6 +2428,8 @@ def format_signals(
         asked_size = s.position_size_risk.asked_size if s.position_size_risk else "-"
         flags = ", ".join(f.value for f in s.flags)
         old_pair = s.old_pair.get_ticker() if s.old_pair else "-"
+        pending_deposit_usd = s.other_data.get("pending_deposit_usd", "-")
+        pending_redemption_usd = s.other_data.get("pending_redemption_usd", "-")
 
         match column_mode:
             case "leveraged":
@@ -2279,6 +2460,8 @@ def format_signals(
                     "Old weight": s.old_weight,
                     "Flipping": s.get_flip_label(),
                     "TVL": f"{s.get_tvl():.0f}",
+                    "Pending deposit USD": pending_deposit_usd,
+                    "Pending redemption USD": pending_redemption_usd,
                     "Flags": flags
                 })
             case _:

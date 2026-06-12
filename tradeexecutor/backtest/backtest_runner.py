@@ -891,7 +891,7 @@ def run_backtest_inline(
 
         Defaults to
         :py:data:`tradeexecutor.backtest.backtest_execution.DEFAULT_VAULT_SETTLEMENT_DELAY`
-        (one day). Ostium-style vaults ignore this and settle the next day at
+        (two days). Ostium-style vaults ignore this and settle the next day at
         :py:data:`tradeexecutor.backtest.backtest_execution.OSTIUM_BACKTEST_SETTLEMENT_HOUR`
         unless a per-vault override is given.
 

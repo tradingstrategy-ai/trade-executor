@@ -1160,6 +1160,11 @@ class State:
         trade.other_data["vault_direction"] = "deposit" if trade.is_buy() else "redeem"
         # Merge adapter-serialised ticket data into other_data
         trade.other_data.update(ticket_data)
+        # Durable copy of the request timestamp: vault_settlement_pending_at is
+        # cleared when the request settles, but charts and diagnostics need the
+        # pending window after the fact. Written after the ticket merge so an
+        # adapter payload cannot clobber it.
+        trade.other_data["vault_settlement_requested_at"] = ts.isoformat()
 
     def update_reserves(self, new_reserves: List[ReservePosition]):
         self.portfolio.update_reserves(new_reserves)
