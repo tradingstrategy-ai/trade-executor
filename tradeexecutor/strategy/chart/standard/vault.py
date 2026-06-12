@@ -1,7 +1,10 @@
 """Vault charts."""
+import datetime
 import warnings
 
 import pandas as pd
+import plotly.colors as colors
+import plotly.express as px
 from plotly.graph_objects import Figure
 from tradeexecutor.analysis.credit import display_vault_position_table, display_vault_daily_pnl_table
 from tradeexecutor.analysis.vault_position_helpers import find_latest_position_for_pair
@@ -148,6 +151,108 @@ def all_vault_daily_gains_losses(
         top_n=top_n,
         bottom_n=bottom_n,
     )
+
+
+def _get_trade_pending_window(trade) -> tuple[datetime.datetime, datetime.datetime | None] | None:
+    """Reconstruct the pending settlement window of an async vault trade.
+
+    Settlement clears ``trade.vault_settlement_pending_at``, so the request
+    timestamp must come from the durable ``other_data`` copy. Older state
+    files predate ``vault_settlement_requested_at``; fall back to the live
+    pending marker and finally the trade start.
+
+    :return:
+        ``(requested_at, settled_at)`` tuple, ``settled_at`` is None when the
+        request is still pending. None if the trade is not an async vault flow.
+    """
+    if not trade.other_data.get("vault_async_flow"):
+        return None
+
+    requested_at_raw = trade.other_data.get("vault_settlement_requested_at")
+    if requested_at_raw:
+        requested_at = datetime.datetime.fromisoformat(requested_at_raw)
+    elif trade.vault_settlement_pending_at is not None:
+        requested_at = trade.vault_settlement_pending_at
+    else:
+        requested_at = trade.started_at or trade.opened_at
+
+    if requested_at is None:
+        return None
+
+    if trade.is_success():
+        settled_at = trade.executed_at
+    elif trade.failed_at is not None:
+        # Reclaimed/failed request (Ostium reclaim path) - the buffer ends at failure
+        settled_at = trade.failed_at
+    else:
+        settled_at = None
+    return requested_at, settled_at
+
+
+def pending_vault_settlements(input: ChartInput) -> tuple[Figure, pd.DataFrame]:
+    """In-flight async vault settlement buffers over time.
+
+    Like the asset weight maps, but shows the capital queued in two-stage
+    (ERC-7540 / Ostium) vault deposit and redemption requests on each strategy
+    cycle: deposits as positive areas, redemptions as negative areas. The
+    pending window of a request is half-open ``[requested_at, settled_at)`` —
+    on the settlement cycle the capital is live again, so it no longer counts
+    as a buffer.
+
+    Returns (fig, df) tuple so diagnostics can inspect the underlying data.
+    """
+    state = input.state
+
+    timestamps = [ps.calculated_at for ps in state.stats.portfolio]
+    if not timestamps:
+        return Figure(), pd.DataFrame()
+    last_timestamp = max(timestamps)
+
+    rows = []
+    for position in state.portfolio.get_all_positions(pending=True):
+        ticker = position.pair.get_vault_name() or position.pair.get_ticker()
+        for trade in position.trades.values():
+            window = _get_trade_pending_window(trade)
+            if window is None:
+                continue
+            requested_at, settled_at = window
+            # Half-open window: still-pending requests extend to the last statistics timestamp
+            end = settled_at if settled_at is not None else last_timestamp + datetime.timedelta(seconds=1)
+            if trade.is_buy():
+                series = f"{ticker} deposit"
+                value = float(trade.planned_reserve)
+            else:
+                series = f"{ticker} redeem"
+                value = -abs(float(trade.planned_quantity)) * float(trade.planned_price or 0)
+            for ts in timestamps:
+                if requested_at <= ts < end:
+                    rows.append({"timestamp": ts, "series": series, "value": value})
+
+    if not rows:
+        fig = Figure()
+        fig.update_layout(
+            title="Pending vault settlement buffers",
+            xaxis_title="Time",
+            yaxis_title="US dollar size",
+            template="plotly_dark",
+        )
+        return fig, pd.DataFrame()
+
+    df = pd.DataFrame(rows)
+    df = df.groupby(["timestamp", "series"])["value"].sum().reset_index()
+    df = df.sort_values("timestamp")
+    df = df.pivot(index="timestamp", columns="series", values="value").fillna(0)
+    df = df[sorted(df.columns)]
+
+    fig = px.area(
+        df,
+        title="Pending vault settlement buffers (deposits positive, redemptions negative)",
+        labels={"index": "Time", "value": "US dollar size"},
+        color_discrete_sequence=colors.qualitative.Light24,
+        template="plotly_dark",
+    )
+    fig.update_traces(line_width=0)
+    return fig, df
 
 
 def vault_data_freshness(input: ChartInput) -> pd.DataFrame:

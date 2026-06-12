@@ -9,7 +9,13 @@ stale-data protection, and redemption-aware target sizing.
 Backtest results (2025-01-02 to 2026-03-10)
 =============================================
 
-Last backtest run: 2026-05-29
+Last backtest run: 2026-06-12
+
+Run with the two-stage async vault settlement simulation: ERC-7540/Ostium
+style vaults request on one cycle and settle two days later at the
+settlement-time price (``DEFAULT_VAULT_SETTLEMENT_DELAY``). The lower
+return versus older instant-settlement runs reflects capital waiting in
+settlement queues.
 
 Note: CLI summary inflates return to 51% because bridge positions
 (get_value) double-count capital already held in satellite vault
@@ -21,20 +27,20 @@ Metric                             Strategy
 =================================  ===========
 Start period                       2025-01-02
 End period                         2026-03-10
-Trading period length              432 days
-Cumulative return                  15.20%
-CAGR                               12.70%
+Trading period length              433 days
+Cumulative return                  13.99%
+CAGR                               11.70%
 Cash at start                      $100,000.00
-Value at end                       $115,197.08
-Max drawdown                       -0.08%
+Value at end                       $113,899.50
+Max drawdown                       -0.07%
 Longest DD days                    4
-Volatility (ann.)                  0.43%
+Volatility (ann.)                  0.40%
 Sharpe                             27.47
-Sortino                            25.84
-Calmar                             161.76
-Total positions                    93
-Won positions                      17
-Lost positions                     1
+Sortino                            110.52
+Calmar                             169.99
+Total positions                    82
+Won positions                      79
+Lost positions                     0
 =================================  ===========
 """
 
@@ -84,7 +90,7 @@ from tradeexecutor.strategy.chart.standard.trading_universe import (
     available_trading_pairs,
     inclusion_criteria_check,
 )
-from tradeexecutor.strategy.chart.standard.vault import all_vault_positions
+from tradeexecutor.strategy.chart.standard.vault import all_vault_positions, pending_vault_settlements
 from tradeexecutor.strategy.chart.standard.weight import (
     equity_curve_by_asset,
     equity_curve_by_chain,
@@ -644,6 +650,7 @@ def create_charts(
     charts.register(alpha_model_diagnostics, ChartKind.state_all_pairs)
     charts.register(missed_vault_deposit_redemption_events, ChartKind.state_all_pairs)
     charts.register(missed_vault_deposit_redemption_timeline, ChartKind.state_all_pairs)
+    charts.register(pending_vault_settlements, ChartKind.state_all_pairs)
     charts.register(trading_pair_breakdown_with_chain, ChartKind.state_all_pairs)
     charts.register(trading_metrics, ChartKind.state_all_pairs)
     charts.register(vault_statistics, ChartKind.state_all_pairs)
