@@ -196,6 +196,44 @@ class ExecutionModel(abc.ABC):
             List of fixed trades
         """
 
+    def resolve_pending_vault_settlements(
+        self,
+        state: State,
+        ts: datetime.datetime,
+        pricing_model=None,
+    ) -> List[TradeExecution]:
+        """Resolve async vault deposit/redeem settlements that have become claimable.
+
+        Called once per strategy cycle (see :py:meth:`StrategyRunner.tick`) to
+        advance trades sitting in ``vault_settlement_pending`` state. The default
+        (live) implementation polls each vault's on-chain deposit manager and
+        broadcasts the claim/reclaim transaction. The backtest execution model
+        overrides this with a fully simulated resolver.
+
+        :param state:
+            Current strategy state.
+
+        :param ts:
+            Strategy cycle timestamp.
+
+        :param pricing_model:
+            Pricing model for the current cycle. Unused by the live path (which
+            reads the claimed amounts from chain); the backtest resolver uses it
+            to value settlements at the current simulated price.
+
+        :return:
+            List of trades that were resolved this call.
+        """
+        # Local import to avoid a circular import: settlement_retry imports
+        # vault routing which imports execution-model-derived types.
+        from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
+        web3config = getattr(self, "web3config", None)
+        return check_and_resolve_vault_settlements(
+            state=state,
+            execution_model=self,
+            web3config=web3config,
+        )
+
     def create_default_routing_model(
         self,
         strategy_universe: TradingStrategyUniverse,

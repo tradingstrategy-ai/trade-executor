@@ -863,14 +863,14 @@ class StrategyRunner(abc.ABC):
                     post_valuation=True,
                 )
 
-            # Resolve any pending async vault settlements (Ostium V1.5, ERC-7540 Lagoon)
+            # Resolve any pending async vault settlements (Ostium V1.5, ERC-7540 Lagoon).
+            # Polymorphic: live execution models poll the on-chain deposit manager,
+            # the backtest execution model runs a fully simulated resolver.
             with self.timed_task_context_manager("settle_pending_vault_trades"):
-                from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
-                web3config = getattr(self.execution_model, 'web3config', None)
-                vault_resolved = check_and_resolve_vault_settlements(
+                vault_resolved = self.execution_model.resolve_pending_vault_settlements(
                     state=state,
-                    execution_model=self.execution_model,
-                    web3config=web3config,
+                    ts=strategy_cycle_timestamp,
+                    pricing_model=pricing_model,
                 )
                 if vault_resolved:
                     logger.info("Resolved %d pending vault settlement(s)", len(vault_resolved))

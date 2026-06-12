@@ -327,6 +327,8 @@ def setup_backtest_for_universe(
     indicator_storage: DiskIndicatorStorage | None = None,
     max_workers: int | None = None,
     three_leg_resolution=True,
+    vault_settlement_delay: datetime.timedelta = datetime.timedelta(0),
+    vault_settlement_delay_overrides: dict[str, datetime.timedelta] | None = None,
 ):
     """High-level entry point for setting up a single backtest for a predefined universe.
 
@@ -398,7 +400,13 @@ def setup_backtest_for_universe(
             three_leg_resolution=three_leg_resolution,
         )
 
-    execution_model = BacktestExecution(wallet, max_slippage, stop_loss_data_available=stop_loss_data_available)
+    execution_model = BacktestExecution(
+        wallet,
+        max_slippage,
+        stop_loss_data_available=stop_loss_data_available,
+        vault_settlement_delay=vault_settlement_delay,
+        vault_settlement_delay_overrides=vault_settlement_delay_overrides,
+    )
 
     if universe_options is None:
         universe_options = UniverseOptions(candle_time_bucket_override=candle_time_frame)
@@ -442,6 +450,8 @@ def setup_backtest(
     universe_options: Optional[UniverseOptions] = None,
     client: Optional[Client] = None,
     three_leg_resolution: bool = True,
+    vault_settlement_delay: datetime.timedelta = datetime.timedelta(0),
+    vault_settlement_delay_overrides: dict[str, datetime.timedelta] | None = None,
 ) -> BacktestSetup:
     """High-level entry point for setting up a backtest from a strategy module.
 
@@ -552,6 +562,8 @@ def setup_backtest(
         wallet,
         max_slippage,
         stop_loss_data_available=stop_loss_data_available,
+        vault_settlement_delay=vault_settlement_delay,
+        vault_settlement_delay_overrides=vault_settlement_delay_overrides,
     )
 
     return BacktestSetup(
@@ -762,6 +774,8 @@ def run_backtest_inline(
     execution_context=standalone_backtest_execution_context,
     execution_test_hook: ExecutionTestHook | None = None,
     three_leg_resolution=True,
+    vault_settlement_delay: datetime.timedelta = datetime.timedelta(0),
+    vault_settlement_delay_overrides: dict[str, datetime.timedelta] | None = None,
 ) -> BacktestResult:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -951,6 +965,8 @@ def run_backtest_inline(
         wallet,
         max_slippage,
         stop_loss_data_available=stop_loss_data_available,
+        vault_settlement_delay=vault_settlement_delay,
+        vault_settlement_delay_overrides=vault_settlement_delay_overrides,
     )
 
     if universe:

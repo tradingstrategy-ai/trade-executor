@@ -15,7 +15,9 @@ from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifie
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
+from tradeexecutor.utils.accuracy import sum_decimal
 
 
 logger = logging.getLogger(__name__)
@@ -153,7 +155,18 @@ def get_asset_amounts(p: TradingPosition) -> List[Tuple[AssetIdentifier, Decimal
         # Hypercore vault positions are API-tracked, not on-chain
         if p.pair.is_hyperliquid_vault():
             return []
-        return [(p.pair.base, p.get_quantity())]
+        # Async vault redeems (vault_settlement_pending sells) have already moved
+        # shares out of the owner wallet into the vault escrow via requestRedeem(),
+        # but get_quantity() still counts them (only is_success trades reduce it).
+        # Subtract the escrowed shares so the expected on-chain owner balance matches
+        # reality and check-accounts does not raise a false mismatch. Sell quantities
+        # are negative, matching TradingPosition.get_available_trading_quantity().
+        vault_pending_sells = sum_decimal([
+            t.get_position_quantity()
+            for t in p.trades.values()
+            if t.get_status() == TradeStatus.vault_settlement_pending and t.is_sell()
+        ])
+        return [(p.pair.base, p.get_quantity() + vault_pending_sells)]
     elif p.is_short():
         return [
             (p.pair.base, p.loan.get_borrowed_quantity()),
