@@ -252,14 +252,16 @@ How each command or context takes a request from pending to settled:
 - **`repair` / `retry`** — not involved: they act on *failed* trades, and a
   pending settlement is not a failure. Both explicitly leave
   `vault_settlement_pending` trades alone.
-- **`close-position` / `close-all`** — currently **not async-aware** (a known
-  gap): their post-execution asserts expect a synchronous close, so a redeem
-  that correctly lands in `vault_settlement_pending` is misreported as a
-  failure even though the request is on-chain. The redeem still completes
-  via the daemon or a settlement sweep. The intended shape follows the
-  patterns above: sweep claimables first (a re-run after the operator
-  settles may close the position outright), report-and-exit-0 when a new
-  request goes pending, and force-settle on Anvil.
+- **`close-position` / `close-all`** — the full re-run pattern. Each run
+  first sweeps claimable settlements (so a re-run after the operator settles
+  claims the earlier redeem and may close the position with no new on-chain
+  action), then skips positions whose settlement is still in flight with a
+  clear message, and only then requests new redeems. A new redeem that lands
+  in `vault_settlement_pending` is force-settled on Anvil; on a real chain
+  the command reports the request is on-chain and exits cleanly — the
+  position closes on a later re-run or via the daemon. Walking a position
+  through the queue is therefore: run once (request), wait for the operator,
+  run again (claim and close).
 
 The own-treasury sibling command `lagoon-redeem` (out of scope here, but the
 origin of the idempotent-sweep pattern) shows the re-run route in full: each

@@ -51,11 +51,13 @@ from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfig
 from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
+from tradeexecutor.cli.close_position import close_single_or_all_positions
 from tradeexecutor.ethereum.vault.vault_utils import translate_vault_to_trading_pair
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.account_correction import calculate_account_corrections
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -346,3 +348,110 @@ def test_lagoon_erc_7540_async_deposit_redeem_lifecycle(
     # 8. Final equity approximately equals starting equity (on the reloaded state).
     assert state2.portfolio.calculate_total_equity() == pytest.approx(starting_equity, rel=0.05)
     assert state2.portfolio.get_vault_settlement_pending_value() == pytest.approx(0.0, abs=1e-6)
+
+
+@flaky.flaky
+def test_lagoon_erc_7540_close_position_rerun(
+    web3: Web3,
+    asset_manager_address: str,
+    target_vault,
+    strategy_hot_wallet: HotWallet,
+    strategy_universe: TradingStrategyUniverse,
+    execution_model: EthereumExecution,
+    sync_model: HotWalletSyncModel,
+    routing_model,
+    pricing_model: GenericPricing,
+    valuation_model: GenericValuation,
+    vault_pair: TradingPairIdentifier,
+    base_usdc: AssetIdentifier,
+    mocker,
+):
+    """close-position walks an ERC-7540 redeem through the queue across re-runs.
+
+    An ERC-7540 settlement can take days, so the close-position/close-all CLI
+    command must never wait for it. This test exercises the re-run pattern with
+    Anvil force-settling disabled (is_anvil patched to False), so the command
+    behaves as it would on a real chain.
+
+    1. Deposit into the vault, settle as asset manager and resolve -> position open.
+    2. First close-position run: requestRedeem broadcast, trade left in
+       vault_settlement_pending, command exits cleanly, position stays open.
+    3. Second run while the queue is still unsettled: the in-flight settlement is
+       recognised, no new trade is created, command exits cleanly.
+    4. Settle the queue as asset manager.
+    5. Third run: the pre-flight settlement sweep claims the redeem and the
+       position is closed without any new on-chain request.
+    6. Final equity approximately equals starting equity.
+    """
+
+    owner = strategy_hot_wallet.address
+
+    # 1. Deposit into the vault, settle and resolve -> position open.
+    state = State()
+    sync_model.sync_initial(state, reserve_asset=base_usdc, reserve_token_price=1.0)
+    sync_model.sync_treasury(native_datetime_utc_now(), state, supported_reserves=[base_usdc])
+    starting_equity = state.portfolio.calculate_total_equity()
+
+    pm = PositionManager(native_datetime_utc_now(), strategy_universe, state, pricing_model)
+    buy_trades = pm.open_spot(vault_pair, value=DEPOSIT_VALUE)
+    _execute(execution_model, routing_model, strategy_universe, state, buy_trades)
+    assert buy_trades[0].get_status() == TradeStatus.vault_settlement_pending
+    force_lagoon_settle(target_vault, asset_manager_address)
+    resolved = execution_model.resolve_pending_vault_settlements(state=state, ts=native_datetime_utc_now())
+    assert len(resolved) == 1
+    position = state.portfolio.get_position_by_id(buy_trades[0].position_id)
+    assert position.is_open()
+    position_id = position.position_id
+
+    # Behave as on a real chain: no force-settling inside close-position.
+    mocker.patch("tradeexecutor.cli.close_position.is_anvil", return_value=False)
+
+    execution_context = ExecutionContext(mode=ExecutionMode.one_off)
+    routing_state = routing_model.create_routing_state(strategy_universe, execution_model.get_routing_state_details())
+
+    def _run_close():
+        close_single_or_all_positions(
+            web3=web3,
+            execution_model=execution_model,
+            execution_context=execution_context,
+            pricing_model=pricing_model,
+            sync_model=sync_model,
+            state=state,
+            universe=strategy_universe,
+            routing_model=routing_model,
+            routing_state=routing_state,
+            valuation_model=valuation_model,
+            slippage_tolerance=0.10,
+            interactive=False,
+            position_id=position_id,
+            unit_testing=True,
+        )
+
+    # 2. First run: requestRedeem goes on-chain, settlement pending, no crash.
+    _run_close()
+    sell_trades = [t for t in position.trades.values() if t.is_sell()]
+    assert len(sell_trades) == 1
+    assert sell_trades[0].get_status() == TradeStatus.vault_settlement_pending
+    assert position.is_open()
+    assert target_vault.vault_contract.functions.pendingRedeemRequest(0, owner).call() > 0
+
+    # 3. Second run while the queue is still unsettled: the in-flight settlement
+    #    is recognised and no duplicate redeem request is created.
+    _run_close()
+    sell_trades = [t for t in position.trades.values() if t.is_sell()]
+    assert len(sell_trades) == 1
+    assert sell_trades[0].get_status() == TradeStatus.vault_settlement_pending
+    assert position.is_open()
+
+    # 4. Settle the queue as asset manager.
+    force_lagoon_settle(target_vault, asset_manager_address)
+
+    # 5. Third run: the pre-flight sweep claims the redeem and closes the position.
+    _run_close()
+    assert sell_trades[0].get_status() == TradeStatus.success
+    assert position.is_closed()
+    assert position_id in state.portfolio.closed_positions
+
+    # 6. Final equity approximately equals starting equity.
+    assert state.portfolio.calculate_total_equity() == pytest.approx(starting_equity, rel=0.05)
+    assert state.portfolio.get_vault_settlement_pending_value() == pytest.approx(0.0, abs=1e-6)

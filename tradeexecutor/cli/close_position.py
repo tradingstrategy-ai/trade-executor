@@ -9,13 +9,16 @@ from tabulate import tabulate
 from web3 import Web3
 
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.provider.anvil import is_anvil
 
 from tradeexecutor.analysis.position import display_positions
+from tradeexecutor.cli.testtrade import _force_vault_settlement_and_resolve
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.multichain_balance import fetch_onchain_balances_multichain
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.repair import close_position_with_empty_trade
+from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.valuation import ValuationModel
@@ -114,6 +117,15 @@ def close_single_or_all_positions(
     # Sync nonce for the hot wallet
     execution_model.initialize()
 
+    # Async vaults (ERC-7540, Ostium V1.5): sweep any settlements that have
+    # become claimable since the last run. ERC-7540 queues are operator-driven
+    # and can take days, so this command never waits for them — instead a
+    # re-run after the vault operator settles claims the earlier redeem here,
+    # possibly closing the position with no new on-chain action.
+    resolved = execution_model.resolve_pending_vault_settlements(state=state, ts=ts)
+    if resolved:
+        logger.info("Resolved %d pending vault settlement(s) before closing positions", len(resolved))
+
     logger.info("Sync model is %s", sync_model)
     logger.info("Trading university reserve asset is %s", universe.get_reserve_asset())
 
@@ -210,6 +222,11 @@ def close_single_or_all_positions(
             positions_to_close = [state.portfolio.open_positions[position_id]]
         elif position_id in state.portfolio.frozen_positions:
             positions_to_close = [state.portfolio.frozen_positions[position_id]]
+        elif position_id in state.portfolio.closed_positions:
+            # The pre-flight settlement sweep may have just claimed a vault
+            # redeem requested on an earlier run, closing the position.
+            logger.info("Position #%d is already closed (a pending vault settlement may have been claimed above)", position_id)
+            return
         else:
             raise RuntimeError(f"Position #{position_id} does not exist")
 
@@ -226,12 +243,34 @@ def close_single_or_all_positions(
         filter_zero=False,
     ))
 
+    # Positions we leave alone because a vault settlement is in flight.
+    # ERC-7540 queues are operator-driven and can take days — we never wait.
+    pending_settlement_position_ids: set[int] = set()
+
     for idx, p in enumerate(positions_to_close):
         logger.info("  Position: %s, quantity %s", p, p.get_quantity())
 
         trading_quantity = p.get_available_trading_quantity()
         quantity = p.get_quantity()
         onchain_balance = balance_list[idx]
+
+        pending_trades = [
+            t for t in p.trades.values()
+            if t.get_status() == TradeStatus.vault_settlement_pending
+        ]
+        if pending_trades:
+            t = pending_trades[0]
+            logger.info(
+                "Position #%d has a vault settlement in flight: trade #%d (%s) requested at %s. "
+                "The vault operator has not settled the queue yet. "
+                "Re-run this command after settlement, or let the start loop complete it.",
+                p.position_id,
+                t.trade_id,
+                t.other_data.get("vault_direction", "deposit" if t.is_buy() else "redeem"),
+                t.vault_settlement_pending_at,
+            )
+            pending_settlement_position_ids.add(p.position_id)
+            continue
 
         if trading_quantity != quantity:
             logger.info(
@@ -248,6 +287,21 @@ def close_single_or_all_positions(
                                               f"Probably unexecuted trades? {quantity} vs. {trading_quantity}\n"
                                               f"Position: {p}")
 
+    positions_to_close = [p for p in positions_to_close if p.position_id not in pending_settlement_position_ids]
+
+    if len(positions_to_close) == 0:
+        if pending_settlement_position_ids:
+            logger.info(
+                "No positions to close now: %d position(s) are waiting for vault settlement. "
+                "Re-run this command after the vault operator settles, or let the start loop complete them.",
+                len(pending_settlement_position_ids),
+            )
+            return
+        if resolved:
+            logger.info("All remaining work was completed by claiming pending vault settlements; nothing further to close")
+            return
+        raise RuntimeError("Strategy does not have any open positions to close")
+
     if interactive:
         if close_by_sell:
             logger.info("We will attempt to close the positions by selling")
@@ -258,8 +312,6 @@ def close_single_or_all_positions(
             raise CloseAllAborted()
 
     portfolio = state.portfolio
-
-    assert len(positions_to_close) > 0, "Strategy does not have any open positions to close"
 
     if close_by_sell:
 
@@ -298,6 +350,23 @@ def close_single_or_all_positions(
                 routing_state,
             )
 
+            if trade.get_status() == TradeStatus.vault_settlement_pending:
+                # Async vault redeem: the request is on-chain but the vault
+                # operator must settle the queue before we can claim — for
+                # ERC-7540 this can take days, so we never wait for it.
+                if is_anvil(web3):
+                    logger.info("Redeem for position #%d is vault_settlement_pending on Anvil, forcing settlement...", p.position_id)
+                    _force_vault_settlement_and_resolve(web3, state, trade, execution_model)
+                if trade.get_status() == TradeStatus.vault_settlement_pending:
+                    logger.info(
+                        "Position #%d redeem requested on-chain (trade #%d); waiting for the vault to settle. "
+                        "Re-run this command after settlement, or let the start loop complete it.",
+                        p.position_id,
+                        trade.trade_id,
+                    )
+                    pending_settlement_position_ids.add(p.position_id)
+                    continue
+
             if not trade.is_success():
                 logger.error("Trade failed: %s", trade)
                 logger.error("Tx hash: %s", trade.blockchain_transactions[-1].tx_hash)
@@ -334,6 +403,10 @@ def close_single_or_all_positions(
                 state.blacklist_asset(p.pair.base)
 
     for p in positions_to_close:
+        if p.position_id in pending_settlement_position_ids:
+            # Redeem requested, vault settlement in flight — the position
+            # legitimately stays open until the claim resolves.
+            continue
         assert p.is_closed(), f"Failed to close position: {p}"
         assert p.position_id in portfolio.closed_positions, f"Position was not in closed positions: {p}"
         assert p.position_id not in portfolio.frozen_positions, f"Position was back in frozen positions: {p}"
