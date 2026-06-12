@@ -453,7 +453,7 @@ def apply_accounting_correction(
     if isinstance(position, TradingPosition):
         position_type = BalanceUpdatePositionType.open_position
         position_id = correction.position.position_id
-        assert position.is_spot() or position.is_credit_supply() or position.pair.is_cctp_bridge(), f"Correction not yet implemented for all position types, got {position}"
+        assert position.is_spot() or position.is_credit_supply() or position.pair.is_cctp_bridge() or position.pair.is_vault(), f"Correction not yet implemented for all position types, got {position}"
         logger.info(
             "Correcting %s %s, asset %s, %f -> %f",
             position.pair.kind.name,

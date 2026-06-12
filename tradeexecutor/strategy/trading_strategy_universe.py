@@ -2183,7 +2183,14 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
             other_data=other_data,
         )
         used_ids.add(p.internal_id)
-        data.append(dex_pair.to_dict())
+        row = dex_pair.to_dict()
+        # to_dict() deep-serialises dataclass values like VaultMetadata into plain
+        # dicts, but translate_trading_pair() pattern-matches on the actual
+        # TokenMetadata/VaultMetadata instances (production pair DataFrames carry
+        # objects). Restore the original object-valued dict so hand-built vault
+        # pairs keep their metadata, e.g. ERC-7540 feature flags.
+        row["other_data"] = other_data
+        data.append(row)
     df = pd.DataFrame(data)
     return PandasPairUniverse(df)
 

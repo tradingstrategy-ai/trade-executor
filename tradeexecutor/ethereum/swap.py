@@ -31,6 +31,8 @@ def is_swap_function(name: str):
         # ERC-4626 async (Ostium V1.5, ERC-7540)
         "requestDeposit",
         "requestWithdraw",
+        # ERC-7540 Lagoon uses requestRedeem for async withdrawals
+        "requestRedeem",
         # CCTP bridge
         "depositForBurn",
     }

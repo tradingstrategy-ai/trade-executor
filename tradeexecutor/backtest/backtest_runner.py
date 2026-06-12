@@ -11,7 +11,7 @@ import logging
 
 import pandas as pd
 
-from tradeexecutor.backtest.backtest_execution import BacktestExecution
+from tradeexecutor.backtest.backtest_execution import BacktestExecution, DEFAULT_VAULT_SETTLEMENT_DELAY
 from tradeexecutor.backtest.backtest_generic_router import EthereumBacktestPairConfigurator
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
@@ -327,6 +327,8 @@ def setup_backtest_for_universe(
     indicator_storage: DiskIndicatorStorage | None = None,
     max_workers: int | None = None,
     three_leg_resolution=True,
+    vault_settlement_delay: datetime.timedelta = DEFAULT_VAULT_SETTLEMENT_DELAY,
+    vault_settlement_delay_overrides: dict[str, datetime.timedelta] | None = None,
 ):
     """High-level entry point for setting up a single backtest for a predefined universe.
 
@@ -398,7 +400,13 @@ def setup_backtest_for_universe(
             three_leg_resolution=three_leg_resolution,
         )
 
-    execution_model = BacktestExecution(wallet, max_slippage, stop_loss_data_available=stop_loss_data_available)
+    execution_model = BacktestExecution(
+        wallet,
+        max_slippage,
+        stop_loss_data_available=stop_loss_data_available,
+        vault_settlement_delay=vault_settlement_delay,
+        vault_settlement_delay_overrides=vault_settlement_delay_overrides,
+    )
 
     if universe_options is None:
         universe_options = UniverseOptions(candle_time_bucket_override=candle_time_frame)
@@ -442,6 +450,8 @@ def setup_backtest(
     universe_options: Optional[UniverseOptions] = None,
     client: Optional[Client] = None,
     three_leg_resolution: bool = True,
+    vault_settlement_delay: datetime.timedelta = DEFAULT_VAULT_SETTLEMENT_DELAY,
+    vault_settlement_delay_overrides: dict[str, datetime.timedelta] | None = None,
 ) -> BacktestSetup:
     """High-level entry point for setting up a backtest from a strategy module.
 
@@ -552,6 +562,8 @@ def setup_backtest(
         wallet,
         max_slippage,
         stop_loss_data_available=stop_loss_data_available,
+        vault_settlement_delay=vault_settlement_delay,
+        vault_settlement_delay_overrides=vault_settlement_delay_overrides,
     )
 
     return BacktestSetup(
@@ -762,6 +774,8 @@ def run_backtest_inline(
     execution_context=standalone_backtest_execution_context,
     execution_test_hook: ExecutionTestHook | None = None,
     three_leg_resolution=True,
+    vault_settlement_delay: datetime.timedelta = DEFAULT_VAULT_SETTLEMENT_DELAY,
+    vault_settlement_delay_overrides: dict[str, datetime.timedelta] | None = None,
 ) -> BacktestResult:
     """Run backtests for given decide_trades and create_trading_universe functions.
 
@@ -863,6 +877,29 @@ def run_backtest_inline(
 
         See :py:class:`tradeexecutor.strategy.parameters.StrategyParameters`.
 
+    :param vault_settlement_delay:
+        Global simulated settlement delay for asynchronous vault deposit/redeem
+        requests (two-stage ERC-7540 / Ostium flow).
+
+        Any vault whose metadata carries async features (``erc_7540_like``,
+        ``lagoon_like``, ``ostium_like``) is **automatically** backtested with the
+        two-stage flow — the trade requests on one cycle and settles only after
+        this delay, at the price valid at settlement time. This changes results
+        compared to older backtests that settled such vaults instantly.
+
+        Defaults to
+        :py:data:`tradeexecutor.backtest.backtest_execution.DEFAULT_VAULT_SETTLEMENT_DELAY`
+        (one day). Ostium-style vaults ignore this and settle the next day at
+        :py:data:`tradeexecutor.backtest.backtest_execution.OSTIUM_BACKTEST_SETTLEMENT_HOUR`
+        unless a per-vault override is given.
+
+    :param vault_settlement_delay_overrides:
+        Per-vault settlement delays, keyed by lowercased vault address.
+
+        Takes precedence over both the global delay and the Ostium epoch
+        schedule. Listing a vault here also flags it as asynchronous even when
+        its metadata carries no async features.
+
     :param max_workers:
         Maximum number of worker processes to use to calculate indicators.
 
@@ -951,6 +988,8 @@ def run_backtest_inline(
         wallet,
         max_slippage,
         stop_loss_data_available=stop_loss_data_available,
+        vault_settlement_delay=vault_settlement_delay,
+        vault_settlement_delay_overrides=vault_settlement_delay_overrides,
     )
 
     if universe:

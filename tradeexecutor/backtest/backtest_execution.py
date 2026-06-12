@@ -7,6 +7,8 @@ import logging
 
 from tabulate import tabulate
 
+from eth_defi.erc_4626.core import ERC4626Feature
+
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimulatedBalance
 from tradeexecutor.state.state import State
@@ -65,6 +67,25 @@ def fix_sell_token_amount(
     return order_quantity, False
 
 
+#: Default simulated settlement delay for async (ERC-7540 / Ostium) vault
+#: deposit and redeem requests in backtesting.
+#:
+#: Non-zero on purpose: any vault whose metadata carries async features
+#: (``erc_7540_like``, ``lagoon_like``, ``ostium_like``) is automatically
+#: backtested with the two-stage flow, and a realistic default delay makes the
+#: behaviour change from older instant-settlement backtests explicit rather
+#: than a silent one-cycle shift.
+DEFAULT_VAULT_SETTLEMENT_DELAY = datetime.timedelta(days=1)
+
+#: Hour of day (UTC, naive) when Ostium-style vaults settle in backtesting.
+#:
+#: Live Ostium settles in roughly daily epochs (``lastSettlementTs +
+#: maxSettlementInterval`` on-chain); the backtest approximates this as
+#: "the request becomes claimable the next day at this hour". Override the
+#: schedule per vault with ``vault_settlement_delay_overrides``.
+OSTIUM_BACKTEST_SETTLEMENT_HOUR = 18
+
+
 class BacktestExecution(ExecutionModel):
     """Simulate trades against historical data."""
 
@@ -73,11 +94,29 @@ class BacktestExecution(ExecutionModel):
                  max_slippage: Percent = 0.01,
                  lp_fees: Percent = 0.0030,
                  stop_loss_data_available=False,
+                 vault_settlement_delay: datetime.timedelta = DEFAULT_VAULT_SETTLEMENT_DELAY,
+                 vault_settlement_delay_overrides: dict[str, datetime.timedelta] | None = None,
                  ):
         self.wallet = wallet
         self.max_slippage = max_slippage
         self.lp_fees = lp_fees
         self.stop_loss_data_available = stop_loss_data_available
+
+        #: Global default settlement delay for async (ERC-7540 / Ostium) vault
+        #: deposit and redeem requests. Defaults to
+        #: :py:data:`DEFAULT_VAULT_SETTLEMENT_DELAY` (one day). An explicit
+        #: ``timedelta(0)`` means the request settles on the next cycle that
+        #: runs the resolver (a one-cycle minimum, because the request is
+        #: created after the resolver step within a tick). Ostium-style vaults
+        #: ignore this and settle on their daily epoch hour unless a per-vault
+        #: override is given — see :py:meth:`_get_settlement_due`.
+        self.vault_settlement_delay = vault_settlement_delay
+
+        #: Per-vault settlement delay overrides, keyed by lowercased vault address.
+        #: Presence of a vault here also flags it as async even without vault features.
+        self.vault_settlement_delay_overrides = {
+            k.lower(): v for k, v in (vault_settlement_delay_overrides or {}).items()
+        }
 
     def get_safe_latest_block(self):
         return None
@@ -299,6 +338,200 @@ class BacktestExecution(ExecutionModel):
 
         return executed_quantity, executed_reserve
 
+    #
+    # Async (two-stage ERC-7540 / Ostium) vault deposit/redeem simulation
+    #
+
+    def _is_async_vault(self, pair) -> bool:
+        """Does this vault pair use a two-stage (async) deposit/redeem flow in backtest?
+
+        True if the pair has an explicit settlement-delay override, or its vault
+        features mark it as ERC-7540 / Lagoon / Ostium style.
+        """
+        if not pair.is_vault():
+            return False
+        if pair.pool_address and pair.pool_address.lower() in self.vault_settlement_delay_overrides:
+            return True
+        features = pair.get_vault_features() or set()
+        async_features = {
+            ERC4626Feature.erc_7540_like,
+            ERC4626Feature.lagoon_like,
+            ERC4626Feature.ostium_like,
+        }
+        return bool(features & async_features)
+
+    def _get_settlement_due(self, pair, ts: datetime.datetime) -> datetime.datetime:
+        """When does an async vault request made at ``ts`` become claimable?
+
+        Precedence:
+
+        1. Per-vault override (``vault_settlement_delay_overrides``) — a fixed
+           delay from the request time.
+        2. Ostium-style vaults (``ostium_like`` feature) — the next day at
+           :py:data:`OSTIUM_BACKTEST_SETTLEMENT_HOUR`, approximating Ostium's
+           daily epoch settlement schedule.
+        3. The global default delay (``vault_settlement_delay``).
+        """
+        if pair.pool_address:
+            override = self.vault_settlement_delay_overrides.get(pair.pool_address.lower())
+            if override is not None:
+                return ts + override
+
+        features = pair.get_vault_features() or set()
+        if ERC4626Feature.ostium_like in features:
+            # Ostium settles in daily epochs: the request becomes claimable
+            # the following day at the epoch settlement hour.
+            next_day = ts + datetime.timedelta(days=1)
+            return next_day.replace(hour=OSTIUM_BACKTEST_SETTLEMENT_HOUR, minute=0, second=0, microsecond=0)
+
+        return ts + self.vault_settlement_delay
+
+    def simulate_async_vault_request(self, ts: datetime.datetime, state: State, trade: TradeExecution) -> None:
+        """Stage 1 of a two-stage async vault deposit/redeem in backtest.
+
+        Records the deposit/redeem request as pending settlement **without** touching
+        the simulated wallet. For a deposit the state reserve ledger has already been
+        debited by ``start_execution()``; for a redeem the shares stay in the position
+        and wallet. The wallet share/reserve balances move only at simulated claim time
+        in :py:meth:`resolve_pending_vault_settlements`, once the configured delay has
+        elapsed.
+
+        :param ts:
+            Strategy cycle timestamp (request time).
+        """
+        assert trade.is_vault(), f"simulate_async_vault_request(): not a vault trade {trade}"
+        settles_at = self._get_settlement_due(trade.pair, ts)
+        trade.other_data["vault_settlement_estimated_at"] = settles_at.isoformat()
+        # mark_vault_settlement_pending() sets vault_settlement_pending_at, vault_async_flow,
+        # vault_chain_id and vault_direction. No protocol ticket data exists in backtest.
+        state.mark_vault_settlement_pending(ts, trade, ticket_data={})
+        logger.info(
+            "Backtest async vault request: trade #%d (%s), settles at %s",
+            trade.trade_id,
+            "deposit" if trade.is_buy() else "redeem",
+            settles_at,
+        )
+
+    def resolve_pending_vault_settlements(
+        self,
+        state: State,
+        ts: datetime.datetime,
+        pricing_model=None,
+    ) -> List[TradeExecution]:
+        """Stage 2 of a two-stage async vault deposit/redeem in backtest.
+
+        Scans open and pending positions for trades sitting in
+        ``vault_settlement_pending`` state and settles every one whose estimated
+        settlement time has passed. Settlement updates the simulated wallet and
+        marks the trade successful. Deposits realise the shares at the current
+        simulated price; redeems realise the reserve at the current simulated
+        price, so the settlement delay carries any vault NAV drift into P&L.
+
+        :param ts:
+            Strategy cycle timestamp (settlement-due cutoff).
+
+        :param pricing_model:
+            Pricing model used to value the settlement at the current simulated
+            price. Falls back to the trade's planned price when not provided.
+
+        :return:
+            List of trades resolved this call.
+        """
+        from itertools import chain as ichain
+
+        # Materialise the work-list before settling: mark_trade_success() on a
+        # deposit can move a position from pending_positions to open_positions, so
+        # iterating those dicts live while settling would skip work or error.
+        pending_trades: List[TradeExecution] = []
+        for position in ichain(state.portfolio.open_positions.values(), state.portfolio.pending_positions.values()):
+            for trade in position.trades.values():
+                if trade.get_status() == TradeStatus.vault_settlement_pending:
+                    pending_trades.append(trade)
+
+        resolved: List[TradeExecution] = []
+        for trade in pending_trades:
+            estimated = trade.other_data.get("vault_settlement_estimated_at")
+            settles_at = datetime.datetime.fromisoformat(estimated) if estimated else trade.vault_settlement_pending_at
+            if settles_at > ts:
+                # Settlement delay has not elapsed yet — leave it pending.
+                continue
+            self._settle_async_vault_trade(state, trade, ts, pricing_model)
+            resolved.append(trade)
+
+        if resolved:
+            logger.info("Backtest resolved %d pending vault settlement(s) at %s", len(resolved), ts)
+
+        return resolved
+
+    def _settle_async_vault_trade(
+        self,
+        state: State,
+        trade: TradeExecution,
+        ts: datetime.datetime,
+        pricing_model,
+    ) -> None:
+        """Settle a single due async vault deposit/redeem against the simulated wallet."""
+        pair = trade.pair
+        reserve = trade.reserve_currency
+        base = pair.base
+
+        if trade.is_buy():
+            # Deposit: realise shares at the current (settlement-time) price.
+            if pricing_model is not None:
+                settlement_price = pricing_model.get_buy_price(ts, pair, trade.planned_reserve).price
+            else:
+                settlement_price = float(trade.planned_price)
+            executed_reserve = trade.planned_reserve
+            executed_quantity = executed_reserve / Decimal(str(settlement_price))
+            # Wallet: receive shares, pay the committed reserve. The state cash
+            # ledger was already debited at request time (start_execution); this
+            # debits the simulated wallet so the two stay in sync post-settlement.
+            self.wallet.update_balance(base, executed_quantity, f"vault deposit settle #{trade.trade_id}")
+            self.wallet.update_balance(reserve, -executed_reserve, f"vault deposit settle #{trade.trade_id}")
+        else:
+            # Redeem: realise reserve at the current (settlement-time) price.
+            if pricing_model is not None:
+                settlement_price = pricing_model.get_sell_price(ts, pair, abs(trade.planned_quantity)).price
+            else:
+                settlement_price = float(trade.planned_price)
+            base_balance = self.wallet.get_balance(base.address)
+            executed_quantity, _ = fix_sell_token_amount(base_balance, trade.planned_quantity)
+            executed_reserve = abs(executed_quantity) * Decimal(str(settlement_price))
+            # Wallet: give up shares (executed_quantity is negative), receive reserve.
+            self.wallet.update_balance(base, executed_quantity, f"vault redeem settle #{trade.trade_id}")
+            self.wallet.update_balance(reserve, executed_reserve, f"vault redeem settle #{trade.trade_id}")
+
+        executed_price = float(abs(executed_reserve / executed_quantity)) if executed_quantity else float(settlement_price)
+
+        # Clear the pending marker before marking success (matches the live resolver).
+        trade.vault_settlement_pending_at = None
+
+        state.mark_trade_success(
+            ts,
+            trade,
+            executed_price,
+            executed_quantity,
+            executed_reserve,
+            lp_fees=0,
+            native_token_price=1,
+        )
+
+        # mark_trade_success() does not refresh position.last_token_price, and the
+        # runner revalues before this resolver runs, so revalue explicitly to keep
+        # the just-opened (deposit) or surviving (partial redeem) position correct.
+        position = state.portfolio.get_position_by_id(trade.position_id)
+        if position is not None and position.is_open():
+            position.revalue_base_asset(ts, float(settlement_price))
+
+        logger.info(
+            "Backtest async vault settled: trade #%d (%s), price %s, quantity %s, reserve %s",
+            trade.trade_id,
+            "deposit" if trade.is_buy() else "redeem",
+            settlement_price,
+            executed_quantity,
+            executed_reserve,
+        )
+
     def simulate_trade(
         self,
         ts: datetime.datetime,
@@ -340,6 +573,12 @@ class BacktestExecution(ExecutionModel):
         executed_collateral_allocation = executed_collateral_consumption = None
 
         try:
+            if trade.is_vault() and self._is_async_vault(trade.pair):
+                # Two-stage async vault: record the request as pending settlement
+                # and return zeros. The trade is not marked successful here — the
+                # resolver settles it on a later cycle once the delay elapses.
+                self.simulate_async_vault_request(ts, state, trade)
+                return Decimal(0), Decimal(0), None, None
             if trade.is_spot() or trade.is_credit_supply():
                 executed_quantity, executed_reserve, sell_amount_epsilon_fix = self.simulate_spot(state, trade)
             elif trade.is_leverage():
@@ -482,6 +721,12 @@ class BacktestExecution(ExecutionModel):
                 logger.info("Simulating %d. trade %s failed: %s", idx + 1, trade.get_short_label(), e)
                 raise BacktestExecutionFailed(f"Trade #{idx + 1} out of {len(trades)} trades failed") from e
 
+            # Async vault deposit/redeem requests are now pending settlement — do not
+            # mark them successful. resolve_pending_vault_settlements() settles them on
+            # a later cycle once the configured delay has elapsed.
+            if trade.get_status() == TradeStatus.vault_settlement_pending:
+                continue
+
             # Settle immediately so the next trade can see the results
             if executed_quantity:
                 if trade.is_short():
@@ -592,6 +837,12 @@ class BacktestExecution(ExecutionModel):
             except BacktestExecutionFailed as e:
                 logger.info("Simulating %d. trade %s failed: %s", idx+1, trade.get_short_label(), e)
                 raise BacktestExecutionFailed(f"Trade #{idx+1} out of {len(trades)} trades failed") from e
+
+            # Async vault deposit/redeem requests are now pending settlement — do not
+            # mark them successful. resolve_pending_vault_settlements() settles them on
+            # a later cycle once the configured delay has elapsed.
+            if trade.get_status() == TradeStatus.vault_settlement_pending:
+                continue
 
             # TODO: Use colleteral values here
 

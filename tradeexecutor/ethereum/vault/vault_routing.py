@@ -290,9 +290,11 @@ class VaultRouting(RoutingModel):
         )
 
         # Mark trade for async handling — store both raw and decimal amounts
-        # so we can reconstruct the request during settle_trade() parsing
+        # so we can reconstruct the request during settle_trade() parsing.
+        # Raw amounts are stored as strings: 18-decimal values exceed the
+        # JavaScript safe-integer limit enforced by the state file validator.
         trade.other_data["vault_async_flow"] = True
-        trade.other_data["vault_raw_amount"] = deposit_request.raw_amount
+        trade.other_data["vault_raw_amount"] = str(deposit_request.raw_amount)
         trade.other_data["vault_deposit_amount"] = str(swap_amount)
         trade.other_data["vault_owner_address"] = address
 
@@ -348,8 +350,10 @@ class VaultRouting(RoutingModel):
         # Mark trade for async handling — store both raw and decimal amounts.
         # We store vault_redeem_shares (Decimal) for adapters like Lagoon that
         # assert `not raw_shares` and require the decimal form for reconstruction.
+        # Raw amounts are stored as strings: 18-decimal share counts exceed the
+        # JavaScript safe-integer limit enforced by the state file validator.
         trade.other_data["vault_async_flow"] = True
-        trade.other_data["vault_raw_amount"] = redemption_request.raw_shares
+        trade.other_data["vault_raw_amount"] = str(redemption_request.raw_shares)
         trade.other_data["vault_redeem_shares"] = str(swap_amount)
         trade.other_data["vault_owner_address"] = address
 
@@ -432,10 +436,11 @@ class VaultRouting(RoutingModel):
 
             if direction == "deposit":
                 # Reconstruct deposit request using raw_amount (int) —
-                # all adapters support this path for deposits.
+                # all adapters support this path for deposits. int() accepts
+                # both the current string form and the legacy int form.
                 deposit_request = deposit_manager.create_deposit_request(
                     owner=owner_address,
-                    raw_amount=trade.other_data["vault_raw_amount"],
+                    raw_amount=int(trade.other_data["vault_raw_amount"]),
                 )
                 ticket = deposit_request.parse_deposit_transaction(tx_hashes)
                 ticket_data = deposit_manager.serialize_deposit_ticket(ticket)
@@ -443,17 +448,22 @@ class VaultRouting(RoutingModel):
                 # Reconstruct redemption request using shares (Decimal) —
                 # Lagoon asserts `not raw_shares` so we must pass the decimal form.
                 # Fall back to raw_shares for adapters that only support raw form.
+                # check_enough_token=False: the real requestRedeem() already moved
+                # the shares to the vault escrow, so the owner balance now reads zero;
+                # we only rebuild the request to parse the broadcast transaction.
                 redeem_shares_str = trade.other_data.get("vault_redeem_shares")
                 if redeem_shares_str:
                     redemption_request = deposit_manager.create_redemption_request(
                         owner=owner_address,
                         shares=Decimal(redeem_shares_str),
+                        check_enough_token=False,
                     )
                 else:
                     # Legacy path: older trades stored only vault_raw_amount
                     redemption_request = deposit_manager.create_redemption_request(
                         owner=owner_address,
-                        raw_shares=trade.other_data["vault_raw_amount"],
+                        raw_shares=int(trade.other_data["vault_raw_amount"]),
+                        check_enough_token=False,
                     )
                 ticket = redemption_request.parse_redeem_transaction(tx_hashes)
                 ticket_data = deposit_manager.serialize_redemption_ticket(ticket)

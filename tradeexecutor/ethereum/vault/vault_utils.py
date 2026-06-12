@@ -1,4 +1,6 @@
 """Vault metadata utils."""
+import hashlib
+
 from web3 import Web3
 
 from eth_defi.abi import ZERO_ADDRESS_STR
@@ -52,18 +54,35 @@ def translate_vault_to_trading_pair(
         management_fee=management_fee,  # No reader in ERC4626Vault
     )
 
+    # Derive a deterministic pair id from the chain id and vault address,
+    # constrained to the JavaScript safe-integer range: the state validator
+    # rejects ints above 2^53-1, so the raw 160-bit address value would make
+    # the state file unwritable for any position trading this pair. Hashing
+    # (rather than masking address bits) keeps the id uniformly distributed
+    # even for vanity/CREATE2-mined addresses, and including the chain id
+    # separates same-address deployments on different chains (a common
+    # CREATE2/Safe pattern). Residual collisions are negligible (birthday
+    # bound over 53 bits) and fail loudly: pair universe construction asserts
+    # unique ids.
+    internal_id = int.from_bytes(
+        hashlib.sha256(f"{vault.chain_id}:{vault.vault_address.lower()}".encode("ascii")).digest()[:8],
+        "big",
+    ) & ((1 << 53) - 1)
+
     return TradingPairIdentifier(
         base=base,
         quote=quote,
         kind=TradingPairKind.vault,
         pool_address=vault.vault_address,
         exchange_address=ZERO_ADDRESS_STR,
-        internal_id=int(vault.vault_address, 16),
+        internal_id=internal_id,
         fee=0,
         reverse_token_order=False,
         exchange_name=vault.name,
         other_data={
-            "vault_features": features,
+            # Store as a list, not a set: the state JSON validator rejects sets,
+            # and the dataset-loaded pair path (dex_data_translation) also uses a list.
+            "vault_features": list(features),
             "vault_protocol": protocol_slug,
             "token_metadata": vault_metadata,
         }
