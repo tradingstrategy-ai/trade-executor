@@ -54,16 +54,18 @@ def translate_vault_to_trading_pair(
         management_fee=management_fee,  # No reader in ERC4626Vault
     )
 
-    # Derive a deterministic pair id from the vault address, constrained to the
-    # JavaScript safe-integer range: the state validator rejects ints above
-    # 2^53-1, so the raw 160-bit address value would make the state file
-    # unwritable for any position trading this pair. Hashing (rather than
-    # masking address bits) keeps the id uniformly distributed even for
-    # vanity/CREATE2-mined addresses. Cross-vault collisions are negligible
-    # (birthday bound over 53 bits) and fail loudly: pair universe construction
-    # asserts unique ids.
+    # Derive a deterministic pair id from the chain id and vault address,
+    # constrained to the JavaScript safe-integer range: the state validator
+    # rejects ints above 2^53-1, so the raw 160-bit address value would make
+    # the state file unwritable for any position trading this pair. Hashing
+    # (rather than masking address bits) keeps the id uniformly distributed
+    # even for vanity/CREATE2-mined addresses, and including the chain id
+    # separates same-address deployments on different chains (a common
+    # CREATE2/Safe pattern). Residual collisions are negligible (birthday
+    # bound over 53 bits) and fail loudly: pair universe construction asserts
+    # unique ids.
     internal_id = int.from_bytes(
-        hashlib.sha256(vault.vault_address.lower().encode("ascii")).digest()[:8],
+        hashlib.sha256(f"{vault.chain_id}:{vault.vault_address.lower()}".encode("ascii")).digest()[:8],
         "big",
     ) & ((1 << 53) - 1)
 
