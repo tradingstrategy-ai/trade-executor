@@ -744,3 +744,82 @@ def test_backtest_async_vault_ends_with_pending():
     assert state.portfolio.get_cash() == pytest.approx(deposit_amount, abs=1e-6)
     assert state.portfolio.get_vault_settlement_pending_value() == pytest.approx(deposit_amount, abs=1e-6)
     assert state.portfolio.calculate_total_equity() == pytest.approx(INITIAL_DEPOSIT, abs=1.0)
+
+
+@pytest.mark.timeout(300)
+def test_backtest_async_vault_settlement_due_defaults():
+    """Settlement due-time defaults and precedence for async vault backtesting.
+
+    Async simulation switches on automatically for any vault whose metadata
+    carries async features, so the defaults must be realistic rather than a
+    silent next-cycle settlement.
+
+    1. The global default delay is non-zero (one day).
+    2. An ERC-7540 vault with no override settles one day after the request.
+    3. An Ostium vault with no override settles the next day at the epoch
+       settlement hour, regardless of the global delay.
+    4. A per-vault override beats both the global default and the Ostium schedule.
+    5. Override-only vaults (no features) are detected as async; plain vaults are not.
+    """
+    from tradeexecutor.backtest.backtest_execution import (
+        BacktestExecution,
+        DEFAULT_VAULT_SETTLEMENT_DELAY,
+        OSTIUM_BACKTEST_SETTLEMENT_HOUR,
+    )
+    from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
+
+    chain_id = ChainId.ethereum
+    usdc = AssetIdentifier(chain_id.value, generate_random_ethereum_address(), "USDC", 6, 1)
+    exchange_address = generate_random_ethereum_address()
+
+    def _make_pair(symbol: str, address: str, features: set | None, internal_id: int) -> TradingPairIdentifier:
+        share = AssetIdentifier(chain_id.value, generate_random_ethereum_address(), symbol, 18, internal_id)
+        pair = TradingPairIdentifier(
+            share,
+            usdc,
+            address,
+            exchange_address,
+            internal_id=internal_id,
+            internal_exchange_id=1,
+            fee=0,
+            kind=TradingPairKind.vault,
+        )
+        if features:
+            pair.other_data["vault_features"] = features
+        return pair
+
+    erc_7540_pair = _make_pair("V7540", VAULT_A_ADDRESS, {ERC4626Feature.erc_7540_like}, 700)
+    ostium_pair = _make_pair("VOST", VAULT_B_ADDRESS, {ERC4626Feature.ostium_like}, 701)
+    override_only_pair = _make_pair("VOVR", VAULT_C_ADDRESS, None, 702)
+    plain_pair = _make_pair("VPLAIN", "0x" + "dd" * 20, None, 703)
+
+    execution = BacktestExecution(
+        SimulatedWallet(),
+        vault_settlement_delay_overrides={VAULT_C_ADDRESS: datetime.timedelta(hours=2)},
+    )
+
+    # 1. The global default delay is non-zero (one day).
+    assert DEFAULT_VAULT_SETTLEMENT_DELAY == datetime.timedelta(days=1)
+    assert execution.vault_settlement_delay == DEFAULT_VAULT_SETTLEMENT_DELAY
+
+    ts = datetime.datetime(2024, 1, 1, 9, 30)
+
+    # 2. ERC-7540 vault: one day after the request.
+    assert execution._get_settlement_due(erc_7540_pair, ts) == datetime.datetime(2024, 1, 2, 9, 30)
+
+    # 3. Ostium vault: next day at the epoch settlement hour.
+    assert execution._get_settlement_due(ostium_pair, ts) == datetime.datetime(2024, 1, 2, OSTIUM_BACKTEST_SETTLEMENT_HOUR, 0)
+
+    # 4. A per-vault override beats both the global default and the Ostium schedule.
+    assert execution._get_settlement_due(override_only_pair, ts) == ts + datetime.timedelta(hours=2)
+    execution_ostium_override = BacktestExecution(
+        SimulatedWallet(),
+        vault_settlement_delay_overrides={VAULT_B_ADDRESS: datetime.timedelta(hours=6)},
+    )
+    assert execution_ostium_override._get_settlement_due(ostium_pair, ts) == ts + datetime.timedelta(hours=6)
+
+    # 5. Override-only vaults are async; plain vaults without features are not.
+    assert execution._is_async_vault(erc_7540_pair)
+    assert execution._is_async_vault(ostium_pair)
+    assert execution._is_async_vault(override_only_pair)
+    assert not execution._is_async_vault(plain_pair)

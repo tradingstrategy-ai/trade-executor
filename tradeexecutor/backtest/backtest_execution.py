@@ -67,6 +67,25 @@ def fix_sell_token_amount(
     return order_quantity, False
 
 
+#: Default simulated settlement delay for async (ERC-7540 / Ostium) vault
+#: deposit and redeem requests in backtesting.
+#:
+#: Non-zero on purpose: any vault whose metadata carries async features
+#: (``erc_7540_like``, ``lagoon_like``, ``ostium_like``) is automatically
+#: backtested with the two-stage flow, and a realistic default delay makes the
+#: behaviour change from older instant-settlement backtests explicit rather
+#: than a silent one-cycle shift.
+DEFAULT_VAULT_SETTLEMENT_DELAY = datetime.timedelta(days=1)
+
+#: Hour of day (UTC, naive) when Ostium-style vaults settle in backtesting.
+#:
+#: Live Ostium settles in roughly daily epochs (``lastSettlementTs +
+#: maxSettlementInterval`` on-chain); the backtest approximates this as
+#: "the request becomes claimable the next day at this hour". Override the
+#: schedule per vault with ``vault_settlement_delay_overrides``.
+OSTIUM_BACKTEST_SETTLEMENT_HOUR = 18
+
+
 class BacktestExecution(ExecutionModel):
     """Simulate trades against historical data."""
 
@@ -75,7 +94,7 @@ class BacktestExecution(ExecutionModel):
                  max_slippage: Percent = 0.01,
                  lp_fees: Percent = 0.0030,
                  stop_loss_data_available=False,
-                 vault_settlement_delay: datetime.timedelta = datetime.timedelta(0),
+                 vault_settlement_delay: datetime.timedelta = DEFAULT_VAULT_SETTLEMENT_DELAY,
                  vault_settlement_delay_overrides: dict[str, datetime.timedelta] | None = None,
                  ):
         self.wallet = wallet
@@ -84,9 +103,13 @@ class BacktestExecution(ExecutionModel):
         self.stop_loss_data_available = stop_loss_data_available
 
         #: Global default settlement delay for async (ERC-7540 / Ostium) vault
-        #: deposit and redeem requests. ``timedelta(0)`` means the request settles
-        #: on the next cycle that runs the resolver (a one-cycle minimum, because
-        #: the request is created after the resolver step within a tick).
+        #: deposit and redeem requests. Defaults to
+        #: :py:data:`DEFAULT_VAULT_SETTLEMENT_DELAY` (one day). An explicit
+        #: ``timedelta(0)`` means the request settles on the next cycle that
+        #: runs the resolver (a one-cycle minimum, because the request is
+        #: created after the resolver step within a tick). Ostium-style vaults
+        #: ignore this and settle on their daily epoch hour unless a per-vault
+        #: override is given — see :py:meth:`_get_settlement_due`.
         self.vault_settlement_delay = vault_settlement_delay
 
         #: Per-vault settlement delay overrides, keyed by lowercased vault address.
@@ -337,13 +360,31 @@ class BacktestExecution(ExecutionModel):
         }
         return bool(features & async_features)
 
-    def _get_settlement_delay(self, pair) -> datetime.timedelta:
-        """Settlement delay for an async vault pair (per-vault override, else global default)."""
+    def _get_settlement_due(self, pair, ts: datetime.datetime) -> datetime.datetime:
+        """When does an async vault request made at ``ts`` become claimable?
+
+        Precedence:
+
+        1. Per-vault override (``vault_settlement_delay_overrides``) — a fixed
+           delay from the request time.
+        2. Ostium-style vaults (``ostium_like`` feature) — the next day at
+           :py:data:`OSTIUM_BACKTEST_SETTLEMENT_HOUR`, approximating Ostium's
+           daily epoch settlement schedule.
+        3. The global default delay (``vault_settlement_delay``).
+        """
         if pair.pool_address:
             override = self.vault_settlement_delay_overrides.get(pair.pool_address.lower())
             if override is not None:
-                return override
-        return self.vault_settlement_delay
+                return ts + override
+
+        features = pair.get_vault_features() or set()
+        if ERC4626Feature.ostium_like in features:
+            # Ostium settles in daily epochs: the request becomes claimable
+            # the following day at the epoch settlement hour.
+            next_day = ts + datetime.timedelta(days=1)
+            return next_day.replace(hour=OSTIUM_BACKTEST_SETTLEMENT_HOUR, minute=0, second=0, microsecond=0)
+
+        return ts + self.vault_settlement_delay
 
     def simulate_async_vault_request(self, ts: datetime.datetime, state: State, trade: TradeExecution) -> None:
         """Stage 1 of a two-stage async vault deposit/redeem in backtest.
@@ -359,18 +400,16 @@ class BacktestExecution(ExecutionModel):
             Strategy cycle timestamp (request time).
         """
         assert trade.is_vault(), f"simulate_async_vault_request(): not a vault trade {trade}"
-        delay = self._get_settlement_delay(trade.pair)
-        settles_at = ts + delay
+        settles_at = self._get_settlement_due(trade.pair, ts)
         trade.other_data["vault_settlement_estimated_at"] = settles_at.isoformat()
         # mark_vault_settlement_pending() sets vault_settlement_pending_at, vault_async_flow,
         # vault_chain_id and vault_direction. No protocol ticket data exists in backtest.
         state.mark_vault_settlement_pending(ts, trade, ticket_data={})
         logger.info(
-            "Backtest async vault request: trade #%d (%s), settles at %s (delay %s)",
+            "Backtest async vault request: trade #%d (%s), settles at %s",
             trade.trade_id,
             "deposit" if trade.is_buy() else "redeem",
             settles_at,
-            delay,
         )
 
     def resolve_pending_vault_settlements(

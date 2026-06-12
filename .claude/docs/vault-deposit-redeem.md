@@ -133,10 +133,26 @@ Two parameters on the backtest entry points (`run_backtest_inline()` and
 friends) control it:
 
 - `vault_settlement_delay` — the default delay for every async vault.
+  Defaults to **one day** (`DEFAULT_VAULT_SETTLEMENT_DELAY`).
 - `vault_settlement_delay_overrides` — per-vault delays, keyed by vault
-  address. Giving a vault an override also marks it as asynchronous even if
-  its metadata carries no async feature flags, which is convenient for
-  synthetic test universes.
+  address. These take precedence over everything else, and giving a vault an
+  override also marks it as asynchronous even if its metadata carries no
+  async feature flags, which is convenient for synthetic test universes.
+
+Ostium-style vaults get a schedule instead of a fixed delay: with no
+override, a request settles **the next day at the epoch settlement hour**
+(`OSTIUM_BACKTEST_SETTLEMENT_HOUR`, 18:00 UTC), approximating Ostium's daily
+on-chain epochs.
+
+**Note a behaviour change for older backtests.** The two-stage simulation
+switches on *automatically* for any vault whose metadata carries async
+features — there is no separate opt-in. A vault pair that used to settle
+instantly in an old backtest now requests on one cycle and settles a day
+later (at the settlement-time price), so results for such pairs change once
+their dataset metadata gains async feature flags. The defaults are
+deliberately non-zero to make this visible; pass an explicit
+`vault_settlement_delay`/override to control it precisely (an explicit zero
+still settles no earlier than the next cycle).
 
 Otherwise a vault counts as asynchronous when its feature flags include
 `erc_7540_like`, `lagoon_like` or `ostium_like`. The flags are read via
