@@ -13,18 +13,180 @@ Works with any vault protocol that implements the generic
 import logging
 from itertools import chain as ichain
 
+from eth_defi.abi import get_topic_signature_from_event
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.event_reader.conversion import convert_bytes32_to_address, convert_bytes32_to_uint
+from eth_defi.hotwallet import HotWallet
 from eth_defi.vault.deposit_redeem import (
     AsyncVaultRequestStatus,
     DepositRedeemEventAnalysis,
 )
 from hexbytes import HexBytes
+from web3 import Web3
+from web3.contract.contract import ContractFunction
 
+from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
 from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 
 logger = logging.getLogger(__name__)
+
+
+def _get_chain_aware_tx_builder(
+    execution_model,
+    web3: Web3,
+    vault_chain_id: int,
+) -> TransactionBuilder:
+    """Get transaction builder that signs for the vault chain."""
+    tx_builder = execution_model.tx_builder
+    tx_builder_chain_id = getattr(tx_builder, "chain_id", None)
+
+    if not isinstance(tx_builder_chain_id, int) or tx_builder_chain_id == vault_chain_id:
+        return tx_builder
+
+    assert hasattr(tx_builder, "hot_wallet"), f"Cannot create satellite tx builder from {tx_builder}"
+
+    satellite_wallet = HotWallet(tx_builder.hot_wallet.account)
+    satellite_wallet.sync_nonce(web3)
+
+    from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
+
+    if isinstance(tx_builder, LagoonTransactionBuilder):
+        satellite_vaults = getattr(execution_model, "satellite_vaults", None) or {}
+        satellite_vault = satellite_vaults.get(vault_chain_id)
+        assert satellite_vault, (
+            f"No satellite vault configured for chain {vault_chain_id}. "
+            f"Available satellite chains: {list(satellite_vaults.keys())}"
+        )
+        return LagoonTransactionBuilder(satellite_vault, satellite_wallet, tx_builder.extra_gnosis_gas)
+
+    return HotWalletTransactionBuilder(web3, satellite_wallet)
+
+
+def _normalise_topic_address(topic) -> str:
+    """Convert an indexed address topic to a comparable lowercase hex address."""
+    return convert_bytes32_to_address(topic).lower()
+
+
+def _normalise_topic_signature(topic) -> str:
+    """Convert a log topic signature to a 0x-prefixed lowercase string."""
+    signature = topic.hex().lower()
+    if not signature.startswith("0x"):
+        signature = "0x" + signature
+    return signature
+
+
+def _get_request_block(web3: Web3, ticket) -> int:
+    """Get the block where the async vault request was opened."""
+    block_number = getattr(ticket, "block_number", 0) or 0
+    if block_number:
+        return block_number
+
+    receipt = web3.eth.get_transaction_receipt(HexBytes(ticket.tx_hash))
+    return receipt["blockNumber"]
+
+
+def _find_already_completed_claim_tx_hash(
+    web3: Web3,
+    vault,
+    ticket,
+    direction: str,
+) -> HexBytes | None:
+    """Find a completed vault claim after local state was lost.
+
+    This handles a crash after the claim transaction was confirmed on-chain but
+    before the JSON state file was written. In that situation the request status
+    can be ``none`` because the claim consumed the request, while local state
+    still shows ``vault_settlement_pending``.
+    """
+    from_block = _get_request_block(web3, ticket)
+    to_block = web3.eth.block_number
+
+    logs = web3.eth.get_logs({
+        "address": vault.vault_contract.address,
+        "fromBlock": from_block,
+        "toBlock": to_block,
+    })
+
+    if direction == "deposit":
+        signatures = {
+            get_topic_signature_from_event(vault.vault_contract.events.Deposit),
+            "0xdcbc1c05240f31ff3ad067ef1ee35ce4997762752e3a095284754544f4c709d7",
+        }
+        expected_to = ticket.to.lower()
+        expected_raw_amount = ticket.raw_amount
+
+        for log in logs:
+            if _normalise_topic_signature(log["topics"][0]) not in signatures:
+                continue
+            if len(log["topics"]) < 3:
+                continue
+            if _normalise_topic_address(log["topics"][2]) != expected_to:
+                continue
+            if convert_bytes32_to_uint(log["data"][0:32]) != expected_raw_amount:
+                continue
+            return HexBytes(log["transactionHash"])
+
+    else:
+        signatures = {
+            get_topic_signature_from_event(vault.vault_contract.events.Withdraw),
+            "0xfbde797d201c681b91056529119e0b02407c7bb96a4a2c75c01fc9667232c8db",
+        }
+        expected_owner = ticket.owner.lower()
+        expected_to = ticket.to.lower()
+        expected_raw_shares = ticket.raw_shares
+
+        for log in logs:
+            if _normalise_topic_signature(log["topics"][0]) not in signatures:
+                continue
+            if len(log["topics"]) < 4:
+                continue
+            if _normalise_topic_address(log["topics"][2]) != expected_to:
+                continue
+            if _normalise_topic_address(log["topics"][3]) != expected_owner:
+                continue
+            if convert_bytes32_to_uint(log["data"][32:64]) != expected_raw_shares:
+                continue
+            return HexBytes(log["transactionHash"])
+
+    return None
+
+
+def _create_recovered_claim_transaction(
+    web3: Web3,
+    vault_chain_id: int,
+    tx_hash: HexBytes,
+    action_label: str,
+    trade: TradeExecution,
+    func: ContractFunction | None,
+) -> BlockchainTransaction:
+    """Create a minimal state transaction for an already-confirmed claim."""
+    tx = web3.eth.get_transaction(tx_hash)
+    receipt = web3.eth.get_transaction_receipt(tx_hash)
+    recovered_tx = BlockchainTransaction(
+        chain_id=vault_chain_id,
+        from_address=tx["from"],
+        contract_address=tx["to"],
+        function_selector=func.fn_name if func is not None else None,
+        transaction_args=func.args if func is not None else None,
+        args=func.args if func is not None else None,
+        tx_hash=tx_hash.hex(),
+        nonce=tx["nonce"],
+        details={"recovered": True},
+        notes=f"Recovered vault {action_label} for trade #{trade.trade_id}",
+    )
+    recovered_tx.other["vault_settlement_action"] = action_label
+    recovered_tx.set_confirmation_information(
+        native_datetime_utc_now(),
+        receipt["blockNumber"],
+        receipt["blockHash"].hex(),
+        receipt.get("effectiveGasPrice", 0),
+        receipt["gasUsed"],
+        receipt["status"] == 1,
+    )
+    return recovered_tx
 
 
 def check_and_resolve_vault_settlements(
@@ -198,14 +360,47 @@ def _resolve_single_vault_trade(
             )
             return
         elif status == AsyncVaultRequestStatus.none:
-            logger.warning(
-                "Unexpected NONE status for vault trade #%d (direction=%s)",
-                trade.trade_id, direction,
+            recovered_tx_hash = _find_already_completed_claim_tx_hash(
+                web3,
+                vault,
+                ticket,
+                direction,
             )
-            return
+            if recovered_tx_hash is None:
+                logger.warning(
+                    "Unexpected NONE status for vault trade #%d (direction=%s)",
+                    trade.trade_id, direction,
+                )
+                return
+
+            action_label = "claim"
+            if direction == "deposit":
+                func = deposit_manager.finish_deposit(ticket)
+            else:
+                func = deposit_manager.finish_redemption(ticket)
+            confirmed_receipt = web3.eth.get_transaction_receipt(recovered_tx_hash)
+            trade.blockchain_transactions.append(
+                _create_recovered_claim_transaction(
+                    web3,
+                    vault_chain_id,
+                    recovered_tx_hash,
+                    action_label,
+                    trade,
+                    func,
+                )
+            )
+            tx_already_confirmed = True
+            is_reclaim_tx = False
+            logger.info(
+                "Recovered already-confirmed vault claim for trade #%d from tx %s",
+                trade.trade_id,
+                recovered_tx_hash.hex(),
+            )
 
         # STEP C: Sign and broadcast claim/reclaim
-        if status == AsyncVaultRequestStatus.claimable:
+        if tx_already_confirmed:
+            pass
+        elif status == AsyncVaultRequestStatus.claimable:
             if direction == "deposit":
                 func = deposit_manager.finish_deposit(ticket)
             else:
@@ -226,43 +421,44 @@ def _resolve_single_vault_trade(
         else:
             return
 
-        # Sync nonce before signing (may be stale from prior txs)
-        tx_builder = execution_model.tx_builder
-        if hasattr(tx_builder, 'hot_wallet'):
-            tx_builder.hot_wallet.sync_nonce(web3)
+        if not tx_already_confirmed:
+            # Sync nonce before signing (may be stale from prior txs)
+            tx_builder = _get_chain_aware_tx_builder(execution_model, web3, vault_chain_id)
+            if hasattr(tx_builder, 'hot_wallet'):
+                tx_builder.hot_wallet.sync_nonce(web3)
 
-        action_label = "reclaim" if is_reclaim_tx else "claim"
-        new_tx = tx_builder.sign_transaction(
-            contract=vault.vault_contract,
-            args_bound_func=func,
-            gas_limit=1_000_000,
-            asset_deltas=[],
-            notes=f"Vault {action_label} for trade #{trade.trade_id} ({direction})",
-        )
-        new_tx.other["vault_settlement_action"] = action_label
-        trade.blockchain_transactions.append(new_tx)
+            action_label = "reclaim" if is_reclaim_tx else "claim"
+            new_tx = tx_builder.sign_transaction(
+                contract=vault.vault_contract,
+                args_bound_func=func,
+                gas_limit=1_000_000,
+                asset_deltas=[],
+                notes=f"Vault {action_label} for trade #{trade.trade_id} ({direction})",
+            )
+            new_tx.other["vault_settlement_action"] = action_label
+            trade.blockchain_transactions.append(new_tx)
 
-        # Broadcast and wait
-        try:
-            web3.eth.send_raw_transaction(HexBytes(new_tx.signed_bytes))
-            new_tx.broadcasted_at = native_datetime_utc_now()
-            confirmed_receipt = web3.eth.wait_for_transaction_receipt(
-                HexBytes(new_tx.tx_hash), timeout=120,
-            )
-        except Exception as e:
-            logger.warning(
-                "Vault %s broadcast failed for trade #%d: %s",
-                action_label, trade.trade_id, e,
-            )
-            return
+            # Broadcast and wait
+            try:
+                web3.eth.send_raw_transaction(HexBytes(new_tx.signed_bytes))
+                new_tx.broadcasted_at = native_datetime_utc_now()
+                confirmed_receipt = web3.eth.wait_for_transaction_receipt(
+                    HexBytes(new_tx.tx_hash), timeout=120,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Vault %s broadcast failed for trade #%d: %s",
+                    action_label, trade.trade_id, e,
+                )
+                return
 
-        if confirmed_receipt["status"] != 1:
-            logger.warning(
-                "Vault %s tx reverted for trade #%d",
-                action_label, trade.trade_id,
-            )
-            trade.blockchain_transactions.pop()
-            return
+            if confirmed_receipt["status"] != 1:
+                logger.warning(
+                    "Vault %s tx reverted for trade #%d",
+                    action_label, trade.trade_id,
+                )
+                trade.blockchain_transactions.pop()
+                return
 
     # STEP D: Analyse confirmed tx and update trade state
     ts = native_datetime_utc_now()
