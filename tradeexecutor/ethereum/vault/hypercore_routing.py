@@ -104,6 +104,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.strategy.dust import get_close_epsilon_for_pair
 from tradingstrategy.pair import PandasPairUniverse
 
 if TYPE_CHECKING:
@@ -2386,6 +2387,7 @@ class HypercoreVaultRouting(RoutingModel):
             # Simulate mode: mock CoreWriter does not bridge USDC,
             # so skip EVM balance verification and trust planned values.
             executed_reserve = planned_reserve
+            effective_reserve = planned_reserve
         else:
             try:
                 perp_balance = self._wait_for_perp_withdrawable_balance(
@@ -2837,12 +2839,33 @@ class HypercoreVaultRouting(RoutingModel):
                     "Could not verify vault equity after withdrawal: %s", e,
                 )
 
-        executed_amount = -executed_reserve  # Negative for sells
+        position = state.portfolio.find_position_for_trade(trade, pending=True)
+        position_quantity = position.get_quantity() if position else None
+        closes_position_quantity = (
+            isinstance(position_quantity, Decimal)
+            and abs(position_quantity + trade.planned_quantity) <= get_close_epsilon_for_pair(trade.pair)
+        )
+
+        close_shortfall = effective_reserve - executed_reserve
+        close_materially_short = close_shortfall > raw_to_usdc(HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW)
+        should_close_full_quantity = (
+            (trade.closing or TradeFlag.close in trade.flags or closes_position_quantity)
+            and not close_materially_short
+        )
+
+        if should_close_full_quantity:
+            executed_amount = trade.planned_quantity
+        else:
+            planned_price = Decimal(str(trade.planned_price))
+            assert planned_price > 0, f"Planned Hypercore vault sell price must be positive, got {planned_price}"
+            executed_amount = -(executed_reserve / planned_price)
+
+        executed_price = float(executed_reserve / abs(executed_amount)) if executed_amount else 1.0
 
         state.mark_trade_success(
             ts,
             trade,
-            executed_price=1.0,
+            executed_price=executed_price,
             executed_amount=executed_amount,
             executed_reserve=executed_reserve,
             lp_fees=0,

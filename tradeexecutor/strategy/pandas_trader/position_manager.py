@@ -2,7 +2,7 @@
 
 import datetime
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from io import StringIO
 from typing import List, Optional, Union, Set, Literal
@@ -1020,6 +1020,15 @@ class PositionManager:
 
         price = price_structure.price
 
+        if pair.is_hyperliquid_vault() and dollar_delta < 0:
+            assert quantity_delta < 0, f"Hypercore sell quantity must be negative, got {quantity_delta}"
+            price = float(abs(Decimal(str(dollar_delta)) / quantity_delta))
+            price_structure = replace(
+                price_structure,
+                price=price,
+                mid_price=price,
+            )
+
         # use trigger price as planned_price
         if trigger_price and pending:
             price = trigger_price
@@ -1587,7 +1596,7 @@ class PositionManager:
         redemption_cap_bound = False
 
         if max_redemption is not None:
-            max_redeemable_quantity = Decimal(str(max_redemption))
+            max_redeemable_quantity = Decimal(str(max_redemption)) / current_price
             if effective_quantity > max_redeemable_quantity:
                 effective_quantity = max_redeemable_quantity
                 redemption_cap_bound = True

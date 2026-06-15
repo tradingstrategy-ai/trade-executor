@@ -49,6 +49,9 @@ def _make_trade(planned_reserve=Decimal("50.0"), is_buy=False):
     trade.is_buy.return_value = is_buy
     trade.is_vault.return_value = True
     trade.get_planned_reserve.return_value = planned_reserve
+    trade.planned_quantity = -planned_reserve if not is_buy else planned_reserve
+    trade.planned_price = 1.0
+    trade.flags = set()
     trade.trade_id = 1
     trade.position_id = 1
     trade.blockchain_transactions = [MagicMock(tx_hash="0xabc")]

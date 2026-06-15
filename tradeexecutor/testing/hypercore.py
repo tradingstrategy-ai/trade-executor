@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
+from eth_defi.hyperliquid.api import UserVaultEquity
 from eth_defi.provider.anvil import fund_erc20_on_anvil
 from eth_defi.token import TokenDetails
 from eth_defi.trace import assert_transaction_success_with_explanation
@@ -107,8 +108,16 @@ def install_hypercore_live_withdrawal_mocks(
         lambda session, user: "default",
     )
     monkeypatch.setattr(
+        "tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault.fetch_info",
+        lambda self, user=None: SimpleNamespace(max_withdrawable=Decimal("1000000")),
+    )
+    monkeypatch.setattr(
         "tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity",
-        lambda *args, **kwargs: None,
+        lambda session, user, vault_address, **kwargs: UserVaultEquity(
+            vault_address=vault_address,
+            equity=Decimal("1000000"),
+            locked_until=datetime.datetime(2020, 1, 1),
+        ),
     )
     monkeypatch.setattr(router, "_fetch_safe_evm_usdc_balance", lambda: 0)
     monkeypatch.setattr(router, "_fetch_safe_perp_withdrawable_balance", lambda: Decimal("0"))
