@@ -89,7 +89,7 @@ class AccountingCorrectionAborted(Exception):
 
 def is_accounting_correction_confirmation_yes(response: str) -> bool:
     """Return true if an interactive correction confirmation accepts the action."""
-    return response.strip().casefold() in {"y", "yes"}
+    return response.casefold() == "y"
 
 
 @dataclass
@@ -592,7 +592,10 @@ def correct_accounts(
         # print(f"Any tokens that cannot be assigned to an open position will be send to {unknown_token_receiver}")
         confirmation = input("Attempt to correct balances [y/n]")
         if not is_accounting_correction_confirmation_yes(confirmation):
-            raise AccountingCorrectionAborted()
+            raise AccountingCorrectionAborted(
+                f"Accounting correction aborted: expected exact 'y' to confirm, got {confirmation!r}. "
+                f"No balances were changed. Re-run correct-accounts and type y at the prompt to apply corrections."
+            )
 
     for correction in corrections:
 
