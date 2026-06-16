@@ -12,6 +12,7 @@ from web3 import Web3
 
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from tradeexecutor.ethereum.vault.hypercore_routing import raw_to_usdc
 from tradeexecutor.exchange_account.allocation import get_redeemable_capital
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
@@ -745,12 +746,12 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
         pair,
     )
     phased_withdrawal_router.simulate = False
-    short_arrival_raw = 10_000_000
+    phase1_fee_shortfall = Decimal("10")
     monkeypatch.setattr(
         phased_withdrawal_router,
-        "_wait_for_usdc_arrival",
-        lambda baseline_balance_raw, expected_increase_raw, timeout=30.0, poll_interval=2.0: (
-            expected_increase_raw - short_arrival_raw
+        "_wait_for_perp_withdrawable_balance",
+        lambda baseline_balance, expected_increase_raw, relative_tolerance=None, timeout=30.0, poll_interval=2.0: (
+            baseline_balance + raw_to_usdc(expected_increase_raw) - phase1_fee_shortfall
         ),
     )
 
@@ -765,17 +766,20 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
 
     decreased_quantity = position.get_quantity()
     expected_executed_reserve = decrease_trade.executed_reserve
-    expected_executed_amount = -(expected_executed_reserve / Decimal(str(decrease_trade.planned_price)))
+    net_derived_quantity = -(expected_executed_reserve / Decimal(str(decrease_trade.planned_price)))
     assert decrease_trade.is_success()
     assert decrease_trade.executed_reserve < decrease_trade.planned_reserve - Decimal("9.99")
     assert decrease_trade.executed_reserve > decrease_trade.planned_reserve - Decimal("10.02")
-    assert decrease_trade.executed_quantity == pytest.approx(expected_executed_amount)
-    assert abs(decrease_trade.executed_quantity) < abs(decrease_trade.planned_quantity)
+    assert abs(decrease_trade.executed_quantity) > abs(net_derived_quantity)
+    assert abs(decrease_trade.executed_quantity) <= abs(decrease_trade.planned_quantity)
     assert decrease_trade.executed_quantity != -decrease_trade.executed_reserve
-    assert decrease_trade.executed_price == pytest.approx(second_valuation.new_price)
+    assert decrease_trade.executed_price == pytest.approx(
+        float(expected_executed_reserve / abs(decrease_trade.executed_quantity))
+    )
+    assert decrease_trade.executed_price < second_valuation.new_price
     assert decreased_quantity < increased_quantity
     assert decreased_quantity > 0
-    assert decreased_quantity == pytest.approx(increased_quantity + expected_executed_amount)
+    assert decreased_quantity == pytest.approx(increased_quantity + decrease_trade.executed_quantity)
     assert_phased_withdrawal_trade(decrease_trade)
 
     final_valuation = hypercore_valuation_model(datetime.datetime(2026, 2, 5), position)
@@ -786,7 +790,7 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
 
 
 @pytest.mark.timeout(300)
-def test_hyper_ai_hypercore_close_short_arrival_keeps_residual_position(
+def test_hyper_ai_hypercore_close_phase1_fee_accounts_price_slippage(
     monkeypatch: pytest.MonkeyPatch,
     hyper_ai_strategy_module: ModuleType,
     make_fake_indicators: IndicatorFactory,
@@ -798,11 +802,11 @@ def test_hyper_ai_hypercore_close_short_arrival_keeps_residual_position(
     hypercore_valuation_model: GenericValuation,
     hypercore_vault_pair: TradingPairIdentifier,
 ) -> None:
-    """Exercise a short-arrival Hypercore full close at a non-1.0 share price.
+    """Exercise a phase-1 fee-shaped Hypercore full close at a non-1.0 share price.
 
     1. Open and revalue one Hypercore position above a 1.0 share price.
     2. Generate a full close sell through the Hyper AI rebalance path.
-    3. Settle less USDC than requested and verify only the received value's vault units are removed.
+    3. Settle less USDC into perp than requested and verify the shortfall becomes price slippage.
     """
     # 1. Open and revalue one Hypercore position above a 1.0 share price.
     install_hypercore_wait_failures(monkeypatch)
@@ -866,12 +870,12 @@ def test_hyper_ai_hypercore_close_short_arrival_keeps_residual_position(
         pair,
     )
     phased_withdrawal_router.simulate = False
-    short_arrival_raw = 10_000_000
+    phase1_fee_shortfall = Decimal("10")
     monkeypatch.setattr(
         phased_withdrawal_router,
-        "_wait_for_usdc_arrival",
-        lambda baseline_balance_raw, expected_increase_raw, timeout=30.0, poll_interval=2.0: (
-            expected_increase_raw - short_arrival_raw
+        "_wait_for_perp_withdrawable_balance",
+        lambda baseline_balance, expected_increase_raw, relative_tolerance=None, timeout=30.0, poll_interval=2.0: (
+            baseline_balance + raw_to_usdc(expected_increase_raw) - phase1_fee_shortfall
         ),
     )
 
@@ -896,7 +900,7 @@ def test_hyper_ai_hypercore_close_short_arrival_keeps_residual_position(
     assert close_trade.planned_quantity == -open_quantity
     assert close_trade.planned_price == pytest.approx(valuation_update.new_price)
 
-    # 3. Settle less USDC than requested and verify only the received value's vault units are removed.
+    # 3. Settle less USDC into perp than requested and verify the shortfall becomes price slippage.
     hypercore_execution_model.execute_trades(
         valuation_ts,
         state,
@@ -906,19 +910,21 @@ def test_hyper_ai_hypercore_close_short_arrival_keeps_residual_position(
         check_balances=False,
     )
 
-    expected_executed_quantity = -(close_trade.executed_reserve / Decimal(str(close_trade.planned_price)))
     residual_quantity = position.get_quantity()
+    net_derived_quantity = -(close_trade.executed_reserve / Decimal(str(close_trade.planned_price)))
     assert close_trade.is_success()
     assert close_trade.executed_reserve < close_trade.planned_reserve - Decimal("9.99")
     assert close_trade.executed_reserve > close_trade.planned_reserve - Decimal("10.20")
-    assert close_trade.executed_quantity == pytest.approx(expected_executed_quantity)
-    assert abs(close_trade.executed_quantity) < abs(close_trade.planned_quantity)
-    assert close_trade.executed_quantity != close_trade.planned_quantity
-    assert close_trade.executed_price == pytest.approx(valuation_update.new_price)
-    assert residual_quantity == pytest.approx(open_quantity + expected_executed_quantity)
-    assert residual_quantity > 0
-    assert len(state.portfolio.open_positions) == 1
-    assert not state.portfolio.closed_positions
+    assert abs(close_trade.executed_quantity) > abs(net_derived_quantity)
+    assert abs(close_trade.executed_quantity) <= abs(close_trade.planned_quantity)
+    assert close_trade.executed_price == pytest.approx(
+        float(close_trade.executed_reserve / abs(close_trade.executed_quantity))
+    )
+    assert close_trade.executed_price < valuation_update.new_price
+    assert residual_quantity == pytest.approx(open_quantity + close_trade.executed_quantity)
+    assert residual_quantity < Decimal("0.01")
+    assert not state.portfolio.open_positions
+    assert len(state.portfolio.closed_positions) == 1
     assert_phased_withdrawal_trade(close_trade)
 
 

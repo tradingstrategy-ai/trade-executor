@@ -10,7 +10,10 @@ import logging
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from eth_defi.hyperliquid.api import UserVaultEquity
+from hexbytes import HexBytes
 
 
 VAULT_ADDR = "0xdfc24b077bc1425ad1dea75bcb6f8158e10df303"
@@ -51,6 +54,8 @@ def _make_trade(planned_reserve=Decimal("50.0"), is_buy=False):
     trade.get_planned_reserve.return_value = planned_reserve
     trade.planned_quantity = -planned_reserve if not is_buy else planned_reserve
     trade.planned_price = 1.0
+    trade.slippage_tolerance = 0.20
+    trade.closing = False
     trade.flags = set()
     trade.trade_id = 1
     trade.position_id = 1
@@ -379,6 +384,35 @@ def test_wait_for_perp_withdrawable_balance_rejects_large_shortfall():
     assert "did not reach" in str(exc_info.value)
 
 
+def test_wait_for_perp_withdrawable_balance_accepts_trade_slippage_tolerance():
+    """Accept phase-1 perp balance shortfalls covered by the trade slippage tolerance.
+
+    1. Create a routing object and mock a HyperCore performance-fee shaped perp increase.
+    2. Wait for perp withdrawable balance using a wider trade slippage tolerance.
+    3. Verify the phase-1 wait accepts the net amount instead of timing out.
+    """
+    routing = _make_routing()
+
+    # 1. Create a routing object and mock a HyperCore performance-fee shaped perp increase.
+    routing._fetch_safe_perp_withdrawable_balance = MagicMock(
+        side_effect=[Decimal("123.0")],
+    )
+
+    # 2. Wait for perp withdrawable balance using a wider trade slippage tolerance.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+            result = routing._wait_for_perp_withdrawable_balance(
+                baseline_balance=Decimal("0"),
+                expected_increase_raw=130_000_000,
+                relative_tolerance=Decimal("0.20"),
+                timeout=30.0,
+                poll_interval=2.0,
+            )
+
+    # 3. Verify the phase-1 wait accepts the net amount instead of timing out.
+    assert result == Decimal("123.0")
+
+
 def test_withdrawal_already_reflected_in_vault_equity_is_detected():
     """Detect a phase 1 withdrawal that already reduced vault equity.
 
@@ -579,6 +613,279 @@ def test_withdrawal_phase3_uses_fee_adjusted_amount(
     phase3.assert_called_once_with(expected_phase3_raw)
     assert wait_evm.call_args.kwargs["expected_increase_raw"] == expected_phase3_raw
     assert state.mark_trade_success.call_args.kwargs["executed_reserve"] == raw_to_usdc(expected_phase3_raw)
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_withdrawal_uses_gross_vault_decrease_for_quantity_and_net_usdc_for_reserve(
+    mock_fetch_equity,
+    mock_block_ts,
+):
+    """Account HyperCore withdrawal fees as execution price slippage, not fewer vault units sold.
+
+    1. Simulate a withdrawal where HyperCore removes 130 USDC of vault equity but only 123 USDC reaches perp/EVM.
+    2. Settle the phased withdrawal using the net amount for phases 2 and 3.
+    3. Verify executed quantity follows the gross vault decrease while executed reserve follows net USDC received.
+    """
+    routing = _make_routing()
+    trade = _make_trade(planned_reserve=Decimal("130.0"))
+    trade.planned_price = 2.0
+    trade.planned_quantity = Decimal("-65")
+    state = MagicMock()
+    state.portfolio.get_position_by_id.return_value.get_quantity.return_value = Decimal("200")
+    state.portfolio.find_position_for_trade.return_value.get_quantity.return_value = Decimal("200")
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+    mock_fetch_equity.side_effect = [
+        _make_equity(Decimal("1000.0")),
+        _make_equity(Decimal("870.0")),
+    ]
+    receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
+
+    phase2_tx = MagicMock(tx_hash="0xdef")
+    phase3_tx = MagicMock(tx_hash="0x123")
+    captured_phase2_raw = []
+    captured_phase3_raw = []
+
+    def capture_phase2(raw_amount: int):
+        captured_phase2_raw.append(raw_amount)
+        return phase2_tx, {"status": 1, "blockNumber": 101}
+
+    def capture_phase3(raw_amount: int):
+        captured_phase3_raw.append(raw_amount)
+        return phase3_tx, {"status": 1, "blockNumber": 102}
+
+    # 1. Simulate a withdrawal where HyperCore removes 130 USDC of vault equity but only 123 USDC reaches perp/EVM.
+    # 2. Settle the phased withdrawal using the net amount for phases 2 and 3.
+    # 3. Verify executed quantity follows the gross vault decrease while executed reserve follows net USDC received.
+    with (
+        patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=100_000_000),
+        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
+        patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0")),
+        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("123.0")),
+        patch.object(routing, "_broadcast_withdrawal_phase2", side_effect=capture_phase2),
+        patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=Decimal("123.0")),
+        patch.object(routing, "_broadcast_withdrawal_phase3", side_effect=capture_phase3),
+        patch.object(routing, "_wait_for_usdc_arrival", return_value=122_990_000),
+    ):
+        routing._settle_withdrawal(
+            routing.web3,
+            state,
+            trade,
+            receipts,
+            stop_on_execution_failure=False,
+        )
+
+    assert captured_phase2_raw == [123_000_000]
+    assert captured_phase3_raw == [122_990_000]
+    success_kwargs = state.mark_trade_success.call_args.kwargs
+    assert success_kwargs["executed_amount"] == Decimal("-65")
+    assert success_kwargs["executed_reserve"] == Decimal("122.99")
+    assert success_kwargs["executed_price"] == pytest.approx(122.99 / 65)
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_withdrawal_uses_phase1_request_for_quantity_when_post_equity_check_fails(
+    mock_fetch_equity,
+    mock_block_ts,
+):
+    """Use phase-1 gross request for quantity when post-withdrawal equity cannot be read.
+
+    1. Simulate a withdrawal where 130 USDC is requested from the vault and only 123 USDC reaches perp/EVM.
+    2. Make the post-withdrawal vault equity read fail after the baseline snapshot succeeds.
+    3. Verify executed quantity still follows the phase-1 gross request while executed reserve follows net USDC received.
+    """
+    routing = _make_routing()
+    trade = _make_trade(planned_reserve=Decimal("130.0"))
+    trade.planned_price = 2.0
+    trade.planned_quantity = Decimal("-65")
+    state = MagicMock()
+    state.portfolio.get_position_by_id.return_value.get_quantity.return_value = Decimal("200")
+    state.portfolio.find_position_for_trade.return_value.get_quantity.return_value = Decimal("200")
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+    mock_fetch_equity.side_effect = [
+        _make_equity(Decimal("1000.0")),
+        RuntimeError("HyperCore API down"),
+    ]
+    receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
+
+    phase2_tx = MagicMock(tx_hash="0xdef")
+    phase3_tx = MagicMock(tx_hash="0x123")
+    captured_phase2_raw = []
+    captured_phase3_raw = []
+
+    def capture_phase2(raw_amount: int):
+        captured_phase2_raw.append(raw_amount)
+        return phase2_tx, {"status": 1, "blockNumber": 101}
+
+    def capture_phase3(raw_amount: int):
+        captured_phase3_raw.append(raw_amount)
+        return phase3_tx, {"status": 1, "blockNumber": 102}
+
+    # 1. Simulate a withdrawal where 130 USDC is requested from the vault and only 123 USDC reaches perp/EVM.
+    # 2. Make the post-withdrawal vault equity read fail after the baseline snapshot succeeds.
+    # 3. Verify executed quantity still follows the phase-1 gross request while executed reserve follows net USDC received.
+    with (
+        patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=100_000_000),
+        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
+        patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0")),
+        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("123.0")),
+        patch.object(routing, "_broadcast_withdrawal_phase2", side_effect=capture_phase2),
+        patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=Decimal("123.0")),
+        patch.object(routing, "_broadcast_withdrawal_phase3", side_effect=capture_phase3),
+        patch.object(routing, "_wait_for_usdc_arrival", return_value=122_990_000),
+    ):
+        routing._settle_withdrawal(
+            routing.web3,
+            state,
+            trade,
+            receipts,
+            stop_on_execution_failure=False,
+        )
+
+    assert captured_phase2_raw == [123_000_000]
+    assert captured_phase3_raw == [122_990_000]
+    success_kwargs = state.mark_trade_success.call_args.kwargs
+    assert success_kwargs["executed_amount"] == Decimal("-65")
+    assert success_kwargs["executed_reserve"] == Decimal("122.99")
+    assert success_kwargs["executed_price"] == pytest.approx(122.99 / 65)
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_withdrawal_caps_gross_quantity_to_planned_sell_value(
+    mock_fetch_equity,
+    mock_block_ts,
+):
+    """Cap equity-derived gross redemption to the planned sell value.
+
+    1. Simulate a withdrawal where vault equity drops by more than the intended 130 USDC sell value.
+    2. Settle the phased withdrawal using the net amount for phases 2 and 3.
+    3. Verify executed quantity does not exceed the planned partial sell quantity.
+    """
+    routing = _make_routing()
+    trade = _make_trade(planned_reserve=Decimal("130.0"))
+    trade.planned_price = 2.0
+    trade.planned_quantity = Decimal("-65")
+    state = MagicMock()
+    state.portfolio.get_position_by_id.return_value.get_quantity.return_value = Decimal("200")
+    state.portfolio.find_position_for_trade.return_value.get_quantity.return_value = Decimal("200")
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+    mock_fetch_equity.side_effect = [
+        _make_equity(Decimal("1000.0")),
+        _make_equity(Decimal("850.0")),
+    ]
+    receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
+
+    phase2_tx = MagicMock(tx_hash="0xdef")
+    phase3_tx = MagicMock(tx_hash="0x123")
+    captured_phase2_raw = []
+    captured_phase3_raw = []
+
+    def capture_phase2(raw_amount: int):
+        captured_phase2_raw.append(raw_amount)
+        return phase2_tx, {"status": 1, "blockNumber": 101}
+
+    def capture_phase3(raw_amount: int):
+        captured_phase3_raw.append(raw_amount)
+        return phase3_tx, {"status": 1, "blockNumber": 102}
+
+    # 1. Simulate a withdrawal where vault equity drops by more than the intended 130 USDC sell value.
+    # 2. Settle the phased withdrawal using the net amount for phases 2 and 3.
+    # 3. Verify executed quantity does not exceed the planned partial sell quantity.
+    with (
+        patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=100_000_000),
+        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
+        patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0")),
+        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("123.0")),
+        patch.object(routing, "_broadcast_withdrawal_phase2", side_effect=capture_phase2),
+        patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=Decimal("123.0")),
+        patch.object(routing, "_broadcast_withdrawal_phase3", side_effect=capture_phase3),
+        patch.object(routing, "_wait_for_usdc_arrival", return_value=122_990_000),
+    ):
+        routing._settle_withdrawal(
+            routing.web3,
+            state,
+            trade,
+            receipts,
+            stop_on_execution_failure=False,
+        )
+
+    assert captured_phase2_raw == [123_000_000]
+    assert captured_phase3_raw == [122_990_000]
+    success_kwargs = state.mark_trade_success.call_args.kwargs
+    assert success_kwargs["executed_amount"] == Decimal("-65")
+    assert success_kwargs["executed_reserve"] == Decimal("122.99")
+    assert success_kwargs["executed_price"] == pytest.approx(122.99 / 65)
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_full_close_uses_observed_gross_decrease_when_phase1_under_redeems(
+    mock_fetch_equity,
+    mock_block_ts,
+):
+    """Avoid closing the full planned quantity when observed gross vault debit is short.
+
+    1. Simulate a full-close withdrawal where phase 1 moves net USDC within slippage tolerance.
+    2. Return a post-withdrawal equity snapshot showing only 100 USDC of gross vault debit for a 130 USDC close.
+    3. Verify settlement uses the observed gross debit for quantity instead of marking the full close quantity sold.
+    """
+    routing = _make_routing()
+    trade = _make_trade(planned_reserve=Decimal("130.0"))
+    trade.planned_price = 2.0
+    trade.planned_quantity = Decimal("-65")
+    trade.closing = True
+    state = MagicMock()
+    state.portfolio.get_position_by_id.return_value.get_quantity.return_value = Decimal("65")
+    state.portfolio.find_position_for_trade.return_value.get_quantity.return_value = Decimal("65")
+    mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
+    mock_fetch_equity.side_effect = [
+        _make_equity(Decimal("1000.0")),
+        _make_equity(Decimal("900.0")),
+    ]
+    receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
+
+    phase2_tx = MagicMock(tx_hash="0xdef")
+    phase3_tx = MagicMock(tx_hash="0x123")
+    captured_phase2_raw = []
+    captured_phase3_raw = []
+
+    def capture_phase2(raw_amount: int):
+        captured_phase2_raw.append(raw_amount)
+        return phase2_tx, {"status": 1, "blockNumber": 101}
+
+    def capture_phase3(raw_amount: int):
+        captured_phase3_raw.append(raw_amount)
+        return phase3_tx, {"status": 1, "blockNumber": 102}
+
+    # 1. Simulate a full-close withdrawal where phase 1 moves net USDC within slippage tolerance.
+    # 2. Return a post-withdrawal equity snapshot showing only 100 USDC of gross vault debit for a 130 USDC close.
+    # 3. Verify settlement uses the observed gross debit for quantity instead of marking the full close quantity sold.
+    with (
+        patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=100_000_000),
+        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
+        patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0")),
+        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("110.0")),
+        patch.object(routing, "_broadcast_withdrawal_phase2", side_effect=capture_phase2),
+        patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=Decimal("110.0")),
+        patch.object(routing, "_broadcast_withdrawal_phase3", side_effect=capture_phase3),
+        patch.object(routing, "_wait_for_usdc_arrival", return_value=109_990_000),
+    ):
+        routing._settle_withdrawal(
+            routing.web3,
+            state,
+            trade,
+            receipts,
+            stop_on_execution_failure=False,
+        )
+
+    assert captured_phase2_raw == [110_000_000]
+    assert captured_phase3_raw == [109_990_000]
+    success_kwargs = state.mark_trade_success.call_args.kwargs
+    assert success_kwargs["executed_amount"] == Decimal("-50")
+    assert success_kwargs["executed_reserve"] == Decimal("109.99")
+    assert success_kwargs["executed_price"] == pytest.approx(109.99 / 50)
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")

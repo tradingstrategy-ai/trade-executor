@@ -125,7 +125,7 @@ def install_hypercore_live_withdrawal_mocks(
     monkeypatch.setattr(
         router,
         "_wait_for_perp_withdrawable_balance",
-        lambda baseline_balance, expected_increase_raw, timeout=30.0, poll_interval=2.0: (
+        lambda baseline_balance, expected_increase_raw, relative_tolerance=None, timeout=30.0, poll_interval=2.0: (
             baseline_balance + raw_to_usdc(expected_increase_raw)
         ),
     )
