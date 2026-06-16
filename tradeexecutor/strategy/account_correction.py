@@ -87,6 +87,11 @@ class AccountingCorrectionAborted(Exception):
     """User presses n"""
 
 
+def is_accounting_correction_confirmation_yes(response: str) -> bool:
+    """Return true if an interactive correction confirmation accepts the action."""
+    return response.strip().casefold() in {"y", "yes"}
+
+
 @dataclass
 class AccountingBalanceCheck:
     """Accounting correction applied to a balance.
@@ -585,8 +590,8 @@ def correct_accounts(
             print("Correction needed:", c)
 
         # print(f"Any tokens that cannot be assigned to an open position will be send to {unknown_token_receiver}")
-        confirmation = input("Attempt to correct balances [y/n]").lower()
-        if confirmation != "y":
+        confirmation = input("Attempt to correct balances [y/n]")
+        if not is_accounting_correction_confirmation_yes(confirmation):
             raise AccountingCorrectionAborted()
 
     for correction in corrections:
