@@ -12,6 +12,7 @@ from web3 import Web3
 
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from tradeexecutor.ethereum.vault.hypercore_routing import raw_to_usdc
 from tradeexecutor.exchange_account.allocation import get_redeemable_capital
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
@@ -588,6 +589,12 @@ def test_hyper_ai_hypercore_close_cycle(
     )
 
     assert_phased_withdrawal_trade(close_trade)
+    assert close_trade.executed_quantity == close_trade.planned_quantity
+    assert close_trade.executed_reserve != abs(close_trade.executed_quantity)
+    assert close_trade.executed_price == pytest.approx(
+        float(close_trade.executed_reserve / abs(close_trade.executed_quantity))
+    )
+    assert close_trade.executed_price > 1.0
     assert all(t.blockchain_transactions for t in state.portfolio.get_all_trades())
     assert not any(position.is_frozen() for position in state.portfolio.get_all_positions())
 
@@ -718,15 +725,20 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
         routing_model=hypercore_routing_model,
         routing_state=routing_state,
     )
+    decrease_value = Decimal("40")
+    decrease_quantity = -(decrease_value / Decimal(str(second_valuation.new_price)))
     decrease_trades = decrease_position_manager.adjust_position(
         pair=pair,
-        dollar_delta=Decimal("-40"),
-        quantity_delta=Decimal("-40"),
+        dollar_delta=-decrease_value,
+        quantity_delta=decrease_quantity,
         weight=1.0,
     )
     assert len(decrease_trades) == 1
     decrease_trade = decrease_trades[0]
     assert decrease_trade.is_sell()
+    assert decrease_trade.planned_price == pytest.approx(second_valuation.new_price)
+    assert decrease_trade.planned_reserve == pytest.approx(decrease_value)
+    assert decrease_trade.planned_quantity == pytest.approx(decrease_quantity)
 
     phased_withdrawal_router = install_hypercore_live_withdrawal_mocks(
         monkeypatch,
@@ -734,6 +746,14 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
         pair,
     )
     phased_withdrawal_router.simulate = False
+    phase1_fee_shortfall = Decimal("10")
+    monkeypatch.setattr(
+        phased_withdrawal_router,
+        "_wait_for_perp_withdrawable_balance",
+        lambda baseline_balance, expected_increase_raw, relative_tolerance=None, timeout=30.0, poll_interval=2.0: (
+            baseline_balance + raw_to_usdc(expected_increase_raw) - phase1_fee_shortfall
+        ),
+    )
 
     hypercore_execution_model.execute_trades(
         datetime.datetime(2026, 2, 5),
@@ -745,9 +765,21 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
     )
 
     decreased_quantity = position.get_quantity()
+    expected_executed_reserve = decrease_trade.executed_reserve
+    net_derived_quantity = -(expected_executed_reserve / Decimal(str(decrease_trade.planned_price)))
     assert decrease_trade.is_success()
+    assert decrease_trade.executed_reserve < decrease_trade.planned_reserve - Decimal("9.99")
+    assert decrease_trade.executed_reserve > decrease_trade.planned_reserve - Decimal("10.02")
+    assert abs(decrease_trade.executed_quantity) > abs(net_derived_quantity)
+    assert abs(decrease_trade.executed_quantity) <= abs(decrease_trade.planned_quantity)
+    assert decrease_trade.executed_quantity != -decrease_trade.executed_reserve
+    assert decrease_trade.executed_price == pytest.approx(
+        float(expected_executed_reserve / abs(decrease_trade.executed_quantity))
+    )
+    assert decrease_trade.executed_price < second_valuation.new_price
     assert decreased_quantity < increased_quantity
     assert decreased_quantity > 0
+    assert decreased_quantity == pytest.approx(increased_quantity + decrease_trade.executed_quantity)
     assert_phased_withdrawal_trade(decrease_trade)
 
     final_valuation = hypercore_valuation_model(datetime.datetime(2026, 2, 5), position)
@@ -755,6 +787,145 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
     assert final_valuation.quantity == pytest.approx(decreased_quantity)
     assert len(state.portfolio.open_positions) == 1
     assert not any(position.is_frozen() for position in state.portfolio.get_all_positions())
+
+
+@pytest.mark.timeout(300)
+def test_hyper_ai_hypercore_close_phase1_fee_accounts_price_slippage(
+    monkeypatch: pytest.MonkeyPatch,
+    hyper_ai_strategy_module: ModuleType,
+    make_fake_indicators: IndicatorFactory,
+    hypercore_state_with_safe_reserves: tuple[LagoonVault, State],
+    hypercore_execution_model: LagoonExecution,
+    hypercore_pricing_model: GenericPricing,
+    hypercore_routing_model: GenericRouting,
+    hypercore_strategy_universe: TradingStrategyUniverse,
+    hypercore_valuation_model: GenericValuation,
+    hypercore_vault_pair: TradingPairIdentifier,
+) -> None:
+    """Exercise a phase-1 fee-shaped Hypercore full close at a non-1.0 share price.
+
+    1. Open and revalue one Hypercore position above a 1.0 share price.
+    2. Generate a full close sell through the Hyper AI rebalance path.
+    3. Settle less USDC into perp than requested and verify the shortfall becomes price slippage.
+    """
+    # 1. Open and revalue one Hypercore position above a 1.0 share price.
+    install_hypercore_wait_failures(monkeypatch)
+    monkeypatch.setattr(hyper_ai_strategy_module, "is_quarantined", lambda pool_address, timestamp: False)
+
+    vault, state = hypercore_state_with_safe_reserves
+    del vault
+    pair = hypercore_strategy_universe.get_pair_by_id(hypercore_vault_pair.internal_id)
+
+    hypercore_execution_model.initialize()
+    routing_state = hypercore_routing_model.create_routing_state(
+        hypercore_strategy_universe,
+        hypercore_execution_model.get_routing_state_details(),
+    )
+    ensure_hypercore_routing_state(
+        hypercore_routing_model,
+        routing_state,
+        pair,
+    )
+
+    open_ts = datetime.datetime(2026, 1, 21)
+    parameters = create_hyper_ai_test_parameters(
+        hyper_ai_strategy_module,
+        initial_cash=100.0,
+        allocation=0.50,
+    )
+    open_input = make_hyper_ai_strategy_input(
+        hyper_ai_strategy_module=hyper_ai_strategy_module,
+        make_fake_indicators=make_fake_indicators,
+        state=state,
+        strategy_universe=hypercore_strategy_universe,
+        pricing_model=hypercore_pricing_model,
+        routing_model=hypercore_routing_model,
+        routing_state=routing_state,
+        pair=pair,
+        timestamp=open_ts,
+        cycle=1,
+        include_pair=True,
+        parameters=parameters,
+    )
+    open_trades = hyper_ai_strategy_module.decide_trades(open_input)
+    hypercore_execution_model.execute_trades(
+        open_ts,
+        state,
+        open_trades,
+        hypercore_routing_model,
+        routing_state,
+        check_balances=False,
+    )
+
+    position = next(iter(state.portfolio.open_positions.values()))
+    open_quantity = position.get_quantity()
+    valuation_ts = datetime.datetime(2026, 2, 3)
+    valuation_update = hypercore_valuation_model(valuation_ts, position)
+    assert valuation_update.new_price > 1.0
+
+    # 2. Generate a full close sell through the Hyper AI rebalance path.
+    phased_withdrawal_router = install_hypercore_live_withdrawal_mocks(
+        monkeypatch,
+        hypercore_routing_model,
+        pair,
+    )
+    phased_withdrawal_router.simulate = False
+    phase1_fee_shortfall = Decimal("10")
+    monkeypatch.setattr(
+        phased_withdrawal_router,
+        "_wait_for_perp_withdrawable_balance",
+        lambda baseline_balance, expected_increase_raw, relative_tolerance=None, timeout=30.0, poll_interval=2.0: (
+            baseline_balance + raw_to_usdc(expected_increase_raw) - phase1_fee_shortfall
+        ),
+    )
+
+    close_input = make_hyper_ai_strategy_input(
+        hyper_ai_strategy_module=hyper_ai_strategy_module,
+        make_fake_indicators=make_fake_indicators,
+        state=state,
+        strategy_universe=hypercore_strategy_universe,
+        pricing_model=hypercore_pricing_model,
+        routing_model=hypercore_routing_model,
+        routing_state=routing_state,
+        pair=pair,
+        timestamp=valuation_ts,
+        cycle=2,
+        include_pair=False,
+        parameters=parameters,
+    )
+    close_trades = hyper_ai_strategy_module.decide_trades(close_input)
+    assert len(close_trades) == 1
+    close_trade = close_trades[0]
+    assert close_trade.is_sell()
+    assert close_trade.planned_quantity == -open_quantity
+    assert close_trade.planned_price == pytest.approx(valuation_update.new_price)
+
+    # 3. Settle less USDC into perp than requested and verify the shortfall becomes price slippage.
+    hypercore_execution_model.execute_trades(
+        valuation_ts,
+        state,
+        close_trades,
+        hypercore_routing_model,
+        routing_state,
+        check_balances=False,
+    )
+
+    residual_quantity = position.get_quantity()
+    net_derived_quantity = -(close_trade.executed_reserve / Decimal(str(close_trade.planned_price)))
+    assert close_trade.is_success()
+    assert close_trade.executed_reserve < close_trade.planned_reserve - Decimal("9.99")
+    assert close_trade.executed_reserve > close_trade.planned_reserve - Decimal("10.20")
+    assert abs(close_trade.executed_quantity) > abs(net_derived_quantity)
+    assert abs(close_trade.executed_quantity) <= abs(close_trade.planned_quantity)
+    assert close_trade.executed_price == pytest.approx(
+        float(close_trade.executed_reserve / abs(close_trade.executed_quantity))
+    )
+    assert close_trade.executed_price < valuation_update.new_price
+    assert residual_quantity == pytest.approx(open_quantity + close_trade.executed_quantity)
+    assert residual_quantity < Decimal("0.01")
+    assert not state.portfolio.open_positions
+    assert len(state.portfolio.closed_positions) == 1
+    assert_phased_withdrawal_trade(close_trade)
 
 
 @pytest.mark.timeout(300)

@@ -104,6 +104,7 @@ from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.strategy.dust import get_close_epsilon_for_pair
 from tradingstrategy.pair import PandasPairUniverse
 
 if TYPE_CHECKING:
@@ -1008,14 +1009,17 @@ class HypercoreVaultRouting(RoutingModel):
         self,
         baseline_balance: Decimal,
         expected_increase_raw: int,
+        relative_tolerance: Decimal | None = None,
         timeout: float = 30.0,
         poll_interval: float = 2.0,
     ) -> Decimal:
         """Poll HyperCore perp withdrawable USDC until the withdrawal reaches perp."""
         expected_increase = raw_to_usdc(expected_increase_raw)
+        if relative_tolerance is None:
+            relative_tolerance = HYPERCORE_RELATIVE_BALANCE_TOLERANCE
         accepted_tolerance = max(
             Decimal("0.10"),
-            expected_increase * HYPERCORE_RELATIVE_BALANCE_TOLERANCE,
+            expected_increase * relative_tolerance,
         )
         expected_balance = baseline_balance + expected_increase - accepted_tolerance
         deadline = time.time() + timeout
@@ -2381,16 +2385,24 @@ class HypercoreVaultRouting(RoutingModel):
         )
 
         planned_reserve = trade.get_planned_reserve()
+        withdrawal_relative_tolerance = max(
+            HYPERCORE_RELATIVE_BALANCE_TOLERANCE,
+            Decimal(str(trade.slippage_tolerance or 0)),
+        )
+        phase1_requested_reserve = raw_to_usdc(expected_raw)
 
         if self.simulate:
             # Simulate mode: mock CoreWriter does not bridge USDC,
             # so skip EVM balance verification and trust planned values.
             executed_reserve = planned_reserve
+            effective_reserve = planned_reserve
+            gross_vault_redeemed_reserve = planned_reserve
         else:
             try:
                 perp_balance = self._wait_for_perp_withdrawable_balance(
                     baseline_balance=baseline_perp_withdrawable,
                     expected_increase_raw=expected_raw,
+                    relative_tolerance=withdrawal_relative_tolerance,
                     timeout=30.0,
                     poll_interval=2.0,
                 )
@@ -2501,6 +2513,7 @@ class HypercoreVaultRouting(RoutingModel):
                             return
 
                         expected_raw = retry_raw
+                        phase1_requested_reserve = raw_to_usdc(expected_raw)
                         trade.other_data["hypercore_capped_withdrawal_raw"] = retry_raw
                         vault_equity_before_phase1_snapshot = current_vault_equity
                         has_pre_phase1_vault_equity_snapshot = True
@@ -2509,6 +2522,7 @@ class HypercoreVaultRouting(RoutingModel):
                             perp_balance = self._wait_for_perp_withdrawable_balance(
                                 baseline_balance=baseline_perp_withdrawable,
                                 expected_increase_raw=expected_raw,
+                                relative_tolerance=withdrawal_relative_tolerance,
                                 timeout=30.0,
                                 poll_interval=2.0,
                             )
@@ -2787,6 +2801,7 @@ class HypercoreVaultRouting(RoutingModel):
             # capped, else planned) to avoid spurious "partial" warnings on
             # normal capped-close trades where live equity < planned_reserve.
             effective_reserve = raw_to_usdc(phase3_raw)
+            gross_vault_redeemed_reserve = phase1_requested_reserve
             if executed_reserve < effective_reserve:
                 logger.warning(
                     "Withdrawal partial: received %s USDC but expected %s USDC (trade %s)",
@@ -2809,6 +2824,8 @@ class HypercoreVaultRouting(RoutingModel):
                     equity_decrease = (
                         vault_equity_before_phase1_snapshot - remaining_equity
                     )
+                    if equity_decrease > 0:
+                        gross_vault_redeemed_reserve = equity_decrease
                     expected_decrease = executed_reserve
                     tolerance = expected_decrease * Decimal("0.01")
                     if equity_decrease < expected_decrease - tolerance:
@@ -2837,12 +2854,49 @@ class HypercoreVaultRouting(RoutingModel):
                     "Could not verify vault equity after withdrawal: %s", e,
                 )
 
-        executed_amount = -executed_reserve  # Negative for sells
+        position = state.portfolio.find_position_for_trade(trade, pending=True)
+        position_quantity = position.get_quantity() if position else None
+        closes_position_quantity = (
+            isinstance(position_quantity, Decimal)
+            and abs(position_quantity + trade.planned_quantity) <= get_close_epsilon_for_pair(trade.pair)
+        )
+
+        planned_price = Decimal(str(trade.planned_price))
+        assert planned_price > 0, f"Planned Hypercore vault sell price must be positive, got {planned_price}"
+        planned_gross_reserve = abs(trade.planned_quantity) * planned_price
+        expected_gross_redeemed_reserve = min(
+            phase1_requested_reserve,
+            planned_gross_reserve,
+        )
+        close_shortfall = effective_reserve - executed_reserve
+        gross_close_shortfall = expected_gross_redeemed_reserve - min(
+            gross_vault_redeemed_reserve,
+            expected_gross_redeemed_reserve,
+        )
+        close_materially_short = (
+            close_shortfall > raw_to_usdc(HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW)
+            or gross_close_shortfall > raw_to_usdc(HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW)
+        )
+        should_close_full_quantity = (
+            (trade.closing or TradeFlag.close in trade.flags or closes_position_quantity)
+            and not close_materially_short
+        )
+
+        if should_close_full_quantity:
+            executed_amount = trade.planned_quantity
+        else:
+            gross_vault_redeemed_reserve = min(
+                gross_vault_redeemed_reserve,
+                planned_gross_reserve,
+            )
+            executed_amount = -(gross_vault_redeemed_reserve / planned_price)
+
+        executed_price = float(executed_reserve / abs(executed_amount)) if executed_amount else 1.0
 
         state.mark_trade_success(
             ts,
             trade,
-            executed_price=1.0,
+            executed_price=executed_price,
             executed_amount=executed_amount,
             executed_reserve=executed_reserve,
             lp_fees=0,
