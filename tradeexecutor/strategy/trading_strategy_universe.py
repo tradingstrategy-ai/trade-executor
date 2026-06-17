@@ -2348,6 +2348,7 @@ def load_vault_universe_with_metadata(
     :return:
         VaultUniverse containing Vault instances with full VaultMetadata.
     """
+    download_root = _resolve_vault_data_download_root(client, download_root)
     vault_universe = client.fetch_vault_universe(url=url, download_root=download_root)
 
     if vaults is not None:
@@ -2391,6 +2392,22 @@ def _resolve_live_end_timestamps(
     return dataset_end_at, vault_history_filter_end_at
 
 
+def _resolve_vault_data_download_root(
+    client: BaseClient,
+    download_root: str | Path | None,
+) -> str | Path | None:
+    """Resolve the cache path for remotely downloaded vault datasets."""
+    if download_root is not None:
+        return download_root
+
+    transport = getattr(client, "transport", None)
+    cache_path = getattr(transport, "cache_path", None)
+    if cache_path is None:
+        return None
+
+    return Path(cache_path) / "vaults" / "downloads"
+
+
 def _resolve_vault_history_download_root(
     client: BaseClient,
     vault_history_source: Literal["none", "bundled", "trading-strategy-website"],
@@ -2400,15 +2417,7 @@ def _resolve_vault_history_download_root(
     if vault_history_source != "trading-strategy-website":
         return vault_history_download_root
 
-    if vault_history_download_root is not None:
-        return vault_history_download_root
-
-    transport = getattr(client, "transport", None)
-    cache_path = getattr(transport, "cache_path", None)
-    if cache_path is None:
-        return None
-
-    return Path(cache_path) / "vaults" / "downloads"
+    return _resolve_vault_data_download_root(client, vault_history_download_root)
 
 
 def load_partial_data(
