@@ -99,3 +99,25 @@ def test_vault_history_download_root_ignores_non_website_sources(tmp_path: Path)
 
     # 3. Check that no client-dependent path is derived.
     assert resolved is None
+
+
+def test_vault_history_download_root_keeps_bundled_override(tmp_path: Path) -> None:
+    """Verify bundled vault history mode passes explicit paths through.
+
+    1. Create a client-like object with a transport cache path.
+    2. Resolve the vault history download root for bundled vault history.
+    3. Check that the explicit path is returned unchanged.
+    """
+    explicit_download_root = tmp_path / "bundled-vault-downloads"
+    client = SimpleNamespace(transport=SimpleNamespace(cache_path=tmp_path / "client-cache"))
+
+    # 1. Create a client-like object with a transport cache path.
+    # 2. Resolve the vault history download root for bundled vault history.
+    resolved = _resolve_vault_history_download_root(
+        client,
+        "bundled",
+        explicit_download_root,
+    )
+
+    # 3. Check that the explicit path is returned unchanged.
+    assert resolved == explicit_download_root
