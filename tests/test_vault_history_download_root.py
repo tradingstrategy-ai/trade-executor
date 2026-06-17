@@ -97,7 +97,7 @@ def test_vault_data_download_root_keeps_explicit_override(tmp_path: Path) -> Non
     assert resolved == explicit_download_root
 
 
-def test_vault_history_download_root_falls_back_for_mock_clients(tmp_path: Path) -> None:
+def test_vault_history_download_root_falls_back_for_mock_clients() -> None:
     """Verify mock clients without usable transport cache paths do not crash.
 
     1. Resolve the root for a client-like object without transport.
@@ -126,7 +126,7 @@ def test_vault_history_download_root_falls_back_for_mock_clients(tmp_path: Path)
     assert missing_cache_path_root is None
 
 
-def test_vault_data_download_root_falls_back_for_mock_clients(tmp_path: Path) -> None:
+def test_vault_data_download_root_falls_back_for_mock_clients() -> None:
     """Verify mock clients without usable transport cache paths do not crash for metadata.
 
     1. Resolve the root for a client-like object without transport.
