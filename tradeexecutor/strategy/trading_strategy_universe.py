@@ -2348,7 +2348,7 @@ def load_vault_universe_with_metadata(
     :return:
         VaultUniverse containing Vault instances with full VaultMetadata.
     """
-    download_root = _resolve_vault_data_download_root(client, download_root)
+    download_root = _resolve_vault_download_root(client, download_root)
     vault_universe = client.fetch_vault_universe(url=url, download_root=download_root)
 
     if vaults is not None:
@@ -2392,7 +2392,7 @@ def _resolve_live_end_timestamps(
     return dataset_end_at, vault_history_filter_end_at
 
 
-def _resolve_vault_data_download_root(
+def _resolve_vault_download_root(
     client: BaseClient,
     download_root: str | Path | None,
 ) -> str | Path | None:
@@ -2406,18 +2406,6 @@ def _resolve_vault_data_download_root(
         return None
 
     return Path(cache_path) / "vaults" / "downloads"
-
-
-def _resolve_vault_history_download_root(
-    client: BaseClient,
-    vault_history_source: Literal["none", "bundled", "trading-strategy-website"],
-    vault_history_download_root: str | Path | None,
-) -> str | Path | None:
-    """Resolve the cache path for remote vault history downloads."""
-    if vault_history_source != "trading-strategy-website":
-        return vault_history_download_root
-
-    return _resolve_vault_data_download_root(client, vault_history_download_root)
 
 
 def load_partial_data(
@@ -2894,12 +2882,6 @@ def load_partial_data(
             our_exchange_universe.add(vault_exchanges)
             filtered_pairs_df = pd.concat([filtered_pairs_df, vault_pairs_df])
 
-        vault_history_download_root = _resolve_vault_history_download_root(
-            client,
-            effective_vault_history_source,
-            vault_history_download_root,
-        )
-
         if effective_vault_history_source == "bundled":
             assert vaults, "Vaults must be given to load bundled price data"
             assert not execution_context.mode.is_live_trading(), "Cannot load bundled price data in live trading"
@@ -2925,6 +2907,10 @@ def load_partial_data(
             assert vaults, "Vaults must be given to load Trading Strategy website vault price history"
             assert vault_pairs_df is not None, "Vault pairs must be materialised before loading Trading Strategy website vault history"
 
+            vault_history_download_root = _resolve_vault_download_root(
+                client,
+                vault_history_download_root,
+            )
             raw_website_vault_prices_df = client.fetch_vault_price_history(
                 download_root=vault_history_download_root,
             )
