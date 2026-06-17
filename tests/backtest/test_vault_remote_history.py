@@ -35,17 +35,20 @@ SUPPORTING_PAIRS = [
 def test_load_partial_data_with_remote_vault_history(
     persistent_test_client: Client,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test Trading Strategy website vault history loading in ``load_partial_data()``.
 
-    1. Load remote vault metadata and history into a pytest-provided temporary location.
+    1. Point the Trading Strategy client cache to a pytest-provided temporary location.
     2. Build a partial dataset with Trading Strategy website vault history enabled.
     3. Confirm vault pairs, candles, liquidity and downloaded files are present.
     """
     download_root = tmp_path / "vault-downloads"
+    client_cache_path = tmp_path / "client-cache"
 
-    # 1. Load remote vault metadata and history into a pytest-provided temporary location.
+    # 1. Point the Trading Strategy client cache to a pytest-provided temporary location.
     client = persistent_test_client
+    monkeypatch.setattr(client.transport, "cache_path", client_cache_path.as_posix())
     vault_universe = load_vault_universe_with_metadata(
         client,
         vaults=REMOTE_VAULTS,
@@ -66,7 +69,6 @@ def test_load_partial_data_with_remote_vault_history(
         liquidity_time_bucket=TimeBucket.d1,
         vaults=vault_universe,
         vault_history_source="trading-strategy-website",
-        vault_history_download_root=download_root,
     )
 
     # 3. Confirm vault pairs, candles, liquidity and downloaded files are present.
@@ -78,4 +80,4 @@ def test_load_partial_data_with_remote_vault_history(
     assert dataset.liquidity is not None
     assert len(dataset.liquidity.loc[dataset.liquidity["pair_id"].isin(vault_pair_ids)]) > 0
     assert (download_root / "vault-universe.json").exists()
-    assert (download_root / "vault-price-history.parquet").exists()
+    assert (client_cache_path / "vaults" / "downloads" / "vault-price-history.parquet").exists()

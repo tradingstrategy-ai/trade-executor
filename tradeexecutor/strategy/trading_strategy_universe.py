@@ -2391,6 +2391,26 @@ def _resolve_live_end_timestamps(
     return dataset_end_at, vault_history_filter_end_at
 
 
+def _resolve_vault_history_download_root(
+    client: BaseClient,
+    vault_history_source: Literal["none", "bundled", "trading-strategy-website"],
+    vault_history_download_root: str | Path | None,
+) -> str | Path | None:
+    """Resolve the cache path for remote vault history downloads."""
+    if vault_history_source != "trading-strategy-website":
+        return vault_history_download_root
+
+    if vault_history_download_root is not None:
+        return vault_history_download_root
+
+    transport = getattr(client, "transport", None)
+    cache_path = getattr(transport, "cache_path", None)
+    if cache_path is None:
+        return None
+
+    return Path(cache_path) / "vaults" / "downloads"
+
+
 def load_partial_data(
     client: BaseClient,
     execution_context: ExecutionContext,
@@ -2865,6 +2885,12 @@ def load_partial_data(
             our_exchange_universe.add(vault_exchanges)
             filtered_pairs_df = pd.concat([filtered_pairs_df, vault_pairs_df])
 
+        vault_history_download_root = _resolve_vault_history_download_root(
+            client,
+            effective_vault_history_source,
+            vault_history_download_root,
+        )
+
         if effective_vault_history_source == "bundled":
             assert vaults, "Vaults must be given to load bundled price data"
             assert not execution_context.mode.is_live_trading(), "Cannot load bundled price data in live trading"
@@ -2914,7 +2940,7 @@ def load_partial_data(
                     log_vault_history_diagnostics,
                 )
 
-                vault_history_cache_root = vault_history_download_root or DEFAULT_VAULT_DOWNLOAD_ROOT
+                vault_history_cache_root = vault_history_download_root if vault_history_download_root is not None else DEFAULT_VAULT_DOWNLOAD_ROOT
                 vault_history_cache_path = Path(
                     client.transport.get_cached_file_path(
                         "vault-price-history.parquet",
