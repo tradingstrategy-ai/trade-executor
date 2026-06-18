@@ -44,8 +44,13 @@ def _make_trade(planned_reserve=Decimal("100.0"), is_buy=True):
     trade.is_vault.return_value = True
     trade.get_planned_reserve.return_value = planned_reserve
     trade.trade_id = 1
+    trade.planned_price = 1
+    trade.planned_quantity = planned_reserve if is_buy else -planned_reserve
+    trade.closing = False
+    trade.flags = set()
     trade.blockchain_transactions = []
     trade.other_data = {}
+    trade.slippage_tolerance = None
     trade.pair = MagicMock()
     trade.pair.pool_address = "0xVAULT"
     trade.pair.other_data = {"vault_protocol": "hypercore"}
