@@ -3,6 +3,8 @@
 ## 0.2
 
 
+- Fix `trade-ui` / live trading crashing with `web3.exceptions.ABIEventNotFound` when settling an async ERC-7540 deposit into a non-legacy (Lagoon v0.5+) vault. `parse_deposit_transaction()` referenced a misspelled `DepositRequested` event; the ERC-7540 standard (and the Lagoon v0.5 ABI) names it `DepositRequest`. The bug went unnoticed because every Lagoon ERC-7540 test fixture pointed at the legacy 722 Capital vault, which takes a different (Referral-topic) parsing branch — the non-legacy branch was never exercised. `test_lagoon_erc_7540` now parses a `requestDeposit` receipt on the freshly deployed non-legacy vault as a regression (2026-06-18)
+
 - Breaking API changes
 
 - Fix HyperCore vault withdrawals crashing the live executor on `phase1_perp_wait` when the vault leader performance fee shrinks the redemption. A successful `vaultTransfer(vault→perp)` whose net perp arrival fell short of the gross request by more than the ~1% slippage tolerance (a fee of ~5-6% on a profitable vault like IKAGI) was mistaken for a silent no-op, halting the whole sequential rebalance. Withdrawal phase-1 verification now widens its accepted shortfall to the worst-case leader performance fee, resolved per vault (the fee differs: ~10% for leader vaults, 0% for protocol/HLP vaults) from the trading pair metadata (`other_data["vault_performance_fee"]`, populated from `VaultMetadata`), then a live `leaderCommission` read, and only a 10% default as a last resort; the same tolerance feeds the vault-equity reflection fallback, and the deduction is logged and shown in the failure diagnostics. `create_hypercore_vault_pair()` gained a `performance_fee` argument (2026-06-18)
