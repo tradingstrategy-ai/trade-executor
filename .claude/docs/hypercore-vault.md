@@ -42,8 +42,7 @@ Key properties that shape our execution:
   protocol vaults (HLP and its sub-vaults) charge nothing. The net USDC a
   redemption returns can therefore be materially smaller than the gross amount
   requested. The rate is carried per vault on the trading pair
-  (`other_data["vault_performance_fee"]`), not assumed as a constant. See
-  [`hypercore-issues/p16-performance-fee-shortfall.md`](../../tradeexecutor/ethereum/vault/hypercore-issues/p16-performance-fee-shortfall.md).
+  (`other_data["vault_performance_fee"]`), not assumed as a constant.
 - **Lock-ups and minimums (per vault).** Deposits lock for a period that also
   differs per vault — 1 day for leader vaults, 4 days for protocol/HLP vaults;
   withdrawals below a ~5 USDC floor are silently rejected; `vaultTransfer` has
@@ -300,12 +299,14 @@ Safe's `TradingStrategyModuleV0`:
 
 ## Known issues and incident history
 
-The `tradeexecutor/ethereum/vault/hypercore-issues/` directory documents each
-production incident and its fix (P1–P16): phantom positions, unverified
-withdrawals, stranded USDC, dual-chain confirmation, nonce sync, activation
-cost, bridge-dry, satellite gas, API-down crashes, precompile stale reads,
-minimum deposit, big blocks, robust escrow wait, and the phase-1 performance
-fee shortfall (P16). Read these before changing settlement logic.
+Several production incidents have shaped the settlement logic — phantom
+positions, unverified withdrawals, stranded USDC, dual-chain confirmation,
+nonce sync, activation cost, bridge-dry, satellite gas, API-down crashes,
+precompile stale reads, minimum deposit, big blocks, robust escrow wait, and
+the phase-1 performance-fee shortfall. The constants and inline comments in
+`hypercore_routing.py` carry the per-incident rationale (dated incident
+references); the `CHANGELOG.md` and git history record each fix. Read those
+comments before changing settlement logic.
 
 ## Testing
 

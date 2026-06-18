@@ -38,7 +38,7 @@ live ``leaderCommission`` read
 (:py:attr:`eth_defi.hyperliquid.vault.VaultInfo.commission_rate`), and only as a
 last resort :py:data:`HYPERCORE_DEFAULT_PERFORMANCE_FEE`. This stops a
 successful but fee-reduced redemption from being mistaken for a silent
-``vaultTransfer`` no-op. See ``hypercore-issues/p16-performance-fee-shortfall.md``.
+``vaultTransfer`` no-op. See ``.claude/docs/hypercore-vault.md``.
 
 The build functions from :py:mod:`eth_defi.hyperliquid.core_writer` return
 either ``TradingStrategyModuleV0.performCall()`` or ``multicall()`` functions
