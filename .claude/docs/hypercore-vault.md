@@ -37,13 +37,18 @@ Key properties that shape our execution:
   the **vault equity**, the **perp (clearinghouse) account**, and the **spot
   account**. Moving value between them requires explicit actions
   (`vaultTransfer`, `transferUsdClass`) that settle asynchronously.
-- **Leader performance fee.** Vault leaders charge a performance fee (typically
-  10%) on depositor profit, deducted on or before withdrawal. The net USDC a
+- **Leader performance fee (per vault).** User-created leader vaults charge a
+  ~10% performance fee on depositor profit, deducted on or before withdrawal;
+  protocol vaults (HLP and its sub-vaults) charge nothing. The net USDC a
   redemption returns can therefore be materially smaller than the gross amount
-  requested. See [`hypercore-issues/p16-performance-fee-shortfall.md`](../../tradeexecutor/ethereum/vault/hypercore-issues/p16-performance-fee-shortfall.md).
-- **Lock-ups and minimums.** Deposits lock for a period; withdrawals below a
-  ~5 USDC floor are silently rejected; `vaultTransfer` has no "withdraw all"
-  mode and silently no-ops if you ask for more than current equity.
+  requested. The rate is carried per vault on the trading pair
+  (`other_data["vault_performance_fee"]`), not assumed as a constant. See
+  [`hypercore-issues/p16-performance-fee-shortfall.md`](../../tradeexecutor/ethereum/vault/hypercore-issues/p16-performance-fee-shortfall.md).
+- **Lock-ups and minimums (per vault).** Deposits lock for a period that also
+  differs per vault — 1 day for leader vaults, 4 days for protocol/HLP vaults;
+  withdrawals below a ~5 USDC floor are silently rejected; `vaultTransfer` has
+  no "withdraw all" mode and silently no-ops if you ask for more than current
+  equity.
 - **Silent failures.** Bridge and transfer actions can have a successful EVM
   receipt while HyperCore moves nothing. Every phase must therefore be
   *verified* against HyperCore state, not trusted on receipt status.
@@ -195,11 +200,16 @@ sequenceDiagram
 The perp-wait verification is the subtle part. The gross requested redemption
 can arrive short for three legitimate reasons: ordinary NAV drift, the trade's
 slippage tolerance, and — dominantly — the **leader performance fee** taken
-from redeemed profit. `_settle_withdrawal()` therefore resolves the vault's fee
-(`_fetch_vault_performance_fee()`, defaulting to
-`HYPERCORE_DEFAULT_PERFORMANCE_FEE = 10%` when the vault reports none) and uses
-the worst-case fee (`estimate_max_withdrawal_commission(gross, rate)`) as the
-maximum acceptable phase-1 shortfall. The same tolerance feeds
+from redeemed profit. This fee is *per vault*: user-created leader vaults charge
+~10%, while protocol vaults (HLP and its sub-vaults) charge 0% (and lock up for
+4 days instead of 1). `_settle_withdrawal()` therefore resolves the rate per
+vault with `_resolve_vault_performance_fee()` — first from the trading pair
+metadata (`other_data["vault_performance_fee"]`, populated by the
+trading-strategy data pipeline and by `create_hypercore_vault_pair()`), then a
+live `leaderCommission` read, and only as a last resort
+`HYPERCORE_DEFAULT_PERFORMANCE_FEE` (10%). It then uses the worst-case fee
+(`estimate_max_withdrawal_commission(gross, rate)`) as the maximum acceptable
+phase-1 shortfall. The same tolerance feeds
 `_is_withdrawal_already_reflected_in_vault_equity()`, the fallback that accepts
 a redemption already visible as reduced vault equity. A fee-shaped shortfall is
 booked as **execution price slippage** (fewer USDC for the same quantity), not
@@ -264,7 +274,7 @@ Safe's `TradingStrategyModuleV0`:
   `diagnose_hyperliquid_vault_redemption_failure()` diagnostics. Internal phase
   helpers: `_create_deposit_or_withdraw_txs()`, `_settle_deposit()`,
   `_settle_withdrawal()`, the `_broadcast_*` phase senders, the `_wait_for_*`
-  verifiers, `_fetch_vault_performance_fee()`, and `_mark_stranded_usdc()`.
+  verifiers, `_resolve_vault_performance_fee()`, and `_mark_stranded_usdc()`.
 - `tradeexecutor/ethereum/lagoon/execution.py` — integrates HyperCore routing
   into the Lagoon execution model (sequential execution).
 

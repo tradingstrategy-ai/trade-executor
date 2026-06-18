@@ -48,21 +48,31 @@ reflected in vault equity) or on withdrawal, so in the worst case the net perp
 arrival equals `gross_request − performance_fee_rate * gross_request`. Use that
 worst-case fee as the **maximum acceptable phase-1 shortfall**.
 
-1. **`HYPERCORE_DEFAULT_PERFORMANCE_FEE = Decimal("0.10")`** — assumed when the
-   vault does not report a fee.
-2. **`_fetch_vault_performance_fee(vault_address)`** — reads
-   `VaultInfo.commission_rate` (the `vaultDetails` `leaderCommission` field) via
-   `HyperliquidVault.fetch_info()`; falls back to the 10% default when the field
-   is `None`/zero or the API read fails.
-3. In `_settle_withdrawal()`, compute the worst-case fee with
+The fee is **per vault**, not a platform constant: user-created leader vaults
+charge ~10%, while protocol vaults (HLP and its sub-vaults) charge 0% (and have
+a different lockup). A fixed default would over-tolerate withdrawals from
+zero-fee vaults, so the rate is resolved per vault from the most authoritative
+source available.
+
+1. **`_resolve_vault_performance_fee(trade, vault_address)`** resolves the rate
+   in order: (a) the trading pair metadata `other_data["vault_performance_fee"]`
+   (populated from `VaultMetadata.performance_fee` by the trading-strategy data
+   pipeline, and by `create_hypercore_vault_pair(performance_fee=...)`), then
+   (b) a live `vaultDetails` `leaderCommission` read
+   (`VaultInfo.commission_rate`), then (c) `HYPERCORE_DEFAULT_PERFORMANCE_FEE`
+   (10%) only as a last resort. An explicit zero from (a)/(b) is trusted (no-fee
+   vault) and keeps strict verification. The eth_defi pipeline already sets
+   `performance_fee=0.0` for HLP parent/child vaults and `0.10` for leader
+   vaults (see `eth_defi.hyperliquid.vault_data_export`).
+2. In `_settle_withdrawal()`, compute the worst-case fee with
    `estimate_max_withdrawal_commission(gross_request, performance_fee_rate)` and
    pass it as `performance_fee_tolerance` to:
    - `_wait_for_perp_withdrawable_balance()` (both the first attempt and the
-     phase-1 retry), and
+     phase-1 retry, recomputed for the smaller retry amount), and
    - `_is_withdrawal_already_reflected_in_vault_equity()`.
    Both helpers widen their accepted tolerance to the performance fee when it is
    larger than the relative tolerance.
-4. **Logging**: log the resolved performance fee rate and worst-case tolerance
+3. **Logging**: log the resolved performance fee rate and worst-case tolerance
    at settlement, and log an explicit "performance fee deduction observed"
    message when the accepted perp arrival falls short of the gross request by
    more than ordinary drift. The diagnostics dump also prints the vault
@@ -70,11 +80,13 @@ worst-case fee as the **maximum acceptable phase-1 shortfall**.
 
 ## Files to modify
 
-- `tradeexecutor/ethereum/vault/hypercore_routing.py` — constant, helper,
+- `tradeexecutor/ethereum/vault/hypercore_routing.py` — constant, resolver,
   widened tolerances, settlement wiring, logging, diagnostics line.
-- `tests/hyperliquid/test_hypercore_dual_chain.py` — regression tests:
-  - `test_phase1_perp_wait_accepts_performance_fee_shortfall`
-  - `test_withdrawal_already_reflected_accepts_performance_fee_reduced_equity_decrease`
-  - `test_fetch_vault_performance_fee_uses_vault_data_or_default`
+- `tradeexecutor/ethereum/vault/hypercore_vault.py` — `create_hypercore_vault_pair`
+  accepts a `performance_fee` argument and stores it on the pair.
+- `tests/hyperliquid/test_hypercore_dual_chain.py` — regression tests: extended
+  the perp-wait, equity-reflection and phase-1-retry tests with fee scenarios,
+  added `test_resolve_vault_performance_fee_prefers_pair_metadata_then_live_then_default`
+  and an end-to-end `_settle_withdrawal` regression.
 - `tests/hypercore_writer/test_hyper_ai_live_loop.py` — monkeypatch signature
   updated for the new `performance_fee_tolerance` argument.

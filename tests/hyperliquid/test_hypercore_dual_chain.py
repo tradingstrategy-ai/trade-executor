@@ -446,34 +446,48 @@ def test_wait_for_perp_withdrawable_balance_accepts_trade_slippage_and_performan
                 )
 
 
-def test_fetch_vault_performance_fee_uses_vault_data_or_default():
-    """Resolve the HyperCore vault performance fee, defaulting to 10% only when not reported.
+def test_resolve_vault_performance_fee_prefers_pair_metadata_then_live_then_default():
+    """Resolve the per-vault performance fee from pair metadata, then live API, then default.
 
-    1. An explicit 15% commission is used as-is.
-    2. A missing (None) commission falls back to the 10% default.
-    3. An explicit 0% commission is trusted (genuine no-fee vault), not overridden by the default.
+    The fee differs per vault (leader vaults ~10%, protocol/HLP vaults 0%), so it must
+    come from per-vault data rather than a fixed platform constant.
+
+    1. A performance fee on the trading pair (incl. an explicit 0%) is used as-is, with no live read.
+    2. With no pair fee, fall back to the live vaultDetails commission (incl. an explicit 0%).
+    3. With neither a pair fee nor a reported live commission, fall back to the 10% default.
     """
     from tradeexecutor.ethereum.vault.hypercore_routing import (
         HYPERCORE_DEFAULT_PERFORMANCE_FEE,
     )
 
+    unset = object()
     routing = _make_routing()
     # Routing needs a session to query vault details; a mock is enough here.
     routing._get_session = MagicMock(return_value=MagicMock())
 
-    def resolve(commission_rate):
+    def resolve(pair_fee, commission_rate):
+        trade = _make_trade()
+        trade.pair.other_data = {"vault_protocol": "hypercore"}
+        if pair_fee is not unset:
+            trade.pair.other_data["vault_performance_fee"] = pair_fee
         with patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault") as mock_vault_cls:
             mock_vault_cls.return_value.fetch_info.return_value = MagicMock(commission_rate=commission_rate)
-            return routing._fetch_vault_performance_fee(VAULT_ADDR)
+            rate = routing._resolve_vault_performance_fee(trade, VAULT_ADDR)
+            return rate, mock_vault_cls
 
-    # 1. An explicit 15% commission is used as-is.
-    assert resolve(Decimal("0.15")) == Decimal("0.15")
+    # 1. A pair-metadata fee is used as-is and skips the live read (incl. explicit zero).
+    rate, vault_cls = resolve(pair_fee=0.20, commission_rate=Decimal("0.10"))
+    assert rate == Decimal("0.20")
+    vault_cls.assert_not_called()
+    rate, _ = resolve(pair_fee=0.0, commission_rate=Decimal("0.10"))
+    assert rate == Decimal("0")
 
-    # 2. A missing (None) commission falls back to the 10% default.
-    assert resolve(None) == HYPERCORE_DEFAULT_PERFORMANCE_FEE
+    # 2. With no pair fee, fall back to the live vaultDetails commission (incl. explicit zero).
+    assert resolve(pair_fee=unset, commission_rate=Decimal("0.15"))[0] == Decimal("0.15")
+    assert resolve(pair_fee=unset, commission_rate=Decimal("0"))[0] == Decimal("0")
 
-    # 3. An explicit 0% commission is trusted (genuine no-fee vault), not overridden by the default.
-    assert resolve(Decimal("0")) == Decimal("0")
+    # 3. With neither a pair fee nor a reported live commission, fall back to the 10% default.
+    assert resolve(pair_fee=unset, commission_rate=None)[0] == HYPERCORE_DEFAULT_PERFORMANCE_FEE
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
@@ -490,7 +504,7 @@ def test_settle_withdrawal_survives_performance_fee_shortfall_end_to_end(
 
     This drives the real ``_settle_withdrawal`` with the real
     ``_wait_for_perp_withdrawable_balance`` and the real
-    ``_fetch_vault_performance_fee`` wiring (only the network reads are mocked),
+    ``_resolve_vault_performance_fee`` wiring (only the network reads are mocked),
     reproducing the production numbers: a 45.23 USDC gross partial sell whose
     net perp arrival is only 42.64 USDC because HyperCore deducted the ~10%
     leader performance fee, under a realistic 1% trade slippage tolerance.
@@ -499,8 +513,8 @@ def test_settle_withdrawal_survives_performance_fee_shortfall_end_to_end(
     by hand here, so this fails if the settlement wiring that computes and
     forwards the fee tolerance is removed.
 
-    1. Build the IKAGI partial-sell trade with 1% slippage and stored phase-1 baselines.
-    2. Mock HyperCore reads: vault reports a 10% commission, net perp arrival is fee-reduced.
+    1. Build the IKAGI partial-sell trade with 1% slippage, the per-vault 10% fee on the pair, and stored phase-1 baselines.
+    2. Mock HyperCore reads: net perp arrival is fee-reduced.
     3. Settle and verify the trade is marked success and report_failure is never called.
     """
     from hexbytes import HexBytes
@@ -508,10 +522,12 @@ def test_settle_withdrawal_survives_performance_fee_shortfall_end_to_end(
 
     routing = _make_routing()
 
-    # 1. Build the IKAGI partial-sell trade with 1% slippage and stored phase-1 baselines.
+    # 1. Build the IKAGI partial-sell trade with 1% slippage, the per-vault 10% fee on the
+    #    pair (the authoritative production source), and stored phase-1 baselines.
     trade = _make_trade(planned_reserve=Decimal("45.232559"))
     trade.trade_id = 1022
     trade.slippage_tolerance = 0.01  # Production value; far below the ~10% fee.
+    trade.pair.other_data = {"vault_protocol": "hypercore", "vault_performance_fee": 0.10}
     trade.other_data = {
         "hypercore_phase1_perp_baseline_usdc": "0.5",
         "hypercore_phase1_vault_equity_usdc": "837.84627",
@@ -523,7 +539,8 @@ def test_settle_withdrawal_survives_performance_fee_shortfall_end_to_end(
     mock_fetch_equity.return_value = _make_equity(Decimal("794.984554"))
     receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
 
-    # 2. Mock HyperCore reads: vault reports a 10% commission, net perp arrival is fee-reduced.
+    # 2. Mock HyperCore reads. The fee comes from the pair metadata above; the live
+    #    vaultDetails read is only a fallback (mocked to 10% for safety, not exercised here).
     mock_vault_cls.return_value.fetch_info.return_value = MagicMock(commission_rate=Decimal("0.10"))
 
     with (

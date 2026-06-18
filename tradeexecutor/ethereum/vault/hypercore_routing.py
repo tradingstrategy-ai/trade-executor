@@ -22,17 +22,23 @@ If the Safe is already activated, step 0 is skipped.
 
 **Performance fee on withdrawal**:
 
-HyperCore vault leaders charge a performance fee (typically 10%) on depositor
-profit. The fee can be deducted before withdrawal (already reflected in vault
+HyperCore vault leaders charge a performance fee on depositor profit. The fee
+is *per vault*, not a platform constant: user-created leader vaults charge the
+~10% profit share, while protocol vaults (HLP and its sub-vaults) charge
+nothing. It can be deducted before withdrawal (already reflected in vault
 equity) or on withdrawal, so the *net* USDC arriving in perp during the phase-1
 perp wait can be materially smaller than the *gross* requested reserve — by far
 more than ordinary slippage. Phase-1 verification therefore widens its accepted
 shortfall tolerance to the worst-case performance fee
-(``performance_fee_rate * gross_request``), read from the vault's
-``leaderCommission`` field (:py:attr:`eth_defi.hyperliquid.vault.VaultInfo.commission_rate`)
-and defaulting to :py:data:`HYPERCORE_DEFAULT_PERFORMANCE_FEE` when not reported.
-This stops a successful but fee-reduced redemption from being mistaken for a
-silent ``vaultTransfer`` no-op. See ``hypercore-issues/p16-performance-fee-shortfall.md``.
+(``performance_fee_rate * gross_request``). The rate is resolved per vault by
+:py:meth:`HypercoreVaultRouting._resolve_vault_performance_fee`: first from the
+trading pair metadata (``other_data["vault_performance_fee"]``, populated from
+:py:class:`~tradingstrategy.alternative_data.vault.VaultMetadata`), then from a
+live ``leaderCommission`` read
+(:py:attr:`eth_defi.hyperliquid.vault.VaultInfo.commission_rate`), and only as a
+last resort :py:data:`HYPERCORE_DEFAULT_PERFORMANCE_FEE`. This stops a
+successful but fee-reduced redemption from being mistaken for a silent
+``vaultTransfer`` no-op. See ``hypercore-issues/p16-performance-fee-shortfall.md``.
 
 The build functions from :py:mod:`eth_defi.hyperliquid.core_writer` return
 either ``TradingStrategyModuleV0.performCall()`` or ``multicall()`` functions
@@ -222,12 +228,13 @@ HYPERCORE_RELATIVE_BALANCE_TOLERANCE = Decimal("0.01")
 #:   far more than 1%. A successful withdrawal was treated as a failure and
 #:   halted the whole sequential rebalance.
 #:
-#: HyperCore vault leaders charge a performance fee on depositor profit. The
-#: per-vault rate is sourced from the ``vaultDetails`` API ``leaderCommission``
-#: field (:py:attr:`eth_defi.hyperliquid.vault.VaultInfo.commission_rate`), but
-#: that field is sometimes ``None`` (not reported). When the fee is not
-#: available from vault data we assume this default so phase-1 verification
-#: stays robust against fee-shaped shortfalls.
+#: HyperCore vault leaders charge a performance fee on depositor profit, but the
+#: rate differs per vault (leader vaults ~10%, protocol/HLP vaults 0%), so this
+#: is only a *last-resort* default. The per-vault rate is resolved by
+#: :py:meth:`HypercoreVaultRouting._resolve_vault_performance_fee` from the
+#: trading pair metadata (``other_data["vault_performance_fee"]``) first, then a
+#: live ``leaderCommission`` read; this default applies only when neither is
+#: available, so phase-1 verification stays robust against fee-shaped shortfalls.
 #:
 #: The value is the fixed 10% leader profit share that eth_defi documents for
 #: all Hyperliquid leader vaults
@@ -1181,50 +1188,75 @@ class HypercoreVaultRouting(RoutingModel):
         )
         return inferred_decrease >= expected_increase - accepted_tolerance
 
-    def _fetch_vault_performance_fee(self, vault_address: str) -> Decimal:
-        """Fetch the HyperCore vault leader performance fee, as a fraction.
+    def _resolve_vault_performance_fee(self, trade: TradeExecution, vault_address: str) -> Decimal:
+        """Resolve the HyperCore vault leader performance fee, as a fraction.
 
-        HyperCore vault leaders charge a performance fee (typically 10%) on
-        depositor profit, deducted at or before withdrawal from the redeemed
-        profit. The fee is read from the ``vaultDetails`` API ``leaderCommission``
-        field, exposed as :py:attr:`eth_defi.hyperliquid.vault.VaultInfo.commission_rate`.
+        The fee is per-vault, not a platform constant: user-created leader
+        vaults charge the ~10% profit share, while protocol vaults (HLP and its
+        sub-vaults) charge nothing. Using a single default would over-tolerate
+        withdrawals from zero-fee vaults and mis-size others, so we resolve it
+        from the most authoritative source available, in order:
 
-        When the field is ``None`` (not reported) or the API read fails, we
-        fall back to :py:data:`HYPERCORE_DEFAULT_PERFORMANCE_FEE` so phase-1
-        verification stays robust against fee-shaped shortfalls rather than
-        halting on a successful but fee-reduced withdrawal. An explicit zero
-        rate is trusted as a genuine no-fee vault and keeps strict phase-1
-        verification.
+        1. The per-vault fee carried on the trading pair
+           (``other_data["vault_performance_fee"]``), populated from
+           :py:class:`~tradingstrategy.alternative_data.vault.VaultMetadata` by
+           the trading-strategy data pipeline (and by
+           :py:func:`~tradeexecutor.ethereum.vault.hypercore_vault.create_hypercore_vault_pair`).
+           This is the correct per-vault rate and needs no network call.
+        2. A live ``vaultDetails`` read of the leader commission
+           (:py:attr:`eth_defi.hyperliquid.vault.VaultInfo.commission_rate`).
+        3. :py:data:`HYPERCORE_DEFAULT_PERFORMANCE_FEE`, only as a last resort
+           when neither source is available, so phase-1 verification stays
+           robust rather than halting on a fee-reduced withdrawal.
 
+        An explicit zero from sources 1 or 2 is trusted as a genuine no-fee
+        vault and keeps strict phase-1 verification.
+
+        :param trade:
+            The withdrawal trade, whose ``pair.other_data`` carries the
+            pipeline-populated per-vault fee.
         :param vault_address:
-            HyperCore native vault address.
+            HyperCore native vault address (for the live fallback read).
         :return:
             Performance fee as a fraction (e.g. ``Decimal("0.10")`` for 10%).
         """
+        # 1. Per-vault fee from trading-strategy pair metadata (authoritative, no network).
+        pair = getattr(trade, "pair", None)
+        pair_other_data = getattr(pair, "other_data", None) or {}
+        pair_fee = pair_other_data.get("vault_performance_fee")
+        if pair_fee is not None:
+            rate = max(Decimal(str(pair_fee)), Decimal(0))
+            logger.info(
+                "HyperCore vault %s performance fee from pair metadata: %s.",
+                vault_address, rate,
+            )
+            return rate
+
+        # 2. Live vaultDetails leader commission.
         commission_rate = None
         try:
             vault_info = HyperliquidVault(session=self._get_session(), vault_address=vault_address).fetch_info()
             commission_rate = vault_info.commission_rate
         except Exception as e:
             logger.warning(
-                "Could not fetch HyperCore vault performance fee for %s: %s. "
-                "Assuming default performance fee %s.",
-                vault_address,
-                e,
-                HYPERCORE_DEFAULT_PERFORMANCE_FEE,
+                "Could not fetch HyperCore vault performance fee for %s: %s.",
+                vault_address, e,
             )
-
-        if commission_rate is None:
+        if commission_rate is not None:
+            rate = max(Decimal(str(commission_rate)), Decimal(0))
             logger.info(
-                "HyperCore vault %s reports no performance fee; assuming default %s.",
-                vault_address,
-                HYPERCORE_DEFAULT_PERFORMANCE_FEE,
+                "HyperCore vault %s performance fee from live vaultDetails: %s.",
+                vault_address, rate,
             )
-            return HYPERCORE_DEFAULT_PERFORMANCE_FEE
+            return rate
 
-        rate = max(Decimal(str(commission_rate)), Decimal(0))
-        logger.info("HyperCore vault %s leader performance fee is %s.", vault_address, rate)
-        return rate
+        # 3. Last resort. The per-vault fee should be populated on the pair; warn loudly.
+        logger.warning(
+            "No per-vault performance fee for HyperCore vault %s in pair metadata or live API; "
+            "assuming default %s. Populate VaultMetadata.performance_fee for correct verification.",
+            vault_address, HYPERCORE_DEFAULT_PERFORMANCE_FEE,
+        )
+        return HYPERCORE_DEFAULT_PERFORMANCE_FEE
 
     def _get_phase1_noop_retry_raw(
         self,
@@ -2553,7 +2585,7 @@ class HypercoreVaultRouting(RoutingModel):
             # Use the worst-case fee as the maximum acceptable phase-1 shortfall
             # so a successful but fee-reduced withdrawal is not mistaken for a
             # silent vaultTransfer no-op (2026-06-13 IKAGI #1022 incident).
-            performance_fee_rate = self._fetch_vault_performance_fee(vault_address)
+            performance_fee_rate = self._resolve_vault_performance_fee(trade, vault_address)
             phase1_performance_fee_tolerance = estimate_max_withdrawal_commission(
                 phase1_requested_reserve,
                 performance_fee_rate,
