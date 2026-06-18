@@ -471,7 +471,7 @@ def test_resolve_vault_performance_fee_prefers_pair_metadata_then_live_then_defa
         if pair_fee is not unset:
             trade.pair.other_data["vault_performance_fee"] = pair_fee
         with patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault") as mock_vault_cls:
-            mock_vault_cls.return_value.fetch_info.return_value = MagicMock(commission_rate=commission_rate)
+            mock_vault_cls.return_value.fetch_metadata.return_value = MagicMock(commission_rate=commission_rate)
             rate = routing._resolve_vault_performance_fee(trade, VAULT_ADDR)
             return rate, mock_vault_cls
 
@@ -541,7 +541,7 @@ def test_settle_withdrawal_survives_performance_fee_shortfall_end_to_end(
 
     # 2. Mock HyperCore reads. The fee comes from the pair metadata above; the live
     #    vaultDetails read is only a fallback (mocked to 10% for safety, not exercised here).
-    mock_vault_cls.return_value.fetch_info.return_value = MagicMock(commission_rate=Decimal("0.10"))
+    mock_vault_cls.return_value.fetch_metadata.return_value = MagicMock(commission_rate=Decimal("0.10"))
 
     with (
         patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=13_117_483),
@@ -1150,7 +1150,7 @@ def test_withdrawal_phase1_retry_handles_silent_noop_from_equity_drift(
     )
 
     # Vault reports a 10% leader performance fee, so the fee tolerance scales with the amount.
-    mock_vault_cls.return_value.fetch_info.return_value = MagicMock(commission_rate=Decimal("0.10"))
+    mock_vault_cls.return_value.fetch_metadata.return_value = MagicMock(commission_rate=Decimal("0.10"))
 
     routing = _make_routing()
     trade = _make_trade(planned_reserve=Decimal("11.737146"))

@@ -1215,10 +1215,11 @@ class HypercoreVaultRouting(RoutingModel):
             )
             return rate
 
-        # 2. Live vaultDetails leader commission.
+        # 2. Live vaultDetails leader commission. Use fetch_metadata() (no user
+        #    required) — fetch_info() asserts on a missing user address.
         commission_rate = None
         try:
-            vault_info = HyperliquidVault(session=self._get_session(), vault_address=vault_address).fetch_info()
+            vault_info = HyperliquidVault(session=self._get_session(), vault_address=vault_address).fetch_metadata()
             commission_rate = vault_info.commission_rate
         except Exception as e:
             logger.warning(

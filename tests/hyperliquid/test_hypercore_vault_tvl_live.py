@@ -115,3 +115,35 @@ def test_size_risk_model_with_live_tvl(
     )
     assert capped_result.capped
     assert capped_result.accepted_size == pytest.approx(small_result.tvl * 0.20, rel=0.01)
+
+
+def test_live_vault_performance_fee_per_vault():
+    """Per-vault HyperCore performance fee is read correctly from the live API.
+
+    Guards the regression where the fee was read with ``fetch_info()`` (which
+    asserts on a missing user address) instead of ``fetch_metadata()``, and
+    confirms the real per-vault values the settlement tolerance relies on.
+
+    1. Fetch HLP (protocol) metadata and assert a 0% commission.
+    2. Fetch IKAGI (a user-created leader vault) metadata and assert the 10% platform fee.
+    3. Both use fetch_metadata(), which needs no user address.
+    """
+    from eth_defi.hyperliquid.constants import HYPERLIQUID_VAULT_PERFORMANCE_FEE
+    from eth_defi.hyperliquid.session import create_hyperliquid_session
+    from eth_defi.hyperliquid.vault import HyperliquidVault
+
+    session = create_hyperliquid_session()
+
+    # 1. Fetch HLP (protocol) metadata and assert a 0% commission.
+    hlp = HyperliquidVault(
+        session=session, vault_address=HLP_VAULT_ADDRESS["mainnet"],
+    ).fetch_metadata()
+    assert hlp.relationship_type == "parent"
+    assert Decimal(str(hlp.commission_rate)) == Decimal(0)
+
+    # 2. Fetch IKAGI (a user-created leader vault) metadata and assert the 10% platform fee.
+    ikagi = HyperliquidVault(
+        session=session, vault_address="0xe44bed760c2f1a03a03bd1b8911f025d96e6eb04",
+    ).fetch_metadata()
+    assert ikagi.relationship_type == "normal"
+    assert Decimal(str(ikagi.commission_rate)) == Decimal(str(HYPERLIQUID_VAULT_PERFORMANCE_FEE))
