@@ -234,6 +234,12 @@ def trade_ui(
         post_valuation=True,
     )
 
+    resolved = execution_model.resolve_pending_vault_settlements(state=state, ts=ts)
+    if resolved:
+        logger.info("Resolved %d pending vault settlement(s) before opening trade-ui", len(resolved))
+    if not simulate:
+        store.sync(state)
+
     # Gather balance info for the TUI header
     hot_wallet = sync_model.get_hot_wallet()
     gas_balance = hot_wallet.get_native_currency_balance(web3)
