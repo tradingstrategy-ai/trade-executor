@@ -384,21 +384,26 @@ def test_wait_for_perp_withdrawable_balance_rejects_large_shortfall():
     assert "did not reach" in str(exc_info.value)
 
 
-def test_wait_for_perp_withdrawable_balance_accepts_trade_slippage_tolerance():
-    """Accept phase-1 perp balance shortfalls covered by the trade slippage tolerance.
+def test_wait_for_perp_withdrawable_balance_accepts_trade_slippage_and_performance_fee():
+    """Accept phase-1 perp shortfalls covered by either the slippage or the performance-fee tolerance.
 
-    1. Create a routing object and mock a HyperCore performance-fee shaped perp increase.
-    2. Wait for perp withdrawable balance using a wider trade slippage tolerance.
-    3. Verify the phase-1 wait accepts the net amount instead of timing out.
+    The HyperCore leader performance fee (deducted on/before withdrawal) can
+    leave the net perp arrival well below the gross request — more than the 1%
+    slippage tolerance absorbs. The phase-1 wait must accept the net amount when
+    the worst-case performance fee covers the shortfall (2026-06-13 IKAGI #1022).
+
+    1. Accept a fee-shaped shortfall covered by a wide trade slippage tolerance.
+    2. Accept the IKAGI shortfall under a realistic 1% slippage but a 10% performance-fee tolerance.
+    3. Confirm the same shortfall is rejected when neither tolerance covers it.
     """
-    routing = _make_routing()
-
-    # 1. Create a routing object and mock a HyperCore performance-fee shaped perp increase.
-    routing._fetch_safe_perp_withdrawable_balance = MagicMock(
-        side_effect=[Decimal("123.0")],
+    from eth_defi.hyperliquid.vault import estimate_max_withdrawal_commission
+    from tradeexecutor.ethereum.vault.hypercore_routing import (
+        HypercoreWithdrawalVerificationError,
     )
 
-    # 2. Wait for perp withdrawable balance using a wider trade slippage tolerance.
+    # 1. Accept a fee-shaped shortfall covered by a wide trade slippage tolerance.
+    routing = _make_routing()
+    routing._fetch_safe_perp_withdrawable_balance = MagicMock(return_value=Decimal("123.0"))
     with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
         with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
             result = routing._wait_for_perp_withdrawable_balance(
@@ -408,33 +413,181 @@ def test_wait_for_perp_withdrawable_balance_accepts_trade_slippage_tolerance():
                 timeout=30.0,
                 poll_interval=2.0,
             )
-
-    # 3. Verify the phase-1 wait accepts the net amount instead of timing out.
     assert result == Decimal("123.0")
+
+    # 2. Accept the IKAGI shortfall under a realistic 1% slippage but a 10% performance-fee tolerance.
+    routing = _make_routing()
+    routing._fetch_safe_perp_withdrawable_balance = MagicMock(return_value=Decimal("42.64074"))
+    performance_fee_tolerance = estimate_max_withdrawal_commission(Decimal("45.232559"), Decimal("0.10"))
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+            result = routing._wait_for_perp_withdrawable_balance(
+                baseline_balance=Decimal("0.5"),
+                expected_increase_raw=45_232_559,
+                relative_tolerance=Decimal("0.01"),
+                performance_fee_tolerance=performance_fee_tolerance,
+                timeout=30.0,
+                poll_interval=2.0,
+            )
+    assert result == Decimal("42.64074")
+
+    # 3. Confirm the same shortfall is rejected when neither tolerance covers it.
+    routing = _make_routing()
+    routing._fetch_safe_perp_withdrawable_balance = MagicMock(return_value=Decimal("42.64074"))
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()):
+            with pytest.raises(HypercoreWithdrawalVerificationError):
+                routing._wait_for_perp_withdrawable_balance(
+                    baseline_balance=Decimal("0.5"),
+                    expected_increase_raw=45_232_559,
+                    relative_tolerance=Decimal("0.01"),
+                    timeout=30.0,
+                    poll_interval=2.0,
+                )
+
+
+def test_fetch_vault_performance_fee_uses_vault_data_or_default():
+    """Resolve the HyperCore vault performance fee, defaulting to 10% when missing.
+
+    1. Build a routing object and a vault info reporting an explicit 15% commission.
+    2. Resolve the performance fee and confirm the reported rate is used.
+    3. Resolve again with a vault info reporting no commission and confirm the 10% default.
+    """
+    from tradeexecutor.ethereum.vault.hypercore_routing import (
+        HYPERCORE_DEFAULT_PERFORMANCE_FEE,
+    )
+
+    routing = _make_routing()
+    # Routing needs a session to query vault details; a mock is enough here.
+    routing._get_session = MagicMock(return_value=MagicMock())
+
+    # 1. Build a routing object and a vault info reporting an explicit 15% commission.
+    vault_info_with_fee = MagicMock(commission_rate=Decimal("0.15"))
+    vault_info_without_fee = MagicMock(commission_rate=None)
+
+    # 2. Resolve the performance fee and confirm the reported rate is used.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault") as mock_vault_cls:
+        mock_vault_cls.return_value.fetch_info.return_value = vault_info_with_fee
+        rate = routing._fetch_vault_performance_fee(VAULT_ADDR)
+    assert rate == Decimal("0.15")
+
+    # 3. Resolve again with a vault info reporting no commission and confirm the 10% default.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault") as mock_vault_cls:
+        mock_vault_cls.return_value.fetch_info.return_value = vault_info_without_fee
+        rate = routing._fetch_vault_performance_fee(VAULT_ADDR)
+    assert rate == HYPERCORE_DEFAULT_PERFORMANCE_FEE
+
+
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
+def test_settle_withdrawal_survives_performance_fee_shortfall_end_to_end(
+    mock_fetch_equity,
+    mock_block_ts,
+    mock_vault_cls,
+    mock_report_failure,
+):
+    """End-to-end regression for the 2026-06-13 IKAGI #1022 phase-1 crash.
+
+    This drives the real ``_settle_withdrawal`` with the real
+    ``_wait_for_perp_withdrawable_balance`` and the real
+    ``_fetch_vault_performance_fee`` wiring (only the network reads are mocked),
+    reproducing the production numbers: a 45.23 USDC gross partial sell whose
+    net perp arrival is only 42.64 USDC because HyperCore deducted the ~10%
+    leader performance fee, under a realistic 1% trade slippage tolerance.
+
+    Unlike the helper-level tests, nothing passes ``performance_fee_tolerance``
+    by hand here, so this fails if the settlement wiring that computes and
+    forwards the fee tolerance is removed.
+
+    1. Build the IKAGI partial-sell trade with 1% slippage and stored phase-1 baselines.
+    2. Mock HyperCore reads: vault reports a 10% commission, net perp arrival is fee-reduced.
+    3. Settle and verify the trade is marked success and report_failure is never called.
+    """
+    from hexbytes import HexBytes
+    from tradeexecutor.ethereum.vault.hypercore_routing import usdc_to_raw
+
+    routing = _make_routing()
+
+    # 1. Build the IKAGI partial-sell trade with 1% slippage and stored phase-1 baselines.
+    trade = _make_trade(planned_reserve=Decimal("45.232559"))
+    trade.trade_id = 1022
+    trade.slippage_tolerance = 0.01  # Production value; far below the ~10% fee.
+    trade.other_data = {
+        "hypercore_phase1_perp_baseline_usdc": "0.5",
+        "hypercore_phase1_vault_equity_usdc": "837.84627",
+    }
+    state = MagicMock()
+    state.portfolio.get_position_by_id.return_value.get_quantity.return_value = Decimal("837.84627")
+    mock_block_ts.return_value = datetime.datetime(2026, 6, 13, 11, 25, 0)
+    # Post-phase-1 equity after the fee-reduced redemption.
+    mock_fetch_equity.return_value = _make_equity(Decimal("794.984554"))
+    receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
+
+    # 2. Mock HyperCore reads: vault reports a 10% commission, net perp arrival is fee-reduced.
+    mock_vault_cls.return_value.fetch_info.return_value = MagicMock(commission_rate=Decimal("0.10"))
+
+    with (
+        patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=13_117_483),
+        # Net perp arrival is 42.64 USDC — 2.64 below the gross request, a ~5.8%
+        # shortfall that the old 1% tolerance rejected. The REAL perp wait runs.
+        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("42.64074")),
+        patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0")),
+        patch.object(routing, "_broadcast_withdrawal_phase2", return_value=(MagicMock(tx_hash="0xdef"), {"status": 1, "blockNumber": 101})),
+        patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=Decimal("42.14074")),
+        patch.object(routing, "_broadcast_withdrawal_phase3", return_value=(MagicMock(tx_hash="0x123"), {"status": 1, "blockNumber": 102})),
+        patch.object(routing, "_wait_for_usdc_arrival", return_value=usdc_to_raw(Decimal("42.14"))),
+        patch("tradeexecutor.ethereum.vault.hypercore_routing.time.sleep"),
+        patch("tradeexecutor.ethereum.vault.hypercore_routing.time.time", side_effect=_monotonic_time()),
+    ):
+        routing._settle_withdrawal(
+            routing.web3,
+            state,
+            trade,
+            receipts,
+            stop_on_execution_failure=False,
+        )
+
+    # 3. Settle and verify the trade is marked success and report_failure is never called.
+    mock_report_failure.assert_not_called()
+    state.mark_trade_success.assert_called_once()
 
 
 def test_withdrawal_already_reflected_in_vault_equity_is_detected():
-    """Detect a phase 1 withdrawal that already reduced vault equity.
+    """Detect a phase 1 withdrawal that already reduced vault equity, including fee-reduced decreases.
 
-    1. Create a routing object with a state position quantity from before settlement.
-    2. Feed the helper a vault equity snapshot that matches the expected post-withdrawal residual.
-    3. Verify the helper recognises phase 1 as already applied.
+    1. Recognise a clean equity decrease that matches the expected residual.
+    2. Reject the IKAGI fee-reduced decrease (42.86 vs 45.23 gross) under the bare 1% tolerance.
+    3. Accept the same fee-reduced decrease once the 10% performance-fee tolerance is applied.
     """
+    from eth_defi.hyperliquid.vault import estimate_max_withdrawal_commission
+
     routing = _make_routing()
 
-    # 1. Create a routing object with a state position quantity from before settlement.
-    position_quantity_before = Decimal("630.007301")
-    current_vault_equity = Decimal("77.748241")
-
-    # 2. Feed the helper a vault equity snapshot that matches the expected post-withdrawal residual.
-    result = routing._is_withdrawal_already_reflected_in_vault_equity(
-        position_quantity_before=position_quantity_before,
-        current_vault_equity=current_vault_equity,
+    # 1. Recognise a clean equity decrease that matches the expected residual.
+    assert routing._is_withdrawal_already_reflected_in_vault_equity(
+        position_quantity_before=Decimal("630.007301"),
+        current_vault_equity=Decimal("77.748241"),
         expected_increase_raw=552_259_060,
-    )
+    ) is True
 
-    # 3. Verify the helper recognises phase 1 as already applied.
-    assert result is True
+    # 2. Reject the IKAGI fee-reduced decrease (42.86 vs 45.23 gross) under the bare 1% tolerance.
+    #    The leader performance fee shrank the equity decrease below the gross request.
+    assert routing._is_withdrawal_already_reflected_in_vault_equity(
+        position_quantity_before=Decimal("837.84627"),
+        current_vault_equity=Decimal("794.984554"),
+        expected_increase_raw=45_232_559,
+    ) is False
+
+    # 3. Accept the same fee-reduced decrease once the 10% performance-fee tolerance is applied.
+    performance_fee_tolerance = estimate_max_withdrawal_commission(Decimal("45.232559"), Decimal("0.10"))
+    assert routing._is_withdrawal_already_reflected_in_vault_equity(
+        position_quantity_before=Decimal("837.84627"),
+        current_vault_equity=Decimal("794.984554"),
+        expected_increase_raw=45_232_559,
+        performance_fee_tolerance=performance_fee_tolerance,
+    ) is True
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")

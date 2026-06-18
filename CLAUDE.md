@@ -1,5 +1,16 @@
 # Instructions to work with the code base
 
+## Reference docs for Claude
+
+Topic deep-dives live under `.claude/docs/`. Consult the relevant one before
+working on that area:
+
+| Doc | Description |
+|-----|-------------|
+| `.claude/docs/cli-command.md` | CLI command patterns for trade-executor |
+| `.claude/docs/vault-deposit-redeem.md` | Synchronous and async (ERC-7540 / Lagoon / Ostium) vault deposit and redeem flows |
+| `.claude/docs/hypercore-vault.md` | HyperCore native vault execution — properties, data structures, deposit/withdrawal phases, HyperEVM interactions, modules and diagrams |
+
 ## English
 
 - Use UK/British English instead of US English

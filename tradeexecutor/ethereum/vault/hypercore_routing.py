@@ -20,6 +20,20 @@ If the Safe is already activated, step 0 is skipped.
 4. Spot wait: poll ``spotClearinghouseState`` until free USDC appears
 5. Phase 3: ``sendAsset`` — bridge USDC from HyperCore spot back to HyperEVM
 
+**Performance fee on withdrawal**:
+
+HyperCore vault leaders charge a performance fee (typically 10%) on depositor
+profit. The fee can be deducted before withdrawal (already reflected in vault
+equity) or on withdrawal, so the *net* USDC arriving in perp during the phase-1
+perp wait can be materially smaller than the *gross* requested reserve — by far
+more than ordinary slippage. Phase-1 verification therefore widens its accepted
+shortfall tolerance to the worst-case performance fee
+(``performance_fee_rate * gross_request``), read from the vault's
+``leaderCommission`` field (:py:attr:`eth_defi.hyperliquid.vault.VaultInfo.commission_rate`)
+and defaulting to :py:data:`HYPERCORE_DEFAULT_PERFORMANCE_FEE` when not reported.
+This stops a successful but fee-reduced redemption from being mistaken for a
+silent ``vaultTransfer`` no-op. See ``hypercore-issues/p16-performance-fee-shortfall.md``.
+
 The build functions from :py:mod:`eth_defi.hyperliquid.core_writer` return
 either ``TradingStrategyModuleV0.performCall()`` or ``multicall()`` functions
 that are already wrapped for the Safe. Using
@@ -83,7 +97,7 @@ from eth_defi.hyperliquid.session import (
     HyperliquidSession,
     create_hyperliquid_session,
 )
-from eth_defi.hyperliquid.vault import HyperliquidVault
+from eth_defi.hyperliquid.vault import HyperliquidVault, estimate_max_withdrawal_commission
 
 from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.state.blockhain_transaction import (
@@ -192,6 +206,35 @@ HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW = 200_000
 # confirmation window, so larger amounts need more than a fixed-cent
 # tolerance to avoid false failures.
 HYPERCORE_RELATIVE_BALANCE_TOLERANCE = Decimal("0.01")
+
+#: Default HyperCore vault leader performance fee, as a fraction.
+#:
+#: Incident reference:
+#:
+#: - HyperAI crashed on 2026-06-13 during trade #1022, IKAGI-USDC.
+#: - Phase 1 (``vaultTransfer(vault->perp)``) succeeded: vault equity dropped
+#:   837.85 -> 794.98 USDC and perp withdrawable rose to 42.64 USDC.
+#: - But settlement waited for the gross planned reserve (45.23 USDC) to arrive
+#:   in perp, with only the 1% relative/slippage tolerance.
+#: - HyperCore had deducted a leader performance fee (~5-6% here) on the
+#:   redeemed profit, so the net perp arrival fell short of the gross request by
+#:   far more than 1%. A successful withdrawal was treated as a failure and
+#:   halted the whole sequential rebalance.
+#:
+#: HyperCore vault leaders charge a performance fee (typically 10%) on
+#: depositor profit. The fee is sourced from the ``vaultDetails`` API
+#: ``leaderCommission`` field (:py:attr:`eth_defi.hyperliquid.vault.VaultInfo.commission_rate`),
+#: but that field is sometimes ``None`` or zero even for vaults that do charge
+#: a fee. When the fee is not available from vault data we assume this default
+#: so phase-1 verification stays robust against fee-shaped shortfalls.
+#:
+#: The fee may be deducted before withdrawal (already reflected in vault
+#: equity) or on withdrawal, so in the worst case the net perp arrival is the
+#: gross request minus ``performance_fee_rate * gross_request``. We therefore
+#: use that worst-case fee amount as the maximum acceptable phase-1 shortfall.
+#:
+#: See https://hyperliquid.gitbook.io/hyperliquid-docs/hypercore/vaults
+HYPERCORE_DEFAULT_PERFORMANCE_FEE = Decimal("0.10")
 
 #: Fixed ``maxFeePerGas`` for HyperEVM transactions (in wei).
 #:
@@ -1010,18 +1053,35 @@ class HypercoreVaultRouting(RoutingModel):
         baseline_balance: Decimal,
         expected_increase_raw: int,
         relative_tolerance: Decimal | None = None,
+        performance_fee_tolerance: Decimal | None = None,
         timeout: float = 30.0,
         poll_interval: float = 2.0,
     ) -> Decimal:
-        """Poll HyperCore perp withdrawable USDC until the withdrawal reaches perp."""
+        """Poll HyperCore perp withdrawable USDC until the withdrawal reaches perp.
+
+        :param performance_fee_tolerance:
+            Worst-case HyperCore leader performance fee (in USDC) for this
+            withdrawal. HyperCore deducts the leader performance fee from the
+            redeemed profit, so the net amount arriving in perp can be smaller
+            than the gross requested amount by up to this fee. When provided
+            and larger than the relative tolerance, it becomes the maximum
+            accepted phase-1 shortfall. See
+            :py:data:`HYPERCORE_DEFAULT_PERFORMANCE_FEE`.
+        """
         expected_increase = raw_to_usdc(expected_increase_raw)
         if relative_tolerance is None:
             relative_tolerance = HYPERCORE_RELATIVE_BALANCE_TOLERANCE
+        # A HyperCore vault redemption can be reduced by the leader performance
+        # fee (deducted on or before withdrawal). Allow the worst-case fee as
+        # the maximum acceptable phase-1 shortfall so a successful but
+        # fee-reduced withdrawal is not mistaken for a silent no-op.
         accepted_tolerance = max(
             Decimal("0.10"),
             expected_increase * relative_tolerance,
+            performance_fee_tolerance or Decimal(0),
         )
-        expected_balance = baseline_balance + expected_increase - accepted_tolerance
+        gross_expected_balance = baseline_balance + expected_increase
+        expected_balance = gross_expected_balance - accepted_tolerance
         deadline = time.time() + timeout
         attempt = 0
 
@@ -1030,6 +1090,22 @@ class HypercoreVaultRouting(RoutingModel):
             current_balance = self._fetch_safe_perp_withdrawable_balance()
 
             if current_balance >= expected_balance:
+                observed_shortfall = gross_expected_balance - current_balance
+                if observed_shortfall > expected_increase * relative_tolerance:
+                    # The withdrawal succeeded but arrived short of the gross
+                    # request beyond ordinary drift. This is the HyperCore
+                    # leader performance fee being deducted from redeemed
+                    # profit; log it so it is visible in operator diagnostics.
+                    logger.info(
+                        "HyperCore performance fee deduction observed for Safe %s: "
+                        "perp arrival %s USDC is %s USDC below the gross requested %s USDC "
+                        "(within the %s USDC performance-fee tolerance).",
+                        self.safe_address,
+                        current_balance,
+                        observed_shortfall,
+                        gross_expected_balance,
+                        accepted_tolerance,
+                    )
                 logger.info(
                     "Perp withdrawable balance is ready for Safe %s after %d poll(s): "
                     "%s USDC (expected at least %s USDC, tolerance %s USDC)",
@@ -1067,6 +1143,7 @@ class HypercoreVaultRouting(RoutingModel):
         position_quantity_before: Decimal,
         current_vault_equity: Decimal,
         expected_increase_raw: int,
+        performance_fee_tolerance: Decimal | None = None,
     ) -> bool:
         """Check whether a withdrawal already appears as reduced vault equity.
 
@@ -1075,17 +1152,71 @@ class HypercoreVaultRouting(RoutingModel):
         dropped and the perp withdrawable balance baseline is effectively
         post-withdrawal. In that case, waiting for another increase in perp
         withdrawable would be a false failure.
+
+        :param performance_fee_tolerance:
+            Worst-case HyperCore leader performance fee (in USDC) for this
+            withdrawal. The observed vault equity decrease can be smaller than
+            the gross request by up to this fee, because the leader performance
+            fee is taken from the redeemed profit. When provided and larger than
+            the relative tolerance, it becomes the maximum accepted gap between
+            the requested amount and the observed equity decrease. See
+            :py:data:`HYPERCORE_DEFAULT_PERFORMANCE_FEE`.
         """
         expected_increase = raw_to_usdc(expected_increase_raw)
         accepted_tolerance = max(
             Decimal("0.10"),
             expected_increase * HYPERCORE_RELATIVE_BALANCE_TOLERANCE,
+            performance_fee_tolerance or Decimal(0),
         )
         inferred_decrease = max(
             position_quantity_before - current_vault_equity,
             Decimal(0),
         )
         return inferred_decrease >= expected_increase - accepted_tolerance
+
+    def _fetch_vault_performance_fee(self, vault_address: str) -> Decimal:
+        """Fetch the HyperCore vault leader performance fee, as a fraction.
+
+        HyperCore vault leaders charge a performance fee (typically 10%) on
+        depositor profit, deducted at or before withdrawal from the redeemed
+        profit. The fee is read from the ``vaultDetails`` API ``leaderCommission``
+        field, exposed as :py:attr:`eth_defi.hyperliquid.vault.VaultInfo.commission_rate`.
+
+        That field is sometimes ``None`` or zero even for vaults that do charge
+        a fee, and the API read can fail. In both cases we fall back to
+        :py:data:`HYPERCORE_DEFAULT_PERFORMANCE_FEE` so phase-1 verification
+        stays robust against fee-shaped shortfalls rather than halting on a
+        successful but fee-reduced withdrawal.
+
+        :param vault_address:
+            HyperCore native vault address.
+        :return:
+            Performance fee as a fraction (e.g. ``Decimal("0.10")`` for 10%).
+        """
+        commission_rate = None
+        try:
+            vault_info = HyperliquidVault(session=self._get_session(), vault_address=vault_address).fetch_info()
+            commission_rate = vault_info.commission_rate
+        except Exception as e:
+            logger.warning(
+                "Could not fetch HyperCore vault performance fee for %s: %s. "
+                "Assuming default performance fee %s.",
+                vault_address,
+                e,
+                HYPERCORE_DEFAULT_PERFORMANCE_FEE,
+            )
+
+        rate = Decimal(str(commission_rate)) if commission_rate is not None else Decimal(0)
+        if rate <= 0:
+            logger.info(
+                "HyperCore vault %s has no performance fee in vault data; assuming default %s.",
+                vault_address,
+                HYPERCORE_DEFAULT_PERFORMANCE_FEE,
+            )
+            return HYPERCORE_DEFAULT_PERFORMANCE_FEE
+
+        logger.info("HyperCore vault %s leader performance fee is %s.", vault_address, rate)
+        return rate
 
     def _get_phase1_noop_retry_raw(
         self,
@@ -1289,6 +1420,16 @@ class HypercoreVaultRouting(RoutingModel):
             lines.append(f"  Max withdrawable: {vault_info.max_withdrawable} USDC")
             lines.append(f"  Max distributable: {vault_info.max_distributable} USDC")
             lines.append(f"  Relationship type: {vault_info.relationship_type}")
+            if vault_info.commission_rate is not None:
+                lines.append(
+                    f"  Leader performance fee (commission): {vault_info.commission_rate} "
+                    f"(deducted from redeemed profit on/before withdrawal)"
+                )
+            else:
+                lines.append(
+                    f"  Leader performance fee (commission): not reported, "
+                    f"assuming default {HYPERCORE_DEFAULT_PERFORMANCE_FEE}"
+                )
             if vault_info.leader_fraction is not None:
                 lines.append(f"  Leader fraction: {vault_info.leader_fraction}")
             # Find our follower entry for lockup info
@@ -2398,11 +2539,32 @@ class HypercoreVaultRouting(RoutingModel):
             effective_reserve = planned_reserve
             gross_vault_redeemed_reserve = planned_reserve
         else:
+            # HyperCore deducts the vault leader performance fee from redeemed
+            # profit, on or before withdrawal, so the net USDC arriving in perp
+            # can fall short of the gross requested amount by up to this fee.
+            # Use the worst-case fee as the maximum acceptable phase-1 shortfall
+            # so a successful but fee-reduced withdrawal is not mistaken for a
+            # silent vaultTransfer no-op (2026-06-13 IKAGI #1022 incident).
+            performance_fee_rate = self._fetch_vault_performance_fee(vault_address)
+            phase1_performance_fee_tolerance = estimate_max_withdrawal_commission(
+                phase1_requested_reserve,
+                performance_fee_rate,
+            )
+            logger.info(
+                "HyperCore phase-1 withdrawal for trade %s requests %s USDC gross; "
+                "performance fee rate %s gives a worst-case fee of %s USDC, used as the "
+                "maximum acceptable phase-1 perp arrival shortfall.",
+                trade.trade_id,
+                phase1_requested_reserve,
+                performance_fee_rate,
+                phase1_performance_fee_tolerance,
+            )
             try:
                 perp_balance = self._wait_for_perp_withdrawable_balance(
                     baseline_balance=baseline_perp_withdrawable,
                     expected_increase_raw=expected_raw,
                     relative_tolerance=withdrawal_relative_tolerance,
+                    performance_fee_tolerance=phase1_performance_fee_tolerance,
                     timeout=30.0,
                     poll_interval=2.0,
                 )
@@ -2433,6 +2595,7 @@ class HypercoreVaultRouting(RoutingModel):
                     position_quantity_before=phase1_equity_baseline,
                     current_vault_equity=current_vault_equity,
                     expected_increase_raw=expected_raw,
+                    performance_fee_tolerance=phase1_performance_fee_tolerance,
                 ):
                     perp_balance = self._fetch_safe_perp_withdrawable_balance()
                     logger.info(
@@ -2523,6 +2686,7 @@ class HypercoreVaultRouting(RoutingModel):
                                 baseline_balance=baseline_perp_withdrawable,
                                 expected_increase_raw=expected_raw,
                                 relative_tolerance=withdrawal_relative_tolerance,
+                                performance_fee_tolerance=phase1_performance_fee_tolerance,
                                 timeout=30.0,
                                 poll_interval=2.0,
                             )
