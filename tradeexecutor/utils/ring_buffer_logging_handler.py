@@ -38,6 +38,9 @@ class ExportedRecord(TypedDict):
 
     level_number: int
 
+    #: Human-readable exception traceback as a list of formatted lines (output of traceback.format_exception)
+    formatted_data: Optional[List[str]]
+
     @staticmethod
     def get_symbolic_log_level(log_level: int) -> str:
         level = LogRecord(log_level)
@@ -102,9 +105,10 @@ class RingBufferHandler(Handler):
         for r in list(self.buffer):
             try:
                 records.append(ExportedRecord.export(r))
-            except TypeError as e:
-                # TypeError: not enough arguments for format string
-                raise TypeError(f"Could not format: {r.msg}") from e
+            except TypeError:
+                # E.g. "not enough arguments for format string" when the log
+                # message and its args do not match. Skip rather than crash.
+                logger.warning("Could not format log record: %r", r.msg, exc_info=True)
             except Exception:
                 # A single malformed record (e.g. a broken traceback) must not
                 # take down the whole /logs endpoint - skip it instead.
