@@ -214,40 +214,17 @@ HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW = 200_000
 # tolerance to avoid false failures.
 HYPERCORE_RELATIVE_BALANCE_TOLERANCE = Decimal("0.01")
 
-#: Default HyperCore vault leader performance fee, as a fraction.
+#: Last-resort HyperCore vault leader performance fee, as a fraction.
 #:
-#: Incident reference:
+#: The fee differs per vault (leader vaults ~10%, protocol/HLP vaults 0%), so it
+#: is resolved per vault by
+#: :py:meth:`HypercoreVaultRouting._resolve_vault_performance_fee`; this default
+#: applies only when neither the pair metadata nor a live ``leaderCommission``
+#: read is available. The value mirrors eth_defi's
+#: :py:data:`eth_defi.hyperliquid.constants.HYPERLIQUID_VAULT_PERFORMANCE_FEE`
+#: (the source of truth), kept as ``Decimal`` for exact USDC arithmetic.
 #:
-#: - HyperAI crashed on 2026-06-13 during trade #1022, IKAGI-USDC.
-#: - Phase 1 (``vaultTransfer(vault->perp)``) succeeded: vault equity dropped
-#:   837.85 -> 794.98 USDC and perp withdrawable rose to 42.64 USDC.
-#: - But settlement waited for the gross planned reserve (45.23 USDC) to arrive
-#:   in perp, with only the 1% relative/slippage tolerance.
-#: - HyperCore had deducted a leader performance fee (~5-6% here) on the
-#:   redeemed profit, so the net perp arrival fell short of the gross request by
-#:   far more than 1%. A successful withdrawal was treated as a failure and
-#:   halted the whole sequential rebalance.
-#:
-#: HyperCore vault leaders charge a performance fee on depositor profit, but the
-#: rate differs per vault (leader vaults ~10%, protocol/HLP vaults 0%), so this
-#: is only a *last-resort* default. The per-vault rate is resolved by
-#: :py:meth:`HypercoreVaultRouting._resolve_vault_performance_fee` from the
-#: trading pair metadata (``other_data["vault_performance_fee"]``) first, then a
-#: live ``leaderCommission`` read; this default applies only when neither is
-#: available, so phase-1 verification stays robust against fee-shaped shortfalls.
-#:
-#: The value is the fixed 10% leader profit share that eth_defi documents for
-#: all Hyperliquid leader vaults
-#: (:py:data:`eth_defi.hyperliquid.constants.HYPERLIQUID_VAULT_PERFORMANCE_FEE`),
-#: kept as ``Decimal`` here for exact USDC arithmetic. That module is the
-#: source of truth for the rate.
-#:
-#: The fee may be deducted before withdrawal (already reflected in vault
-#: equity) or on withdrawal, so in the worst case the net perp arrival is the
-#: gross request minus ``performance_fee_rate * gross_request``. We therefore
-#: use that worst-case fee amount as the maximum acceptable phase-1 shortfall.
-#:
-#: See https://hyperliquid.gitbook.io/hyperliquid-docs/hypercore/vaults
+#: Background and the 2026-06-13 IKAGI #1022 incident: ``.claude/docs/hypercore-vault.md``.
 HYPERCORE_DEFAULT_PERFORMANCE_FEE = Decimal(str(HYPERLIQUID_VAULT_PERFORMANCE_FEE))
 
 #: Fixed ``maxFeePerGas`` for HyperEVM transactions (in wei).
@@ -1221,9 +1198,7 @@ class HypercoreVaultRouting(RoutingModel):
             Performance fee as a fraction (e.g. ``Decimal("0.10")`` for 10%).
         """
         # 1. Per-vault fee from trading-strategy pair metadata (authoritative, no network).
-        pair = getattr(trade, "pair", None)
-        pair_other_data = getattr(pair, "other_data", None) or {}
-        pair_fee = pair_other_data.get("vault_performance_fee")
+        pair_fee = (trade.pair.other_data or {}).get("vault_performance_fee")
         if pair_fee is not None:
             rate = max(Decimal(str(pair_fee)), Decimal(0))
             logger.info(
