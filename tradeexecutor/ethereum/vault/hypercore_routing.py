@@ -98,6 +98,7 @@ from eth_defi.hyperliquid.session import (
     create_hyperliquid_session,
 )
 from eth_defi.hyperliquid.vault import HyperliquidVault, estimate_max_withdrawal_commission
+from eth_defi.hyperliquid.constants import HYPERLIQUID_VAULT_PERFORMANCE_FEE
 
 from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.state.blockhain_transaction import (
@@ -221,12 +222,18 @@ HYPERCORE_RELATIVE_BALANCE_TOLERANCE = Decimal("0.01")
 #:   far more than 1%. A successful withdrawal was treated as a failure and
 #:   halted the whole sequential rebalance.
 #:
-#: HyperCore vault leaders charge a performance fee (typically 10%) on
-#: depositor profit. The fee is sourced from the ``vaultDetails`` API
-#: ``leaderCommission`` field (:py:attr:`eth_defi.hyperliquid.vault.VaultInfo.commission_rate`),
-#: but that field is sometimes ``None`` or zero even for vaults that do charge
-#: a fee. When the fee is not available from vault data we assume this default
-#: so phase-1 verification stays robust against fee-shaped shortfalls.
+#: HyperCore vault leaders charge a performance fee on depositor profit. The
+#: per-vault rate is sourced from the ``vaultDetails`` API ``leaderCommission``
+#: field (:py:attr:`eth_defi.hyperliquid.vault.VaultInfo.commission_rate`), but
+#: that field is sometimes ``None`` (not reported). When the fee is not
+#: available from vault data we assume this default so phase-1 verification
+#: stays robust against fee-shaped shortfalls.
+#:
+#: The value is the fixed 10% leader profit share that eth_defi documents for
+#: all Hyperliquid leader vaults
+#: (:py:data:`eth_defi.hyperliquid.constants.HYPERLIQUID_VAULT_PERFORMANCE_FEE`),
+#: kept as ``Decimal`` here for exact USDC arithmetic. That module is the
+#: source of truth for the rate.
 #:
 #: The fee may be deducted before withdrawal (already reflected in vault
 #: equity) or on withdrawal, so in the worst case the net perp arrival is the
@@ -234,7 +241,7 @@ HYPERCORE_RELATIVE_BALANCE_TOLERANCE = Decimal("0.01")
 #: use that worst-case fee amount as the maximum acceptable phase-1 shortfall.
 #:
 #: See https://hyperliquid.gitbook.io/hyperliquid-docs/hypercore/vaults
-HYPERCORE_DEFAULT_PERFORMANCE_FEE = Decimal("0.10")
+HYPERCORE_DEFAULT_PERFORMANCE_FEE = Decimal(str(HYPERLIQUID_VAULT_PERFORMANCE_FEE))
 
 #: Fixed ``maxFeePerGas`` for HyperEVM transactions (in wei).
 #:
