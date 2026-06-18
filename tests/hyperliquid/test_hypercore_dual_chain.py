@@ -575,6 +575,7 @@ def test_withdrawal_already_reflected_in_vault_equity_is_detected():
     1. Recognise a clean equity decrease that matches the expected residual.
     2. Reject the IKAGI fee-reduced decrease (42.86 vs 45.23 gross) under the bare 1% tolerance.
     3. Accept the same fee-reduced decrease once the 10% performance-fee tolerance is applied.
+    4. Honour the trade slippage tolerance so the fallback never rejects a shortfall the perp wait accepts.
     """
     from eth_defi.hyperliquid.vault import estimate_max_withdrawal_commission
 
@@ -602,6 +603,20 @@ def test_withdrawal_already_reflected_in_vault_equity_is_detected():
         current_vault_equity=Decimal("794.984554"),
         expected_increase_raw=45_232_559,
         performance_fee_tolerance=performance_fee_tolerance,
+    ) is True
+
+    # 4. A 4% equity-decrease shortfall (no performance fee) is rejected at 1% but accepted at a
+    #    matching 5% slippage tolerance — the fallback mirrors the primary perp wait.
+    assert routing._is_withdrawal_already_reflected_in_vault_equity(
+        position_quantity_before=Decimal("100.0"),
+        current_vault_equity=Decimal("4.0"),  # decrease 96 vs 100 gross = 4% short
+        expected_increase_raw=100_000_000,
+    ) is False
+    assert routing._is_withdrawal_already_reflected_in_vault_equity(
+        position_quantity_before=Decimal("100.0"),
+        current_vault_equity=Decimal("4.0"),
+        expected_increase_raw=100_000_000,
+        relative_tolerance=Decimal("0.05"),
     ) is True
 
 

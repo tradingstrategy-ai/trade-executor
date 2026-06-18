@@ -1134,6 +1134,7 @@ class HypercoreVaultRouting(RoutingModel):
         position_quantity_before: Decimal,
         current_vault_equity: Decimal,
         expected_increase_raw: int,
+        relative_tolerance: Decimal | None = None,
         performance_fee_tolerance: Decimal | None = None,
     ) -> bool:
         """Check whether a withdrawal already appears as reduced vault equity.
@@ -1144,6 +1145,11 @@ class HypercoreVaultRouting(RoutingModel):
         post-withdrawal. In that case, waiting for another increase in perp
         withdrawable would be a false failure.
 
+        :param relative_tolerance:
+            Relative drift tolerance, mirroring the primary phase-1 perp wait
+            (the trade slippage tolerance, at least
+            :py:data:`HYPERCORE_RELATIVE_BALANCE_TOLERANCE`). Kept consistent so
+            this fallback never rejects a shortfall the perp wait would accept.
         :param performance_fee_tolerance:
             Worst-case HyperCore leader performance fee (in USDC) for this
             withdrawal. The observed vault equity decrease can be smaller than
@@ -1153,10 +1159,12 @@ class HypercoreVaultRouting(RoutingModel):
             the requested amount and the observed equity decrease. See
             :py:data:`HYPERCORE_DEFAULT_PERFORMANCE_FEE`.
         """
+        if relative_tolerance is None:
+            relative_tolerance = HYPERCORE_RELATIVE_BALANCE_TOLERANCE
         expected_increase = raw_to_usdc(expected_increase_raw)
         accepted_tolerance = max(
             Decimal("0.10"),
-            expected_increase * HYPERCORE_RELATIVE_BALANCE_TOLERANCE,
+            expected_increase * relative_tolerance,
             performance_fee_tolerance or Decimal(0),
         )
         inferred_decrease = max(
@@ -2610,6 +2618,7 @@ class HypercoreVaultRouting(RoutingModel):
                     position_quantity_before=phase1_equity_baseline,
                     current_vault_equity=current_vault_equity,
                     expected_increase_raw=expected_raw,
+                    relative_tolerance=withdrawal_relative_tolerance,
                     performance_fee_tolerance=phase1_performance_fee_tolerance,
                 ):
                     perp_balance = self._fetch_safe_perp_withdrawable_balance()
