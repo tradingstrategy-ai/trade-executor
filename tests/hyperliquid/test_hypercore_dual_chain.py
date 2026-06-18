@@ -447,11 +447,11 @@ def test_wait_for_perp_withdrawable_balance_accepts_trade_slippage_and_performan
 
 
 def test_fetch_vault_performance_fee_uses_vault_data_or_default():
-    """Resolve the HyperCore vault performance fee, defaulting to 10% when missing.
+    """Resolve the HyperCore vault performance fee, defaulting to 10% only when not reported.
 
-    1. Build a routing object and a vault info reporting an explicit 15% commission.
-    2. Resolve the performance fee and confirm the reported rate is used.
-    3. Resolve again with a vault info reporting no commission and confirm the 10% default.
+    1. An explicit 15% commission is used as-is.
+    2. A missing (None) commission falls back to the 10% default.
+    3. An explicit 0% commission is trusted (genuine no-fee vault), not overridden by the default.
     """
     from tradeexecutor.ethereum.vault.hypercore_routing import (
         HYPERCORE_DEFAULT_PERFORMANCE_FEE,
@@ -461,21 +461,19 @@ def test_fetch_vault_performance_fee_uses_vault_data_or_default():
     # Routing needs a session to query vault details; a mock is enough here.
     routing._get_session = MagicMock(return_value=MagicMock())
 
-    # 1. Build a routing object and a vault info reporting an explicit 15% commission.
-    vault_info_with_fee = MagicMock(commission_rate=Decimal("0.15"))
-    vault_info_without_fee = MagicMock(commission_rate=None)
+    def resolve(commission_rate):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault") as mock_vault_cls:
+            mock_vault_cls.return_value.fetch_info.return_value = MagicMock(commission_rate=commission_rate)
+            return routing._fetch_vault_performance_fee(VAULT_ADDR)
 
-    # 2. Resolve the performance fee and confirm the reported rate is used.
-    with patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault") as mock_vault_cls:
-        mock_vault_cls.return_value.fetch_info.return_value = vault_info_with_fee
-        rate = routing._fetch_vault_performance_fee(VAULT_ADDR)
-    assert rate == Decimal("0.15")
+    # 1. An explicit 15% commission is used as-is.
+    assert resolve(Decimal("0.15")) == Decimal("0.15")
 
-    # 3. Resolve again with a vault info reporting no commission and confirm the 10% default.
-    with patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault") as mock_vault_cls:
-        mock_vault_cls.return_value.fetch_info.return_value = vault_info_without_fee
-        rate = routing._fetch_vault_performance_fee(VAULT_ADDR)
-    assert rate == HYPERCORE_DEFAULT_PERFORMANCE_FEE
+    # 2. A missing (None) commission falls back to the 10% default.
+    assert resolve(None) == HYPERCORE_DEFAULT_PERFORMANCE_FEE
+
+    # 3. An explicit 0% commission is trusted (genuine no-fee vault), not overridden by the default.
+    assert resolve(Decimal("0")) == Decimal("0")
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
@@ -1091,11 +1089,13 @@ def test_withdrawal_aborts_if_perp_balance_does_not_appear(
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
+@patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
 def test_withdrawal_phase1_retry_handles_silent_noop_from_equity_drift(
     mock_fetch_equity,
     mock_block_ts,
+    mock_vault_cls,
     mock_report_failure,
 ):
     """Retry withdrawal phase 1 when fresh vault equity explains a silent HyperCore no-op.
@@ -1104,15 +1104,21 @@ def test_withdrawal_phase1_retry_handles_silent_noop_from_equity_drift(
     2. Make the first perp-balance wait time out, matching a silent ``vaultTransfer`` no-op.
     3. Retry phase 1 once using fresh vault equity minus the safety margin.
     4. Continue phases 2 and 3 with the retry amount.
-    5. Verify the trade succeeds and no stranded-USDC failure is reported.
+    5. Verify the trade succeeds, no stranded-USDC failure is reported, and the retry
+       recomputes a smaller performance-fee tolerance for the smaller retry amount.
     """
     from hexbytes import HexBytes
 
+    from eth_defi.hyperliquid.vault import estimate_max_withdrawal_commission
     from tradeexecutor.ethereum.vault.hypercore_routing import (
         HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,
         HypercoreWithdrawalVerificationError,
+        raw_to_usdc,
         usdc_to_raw,
     )
+
+    # Vault reports a 10% leader performance fee, so the fee tolerance scales with the amount.
+    mock_vault_cls.return_value.fetch_info.return_value = MagicMock(commission_rate=Decimal("0.10"))
 
     routing = _make_routing()
     trade = _make_trade(planned_reserve=Decimal("11.737146"))
@@ -1188,3 +1194,12 @@ def test_withdrawal_phase1_retry_handles_silent_noop_from_equity_drift(
     assert phase1_retry_tx in trade.blockchain_transactions
     state.mark_trade_success.assert_called_once()
     mock_report_failure.assert_not_called()
+
+    # The retry wait must use a fee tolerance recomputed for the smaller retry
+    # amount, not the original (larger) request — otherwise an over-large
+    # tolerance could accept little or no post-retry perp increase.
+    first_fee_tol = wait_perp.call_args_list[0].kwargs["performance_fee_tolerance"]
+    retry_fee_tol = wait_perp.call_args_list[1].kwargs["performance_fee_tolerance"]
+    assert first_fee_tol == estimate_max_withdrawal_commission(Decimal("11.737146"), Decimal("0.10"))
+    assert retry_fee_tol == estimate_max_withdrawal_commission(raw_to_usdc(retry_raw), Decimal("0.10"))
+    assert retry_fee_tol < first_fee_tol

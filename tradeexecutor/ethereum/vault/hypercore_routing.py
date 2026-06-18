@@ -1182,11 +1182,12 @@ class HypercoreVaultRouting(RoutingModel):
         profit. The fee is read from the ``vaultDetails`` API ``leaderCommission``
         field, exposed as :py:attr:`eth_defi.hyperliquid.vault.VaultInfo.commission_rate`.
 
-        That field is sometimes ``None`` or zero even for vaults that do charge
-        a fee, and the API read can fail. In both cases we fall back to
-        :py:data:`HYPERCORE_DEFAULT_PERFORMANCE_FEE` so phase-1 verification
-        stays robust against fee-shaped shortfalls rather than halting on a
-        successful but fee-reduced withdrawal.
+        When the field is ``None`` (not reported) or the API read fails, we
+        fall back to :py:data:`HYPERCORE_DEFAULT_PERFORMANCE_FEE` so phase-1
+        verification stays robust against fee-shaped shortfalls rather than
+        halting on a successful but fee-reduced withdrawal. An explicit zero
+        rate is trusted as a genuine no-fee vault and keeps strict phase-1
+        verification.
 
         :param vault_address:
             HyperCore native vault address.
@@ -1206,15 +1207,15 @@ class HypercoreVaultRouting(RoutingModel):
                 HYPERCORE_DEFAULT_PERFORMANCE_FEE,
             )
 
-        rate = Decimal(str(commission_rate)) if commission_rate is not None else Decimal(0)
-        if rate <= 0:
+        if commission_rate is None:
             logger.info(
-                "HyperCore vault %s has no performance fee in vault data; assuming default %s.",
+                "HyperCore vault %s reports no performance fee; assuming default %s.",
                 vault_address,
                 HYPERCORE_DEFAULT_PERFORMANCE_FEE,
             )
             return HYPERCORE_DEFAULT_PERFORMANCE_FEE
 
+        rate = max(Decimal(str(commission_rate)), Decimal(0))
         logger.info("HyperCore vault %s leader performance fee is %s.", vault_address, rate)
         return rate
 
@@ -2677,6 +2678,13 @@ class HypercoreVaultRouting(RoutingModel):
 
                         expected_raw = retry_raw
                         phase1_requested_reserve = raw_to_usdc(expected_raw)
+                        # Recompute the fee tolerance for the smaller retry amount.
+                        # Reusing the original (larger) tolerance would let the
+                        # retry wait accept little or no perp increase.
+                        phase1_performance_fee_tolerance = estimate_max_withdrawal_commission(
+                            phase1_requested_reserve,
+                            performance_fee_rate,
+                        )
                         trade.other_data["hypercore_capped_withdrawal_raw"] = retry_raw
                         vault_equity_before_phase1_snapshot = current_vault_equity
                         has_pre_phase1_vault_equity_snapshot = True
