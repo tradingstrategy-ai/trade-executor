@@ -750,7 +750,7 @@ def test_hyper_ai_hypercore_increase_then_decrease_position(
     monkeypatch.setattr(
         phased_withdrawal_router,
         "_wait_for_perp_withdrawable_balance",
-        lambda baseline_balance, expected_increase_raw, relative_tolerance=None, timeout=30.0, poll_interval=2.0: (
+        lambda baseline_balance, expected_increase_raw, relative_tolerance=None, performance_fee_tolerance=None, timeout=30.0, poll_interval=2.0: (
             baseline_balance + raw_to_usdc(expected_increase_raw) - phase1_fee_shortfall
         ),
     )
@@ -874,7 +874,7 @@ def test_hyper_ai_hypercore_close_phase1_fee_accounts_price_slippage(
     monkeypatch.setattr(
         phased_withdrawal_router,
         "_wait_for_perp_withdrawable_balance",
-        lambda baseline_balance, expected_increase_raw, relative_tolerance=None, timeout=30.0, poll_interval=2.0: (
+        lambda baseline_balance, expected_increase_raw, relative_tolerance=None, performance_fee_tolerance=None, timeout=30.0, poll_interval=2.0: (
             baseline_balance + raw_to_usdc(expected_increase_raw) - phase1_fee_shortfall
         ),
     )

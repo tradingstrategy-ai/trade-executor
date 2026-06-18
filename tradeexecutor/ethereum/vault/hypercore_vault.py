@@ -122,6 +122,7 @@ def create_hypercore_vault_pair(
     vault_address: HexAddress | str,
     is_testnet: bool = False,
     internal_id: int = 1,
+    performance_fee: float | None = None,
 ) -> TradingPairIdentifier:
     """Create a TradingPairIdentifier for a Hypercore vault deposit.
 
@@ -157,6 +158,15 @@ def create_hypercore_vault_pair(
 
     :param internal_id:
         Internal pair ID. Increment if multiple Hypercore vaults in same universe.
+
+    :param performance_fee:
+        Vault leader performance fee as a fraction (e.g. ``0.10`` for 10%).
+        Stored in ``other_data["vault_performance_fee"]`` so withdrawal
+        settlement can size the phase-1 fee tolerance per vault without a live
+        API read. The fee differs per vault: user-created leader vaults charge
+        ~10%, while protocol vaults (HLP and its sub-vaults) charge ``0.0``.
+        Leave ``None`` if unknown; settlement then falls back to a live read and
+        finally :py:data:`~tradeexecutor.ethereum.vault.hypercore_routing.HYPERCORE_DEFAULT_PERFORMANCE_FEE`.
 
     :return:
         Fully configured vault pair for Hypercore vault.
@@ -199,6 +209,7 @@ def create_hypercore_vault_pair(
         other_data={
             "vault_protocol": "hypercore",
             "exchange_is_testnet": is_testnet,
+            "vault_performance_fee": performance_fee,
         },
     )
 
