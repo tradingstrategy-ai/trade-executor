@@ -3,12 +3,16 @@
 Allows any process to fetch the latest logs from the process itself.
 """
 
+import logging
 from collections import deque
 from logging import Handler, LogRecord, NOTSET
 from typing import Deque, List, TypedDict, Optional
 
 from tblib import Traceback
 from traceback import format_exception
+
+
+logger = logging.getLogger(__name__)
 
 
 class ExportedRecord(TypedDict):
@@ -46,8 +50,14 @@ class ExportedRecord(TypedDict):
         # Massage data a bit
         if record.exc_info:
             et, ev, tb = record.exc_info
-            traceback_data = Traceback(tb).to_dict()
-            exception_type = str(et)
+            # tb (the traceback element) can be None even when exc_info is set,
+            # e.g. when an exception instance that was never raised is logged
+            # (its __traceback__ is None) or exc_info=True is used outside an
+            # active except block. tblib.Traceback(None) crashes with
+            # AttributeError: 'NoneType' object has no attribute 'tb_frame',
+            # so only build traceback_data when we actually have a traceback.
+            traceback_data = Traceback(tb).to_dict() if tb is not None else None
+            exception_type = str(et) if et is not None else None
             message = repr(record.msg)  # This is exception message in Python developer format
         else:
             exception_type = traceback_data = None
@@ -87,12 +97,18 @@ class RingBufferHandler(Handler):
             Log records sorted by timestamp, for oldest to newest
         """
         records = []
-        for r in self.buffer:
+        # Iterate over a snapshot: the resilient warning below logs into the
+        # same handler, which would otherwise mutate the deque mid-iteration.
+        for r in list(self.buffer):
             try:
                 records.append(ExportedRecord.export(r))
             except TypeError as e:
                 # TypeError: not enough arguments for format string
                 raise TypeError(f"Could not format: {r.msg}") from e
+            except Exception:
+                # A single malformed record (e.g. a broken traceback) must not
+                # take down the whole /logs endpoint - skip it instead.
+                logger.warning("Could not export log record: %r", r.msg, exc_info=True)
 
         records.sort(key=lambda r: r["timestamp"])
         return records
