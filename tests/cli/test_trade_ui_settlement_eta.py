@@ -91,12 +91,12 @@ def _make_state_with_pending_deposit(
 
 
 def test_tui_lockup_shows_ostium_settlement_eta(monkeypatch) -> None:
-    """A pending Ostium deposit with a future estimate shows a settlement countdown.
+    """A pending Ostium deposit with a future estimate shows an eligibility countdown.
 
     Steps:
     1. Freeze the clock so the remaining time is deterministic.
     2. Build a state with a settlement-pending deposit estimated ~18h ahead.
-    3. Assert the Lockup cell shows a ``settles`` countdown, not ``-``.
+    3. Assert the Lockup cell shows an ``eligible`` countdown, not ``-``.
     4. Build a state whose estimate has already passed and assert ``settling``.
     """
 
@@ -110,9 +110,9 @@ def test_tui_lockup_shows_ostium_settlement_eta(monkeypatch) -> None:
     future = (now + datetime.timedelta(hours=18)).isoformat()
     state = _make_state_with_pending_deposit(pair, future)
 
-    # 3. Future estimate renders as a "settles" countdown.
+    # 3. Future estimate renders as an "eligible" countdown.
     cell = _format_lockup(state, pair)
-    assert "settles" in cell.plain
+    assert "eligible" in cell.plain
     assert "18.0h" in cell.plain
 
     # 4. A past estimate (settlement slipped) renders as "settling".

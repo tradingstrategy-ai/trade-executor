@@ -79,9 +79,9 @@ DEFAULT_VAULT_SETTLEMENT_DELAY = datetime.timedelta(days=1)
 
 #: Hour of day (UTC, naive) when Ostium-style vaults settle in backtesting.
 #:
-#: Live Ostium settles in roughly daily epochs (``lastSettlementTs +
-#: maxSettlementInterval`` on-chain); the backtest approximates this as
-#: "the request becomes claimable the next day at this hour". Override the
+#: Live Ostium V1.5 exposes settlement eligibility through the request
+#: settlement id and ``lastSettlementTs + maxSettlementInterval``. Backtests
+#: keep the earlier next-day approximation for reproducibility. Override the
 #: schedule per vault with ``vault_settlement_delay_overrides``.
 OSTIUM_BACKTEST_SETTLEMENT_HOUR = 18
 
@@ -368,8 +368,8 @@ class BacktestExecution(ExecutionModel):
         1. Per-vault override (``vault_settlement_delay_overrides``) — a fixed
            delay from the request time.
         2. Ostium-style vaults (``ostium_like`` feature) — the next day at
-           :py:data:`OSTIUM_BACKTEST_SETTLEMENT_HOUR`, approximating Ostium's
-           daily epoch settlement schedule.
+           :py:data:`OSTIUM_BACKTEST_SETTLEMENT_HOUR`, preserving the
+           historical backtest approximation.
         3. The global default delay (``vault_settlement_delay``).
         """
         if pair.pool_address:
@@ -379,8 +379,8 @@ class BacktestExecution(ExecutionModel):
 
         features = pair.get_vault_features() or set()
         if ERC4626Feature.ostium_like in features:
-            # Ostium settles in daily epochs: the request becomes claimable
-            # the following day at the epoch settlement hour.
+            # Preserve the original Ostium backtest approximation instead of
+            # changing historical simulations when live vault intervals move.
             next_day = ts + datetime.timedelta(days=1)
             return next_day.replace(hour=OSTIUM_BACKTEST_SETTLEMENT_HOUR, minute=0, second=0, microsecond=0)
 

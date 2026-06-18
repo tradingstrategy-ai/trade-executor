@@ -186,7 +186,7 @@ def _format_lockup(state: State, pair: TradingPairIdentifier) -> Text:
     Priority:
 
     1. If an async deposit is pending settlement, show the estimated
-       settlement time (``settles 18.5h``), ``settling`` when the stored
+       settlement eligibility time (``eligible 18.5h``), ``settling`` when the stored
        estimate has already passed, or ``pending`` when no on-chain ETA is
        available (operator-driven ERC-7540 vaults like Lagoon).
     2. Otherwise show the lockup time remaining from the stored expiry
@@ -219,7 +219,7 @@ def _format_lockup(state: State, pair: TradingPairIdentifier) -> Text:
         if remaining.total_seconds() <= 0:
             # Estimate has passed — settlement is due / in progress.
             return Text("settling", style="yellow", justify="right")
-        return Text(_format_remaining(remaining, prefix="settles "), style="yellow", justify="right")
+        return Text(_format_remaining(remaining, prefix="eligible "), style="yellow", justify="right")
 
     # 2. Fall back to lockup expiry.
     expires_at_str = position.other_data.get("vault_lockup_expires_at")

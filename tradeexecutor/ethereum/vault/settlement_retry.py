@@ -26,6 +26,7 @@ from web3 import Web3
 from web3.contract.contract import ContractFunction
 
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
+from tradeexecutor.ethereum.vault.settlement_estimate import refresh_vault_settlement_estimate
 from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.state import State
@@ -301,6 +302,7 @@ def _resolve_single_vault_trade(
         ticket = deposit_manager.reconstruct_deposit_ticket(trade.other_data)
     else:
         ticket = deposit_manager.reconstruct_redemption_ticket(trade.other_data)
+    refresh_vault_settlement_estimate(trade, deposit_manager, ticket, direction)
 
     # STEP A: Check for existing post-request tx (idempotent handling)
     request_tx_count = trade.other_data.get("vault_request_tx_count", 1)

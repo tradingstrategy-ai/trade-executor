@@ -24,6 +24,7 @@ from tradeexecutor.state.identifier import (
 )
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus, TradeType
+from tradeexecutor.ethereum.vault.settlement_estimate import refresh_vault_settlement_estimate
 
 
 USDC_ARBITRUM_ADDRESS = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
@@ -161,6 +162,51 @@ def test_vault_settlement_pending_value_in_equity(
     # Vault pending: 500
     total_equity = state.portfolio.calculate_total_equity()
     assert total_equity == pytest.approx(10_000.0)
+
+
+def test_vault_settlement_estimate_refresh_uses_generic_ticket_method(
+    vault_pair: TradingPairIdentifier,
+    usdc_arbitrum: AssetIdentifier,
+) -> None:
+    """Check generic settlement refresh stores display ETA from an adapter ticket method.
+
+    1. Create a settlement-pending vault deposit trade.
+    2. Mock a deposit manager with a ticket-based settlement ETA method.
+    3. Refresh the trade estimate and verify the persisted ISO timestamp.
+    """
+    state = State()
+    ts = datetime.datetime(2025, 1, 1)
+
+    # 1. Create a settlement-pending vault deposit trade.
+    state.portfolio.initialise_reserves(usdc_arbitrum)
+    reserve = state.portfolio.get_default_reserve_position()
+    reserve.quantity = Decimal(10_000)
+    reserve.reserve_token_price = 1.0
+    trade = _create_vault_buy_trade(state, vault_pair, usdc_arbitrum, Decimal(500), ts)
+    state.start_execution(ts, trade)
+    trade.mark_broadcasted(ts)
+    state.mark_vault_settlement_pending(
+        ts,
+        trade,
+        {
+            "vault_address": OLP_ARBITRUM_ADDRESS,
+            "vault_owner": "0xTestOwner",
+            "vault_to": "0xTestOwner",
+            "vault_raw_amount": 500_000_000,
+            "vault_request_tx_hash": "0xrequest123",
+            "vault_settlement_id": 42,
+        },
+    )
+
+    # 2. Mock a deposit manager with a ticket-based settlement ETA method.
+    ticket = object()
+    deposit_manager = MagicMock()
+    deposit_manager.get_deposit_ticket_delay_over.return_value = datetime.datetime(2026, 6, 19, 16, 33, 48)
+
+    # 3. Refresh the trade estimate and verify the persisted ISO timestamp.
+    refresh_vault_settlement_estimate(trade, deposit_manager, ticket, "deposit")
+    assert trade.other_data["vault_settlement_estimated_at"] == "2026-06-19T16:33:48"
+    deposit_manager.get_deposit_ticket_delay_over.assert_called_once_with(ticket)
 
 
 def test_vault_settlement_pending_sell_not_counted(

@@ -37,7 +37,7 @@ We support:
 |---|---|---|
 | Synchronous ERC-4626 | IPOR, Morpho, Euler | Immediately, in the deposit/redeem transaction |
 | ERC-7540 | Lagoon | The vault's operator settles the queue manually — there is **no schedule** and the wait is unknowable in advance |
-| Ostium V1.5 | Ostium OLP | A time window (epoch) passes — the claimable timestamp is known when the request is made |
+| Ostium V1.5 | Ostium OLP | A settlement id is assigned when the request is made; `tryNewSettlement()` becomes eligible after the vault's on-chain interval |
 | Hypercore-native | Hyperliquid HLP | Not on-chain ERC-20 flows at all; handled by a separate Hypercore code path and out of scope here |
 
 The protocol differences are hidden behind one interface: every vault exposes a
@@ -141,8 +141,10 @@ friends) control it:
 
 Ostium-style vaults get a schedule instead of a fixed delay: with no
 override, a request settles **the next day at the epoch settlement hour**
-(`OSTIUM_BACKTEST_SETTLEMENT_HOUR`, 18:00 UTC), approximating Ostium's daily
-on-chain epochs.
+(`OSTIUM_BACKTEST_SETTLEMENT_HOUR`, 18:00 UTC). This is a backtest
+approximation kept for reproducibility. Live Ostium V1.5 reads the concrete
+settlement id from the request event and estimates the eligibility timestamp
+from the vault's on-chain `lastSettlementTs` and `maxSettlementInterval`.
 
 **Note a behaviour change for older backtests.** The two-stage simulation
 switches on *automatically* for any vault whose metadata carries async
@@ -253,10 +255,13 @@ How each command or context takes a request from pending to settled:
   On a real chain it leaves the trade pending and prints
   "re-run perform-test-trade after settlement" — the second run (or the
   daemon) claims it.
-- **`trade-ui`** — observability plus the test-trade route: the position
-  table shows the settlement ETA for pending deposits (a real timestamp for
-  Ostium; `pending` for Lagoon, where no ETA exists). Test trades executed
-  from the UI follow the `perform-test-trade` path above.
+- **`trade-ui`** — observability plus the test-trade route: before drawing the
+  table it runs the same pending-settlement resolver as `start`, so claimable
+  vault requests are completed and display-only settlement metadata is
+  refreshed from chain. The position table shows the settlement eligibility
+  ETA for pending deposits (a real timestamp for Ostium; `pending` for Lagoon,
+  where no ETA exists). Test trades executed from the UI follow the
+  `perform-test-trade` path above.
 - **`check-wallet`** — observability only: reports pending and
   settled-but-unclaimed vault amounts (`maxDeposit`/`maxRedeem`/
   `pendingRedeemRequest`) so the operator can see where in the lifecycle the

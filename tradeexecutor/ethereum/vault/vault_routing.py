@@ -19,6 +19,7 @@ from eth_defi.vault.deposit_redeem import VaultDepositManager
 
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
 from tradeexecutor.ethereum.token_cache import get_default_token_cache
+from tradeexecutor.ethereum.vault.settlement_estimate import refresh_vault_settlement_estimate
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
@@ -444,6 +445,12 @@ class VaultRouting(RoutingModel):
                 )
                 ticket = deposit_request.parse_deposit_transaction(tx_hashes)
                 ticket_data = deposit_manager.serialize_deposit_ticket(ticket)
+                refresh_vault_settlement_estimate(
+                    trade,
+                    deposit_manager,
+                    ticket,
+                    direction,
+                )
             else:
                 # Reconstruct redemption request using shares (Decimal) —
                 # Lagoon asserts `not raw_shares` so we must pass the decimal form.
@@ -467,6 +474,12 @@ class VaultRouting(RoutingModel):
                     )
                 ticket = redemption_request.parse_redeem_transaction(tx_hashes)
                 ticket_data = deposit_manager.serialize_redemption_ticket(ticket)
+                refresh_vault_settlement_estimate(
+                    trade,
+                    deposit_manager,
+                    ticket,
+                    direction,
+                )
 
             state.mark_vault_settlement_pending(ts, trade, ticket_data)
             logger.info(
