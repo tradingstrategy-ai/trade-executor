@@ -346,17 +346,23 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web
     from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
     from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
 
+    # This function impersonates the vault operator and only makes sense against
+    # an Anvil fork — on a real chain nobody can force a settlement. Enforce the
+    # test-only invariant here rather than relying on every caller's is_anvil()
+    # guard, so the dev-account gas payer below can never reach a real chain.
+    assert is_anvil(web3), "_force_vault_settlement_and_resolve() is Anvil-only (forces operator settlement)"
+
     vault = get_vault_for_pair(web3, trade.pair)
     owner = trade.other_data.get("vault_owner_address")
 
-    # tryNewSettlement() is broadcast with node-side signing
-    # (eth_sendTransaction {"from": ...}), so the gas payer must be an account the
-    # node can sign for. The vault owner is the executor's hot wallet — a random
-    # key whose local signer middleware lives only on the executor's own web3, not
-    # on the Anvil node — so paying from it fails with "No Signer available".
-    # tryNewSettlement() is permissionless, so on Anvil we pay gas from a
-    # node-unlocked dev account instead. This is test-only: the whole function
-    # only runs on an Anvil fork.
+    # Ostium's tryNewSettlement() is permissionless and is broadcast with
+    # node-side signing (eth_sendTransaction {"from": ...}), so its gas payer must
+    # be an account the node can sign for. The vault owner is the executor's hot
+    # wallet — a random key whose local signer middleware lives only on the
+    # executor's own web3, not on the Anvil node — so paying from it fails with
+    # "No Signer available". On Anvil we therefore pay tryNewSettlement() gas from
+    # a node-unlocked dev account instead. (The Lagoon branch below keeps `owner`:
+    # its settlement is permissioned and must come from the actual asset manager.)
     settlement_caller = owner
     dev_accounts = web3.eth.accounts
     if dev_accounts:
@@ -374,11 +380,12 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web
         for _ in range(settlements_needed):
             force_ostium_v15_settlement(vault, settlement_caller)
     else:
-        # ERC-7540 (Lagoon) — use force_lagoon_settle if available
+        # ERC-7540 (Lagoon) — use force_lagoon_settle if available. Lagoon
+        # settlement is permissioned, so it must be sent from the vault manager
+        # (the owner for test trades), not the dev account used for Ostium above.
         from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
         if isinstance(vault, LagoonVault):
             from eth_defi.erc_4626.vault_protocol.lagoon.testing import force_lagoon_settle
-            # Need the vault manager address — for test trades this is typically the owner
             force_lagoon_settle(vault, owner)
 
     # Now run the generic settlement retry. Pass web3config so the claim is
