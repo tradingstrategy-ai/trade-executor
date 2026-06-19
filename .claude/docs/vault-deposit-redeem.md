@@ -254,7 +254,17 @@ How each command or context takes a request from pending to settled:
   in the same run, so a test trade completes its whole cycle in one command.
   On a real chain it leaves the trade pending and prints
   "re-run perform-test-trade after settlement" — the second run (or the
-  daemon) claims it.
+  daemon) claims it. **Cross-chain (CCTP-bridged) satellite vaults follow the
+  same rule.** A satellite-chain ERC-7540 / Ostium deposit lands in
+  `vault_settlement_pending` just like a home-chain one, so the cross-chain
+  flow (`_make_cross_chain_test_trade()`) routes every satellite open/close
+  through the shared `_resolve_satellite_async_settlement()` helper *before*
+  asserting success — a bare `is_success()` check there would misread a pending
+  request as a failure (revert reason `None`, because nothing reverted). On
+  Anvil the helper force-settles on the *destination* chain
+  (`web3config.get_connection(dest_chain_id)`) and forwards `web3config` so the
+  claim is broadcast chain-aware; on a real chain it stops cleanly and leaves
+  the daemon or a re-run to claim it once the operator settles.
 - **`trade-ui`** — observability plus the test-trade route: before drawing the
   table it runs the same pending-settlement resolver as `start`, so claimable
   vault requests are completed and display-only settlement metadata is
@@ -314,7 +324,7 @@ The execution layer, in trade-executor:
 | [tradeexecutor/ethereum/vault/vault_utils.py](../../tradeexecutor/ethereum/vault/vault_utils.py) | Turning a vault into a tradeable pair identifier |
 | [tradeexecutor/cli/loop.py](../../tradeexecutor/cli/loop.py) | Startup-time settlement retry (non-halting, unlike CCTP) |
 | [tradeexecutor/cli/trade_ui_tui.py](../../tradeexecutor/cli/trade_ui_tui.py) | Settlement ETA display for pending deposits |
-| [tradeexecutor/cli/testtrade.py](../../tradeexecutor/cli/testtrade.py) | Forced settlement of test trades on Anvil forks |
+| [tradeexecutor/cli/testtrade.py](../../tradeexecutor/cli/testtrade.py) | Test-trade pending-settlement handling: forced settlement on Anvil forks, and the cross-chain satellite resolver (`_resolve_satellite_async_settlement()`) that keeps a pending satellite deposit/redeem from being misread as a failure |
 
 ## Tests to read
 
@@ -334,5 +344,9 @@ Each test doubles as a worked example:
   — the same lifecycle for the time-window (Ostium) flavour.
 - [tests/erc_4626/test_vault_async_cli_commands.py](../../tests/erc_4626/test_vault_async_cli_commands.py)
   — the flow driven through the CLI (`init`/`start`) as a black box.
+- [tests/units_tests/test_cross_chain_satellite_async_settlement.py](../../tests/units_tests/test_cross_chain_satellite_async_settlement.py)
+  — the cross-chain test-trade control-flow decision in isolation: a pending
+  satellite deposit stops `perform-test-trade` gracefully on a real chain and
+  force-settles on the destination chain on Anvil, instead of crashing.
 - [strategies/test_only/async_vault_backtest_example.py](../../strategies/test_only/async_vault_backtest_example.py)
   — a minimal strategy module written against an async vault.
