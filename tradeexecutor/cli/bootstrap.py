@@ -55,6 +55,7 @@ from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
 from tradeexecutor.ethereum.web3config import Web3Config, get_rpc_env_var_name
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata, OnChainData
+from tradeexecutor.state.deployment_info import DeploymentInfo
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore, SimulateStore
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -384,6 +385,35 @@ def _log_multichain_deployment_section(chain_slug: str, section: str, values: ob
                 logger.info("Multichain deployment %s %s: %s", chain_slug, label, value)
     else:
         logger.info("Multichain deployment %s %s: %s", chain_slug, section, values)
+
+
+def update_strategy_file_deployment_info(state: State, deployment_file: "Path | None") -> bool:
+    """Persist strategy-file deployment information to the state if it changed.
+
+    Only multichain strategy-file deployment artifacts are recorded here. Legacy
+    deployment sync data remains under ``state.sync.deployment``.
+    """
+
+    if deployment_file is None or not deployment_file.exists():
+        return False
+
+    data = json.loads(deployment_file.read_text())
+    if not data.get("multichain"):
+        return False
+
+    deployment_data = {
+        "multichain": True,
+        "deployment_mode": data.get("deployment_mode"),
+        "safe_salt_nonce": data.get("safe_salt_nonce"),
+        "deployments": data.get("deployments") or {},
+    }
+    if state.deployment_info is None:
+        state.deployment_info = DeploymentInfo()
+
+    return state.deployment_info.update_strategy_file_deployment_data(
+        str(deployment_file),
+        deployment_data,
+    )
 
 
 def resolve_deployment_file(id: str, state_file: "str | Path | None" = None) -> Path:

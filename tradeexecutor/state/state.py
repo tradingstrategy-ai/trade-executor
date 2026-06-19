@@ -22,6 +22,7 @@ from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.utils.summarydataframe import as_duration, format_value
 
 from ..strategy.cycle import CycleDuration
+from .deployment_info import DeploymentInfo
 from .identifier import (AssetFriendlyId, AssetIdentifier,
                          TradingPairIdentifier, TradingPairKind)
 from .other_data import OtherData
@@ -215,6 +216,11 @@ class State:
     uptime: Uptime = field(default_factory=Uptime)
 
     sync: Sync = field(default_factory=Sync)
+
+    #: Strategy-file based deployment information.
+    #:
+    #: Separate from legacy ``sync.deployment`` on-chain sync state.
+    deployment_info: DeploymentInfo | None = None
 
     #: Backtest data related to this backtest result
     #:
