@@ -45,6 +45,22 @@ from tradeexecutor.strategy.trading_strategy_universe import \
 logger = logging.getLogger(__name__)
 
 
+def _get_position_vault_log_suffix(position) -> str:
+    """Get optional vault name suffix for position freshness logs."""
+    vault_name = position.pair.get_vault_name()
+    if not vault_name:
+        metadata = position.pair.get_token_metadata()
+        if isinstance(metadata, dict):
+            vault_name = metadata.get("vault_name")
+        else:
+            vault_name = getattr(metadata, "vault_name", None)
+
+    if vault_name:
+        return f", vault={vault_name}"
+
+    return ""
+
+
 def _transact_anvil_sequentially(
     web3,
     hot_wallet: HotWallet,
@@ -325,7 +341,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 last_event = p.valuation_updates[-1] if p.valuation_updates else None
 
                 logger.info(
-                    "Freshness check position #%d %s: valued_at=%s, ago=%s, valuation_updates=%d, last_pricing_at=%s, kind=%s, qty=%s",
+                    "Freshness check position #%d %s: valued_at=%s, ago=%s, valuation_updates=%d, last_pricing_at=%s, kind=%s, qty=%s%s",
                     p.position_id,
                     p.pair.base.token_symbol,
                     valued_at,
@@ -334,15 +350,17 @@ class LagoonVaultSyncModel(AddressSyncModel):
                     p.last_pricing_at,
                     p.pair.kind.value,
                     p.get_quantity(),
+                    _get_position_vault_log_suffix(p),
                 )
 
                 # Try to dump as much as possible information for diagnostics
                 assert updated_ago < self.valuation_data_freshness, f"The last valuation of this position is too old for us to comfortably update the onchain share price. Position {p}. Now: {now}, updated at: {valued_at}, diff: {updated_ago}, threshold: {self.valuation_data_freshness}, last valuation event: {last_event}"
             else:
                 logger.info(
-                    "Freshness check position #%d %s: skipped (quantity=0)",
+                    "Freshness check position #%d %s: skipped (quantity=0)%s",
                     p.position_id,
                     p.pair.base.token_symbol,
+                    _get_position_vault_log_suffix(p),
                 )
 
         if self.calculate_valuation_func is not None:
