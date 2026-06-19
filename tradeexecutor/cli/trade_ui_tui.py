@@ -345,7 +345,7 @@ class TradeDialog(ModalScreen):
         amount_input = self.query_one("#amount-input", Input)
         # Close mode always sells the full position — amount is ignored,
         # so disable the input to avoid misleading the operator.
-        amount_input.disabled = (event.pressed_index == 2)
+        amount_input.disabled = (event.index == 2)
 
     @on(Button.Pressed, "#cancel-btn")
     def cancel_pressed(self) -> None:
