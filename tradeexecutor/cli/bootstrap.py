@@ -387,6 +387,26 @@ def _log_multichain_deployment_section(chain_slug: str, section: str, values: ob
         logger.info("Multichain deployment %s %s: %s", chain_slug, section, values)
 
 
+def strip_deployment_state_abi(data: object) -> object:
+    """Strip ABI blobs from deployment data before persisting it to state.
+
+    The deployment state only needs the function/name/address tree for diagnostics.
+    Full ABI blobs are large and can be recovered later from deployment artifacts
+    or block explorers.
+    """
+
+    if isinstance(data, dict):
+        return {
+            key: strip_deployment_state_abi(value)
+            for key, value in data.items()
+            if str(key).lower() != "abi"
+        }
+    elif isinstance(data, list):
+        return [strip_deployment_state_abi(item) for item in data]
+    else:
+        return data
+
+
 def update_strategy_file_deployment_info(state: State, deployment_file: "Path | None") -> bool:
     """Persist strategy-file deployment information to the state if it changed.
 
@@ -405,7 +425,7 @@ def update_strategy_file_deployment_info(state: State, deployment_file: "Path | 
         "multichain": True,
         "deployment_mode": data.get("deployment_mode"),
         "safe_salt_nonce": data.get("safe_salt_nonce"),
-        "deployments": data.get("deployments") or {},
+        "deployments": strip_deployment_state_abi(data.get("deployments") or {}),
     }
     if state.deployment_info is None:
         state.deployment_info = DeploymentInfo()
