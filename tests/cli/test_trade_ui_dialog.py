@@ -46,6 +46,36 @@ def test_sell_all_bypasses_amount_validation():
     assert amount == Decimal("7.128756")
 
 
+def test_sell_all_mode_change_disables_amount_input():
+    """Sell all mode disables the amount input when the radio selection changes.
+
+    The Textual RadioSet changed event exposes the selected button as ``index``,
+    so this protects the trade-ui modal from using a stale event attribute.
+
+    1. Create a TradeDialog configured for buy mode.
+    2. Simulate changing the radio selection to Sell all.
+    3. Verify the amount input is disabled.
+    """
+    dialog = TradeDialog(
+        pair_symbol="Ostium Liquidity Pool Vault",
+        reserve_symbol="USDC",
+        default_mode="open",
+    )
+
+    mock_input = MagicMock()
+
+    # 1. Create a TradeDialog configured for buy mode.
+    dialog.query_one = lambda selector, *args: mock_input
+
+    # 2. Simulate changing the radio selection to Sell all.
+    mock_event = MagicMock()
+    mock_event.index = 2
+    dialog.on_mode_changed(mock_event)
+
+    # 3. Verify the amount input is disabled.
+    assert mock_input.disabled is True
+
+
 def test_sell_all_works_with_no_position_value():
     """Sell all falls back to Decimal("0") when position_value is None.
 
