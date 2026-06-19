@@ -11,7 +11,7 @@ so the operator knows when the shares will appear, instead of just seeing
 import datetime
 from decimal import Decimal
 
-from tradeexecutor.cli.trade_ui_tui import _format_lockup
+from tradeexecutor.cli.trade_ui_tui import _format_lockup, _get_position_info
 from tradeexecutor.state.identifier import (
     AssetIdentifier,
     TradingPairIdentifier,
@@ -91,7 +91,7 @@ def _make_state_with_pending_deposit(
 
 
 def test_tui_lockup_shows_ostium_settlement_eta(monkeypatch) -> None:
-    """A pending Ostium deposit with a future estimate shows an eligibility countdown.
+    """A pending Ostium deposit shows its ETA and pending reserve amount.
 
     Steps:
     1. Freeze the clock so the remaining time is deterministic.
@@ -114,6 +114,7 @@ def test_tui_lockup_shows_ostium_settlement_eta(monkeypatch) -> None:
     cell = _format_lockup(state, pair)
     assert "eligible" in cell.plain
     assert "18.0h" in cell.plain
+    assert _get_position_info(state, pair) == "5 USDC"
 
     # 4. A past estimate (settlement slipped) renders as "settling".
     past = (now - datetime.timedelta(hours=1)).isoformat()
@@ -122,12 +123,12 @@ def test_tui_lockup_shows_ostium_settlement_eta(monkeypatch) -> None:
 
 
 def test_tui_lockup_shows_pending_when_no_eta(monkeypatch) -> None:
-    """An operator-driven vault (no on-chain ETA) shows ``pending``.
+    """An operator-driven vault (no on-chain ETA) shows ``pending`` and reserve amount.
 
     Steps:
     1. Freeze the clock.
     2. Build a state with a settlement-pending deposit but no stored estimate.
-    3. Assert the Lockup cell shows ``pending``.
+    3. Assert the Lockup cell shows ``pending`` and the Position cell shows the reserve amount.
     """
 
     # 1. Freeze "now".
@@ -141,3 +142,4 @@ def test_tui_lockup_shows_pending_when_no_eta(monkeypatch) -> None:
 
     # 3. Renders as "pending".
     assert _format_lockup(state, pair).plain == "pending"
+    assert _get_position_info(state, pair) == "5 USDC"

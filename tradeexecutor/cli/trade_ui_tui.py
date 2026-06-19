@@ -150,14 +150,22 @@ def _format_price(price: float | None) -> Text:
     return Text(f"${price:,.4f}", justify="right")
 
 
+def _format_decimal_amount(amount: Decimal) -> str:
+    """Format a Decimal for compact terminal display."""
+    return format(amount.normalize(), "f")
+
+
 def _get_position_info(state: State, pair: TradingPairIdentifier) -> str:
     """Get open position info for a pair, or empty string."""
-    position = state.portfolio.get_position_by_trading_pair(pair)
+    position = state.portfolio.get_position_by_trading_pair(pair, pending=True)
     if position is None:
         return ""
     quantity = position.get_quantity()
+    pending_trade = _get_pending_settlement_trade(position)
+    if quantity == 0 and pending_trade is not None:
+        return f"{_format_decimal_amount(pending_trade.planned_reserve)} {pending_trade.reserve_currency.token_symbol}"
     symbol = pair.base.token_symbol
-    return f"{quantity} {symbol}"
+    return f"{_format_decimal_amount(quantity)} {symbol}"
 
 
 def _format_remaining(remaining: datetime.timedelta, prefix: str = "") -> str:
