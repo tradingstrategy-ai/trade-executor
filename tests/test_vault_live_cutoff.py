@@ -1,6 +1,7 @@
 """Tests for live vault-history cutoff handling."""
 
 import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
@@ -167,3 +168,117 @@ def test_load_partial_data_uses_unfloored_vault_history_cutoff(
     # 3. Assert the vault-history filter sees the unfloored live timestamp while the dataset end stays floored.
     assert captured["end_at"] == fixed_now
     assert dataset.end_at == datetime.datetime(2026, 4, 11, 0, 0, 0)
+
+
+def test_load_partial_data_fast_vault_history_path_filters_parquet(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Verify website vault history uses the filtered parquet reader when transport exposes it.
+
+    1. Create a local vault history parquet with matching, non-matching and after-cutoff rows.
+    2. Run live ``load_partial_data()`` through a transport-level parquet fetch stub.
+    3. Assert the fast path gives candle conversion only selected rows and pruned columns.
+    """
+    fixed_now = datetime.datetime(2026, 4, 11, 17, 9, 41)
+    captured: dict[str, pd.DataFrame] = {}
+    parquet_path = tmp_path / "vault-price-history.parquet"
+    pd.DataFrame(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-04-10 23:59:35.537000"),
+                "chain": 9999,
+                "address": "0xABC",
+                "share_price": 1.0,
+                "total_assets": 999.0,
+                "unused_column": "drop-me",
+            },
+            {
+                "timestamp": pd.Timestamp("2026-04-11 04:22:29.962000"),
+                "chain": 9999,
+                "address": "0xabc",
+                "share_price": 1.01,
+                "total_assets": 1_000.0,
+                "unused_column": "drop-me",
+            },
+            {
+                "timestamp": pd.Timestamp("2026-04-11 04:22:29.962000"),
+                "chain": 1,
+                "address": "0xabc",
+                "share_price": 2.0,
+                "total_assets": 2_000.0,
+                "unused_column": "drop-me",
+            },
+            {
+                "timestamp": pd.Timestamp("2026-04-11 18:00:00"),
+                "chain": 9999,
+                "address": "0xabc",
+                "share_price": 1.02,
+                "total_assets": 1_001.0,
+                "unused_column": "drop-me",
+            },
+        ]
+    ).to_parquet(parquet_path)
+
+    transport = SimpleNamespace(
+        requests=None,
+        fetch_vault_price_history=lambda download_root=None: parquet_path,
+        get_cached_file_path=lambda filename, cache_path=None: parquet_path,
+    )
+    client = Client(None, transport)
+    client.fetch_exchange_universe = lambda: ExchangeUniverse({})
+    client.fetch_vault_price_history = lambda download_root=None: pytest.fail("client fallback should not be used")
+
+    # 1. Create a local vault history parquet with matching, non-matching and after-cutoff rows.
+    monkeypatch.setattr(trading_strategy_universe, "native_datetime_utc_now", lambda: fixed_now)
+    monkeypatch.setattr(
+        trading_strategy_universe,
+        "load_multiple_vaults",
+        lambda vaults, check_all_vaults_found=True: (
+            [],
+            pd.DataFrame(
+                [
+                    {
+                        "chain_id": 9999,
+                        "address": "0xabc",
+                        "pair_id": 1,
+                    }
+                ]
+            ),
+        ),
+    )
+
+    def _capture_convert(df: pd.DataFrame, frequency: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+        captured["df"] = df.copy()
+        return (
+            pd.DataFrame({"timestamp": [pd.Timestamp("2026-04-11 00:00:00")], "pair_id": [1]}),
+            pd.DataFrame(),
+        )
+
+    monkeypatch.setattr(trading_strategy_universe, "convert_vault_prices_to_candles", _capture_convert)
+    monkeypatch.setattr(vault_checks, "build_vault_history_diagnostics", lambda *args, **kwargs: None)
+    monkeypatch.setattr(vault_checks, "log_vault_history_diagnostics", lambda *args, **kwargs: None)
+    monkeypatch.setattr(vault_checks, "log_stale_vault_candle_data", lambda *args, **kwargs: None)
+
+    # 2. Run live ``load_partial_data()`` through a transport-level parquet fetch stub.
+    dataset = load_partial_data(
+        client=client,
+        execution_context=ExecutionContext(ExecutionMode.unit_testing_trading),
+        time_bucket=TimeBucket.d1,
+        pairs=pd.DataFrame(columns=["dex_type", "exchange_id", "pair_id"]),
+        universe_options=UniverseOptions(history_period=datetime.timedelta(days=30)),
+        liquidity=False,
+        vaults=object(),
+        vault_history_source="trading-strategy-website",
+    )
+
+    # 3. Assert the fast path gives candle conversion only selected rows and pruned columns.
+    filtered_df = captured["df"]
+    assert dataset.end_at == datetime.datetime(2026, 4, 11, 0, 0, 0)
+    assert filtered_df["timestamp"].tolist() == [
+        pd.Timestamp("2026-04-10 23:59:35.537000"),
+        pd.Timestamp("2026-04-11 04:22:29.962000"),
+    ]
+    assert filtered_df["chain"].tolist() == [9999, 9999]
+    assert filtered_df["address"].tolist() == ["0xabc", "0xabc"]
+    assert "unused_column" not in filtered_df.columns

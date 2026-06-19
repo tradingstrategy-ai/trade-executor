@@ -41,7 +41,7 @@ from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvaila
 from tradingstrategy.utils.token_extra_data import load_extra_metadata
 from tradingstrategy.utils.token_filter import add_base_quote_address_columns
 from tradingstrategy.vault import VaultMetadata, VaultUniverse
-from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, DEFAULT_VAULT_DOWNLOAD_ROOT, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history
+from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, DEFAULT_VAULT_DOWNLOAD_ROOT, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history, read_vault_price_history_parquet
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.ethereum.cctp.bridge_universe import generate_primary_to_satellite_cctp_bridge_universe
@@ -2911,15 +2911,35 @@ def load_partial_data(
                 client,
                 vault_history_download_root,
             )
-            raw_website_vault_prices_df = client.fetch_vault_price_history(
-                download_root=vault_history_download_root,
-            )
-            filtered_website_vault_prices_df = filter_vault_price_history(
-                raw_website_vault_prices_df,
-                vault_pairs_df,
-                data_load_start_at,
-                vault_history_filter_end_at,
-            )
+            if hasattr(client.transport, "fetch_vault_price_history"):
+                vault_history_parquet_path = Path(
+                    client.transport.fetch_vault_price_history(
+                        download_root=vault_history_download_root,
+                    )
+                )
+                filtered_website_vault_prices_df = read_vault_price_history_parquet(
+                    vault_history_parquet_path,
+                    vault_pairs_df=vault_pairs_df,
+                    start_at=data_load_start_at,
+                    end_at=vault_history_filter_end_at,
+                    columns=[
+                        "chain",
+                        "address",
+                        "timestamp",
+                        "share_price",
+                        "total_assets",
+                    ],
+                )
+            else:
+                raw_website_vault_prices_df = client.fetch_vault_price_history(
+                    download_root=vault_history_download_root,
+                )
+                filtered_website_vault_prices_df = filter_vault_price_history(
+                    raw_website_vault_prices_df,
+                    vault_pairs_df,
+                    data_load_start_at,
+                    vault_history_filter_end_at,
+                )
 
             offset = time_bucket.to_frequency()
             freq_string = f"{offset.n}{offset.name.lower()}"
@@ -2942,6 +2962,11 @@ def load_partial_data(
                         cache_path=vault_history_cache_root,
                     )
                 )
+                if hasattr(client.transport, "fetch_vault_price_history"):
+                    raw_website_vault_prices_df = read_vault_price_history_parquet(
+                        vault_history_parquet_path,
+                        columns=["timestamp"],
+                    )
                 vault_history_diagnostics = build_vault_history_diagnostics(
                     raw_vault_price_df=raw_website_vault_prices_df,
                     filtered_vault_price_df=filtered_website_vault_prices_df,
