@@ -3,6 +3,8 @@
 ## 0.2
 
 
+- Fix `trade-ui` / `perform-test-trade` crashing with `AssertionError: Satellite open failed: None` when a cross-chain (CCTP-bridged) test trade opened a position in an asynchronous satellite vault. An ERC-7540 (Lagoon) or Ostium V1.5 deposit on a satellite chain lands in `vault_settlement_pending` after its `requestDeposit` confirms, but `_make_cross_chain_test_trade()` asserted `is_success()` immediately — and because nothing reverted the revert reason was `None`. The single-chain test-trade path already tolerated this; the cross-chain path did not. Both satellite open and close now route through the shared `_resolve_satellite_async_settlement()` helper, which force-settles on the *destination* chain on Anvil (and forwards `web3config` for chain-aware claiming) or stops cleanly on a real chain so the daemon / a re-run claims it. The gap went unnoticed because every cross-chain fork test used a synchronous satellite vault (IPOR Fusion, Mo Earn Max), while the async ERC-7540 tests never drove the cross-chain test-trade flow (2026-06-19)
+
 - Fix `trade-ui` / live trading crashing with `web3.exceptions.ABIEventNotFound` when settling an async ERC-7540 deposit into a non-legacy (Lagoon v0.5+) vault. `parse_deposit_transaction()` referenced a misspelled `DepositRequested` event; the ERC-7540 standard (and the Lagoon v0.5 ABI) names it `DepositRequest`. The bug went unnoticed because every Lagoon ERC-7540 test fixture pointed at the legacy 722 Capital vault, which takes a different (Referral-topic) parsing branch — the non-legacy branch was never exercised. `test_lagoon_erc_7540` now parses a `requestDeposit` receipt on the freshly deployed non-legacy vault as a regression (2026-06-18)
 
 - Breaking API changes

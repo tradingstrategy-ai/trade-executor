@@ -144,6 +144,17 @@ def _make_cross_chain_test_trade(
     on_anvil = is_anvil(web3)
     dest_chain_id = pair.chain_id
 
+    def _settle_satellite_async_trade(trade) -> bool:
+        return _resolve_satellite_async_settlement(
+            trade=trade,
+            on_anvil=on_anvil,
+            web3config=web3config,
+            dest_chain_id=dest_chain_id,
+            chain_name=chain_name,
+            state=state,
+            execution_model=execution_model,
+        )
+
     if close_only:
         # Close-only: find existing positions and close them
         satellite_position = state.portfolio.get_position_by_trading_pair(pair)
@@ -169,6 +180,8 @@ def _make_cross_chain_test_trade(
             satellite_position, notes=notes, flags={TradeFlag.test_trade},
         )
         execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
+        if _settle_satellite_async_trade(trades[0]):
+            return
         assert trades[0].is_success(), f"Satellite close failed: {trades[0].get_revert_reason()}"
 
         # Step 2: Bridge back — sized by get_available_bridge_capital()
@@ -227,6 +240,10 @@ def _make_cross_chain_test_trade(
         )
         execution_model.execute_trades(ts, state, satellite_trades, routing_model, routing_state)
         satellite_buy_trade = satellite_trades[0]
+        # Async ERC-7540 (Lagoon) / Ostium V1.5 deposits settle off-chain in a
+        # second stage; the request tx succeeds but the trade stays pending.
+        if _settle_satellite_async_trade(satellite_buy_trade):
+            return
         assert satellite_buy_trade.is_success(), \
             f"Satellite open failed: {satellite_buy_trade.get_revert_reason()}"
 
@@ -256,6 +273,8 @@ def _make_cross_chain_test_trade(
                 satellite_position, notes=notes, flags={TradeFlag.test_trade},
             )
             execution_model.execute_trades(ts, state, close_trades, routing_model, routing_state)
+            if _settle_satellite_async_trade(close_trades[0]):
+                return
             assert close_trades[0].is_success(), \
                 f"Satellite close failed: {close_trades[0].get_revert_reason()}"
 
@@ -300,11 +319,24 @@ def _make_cross_chain_test_trade(
     logger.info("  Reserves: %s %s (was %s)", reserve_currency_at_end, reserve_currency, reserve_currency_at_start)
 
 
-def _force_vault_settlement_and_resolve(web3, state, trade, execution_model):
+def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web3config=None):
     """Force settlement on Anvil for an async vault test trade and resolve it.
 
     Uses protocol-specific settlement forcing (e.g. tryNewSettlement for Ostium V1.5,
     force_lagoon_settle for ERC-7540) then runs the generic settlement retry.
+
+    :param web3:
+        Web3 connection for the chain the vault lives on. For cross-chain
+        satellite vaults this must be the destination (satellite) chain
+        connection, not the home chain — otherwise the operator-impersonation
+        force-settle is sent to the wrong chain.
+
+    :param web3config:
+        Multichain web3 config. When given it is forwarded to the settlement
+        resolver so the claim transaction is signed and broadcast on the
+        vault's own chain (chain-aware claiming for satellite vaults). Without
+        it the resolver falls back to the execution model's default connection,
+        which is only correct for home-chain vaults.
     """
     from eth_defi.erc_4626.vault_protocol.gains.vault import OstiumVault, OstiumVersion
     from eth_defi.erc_4626.vault_protocol.gains.testing import force_ostium_v15_settlement
@@ -333,15 +365,95 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model):
             # Need the vault manager address — for test trades this is typically the owner
             force_lagoon_settle(vault, owner)
 
-    # Now run the generic settlement retry
+    # Now run the generic settlement retry. Pass web3config so the claim is
+    # broadcast on the vault's own chain for cross-chain satellite vaults.
     resolved = check_and_resolve_vault_settlements(
         state=state,
         execution_model=execution_model,
+        web3config=web3config,
     )
     if resolved:
         logger.info("Test trade vault settlement resolved: %d trade(s)", len(resolved))
     else:
         logger.warning("Test trade vault settlement NOT resolved after forcing — may need manual intervention")
+
+
+def _resolve_satellite_async_settlement(
+    *,
+    trade,
+    on_anvil: bool,
+    web3config,
+    dest_chain_id: int,
+    chain_name: str,
+    state: State,
+    execution_model,
+) -> bool:
+    """Resolve an async satellite vault trade left in ``vault_settlement_pending``.
+
+    Satellite-chain vaults can be asynchronous (ERC-7540 Lagoon, Ostium V1.5):
+    the request transaction (``requestDeposit`` / ``requestRedeem``) confirms,
+    but the trade stays in ``vault_settlement_pending`` until the vault operator
+    settles the queue off-chain. The cross-chain test-trade flow must not treat
+    that as a hard failure — doing so is the production crash this guards against
+    (``AssertionError: Satellite open failed: None``, where the revert reason is
+    ``None`` precisely because nothing reverted).
+
+    This mirrors the single-chain handling in :func:`make_test_trade`:
+
+    - **On Anvil** we play the vault operator and force-settle on the
+      *destination* chain (``web3config.get_connection(dest_chain_id)``), then
+      resolve the claim, so the test trade completes its whole cycle in one run.
+      Forcing the settlement on the home-chain connection would send the
+      operator transaction to the wrong chain.
+    - **On a real chain** nobody can make an off-chain operator settle on
+      demand, so we report that settlement is in flight and tell the caller to
+      stop. The ``start`` daemon or a re-run of ``perform-test-trade`` claims it
+      once the operator has settled.
+
+    :param trade:
+        The satellite vault trade just executed (deposit or redeem).
+
+    :param on_anvil:
+        Whether the home chain connection is an Anvil fork (test context).
+
+    :param dest_chain_id:
+        Chain id of the satellite vault — the chain the settlement happens on.
+
+    :return:
+        ``True`` if the caller should stop because settlement is still pending
+        off-chain (real chain). ``False`` to continue: either the trade is
+        synchronous (already ``success``/failed) or it was force-settled and
+        resolved on Anvil.
+    """
+    if trade.get_status() != TradeStatus.vault_settlement_pending:
+        return False
+
+    if on_anvil:
+        logger.info(
+            "Satellite trade #%d is vault_settlement_pending on Anvil, forcing settlement on chain %s...",
+            trade.trade_id, dest_chain_id,
+        )
+        dest_web3 = web3config.get_connection(ChainId(dest_chain_id))
+        _force_vault_settlement_and_resolve(
+            dest_web3, state, trade, execution_model, web3config=web3config,
+        )
+        # Surface a clear error if forcing did not resolve the queue, instead of
+        # falling through to the caller's is_success() assertion (which would
+        # report the misleading "Satellite open failed: None" this fix removes).
+        assert trade.get_status() != TradeStatus.vault_settlement_pending, (
+            f"Forced settlement on Anvil did not resolve satellite trade #{trade.trade_id} "
+            f"on chain {dest_chain_id}; it is still vault_settlement_pending. Check that the "
+            f"test vault operator/asset manager can settle the queue (vault_owner_address)."
+        )
+        return False
+
+    logger.info(
+        "Satellite trade #%d is vault_settlement_pending — async (ERC-7540/Ostium) "
+        "settlement happens off-chain on %s. Re-run perform-test-trade after settlement "
+        "to complete the cycle.",
+        trade.trade_id, chain_name,
+    )
+    return True
 
 
 def make_test_trade(
