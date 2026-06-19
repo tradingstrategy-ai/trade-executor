@@ -141,6 +141,9 @@ def _make_cross_chain_test_trade(
     ts = native_datetime_utc_now()
     chain_name = ChainId(pair.chain_id).get_name()
     notes = "A test trade created with perform-test-trade command line command"
+    # Judged from the home connection. We assume a home-chain Anvil fork implies
+    # the satellite chain is also a fork (the cross-chain test harness forks both;
+    # production forks neither), so this also governs satellite force-settlement.
     on_anvil = is_anvil(web3)
     dest_chain_id = pair.chain_id
 

@@ -188,16 +188,23 @@ def test_cross_chain_buy_does_not_crash_when_satellite_open_is_pending(monkeypat
     satellite deposit landing in ``vault_settlement_pending`` on a real chain —
     the exact production scenario. The collaborators that touch the chain
     (execution, bridging, position sizing) are mocked so only the orchestration
-    control flow is exercised. The old code asserted
-    ``satellite_buy_trade.is_success()`` here and raised
-    "Satellite open failed: None"; the fix must return gracefully instead.
+    control flow is exercised. The pending satellite trade is faithful to
+    production: ``is_success()`` is ``False`` and ``get_revert_reason()`` is
+    ``None`` (nothing reverted).
+
+    The regression is locked by the ``is_success.assert_not_called()`` check: the
+    fix must reach the early ``return`` *before* the ``is_success()`` assertion,
+    whereas the old code called ``satellite_buy_trade.is_success()`` (and, with a
+    real-bool ``False`` return, raised "Satellite open failed: None"). So this
+    test fails on the old code — either on the ``assert_not_called`` check or on
+    the AssertionError it would raise.
 
     1. Mock a real chain (``is_anvil`` False) and a successful CCTP bridge-in trade.
     2. Make the internally-constructed PositionManager return a satellite deposit
-       trade stuck in ``vault_settlement_pending``.
+       trade stuck in ``vault_settlement_pending`` (is_success False, no revert).
     3. Run the cross-chain buy-only test trade.
     4. Verify it returns without raising and the satellite trade was executed but
-       never asserted to be successful.
+       its success was never asserted.
     """
     # 1. Mock a real chain (is_anvil False) and a successful CCTP bridge-in trade.
     monkeypatch.setattr(testtrade, "is_anvil", lambda web3: False)
@@ -213,7 +220,11 @@ def test_cross_chain_buy_does_not_crash_when_satellite_open_is_pending(monkeypat
     bridge_pm.open_spot.return_value = [bridge_trade]
 
     # 2. Make the internally-constructed PositionManager return a pending satellite deposit.
+    #    Faithful to production: requestDeposit confirmed but not settled, so the
+    #    trade is not yet successful and nothing reverted.
     satellite_trade = _make_trade(TradeStatus.vault_settlement_pending)
+    satellite_trade.is_success.return_value = False
+    satellite_trade.get_revert_reason.return_value = None
     satellite_pm = MagicMock()
     satellite_pm.open_spot.return_value = [satellite_trade]
     monkeypatch.setattr(testtrade, "PositionManager", MagicMock(return_value=satellite_pm))
