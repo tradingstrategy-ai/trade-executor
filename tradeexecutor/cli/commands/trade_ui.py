@@ -60,6 +60,48 @@ from ...utils.timer import timed_task
 from tradeexecutor.cli.commands import shared_options
 
 
+def _sync_trade_ui_startup_treasury(
+    *,
+    ts: datetime.datetime,
+    state,
+    universe,
+    execution_model,
+    sync_model,
+    runner,
+    valuation_method,
+    pricing_model,
+    store,
+    simulate: bool,
+    logger,
+):
+    """Refresh trade-ui balances before opening the interactive view."""
+    execution_model.initialize()
+
+    resolved = execution_model.resolve_pending_vault_settlements(
+        state=state,
+        ts=ts,
+        pricing_model=pricing_model,
+    )
+    if resolved:
+        logger.info("Resolved %d pending vault settlement(s) before opening trade-ui", len(resolved))
+
+    # Lagoon sync_treasury(post_valuation=True) posts NAV on-chain. Make sure
+    # external vault positions, e.g. Ostium, have fresh valuation data first.
+    runner.revalue_state(ts, state, valuation_method)
+
+    balance_updates = sync_model.sync_treasury(
+        ts,
+        state,
+        list(universe.reserve_assets),
+        post_valuation=True,
+    )
+
+    if not simulate:
+        store.sync(state)
+
+    return balance_updates
+
+
 @app.command()
 @shared_options.with_json_rpc_options()
 def trade_ui(
@@ -225,20 +267,19 @@ def trade_ui(
 
     # Sync treasury so balances are up to date for the TUI display
     web3 = web3config.get_default()
-    execution_model.initialize()
-
-    balance_updates = sync_model.sync_treasury(
-        ts,
-        state,
-        list(universe.reserve_assets),
-        post_valuation=True,
+    balance_updates = _sync_trade_ui_startup_treasury(
+        ts=ts,
+        state=state,
+        universe=universe,
+        execution_model=execution_model,
+        sync_model=sync_model,
+        runner=runner,
+        valuation_method=valuation_method,
+        pricing_model=pricing_model,
+        store=store,
+        simulate=simulate,
+        logger=logger,
     )
-
-    resolved = execution_model.resolve_pending_vault_settlements(state=state, ts=ts)
-    if resolved:
-        logger.info("Resolved %d pending vault settlement(s) before opening trade-ui", len(resolved))
-    if not simulate:
-        store.sync(state)
 
     # Gather balance info for the TUI header
     hot_wallet = sync_model.get_hot_wallet()
