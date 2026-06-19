@@ -134,11 +134,13 @@ def test_update_strategy_file_deployment_info_detects_changes(tmp_path: Path):
                     "Safe": "0xSafe",
                     "Vault": "0xVault",
                     "Trading strategy module": "0xModule",
+                    "ABI": [{"type": "function", "name": "deposit"}],
                 },
                 "config": {
                     "uniswap_v3": {
                         "router": "0xRouter",
                         "position_manager": "0xPositionManager",
+                        "abi": [{"type": "function", "name": "exactInput"}],
                     },
                 },
                 "whitelisted_items": [
@@ -146,6 +148,7 @@ def test_update_strategy_file_deployment_info_detects_changes(tmp_path: Path):
                         "kind": "Sender",
                         "name": "trade-executor",
                         "address": "0xAssetManager",
+                        "ABI": [{"type": "function", "name": "execTransactionFromModule"}],
                     },
                 ],
             },
@@ -156,13 +159,44 @@ def test_update_strategy_file_deployment_info_detects_changes(tmp_path: Path):
     assert state.deployment_info is not None
     assert state.deployment_info.source == "strategy_file"
     assert state.deployment_info.deployment_file == str(artifact)
+    expected_deployments = {
+        "arbitrum": {
+            "vault_address": "0xVault",
+            "safe_address": "0xSafe",
+            "module_address": "0xModule",
+            "asset_manager": "0xAssetManager",
+            "valuation_manager": "0xValuationManager",
+            "is_satellite": False,
+            "deployment_data": {
+                "Safe": "0xSafe",
+                "Vault": "0xVault",
+                "Trading strategy module": "0xModule",
+            },
+            "config": {
+                "uniswap_v3": {
+                    "router": "0xRouter",
+                    "position_manager": "0xPositionManager",
+                },
+            },
+            "whitelisted_items": [
+                {
+                    "kind": "Sender",
+                    "name": "trade-executor",
+                    "address": "0xAssetManager",
+                },
+            ],
+        },
+    }
     assert state.deployment_info.data == {
         "multichain": True,
         "deployment_mode": "full deployment",
         "safe_salt_nonce": 42,
-        "deployments": deployment_payload["deployments"],
+        "deployments": expected_deployments,
     }
     assert "guard_report" not in state.deployment_info.data
+    assert "ABI" not in state.deployment_info.data["deployments"]["arbitrum"]["deployment_data"]
+    assert "abi" not in state.deployment_info.data["deployments"]["arbitrum"]["config"]["uniswap_v3"]
+    assert "ABI" not in state.deployment_info.data["deployments"]["arbitrum"]["whitelisted_items"][0]
     assert len(state.deployment_info.modified) == 1
     assert isinstance(state.deployment_info.modified[0].modified_at, datetime.datetime)
     assert state.deployment_info.modified[0].change_summary_message == f"Initialised strategy-file deployment information from {artifact}"
