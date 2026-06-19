@@ -1,5 +1,6 @@
 """Command line application initialisation helpers."""
 import datetime
+import json
 import logging
 import os
 import shutil
@@ -292,8 +293,6 @@ def resolve_satellite_modules(deployment_file: "Path | None") -> dict:
         Mapping of chain slug to satellite trading strategy module address. Empty
         when neither source provides satellites.
     """
-    import json
-
     env_json = os.environ.get("SATELLITE_MODULES")
     if env_json:
         return json.loads(env_json)
@@ -313,6 +312,78 @@ def resolve_satellite_modules(deployment_file: "Path | None") -> dict:
             return modules
 
     return {}
+
+
+def log_multichain_deployment_information(deployment_file: "Path | None") -> None:
+    """Log the multichain deployment artifact summary at startup."""
+
+    if deployment_file is None or not deployment_file.exists():
+        return
+
+    data = json.loads(deployment_file.read_text())
+    if not data.get("multichain"):
+        return
+
+    deployments = data.get("deployments") or {}
+    logger.info(
+        "Using multichain deployment artifact %s, deployment_mode=%s, safe_salt_nonce=%s, chains=%s",
+        deployment_file,
+        data.get("deployment_mode"),
+        data.get("safe_salt_nonce"),
+        ", ".join(deployments.keys()),
+    )
+
+    for slug, dep in deployments.items():
+        role = "satellite" if dep.get("is_satellite") else "master"
+        logger.info(
+            "Multichain deployment %s (%s): vault=%s, safe=%s, module=%s, asset_manager=%s, valuation_manager=%s, deployment_mode=%s",
+            slug,
+            role,
+            dep.get("vault_address"),
+            dep.get("safe_address"),
+            dep.get("module_address"),
+            dep.get("asset_manager"),
+            dep.get("valuation_manager"),
+            dep.get("deployment_mode"),
+        )
+        _log_multichain_deployment_section(slug, "Deployment", dep.get("deployment_data") or {})
+        _log_multichain_deployment_section(slug, "Lagoon config", dep.get("config") or {})
+        _log_multichain_deployment_section(slug, "Guard whitelist", {"entries": dep.get("whitelisted_items") or []})
+        if dep.get("guard_migration"):
+            _log_multichain_deployment_section(slug, "Guard migration", dep.get("guard_migration") or {})
+
+
+def _log_multichain_deployment_section(chain_slug: str, section: str, values: object, prefix: str = "") -> None:
+    """Log deployment artifact data in the same sections as lagoon-deploy-vault."""
+
+    if values is None:
+        return
+
+    if isinstance(values, dict):
+        for key, value in values.items():
+            label = f"{section}.{prefix}{key}"
+            if key == "ABI":
+                logger.info("Multichain deployment %s %s: <omitted>", chain_slug, label)
+                continue
+
+            next_prefix = f"{prefix}{key}."
+            if isinstance(value, (dict, list)):
+                _log_multichain_deployment_section(chain_slug, section, value, next_prefix)
+            else:
+                logger.info("Multichain deployment %s %s: %s", chain_slug, label, value)
+    elif isinstance(values, list):
+        if not values:
+            label = f"{section}.{prefix[:-1]}" if prefix else section
+            logger.info("Multichain deployment %s %s: []", chain_slug, label)
+        for idx, value in enumerate(values, start=1):
+            next_prefix = f"{prefix}{idx}."
+            label = f"{section}.{prefix}{idx}"
+            if isinstance(value, (dict, list)):
+                _log_multichain_deployment_section(chain_slug, section, value, next_prefix)
+            else:
+                logger.info("Multichain deployment %s %s: %s", chain_slug, label, value)
+    else:
+        logger.info("Multichain deployment %s %s: %s", chain_slug, section, values)
 
 
 def resolve_deployment_file(id: str, state_file: "str | Path | None" = None) -> Path:
