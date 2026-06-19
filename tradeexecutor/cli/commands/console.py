@@ -82,6 +82,64 @@ def launch_console(bindings: dict):
     embed(user_ns=bindings, colors="Linux")
 
 
+def calculate_console_indicators(
+    mod,
+    universe,
+    execution_context,
+    cycle_timestamp,
+    max_workers: int | None,
+    logger,
+):
+    """Calculate strategy indicators for console bindings.
+
+    Console is a diagnostic tool and must still open if real-time indicator
+    calculation fails.
+    """
+    indicator_storage = indicator_set = indicator_result_map = indicators = None
+    if mod.create_indicators:
+        try:
+            if max_workers is None:
+                max_workers = get_safe_max_workers_count()
+
+            print(f"Creating real-time indicators for the strategy module for timestamp {cycle_timestamp}")
+            print(f"No indicator cache used")
+
+            # TODO: MemoryIndicatorStorage does not support yet parallel indicator calculations
+            max_workers = 1
+
+            assert mod.parameters, "You need to have Parameters class if create_indicators is specified"
+            indicator_storage = MemoryIndicatorStorage(universe_key=universe.get_cache_key())
+            indicator_set = prepare_indicators(
+                mod.create_indicators,
+                mod.parameters,
+                universe,
+                execution_context,
+                timestamp=cycle_timestamp,
+            )
+            indicators_needed = set(indicator_set.generate_combinations(universe))
+            indicator_result_map = calculate_indicators(
+                universe,
+                indicator_storage,
+                indicator_set,
+                execution_context=execution_context,
+                remaining=indicators_needed,
+                all_combinations=indicators_needed,
+                max_workers=max_workers,
+                strategy_cycle_timestamp=cycle_timestamp,
+            )
+            indicators = StrategyInputIndicators(
+                strategy_universe=universe,
+                available_indicators=indicator_set,
+                indicator_results=indicator_result_map,
+                timestamp=pd.Timestamp(cycle_timestamp),
+            )
+        except Exception as e:
+            indicator_storage = indicator_set = indicator_result_map = indicators = None
+            logger.warning("Could not calculate real-time indicators for console; continuing without indicators: %s", e)
+
+    return indicator_storage, indicator_set, indicator_result_map, indicators
+
+
 @app.command()
 @shared_options.with_json_rpc_options()
 def console(
@@ -322,47 +380,14 @@ def console(
     except Exception as e:
         logger.warning("Could not refresh run state statistics: %s", e)
 
-    if mod.create_indicators:
-        # If the strategy uses indicators calculate and expose them to the console
-        #
-
-        if max_workers is None:
-            max_workers = get_safe_max_workers_count()
-
-        print(f"Creating real-time indicators for the strategy module for timestamp {cycle_timestamp}")
-        print(f"No indicator cache used")
-
-        # TODO: MemoryIndicatorStorage does not support yet parallel indicator calculations
-        max_workers = 1
-
-        assert mod.parameters, "You need to have Parameters class if create_indicators is specified"
-        indicator_storage = MemoryIndicatorStorage(universe_key=universe.get_cache_key())
-        indicator_set = prepare_indicators(
-            mod.create_indicators,
-            mod.parameters,
-            universe,
-            execution_context,
-            timestamp=cycle_timestamp,
-        )
-        indicators_needed = set(indicator_set.generate_combinations(universe))
-        indicator_result_map = calculate_indicators(
-            universe,
-            indicator_storage,
-            indicator_set,
-            execution_context=execution_context,
-            remaining=indicators_needed,
-            all_combinations=indicators_needed,
-            max_workers=max_workers,
-            strategy_cycle_timestamp=cycle_timestamp,
-        )
-        indicators = StrategyInputIndicators(
-            strategy_universe=universe,
-            available_indicators=indicator_set,
-            indicator_results=indicator_result_map,
-            timestamp=pd.Timestamp(cycle_timestamp),
-        )
-    else:
-        indicator_storage = indicator_set = indicator_result_map = indicators = None
+    indicator_storage, indicator_set, indicator_result_map, indicators = calculate_console_indicators(
+        mod,
+        universe,
+        execution_context,
+        cycle_timestamp,
+        max_workers,
+        logger,
+    )
 
     # Expose Vault smart contract proxy class
     vault = getattr(sync_model, "vault", None)
