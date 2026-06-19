@@ -324,7 +324,7 @@ The execution layer, in trade-executor:
 | [tradeexecutor/ethereum/vault/vault_utils.py](../../tradeexecutor/ethereum/vault/vault_utils.py) | Turning a vault into a tradeable pair identifier |
 | [tradeexecutor/cli/loop.py](../../tradeexecutor/cli/loop.py) | Startup-time settlement retry (non-halting, unlike CCTP) |
 | [tradeexecutor/cli/trade_ui_tui.py](../../tradeexecutor/cli/trade_ui_tui.py) | Settlement ETA display for pending deposits |
-| [tradeexecutor/cli/testtrade.py](../../tradeexecutor/cli/testtrade.py) | Forced settlement of test trades on Anvil forks |
+| [tradeexecutor/cli/testtrade.py](../../tradeexecutor/cli/testtrade.py) | Test-trade pending-settlement handling: forced settlement on Anvil forks, and the cross-chain satellite resolver (`_resolve_satellite_async_settlement()`) that keeps a pending satellite deposit/redeem from being misread as a failure |
 
 ## Tests to read
 
