@@ -119,28 +119,40 @@ def environment(
     }
 
 
-@pytest.mark.skip(reason="perform-test-trade with forced settlement requires unlocked Ostium keeper on Anvil")
+@flaky.flaky
 def test_ostium_v15_perform_test_trade(
     environment: dict,
     mocker,
     state_file: Path,
 ):
-    """Perform-test-trade CLI opens/closes an Ostium V1.5 position on Anvil.
+    """Perform-test-trade CLI opens *and closes* an Ostium V1.5 position on Anvil.
 
-    1. Init strategy
-    2. Run perform-test-trade (forces settlement on Anvil automatically)
-    3. Verify state file has successful buy+sell trades
+    This is the end-to-end regression for the trade-ui / perform-test-trade
+    Ostium close crash: closing an async vault position is a requestWithdraw()
+    that lands in ``vault_settlement_pending``, and the close path used to fall
+    through to an ``is_success()`` assertion and raise "Test sell failed" even
+    though nothing reverted. The whole open+close cycle must complete here,
+    because on Anvil ``tryNewSettlement()`` is permissionless and the test-trade
+    code force-settles both the deposit and the redeem (so the original skip
+    reason — needing an "unlocked Ostium keeper" — does not apply).
+
+    1. Init strategy.
+    2. Run perform-test-trade (force-settles both deposit and redeem on Anvil).
+    3. Verify the state file has a successful buy trade.
+    4. Verify the close (sell) trade also succeeded — not stuck pending/failed.
     """
     # 1. Init
     mocker.patch.dict("os.environ", environment, clear=True)
     cli = get_command(app)
     cli.main(args=["init"], standalone_mode=False)
 
-    # 2. Perform test trade (--all-vaults tests all vault pairs)
+    # 2. Perform test trade (--all-vaults tests all vault pairs). On Anvil this
+    #    force-settles the deposit, then closes the position and force-settles
+    #    the redeem, completing the full async lifecycle in a single command.
     mocker.patch.dict("os.environ", environment, clear=True)
     cli.main(args=["perform-test-trade", "--all-vaults"], standalone_mode=False)
 
-    # 3. Verify state
+    # 3. Verify the buy trade succeeded.
     state = State.read_json_file(state_file)
     trades = list(state.portfolio.get_all_trades())
 
@@ -149,9 +161,13 @@ def test_ostium_v15_perform_test_trade(
     assert buy_trade.is_success(), f"Buy trade failed: {buy_trade.get_revert_reason()}"
     assert buy_trade.executed_quantity > 0
 
-    if len(trades) >= 2:
-        sell_trade = trades[1]
-        assert sell_trade.is_success(), f"Sell trade failed: {sell_trade.get_revert_reason()}"
+    # 4. Verify the close (sell) trade succeeded too. This is the regression: it
+    #    must reach success via forced settlement, not crash with "Test sell
+    #    failed" while in vault_settlement_pending.
+    assert len(trades) >= 2, "Close trade missing — perform-test-trade did not close the position"
+    sell_trade = trades[1]
+    assert sell_trade.get_status() == TradeStatus.success, \
+        f"Close trade not settled, status={sell_trade.get_status()}, revert={sell_trade.get_revert_reason()}"
 
 
 @flaky.flaky
