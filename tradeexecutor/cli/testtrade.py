@@ -346,8 +346,27 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web
     from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
     from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
 
+    # This function impersonates the vault operator and only makes sense against
+    # an Anvil fork — on a real chain nobody can force a settlement. Enforce the
+    # test-only invariant here rather than relying on every caller's is_anvil()
+    # guard, so the dev-account gas payer below can never reach a real chain.
+    assert is_anvil(web3), "_force_vault_settlement_and_resolve() is Anvil-only (forces operator settlement)"
+
     vault = get_vault_for_pair(web3, trade.pair)
     owner = trade.other_data.get("vault_owner_address")
+
+    # Ostium's tryNewSettlement() is permissionless and is broadcast with
+    # node-side signing (eth_sendTransaction {"from": ...}), so its gas payer must
+    # be an account the node can sign for. The vault owner is the executor's hot
+    # wallet — a random key whose local signer middleware lives only on the
+    # executor's own web3, not on the Anvil node — so paying from it fails with
+    # "No Signer available". On Anvil we therefore pay tryNewSettlement() gas from
+    # a node-unlocked dev account instead. (The Lagoon branch below keeps `owner`:
+    # its settlement is permissioned and must come from the actual asset manager.)
+    settlement_caller = owner
+    dev_accounts = web3.eth.accounts
+    if dev_accounts:
+        settlement_caller = dev_accounts[0]
 
     # Protocol-specific settlement forcing
     if isinstance(vault, OstiumVault) and vault.version == OstiumVersion.v1_5:
@@ -359,13 +378,14 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web
             last_id = vault.vault_contract.functions.lastSettlementId().call()
             settlements_needed = max(withdraw_target - last_id, 1)
         for _ in range(settlements_needed):
-            force_ostium_v15_settlement(vault, owner)
+            force_ostium_v15_settlement(vault, settlement_caller)
     else:
-        # ERC-7540 (Lagoon) — use force_lagoon_settle if available
+        # ERC-7540 (Lagoon) — use force_lagoon_settle if available. Lagoon
+        # settlement is permissioned, so it must be sent from the vault manager
+        # (the owner for test trades), not the dev account used for Ostium above.
         from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
         if isinstance(vault, LagoonVault):
             from eth_defi.erc_4626.vault_protocol.lagoon.testing import force_lagoon_settle
-            # Need the vault manager address — for test trades this is typically the owner
             force_lagoon_settle(vault, owner)
 
     # Now run the generic settlement retry. Pass web3config so the claim is
@@ -455,6 +475,80 @@ def _resolve_satellite_async_settlement(
         "settlement happens off-chain on %s. Re-run perform-test-trade after settlement "
         "to complete the cycle.",
         trade.trade_id, chain_name,
+    )
+    return True
+
+
+def _resolve_home_chain_async_settlement(
+    *,
+    trade,
+    web3: Web3,
+    state: State,
+    execution_model,
+) -> bool:
+    """Resolve a home-chain async vault trade left in ``vault_settlement_pending``.
+
+    Home-chain vaults can be asynchronous (Ostium V1.5, ERC-7540 Lagoon): the
+    request transaction (``requestDeposit`` / ``requestWithdraw``) confirms, but
+    the trade stays in ``vault_settlement_pending`` until the vault operator
+    settles the queue off-chain. ``make_test_trade()`` must not treat that as a
+    hard failure — both the buy (open) and sell (close) paths run through this
+    helper before their ``is_success()`` assertions.
+
+    Skipping it on the close path was the production crash this guards against:
+    ``trade-ui`` / ``perform-test-trade`` closing an Ostium position raised
+    ``AssertionError: Test sell failed`` even though the ``requestWithdraw``
+    request had confirmed and nothing reverted (``get_revert_reason()`` is
+    ``None`` precisely because the redeem request succeeded). The buy path had
+    this handling inline; the close path did not, and the two diverged.
+    Centralising both paths here keeps them symmetric.
+
+    This is the single-chain sibling of
+    :func:`_resolve_satellite_async_settlement`:
+
+    - **On Anvil** we play the vault operator, force-settle and resolve the
+      claim in the same run, so the test trade completes its whole cycle.
+    - **On a real chain** nobody can make an off-chain operator settle on
+      demand, so we report that settlement is in flight and tell the caller to
+      stop. The ``start`` daemon or a re-run of ``perform-test-trade`` claims it
+      once the operator has settled.
+
+    :param trade:
+        The vault trade just executed (deposit or redeem).
+
+    :param web3:
+        Web3 connection for the vault's (home) chain.
+
+    :return:
+        ``True`` if the caller should stop because settlement is still pending
+        off-chain (real chain). ``False`` to continue: either the trade is
+        synchronous (already ``success``/failed) or it was force-settled and
+        resolved on Anvil.
+    """
+    if trade.get_status() != TradeStatus.vault_settlement_pending:
+        return False
+
+    if is_anvil(web3):
+        logger.info(
+            "Test trade #%d is vault_settlement_pending on Anvil, forcing settlement...",
+            trade.trade_id,
+        )
+        _force_vault_settlement_and_resolve(web3, state, trade, execution_model)
+        # Surface a clear error if forcing did not resolve the queue, instead of
+        # falling through to the caller's is_success() assertion (which would
+        # report a misleading "Test buy/sell failed" with no revert reason).
+        assert trade.get_status() != TradeStatus.vault_settlement_pending, (
+            f"Forced settlement on Anvil did not resolve test trade #{trade.trade_id}; "
+            f"it is still vault_settlement_pending. Check that the test vault "
+            f"operator/keeper can settle the queue (vault_owner_address)."
+        )
+        return False
+
+    logger.info(
+        "Test trade #%d is vault_settlement_pending — async (ERC-7540/Ostium) "
+        "settlement happens off-chain. Re-run perform-test-trade after settlement "
+        "to complete the cycle.",
+        trade.trade_id,
     )
     return True
 
@@ -726,21 +820,13 @@ def make_test_trade(
         assert trade.is_test()
         assert position.is_test()
 
-        # For async vaults (Ostium V1.5, ERC-7540), the trade enters
-        # vault_settlement_pending after execute. On Anvil we can force
-        # settlement and resolve; on mainnet we just report the status.
-        # is_anvil is already imported at module level
-        if trade.get_status() == TradeStatus.vault_settlement_pending:
-            if is_anvil(web3):
-                logger.info("Test trade #%d is vault_settlement_pending on Anvil, forcing settlement...", trade.trade_id)
-                _force_vault_settlement_and_resolve(web3, state, trade, execution_model)
-            else:
-                logger.info(
-                    "Test trade #%d is vault_settlement_pending — settlement happens off-chain. "
-                    "Re-run perform-test-trade after settlement to complete the cycle.",
-                    trade.trade_id,
-                )
-                return
+        # For async vaults (Ostium V1.5, ERC-7540), the open trade enters
+        # vault_settlement_pending after execute. On Anvil we force settlement
+        # and resolve; on a real chain we report the status and stop.
+        if _resolve_home_chain_async_settlement(
+            trade=trade, web3=web3, state=state, execution_model=execution_model,
+        ):
+            return
 
         if not trade.is_success() or not position.is_open():
             # Alot of diagnostics to debug Arbitrum / WBTC issues
@@ -818,6 +904,20 @@ def make_test_trade(
             )
 
         assert sell_trade.is_test()
+
+        # For async vaults (Ostium V1.5, ERC-7540), closing a position is a
+        # requestRedeem()/requestWithdraw() that confirms on-chain but leaves the
+        # trade in vault_settlement_pending until the vault operator settles the
+        # queue off-chain. This is the symmetric sibling of the open-path
+        # handling above: on Anvil we force-settle, on a real chain we report
+        # that settlement is in flight and stop. Without it the close path falls
+        # through to the is_success() assertion below and crashes with a
+        # misleading "Test sell failed" even though the request succeeded and
+        # nothing reverted (the production trade-ui Ostium close crash).
+        if _resolve_home_chain_async_settlement(
+            trade=sell_trade, web3=web3, state=state, execution_model=execution_model,
+        ):
+            return
 
         if not sell_trade.is_success():
             logger.error("Test sell failed: %s", sell_trade)
