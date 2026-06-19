@@ -10,6 +10,7 @@ production, without needing forks or RPC:
   not be flagged for cross-chain trades.
 """
 
+import datetime
 import json
 from pathlib import Path
 
@@ -19,8 +20,10 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.cli.bootstrap import (
     resolve_satellite_modules,
     resolve_deployment_file,
+    update_strategy_file_deployment_info,
     check_universe_contracts_resolve,
 )
+from tradeexecutor.state.state import State
 
 
 def test_resolve_satellite_modules_precedence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -88,6 +91,108 @@ def test_resolve_deployment_file():
 
     # 4. custom state_file location -> deployment artifact next to it
     assert resolve_deployment_file("foo", "/custom/dir/foo.json") == Path("/custom/dir/foo.deployment.json")
+
+
+def test_update_strategy_file_deployment_info_detects_changes(tmp_path: Path):
+    """Strategy-file deployment info is persisted and changed artifacts append audit entries.
+
+    1. Ignore missing and legacy single-chain deployment artifacts.
+    2. Store initial multichain deployment data in ``state.deployment_info``.
+    3. Re-read unchanged deployment data without adding another modified entry.
+    4. Change deployment data and verify a new modified entry is appended.
+    5. Round-trip through state JSON and verify deployment info survives serialisation.
+    """
+
+    state = State()
+    missing_artifact = tmp_path / "missing.deployment.json"
+
+    # 1. Ignore missing and legacy single-chain deployment artifacts.
+    assert update_strategy_file_deployment_info(state, missing_artifact) is False
+    assert state.deployment_info is None
+
+    legacy_artifact = tmp_path / "legacy.deployment.json"
+    legacy_artifact.write_text(json.dumps({"vault_address": "0xVault"}))
+    assert update_strategy_file_deployment_info(state, legacy_artifact) is False
+    assert state.deployment_info is None
+
+    # 2. Store initial multichain deployment data in state.deployment_info.
+    artifact = tmp_path / "strategy.deployment.json"
+    deployment_payload = {
+        "multichain": True,
+        "deployment_mode": "full deployment",
+        "safe_salt_nonce": 42,
+        "guard_report": "large generated report should not be stored in state",
+        "deployments": {
+            "arbitrum": {
+                "vault_address": "0xVault",
+                "safe_address": "0xSafe",
+                "module_address": "0xModule",
+                "asset_manager": "0xAssetManager",
+                "valuation_manager": "0xValuationManager",
+                "is_satellite": False,
+                "deployment_data": {
+                    "Safe": "0xSafe",
+                    "Vault": "0xVault",
+                    "Trading strategy module": "0xModule",
+                },
+                "config": {
+                    "uniswap_v3": {
+                        "router": "0xRouter",
+                        "position_manager": "0xPositionManager",
+                    },
+                },
+                "whitelisted_items": [
+                    {
+                        "kind": "Sender",
+                        "name": "trade-executor",
+                        "address": "0xAssetManager",
+                    },
+                ],
+            },
+        },
+    }
+    artifact.write_text(json.dumps(deployment_payload))
+    assert update_strategy_file_deployment_info(state, artifact) is True
+    assert state.deployment_info is not None
+    assert state.deployment_info.source == "strategy_file"
+    assert state.deployment_info.deployment_file == str(artifact)
+    assert state.deployment_info.data == {
+        "multichain": True,
+        "deployment_mode": "full deployment",
+        "safe_salt_nonce": 42,
+        "deployments": deployment_payload["deployments"],
+    }
+    assert "guard_report" not in state.deployment_info.data
+    assert len(state.deployment_info.modified) == 1
+    assert isinstance(state.deployment_info.modified[0].modified_at, datetime.datetime)
+    assert state.deployment_info.modified[0].change_summary_message == f"Initialised strategy-file deployment information from {artifact}"
+
+    # 3. Re-read unchanged deployment data without adding another modified entry.
+    assert update_strategy_file_deployment_info(state, artifact) is False
+    assert len(state.deployment_info.modified) == 1
+
+    # 4. Change deployment data and verify a new modified entry is appended.
+    deployment_payload["deployments"]["base"] = {
+        "vault_address": None,
+        "safe_address": "0xSafe",
+        "module_address": "0xBaseModule",
+        "asset_manager": "0xAssetManager",
+        "valuation_manager": "0xValuationManager",
+        "is_satellite": True,
+    }
+    artifact.write_text(json.dumps(deployment_payload))
+    assert update_strategy_file_deployment_info(state, artifact) is True
+    assert state.deployment_info.data["deployments"]["base"]["module_address"] == "0xBaseModule"
+    assert len(state.deployment_info.modified) == 2
+    assert isinstance(state.deployment_info.modified[1].modified_at, datetime.datetime)
+    assert state.deployment_info.modified[1].change_summary_message == f"Updated strategy-file deployment information from {artifact}"
+
+    # 5. Round-trip through state JSON and verify deployment info survives serialisation.
+    restored_state = State.from_json(state.to_json())
+    assert restored_state.deployment_info is not None
+    assert restored_state.deployment_info.source == "strategy_file"
+    assert restored_state.deployment_info.data["deployments"]["base"]["module_address"] == "0xBaseModule"
+    assert len(restored_state.deployment_info.modified) == 2
 
 
 class _FakePair:
