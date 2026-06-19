@@ -257,6 +257,37 @@ def _get_pair_symbol(pair: TradingPairIdentifier) -> str:
 # Trade dialog (modal)
 # ---------------------------------------------------------------------------
 
+class TradeModeRadioSet(RadioSet):
+    """RadioSet where keyboard navigation immediately chooses the highlighted mode."""
+
+    BINDINGS = [
+        Binding("down,right", "choose_next", "Next option", show=False),
+        Binding("enter,space", "toggle_button", "Toggle", show=False),
+        Binding("up,left", "choose_previous", "Previous option", show=False),
+    ]
+
+    def action_choose_next(self) -> None:
+        self._choose_relative(1)
+
+    def action_choose_previous(self) -> None:
+        self._choose_relative(-1)
+
+    def _choose_relative(self, direction: int) -> None:
+        buttons = list(self.query(RadioButton))
+        current_index = self.pressed_index
+        if direction > 0:
+            target_range = range(current_index + direction, len(buttons), direction)
+        else:
+            target_range = range(current_index + direction, -1, direction)
+
+        for target_index in target_range:
+            button = buttons[target_index]
+            if not button.disabled:
+                self._selected = target_index
+                button.toggle()
+                return
+
+
 class TradeDialog(ModalScreen):
     """Modal dialog for choosing trade mode and amount."""
 
@@ -265,9 +296,8 @@ class TradeDialog(ModalScreen):
         align: center middle;
     }
     #trade-dialog {
-        width: 60;
-        height: auto;
-        max-height: 20;
+        width: 70;
+        height: 24;
         border: thick $accent;
         background: $surface;
         padding: 1 2;
@@ -276,6 +306,11 @@ class TradeDialog(ModalScreen):
         margin-bottom: 1;
     }
     #trade-dialog #amount-input {
+        height: 3;
+        margin-bottom: 1;
+    }
+    #trade-dialog #mode-radio {
+        height: 5;
         margin-bottom: 1;
     }
     #trade-dialog #error-label {
@@ -310,14 +345,13 @@ class TradeDialog(ModalScreen):
         self.default_mode = default_mode
         self.min_amount = min_amount
         self.position_value = position_value
-        self.result: tuple[str, Decimal] | None = None
 
     def compose(self) -> ComposeResult:
         mode_index = {"open_close": 0, "open": 1, "close": 2}.get(self.default_mode, 0)
         with Vertical(id="trade-dialog"):
             yield Label(f"Test trade: [bold]{self.pair_symbol}[/bold]")
             yield Label("Trade mode:")
-            with RadioSet(id="mode-radio"):
+            with TradeModeRadioSet(id="mode-radio"):
                 yield RadioButton("Buy and sell (open + close)", value=mode_index == 0)
                 yield RadioButton("Buy only (open position)", value=mode_index == 1)
                 yield RadioButton("Sell all (close full position)", value=mode_index == 2)
@@ -335,10 +369,15 @@ class TradeDialog(ModalScreen):
             yield Label("", id="error-label")
             with Horizontal(id="button-row"):
                 yield Button("Cancel", variant="default", id="cancel-btn")
-                yield Button("Execute", variant="primary", id="execute-btn")
+                yield Button("OK", variant="primary", id="execute-btn")
 
     def on_mount(self) -> None:
-        self.query_one("#amount-input", Input).focus()
+        self.call_after_refresh(self._focus_mode_radio)
+
+    def _focus_mode_radio(self) -> None:
+        radio_set = self.query_one("#mode-radio", RadioSet)
+        radio_set.focus()
+        radio_set._selected = radio_set.pressed_index
 
     @on(RadioSet.Changed)
     def on_mode_changed(self, event: RadioSet.Changed) -> None:
