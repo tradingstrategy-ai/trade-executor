@@ -81,6 +81,8 @@ def anvil_base_fork(request, usdc_holder, test_block_number) -> AnvilLaunch:
         JSON_RPC_BASE,
         unlocked_addresses=[usdc_holder],
         fork_block_number=test_block_number,
+        launch_wait_seconds=60.0,
+        test_request_timeout=30.0,
     )
     try:
         yield launch

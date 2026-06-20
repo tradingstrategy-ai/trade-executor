@@ -83,7 +83,12 @@ def arb_anvil() -> AnvilLaunch:
 
 @pytest.fixture()
 def base_anvil() -> AnvilLaunch:
-    launch = fork_network_anvil(JSON_RPC_BASE, fork_block_number=BASE_FORK_BLOCK)
+    launch = fork_network_anvil(
+        JSON_RPC_BASE,
+        fork_block_number=BASE_FORK_BLOCK,
+        launch_wait_seconds=60.0,
+        test_request_timeout=30.0,
+    )
     try:
         yield launch
     finally:
