@@ -176,6 +176,39 @@ def _format_remaining(remaining: datetime.timedelta, prefix: str = "") -> str:
     return f"{prefix}{hours:.1f}h"
 
 
+def _format_vault_display_flags(pair: TradingPairIdentifier) -> Text | None:
+    """Format generic vault warning flags for the Lockup column fallback."""
+    display_flags = pair.other_data.get("vault_display_flags") if pair.other_data else None
+    if not display_flags:
+        return None
+
+    red_count = sum(
+        1 for flag in display_flags
+        if isinstance(flag, dict) and flag.get("severity") == "red"
+    )
+    yellow_count = sum(
+        1 for flag in display_flags
+        if isinstance(flag, dict) and flag.get("severity") == "yellow"
+    )
+
+    parts = []
+    if red_count:
+        parts.append(f"red {red_count}")
+    if yellow_count:
+        parts.append(f"yellow {yellow_count}")
+
+    if not parts:
+        return None
+
+    style = "red" if red_count else "yellow"
+    return Text(" ".join(parts), style=style, justify="right")
+
+
+def _format_empty_lockup(pair: TradingPairIdentifier) -> Text:
+    """Format an empty Lockup column cell, falling back to vault warnings."""
+    return _format_vault_display_flags(pair) or Text("-", style="dim", justify="right")
+
+
 def _get_pending_settlement_trade(position: TradingPosition):
     """Return the first pending async-deposit trade for a position, or ``None``.
 
@@ -199,6 +232,7 @@ def _format_lockup(state: State, pair: TradingPairIdentifier) -> Text:
        available (operator-driven ERC-7540 vaults like Lagoon).
     2. Otherwise show the lockup time remaining from the stored expiry
        timestamp, or ``Unlocked`` once it has passed.
+    3. If no lockup data exists, show generic vault warning flags when present.
 
     Non-vault pairs or positions without any of this data show a dash.
     """
@@ -209,7 +243,7 @@ def _format_lockup(state: State, pair: TradingPairIdentifier) -> Text:
     # an open position.
     position = state.portfolio.get_position_by_trading_pair(pair, pending=True)
     if position is None:
-        return Text("-", style="dim", justify="right")
+        return _format_empty_lockup(pair)
 
     now = native_datetime_utc_now()
 
@@ -232,12 +266,12 @@ def _format_lockup(state: State, pair: TradingPairIdentifier) -> Text:
     # 2. Fall back to lockup expiry.
     expires_at_str = position.other_data.get("vault_lockup_expires_at")
     if expires_at_str is None:
-        return Text("-", style="dim", justify="right")
+        return _format_empty_lockup(pair)
 
     try:
         expires_at = datetime.datetime.fromisoformat(expires_at_str)
     except (ValueError, TypeError):
-        return Text("-", style="dim", justify="right")
+        return _format_empty_lockup(pair)
 
     remaining = expires_at - now
     if remaining.total_seconds() <= 0:
