@@ -228,6 +228,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                 # Risk and status
                 pair.other_data["risk_level"] = metadata.risk_level
                 pair.other_data["flags"] = metadata.flags
+                pair.other_data["vault_display_flags"] = getattr(metadata, "vault_display_flags", None)
                 # Informational metadata
                 pair.other_data["tvl"] = metadata.tvl
                 pair.other_data["tvl_peak"] = metadata.tvl_peak
