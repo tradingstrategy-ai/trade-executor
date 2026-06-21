@@ -43,7 +43,7 @@ from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.cli.testtrade import make_test_trade
+from tradeexecutor.cli.testtrade import make_test_trade, _materialise_bridge_on_anvil
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
@@ -590,6 +590,61 @@ def _execute_vault_sell(
     raise AssertionError(f"Vault sell failed for {position.pair}: {trade.get_revert_reason()}")
 
 
+def _close_shared_bridge_position(
+    *,
+    base_web3: Web3,
+    execution_model: EthereumExecution,
+    routing_model: GenericRouting,
+    routing_state,
+    sync_model: HotWalletSyncModel,
+    state: State,
+    universe: TradingStrategyUniverse,
+    web3config: Web3Config,
+    bridge_pair: TradingPairIdentifier,
+    bridge_position,
+) -> None:
+    """Close the remaining shared Base bridge position back to Arbitrum."""
+    base_usdc = fetch_erc20_details(base_web3, USDC_NATIVE_TOKEN[BASE_CHAIN_ID])
+    hot_wallet = execution_model.tx_builder.hot_wallet
+    bridge_sell_quantity = base_usdc.fetch_balance_of(hot_wallet.address)
+    assert bridge_sell_quantity > 0
+
+    ts = native_datetime_utc_now()
+    reserve_asset = universe.get_reserve_asset()
+    _, bridge_back_trade, _ = state.create_trade(
+        strategy_cycle_at=ts,
+        pair=bridge_pair,
+        quantity=-bridge_sell_quantity,
+        reserve=None,
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        position=bridge_position,
+        closing=True,
+        slippage_tolerance=0.05,
+    )
+
+    execution_model.execute_trades(
+        ts,
+        state,
+        [bridge_back_trade],
+        routing_model,
+        routing_state,
+    )
+    assert bridge_back_trade.is_success(), f"Bridge back failed: {bridge_back_trade.get_revert_reason()}"
+
+    _materialise_bridge_on_anvil(
+        web3config,
+        routing_model,
+        bridge_pair,
+        ARBITRUM_CHAIN_ID,
+        hot_wallet.address,
+        bridge_back_trade,
+    )
+    sync_model.sync_treasury(native_datetime_utc_now(), state, list(universe.reserve_assets))
+
+
 # --- Tests ---
 
 
@@ -868,6 +923,7 @@ def test_multiple_base_vault_positions_share_one_bridge(
     5. Decrease Mo Earn Max USDC (Y).
     6. Close IPOR Fusion USDC (Z).
     7. Close Mo Earn Max USDC (Y).
+    8. Bridge the shared CCTP position back to Arbitrum.
     """
     routing_model = _create_routing_model(arb_web3, shared_bridge_universe, web3config)
     routing_state = routing_model.create_routing_state(
@@ -998,3 +1054,22 @@ def test_multiple_base_vault_positions_share_one_bridge(
     assert float(bridge_position.bridge_capital_allocated) == pytest.approx(0, abs=0.05)
     assert len([p for p in state.portfolio.open_positions.values() if p.pair.kind == TradingPairKind.vault]) == 0
     assert get_total_equity(state) == pytest.approx(initial_equity, rel=0.05)
+
+    # 8. Bridge the shared CCTP position back to Arbitrum.
+    _close_shared_bridge_position(
+        base_web3=base_web3,
+        execution_model=execution_model,
+        routing_model=routing_model,
+        routing_state=routing_state,
+        sync_model=sync_model,
+        state=state,
+        universe=shared_bridge_universe,
+        web3config=web3config,
+        bridge_pair=bridge_pair,
+        bridge_position=bridge_position,
+    )
+    assert len(state.portfolio.open_positions) == 0
+    assert get_total_equity(state) == pytest.approx(initial_equity, rel=0.05)
+    chain_equity = state.portfolio.calculate_total_equity_chain()
+    assert chain_equity.get(ChainId.arbitrum, 0) == pytest.approx(float(DEPOSIT_AMOUNT), rel=0.05)
+    assert chain_equity.get(ChainId.base, 0) == pytest.approx(0, abs=0.05)
