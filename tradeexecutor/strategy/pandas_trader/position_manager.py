@@ -1343,6 +1343,65 @@ class PositionManager:
         assert trade.closing
         return [trade]
 
+    def open_cctp_bridge_position(
+        self,
+        pair: TradingPairIdentifier,
+        value: USDollarAmount | Decimal,
+        trade_type: TradeType = TradeType.rebalance,
+        notes: str | None = None,
+        slippage_tolerance: float | None = None,
+        flags: Set[TradeFlag] | None = None,
+    ) -> List[TradeExecution]:
+        """Open or increase a CCTP bridge position by bridging reserve out."""
+
+        assert pair.is_cctp_bridge()
+        assert value > 0, f"For opening CCTP bridge, the value must be positive. Got: {value} on {pair}"
+
+        if type(value) == float:
+            value = Decimal(value)
+
+        price_structure = self.pricing_model.get_buy_price(self.timestamp, pair, value)
+
+        reserve_asset, reserve_price = self.state.portfolio.get_default_reserve_asset()
+
+        if slippage_tolerance is None:
+            slippage_tolerance = self.pricing_model.calculate_trade_adjusted_slippage_tolerance(
+                pair=pair,
+                direction="buy",
+                default_slippage_tolerance=self.default_slippage_tolerance,
+            )
+
+        flags = {TradeFlag.open, TradeFlag.increase} | (flags or set())
+
+        position, trade, created = self.state.create_trade(
+            self.timestamp,
+            pair=pair,
+            quantity=None,
+            reserve=Decimal(value),
+            assumed_price=price_structure.price,
+            trade_type=trade_type,
+            reserve_currency=reserve_asset,
+            reserve_currency_price=reserve_price,
+            notes=notes,
+            pair_fee=price_structure.get_fee_percentage(),
+            lp_fees_estimated=price_structure.get_total_lp_fees(),
+            planned_mid_price=price_structure.mid_price,
+            price_structure=price_structure,
+            slippage_tolerance=slippage_tolerance,
+            flags=flags,
+        )
+
+        logger.info(
+            "Generated trade %s\nTo %s CCTP bridge position %s\nNotes: %s",
+            trade.get_human_description(),
+            "open" if created else "increase",
+            position.get_human_readable_name(),
+            notes,
+        )
+
+        assert trade.is_buy()
+        return [trade]
+
     def close_credit_supply_position(
         self,
         position: TradingPosition,

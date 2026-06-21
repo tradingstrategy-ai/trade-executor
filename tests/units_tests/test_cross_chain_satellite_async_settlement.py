@@ -217,7 +217,7 @@ def test_cross_chain_buy_does_not_crash_when_satellite_open_is_pending(monkeypat
     bridge_trade = MagicMock()
     bridge_trade.is_success.return_value = True
     bridge_pm = MagicMock()
-    bridge_pm.open_spot.return_value = [bridge_trade]
+    bridge_pm.open_cctp_bridge_position.return_value = [bridge_trade]
 
     # 2. Make the internally-constructed PositionManager return a pending satellite deposit.
     #    Faithful to production: requestDeposit confirmed but not settled, so the
@@ -262,7 +262,7 @@ def test_cross_chain_buy_does_not_crash_when_satellite_open_is_pending(monkeypat
     # 4. Verify it returns without raising and the satellite trade was executed but
     #    never asserted to be successful.
     assert result is None
-    bridge_pm.open_spot.assert_called_once()
+    bridge_pm.open_cctp_bridge_position.assert_called_once()
     satellite_pm.open_spot.assert_called_once()
     execution_model.execute_trades.assert_called()
     satellite_trade.is_success.assert_not_called()

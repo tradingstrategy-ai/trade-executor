@@ -52,6 +52,7 @@ from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
+from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
@@ -68,10 +69,13 @@ BASE_CHAIN_ID = 8453
 
 # IPOR Fusion vault on Base — USDC, no lockup beyond ~1 hour
 IPOR_VAULT_ADDRESS = "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216"
+MUSCADINE_VAULT_ADDRESS = "0xf7e26fa48a568b8b0038e104dfd8abdf0f99074f"
+MO_EARN_MAX_VAULT_ADDRESS = "0x3094b241aade60f91f1c82b0628a10d9501462f9"
 
-DEPOSIT_AMOUNT = Decimal("10")  # Total USDC deposited
+DEPOSIT_AMOUNT = Decimal("30")  # Total USDC deposited
 BRIDGE_AMOUNT = Decimal("5")    # USDC bridged to Base
 VAULT_AMOUNT = Decimal("3")     # USDC deposited into vault
+SHARED_BRIDGE_TRADE_AMOUNT = Decimal("4")
 
 #: Pin Base fork to a block where the IPOR Fusion vault has sufficient
 #: deposit headroom.  The vault's ``totalSupplyCap`` has been nearly full
@@ -188,6 +192,28 @@ def ipor_share_token() -> AssetIdentifier:
 
 
 @pytest.fixture()
+def muscadine_share_token() -> AssetIdentifier:
+    """Muscadine USDC Vault share token on Base."""
+    return AssetIdentifier(
+        chain_id=BASE_CHAIN_ID,
+        address=MUSCADINE_VAULT_ADDRESS,
+        token_symbol="mvUSDC",
+        decimals=18,
+    )
+
+
+@pytest.fixture()
+def mo_earn_max_share_token() -> AssetIdentifier:
+    """Mo Earn Max USDC share token on Base."""
+    return AssetIdentifier(
+        chain_id=BASE_CHAIN_ID,
+        address=MO_EARN_MAX_VAULT_ADDRESS,
+        token_symbol="maxUSD",
+        decimals=18,
+    )
+
+
+@pytest.fixture()
 def bridge_pair(usdc_base, usdc_arb) -> TradingPairIdentifier:
     """CCTP bridge pair: Arbitrum USDC → Base USDC."""
     return TradingPairIdentifier(
@@ -207,6 +233,38 @@ def bridge_pair(usdc_base, usdc_arb) -> TradingPairIdentifier:
     )
 
 
+def _make_base_vault_pair(
+    *,
+    share_token: AssetIdentifier,
+    address: str,
+    internal_id: int,
+    exchange_name: str,
+    vault_protocol: str = "erc_4626",
+    vault_features: list[str] | None = None,
+) -> TradingPairIdentifier:
+    """Create a Base USDC vault pair for fork tests."""
+    return TradingPairIdentifier(
+        base=share_token,
+        quote=AssetIdentifier(
+            chain_id=BASE_CHAIN_ID,
+            address=USDC_NATIVE_TOKEN[BASE_CHAIN_ID],
+            token_symbol="USDC",
+            decimals=6,
+        ),
+        pool_address=address,
+        exchange_address=address,
+        internal_id=internal_id,
+        internal_exchange_id=internal_id,
+        fee=0.0,
+        kind=TradingPairKind.vault,
+        exchange_name=exchange_name,
+        other_data={
+            "vault_protocol": vault_protocol,
+            "vault_features": vault_features,
+        },
+    )
+
+
 @pytest.fixture()
 def vault_pair(ipor_share_token, usdc_base) -> TradingPairIdentifier:
     """IPOR Fusion vault pair on Base."""
@@ -222,7 +280,32 @@ def vault_pair(ipor_share_token, usdc_base) -> TradingPairIdentifier:
         exchange_name="IPOR Fusion",
         other_data={
             "vault_protocol": "ipor_fusion",
+            "vault_features": ["ipor_like"],
         },
+    )
+
+
+@pytest.fixture()
+def muscadine_vault_pair(muscadine_share_token) -> TradingPairIdentifier:
+    """Muscadine USDC Vault pair on Base."""
+    return _make_base_vault_pair(
+        share_token=muscadine_share_token,
+        address=MUSCADINE_VAULT_ADDRESS,
+        internal_id=3,
+        exchange_name="Muscadine USDC Vault",
+        vault_features=["morpho_like", "euler_earn_like"],
+    )
+
+
+@pytest.fixture()
+def mo_earn_max_vault_pair(mo_earn_max_share_token) -> TradingPairIdentifier:
+    """Mo Earn Max USDC pair on Base."""
+    return _make_base_vault_pair(
+        share_token=mo_earn_max_share_token,
+        address=MO_EARN_MAX_VAULT_ADDRESS,
+        internal_id=4,
+        exchange_name="Mo Earn Max USDC",
+        vault_features=["morpho_like", "euler_earn_like"],
     )
 
 
@@ -256,6 +339,57 @@ def universe(bridge_pair, vault_pair, usdc_arb) -> TradingStrategyUniverse:
         time_bucket=TimeBucket.d1,
         chains={ChainId.arbitrum, ChainId.base},
         exchanges={cctp_exchange, vault_exchange},
+        pairs=pair_universe,
+        candles=None,
+        liquidity=None,
+    )
+
+    return TradingStrategyUniverse(
+        data_universe=data_universe,
+        reserve_assets=[usdc_arb],
+    )
+
+
+@pytest.fixture()
+def shared_bridge_universe(
+    bridge_pair,
+    vault_pair,
+    muscadine_vault_pair,
+    mo_earn_max_vault_pair,
+    usdc_arb,
+) -> TradingStrategyUniverse:
+    """Trading universe with one CCTP bridge and three real Base vaults."""
+
+    vault_pairs = [muscadine_vault_pair, mo_earn_max_vault_pair, vault_pair]
+    pair_universe = create_pair_universe_from_code(ChainId.arbitrum, [bridge_pair] + vault_pairs)
+
+    cctp_exchange = Exchange(
+        chain_id=ChainId.arbitrum,
+        chain_slug="arbitrum",
+        exchange_id=1,
+        exchange_slug="cctp-bridge",
+        address=TOKEN_MESSENGER_V2,
+        exchange_type=ExchangeType.uniswap_v2,
+        pair_count=1,
+    )
+
+    vault_exchanges = [
+        Exchange(
+            chain_id=ChainId.base,
+            chain_slug="base",
+            exchange_id=pair.internal_exchange_id,
+            exchange_slug=pair.exchange_name.lower().replace(" ", "-"),
+            address=pair.exchange_address,
+            exchange_type=ExchangeType.erc_4626_vault,
+            pair_count=1,
+        )
+        for pair in vault_pairs
+    ]
+
+    data_universe = Universe(
+        time_bucket=TimeBucket.d1,
+        chains={ChainId.arbitrum, ChainId.base},
+        exchanges={cctp_exchange, *vault_exchanges},
         pairs=pair_universe,
         candles=None,
         liquidity=None,
@@ -310,6 +444,146 @@ def get_total_equity(state: State) -> float:
     reserve_value = sum(float(r.quantity) for r in state.portfolio.reserves.values())
     position_equity = sum(p.get_equity() for p in state.portfolio.open_positions.values())
     return reserve_value + position_equity
+
+
+def _create_routing_model(arb_web3: Web3, universe: TradingStrategyUniverse, web3config: Web3Config) -> GenericRouting:
+    """Create generic multichain routing for a test universe."""
+    pair_configurator = EthereumPairConfigurator(
+        arb_web3,
+        universe,
+        web3config=web3config,
+    )
+    return GenericRouting(pair_configurator)
+
+
+def _get_bridge_position(state: State, bridge_pair: TradingPairIdentifier):
+    """Return the single shared bridge position for a bridge pair."""
+    bridge_position = state.portfolio.get_position_by_trading_pair(bridge_pair)
+    assert bridge_position is not None and bridge_position.is_open()
+    assert len([p for p in state.portfolio.open_positions.values() if p.pair.is_cctp_bridge()]) == 1
+    return bridge_position
+
+
+def _open_cross_chain_vault_position(
+    *,
+    arb_web3: Web3,
+    execution_model: EthereumExecution,
+    routing_model: GenericRouting,
+    routing_state,
+    sync_model: HotWalletSyncModel,
+    state: State,
+    universe: TradingStrategyUniverse,
+    web3config: Web3Config,
+    pair: TradingPairIdentifier,
+    amount: Decimal,
+) -> None:
+    """Open a Base vault position through the production cross-chain test-trade path."""
+    make_test_trade(
+        web3=arb_web3,
+        execution_model=execution_model,
+        pricing_model=GenericPricing(routing_model.pair_configurator),
+        sync_model=sync_model,
+        state=state,
+        universe=universe,
+        routing_model=routing_model,
+        routing_state=routing_state,
+        max_slippage=0.05,
+        amount=amount,
+        pair=pair,
+        buy_only=True,
+        web3config=web3config,
+    )
+
+
+def _open_shared_bridge_vault_position(
+    *,
+    arb_web3: Web3,
+    execution_model: EthereumExecution,
+    routing_model: GenericRouting,
+    routing_state,
+    sync_model: HotWalletSyncModel,
+    state: State,
+    universe: TradingStrategyUniverse,
+    web3config: Web3Config,
+    pair: TradingPairIdentifier,
+    amount: Decimal,
+    expected_name: str,
+):
+    """Open a Base vault position through the shared CCTP bridge."""
+    _open_cross_chain_vault_position(
+        arb_web3=arb_web3,
+        execution_model=execution_model,
+        routing_model=routing_model,
+        routing_state=routing_state,
+        sync_model=sync_model,
+        state=state,
+        universe=universe,
+        web3config=web3config,
+        pair=pair,
+        amount=amount,
+    )
+    position = state.portfolio.get_position_by_trading_pair(pair)
+    assert position is not None and position.is_open()
+    assert expected_name in position.pair.exchange_name
+    return position
+
+
+def _warm_vault_pricing(
+    *,
+    routing_model: GenericRouting,
+    pairs: list[TradingPairIdentifier],
+) -> None:
+    """Warm vault adapters before the transaction-heavy test sequence starts."""
+    ts = native_datetime_utc_now()
+    pricing_model = GenericPricing(routing_model.pair_configurator)
+    for pair in pairs:
+        pricing_model.get_buy_price(ts, pair, SHARED_BRIDGE_TRADE_AMOUNT)
+
+
+def _execute_vault_sell(
+    *,
+    base_web3: Web3,
+    execution_model: EthereumExecution,
+    routing_model: GenericRouting,
+    routing_state,
+    state: State,
+    universe: TradingStrategyUniverse,
+    position,
+    quantity: Decimal | None = None,
+) -> None:
+    """Sell all or part of a Base vault position, mining past lockups if needed."""
+    pricing_model = routing_model.pair_configurator.get_config(
+        routing_model.pair_configurator.match_router(position.pair)
+    ).pricing_model
+
+    for attempt in range(2):
+        ts = native_datetime_utc_now()
+        position_manager = PositionManager(
+            ts,
+            universe,
+            state,
+            pricing_model,
+            default_slippage_tolerance=0.05,
+        )
+        if quantity is None:
+            trades = position_manager.close_position(position)
+        else:
+            trades = position_manager.close_spot_position(position, quantity=quantity, slippage_tolerance=0.05)
+
+        execution_model.execute_trades(
+            ts,
+            state,
+            trades,
+            routing_model,
+            routing_state,
+        )
+        trade = trades[0]
+        if trade.is_success():
+            return
+        if attempt == 0:
+            mine(base_web3, increase_timestamp=3600)
+
+    raise AssertionError(f"Vault sell failed for {position.pair}: {trade.get_revert_reason()}")
 
 
 # --- Tests ---
@@ -565,3 +839,158 @@ def test_vault_deposit_from_bridge_capital(
     chain_equity = state.portfolio.calculate_total_equity_chain()
     assert chain_equity.get(ChainId.arbitrum, 0) == pytest.approx(float(DEPOSIT_AMOUNT), rel=0.03)
     assert chain_equity.get(ChainId.base, 0) == pytest.approx(0, abs=0.01)
+
+
+@pytest.mark.timeout(900)
+def test_multiple_base_vault_positions_share_one_bridge(
+    arb_web3: Web3,
+    base_web3: Web3,
+    execution_model: EthereumExecution,
+    sync_model: HotWalletSyncModel,
+    state: State,
+    shared_bridge_universe: TradingStrategyUniverse,
+    bridge_pair: TradingPairIdentifier,
+    muscadine_vault_pair: TradingPairIdentifier,
+    mo_earn_max_vault_pair: TradingPairIdentifier,
+    vault_pair: TradingPairIdentifier,
+    web3config: Web3Config,
+):
+    """Three real Base vault positions share and mutate one CCTP bridge.
+
+    1. Bridge from Arbitrum to Base and open Muscadine USDC Vault (X).
+    2. Bridge from Arbitrum to Base and open Mo Earn Max USDC (Y).
+    3. Close Muscadine USDC Vault (X).
+    4. Bridge from Arbitrum to Base and open IPOR Fusion USDC (Z).
+    5. Decrease Mo Earn Max USDC (Y).
+    6. Close IPOR Fusion USDC (Z).
+    7. Close Mo Earn Max USDC (Y).
+    """
+    routing_model = _create_routing_model(arb_web3, shared_bridge_universe, web3config)
+    routing_state = routing_model.create_routing_state(
+        shared_bridge_universe,
+        {"tx_builder": execution_model.tx_builder},
+    )
+    _warm_vault_pricing(
+        routing_model=routing_model,
+        pairs=[muscadine_vault_pair, mo_earn_max_vault_pair, vault_pair],
+    )
+    initial_equity = get_total_equity(state)
+    assert initial_equity == pytest.approx(float(DEPOSIT_AMOUNT), rel=0.01)
+
+    # 1. Bridge from Arbitrum to Base and open Muscadine USDC Vault (X).
+    position_x = _open_shared_bridge_vault_position(
+        arb_web3=arb_web3,
+        execution_model=execution_model,
+        routing_model=routing_model,
+        routing_state=routing_state,
+        sync_model=sync_model,
+        state=state,
+        universe=shared_bridge_universe,
+        web3config=web3config,
+        pair=muscadine_vault_pair,
+        amount=SHARED_BRIDGE_TRADE_AMOUNT,
+        expected_name="Muscadine",
+    )
+    bridge_position = _get_bridge_position(state, bridge_pair)
+    assert float(bridge_position.bridge_capital_allocated) == pytest.approx(float(SHARED_BRIDGE_TRADE_AMOUNT), rel=0.05)
+
+    # 2. Bridge from Arbitrum to Base and open Mo Earn Max USDC (Y).
+    position_y = _open_shared_bridge_vault_position(
+        arb_web3=arb_web3,
+        execution_model=execution_model,
+        routing_model=routing_model,
+        routing_state=routing_state,
+        sync_model=sync_model,
+        state=state,
+        universe=shared_bridge_universe,
+        web3config=web3config,
+        pair=mo_earn_max_vault_pair,
+        amount=SHARED_BRIDGE_TRADE_AMOUNT,
+        expected_name="Mo Earn",
+    )
+    bridge_position = _get_bridge_position(state, bridge_pair)
+    assert float(bridge_position.bridge_capital_allocated) == pytest.approx(float(SHARED_BRIDGE_TRADE_AMOUNT * 2), rel=0.05)
+
+    # 3. Close Muscadine USDC Vault (X).
+    _execute_vault_sell(
+        base_web3=base_web3,
+        execution_model=execution_model,
+        routing_model=routing_model,
+        routing_state=routing_state,
+        state=state,
+        universe=shared_bridge_universe,
+        position=position_x,
+    )
+    assert position_x.is_closed()
+    bridge_position = _get_bridge_position(state, bridge_pair)
+    allocation_after_x_close = bridge_position.bridge_capital_allocated
+    assert float(allocation_after_x_close) == pytest.approx(float(SHARED_BRIDGE_TRADE_AMOUNT), rel=0.10)
+
+    # 4. Bridge from Arbitrum to Base and open IPOR Fusion USDC (Z).
+    position_z = _open_shared_bridge_vault_position(
+        arb_web3=arb_web3,
+        execution_model=execution_model,
+        routing_model=routing_model,
+        routing_state=routing_state,
+        sync_model=sync_model,
+        state=state,
+        universe=shared_bridge_universe,
+        web3config=web3config,
+        pair=vault_pair,
+        amount=SHARED_BRIDGE_TRADE_AMOUNT,
+        expected_name="IPOR",
+    )
+    bridge_position = _get_bridge_position(state, bridge_pair)
+    assert float(bridge_position.bridge_capital_allocated) == pytest.approx(float(SHARED_BRIDGE_TRADE_AMOUNT * 2), rel=0.10)
+
+    # 5. Decrease Mo Earn Max USDC (Y).
+    y_quantity_before_decrease = position_y.get_quantity()
+    y_decrease_quantity = y_quantity_before_decrease / Decimal(2)
+    allocation_before_y_decrease = bridge_position.bridge_capital_allocated
+    _execute_vault_sell(
+        base_web3=base_web3,
+        execution_model=execution_model,
+        routing_model=routing_model,
+        routing_state=routing_state,
+        state=state,
+        universe=shared_bridge_universe,
+        position=position_y,
+        quantity=y_decrease_quantity,
+    )
+    assert position_y.is_open()
+    assert position_y.get_quantity() < y_quantity_before_decrease
+    bridge_position = _get_bridge_position(state, bridge_pair)
+    assert bridge_position.bridge_capital_allocated < allocation_before_y_decrease
+    assert bridge_position.bridge_capital_allocated > 0
+
+    # 6. Close IPOR Fusion USDC (Z).
+    allocation_before_z_close = bridge_position.bridge_capital_allocated
+    _execute_vault_sell(
+        base_web3=base_web3,
+        execution_model=execution_model,
+        routing_model=routing_model,
+        routing_state=routing_state,
+        state=state,
+        universe=shared_bridge_universe,
+        position=position_z,
+    )
+    assert position_z.is_closed()
+    bridge_position = _get_bridge_position(state, bridge_pair)
+    assert bridge_position.bridge_capital_allocated < allocation_before_z_close
+    assert bridge_position.bridge_capital_allocated > 0
+
+    # 7. Close Mo Earn Max USDC (Y).
+    _execute_vault_sell(
+        base_web3=base_web3,
+        execution_model=execution_model,
+        routing_model=routing_model,
+        routing_state=routing_state,
+        state=state,
+        universe=shared_bridge_universe,
+        position=position_y,
+    )
+    assert position_y.is_closed()
+    bridge_position = _get_bridge_position(state, bridge_pair)
+    assert float(bridge_position.bridge_capital_allocated) == pytest.approx(0, abs=0.05)
+    assert len([p for p in state.portfolio.open_positions.values() if p.pair.kind == TradingPairKind.vault]) == 0
+    assert get_total_equity(state) == pytest.approx(initial_equity, rel=0.05)

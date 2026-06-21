@@ -41,6 +41,23 @@ USDC_BASE_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 class DummyCctpPricingModel:
     """Minimal pricing model for exercising bridge close planning."""
 
+    def get_buy_price(
+        self,
+        timestamp: datetime.datetime,
+        pair: TradingPairIdentifier,
+        reserve: Decimal,
+    ) -> TradePricing:
+        """Return 1:1 pricing for a CCTP bridge buy."""
+        assert pair.is_cctp_bridge()
+        assert reserve is not None
+        return TradePricing(
+            price=1.0,
+            mid_price=1.0,
+            lp_fee=[0.0],
+            pair_fee=[0.0],
+            side=True,
+        )
+
     def get_sell_price(
         self,
         timestamp: datetime.datetime,
@@ -64,9 +81,9 @@ class DummyCctpPricingModel:
         direction: str,
         default_slippage_tolerance: float,
     ) -> float:
-        """Return a fixed small slippage tolerance for close planning."""
+        """Return a fixed small slippage tolerance for bridge planning."""
         assert pair.is_cctp_bridge()
-        assert direction == "sell"
+        assert direction in ("buy", "sell")
         return 0.01
 
 
@@ -541,6 +558,52 @@ def test_close_cctp_bridge_uses_available_bridge_capital(
     assert trade.planned_reserve == Decimal("1020")
     assert TradeFlag.close in trade.flags
     assert TradeFlag.reduce in trade.flags
+    assert len(state.portfolio.open_positions) == 1
+    assert list(state.portfolio.open_positions.values())[0] == bridge_position
+
+
+def test_open_cctp_bridge_reuses_existing_bridge_position(
+    cctp_pair: TradingPairIdentifier,
+    usdc_arbitrum_asset: AssetIdentifier,
+):
+    """Test that repeated bridge-out increases the existing bridge position.
+
+    1. Open an initial CCTP bridge position.
+    2. Plan another bridge-out through PositionManager.
+    3. Verify the new trade is attached to the original bridge position.
+    """
+    # 1. Open an initial CCTP bridge position.
+    state = State()
+    ts = datetime.datetime(2025, 1, 1)
+    state.portfolio.initialise_reserves(usdc_arbitrum_asset)
+    reserve = state.portfolio.get_default_reserve_position()
+    reserve.quantity = Decimal(10000)
+    reserve.reserve_token_price = 1.0
+
+    create_open_bridge_position(
+        state=state,
+        ts=ts,
+        cctp_pair=cctp_pair,
+        reserve_asset=usdc_arbitrum_asset,
+        reserve_amount=Decimal(1000),
+    )
+    bridge_position = state.portfolio.get_bridge_position_for_chain(ChainId.base.value)
+    assert bridge_position is not None
+
+    # 2. Plan another bridge-out through PositionManager.
+    strategy_universe = create_dummy_strategy_universe(usdc_arbitrum_asset)
+    pricing_model = DummyCctpPricingModel()
+    position_manager = PositionManager(ts, strategy_universe, state, pricing_model)
+    trades = position_manager.open_cctp_bridge_position(cctp_pair, Decimal(500))
+
+    # 3. Verify the new trade is attached to the original bridge position.
+    assert len(trades) == 1
+    trade = trades[0]
+    assert trade.is_buy()
+    assert trade.position_id == bridge_position.position_id
+    assert trade.planned_reserve == Decimal(500)
+    assert TradeFlag.open in trade.flags
+    assert TradeFlag.increase in trade.flags
     assert len(state.portfolio.open_positions) == 1
     assert list(state.portfolio.open_positions.values())[0] == bridge_position
 
