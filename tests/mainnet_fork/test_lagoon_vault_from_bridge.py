@@ -95,6 +95,10 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture()
 def arb_anvil() -> AnvilLaunch:
+    # Arbitrum is intentionally not pinned: these tests only use it as the
+    # source chain for fork-funded USDC and CCTP burn transactions, while the
+    # stateful vault deposit/redeem behaviour that affects reproducibility is
+    # on Base and is pinned with BASE_FORK_BLOCK.
     launch = fork_network_anvil(JSON_RPC_ARBITRUM)
     try:
         yield launch
