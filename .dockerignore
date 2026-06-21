@@ -52,3 +52,20 @@ deps/trading-strategy/dist
 deps/trading-strategy/docs
 deps/trading-strategy/extras
 deps/trading-strategy/tests
+deps/trading-strategy/tradingstrategy/chains/_data/icons
+deps/trading-strategy/tradingstrategy/chains/_data/iconsDownload
+deps/trading-strategy/tradingstrategy/data_bundles/coingecko.json.zstd
+
+# Generated contract test/debug artefacts are not needed in the runtime image
+deps/web3-ethereum-defi/eth_defi/abi/**/build-info
+deps/web3-ethereum-defi/eth_defi/abi/**/*.dbg.json
+deps/web3-ethereum-defi/eth_defi/abi/**/*Tests*.json
+deps/web3-ethereum-defi/eth_defi/abi/**/*Test.json
+deps/web3-ethereum-defi/eth_defi/abi/**/*TestBase.json
+deps/web3-ethereum-defi/eth_defi/abi/**/Test[A-Z]*.json
+deps/web3-ethereum-defi/eth_defi/abi/**/*Test[A-Z]*.json
+deps/web3-ethereum-defi/eth_defi/abi/**/Mock*.json
+deps/web3-ethereum-defi/eth_defi/abi/**/Vm*.json
+deps/web3-ethereum-defi/eth_defi/abi/**/Std*.json
+deps/web3-ethereum-defi/eth_defi/abi/**/console*.json
+deps/web3-ethereum-defi/eth_defi/abi/**/safeconsole.json
