@@ -216,7 +216,7 @@ def _make_cross_chain_test_trade(
 
         # Step 1: Bridge USDC to satellite chain
         logger.info("Cross-chain step 1: bridge %s USDC to %s via CCTP", amount, chain_name)
-        bridge_trades = position_manager.open_spot(
+        bridge_trades = position_manager.open_cctp_bridge_position(
             bridge_pair, float(amount), notes=notes, flags={TradeFlag.test_trade},
         )
         execution_model.execute_trades(ts, state, bridge_trades, routing_model, routing_state)
