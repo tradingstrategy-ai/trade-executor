@@ -364,9 +364,11 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 )
 
         if self.calculate_valuation_func is not None:
-            return self.calculate_valuation_func(state, block_number=block_number)
+            valuation = self.calculate_valuation_func(state, block_number=block_number)
+        else:
+            valuation = state.portfolio.get_net_asset_value(include_interest=True)
 
-        return state.portfolio.get_net_asset_value(include_interest=True)
+        return valuation + state.portfolio.get_vault_settlement_pending_value()
 
     def _mark_treasury_sync_completed(
         self,
