@@ -29,6 +29,7 @@ Steps:
 6. Final equity approximately equals starting equity.
 """
 
+import datetime
 import logging
 import os
 from decimal import Decimal
@@ -53,6 +54,7 @@ from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfig
 from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
+from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder
 from tradeexecutor.cli.close_position import close_single_or_all_positions
@@ -378,8 +380,9 @@ def test_lagoon_erc_7540_async_deposit_redeem_lifecycle(
 
     1. Deposit: requestDeposit -> vault_settlement_pending, pending on-chain.
     2. While the deposit is pending: revaluation values the quantity-0 position to zero,
-       check-accounts reports no mismatch, and the settlement retry keeps the trade
-       pending while the queue is held (no double-deposit).
+       Lagoon NAV calculation includes the committed pending capital, check-accounts
+       reports no mismatch, and the settlement retry keeps the trade pending while the
+       queue is held (no double-deposit).
     3. Settle as asset manager: settlement retry claims -> position open, shares on-chain.
     4. Redeem: requestRedeem -> pending, shares escrowed on-chain (owner balance zero).
     5. While the redeem is pending: check-accounts reports no mismatch even though the
@@ -416,6 +419,13 @@ def test_lagoon_erc_7540_async_deposit_redeem_lifecycle(
     revalue_state(state, native_datetime_utc_now(), valuation_model)
     pending_position = state.portfolio.get_position_by_id(buy_trade.position_id)
     assert pending_position.get_value() == pytest.approx(0.0, abs=1e-6)
+
+    # 2. Lagoon NAV calculation must still include committed deposit capital,
+    #    even though the pending vault position has no shares yet.
+    lagoon_sync_model = object.__new__(LagoonVaultSyncModel)
+    lagoon_sync_model.valuation_data_freshness = datetime.timedelta(hours=4)
+    lagoon_sync_model.calculate_valuation_func = None
+    assert lagoon_sync_model.calculate_valuation(state) == pytest.approx(starting_equity, abs=1.0)
 
     # 2. Check-accounts during the pending deposit: state reserve and position quantity
     #    both already exclude the committed capital, so no mismatch.
