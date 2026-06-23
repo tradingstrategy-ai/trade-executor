@@ -112,6 +112,62 @@ claude ultrareview master --timeout 15
 
 For long-running `claude -p` jobs, prefer `--output-format stream-json --verbose`. Text mode can look idle because useful output may be buffered until the final answer.
 
+### Reviewing a plan or document with Claude CLI
+
+For Markdown plan reviews, default to a no-tools inline text review after the
+relevant code has already been inspected by the primary agent. Do not start
+with a grounded tool-using Claude review for simple plan re-reviews; it can
+sit silently in `-p` mode or wait internally on tool/permission handling, and
+that repeats avoidable delays.
+
+Use this for ordinary plan re-review:
+
+```shell
+claude -p "$(sed '1iDo not use tools. Review only the plan text below. Return concise actionable findings, or say no blocking findings.\n' .claude/plans/my-plan.md)" \
+  --tools "" \
+  --permission-mode dontAsk \
+  --no-session-persistence \
+  --max-budget-usd 1
+```
+
+Use this for a final blocking-only pass after applying review feedback:
+
+```shell
+claude -p "$(sed '1iDo not use tools. Review only the updated plan text below. Return only blocking findings, or say no blocking findings.\n' .claude/plans/my-plan.md)" \
+  --tools "" \
+  --permission-mode dontAsk \
+  --no-session-persistence \
+  --max-budget-usd 1
+```
+
+Only use a grounded repository review when Claude specifically needs fresh code
+inspection, for example when the primary agent has not checked the relevant
+files or when the plan makes claims that need independent verification against
+the worktree. In that case, allow only read-only tools and make the scope
+explicit:
+
+```shell
+claude -p "Review .claude/plans/my-plan.md for correctness and completeness. Focus on implementation risks, missing code paths, and test gaps. Keep the review concise and actionable." \
+  --allowedTools Read,Grep,Glob,Bash \
+  --permission-mode dontAsk \
+  --output-format stream-json \
+  --verbose
+```
+
+If a grounded review produces no output after roughly a minute, stop it and
+switch to the no-tools inline review unless fresh repository inspection is
+strictly required.
+
+Notes:
+
+- Use `--tools ""` only when the prompt embeds all necessary context.
+- If you allow tools, use comma-separated tool names for `--allowedTools`.
+- `--permission-mode dontAsk` avoids interactive permission prompts in
+  non-interactive review runs.
+- `--no-session-persistence` keeps one-off reviews from polluting later
+  `claude --continue` sessions.
+- `--max-budget-usd` is optional but useful for bounded document reviews.
+
 ## Cross-agent review patterns
 
 Use the other agent as a reviewer when:

@@ -985,6 +985,23 @@ class TradingPairIdentifier:
         assert self.is_vault(), f"Not a vault pair: {self}"
         return self.other_data.get("deposit_closed_reason") is None
 
+    def can_redeem(self) -> bool:
+        """Check whether redemptions appear open based on data-pipeline metadata.
+
+        This is a point-in-time snapshot from the Trading Strategy data
+        pipeline, not a live check. For authoritative gating during trade
+        execution, use
+        :py:meth:`~tradeexecutor.strategy.pricing_model.PricingModel.can_redeem`
+        instead.
+
+        - Asserts this pair is a vault.
+        - Checks ``redemption_closed_reason`` in :py:attr:`other_data`.
+        - If the data-pipeline metadata does not expose a closed reason,
+          treats redemptions as open.
+        """
+        assert self.is_vault(), f"Not a vault pair: {self}"
+        return self.other_data.get("redemption_closed_reason") is None
+
     def get_vault_metadata(self) -> "VaultMetadata | None":
         """Get the full vault metadata object.
 
