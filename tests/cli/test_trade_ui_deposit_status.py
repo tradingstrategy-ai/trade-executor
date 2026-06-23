@@ -12,7 +12,9 @@ from eth_defi.erc_4626.core import ERC4626Feature
 
 from tradeexecutor.cli.trade_ui_tui import (
     _format_deposits_open,
+    _format_redemptions_open,
     _get_deposit_status,
+    _get_redemption_status,
 )
 from tradeexecutor.state.identifier import (
     AssetIdentifier,
@@ -28,6 +30,7 @@ def _make_erc4626_vault_pair(
     vault_name: str = "Test USDC Vault",
     protocol_slug: str = "lagoon-finance",
     deposit_closed_reason: str | None = None,
+    redemption_closed_reason: str | None = None,
     vault_features: list[str] | None = None,
     token_metadata: dict | None = None,
     internal_id: int = 1,
@@ -59,6 +62,7 @@ def _make_erc4626_vault_pair(
             "vault_protocol": "erc4626",
             "vault_name": vault_name,
             "deposit_closed_reason": deposit_closed_reason,
+            "redemption_closed_reason": redemption_closed_reason,
             "vault_features": vault_features,
             "token_metadata": token_metadata,
         },
@@ -96,6 +100,102 @@ def test_tui_erc4626_deposit_status_respects_closed_reason() -> None:
     assert closed_status is False
     assert _format_deposits_open(open_vault, open_status).plain == "Yes"
     assert _format_deposits_open(closed_vault, closed_status).plain == "No"
+
+
+def test_tui_erc4626_redemption_status_respects_closed_reason() -> None:
+    """ERC-4626 vaults with redemption_closed_reason show "No" in the TUI.
+
+    1. Create two ERC-4626 vault pairs: one redeemable, one redemption-closed.
+    2. Resolve redemption status through the TUI helpers.
+    3. Verify the open vault renders "Yes" and the closed vault renders "No".
+    """
+
+    # 1. Create two ERC-4626 vault pairs: one redeemable, one redemption-closed.
+    open_vault = _make_erc4626_vault_pair(
+        chain_id=8453,
+        vault_name="Redeemable Base Vault",
+        redemption_closed_reason=None,
+        internal_id=1,
+    )
+    closed_vault = _make_erc4626_vault_pair(
+        chain_id=1,
+        vault_name="Redemption Closed ETH Vault",
+        redemption_closed_reason="Redemptions are closed during the trading epoch",
+        internal_id=2,
+    )
+
+    # 2. Resolve redemption status through the TUI helpers.
+    open_status = _get_redemption_status(None, open_vault)
+    closed_status = _get_redemption_status(None, closed_vault)
+
+    # 3. Verify the open vault renders "Yes" and the closed vault renders "No".
+    assert open_status is True
+    assert closed_status is False
+    assert _format_redemptions_open(open_vault, open_status).plain == "Yes"
+    assert _format_redemptions_open(closed_vault, closed_status).plain == "No"
+
+
+def test_tui_redemption_status_uses_live_pricing_model() -> None:
+    """Live pricing model redemption status takes priority over metadata.
+
+    1. Create an ERC-4626 vault pair whose metadata says redemptions are open.
+    2. Mock a pricing model that reports redemptions closed.
+    3. Verify the TUI helper returns the live closed status.
+    """
+
+    class PricingModelStub:
+        def can_redeem(self, ts, pair):
+            return False
+
+    # 1. Create an ERC-4626 vault pair whose metadata says redemptions are open.
+    pair = _make_erc4626_vault_pair(redemption_closed_reason=None)
+
+    # 2. Mock a pricing model that reports redemptions closed.
+    status = _get_redemption_status(PricingModelStub(), pair, ts=datetime.datetime(2026, 6, 1))
+
+    # 3. The TUI helper returns the live closed status.
+    assert status is False
+    assert _format_redemptions_open(pair, status).plain == "No"
+
+
+def test_tui_redemption_status_falls_back_for_supported_vault_providers() -> None:
+    """Requested vault providers expose redemption metadata in the TUI.
+
+    1. Create vault pairs for Lagoon, Euler, Morpho, D2, Plutus, Ostium, and Gains.
+    2. Resolve redemption status through the metadata fallback path.
+    3. Verify closed metadata renders as "No" for each provider.
+    """
+
+    # 1. Create vault pairs for the requested providers.
+    provider_slugs = [
+        "lagoon",
+        "euler",
+        "morpho",
+        "d2",
+        "plutus",
+        "ostium",
+        "gains",
+    ]
+    pairs = [
+        _make_erc4626_vault_pair(
+            protocol_slug=slug,
+            vault_name=f"{slug} vault",
+            redemption_closed_reason=f"{slug} redemptions closed",
+            internal_id=idx,
+        )
+        for idx, slug in enumerate(provider_slugs, start=1)
+    ]
+
+    # 2. Resolve redemption status through the metadata fallback path.
+    statuses = [_get_redemption_status(None, pair) for pair in pairs]
+
+    # 3. Closed metadata renders as "No" for each provider.
+    rendered_statuses = [
+        _format_redemptions_open(pair, status).plain
+        for pair, status in zip(pairs, statuses)
+    ]
+    assert statuses == [False] * len(provider_slugs)
+    assert rendered_statuses == ["No"] * len(provider_slugs)
 
 
 def test_tui_erc4626_vault_features_are_normalised_from_remote_metadata() -> None:

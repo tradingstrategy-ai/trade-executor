@@ -220,6 +220,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                 pair.other_data["vault_name"] = metadata.vault_name
                 pair.other_data["vault_performance_fee"] = metadata.performance_fee
                 pair.other_data["vault_management_fee"] = metadata.management_fee
+                pair.other_data["vault_lockup_days"] = metadata.lockup_days
                 # Deposit/redemption gating
                 pair.other_data["deposit_closed_reason"] = metadata.deposit_closed_reason
                 pair.other_data["redemption_closed_reason"] = metadata.redemption_closed_reason

@@ -99,6 +99,7 @@ def _make_state_with_pending_deposit(
 def _make_state_with_open_position(
     pair: TradingPairIdentifier,
     lockup_expires_at: str | None = None,
+    lockup_estimated: bool | None = None,
 ) -> State:
     """Build a State with one open vault position."""
     position = TradingPosition(
@@ -112,6 +113,8 @@ def _make_state_with_open_position(
     )
     if lockup_expires_at is not None:
         position.other_data["vault_lockup_expires_at"] = lockup_expires_at
+    if lockup_estimated is not None:
+        position.other_data["vault_lockup_estimated"] = lockup_estimated
 
     state = State()
     state.portfolio.open_positions[position.position_id] = position
@@ -219,25 +222,75 @@ def test_tui_lockup_prefers_expiry_over_vault_display_flags(monkeypatch) -> None
     assert cell.style == "yellow"
 
 
+def test_tui_lockup_marks_estimated_expiry(monkeypatch) -> None:
+    """An estimated lockup expiry is shown with a ``~`` prefix.
+
+    Steps:
+    1. Freeze the clock so the countdown is deterministic.
+    2. Build an open vault position with an estimated future lockup expiry.
+    3. Assert the Lockup cell marks the countdown as estimated.
+    """
+
+    # 1. Freeze the clock so the countdown is deterministic.
+    now = datetime.datetime(2026, 6, 9, 12, 0, 0)
+    monkeypatch.setattr("tradeexecutor.cli.trade_ui_tui.native_datetime_utc_now", lambda: now)
+
+    # 2. Build an open vault position with an estimated future lockup expiry.
+    pair = _make_vault_pair()
+    state = _make_state_with_open_position(
+        pair,
+        (now + datetime.timedelta(days=30)).isoformat(),
+        lockup_estimated=True,
+    )
+
+    # 3. The Lockup cell marks the countdown as estimated.
+    cell = _format_lockup(state, pair)
+    assert cell.plain == "~30.0d"
+    assert cell.style == "yellow"
+
+
+def test_tui_lockup_shows_metadata_only_lockup_days() -> None:
+    """A metadata-only vault lockup shows a static estimated duration.
+
+    Steps:
+    1. Build a vault pair with metadata lockup days.
+    2. Build an open position without a stored lockup expiry.
+    3. Assert the Lockup cell shows the static estimated duration.
+    """
+
+    # 1. Build a vault pair with metadata lockup days.
+    pair = _make_vault_pair()
+    pair.other_data["vault_lockup_days"] = 30.0
+
+    # 2. Build an open position without a stored lockup expiry.
+    state = _make_state_with_open_position(pair)
+
+    # 3. The Lockup cell shows the static estimated duration.
+    cell = _format_lockup(state, pair)
+    assert cell.plain == "~30.0d"
+    assert cell.style == "yellow"
+
+
 def test_tui_lockup_prefers_pending_settlement_over_vault_display_flags(monkeypatch) -> None:
-    """Pending vault settlement takes priority over generic vault warning flags.
+    """Pending vault settlement takes priority over other Lockup fallbacks.
 
     Steps:
     1. Freeze the clock so the settlement countdown is deterministic.
-    2. Build a settlement-pending vault deposit with generic warning flags.
-    3. Assert the Lockup cell shows the pending settlement ETA, not warning counts.
+    2. Build a settlement-pending vault deposit with generic warning flags and lockup metadata.
+    3. Assert the Lockup cell shows the pending settlement ETA, not fallback data.
     """
 
     # 1. Freeze "now".
     now = datetime.datetime(2026, 6, 9, 12, 0, 0)
     monkeypatch.setattr("tradeexecutor.cli.trade_ui_tui.native_datetime_utc_now", lambda: now)
 
-    # 2. Build a settlement-pending vault deposit with generic warning flags.
+    # 2. Build a settlement-pending vault deposit with generic warning flags and lockup metadata.
     pair = _make_vault_pair()
     pair.other_data["vault_display_flags"] = VAULT_DISPLAY_FLAGS
+    pair.other_data["vault_lockup_days"] = 30.0
     state = _make_state_with_pending_deposit(pair, (now + datetime.timedelta(hours=2)).isoformat())
 
-    # 3. The settlement ETA takes priority over warning counts.
+    # 3. The settlement ETA takes priority over fallback data.
     cell = _format_lockup(state, pair)
     assert cell.plain == "eligible 2.0h"
     assert cell.style == "yellow"

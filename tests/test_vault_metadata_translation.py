@@ -59,3 +59,28 @@ def test_translate_trading_pair_preserves_vault_display_flags(monkeypatch: pytes
 
     # 3. The translated pair exposes the flags to trade-ui.
     assert pair.other_data["vault_display_flags"] == display_flags
+
+
+def test_translate_trading_pair_preserves_vault_lockup_days() -> None:
+    """Vault lockup days are reduced from metadata into pair other data.
+
+    Steps:
+    1. Build a vault metadata object with a lockup duration.
+    2. Translate a DEX pair carrying the metadata.
+    3. Assert the translated pair exposes the lockup days to trade-ui.
+    """
+
+    # 1. Build a vault metadata object with a lockup duration.
+    metadata = VaultMetadata(
+        vault_name="Plutus plHEDGE",
+        protocol_name="PlutusDAO",
+        protocol_slug="plutus",
+        features=[],
+        lockup_days=30.0,
+    )
+
+    # 2. Translate a DEX pair carrying the metadata.
+    pair = translate_trading_pair(_make_vault_dex_pair(metadata))
+
+    # 3. The translated pair exposes the lockup days to trade-ui.
+    assert pair.other_data["vault_lockup_days"] == 30.0

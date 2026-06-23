@@ -827,6 +827,57 @@ class State:
         assert trade.get_status() == TradeStatus.started
         trade.broadcasted_at = broadcasted_at
 
+    def maybe_set_vault_lockup_expiry(
+        self,
+        position: TradingPosition,
+        trade: TradeExecution,
+    ) -> None:
+        """Persist a display-only estimated vault lockup expiry after a deposit.
+
+        Generic ERC-4626 metadata can expose an estimated lockup duration even
+        when there is no live per-user expiry reader. Store the derived expiry
+        on the position so UIs can show a decaying countdown.
+        """
+        if not position.is_vault() or not trade.is_buy():
+            return
+
+        lockup_days = (trade.pair.other_data or {}).get("vault_lockup_days")
+        if lockup_days is None:
+            return
+
+        try:
+            lockup_days = float(lockup_days)
+        except (TypeError, ValueError):
+            return
+
+        if lockup_days <= 0:
+            return
+
+        deposit_at = trade.executed_at or trade.opened_at
+        if deposit_at is None:
+            return
+
+        new_expires_at = deposit_at + datetime.timedelta(days=lockup_days)
+        has_existing_expires_at_key = "vault_lockup_expires_at" in position.other_data
+        existing_expires_at_str = position.other_data.get("vault_lockup_expires_at")
+        existing_estimated = position.other_data.get("vault_lockup_estimated") is True
+
+        if existing_expires_at_str is None:
+            if has_existing_expires_at_key and not existing_estimated:
+                return
+            expires_at = new_expires_at
+        elif existing_estimated:
+            try:
+                existing_expires_at = datetime.datetime.fromisoformat(existing_expires_at_str)
+            except (TypeError, ValueError):
+                existing_expires_at = None
+            expires_at = max(existing_expires_at, new_expires_at) if existing_expires_at else new_expires_at
+        else:
+            return
+
+        position.other_data["vault_lockup_expires_at"] = expires_at.isoformat()
+        position.other_data["vault_lockup_estimated"] = True
+
     def mark_trade_success(
         self,
         executed_at: datetime.datetime,
@@ -976,6 +1027,8 @@ class State:
             self.portfolio.open_positions[position.position_id] = position
             del self.portfolio.pending_positions[position.position_id]
             position.pending_since_at = None
+
+        self.maybe_set_vault_lockup_expiry(position, trade)
 
         quantity = position.get_quantity()
         if quantity < 0:

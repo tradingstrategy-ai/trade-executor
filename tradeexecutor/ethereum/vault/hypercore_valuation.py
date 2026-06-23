@@ -678,6 +678,7 @@ class HypercoreVaultValuator(ValuationModel):
             try:
                 expires_at = self.lockup_func(position.pair)
                 position.other_data["vault_lockup_expires_at"] = expires_at.isoformat() if expires_at is not None else None
+                position.other_data["vault_lockup_estimated"] = False
             except Exception as e:
                 logger.warning(
                     "Failed to fetch lockup status for position %s: %s",

@@ -73,6 +73,30 @@ def _get_deposit_status(pricing_model, pair: TradingPairIdentifier, ts: datetime
     return pair.can_deposit()
 
 
+def _get_redemption_status(pricing_model, pair: TradingPairIdentifier, ts: datetime.datetime | None = None) -> bool | None:
+    """Get the current redemption status for a vault pair.
+
+    Uses the live pricing model when available, falling back to the
+    data-pipeline metadata snapshot stored on the pair.
+
+    Returns ``True`` (open), ``False`` (closed), or ``None`` (unknown /
+    live check failed).
+    """
+    if not pair.is_vault():
+        return None
+
+    if pricing_model is not None:
+        try:
+            return pricing_model.can_redeem(ts, pair)
+        except Exception as e:
+            logger.warning("Could not get live redemption status for %s, showing unknown: %s", pair, e)
+            if pair.get_redemption_closed_reason() is not None:
+                return False
+            return None
+
+    return pair.can_redeem()
+
+
 def _get_tvl_value(strategy_universe: TradingStrategyUniverse, pair: TradingPairIdentifier, tvl_now) -> float | None:
     """Look up raw TVL value for a pair."""
     if not strategy_universe.data_universe.liquidity:
@@ -102,13 +126,27 @@ def _format_deposits_open(pair: TradingPairIdentifier, deposit_status=_NO_LIVE_S
     Non-vault pairs show a dash.  Vault pairs show ``Yes`` / ``No``
     based on the live pricing model status or pair metadata.
     """
+    return _format_vault_open_status(pair, deposit_status, pair.can_deposit)
+
+
+def _format_redemptions_open(pair: TradingPairIdentifier, redemption_status=_NO_LIVE_STATUS) -> Text:
+    """Format the redemption status for a vault pair.
+
+    Non-vault pairs show a dash. Vault pairs show ``Yes`` / ``No``
+    based on the live pricing model status or pair metadata.
+    """
+    return _format_vault_open_status(pair, redemption_status, pair.can_redeem)
+
+
+def _format_vault_open_status(pair: TradingPairIdentifier, status, fallback_status) -> Text:
+    """Format a vault open/closed status for the pair table."""
     if not pair.is_vault():
         return Text("-", style="dim", justify="center")
-    if deposit_status is _NO_LIVE_STATUS:
-        deposit_status = pair.can_deposit()
-    if deposit_status is None:
+    if status is _NO_LIVE_STATUS:
+        status = fallback_status()
+    if status is None:
         return Text("?", style="yellow", justify="center")
-    if deposit_status:
+    if status:
         return Text("Yes", style="green", justify="center")
     return Text("No", style="red bold", justify="center")
 
@@ -176,6 +214,13 @@ def _format_remaining(remaining: datetime.timedelta, prefix: str = "") -> str:
     return f"{prefix}{hours:.1f}h"
 
 
+def _format_lockup_days(days: float, prefix: str = "") -> str:
+    """Format a metadata-only lockup duration as compact days or hours."""
+    if days >= 1:
+        return f"{prefix}{days:.1f}d"
+    return f"{prefix}{days * 24:.1f}h"
+
+
 def _format_vault_display_flags(pair: TradingPairIdentifier) -> Text | None:
     """Format generic vault warning flags for the Lockup column fallback."""
     display_flags = pair.other_data.get("vault_display_flags") if pair.other_data else None
@@ -231,8 +276,11 @@ def _format_lockup(state: State, pair: TradingPairIdentifier) -> Text:
        estimate has already passed, or ``pending`` when no on-chain ETA is
        available (operator-driven ERC-7540 vaults like Lagoon).
     2. Otherwise show the lockup time remaining from the stored expiry
-       timestamp, or ``Unlocked`` once it has passed.
-    3. If no lockup data exists, show generic vault warning flags when present.
+       timestamp, or ``Unlocked`` once it has passed. Estimated timestamps are
+       prefixed with ``~``.
+    3. If no position timestamp exists, show a static estimated duration from
+       pair metadata when available.
+    4. If no lockup data exists, show generic vault warning flags when present.
 
     Non-vault pairs or positions without any of this data show a dash.
     """
@@ -265,19 +313,30 @@ def _format_lockup(state: State, pair: TradingPairIdentifier) -> Text:
 
     # 2. Fall back to lockup expiry.
     expires_at_str = position.other_data.get("vault_lockup_expires_at")
-    if expires_at_str is None:
-        return _format_empty_lockup(pair)
+    if expires_at_str is not None:
+        try:
+            expires_at = datetime.datetime.fromisoformat(expires_at_str)
+        except (ValueError, TypeError):
+            expires_at = None
 
-    try:
-        expires_at = datetime.datetime.fromisoformat(expires_at_str)
-    except (ValueError, TypeError):
-        return _format_empty_lockup(pair)
+        if expires_at is not None:
+            remaining = expires_at - now
+            if remaining.total_seconds() <= 0:
+                return Text("Unlocked", style="green", justify="right")
+            prefix = "~" if position.other_data.get("vault_lockup_estimated") is True else ""
+            return Text(_format_remaining(remaining, prefix=prefix), style="yellow", justify="right")
 
-    remaining = expires_at - now
-    if remaining.total_seconds() <= 0:
-        return Text("Unlocked", style="green", justify="right")
+    # 3. Metadata-only fallback. This is static and does not decay.
+    lockup_days = pair.other_data.get("vault_lockup_days") if pair.other_data else None
+    if lockup_days is not None:
+        try:
+            lockup_days = float(lockup_days)
+        except (TypeError, ValueError):
+            lockup_days = None
+        if lockup_days is not None and lockup_days > 0:
+            return Text(_format_lockup_days(lockup_days, prefix="~"), style="yellow", justify="right")
 
-    return Text(_format_remaining(remaining), style="yellow", justify="right")
+    return _format_empty_lockup(pair)
 
 
 def _get_pair_symbol(pair: TradingPairIdentifier) -> str:
@@ -549,14 +608,17 @@ class PairSelectionApp(App):
         # or retry endlessly on Anvil forks.
         self.prices = {}
         self.deposit_statuses = {}
+        self.redemption_statuses = {}
         price_ts = native_datetime_utc_now()
         for pair in self.sorted_pairs:
             if pair.is_vault():
                 self.prices[id(pair)] = _get_price(pricing_model, pair, ts=price_ts)
                 self.deposit_statuses[id(pair)] = _get_deposit_status(pricing_model, pair, ts=price_ts)
+                self.redemption_statuses[id(pair)] = _get_redemption_status(pricing_model, pair, ts=price_ts)
             else:
                 self.prices[id(pair)] = None
                 self.deposit_statuses[id(pair)] = None
+                self.redemption_statuses[id(pair)] = None
 
         # Result set by the trade dialog
         self.selected_pair: TradingPairIdentifier | None = None
@@ -584,6 +646,7 @@ class PairSelectionApp(App):
         table.add_column("Price", key="price", width=14)
         table.add_column("TVL", key="tvl", width=14)
         table.add_column("Deposits", key="deposits", width=14)
+        table.add_column("Redemptions", key="redemptions", width=14)
         table.add_column("Position", key="position", width=20)
         table.add_column("Lockup", key="lockup", width=14)
 
@@ -593,6 +656,7 @@ class PairSelectionApp(App):
             price = _format_price(self.prices.get(id(pair)))
             tvl = _format_tvl(self.tvl_values.get(id(pair)))
             deposits = _format_deposits_open(pair, self.deposit_statuses.get(id(pair)))
+            redemptions = _format_redemptions_open(pair, self.redemption_statuses.get(id(pair)))
             position = _get_position_info(self.state, pair)
             lockup = _format_lockup(self.state, pair)
 
@@ -600,7 +664,7 @@ class PairSelectionApp(App):
             if self.is_multichain:
                 chain_name = ChainId(pair.base.chain_id).get_name()
                 row_values.append(chain_name)
-            row_values.extend([symbol, exchange, price, tvl, deposits, position, lockup])
+            row_values.extend([symbol, exchange, price, tvl, deposits, redemptions, position, lockup])
 
             table.add_row(*row_values, key=str(idx))
 
