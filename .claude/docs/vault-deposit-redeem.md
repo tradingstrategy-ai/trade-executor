@@ -212,6 +212,13 @@ asks the vault's deposit manager for the request status, and acts:
 
 The resolver is idempotent: it recognises an already-confirmed claim,
 rebroadcasts a stuck one, and discards a reverted one before retrying.
+Whenever it needs to wait for a claim or reclaim transaction, it uses
+`wait_for_transaction_receipt_robust()` instead of Web3.py's direct receipt
+wait. This matters on live multi-RPC providers: the first backend may see the
+receipt before another backend can serve the block, logs, or state trie needed
+by the immediate follow-up claim analysis. The robust wait gives every read
+provider time to catch up before the resolver reads events and marks the trade
+`success` or `failed`.
 
 The resolver also runs once at executor startup, so settlements left pending
 by a previous run are picked up before the first cycle. Unlike a stuck CCTP
@@ -315,7 +322,7 @@ The execution layer, in trade-executor:
 | Module | Role |
 |---|---|
 | [tradeexecutor/ethereum/vault/vault_routing.py](../../tradeexecutor/ethereum/vault/vault_routing.py) | Chooses instant vs queued flow, builds request transactions, persists the ticket |
-| [tradeexecutor/ethereum/vault/settlement_retry.py](../../tradeexecutor/ethereum/vault/settlement_retry.py) | Live settlement resolver: poll, claim, reclaim |
+| [tradeexecutor/ethereum/vault/settlement_retry.py](../../tradeexecutor/ethereum/vault/settlement_retry.py) | Live settlement resolver: poll, claim/reclaim, robust receipt wait and idempotent retry |
 | [tradeexecutor/strategy/execution_model.py](../../tradeexecutor/strategy/execution_model.py) | The polymorphic settlement hook called by the runner each cycle |
 | [tradeexecutor/backtest/backtest_execution.py](../../tradeexecutor/backtest/backtest_execution.py) | Simulated requests and delayed settlement; delay configuration |
 | [tradeexecutor/state/trade.py](../../tradeexecutor/state/trade.py), [state.py](../../tradeexecutor/state/state.py) | The `vault_settlement_pending` status and its bookkeeping |

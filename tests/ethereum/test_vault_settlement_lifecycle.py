@@ -16,6 +16,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from eth_defi.vault.deposit_redeem import AsyncVaultRequestStatus, DepositRedeemEventAnalysis
+from hexbytes import HexBytes
+from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import (
     AssetIdentifier,
@@ -318,8 +321,6 @@ def test_vault_settlement_retry_claimable(
     """
     from unittest.mock import MagicMock, patch
     from eth_defi.vault.deposit_redeem import AsyncVaultRequestStatus, DepositRedeemEventAnalysis
-    from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
-
     state = State()
     ts = datetime.datetime(2025, 1, 1)
 
@@ -375,7 +376,6 @@ def test_vault_settlement_retry_claimable(
     mock_web3 = MagicMock()
     mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100}
     mock_web3.eth.send_raw_transaction.return_value = b"\x00" * 32
-    mock_web3.eth.wait_for_transaction_receipt.return_value = mock_receipt
 
     mock_execution_model = MagicMock()
     mock_execution_model.web3 = mock_web3
@@ -388,7 +388,10 @@ def test_vault_settlement_retry_claimable(
     mock_execution_model.tx_builder.sign_transaction.return_value = mock_tx
 
     # 4. Patch get_vault_for_pair
-    with patch("tradeexecutor.ethereum.vault.settlement_retry.get_vault_for_pair", return_value=mock_vault):
+    with (
+        patch("tradeexecutor.ethereum.vault.settlement_retry.get_vault_for_pair", return_value=mock_vault),
+        patch("tradeexecutor.ethereum.vault.settlement_retry.wait_for_transaction_receipt_robust", return_value=mock_receipt),
+    ):
         resolved = check_and_resolve_vault_settlements(
             state=state,
             execution_model=mock_execution_model,
@@ -400,6 +403,177 @@ def test_vault_settlement_retry_claimable(
     assert trade.vault_settlement_pending_at is None
     assert trade.executed_reserve == pytest.approx(Decimal(100))
     assert trade.executed_quantity == pytest.approx(Decimal("96.15"))
+
+
+def test_vault_settlement_retry_rebroadcast_uses_robust_receipt_wait(
+    vault_pair: TradingPairIdentifier,
+    usdc_arbitrum: AssetIdentifier,
+):
+    """Verify a stored vault claim transaction is rebroadcast using the robust receipt wait.
+
+    1. Create a vault buy trade with an existing post-request claim transaction
+    2. Mock the first receipt lookup to miss the transaction
+    3. Mock the robust receipt wait and claim analysis
+    4. Call check_and_resolve_vault_settlements
+    5. Verify the stored transaction is rebroadcast and the trade succeeds
+    """
+    state = State()
+    ts = datetime.datetime(2025, 1, 1)
+
+    state.portfolio.initialise_reserves(usdc_arbitrum)
+    reserve = state.portfolio.get_default_reserve_position()
+    reserve.quantity = Decimal(10_000)
+    reserve.reserve_token_price = 1.0
+
+    # 1. Create a vault buy trade with an existing post-request claim transaction
+    trade = _create_vault_buy_trade(state, vault_pair, usdc_arbitrum, Decimal(100), ts)
+    state.start_execution(ts, trade)
+    trade.mark_broadcasted(ts)
+
+    approve_tx = BlockchainTransaction()
+    approve_tx.tx_hash = "0xapprove"
+    request_tx = BlockchainTransaction()
+    request_tx.tx_hash = "0xrequest"
+    claim_tx = BlockchainTransaction()
+    claim_tx.tx_hash = "0x" + "ef" * 32
+    claim_tx.signed_bytes = b"\xef" * 32
+    claim_tx.other["vault_settlement_action"] = "claim"
+    trade.blockchain_transactions = [approve_tx, request_tx, claim_tx]
+
+    trade.other_data["vault_async_flow"] = True
+    trade.other_data["vault_chain_id"] = 42161
+    trade.other_data["vault_direction"] = "deposit"
+    trade.other_data["vault_owner_address"] = "0xTestOwner"
+    trade.other_data["vault_raw_amount"] = 100_000_000
+    trade.other_data["vault_address"] = OLP_ARBITRUM_ADDRESS
+    trade.other_data["vault_request_tx_hash"] = "0xrequest"
+    trade.other_data["vault_settlement_id"] = 42
+    trade.other_data["vault_request_tx_count"] = 2
+    trade.vault_settlement_pending_at = ts
+
+    mock_deposit_manager = MagicMock()
+    mock_deposit_manager.reconstruct_deposit_ticket.return_value = MagicMock()
+
+    mock_analysis = MagicMock(spec=DepositRedeemEventAnalysis)
+    mock_analysis.denomination_amount = Decimal(100)
+    mock_analysis.share_count = Decimal("96.15")
+    mock_deposit_manager.analyse_deposit.return_value = mock_analysis
+
+    mock_vault = MagicMock()
+    mock_vault.get_deposit_manager.return_value = mock_deposit_manager
+
+    mock_web3 = MagicMock()
+    mock_web3.eth.get_transaction_receipt.side_effect = RuntimeError("missing receipt")
+    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100}
+
+    mock_execution_model = MagicMock()
+    mock_execution_model.web3 = mock_web3
+
+    # 2. Mock the first receipt lookup to miss the transaction
+    # 3. Mock the robust receipt wait and claim analysis
+    with (
+        patch("tradeexecutor.ethereum.vault.settlement_retry.get_vault_for_pair", return_value=mock_vault),
+        patch("tradeexecutor.ethereum.vault.settlement_retry.wait_for_transaction_receipt_robust", return_value=mock_receipt) as wait_receipt,
+    ):
+        # 4. Call check_and_resolve_vault_settlements
+        resolved = check_and_resolve_vault_settlements(
+            state=state,
+            execution_model=mock_execution_model,
+        )
+
+    # 5. Verify the stored transaction is rebroadcast and the trade succeeds
+    assert len(resolved) == 1
+    assert trade.get_status() == TradeStatus.success
+    mock_web3.eth.send_raw_transaction.assert_called_once_with(HexBytes(claim_tx.signed_bytes))
+    wait_receipt.assert_called_once()
+
+
+def test_vault_settlement_retry_recovers_claim_using_robust_receipt_wait(
+    vault_pair: TradingPairIdentifier,
+    usdc_arbitrum: AssetIdentifier,
+):
+    """Verify an already-completed vault claim is recovered using the robust receipt wait.
+
+    1. Create a vault buy trade whose request status is already consumed
+    2. Mock completed claim discovery for the consumed request
+    3. Mock the robust receipt wait and recovered transaction creation
+    4. Call check_and_resolve_vault_settlements
+    5. Verify the recovered transaction is stored and the trade succeeds
+    """
+    from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
+
+    state = State()
+    ts = datetime.datetime(2025, 1, 1)
+
+    state.portfolio.initialise_reserves(usdc_arbitrum)
+    reserve = state.portfolio.get_default_reserve_position()
+    reserve.quantity = Decimal(10_000)
+    reserve.reserve_token_price = 1.0
+
+    # 1. Create a vault buy trade whose request status is already consumed
+    trade = _create_vault_buy_trade(state, vault_pair, usdc_arbitrum, Decimal(100), ts)
+    state.start_execution(ts, trade)
+    trade.mark_broadcasted(ts)
+
+    approve_tx = BlockchainTransaction()
+    approve_tx.tx_hash = "0xapprove"
+    request_tx = BlockchainTransaction()
+    request_tx.tx_hash = "0xrequest"
+    trade.blockchain_transactions = [approve_tx, request_tx]
+
+    trade.other_data["vault_async_flow"] = True
+    trade.other_data["vault_chain_id"] = 42161
+    trade.other_data["vault_direction"] = "deposit"
+    trade.other_data["vault_owner_address"] = "0xTestOwner"
+    trade.other_data["vault_raw_amount"] = 100_000_000
+    trade.other_data["vault_address"] = OLP_ARBITRUM_ADDRESS
+    trade.other_data["vault_request_tx_hash"] = "0xrequest"
+    trade.other_data["vault_settlement_id"] = 42
+    trade.other_data["vault_request_tx_count"] = 2
+    trade.vault_settlement_pending_at = ts
+
+    mock_deposit_manager = MagicMock()
+    mock_deposit_manager.get_deposit_request_status.return_value = AsyncVaultRequestStatus.none
+    mock_deposit_manager.reconstruct_deposit_ticket.return_value = MagicMock()
+    mock_deposit_manager.finish_deposit.return_value = MagicMock()
+
+    mock_analysis = MagicMock(spec=DepositRedeemEventAnalysis)
+    mock_analysis.denomination_amount = Decimal(100)
+    mock_analysis.share_count = Decimal("96.15")
+    mock_deposit_manager.analyse_deposit.return_value = mock_analysis
+
+    mock_vault = MagicMock()
+    mock_vault.get_deposit_manager.return_value = mock_deposit_manager
+
+    mock_web3 = MagicMock()
+    mock_execution_model = MagicMock()
+    mock_execution_model.web3 = mock_web3
+
+    recovered_tx_hash = HexBytes("0x" + "12" * 32)
+    recovered_tx = BlockchainTransaction()
+    recovered_tx.tx_hash = recovered_tx_hash.hex()
+    recovered_tx.other["vault_settlement_action"] = "claim"
+    mock_receipt = {"status": 1, "transactionHash": recovered_tx_hash, "blockNumber": 100}
+
+    # 2. Mock completed claim discovery for the consumed request
+    # 3. Mock the robust receipt wait and recovered transaction creation
+    with (
+        patch("tradeexecutor.ethereum.vault.settlement_retry.get_vault_for_pair", return_value=mock_vault),
+        patch("tradeexecutor.ethereum.vault.settlement_retry._find_already_completed_claim_tx_hash", return_value=recovered_tx_hash),
+        patch("tradeexecutor.ethereum.vault.settlement_retry._create_recovered_claim_transaction", return_value=recovered_tx),
+        patch("tradeexecutor.ethereum.vault.settlement_retry.wait_for_transaction_receipt_robust", return_value=mock_receipt) as wait_receipt,
+    ):
+        # 4. Call check_and_resolve_vault_settlements
+        resolved = check_and_resolve_vault_settlements(
+            state=state,
+            execution_model=mock_execution_model,
+        )
+
+    # 5. Verify the recovered transaction is stored and the trade succeeds
+    assert len(resolved) == 1
+    assert trade.get_status() == TradeStatus.success
+    assert trade.blockchain_transactions[-1] is recovered_tx
+    wait_receipt.assert_called_once()
 
 
 def test_vault_settlement_retry_pending_skipped(
@@ -536,7 +710,6 @@ def test_vault_settlement_retry_reclaimable(
     mock_web3 = MagicMock()
     mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100}
     mock_web3.eth.send_raw_transaction.return_value = b"\x00" * 32
-    mock_web3.eth.wait_for_transaction_receipt.return_value = mock_receipt
 
     mock_execution_model = MagicMock()
     mock_execution_model.web3 = mock_web3
@@ -548,7 +721,10 @@ def test_vault_settlement_retry_reclaimable(
     mock_execution_model.tx_builder.sign_transaction.return_value = mock_tx
 
     # 4. Call retry
-    with patch("tradeexecutor.ethereum.vault.settlement_retry.get_vault_for_pair", return_value=mock_vault):
+    with (
+        patch("tradeexecutor.ethereum.vault.settlement_retry.get_vault_for_pair", return_value=mock_vault),
+        patch("tradeexecutor.ethereum.vault.settlement_retry.wait_for_transaction_receipt_robust", return_value=mock_receipt),
+    ):
         resolved = check_and_resolve_vault_settlements(
             state=state,
             execution_model=mock_execution_model,

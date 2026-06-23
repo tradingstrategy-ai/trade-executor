@@ -17,6 +17,7 @@ from eth_defi.abi import get_topic_signature_from_event
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.event_reader.conversion import convert_bytes32_to_address, convert_bytes32_to_uint
 from eth_defi.hotwallet import HotWallet
+from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.vault.deposit_redeem import (
     AsyncVaultRequestStatus,
     DepositRedeemEventAnalysis,
@@ -33,6 +34,8 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 
 logger = logging.getLogger(__name__)
+
+VAULT_SETTLEMENT_RECEIPT_TIMEOUT = 120
 
 
 def _get_chain_aware_tx_builder(
@@ -64,6 +67,30 @@ def _get_chain_aware_tx_builder(
         return LagoonTransactionBuilder(satellite_vault, satellite_wallet, tx_builder.extra_gnosis_gas)
 
     return HotWalletTransactionBuilder(web3, satellite_wallet)
+
+
+def _broadcast_and_wait_for_settlement_tx(
+    web3: Web3,
+    tx: BlockchainTransaction,
+    mark_broadcasted: bool = False,
+):
+    """Broadcast a vault settlement transaction and wait for all RPCs to see it."""
+    web3.eth.send_raw_transaction(HexBytes(tx.signed_bytes))
+    if mark_broadcasted:
+        tx.broadcasted_at = native_datetime_utc_now()
+    return _wait_for_settlement_tx_receipt(web3, tx.tx_hash)
+
+
+def _wait_for_settlement_tx_receipt(
+    web3: Web3,
+    tx_hash: HexBytes | str,
+):
+    """Wait until a vault settlement transaction receipt is visible."""
+    return wait_for_transaction_receipt_robust(
+        web3,
+        HexBytes(tx_hash),
+        timeout=VAULT_SETTLEMENT_RECEIPT_TIMEOUT,
+    )
 
 
 def _normalise_topic_address(topic) -> str:
@@ -332,10 +359,7 @@ def _resolve_single_vault_trade(
         if has_existing_post_tx and not tx_already_confirmed:
             # Rebroadcast
             try:
-                web3.eth.send_raw_transaction(HexBytes(existing_tx.signed_bytes))
-                confirmed_receipt = web3.eth.wait_for_transaction_receipt(
-                    HexBytes(existing_tx.tx_hash), timeout=120,
-                )
+                confirmed_receipt = _broadcast_and_wait_for_settlement_tx(web3, existing_tx)
                 if confirmed_receipt["status"] == 1:
                     tx_already_confirmed = True
                 else:
@@ -380,7 +404,9 @@ def _resolve_single_vault_trade(
                 func = deposit_manager.finish_deposit(ticket)
             else:
                 func = deposit_manager.finish_redemption(ticket)
-            confirmed_receipt = web3.eth.get_transaction_receipt(recovered_tx_hash)
+            # Even recovered claims need the same read-after-write guard before
+            # immediate event analysis on multi-RPC providers.
+            confirmed_receipt = _wait_for_settlement_tx_receipt(web3, recovered_tx_hash)
             trade.blockchain_transactions.append(
                 _create_recovered_claim_transaction(
                     web3,
@@ -442,10 +468,10 @@ def _resolve_single_vault_trade(
 
             # Broadcast and wait
             try:
-                web3.eth.send_raw_transaction(HexBytes(new_tx.signed_bytes))
-                new_tx.broadcasted_at = native_datetime_utc_now()
-                confirmed_receipt = web3.eth.wait_for_transaction_receipt(
-                    HexBytes(new_tx.tx_hash), timeout=120,
+                confirmed_receipt = _broadcast_and_wait_for_settlement_tx(
+                    web3,
+                    new_tx,
+                    mark_broadcasted=True,
                 )
             except Exception as e:
                 logger.warning(
