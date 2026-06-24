@@ -69,3 +69,7 @@ deps/web3-ethereum-defi/eth_defi/abi/**/Vm*.json
 deps/web3-ethereum-defi/eth_defi/abi/**/Std*.json
 deps/web3-ethereum-defi/eth_defi/abi/**/console*.json
 deps/web3-ethereum-defi/eth_defi/abi/**/safeconsole.json
+
+# Guard ABI bundle is needed at runtime by HyperCore vault execution.
+!deps/web3-ethereum-defi/eth_defi/abi/guard/
+!deps/web3-ethereum-defi/eth_defi/abi/guard/**
