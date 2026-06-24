@@ -43,7 +43,7 @@ phantom closed positions for them.
 ## Fix
 
 In `create_missing_vault_positions()`, when a vault has dust-level equity
-(`equity < get_close_epsilon_for_pair(pair)`) and no open position, **write it
+(`equity <= get_close_epsilon_for_pair(pair)`) and no open position, **write it
 off and `continue`** — instead of creating + immediately closing a phantom
 position. This mirrors how leftover spot dust is treated.
 
