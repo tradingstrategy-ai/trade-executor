@@ -27,7 +27,7 @@ from ...strategy.execution_model import AssetManagementMode
 from ...strategy.generic.generic_pricing_model import GenericPricing
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import read_strategy_module
-from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
+from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel, refresh_vault_universe_metadata_cache
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
 from eth_defi.compat import native_datetime_utc_now
@@ -135,6 +135,7 @@ def repair(
         asset_management_mode=asset_management_mode,  # Needed for Velvet
     )
     assert client is not None, "You need to give details for TradingStrategy.ai client"
+    refresh_vault_universe_metadata_cache(client)
 
     if not state_file:
         state_file = f"state/{id}.json"
