@@ -251,7 +251,23 @@ def create_trading_universe(
 
     vaults = get_vaults()
 
-    vault_universe = load_vault_universe_with_metadata(client, vaults=vaults)
+    vault_universe = load_vault_universe_with_metadata(
+        client,
+        vaults=vaults,
+        check_all_vaults_found=False,
+    )
+    metadata_vault_specs = {
+        (ChainId(vault.chain_id), vault.vault_address.lower())
+        for vault in vault_universe.iterate_vaults()
+    }
+    missing_source_vaults = [
+        (chain_id, address)
+        for chain_id, address in vaults
+        if (chain_id, address.lower()) not in metadata_vault_specs
+    ]
+    if missing_source_vaults:
+        missing_vault_list = ", ".join(f"{chain_id.value}:{address}" for chain_id, address in missing_source_vaults)
+        debug_printer(f"Skipped {len(missing_source_vaults)} Hypercore vaults missing from remote vault metadata: {missing_vault_list}")
     vault_universe = vault_universe.limit_to_denomination(ALLOWED_VAULT_DENOMINATION_TOKENS, check_all_vaults_found=True)
     debug_printer(f"Loaded {vault_universe.get_vault_count()} vaults from remote vault metadata, source vaults count: {len(vaults)}")
 

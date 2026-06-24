@@ -2297,6 +2297,7 @@ def load_vault_universe_with_metadata(
     vaults: list[tuple[ChainId, JSONHexAddress]] | None = None,
     url: str | None = None,
     download_root: str | Path | None = None,
+    check_all_vaults_found: bool = True,
 ) -> VaultUniverse:
     """Load vault universe with full metadata from JSON blob.
 
@@ -2345,6 +2346,12 @@ def load_vault_universe_with_metadata(
         Override the root directory used for downloaded vault metadata.
         Useful in tests to redirect downloads under ``tmp_path``.
 
+    :param check_all_vaults_found:
+        Raise an assertion if any explicitly requested vault is missing from
+        the downloaded metadata universe. Disable this when the requested
+        vault list comes from a fresher upstream source than the metadata
+        export and missing vaults should be skipped.
+
     :return:
         VaultUniverse containing Vault instances with full VaultMetadata.
     """
@@ -2352,7 +2359,7 @@ def load_vault_universe_with_metadata(
     vault_universe = client.fetch_vault_universe(url=url, download_root=download_root)
 
     if vaults is not None:
-        vault_universe = vault_universe.limit_to_vaults(vaults, check_all_vaults_found=True)
+        vault_universe = vault_universe.limit_to_vaults(vaults, check_all_vaults_found=check_all_vaults_found)
 
     return vault_universe
 
@@ -2406,6 +2413,60 @@ def _resolve_vault_download_root(
         return None
 
     return Path(cache_path) / "vaults" / "downloads"
+
+
+def _get_vault_universe_metadata_cache_path(
+    client: BaseClient,
+) -> Path | None:
+    """Resolve the cached vault metadata JSON path for a client."""
+    download_root = _resolve_vault_download_root(client, None)
+    if download_root is None:
+        return None
+
+    return Path(download_root) / "vault-universe.json"
+
+
+def refresh_vault_universe_metadata_cache(
+    client: BaseClient,
+) -> Path | None:
+    """Refresh cached vault metadata JSON for a client.
+
+    Repair-style commands need the latest vault metadata before constructing a
+    strategy universe, because stale metadata can fail startup before any state
+    repair logic runs. Keep the old cache as a fallback if the fresh download
+    fails, so repair is not made worse during a Trading Strategy data outage.
+
+    :return:
+        Refreshed cache file path, or ``None`` if no cache path is available.
+    """
+    cache_path = _get_vault_universe_metadata_cache_path(client)
+    if cache_path is None:
+        logger.info("Vault metadata cache path unavailable for client %s", client)
+        return None
+
+    backup_path = cache_path.with_suffix(f"{cache_path.suffix}.repair-backup")
+    if not cache_path.exists():
+        backup_path = None
+    else:
+        if backup_path.exists():
+            backup_path.unlink()
+        cache_path.replace(backup_path)
+
+    try:
+        client.fetch_vault_universe(download_root=cache_path.parent)
+    except Exception:
+        if backup_path is not None and backup_path.exists():
+            if cache_path.exists():
+                cache_path.unlink()
+            backup_path.replace(cache_path)
+            logger.warning("Could not refresh vault metadata cache, restored stale file: %s", cache_path, exc_info=True)
+            return cache_path
+        raise
+
+    if backup_path is not None and backup_path.exists():
+        backup_path.unlink()
+    logger.info("Refreshed vault metadata cache file: %s", cache_path)
+    return cache_path
 
 
 def load_partial_data(
