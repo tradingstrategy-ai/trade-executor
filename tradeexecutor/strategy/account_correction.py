@@ -1177,42 +1177,31 @@ def create_missing_vault_positions(
             "Strategy universe must have at least one reserve asset to create vault positions"
         reserve_asset = strategy_universe.reserve_assets[0]
 
-        # Dust-level equity: create a position and immediately close it
-        # so it appears in closed positions rather than lingering as an
-        # un-trackable open position.
+        # Dust-level equity with no open position: write it off, the same way
+        # leftover spot dust is ignored once a position has been closed.
+        #
+        # Hypercore vault withdrawals cannot fully exit. The protocol refuses
+        # exact full withdrawals when NAV moves between planning and execution,
+        # so a small residual (the withdrawal safety margin, ~1.5 USDC) is left
+        # behind on-chain. The original position is already marked closed at
+        # exit, because the close epsilon (HYPERLIQUID_VAULT_CLOSE_EPSILON)
+        # tolerates this residual in can_be_closed().
+        #
+        # We must NOT manufacture a closed "dust" position for the residual
+        # here. This function runs on every correct-accounts cycle and the
+        # residual stays on-chain indefinitely, so each run would re-detect the
+        # same dust and create yet another empty closed position. That spammed
+        # the hyper-ai closed-positions list with hundreds of zero-quantity
+        # positions. Other trading pairs simply leave such sub-dust balances
+        # written off; do the same for Hypercore vaults and just skip it.
+        # Use <= so the threshold matches can_be_closed(), which treats a
+        # residual of exactly the close epsilon as closeable dust.
         dust_epsilon = get_close_epsilon_for_pair(pair)
-        if equity < float(dust_epsilon):
+        if equity <= float(dust_epsilon):
             logger.info(
-                "Vault equity $%.4f for %s is below dust epsilon %.2f, closing as dust",
+                "Vault equity $%.4f for %s is at or below dust epsilon %.2f, ignoring as written-off dust",
                 equity, pair.get_human_description(), dust_epsilon,
             )
-
-            # Open a zero-quantity repair position and close it immediately
-            position, trade, created = state.create_trade(
-                strategy_cycle_at=strategy_cycle_at,
-                pair=pair,
-                quantity=Decimal(0),
-                reserve=None,
-                assumed_price=1.0,
-                trade_type=TradeType.repair,
-                reserve_currency=reserve_asset,
-                reserve_currency_price=1.0,
-                notes=f"Auto-closed as dust by correct-accounts (equity=${equity:.4f})",
-                pair_fee=0.0,
-                lp_fees_estimated=0,
-            )
-            trade.mark_success(
-                executed_at=strategy_cycle_at,
-                executed_price=1.0,
-                executed_quantity=Decimal(0),
-                executed_reserve=Decimal(0),
-                lp_fees=0,
-                native_token_price=0,
-                force=True,
-            )
-            position.mark_down()
-            state.portfolio.close_position(position, strategy_cycle_at)
-            created_trades.append(trade)
             continue
 
         logger.info(
