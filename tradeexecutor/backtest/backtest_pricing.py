@@ -40,13 +40,7 @@ def _bool_series_to_sentinel(series: pd.Series) -> np.ndarray:
     ``-1`` unknown / NA, ``0`` closed (False), ``1`` open (True). Keeps the fast numpy
     searchsorted lookup path free of pandas nullable/object dtypes.
     """
-    boolean = pd.Series(series).astype("boolean")
-    out = np.full(len(boolean), -1, dtype=np.int8)
-    true_mask = (boolean == True).fillna(False).to_numpy(dtype=bool)  # noqa: E712
-    false_mask = (boolean == False).fillna(False).to_numpy(dtype=bool)  # noqa: E712
-    out[true_mask] = 1
-    out[false_mask] = 0
-    return out
+    return series.astype("boolean").map({True: 1, False: 0}).fillna(-1).to_numpy(dtype=np.int8)
 
 
 class BacktestPricing(PricingModel):
