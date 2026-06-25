@@ -174,4 +174,16 @@ def calculate_portfolio_target_value(
     redeemable_position_value = get_redeemable_portfolio_capital(position_manager)
     locked_position_value = max(open_position_value - redeemable_position_value, 0.0)
 
-    return max(total_equity * allocation - pending_redemptions, locked_position_value, 0.0)
+    # Capital that is currently mid-flight cannot be allocated this cycle:
+    # - in-transit: USDC burned for a CCTP bridge but not yet received on the
+    #   destination chain.
+    # - vault settlement pending: USDC committed to an async vault deposit
+    #   request whose shares have not settled yet.
+    #
+    # ``calculate_total_equity()`` includes both (so portfolio valuation stays
+    # correct), but they are already committed and must not be counted again as
+    # freshly deployable, otherwise the strategy plans cross-chain deployments
+    # it cannot fund until the in-flight capital settles.
+    in_flight_value = portfolio.get_in_transit_value() + portfolio.get_vault_settlement_pending_value()
+
+    return max(total_equity * allocation - pending_redemptions - in_flight_value, locked_position_value, 0.0)
