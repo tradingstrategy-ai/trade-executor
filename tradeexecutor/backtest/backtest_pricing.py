@@ -599,6 +599,34 @@ class BacktestPricing(PricingModel):
             return None
         return Decimal(str(cap))
 
+    def _lookup_cap(self, ts, pair: TradingPairIdentifier, key: str) -> Decimal | None:
+        state = self._lookup_vault_state(ts, pair)
+        return None if state is None else self._state_cap(state, key)
+
+    def get_max_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> Decimal | None:
+        """Historical deposit hard cap for a vault at ``ts``, or None if unknown.
+
+        Faithful data accessor, for parity with the live pricing models and for direct cap
+        consumers / diagnostics. Backtest *rebalance gating* itself is open/closed only (via
+        :py:meth:`can_deposit`); this value is reported, not enforced as a partial size limit.
+        """
+        return self._lookup_cap(ts, pair, "max_deposit")
+
+    def get_max_redemption(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> Decimal | None:
+        """Historical redemption hard cap for a vault at ``ts``, or None if unknown.
+
+        See :py:meth:`get_max_deposit` for the report-vs-enforce distinction.
+        """
+        return self._lookup_cap(ts, pair, "max_redeem")
+
     def can_deposit(
         self,
         ts: datetime.datetime | None,
