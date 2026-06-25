@@ -746,16 +746,13 @@ class Portfolio:
         Only counts BUYS (requestDeposit), not sells (requestWithdraw).
         For sells, the position's share equity already covers the value.
         Scans both open_positions and pending_positions.
+
+        See :py:meth:`tradeexecutor.state.position.TradingPosition.get_vault_settlement_pending_value`
+        for the per-position value.
         """
         from itertools import chain as ichain
-        from tradeexecutor.state.trade import TradeStatus
-        total = 0.0
         all_positions = ichain(self.open_positions.values(), self.pending_positions.values())
-        for position in all_positions:
-            for trade in position.trades.values():
-                if trade.get_status() == TradeStatus.vault_settlement_pending and trade.is_buy():
-                    total += float(trade.planned_reserve)
-        return total
+        return sum(position.get_vault_settlement_pending_value() for position in all_positions)
 
     def calculate_total_equity_chain(self) -> dict[ChainId, USDollarAmount]:
         """Get the value of the portfolio broken down by chain.
@@ -810,10 +807,13 @@ class Portfolio:
 
         - Net asset value hold in leveraged positions
 
+        - Capital committed to pending async vault deposit requests
+          (a claim on the vault's settlement queue)
+
         TODO: Net asset value calculation does not account for fees
         paid to close a short position.
         """
-        return self.get_position_equity_and_loan_nav(include_interest) + self.get_frozen_position_equity() + self.get_cash()
+        return self.get_position_equity_and_loan_nav(include_interest) + self.get_frozen_position_equity() + self.get_cash() + self.get_vault_settlement_pending_value()
 
     def get_unrealised_profit_usd(self) -> USDollarAmount:
         """Get the profit of currently open positions.

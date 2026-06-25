@@ -1047,6 +1047,32 @@ class TradeExecution:
         """This is vault deposit/redemption."""
         return self.pair.kind.is_vault()
 
+    def is_vault_settlement_in_flight(self) -> bool:
+        """Is this an async vault request that has not yet been settled or failed?
+
+        Covers two lifecycle windows of the two-stage (ERC-7540 / Ostium)
+        request/claim flow:
+
+        - The request is confirmed and waiting in the vault's settlement queue
+          (:py:attr:`TradeStatus.vault_settlement_pending`).
+
+        - The live request transaction has been built or broadcast but its
+          confirmation has not yet been parsed into the settlement ticket.
+          ``vault_async_flow`` is stamped at transaction-build time while the
+          pending status appears only after confirmation, and the request may
+          already be live on-chain.
+
+        While either window is open the committed capital (deposit) or escrowed
+        shares (redeem) are out of our hands until the vault settles.
+        """
+        status = self.get_status()
+        if status == TradeStatus.vault_settlement_pending:
+            return True
+        return (
+            bool(self.other_data.get("vault_async_flow"))
+            and status in (TradeStatus.started, TradeStatus.broadcasted)
+        )
+
     def is_short(self) -> bool:
         """This is margined short trade."""
         return self.pair.kind.is_shorting()
