@@ -159,6 +159,10 @@ class BacktestPricing(PricingModel):
         # TODO: Remove later - now to support some old code111
         if isinstance(candle_universe, TradingStrategyUniverse):
             pairs = candle_universe.data_universe.pairs
+            # Default vault-state from the universe so the shortcut path keeps deposit/redemption
+            # gating even when callers do not pass `vault_state` explicitly.
+            if vault_state is None:
+                vault_state = candle_universe.vault_state
             candle_universe = candle_universe.data_universe.candles
 
         assert isinstance(candle_universe, GroupedCandleUniverse), f"Got candles in wrong format: {candle_universe.__class__}"
