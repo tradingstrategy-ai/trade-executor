@@ -313,3 +313,71 @@ def test_bridge_out_raises_clearly_when_underfunded(
             ts=TS,
             reserve_asset=usdc_arbitrum,
         )
+
+
+def test_bridge_back_capped_to_available_bridge_capital(
+    usdc_arbitrum: AssetIdentifier,
+    cctp_pair: TradingPairIdentifier,
+    satellite_pair: TradingPairIdentifier,
+):
+    """A bridge-back is capped to available bridge capital, not the full net sell.
+
+    Protects in-flight satellite deposits: when a net sell exceeds the currently
+    available bridge capital (because the rest is committed to a not-yet-settled
+    deposit), only the available amount may be bridged back. The remainder
+    bridges back on a later cycle once the deposit settles.
+
+    1. Bridge 10_000 to the satellite, then deploy 7_000 into a satellite buy,
+       leaving 3_000 available bridge capital.
+    2. Ask to bridge back the whole 7_000 position via a net sell.
+    3. Assert the injected bridge-back is capped to 3_000, not 7_000.
+    """
+    wallet = SimulatedWallet()
+    wallet.set_balance(usdc_arbitrum, Decimal(50_000))
+    state = _make_state(usdc_arbitrum, Decimal(50_000))
+    execution = BacktestExecution(wallet=wallet)
+
+    # 1. Park 10_000 on the satellite, deploy 7_000 -> 3_000 available.
+    _establish_idle_satellite_capital(state, execution, wallet, cctp_pair, usdc_arbitrum, Decimal(10_000))
+    buy = _create_satellite_buy(state, satellite_pair, usdc_arbitrum, Decimal(7_000))
+    routing_model, routing_state = _routing(wallet, usdc_arbitrum)
+    execution.execute_trades(
+        ts=TS,
+        state=state,
+        trades=[buy],
+        routing_model=routing_model,
+        routing_state=routing_state,
+        check_balances=False,
+    )
+    bridge_pos = state.portfolio.get_bridge_position_for_chain(SATELLITE_CHAIN_ID)
+    assert bridge_pos.get_available_bridge_capital() == Decimal(3_000)
+
+    # 2. Net sell of the whole 7_000 satellite position.
+    sat_pos = state.portfolio.get_open_position_for_pair(satellite_pair)
+    _, sell, _ = state.create_trade(
+        strategy_cycle_at=TS,
+        pair=satellite_pair,
+        quantity=-sat_pos.get_quantity(),
+        reserve=None,
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc_arbitrum,
+        reserve_currency_price=1.0,
+        position=sat_pos,
+        closing=True,
+    )
+    universe = _make_mock_universe([cctp_pair, satellite_pair])
+    result = inject_cctp_bridge_trades(
+        state=state,
+        trades=[sell],
+        strategy_universe=universe,
+        primary_chain_id=PRIMARY_CHAIN_ID,
+        ts=TS,
+        reserve_asset=usdc_arbitrum,
+    )
+
+    # 3. Bridge-back capped to the 3_000 available, not the full 7_000 net sell.
+    bridge_backs = [t for t in result if t.pair.is_cctp_bridge()]
+    assert len(bridge_backs) == 1
+    assert bridge_backs[0].is_sell()
+    assert bridge_backs[0].planned_quantity == Decimal(-3_000)

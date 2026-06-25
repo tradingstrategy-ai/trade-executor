@@ -241,6 +241,15 @@ def inject_cctp_bridge_trades(
     #    before primary-chain buys, so the spendable amount is the current
     #    reserve plus same-cycle inflows, minus the primary buys we must still
     #    leave cash for (otherwise we would just move the underflow onto them).
+    #
+    #    Caveat (backtest vs live): the ``+ total_bridge_back`` term assumes the
+    #    bridge-back proceeds land on the primary chain THIS cycle. That holds in
+    #    the backtest (``simulate_bridge`` settles synchronously and bridge-backs
+    #    sort before bridge-outs), but in live CCTP a bridge-back goes
+    #    ``cctp_in_transit`` and settles on a later cycle, so this is optimistic
+    #    live — the early ``NotEnoughMoney`` guard below is then less effective,
+    #    but execution still enforces funding (``move_capital_from_reserves...``
+    #    raises ``NotEnoughMoney`` at ``start_execution``), so it is never unsafe.
     try:
         current_primary_reserve = state.portfolio.get_reserve_position(reserve_asset).quantity
     except KeyError:

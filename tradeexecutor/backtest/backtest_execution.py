@@ -476,10 +476,10 @@ class BacktestExecution(ExecutionModel):
 
         # The on-chain token a vault deposit/redeem spends/receives is the pair's
         # quote token (the vault's denomination), which for a satellite-chain
-        # vault is the USDC on that chain (e.g. Arbitrum USDC) that CCTP bridged
-        # there — NOT the portfolio's home reserve currency. For a home-chain
-        # vault the quote token already equals the reserve currency, so using the
-        # quote token is correct in both cases.
+        # vault is the USDC on that satellite chain that CCTP bridged there —
+        # NOT the portfolio's home reserve currency. For a home-chain vault the
+        # quote token already equals the reserve currency, so using the quote
+        # token is correct in both cases.
         #
         # We must resolve by the pair, not by whether a bridge position currently
         # exists: a bridge position closes once its available capital hits zero
