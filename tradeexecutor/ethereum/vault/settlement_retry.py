@@ -11,6 +11,7 @@ Works with any vault protocol that implements the generic
 """
 
 import logging
+from decimal import Decimal
 from itertools import chain as ichain
 
 from eth_defi.abi import get_topic_signature_from_event
@@ -285,6 +286,99 @@ def check_and_resolve_vault_settlements(
     return resolved
 
 
+def _ensure_legacy_pending_deposit_capital_allocated(state: State, trade: TradeExecution) -> None:
+    """Repair old pending deposit state that missed its funding-source allocation.
+
+    Current code debits reserves in ``state.start_execution()`` before the async
+    request is broadcast, or allocates bridge capital for satellite vault
+    deposits. Older/corrupt state can have the request persisted but the funding
+    source still visible. If we claim such a trade without repairing first, the
+    position receives shares while the same capital remains visible elsewhere.
+    """
+    assert trade.is_buy(), f"Only deposit trades can reserve-debit repair, got {trade}"
+
+    planned_reserve = trade.planned_reserve
+
+    bridge_position = state.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+    if bridge_position is not None:
+        allocated = trade.bridge_currency_allocated
+        if allocated == planned_reserve:
+            return
+        if allocated not in (None, Decimal(0)):
+            raise RuntimeError(
+                f"Vault deposit trade #{trade.trade_id} has inconsistent bridge allocation: "
+                f"planned_reserve={planned_reserve}, bridge_currency_allocated={allocated}"
+            )
+
+        logger.warning(
+            "Repairing legacy vault pending deposit bridge accounting before claim: "
+            "trade #%d, bridge allocation %s %s was missing",
+            trade.trade_id,
+            planned_reserve,
+            trade.reserve_currency.token_symbol,
+        )
+        bridge_position.adjust_bridge_capital_allocated(planned_reserve)
+        trade.bridge_currency_allocated = planned_reserve
+        return
+
+    allocated = trade.reserve_currency_allocated
+    if allocated == planned_reserve:
+        return
+    if allocated not in (None, Decimal(0)):
+        raise RuntimeError(
+            f"Vault deposit trade #{trade.trade_id} has inconsistent reserve allocation: "
+            f"planned_reserve={planned_reserve}, reserve_currency_allocated={allocated}"
+        )
+
+    logger.warning(
+        "Repairing legacy vault pending deposit reserve accounting before claim: "
+        "trade #%d, reserve debit %s %s was missing",
+        trade.trade_id,
+        planned_reserve,
+        trade.reserve_currency.token_symbol,
+    )
+    state.portfolio.adjust_reserves(
+        trade.reserve_currency,
+        -planned_reserve,
+        f"Repair missing reserve debit for vault pending deposit trade #{trade.trade_id}",
+    )
+    trade.reserve_currency_allocated = planned_reserve
+
+
+def _refund_partial_deposit_to_funding_source(
+    state: State,
+    trade: TradeExecution,
+    refund_amount: Decimal,
+) -> None:
+    """Return an async deposit partial-fill refund to the original funding source."""
+    assert refund_amount > 0, f"Refund amount must be positive, got {refund_amount}"
+
+    if trade.bridge_currency_allocated is not None:
+        bridge_position = state.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+        assert bridge_position is not None, f"No bridge position for bridge-funded vault trade #{trade.trade_id}"
+        bridge_position.adjust_bridge_capital_allocated(-refund_amount)
+        trade.bridge_currency_allocated -= refund_amount
+        logger.info(
+            "Vault partial deposit refund returned to bridge position: trade #%d, amount=%s %s",
+            trade.trade_id,
+            refund_amount,
+            trade.reserve_currency.token_symbol,
+        )
+        return
+
+    state.portfolio.adjust_reserves(
+        trade.reserve_currency,
+        refund_amount,
+        f"Vault partial deposit refund: trade #{trade.trade_id}",
+    )
+    logger.info(
+        "Vault partial deposit refund returned to reserves: trade #%d, amount=%s %s",
+        trade.trade_id,
+        refund_amount,
+        trade.reserve_currency.token_symbol,
+    )
+
+
 def _resolve_single_vault_trade(
     state: State,
     trade: TradeExecution,
@@ -518,6 +612,7 @@ def _resolve_single_vault_trade(
             executed_reserve = analysis.denomination_amount
             executed_amount = analysis.share_count
             price = float(executed_reserve / executed_amount) if executed_amount else 0
+            _ensure_legacy_pending_deposit_capital_allocated(state, trade)
         else:
             executed_amount = -analysis.share_count
             executed_reserve = analysis.denomination_amount
@@ -539,11 +634,7 @@ def _resolve_single_vault_trade(
         # Handle partial deposit refunds
         if direction == "deposit" and executed_reserve < trade.planned_reserve:
             refund_amount = trade.planned_reserve - executed_reserve
-            state.portfolio.adjust_reserves(
-                trade.reserve_currency,
-                refund_amount,
-                f"Vault partial deposit refund: trade #{trade.trade_id}",
-            )
+            _refund_partial_deposit_to_funding_source(state, trade, refund_amount)
 
         logger.info(
             "Vault trade #%d settled successfully (direction=%s, amount=%s, reserve=%s, price=%s)",

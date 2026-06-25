@@ -1079,15 +1079,18 @@ class State:
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""
         trade.mark_failed(failed_at)
-        # Return unused reserves back to accounting.
-        # Satellite chain trades (spending from CCTP bridge positions)
-        # have no reserve_currency_allocated, so skip the reserve adjustment.
-        if trade.is_buy() and trade.reserve_currency_allocated is not None:
-            self.portfolio.adjust_reserves(
-                trade.reserve_currency,
-                trade.reserve_currency_allocated,
-                f"Trade failed, allocated reserve was not used:\n{trade}"
-            )
+        if trade.is_buy():
+            # Return unused reserves back to accounting.
+            if trade.reserve_currency_allocated is not None:
+                self.portfolio.adjust_reserves(
+                    trade.reserve_currency,
+                    trade.reserve_currency_allocated,
+                    f"Trade failed, allocated reserve was not used:\n{trade}"
+                )
+            elif trade.bridge_currency_allocated is not None:
+                bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+                assert bridge_position is not None, f"No bridge position for failed bridge-funded trade {trade}"
+                bridge_position.adjust_bridge_capital_allocated(-trade.bridge_currency_allocated)
 
     def mark_bridge_in_transit(self, ts: datetime.datetime, trade: TradeExecution):
         """Mark a CCTP bridge trade as in-transit (burn confirmed, receive pending).
@@ -1131,6 +1134,18 @@ class State:
             deposit_manager.serialize_redemption_ticket().
             Protocol-specific fields (e.g. settlement_id) are included by the adapter.
         """
+        if trade.is_buy():
+            allocated = trade.reserve_currency_allocated
+            if allocated is None:
+                allocated = trade.bridge_currency_allocated
+            assert allocated == trade.planned_reserve, (
+                f"Cannot mark vault buy trade #{trade.trade_id} settlement pending without allocated capital. "
+                f"planned_reserve={trade.planned_reserve}, "
+                f"reserve_currency_allocated={trade.reserve_currency_allocated}, "
+                f"bridge_currency_allocated={trade.bridge_currency_allocated}. "
+                "state.start_execution() must debit the funding source before the async request is persisted."
+            )
+
         trade.vault_settlement_pending_at = ts
         trade.other_data["vault_async_flow"] = True
         trade.other_data["vault_chain_id"] = trade.pair.chain_id
