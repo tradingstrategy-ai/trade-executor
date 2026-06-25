@@ -17,11 +17,14 @@ from tradingstrategy.client import Client
 pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
 
 
-FIXED_HYPERCORE_VAULTS = [
-    (ChainId.hypercore, "0x010461c14e146ac35fe42271bdc1134ee31c703a"),
-]
-
-#: HLP vault — the main Hyperliquid Liquidity Provider vault.
+#: HLP vault — the main Hyperliquid Liquidity Provider (HLP) parent vault.
+#:
+#: Used as the fixed single-vault universe in these remote-data tests because the
+#: HLP parent is always present in ``top_vaults_by_chain.json`` and always open for
+#: deposits. Do not pin HLP child strategy sub-vaults (e.g. "HLP Strategy A",
+#: ``0x010461c14e146ac35fe42271bdc1134ee31c703a``) here: the vault scanner only
+#: lists the HLP parent, so the universe would filter to empty and fail with
+#: "Vault universe cannot be empty".
 HLP_VAULT = [
     (ChainId.hypercore, "0xdfc24b077bc1425ad1dea75bcb6f8158e10df303"),
 ]
@@ -47,7 +50,7 @@ def test_hyper_ai_strategy_create_trading_universe_uses_remote_vault_data(
     monkeypatch.setattr(
         hyper_ai_strategy_module,
         "build_hyperliquid_vault_universe",
-        lambda min_tvl, min_age: FIXED_HYPERCORE_VAULTS,
+        lambda min_tvl, min_age: HLP_VAULT,
     )
     original_load_vault_universe_with_metadata = hyper_ai_strategy_module.load_vault_universe_with_metadata
     original_load_partial_data = hyper_ai_strategy_module.load_partial_data
@@ -87,7 +90,7 @@ def test_hyper_ai_strategy_create_trading_universe_uses_remote_vault_data(
     strategy_universe = hyper_ai_strategy_module.create_trading_universe(input_data)
 
     # 3. Confirm the resulting universe contains remote vault metadata, candles, liquidity and downloaded files.
-    raw_pair = strategy_universe.data_universe.pairs.get_pair_by_smart_contract(FIXED_HYPERCORE_VAULTS[0][1])
+    raw_pair = strategy_universe.data_universe.pairs.get_pair_by_smart_contract(HLP_VAULT[0][1])
     assert raw_pair is not None
     assert raw_pair.get_vault_metadata() is not None
 
