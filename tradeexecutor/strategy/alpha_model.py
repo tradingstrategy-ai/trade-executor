@@ -17,7 +17,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.size_risk import SizeRisk
-from tradeexecutor.state.trade import TradeExecution, TradeStatus, TradeType
+from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.types import (LeverageMultiplier, PairInternalId,
                                        Percent, USDollarAmount)
 from tradeexecutor.strategy.dust import get_close_epsilon_for_pair
