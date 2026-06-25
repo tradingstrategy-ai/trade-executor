@@ -857,7 +857,15 @@ class State:
         if deposit_at is None:
             return
 
-        new_expires_at = deposit_at + datetime.timedelta(days=lockup_days)
+        try:
+            new_expires_at = deposit_at + datetime.timedelta(days=lockup_days)
+        except OverflowError:
+            # Some vault metadata reports a nonsensically large lockup
+            # (e.g. a lockup expressed in seconds instead of days), which
+            # pushes the estimated expiry past ``datetime.datetime.max``.
+            # This is a display-only estimate, so clamp it to the maximum
+            # representable datetime rather than crashing trade execution.
+            new_expires_at = datetime.datetime.max
         has_existing_expires_at_key = "vault_lockup_expires_at" in position.other_data
         existing_expires_at_str = position.other_data.get("vault_lockup_expires_at")
         existing_estimated = position.other_data.get("vault_lockup_estimated") is True
