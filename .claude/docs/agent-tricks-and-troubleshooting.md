@@ -1,5 +1,9 @@
 # Agent tricks and troubleshooting
 
+Read this document before invoking Claude CLI or Codex CLI from another agent.
+It contains local invocation details that are easy to get wrong, especially for
+non-interactive Claude review runs.
+
 This note covers practical ways to use Codex CLI and Claude CLI as local engineering agents, especially when one agent is used to review or debug the other agent's work.
 
 ## Codex CLI
@@ -64,6 +68,7 @@ Common commands:
 claude
 claude -p "Review the current worktree diff"
 claude -p "Review the current worktree diff" --output-format stream-json --verbose
+claude auth status
 claude ultrareview master --timeout 15
 claude doctor
 claude agents
@@ -86,9 +91,29 @@ Useful capabilities:
 - Debug logging with `--debug` or `--debug-file`.
 - MCP and plugin management.
 
+Important authentication note:
+
+- Do not use `--bare` to check whether Claude is signed in. Bare mode skips
+  keychain/OAuth credentials by design and only uses `ANTHROPIC_API_KEY` or an
+  `apiKeyHelper` from `--settings`. A signed-in Unix user can therefore see
+  `Not logged in` in `--bare` mode even though normal `claude -p` works.
+- Use normal mode for local signed-in accounts:
+
+```shell
+claude auth status
+claude -p "Say OK"
+```
+
+- Use `--safe-mode` instead of `--bare` when debugging broken customisations
+  but you still want normal auth, model selection and built-in permissions to
+  work.
+
 Recommended local patterns:
 
 ```shell
+# Smoke-test non-interactive auth and startup.
+claude -p "Say OK"
+
 # Plain one-shot review. Good when you can wait for final buffered output.
 claude -p "Review the current git diff for correctness bugs"
 
@@ -103,6 +128,11 @@ claude -p "Review the current worktree diff. Do not edit files." \
   --dangerously-skip-permissions \
   --allowedTools "Bash,Read,Grep,Glob"
 
+# Safer read-only review without broad bypass mode.
+claude -p "Review the current worktree diff. Do not edit files. Findings first." \
+  --permission-mode dontAsk \
+  --allowedTools "Bash(git status:*),Bash(git diff:*),Bash(sed:*),Bash(rg:*)"
+
 # Avoid pasting huge diffs into the prompt. Make Claude inspect files itself.
 claude -p "Review uncommitted changes. First run git diff --name-only, then inspect targeted diffs."
 
@@ -111,6 +141,19 @@ claude ultrareview master --timeout 15
 ```
 
 For long-running `claude -p` jobs, prefer `--output-format stream-json --verbose`. Text mode can look idle because useful output may be buffered until the final answer.
+
+If a broad review stalls, first verify that basic non-interactive mode and
+read-only Bash tools work before assuming auth is broken:
+
+```shell
+claude -p "Say OK"
+claude -p "Run git status --short and summarise it in one sentence." \
+  --allowedTools "Bash(git status:*)"
+```
+
+If these work but the broad review times out, shrink the request: ask Claude to
+inspect `git diff --name-only` first, review one file group at a time, or provide
+a concise summary of the proposed fix instead of embedding a large diff.
 
 ### Reviewing a plan or document with Claude CLI
 
@@ -407,15 +450,22 @@ Symptoms:
 - `doctor` reports missing auth.
 - MCP servers show `needs-auth`.
 - Tools that depend on external services are absent.
+- `claude --bare -p "Say OK"` says `Not logged in`.
 
 Avoid it:
 
 ```shell
 codex doctor
 codex mcp list
+claude auth status
+claude -p "Say OK"
 claude doctor
 claude mcp
 ```
+
+Do not diagnose normal Claude CLI auth with `--bare`; it intentionally skips
+keychain/OAuth credentials. Use `claude auth status` and a normal `claude -p`
+smoke test instead.
 
 Do not assume missing MCP tools are model limitations. Check installation, auth, workspace policy, and whether the session needs restarting after a config change.
 

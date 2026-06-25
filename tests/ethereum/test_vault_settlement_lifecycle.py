@@ -119,7 +119,7 @@ def test_vault_settlement_pending_value_in_equity(
 
     1. Create a state with reserves and a vault deposit (buy) trade
     2. Advance trade to vault_settlement_pending
-    3. Verify get_vault_settlement_pending_value() returns the planned_reserve
+    3. Verify reserve cash was debited and get_vault_settlement_pending_value() returns the planned_reserve
     4. Verify calculate_total_equity() includes the pending value
     """
     state = State()
@@ -154,8 +154,10 @@ def test_vault_settlement_pending_value_in_equity(
     }
     state.mark_vault_settlement_pending(ts, trade, ticket_data)
 
-    # 3. Verify status and pending value
+    # 3. Verify reserve cash was debited and get_vault_settlement_pending_value() returns the planned_reserve.
     assert trade.get_status() == TradeStatus.vault_settlement_pending
+    assert trade.reserve_currency_allocated == pytest.approx(Decimal(500))
+    assert reserve.quantity == pytest.approx(Decimal(9_500))
     pending_value = state.portfolio.get_vault_settlement_pending_value()
     assert pending_value == pytest.approx(500.0)
 
@@ -403,6 +405,250 @@ def test_vault_settlement_retry_claimable(
     assert trade.vault_settlement_pending_at is None
     assert trade.executed_reserve == pytest.approx(Decimal(100))
     assert trade.executed_quantity == pytest.approx(Decimal("96.15"))
+
+
+def test_vault_settlement_retry_repairs_legacy_missing_reserve_debit(
+    vault_pair: TradingPairIdentifier,
+    usdc_arbitrum: AssetIdentifier,
+):
+    """Verify settlement retry repairs older pending deposit state with missing reserve debit.
+
+    1. Create a vault deposit that is pending settlement.
+    2. Simulate a legacy/corrupt state where reserve cash was put back and allocation was lost.
+    3. Mock the deposit manager to return CLAIMABLE status and claim analysis.
+    4. Resolve the settlement retry.
+    5. Verify the reserve debit exists after claim, so cash is not overstated.
+
+    The legacy mutation is mocked because current ``mark_vault_settlement_pending()``
+    rejects this state; the test reproduces a persisted state from before that guard.
+    """
+    state = State()
+    ts = datetime.datetime(2025, 1, 1)
+
+    # 1. Create a vault deposit that is pending settlement.
+    state.portfolio.initialise_reserves(usdc_arbitrum)
+    reserve = state.portfolio.get_default_reserve_position()
+    reserve.quantity = Decimal(10_000)
+    reserve.reserve_token_price = 1.0
+    trade = _create_vault_buy_trade(state, vault_pair, usdc_arbitrum, Decimal(100), ts)
+    state.start_execution(ts, trade)
+    trade.mark_broadcasted(ts)
+
+    approve_tx = BlockchainTransaction()
+    approve_tx.tx_hash = "0xapprove"
+    request_tx = BlockchainTransaction()
+    request_tx.tx_hash = "0xrequest"
+    trade.blockchain_transactions = [approve_tx, request_tx]
+    state.mark_vault_settlement_pending(
+        ts,
+        trade,
+        {
+            "vault_async_flow": True,
+            "vault_chain_id": 42161,
+            "vault_direction": "deposit",
+            "vault_owner_address": "0xTestOwner",
+            "vault_raw_amount": 100_000_000,
+            "vault_address": OLP_ARBITRUM_ADDRESS,
+            "vault_request_tx_hash": "0xrequest",
+            "vault_settlement_id": 42,
+            "vault_request_tx_count": 2,
+        },
+    )
+
+    # 2. Simulate a legacy/corrupt state where reserve cash was put back and allocation was lost.
+    reserve.quantity += Decimal(100)
+    trade.reserve_currency_allocated = None
+    assert reserve.quantity == pytest.approx(Decimal(10_000))
+
+    # 3. Mock the deposit manager to return CLAIMABLE status and claim analysis.
+    mock_deposit_manager = MagicMock()
+    mock_deposit_manager.get_deposit_request_status.return_value = AsyncVaultRequestStatus.claimable
+    mock_deposit_manager.reconstruct_deposit_ticket.return_value = MagicMock()
+    mock_deposit_manager.finish_deposit.return_value = MagicMock()
+    mock_analysis = MagicMock(spec=DepositRedeemEventAnalysis)
+    mock_analysis.denomination_amount = Decimal(100)
+    mock_analysis.share_count = Decimal("96.15")
+    mock_deposit_manager.analyse_deposit.return_value = mock_analysis
+
+    mock_vault = MagicMock()
+    mock_vault.get_deposit_manager.return_value = mock_deposit_manager
+    mock_vault.vault_contract = MagicMock()
+
+    mock_web3 = MagicMock()
+    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100}
+    mock_web3.eth.send_raw_transaction.return_value = b"\x00" * 32
+
+    mock_execution_model = MagicMock()
+    mock_execution_model.web3 = mock_web3
+    mock_tx = BlockchainTransaction()
+    mock_tx.tx_hash = "0x" + "ab" * 32
+    mock_tx.signed_bytes = b"\xab" * 32
+    mock_tx.other = {}
+    mock_execution_model.tx_builder.sign_transaction.return_value = mock_tx
+
+    # 4. Resolve the settlement retry.
+    with (
+        patch("tradeexecutor.ethereum.vault.settlement_retry.get_vault_for_pair", return_value=mock_vault),
+        patch("tradeexecutor.ethereum.vault.settlement_retry.wait_for_transaction_receipt_robust", return_value=mock_receipt),
+    ):
+        resolved = check_and_resolve_vault_settlements(
+            state=state,
+            execution_model=mock_execution_model,
+        )
+
+    # 5. Verify the reserve debit exists after claim, so cash is not overstated.
+    assert len(resolved) == 1
+    assert trade.get_status() == TradeStatus.success
+    assert trade.reserve_currency_allocated == pytest.approx(Decimal(0))
+    assert reserve.quantity == pytest.approx(Decimal(9_900))
+    assert trade.executed_reserve == pytest.approx(Decimal(100))
+    assert trade.executed_quantity == pytest.approx(Decimal("96.15"))
+
+
+def test_vault_settlement_retry_repairs_legacy_missing_bridge_allocation(
+    usdc_arbitrum: AssetIdentifier,
+):
+    """Verify settlement retry repairs older satellite vault deposits with missing bridge allocation.
+
+    1. Create a CCTP bridge position from Arbitrum to Base.
+    2. Create a Base vault deposit funded from the bridge position.
+    3. Simulate a legacy/corrupt state where bridge allocation was lost.
+    4. Resolve the settlement retry.
+    5. Verify partial refunds return to bridge capital and home reserves are not credited.
+
+    The legacy mutation is mocked because current ``mark_vault_settlement_pending()``
+    rejects this state; the test reproduces a persisted state from before that guard.
+    """
+    ts = datetime.datetime(2025, 1, 1)
+    state = State()
+    usdc_base = AssetIdentifier(
+        chain_id=8453,
+        address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    base_vault_asset = AssetIdentifier(
+        chain_id=8453,
+        address="0x1111111111111111111111111111111111111111",
+        token_symbol="vUSDC",
+        decimals=18,
+    )
+    cctp_pair = TradingPairIdentifier(
+        base=usdc_base,
+        quote=usdc_arbitrum,
+        pool_address="0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
+        exchange_address="0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
+        fee=0,
+        kind=TradingPairKind.cctp_bridge,
+        other_data={"bridge_protocol": "cctp"},
+    )
+    base_vault_pair = TradingPairIdentifier(
+        base=base_vault_asset,
+        quote=usdc_base,
+        pool_address=base_vault_asset.address,
+        exchange_address=base_vault_asset.address,
+        fee=0,
+        kind=TradingPairKind.vault,
+    )
+
+    # 1. Create a CCTP bridge position from Arbitrum to Base.
+    state.portfolio.initialise_reserves(usdc_arbitrum)
+    reserve = state.portfolio.get_default_reserve_position()
+    reserve.quantity = Decimal(10_000)
+    reserve.reserve_token_price = 1.0
+    _, bridge_trade, _ = state.create_trade(
+        strategy_cycle_at=ts,
+        pair=cctp_pair,
+        quantity=None,
+        reserve=Decimal(100),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc_arbitrum,
+        reserve_currency_price=1.0,
+    )
+    state.start_execution(ts, bridge_trade)
+    bridge_trade.mark_broadcasted(ts)
+    state.mark_trade_success(
+        executed_at=ts,
+        trade=bridge_trade,
+        executed_price=1.0,
+        executed_amount=Decimal(100),
+        executed_reserve=Decimal(100),
+        lp_fees=0,
+        native_token_price=0,
+    )
+    bridge_position = state.portfolio.get_bridge_position_for_chain(8453)
+    assert bridge_position is not None
+    assert reserve.quantity == pytest.approx(Decimal(9_900))
+
+    # 2. Create a Base vault deposit funded from the bridge position.
+    trade = _create_vault_buy_trade(state, base_vault_pair, usdc_arbitrum, Decimal(100), ts)
+    state.start_execution(ts, trade)
+    trade.mark_broadcasted(ts)
+    request_tx = BlockchainTransaction()
+    request_tx.tx_hash = "0xrequest"
+    trade.blockchain_transactions = [request_tx]
+    state.mark_vault_settlement_pending(
+        ts,
+        trade,
+        {
+            "vault_async_flow": True,
+            "vault_chain_id": 8453,
+            "vault_direction": "deposit",
+            "vault_owner_address": "0xTestOwner",
+            "vault_raw_amount": 100_000_000,
+            "vault_address": base_vault_asset.address,
+            "vault_request_tx_hash": "0xrequest",
+            "vault_settlement_id": 42,
+            "vault_request_tx_count": 1,
+        },
+    )
+    assert bridge_position.bridge_capital_allocated == pytest.approx(Decimal(100))
+
+    # 3. Simulate a legacy/corrupt state where bridge allocation was lost.
+    bridge_position.bridge_capital_allocated = Decimal(0)
+    trade.bridge_currency_allocated = None
+
+    mock_deposit_manager = MagicMock()
+    mock_deposit_manager.get_deposit_request_status.return_value = AsyncVaultRequestStatus.claimable
+    mock_deposit_manager.reconstruct_deposit_ticket.return_value = MagicMock()
+    mock_deposit_manager.finish_deposit.return_value = MagicMock()
+    mock_analysis = MagicMock(spec=DepositRedeemEventAnalysis)
+    mock_analysis.denomination_amount = Decimal(80)
+    mock_analysis.share_count = Decimal("76.92")
+    mock_deposit_manager.analyse_deposit.return_value = mock_analysis
+    mock_vault = MagicMock()
+    mock_vault.get_deposit_manager.return_value = mock_deposit_manager
+    mock_vault.vault_contract = MagicMock()
+    mock_web3 = MagicMock()
+    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100}
+    mock_web3.eth.send_raw_transaction.return_value = b"\x00" * 32
+    mock_execution_model = MagicMock()
+    mock_execution_model.web3 = mock_web3
+    mock_tx = BlockchainTransaction()
+    mock_tx.tx_hash = "0x" + "ab" * 32
+    mock_tx.signed_bytes = b"\xab" * 32
+    mock_tx.other = {}
+    mock_execution_model.tx_builder.sign_transaction.return_value = mock_tx
+
+    # 4. Resolve the settlement retry.
+    with (
+        patch("tradeexecutor.ethereum.vault.settlement_retry.get_vault_for_pair", return_value=mock_vault),
+        patch("tradeexecutor.ethereum.vault.settlement_retry.wait_for_transaction_receipt_robust", return_value=mock_receipt),
+    ):
+        resolved = check_and_resolve_vault_settlements(
+            state=state,
+            execution_model=mock_execution_model,
+        )
+
+    # 5. Verify partial refunds return to bridge capital and home reserves are not credited.
+    assert len(resolved) == 1
+    assert trade.get_status() == TradeStatus.success
+    assert reserve.quantity == pytest.approx(Decimal(9_900))
+    assert bridge_position.bridge_capital_allocated == pytest.approx(Decimal(80))
+    assert trade.bridge_currency_allocated == pytest.approx(Decimal(80))
+    assert trade.executed_reserve == pytest.approx(Decimal(80))
+    assert trade.executed_quantity == pytest.approx(Decimal("76.92"))
 
 
 def test_vault_settlement_retry_rebroadcast_uses_robust_receipt_wait(

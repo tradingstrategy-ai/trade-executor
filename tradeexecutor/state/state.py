@@ -1131,6 +1131,18 @@ class State:
             deposit_manager.serialize_redemption_ticket().
             Protocol-specific fields (e.g. settlement_id) are included by the adapter.
         """
+        if trade.is_buy():
+            allocated = trade.reserve_currency_allocated
+            if allocated is None:
+                allocated = trade.bridge_currency_allocated
+            assert allocated == trade.planned_reserve, (
+                f"Cannot mark vault buy trade #{trade.trade_id} settlement pending without allocated capital. "
+                f"planned_reserve={trade.planned_reserve}, "
+                f"reserve_currency_allocated={trade.reserve_currency_allocated}, "
+                f"bridge_currency_allocated={trade.bridge_currency_allocated}. "
+                "state.start_execution() must debit the funding source before the async request is persisted."
+            )
+
         trade.vault_settlement_pending_at = ts
         trade.other_data["vault_async_flow"] = True
         trade.other_data["vault_chain_id"] = trade.pair.chain_id
