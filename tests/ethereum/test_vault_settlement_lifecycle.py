@@ -986,6 +986,142 @@ def test_vault_settlement_retry_reclaimable(
     assert cash_after == pytest.approx(cash_before + 100.0)
 
 
+def test_vault_settlement_retry_reclaimable_bridge_returns_allocated_capital(
+    usdc_arbitrum: AssetIdentifier,
+):
+    """Verify reclaimable satellite vault deposits release allocated bridge capital.
+
+    1. Create a CCTP bridge position from Arbitrum to Base.
+    2. Create a Base vault deposit funded from the bridge position.
+    3. Mock the deposit manager to return RECLAIMABLE status.
+    4. Resolve the settlement retry.
+    5. Verify the trade fails and bridge capital becomes available again.
+    """
+    ts = datetime.datetime(2025, 1, 1)
+    state = State()
+    usdc_base = AssetIdentifier(
+        chain_id=8453,
+        address="0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    base_vault_asset = AssetIdentifier(
+        chain_id=8453,
+        address="0x1111111111111111111111111111111111111111",
+        token_symbol="vUSDC",
+        decimals=18,
+    )
+    cctp_pair = TradingPairIdentifier(
+        base=usdc_base,
+        quote=usdc_arbitrum,
+        pool_address="0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
+        exchange_address="0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
+        fee=0,
+        kind=TradingPairKind.cctp_bridge,
+        other_data={"bridge_protocol": "cctp"},
+    )
+    base_vault_pair = TradingPairIdentifier(
+        base=base_vault_asset,
+        quote=usdc_base,
+        pool_address=base_vault_asset.address,
+        exchange_address=base_vault_asset.address,
+        fee=0,
+        kind=TradingPairKind.vault,
+    )
+
+    # 1. Create a CCTP bridge position from Arbitrum to Base.
+    state.portfolio.initialise_reserves(usdc_arbitrum)
+    reserve = state.portfolio.get_default_reserve_position()
+    reserve.quantity = Decimal(10_000)
+    reserve.reserve_token_price = 1.0
+    _, bridge_trade, _ = state.create_trade(
+        strategy_cycle_at=ts,
+        pair=cctp_pair,
+        quantity=None,
+        reserve=Decimal(100),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc_arbitrum,
+        reserve_currency_price=1.0,
+    )
+    state.start_execution(ts, bridge_trade)
+    bridge_trade.mark_broadcasted(ts)
+    state.mark_trade_success(
+        executed_at=ts,
+        trade=bridge_trade,
+        executed_price=1.0,
+        executed_amount=Decimal(100),
+        executed_reserve=Decimal(100),
+        lp_fees=0,
+        native_token_price=0,
+    )
+    bridge_position = state.portfolio.get_bridge_position_for_chain(8453)
+    assert bridge_position is not None
+    assert reserve.quantity == pytest.approx(Decimal(9_900))
+
+    # 2. Create a Base vault deposit funded from the bridge position.
+    trade = _create_vault_buy_trade(state, base_vault_pair, usdc_arbitrum, Decimal(100), ts)
+    state.start_execution(ts, trade)
+    trade.mark_broadcasted(ts)
+    request_tx = BlockchainTransaction()
+    request_tx.tx_hash = "0xrequest"
+    trade.blockchain_transactions = [request_tx]
+    state.mark_vault_settlement_pending(
+        ts,
+        trade,
+        {
+            "vault_async_flow": True,
+            "vault_chain_id": 8453,
+            "vault_direction": "deposit",
+            "vault_owner_address": "0xTestOwner",
+            "vault_raw_amount": 100_000_000,
+            "vault_address": base_vault_asset.address,
+            "vault_request_tx_hash": "0xrequest",
+            "vault_settlement_id": 42,
+            "vault_request_tx_count": 1,
+        },
+    )
+    assert bridge_position.bridge_capital_allocated == pytest.approx(Decimal(100))
+    assert bridge_position.get_available_bridge_capital() == pytest.approx(Decimal(0))
+
+    # 3. Mock the deposit manager to return RECLAIMABLE status.
+    mock_deposit_manager = MagicMock()
+    mock_deposit_manager.get_deposit_request_status.return_value = AsyncVaultRequestStatus.reclaimable
+    mock_deposit_manager.reconstruct_deposit_ticket.return_value = MagicMock()
+    mock_deposit_manager.reclaim_deposit.return_value = MagicMock()
+    mock_vault = MagicMock()
+    mock_vault.get_deposit_manager.return_value = mock_deposit_manager
+    mock_vault.vault_contract = MagicMock()
+    mock_web3 = MagicMock()
+    mock_receipt = {"status": 1, "transactionHash": b"\x00" * 32, "blockNumber": 100}
+    mock_web3.eth.send_raw_transaction.return_value = b"\x00" * 32
+    mock_execution_model = MagicMock()
+    mock_execution_model.web3 = mock_web3
+    mock_tx = BlockchainTransaction()
+    mock_tx.tx_hash = "0x" + "cd" * 32
+    mock_tx.signed_bytes = b"\xcd" * 32
+    mock_tx.other = {}
+    mock_execution_model.tx_builder.sign_transaction.return_value = mock_tx
+
+    # 4. Resolve the settlement retry.
+    with (
+        patch("tradeexecutor.ethereum.vault.settlement_retry.get_vault_for_pair", return_value=mock_vault),
+        patch("tradeexecutor.ethereum.vault.settlement_retry.wait_for_transaction_receipt_robust", return_value=mock_receipt),
+    ):
+        resolved = check_and_resolve_vault_settlements(
+            state=state,
+            execution_model=mock_execution_model,
+        )
+
+    # 5. Verify the trade fails and bridge capital becomes available again.
+    assert len(resolved) == 1
+    assert trade.get_status() == TradeStatus.failed
+    assert trade.vault_settlement_pending_at is None
+    assert reserve.quantity == pytest.approx(Decimal(9_900))
+    assert bridge_position.bridge_capital_allocated == pytest.approx(Decimal(0))
+    assert bridge_position.get_available_bridge_capital() == pytest.approx(Decimal(100))
+
+
 def test_is_swap_function_includes_async_selectors():
     """Verify that requestDeposit and requestWithdraw are recognised as swap functions.
 

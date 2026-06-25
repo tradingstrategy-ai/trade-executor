@@ -1079,15 +1079,18 @@ class State:
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
         """Unroll the allocated capital."""
         trade.mark_failed(failed_at)
-        # Return unused reserves back to accounting.
-        # Satellite chain trades (spending from CCTP bridge positions)
-        # have no reserve_currency_allocated, so skip the reserve adjustment.
-        if trade.is_buy() and trade.reserve_currency_allocated is not None:
-            self.portfolio.adjust_reserves(
-                trade.reserve_currency,
-                trade.reserve_currency_allocated,
-                f"Trade failed, allocated reserve was not used:\n{trade}"
-            )
+        if trade.is_buy():
+            # Return unused reserves back to accounting.
+            if trade.reserve_currency_allocated is not None:
+                self.portfolio.adjust_reserves(
+                    trade.reserve_currency,
+                    trade.reserve_currency_allocated,
+                    f"Trade failed, allocated reserve was not used:\n{trade}"
+                )
+            elif trade.bridge_currency_allocated is not None:
+                bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+                assert bridge_position is not None, f"No bridge position for failed bridge-funded trade {trade}"
+                bridge_position.adjust_bridge_capital_allocated(-trade.bridge_currency_allocated)
 
     def mark_bridge_in_transit(self, ts: datetime.datetime, trade: TradeExecution):
         """Mark a CCTP bridge trade as in-transit (burn confirmed, receive pending).
