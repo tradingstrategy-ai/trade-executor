@@ -1,12 +1,18 @@
 """Test vault metadata translation into trade-executor pair identifiers."""
 
+import datetime
+
+import pandas as pd
 import pytest
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeType
 from tradingstrategy.pair import DEXPair
 from tradingstrategy.vault import VaultMetadata
 
-from tradeexecutor.strategy.dex_data_translation import translate_trading_pair
+from tradeexecutor.strategy.dex_data_translation import (
+    normalise_vault_lockup_days,
+    translate_trading_pair,
+)
 
 
 def _make_vault_dex_pair(metadata: VaultMetadata) -> DEXPair:
@@ -84,3 +90,55 @@ def test_translate_trading_pair_preserves_vault_lockup_days() -> None:
 
     # 3. The translated pair exposes the lockup days to trade-ui.
     assert pair.other_data["vault_lockup_days"] == 30.0
+
+
+def test_translate_trading_pair_normalises_legacy_lockup_seconds() -> None:
+    """Vault lockup seconds from legacy JSON are normalised to days.
+
+    Steps:
+    1. Build a vault metadata object with a legacy seconds-valued lockup.
+    2. Translate a DEX pair carrying the metadata.
+    3. Assert the translated pair exposes the lockup as days to trade-ui.
+    """
+
+    # 1. Build a vault metadata object with a legacy seconds-valued lockup.
+    metadata = VaultMetadata(
+        vault_name="Plutus plHEDGE",
+        protocol_name="PlutusDAO",
+        protocol_slug="plutus",
+        features=[],
+        lockup_days=2592000.0,
+    )
+
+    # 2. Translate a DEX pair carrying the metadata.
+    pair = translate_trading_pair(_make_vault_dex_pair(metadata))
+
+    # 3. The translated pair exposes the lockup as days to trade-ui.
+    assert pair.other_data["vault_lockup_days"] == 30.0
+
+
+def test_normalise_vault_lockup_days_contract() -> None:
+    """Vault lockup normalisation handles days, legacy seconds and timedeltas.
+
+    Steps:
+    1. Assert normal day values and no-lockup values are preserved.
+    2. Assert legacy seconds-valued metadata is converted once.
+    3. Assert the conversion threshold and timedelta inputs are pinned.
+    """
+
+    # 1. Normal day values and no-lockup values are preserved.
+    assert normalise_vault_lockup_days(None) is None
+    assert normalise_vault_lockup_days(0.0) is None
+    assert normalise_vault_lockup_days(30.0) == 30.0
+
+    # 2. Legacy seconds-valued metadata is converted once.
+    assert normalise_vault_lockup_days(2592000.0) == 30.0
+    assert normalise_vault_lockup_days(normalise_vault_lockup_days(2592000.0)) == 30.0
+
+    # 3. The conversion threshold and timedelta inputs are pinned.
+    assert normalise_vault_lockup_days(3650.0) == 3650.0
+    assert normalise_vault_lockup_days(3651.0) == pytest.approx(3651.0 / 86400)
+    assert normalise_vault_lockup_days(datetime.timedelta(days=30)) == 30.0
+    assert normalise_vault_lockup_days(datetime.timedelta(days=4000)) == 4000.0
+    assert normalise_vault_lockup_days(pd.Timedelta(days=30)) == 30.0
+    assert normalise_vault_lockup_days(pd.Timedelta(0)) is None
