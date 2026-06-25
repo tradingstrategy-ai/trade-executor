@@ -10,8 +10,6 @@ Critical semantics under test:
 - unknown / NA / pre-history / out-of-tolerance / missing pair / no state frame -> allowed
 - no look-ahead: a sample stamped strictly after the decision timestamp is never used
 """
-from decimal import Decimal
-
 import pandas as pd
 import pytest
 
@@ -130,7 +128,6 @@ def test_no_vault_state_allowed():
     p = BacktestPricing(_candle_universe(), routing_model=None, vault_state=None)
     assert p.can_deposit(pd.Timestamp("2026-03-06"), _FakePair(1)) is True
     assert p.check_redemption(pd.Timestamp("2026-03-06"), _FakePair(1)).can_redeem is True
-    assert p.get_max_deposit(pd.Timestamp("2026-03-06"), _FakePair(1)) is None
 
 
 def test_check_redemption_closed(pricing):
@@ -146,12 +143,8 @@ def test_check_redemption_unknown_allowed(pricing):
 
 
 def test_check_redemption_open_with_cap(pricing):
+    # A positive historical cap is reported on the result (consumed by the Hyperliquid reduction
+    # path); redemption stays allowed.
     result = pricing.check_redemption(pd.Timestamp("2026-03-07"), _FakePair(2))
     assert result.can_redeem is True
     assert result.max_redemption == 1234.0
-
-
-def test_get_max_redemption(pricing):
-    assert pricing.get_max_redemption(pd.Timestamp("2026-03-07"), _FakePair(2)) == Decimal("1234.0")
-    # Unknown cap (NA) -> None
-    assert pricing.get_max_redemption(pd.Timestamp("2026-03-05"), _FakePair(2)) is None

@@ -144,9 +144,10 @@ class BacktestPricing(PricingModel):
             Tidy DataFrame from
             :py:func:`tradingstrategy.alternative_data.vault.convert_vault_prices_to_vault_state`
             (``pair_id``, ``timestamp`` plus available ``VAULT_STATE_COLUMNS``). When provided,
-            :py:meth:`can_deposit` / :py:meth:`check_redemption` / :py:meth:`get_max_deposit` /
-            :py:meth:`get_max_redemption` answer from this history so backtests skip impossible
-            rebalances. Unknown / missing / out-of-tolerance values are treated as "allowed".
+            :py:meth:`can_deposit` / :py:meth:`check_redemption` answer from this history so
+            backtests skip deposits into / sells out of a vault that was closed at that timestamp.
+            This models open/closed availability only, not partial size caps. Unknown / missing /
+            out-of-tolerance values are treated as "allowed".
 
         """
 
@@ -598,25 +599,6 @@ class BacktestPricing(PricingModel):
             return None
         return Decimal(str(cap))
 
-    def _lookup_cap(self, ts, pair: TradingPairIdentifier, key: str) -> Decimal | None:
-        """Per-timestamp deposit/redemption hard cap for a vault, or None if unknown."""
-        state = self._lookup_vault_state(ts, pair)
-        return None if state is None else self._state_cap(state, key)
-
-    def get_max_deposit(
-        self,
-        ts: datetime.datetime | None,
-        pair: TradingPairIdentifier,
-    ) -> Decimal | None:
-        return self._lookup_cap(ts, pair, "max_deposit")
-
-    def get_max_redemption(
-        self,
-        ts: datetime.datetime | None,
-        pair: TradingPairIdentifier,
-    ) -> Decimal | None:
-        return self._lookup_cap(ts, pair, "max_redeem")
-
     def can_deposit(
         self,
         ts: datetime.datetime | None,
@@ -662,6 +644,9 @@ class BacktestPricing(PricingModel):
             result.message = reason if isinstance(reason, str) and reason else "Vault redemptions closed in historical data"
             return result
 
+        # Report a positive historical cap for the Hyperliquid reduction path that consumes it.
+        # The generic rebalance path enforces open/closed only, not partial size caps (out of
+        # scope here; partial-cap sizing belongs in the size-risk model).
         if cap is not None:
             result.max_redemption = float(cap)
             result.max_withdrawable = float(cap)
