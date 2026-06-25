@@ -353,3 +353,104 @@ def decide_trades(
         raise RuntimeError(f"Alpha model flow calculations failed: {alpha_model.get_debug_print()}") from e
 
     return trades
+
+
+#
+# Deposit-availability gating integration test.
+#
+# Proves that when the vault-state frame reports a vault is closed for deposits, the alpha model
+# skips the buy through the existing pricing_model.can_deposit() hook — exercised end to end via
+# run_backtest_inline() and a real decide_trades() loop. Network-free: the universe is built from
+# the bundled vault price data, and the deposit-closed state is injected synthetically (the bundle
+# itself carries no availability columns).
+#
+
+
+def _build_gating_universe() -> TradingStrategyUniverse:
+    return create_trading_universe(
+        None,
+        client=None,
+        execution_context=unit_test_execution_context,
+        universe_options=UniverseOptions.from_strategy_parameters_class(Parameters, unit_test_execution_context),
+    )
+
+
+def _run_gating_backtest(universe: TradingStrategyUniverse, tmp_path: Path):
+    parameters = StrategyParameters.from_class(Parameters)
+    indicator_storage = DiskIndicatorStorage(tmp_path, universe_key=universe.get_cache_key())
+    indicator_data = calculate_and_load_indicators_inline(
+        strategy_universe=universe,
+        create_indicators=indicators.create_indicators,
+        parameters=parameters,
+        storage=indicator_storage,
+        max_workers=1,
+    )
+    return run_backtest_inline(
+        client=None,
+        decide_trades=decide_trades,
+        universe=universe,
+        reserve_currency=ReserveCurrency.usdc,
+        engine_version="0.5",
+        parameters=parameters,
+        mode=ExecutionMode.unit_testing,
+        indicator_storage=indicator_storage,
+        indicator_combinations=indicator_data.indicator_combinations,
+    )
+
+
+def _buy_counts_by_pair(state) -> dict:
+    counts = {}
+    for t in state.portfolio.get_all_trades():
+        if t.is_buy():
+            counts[t.pair.internal_id] = counts.get(t.pair.internal_id, 0) + 1
+    return counts
+
+
+def _deposits_closed_state(pair: TradingPairIdentifier) -> pd.DataFrame:
+    """Daily vault-state frame closing ``pair`` for deposits across the whole backtest window."""
+    timestamps = pd.date_range("2024-12-01", "2025-06-01", freq="1D")
+    n = len(timestamps)
+    return pd.DataFrame(
+        {
+            "pair_id": pair.internal_id,
+            "address": pair.pool_address,
+            "timestamp": timestamps,
+            "deposits_open": pd.array([False] * n, dtype="boolean"),
+            "redemption_open": pd.array([pd.NA] * n, dtype="boolean"),
+            "deposit_closed_reason": "Vault deposits disabled by leader",
+            "redemption_closed_reason": pd.array([pd.NA] * n, dtype="object"),
+            "max_deposit": [float("nan")] * n,
+            "max_redeem": [float("nan")] * n,
+        }
+    )
+
+
+def test_vault_deposit_closed_skips_buy(tmp_path: Path):
+    """A vault closed for deposits in the vault-state frame receives no buy trades.
+
+    Baseline (no vault-state) buys some vault; the gated run, which marks that same vault as
+    closed for deposits for the whole window, must skip every buy for it.
+    """
+    # Baseline: no availability gating (vault_state stays None).
+    baseline_universe = _build_gating_universe()
+    assert baseline_universe.vault_state is None
+    baseline_result = _run_gating_backtest(baseline_universe, tmp_path / "baseline")
+    baseline_buys = _buy_counts_by_pair(baseline_result.state)
+    assert baseline_buys, "Baseline backtest produced no buy trades to gate"
+
+    # Pick the most frequently bought vault as the one to close.
+    target_pair_id = max(baseline_buys, key=baseline_buys.get)
+
+    # Gated: same universe, but the target vault is closed for deposits for the whole window.
+    gated_universe = _build_gating_universe()
+    target_pair = next(p for p in gated_universe.iterate_pairs() if p.internal_id == target_pair_id)
+    gated_universe.vault_state = _deposits_closed_state(target_pair)
+    gated_result = _run_gating_backtest(gated_universe, tmp_path / "gated")
+    gated_buys = _buy_counts_by_pair(gated_result.state)
+
+    assert gated_buys.get(target_pair_id, 0) == 0, (
+        f"Vault {target_pair} closed for deposits still got "
+        f"{gated_buys.get(target_pair_id)} buy trades (baseline had {baseline_buys[target_pair_id]})"
+    )
+    # Capital is redeployed elsewhere rather than the strategy collapsing to all-cash.
+    assert sum(gated_buys.values()) >= 1

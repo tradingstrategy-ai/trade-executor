@@ -17,6 +17,11 @@ from tradeexecutor.state.types import (AnyTimestamp, Percent, USDollarAmount,
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.redemption import (
+    RedemptionBlockReason,
+    RedemptionCheckResult,
+    RedemptionCheckStage,
+)
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.trading_strategy_universe import (
     TradingStrategyUniverse, translate_trading_pair)
@@ -27,6 +32,21 @@ from tradingstrategy.pair import PairNotFoundError, PandasPairUniverse
 from tradingstrategy.timebucket import TimeBucket
 
 logger = logging.getLogger(__name__)
+
+
+def _bool_series_to_sentinel(series: pd.Series) -> np.ndarray:
+    """Encode a nullable-boolean availability column as int8 sentinels.
+
+    ``-1`` unknown / NA, ``0`` closed (False), ``1`` open (True). Keeps the fast numpy
+    searchsorted lookup path free of pandas nullable/object dtypes.
+    """
+    boolean = pd.Series(series).astype("boolean")
+    out = np.full(len(boolean), -1, dtype=np.int8)
+    true_mask = (boolean == True).fillna(False).to_numpy(dtype=bool)  # noqa: E712
+    false_mask = (boolean == False).fillna(False).to_numpy(dtype=bool)  # noqa: E712
+    out[true_mask] = 1
+    out[false_mask] = 0
+    return out
 
 
 class BacktestPricing(PricingModel):
@@ -60,6 +80,7 @@ class BacktestPricing(PricingModel):
         pairs: Optional[PandasPairUniverse] = None,
         three_leg_resolution=True,
         ignore_routing=False,
+        vault_state: pd.DataFrame | None = None,
     ):
         """
 
@@ -123,6 +144,16 @@ class BacktestPricing(PricingModel):
 
             Currently needed for cross-chain backtesting.
 
+        :param vault_state:
+            Per-(vault, timestamp) deposit/redemption availability state.
+
+            Tidy DataFrame from
+            :py:func:`tradingstrategy.alternative_data.vault.convert_vault_prices_to_vault_state`
+            (``pair_id``, ``timestamp`` plus available ``VAULT_STATE_COLUMNS``). When provided,
+            :py:meth:`can_deposit` / :py:meth:`check_redemption` / :py:meth:`get_max_deposit` /
+            :py:meth:`get_max_redemption` answer from this history so backtests skip impossible
+            rebalances. Unknown / missing / out-of-tolerance values are treated as "allowed".
+
         """
 
         # TODO: Remove later - now to support some old code111
@@ -183,6 +214,31 @@ class BacktestPricing(PricingModel):
                     ts_values.astype("datetime64[s]").astype("int64"),
                     samples["open"].values.astype(float),
                 )
+
+        # Pre-index per-(vault, timestamp) deposit/redemption availability state the same way,
+        # so can_deposit()/check_redemption() are O(log K) searchsorted lookups in the hot path.
+        #
+        # Booleans are stored as compact int8 sentinels: -1 unknown, 0 closed, 1 open. Caps are
+        # float arrays (NaN = unknown). Reasons are kept as object arrays for diagnostics.
+        # Each entry: pair_id → {"ts": int64 seconds, "deposits_open": int8, ...}
+        self.vault_state = vault_state
+        self._vault_state_arrays: dict[int, dict[str, np.ndarray]] = {}
+        if vault_state is not None and len(vault_state) > 0:
+            for pair_id, group in vault_state.groupby("pair_id", sort=False):
+                group = group.sort_values("timestamp")
+                entry: dict[str, np.ndarray] = {
+                    "ts": group["timestamp"].values.astype("datetime64[s]").astype("int64"),
+                }
+                for col in ("deposits_open", "redemption_open"):
+                    if col in group.columns:
+                        entry[col] = _bool_series_to_sentinel(group[col])
+                for col in ("max_deposit", "max_redeem"):
+                    if col in group.columns:
+                        entry[col] = group[col].to_numpy(dtype=float)
+                for col in ("deposit_closed_reason", "redemption_closed_reason"):
+                    if col in group.columns:
+                        entry[col] = group[col].to_numpy(dtype=object)
+                self._vault_state_arrays[int(pair_id)] = entry
 
         # assert not three_leg_resolution
 
@@ -474,9 +530,6 @@ class BacktestPricing(PricingModel):
         assert self.liquidity_universe is not None, \
             "liquidity_universe not passed to BacktestPricing constructor"
 
-        if isinstance(timestamp, datetime.datetime):
-            timestamp = pd.Timestamp(timestamp)
-
         lookup = self._tvl_arrays.get(pair.internal_id)
         if lookup is None:
             raise LiquidityDataUnavailable(
@@ -485,28 +538,136 @@ class BacktestPricing(PricingModel):
             )
 
         ts_seconds, values = lookup
-        query_seconds = int(timestamp.timestamp())  # UNIX seconds
-
-        # Backward-fill: find rightmost timestamp <= requested
-        idx = np.searchsorted(ts_seconds, query_seconds, side="right") - 1
-
+        idx = self._backfill_index(ts_seconds, timestamp)
         if idx < 0:
             raise LiquidityDataUnavailable(
                 f"Could not read TVL/liquidity data for {pair} — "
-                f"no data before {timestamp}"
+                f"no sample at or before {timestamp} within {self.data_delay_tolerance} tolerance"
             )
-
-        # Tolerance check: sample must be within data_delay_tolerance
-        sample_seconds = int(ts_seconds[idx])
-        tolerance_seconds = int(self.data_delay_tolerance.total_seconds())
-        if query_seconds - sample_seconds > tolerance_seconds:
-            raise LiquidityDataUnavailable(
-                f"Could not read TVL/liquidity data for {pair} — "
-                f"most recent sample is too old "
-                f"(beyond {self.data_delay_tolerance} tolerance)"
-            )
-
         return float(values[idx])
+
+    #
+    # Vault deposit/redemption availability (historical, backtest)
+    #
+
+    def _backfill_index(self, ts_seconds: np.ndarray, timestamp: AnyTimestamp) -> int:
+        """Index of the most recent sample at or before ``timestamp`` within tolerance.
+
+        Backward-fill via ``numpy.searchsorted`` on pre-indexed UNIX-second arrays. Returns
+        ``-1`` when there is no sample at or before the timestamp, or the nearest one is older
+        than :py:attr:`data_delay_tolerance`. Shared by TVL and vault-state lookups.
+        """
+        query_seconds = int(pd.Timestamp(timestamp).timestamp())
+        idx = np.searchsorted(ts_seconds, query_seconds, side="right") - 1
+        if idx < 0:
+            return -1
+        if query_seconds - int(ts_seconds[idx]) > int(self.data_delay_tolerance.total_seconds()):
+            return -1
+        return int(idx)
+
+    def _lookup_vault_state(
+        self,
+        timestamp: AnyTimestamp | None,
+        pair: TradingPairIdentifier | None,
+    ) -> dict | None:
+        """Return the in-tolerance vault availability sample at or before ``timestamp``.
+
+        Returns ``None`` when there is no vault-state data, no pair/timestamp, no sample at or
+        before the timestamp (pre-history), or the nearest sample is older than
+        ``data_delay_tolerance``. Callers MUST treat ``None`` as "state unknown -> allowed",
+        never as "closed".
+
+        Uses the sample at or before the decision timestamp (``searchsorted`` right - 1), never a
+        later same-bucket sample, so it introduces no look-ahead beyond the TVL/price candles.
+        """
+        if pair is None or timestamp is None:
+            return None
+        entry = self._vault_state_arrays.get(pair.internal_id)
+        if entry is None:
+            return None
+        idx = self._backfill_index(entry["ts"], timestamp)
+        if idx < 0:
+            return None
+        return {key: arr[idx] for key, arr in entry.items() if key != "ts"}
+
+    @staticmethod
+    def _state_cap(state: dict, key: str) -> Decimal | None:
+        """Read a hard cap (``max_deposit`` / ``max_redeem``) as Decimal, or None if unknown."""
+        cap = state.get(key)
+        if cap is None:
+            return None
+        if isinstance(cap, float) and math.isnan(cap):
+            return None
+        return Decimal(str(cap))
+
+    def _lookup_cap(self, ts, pair: TradingPairIdentifier, key: str) -> Decimal | None:
+        """Per-timestamp deposit/redemption hard cap for a vault, or None if unknown."""
+        state = self._lookup_vault_state(ts, pair)
+        return None if state is None else self._state_cap(state, key)
+
+    def get_max_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> Decimal | None:
+        return self._lookup_cap(ts, pair, "max_deposit")
+
+    def get_max_redemption(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> Decimal | None:
+        return self._lookup_cap(ts, pair, "max_redeem")
+
+    def can_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+    ) -> bool:
+        state = self._lookup_vault_state(ts, pair)
+        if state is None:
+            return True
+        if state.get("deposits_open", -1) == 0:
+            return False
+        cap = self._state_cap(state, "max_deposit")
+        if cap is not None and cap == 0:
+            return False
+        return True
+
+    def check_redemption(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier | None,
+        *,
+        stage: RedemptionCheckStage = RedemptionCheckStage.unknown,
+        position=None,
+    ) -> RedemptionCheckResult:
+        del position
+        result = RedemptionCheckResult(
+            timestamp=ts,
+            stage=stage,
+            can_redeem=True,
+            pair_ticker=pair.get_ticker() if pair else None,
+            vault_address=pair.pool_address if pair else None,
+        )
+        state = self._lookup_vault_state(ts, pair)
+        if state is None:
+            return result
+
+        cap = self._state_cap(state, "max_redeem")
+        if state.get("redemption_open", -1) == 0 or (cap is not None and cap == 0):
+            result.can_redeem = False
+            result.reason_code = RedemptionBlockReason.vault_max_withdrawable_zero
+            result.max_redemption = 0.0
+            result.max_withdrawable = 0.0
+            reason = state.get("redemption_closed_reason")
+            result.message = reason if isinstance(reason, str) and reason else "Vault redemptions closed in historical data"
+            return result
+
+        if cap is not None:
+            result.max_redemption = float(cap)
+            result.max_withdrawable = float(cap)
+        return result
 
 
 def backtest_pricing_factory(
@@ -522,5 +683,6 @@ def backtest_pricing_factory(
         universe.data_universe.candles,
         routing_model,
         pairs=universe.data_universe.pairs,
+        vault_state=universe.vault_state,
     )
 

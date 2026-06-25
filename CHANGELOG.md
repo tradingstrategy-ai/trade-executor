@@ -3,6 +3,8 @@
 ## 0.2
 
 
+- Add historical vault deposit/redemption availability to backtests so the alpha model skips impossible rebalances. The backtest pricing model now answers `can_deposit()` / `check_redemption()` from a per-(vault, timestamp) state frame (`deposits_open` / `redemption_open` / hard caps) threaded from the vault price loader through the trading universe. Unknown / missing / out-of-tolerance state is treated as allowed, so existing backtests are unchanged (verified by the exact-trade-count vault rebalance regression test) (2026-06-25)
+
 - Fix `correct-accounts` spamming the closed-positions list with hundreds of empty (zero-quantity) Hypercore vault positions. Hypercore vault withdrawals cannot fully exit — the protocol refuses exact full withdrawals when NAV moves between planning and execution, leaving a small on-chain residual (the ~1.5 USDC withdrawal safety margin). The original position is already marked closed at exit because the close epsilon tolerates the residual, but `create_missing_vault_positions()` ran on every correct-accounts cycle and re-materialised that same on-chain dust as a brand-new closed position each run. Sub-dust vault equity with no open position is now written off and skipped, matching how leftover spot dust is treated for other trading pairs (2026-06-24)
 
 - Add trade-ui redemption status and estimated vault lockup display for metadata-backed vaults. Vault metadata now carries `lockup_days` into trading pairs, successful vault deposits persist estimated per-position lockup expiry when no live reader exists, and the pair selection table shows both deposits and redemptions for Lagoon, Euler, Morpho, D2, PlutusDAO, Ostium, Gains and other metadata-backed vaults (2026-06-23)

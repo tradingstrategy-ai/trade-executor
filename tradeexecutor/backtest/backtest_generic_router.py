@@ -127,6 +127,7 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
             pairs=strategy_universe.data_universe.pairs,
             three_leg_resolution=three_leg_resolution,
             ignore_routing=self.ignore_routing,  # Disable price routing checks for cross-chain strategies for now
+            vault_state=strategy_universe.vault_state,
         )
 
         valuation_model = BacktestValuationModel(pricing_model)

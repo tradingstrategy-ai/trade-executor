@@ -398,6 +398,7 @@ def setup_backtest_for_universe(
             liquidity_universe=universe.data_universe.liquidity,
             pairs=universe.data_universe.pairs,
             three_leg_resolution=three_leg_resolution,
+            vault_state=universe.vault_state,
         )
 
     execution_model = BacktestExecution(
@@ -631,6 +632,7 @@ def run_backtest(
             allow_missing_fees=allow_missing_fees,
             pairs=universe.data_universe.pairs,
             three_leg_resolution=three_leg_resolution,
+            vault_state=universe.vault_state,
         )
 
     def valuation_model_factory(pricing_model):
@@ -1029,6 +1031,7 @@ def run_backtest_inline(
                 liquidity_universe=universe.data_universe.liquidity,
                 pairs=universe.data_universe.pairs,
                 three_leg_resolution=three_leg_resolution,
+                vault_state=universe.vault_state,
             )
 
     else:
