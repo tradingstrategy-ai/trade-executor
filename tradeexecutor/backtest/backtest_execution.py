@@ -472,8 +472,21 @@ class BacktestExecution(ExecutionModel):
     ) -> None:
         """Settle a single due async vault deposit/redeem against the simulated wallet."""
         pair = trade.pair
-        reserve = trade.reserve_currency
         base = pair.base
+
+        # The on-chain token a vault deposit/redeem spends/receives is the pair's
+        # quote token (the vault's denomination), which for a satellite-chain
+        # vault is the USDC on that chain (e.g. Arbitrum USDC) that CCTP bridged
+        # there — NOT the portfolio's home reserve currency. For a home-chain
+        # vault the quote token already equals the reserve currency, so using the
+        # quote token is correct in both cases.
+        #
+        # We must resolve by the pair, not by whether a bridge position currently
+        # exists: a bridge position closes once its available capital hits zero
+        # (position.can_be_closed()), which can happen before an async deposit
+        # settles. Falling back to the home reserve currency there would debit
+        # the wrong wallet token and strand the bridged satellite USDC.
+        reserve = pair.quote
 
         if trade.is_buy():
             # Deposit: realise shares at the current (settlement-time) price.

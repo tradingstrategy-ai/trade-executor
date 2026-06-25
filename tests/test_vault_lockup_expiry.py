@@ -170,6 +170,33 @@ def test_estimated_vault_lockup_expiry_does_not_overwrite_concrete_no_lockup() -
     assert position.other_data["vault_lockup_estimated"] is False
 
 
+def test_estimated_vault_lockup_expiry_does_not_overflow_on_garbage_lockup() -> None:
+    """A nonsensically large lockup is clamped instead of crashing.
+
+    Some vault metadata reports the lockup in seconds rather than days
+    (e.g. ``3_888_000`` = 45 days in seconds), which would push the
+    estimated expiry past ``datetime.datetime.max`` and raise
+    ``OverflowError`` during backtest execution.
+
+    Steps:
+    1. Build a vault buy carrying a garbage seconds-as-days lockup.
+    2. Apply the lockup expiry helper.
+    3. Assert the expiry is clamped to ``datetime.datetime.max``.
+    """
+
+    # 1. Build a vault buy carrying a garbage seconds-as-days lockup.
+    pair = _make_vault_pair(lockup_days=3_888_000.0)
+    position = _make_position(pair)
+    trade = _make_trade(pair, datetime.datetime(2025, 1, 1, 12, 0, 0))
+
+    # 2. Apply the lockup expiry helper.
+    State().maybe_set_vault_lockup_expiry(position, trade)
+
+    # 3. The expiry is clamped to the maximum representable datetime.
+    assert position.other_data["vault_lockup_expires_at"] == datetime.datetime.max.isoformat()
+    assert position.other_data["vault_lockup_estimated"] is True
+
+
 def test_estimated_vault_lockup_expiry_ignores_sells() -> None:
     """A vault sell does not update lockup metadata.
 
