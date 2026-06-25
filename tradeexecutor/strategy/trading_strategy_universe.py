@@ -41,7 +41,7 @@ from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvaila
 from tradingstrategy.utils.token_extra_data import load_extra_metadata
 from tradingstrategy.utils.token_filter import add_base_quote_address_columns
 from tradingstrategy.vault import VaultMetadata, VaultUniverse
-from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, DEFAULT_VAULT_DOWNLOAD_ROOT, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history, read_vault_price_history_parquet
+from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, convert_vault_prices_to_vault_state, DEFAULT_VAULT_DOWNLOAD_ROOT, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history, read_vault_price_history_parquet, VAULT_STATE_COLUMNS
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.ethereum.cctp.bridge_universe import generate_primary_to_satellite_cctp_bridge_universe
@@ -118,6 +118,15 @@ class Dataset:
 
     #: Optional vault history startup diagnostics gathered during loading.
     vault_history_diagnostics: "VaultHistoryDiagnostics | None" = None
+
+    #: Per-(vault, timestamp) deposit/redemption availability state.
+    #:
+    #: Tidy DataFrame produced by
+    #: :py:func:`tradingstrategy.alternative_data.vault.convert_vault_prices_to_vault_state`
+    #: (columns ``pair_id``, ``address``, ``timestamp`` plus available
+    #: ``VAULT_STATE_COLUMNS``). ``None`` when the vault price source carries no availability
+    #: columns. Used by the backtest pricing model to skip impossible rebalances.
+    vault_state: Optional[pd.DataFrame] = None
 
     def __repr__(self):
         return f"<Dataset pairs:{len(self.pairs)} candles:{len(self.candles)} start:{self.start_at} end:{self.end_at} live history period:{self.history_period}>"
@@ -228,6 +237,14 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
     #: Optional vault history startup diagnostics propagated from the dataset loader.
     vault_history_diagnostics: "VaultHistoryDiagnostics | None" = None
+
+    #: Per-(vault, timestamp) deposit/redemption availability state.
+    #:
+    #: Propagated from :py:attr:`Dataset.vault_state`. Consumed by the backtest pricing model
+    #: (:py:class:`tradeexecutor.backtest.backtest_pricing.BacktestPricing`) so that backtests
+    #: can skip deposits when a vault is closed and skip sells when redemptions are closed.
+    #: ``None`` when the vault price source carries no availability columns.
+    vault_state: Optional[pd.DataFrame] = None
 
     def __repr__(self):
         pair_count = self.data_universe.pairs.get_count()
@@ -1481,6 +1498,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             backtest_stop_loss_candles=stop_loss_candle_universe,
             primary_chain=primary_chain,
             vault_history_diagnostics=dataset.vault_history_diagnostics,
+            vault_state=dataset.vault_state,
         )
 
     @staticmethod
@@ -2943,6 +2961,11 @@ def load_partial_data(
             our_exchange_universe.add(vault_exchanges)
             filtered_pairs_df = pd.concat([filtered_pairs_df, vault_pairs_df])
 
+        # Per-(vault, timestamp) deposit/redemption availability state, populated from whichever
+        # vault history source carries the availability columns. Stays None for sources that do
+        # not (e.g. the daily price bundle), in which case backtests treat every vault as open.
+        vault_state_df = None
+
         if effective_vault_history_source == "bundled":
             assert vaults, "Vaults must be given to load bundled price data"
             assert not execution_context.mode.is_live_trading(), "Cannot load bundled price data in live trading"
@@ -2964,6 +2987,7 @@ def load_partial_data(
             candles_df = _concat_optional_dataframe(candles_df, vault_candle_df)
             if liquidity_df is not None:
                 liquidity_df = _concat_optional_dataframe(liquidity_df, vault_liquidity_df)
+            vault_state_df = convert_vault_prices_to_vault_state(vault_prices_df, freq_string)
         elif effective_vault_history_source == "trading-strategy-website":
             assert vaults, "Vaults must be given to load Trading Strategy website vault price history"
             assert vault_pairs_df is not None, "Vault pairs must be materialised before loading Trading Strategy website vault history"
@@ -2989,6 +3013,9 @@ def load_partial_data(
                         "timestamp",
                         "share_price",
                         "total_assets",
+                        # Optional deposit/redemption availability columns; silently dropped by
+                        # read_vault_price_history_parquet for sources that do not carry them.
+                        *VAULT_STATE_COLUMNS,
                     ],
                 )
             else:
@@ -3004,6 +3031,10 @@ def load_partial_data(
 
             offset = time_bucket.to_frequency()
             freq_string = f"{offset.n}{offset.name.lower()}"
+            # Build the availability state frame BEFORE candle conversion, which mutates OHLC
+            # columns on the source frame in place (the state columns are untouched, but this
+            # keeps the dependency explicit).
+            vault_state_df = convert_vault_prices_to_vault_state(filtered_website_vault_prices_df, freq_string)
             vault_candle_df, vault_liquidity_df = convert_vault_prices_to_candles(filtered_website_vault_prices_df, freq_string)
             candles_df = _concat_optional_dataframe(candles_df, vault_candle_df)
             if liquidity_df is not None:
@@ -3082,6 +3113,7 @@ def load_partial_data(
             history_period=required_history_period,
             vault_specs=vaults,
             vault_history_diagnostics=vault_history_diagnostics,
+            vault_state=vault_state_df,
         )
 
 

@@ -3,6 +3,8 @@
 ## 0.2
 
 
+- Add historical vault deposit/redemption availability to backtests so the alpha model skips impossible rebalances. The backtest pricing model now answers `can_deposit()` / `check_redemption()` from a per-(vault, timestamp) state frame (`deposits_open` / `redemption_open` / hard caps) threaded from the vault price loader through the trading universe. Unknown / missing / out-of-tolerance state is treated as allowed, so existing backtests are unchanged (verified by the exact-trade-count vault rebalance regression test) (2026-06-25)
+
 - Make the cross-chain CCTP bridge planner cash-aware so a master-vault backtest no longer crashes with a silent `OutOfSimulatedBalance` mid-run. `inject_cctp_bridge_trades()` now sizes both bridge directions against the per-chain liquidity ledger (`available_bridge_capital`): a bridge-out is netted against capital already idle on the satellite chain and bounded by the fundable primary reserve (raising a clear `NotEnoughMoney` with full diagnostics instead of underflowing the simulated wallet), and a bridge-back is capped to the available bridge capital so it cannot move satellite USDC that an in-flight async deposit still needs to settle. Adds `tests/ethereum/test_cctp_bridge_cash_aware.py` (idle-capital netting, partial shortfall, and underfunded cases) (2026-06-25)
 
 - Fix async vault deposit/redeem settlement in the backtester debiting/crediting the home reserve currency instead of the satellite-chain token for CCTP-bridged satellite vaults. `_settle_async_vault_trade()` now moves the pair's quote token (the vault denomination, e.g. USDC on the satellite chain), which equals the reserve currency for home-chain vaults, so the bridged satellite USDC is actually consumed rather than stranded (2026-06-25)
