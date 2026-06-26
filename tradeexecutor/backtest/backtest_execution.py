@@ -173,10 +173,27 @@ class BacktestExecution(ExecutionModel):
         # quote = trade.pair.quote
 
         # For satellite chain trades funded via a CCTP bridge, the on-chain
-        # token spent is the pair's quote token (e.g. USDC on Base), not the
-        # portfolio reserve currency (e.g. USDC on Arbitrum).
+        # token spent/received is the satellite quote token (e.g. USDC on Base),
+        # not the portfolio reserve currency (e.g. USDC on Arbitrum).
+        #
+        # Do not infer this from quote != reserve_currency: normal multi-hop
+        # spot pairs like AAVE-WETH can still be funded from the USDC reserve.
         bridge_position = state.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
-        if bridge_position is not None or trade.pair.quote != trade.reserve_currency:
+        has_closed_bridge_position = (
+            trade.is_sell()
+            and bridge_position is None
+            and trade.pair.quote != trade.reserve_currency
+            and any(
+                p.pair.is_cctp_bridge()
+                and p.pair.get_destination_chain_id() == trade.pair.chain_id
+                for p in state.portfolio.closed_positions.values()
+            )
+        )
+        bridge_funded_buy = trade.bridge_currency_allocated is not None
+        satellite_sell_returning_to_bridge = trade.is_sell() and (
+            bridge_position is not None or has_closed_bridge_position
+        )
+        if bridge_funded_buy or satellite_sell_returning_to_bridge:
             reserve = trade.pair.quote
         else:
             reserve = trade.reserve_currency

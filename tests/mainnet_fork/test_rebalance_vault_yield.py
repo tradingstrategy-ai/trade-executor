@@ -8,11 +8,13 @@ from unittest import mock
 
 import pytest
 from pytest import FixtureRequest
+from pytest_mock import MockerFixture
 
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
+from tradingstrategy.client import Client
 
 
 pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test")
@@ -36,7 +38,7 @@ def anvil(request: FixtureRequest) -> AnvilLaunch:
 
 
 @pytest.fixture()
-def state_file(tmp_path) -> Path:
+def state_file(tmp_path: Path) -> Path:
     """Make a copy of the state file with the broken vault on a new test cycle"""
     template = Path(__file__).resolve().parent / "yield-manager-aave-bug.json"
     assert template.exists(), f"State dump missing: {template}"
@@ -59,7 +61,7 @@ def environment(
     anvil: AnvilLaunch,
     state_file: Path,
     strategy_file: Path,
-    persistent_test_client,
+    persistent_test_client: Client,
     ) -> dict:
     """Passed to init and start commands as environment variables"""
     # Set up the configuration for the live trader
@@ -83,6 +85,10 @@ def environment(
         "RUN_SINGLE_CYCLE": "true",  # Run only one cycle"
         "MIN_GAS_BALANCE": "0.0",   # Disable gas balance check
         "DISABLE_BROADCAST": "true",  # Disable wait_and_broadcast_multiple_nodes() broadcast as we do not have real private key
+        # Trading Strategy website data may lag wall-clock time by more than
+        # one day in CI; this test exercises rebalance transaction generation,
+        # not the live data freshness alert.
+        "MAX_DATA_DELAY_MINUTES": str(3 * 24 * 60),
     }
     return environment
 
@@ -90,12 +96,25 @@ def environment(
 @pytest.mark.slow_test_group
 def test_rebalance_vault_yield(
     environment: dict,
-    mocker,
+    mocker: MockerFixture,
 ):
     """Run one cycle and generate a rebalance transaction for the vault yield.
 
-    - Make sure money is withdrawn from Aave and deposited to the vaults.
+    This mainnet-fork regression test verifies that the damaged vault-yield
+    state can generate the next rebalance transactions without crashing.
+
+    1. Patch the process environment with the forked RPC, copied state file and
+       deterministic test settings.
+    2. Run one `trade-executor start` cycle.
+    3. Confirm the command completes, proving money can be withdrawn from Aave
+       and redeployed to the vaults.
     """
 
+    # 1. Patch the process environment with the forked RPC, copied state file and
+    # deterministic test settings.
     mocker.patch.dict("os.environ", environment, clear=True)
+
+    # 2. Run one `trade-executor start` cycle.
+    # 3. Confirm the command completes, proving money can be withdrawn from Aave
+    # and redeployed to the vaults.
     app(["start"], standalone_mode=False)
