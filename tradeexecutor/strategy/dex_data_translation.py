@@ -1,5 +1,6 @@
 """Helper functions to translate Trading Strategy client data to trade executor data format."""
-from math import isnan
+import datetime
+from math import isfinite, isnan
 
 from tradeexecutor.state.identifier import AssetIdentifier, AssetType, TradingPairIdentifier, TradingPairKind
 from tradingstrategy.chain import ChainId
@@ -9,6 +10,47 @@ from tradingstrategy.pair import DEXPair
 from tradingstrategy.token import Token
 from tradingstrategy.token_metadata import TokenMetadata
 from tradingstrategy.vault import VaultMetadata
+
+
+# Legacy top-vaults JSON serialises timedelta lockups as seconds, while
+# VaultMetadata.lockup_days is meant to be days.
+LEGACY_LOCKUP_SECONDS_THRESHOLD_DAYS = 3650.0
+SECONDS_PER_DAY = 24 * 60 * 60
+
+
+def normalise_vault_lockup_days(value: object) -> float | None:
+    """Normalise vault lockup metadata to days.
+
+    Older vault JSON exposes ``lockup`` as seconds because it serialises a
+    ``datetime.timedelta`` with ``total_seconds()``. Newer consumers expect
+    ``VaultMetadata.lockup_days`` to be days.
+    """
+    if value is None:
+        return None
+
+    total_seconds = getattr(value, "total_seconds", None)
+    if isinstance(value, datetime.timedelta) or callable(total_seconds):
+        try:
+            value = float(value.total_seconds()) / SECONDS_PER_DAY
+        except (TypeError, ValueError, OverflowError):
+            return None
+        is_legacy_numeric = False
+    else:
+        try:
+            value = float(value)
+        except (TypeError, ValueError):
+            return None
+        is_legacy_numeric = True
+
+    if not isfinite(value) or value <= 0:
+        return None
+
+    if is_legacy_numeric and value > LEGACY_LOCKUP_SECONDS_THRESHOLD_DAYS:
+        value = value / SECONDS_PER_DAY
+        if not isfinite(value) or value <= 0:
+            return None
+
+    return value
 
 
 def translate_token(
@@ -220,7 +262,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                 pair.other_data["vault_name"] = metadata.vault_name
                 pair.other_data["vault_performance_fee"] = metadata.performance_fee
                 pair.other_data["vault_management_fee"] = metadata.management_fee
-                pair.other_data["vault_lockup_days"] = metadata.lockup_days
+                pair.other_data["vault_lockup_days"] = normalise_vault_lockup_days(metadata.lockup_days)
                 # Deposit/redemption gating
                 pair.other_data["deposit_closed_reason"] = metadata.deposit_closed_reason
                 pair.other_data["redemption_closed_reason"] = metadata.redemption_closed_reason
