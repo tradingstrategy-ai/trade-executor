@@ -355,8 +355,9 @@ def test_backtest_async_vault_two_stage_lifecycle():
     1. Build a single async vault pair with a flat price and a 2-day settlement delay.
     2. Run a deposit-hold-redeem strategy and snapshot state before every cycle.
     3. Assert the deposit and redeem each settled a full delay after their request.
-    4. Assert the pending-window accounting: cash debited, value counted as pending,
-       simulated wallet shares/reserve only move at claim, equity continuous.
+    4. Assert the pending-window accounting: cash debited, request asset moved
+       to the vault queue immediately, claim output credited at settlement,
+       equity continuous.
     5. Assert exactly one deposit and one redeem (no double-trading) and a clean close.
     """
 
@@ -382,9 +383,10 @@ def test_backtest_async_vault_two_stage_lifecycle():
     assert deposit_delay >= SETTLEMENT_DELAY, f"Deposit settled too fast: {deposit_delay}"
     assert redeem_delay >= SETTLEMENT_DELAY, f"Redeem settled too fast: {redeem_delay}"
 
-    # 4. Pending-window accounting. A pending deposit: cash already debited, value
-    #    counted as pending, but the simulated wallet has not moved yet. We deposit
-    #    half the initial cash, keeping the other half as a buffer.
+    # 4. Pending-window accounting. A pending deposit: cash and simulated wallet
+    #    reserve are already debited, value is counted as pending, and shares are
+    #    credited only at settlement. We deposit half the initial cash, keeping the
+    #    other half as a buffer.
     deposit_amount = INITIAL_DEPOSIT * 0.5
     deposit_pending = [
         s for s in hook.snapshots
@@ -394,7 +396,7 @@ def test_backtest_async_vault_two_stage_lifecycle():
     for s in deposit_pending:
         assert s["cash"] == pytest.approx(deposit_amount, abs=1e-6)  # cash ledger debited at request
         assert s["wallet_shares"] == pytest.approx(0.0, abs=1e-9)    # shares not credited until claim
-        assert s["wallet_reserve"] == pytest.approx(INITIAL_DEPOSIT, abs=1e-6)  # wallet reserve not debited yet
+        assert s["wallet_reserve"] == pytest.approx(deposit_amount, abs=1e-6)  # request reserve moved to queue
         assert s["open_positions"] == 1
 
     # After the deposit settles: shares credited, wallet reserve partially spent, nothing pending.
@@ -424,6 +426,7 @@ def test_backtest_async_vault_two_stage_lifecycle():
     assert redeem_pending, "Expected a redeem-pending cycle (position held but settlement pending)"
     for s in redeem_pending:
         assert s["expected_base"] == pytest.approx(0.0, abs=1e-9), f"Escrowed shares not subtracted: {s}"
+        assert s["wallet_shares"] == pytest.approx(0.0, abs=1e-9), f"Redeem request did not debit wallet shares: {s}"
     # While merely holding (settled, no pending), expected on-chain balance == full quantity.
     holding = [
         s for s in hook.snapshots
@@ -615,7 +618,7 @@ def test_backtest_async_vault_partial_redeem_and_increase():
     for s in redeem_pending:
         assert s["expected_base"] == pytest.approx(25.0, abs=1e-9)
         assert s["available_quantity"] == pytest.approx(25.0, abs=1e-9)
-        assert s["wallet_shares"] == pytest.approx(50.0, abs=1e-9)
+        assert s["wallet_shares"] == pytest.approx(25.0, abs=1e-9)
 
     # 4. Partial redeem settled: position stays open with the residual half.
     assert len(state.portfolio.open_positions) == 1

@@ -12,7 +12,12 @@ from eth_defi.erc_4626.core import ERC4626Feature
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel, BacktestRoutingState
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet, OutOfSimulatedBalance
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.state.trade import (
+    TradeExecution,
+    TradeStatus,
+    VAULT_SETTLEMENT_REQUEST_QUANTITY_KEY,
+    VAULT_SETTLEMENT_REQUEST_RESERVE_KEY,
+)
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.account_correction import calculate_total_assets
 from tradeexecutor.strategy.execution_model import ExecutionModel, AutoClosingOrderUnsupported
@@ -171,7 +176,7 @@ class BacktestExecution(ExecutionModel):
         # token spent is the pair's quote token (e.g. USDC on Base), not the
         # portfolio reserve currency (e.g. USDC on Arbitrum).
         bridge_position = state.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
-        if bridge_position is not None:
+        if bridge_position is not None or trade.pair.quote != trade.reserve_currency:
             reserve = trade.pair.quote
         else:
             reserve = trade.reserve_currency
@@ -387,21 +392,42 @@ class BacktestExecution(ExecutionModel):
     def simulate_async_vault_request(self, ts: datetime.datetime, state: State, trade: TradeExecution) -> None:
         """Stage 1 of a two-stage async vault deposit/redeem in backtest.
 
-        Records the deposit/redeem request as pending settlement **without** touching
-        the simulated wallet. For a deposit the state reserve ledger has already been
-        debited by ``start_execution()``; for a redeem the shares stay in the position
-        and wallet. The wallet share/reserve balances move only at simulated claim time
-        in :py:meth:`resolve_pending_vault_settlements`, once the configured delay has
-        elapsed.
+        Records the deposit/redeem request as pending settlement and moves the
+        request asset out of the simulated wallet immediately. For a deposit,
+        the pair quote token enters the vault deposit queue. For a redeem, the
+        pair base shares enter the vault redeem queue. Settlement later credits
+        only the claim output, using the exact amount debited here as its input.
 
         :param ts:
             Strategy cycle timestamp (request time).
         """
         assert trade.is_vault(), f"simulate_async_vault_request(): not a vault trade {trade}"
+        pair = trade.pair
+        base = pair.base
+        reserve = pair.quote
+
+        if trade.is_buy():
+            request_reserve = trade.planned_reserve
+            assert request_reserve > 0, f"Expected a positive async vault deposit reserve for trade {trade}"
+            self.wallet.update_balance(reserve, -request_reserve, f"vault deposit request #{trade.trade_id}")
+            trade.other_data[VAULT_SETTLEMENT_REQUEST_RESERVE_KEY] = str(request_reserve)
+        else:
+            base_balance = self.wallet.get_balance(base.address)
+            if trade.closing and base_balance > 0:
+                request_quantity = -base_balance
+            else:
+                request_quantity, _ = fix_sell_token_amount(base_balance, trade.planned_quantity)
+            assert request_quantity < 0, f"Expected a negative async vault redeem quantity for trade {trade}"
+            trade.planned_quantity = request_quantity
+            trade.planned_reserve = abs(request_quantity) * Decimal(str(trade.planned_price))
+            self.wallet.update_balance(base, request_quantity, f"vault redeem request #{trade.trade_id}")
+            trade.other_data[VAULT_SETTLEMENT_REQUEST_QUANTITY_KEY] = str(request_quantity)
+
         settles_at = self._get_settlement_due(trade.pair, ts)
         trade.other_data["vault_settlement_estimated_at"] = settles_at.isoformat()
-        # mark_vault_settlement_pending() sets vault_settlement_pending_at, vault_async_flow,
-        # vault_chain_id and vault_direction. No protocol ticket data exists in backtest.
+        # mark_vault_settlement_pending() sets vault_settlement_pending_at,
+        # vault_async_flow, vault_chain_id and vault_direction. No protocol
+        # ticket data exists in backtest.
         state.mark_vault_settlement_pending(ts, trade, ticket_data={})
         logger.info(
             "Backtest async vault request: trade #%d (%s), settles at %s",
@@ -488,34 +514,25 @@ class BacktestExecution(ExecutionModel):
 
         if trade.is_buy():
             # Deposit: realise shares at the current (settlement-time) price.
+            executed_reserve = trade.get_vault_settlement_request_reserve()
             if pricing_model is not None:
-                settlement_price = pricing_model.get_buy_price(ts, pair, trade.planned_reserve).price
+                settlement_price = pricing_model.get_buy_price(ts, pair, executed_reserve).price
             else:
                 settlement_price = float(trade.planned_price)
-            executed_reserve = trade.planned_reserve
-            # Decimal rounding drift between the state cash ledger and the
-            # simulated wallet accumulates over many settlements; settle with
-            # what the wallet holds when the difference is dust.
-            reserve_balance = self.wallet.get_balance(reserve.address)
-            if reserve_balance < executed_reserve <= reserve_balance + Decimal("0.000001"):
-                executed_reserve = reserve_balance
             executed_quantity = executed_reserve / Decimal(str(settlement_price))
-            # Wallet: receive shares, pay the committed reserve. The state cash
-            # ledger was already debited at request time (start_execution); this
-            # debits the simulated wallet so the two stay in sync post-settlement.
+            # Wallet: receive shares. The committed reserve already left the
+            # wallet at request time and must not be debited a second time.
             self.wallet.update_balance(base, executed_quantity, f"vault deposit settle #{trade.trade_id}")
-            self.wallet.update_balance(reserve, -executed_reserve, f"vault deposit settle #{trade.trade_id}")
         else:
             # Redeem: realise reserve at the current (settlement-time) price.
+            executed_quantity = trade.get_vault_settlement_request_quantity()
             if pricing_model is not None:
-                settlement_price = pricing_model.get_sell_price(ts, pair, abs(trade.planned_quantity)).price
+                settlement_price = pricing_model.get_sell_price(ts, pair, abs(executed_quantity)).price
             else:
                 settlement_price = float(trade.planned_price)
-            base_balance = self.wallet.get_balance(base.address)
-            executed_quantity, _ = fix_sell_token_amount(base_balance, trade.planned_quantity)
             executed_reserve = abs(executed_quantity) * Decimal(str(settlement_price))
-            # Wallet: give up shares (executed_quantity is negative), receive reserve.
-            self.wallet.update_balance(base, executed_quantity, f"vault redeem settle #{trade.trade_id}")
+            # Wallet: receive reserve. The shares already left the wallet at
+            # request time and must not be debited a second time.
             self.wallet.update_balance(reserve, executed_reserve, f"vault redeem settle #{trade.trade_id}")
 
         executed_price = float(abs(executed_reserve / executed_quantity)) if executed_quantity else float(settlement_price)

@@ -27,6 +27,11 @@ from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 logger = logging.getLogger()
 
 
+CCTP_BRIDGE_ORDER_BUMP = 30_000_000
+VAULT_SETTLEMENT_REQUEST_RESERVE_KEY = "vault_settlement_request_reserve"
+VAULT_SETTLEMENT_REQUEST_QUANTITY_KEY = "vault_settlement_request_quantity"
+
+
 class TradeType(enum.Enum):
     """What kind of trade execution this was."""
 
@@ -1073,6 +1078,20 @@ class TradeExecution:
             and status in (TradeStatus.started, TradeStatus.broadcasted)
         )
 
+    def get_vault_settlement_request_reserve(self) -> Decimal:
+        """Get the quote amount committed by an async vault deposit request."""
+        value = self.other_data.get(VAULT_SETTLEMENT_REQUEST_RESERVE_KEY)
+        if value is None:
+            return self.planned_reserve
+        return Decimal(str(value))
+
+    def get_vault_settlement_request_quantity(self) -> Decimal:
+        """Get the share quantity escrowed by an async vault redeem request."""
+        value = self.other_data.get(VAULT_SETTLEMENT_REQUEST_QUANTITY_KEY)
+        if value is None:
+            return self.get_position_quantity()
+        return Decimal(str(value))
+
     def is_short(self) -> bool:
         """This is margined short trade."""
         return self.pair.kind.is_shorting()
@@ -1367,15 +1386,13 @@ class TradeExecution:
         credit_order_bump = 200_000_000
         close_order_bump = 100_000_000
         vault_order_bump = 50_000_000
-        bridge_order_bump = 30_000_000
-
         if self.pair.is_cctp_bridge():
             if self.is_sell():
                 # Bridge-backs: after vault withdrawals (-50M), before spot sells
-                return -self.trade_id - bridge_order_bump
+                return -self.trade_id - CCTP_BRIDGE_ORDER_BUMP
             else:
                 # Bridge-outs: after regular buys, before vault deposits (+50M)
-                return self.trade_id + bridge_order_bump
+                return self.trade_id + CCTP_BRIDGE_ORDER_BUMP
 
         if self.is_credit_supply() and TradeFlag.close in self.flags:
             # Always withdraw credit to cash in hand first,

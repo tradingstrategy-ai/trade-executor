@@ -17,6 +17,7 @@ unnecessary round-trips when sells and buys partially cancel out.
 
 import datetime
 import logging
+from dataclasses import dataclass
 from collections import defaultdict
 from decimal import Decimal
 
@@ -27,30 +28,75 @@ from tradeexecutor.state.identifier import (
 )
 from tradeexecutor.state.portfolio import NotEnoughMoney
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeType
+from tradeexecutor.state.trade import CCTP_BRIDGE_ORDER_BUMP, TradeExecution, TradeType
+from tradeexecutor.utils.accuracy import SUM_EPSILON, sum_decimal
 
 logger = logging.getLogger(__name__)
 
 
-def _find_bridge_pair(
+@dataclass
+class ChainLiquidity:
+    """CCTP liquidity planning ledger for one satellite chain."""
+
+    net_flow: Decimal = Decimal(0)
+    satellite_buys: Decimal = Decimal(0)
+    satellite_sells_before_buy: Decimal = Decimal(0)
+    early_satellite_sells: Decimal = Decimal(0)
+    available_bridge_capital: Decimal = Decimal(0)
+    free_idle_bridge_capital: Decimal = Decimal(0)
+    bridge_back_amount: Decimal = Decimal(0)
+
+    @property
+    def available_before_bridge_back(self) -> Decimal:
+        """Satellite-side cash visible by the bridge-back phase."""
+        return self.available_bridge_capital + self.early_satellite_sells
+
+    @property
+    def satellite_sells_after_bridge_back_before_buy(self) -> Decimal:
+        """Sells that release too late for bridge-backs, but early enough for buys."""
+        return max(self.satellite_sells_before_buy - self.early_satellite_sells, Decimal(0))
+
+    @property
+    def available_before_buy(self) -> Decimal:
+        """Satellite-side cash available before same-cycle satellite buys."""
+        return self.available_bridge_capital + self.satellite_sells_before_buy
+
+    @property
+    def satellite_buy_bridge_back_time_need(self) -> Decimal:
+        """Buy demand that must remain funded before bridge-backs execute."""
+        return max(
+            self.satellite_buys - self.satellite_sells_after_bridge_back_before_buy,
+            Decimal(0),
+        )
+
+    @property
+    def satellite_bridge_shortfall(self) -> Decimal:
+        """How much satellite buy demand still needs a bridge-out."""
+        return max(self.satellite_buys - self.available_before_buy, Decimal(0))
+
+    def prepare(self, available_bridge_capital: Decimal) -> None:
+        """Initialise free bridge-back capital after reserving buy funding."""
+        self.available_bridge_capital = available_bridge_capital
+        self.free_idle_bridge_capital = max(
+            self.available_before_bridge_back - self.satellite_buy_bridge_back_time_need,
+            Decimal(0),
+        )
+
+    def reserve_bridge_back(self, amount: Decimal) -> None:
+        """Reserve free idle satellite capital for a CCTP bridge-back."""
+        self.bridge_back_amount += amount
+        self.free_idle_bridge_capital -= amount
+
+
+def _bridge_pairs_by_destination(
     pairs: list[TradingPairIdentifier],
-    destination_chain_id: int,
-) -> TradingPairIdentifier | None:
-    """Find the CCTP bridge pair targeting a specific destination chain.
-
-    :param pairs:
-        All trading pairs available in the strategy universe.
-
-    :param destination_chain_id:
-        The chain ID of the destination (satellite) chain.
-
-    :return:
-        The bridge pair, or ``None`` if no bridge pair exists for that chain.
-    """
-    for pair in pairs:
-        if pair.kind == TradingPairKind.cctp_bridge and pair.get_destination_chain_id() == destination_chain_id:
-            return pair
-    return None
+) -> dict[int, TradingPairIdentifier]:
+    """Map destination chain id to its CCTP bridge pair."""
+    return {
+        pair.get_destination_chain_id(): pair
+        for pair in pairs
+        if pair.kind == TradingPairKind.cctp_bridge
+    }
 
 
 def _available_bridge_capital(state: State, chain_id: int) -> Decimal:
@@ -72,6 +118,41 @@ def _available_bridge_capital(state: State, chain_id: int) -> Decimal:
     if bridge_position is None:
         return Decimal(0)
     return max(bridge_position.get_available_bridge_capital(), Decimal(0))
+
+
+def _open_bridge_chain_ids(state: State) -> set[int]:
+    """Which satellite chains currently have open CCTP bridge capital."""
+    return {
+        position.pair.get_destination_chain_id()
+        for position in state.portfolio.open_positions.values()
+        if position.pair.is_cctp_bridge()
+    }
+
+
+def _is_meaningful_bridge_amount(amount: Decimal) -> bool:
+    """Is this amount large enough to become a CCTP trade."""
+    return amount > SUM_EPSILON
+
+
+def _trade_releases_before_bridge_back(trade: TradeExecution) -> bool:
+    """Does this satellite sell release bridge capital before bridge-backs run."""
+    return trade.get_execution_sort_position() < -CCTP_BRIDGE_ORDER_BUMP
+
+
+def _is_async_vault_sell_waiting_for_settlement(state: State, trade: TradeExecution) -> bool:
+    """Does this sell request produce reserve only after async vault settlement?"""
+    if not trade.is_sell() or not trade.is_vault():
+        return False
+    if trade.other_data.get("vault_async_flow"):
+        return True
+    if trade.pair.is_async_vault():
+        return True
+
+    position = state.portfolio.get_position_by_id(trade.position_id)
+    if position is not None and position.has_async_vault_flow():
+        return True
+
+    return False
 
 
 def inject_cctp_bridge_trades(
@@ -131,13 +212,13 @@ def inject_cctp_bridge_trades(
         Original trades are not modified.
     """
 
-    # Pre-fetch all pairs from the universe so we only iterate once
-    all_pairs = list(strategy_universe.iterate_pairs())
+    # Pre-fetch bridge pairs from the universe so we only iterate once.
+    bridge_pairs = _bridge_pairs_by_destination(list(strategy_universe.iterate_pairs()))
 
     # 1. Group trades by chain and compute net capital flow per satellite chain.
     #    Also track primary-chain reserve in/outflows so bridge-outs can be
     #    bounded by what the primary chain can actually fund.
-    chain_flows: dict[int, Decimal] = defaultdict(lambda: Decimal(0))
+    liquidity_by_chain: defaultdict[int, ChainLiquidity] = defaultdict(ChainLiquidity)
     primary_sells = Decimal(0)
     primary_buys = Decimal(0)
 
@@ -145,11 +226,18 @@ def inject_cctp_bridge_trades(
         trade_chain_id = trade.pair.chain_id
         value = trade.planned_reserve if trade.planned_reserve else Decimal(str(trade.get_planned_value()))
         value = abs(value)
+        async_vault_sell_waiting = _is_async_vault_sell_waiting_for_settlement(state, trade)
 
         if trade_chain_id == primary_chain_id:
             # Primary-chain sells free reserve (they execute before bridge-outs);
             # primary-chain buys consume it (they execute after bridge-outs).
             if trade.is_sell():
+                if async_vault_sell_waiting:
+                    logger.info(
+                        "Ignoring primary-chain async vault sell #%d for same-cycle reserve planning",
+                        trade.trade_id,
+                    )
+                    continue
                 primary_sells += value
             else:
                 primary_buys += value
@@ -161,24 +249,47 @@ def inject_cctp_bridge_trades(
             continue
 
         if trade.is_sell():
+            if async_vault_sell_waiting:
+                logger.info(
+                    "Ignoring async vault sell #%d on chain %d for same-cycle CCTP liquidity planning",
+                    trade.trade_id,
+                    trade_chain_id,
+                )
+                continue
             # Sell frees up capital — positive flow means excess to bridge back
-            chain_flows[trade_chain_id] += value
+            liquidity = liquidity_by_chain[trade_chain_id]
+            liquidity.net_flow += value
+            liquidity.satellite_sells_before_buy += value
+            if _trade_releases_before_bridge_back(trade):
+                liquidity.early_satellite_sells += value
         else:
             # Buy consumes capital — negative flow means deficit to bridge out
-            chain_flows[trade_chain_id] -= value
+            liquidity = liquidity_by_chain[trade_chain_id]
+            liquidity.net_flow -= value
+            liquidity.satellite_buys += value
 
     bridge_trades: list[TradeExecution] = []
+
+    # Satellite buys spend idle satellite bridge capital before they need a
+    # bridge-out. Keep that already-spoken-for capital out of primary buy
+    # funding, otherwise a primary-chain buy could steal the USDC that a
+    # same-cycle satellite buy is about to allocate.
+    for chain_id in _open_bridge_chain_ids(state):
+        liquidity_by_chain[chain_id]
+    for chain_id, liquidity in liquidity_by_chain.items():
+        liquidity.prepare(_available_bridge_capital(state, chain_id))
 
     # 2. Bridge-backs first (net-sell satellites). These free capital back onto
     #    the primary chain and execute before bridge-outs, so their proceeds are
     #    available to fund same-cycle bridge-outs.
     total_bridge_back = Decimal(0)
-    for chain_id in sorted(chain_flows):
-        net_flow = chain_flows[chain_id]
+    for chain_id in sorted(liquidity_by_chain):
+        liquidity = liquidity_by_chain[chain_id]
+        net_flow = liquidity.net_flow
         if net_flow <= 0:
             continue
 
-        bridge_pair = _find_bridge_pair(all_pairs, chain_id)
+        bridge_pair = bridge_pairs.get(chain_id)
         if bridge_pair is None:
             logger.warning(
                 "No CCTP bridge pair found for destination chain %d, "
@@ -187,21 +298,18 @@ def inject_cctp_bridge_trades(
             )
             continue
 
-        # Never bridge back more than the per-chain available bridge capital:
+        # Never bridge back more than the per-chain free bridge capital:
         # bridging back the full net sell would move satellite USDC that an
         # in-flight deposit on the same chain still needs to settle, starving it
         # (OutOfSimulatedBalance at deposit settlement). Any excess net sell
         # stays on the satellite and bridges back once the deposits have settled.
         #
-        # Known limitation (conservative): proceeds from *synchronous* satellite
-        # sells in this same cycle land in available_bridge_capital only at
-        # execution (after this planner runs), so they are not counted here and a
-        # bridge-back that should follow them may under-bridge for one cycle. The
-        # correct model distinguishes already-idle / sync-released-this-cycle /
-        # pending-async capital — see the cross-chain reconciliation follow-up.
-        available = _available_bridge_capital(state, chain_id)
+        # Non-closing satellite spot sells release after bridge-backs, so they
+        # cannot fund same-cycle bridge-backs. They are still counted later when
+        # sizing bridge-outs, because they execute before same-chain buys.
+        available = liquidity.free_idle_bridge_capital
         amount = min(net_flow, available)
-        if amount <= 0:
+        if not _is_meaningful_bridge_amount(amount):
             logger.info(
                 "Skipping bridge-back for chain %d: net sell %s exceeds available bridge capital %s",
                 chain_id,
@@ -210,9 +318,85 @@ def inject_cctp_bridge_trades(
             )
             continue
 
-        # amount > 0 implies available > 0, so a bridge position exists.
+        liquidity.reserve_bridge_back(amount)
+        total_bridge_back += amount
+
+    # Primary-chain buys and bridge-outs both need primary-chain USDC. If the
+    # primary reserve is short, pull only the missing amount back from genuinely
+    # idle satellite bridge capital. This prevents notebook failures where
+    # deployable capital existed only as idle satellite USDC, but no satellite
+    # net sell was present to trigger a bridge-back.
+    try:
+        current_primary_reserve = state.portfolio.get_reserve_position(reserve_asset).quantity
+    except KeyError:
+        current_primary_reserve = Decimal(0)
+
+    total_satellite_bridge_shortfall = sum_decimal(
+        liquidity.satellite_bridge_shortfall
+        for liquidity in liquidity_by_chain.values()
+    )
+    primary_cash_needed = primary_buys + total_satellite_bridge_shortfall
+    primary_shortfall = sum_decimal([
+        primary_cash_needed,
+        -current_primary_reserve,
+        -primary_sells,
+        -total_bridge_back,
+    ])
+    if _is_meaningful_bridge_amount(primary_shortfall):
+        for chain_id in sorted(liquidity_by_chain):
+            if not _is_meaningful_bridge_amount(primary_shortfall):
+                break
+            liquidity = liquidity_by_chain[chain_id]
+            available = liquidity.free_idle_bridge_capital
+            amount = min(primary_shortfall, available)
+            if not _is_meaningful_bridge_amount(amount):
+                continue
+            bridge_pair = bridge_pairs.get(chain_id)
+            if bridge_pair is None:
+                logger.warning(
+                    "No CCTP bridge pair found for destination chain %d, "
+                    "skipping primary-shortfall bridge-back",
+                    chain_id,
+                )
+                continue
+            liquidity.reserve_bridge_back(amount)
+            total_bridge_back += amount
+            primary_shortfall -= amount
+            logger.info(
+                "Reserved bridge-back of %s from chain %d to fund primary-chain cash needs",
+                amount,
+                chain_id,
+            )
+
+    if _is_meaningful_bridge_amount(primary_shortfall):
+        raise NotEnoughMoney(
+            f"Cannot fund primary-chain cash needs: need {primary_cash_needed} "
+            f"(primary buys {primary_buys} + satellite bridge shortfalls "
+            f"{total_satellite_bridge_shortfall}), but only "
+            f"{current_primary_reserve + primary_sells + total_bridge_back} primary "
+            f"reserve is available after primary sells and idle satellite bridge-backs "
+            f"(reserve {current_primary_reserve} + primary sells {primary_sells} + "
+            f"bridge-backs {total_bridge_back})"
+        )
+
+    for chain_id in sorted(liquidity_by_chain):
+        liquidity = liquidity_by_chain[chain_id]
+        amount = liquidity.bridge_back_amount
+        if not _is_meaningful_bridge_amount(amount):
+            continue
+
+        bridge_pair = bridge_pairs.get(chain_id)
+        if bridge_pair is None:
+            logger.warning(
+                "No CCTP bridge pair found for destination chain %d, "
+                "skipping bridge injection",
+                chain_id,
+            )
+            continue
+
         bridge_position = state.portfolio.get_bridge_position_for_chain(chain_id)
-        closing = amount >= available
+        available = liquidity.available_before_bridge_back
+        closing = available - amount <= SUM_EPSILON
 
         _, trade, _ = state.create_trade(
             strategy_cycle_at=ts,
@@ -233,7 +417,6 @@ def inject_cctp_bridge_trades(
             chain_id,
             closing,
         )
-        total_bridge_back += amount
         bridge_trades.append(trade)
 
     # 3. Compute the primary-chain reserve available to fund bridge-outs.
@@ -250,27 +433,28 @@ def inject_cctp_bridge_trades(
     #    live — the early ``NotEnoughMoney`` guard below is then less effective,
     #    but execution still enforces funding (``move_capital_from_reserves...``
     #    raises ``NotEnoughMoney`` at ``start_execution``), so it is never unsafe.
-    try:
-        current_primary_reserve = state.portfolio.get_reserve_position(reserve_asset).quantity
-    except KeyError:
-        current_primary_reserve = Decimal(0)
-
-    fundable_primary = current_primary_reserve + primary_sells + total_bridge_back - primary_buys
+    fundable_primary = sum_decimal([
+        current_primary_reserve,
+        primary_sells,
+        total_bridge_back,
+        -primary_buys,
+    ])
     if fundable_primary < 0:
         fundable_primary = Decimal(0)
 
-    # 4. Bridge-outs (net-buy satellites). Fund the satellite buys from capital
-    #    already idle on the satellite first (tracked as available bridge
-    #    capital), and only bridge out the remaining shortfall — never more than
-    #    the primary chain can fund. Process chains in a deterministic order so
+    # 4. Bridge-outs (net-buy satellites). Fund satellite buys from capital
+    #    already idle on the satellite and same-cycle synchronous sells first,
+    #    and only bridge out the remaining shortfall — never more than the
+    #    primary chain can fund. Process chains in a deterministic order so
     #    that, under a primary-reserve shortage, it is reproducible which chain
     #    is reported as underfunded.
-    for chain_id in sorted(chain_flows):
-        net_flow = chain_flows[chain_id]
+    for chain_id in sorted(liquidity_by_chain):
+        liquidity = liquidity_by_chain[chain_id]
+        net_flow = liquidity.net_flow
         if net_flow >= 0:
             continue
 
-        bridge_pair = _find_bridge_pair(all_pairs, chain_id)
+        bridge_pair = bridge_pairs.get(chain_id)
         if bridge_pair is None:
             logger.warning(
                 "No CCTP bridge pair found for destination chain %d, "
@@ -282,30 +466,38 @@ def inject_cctp_bridge_trades(
         required = abs(net_flow)
 
         # Fund the satellite buys from capital already idle on the satellite
-        # first; only the remaining shortfall needs bridging.
-        idle_satellite_capital = _available_bridge_capital(state, chain_id)
+        # and synchronous same-chain sells first; only the remaining shortfall
+        # needs bridging.
+        satellite_side_funding = liquidity.available_before_buy
 
-        shortfall = required - idle_satellite_capital
-        if shortfall <= 0:
+        shortfall = liquidity.satellite_bridge_shortfall
+        if not _is_meaningful_bridge_amount(shortfall):
             # Capital already parked on the satellite covers the net buy; the
             # satellite buy allocates from the bridge position at execution.
             logger.info(
-                "Skipping bridge-out for chain %d: idle satellite capital %s covers net buy %s",
+                "Skipping bridge-out for chain %d: satellite-side funding %s covers satellite buys %s",
                 chain_id,
-                idle_satellite_capital,
-                required,
+                satellite_side_funding,
+                liquidity.satellite_buys,
             )
             continue
 
         if shortfall > fundable_primary:
-            raise NotEnoughMoney(
-                f"Cannot fund CCTP bridge-out to chain {chain_id}: "
-                f"need {shortfall} (net buy {required} - idle satellite capital "
-                f"{idle_satellite_capital}), but only {fundable_primary} primary "
-                f"reserve is available (reserve {current_primary_reserve} + "
-                f"primary sells {primary_sells} + bridge-backs {total_bridge_back} "
-                f"- primary buys {primary_buys})"
-            )
+            if shortfall - fundable_primary <= SUM_EPSILON:
+                shortfall = fundable_primary
+            else:
+                raise NotEnoughMoney(
+                    f"Cannot fund CCTP bridge-out to chain {chain_id}: "
+                    f"need {shortfall} (satellite buys {liquidity.satellite_buys} - "
+                    f"satellite-side funding before buys {satellite_side_funding}; "
+                    f"net buy {required}), but only {fundable_primary} primary "
+                    f"reserve is available (current reserve {current_primary_reserve} + "
+                    f"primary sells {primary_sells} + bridge-backs {total_bridge_back} "
+                    f"- primary buys {primary_buys})"
+                )
+
+        if not _is_meaningful_bridge_amount(shortfall):
+            continue
 
         amount = shortfall
         fundable_primary -= amount
@@ -322,10 +514,11 @@ def inject_cctp_bridge_trades(
         )
 
         logger.info(
-            "Injected bridge-out buy of %s for chain %d (idle satellite capital %s, net buy %s)",
+            "Injected bridge-out buy of %s for chain %d (satellite-side funding %s, satellite buys %s, net buy %s)",
             amount,
             chain_id,
-            idle_satellite_capital,
+            satellite_side_funding,
+            liquidity.satellite_buys,
             required,
         )
         bridge_trades.append(trade)

@@ -106,9 +106,9 @@ naively: our books hold the full share quantity while the wallet holds none,
 because the vault escrowed them. The expected-balance calculation therefore
 subtracts escrowed-in-redemption shares, so a clean state reads as clean —
 and an account correction can never mistake an escrow for a lost position
-and close it mid-settlement. (Backtests balance the same books differently:
-the simulated wallet is not touched until settlement, as described in the
-backtesting section below.)
+and close it mid-settlement. Backtests follow the same reconciliation model:
+the simulated wallet is debited on the request cycle and settlement only
+credits the claim output.
 
 ### Writing a strategy against an async vault
 
@@ -201,8 +201,10 @@ The simulation mirrors the live lifecycle:
 
 - On the request cycle the trade is marked `vault_settlement_pending` with a
   settlement due time of *cycle timestamp + delay*. The simulated wallet is
-  deliberately not touched yet — only the cash ledger is debited — so wallet
-  and position reconciliation stay consistent through the pending window.
+  debited immediately: a deposit removes the vault quote token from the wallet
+  into the deposit queue, and a redemption removes the vault share token into
+  the redeem queue. The exact request amount is recorded on the trade and is
+  the input for later settlement.
 - On each later cycle the backtest's settlement resolver (the same hook the
   live runner calls) settles every trade whose due time has arrived. The
   earliest a trade can settle is the *next* cycle, even with a zero delay,
@@ -210,8 +212,10 @@ The simulation mirrors the live lifecycle:
 - Settlement executes at the price valid *at settlement time*, not at request
   time, so a long queue delay realises whatever the share price did in
   between — exactly the economics the delay exists to model. After settling,
-  the position is revalued at the settlement price so equity is immediately
-  correct.
+  only the claim output is credited to the simulated wallet: deposit claims
+  mint shares, redeem claims pay quote token. The request input is not debited
+  a second time. The position is revalued at the settlement price so equity is
+  immediately correct.
 
 ## Live trading
 

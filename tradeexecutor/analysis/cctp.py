@@ -67,11 +67,12 @@ def assert_bridge_coverage(
     trades: Iterable[TradeExecution],
     primary_chain_id: int,
 ) -> pd.DataFrame:
-    """Assert every cycle with satellite vault trades also has CCTP bridge trades.
+    """Assert a cross-chain vault run has satellite vaults and CCTP bridge trades.
 
-    This validates the bridge-trade injection path: when the strategy
-    allocates to vaults on satellite chains, CCTP bridge trades must be
-    generated in the same cycle to fund the deposits.
+    This validates that the run exercised the bridge-trade injection path. A
+    satellite vault cycle no longer needs a bridge trade in the same cycle:
+    existing idle satellite bridge capital can fund the vault trade, and the
+    CCTP planner should bridge only the missing amount.
 
     :param trades:
         All trades from the backtest portfolio.
@@ -80,10 +81,11 @@ def assert_bridge_coverage(
         Chain ID of the primary reserve chain (e.g. ``ChainId.ethereum.value``).
 
     :return:
-        Per-cycle summary DataFrame with trade counts.
+        Per-cycle summary DataFrame with trade counts and a boolean flag for
+        satellite vault cycles that reused existing bridge capital.
 
     :raise AssertionError:
-        If any cycle has satellite vault trades but no bridge trades.
+        If the run has no satellite vault trades or no CCTP bridge trades.
     """
     rows = []
     for trade in trades:
@@ -105,16 +107,14 @@ def assert_bridge_coverage(
         satellite_vault_trades=("is_satellite_vault", "sum"),
         traded_value_usd=("value_usd", "sum"),
     ).reset_index()
+    cycle_df["satellite_vaults_without_same_cycle_bridge"] = (
+        (cycle_df["satellite_vault_trades"] > 0)
+        & (cycle_df["bridge_trades"] == 0)
+    )
 
     cycles_with_satellite_vaults = cycle_df[cycle_df["satellite_vault_trades"] > 0]
-    cycles_missing_bridges = cycles_with_satellite_vaults[
-        cycles_with_satellite_vaults["bridge_trades"] == 0
-    ]
 
     assert len(cycles_with_satellite_vaults) > 0, "Expected satellite vault trades"
-    assert len(cycles_missing_bridges) == 0, (
-        f"{len(cycles_missing_bridges)} cycle(s) have satellite vault trades "
-        f"but no CCTP bridge trades:\n{cycles_missing_bridges}"
-    )
+    assert cycle_df["bridge_trades"].sum() > 0, "Expected CCTP bridge trades"
 
     return cycle_df

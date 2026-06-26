@@ -7,9 +7,16 @@ working on that area:
 
 | Doc | Description |
 |-----|-------------|
+| `.claude/docs/agent-tricks-and-troubleshooting.md` | Required before invoking Claude CLI or Codex CLI for plan, code, or pull request reviews |
 | `.claude/docs/cli-command.md` | CLI command patterns for trade-executor |
 | `.claude/docs/vault-deposit-redeem.md` | Synchronous and async (ERC-7540 / Lagoon / Ostium) vault deposit and redeem flows |
 | `.claude/docs/hypercore-vault.md` | HyperCore native vault execution — properties, data structures, deposit/withdrawal phases, HyperEVM interactions, modules and diagrams |
+
+## Agent review workflows
+
+- Before calling Claude CLI or Codex CLI to review a plan, code change, pull request, or local diff, **always read** `.claude/docs/agent-tricks-and-troubleshooting.md` first.
+- Follow its recommended invocation patterns for plan reviews, code reviews, PR reviews, tool restrictions, timeouts, and handling silent or hanging agent runs.
+- Do not fall back to generic `claude --help`, plugin docs, or ad-hoc CLI flags until the local troubleshooting doc has been checked.
 
 ## English
 

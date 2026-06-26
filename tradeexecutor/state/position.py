@@ -742,12 +742,15 @@ class TradingPosition(GenericPosition):
         # (only is_success counts). Subtract their quantity so strategies
         # don't submit duplicate withdrawal requests.
         vault_pending_sells = sum_decimal([
-            t.get_position_quantity()
+            t.get_vault_settlement_request_quantity()
             for t in self.trades.values()
             if t.is_vault_settlement_in_flight() and t.is_sell()
         ])
 
-        return planned + live + vault_pending_sells
+        available = planned + live + vault_pending_sells
+        if vault_pending_sells < 0 and available < 0:
+            return Decimal(0)
+        return available
 
     def has_pending_vault_settlement(self) -> bool:
         """Does this position have an async vault deposit/redeem request in flight?
@@ -807,7 +810,7 @@ class TradingPosition(GenericPosition):
             US dollar amount debited from reserves and waiting in the vault's deposit queue.
         """
         return sum(
-            float(t.planned_reserve)
+            float(t.get_vault_settlement_request_reserve())
             for t in self.trades.values()
             if t.is_vault_settlement_in_flight() and t.is_buy()
         )
@@ -2556,7 +2559,8 @@ class TradingPosition(GenericPosition):
         :return:
             (Asset id, amount) iterables
         """
-        assert self.is_open() or self.is_frozen()
+        if self.is_exchange_account():
+            return
         if self.pair.is_cctp_bridge():
             # Bridge positions hold destination chain USDC.
             # Only the available (unallocated) portion is still in the wallet;
@@ -2565,8 +2569,22 @@ class TradingPosition(GenericPosition):
             if available > 0:
                 yield self.pair.base, available
         elif self.is_spot():
-            yield self.pair.base, self.get_quantity()
+            # Hypercore vault positions are API-tracked, not on-chain.
+            if self.pair.is_hyperliquid_vault():
+                return
+            held_quantity = self.get_quantity()
+            if self.is_vault():
+                held_quantity += sum_decimal([
+                    t.get_vault_settlement_request_quantity()
+                    for t in self.trades.values()
+                    if t.is_vault_settlement_in_flight() and t.is_sell()
+                ])
+            if self.is_vault() and held_quantity < 0:
+                held_quantity = Decimal(0)
+            yield self.pair.base, held_quantity
         elif self.is_credit_supply():
+            if not self.loan:
+                return
             yield self.loan.collateral.asset, self.loan.get_collateral_quantity()
         elif self.is_short():
             yield self.loan.collateral.asset, self.loan.get_collateral_quantity()
