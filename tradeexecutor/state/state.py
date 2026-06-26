@@ -999,6 +999,11 @@ class State:
         if (trade.is_spot() or trade.is_vault()) and trade.is_sell():
             # For satellite chain trades, return capital to bridge position
             bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
+            if bridge_position is None and trade.pair.quote != trade.reserve_currency:
+                bridge_position = self.portfolio.reopen_closed_bridge_position_for_chain(
+                    trade.pair.chain_id,
+                    executed_at,
+                )
             if bridge_position is not None:
                 self.portfolio.return_capital_to_bridge(trade)
             else:

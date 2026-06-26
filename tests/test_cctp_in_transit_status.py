@@ -19,7 +19,7 @@ from tradeexecutor.state.identifier import (
     TradingPairKind,
 )
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeStatus, TradeType
+from tradeexecutor.state.trade import CCTP_BRIDGE_ORDER_BUMP, TradeExecution, TradeStatus, TradeType
 
 
 USDC_ARBITRUM_ADDRESS = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
@@ -179,7 +179,7 @@ def test_get_execution_sort_position_cctp_bridge(
     # 1. Create a bridge-out (buy) trade and check sort position is in +30M range
     buy_trade = _create_bridge_trade(state, cctp_pair, usdc_arbitrum, Decimal(500), ts)
     buy_sort = buy_trade.get_execution_sort_position()
-    assert buy_sort == buy_trade.trade_id + 30_000_000
+    assert buy_sort == buy_trade.trade_id + CCTP_BRIDGE_ORDER_BUMP
 
     # First bridge-out must complete before we can test bridge-back
     state.start_execution(ts, buy_trade)
@@ -199,13 +199,13 @@ def test_get_execution_sort_position_cctp_bridge(
         state, cctp_pair, usdc_arbitrum, Decimal(500), ts, sell=True,
     )
     sell_sort = sell_trade.get_execution_sort_position()
-    assert sell_sort == -sell_trade.trade_id - 30_000_000
+    assert sell_sort == -sell_trade.trade_id - CCTP_BRIDGE_ORDER_BUMP
 
     # 3. Verify bridge sell with closing=True still uses bridge phase, not close phase
     sell_trade.closing = True
     closing_sort = sell_trade.get_execution_sort_position()
     # Must still be in the bridge range, not the generic close range (-100M)
-    assert closing_sort == -sell_trade.trade_id - 30_000_000
+    assert closing_sort == -sell_trade.trade_id - CCTP_BRIDGE_ORDER_BUMP
 
 
 def test_mark_bridge_in_transit(

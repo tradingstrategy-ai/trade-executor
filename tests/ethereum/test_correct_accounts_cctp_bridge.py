@@ -30,7 +30,7 @@ from web3.contract import Contract
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 from eth_defi.chain import install_chain_middleware
-from eth_defi.token import create_token
+from eth_defi.token import DEFAULT_TOKEN_CACHE, TokenDetails, create_token
 from eth_defi.trace import assert_transaction_success_with_explanation
 from tradingstrategy.chain import ChainId
 from typer.main import get_command
@@ -42,6 +42,18 @@ from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
 # --- Fixtures ---
+
+
+def _poison_default_token_cache(web3: Web3, token_address: str) -> str:
+    """Insert wrong 18-decimal metadata for a token into the process-global cache."""
+    cache_key = TokenDetails.generate_cache_key(web3.eth.chain_id, token_address)
+    DEFAULT_TOKEN_CACHE[cache_key] = {
+        "name": "Wrong cached token",
+        "symbol": "WRONG",
+        "supply": 1,
+        "decimals": 18,
+    }
+    return cache_key
 
 
 @pytest.fixture()
@@ -212,6 +224,8 @@ def environment(
 def test_correct_accounts_cctp_bridge(
     environment: dict,
     state_file: Path,
+    web3_dest: Web3,
+    usdc_dest: Contract,
 ):
     """Test correct-accounts auto-creates and corrects bridge position.
 
@@ -224,13 +238,14 @@ def test_correct_accounts_cctp_bridge(
 
     Flow:
     1. Run ``cli init`` to create empty state
-    2. Run ``cli correct-accounts`` which auto-creates bridge position
+    2. Poison the global token metadata cache with wrong destination token decimals.
+    3. Run ``cli correct-accounts`` which auto-creates bridge position
        from universe and corrects both reserve and bridge to match
        on-chain balances on their respective chains
-    3. Verify reserve = 5,000 (source USDC remaining after bridge)
-    4. Verify bridge position = 5,000 (destination USDC)
-    5. Verify total portfolio = 10,000
-    6. Verify trade counts and balance updates
+    4. Read back the corrected state.
+    5. Verify reserve = 5,000 (source USDC remaining after bridge)
+    6. Verify bridge position = 5,000 (destination USDC)
+    7. Verify total portfolio, trade counts and balance updates
     """
     cli = get_command(app)
 
@@ -243,47 +258,49 @@ def test_correct_accounts_cctp_bridge(
     assert len(initial_state.portfolio.open_positions) == 0, \
         "State should have no positions after init"
 
-    # Step 2: Run correct-accounts (should auto-create bridge position and correct balances)
-    with patch.dict(os.environ, environment, clear=True):
-        with pytest.raises(SystemExit) as e:
-            cli.main(args=["correct-accounts"])
-        assert e.value.code == 0, f"CLI command failed with exit code {e.value.code}"
+    # Step 2: Poison the global token metadata cache with wrong destination token decimals.
+    cache_key = _poison_default_token_cache(web3_dest, usdc_dest.address)
+    try:
+        # Step 3: Run correct-accounts (should auto-create bridge position and correct balances)
+        with patch.dict(os.environ, environment, clear=True):
+            with pytest.raises(SystemExit) as e:
+                cli.main(args=["correct-accounts"])
+            assert e.value.code == 0, f"CLI command failed with exit code {e.value.code}"
+    finally:
+        DEFAULT_TOKEN_CACHE.pop(cache_key, None)
 
-    # Step 3: Read back corrected state
+    # Step 4: Read back corrected state
     final_state = State.read_json_file(state_file)
 
-    # Verify reserve was initialised and corrected to on-chain source balance
+    # Step 5: Verify reserve was initialised and corrected to on-chain source balance
     # (5000 remaining after bridging 5000 from original 10000)
     final_reserve = final_state.portfolio.get_default_reserve_position()
     assert final_reserve is not None, "Reserve should exist after correct-accounts"
     assert float(final_reserve.quantity) == pytest.approx(5_000, rel=0.02), \
         f"Reserve expected ~5000, got {final_reserve.quantity}"
 
-    # Verify bridge position was auto-created
+    # Step 6: Verify bridge position was auto-created and corrected to the on-chain dest balance.
     assert len(final_state.portfolio.open_positions) == 1, \
         f"Expected 1 open position, got {len(final_state.portfolio.open_positions)}"
     bridge_position = list(final_state.portfolio.open_positions.values())[0]
     assert bridge_position.pair.kind == TradingPairKind.cctp_bridge, \
         f"Expected cctp_bridge position, got {bridge_position.pair.kind}"
 
-    # Verify bridge position was corrected to on-chain dest balance (5000 bridged)
     final_bridge_qty = bridge_position.get_quantity()
     assert float(final_bridge_qty) == pytest.approx(5_000, rel=0.02), \
         f"Bridge position expected ~5000, got {final_bridge_qty}"
 
-    # Verify total portfolio = reserve + bridge = 10,000
+    # Step 7: Verify total portfolio, trade counts and balance updates.
     total_portfolio = float(final_reserve.quantity) + float(final_bridge_qty)
     assert total_portfolio == pytest.approx(10_000, rel=0.02), \
         f"Total portfolio expected ~10000, got {total_portfolio}"
 
-    # Verify bridge position has exactly 1 trade (auto-creation)
     trades = list(bridge_position.trades.values())
     assert len(trades) == 1, \
         f"Expected exactly 1 trade on bridge position, got {len(trades)}"
     assert "Auto-created by correct-accounts for CCTP bridge" in (trades[0].notes or ""), \
         f"Expected auto-creation notes, got: {trades[0].notes}"
 
-    # Verify balance updates were recorded for the correction
     assert len(bridge_position.balance_updates) == 1, \
         f"Expected 1 balance update for bridge position, got {len(bridge_position.balance_updates)}"
     assert len(final_state.sync.accounting.balance_update_refs) >= 1, \
@@ -307,8 +324,9 @@ def test_lagoon_fetch_onchain_balances_multichain_routing(
     1. Create a mock LagoonVaultSyncModel with web3_source as home chain.
     2. Set web3config with connections for source (Arbitrum) and dest (Base).
     3. Create assets: source-chain USDC and dest-chain USDC.
-    4. Call fetch_onchain_balances with both assets.
-    5. Verify both balances are correctly detected on their respective chains.
+    4. Poison the global token metadata cache with wrong destination token decimals.
+    5. Call fetch_onchain_balances with both assets.
+    6. Verify both balances are correctly detected on their respective chains.
     """
     from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
     from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
@@ -349,15 +367,22 @@ def test_lagoon_fetch_onchain_balances_multichain_routing(
         decimals=6,
     )
 
-    # 4. Call fetch_onchain_balances with assets from both chains.
-    #    Before the fix, this crashed with TokenDetailError because
-    #    dest_usdc was queried on the source chain where it doesn't exist.
-    balances = list(sync_model.fetch_onchain_balances(
-        [source_usdc, dest_usdc],
-        filter_zero=False,
-    ))
+    # 4. Poison the global token metadata cache with wrong destination token decimals.
+    cache_key = _poison_default_token_cache(web3_dest, usdc_dest.address)
+    try:
+        # 5. Call fetch_onchain_balances with assets from both chains.
+        #    Before the routing fix, this crashed with TokenDetailError because
+        #    dest_usdc was queried on the source chain where it doesn't exist.
+        #    Before the raw-balance fix, this returned 5e-09 when an earlier test
+        #    polluted Anvil's shared token metadata cache with 18 decimals.
+        balances = list(sync_model.fetch_onchain_balances(
+            [source_usdc, dest_usdc],
+            filter_zero=False,
+        ))
+    finally:
+        DEFAULT_TOKEN_CACHE.pop(cache_key, None)
 
-    # 5. Verify both balances detected correctly (5000 each from hot_wallet fixture)
+    # 6. Verify both balances detected correctly (5000 each from hot_wallet fixture)
     balance_map = {b.asset.chain_id: float(b.amount) for b in balances}
     assert ChainId.arbitrum.value in balance_map, "Source chain balance not found"
     assert ChainId.base.value in balance_map, "Dest chain balance not found"

@@ -1058,6 +1058,35 @@ class Portfolio:
                     return position
         return None
 
+    def reopen_closed_bridge_position_for_chain(self, chain_id: int, reopened_at: datetime.datetime) -> "TradingPosition | None":
+        """Reopen the latest closed CCTP bridge position for a destination chain.
+
+        Async satellite vault settlements can return USDC after the bridge
+        position was closed at zero available capital. The returned USDC is still
+        satellite-chain bridge capital, so the old bridge position must become
+        open again to carry the available balance.
+        """
+        candidates = [
+            position
+            for position in self.closed_positions.values()
+            if position.pair.kind == TradingPairKind.cctp_bridge
+            and position.pair.get_destination_chain_id() == chain_id
+        ]
+        if not candidates:
+            return None
+
+        position = max(candidates, key=lambda p: p.closed_at or p.opened_at)
+        logger.info(
+            "Reopening closed CCTP bridge position #%d for chain %d after satellite capital returned",
+            position.position_id,
+            chain_id,
+        )
+        del self.closed_positions[position.position_id]
+        position.closed_at = None
+        position.last_trade_at = reopened_at
+        self.open_positions[position.position_id] = position
+        return position
+
     def move_capital_from_bridge_to_spot_trade(
             self,
             trade: "TradeExecution",
