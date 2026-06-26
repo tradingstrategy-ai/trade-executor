@@ -1652,6 +1652,13 @@ class TradingPosition(GenericPosition):
 
     def get_total_profit_usd(self) -> USDollarAmount:
         """Realised + unrealised profit."""
+        if self.pair.is_cctp_bridge():
+            # A CCTP bridge position is a cross-chain capital transfer, not an investment.
+            # Bridging USDC realises no profit or loss (the CCTP fee is zero), so the residual
+            # left by netting "bridge out" buys against "bridge back" sells at average cost is a
+            # reporting artefact rather than PnL. Report exactly zero so the profit breakdown and
+            # weight-allocation tables do not attribute phantom profit to the bridge pair.
+            return 0.0
         if self.is_using_internal_share_price_profit():
             if self.share_price_state is not None:
                 data = self.get_share_price_profit()
@@ -1680,6 +1687,10 @@ class TradingPosition(GenericPosition):
         :return:
             0 if profit calculation cannot be made yet
         """
+
+        # A CCTP bridge transfer has zero PnL by definition (see :py:meth:`get_total_profit_usd`).
+        if self.pair.is_cctp_bridge():
+            return 0.0
 
         # Exchange account positions use placeholder trades ($1) that don't represent real capital.
         if self.is_using_internal_share_price_profit():
