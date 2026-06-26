@@ -99,6 +99,14 @@ def _bridge_pairs_by_destination(
     }
 
 
+def _find_bridge_pair(
+    pairs: list[TradingPairIdentifier],
+    destination_chain_id: int,
+) -> TradingPairIdentifier | None:
+    """Find the CCTP bridge pair for a satellite destination chain."""
+    return _bridge_pairs_by_destination(pairs).get(destination_chain_id)
+
+
 def _available_bridge_capital(state: State, chain_id: int) -> Decimal:
     """Per-chain available bridge capital, clamped to be non-negative.
 
