@@ -3,7 +3,7 @@
 import logging
 from typing import List, Iterable
 
-from eth_defi.balances import fetch_erc20_balances_fallback
+from eth_defi.balances import fetch_erc20_balances_by_token_list
 from eth_defi.chain import fetch_block_timestamp
 from eth_defi.provider.broken_provider import get_block_tip_latency
 
@@ -54,16 +54,16 @@ def fetch_address_balances(
 
     token_addresses = [asset.address for asset in assets]
 
-    balances = fetch_erc20_balances_fallback(
+    raw_balances = fetch_erc20_balances_by_token_list(
         web3,
         address,
         token_addresses,
         block_identifier=block_number,
-        decimalise=True,
+        decimalise=False,
     )
 
     for asset in assets:
-        amount = balances[asset.address]
+        amount = asset.convert_to_decimal(raw_balances[asset.address])
 
         if filter_zero and amount == 0:
             continue
