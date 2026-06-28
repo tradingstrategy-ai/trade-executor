@@ -32,6 +32,40 @@ class NotEnoughMoney(Exception):
     """We try to allocate reserve for a buy trade, but do not have cash."""
 
 
+def _is_token_dust_shortfall(shortfall: Decimal, asset: AssetIdentifier) -> bool:
+    """Is the funding shortfall smaller than one raw token unit."""
+    return Decimal(0) < shortfall < asset.convert_to_decimal(1)
+
+
+def _snap_buy_reserve_to_available_if_token_dust(
+    trade: TradeExecution,
+    reserve: Decimal,
+    available: Decimal,
+    funding_asset: AssetIdentifier,
+) -> Decimal:
+    """Snap a buy trade reserve to available capital if only raw-unit dust is missing."""
+    if not trade.is_buy():
+        return reserve
+    if not (trade.is_spot() or trade.is_vault() or trade.pair.is_cctp_bridge()):
+        return reserve
+
+    shortfall = reserve - available
+    if not _is_token_dust_shortfall(shortfall, funding_asset):
+        return reserve
+
+    logger.info(
+        "Snapping trade #%d planned reserve from %s to %s because the shortfall %s %s is below one raw unit",
+        trade.trade_id,
+        reserve,
+        available,
+        shortfall,
+        funding_asset.token_symbol,
+    )
+    trade.planned_reserve = available
+    trade.planned_quantity = available / Decimal(str(trade.planned_price))
+    return available
+
+
 class MultipleOpenPositionsWithAsset(Exception):
     """Multiple open spot positiosn for a single base asset.
 
@@ -1013,6 +1047,14 @@ class Portfolio:
         if trade.is_spot():
             assert abs(float(reserve) - trade.get_planned_value()) < 0.01, f"Trade {trade}: Planned value {trade.get_planned_value()}, but wants to allocate reserve currency for {reserve}"
 
+        if available < reserve:
+            reserve = _snap_buy_reserve_to_available_if_token_dust(
+                trade,
+                reserve,
+                available,
+                trade.reserve_currency,
+            )
+
         if underflow_check:
             if available < reserve:
                 raise NotEnoughMoney(f"Not enough reserves. We have {available}, trade {trade} wants {reserve}")
@@ -1111,6 +1153,14 @@ class Portfolio:
             raise NotEnoughMoney(f"No bridge position found for chain {bridge_chain_id}, trade {trade}")
 
         available = bridge_position.get_available_bridge_capital()
+        if available < reserve:
+            reserve = _snap_buy_reserve_to_available_if_token_dust(
+                trade,
+                reserve,
+                available,
+                trade.pair.quote,
+            )
+
         if underflow_check:
             if available < reserve:
                 raise NotEnoughMoney(
