@@ -8,6 +8,7 @@ from typer.main import get_command
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
@@ -68,17 +69,30 @@ def test_vault_trading_start(
     state_file,
     web3,
 ):
-    """Run a single cycle of Memecoin index strategy to see everything works.
+    """Run a single Base vault trading cycle.
 
-    - Should attempt to open multiple positions using Enso
+    This test exercises vault trading CLI wiring and accounting, not Trading
+    Strategy remote data freshness.
+
+    1. Patch the process environment with forked RPC and deterministic settings.
+    2. Disable remote market-data freshness checks.
+    3. Initialise and start the CLI.
+    4. Assert the resulting state has one closed position and no frozen positions.
     """
 
     cli = get_command(app)
+
+    # 1. Patch the process environment with forked RPC and deterministic settings.
     mocker.patch.dict("os.environ", environment, clear=True)
+
+    # 2. Disable remote market-data freshness checks.
+    mocker.patch.object(TradingStrategyUniverseModel, "check_data_age", return_value=None)
+
+    # 3. Initialise and start the CLI.
     cli.main(args=["init"], standalone_mode=False)
     cli.main(args=["start"], standalone_mode=False)
 
-    # Read results of 1 cycle of strategy
+    # 4. Assert the resulting state has one closed position and no frozen positions.
     state = State.read_json_file(state_file)
     assert state.cycle == 2
     reserve_position = state.portfolio.get_default_reserve_position()
@@ -86,4 +100,3 @@ def test_vault_trading_start(
     assert len(state.portfolio.frozen_positions) == 0
     assert len(state.portfolio.open_positions) == 0
     assert len(state.portfolio.closed_positions) == 1
-

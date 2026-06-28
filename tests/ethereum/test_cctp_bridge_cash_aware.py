@@ -356,6 +356,57 @@ def test_bridge_out_funds_from_idle_satellite_capital(
     assert bridge_pos.bridge_capital_allocated == Decimal(11_500)
 
 
+def test_bridge_out_uses_bridge_pair_decimals_when_reserve_asset_decimals_are_wrong(
+    usdc_arbitrum: AssetIdentifier,
+    cctp_pair: TradingPairIdentifier,
+    satellite_pair: TradingPairIdentifier,
+):
+    """A generated 6-decimal CCTP pair works with a wrong 18-decimal reserve asset.
+
+    This covers vault-only universes where the reserve asset can inherit
+    fallback 18-decimal metadata, while generated native USDC bridge pairs are
+    correctly normalised to 6 decimals.
+
+    1. Create a reserve asset with the same primary USDC address but wrong 18-decimal metadata.
+    2. Plan a satellite buy that requires bridge-out funding with sub-raw-unit dust.
+    3. Inject CCTP bridge trades.
+    4. Assert the bridge-out is created and floored with bridge-pair USDC precision.
+    """
+
+    # 1. Create a reserve asset with the same primary USDC address but wrong 18-decimal metadata.
+    wrong_decimals_reserve = AssetIdentifier(
+        chain_id=usdc_arbitrum.chain_id,
+        address=usdc_arbitrum.address,
+        token_symbol=usdc_arbitrum.token_symbol,
+        decimals=18,
+    )
+    state = _make_state(wrong_decimals_reserve, Decimal(2_000))
+
+    # 2. Plan a satellite buy that requires bridge-out funding with sub-raw-unit dust.
+    buy = _create_satellite_buy(
+        state,
+        satellite_pair,
+        wrong_decimals_reserve,
+        Decimal("1000.0000009"),
+    )
+    universe = _make_mock_universe([cctp_pair, satellite_pair])
+
+    # 3. Inject CCTP bridge trades.
+    result = inject_cctp_bridge_trades(
+        state=state,
+        trades=[buy],
+        strategy_universe=universe,
+        primary_chain_id=PRIMARY_CHAIN_ID,
+        ts=TS,
+        reserve_asset=wrong_decimals_reserve,
+    )
+
+    # 4. Assert the bridge-out is created and floored with bridge-pair USDC precision.
+    bridge_trades = [t for t in result if t.pair.is_cctp_bridge()]
+    assert len(bridge_trades) == 1
+    assert bridge_trades[0].planned_reserve == Decimal("1000")
+
+
 def test_bridge_out_nets_against_partial_idle_capital(
     usdc_arbitrum: AssetIdentifier,
     cctp_pair: TradingPairIdentifier,
@@ -854,10 +905,10 @@ def test_dust_available_bridge_capital_does_not_create_bridge_back(
     cctp_pair: TradingPairIdentifier,
     satellite_pair: TradingPairIdentifier,
 ):
-    """Dust available bridge capital is ignored instead of creating a bridge-back.
+    """Sub-raw-unit available bridge capital is ignored instead of creating a bridge-back.
 
     1. Bridge 1_000 USDC to Base and deploy it all into a satellite position.
-    2. Leave only 1E-23 available bridge capital to mimic Decimal dust.
+    2. Leave only sub-raw-unit available bridge capital to mimic Decimal dust.
     3. Plan a non-closing satellite sell whose proceeds sort after bridge-backs.
     4. Assert the planner skips the dust bridge-back trade.
     """
@@ -879,10 +930,11 @@ def test_dust_available_bridge_capital_does_not_create_bridge_back(
         check_balances=True,
     )
 
-    # 2. Leave only 1E-23 available bridge capital to mimic Decimal dust.
+    # 2. Leave only sub-raw-unit available bridge capital to mimic Decimal dust.
+    dust = Decimal("0.000000000000712654913188")
     bridge_position = state.portfolio.get_bridge_position_for_chain(SATELLITE_CHAIN_ID)
-    bridge_position.bridge_capital_allocated = bridge_position.get_quantity() - Decimal("1E-23")
-    assert bridge_position.get_available_bridge_capital() == Decimal("1E-23")
+    bridge_position.bridge_capital_allocated = bridge_position.get_quantity() - dust
+    assert bridge_position.get_available_bridge_capital() == dust
 
     # 3. Plan a non-closing satellite sell whose proceeds sort after bridge-backs.
     satellite_position = state.portfolio.get_open_position_for_pair(satellite_pair)
@@ -914,17 +966,19 @@ def test_dust_available_bridge_capital_does_not_create_bridge_back(
 
 @pytest.mark.timeout(300)
 def test_primary_shortfall_dust_after_bridge_back_is_ignored(
+    usdc_base: AssetIdentifier,
     usdc_arbitrum: AssetIdentifier,
     cctp_pair: TradingPairIdentifier,
     primary_pair: TradingPairIdentifier,
 ):
-    """Sub-epsilon primary shortfall dust after bridge-back does not fail planning.
+    """Sub-raw-unit primary shortfall dust after bridge-back does not fail execution.
 
     1. Bridge 1_000 USDC to Base, leaving no primary reserve.
-    2. Plan a primary buy whose reserve need is 1_000 plus 1E-23 dust.
+    2. Plan a primary buy whose reserve need is 1_000 plus sub-raw-unit dust.
     3. Inject CCTP trades.
-    4. Assert the planner bridges back the real 1_000 amount and ignores the
-       remaining dust shortfall.
+    4. Execute the bridge-back and primary buy.
+    5. Assert the planner bridged back the real 1_000 amount and the buy was
+       snapped to the actually available raw-token amount.
     """
     wallet = SimulatedWallet()
     wallet.set_balance(usdc_arbitrum, Decimal(1_000))
@@ -938,12 +992,13 @@ def test_primary_shortfall_dust_after_bridge_back_is_ignored(
     assert reserve.quantity == Decimal(0)
     assert bridge_position.get_available_bridge_capital() == Decimal(1_000)
 
-    # 2. Plan a primary buy whose reserve need is 1_000 plus 1E-23 dust.
+    # 2. Plan a primary buy whose reserve need is 1_000 plus sub-raw-unit dust.
+    dust = Decimal("0.000000000000712654913188")
     buy = _create_primary_buy(
         state,
         primary_pair,
         usdc_arbitrum,
-        Decimal("1000.00000000000000000000001"),
+        Decimal(1_000) + dust,
     )
 
     # 3. Inject CCTP trades.
@@ -957,10 +1012,27 @@ def test_primary_shortfall_dust_after_bridge_back_is_ignored(
         reserve_asset=usdc_arbitrum,
     )
 
-    # 4. Assert the planner bridges back the real 1_000 amount.
+    # 4. Execute the bridge-back and primary buy.
+    routing_model, routing_state = _routing(wallet, usdc_arbitrum)
+    execution.execute_trades(
+        ts=TS,
+        state=state,
+        trades=sorted(result, key=lambda t: t.get_execution_sort_position()),
+        routing_model=routing_model,
+        routing_state=routing_state,
+        check_balances=True,
+    )
+
+    # 5. Assert the bridge-back and buy used the raw-token amount.
     bridge_backs = [t for t in result if t.pair.is_cctp_bridge() and t.is_sell()]
     assert len(bridge_backs) == 1
     assert bridge_backs[0].planned_quantity == Decimal(-1_000)
+    assert buy.is_success()
+    assert buy.planned_reserve == Decimal(1_000)
+    assert buy.reserve_currency_allocated == Decimal(0)
+    assert wallet.get_balance(usdc_arbitrum) == Decimal(0)
+    assert wallet.get_balance(usdc_base) == Decimal(0)
+    assert reserve.quantity == Decimal(0)
 
 
 @pytest.mark.timeout(300)
@@ -1212,6 +1284,73 @@ def test_async_vault_deposit_bridges_only_missing_satellite_capital(
     assert usdc_base not in calculate_total_assets(state.portfolio)
     assert get_asset_amounts(bridge_position) == []
     assert state.portfolio.get_vault_settlement_pending_value() == pytest.approx(10_000.0, abs=1e-6)
+
+
+@pytest.mark.timeout(300)
+def test_async_vault_deposit_snaps_sub_raw_unit_bridge_shortfall(
+    usdc_arbitrum: AssetIdentifier,
+    usdc_base: AssetIdentifier,
+    cctp_pair: TradingPairIdentifier,
+    satellite_vault_pair: TradingPairIdentifier,
+):
+    """An async vault deposit with sub-raw-unit dust debits only deployable reserve.
+
+    1. Start with exactly 1_000 primary-chain USDC reserve.
+    2. Plan a Base vault deposit for 1_000 USDC plus sub-raw-unit dust.
+    3. Inject CCTP trades and execute the bridge-out and deposit request.
+    4. Assert the bridge-out, allocation and pending deposit request all use
+       1_000 USDC and the Base reserve wallet is debited immediately.
+    """
+    wallet = SimulatedWallet()
+    wallet.set_balance(usdc_arbitrum, Decimal(1_000))
+    state = _make_state(usdc_arbitrum, Decimal(1_000))
+    execution = _async_vault_execution(wallet, satellite_vault_pair)
+
+    # 1. Start with exactly 1_000 primary-chain USDC reserve.
+    reserve = state.portfolio.get_default_reserve_position()
+    assert reserve.quantity == Decimal(1_000)
+
+    # 2. Plan a Base vault deposit for 1_000 USDC plus sub-raw-unit dust.
+    dust = Decimal("0.000000000000712654913188")
+    buy = _create_satellite_buy(state, satellite_vault_pair, usdc_arbitrum, Decimal(1_000) + dust)
+    universe = _make_mock_universe([cctp_pair, satellite_vault_pair])
+
+    # 3. Inject CCTP trades and execute the bridge-out and deposit request.
+    result = inject_cctp_bridge_trades(
+        state=state,
+        trades=[buy],
+        strategy_universe=universe,
+        primary_chain_id=PRIMARY_CHAIN_ID,
+        ts=TS,
+        reserve_asset=usdc_arbitrum,
+    )
+    bridge_trades = [t for t in result if t.pair.is_cctp_bridge()]
+    assert len(bridge_trades) == 1
+    assert bridge_trades[0].is_buy()
+    assert bridge_trades[0].planned_reserve == Decimal(1_000)
+
+    routing_model, routing_state = _routing(wallet, usdc_arbitrum)
+    execution.execute_trades(
+        ts=TS,
+        state=state,
+        trades=sorted(result, key=lambda t: t.get_execution_sort_position()),
+        routing_model=routing_model,
+        routing_state=routing_state,
+        check_balances=True,
+    )
+
+    # 4. Assert allocation and request-time wallet accounting use the deployable amount.
+    bridge_position = state.portfolio.get_bridge_position_for_chain(SATELLITE_CHAIN_ID)
+    assert buy.get_status() == TradeStatus.vault_settlement_pending
+    assert buy.planned_reserve == Decimal(1_000)
+    assert buy.bridge_currency_allocated == Decimal(1_000)
+    assert buy.get_vault_settlement_request_reserve() == Decimal(1_000)
+    assert wallet.get_balance(usdc_arbitrum) == Decimal(0)
+    assert wallet.get_balance(usdc_base) == Decimal(0)
+    assert wallet.get_balance(satellite_vault_pair.base) == Decimal(0)
+    assert reserve.quantity == Decimal(0)
+    assert bridge_position.get_available_bridge_capital() == Decimal(0)
+    assert state.portfolio.get_vault_settlement_pending_value() == pytest.approx(1_000.0, abs=1e-6)
 
 
 @pytest.mark.timeout(300)

@@ -29,7 +29,7 @@ from tradeexecutor.state.identifier import (
 from tradeexecutor.state.portfolio import NotEnoughMoney
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import CCTP_BRIDGE_ORDER_BUMP, TradeExecution, TradeType
-from tradeexecutor.utils.accuracy import SUM_EPSILON, sum_decimal
+from tradeexecutor.utils.accuracy import sum_decimal
 
 logger = logging.getLogger(__name__)
 
@@ -137,9 +137,39 @@ def _open_bridge_chain_ids(state: State) -> set[int]:
     }
 
 
-def _is_meaningful_bridge_amount(amount: Decimal) -> bool:
-    """Is this amount large enough to become a CCTP trade."""
-    return amount > SUM_EPSILON
+def _get_raw_unit(asset: AssetIdentifier) -> Decimal:
+    """Smallest human-readable amount representable by a token raw unit."""
+    return asset.convert_to_decimal(1)
+
+
+def _floor_to_raw_units(amount: Decimal, asset: AssetIdentifier) -> Decimal:
+    """Floor a positive token amount to raw-token precision."""
+    assert amount >= 0
+    return asset.convert_to_decimal(asset.convert_to_raw_amount(amount))
+
+
+def _is_meaningful_bridge_amount(amount: Decimal, asset: AssetIdentifier) -> bool:
+    """Is this amount large enough to become a CCTP trade.
+
+    CCTP burns and mints ERC-20 raw units. Any human-unit fraction smaller than
+    one raw unit would be truncated by the live routing path and is accounting
+    dust, even when it is larger than Decimal calculation epsilon.
+    """
+    return amount >= _get_raw_unit(asset)
+
+
+def _is_token_dust(amount: Decimal, asset: AssetIdentifier) -> bool:
+    """Is this amount below one raw token unit."""
+    return abs(amount) < _get_raw_unit(asset)
+
+
+def _assert_bridge_pair_raw_units_match(bridge_pair: TradingPairIdentifier) -> None:
+    """CCTP bridge pairs must use the same raw-unit precision on both sides."""
+    assert bridge_pair.base.decimals == bridge_pair.quote.decimals, (
+        f"CCTP bridge destination asset {bridge_pair.base} decimals "
+        f"{bridge_pair.base.decimals} do not match source asset "
+        f"{bridge_pair.quote} decimals {bridge_pair.quote.decimals}"
+    )
 
 
 def _trade_releases_before_bridge_back(trade: TradeExecution) -> bool:
@@ -222,6 +252,9 @@ def inject_cctp_bridge_trades(
 
     # Pre-fetch bridge pairs from the universe so we only iterate once.
     bridge_pairs = _bridge_pairs_by_destination(list(strategy_universe.iterate_pairs()))
+    for bridge_pair in bridge_pairs.values():
+        _assert_bridge_pair_raw_units_match(bridge_pair)
+    primary_bridge_asset = next(iter(bridge_pairs.values())).quote if bridge_pairs else reserve_asset
 
     # 1. Group trades by chain and compute net capital flow per satellite chain.
     #    Also track primary-chain reserve in/outflows so bridge-outs can be
@@ -316,8 +349,8 @@ def inject_cctp_bridge_trades(
         # cannot fund same-cycle bridge-backs. They are still counted later when
         # sizing bridge-outs, because they execute before same-chain buys.
         available = liquidity.free_idle_bridge_capital
-        amount = min(net_flow, available)
-        if not _is_meaningful_bridge_amount(amount):
+        amount = _floor_to_raw_units(min(net_flow, available), bridge_pair.base)
+        if not _is_meaningful_bridge_amount(amount, bridge_pair.base):
             logger.info(
                 "Skipping bridge-back for chain %d: net sell %s exceeds available bridge capital %s",
                 chain_id,
@@ -350,15 +383,8 @@ def inject_cctp_bridge_trades(
         -primary_sells,
         -total_bridge_back,
     ])
-    if _is_meaningful_bridge_amount(primary_shortfall):
+    if _is_meaningful_bridge_amount(primary_shortfall, primary_bridge_asset):
         for chain_id in sorted(liquidity_by_chain):
-            if not _is_meaningful_bridge_amount(primary_shortfall):
-                break
-            liquidity = liquidity_by_chain[chain_id]
-            available = liquidity.free_idle_bridge_capital
-            amount = min(primary_shortfall, available)
-            if not _is_meaningful_bridge_amount(amount):
-                continue
             bridge_pair = bridge_pairs.get(chain_id)
             if bridge_pair is None:
                 logger.warning(
@@ -366,6 +392,13 @@ def inject_cctp_bridge_trades(
                     "skipping primary-shortfall bridge-back",
                     chain_id,
                 )
+                continue
+            if not _is_meaningful_bridge_amount(primary_shortfall, bridge_pair.quote):
+                break
+            liquidity = liquidity_by_chain[chain_id]
+            available = liquidity.free_idle_bridge_capital
+            amount = _floor_to_raw_units(min(primary_shortfall, available), bridge_pair.quote)
+            if not _is_meaningful_bridge_amount(amount, bridge_pair.quote):
                 continue
             liquidity.reserve_bridge_back(amount)
             total_bridge_back += amount
@@ -376,7 +409,7 @@ def inject_cctp_bridge_trades(
                 chain_id,
             )
 
-    if _is_meaningful_bridge_amount(primary_shortfall):
+    if _is_meaningful_bridge_amount(primary_shortfall, primary_bridge_asset):
         raise NotEnoughMoney(
             f"Cannot fund primary-chain cash needs: need {primary_cash_needed} "
             f"(primary buys {primary_buys} + satellite bridge shortfalls "
@@ -390,9 +423,6 @@ def inject_cctp_bridge_trades(
     for chain_id in sorted(liquidity_by_chain):
         liquidity = liquidity_by_chain[chain_id]
         amount = liquidity.bridge_back_amount
-        if not _is_meaningful_bridge_amount(amount):
-            continue
-
         bridge_pair = bridge_pairs.get(chain_id)
         if bridge_pair is None:
             logger.warning(
@@ -401,10 +431,16 @@ def inject_cctp_bridge_trades(
                 chain_id,
             )
             continue
+        if not _is_meaningful_bridge_amount(amount, bridge_pair.base):
+            continue
 
         bridge_position = state.portfolio.get_bridge_position_for_chain(chain_id)
         available = liquidity.available_before_bridge_back
-        closing = available - amount <= SUM_EPSILON
+        assert amount <= available, (
+            f"CCTP bridge-back amount {amount} exceeds available bridge capital "
+            f"{available} for chain {chain_id}"
+        )
+        closing = _is_token_dust(available - amount, bridge_pair.base)
 
         _, trade, _ = state.create_trade(
             strategy_cycle_at=ts,
@@ -479,7 +515,7 @@ def inject_cctp_bridge_trades(
         satellite_side_funding = liquidity.available_before_buy
 
         shortfall = liquidity.satellite_bridge_shortfall
-        if not _is_meaningful_bridge_amount(shortfall):
+        if not _is_meaningful_bridge_amount(shortfall, bridge_pair.quote):
             # Capital already parked on the satellite covers the net buy; the
             # satellite buy allocates from the bridge position at execution.
             logger.info(
@@ -491,7 +527,7 @@ def inject_cctp_bridge_trades(
             continue
 
         if shortfall > fundable_primary:
-            if shortfall - fundable_primary <= SUM_EPSILON:
+            if _is_token_dust(shortfall - fundable_primary, bridge_pair.quote):
                 shortfall = fundable_primary
             else:
                 raise NotEnoughMoney(
@@ -504,10 +540,12 @@ def inject_cctp_bridge_trades(
                     f"- primary buys {primary_buys})"
                 )
 
-        if not _is_meaningful_bridge_amount(shortfall):
+        if not _is_meaningful_bridge_amount(shortfall, bridge_pair.quote):
             continue
 
-        amount = shortfall
+        amount = _floor_to_raw_units(shortfall, bridge_pair.quote)
+        if not _is_meaningful_bridge_amount(amount, bridge_pair.quote):
+            continue
         fundable_primary -= amount
 
         _, trade, _ = state.create_trade(
