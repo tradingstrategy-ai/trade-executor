@@ -356,6 +356,57 @@ def test_bridge_out_funds_from_idle_satellite_capital(
     assert bridge_pos.bridge_capital_allocated == Decimal(11_500)
 
 
+def test_bridge_out_uses_bridge_pair_decimals_when_reserve_asset_decimals_are_wrong(
+    usdc_arbitrum: AssetIdentifier,
+    cctp_pair: TradingPairIdentifier,
+    satellite_pair: TradingPairIdentifier,
+):
+    """A generated 6-decimal CCTP pair works with a wrong 18-decimal reserve asset.
+
+    This covers vault-only universes where the reserve asset can inherit
+    fallback 18-decimal metadata, while generated native USDC bridge pairs are
+    correctly normalised to 6 decimals.
+
+    1. Create a reserve asset with the same primary USDC address but wrong 18-decimal metadata.
+    2. Plan a satellite buy that requires bridge-out funding with sub-raw-unit dust.
+    3. Inject CCTP bridge trades.
+    4. Assert the bridge-out is created and floored with bridge-pair USDC precision.
+    """
+
+    # 1. Create a reserve asset with the same primary USDC address but wrong 18-decimal metadata.
+    wrong_decimals_reserve = AssetIdentifier(
+        chain_id=usdc_arbitrum.chain_id,
+        address=usdc_arbitrum.address,
+        token_symbol=usdc_arbitrum.token_symbol,
+        decimals=18,
+    )
+    state = _make_state(wrong_decimals_reserve, Decimal(2_000))
+
+    # 2. Plan a satellite buy that requires bridge-out funding with sub-raw-unit dust.
+    buy = _create_satellite_buy(
+        state,
+        satellite_pair,
+        wrong_decimals_reserve,
+        Decimal("1000.0000009"),
+    )
+    universe = _make_mock_universe([cctp_pair, satellite_pair])
+
+    # 3. Inject CCTP bridge trades.
+    result = inject_cctp_bridge_trades(
+        state=state,
+        trades=[buy],
+        strategy_universe=universe,
+        primary_chain_id=PRIMARY_CHAIN_ID,
+        ts=TS,
+        reserve_asset=wrong_decimals_reserve,
+    )
+
+    # 4. Assert the bridge-out is created and floored with bridge-pair USDC precision.
+    bridge_trades = [t for t in result if t.pair.is_cctp_bridge()]
+    assert len(bridge_trades) == 1
+    assert bridge_trades[0].planned_reserve == Decimal("1000")
+
+
 def test_bridge_out_nets_against_partial_idle_capital(
     usdc_arbitrum: AssetIdentifier,
     cctp_pair: TradingPairIdentifier,
