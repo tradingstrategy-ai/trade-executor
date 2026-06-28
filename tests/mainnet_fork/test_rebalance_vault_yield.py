@@ -13,6 +13,7 @@ from pytest_mock import MockerFixture
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 
 from tradeexecutor.cli.main import app
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 from tradingstrategy.client import Client
 
@@ -85,9 +86,8 @@ def environment(
         "RUN_SINGLE_CYCLE": "true",  # Run only one cycle"
         "MIN_GAS_BALANCE": "0.0",   # Disable gas balance check
         "DISABLE_BROADCAST": "true",  # Disable wait_and_broadcast_multiple_nodes() broadcast as we do not have real private key
-        # Trading Strategy website data may lag wall-clock time by more than
-        # one day in CI; this test exercises rebalance transaction generation,
-        # not the live data freshness alert.
+        # This test exercises rebalance transaction generation, not the live
+        # data freshness alert.
         "MAX_DATA_DELAY_MINUTES": str(3 * 24 * 60),
     }
     return environment
@@ -105,8 +105,9 @@ def test_rebalance_vault_yield(
 
     1. Patch the process environment with the forked RPC, copied state file and
        deterministic test settings.
-    2. Run one `trade-executor start` cycle.
-    3. Confirm the command completes, proving money can be withdrawn from Aave
+    2. Disable remote market-data freshness checks.
+    3. Run one `trade-executor start` cycle.
+    4. Confirm the command completes, proving money can be withdrawn from Aave
        and redeployed to the vaults.
     """
 
@@ -114,7 +115,10 @@ def test_rebalance_vault_yield(
     # deterministic test settings.
     mocker.patch.dict("os.environ", environment, clear=True)
 
-    # 2. Run one `trade-executor start` cycle.
-    # 3. Confirm the command completes, proving money can be withdrawn from Aave
+    # 2. Disable remote market-data freshness checks.
+    mocker.patch.object(TradingStrategyUniverseModel, "check_data_age", return_value=None)
+
+    # 3. Run one `trade-executor start` cycle.
+    # 4. Confirm the command completes, proving money can be withdrawn from Aave
     # and redeployed to the vaults.
     app(["start"], standalone_mode=False)
