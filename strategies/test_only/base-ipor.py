@@ -131,13 +131,7 @@ class Parameters:
     assummed_liquidity_when_data_missings = 10_000
 
 
-#: Assets used in routing and buy-and-hold benchmark values for our strategy, but not traded by this strategy.
-SUPPORTING_PAIRS = [
-    (ChainId.base, "uniswap-v2", "WETH", "USDC", 0.0030),
-    (ChainId.base, "uniswap-v3", "WETH", "USDC", 0.0005),
-    (ChainId.base, "uniswap-v2", "EAI", "WETH", 0.0030),  # Crappy token tax pair
-    (ChainId.base, "uniswap-v3", "cbBTC", "WETH", 0.0030),    # Only trading since October
-]
+SUPPORTING_PAIRS = []
 
 #: Needed for USDC credit
 LENDING_RESERVES = [
@@ -169,113 +163,17 @@ def create_trading_universe(
     - Load also BTC and ETH price data to be used as a benchmark
     """
 
-    chain_id = Parameters.chain_id
+    logger.info("Preparing vault-only trading universe on chain %s", Parameters.chain_id.get_name())
 
-    logger.info(f"Preparing trading universe on chain {chain_id.get_name()}")
-
-    exchange_universe = client.fetch_exchange_universe()
-    targeted_exchanges = [exchange_universe.get_by_chain_and_slug(chain_id, slug) for slug in Parameters.exchanges]
-
-    # Pull out our benchmark pairs ids.
-    # We need to construct pair universe object for the symbolic lookup.
-    # TODO: PandasPairUniverse(buidl_index=True) - speed this up by skipping index building
-    all_pairs_df = client.fetch_pair_universe().to_pandas()
-    all_pairs_df = filter_for_exchange_slugs(all_pairs_df, Parameters.exchanges)
-    logger.info("Creating universe for benchmark pair extraction")
-    pair_universe = PandasPairUniverse(
-        all_pairs_df,
-        exchange_universe=exchange_universe,
-        build_index=False,
-    )
-    logger.info(f"Exchanges {Parameters.exchanges} have total {len(all_pairs_df):,} pairs on chain {Parameters.chain_id.get_name()}")
-
-    # Get TVL data for prefilteirng
-    if execution_context.live_trading:
-        # For live trading, we take TVL data from ~around the start of the strategy until today
-        tvl_time_bucket = TimeBucket.d1
-        start = datetime.datetime(2024, 2, 1)
-        end = tvl_time_bucket.floor(pd.Timestamp(native_datetime_utc_now() - tvl_time_bucket.to_timedelta()))
-    else:
-        start = Parameters.backtest_start
-        end = Parameters.backtest_end
-
-    #
-    # Do exchange and TVL prefilter pass for the trading universe
-    #
-    min_tvl = Parameters.min_tvl_prefilter
-    # logging.getLogger().setLevel(logging.INFO)
-    liquidity_time_bucket = TimeBucket.d1
-    tvl_df = client.fetch_tvl(
-        mode="min_tvl",
-        bucket=liquidity_time_bucket,
-        start_time=start,
-        end_time=end,
-        exchange_ids=[exc.exchange_id for exc in targeted_exchanges],
-        min_tvl=min_tvl,
-    )
-    # logging.getLogger().setLevel(logging.WARNING)
-    logger.info(f"Fetch TVL, we got {len(tvl_df['pair_id'].unique())} pairs with TVL data for min TVL criteria {min_tvl}")
-
-    tvl_filtered_pair_ids = tvl_df["pair_id"].unique()
-    benchmark_pair_ids = [pair_universe.get_pair_by_human_description(desc).pair_id for desc in SUPPORTING_PAIRS]
-    needed_pair_ids = set(benchmark_pair_ids) | set(tvl_filtered_pair_ids)
-    pairs_df = all_pairs_df[all_pairs_df["pair_id"].isin(needed_pair_ids)]
-    logger.info(f"After TVL prefilter to {Parameters.min_tvl_prefilter:,} in {Parameters.backtest_start} - {Parameters.backtest_end}, we have {len(pairs_df)} trading pairs")
-    pairs_df = add_base_quote_address_columns(pairs_df)
-
-    # Never deduplicate supporting pars
-    supporting_pairs_df = pairs_df[pairs_df["pair_id"].isin(benchmark_pair_ids)]
-
-    allowed_quotes = {
-        PREFERRED_STABLECOIN,
-        WRAPPED_NATIVE_TOKEN[chain_id.value].lower(),
-    }
-    filtered_pairs_df = filter_pairs_default(
-        pairs_df,
-        good_quote_token_addresses=allowed_quotes,
-        verbose_print=print,
-    )
-
-    # Deduplicate trading pairs - Choose the best pair with the best volume
-    deduplicated_df = deduplicate_pairs_by_volume(filtered_pairs_df)
-
-    # Get our reference pairs back to the dataset
-    pairs_df = pd.concat([deduplicated_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
-    logger.info(f"After deduplication we have {len(pairs_df)} pairs")
-
-    # Add benchmark pairs back to the dataset
-    pairs_df = pd.concat([pairs_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
-
-    # Load metadata
-    logger.info("Loading metadata")
-    # logging.getLogger().setLevel(logging.INFO)
-    pairs_df = load_token_metadata(pairs_df, client)
-    # logging.getLogger().setLevel(logging.WARNING)
-
-    # Scam filter using TokenSniffer
-    risk_filtered_pairs_df = filter_by_token_sniffer_score(
-        pairs_df,
-        risk_score=Parameters.min_token_sniffer_score,
-    )
-
-    pairs_df = pd.concat([risk_filtered_pairs_df, supporting_pairs_df]).drop_duplicates(subset='pair_id', keep='first')
-    pairs_df = pairs_df.sort_values("volume", ascending=False)
-    logger.info(f"After TokenSniffer risk filter we have {len(pairs_df)} pairs")
-
-    uni_v2 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v2"]
-    uni_v3 = pairs_df.loc[pairs_df["exchange_slug"] == "uniswap-v3"]
-    other_dex = pairs_df.loc[~((pairs_df["exchange_slug"] != "uniswap-v3") | (pairs_df["exchange_slug"] != "uniswap-v2"))]
-    logger.info(f"Pairs on Uniswap v2: {len(uni_v2)}, Uniswap v3: {len(uni_v3)}, other DEX: {len(other_dex)}")
     dataset = load_partial_data(
         client=client,
         time_bucket=Parameters.candle_time_bucket,
-        pairs=pairs_df,
+        pairs=[],
         execution_context=execution_context,
         universe_options=universe_options,
-        liquidity_time_bucket=liquidity_time_bucket,
-        preloaded_tvl_df=tvl_df,
         vaults=[(ChainId.base, "0x45aa96f0b3188d47a1dafdbefce1db6b37f58216")],
     )
+    dataset.candles = pd.DataFrame(columns=["timestamp", "pair_id"])
 
     reserve_asset = PREFERRED_STABLECOIN
 
@@ -283,16 +181,10 @@ def create_trading_universe(
     strategy_universe = TradingStrategyUniverse.create_from_dataset(
         dataset,
         reserve_asset=reserve_asset,
-        forward_fill=True,  # We got very gappy data from low liquid DEX coins
-        forward_fill_until=timestamp,
+        forward_fill=False,
     )
 
-    # Tag benchmark/routing pairs tokens so they can be separated from the rest of the tokens
-    # for the index construction.
     strategy_universe.warm_up_data()
-    for pair_id in benchmark_pair_ids:
-        pair = strategy_universe.get_pair_by_id(pair_id)
-        pair.other_data["benchmark"] = False
 
     logger.info(f"Total {strategy_universe.get_pair_count()}")
 
@@ -869,7 +761,8 @@ def create_indicators(
     strategy_universe: TradingStrategyUniverse,
     execution_context: ExecutionContext
 ):
-    return indicators.create_indicators(
+    vault_only_indicators = IndicatorRegistry()
+    return vault_only_indicators.create_indicators(
         timestamp=timestamp,
         parameters=parameters,
         strategy_universe=strategy_universe,
