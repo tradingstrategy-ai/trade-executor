@@ -160,6 +160,9 @@ class BacktestPricing(PricingModel):
             # gating even when callers do not pass `vault_state` explicitly.
             if vault_state is None:
                 vault_state = candle_universe.vault_state
+            # Same for the synthetic window overrides (they beat vault_state when both are present).
+            if vault_window_overrides is None:
+                vault_window_overrides = getattr(candle_universe, "vault_window_overrides", None)
             candle_universe = candle_universe.data_universe.candles
 
         assert isinstance(candle_universe, GroupedCandleUniverse), f"Got candles in wrong format: {candle_universe.__class__}"
@@ -716,5 +719,6 @@ def backtest_pricing_factory(
         routing_model,
         pairs=universe.data_universe.pairs,
         vault_state=universe.vault_state,
+        vault_window_overrides=getattr(universe, "vault_window_overrides", None),
     )
 

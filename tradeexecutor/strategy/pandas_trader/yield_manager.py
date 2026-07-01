@@ -720,3 +720,87 @@ class YieldManager:
             available_for_yield=available_for_yield,
             trades=trades,
         )
+
+    def calculate_yield_management_safe(
+        self,
+        input: YieldDecisionInput,
+        dust_usd: USDollarAmount = 1.0,
+    ) -> YieldResult:
+        """Zero-release-safe wrapper around :py:meth:`calculate_yield_management`.
+
+        :py:meth:`calculate_yield_management` asserts ``available_for_yield > 0`` and then divides by
+        it, so a fully-deployed cycle — where the directional buys plus the ``always_in_cash`` reserve
+        consume all cash-like value — trips the assert. That is an *expected* state for a phase-aware
+        strategy whose deposit-on-open promotions can draw the whole queue venue, and with
+        ``position_allocation == allocation_pct`` the boundary is reached whenever the book is fully
+        invested.
+
+        This wrapper reproduces the ``available_for_yield`` pre-check (mirroring steps 1-3 of
+        :py:meth:`calculate_yield_management`) and, when it is at or below ``dust_usd``, takes the
+        explicit release path instead of sweeping: it sets the desired venue balance to zero so any
+        existing venue positions are sold to release their cash for the directional buys, and never
+        divides by ``available_for_yield``. The strict assert on :py:meth:`calculate_yield_management`
+        is left intact for every other caller.
+
+        :param dust_usd:
+            Sweep only when strictly more than this much idle cash is available for yield; at or below
+            it, release instead. Keeps a tiny positive residual from generating a dust sweep.
+        """
+        # Steps 1-3 of calculate_yield_management: how much cash-like value we hold, how much the
+        # directional trades consume, and how much is left over for yield after the reserve.
+        current_positions = self.gather_current_yield_positions()
+        current_cash_yielding = sum(
+            position and position.get_value() or 0.0
+            for k, position in current_positions.items()
+            if k.kind != TradingPairKind.cash
+        )
+        current_cash_in_hand = sum(
+            position and position.get_value() or 0.0
+            for k, position in current_positions.items()
+            if k.kind == TradingPairKind.cash
+        )
+        all_cash_like = current_cash_yielding + current_cash_in_hand
+
+        trade_cash_diff = self.calculate_cash_needed_to_cover_directional_trades(
+            input,
+            already_deposited=current_cash_yielding,
+            available_cash=current_cash_in_hand,
+        )
+        always_in_cash = input.total_equity * (1 - self.rules.position_allocation)
+        available_for_yield = all_cash_like - trade_cash_diff - always_in_cash - input.pending_redemptions
+
+        if available_for_yield > dust_usd:
+            # Enough idle cash to sweep: defer to the strict path (keeps its assert as a safety net).
+            return self.calculate_yield_management(input)
+
+        # Zero / negative available_for_yield: nothing to sweep in. Release every venue position to
+        # zero so its cash funds the directional (incl. promoted) buys, without dividing by
+        # available_for_yield. On an early cycle with no venue positions this yields no trades.
+        logger.info(
+            "Yield available_for_yield %.2f USD <= dust %.2f USD: release path (desired venue = 0)",
+            available_for_yield,
+            dust_usd,
+        )
+        desired_yield_positions: dict[TradingPairIdentifier, YieldDecision] = {}
+        for rule in self.rules.weights:
+            existing_position = current_positions.get(rule.pair)
+            desired_yield_positions[rule.pair] = YieldDecision(
+                rule=rule,
+                weight=0.0,
+                amount_usd=0.0,
+                existing_amount_usd=existing_position.get_value() if existing_position else None,
+                existing_position_id=existing_position.position_id if existing_position else None,
+                size_risk=None,
+            )
+
+        trades = self.generate_rebalance_trades(
+            input.cycle,
+            input.timestamp,
+            current_positions,
+            desired_yield_positions,
+        )
+        return YieldResult(
+            trade_cash_diff=trade_cash_diff,
+            available_for_yield=available_for_yield,
+            trades=trades,
+        )
