@@ -1,38 +1,11 @@
 """Common functions for filtering and selecting top DeFi vaults."""
 
-import enum
 import json
 import sys
 import urllib.request
 from dataclasses import dataclass
 
 from tradeexecutor.curator.curator import EXCLUDED_PROTOCOLS, EXCLUDED_VAULTS, MUST_INCLUDE
-
-
-class MorphoVaultFlagFilter(enum.StrEnum):
-    """How aggressively Morpho vault display flags are filtered."""
-
-    #: Do not filter based on Morpho display flags.
-    none = "none"
-
-    #: Filter out vaults with red Morpho display flags.
-    red_only = "red_only"
-
-    #: Filter out vaults with red or yellow Morpho display flags.
-    red_and_yellow = "red_and_yellow"
-
-
-MORPHO_VAULT_FLAG_FILTER_ALIASES = {
-    "red-only": MorphoVaultFlagFilter.red_only,
-    "red-and-yellow": MorphoVaultFlagFilter.red_and_yellow,
-}
-
-
-MORPHO_VAULT_FLAG_FILTER_SEVERITIES: dict[MorphoVaultFlagFilter, set[str]] = {
-    MorphoVaultFlagFilter.none: set(),
-    MorphoVaultFlagFilter.red_only: {"red"},
-    MorphoVaultFlagFilter.red_and_yellow: {"red", "yellow"},
-}
 
 
 @dataclass
@@ -49,7 +22,6 @@ class VaultInfo:
     peak_tvl: float
     risk: str | None
     flags: list[str]
-    vault_display_flags: list[dict]
     protocol_slug: str
     deposit_closed_reason: str | None
     must_include: bool
@@ -89,56 +61,6 @@ def get_cagr_periods(vault: dict, tracked_periods: tuple[str, ...]) -> dict[str,
 def get_tvl(vault: dict) -> float:
     """Get current TVL (``current_nav``)."""
     return vault.get("current_nav") or 0.0
-
-
-def get_vault_display_flags(vault: dict) -> list[dict]:
-    """Get structured vault display flags from the top-vaults JSON."""
-    flags = vault.get("vault_display_flags")
-    if flags is None:
-        other_data = vault.get("other_data") or {}
-        flags = other_data.get("vault_display_flags")
-    if not flags:
-        return []
-    return [flag for flag in flags if isinstance(flag, dict)]
-
-
-def normalise_morpho_vault_flag_filter(value: MorphoVaultFlagFilter | str) -> MorphoVaultFlagFilter:
-    """Normalise CLI and enum values for Morpho vault display flag filtering."""
-    if isinstance(value, MorphoVaultFlagFilter):
-        return value
-
-    aliased = MORPHO_VAULT_FLAG_FILTER_ALIASES.get(value)
-    if aliased is not None:
-        return aliased
-
-    return MorphoVaultFlagFilter(value)
-
-
-def get_morpho_vault_flags(v: VaultInfo, morpho_vault_flag_filter: MorphoVaultFlagFilter | str) -> list[dict]:
-    """Get Morpho vault display flags that match the configured severity filter."""
-    morpho_vault_flag_filter = normalise_morpho_vault_flag_filter(morpho_vault_flag_filter)
-    severities = MORPHO_VAULT_FLAG_FILTER_SEVERITIES[morpho_vault_flag_filter]
-    if not severities:
-        return []
-
-    matched = []
-    for flag in v.vault_display_flags:
-        source = str(flag.get("source") or "").lower()
-        severity = str(flag.get("severity") or "").lower()
-        if source == "morpho" and severity in severities:
-            matched.append(flag)
-
-    return matched
-
-
-def format_morpho_flag_reason(flags: list[dict]) -> str:
-    """Format Morpho flag metadata for filter diagnostics."""
-    parts = []
-    for flag in flags:
-        severity = flag.get("severity", "unknown")
-        flag_type = flag.get("type", "unknown")
-        parts.append(f"{severity}:{flag_type}")
-    return ",".join(parts)
 
 
 def format_tvl(tvl: float) -> str:
@@ -187,7 +109,6 @@ def parse_vault(
         peak_tvl=vault.get("peak_nav") or 0.0,
         risk=vault.get("risk"),
         flags=vault.get("flags") or [],
-        vault_display_flags=get_vault_display_flags(vault),
         protocol_slug=vault.get("protocol_slug") or "",
         deposit_closed_reason=vault.get("deposit_closed_reason"),
         must_include=address in MUST_INCLUDE,
@@ -207,7 +128,6 @@ def filter_vault(
     excluded_flags: set[str],
     require_known_protocol: bool,
     hypercore_min_tvl: float,
-    morpho_vault_flag_filter: MorphoVaultFlagFilter | str = MorphoVaultFlagFilter.none,
     skip_cagr_filter: bool = False,
     use_peak_tvl: bool = False,
 ) -> tuple[bool, str]:
@@ -224,10 +144,6 @@ def filter_vault(
     bad_flags = set(v.flags) & excluded_flags
     if bad_flags:
         return False, f"flags={bad_flags}"
-
-    matched_morpho_flags = get_morpho_vault_flags(v, morpho_vault_flag_filter)
-    if matched_morpho_flags:
-        return False, f"morpho_flags={format_morpho_flag_reason(matched_morpho_flags)}"
 
     if "Compounder" in v.name:
         return False, f"name_compounder={v.name}"
@@ -272,14 +188,12 @@ def select_top_vaults(
     excluded_flags: set[str],
     require_known_protocol: bool,
     hypercore_min_tvl: float,
-    morpho_vault_flag_filter: MorphoVaultFlagFilter | str = MorphoVaultFlagFilter.none,
     top_n_override: int | None = None,
     skip_cagr_filter: bool = False,
     use_peak_tvl: bool = False,
     include_closed_vaults: bool = False,
 ) -> dict[int, list[VaultInfo]]:
     """Select top vaults per chain after filtering."""
-    morpho_vault_flag_filter = normalise_morpho_vault_flag_filter(morpho_vault_flag_filter)
 
     def sort_key(v: VaultInfo) -> float:
         cagr = v.cagr_periods.get(sort_period)
@@ -293,7 +207,6 @@ def select_top_vaults(
         excluded_flags=excluded_flags,
         require_known_protocol=require_known_protocol,
         hypercore_min_tvl=hypercore_min_tvl,
-        morpho_vault_flag_filter=morpho_vault_flag_filter,
         skip_cagr_filter=skip_cagr_filter,
         use_peak_tvl=use_peak_tvl,
     )
@@ -376,10 +289,8 @@ def format_output(
     default_min_age: float,
     sort_period: str,
     tracked_periods: tuple[str, ...],
-    morpho_vault_flag_filter: MorphoVaultFlagFilter | str = MorphoVaultFlagFilter.none,
 ) -> str:
     """Format selected vaults as Python code for notebooks."""
-    morpho_vault_flag_filter = normalise_morpho_vault_flag_filter(morpho_vault_flag_filter)
     lines = []
 
     for chain_id in chain_order:
@@ -405,9 +316,6 @@ def format_output(
             f"denomination in (USDC, USDC.e, crvUSD, USDS, USDT/USD₮0), "
             f"exclude Blacklisted/Dangerous"
         )
-        if morpho_vault_flag_filter != MorphoVaultFlagFilter.none:
-            cli_value = morpho_vault_flag_filter.value.replace("_", "-")
-            lines.append(f"            # Morpho vault flag filter: {cli_value}")
         lines.append("            #")
 
         active = [v for v in vaults if not v.excluded and v.excluded_protocol_reason is None and v.deposit_closed_reason is None]
