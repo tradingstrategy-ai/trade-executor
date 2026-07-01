@@ -47,8 +47,9 @@ codex exec "Review uncommitted changes for correctness bugs only"
 poetry run pytest tests/foo.py -q 2>&1 \
   | codex exec "Explain the failure and suggest the smallest fix"
 
-# Run with explicit permissions in automation.
-codex exec --sandbox workspace-write --ask-for-approval never "Fix the failing focused test"
+# Run with explicit permissions in automation. `codex exec` selects the sandbox
+# directly and does not take `--ask-for-approval` (that is an interactive flag).
+codex exec --sandbox workspace-write "Fix the failing focused test"
 
 # Debug local setup.
 codex doctor
@@ -57,6 +58,59 @@ codex doctor
 Use `codex exec` for CI-like or scripted work. It streams progress to stderr and final output to stdout, which makes it easier to pipe the result into files or other commands.
 
 Use interactive `codex` when the task needs back-and-forth decisions, screenshots, manual inspection, or careful approval of edits.
+
+### Always run Codex reviews in streaming mode
+
+Run every non-interactive Codex review (plan review, code review, sanity check)
+in streaming mode with `--json`. Plain text mode (`codex exec "..."`) only emits
+the final answer once the model has finished the entire review, and any
+`| tail`, `| head`, or capture-to-file buffers that final block until the pipe
+closes. When the run is backgrounded or captured, the output file then stays
+**0 bytes** until completion — indistinguishable from a hang, and you cannot see
+progress or interim tool calls.
+
+`--json` instead emits a JSONL event stream (reasoning, tool calls, and the final
+message) line-by-line as they happen, so a backgrounded run's file grows live and
+can be tailed for progress.
+
+```shell
+# Streaming read-only review. Note: DO NOT pipe through `tail`/`head` — that
+# reintroduces buffering. Write the raw JSONL stream to a file instead.
+codex exec --json --sandbox read-only \
+  "Review the uncommitted diff for correctness bugs only. Findings first with file:line." \
+  > /tmp/codex-review.jsonl
+
+# Follow progress live from another step (or when backgrounded):
+tail -f /tmp/codex-review.jsonl        # interactive shells only
+
+# Extract just the final assistant message from the JSONL when done:
+#   each line is a JSON event; the final answer is the last agent/message event.
+```
+
+When backgrounding a Codex review, always use `--json` and read the raw output
+file for interim events. If you instead run text mode in the background, the file
+will look empty (0 bytes) the whole time and you will not be able to tell a slow
+review from a stuck one.
+
+Redirect stdin from `/dev/null` for background/non-interactive runs. With an open
+stdin pipe, `codex exec` prints `Reading additional input from stdin...` and waits
+for EOF (it appends piped stdin as a `<stdin>` block), so the run stalls forever
+even though the prompt was passed as an argument. Always append `< /dev/null`:
+
+```shell
+codex exec --json --sandbox read-only "…prompt…" < /dev/null > /tmp/codex-review.jsonl
+```
+
+Approval flags: `codex exec` does **not** accept `--ask-for-approval` (that flag
+belongs to interactive `codex`). For non-interactive review runs pick the sandbox
+directly — `--sandbox read-only` needs no approval and is the correct choice for
+reviews. Use `--sandbox workspace-write` only when the run must edit files.
+
+```shell
+# Correct non-interactive review invocation (streaming, read-only, no approval flag).
+codex exec --json --sandbox read-only "Review uncommitted changes for correctness bugs only" \
+  > /tmp/codex-review.jsonl
+```
 
 ## Claude CLI
 
@@ -307,10 +361,11 @@ Symptoms:
 
 Avoid it:
 
-- For Codex, set explicit sandbox and approval flags:
+- For Codex, set the sandbox explicitly (`codex exec` selects the sandbox
+  directly; it has no `--ask-for-approval` flag):
 
 ```shell
-codex exec --sandbox workspace-write --ask-for-approval never "Run the focused test and fix failures"
+codex exec --sandbox workspace-write "Run the focused test and fix failures"
 ```
 
 - For Claude, set explicit permission mode and allowed tools:

@@ -556,21 +556,23 @@ def test_bridge_out_raises_clearly_when_underfunded(
         )
 
 
-def test_bridge_back_capped_to_available_bridge_capital(
+def test_non_closing_satellite_sell_funds_same_cycle_bridge_back(
     usdc_arbitrum: AssetIdentifier,
     cctp_pair: TradingPairIdentifier,
     satellite_pair: TradingPairIdentifier,
 ):
-    """A bridge-back is capped when a satellite sell executes after bridge-backs.
+    """A non-closing satellite sell funds a same-cycle bridge-back.
 
-    Non-closing spot sells sort after CCTP bridge-backs. Their proceeds are not
-    available for same-cycle bridge-back sizing, so only the currently idle
-    bridge capital may be bridged back.
+    After the CCTP phase reorder, non-closing spot sells sort BEFORE bridge-backs
+    (-40M vs -30M), so their proceeds are available for same-cycle bridge-back
+    sizing - identical to a closing sell. The full net sell bridges back, not
+    just the previously-idle bridge capital.
 
     1. Bridge 10_000 to the satellite, then deploy 7_000 into a satellite buy,
-       leaving 3_000 available bridge capital.
-    2. Ask to sell the whole 7_000 position as a non-closing late sell.
-    3. Assert the injected bridge-back is capped to 3_000, not 7_000.
+       leaving 3_000 idle bridge capital.
+    2. Ask to sell the whole 7_000 position as a non-closing sell.
+    3. Assert the injected bridge-back carries the full 7_000 net sell (its
+       proceeds are now available), not just the 3_000 idle capital.
     """
     wallet = SimulatedWallet()
     wallet.set_balance(usdc_arbitrum, Decimal(50_000))
@@ -592,7 +594,7 @@ def test_bridge_back_capped_to_available_bridge_capital(
     bridge_pos = state.portfolio.get_bridge_position_for_chain(SATELLITE_CHAIN_ID)
     assert bridge_pos.get_available_bridge_capital() == Decimal(3_000)
 
-    # 2. Net sell of the whole 7_000 satellite position as a non-closing late sell.
+    # 2. Net sell of the whole 7_000 satellite position as a non-closing sell.
     sat_pos = state.portfolio.get_open_position_for_pair(satellite_pair)
     _, sell, _ = state.create_trade(
         strategy_cycle_at=TS,
@@ -616,11 +618,12 @@ def test_bridge_back_capped_to_available_bridge_capital(
         reserve_asset=usdc_arbitrum,
     )
 
-    # 3. Bridge-back capped to the 3_000 available, not the full 7_000 net sell.
+    # 3. Bridge-back carries the full 7_000 net sell; its proceeds are now
+    #    available same-cycle because the sell sorts before bridge-backs.
     bridge_backs = [t for t in result if t.pair.is_cctp_bridge()]
     assert len(bridge_backs) == 1
     assert bridge_backs[0].is_sell()
-    assert bridge_backs[0].planned_quantity == Decimal(-3_000)
+    assert bridge_backs[0].planned_quantity == Decimal(-7_000)
 
 
 @pytest.mark.timeout(300)
@@ -900,16 +903,21 @@ def test_cross_satellite_bridge_out_funded_from_other_idle_satellite_capital(
 
 
 @pytest.mark.timeout(300)
-def test_dust_available_bridge_capital_does_not_create_bridge_back(
+def test_dust_bridgeable_amount_does_not_create_bridge_back(
     usdc_arbitrum: AssetIdentifier,
     cctp_pair: TradingPairIdentifier,
     satellite_pair: TradingPairIdentifier,
 ):
-    """Sub-raw-unit available bridge capital is ignored instead of creating a bridge-back.
+    """A sub-raw-unit bridgeable amount is skipped instead of creating a bridge-back.
+
+    After the CCTP phase reorder a satellite sell's proceeds fund the same-cycle
+    bridge-back, so the guard now bites on the total bridgeable amount: a dust
+    net sell (and dust idle capital) floors to zero raw units and is skipped.
 
     1. Bridge 1_000 USDC to Base and deploy it all into a satellite position.
     2. Leave only sub-raw-unit available bridge capital to mimic Decimal dust.
-    3. Plan a non-closing satellite sell whose proceeds sort after bridge-backs.
+    3. Plan a dust-sized non-closing satellite sell so the total bridgeable
+       amount stays sub-raw-unit.
     4. Assert the planner skips the dust bridge-back trade.
     """
     wallet = SimulatedWallet()
@@ -936,12 +944,16 @@ def test_dust_available_bridge_capital_does_not_create_bridge_back(
     bridge_position.bridge_capital_allocated = bridge_position.get_quantity() - dust
     assert bridge_position.get_available_bridge_capital() == dust
 
-    # 3. Plan a non-closing satellite sell whose proceeds sort after bridge-backs.
+    # 3. Plan a dust-sized non-closing satellite sell so the total bridgeable
+    #    amount stays sub-raw-unit. 1e-8 is above the trade dust epsilon (1e-10)
+    #    so it is creatable, but below the 1e-6 USDC raw unit so the bridge-back
+    #    floors to zero.
+    dust_sell = Decimal("0.00000001")
     satellite_position = state.portfolio.get_open_position_for_pair(satellite_pair)
     _, sell, _ = state.create_trade(
         strategy_cycle_at=TS,
         pair=satellite_pair,
-        quantity=-satellite_position.get_quantity(),
+        quantity=-dust_sell,
         reserve=None,
         assumed_price=1.0,
         trade_type=TradeType.rebalance,
@@ -1089,6 +1101,98 @@ def test_closing_satellite_sell_can_fund_same_cycle_primary_buy(
     primary_buy = _create_primary_buy(state, primary_pair, usdc_arbitrum, Decimal(6_000))
 
     # 3. Inject and execute CCTP trades.
+    universe = _make_mock_universe([cctp_pair, satellite_pair, primary_pair])
+    result = inject_cctp_bridge_trades(
+        state=state,
+        trades=[sell, primary_buy],
+        strategy_universe=universe,
+        primary_chain_id=PRIMARY_CHAIN_ID,
+        ts=TS,
+        reserve_asset=usdc_arbitrum,
+    )
+    bridge_backs = [t for t in result if t.pair.is_cctp_bridge() and t.is_sell()]
+    assert len(bridge_backs) == 1
+    assert bridge_backs[0].planned_quantity == Decimal(-10_000)
+    execution.execute_trades(
+        ts=TS,
+        state=state,
+        trades=sorted(result, key=lambda t: t.get_execution_sort_position()),
+        routing_model=routing_model,
+        routing_state=routing_state,
+        check_balances=True,
+    )
+
+    # 4. Assert the primary buy succeeds from the bridge-back proceeds.
+    assert sell.is_success()
+    assert primary_buy.is_success()
+    assert wallet.get_balance(usdc_arbitrum) == Decimal(4_000)
+    assert wallet.get_balance(usdc_base) == Decimal(0)
+    assert reserve.quantity == Decimal(4_000)
+
+
+@pytest.mark.timeout(300)
+def test_non_closing_satellite_sell_can_fund_same_cycle_primary_buy(
+    usdc_arbitrum: AssetIdentifier,
+    usdc_base: AssetIdentifier,
+    cctp_pair: TradingPairIdentifier,
+    satellite_pair: TradingPairIdentifier,
+    primary_pair: TradingPairIdentifier,
+):
+    """A non-closing satellite sell funds a same-cycle primary buy (phase-order regression).
+
+    This is the headline bug the CCTP phase reorder fixes. Before the reorder a
+    non-closing satellite sell sorted AFTER bridge-backs, so its proceeds could
+    not be bridged to the primary hub in time to fund a same-cycle primary buy
+    and the CCTP planner/execution raised NotEnoughMoney. After the reorder the
+    sell sorts before bridge-backs (-40M vs -30M) and the buy is funded.
+
+    1. Bridge 10_000 USDC to Base and deploy it all into a satellite position,
+       leaving no primary reserve.
+    2. In one cycle, sell (non-closing) the whole satellite position and plan a
+       6_000 primary buy that is only fundable from the bridged-back proceeds.
+    3. Inject and execute CCTP trades in global sort order.
+    4. Assert the bridge-back carries the full 10_000 and the primary buy
+       succeeds, leaving 4_000 primary reserve.
+    """
+    wallet = SimulatedWallet()
+    wallet.set_balance(usdc_arbitrum, Decimal(10_000))
+    state = _make_state(usdc_arbitrum, Decimal(10_000))
+    execution = BacktestExecution(wallet=wallet)
+
+    # 1. Bridge 10_000 USDC to Base and deploy it all into a satellite position.
+    _establish_idle_satellite_capital(state, execution, wallet, cctp_pair, usdc_arbitrum, Decimal(10_000))
+    buy = _create_satellite_buy(state, satellite_pair, usdc_arbitrum, Decimal(10_000))
+    routing_model, routing_state = _routing(wallet, usdc_arbitrum)
+    execution.execute_trades(
+        ts=TS,
+        state=state,
+        trades=[buy],
+        routing_model=routing_model,
+        routing_state=routing_state,
+        check_balances=True,
+    )
+    reserve = state.portfolio.get_default_reserve_position()
+    assert reserve.quantity == Decimal(0)
+    assert wallet.get_balance(usdc_arbitrum) == Decimal(0)
+
+    # 2. In one cycle, sell (non-closing) the whole satellite position and plan a
+    #    6_000 primary buy only fundable from the bridged-back proceeds.
+    satellite_position = state.portfolio.get_open_position_for_pair(satellite_pair)
+    _, sell, _ = state.create_trade(
+        strategy_cycle_at=TS,
+        pair=satellite_pair,
+        quantity=-satellite_position.get_quantity(),
+        reserve=None,
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc_arbitrum,
+        reserve_currency_price=1.0,
+        position=satellite_position,
+        closing=False,
+    )
+    primary_buy = _create_primary_buy(state, primary_pair, usdc_arbitrum, Decimal(6_000))
+
+    # 3. Inject and execute CCTP trades in global sort order.
     universe = _make_mock_universe([cctp_pair, satellite_pair, primary_pair])
     result = inject_cctp_bridge_trades(
         state=state,

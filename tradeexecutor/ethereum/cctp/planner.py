@@ -36,38 +36,29 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ChainLiquidity:
-    """CCTP liquidity planning ledger for one satellite chain."""
+    """CCTP liquidity planning ledger for one satellite chain.
+
+    All non-async satellite sells sort before CCTP bridge-backs (spot sells at
+    -40M, bridge-backs at -30M), so every same-cycle sell proceed is available to
+    bridge back. The ledger therefore tracks a single satellite-side available
+    balance (idle bridge capital + same-cycle sells) rather than an early/late
+    sell split. The classification loop enforces that invariant via
+    ``_trade_releases_before_bridge_back``: a satellite sell that does not release
+    cash before bridge-backs is skipped, not counted here.
+    """
 
     net_flow: Decimal = Decimal(0)
     satellite_buys: Decimal = Decimal(0)
     satellite_sells_before_buy: Decimal = Decimal(0)
-    early_satellite_sells: Decimal = Decimal(0)
     available_bridge_capital: Decimal = Decimal(0)
     free_idle_bridge_capital: Decimal = Decimal(0)
     bridge_back_amount: Decimal = Decimal(0)
 
     @property
-    def available_before_bridge_back(self) -> Decimal:
-        """Satellite-side cash visible by the bridge-back phase."""
-        return self.available_bridge_capital + self.early_satellite_sells
-
-    @property
-    def satellite_sells_after_bridge_back_before_buy(self) -> Decimal:
-        """Sells that release too late for bridge-backs, but early enough for buys."""
-        return max(self.satellite_sells_before_buy - self.early_satellite_sells, Decimal(0))
-
-    @property
     def available_before_buy(self) -> Decimal:
-        """Satellite-side cash available before same-cycle satellite buys."""
+        """Satellite-side cash available this cycle: idle bridge capital plus all
+        same-cycle satellite sells (which release before bridge-backs)."""
         return self.available_bridge_capital + self.satellite_sells_before_buy
-
-    @property
-    def satellite_buy_bridge_back_time_need(self) -> Decimal:
-        """Buy demand that must remain funded before bridge-backs execute."""
-        return max(
-            self.satellite_buys - self.satellite_sells_after_bridge_back_before_buy,
-            Decimal(0),
-        )
 
     @property
     def satellite_bridge_shortfall(self) -> Decimal:
@@ -75,10 +66,14 @@ class ChainLiquidity:
         return max(self.satellite_buys - self.available_before_buy, Decimal(0))
 
     def prepare(self, available_bridge_capital: Decimal) -> None:
-        """Initialise free bridge-back capital after reserving buy funding."""
+        """Initialise free bridge-back capital after reserving buy funding.
+
+        Withhold only the capital still needed to fund same-cycle satellite buys;
+        the rest is free to bridge back to the primary hub.
+        """
         self.available_bridge_capital = available_bridge_capital
         self.free_idle_bridge_capital = max(
-            self.available_before_bridge_back - self.satellite_buy_bridge_back_time_need,
+            self.available_before_buy - self.satellite_buys,
             Decimal(0),
         )
 
@@ -173,7 +168,14 @@ def _assert_bridge_pair_raw_units_match(bridge_pair: TradingPairIdentifier) -> N
 
 
 def _trade_releases_before_bridge_back(trade: TradeExecution) -> bool:
-    """Does this satellite sell release bridge capital before bridge-backs run."""
+    """Does this satellite sell release bridge capital before bridge-backs run.
+
+    After the CCTP phase reorder every non-async satellite reduce sorts below
+    ``-CCTP_BRIDGE_ORDER_BUMP`` (spot sells at -40M, vault withdrawals at -50M),
+    so this holds for every genuine spot cross-chain sell. The classification loop
+    uses it to skip (and warn about) sell shapes that do not release cash before
+    bridge-backs (e.g. a short-position increase) rather than counting them.
+    """
     return trade.get_execution_sort_position() < -CCTP_BRIDGE_ORDER_BUMP
 
 
@@ -222,8 +224,10 @@ def inject_cctp_bridge_trades(
 
     The injected trades have correct sort positions (via
     ``get_execution_sort_position()``) so they execute in the right
-    order: vault redeems -> bridge-backs -> bridge-outs -> vault
-    deposits.
+    order: vault redeems -> spot sells -> bridge-backs -> bridge-outs ->
+    buys -> vault deposits. Bridge-backs run after satellite sells (so they
+    carry same-cycle sell proceeds to the hub) and bridge-outs run before
+    buys (so satellite buys are funded).
 
     :param state:
         Current portfolio state.
@@ -297,12 +301,31 @@ def inject_cctp_bridge_trades(
                     trade_chain_id,
                 )
                 continue
-            # Sell frees up capital — positive flow means excess to bridge back
+            # Sell frees up capital — positive flow means excess to bridge back.
+            # The single-balance ledger assumes every counted satellite sell sorts
+            # before CCTP bridge-backs (spot sells at -40M, vault withdrawals at
+            # -50M), so its proceeds are available for same-cycle bridge-back
+            # sizing. A sell shape that does NOT release cash before bridge-backs
+            # (e.g. a short-position increase, which is is_sell() but frees no spot
+            # USDC, or a zero-quantity repair sell) must not be counted as
+            # bridge-back funding - counting it would over-size a bridge-back
+            # against cash that is not there. Skip it and log loudly rather than
+            # crashing the cycle; genuine spot cross-chain flows always release
+            # before bridge-backs.
+            if not _trade_releases_before_bridge_back(trade):
+                logger.warning(
+                    "Ignoring satellite sell #%d on chain %d for CCTP liquidity "
+                    "planning: it sorts at %d, not before bridge-backs (< -%d), so "
+                    "its proceeds are not available to fund same-cycle bridge-backs",
+                    trade.trade_id,
+                    trade_chain_id,
+                    trade.get_execution_sort_position(),
+                    CCTP_BRIDGE_ORDER_BUMP,
+                )
+                continue
             liquidity = liquidity_by_chain[trade_chain_id]
             liquidity.net_flow += value
             liquidity.satellite_sells_before_buy += value
-            if _trade_releases_before_bridge_back(trade):
-                liquidity.early_satellite_sells += value
         else:
             # Buy consumes capital — negative flow means deficit to bridge out
             liquidity = liquidity_by_chain[trade_chain_id]
@@ -345,9 +368,10 @@ def inject_cctp_bridge_trades(
         # (OutOfSimulatedBalance at deposit settlement). Any excess net sell
         # stays on the satellite and bridges back once the deposits have settled.
         #
-        # Non-closing satellite spot sells release after bridge-backs, so they
-        # cannot fund same-cycle bridge-backs. They are still counted later when
-        # sizing bridge-outs, because they execute before same-chain buys.
+        # Satellite spot sells now sort before bridge-backs (-40M vs -30M), so
+        # their proceeds are available to fund same-cycle bridge-backs; that is
+        # already folded into free_idle_bridge_capital (idle + same-cycle sells,
+        # minus same-cycle satellite buy needs).
         available = liquidity.free_idle_bridge_capital
         amount = _floor_to_raw_units(min(net_flow, available), bridge_pair.base)
         if not _is_meaningful_bridge_amount(amount, bridge_pair.base):
@@ -435,7 +459,7 @@ def inject_cctp_bridge_trades(
             continue
 
         bridge_position = state.portfolio.get_bridge_position_for_chain(chain_id)
-        available = liquidity.available_before_bridge_back
+        available = liquidity.available_before_buy
         assert amount <= available, (
             f"CCTP bridge-back amount {amount} exceeds available bridge capital "
             f"{available} for chain {chain_id}"
