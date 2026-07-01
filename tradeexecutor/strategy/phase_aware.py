@@ -21,6 +21,8 @@ from tradeexecutor.state.other_data import OtherData
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignal, TradingPairSignalFlags
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 
 
 #: ``state.other_data`` key under which the park/promote event log is stored.
@@ -186,3 +188,193 @@ def read_open_park_events(other_data: OtherData) -> dict[int, QueueVaultEvent]:
         elif event.kind in _CLOSING_KINDS:
             open_events.pop(event.vault_internal_id, None)
     return open_events
+
+
+class PhaseAwareAlphaModel(AlphaModel):
+    """AlphaModel that defers window-closed vault deposits into a yield-bearing queue venue.
+
+    Instead of *skipping* a vault whose deposit window is closed, it **defers** the
+    buy and logs a durable park event, so the capital waits in the queue venue and
+    is deposited on a later cycle once the window opens. It reuses the overridable
+    hooks extracted from :py:class:`AlphaModel` in PR-0 and the queue-venue helpers
+    in this module. It is orthogonal to the allocation method (works with any
+    ``normalise_weights`` variant): the phase-aware pass operates on ``self.signals``
+    after targets are computed, whatever produced them.
+
+    Same-chain only in this PR; cross-chain (CCTP) promotion is a follow-up.
+
+    Wiring in ``decide_trades`` (after the usual set_signal / normalise /
+    update_old_weights / calculate_target_positions sequence, and before
+    ``generate_rebalance_trades_and_triggers``)::
+
+        rules = create_yield_rules(...)
+        alpha = PhaseAwareAlphaModel(
+            timestamp,
+            cycle=input.cycle,
+            venue_pair_ids=queue_vault_pair_ids(rules),
+        )
+        # ... set_signal() for each candidate, then (order matters):
+        alpha.carry_forward_non_redeemable_positions(position_manager)   # MUST precede select_top_signals
+        alpha.select_top_signals(count=...)                              # so settlement pins reach self.signals
+        alpha.assign_weights(...)
+        alpha.normalise_weights(...)
+        alpha.update_old_weights(state.portfolio, ignore_credit=False)   # venue excluded (inv. 2)
+        alpha.calculate_target_positions(position_manager)
+        alpha.apply_phase_aware_intent(position_manager)                 # park closed-window deposits; mark promotes
+        trades = alpha.generate_rebalance_trades_and_triggers(...)       # cap sees venue cash (inv. 4)
+        alpha.reconcile_phase_aware_events(position_manager, trades)     # finalise promotes that actually emitted
+        # then the existing YieldManager two-step sweeps idle cash into the venue.
+
+    The stale-close guard relies on settlement-pending pins reaching ``self.signals``,
+    so ``carry_forward_non_redeemable_positions()`` must run **before**
+    ``select_top_signals()`` (as the reference strategy does); otherwise an in-flight
+    parked deposit could be wrongly stale-closed.
+
+    See ``.claude/plans/phase-aware-alpha-model.md``.
+    """
+
+    def __init__(
+        self,
+        timestamp=None,
+        *,
+        cycle: int | None = None,
+        venue_pair_ids: set | None = None,
+        **kwargs,
+    ):
+        """
+        :param cycle:
+            Strategy cycle number, used as the durable event-log key. When ``None``
+            the durable park/promote logging and :py:meth:`apply_phase_aware_intent`
+            are inert (the deposit deferral still happens).
+
+        :param venue_pair_ids:
+            Internal ids of the queue-venue pairs (from
+            :py:func:`queue_vault_pair_ids`). Used to (a) add their redeemable value
+            to the same-cycle cash budget and (b) exclude them from old-weight
+            accounting.
+        """
+        super().__init__(timestamp=timestamp, **kwargs)
+        # This subclass is intentionally not slotted, so instances get a __dict__
+        # for these transient per-cycle attributes (not part of the serialised state).
+        self.phase_aware_cycle = cycle
+        self.venue_pair_ids: set = set(venue_pair_ids) if venue_pair_ids else set()
+        #: Vaults with an open park event whose window opened and stayed targeted this
+        #: cycle. The promote event is finalised in
+        #: :py:meth:`reconcile_phase_aware_events`, only once the deposit trade has
+        #: actually been generated.
+        self._promote_candidates: set = set()
+
+    # -- Invariant 4: the same-cycle buy budget includes instantly-redeemable venue balance --
+    def _available_same_cycle_cash(self, position_manager: PositionManager) -> USDollarAmount:
+        base = super()._available_same_cycle_cash(position_manager)
+        return base + queue_venue_redeemable(position_manager.state.portfolio, self.venue_pair_ids)
+
+    # -- Invariant 2: exclude queue-venue positions from alpha old-weight accounting --
+    def _count_position_in_old_weights(self, position, ignore_credit, portfolio_pairs) -> bool:
+        if position.pair.internal_id in self.venue_pair_ids:
+            return False
+        return super()._count_position_in_old_weights(position, ignore_credit, portfolio_pairs)
+
+    # -- Phase 1 (park): defer closed-window deposits BEFORE trade generation --
+    def apply_phase_aware_intent(self, position_manager: PositionManager) -> None:
+        """Park closed-window deposits and classify open park events, before trade generation.
+
+        Call after :py:meth:`calculate_target_positions` and before
+        :py:meth:`generate_rebalance_trades_and_triggers`. Parking here (rather than
+        during trade generation) removes the deferred buys from the whole-portfolio
+        min-trade gate and the same-cycle cash cap, which would otherwise count them
+        toward - or scale them to zero within - the buy budget. Promotions are only
+        *marked* here; they are finalised in :py:meth:`reconcile_phase_aware_events`
+        once the deposit has actually emitted.
+
+        For each fresh positive deposit signal (carry-forward pins - settlement-pending
+        / non-redeemable - are left to the base model):
+
+        - **window closed** -> defer: zero the adjustment, flag ``parked_in_queue_vault``,
+          record ``parked_usd``, and log a park event.
+        - **window open, with an existing open park event** -> a promotion candidate.
+
+        Then each still-open park event that was neither re-parked nor promoted this
+        cycle, and is not held by an in-flight settlement pin, is stale-closed.
+        """
+        if self.phase_aware_cycle is None:
+            return
+        other_data = position_manager.state.other_data
+        pricing_model = position_manager.pricing_model
+        open_events = read_open_park_events(other_data)
+        self._promote_candidates = set()
+
+        # 1. Park every fresh positive deposit whose window is closed.
+        for vault_id, signal in self.signals.items():
+            if signal.carry_forward_position or signal.position_adjust_usd <= 0:
+                continue
+            if pricing_model.can_deposit(self.timestamp, signal.pair):
+                if vault_id in open_events:
+                    self._promote_candidates.add(vault_id)
+            else:
+                self._park_signal(other_data, signal, open_events.get(vault_id))
+
+        # 2. Stale-close open park events whose vault is no longer a live parked deposit.
+        for vault_id in open_events:
+            if vault_id in self._promote_candidates:
+                continue
+            signal = self.signals.get(vault_id)
+            if signal is not None and (
+                signal.carry_forward_position
+                or TradingPairSignalFlags.parked_in_queue_vault in signal.flags
+            ):
+                # in-flight settlement pin, or re-parked this cycle -> keep the event open
+                continue
+            self._log_phase_aware_event(other_data, EVENT_CLOSE, vault_id, 0.0)
+
+    # -- Phase 2 (deposit-on-open): finalise promotions AFTER trade generation --
+    def reconcile_phase_aware_events(self, position_manager: PositionManager, trades) -> None:
+        """Log a promote event only for candidates whose deposit trade actually emitted.
+
+        Call after :py:meth:`generate_rebalance_trades_and_triggers`. A promotion
+        candidate whose buy was suppressed (min-trade threshold, dust, or a whole-cycle
+        cancellation) keeps its park event open to retry on a later cycle, rather than
+        closing it with no deposit.
+        """
+        if self.phase_aware_cycle is None or not self._promote_candidates:
+            return
+        other_data = position_manager.state.other_data
+        # A vault deposit long is built on synthetic_pair == pair (map_pair_for_signal
+        # returns the underlying for signal > 0), so trade.pair.internal_id matches the
+        # signal/vault key used for the promote candidates.
+        deposited = {t.pair.internal_id for t in trades if t.is_buy() and t.pair is not None}
+        for vault_id in self._promote_candidates:
+            if vault_id not in deposited:
+                continue  # buy suppressed -> leave the park event open, retry next cycle
+            signal = self.signals.get(vault_id)
+            if signal is not None:
+                signal.flags.add(TradingPairSignalFlags.promoted_from_queue_vault)
+            usd = signal.position_adjust_usd if signal is not None else 0.0
+            self._log_phase_aware_event(other_data, EVENT_PROMOTE, vault_id, usd)
+        self._promote_candidates = set()
+
+    def _park_signal(self, other_data: OtherData, signal: TradingPairSignal, existing_event=None) -> None:
+        """Defer a closed-window deposit into the queue venue and log a park event.
+
+        Re-parking a vault whose open park event already records the same amount does
+        not append a duplicate event, to bound the durable log over long runs.
+        """
+        signal.flags.add(TradingPairSignalFlags.parked_in_queue_vault)
+        usd = float(signal.position_adjust_usd)
+        signal.other_data["parked_usd"] = signal.position_adjust_usd
+        if existing_event is None or existing_event.usd != usd:
+            self._log_phase_aware_event(other_data, EVENT_PARK, signal.pair.internal_id, usd)
+        # Zero the deferred adjustment so it is excluded from the min-trade gate, the
+        # same-cycle cash cap, and trade generation (the base model then skips it).
+        signal.position_adjust_usd = 0.0
+        signal.position_adjust_quantity = 0.0
+        signal.position_adjust_ignored = True
+
+    def _log_phase_aware_event(self, other_data: OtherData, kind: str, vault_internal_id: int, usd: float) -> None:
+        """Append a park/promote/close event to the durable log (no-op without a cycle)."""
+        if self.phase_aware_cycle is None:
+            return
+        append_queue_event(
+            other_data,
+            QueueVaultEvent(kind, int(vault_internal_id), float(usd), self.phase_aware_cycle),
+        )
