@@ -922,6 +922,7 @@ class AlphaModel:
     def _cap_buys_by_async_sell_proceeds(
         self,
         position_manager: PositionManager,
+        same_cycle_cash_buffer_usd: USDollarAmount = 0.0,
     ) -> None:
         """Do not fund this cycle's buys with proceeds of queued vault redemptions.
 
@@ -932,6 +933,16 @@ class AlphaModel:
         proportionally so they fit in the cash actually available: current
         cash plus synchronous sell proceeds. The withheld capital is
         redeployed by a later rebalance once the redemption settles.
+
+        :param same_cycle_cash_buffer_usd:
+            Extra same-cycle cash headroom to withhold from the buy budget. The
+            synchronous sell proceeds here are mark-to-market, but execution
+            realises slightly less (fees, price impact, raw-unit rounding, and
+            cross-chain CCTP bridge floors), so scaling buys to exactly
+            ``cash + synchronous sells`` can leave a cross-chain plan a few
+            dollars short. The buffer keeps buys below realisable cash. Only bites
+            when async proceeds constrain the cycle (this method already returns
+            early otherwise).
         """
         async_sell_usd = 0.0
         sync_sell_usd = 0.0
@@ -962,7 +973,10 @@ class AlphaModel:
             return
 
         cash = position_manager.get_current_cash()
-        budget = max(cash + sync_sell_usd, 0.0)
+        # Withhold a same-cycle cash buffer: sync_sell_usd is mark-to-market, but
+        # execution realises slightly less, so scaling buys to exactly cash +
+        # sync sells can leave a cross-chain plan a few dollars short.
+        budget = max(cash + sync_sell_usd - same_cycle_cash_buffer_usd, 0.0)
         if buy_usd <= budget:
             return
 
@@ -2147,6 +2161,7 @@ class AlphaModel:
         invidiual_rebalance_min_threshold=None,
         sell_rebalance_min_threshold=None,
         execution_context: ExecutionContext = None,
+        same_cycle_cash_buffer_usd: USDollarAmount = 0.0,
     ) -> List[TradeExecution]:
         """Generate the trades that will rebalance the portfolio.
 
@@ -2200,6 +2215,20 @@ class AlphaModel:
 
         :param execution_context:
             Needed to tune down print/log/state file clutter when backtesting thousands of trades.
+
+        :param same_cycle_cash_buffer_usd:
+            Same-cycle cash headroom to withhold when async (ERC-7540 / Ostium)
+            redemptions force this cycle's buys to be funded from current cash plus
+            synchronous sell proceeds only.
+
+            The synchronous sell proceeds are estimated mark-to-market, but
+            execution realises slightly less (fees, price impact, raw-unit
+            rounding, and cross-chain CCTP bridge floors). Withholding this buffer
+            keeps buys below the realisable same-cycle cash so a cross-chain plan
+            does not come up a few dollars short. Only applied when async sell
+            proceeds actually constrain this cycle; ``0.0`` preserves the previous
+            behaviour. For cross-chain strategies pass the strategy's
+            ``cross_chain_cash_buffer_usd``.
 
         :return:
             List of trades we need to execute to reach the target portfolio.
@@ -2259,7 +2288,7 @@ class AlphaModel:
         # Buys are normally financed by this cycle's sells executing first;
         # async vault redemptions only enter the queue and pay out cycles later,
         # so buys must fit in the cash that actually arrives this cycle.
-        self._cap_buys_by_async_sell_proceeds(position_manager)
+        self._cap_buys_by_async_sell_proceeds(position_manager, same_cycle_cash_buffer_usd)
 
         for signal in self.iterate_signals():
 

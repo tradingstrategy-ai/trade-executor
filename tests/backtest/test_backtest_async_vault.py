@@ -1394,6 +1394,99 @@ def test_backtest_async_vault_sell_proceeds_cannot_fund_buys():
     assert vs_position.get_value() == pytest.approx(INITIAL_DEPOSIT * allocation, rel=0.05)
 
 
+def test_backtest_async_vault_same_cycle_cash_buffer():
+    """The same-cycle cash buffer withholds extra headroom from the async cap.
+
+    When async redemption proceeds force this cycle's buys to be funded from
+    current cash plus synchronous sell proceeds, the sync proceeds are only
+    mark-to-market; execution realises slightly less, so scaling buys to exactly
+    the free cash can leave a (cross-chain) plan a few dollars short. Passing
+    ``same_cycle_cash_buffer_usd`` keeps the rotation buys below the free cash by
+    the buffer amount.
+
+    1. Deposit 90% into an override-only async vault VO, leaving ~10% free cash.
+    2. Rotate everything into VS in one cycle with a 200 USD same-cycle buffer;
+       the VO close is an async redeem whose proceeds arrive later.
+    3. Assert the rotation-cycle VS buy is capped to free cash minus the buffer
+       (not just free cash), and the buffer flag fired.
+    """
+    # 1. Deposit 90% into the override-only async vault VO, leaving ~10% free cash.
+    strategy_universe, pairs = _make_multi_vault_universe([
+        ("VO", VAULT_A_ADDRESS, None),
+        ("VS", VAULT_B_ADDRESS, None),
+    ])
+    one_day = datetime.timedelta(days=1)
+    allocation = 0.9
+    buffer_usd = 200.0
+    weights_schedule = {
+        START_AT + 0 * one_day: {"VO": 1.0},
+        START_AT + 1 * one_day: {"VO": 1.0},
+        START_AT + 2 * one_day: {"VO": 1.0},
+        START_AT + 3 * one_day: {"VS": 1.0},   # rotation: async VO close + VS buy
+        START_AT + 4 * one_day: {"VS": 1.0},
+        START_AT + 5 * one_day: {"VS": 1.0},
+    }
+    rotation_ts = START_AT + 3 * one_day
+    flags_by_cycle: dict[datetime.datetime, set] = {}
+
+    def decide(input: StrategyInput) -> list[TradeExecution]:
+        state = input.state
+        weights = weights_schedule.get(input.timestamp)
+        if weights is None:
+            return []
+
+        pm = input.get_position_manager()
+        portfolio = state.portfolio
+        pair_by_symbol = {p.base.token_symbol: p for p in input.strategy_universe.iterate_pairs()}
+
+        alpha_model = AlphaModel(input.timestamp, close_position_weight_epsilon=0.001)
+        for symbol, weight in weights.items():
+            alpha_model.set_signal(pair_by_symbol[symbol], weight)
+
+        locked = alpha_model.carry_forward_non_redeemable_positions(pm)
+        deployable = max(portfolio.calculate_total_equity() * allocation - locked, 0.0)
+
+        alpha_model.select_top_signals(count=2)
+        alpha_model.assign_weights(method=weight_passthrouh)
+        alpha_model.normalise_weights(max_weight=1.0)
+        alpha_model.update_old_weights(portfolio, ignore_credit=False)
+        alpha_model.calculate_target_positions(pm, investable_equity=deployable)
+        # 2. Rotate with a same-cycle cash buffer.
+        trades = alpha_model.generate_rebalance_trades_and_triggers(
+            pm,
+            min_trade_threshold=1.0,
+            individual_rebalance_min_threshold=1.0,
+            sell_rebalance_min_threshold=1.0,
+            execution_context=input.execution_context,
+            same_cycle_cash_buffer_usd=buffer_usd,
+        )
+        flags_by_cycle[input.timestamp] = set().union(*(s.flags for s in alpha_model.raw_signals.values()))
+        return trades
+
+    reserve_address = strategy_universe.reserve_assets[0].address
+    hook = _SnapshotHook(reserve_address, pairs["VO"].base.address)
+
+    state, _, _ = _run(
+        strategy_universe,
+        hook,
+        decide=decide,
+        delay=SETTLEMENT_DELAY,
+        delay_overrides={VAULT_A_ADDRESS: SETTLEMENT_DELAY},
+    )
+
+    trades = list(state.portfolio.get_all_trades())
+    assert all(t.is_success() for t in trades), f"Unsettled trades: {trades}"
+
+    # 3. The rotation-cycle VS buy is capped to free cash MINUS the buffer.
+    assert TradingPairSignalFlags.capped_by_pending_settlement_cash in flags_by_cycle[rotation_ts], \
+        f"Cap never fired on the rotation cycle: {flags_by_cycle[rotation_ts]}"
+    cash_at_rotation = next(s["cash"] for s in hook.snapshots if s["ts"] == rotation_ts)
+    rotation_buys = sum(float(t.planned_reserve) for t in trades if t.is_buy() and t.opened_at == rotation_ts)
+    assert rotation_buys > 0, "Rotation cycle generated no capped buy at all"
+    assert rotation_buys <= cash_at_rotation - buffer_usd + 1e-6, \
+        f"Rotation buys {rotation_buys} exceed free cash {cash_at_rotation} minus buffer {buffer_usd}"
+
+
 @pytest.mark.timeout(60)
 def test_pending_vault_settlements_chart_metadata_matrix():
     """The pending settlements chart handles every persisted async trade shape.

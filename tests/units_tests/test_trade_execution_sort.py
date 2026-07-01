@@ -57,6 +57,18 @@ def vault_pair(usdc):
     )
 
 
+@pytest.fixture
+def cctp_pair(usdc: AssetIdentifier) -> TradingPairIdentifier:
+    """CCTP bridge pair (Base USDC <- Ethereum USDC) used for bridge-back/out trades."""
+    usdc_base = AssetIdentifier(ChainId.base.value, "0x0000000000000000000000000000000000000004", "USDC", 6)
+    return TradingPairIdentifier(
+        base=usdc_base, quote=usdc,
+        pool_address="0x0000000000000000000000000000000000000013",
+        exchange_address="0x0000000000000000000000000000000000000023",
+        internal_id=4, kind=TradingPairKind.cctp_bridge, fee=0,
+    )
+
+
 def _make_trade(trade_id, pair, quantity, reserve_currency, flags=None, closing=None):
     ts = datetime.datetime(2025, 1, 1)
     return TradeExecution(
@@ -109,3 +121,44 @@ def test_vault_withdraw_before_deposit(vault_pair, usdc):
 
     assert sorted_trades[0] is withdraw
     assert sorted_trades[1] is deposit
+
+
+def test_cctp_bridge_sort_ordering(
+    spot_pair: TradingPairIdentifier,
+    vault_pair: TradingPairIdentifier,
+    cctp_pair: TradingPairIdentifier,
+    usdc: AssetIdentifier,
+):
+    """Verify CCTP bridge trades sort into the correct cross-chain phases.
+
+    The corrected order must place bridges between sells and buys so that a
+    satellite sell's proceeds can be bridged to the hub and the bridged-out
+    capital lands before any buy spends it:
+    sells -> bridge-backs -> bridge-outs -> buys.
+
+    1. Build one trade of each relevant phase in scrambled order.
+    2. Sort them with prepare_sorted_trades().
+    3. Assert the sequence is vault-withdraw, spot-sell, bridge-back,
+       bridge-out, spot-buy, vault-deposit.
+    """
+    # 1. Build one trade of each relevant phase in scrambled order.
+    vault_withdraw = _make_trade(1, vault_pair, -200, usdc)
+    spot_sell = _make_trade(2, spot_pair, -75, usdc)
+    bridge_back = _make_trade(3, cctp_pair, -500, usdc)  # negative quantity -> sell
+    bridge_out = _make_trade(4, cctp_pair, 500, usdc)  # positive quantity -> buy
+    spot_buy = _make_trade(5, spot_pair, 100, usdc)
+    vault_deposit = _make_trade(6, vault_pair, 300, usdc)
+
+    # 2. Sort them with prepare_sorted_trades().
+    trades = [spot_buy, bridge_out, vault_deposit, vault_withdraw, bridge_back, spot_sell]
+    sorted_trades = prepare_sorted_trades(trades)
+
+    # 3. Assert the corrected cross-chain phase order.
+    assert sorted_trades == [
+        vault_withdraw,
+        spot_sell,
+        bridge_back,
+        bridge_out,
+        spot_buy,
+        vault_deposit,
+    ]

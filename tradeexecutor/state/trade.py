@@ -27,7 +27,16 @@ from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 logger = logging.getLogger()
 
 
+#: Execution-order bump for CCTP bridge-back sells (satellite -> primary hub).
+#: Bridge-backs run after spot sells (-40M) but before bridge-outs, so they can
+#: carry same-cycle satellite sell proceeds to the hub.
 CCTP_BRIDGE_ORDER_BUMP = 30_000_000
+
+#: Execution-order bump for CCTP bridge-out buys (primary hub -> satellite).
+#: Bridge-outs run after bridge-backs (-30M) but before any buy (~0), so the
+#: bridged capital lands on the satellite before same-cycle satellite buys spend it.
+CCTP_BRIDGE_OUT_ORDER_BUMP = 20_000_000
+
 VAULT_SETTLEMENT_REQUEST_RESERVE_KEY = "vault_settlement_request_reserve"
 VAULT_SETTLEMENT_REQUEST_QUANTITY_KEY = "vault_settlement_request_quantity"
 
@@ -1369,7 +1378,11 @@ class TradeExecution:
 
         - Vault withdrawals next (free up USDC from external vaults)
 
-        - Selling trades next
+        - Selling trades (spot sells, reduces) next, releasing cash
+
+        - CCTP bridge-backs (satellite -> primary hub), carrying sell proceeds
+
+        - CCTP bridge-outs (primary hub -> satellite), funding satellite buys
 
         - Buy trades with all cash in hand
 
@@ -1386,13 +1399,16 @@ class TradeExecution:
         credit_order_bump = 200_000_000
         close_order_bump = 100_000_000
         vault_order_bump = 50_000_000
+        reduce_order_bump = 40_000_000
         if self.pair.is_cctp_bridge():
             if self.is_sell():
-                # Bridge-backs: after vault withdrawals (-50M), before spot sells
+                # Bridge-backs: after spot sells (-40M), before bridge-outs.
+                # Carry same-cycle satellite sell proceeds + idle capital to the hub.
                 return -self.trade_id - CCTP_BRIDGE_ORDER_BUMP
             else:
-                # Bridge-outs: after regular buys, before vault deposits (+50M)
-                return self.trade_id + CCTP_BRIDGE_ORDER_BUMP
+                # Bridge-outs: after bridge-backs (-30M), before buys (~0), so the
+                # bridged capital funds same-cycle satellite buys.
+                return -self.trade_id - CCTP_BRIDGE_OUT_ORDER_BUMP
 
         if self.is_credit_supply() and TradeFlag.close in self.flags:
             # Always withdraw credit to cash in hand first,
@@ -1406,10 +1422,11 @@ class TradeExecution:
             # Execute before regular spot sells but after position closes.
             return -self.trade_id - vault_order_bump
         elif (not self.is_credit_supply()) and self.is_reduce():
-            # Reduces any existing position to release cash.
-            # Trades that release cash need to go before
-            # trades where we spend reserves.
-            return -self.trade_id
+            # Reduces (spot sells, non-closing long reduces) release cash.
+            # Execute before CCTP bridge-backs (-30M) so their proceeds can be
+            # bridged to the primary hub the same cycle, and before buys that
+            # spend reserves.
+            return -self.trade_id - reduce_order_bump
         elif self.is_vault() and self.is_buy():
             # Vault deposits send USDC to external vaults.
             # Execute after regular buys but before credit supply.

@@ -7,15 +7,17 @@ working on that area:
 
 | Doc | Description |
 |-----|-------------|
-| `.claude/docs/agent-tricks-and-troubleshooting.md` | Required before invoking Claude CLI or Codex CLI for plan, code, or pull request reviews |
+| `.claude/docs/agent-tricks-and-troubleshooting.md` | **MANDATORY read before ANY Claude CLI or Codex CLI invocation** (reviews, sanity checks, or one-off runs) |
 | `.claude/docs/cli-command.md` | CLI command patterns for trade-executor |
 | `.claude/docs/vault-deposit-redeem.md` | Synchronous and async (ERC-7540 / Lagoon / Ostium) vault deposit and redeem flows |
 | `.claude/docs/hypercore-vault.md` | HyperCore native vault execution — properties, data structures, deposit/withdrawal phases, HyperEVM interactions, modules and diagrams |
 
 ## Agent review workflows
 
-- Before calling Claude CLI or Codex CLI to review a plan, code change, pull request, or local diff, **always read** `.claude/docs/agent-tricks-and-troubleshooting.md` first.
+- **BLOCKING REQUIREMENT: before running ANY `codex` / `codex exec` or `claude` CLI command — reviews, sanity checks, or one-off runs — you MUST first read `.claude/docs/agent-tricks-and-troubleshooting.md`.** Do not invoke either CLI until you have read it in the current session. This is not optional and applies even when the call "looks trivial".
 - Follow its recommended invocation patterns for plan reviews, code reviews, PR reviews, tool restrictions, timeouts, and handling silent or hanging agent runs.
+- Always run non-interactive Codex reviews in **streaming mode** (`codex exec --json`) written to a raw file — never plain text mode piped through `tail`/`head`, which buffers output until completion and makes the run look hung.
+- `codex exec` selects the sandbox directly (`--sandbox read-only` for reviews) and does **not** accept `--ask-for-approval` (that flag is interactive-only).
 - Do not fall back to generic `claude --help`, plugin docs, or ad-hoc CLI flags until the local troubleshooting doc has been checked.
 
 ## English
