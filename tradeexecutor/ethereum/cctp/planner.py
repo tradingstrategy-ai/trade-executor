@@ -42,8 +42,9 @@ class ChainLiquidity:
     -40M, bridge-backs at -30M), so every same-cycle sell proceed is available to
     bridge back. The ledger therefore tracks a single satellite-side available
     balance (idle bridge capital + same-cycle sells) rather than an early/late
-    sell split. The ``_trade_releases_before_bridge_back`` assertion in the
-    classification loop enforces that invariant.
+    sell split. The classification loop enforces that invariant via
+    ``_trade_releases_before_bridge_back``: a satellite sell that does not release
+    cash before bridge-backs is skipped, not counted here.
     """
 
     net_flow: Decimal = Decimal(0)
@@ -171,9 +172,9 @@ def _trade_releases_before_bridge_back(trade: TradeExecution) -> bool:
 
     After the CCTP phase reorder every non-async satellite reduce sorts below
     ``-CCTP_BRIDGE_ORDER_BUMP`` (spot sells at -40M, vault withdrawals at -50M),
-    so this is expected to hold for every satellite sell counted by the planner.
-    It is used as an invariant assertion in the classification loop rather than
-    for branching.
+    so this holds for every genuine spot cross-chain sell. The classification loop
+    uses it to skip (and warn about) sell shapes that do not release cash before
+    bridge-backs (e.g. a short-position increase) rather than counting them.
     """
     return trade.get_execution_sort_position() < -CCTP_BRIDGE_ORDER_BUMP
 
@@ -301,17 +302,27 @@ def inject_cctp_bridge_trades(
                 )
                 continue
             # Sell frees up capital — positive flow means excess to bridge back.
-            # Every counted satellite sell must sort before CCTP bridge-backs so
-            # its proceeds are available for same-cycle bridge-back sizing. This
-            # is the load-bearing invariant behind the single-balance ledger; the
-            # assert fails loudly if a future sort change (or an unexpected sell
-            # shape, e.g. a credit sell without a close/open flag) breaks it.
-            assert _trade_releases_before_bridge_back(trade), (
-                f"Satellite sell #{trade.trade_id} sorts at "
-                f"{trade.get_execution_sort_position()}, not before CCTP bridge-backs "
-                f"(< -{CCTP_BRIDGE_ORDER_BUMP}); the planner assumes every counted "
-                f"satellite sell releases before bridge-backs"
-            )
+            # The single-balance ledger assumes every counted satellite sell sorts
+            # before CCTP bridge-backs (spot sells at -40M, vault withdrawals at
+            # -50M), so its proceeds are available for same-cycle bridge-back
+            # sizing. A sell shape that does NOT release cash before bridge-backs
+            # (e.g. a short-position increase, which is is_sell() but frees no spot
+            # USDC, or a zero-quantity repair sell) must not be counted as
+            # bridge-back funding - counting it would over-size a bridge-back
+            # against cash that is not there. Skip it and log loudly rather than
+            # crashing the cycle; genuine spot cross-chain flows always release
+            # before bridge-backs.
+            if not _trade_releases_before_bridge_back(trade):
+                logger.warning(
+                    "Ignoring satellite sell #%d on chain %d for CCTP liquidity "
+                    "planning: it sorts at %d, not before bridge-backs (< -%d), so "
+                    "its proceeds are not available to fund same-cycle bridge-backs",
+                    trade.trade_id,
+                    trade_chain_id,
+                    trade.get_execution_sort_position(),
+                    CCTP_BRIDGE_ORDER_BUMP,
+                )
+                continue
             liquidity = liquidity_by_chain[trade_chain_id]
             liquidity.net_flow += value
             liquidity.satellite_sells_before_buy += value

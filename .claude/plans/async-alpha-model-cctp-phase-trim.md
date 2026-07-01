@@ -266,14 +266,16 @@ just comments to fix:
   `satellite_sells_before_buy`); the `if _trade_releases_before_bridge_back(...)`
   branch at `:304-305` collapses to a single unconditional add.
 - `_trade_releases_before_bridge_back()` helper (`:175-177`) → no longer needed
-  for branching, but **repurpose it into a mandatory assertion** (not optional):
-  in the sell-classification loop, assert every counted satellite sell sorts below
-  `-CCTP_BRIDGE_ORDER_BUMP`. This is the load-bearing correctness guard for the
-  whole `early == all` collapse — it catches (a) any future sort change and
-  (b) unsupported sell shapes that Codex flagged as *not* guaranteed to sort early,
-  e.g. a credit sell lacking the expected close/open flag falls through to
-  `+trade_id` (`trade.py:1417-1422`). If such a trade ever reaches the ledger the
-  assert fires instead of silently mis-accounting.
+  for branching, but **repurpose it into a warn-and-skip guard** in the
+  sell-classification loop: a satellite sell that does not sort below
+  `-CCTP_BRIDGE_ORDER_BUMP` is skipped (and logged) rather than counted. This is
+  the correctness guard for the `early == all` collapse — everything counted is
+  early. (Implemented as warn+skip, not a hard `assert`, after review: an
+  uncommon-but-legitimate shape that is `is_sell()` yet does not release spot cash
+  before bridge-backs — a short-position increase, or a zero-quantity repair sell
+  — would fall through to `+trade_id` (`trade.py:1417-1422`). `master` tolerated
+  these; a hard assert would turn them into a crash, so we skip+warn instead,
+  which is strictly safer than both the assert and `master`.)
 
 Codex sanity check (2026-07-01) confirmed the removals are self-contained:
 `satellite_sells_after_bridge_back_before_buy`, `available_before_bridge_back`, and

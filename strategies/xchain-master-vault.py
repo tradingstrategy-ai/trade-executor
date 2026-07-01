@@ -197,6 +197,14 @@ class Parameters:
     individual_rebalance_min_threshold_usd = 50.0
     sell_rebalance_min_threshold_usd = 10.0
 
+    #: Same-cycle cash headroom withheld when async redemptions force this cycle's
+    #: buys to be funded from cash + synchronous sell proceeds only. The sync sell
+    #: proceeds are mark-to-market; execution realises slightly less (fees, price,
+    #: raw-unit rounding, CCTP bridge floors), so this buffer keeps buys below the
+    #: realisable same-cycle cash and prevents a cross-chain plan coming up a few
+    #: dollars short (NotEnoughMoney from the CCTP planner). Tunable per portfolio.
+    cross_chain_cash_buffer_usd = 1_000.0
+
     min_tvl_usd = 7_500
     min_age = 0.075
     weight_signal = "age_ramp"
@@ -366,6 +374,7 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         individual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
         sell_rebalance_min_threshold=parameters.sell_rebalance_min_threshold_usd,
         execution_context=input.execution_context,
+        same_cycle_cash_buffer_usd=parameters.cross_chain_cash_buffer_usd,
     )
     missed_vault_events = alpha_model.get_missed_vault_events()
     if missed_vault_events:
