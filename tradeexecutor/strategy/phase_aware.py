@@ -86,23 +86,57 @@ class QueueVaultEvent:
 def is_queue_vault(position: TradingPosition) -> bool:
     """Is this position a queue-venue (YieldManager-managed) holding?
 
-    True when it carries the :py:data:`IS_QUEUE_VAULT_KEY` tag in ``other_data``.
-    The tag is set by the sweep when the venue position is opened (or derived
-    from ``YieldRuleset`` membership by the caller).
+    Reads the :py:data:`IS_QUEUE_VAULT_KEY` tag in ``other_data``. The tag has no
+    natural writer — YieldManager writes ``trade.other_data`` (not
+    ``position.other_data``) and PhaseAwareAlphaModel must not touch venue
+    positions — so :py:func:`queue_vault_pair_ids` membership is the preferred,
+    reload-safe identity path; this tag is an optional override.
     """
     return bool(position.other_data.get(IS_QUEUE_VAULT_KEY))
 
 
-def queue_venue_redeemable(portfolio: Portfolio) -> USDollarAmount:
+def mark_queue_vault(position: TradingPosition) -> None:
+    """Optionally tag a position as a queue-venue holding (override path).
+
+    The preferred identity is :py:func:`queue_vault_pair_ids` membership
+    (config-derived, reload-safe); this tag is available if a caller wants to mark
+    a specific position explicitly. Idempotent.
+    """
+    position.other_data[IS_QUEUE_VAULT_KEY] = True
+
+
+def queue_vault_pair_ids(yield_rules) -> set:
+    """Internal ids of the venues declared in a ``YieldRuleset``.
+
+    Duck-typed on ``yield_rules.weights[i].pair`` to avoid importing YieldManager.
+    This config-derived set is the **primary, reload-safe** way to identify
+    queue-venue positions (see :py:func:`is_queue_vault` for why the tag path is
+    only an override).
+    """
+    return {rule.pair.internal_id for rule in yield_rules.weights}
+
+
+def queue_venue_redeemable(
+    portfolio: Portfolio,
+    venue_pair_ids: set | None = None,
+) -> USDollarAmount:
     """Instantly-redeemable USD value held in queue-venue positions.
 
     This is the balance the same-cycle cash cap adds to ``get_current_cash()``: a
     synchronous venue redeems same-cycle, so YieldManager can release this to fund
     a promotion buy in the same cycle.
+
+    Venue positions are identified by ``YieldRuleset`` membership when
+    ``venue_pair_ids`` is given (from :py:func:`queue_vault_pair_ids`; reload-safe,
+    preferred), otherwise by the :py:func:`is_queue_vault` tag.
     """
     total: USDollarAmount = 0.0
     for position in portfolio.open_positions.values():
-        if is_queue_vault(position):
+        if venue_pair_ids is not None:
+            is_venue = position.pair.internal_id in venue_pair_ids
+        else:
+            is_venue = is_queue_vault(position)
+        if is_venue:
             total += position.get_value()
     return total
 

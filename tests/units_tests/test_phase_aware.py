@@ -16,6 +16,7 @@ import datetime
 
 import pytest
 
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.other_data import OtherData
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignalFlags
 from tradeexecutor.strategy.phase_aware import (
@@ -27,17 +28,32 @@ from tradeexecutor.strategy.phase_aware import (
     QueueVaultEvent,
     append_queue_event,
     is_queue_vault,
+    mark_queue_vault,
+    queue_vault_pair_ids,
     queue_venue_redeemable,
     read_open_park_events,
 )
+from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
+from tradingstrategy.chain import ChainId
 
 
 @dataclasses.dataclass
 class _StubPair:
     cctp: bool = False
+    internal_id: int | None = None
 
     def is_cctp_bridge(self) -> bool:
         return self.cctp
+
+
+@dataclasses.dataclass
+class _StubRule:
+    pair: _StubPair
+
+
+@dataclasses.dataclass
+class _StubRuleset:
+    weights: list
 
 
 @dataclasses.dataclass
@@ -234,3 +250,81 @@ def test_should_skip_calls_deposit_window_closed_hook():
     assert signal.position_adjust_ignored is True
     assert TradingPairSignalFlags.cannot_deposit in signal.flags
     assert signal.other_data["missed_deposit_usd"] == pytest.approx(1000.0)
+
+
+def test_queue_vault_signal_flags_exist():
+    """The two PhaseAwareAlphaModel diagnostic flags exist with snake_case values.
+
+    1. parked_in_queue_vault and promoted_from_queue_vault are members.
+    2. Their values are snake_case strings equal to their names (repo enum convention).
+    """
+    # 1-2. Members exist with snake_case value == name.
+    assert TradingPairSignalFlags.parked_in_queue_vault.value == "parked_in_queue_vault"
+    assert TradingPairSignalFlags.promoted_from_queue_vault.value == "promoted_from_queue_vault"
+
+
+def test_mark_queue_vault_tag():
+    """mark_queue_vault tags a position so is_queue_vault recognises it.
+
+    1. An untagged position is not a queue vault.
+    2. After mark_queue_vault it is, and queue_venue_redeemable counts its value.
+    """
+    position = _StubPosition(value=750.0, other_data={})
+
+    # 1. Untagged position is not a queue vault.
+    assert is_queue_vault(position) is False
+
+    # 2. Tagged position is recognised and its value is counted.
+    mark_queue_vault(position)
+    assert is_queue_vault(position) is True
+    portfolio = _StubPortfolio(open_positions={1: position})
+    assert queue_venue_redeemable(portfolio) == pytest.approx(750.0)
+
+
+def test_next_open_getters():
+    """TradingPairIdentifier surfaces deposit/redemption next-open times (diagnostics only).
+
+    1. Build a vault-like pair and stamp the deposit next-open time in other_data.
+    2. get_deposit_next_open returns that datetime.
+    3. An absent redemption key returns None.
+    """
+    base = AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "VLT", 18, 1)
+    quote = AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "USDC", 6, 2)
+    pair = TradingPairIdentifier(
+        base,
+        quote,
+        generate_random_ethereum_address(),
+        generate_random_ethereum_address(),
+        internal_id=999,
+    )
+
+    # 1-2. A stamped deposit next-open time is returned by the getter. The key
+    # "deposit_next_open" is the one written by dex_data_translation.py; keep the
+    # getter and that writer in sync if either key is renamed.
+    deposit_open = datetime.datetime(2026, 2, 1, 18, 0)
+    pair.other_data["deposit_next_open"] = deposit_open
+    assert pair.get_deposit_next_open() == deposit_open
+
+    # 3. An absent redemption next-open key returns None.
+    assert pair.get_redemption_next_open() is None
+
+
+def test_queue_vault_membership_identity():
+    """queue_vault_pair_ids + membership identify venue positions, reload-safe, without the tag.
+
+    1. queue_vault_pair_ids extracts the venue internal ids from a YieldRuleset.
+    2. queue_venue_redeemable with those ids counts only the venue position, even
+       though no is_queue_vault tag is set (the primary, reload-safe identity path).
+    """
+    venue_pos = _StubPosition(value=400.0, other_data={}, pair=_StubPair(internal_id=101))
+    directional = _StubPosition(value=900.0, other_data={}, pair=_StubPair(internal_id=202))
+    ruleset = _StubRuleset(weights=[_StubRule(pair=_StubPair(internal_id=101))])
+
+    # 1. Extract venue ids from the ruleset.
+    venue_ids = queue_vault_pair_ids(ruleset)
+    assert venue_ids == {101}
+
+    # 2. Membership counts only the venue position, with no tag set on it.
+    portfolio = _StubPortfolio(open_positions={1: venue_pos, 2: directional})
+    assert is_queue_vault(venue_pos) is False
+    assert queue_venue_redeemable(portfolio, venue_ids) == pytest.approx(400.0)

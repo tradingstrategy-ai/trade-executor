@@ -971,6 +971,27 @@ class TradingPairIdentifier:
         """
         return self.other_data.get("redemption_closed_reason")
 
+    def get_deposit_next_open(self) -> datetime.datetime | None:
+        """Estimated time the vault's deposit window next opens.
+
+        Diagnostics / ETA only: a scan-time snapshot copied from the vault
+        metadata (written by ``dex_data_translation.py``) and refreshed from the
+        trading universe each cycle - a live estimate, not a persisted historical
+        series. Never use it for historical backtest decisions (look-ahead).
+        ``None`` if unknown or the vault is always open.
+        """
+        return self.other_data.get("deposit_next_open")
+
+    def get_redemption_next_open(self) -> datetime.datetime | None:
+        """Estimated time the vault's redemption window next opens.
+
+        Diagnostics / ETA only: a scan-time snapshot refreshed from the trading
+        universe each cycle - a live estimate, not a persisted historical series.
+        Never use it for historical backtest decisions (look-ahead). ``None`` if
+        unknown or the vault is always open.
+        """
+        return self.other_data.get("redemption_next_open")
+
     def get_vault_risk_level(self) -> str | None:
         """Get the vault risk classification.
 

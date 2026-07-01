@@ -108,6 +108,15 @@ class TradingPairSignalFlags(enum.Enum):
     #: queued async vault redemptions whose cash arrives only after settlement.
     capped_by_pending_settlement_cash = "capped_by_pending_settlement_cash"
 
+    #: This buy was deferred (not skipped) because its vault's deposit window is
+    #: closed: the capital waits in the queue venue and a park event is logged,
+    #: to be deposited once the window opens (PhaseAwareAlphaModel park step).
+    parked_in_queue_vault = "parked_in_queue_vault"
+
+    #: This buy re-emitted previously parked capital into a vault whose deposit
+    #: window has now opened (PhaseAwareAlphaModel promote step).
+    promoted_from_queue_vault = "promoted_from_queue_vault"
+
 
 @dataclass_json
 @dataclass(slots=True)
