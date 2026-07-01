@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
+from tradeexecutor.backtest.vault_windows import VaultWindowSchedule
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import \
     UniswapV2Routing
 from tradeexecutor.state.identifier import TradingPairIdentifier
@@ -75,6 +76,7 @@ class BacktestPricing(PricingModel):
         three_leg_resolution=True,
         ignore_routing=False,
         vault_state: pd.DataFrame | None = None,
+        vault_window_overrides: dict[int, VaultWindowSchedule] | None = None,
     ):
         """
 
@@ -176,6 +178,9 @@ class BacktestPricing(PricingModel):
         self.liquidity_universe = liquidity_universe
         self.three_leg_resolution = three_leg_resolution
         self.ignore_routing = ignore_routing
+        # Synthetic per-vault deposit/redemption window schedules (backtest modelling).
+        # Consulted BEFORE the real vault_state, so an override beats stale/always-open data.
+        self._vault_window_overrides: dict[int, VaultWindowSchedule] = vault_window_overrides or {}
 
         if fixed_prices:
             for k, v in fixed_prices.items():
@@ -632,6 +637,10 @@ class BacktestPricing(PricingModel):
         ts: datetime.datetime | None,
         pair: TradingPairIdentifier,
     ) -> bool:
+        override = self._vault_window_overrides.get(pair.internal_id) if pair is not None else None
+        if override is not None:
+            # Explicit backtest window override beats the (possibly stale) vault_state.
+            return ts is None or override.is_deposit_open(ts)
         state = self._lookup_vault_state(ts, pair)
         if state is None:
             return True
@@ -658,6 +667,18 @@ class BacktestPricing(PricingModel):
             pair_ticker=pair.get_ticker() if pair else None,
             vault_address=pair.pool_address if pair else None,
         )
+
+        override = self._vault_window_overrides.get(pair.internal_id) if pair is not None else None
+        if override is not None:
+            # Explicit backtest window override beats the (possibly stale) vault_state.
+            if ts is not None and not override.is_redemption_open(ts):
+                result.can_redeem = False
+                result.reason_code = RedemptionBlockReason.redemption_window_closed
+                result.max_redemption = 0.0
+                result.max_withdrawable = 0.0
+                result.message = "Vault redemptions closed by backtest window override"
+            return result
+
         state = self._lookup_vault_state(ts, pair)
         if state is None:
             return result
