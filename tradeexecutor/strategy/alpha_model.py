@@ -919,6 +919,16 @@ class AlphaModel:
             pending_redemption_usd,
         )
 
+    def _available_same_cycle_cash(self, position_manager: PositionManager) -> USDollarAmount:
+        """Cash available to fund this cycle's buys, before same-cycle sell proceeds.
+
+        Extracted as an overridable hook (behaviour-preserving) so a subclass such
+        as ``PhaseAwareAlphaModel`` can widen the budget to include instantly
+        redeemable queue-venue balance without reimplementing
+        :py:meth:`_cap_buys_by_async_sell_proceeds`.
+        """
+        return position_manager.get_current_cash()
+
     def _cap_buys_by_async_sell_proceeds(
         self,
         position_manager: PositionManager,
@@ -972,7 +982,7 @@ class AlphaModel:
         if buy_usd <= 0 or async_sell_usd <= 0:
             return
 
-        cash = position_manager.get_current_cash()
+        cash = self._available_same_cycle_cash(position_manager)
         # Withhold a same-cycle cash buffer: sync_sell_usd is mark-to-market, but
         # execution realises slightly less, so scaling buys to exactly cash +
         # sync sells can leave a cross-chain plan a few dollars short.
@@ -1696,6 +1706,31 @@ class AlphaModel:
         for pair_id, raw_weight in weights.items():
             self.signals[pair_id].raw_weight = raw_weight
 
+    def _count_position_in_old_weights(
+        self,
+        position: TradingPosition,
+        ignore_credit: bool,
+        portfolio_pairs: list[TradingPairIdentifier] | None,
+    ) -> bool:
+        """Whether an open position counts toward the alpha model's old weights.
+
+        Extracted as an overridable hook (behaviour-preserving) so a subclass such
+        as ``PhaseAwareAlphaModel`` can additionally exclude queue-venue positions
+        (managed by YieldManager) *before* :py:meth:`set_old_weight` runs — a
+        credit-supply venue would otherwise assert there, a vault venue would be
+        sold to zero.
+        """
+        if position.pair.is_cctp_bridge():
+            return False
+
+        if ignore_credit and (position.is_credit_supply() or position.is_vault()):
+            return False
+
+        if portfolio_pairs and position.pair not in portfolio_pairs:
+            return False
+
+        return True
+
     def update_old_weights(
         self,
         portfolio: Portfolio,
@@ -1721,13 +1756,7 @@ class AlphaModel:
         # - include only portfolio_pairs if given
         alpha_model_positions = []
         for position in portfolio.open_positions.values():
-            if position.pair.is_cctp_bridge():
-                continue
-
-            if ignore_credit and (position.is_credit_supply() or position.is_vault()):
-                continue
-
-            if portfolio_pairs and position.pair not in portfolio_pairs:
+            if not self._count_position_in_old_weights(position, ignore_credit, portfolio_pairs):
                 continue
 
             alpha_model_positions.append(position)
@@ -1905,14 +1934,7 @@ class AlphaModel:
             signal.position_adjust_usd > 0
             and not position_manager.pricing_model.can_deposit(self.timestamp, signal.pair)
         ):
-            logger.info(
-                "Skipping buy-side rebalance for %s because deposits are not open",
-                signal.pair,
-            )
-            signal.position_adjust_ignored = True
-            signal.flags.add(TradingPairSignalFlags.cannot_deposit)
-            signal.other_data["missed_deposit_usd"] = signal.position_adjust_usd
-            return True
+            return self._on_deposit_window_closed(signal, position_manager)
 
         if individual_rebalance_min_threshold:
             trade_size = abs(signal.position_adjust_usd)
@@ -1939,6 +1961,29 @@ class AlphaModel:
                 return True
 
         return False
+
+    def _on_deposit_window_closed(
+        self,
+        signal: TradingPairSignal,
+        position_manager: PositionManager,
+    ) -> bool:
+        """Handle a buy whose vault deposit window is closed this cycle.
+
+        Base behaviour: skip the buy and record the miss. Extracted as an
+        overridable hook (behaviour-preserving) so ``PhaseAwareAlphaModel`` can
+        defer the buy and log a park event instead of skipping it.
+
+        :return:
+            ``True`` to skip this signal's rebalance for the cycle.
+        """
+        logger.info(
+            "Skipping buy-side rebalance for %s because deposits are not open",
+            signal.pair,
+        )
+        signal.position_adjust_ignored = True
+        signal.flags.add(TradingPairSignalFlags.cannot_deposit)
+        signal.other_data["missed_deposit_usd"] = signal.position_adjust_usd
+        return True
 
     def _prepare_hypercore_sell_signals(
         self,
