@@ -176,6 +176,19 @@ happy+bad path, `pytest.approx`, no stdout).
 
 ### CU-3 — window-cycle integration test [G10]
 
+**DELIVERED** as `tests/backtest/test_phase_aware_backtest.py` — a synthetic, no-network
+`run_backtest_inline` over two sync vaults (window-gated target `VT` + always-open queue venue `VQ`,
+plus an always-open directional `VD` for gate-survival), 8 small independent tests, 1.9s. Covers:
+window-cycle (park → single promote → executed deposit holds ~95% + idle at the 5% reserve floor);
+inv-1 (model never trades the venue), inv-3 (venue held in equity while the target is closed, via
+per-cycle observations since the venue is released to fund the deposit on open), inv-3b (directional
+buys ≤ investable equity every cycle); method-agnostic (park→promote fires under both the simple and
+the real size-risk *waterfall* normaliser - a `USDTVLSizeRiskModel` over deep synthetic TVL, since
+`waterfall=True` alone silently falls back to simple; witnessed via `accepted_investable_equity`);
+and gate-survival happy path (VD deposits while VT is parked - the cycle is not cancelled). Threading confirmed: `user_supplied_routing_model` builds `BacktestPricing` directly
+with `vault_window_overrides` (backtest_runner.py:1036), so the synthetic `vault_state=None` is
+irrelevant. The original recipe follows.
+
 A standalone (non-slow) synthetic backtest: `run_backtest_inline(client=None, universe=…)` with
 **two vault pairs, not one** — (a) a window-gated *target* vault under `vault_window_overrides`
 (closed for N cycles then open; anchor in the closed phase, as the notebook does) and (b) a
