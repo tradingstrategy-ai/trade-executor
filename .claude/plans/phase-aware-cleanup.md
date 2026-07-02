@@ -240,8 +240,27 @@ and cover the window-cycle plus the folded-in invariants and behavioural checks 
 
 ### CU-4 — charts + diagnostics (the dropped half of planned PR-C) [G11, session task #21]
 
-Consume the shared `phase_aware.py` helpers (event-log fold reader, venue identity) — one source
-of truth; parent-plan anchors (drifted, re-verify):
+**DELIVERED.** All three pieces + a shared venue-identity helper, unit tests, and the notebook
+registration:
+- **Foundation** (`phase_aware.py`): `is_queue_vault_position(position)` — venue identity from state
+  alone via YieldManager's durable `trade.other_data["yield_decision"]` marker (the plan's
+  `queue_vault_pair_ids`/tag paths are unreachable from a chart - no config, no tag writer); and a
+  backward-compatible `timestamp` field on `QueueVaultEvent` (charts need a time axis; backtest state
+  has no durable cycle→timestamp map).
+- **Piece 1** (`chart/standard/weight.py` `equity_curve_by_chain`): queue-venue positions render as a
+  distinct "Queue venue" band, split from the chain bands and the idle-cash reserve rows.
+- **Piece 2** (`chart/standard/vault.py` `pending_trigger_queue`, new): the waiting-deposit buffer
+  (open park events) reconstructed per stats-timestamp from the durable event log - deposits only
+  (the log records no redemptions).
+- **Piece 3** (`alpha_model.py` `format_signals`): Parked / Waiting deposit / Waiting redemption USD
+  columns from `parked_usd` / `missed_deposit_usd` / `missed_redemption_usd`.
+- **Tests** (`tests/units_tests/test_phase_aware_charts.py` + a venue-band test in
+  `test_phase_aware_backtest.py`): reconstruction from a seeded event log, the format_signals columns,
+  and `is_queue_vault_position` + the split band against a real run. The `09` notebook registers
+  `pending_trigger_queue` and re-runs clean. No existing chart test regressed.
+
+The original recipe follows. Consume the shared `phase_aware.py` helpers (event-log fold reader,
+venue identity) — one source of truth; parent-plan anchors (drifted, re-verify):
 
 1. **`tradeexecutor/strategy/chart/standard/weight.py`** — split the reserve band into **idle
    USDC** vs **queue-venue allocation** (`volatile_and_non_volatile_percent` ~:39,

@@ -10,6 +10,10 @@ from tradingstrategy.chain import _chain_data
 
 from tradeexecutor.analysis.weights import calculate_asset_weights, visualise_weights, calculate_weights_statistics
 from tradeexecutor.strategy.chart.definition import ChartInput
+from tradeexecutor.strategy.phase_aware import is_queue_vault_position
+
+#: Band label for the yield-bearing queue venue, split out from directional chain bands and idle cash.
+QUEUE_VENUE_BAND = "Queue venue"
 
 
 def _calculate_and_cache_weights(input: ChartInput) -> pd.Series:
@@ -103,10 +107,20 @@ def equity_curve_by_chain(input: ChartInput) -> tuple[Figure, pd.DataFrame]:
         "value": ps.total_equity - (ps.open_position_equity or 0),
     } for ps in state.stats.portfolio]
 
-    # Build position rows grouped by chain
+    # Queue-venue (YieldManager-managed) positions render as their own band, split out from both the
+    # directional chain bands and the idle-cash reserve rows, so idle USDC vs yield-bearing venue is
+    # visible at a glance. Identified from state alone via the durable yield-decision trade marker.
+    # Note: this classifies ANY YieldManager-managed vault venue, not only phase-aware queue vaults,
+    # so a non-phase-aware YieldManager strategy also gets its yield venue rendered as a distinct band
+    # (an intended generalisation - a yield venue is reserve-like for every strategy that uses one).
+    venue_position_ids = {
+        p.position_id for p in state.portfolio.get_all_positions() if is_queue_vault_position(p)
+    }
+
+    # Build position rows grouped by chain (queue-venue positions get their own band).
     position_rows = [{
         "timestamp": ps.calculated_at,
-        "chain": position_chain_map[position_id],
+        "chain": QUEUE_VENUE_BAND if position_id in venue_position_ids else position_chain_map[position_id],
         "value": ps.value,
     } for position_id, position_stats in state.stats.positions.items()
       for ps in position_stats]

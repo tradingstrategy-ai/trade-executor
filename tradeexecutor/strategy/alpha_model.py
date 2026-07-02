@@ -2519,6 +2519,11 @@ def format_signals(
         old_pair = s.old_pair.get_ticker() if s.old_pair else "-"
         pending_deposit_usd = s.other_data.get("pending_deposit_usd", "-")
         pending_redemption_usd = s.other_data.get("pending_redemption_usd", "-")
+        # Phase-aware queue-venue diagnostics: cash deferred into the venue for a closed-window
+        # deposit, and window-gated deposits/redemptions that could not execute this cycle.
+        parked_usd = s.other_data.get("parked_usd", "-")
+        waiting_deposit_usd = s.other_data.get("missed_deposit_usd", "-")
+        waiting_redemption_usd = s.other_data.get("missed_redemption_usd", "-")
 
         match column_mode:
             case "leveraged":
@@ -2551,6 +2556,9 @@ def format_signals(
                     "TVL": f"{s.get_tvl():.0f}",
                     "Pending deposit USD": pending_deposit_usd,
                     "Pending redemption USD": pending_redemption_usd,
+                    "Parked USD": parked_usd,
+                    "Waiting deposit USD": waiting_deposit_usd,
+                    "Waiting redemption USD": waiting_redemption_usd,
                     "Flags": flags
                 })
             case _:

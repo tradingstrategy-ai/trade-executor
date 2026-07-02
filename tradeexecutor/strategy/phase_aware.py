@@ -65,6 +65,13 @@ class QueueVaultEvent:
     #: Strategy cycle number the event was logged on.
     cycle: int
 
+    #: ISO-8601 cycle timestamp the event was logged at, or ``None`` for older logs.
+    #:
+    #: The cycle number alone cannot be placed on a wall-clock time axis (backtest state carries no
+    #: durable cycle->timestamp map), so charts read this. Optional and defaulted for backward
+    #: compatibility with state files written before this field existed.
+    timestamp: str | None = None
+
     def to_dict(self) -> dict:
         """Serialise to a JSON-primitive dict for ``state.other_data``."""
         return {
@@ -72,16 +79,18 @@ class QueueVaultEvent:
             "vault_internal_id": int(self.vault_internal_id),
             "usd": float(self.usd),
             "cycle": int(self.cycle),
+            "timestamp": self.timestamp,
         }
 
     @staticmethod
     def from_dict(data: dict) -> "QueueVaultEvent":
-        """Deserialise from a ``state.other_data`` dict."""
+        """Deserialise from a ``state.other_data`` dict (``timestamp`` absent in older logs)."""
         return QueueVaultEvent(
             kind=data["kind"],
             vault_internal_id=int(data["vault_internal_id"]),
             usd=float(data["usd"]),
             cycle=int(data["cycle"]),
+            timestamp=data.get("timestamp"),
         )
 
 
@@ -105,6 +114,23 @@ def mark_queue_vault(position: TradingPosition) -> None:
     a specific position explicitly. Idempotent.
     """
     position.other_data[IS_QUEUE_VAULT_KEY] = True
+
+
+def is_queue_vault_position(position: TradingPosition) -> bool:
+    """Is this open/closed position a queue-venue (YieldManager-managed) holding, from state alone?
+
+    Charts and post-run diagnostics have no ``YieldRuleset`` config (so :py:func:`queue_vault_pair_ids`
+    is unreachable) and the :py:data:`IS_QUEUE_VAULT_KEY` tag has no natural writer, so this reads the
+    durable marker YieldManager stamps on every venue trade: ``trade.other_data["yield_decision"]``
+    (set only on the vault-venue adjust path, never on a directional buy). A position is a queue venue
+    iff it is a vault and any of its trades carries that marker. The tag is still honoured as an
+    override.
+    """
+    if is_queue_vault(position):
+        return True
+    if not position.is_vault():
+        return False
+    return any(trade.get_yield_decision() is not None for trade in position.trades.values())
 
 
 def queue_vault_pair_ids(yield_rules) -> set:
@@ -383,5 +409,11 @@ class PhaseAwareAlphaModel(AlphaModel):
             return
         append_queue_event(
             other_data,
-            QueueVaultEvent(kind, int(vault_internal_id), float(usd), self.phase_aware_cycle),
+            QueueVaultEvent(
+                kind,
+                int(vault_internal_id),
+                float(usd),
+                self.phase_aware_cycle,
+                timestamp=self.timestamp.isoformat() if self.timestamp is not None else None,
+            ),
         )

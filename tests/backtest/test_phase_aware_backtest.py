@@ -30,9 +30,11 @@ from tradeexecutor.backtest.vault_windows import VaultWindowSchedule
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.strategy.chart.definition import ChartInput
+from tradeexecutor.strategy.chart.standard.weight import QUEUE_VENUE_BAND, equity_curve_by_chain
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.execution_context import ExecutionMode, unit_test_execution_context
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.pandas_trader.yield_manager import (
     YieldDecisionInput,
@@ -44,6 +46,7 @@ from tradeexecutor.strategy.phase_aware import (
     EVENT_PARK,
     EVENT_PROMOTE,
     PhaseAwareAlphaModel,
+    is_queue_vault_position,
     iter_all_events,
     queue_vault_pair_ids,
     queue_venue_redeemable,
@@ -415,3 +418,23 @@ def test_gate_survival_other_deposit_survives_a_park():
     assert held.get(DIRECTIONAL_INTERNAL_ID, 0.0) > 0
     # 3. VT still parked then promoted.
     assert TARGET_INTERNAL_ID in (parked & promoted)
+
+
+def test_queue_venue_identified_and_split_into_own_chart_band(primary_run: tuple[State, list[dict]]):
+    """The queue venue is identified from state alone and split into its own chart band (CU-4 piece 1).
+
+    Charts have no YieldRuleset config and the venue position tag has no writer, so venue identity
+    comes from YieldManager's durable ``yield_decision`` trade marker via ``is_queue_vault_position``.
+
+    1. is_queue_vault_position identifies the venue (VQ) and not the window-gated target (VT).
+    2. equity_curve_by_chain renders the venue as a distinct band, split from the chain bands.
+    """
+    state, _ = primary_run
+    # 1. Venue identified from state; the target vault is not a venue.
+    venue_ids = {p.pair.internal_id for p in state.portfolio.get_all_positions() if is_queue_vault_position(p)}
+    assert VENUE_INTERNAL_ID in venue_ids
+    assert TARGET_INTERNAL_ID not in venue_ids
+
+    # 2. The equity-by-chain chart splits the venue into its own band.
+    _fig, df = equity_curve_by_chain(ChartInput(execution_context=unit_test_execution_context, state=state))
+    assert QUEUE_VENUE_BAND in df.columns
