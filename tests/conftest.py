@@ -53,8 +53,8 @@ def persistent_test_client(persistent_test_cache_path) -> Client:
 def _suppress_info_logging():
     """Reset root logger to WARNING after each test.
 
-    CLI tests call setup_logging() which sets root logger to INFO
-    with coloredlogs. This persists across tests in the same xdist
+    CLI tests call setup_logging() which sets root logger to INFO.
+    This persists across tests in the same xdist
     worker process, clogging CI output with thousands of INFO lines.
     """
     logging.getLogger().setLevel(logging.WARNING)
@@ -101,4 +101,3 @@ def pytest_sessionstart(session):
 #     #pool = pyarrow.default_memory_pool()
 #     #pool.release_unused()
 #
-

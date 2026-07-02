@@ -29,6 +29,9 @@ tqdm-loggable = "^0.4"
 
 web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras = ["data", "test", "hypersync", "ccxt"]}
 
+# Needed by trading-strategy vault metadata parsing used by HyperCore and vault universe loading.
+duckdb = ">=1.4.2,<2.0.0"
+
 # AttributeError: 'MathBlockParser' object has no attribute 'parse_axt_heading'
 # https://github.com/lepture/mistune/issues/403
 # https://github.com/jupyter/nbconvert/issues/2198
@@ -43,7 +46,6 @@ typer = {version = "^0.12.3", optional = true}
 APScheduler = {version = "^3.9.1"}
 click = {version = "<8.2.0", optional = true}
 colorama = {version = "^0.4.4", optional = true}
-coloredlogs = {version = "^15.0.1", optional = true}
 prompt-toolkit = {version = "^3.0.31", optional = true}
 #python-logstash-tradingstrategy = {version="^0.5.0", optional = true}
 beautifulsoup4 = {version = "^4.12.2", optional = true}# Needed to export HTML reports
@@ -134,7 +136,6 @@ execution = [
   "typer",
   "click",
   "colorama",
-  "coloredlogs",
   "prompt-toolkit",
   "python-dotenv",
   "setuptools",

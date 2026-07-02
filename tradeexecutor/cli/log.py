@@ -4,17 +4,19 @@ We have a custom level `logging.TRADE` that we use to log trade execution to Dis
 """
 
 import logging
+import os
 import sys
 from logging import Logger
 from os import PathLike
 from pathlib import Path
 from typing import Optional, List
 
+from eth_defi.utils import setup_console_logging as setup_eth_defi_console_logging
+
 from tradeexecutor.cli.version_info import VersionInfo
 from tradeexecutor.utils.ring_buffer_logging_handler import RingBufferHandler
 
 try:
-    import coloredlogs
     import logstash
     from discord_logging.handler import DiscordHandler
 except ImportError:
@@ -51,56 +53,23 @@ def setup_logging(
     if isinstance(log_level, str):
         log_level = log_level.upper()
 
-    logger = logging.getLogger()
+    # Use the same Rich based console logging setup as eth_defi.
+    # This enables colours for terminals and Docker logs, while falling back to
+    # plain stdlib logging when the stream should not receive ANSI colours.
+    # trade-executor already resolves LOG_LEVEL through Typer or command
+    # defaults. Prevent eth_defi from reading the raw environment variable
+    # again, because trade-executor also supports the "disabled" test sentinel.
+    original_log_level = os.environ.pop("LOG_LEVEL", None)
+    try:
+        logger = setup_eth_defi_console_logging(
+            default_log_level=log_level,
+            std_out_log_level=log_level,
+        )
+    finally:
+        if original_log_level is not None:
+            os.environ["LOG_LEVEL"] = original_log_level
 
-    # Set log format to dislay the logger name to hunt down verbose logging modules
-    fmt = "%(asctime)s %(name)-50s %(levelname)-8s %(message)s"
-
-    # Use colored logging output for console
-    coloredlogs.install(level=log_level, fmt=fmt, logger=logger)
-
-    # Disable logging of JSON-RPC requests and reploes
-    logging.getLogger("web3.RequestManager").setLevel(logging.WARNING)
-    logging.getLogger("web3.providers.HTTPProvider").setLevel(logging.WARNING)
-    # logging.getLogger("web3.RequestManager").propagate = False
-
-    # Disable all internal debug logging of requests and urllib3
-    # E.g. HTTP traffic
-    logging.getLogger("requests").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-
-    # IPython notebook internal
-    logging.getLogger("asyncio").setLevel(logging.WARNING)
-
-    # Maplotlib puke
-    logging.getLogger("matplotlib").setLevel(logging.WARNING)
-
-    # Disable warnings on startup
-    logging.getLogger("pyramid_openapi3").setLevel(logging.ERROR)
-
-    # Datadog tracer agent
-    # https://ddtrace.readthedocs.io/en/stable/basic_usage.html
-    logging.getLogger("ddtrace").setLevel(logging.INFO)
-
-    # Because we are running a single threaded worker,
-    # the position trigger check task can be blocked by trade decision task, or vice versa.
-    # Because the position trigger check task is very quick, this should not be an issue in practice.
-    # However apscheduler spews logs with WARN on this and we do not want it as
-    # warning, as it is a planned scenario.
-    # enzyme-polygon-eth-usdc  | 2023-06-23 13:00:05 apscheduler.executors.default                      WARNING  Run time of job "ExecutionLoop.run_live.<locals>.live_positions (trigger: interval[1:00:00], next run at: 2023-06-23 14:00:00 UTC)" was missed by 0:00:05.324013
-    logging.getLogger("apscheduler.executors.default").setLevel(logging.ERROR)
-
-    # GraphQL library
-    # Writes very noisy and long Introspection query to logs
-    # everytime graphql endpoint is read
-    logging.getLogger("graphql").setLevel(logging.WARNING)
-    logging.getLogger("gql").setLevel(logging.WARNING)
-
-    # By default, disable performance monitor logging
-    logging.getLogger("tradeexecutor.utils.timer").setLevel(logging.WARNING)
-
-    # 2024-09-26 12:11:25 traitlets WARNING  Alternative text is missing on 3 image(s).
-    logging.getLogger("traitlets").setLevel(logging.ERROR)
+    mute_noisy_loggers()
 
     if in_memory_buffer:
         setup_in_memory_logging(logger)
@@ -156,6 +125,54 @@ def get_ring_buffer_handler() -> RingBufferHandler:
     return _ring_buffer_handler
 
 
+def mute_noisy_loggers(mute_requests: bool = True) -> None:
+    """Quiet down chatty dependencies after console logging has been configured."""
+
+    # Disable logging of JSON-RPC requests and replies
+    logging.getLogger("web3.RequestManager").setLevel(logging.WARNING)
+    logging.getLogger("web3.providers.HTTPProvider").setLevel(logging.WARNING)
+    # logging.getLogger("web3.RequestManager").propagate = False
+
+    # Disable all internal debug logging of requests and urllib3
+    # E.g. HTTP traffic
+    if mute_requests:
+        logging.getLogger("requests").setLevel(logging.WARNING)
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+    # IPython notebook internal
+    logging.getLogger("asyncio").setLevel(logging.WARNING)
+
+    # Maplotlib puke
+    logging.getLogger("matplotlib").setLevel(logging.WARNING)
+
+    # Disable warnings on startup
+    logging.getLogger("pyramid_openapi3").setLevel(logging.ERROR)
+
+    # Datadog tracer agent
+    # https://ddtrace.readthedocs.io/en/stable/basic_usage.html
+    logging.getLogger("ddtrace").setLevel(logging.INFO)
+
+    # Because we are running a single threaded worker,
+    # the position trigger check task can be blocked by trade decision task, or vice versa.
+    # Because the position trigger check task is very quick, this should not be an issue in practice.
+    # However apscheduler spews logs with WARN on this and we do not want it as
+    # warning, as it is a planned scenario.
+    # enzyme-polygon-eth-usdc  | 2023-06-23 13:00:05 apscheduler.executors.default                      WARNING  Run time of job "ExecutionLoop.run_live.<locals>.live_positions (trigger: interval[1:00:00], next run at: 2023-06-23 14:00:00 UTC)" was missed by 0:00:05.324013
+    logging.getLogger("apscheduler.executors.default").setLevel(logging.ERROR)
+
+    # GraphQL library
+    # Writes very noisy and long Introspection query to logs
+    # everytime graphql endpoint is read
+    logging.getLogger("graphql").setLevel(logging.WARNING)
+    logging.getLogger("gql").setLevel(logging.WARNING)
+
+    # By default, disable performance monitor logging
+    logging.getLogger("tradeexecutor.utils.timer").setLevel(logging.WARNING)
+
+    # 2024-09-26 12:11:25 traitlets WARNING  Alternative text is missing on 3 image(s).
+    logging.getLogger("traitlets").setLevel(logging.ERROR)
+
+
 def setup_pytest_logging(request=None, mute_requests=True) -> logging.Logger:
     """Setup logger in pytest environment.
 
@@ -172,27 +189,10 @@ def setup_pytest_logging(request=None, mute_requests=True) -> logging.Logger:
 
     # Suppress INFO-level noise in test output.
     # CLI commands call setup_logging() which sets root to INFO with
-    # coloredlogs; reset it here so tests don't clog CI output.
+    # console logging; reset it here so tests don't clog CI output.
     logging.getLogger().setLevel(logging.WARNING)
 
-    # Disable logging of JSON-RPC requests and reploes
-    logging.getLogger("web3.RequestManager").setLevel(logging.WARNING)
-    logging.getLogger("web3.providers.HTTPProvider").setLevel(logging.WARNING)
-
-    # Disable all internal debug logging of requests and urllib3
-    # E.g. HTTP traffic
-    if mute_requests:
-        logging.getLogger("requests").setLevel(logging.WARNING)
-        logging.getLogger("urllib3").setLevel(logging.WARNING)
-
-    # ipdb internals
-    logging.getLogger("asyncio").setLevel(logging.WARNING)
-
-    # maplotlib burps a lot on startup
-    logging.getLogger("matplotlib").setLevel(logging.WARNING)
-
-    # Don't log section duration monitors
-    logging.getLogger("tradeexecutor.utils.timer").setLevel(logging.WARNING)
+    mute_noisy_loggers(mute_requests=mute_requests)
 
     # Mute mainloop (a lot of logs about nothing happening in backtesting)
     # logging.getLogger("tradeexecutor.strategy.runner").setLevel(logging.WARNING)
@@ -216,11 +216,9 @@ def setup_notebook_logging(log_level: str | int=logging.WARNING, show_process=Fa
     else:
         format = "%(asctime)s %(name)-50s %(levelname)-8s %(message)s"
 
-    # TODO: coloredlogs disabled for notebook -
+    # TODO: Rich logging disabled for notebook -
     # see https://stackoverflow.com/a/68930736/315168
     # how to add native HTML log output
-    # Use colored logging output for console
-    # coloredlogs.install(level=log_level, fmt=fmt, logger=logger)
 
     if isinstance(log_level, str):
         log_level = log_level.upper()
@@ -236,21 +234,7 @@ def setup_notebook_logging(log_level: str | int=logging.WARNING, show_process=Fa
 
     setup_custom_log_levels()
 
-    # Disable logging of JSON-RPC requests and reploes
-    logging.getLogger("web3.RequestManager").setLevel(logging.WARNING)
-    logging.getLogger("web3.providers.HTTPProvider").setLevel(logging.WARNING)
-
-    logging.getLogger("requests").setLevel(logging.WARNING)
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-
-    # ipdb internals
-    logging.getLogger("asyncio").setLevel(logging.WARNING)
-
-    # maplotlib burps a lot on startup
-    logging.getLogger("matplotlib").setLevel(logging.WARNING)
-
-    # Performance metrics, irrelevant for backtesting
-    logging.getLogger("tradeexecutor.utils.timer").setLevel(logging.WARNING)
+    mute_noisy_loggers()
 
     return logger
 
@@ -264,11 +248,9 @@ def setup_strategy_logging(default_log_level: str | int=logging.WARNING) -> logg
     for examples.
     """
 
-    # TODO: coloredlogs disabled for notebook -
+    # TODO: Rich logging disabled for notebook -
     # see https://stackoverflow.com/a/68930736/315168
     # how to add native HTML log output
-    # Use colored logging output for console
-    # coloredlogs.install(level=log_level, fmt=fmt, logger=logger)
 
     if isinstance(default_log_level, str):
         default_log_level = default_log_level.upper()
