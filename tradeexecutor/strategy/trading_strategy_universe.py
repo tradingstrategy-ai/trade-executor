@@ -246,6 +246,17 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
     #: ``None`` when the vault price source carries no availability columns.
     vault_state: Optional[pd.DataFrame] = None
 
+    #: Synthetic per-vault deposit/redemption window schedules for backtests.
+    #:
+    #: Maps a vault ``internal_id`` to a
+    #: :py:class:`~tradeexecutor.backtest.vault_windows.VaultWindowSchedule`. Consumed by
+    #: :py:class:`~tradeexecutor.backtest.backtest_pricing.BacktestPricing` as a *window override*
+    #: that takes precedence over :py:attr:`vault_state` (so a stale / always-open availability frame
+    #: cannot stop an assumed epoch schedule firing). Set by a notebook / test after universe
+    #: construction; ``None`` or empty means no synthetic windows. Typed as ``dict`` to avoid importing
+    #: the backtest module here.
+    vault_window_overrides: Optional[dict] = None
+
     def __repr__(self):
         pair_count = self.data_universe.pairs.get_count()
         if pair_count <= 3:

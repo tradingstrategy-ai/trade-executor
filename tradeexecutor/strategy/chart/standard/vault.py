@@ -10,6 +10,14 @@ from tradeexecutor.analysis.credit import display_vault_position_table, display_
 from tradeexecutor.analysis.vault_position_helpers import find_latest_position_for_pair
 from tradeexecutor.analysis.vault import visualise_vaults
 from tradeexecutor.strategy.chart.definition import ChartInput
+from tradeexecutor.strategy.phase_aware import (
+    EVENT_CLOSE,
+    EVENT_PARK,
+    EVENT_PROMOTE,
+    EVENT_REDEEM_BLOCK,
+    EVENT_REDEEM_CLEAR,
+    iter_all_events,
+)
 from tradeexecutor.visual.position import (calculate_position_timeline,
                                            visualise_position)
 
@@ -247,6 +255,89 @@ def pending_vault_settlements(input: ChartInput) -> tuple[Figure, pd.DataFrame]:
     fig = px.area(
         df,
         title="Pending vault settlement buffers (deposits positive, redemptions negative)",
+        labels={"index": "Time", "value": "US dollar size"},
+        color_discrete_sequence=colors.qualitative.Light24,
+        template="plotly_dark",
+    )
+    fig.update_traces(line_width=0)
+    return fig, df
+
+
+def pending_trigger_queue(input: ChartInput) -> tuple[Figure, pd.DataFrame]:
+    """Waiting-to-trigger buffers (not yet in flight): waiting deposits positive, redemption-locked negative.
+
+    The phase-aware sibling of :py:func:`pending_vault_settlements`: rather than in-flight async
+    settlements, it shows the buffers still waiting for a window to open, reconstructed from the
+    durable event log in ``state.other_data`` (never per-position ``other_data``, which is lost on
+    resize/close):
+
+    - **Waiting deposits** (positive): cash parked in the queue venue for a target vault whose
+      deposit window is closed. A park opens the buffer; a later promote (deposited once the window
+      opened) or close (no longer targeted) ends it.
+    - **Redemption locked** (negative): value held in positions whose redemption is currently
+      blocked (closed redemption window / lock-up) - the capital that could not be exited this
+      cycle even if wanted. A redeem-block opens the buffer; a redeem-clear (the window opened,
+      the lock-up expired, or the position is gone) ends it.
+
+    Returns (fig, df) tuple so diagnostics can inspect the underlying data.
+    """
+    state = input.state
+
+    def _empty() -> tuple[Figure, pd.DataFrame]:
+        fig = Figure()
+        fig.update_layout(
+            title="Waiting trigger queue (waiting deposits positive, redemption-locked negative)",
+            xaxis_title="Time",
+            yaxis_title="US dollar size",
+            template="plotly_dark",
+        )
+        return fig, pd.DataFrame()
+
+    timestamps = [ps.calculated_at for ps in state.stats.portfolio]
+    # Events carry an ISO timestamp (older logs may not); those without one cannot be placed on the
+    # time axis and are skipped.
+    event_ts = [(pd.Timestamp(e.timestamp), e) for e in iter_all_events(state.other_data) if e.timestamp is not None]
+    if not timestamps or not event_ts:
+        return _empty()
+    event_ts.sort(key=lambda pair: pair[0])
+
+    # Single chronological sweep: apply each event once as the statistics timestamps advance,
+    # keeping the open buffer sets as rolling state - the waiting buffers persist between the
+    # (sparse) event cycles, a proper step series.
+    rows = []
+    event_idx = 0
+    open_deposit_usd: dict[int, float] = {}
+    open_redeem_usd: dict[int, float] = {}
+    for ts in sorted(pd.Timestamp(t) for t in timestamps):
+        while event_idx < len(event_ts) and event_ts[event_idx][0] <= ts:
+            event = event_ts[event_idx][1]
+            if event.kind == EVENT_PARK:
+                open_deposit_usd[event.vault_internal_id] = event.usd
+            elif event.kind in (EVENT_PROMOTE, EVENT_CLOSE):
+                open_deposit_usd.pop(event.vault_internal_id, None)
+            elif event.kind == EVENT_REDEEM_BLOCK:
+                open_redeem_usd[event.vault_internal_id] = event.usd
+            elif event.kind == EVENT_REDEEM_CLEAR:
+                open_redeem_usd.pop(event.vault_internal_id, None)
+            event_idx += 1
+        deposit_total = sum(open_deposit_usd.values())
+        if deposit_total:
+            rows.append({"timestamp": ts, "series": "Waiting deposits", "value": deposit_total})
+        redeem_total = sum(open_redeem_usd.values())
+        if redeem_total:
+            rows.append({"timestamp": ts, "series": "Redemption locked", "value": -redeem_total})
+
+    if not rows:
+        return _empty()
+
+    df = pd.DataFrame(rows)
+    df = df.groupby(["timestamp", "series"])["value"].sum().reset_index()
+    df = df.sort_values("timestamp")
+    df = df.pivot(index="timestamp", columns="series", values="value").fillna(0)
+
+    fig = px.area(
+        df,
+        title="Waiting trigger queue (waiting deposits positive, redemption-locked negative)",
         labels={"index": "Time", "value": "US dollar size"},
         color_discrete_sequence=colors.qualitative.Light24,
         template="plotly_dark",

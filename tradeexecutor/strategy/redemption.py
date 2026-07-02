@@ -26,6 +26,10 @@ class RedemptionBlockReason(enum.Enum):
     user_equity_fetch_failed = "user_equity_fetch_failed"
     user_lockup_not_expired = "user_lockup_not_expired"
     vault_max_withdrawable_zero = "vault_max_withdrawable_zero"
+    #: Redemptions are shut because the vault's periodic redemption window is closed
+    #: (distinct from a zero withdrawable cap), e.g. a backtest window override or an
+    #: epoch-gated vault between windows.
+    redemption_window_closed = "redemption_window_closed"
 
 
 @dataclass_json

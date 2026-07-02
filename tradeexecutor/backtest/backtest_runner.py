@@ -399,6 +399,7 @@ def setup_backtest_for_universe(
             pairs=universe.data_universe.pairs,
             three_leg_resolution=three_leg_resolution,
             vault_state=universe.vault_state,
+            vault_window_overrides=getattr(universe, "vault_window_overrides", None),
         )
 
     execution_model = BacktestExecution(
@@ -1032,6 +1033,7 @@ def run_backtest_inline(
                 pairs=universe.data_universe.pairs,
                 three_leg_resolution=three_leg_resolution,
                 vault_state=universe.vault_state,
+                vault_window_overrides=getattr(universe, "vault_window_overrides", None),
             )
 
     else:

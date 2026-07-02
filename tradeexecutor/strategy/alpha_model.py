@@ -108,6 +108,15 @@ class TradingPairSignalFlags(enum.Enum):
     #: queued async vault redemptions whose cash arrives only after settlement.
     capped_by_pending_settlement_cash = "capped_by_pending_settlement_cash"
 
+    #: This buy was deferred (not skipped) because its vault's deposit window is
+    #: closed: the capital waits in the queue venue and a park event is logged,
+    #: to be deposited once the window opens (PhaseAwareAlphaModel park step).
+    parked_in_queue_vault = "parked_in_queue_vault"
+
+    #: This buy re-emitted previously parked capital into a vault whose deposit
+    #: window has now opened (PhaseAwareAlphaModel promote step).
+    promoted_from_queue_vault = "promoted_from_queue_vault"
+
 
 @dataclass_json
 @dataclass(slots=True)
@@ -919,6 +928,16 @@ class AlphaModel:
             pending_redemption_usd,
         )
 
+    def _available_same_cycle_cash(self, position_manager: PositionManager) -> USDollarAmount:
+        """Cash available to fund this cycle's buys, before same-cycle sell proceeds.
+
+        Extracted as an overridable hook (behaviour-preserving) so a subclass such
+        as ``PhaseAwareAlphaModel`` can widen the budget to include instantly
+        redeemable queue-venue balance without reimplementing
+        :py:meth:`_cap_buys_by_async_sell_proceeds`.
+        """
+        return position_manager.get_current_cash()
+
     def _cap_buys_by_async_sell_proceeds(
         self,
         position_manager: PositionManager,
@@ -952,16 +971,13 @@ class AlphaModel:
                 continue
             adjust = s.position_adjust_usd
             if adjust < 0:
-                # Feature flags catch real async vaults; the position's own
-                # settlement history catches vaults simulated as async via a
-                # backtest delay override with no async metadata.
-                is_async = s.pair.is_async_vault()
-                if not is_async:
-                    position = position_manager.get_current_position_for_pair(
-                        s.synthetic_pair or s.pair,
-                        pending=True,
-                    )
-                    is_async = position is not None and position.has_async_vault_flow()
+                # Shared classification: feature flags catch real async vaults; the
+                # position's own settlement history catches vaults simulated as async
+                # via a backtest delay override with no async metadata.
+                is_async = position_manager.is_async_vault_sell_pair(
+                    s.pair,
+                    position_pair=s.synthetic_pair or s.pair,
+                )
                 if is_async:
                     async_sell_usd += -adjust
                 else:
@@ -972,7 +988,7 @@ class AlphaModel:
         if buy_usd <= 0 or async_sell_usd <= 0:
             return
 
-        cash = position_manager.get_current_cash()
+        cash = self._available_same_cycle_cash(position_manager)
         # Withhold a same-cycle cash buffer: sync_sell_usd is mark-to-market, but
         # execution realises slightly less, so scaling buys to exactly cash +
         # sync sells can leave a cross-chain plan a few dollars short.
@@ -1696,6 +1712,31 @@ class AlphaModel:
         for pair_id, raw_weight in weights.items():
             self.signals[pair_id].raw_weight = raw_weight
 
+    def _count_position_in_old_weights(
+        self,
+        position: TradingPosition,
+        ignore_credit: bool,
+        portfolio_pairs: list[TradingPairIdentifier] | None,
+    ) -> bool:
+        """Whether an open position counts toward the alpha model's old weights.
+
+        Extracted as an overridable hook (behaviour-preserving) so a subclass such
+        as ``PhaseAwareAlphaModel`` can additionally exclude queue-venue positions
+        (managed by YieldManager) *before* :py:meth:`set_old_weight` runs — a
+        credit-supply venue would otherwise assert there, a vault venue would be
+        sold to zero.
+        """
+        if position.pair.is_cctp_bridge():
+            return False
+
+        if ignore_credit and (position.is_credit_supply() or position.is_vault()):
+            return False
+
+        if portfolio_pairs and position.pair not in portfolio_pairs:
+            return False
+
+        return True
+
     def update_old_weights(
         self,
         portfolio: Portfolio,
@@ -1721,13 +1762,7 @@ class AlphaModel:
         # - include only portfolio_pairs if given
         alpha_model_positions = []
         for position in portfolio.open_positions.values():
-            if position.pair.is_cctp_bridge():
-                continue
-
-            if ignore_credit and (position.is_credit_supply() or position.is_vault()):
-                continue
-
-            if portfolio_pairs and position.pair not in portfolio_pairs:
+            if not self._count_position_in_old_weights(position, ignore_credit, portfolio_pairs):
                 continue
 
             alpha_model_positions.append(position)
@@ -1905,14 +1940,7 @@ class AlphaModel:
             signal.position_adjust_usd > 0
             and not position_manager.pricing_model.can_deposit(self.timestamp, signal.pair)
         ):
-            logger.info(
-                "Skipping buy-side rebalance for %s because deposits are not open",
-                signal.pair,
-            )
-            signal.position_adjust_ignored = True
-            signal.flags.add(TradingPairSignalFlags.cannot_deposit)
-            signal.other_data["missed_deposit_usd"] = signal.position_adjust_usd
-            return True
+            return self._on_deposit_window_closed(signal, position_manager)
 
         if individual_rebalance_min_threshold:
             trade_size = abs(signal.position_adjust_usd)
@@ -1939,6 +1967,35 @@ class AlphaModel:
                 return True
 
         return False
+
+    def _on_deposit_window_closed(
+        self,
+        signal: TradingPairSignal,
+        position_manager: PositionManager,
+    ) -> bool:
+        """Handle a buy whose vault deposit window is closed this cycle.
+
+        Base behaviour: skip the buy and record the miss. Extracted as an overridable hook
+        (behaviour-preserving) so a subclass *could* defer instead of skip.
+
+        Note: :py:class:`~tradeexecutor.strategy.phase_aware.PhaseAwareAlphaModel` intentionally
+        does **not** override this hook. It parks closed-window deposits earlier, in
+        ``apply_phase_aware_intent()`` run *before* trade generation, so the deferred buys are
+        already zeroed and excluded from the whole-portfolio min-trade gate and the same-cycle
+        cash cap by the time this hook would run. This hook therefore stays the base skip path,
+        and is what a phase-aware model constructed without a ``cycle`` (inert) falls back to.
+
+        :return:
+            ``True`` to skip this signal's rebalance for the cycle.
+        """
+        logger.info(
+            "Skipping buy-side rebalance for %s because deposits are not open",
+            signal.pair,
+        )
+        signal.position_adjust_ignored = True
+        signal.flags.add(TradingPairSignalFlags.cannot_deposit)
+        signal.other_data["missed_deposit_usd"] = signal.position_adjust_usd
+        return True
 
     def _prepare_hypercore_sell_signals(
         self,
@@ -2459,6 +2516,11 @@ def format_signals(
         old_pair = s.old_pair.get_ticker() if s.old_pair else "-"
         pending_deposit_usd = s.other_data.get("pending_deposit_usd", "-")
         pending_redemption_usd = s.other_data.get("pending_redemption_usd", "-")
+        # Phase-aware queue-venue diagnostics: cash deferred into the venue for a closed-window
+        # deposit, and window-gated deposits/redemptions that could not execute this cycle.
+        parked_usd = s.other_data.get("parked_usd", "-")
+        waiting_deposit_usd = s.other_data.get("missed_deposit_usd", "-")
+        waiting_redemption_usd = s.other_data.get("missed_redemption_usd", "-")
 
         match column_mode:
             case "leveraged":
@@ -2491,6 +2553,9 @@ def format_signals(
                     "TVL": f"{s.get_tvl():.0f}",
                     "Pending deposit USD": pending_deposit_usd,
                     "Pending redemption USD": pending_redemption_usd,
+                    "Parked USD": parked_usd,
+                    "Waiting deposit USD": waiting_deposit_usd,
+                    "Waiting redemption USD": waiting_redemption_usd,
                     "Flags": flags
                 })
             case _:

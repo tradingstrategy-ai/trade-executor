@@ -128,6 +128,10 @@ class EthereumBacktestPairConfigurator(PairConfigurator):
             three_leg_resolution=three_leg_resolution,
             ignore_routing=self.ignore_routing,  # Disable price routing checks for cross-chain strategies for now
             vault_state=strategy_universe.vault_state,
+            # Candles are passed positionally (not the universe), so the BacktestPricing shortcut
+            # cannot auto-pick the synthetic window overrides here - thread them explicitly so the
+            # generic cross-chain pricing route honours them too.
+            vault_window_overrides=getattr(strategy_universe, "vault_window_overrides", None),
         )
 
         valuation_model = BacktestValuationModel(pricing_model)
