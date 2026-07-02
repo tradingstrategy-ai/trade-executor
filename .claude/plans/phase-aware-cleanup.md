@@ -145,28 +145,34 @@ happy+bad path, `pytest.approx`, no stdout).
 
 ### CU-2 — behavioural tests [G7 G8 G9]
 
-1. **Redemption swept** (extend `tests/units_tests/test_yield.py`): credit the reserve with
-   simulated settled-redemption proceeds above `always_in_cash`; run
-   `calculate_yield_management_safe`; assert a venue buy ≈ the excess (proceeds do not sit idle).
-2. **Park gate-survival** — through `generate_rebalance_trades_and_triggers`. Get the gate
-   semantics right (a Codex review corrected an earlier inverted recipe): the pre-cap gate
-   (~:2326, verify) takes `max_diff = max(abs(position_adjust_usd))` across signals, so a still-
-   counted parked signal can only *raise* `max_diff` — the hazard runs the other way: **parking
-   the dominant signal lowers `max_diff`**, and if every remaining adjust sits below
-   `min_trade_threshold` the whole cycle cancels. Two asserts:
-   - happy path: park a signal, keep at least one other same-cycle trade (incl. a sell) above
-     `min_trade_threshold`, run `apply_phase_aware_intent` before generation, assert the other
-     trades survive after the parked adjust is zeroed;
-   - bad path: park the dominant signal with every remaining adjust below the threshold, assert
-     the cycle cancels cleanly (no trades) — pinning the documented behaviour the parent plan
-     warned about rather than leaving it implicit.
-3. **Method-agnostic under real normalisers** — run the park→promote cycle twice through the real
-   `normalise_weights` paths (`waterfall=False` simple, and the size-risk variant), a
-   closed-window vault holding a positive post-normalisation target each time; assert the park
-   happens and the *other* vaults' targets are unchanged vs an identical run with the window open
-   (the slot-holding invariant, proven rather than asserted-by-construction).
+1. **Redemption swept — DELIVERED** as `test_yield_safe_sweeps_reserve_withholding_pending_redemptions`
+   (`tests/units_tests/test_yield.py`, on the existing `synthetic_universe`/`state`/`rules`
+   fixtures). The safe wrapper's *sweep* branch routes idle reserve above `always_in_cash` into the
+   venue (settled redemption proceeds are indistinguishable reserve cash, so the same sweep covers
+   them), while the strategy's own `pending_redemptions` are withheld from that sweep: with $10,000
+   reserve and $2,000 pending, `available_for_yield == 10,000 − 500 − 2,000 = 7,500`, all swept into
+   venue buys. Earns the "redemption" name by exercising the one redemption-specific term in the
+   calc (a review found the earlier version left `pending_redemptions` at 0, untested, and merely
+   re-ran `test_yield_distribute_all` through the wrapper). Passing (G7).
 
-**Done when:** all three pass; base AlphaModel regression suites untouched and green.
+2. **Park gate-survival (bad path) — DELIVERED** as `test_park_dominant_cancels_cycle_via_min_trade_gate`
+   (`tests/units_tests/test_phase_aware_alpha_model.py`, existing stubs). Two reviews showed the bad
+   path is cleanly unit-testable — `generate_rebalance_trades_and_triggers` returns `[]` at
+   `alpha_model.py:2344` (before the cap and per-signal loop), and `_prepare_hypercore_sell_signals`
+   only needs the stub's `get_current_position_for_pair` → `None` — so deferring it was the one
+   reassignment that repeated the original under-delivery. It parks a dominant closed-window deposit
+   ($1000) with a below-threshold open adjust ($5), then asserts the cycle cancels (`max_diff` drops
+   to $5 < $50 once the parked adjust is zeroed) and `max_position_adjust_usd == 5`. Passing (G8, bad path).
+
+3. **Gate-survival happy path + method-agnostic → CU-3.** The *happy* path (a non-dominant park
+   leaving a valid cycle intact) reaches the real per-signal trade-creation loop, which the stubs
+   do not provide. Method-agnostic is unit-testable for the *simple* normaliser (no pricing) but its
+   size-risk variant needs a size-risk model + pricing; grouped into CU-3 for a single
+   real-normaliser assertion of the slot-holding invariant. These are genuine integration/near-
+   integration cases, not shallow theatre — see CU-3.
+
+**Done when:** both new tests pass and their suites stay green (`test_yield.py` 5 tests;
+`test_phase_aware_alpha_model.py` 12 tests). Gate-survival happy path + method-agnostic move to CU-3.
 
 ### CU-3 — window-cycle integration test [G10]
 
@@ -183,7 +189,9 @@ and idle cash near the reserve floor after the sweep (the venue holding the exce
 construction proves disproportionate, document why and keep the notebook as the integration
 gate (explicitly, in the test module docstring).
 
-Also fold in the three invariants reassigned from CU-1, asserted against this real run:
+Also fold in, asserted against this real run:
+
+*Invariants reassigned from CU-1:*
 - **inv-1** — no trade in the run targets a queue-venue pair id except those YieldManager generated
   (assert the venue position changes only via the yield step, e.g. the model's directional trades
   never carry a venue pair id).
@@ -192,7 +200,30 @@ Also fold in the three invariants reassigned from CU-1, asserted against this re
 - **inv-3b** — directional buys in a cycle never exceed that cycle's `investable_equity` (the venue,
   in equity but excluded from old-weights, does not inflate the buy budget).
 
-**Done when:** the test runs in the default (non-slow) suite in seconds-to-a-minute, no network.
+*Behavioural tests reassigned from CU-2 (bad-path gate-survival already landed in CU-2):*
+- **gate-survival (happy path only)** — a cycle where a *non-dominant* closed-window deposit is
+  parked still emits its other same-cycle trades (the zeroed parked adjust does not lower `max_diff`
+  below the gate, and the surviving trades reach real generation). Assert from the per-cycle trade
+  log. (The bad path — parking the *dominant* signal cancels the cycle — is already covered by
+  `test_park_dominant_cancels_cycle_via_min_trade_gate` in CU-2.)
+- **method-agnostic** — run the same window-gated scenario under a non-waterfall `normalise_weights`
+  (e.g. simple) as well as the waterfall/size-risk path; assert the park→deposit-on-open still
+  fires and the other vaults' allocations are unaffected (the slot-holding invariant under a real
+  normaliser, not asserted-by-construction).
+
+**Land the pieces independently, not as one all-or-nothing package.** A review flagged that CU-3 now
+carries six previously-independent obligations (window-cycle + inv-1/3/3b + gate-survival happy path
++ method-agnostic); if it slips or lands partial, all of them silently go untested — the exact
+plan-vs-delivery failure this cleanup exists to correct. Mitigation already applied: every
+cleanly-unit-testable slice was pulled forward (inv-4 → CU-1; redemption-swept, gate-survival bad
+path → CU-2). Land CU-3 as several small tests (one per obligation) sharing a synthetic-universe
+fixture, each committable on its own, rather than a single mega-test — and if the synthetic
+two-vault backtest proves disproportionate for any obligation, assert that obligation on the
+existing `09` acceptance notebook run instead and say so in the module docstring, rather than
+dropping it.
+
+**Done when:** the tests run in the default (non-slow) suite in seconds-to-a-minute, no network,
+and cover the window-cycle plus the folded-in invariants and behavioural checks above.
 
 ### CU-4 — charts + diagnostics (the dropped half of planned PR-C) [G11, session task #21]
 

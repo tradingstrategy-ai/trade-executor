@@ -387,3 +387,36 @@ def test_cap_buys_widened_by_venue_through_async_sell():
     phase._cap_buys_by_async_sell_proceeds(make_pm())
     assert phase.signals[303].position_adjust_usd == pytest.approx(500.0)
     assert TradingPairSignalFlags.capped_by_pending_settlement_cash not in phase.signals[303].flags
+
+
+def test_park_dominant_cancels_cycle_via_min_trade_gate():
+    """Parking the dominant deposit can cancel the cycle at the whole-portfolio min-trade gate.
+
+    apply_phase_aware_intent zeroes a parked deposit's adjustment *before* trade generation, so the
+    pre-cap gate (``max_diff = max(abs(position_adjust_usd))``) no longer counts it. When the parked
+    buy was the only adjustment above the threshold, ``max_diff`` drops below it and the whole cycle
+    is cancelled cleanly - the documented gate hazard the design plan warned about, exercised here
+    rather than left implicit. (The converse - a non-dominant park leaving a valid cycle intact -
+    reaches the full per-signal trade-creation loop and is covered by the CU-3 integration backtest.)
+
+    1. A dominant closed-window deposit ($1000) plus a tiny open directional adjust ($5); gate
+       threshold $50.
+    2. apply_phase_aware_intent parks the dominant deposit, zeroing its adjustment.
+    3. generate_rebalance_trades_and_triggers returns no trades: max_diff is now the $5 adjust
+       (< $50), so the gate cancels the whole cycle.
+    """
+    other_data = OtherData()
+    dominant = _make_signal(_make_pair(101), 1000.0)  # closed-window deposit, will be parked
+    tiny = _make_signal(_make_pair(202), 5.0)  # open, below the gate threshold
+    pm = _make_pm(other_data, open_pairs={202})  # 101 closed, 202 open
+    alpha = PhaseAwareAlphaModel(datetime.datetime(2024, 1, 1), cycle=1, venue_pair_ids={999})
+    alpha.signals = {101: dominant, 202: tiny}
+
+    # 2. Park the dominant deposit (window closed) -> its adjustment is zeroed before generation.
+    alpha.apply_phase_aware_intent(pm)
+    assert dominant.position_adjust_usd == pytest.approx(0.0)
+
+    # 3. The gate now sees only the $5 adjust (< $50) and cancels the whole cycle.
+    trades = alpha.generate_rebalance_trades_and_triggers(pm, min_trade_threshold=50.0)
+    assert trades == []
+    assert alpha.max_position_adjust_usd == pytest.approx(5.0)  # parked dominant no longer counts

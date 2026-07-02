@@ -412,3 +412,58 @@ def test_yield_release_when_fully_deployed(
     result = yield_manager.calculate_yield_management_safe(input)
     assert result.available_for_yield <= 0
     assert result.trades == []
+
+
+def test_yield_safe_sweeps_reserve_withholding_pending_redemptions(
+    synthetic_universe: TradingStrategyUniverse,
+    state: State,
+    pricing_model: BacktestPricing,
+    routing_model: BacktestRoutingModel,
+    rules: YieldRuleset,
+):
+    """The safe wrapper sweeps idle reserve into the venue while withholding pending redemptions.
+
+    calculate_yield_management_safe's sweep path (available_for_yield > 0, delegating to the strict
+    method) routes idle reserve above always_in_cash into the queue venue, so freed cash stays
+    productive - settled redemption proceeds are indistinguishable reserve cash to YieldManager, so
+    the same sweep covers them. The strategy's own pending redemptions are withheld from that sweep
+    (available_for_yield subtracts them) so they can be paid out. This covers both the safe wrapper's
+    sweep branch and the one redemption-specific term in the calc; it complements
+    test_yield_release_when_fully_deployed (the release path) and test_yield_distribute_all (the
+    no-pending strict path).
+
+    1. Reserve holds $10,000, no directional trades, $2,000 of pending redemptions.
+    2. available_for_yield = equity - always_in_cash - pending = $10,000 - $500 - $2,000 = $7,500.
+    3. Exactly that $7,500 is swept into venue buys; the $2,000 is withheld for the redemption queue
+       rather than idle-swept.
+    """
+    # 1. Idle reserve with a pending redemption obligation; nothing directional this cycle.
+    assert state.portfolio.get_total_equity() == 10_000.0
+    start_at = datetime.datetime(2021, 6, 1)
+    position_manager = PositionManager(
+        timestamp=start_at,
+        universe=synthetic_universe,
+        pricing_model=pricing_model,
+        routing_model=routing_model,
+        state=state,
+    )
+    yield_manager = YieldManager(position_manager=position_manager, rules=rules)
+    input = YieldDecisionInput(
+        execution_mode=ExecutionMode.backtesting,
+        cycle=1,
+        timestamp=start_at,
+        total_equity=state.portfolio.get_total_equity(),
+        directional_trades=[],
+        pending_redemptions=2_000.0,
+    )
+
+    # 2. The safe wrapper takes the sweep path and subtracts the pending redemptions from the budget.
+    result = yield_manager.calculate_yield_management_safe(input)
+    always_in_cash = 10_000.0 * (1 - rules.position_allocation)  # 5% reserve = $500
+    assert result.available_for_yield == pytest.approx(10_000.0 - always_in_cash - 2_000.0)  # 7,500
+
+    # 3. Exactly the non-withheld excess is swept into venue buys; the redemption cash is not.
+    assert result.trades, "Expected the swept reserve to open venue positions"
+    assert all(t.is_buy() for t in result.trades)
+    swept = sum(float(t.planned_reserve) for t in result.trades)
+    assert swept == pytest.approx(result.available_for_yield, rel=0.01)
