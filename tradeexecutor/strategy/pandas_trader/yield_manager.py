@@ -596,6 +596,21 @@ class YieldManager:
         assert total_distributed <= cash_available_for_yield + usd_assert_epsilon, f"Total distributed {total_distributed} exceed available cash {cash_available_for_yield} USD."
         return desired_yield_positions
 
+    def _is_async_vault_sell(self, trade: TradeExecution) -> bool:
+        """Does this sell only *request* a redemption whose proceeds settle on a later cycle?
+
+        Mirrors the classification in ``AlphaModel._cap_buys_by_async_sell_proceeds``: feature
+        flags catch real async vaults; the position's own settlement history catches vaults
+        simulated as async via a backtest settlement-delay override with no async metadata.
+        """
+        pair = trade.pair
+        if not pair.is_vault():
+            return False
+        if pair.is_async_vault():
+            return True
+        position = self.position_manager.get_current_position_for_pair(pair, pending=True)
+        return position is not None and position.has_async_vault_flow()
+
     def calculate_cash_needed_to_cover_directional_trades(
         self,
         input: YieldDecisionInput,
@@ -627,6 +642,7 @@ class YieldManager:
 
         cash_needed = 0.0
         cash_released = 0.0
+        async_sell_excluded = 0.0
 
         for t in trades:
             assert t.is_spot(), f"Only spot trades supported in calculate_cash_needed(), got: {t}"
@@ -634,6 +650,15 @@ class YieldManager:
             if t.is_buy():
                 cash_needed += float(t.planned_reserve)
             else:
+                if self._is_async_vault_sell(t):
+                    # An async (ERC-7540 / Ostium / settlement-delayed) vault sell only *requests*
+                    # the redemption - the proceeds arrive cycles later and cannot cover this
+                    # cycle's buys (mirrors AlphaModel._cap_buys_by_async_sell_proceeds). Counting
+                    # them here under-releases the yield venue and the buys fail at execution with
+                    # NotEnoughMoney. The settled proceeds land as reserve cash and a later cycle's
+                    # yield calculation sweeps them.
+                    async_sell_excluded += float(t.planned_reserve)
+                    continue
                 cash_released += float(t.planned_reserve) * (1 - buffer_pct)
 
         # Keep this amount always in cash.
@@ -650,6 +675,7 @@ class YieldManager:
         msg = \
             "calculate_cash_needed(): trades: %d nav: %f flow: %f\n" \
             "total cash needed for buys and reserve: %f, cash consumed in trades: %f, cash released in trades: %f\n" \
+            "async sell proceeds excluded (settle later, cannot cover this cycle): %f\n" \
             "trade cash diff: %f\n" \
             "deposited in Aave: %f\n" \
             "sell buffer pct: %f\n" \
@@ -661,6 +687,7 @@ class YieldManager:
                 total_cash_needed,
                 cash_needed,
                 cash_released,
+                async_sell_excluded,
                 trade_cash_diff,
                 already_deposited,
                 buffer_pct,
