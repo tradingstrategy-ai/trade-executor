@@ -295,21 +295,22 @@ def pending_trigger_queue(input: ChartInput) -> tuple[Figure, pd.DataFrame]:
 
     timestamps = [ps.calculated_at for ps in state.stats.portfolio]
     # Events carry an ISO timestamp (older logs may not); those without one cannot be placed on the
-    # time axis and are skipped. iter_all_events yields in cycle (chronological) order.
+    # time axis and are skipped.
     event_ts = [(pd.Timestamp(e.timestamp), e) for e in iter_all_events(state.other_data) if e.timestamp is not None]
     if not timestamps or not event_ts:
         return _empty()
+    event_ts.sort(key=lambda pair: pair[0])
 
-    # For each statistics timestamp, fold every event at or before it to get the open buffer sets,
-    # so the waiting buffers persist between the (sparse) event cycles - a proper step series.
+    # Single chronological sweep: apply each event once as the statistics timestamps advance,
+    # keeping the open buffer sets as rolling state - the waiting buffers persist between the
+    # (sparse) event cycles, a proper step series.
     rows = []
-    for ts in timestamps:
-        cutoff = pd.Timestamp(ts)
-        open_deposit_usd: dict[int, float] = {}
-        open_redeem_usd: dict[int, float] = {}
-        for e_ts, event in event_ts:
-            if e_ts > cutoff:
-                break
+    event_idx = 0
+    open_deposit_usd: dict[int, float] = {}
+    open_redeem_usd: dict[int, float] = {}
+    for ts in sorted(pd.Timestamp(t) for t in timestamps):
+        while event_idx < len(event_ts) and event_ts[event_idx][0] <= ts:
+            event = event_ts[event_idx][1]
             if event.kind == EVENT_PARK:
                 open_deposit_usd[event.vault_internal_id] = event.usd
             elif event.kind in (EVENT_PROMOTE, EVENT_CLOSE):
@@ -318,12 +319,13 @@ def pending_trigger_queue(input: ChartInput) -> tuple[Figure, pd.DataFrame]:
                 open_redeem_usd[event.vault_internal_id] = event.usd
             elif event.kind == EVENT_REDEEM_CLEAR:
                 open_redeem_usd.pop(event.vault_internal_id, None)
+            event_idx += 1
         deposit_total = sum(open_deposit_usd.values())
         if deposit_total:
-            rows.append({"timestamp": cutoff, "series": "Waiting deposits", "value": deposit_total})
+            rows.append({"timestamp": ts, "series": "Waiting deposits", "value": deposit_total})
         redeem_total = sum(open_redeem_usd.values())
         if redeem_total:
-            rows.append({"timestamp": cutoff, "series": "Redemption locked", "value": -redeem_total})
+            rows.append({"timestamp": ts, "series": "Redemption locked", "value": -redeem_total})
 
     if not rows:
         return _empty()

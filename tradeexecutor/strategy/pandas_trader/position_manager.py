@@ -513,7 +513,33 @@ class PositionManager:
 
         """
         return self.state.portfolio.get_position_by_trading_pair(pair, pending=pending)
-    
+
+    def is_async_vault_sell_pair(
+        self,
+        pair: TradingPairIdentifier,
+        *,
+        position_pair: TradingPairIdentifier | None = None,
+    ) -> bool:
+        """Does selling this vault pair only *request* a redemption that settles on a later cycle?
+
+        The single source of truth for the async-sell classification shared by
+        ``AlphaModel._cap_buys_by_async_sell_proceeds`` (which must not fund same-cycle buys with
+        async sell proceeds) and ``YieldManager`` (which must not count them as same-cycle cover
+        when releasing yield-venue cash).
+
+        Feature flags catch real async vaults (ERC-7540 / Lagoon / Ostium); the position's own
+        settlement history catches vaults simulated as async via a backtest settlement-delay
+        override with no async metadata.
+
+        :param position_pair:
+            The pair to look the current position up under, when it differs from ``pair``
+            (the alpha model's ``synthetic_pair`` nuance). Defaults to ``pair``.
+        """
+        if pair.is_async_vault():
+            return True
+        position = self.get_current_position_for_pair(position_pair or pair, pending=True)
+        return position is not None and position.has_async_vault_flow()
+
     def get_closed_positions_for_pair(
         self,
         pair: TradingPairIdentifier,

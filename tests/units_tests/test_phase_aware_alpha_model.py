@@ -112,6 +112,13 @@ class _StubPositionManager:
     def get_current_position_for_pair(self, pair: TradingPairIdentifier, pending: bool = False):
         return (self.pending_positions or {}).get(pair.internal_id)
 
+    def is_async_vault_sell_pair(self, pair: TradingPairIdentifier, *, position_pair: TradingPairIdentifier | None = None) -> bool:
+        # Mirrors PositionManager.is_async_vault_sell_pair over the stub's position map.
+        if pair.is_async_vault():
+            return True
+        position = self.get_current_position_for_pair(position_pair or pair, pending=True)
+        return position is not None and position.has_async_vault_flow()
+
 
 @dataclasses.dataclass
 class _StubTrade:

@@ -971,16 +971,13 @@ class AlphaModel:
                 continue
             adjust = s.position_adjust_usd
             if adjust < 0:
-                # Feature flags catch real async vaults; the position's own
-                # settlement history catches vaults simulated as async via a
-                # backtest delay override with no async metadata.
-                is_async = s.pair.is_async_vault()
-                if not is_async:
-                    position = position_manager.get_current_position_for_pair(
-                        s.synthetic_pair or s.pair,
-                        pending=True,
-                    )
-                    is_async = position is not None and position.has_async_vault_flow()
+                # Shared classification: feature flags catch real async vaults; the
+                # position's own settlement history catches vaults simulated as async
+                # via a backtest delay override with no async metadata.
+                is_async = position_manager.is_async_vault_sell_pair(
+                    s.pair,
+                    position_pair=s.synthetic_pair or s.pair,
+                )
                 if is_async:
                     async_sell_usd += -adjust
                 else:

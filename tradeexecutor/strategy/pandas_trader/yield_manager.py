@@ -599,17 +599,14 @@ class YieldManager:
     def _is_async_vault_sell(self, trade: TradeExecution) -> bool:
         """Does this sell only *request* a redemption whose proceeds settle on a later cycle?
 
-        Mirrors the classification in ``AlphaModel._cap_buys_by_async_sell_proceeds``: feature
-        flags catch real async vaults; the position's own settlement history catches vaults
-        simulated as async via a backtest settlement-delay override with no async metadata.
+        Delegates to :py:meth:`PositionManager.is_async_vault_sell_pair` — the single
+        classification shared with ``AlphaModel._cap_buys_by_async_sell_proceeds`` — after a
+        cheap non-vault guard (spot-token sells are always synchronous).
         """
         pair = trade.pair
         if not pair.is_vault():
             return False
-        if pair.is_async_vault():
-            return True
-        position = self.position_manager.get_current_position_for_pair(pair, pending=True)
-        return position is not None and position.has_async_vault_flow()
+        return self.position_manager.is_async_vault_sell_pair(pair)
 
     def calculate_cash_needed_to_cover_directional_trades(
         self,
@@ -698,13 +695,14 @@ class YieldManager:
 
         logger.info(msg)
 
-        if flow > 0:
-            if flow > already_deposited:
-                # This may happen in some situation that we need all reserves we have (all in on volatile positions)
-                # so we have no Aave credit left and eating into a reservs a bit.
-                # Esp. because we have some margin how much cash we will release for sells.
-                logger.info(f"Tries to release {flow} from yield management, but we have only {already_deposited}")
-                flow = already_deposited
+        if flow > 0 and flow > already_deposited:
+            # This may happen in some situation that we need all reserves we have (all in on volatile positions)
+            # so we have no Aave credit left and eating into a reservs a bit.
+            # Esp. because we have some margin how much cash we will release for sells.
+            # Diagnostic only: this method returns the directional trade cash diff, not a
+            # release flow, so there is nothing to clamp here (the release sizing happens in
+            # calculate_yield_positions / generate_rebalance_trades).
+            logger.info(f"Tries to release {flow} from yield management, but we have only {already_deposited}")
 
         return trade_cash_diff
 
@@ -716,14 +714,20 @@ class YieldManager:
         fail-fast and logging order), while both callers still share step 1's single definition.
         """
         current_positions = self.gather_current_yield_positions()
-        current_cash_yielding = sum([position and position.get_value() or 0.0 for k, position in current_positions.items() if k.kind != TradingPairKind.cash])
-        current_cash_in_hand = sum([position and position.get_value() or 0.0 for k, position in current_positions.items() if k.kind == TradingPairKind.cash])
-        all_cash_like = current_cash_yielding + current_cash_in_hand
+        current_cash_yielding = 0.0
+        current_cash_in_hand = 0.0
+        for pair, position in current_positions.items():
+            # `or 0.0` also coerces a None get_value() to zero, as the original expression did.
+            value = (position and position.get_value()) or 0.0
+            if pair.kind == TradingPairKind.cash:
+                current_cash_in_hand += value
+            else:
+                current_cash_yielding += value
         return _YieldCashLike(
             current_positions=current_positions,
             current_cash_yielding=current_cash_yielding,
             current_cash_in_hand=current_cash_in_hand,
-            all_cash_like=all_cash_like,
+            all_cash_like=current_cash_yielding + current_cash_in_hand,
         )
 
     def _calculate_available_for_yield(self, input: YieldDecisionInput, cash_like: _YieldCashLike) -> _YieldAvailability:

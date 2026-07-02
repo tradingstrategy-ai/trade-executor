@@ -61,6 +61,9 @@ EVENT_REDEEM_CLEAR = "redeem_clear"
 #: Event kinds that close an open park event.
 _CLOSING_KINDS = frozenset({EVENT_PROMOTE, EVENT_CLOSE})
 
+#: Event kinds that close an open redeem-block event.
+_REDEEM_CLOSING_KINDS = frozenset({EVENT_REDEEM_CLEAR})
+
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class QueueVaultEvent:
@@ -217,6 +220,26 @@ def iter_all_events(other_data: OtherData) -> Iterable[QueueVaultEvent]:
             yield QueueVaultEvent.from_dict(raw)
 
 
+def _read_open_events(
+    other_data: OtherData,
+    open_kind: str,
+    closing_kinds: frozenset,
+) -> dict[int, QueueVaultEvent]:
+    """Fold the whole event history into the currently-open events of one kind.
+
+    An ``open_kind`` event opens (or updates) a vault's entry; a later event in
+    ``closing_kinds`` for the same vault closes it. Returns
+    ``{vault_internal_id: latest open event}``.
+    """
+    open_events: dict[int, QueueVaultEvent] = {}
+    for event in iter_all_events(other_data):
+        if event.kind == open_kind:
+            open_events[event.vault_internal_id] = event
+        elif event.kind in closing_kinds:
+            open_events.pop(event.vault_internal_id, None)
+    return open_events
+
+
 def read_open_park_events(other_data: OtherData) -> dict[int, QueueVaultEvent]:
     """Reconstruct the currently-open park events by folding the whole history.
 
@@ -231,13 +254,7 @@ def read_open_park_events(other_data: OtherData) -> dict[int, QueueVaultEvent]:
     that logged no queue event and silently drop every open park event — breaking
     dedup, promotion detection, and reload recovery.
     """
-    open_events: dict[int, QueueVaultEvent] = {}
-    for event in iter_all_events(other_data):
-        if event.kind == EVENT_PARK:
-            open_events[event.vault_internal_id] = event
-        elif event.kind in _CLOSING_KINDS:
-            open_events.pop(event.vault_internal_id, None)
-    return open_events
+    return _read_open_events(other_data, EVENT_PARK, _CLOSING_KINDS)
 
 
 def read_open_redeem_block_events(other_data: OtherData) -> dict[int, QueueVaultEvent]:
@@ -249,13 +266,7 @@ def read_open_redeem_block_events(other_data: OtherData) -> dict[int, QueueVault
     ``{vault_internal_id: latest open redeem-block event}``. Same full-history-fold
     rationale — never ``OtherData.load_latest``.
     """
-    open_events: dict[int, QueueVaultEvent] = {}
-    for event in iter_all_events(other_data):
-        if event.kind == EVENT_REDEEM_BLOCK:
-            open_events[event.vault_internal_id] = event
-        elif event.kind == EVENT_REDEEM_CLEAR:
-            open_events.pop(event.vault_internal_id, None)
-    return open_events
+    return _read_open_events(other_data, EVENT_REDEEM_BLOCK, _REDEEM_CLOSING_KINDS)
 
 
 class PhaseAwareAlphaModel(AlphaModel):
