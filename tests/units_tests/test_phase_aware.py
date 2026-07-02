@@ -41,9 +41,13 @@ from tradingstrategy.chain import ChainId
 class _StubPair:
     cctp: bool = False
     internal_id: int | None = None
+    async_vault: bool = False
 
     def is_cctp_bridge(self) -> bool:
         return self.cctp
+
+    def is_async_vault(self) -> bool:
+        return self.async_vault
 
 
 @dataclasses.dataclass
@@ -328,3 +332,22 @@ def test_queue_vault_membership_identity():
     portfolio = _StubPortfolio(open_positions={1: venue_pos, 2: directional})
     assert is_queue_vault(venue_pos) is False
     assert queue_venue_redeemable(portfolio, venue_ids) == pytest.approx(400.0)
+
+
+def test_queue_vault_pair_ids_rejects_async_venue():
+    """An async vault cannot be a queue venue - the precondition is enforced, not just documented.
+
+    An async venue cannot release cash same-cycle, so the invariant-4 budget widening and the
+    promotion funding would be built on cash that settles only cycles later.
+
+    1. A ruleset whose venue reports is_async_vault() trips the assert.
+    2. A synchronous venue passes.
+    """
+    # 1. Async venue -> rejected at wiring time.
+    async_ruleset = _StubRuleset(weights=[_StubRule(pair=_StubPair(internal_id=101, async_vault=True))])
+    with pytest.raises(AssertionError, match="must be synchronous"):
+        queue_vault_pair_ids(async_ruleset)
+
+    # 2. Sync venue -> accepted.
+    sync_ruleset = _StubRuleset(weights=[_StubRule(pair=_StubPair(internal_id=101))])
+    assert queue_vault_pair_ids(sync_ruleset) == {101}

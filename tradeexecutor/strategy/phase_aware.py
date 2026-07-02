@@ -167,8 +167,25 @@ def queue_vault_pair_ids(yield_rules) -> set:
     This config-derived set is the **primary, reload-safe** way to identify
     queue-venue positions (see :py:func:`is_queue_vault` for why the tag path is
     only an override).
+
+    Enforces the synchronous-venue precondition: an async (ERC-7540 / Lagoon /
+    Ostium) venue cannot release cash same-cycle, so the invariant-4 budget
+    widening and the promotion funding would both be built on cash that settles
+    only cycles later (``NotEnoughMoney`` at execution, or stranded parks).
+    Window-gated *deposit* schedules on a venue cannot be detected from the pair
+    alone - keep the venue always-open (Gauntlet/Steakhouse-style deep sync USDC
+    vaults; avoid D2/Gains-style epoch vaults).
     """
-    return {rule.pair.internal_id for rule in yield_rules.weights}
+    pair_ids = set()
+    for rule in yield_rules.weights:
+        pair = rule.pair
+        assert not pair.is_async_vault(), (
+            f"Queue venue {pair} is an async vault: the queue venue must be synchronous "
+            f"(instantly redeemable) so YieldManager can release its cash same-cycle to "
+            f"fund promotions (invariant 4). Pick a sync ERC-4626 venue instead."
+        )
+        pair_ids.add(pair.internal_id)
+    return pair_ids
 
 
 def queue_venue_redeemable(
@@ -349,6 +366,24 @@ class PhaseAwareAlphaModel(AlphaModel):
         #: :py:meth:`reconcile_phase_aware_events`, only once the deposit trade has
         #: actually been generated.
         self._promote_candidates: set = set()
+
+    # -- Invariant 1: the queue venue is never an alpha candidate --
+    def set_signal(self, pair, alpha, **kwargs):
+        """Reject signals on queue-venue pairs - YieldManager owns every venue trade.
+
+        A queue venue that slips into the candidate universe would otherwise be treated
+        as a fresh directional buy (it is excluded from old-weight accounting, invariant 2)
+        while YieldManager sells/rebalances the same pair in the same cycle - conflicting
+        same-pair trades. Fail fast at signal time instead. This also fires if a venue
+        position is carry-forward pinned (``carry_forward_non_redeemable_positions`` calls
+        ``set_signal``), which would equally violate the venue's fully-liquid precondition.
+        """
+        assert pair.internal_id not in self.venue_pair_ids, (
+            f"Queue-venue pair {pair} must not receive an alpha signal: "
+            f"YieldManager owns all venue trades (invariant 1). "
+            f"Remove the venue from the candidate universe / signal set."
+        )
+        return super().set_signal(pair, alpha, **kwargs)
 
     # -- Invariant 4: the same-cycle buy budget includes instantly-redeemable venue balance --
     def _available_same_cycle_cash(self, position_manager: PositionManager) -> USDollarAmount:

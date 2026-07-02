@@ -145,7 +145,11 @@ becomes a *promotion candidate*. The promote event is finalised in
 a buy suppressed by dust thresholds or a cycle cancellation keeps its park
 event open to retry. A parked vault that no longer earns a target is
 **stale-closed** (event closed, no buy); its cash stays in the venue and simply
-re-competes.
+re-competes. Note the finalisation is on trade *emission*, not execution
+success: if the emitted deposit later fails at execution, the park is already
+closed, but the still-targeted vault simply gets a normal directional buy on
+the next open cycle, funded from the venue via the invariant-4 widening — the
+mechanism self-heals without the event log.
 
 **Redemption side — passive.** `apply_phase_aware_intent` adds no redemption
 logic. Window-gated or async redemptions are owned by the existing settlement
@@ -285,6 +289,10 @@ Proving idle→productive is the point, so the undeployed slice has structure:
   size grows. A tolerance-based dedup is a possible follow-up.
 - **Yield on the structural reserve** needs a higher `position_allocation` with
   the zero-release handling — a tuning follow-up.
+- **Stop-loss-only `BacktestPricing` construction** does not carry
+  `vault_window_overrides`; that path sits outside the phase-aware rebalance
+  flow (stop losses do not gate on deposit windows), but thread it too if that
+  ever changes.
 
 ## Code map
 

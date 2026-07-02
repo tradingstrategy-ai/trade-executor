@@ -432,6 +432,28 @@ def test_park_dominant_cancels_cycle_via_min_trade_gate():
     assert alpha.max_position_adjust_usd == pytest.approx(5.0)  # parked dominant no longer counts
 
 
+def test_venue_pair_rejected_from_signals():
+    """The queue venue cannot receive an alpha signal - invariant 1 enforced, not just conventional.
+
+    A venue that slipped into the candidate universe would be treated as a fresh directional buy
+    (it is excluded from old-weight accounting) while YieldManager trades the same pair in the
+    same cycle - conflicting same-pair trades. set_signal fails fast instead.
+
+    1. set_signal on a venue pair raises with a descriptive message.
+    2. set_signal on a directional pair still works.
+    """
+    alpha = PhaseAwareAlphaModel(datetime.datetime(2024, 1, 1), cycle=1, venue_pair_ids={101})
+
+    # 1. The venue pair is rejected at signal time.
+    with pytest.raises(AssertionError, match="must not receive an alpha signal"):
+        alpha.set_signal(_make_pair(101), 0.5)
+
+    # 2. A directional pair is unaffected.
+    directional = _make_pair(202)
+    alpha.set_signal(directional, 0.5)
+    assert 202 in alpha.raw_signals
+
+
 def test_redemption_wait_events_lifecycle():
     """Blocked redemptions are mirrored to the durable event log: block, dedup, re-block, clear (CU-7).
 
