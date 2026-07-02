@@ -201,7 +201,11 @@ class PhaseAwareAlphaModel(AlphaModel):
     ``normalise_weights`` variant): the phase-aware pass operates on ``self.signals``
     after targets are computed, whatever produced them.
 
-    Same-chain only in this PR; cross-chain (CCTP) promotion is a follow-up.
+    Cross-chain deposits compose with no phase-aware-specific code: a promoted buy into a
+    satellite-chain vault is funded through the existing CCTP planner, provided the queue venue
+    is on the primary/hub chain so a same-cycle venue release can bridge out. Robust cross-chain
+    funding over long horizons (a single hub venue can be swept with cash a same-cycle satellite
+    bridge still needs) is a chain-aware ``YieldManager`` follow-up.
 
     Wiring in ``decide_trades`` (after the usual set_signal / normalise /
     update_old_weights / calculate_target_positions sequence, and before
@@ -243,9 +247,12 @@ class PhaseAwareAlphaModel(AlphaModel):
     ):
         """
         :param cycle:
-            Strategy cycle number, used as the durable event-log key. When ``None``
-            the durable park/promote logging and :py:meth:`apply_phase_aware_intent`
-            are inert (the deposit deferral still happens).
+            Strategy cycle number, used as the durable event-log key. When ``None`` the
+            phase-aware passes (:py:meth:`apply_phase_aware_intent` /
+            :py:meth:`reconcile_phase_aware_events`) are inert and behaviour degrades to the base
+            :py:class:`AlphaModel`: a closed-window deposit is *skipped*, not deferred (the base
+            ``_on_deposit_window_closed`` path sets the ``cannot_deposit`` flag and records
+            ``missed_deposit_usd``). Pass the real cycle number to enable park / deposit-on-open.
 
         :param venue_pair_ids:
             Internal ids of the queue-venue pairs (from

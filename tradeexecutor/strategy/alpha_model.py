@@ -1978,9 +1978,15 @@ class AlphaModel:
     ) -> bool:
         """Handle a buy whose vault deposit window is closed this cycle.
 
-        Base behaviour: skip the buy and record the miss. Extracted as an
-        overridable hook (behaviour-preserving) so ``PhaseAwareAlphaModel`` can
-        defer the buy and log a park event instead of skipping it.
+        Base behaviour: skip the buy and record the miss. Extracted as an overridable hook
+        (behaviour-preserving) so a subclass *could* defer instead of skip.
+
+        Note: :py:class:`~tradeexecutor.strategy.phase_aware.PhaseAwareAlphaModel` intentionally
+        does **not** override this hook. It parks closed-window deposits earlier, in
+        ``apply_phase_aware_intent()`` run *before* trade generation, so the deferred buys are
+        already zeroed and excluded from the whole-portfolio min-trade gate and the same-cycle
+        cash cap by the time this hook would run. This hook therefore stays the base skip path,
+        and is what a phase-aware model constructed without a ``cycle`` (inert) falls back to.
 
         :return:
             ``True`` to skip this signal's rebalance for the cycle.
