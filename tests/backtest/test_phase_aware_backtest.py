@@ -24,6 +24,11 @@ promotion coincides with a same-cycle async sell (the parent plan's "engineer a 
 sell ... not vacuous"), and the redemption-side sweep (settled async-redeem proceeds land in the
 queue venue, not idle).
 
+A third run (cleanup CU-7) exercises the redemption-locked diagnostics: the same window schedule
+gates ``check_redemption``, so a held VT is locked while its window is closed and an exit signalled
+into a closed window waits until the reopen - asserting the durable redeem-block / redeem-clear
+event sequence and the negative ``pending_trigger_queue`` band.
+
 Reproduces the synthetic-vault machinery of ``tests/backtest/test_backtest_async_vault.py`` inline
 (tests cannot import from the ``tests`` tree); the helpers it uses live in ``tradeexecutor.testing``.
 """
@@ -51,9 +56,12 @@ from tradeexecutor.strategy.pandas_trader.yield_manager import (
     YieldRuleset,
     YieldWeightingRule,
 )
+from tradeexecutor.strategy.chart.standard.vault import pending_trigger_queue
 from tradeexecutor.strategy.phase_aware import (
     EVENT_PARK,
     EVENT_PROMOTE,
+    EVENT_REDEEM_BLOCK,
+    EVENT_REDEEM_CLEAR,
     PhaseAwareAlphaModel,
     is_queue_vault_position,
     iter_all_events,
@@ -76,6 +84,7 @@ from tradingstrategy.universe import Universe
 
 START_AT = datetime.datetime(2024, 1, 1)
 END_AT = datetime.datetime(2024, 1, 15)  # ~14 daily cycles
+DATA_END_AT = datetime.datetime(2024, 2, 1)  # synthetic candles/TVL beyond the longest run
 INITIAL_DEPOSIT = 100_000
 FIXED_PRICE = 100.0
 ALLOCATION = 0.95  # directional + yield target; 5% stays as the always-in-cash reserve
@@ -151,13 +160,13 @@ def _make_universe() -> tuple[TradingStrategyUniverse, TradingPairIdentifier, Tr
         pairs.append(pair)
 
     pair_universe = create_pair_universe_from_code(chain_id, pairs)
-    candles = generate_fixed_price_candles(TimeBucket.d1, START_AT, END_AT, {p: FIXED_PRICE for p in pairs})
+    candles = generate_fixed_price_candles(TimeBucket.d1, START_AT, DATA_END_AT, {p: FIXED_PRICE for p in pairs})
     # Deep, flat TVL per vault so the size-risk (waterfall) normaliser has data to run but its cap
     # never binds (100M pool vs a 95k deposit), i.e. deposits still succeed. Only the method-agnostic
     # run consults it; the simple-normaliser runs ignore liquidity.
     liquidity_df = pd.concat([
         generate_tvl_candles(
-            TimeBucket.d1, START_AT, END_AT,
+            TimeBucket.d1, START_AT, DATA_END_AT,
             start_liquidity=100_000_000,
             pair_id=p.internal_id,
             daily_drift=(1.0, 1.0), high_drift=1.0, low_drift=1.0, random_seed=1,
@@ -629,3 +638,57 @@ def test_settled_async_redeem_proceeds_swept_to_venue(async_run: tuple[State, li
     # 3. Idle cash at the reserve floor at run end.
     equity = state.portfolio.get_total_equity()
     assert state.portfolio.get_cash() / equity == pytest.approx(1 - ALLOCATION, abs=0.03)
+
+
+def _redeem_signals(cycle: int) -> dict[int, float]:
+    """Per-cycle signals for the redemption-wait run.
+
+    Hold VT until cycle 10 (parks on the closed cycles 1-4, promotes on 5). From cycle 11 - VT's
+    window has closed again - exit VT: the redemption is blocked until the window reopens on
+    cycle 15.
+    """
+    if cycle < 11:
+        return {TARGET_INTERNAL_ID: 0.999}
+    return {TARGET_INTERNAL_ID: 0.0}
+
+
+def test_redemption_window_wait_and_clear():
+    """Redemption-locked value is durably recorded across closed windows and cleared on reopen (CU-7).
+
+    The redemption side is passive (the carry-forward pin owns the behaviour); the phase-aware model
+    mirrors the per-cycle ``missed_redemption_usd`` markers into durable redeem-block / redeem-clear
+    events so the redemption-locked buffer is chartable. The same ``vault_window_overrides``
+    schedule gates ``check_redemption``: a *held* VT is locked whenever the window is closed (the
+    precautionary carry-forward pin - true lock, exit wanted or not), and exiting VT while closed
+    waits until the reopen.
+
+    1. Run three weeks: VT promotes on cycle 5 and is then held through the closed windows; the
+       signal drops to zero on cycle 11 (window closed on cycles 11-14, reopens on 15).
+    2. The lock/unlock event sequence is exact and deduped: block on cycle 6 (held while the window
+       closed - re-blocks at the unchanged value append nothing), clear on 10 (window reopens),
+       block on 11 (closed again, exit now waiting), clear on 15 (reopened - the sell executes).
+    3. The exit actually executed: no VT position remains open at run end.
+    4. pending_trigger_queue renders the locked value as a negative band.
+    """
+    # 1. Three-week run: promote, hold across closed windows, then exit into a closed window.
+    state = _run(
+        lambda i: _phase_aware_decide_trades(i, signal_fn=_redeem_signals),
+        end_at=datetime.datetime(2024, 1, 22),
+    )
+
+    # 2. The exact lock/unlock sequence, deduped within each closed window.
+    events = list(iter_all_events(state.other_data))
+    blocks = [e for e in events if e.kind == EVENT_REDEEM_BLOCK and e.vault_internal_id == TARGET_INTERNAL_ID]
+    clears = [e for e in events if e.kind == EVENT_REDEEM_CLEAR and e.vault_internal_id == TARGET_INTERNAL_ID]
+    assert [e.cycle for e in blocks] == [6, 11], f"expected deduped blocks on cycles 6 and 11, got {blocks}"
+    assert [e.cycle for e in clears] == [10, 15], f"expected clears on the window reopens, got {clears}"
+    assert all(e.usd > 10_000 for e in blocks)  # the locked value is the substantial VT holding
+
+    # 3. The redemption executed once the window opened: VT no longer held.
+    held = {p.pair.internal_id for p in state.portfolio.open_positions.values()}
+    assert TARGET_INTERNAL_ID not in held
+
+    # 4. The chart shows the locked value as a negative band.
+    _fig, df = pending_trigger_queue(ChartInput(execution_context=unit_test_execution_context, state=state))
+    assert "Redemption locked" in df.columns
+    assert df["Redemption locked"].min() == pytest.approx(-blocks[0].usd, rel=0.01)

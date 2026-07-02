@@ -303,6 +303,71 @@ pass. Reviewed: Codex CLI caught the initial single-helper ordering regression (
 and the clean subagent independently flagged the same reorder as an error-path residual risk (also
 resolved by the split); Codex re-review of the split confirmed clean. Task #32 closed.
 
+### CU-6 — async-vault integration slice (post-delivery review residuals B1+B2) — DELIVERED
+
+The CU-0..CU-5 conformance re-review found two parent-plan test residuals sharing one root (the
+CU-3 synthetic universe was all-sync): **B1** — inv-4 was proven at the cap-mechanism level (CU-1
+unit test) but no end-to-end run ever coincided a *promotion* with a same-cycle *async sell*; and
+**B2** — the redemption-side sweep (settled async-redeem proceeds → venue, the "cumulative churn"
+attack) was proven only as sweep arithmetic (CU-2), never as a settle-then-sweep sequence.
+
+**Delivered** as a second module-scoped run in `tests/backtest/test_phase_aware_backtest.py`: a
+fourth vault `VA` (id 603) made async purely via `vault_settlement_delay_overrides` (no async
+feature flags — also forcing the cap's `position.has_async_vault_flow()` fallback classification),
+VT weight-capped at 0.6 so settled proceeds cannot be re-bought and must be swept. Signals switch on
+the promote cycle (park VT cycles 1-4 while VA holds; cycle 5: promote VT + exit VA — the engineered
+coincidence). Tests: `test_promote_survives_coincident_async_sell` (cap engaged — guarded against
+the early-return vacuity — promotion unscaled, venue-funded beyond raw cash, promote event records
+full size) and `test_settled_async_redeem_proceeds_swept_to_venue` (async sell settled; venue
+drained by the promote then recovered ≥ 0.75× the sale — no other cash source exists post-promote;
+idle at the reserve floor). Also folded in: the method-agnostic test parametrised over
+waterfall=True/False, adding the plain `_normalise_weights_size_risk` variant (review residual B4a).
+
+**The test found a real production bug, fixed in this package**:
+`YieldManager.calculate_cash_needed_to_cover_directional_trades` counted *every* sell's
+`planned_reserve` as same-cycle `cash_released` — including async vault sells whose proceeds settle
+cycles later — so with a coincident async sell the venue under-released and the promote buy failed
+`NotEnoughMoney` at execution (latent on master: no strategy there coincides async sells with
+YieldManager cover; routine under phase-aware promotion). Fix: `_is_async_vault_sell(trade)`
+(mirrors the cap's classification: feature flags, else the position's own settlement history;
+non-vault pairs never match) excludes those proceeds from the same-cycle cover; the excluded amount
+is logged. The settled proceeds land as reserve cash and a later cycle's sweep handles them; the fix
+flows through both strict and safe yield paths via CU-5's shared helper.
+
+**B4b — by-asset weight charts intentionally not relabelled.** The parent plan's `weight.py` chart
+list also named `volatile_and_non_volatile_percent` / `equity_curve_by_asset`; those render every
+position (venue included) as its own asset series and never lumped the venue into the reserve band,
+so the plan's complaint (the grey "USDC" lump) does not apply to them. Only `equity_curve_by_chain`
+aggregated the venue away — fixed in CU-4. Recorded here so the omission is a decision, not a drop.
+
+### CU-7 — redemption-locked band (post-delivery review residual B3) — DELIVERED
+
+The parent plan's `pending_trigger_queue` spec included *marked redemptions*; CU-4 shipped
+deposits-only because the event log recorded no redemption events. **Delivered**: diagnostic-only
+`redeem_block` / `redeem_clear` event kinds in `phase_aware.py` (+ `read_open_redeem_block_events`
+fold), mirrored from the per-cycle `missed_redemption_usd` markers (stamped by
+`_mark_signal_cannot_redeem` on the carry-forward pin, skip-rebalance and reduce paths) by
+`reconcile_phase_aware_events` → `_reconcile_redemption_waits` — the redemption side stays passive
+(no trade decision reads these events), the buffer merely becomes durable for the charts.
+
+**Semantics decision (found while implementing):** the carry-forward pin marks
+`missed_redemption_usd` for *any* held position whose redemption window is closed — precautionary,
+exit wanted or not — and once pinned the two are indistinguishable at the model level (the pin
+overwrites the signal). The band is therefore named **"Redemption locked"** (capital that could not
+be exited this cycle — the operator's liquidity-risk number), not "waiting redemptions", which
+would overclaim intent. `pending_trigger_queue` renders open blocks as that negative band (waiting
+deposits positive, redemption-locked negative — mirroring `pending_vault_settlements`). In-flight
+async settlements remain a separate concern (`pending_redemption_usd` / the settlements chart).
+
+Dedup: re-blocking at an unchanged amount appends nothing; a changed amount appends a new block and
+the folds dict-overwrite to the latest (no chart double-count). Note: dedup is exact-float, so on
+live mark-to-market values it rarely fires — the folds stay correct; a tolerance-based dedup is a
+possible follow-up. Tests: lifecycle unit test (block → dedup → changed-amount re-block → clear),
+chart unit test (negative band while blocked, gone after clear), and an integration run asserting
+the exact lock/unlock sequence: block on cycle 6 (held while the window closed — precautionary
+pin), clear on 10 (reopen), block on 11 (closed again, exit now waiting), clear on 15 (reopen — the
+sell executes and the position closes).
+
 ---
 
 ## Working instructions (read before starting any package)

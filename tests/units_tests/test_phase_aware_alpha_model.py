@@ -24,11 +24,14 @@ from tradeexecutor.state.other_data import OtherData
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignal, TradingPairSignalFlags
 from tradeexecutor.strategy.phase_aware import (
     EVENT_PARK,
+    EVENT_REDEEM_BLOCK,
+    EVENT_REDEEM_CLEAR,
     PhaseAwareAlphaModel,
     QueueVaultEvent,
     append_queue_event,
     iter_all_events,
     read_open_park_events,
+    read_open_redeem_block_events,
 )
 from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethereum_address
 from tradingstrategy.chain import ChainId
@@ -420,3 +423,51 @@ def test_park_dominant_cancels_cycle_via_min_trade_gate():
     trades = alpha.generate_rebalance_trades_and_triggers(pm, min_trade_threshold=50.0)
     assert trades == []
     assert alpha.max_position_adjust_usd == pytest.approx(5.0)  # parked dominant no longer counts
+
+
+def test_redemption_wait_events_lifecycle():
+    """Blocked redemptions are mirrored to the durable event log: block, dedup, re-block, clear (CU-7).
+
+    The redemption side is passive - the settlement pin and the redemption checks own the
+    behaviour and stamp per-cycle ``missed_redemption_usd`` on the signals - so
+    ``reconcile_phase_aware_events`` mirrors those markers into durable redeem-block /
+    redeem-clear events for the redemption-locked chart, without touching any trade decision.
+
+    1. Cycle 1: a signal carrying ``missed_redemption_usd`` logs a redeem-block event.
+    2. Cycle 2: the same amount is still blocked - no duplicate event is appended.
+    3. Cycle 3: the locked amount changes - a new block event is appended (no intervening clear)
+       and the fold reflects only the latest amount (no double count).
+    4. Cycle 4: the marker is gone (the redemption executed or is no longer wanted) - a
+       redeem-clear closes the open block.
+    """
+    other_data = OtherData()
+    pair = _make_pair(701)
+    pm = _make_pm(other_data, open_pairs=set())
+
+    def _cycle(cycle: int, missed_usd: float | None) -> None:
+        alpha = PhaseAwareAlphaModel(datetime.datetime(2024, 1, cycle), cycle=cycle)
+        signal = _make_signal(pair, 0.0)
+        if missed_usd is not None:
+            signal.other_data["missed_redemption_usd"] = missed_usd
+        alpha.signals = {701: signal}
+        alpha.reconcile_phase_aware_events(pm, [])
+
+    # 1. Cycle 1: a blocked redemption opens a redeem-block event.
+    _cycle(1, 500.0)
+    assert read_open_redeem_block_events(other_data)[701].usd == pytest.approx(500.0)
+
+    # 2. Cycle 2: unchanged amount -> deduped, still exactly one block event in the log.
+    _cycle(2, 500.0)
+    assert sum(1 for e in iter_all_events(other_data) if e.kind == EVENT_REDEEM_BLOCK) == 1
+
+    # 3. Cycle 3: changed amount -> a second block event, and the fold holds only the latest value.
+    _cycle(3, 750.0)
+    assert sum(1 for e in iter_all_events(other_data) if e.kind == EVENT_REDEEM_BLOCK) == 2
+    open_blocks = read_open_redeem_block_events(other_data)
+    assert len(open_blocks) == 1  # dict overwrite: latest per vault, no double count
+    assert open_blocks[701].usd == pytest.approx(750.0)
+
+    # 4. Cycle 4: marker gone -> the open block is closed with a redeem-clear.
+    _cycle(4, None)
+    assert read_open_redeem_block_events(other_data) == {}
+    assert sum(1 for e in iter_all_events(other_data) if e.kind == EVENT_REDEEM_CLEAR) == 1

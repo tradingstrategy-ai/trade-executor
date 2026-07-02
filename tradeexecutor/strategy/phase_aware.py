@@ -40,23 +40,47 @@ EVENT_PROMOTE = "promote"
 #: A park was abandoned without depositing (the vault is no longer targeted).
 EVENT_CLOSE = "close"
 
+#: A held position's redemption is blocked (closed redemption window / lock-up) - diagnostic only.
+#:
+#: Its value is *redemption-locked*: the strategy could not exit this cycle even if it wanted to.
+#: This covers both a wanted-but-blocked exit and the precautionary carry-forward pin on a
+#: closed-window holding - once pinned the two are indistinguishable at the model level, and the
+#: operator-relevant quantity is the same: how much of the book cannot be redeemed right now.
+#: (In-flight async settlements are a separate concern, charted by ``pending_vault_settlements``.)
+#:
+#: The redemption side of the phase-aware design is *passive* (the settlement pin owns the
+#: behaviour; the model adds no redemption logic), so these events change no trade decision -
+#: they exist to make the redemption-locked buffer durable for the charts, mirroring how park
+#: events make the waiting-deposit buffer durable.
+EVENT_REDEEM_BLOCK = "redeem_block"
+
+#: A previously-blocked redemption unblocked (the window opened / lock-up expired - the position
+#: became redeemable again, or was exited).
+EVENT_REDEEM_CLEAR = "redeem_clear"
+
 #: Event kinds that close an open park event.
 _CLOSING_KINDS = frozenset({EVENT_PROMOTE, EVENT_CLOSE})
 
 
 @dataclasses.dataclass(slots=True, frozen=True)
 class QueueVaultEvent:
-    """A single park / promote / close event in the queue-venue event log.
+    """A single event in the durable queue-venue event log.
+
+    Deposit side: park / promote / close (drives behaviour - promotion detection and dedup).
+    Redemption side: redeem-block / redeem-clear (diagnostic only - the settlement pin owns
+    the behaviour; these make the waiting-redemption buffer durable for the charts).
 
     JSON-primitive by construction: a string kind, an int vault id, a float USD
     and an int cycle — no :py:class:`~tradeexecutor.state.identifier.TradingPairIdentifier`
     objects — so it round-trips through the state file.
     """
 
-    #: One of :py:data:`EVENT_PARK`, :py:data:`EVENT_PROMOTE`, :py:data:`EVENT_CLOSE`.
+    #: One of :py:data:`EVENT_PARK`, :py:data:`EVENT_PROMOTE`, :py:data:`EVENT_CLOSE`,
+    #: :py:data:`EVENT_REDEEM_BLOCK`, :py:data:`EVENT_REDEEM_CLEAR`.
     kind: str
 
-    #: Internal id of the target vault the parked cash is destined for.
+    #: Internal id of the target vault the parked cash is destined for (deposit side),
+    #: or the vault whose redemption is waiting (redemption side).
     vault_internal_id: int
 
     #: USD amount parked / promoted at event time (a diagnostic snapshot).
@@ -216,6 +240,24 @@ def read_open_park_events(other_data: OtherData) -> dict[int, QueueVaultEvent]:
     return open_events
 
 
+def read_open_redeem_block_events(other_data: OtherData) -> dict[int, QueueVaultEvent]:
+    """Reconstruct the currently-waiting blocked redemptions by folding the whole history.
+
+    The redemption-side sibling of :py:func:`read_open_park_events`:
+    a :py:data:`EVENT_REDEEM_BLOCK` opens a vault's waiting-redemption, a later
+    :py:data:`EVENT_REDEEM_CLEAR` for the same vault closes it. Returns
+    ``{vault_internal_id: latest open redeem-block event}``. Same full-history-fold
+    rationale — never ``OtherData.load_latest``.
+    """
+    open_events: dict[int, QueueVaultEvent] = {}
+    for event in iter_all_events(other_data):
+        if event.kind == EVENT_REDEEM_BLOCK:
+            open_events[event.vault_internal_id] = event
+        elif event.kind == EVENT_REDEEM_CLEAR:
+            open_events.pop(event.vault_internal_id, None)
+    return open_events
+
+
 class PhaseAwareAlphaModel(AlphaModel):
     """AlphaModel that defers window-closed vault deposits into a yield-bearing queue venue.
 
@@ -368,10 +410,19 @@ class PhaseAwareAlphaModel(AlphaModel):
         candidate whose buy was suppressed (min-trade threshold, dust, or a whole-cycle
         cancellation) keeps its park event open to retry on a later cycle, rather than
         closing it with no deposit.
+
+        Also records the cycle's blocked redemptions to the durable event log
+        (:py:meth:`_reconcile_redemption_waits`) - diagnostic only, no trade decision
+        reads those events.
         """
-        if self.phase_aware_cycle is None or not self._promote_candidates:
+        if self.phase_aware_cycle is None:
             return
         other_data = position_manager.state.other_data
+        # Diagnostic redemption-wait events first: they must be recorded even on a cycle
+        # with no promotion candidates.
+        self._reconcile_redemption_waits(other_data)
+        if not self._promote_candidates:
+            return
         # A vault deposit long is built on synthetic_pair == pair (map_pair_for_signal
         # returns the underlying for signal > 0), so trade.pair.internal_id matches the
         # signal/vault key used for the promote candidates.
@@ -385,6 +436,35 @@ class PhaseAwareAlphaModel(AlphaModel):
             usd = signal.position_adjust_usd if signal is not None else 0.0
             self._log_phase_aware_event(other_data, EVENT_PROMOTE, vault_id, usd)
         self._promote_candidates = set()
+
+    def _reconcile_redemption_waits(self, other_data: OtherData) -> None:
+        """Mirror this cycle's redemption-locked value into the durable event log (diagnostic only).
+
+        The redemption side is *passive* - the settlement pin and the redemption checks own
+        the behaviour, and they record ``missed_redemption_usd`` on the cycle's signals
+        (``_mark_signal_cannot_redeem``: the carry-forward pin, the skip-rebalance path and
+        the reduce path all funnel there). Signals are per-cycle, so this scan makes the
+        redemption-locked buffer durable for the charts: a signal carrying
+        ``missed_redemption_usd`` opens (or updates) a :py:data:`EVENT_REDEEM_BLOCK`; an open
+        block whose vault no longer reports one this cycle - the window opened / lock-up
+        expired, or the position is gone - is closed with :py:data:`EVENT_REDEEM_CLEAR`.
+        Re-blocking at an unchanged amount appends nothing, to bound the log over long runs.
+        """
+        open_blocks = read_open_redeem_block_events(other_data)
+        blocked_now: dict[int, float] = {}
+        for vault_id, signal in self.signals.items():
+            usd = signal.other_data.get("missed_redemption_usd")
+            if usd:
+                blocked_now[vault_id] = float(usd)
+
+        for vault_id, usd in blocked_now.items():
+            existing = open_blocks.get(vault_id)
+            if existing is None or existing.usd != usd:
+                self._log_phase_aware_event(other_data, EVENT_REDEEM_BLOCK, vault_id, usd)
+
+        for vault_id in open_blocks:
+            if vault_id not in blocked_now:
+                self._log_phase_aware_event(other_data, EVENT_REDEEM_CLEAR, vault_id, 0.0)
 
     def _park_signal(self, other_data: OtherData, signal: TradingPairSignal, existing_event=None) -> None:
         """Defer a closed-window deposit into the queue venue and log a park event.
