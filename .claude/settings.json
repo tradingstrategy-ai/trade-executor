@@ -66,10 +66,12 @@
       "Bash(if ! grep -q 'from tradeexecutor.utils.hex import hexbytes_to_hex_str' \"$f\")",
       "Bash(docker system prune:*)",
       "Bash(du:*)",
-      "Bash(docker run:*)"
+      "Bash(docker run:*)",
+      "Bash(tail -n 5000 ~/hyper-ai.log | wc -l; echo \"---\"; ls -la ~/hyper-ai.log)",
+      "Read(//Users/moo/**)"
     ]
   },
   "model": "opus",
-  "thinkingMode": "extended",
-  "effortLevel": "high"
+  "effortLevel": "high",
+  "thinkingMode": "extended"
 }
