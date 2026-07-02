@@ -184,7 +184,7 @@ def test_deposit_verification_rejects_large_existing_position_shortfall(
     mock_fetch, mock_time, mock_sleep,
 ):
     """Existing-vault deposit still fails when the shortfall exceeds relative tolerance."""
-    mock_fetch.return_value = _make_equity(Decimal("620.0"))
+    mock_fetch.return_value = _make_equity(Decimal("590.0"))
     mock_time.side_effect = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
 
     session = MagicMock()
