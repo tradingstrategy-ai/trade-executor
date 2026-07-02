@@ -278,14 +278,30 @@ venue identity) — one source of truth; parent-plan anchors (drifted, re-verify
 **Done when:** charts + table render from the 09 notebook run; unit tests over the reconstruction
 logic pass; task #21 closed.
 
-### CU-5 — optional refactor [G13]
+### CU-5 — optional refactor [G13] — DELIVERED
 
-Extract the duplicated steps 1-3 into a private
-`YieldManager._calculate_available_for_yield(input) -> tuple[float, float, dict]` (available,
-trade_cash_diff, current_positions) used by **both** `calculate_yield_management` and
-`calculate_yield_management_safe`. Pure behaviour-preserving refactor: `test_yield.py` (5 tests)
+Extract the duplicated steps 1-3 into private helpers used by **both** `calculate_yield_management`
+and `calculate_yield_management_safe`. Pure behaviour-preserving refactor: `test_yield.py` (5 tests)
 must pass byte-for-byte identically. Do this last — it touches the strict method other strategies
 rely on.
+
+**Delivered.** Split into **two** helpers rather than one, because a single monolithic helper could
+not preserve the strict method's original ordering: `calculate_yield_management` asserts
+`all_cash_like > 0` *before* the directional cash need is computed (and before its logging), whereas
+the safe wrapper must *not* gain that assert (an empty book releases nothing rather than raising).
+
+- `YieldManager._gather_yield_cash_like() -> _YieldCashLike` — step 1 (current positions,
+  cash-yielding, cash-in-hand, all_cash_like). Called first by both methods.
+- `YieldManager._calculate_available_for_yield(input, cash_like) -> _YieldAvailability` — steps 2-3
+  (trade_cash_diff, always_in_cash, available_for_yield). Pure numbers, no asserts/logging, so the
+  `available_for_yield` formula has a single source of truth (removes the G13 drift risk).
+
+The strict method keeps its exact original order (gather → assert all_cash_like → log1 → availability
+→ log2 → assert available); the safe wrapper is byte-for-byte unchanged (no assert, no steps-1-3
+logging, same dust branch + release path). `test_yield.py` (5) + `test_phase_aware_backtest.py` (9)
+pass. Reviewed: Codex CLI caught the initial single-helper ordering regression (fixed via the split)
+and the clean subagent independently flagged the same reorder as an error-path residual risk (also
+resolved by the split); Codex re-review of the split confirmed clean. Task #32 closed.
 
 ---
 

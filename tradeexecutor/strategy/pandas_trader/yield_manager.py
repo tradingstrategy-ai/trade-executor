@@ -3,6 +3,7 @@ import datetime
 import logging
 from decimal import Decimal
 from functools import cached_property
+from typing import NamedTuple
 
 import dataclasses
 from pprint import pformat
@@ -194,6 +195,47 @@ class YieldResult:
     available_for_yield: USDollarAmount
 
     trades: list[TradeExecution]
+
+
+class _YieldCashLike(NamedTuple):
+    """Step 1 of the yield calculation: the cash-like value we currently hold.
+
+    Split from the availability calculation (:py:class:`_YieldAvailability`) so the strict method can
+    keep asserting ``all_cash_like > 0`` *before* the directional cash need is computed — preserving
+    its original fail-fast and logging order — while both callers still share step 1's one definition.
+    """
+
+    #: Current yield-related positions keyed by pair, from :py:meth:`YieldManager.gather_current_yield_positions`.
+    current_positions: dict
+
+    #: USD value already deployed into yield-bearing (non-cash) positions.
+    current_cash_yielding: USDollarAmount
+
+    #: USD value held as plain cash reserve.
+    current_cash_in_hand: USDollarAmount
+
+    #: ``current_cash_yielding + current_cash_in_hand`` — all cash-like value on the book.
+    all_cash_like: USDollarAmount
+
+
+class _YieldAvailability(NamedTuple):
+    """Steps 2-3 of the yield calculation: directional cash need and the leftover for yield.
+
+    Extracted so the strict :py:meth:`YieldManager.calculate_yield_management` and its
+    zero-release-safe wrapper :py:meth:`YieldManager.calculate_yield_management_safe` compute
+    ``available_for_yield`` from a single source of truth and cannot drift apart. Pure numbers:
+    the strict method keeps its own asserts and logging, so the safe wrapper's behaviour is
+    unchanged by the extraction.
+    """
+
+    #: Net cash the directional trades consume (positive) or release (negative) this cycle.
+    trade_cash_diff: USDollarAmount
+
+    #: Reserve that must always stay in hand: ``total_equity * (1 - position_allocation)``.
+    always_in_cash: USDollarAmount
+
+    #: Cash left over for yield after covering directional trades, the reserve and pending redemptions.
+    available_for_yield: USDollarAmount
 
 
 class YieldManager:
@@ -639,40 +681,79 @@ class YieldManager:
 
         return trade_cash_diff
 
-    def calculate_yield_management(self, input: YieldDecisionInput) -> YieldResult:
-        """Calculate trades for the yield management."""
+    def _gather_yield_cash_like(self) -> _YieldCashLike:
+        """Step 1 of the yield calculation: how much cash-like value we currently hold.
 
-        # 1. Calculate how much we have currently cash in hand and in yield reserves
-        #
+        Kept separate from :py:meth:`_calculate_available_for_yield` so the strict method can assert
+        ``all_cash_like > 0`` before the directional cash need is computed (preserving its original
+        fail-fast and logging order), while both callers still share step 1's single definition.
+        """
         current_positions = self.gather_current_yield_positions()
         current_cash_yielding = sum([position and position.get_value() or 0.0 for k, position in current_positions.items() if k.kind != TradingPairKind.cash])
         current_cash_in_hand = sum([position and position.get_value() or 0.0 for k, position in current_positions.items() if k.kind == TradingPairKind.cash])
         all_cash_like = current_cash_yielding + current_cash_in_hand
+        return _YieldCashLike(
+            current_positions=current_positions,
+            current_cash_yielding=current_cash_yielding,
+            current_cash_in_hand=current_cash_in_hand,
+            all_cash_like=all_cash_like,
+        )
+
+    def _calculate_available_for_yield(self, input: YieldDecisionInput, cash_like: _YieldCashLike) -> _YieldAvailability:
+        """Steps 2-3 of the yield calculation, shared by the strict method and its safe wrapper.
+
+        Given the step-1 holdings (:py:meth:`_gather_yield_cash_like`), computes how much the
+        directional trades consume or release this cycle and how much is left over for yield after the
+        always-in-cash reserve and pending redemptions.
+
+        Pure computation — no asserts and no logging — so :py:meth:`calculate_yield_management` and
+        :py:meth:`calculate_yield_management_safe` derive ``available_for_yield`` identically and can
+        never drift. Each caller adds its own asserts / logging / branch on the returned numbers.
+        """
+        # 2. Cash needed/released from directional trades.
+        trade_cash_diff = self.calculate_cash_needed_to_cover_directional_trades(
+            input,
+            already_deposited=cash_like.current_cash_yielding,
+            available_cash=cash_like.current_cash_in_hand,
+        )
+
+        # 3. How much cash we can allocate for yield.
+        always_in_cash = input.total_equity * (1 - self.rules.position_allocation)
+        available_for_yield = cash_like.all_cash_like - trade_cash_diff - always_in_cash - input.pending_redemptions
+
+        return _YieldAvailability(
+            trade_cash_diff=trade_cash_diff,
+            always_in_cash=always_in_cash,
+            available_for_yield=available_for_yield,
+        )
+
+    def calculate_yield_management(self, input: YieldDecisionInput) -> YieldResult:
+        """Calculate trades for the yield management."""
+
+        # 1. Cash-like holdings (shared with the safe wrapper via _gather_yield_cash_like).
+        cash_like = self._gather_yield_cash_like()
+        current_positions = cash_like.current_positions
+        all_cash_like = cash_like.all_cash_like
 
         assert all_cash_like > 0, f"No cash-like instruments available for yield management:\n{pformat(current_positions)}"
 
         logger.info(
             "Current cash in hand: %f USD, cash yielding: %f USD, all cash like %f USD",
-            current_cash_in_hand,
-            current_cash_yielding,
+            cash_like.current_cash_in_hand,
+            cash_like.current_cash_yielding,
             all_cash_like,
         )
 
-        # 2. Calculate the amount of cash needed/released from directional trades
-        trade_cash_diff = self.calculate_cash_needed_to_cover_directional_trades(
-            input,
-            already_deposited=current_cash_yielding,
-            available_cash=current_cash_in_hand,
-        )
-
-        #. 3. Calculate how much cash we can allocate for yield
-        always_in_cash = input.total_equity * (1 - self.rules.position_allocation)
-        available_for_yield = all_cash_like - trade_cash_diff - always_in_cash - input.pending_redemptions
+        # 2-3. Directional cash need and the leftover available for yield (shared with the safe
+        # wrapper via _calculate_available_for_yield so the two paths cannot drift).
+        avail = self._calculate_available_for_yield(input, cash_like)
+        trade_cash_diff = avail.trade_cash_diff
+        available_for_yield = avail.available_for_yield
 
         logger.info(
             "Cash requirements calculated.\nNeeded to cover trades/released from trades: %f USD\nNeeded always cash in hand: %f USD\nLeft for yield: %f USD",
             trade_cash_diff,
-            always_in_cash,
+            avail.always_in_cash,
             available_for_yield,
         )
 
@@ -747,27 +828,14 @@ class YieldManager:
             it, release instead. Keeps a tiny positive residual from generating a dust sweep.
         """
         # Steps 1-3 of calculate_yield_management: how much cash-like value we hold, how much the
-        # directional trades consume, and how much is left over for yield after the reserve.
-        current_positions = self.gather_current_yield_positions()
-        current_cash_yielding = sum(
-            position and position.get_value() or 0.0
-            for k, position in current_positions.items()
-            if k.kind != TradingPairKind.cash
-        )
-        current_cash_in_hand = sum(
-            position and position.get_value() or 0.0
-            for k, position in current_positions.items()
-            if k.kind == TradingPairKind.cash
-        )
-        all_cash_like = current_cash_yielding + current_cash_in_hand
-
-        trade_cash_diff = self.calculate_cash_needed_to_cover_directional_trades(
-            input,
-            already_deposited=current_cash_yielding,
-            available_cash=current_cash_in_hand,
-        )
-        always_in_cash = input.total_equity * (1 - self.rules.position_allocation)
-        available_for_yield = all_cash_like - trade_cash_diff - always_in_cash - input.pending_redemptions
+        # directional trades consume, and how much is left over for yield after the reserve. Computed
+        # by the shared helpers so this pre-check and the strict path stay identical (no drift). No
+        # all_cash_like assert here: an empty book releases nothing rather than raising.
+        cash_like = self._gather_yield_cash_like()
+        current_positions = cash_like.current_positions
+        avail = self._calculate_available_for_yield(input, cash_like)
+        trade_cash_diff = avail.trade_cash_diff
+        available_for_yield = avail.available_for_yield
 
         if available_for_yield > dust_usd:
             # Enough idle cash to sweep: defer to the strict path (keeps its assert as a safety net).
