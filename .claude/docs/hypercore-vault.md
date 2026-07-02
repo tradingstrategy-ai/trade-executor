@@ -156,6 +156,33 @@ sequenceDiagram
     end
 ```
 
+### Deposit verification tolerance and NAV drift
+
+`wait_for_vault_deposit_confirmation` confirms a deposit into an *existing*
+vault position by checking that our USD equity increased by roughly the
+deposited amount, accepting a shortfall of
+`max(tolerance, expected_deposit * relative_tolerance)` — see
+`DEFAULT_VAULT_DEPOSIT_RELATIVE_TOLERANCE` in `eth_defi.hyperliquid.api`.
+
+The subtle part: the "increase" is measured against a **baseline equity
+snapshotted minutes earlier** (before phase 1). Live perp-trading vaults (e.g.
+copy-trading leader vaults) mark-to-market every block, so the vault's
+*existing* holdings drift in value during the confirmation window. That drift
+is subtracted from the apparent deposit, so a fully-credited deposit can look
+short if the vault's own NAV ticked down in the meantime.
+
+**Production incident (trade #1240, Loop Fund vault, 2026-07-01).** An
+8.06806 USDC deposit was credited essentially to the cent — the equity jump
+across two consecutive polls was 8.06608 USDC — but the ~750 USDC pre-existing
+position had already marked down ~0.22 USDC (≈0.03%) versus the baseline. The
+apparent increase against the stale baseline was only ~7.85 USDC, short of the
+old 1% (0.08 USDC) band, so verification timed out, raised
+`HypercoreDepositVerificationError`, and crashed the whole live loop even though
+the funds were safely in the vault. The relative tolerance was raised to **5%**
+to absorb normal perp-vault volatility over the window while still catching
+genuinely rejected deposits (which show ~0% increase, not a few-percent
+shortfall).
+
 ## Withdrawal (sell) flow
 
 A withdrawal walks USDC back from the vault to the HyperEVM Safe through three
