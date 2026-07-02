@@ -113,30 +113,35 @@ New tests in `tests/units_tests/test_phase_aware_alpha_model.py` (or a sibling m
 past ~600 lines). Repo test rules apply (numbered-step docstrings mirrored inline, typed fixtures,
 happy+bad path, `pytest.approx`, no stdout).
 
-1. **Non-vacuous invariant 4** — through `_cap_buys_by_async_sell_proceeds` (`alpha_model.py`
-   ~:941, called from `generate_rebalance_trades_and_triggers` ~:2345; verify anchors):
-   - Engineer signals with (a) a same-cycle **async vault sell** so `async_sell_usd > 0` and the
-     cap does not early-return, (b) buys exceeding `cash + sync sells`, (c) a queue-venue position
-     whose `queue_venue_redeemable` covers the shortfall.
-   - Assert: base `AlphaModel` scales the buy down; `PhaseAwareAlphaModel` with `venue_pair_ids`
-     does **not** (or scales strictly less), proving the widened budget flows through the cap —
-     not just through the hook. This is the exact non-vacuous shape the parent plan demanded.
-2. **Invariant 3b** — with a swept venue position in the portfolio, assert after
-   `calculate_target_positions` that `sum(max(signal.position_adjust_usd, 0))` across directional
-   signals does not exceed **the exact `investable_equity` passed to
-   `calculate_target_positions()`** (+epsilon) — do not recompute `allocation_pct * total_equity`
-   independently, because `calculate_portfolio_target_value()` can deduct in-flight/pending value
-   (`exchange_account/allocation.py:170`) and `position_adjust_usd = target − old_value`
-   (`alpha_model.py:1856`); the two only coincide in a fixture with no pending redemptions,
-   in-flight CCTP, settlement-pending or locked capital. The property under test: a venue in
-   equity but excluded from old-weights must not double-count into the buy budget.
-3. **Invariant 1** — run a full phase-aware cycle (park + promote) and assert **no generated trade
-   targets a venue pair id** (all venue trades must come from `calculate_yield_management*`).
-4. **Invariant 3** — assert the venue position's value is included in
-   `calculate_total_equity()` / `calculate_portfolio_target_value()` inputs (not subtracted), e.g.
-   via a stub portfolio: deployable target computed with vs without the venue differs by its value.
+1. **Non-vacuous invariant 4 — DELIVERED** as `test_cap_buys_widened_by_venue_through_async_sell`
+   (`tests/units_tests/test_phase_aware_alpha_model.py`). Drives `_cap_buys_by_async_sell_proceeds`
+   directly with (a) a same-cycle async-vault sell — detected via the position's
+   `has_async_vault_flow` fallback — so `async_sell_usd > 0` and the cap does not early-return,
+   (b) a $500 buy exceeding raw cash ($100) + sync sells ($0), (c) a $1000 queue-venue position.
+   Base `AlphaModel` scales the buy to $100 and flags `capped_by_pending_settlement_cash`;
+   `PhaseAwareAlphaModel` (with `venue_pair_ids`) leaves it at $500 unflagged — proving the widened
+   budget flows through the cap, not just the `_available_same_cycle_cash` hook. This is the exact
+   non-vacuous shape the parent plan demanded (G5). Passing.
 
-**Done when:** all four pass; existing 20 phase-aware unit tests still green.
+2-4. **Invariants 3b, 1, 3 reassigned to CU-3 (the integration backtest)** — they are *not* cleanly
+   unit-testable without the shallow stubbing that would repeat the very vacuity the conformance
+   review flagged, so faithfully they belong against real machinery:
+   - **inv-3b** *is* unit-testable in principle (a Codex review corrected an earlier overstatement):
+     `calculate_target_positions()` → `map_pair_for_signal()` needs only a `strategy_universe`
+     attribute for positive signals, no shorting helpers. But a stub-level assertion (directional
+     `sum(max(adjust,0)) <=` the exact `investable_equity` handed in — not a recomputed
+     `allocation_pct*equity`, since `allocation.py:170` deducts in-flight/pending) would mostly
+     re-verify *base* `calculate_target_positions` maths; the *phase-aware-specific* property — a
+     venue in equity yet excluded from old-weights not inflating the buy budget — only manifests with
+     a venue actually holding value across `update_old_weights` + target-calc, i.e. the real run.
+     Grouped into CU-3 for that reason, not because it is infeasible in a unit test.
+   - **inv-1** ("the model emits no venue trade; YieldManager owns them") is only meaningful against
+     real trade generation with a real venue in the portfolio.
+   - **inv-3** ("venue stays in equity / deployable, not subtracted") is a construction/notebook
+     property — there is no model code to unit-assert; the run must show it.
+
+**Done when:** the invariant-4 test passes and the existing phase-aware unit suite stays green
+(11 in `test_phase_aware_alpha_model.py` + 9 in `test_phase_aware.py`). Inv-1/3/3b move to CU-3.
 
 ### CU-2 — behavioural tests [G7 G8 G9]
 
@@ -177,6 +182,15 @@ and idle cash near the reserve floor after the sweep (the venue holding the exce
 `tests/backtest/test_backtest_async_vault.py` — reuse, don't reinvent. If synthetic vault-pair
 construction proves disproportionate, document why and keep the notebook as the integration
 gate (explicitly, in the test module docstring).
+
+Also fold in the three invariants reassigned from CU-1, asserted against this real run:
+- **inv-1** — no trade in the run targets a queue-venue pair id except those YieldManager generated
+  (assert the venue position changes only via the yield step, e.g. the model's directional trades
+  never carry a venue pair id).
+- **inv-3** — the venue value is included in the cycle's total equity / deployable target (the
+  strategy deploys against equity that includes the venue, not net of it).
+- **inv-3b** — directional buys in a cycle never exceed that cycle's `investable_equity` (the venue,
+  in equity but excluded from old-weights, does not inflate the buy budget).
 
 **Done when:** the test runs in the default (non-slow) suite in seconds-to-a-minute, no network.
 

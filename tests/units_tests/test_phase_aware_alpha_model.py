@@ -21,7 +21,7 @@ import pytest
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.other_data import OtherData
-from tradeexecutor.strategy.alpha_model import TradingPairSignal, TradingPairSignalFlags
+from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignal, TradingPairSignalFlags
 from tradeexecutor.strategy.phase_aware import (
     EVENT_PARK,
     PhaseAwareAlphaModel,
@@ -60,6 +60,7 @@ class _StubPosition:
     value: float = 0.0
     credit: bool = False
     vault: bool = False
+    async_flow: bool = False
 
     def get_value(self) -> float:
         return self.value
@@ -69,6 +70,9 @@ class _StubPosition:
 
     def is_vault(self) -> bool:
         return self.vault
+
+    def has_async_vault_flow(self) -> bool:
+        return self.async_flow
 
 
 @dataclasses.dataclass
@@ -95,9 +99,15 @@ class _StubPositionManager:
     state: _StubState
     pricing_model: _StubPricing
     cash: float = 0.0
+    #: pair.internal_id -> position, returned by get_current_position_for_pair (the async-sell
+    #: fallback path in _cap_buys_by_async_sell_proceeds queries this).
+    pending_positions: dict | None = None
 
     def get_current_cash(self) -> float:
         return self.cash
+
+    def get_current_position_for_pair(self, pair: TradingPairIdentifier, pending: bool = False):
+        return (self.pending_positions or {}).get(pair.internal_id)
 
 
 @dataclasses.dataclass
@@ -109,11 +119,18 @@ class _StubTrade:
         return self.buy
 
 
-def _make_pm(other_data: OtherData, open_pairs: set, cash: float = 0.0, positions: dict | None = None) -> _StubPositionManager:
+def _make_pm(
+    other_data: OtherData,
+    open_pairs: set,
+    cash: float = 0.0,
+    positions: dict | None = None,
+    pending_positions: dict | None = None,
+) -> _StubPositionManager:
     return _StubPositionManager(
         state=_StubState(other_data, _StubPortfolio(positions or {})),
         pricing_model=_StubPricing(open_pairs=open_pairs),
         cash=cash,
+        pending_positions=pending_positions,
     )
 
 
@@ -319,3 +336,54 @@ def test_repark_same_amount_does_not_duplicate_event():
     assert len(events) == 1
     assert events[0].cycle == 1
     assert signal.position_adjust_usd == pytest.approx(0.0)
+
+
+def test_cap_buys_widened_by_venue_through_async_sell():
+    """The same-cycle async cap draws on venue balance for the phase-aware model (invariant 4, non-vacuous).
+
+    Exercises ``_cap_buys_by_async_sell_proceeds`` end-to-end, not just the ``_available_same_cycle_cash``
+    hook: a coincident async-vault sell keeps the cap from early-returning (``async_sell_usd > 0``) and
+    the buys exceed raw cash + synchronous sells, so the cap actually bites. The base ``AlphaModel``
+    scales the buy down to raw cash; ``PhaseAwareAlphaModel``, whose budget includes the redeemable
+    queue-venue balance, funds the buy in full. This is the non-vacuous shape the design plan demanded
+    (the earlier test only called the hook directly).
+
+    1. Signals: an async-vault sell (adjust -$300, detected via the position's async-vault flow) plus a
+       $500 buy; raw cash $100, a $1000 queue-venue position, no synchronous sells.
+    2. Base AlphaModel budget = raw cash $100, so the $500 buy is scaled to $100 and flagged
+       capped_by_pending_settlement_cash.
+    3. PhaseAwareAlphaModel budget = cash $100 + venue $1000 = $1100 >= $500, so the buy is left
+       unscaled and unflagged.
+    """
+    venue_pair = _make_pair(101, "VENUE")
+    async_pair = _make_pair(202, "ASYNC")
+    buy_pair = _make_pair(303, "BUY")
+
+    # 1. Same signal set for both models; a fresh position_manager per run (the cap mutates in place).
+    def build_signals() -> dict:
+        return {202: _make_signal(async_pair, -300.0), 303: _make_signal(buy_pair, 500.0)}
+
+    def make_pm() -> _StubPositionManager:
+        # The async sell is detected via the position fallback (has_async_vault_flow), not pair
+        # features; the venue position (id 101) supplies the phase-aware model's widened budget.
+        return _make_pm(
+            OtherData(),
+            open_pairs=set(),
+            cash=100.0,
+            positions={101: _StubPosition(pair=venue_pair, value=1000.0, vault=True)},
+            pending_positions={202: _StubPosition(pair=async_pair, value=300.0, async_flow=True)},
+        )
+
+    # 2. Base model: budget is raw cash $100, so the $500 buy is scaled to $100.
+    base = AlphaModel(datetime.datetime(2024, 1, 1))
+    base.signals = build_signals()
+    base._cap_buys_by_async_sell_proceeds(make_pm())
+    assert base.signals[303].position_adjust_usd == pytest.approx(100.0)
+    assert TradingPairSignalFlags.capped_by_pending_settlement_cash in base.signals[303].flags
+
+    # 3. Phase-aware model: budget $100 + $1000 venue covers the $500 buy -> unscaled, unflagged.
+    phase = PhaseAwareAlphaModel(datetime.datetime(2024, 1, 1), cycle=1, venue_pair_ids={101})
+    phase.signals = build_signals()
+    phase._cap_buys_by_async_sell_proceeds(make_pm())
+    assert phase.signals[303].position_adjust_usd == pytest.approx(500.0)
+    assert TradingPairSignalFlags.capped_by_pending_settlement_cash not in phase.signals[303].flags
