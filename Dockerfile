@@ -68,9 +68,10 @@ RUN (cd deps/web3-ethereum-defi/contracts/lagoon-v0 && forge soldeer install --c
 # Copy the application only after dependency-heavy layers.
 COPY tradeexecutor tradeexecutor
 COPY spec spec
-COPY scripts/docker-entrypoint.sh scripts/docker-entrypoint.sh
+COPY scripts/docker-entrypoint.sh scripts/docker-smoke-test.py scripts/
 
 RUN poetry install --only-root --no-interaction --no-ansi
+RUN poetry run --quiet --directory /usr/src/trade-executor python scripts/docker-smoke-test.py
 
 # Speed up Python process startup
 RUN rm -rf ./tests
