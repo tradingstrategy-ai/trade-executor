@@ -9,6 +9,7 @@ import logging
 import webbrowser
 from pathlib import Path
 
+import plotly.io as pio
 from plotly.graph_objects import Figure
 
 
@@ -45,7 +46,9 @@ def render_plotly_figure_as_image_file(
 
     logger.info(f"render_plotly_figure_as_image_file(): {type(figure)} {width}x{height}")
 
-    data = figure.to_image(format, width, height)
+    # Kaleido uses orjson internally and rejects pandas Timestamp values.
+    serialisable_figure = pio.from_json(pio.to_json(figure, validate=False, remove_uids=False))
+    data = serialisable_figure.to_image(format, width, height)
     assert len(data) > 0, "Rendered image data is empty"
 
     logger.info("Plotly/Kaleido rendering done")
