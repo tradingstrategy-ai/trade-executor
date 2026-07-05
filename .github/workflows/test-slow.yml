@@ -12,11 +12,11 @@ jobs:
     runs-on:
       group: Beefy runners
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           submodules: 'recursive'
       - name: Set up Python 3.14
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.14"
       - name: Install system packages
@@ -24,18 +24,18 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libxml2-dev libxslt1-dev
       - name: Install Poetry
-        uses: snok/install-poetry@v1
+        uses: snok/install-poetry@v1.4.2
         with:
           virtualenvs-create: true
           virtualenvs-in-project: true
           installer-parallel: true
       - name: Load cached venv
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
+        uses: foundry-rs/foundry-toolchain@v1.8.0
         with:
           # pick a nightly release from: https://github.com/foundry-rs/foundry/releases
           version: 'v0.3.0'
@@ -66,7 +66,7 @@ jobs:
       # See conftest.persistent_test_client
       - name: Cache datasetes
         id: cache-datasets-load
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/trading-strategy-tests
           key: cache-datasets
@@ -89,7 +89,7 @@ jobs:
 
       - name: Save datasets
         id: cache-datasets-save
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: ~/.cache/trading-strategy-tests
           key: cache-datasets
