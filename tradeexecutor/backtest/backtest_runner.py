@@ -254,7 +254,7 @@ class BacktestSetup:
             indicators=indicator_set,
             parameters=self.parameters,
             max_workers=self.max_workers,
-            verbose=execution_context.progress_bars,
+            verbose=execution_context.is_progress_bar_enabled(),
         )
 
         strategy_input_indicators = StrategyInputIndicators(
@@ -1118,5 +1118,4 @@ def guess_data_delay_tolerance(universe: TradingStrategyUniverse) -> pd.Timedelt
         data_delay_tolerance = pd.Timedelta("2d")
 
     return data_delay_tolerance
-
 

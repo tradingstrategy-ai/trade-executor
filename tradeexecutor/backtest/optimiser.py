@@ -735,7 +735,8 @@ def perform_optimisation(
 
     print(f"Optimiser search result cache is {result_path}\nIndicator cache is {indicator_storage.get_disk_cache_path()}")
 
-    with tqdm(total=iterations, desc=f"Optimising {name}, search space is {len(search_space)} variables, using {max_workers} CPUs") as progress_bar:
+    progress_bar = tqdm(total=iterations, desc=f"Optimising {name}, search space is {len(search_space)} variables, using {max_workers} CPUs") if execution_context.is_progress_bar_enabled() else None
+    try:
         for i in range(0, iterations):
 
             iteration_started = native_datetime_utc_now()
@@ -782,8 +783,12 @@ def perform_optimisation(
                 all_results.append(result)
 
             best_so_far: OptimiserSearchResult = min([r for r in all_results if not r.filtered], default=None)  # Get the best value for "bull days matched"
-            progress_bar.set_postfix({"Best so far": best_so_far.get_original_value() if best_so_far else "-"})
-            progress_bar.update()
+            if progress_bar:
+                progress_bar.set_postfix({"Best so far": best_so_far.get_original_value() if best_so_far else "-"})
+                progress_bar.update()
+    finally:
+        if progress_bar:
+            progress_bar.close()
 
     # Cleans up Loky backend hanging in pytest
     # https://stackoverflow.com/a/77130505/315168

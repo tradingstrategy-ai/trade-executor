@@ -5,13 +5,18 @@
 - Any instrumentation like task duration tracing needed for the run
 """
 import enum
+import logging
 from dataclasses import dataclass
 from typing import Callable
+
+import psutil
 from packaging import version
 
 from tradeexecutor.strategy.engine_version import TradingStrategyEngineVersion
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.utils.timer import timed_task
+
+logger = logging.getLogger(__name__)
 
 
 class ExecutionMode(enum.Enum):
@@ -132,6 +137,35 @@ class ExecutionMode(enum.Enum):
 _version_check_cache: dict[tuple, bool] = {}
 
 
+def is_non_interactive_notebook_execution() -> bool:
+    """Detect notebook execution that records terminal output as static text.
+
+    ``jupyter execute`` and ``nbconvert`` execute through an IPython kernel, but
+    the saved notebook receives plain stream output. TQDM carriage-return
+    updates then become one stored line per update.
+    """
+
+    try:
+        current_process = psutil.Process()
+        for parent in current_process.parents():
+            try:
+                cmdline = parent.cmdline()
+            except (psutil.AccessDenied, psutil.NoSuchProcess):
+                continue
+
+            command = " ".join(cmdline).lower()
+
+            if "jupyter" in command and "execute" in command:
+                return True
+
+            if "nbconvert" in command:
+                return True
+    except Exception as e:
+        logger.debug("Could not detect notebook execution mode: %s", e)
+
+    return False
+
+
 @dataclass(slots=True)
 class ExecutionContext:
     """Information about the strategy execution environment.
@@ -249,6 +283,17 @@ class ExecutionContext:
         - By default, disabled for the grid search/optimiser for the speed
         """
         return self.force_visualisation or not(self.grid_search or self.optimiser)
+
+    def is_progress_bar_enabled(self) -> bool:
+        """Should TQDM progress bars be rendered in this execution context."""
+
+        if not self.progress_bars:
+            return False
+
+        if is_non_interactive_notebook_execution():
+            return False
+
+        return True
 
     @property
     def live_trading(self) -> bool:
