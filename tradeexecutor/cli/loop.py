@@ -1133,7 +1133,7 @@ class ExecutionLoop:
                 "PnL": f"{rolling_profit * 100:.2f}%",
             })
 
-        if not self.execution_context.grid_search and self.execution_context.progress_bars:
+        if not self.execution_context.grid_search and self.execution_context.is_progress_bar_enabled():
             # In grid search do not display
             # progress bar for individual backtests
             progress_bar = tqdm(total=seconds)

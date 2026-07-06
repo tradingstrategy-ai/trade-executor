@@ -1031,6 +1031,7 @@ def _read_cached_results(
     combinations: List[GridCombination],
     data_retention: GridSearchDataRetention,
     reader_pool_size=16,
+    show_progress=True,
 ) -> Dict[GridCombination, GridSearchResult]:
     """Read grid search results that are available on a disk from previous run.
 
@@ -1059,11 +1060,16 @@ def _read_cached_results(
     # Label too long for Datalore
     label = ", ".join(p.name for p in combinations[0].searchable_parameters)
     print(f"Using grid search cache {combinations[0].result_path}, for indicators {label}")
-    with tqdm(total=len(task_args), desc=f"Reading cached search results w/ {reader_pool_size} threads") as progress_bar:
+    progress_bar = tqdm(total=len(task_args), desc=f"Reading cached search results w/ {reader_pool_size} threads") if show_progress else None
+    try:
         # Extract results from the parallel task queue
         for task in tm.as_completed():
             results[task.args[0]] = task.result
-            progress_bar.update()
+            if progress_bar:
+                progress_bar.update()
+    finally:
+        if progress_bar:
+            progress_bar.close()
 
     return results
 
@@ -1158,7 +1164,8 @@ def perform_grid_search(
         )
 
     # Load grid search results we have already completed before crash / break / previous strategy parameters
-    cached_results = _read_cached_results(combinations, data_retention, reader_pool_size)
+    show_progress = verbose and execution_context.is_progress_bar_enabled()
+    cached_results = _read_cached_results(combinations, data_retention, reader_pool_size, show_progress=show_progress)
     logger.info("Read %d cached results", len(cached_results))
 
     if len(cached_results) == len(combinations):
@@ -1208,7 +1215,7 @@ def perform_grid_search(
             # Too wide for Datalore notebooks
             # label = ", ".join(p.name for p in combinations[0].searchable_parameters)
 
-            if verbose:
+            if show_progress:
                 progress_bar = tqdm(total=len(task_args))
                 progress_bar.set_postfix({"processes": max_workers})
                 progress_bar.display()
