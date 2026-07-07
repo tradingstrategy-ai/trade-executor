@@ -1,6 +1,8 @@
 """Helper functions to translate Trading Strategy client data to trade executor data format."""
 from math import isnan
 
+from eth_defi.erc_4626.core import GENERIC_ERC4626_PROTOCOL_SLUG
+
 from tradeexecutor.state.identifier import AssetIdentifier, AssetType, TradingPairIdentifier, TradingPairKind
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeType
@@ -9,6 +11,9 @@ from tradingstrategy.pair import DEXPair
 from tradingstrategy.token import Token
 from tradingstrategy.token_metadata import TokenMetadata
 from tradingstrategy.vault import VaultMetadata
+
+
+LEGACY_UNKNOWN_VAULT_PROTOCOL_SLUG = "<protocol-not-yet-identified>"
 
 
 def translate_token(
@@ -214,9 +219,13 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                 pair.other_data["token_metadata"] = metadata
                 token_sniffer_data = metadata.token_sniffer_data
             case VaultMetadata():
+                vault_protocol_slug = metadata.protocol_slug
+                if not metadata.features and vault_protocol_slug == LEGACY_UNKNOWN_VAULT_PROTOCOL_SLUG:
+                    # Older vault exports use this placeholder for featureless generic ERC-4626 vaults.
+                    vault_protocol_slug = GENERIC_ERC4626_PROTOCOL_SLUG
                 pair.other_data["token_metadata"] = metadata
                 pair.other_data["vault_features"] = metadata.features
-                pair.other_data["vault_protocol"] = metadata.protocol_slug
+                pair.other_data["vault_protocol"] = vault_protocol_slug
                 pair.other_data["vault_name"] = metadata.vault_name
                 pair.other_data["vault_performance_fee"] = metadata.performance_fee
                 pair.other_data["vault_management_fee"] = metadata.management_fee
@@ -265,7 +274,7 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                      "ccxt_account_id", "ccxt_exchange_id", "bridge_protocol",
                      "vault_protocol"):
             val = dex_pair.other_data.get(key)
-            if val is not None:
+            if val is not None and key not in pair.other_data:
                 pair.other_data[key] = val
 
     # if dex_pair.dex_type == ExchangeType.erc_4626_vault:

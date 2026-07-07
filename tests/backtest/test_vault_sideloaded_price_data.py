@@ -9,6 +9,7 @@ import pytest
 
 from plotly.graph_objs import Figure
 
+from eth_defi.erc_4626.core import GENERIC_ERC4626_PROTOCOL_SLUG
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 
@@ -112,6 +113,11 @@ def test_create_vault_universe(
     pair = strategy_universe.get_pair_by_address("0x50b5b81fc8b1f1873ec7f31b0e98186ba008814d")
     assert pair.base.token_symbol == "indeUSDC"
     assert pair.get_vault_name() == "IndeFi USDC"
+
+    featureless_pair = strategy_universe.get_pair_by_address("0xb99b6df96d4d5448cc0a5b3e0ef7896df9507cf5")
+    assert featureless_pair.get_vault_features() == set()
+    assert featureless_pair.get_vault_protocol() == GENERIC_ERC4626_PROTOCOL_SLUG
+    assert featureless_pair.is_async_vault() is False
 
 
 def test_visualise_vault_analysis_chart(

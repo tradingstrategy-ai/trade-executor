@@ -12,6 +12,7 @@ from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
+from tradeexecutor.strategy.redemption import RedemptionBlockReason, RedemptionCheckResult, RedemptionCheckStage
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
 logger = logging.getLogger(__name__)
@@ -189,8 +190,6 @@ class VaultPricing(PricingModel):
             logger.warning("Cannot resolve owner address for vault max deposit check: %s", pair)
             return None
 
-        web3 = self.get_web3_for_pair(pair)
-        block_number = web3.eth.block_number
         vault = self.get_vault(pair)
 
         if not vault.get_deposit_manager().has_synchronous_deposit():
@@ -199,6 +198,8 @@ class VaultPricing(PricingModel):
             # Request-based deposits have no on-chain capacity limit.
             return None
 
+        web3 = self.get_web3_for_pair(pair)
+        block_number = web3.eth.block_number
         raw_amount = vault.vault_contract.functions.maxDeposit(owner).call(block_identifier=block_number)
         return vault.denomination_token.convert_to_decimals(raw_amount)
 
@@ -212,8 +213,6 @@ class VaultPricing(PricingModel):
             logger.warning("Cannot resolve owner address for vault max redemption check: %s", pair)
             return None
 
-        web3 = self.get_web3_for_pair(pair)
-        block_number = web3.eth.block_number
         vault = self.get_vault(pair)
 
         if not vault.get_deposit_manager().has_synchronous_redemption():
@@ -222,15 +221,99 @@ class VaultPricing(PricingModel):
             # requested for redemption.
             return None
 
+        web3 = self.get_web3_for_pair(pair)
+        block_number = web3.eth.block_number
         raw_amount = vault.vault_contract.functions.maxRedeem(owner).call(block_identifier=block_number)
         return vault.share_token.convert_to_decimals(raw_amount)
+
+    def _can_create_deposit_request(
+        self,
+        pair: TradingPairIdentifier,
+    ) -> bool | None:
+        """Check protocol-specific deposit request availability."""
+        vault = self.get_vault(pair)
+        deposit_manager = vault.get_deposit_manager()
+
+        owner = self.get_owner_address(pair)
+        if owner is None:
+            if not deposit_manager.has_synchronous_deposit():
+                logger.warning("Cannot resolve owner address for async vault deposit request check: %s", pair)
+                return False
+            return None
+
+        try:
+            return deposit_manager.can_create_deposit_request(owner)
+        except NotImplementedError:
+            return None
+
+    def _check_redemption_request_availability(
+        self,
+        pair: TradingPairIdentifier,
+        ts: datetime.datetime | None,
+        stage: RedemptionCheckStage,
+    ) -> RedemptionCheckResult | None:
+        """Check protocol-specific redemption request availability."""
+        vault = self.get_vault(pair)
+        deposit_manager = vault.get_deposit_manager()
+
+        owner = self.get_owner_address(pair)
+        if owner is None:
+            if not deposit_manager.has_synchronous_redemption():
+                return RedemptionCheckResult(
+                    timestamp=ts,
+                    stage=stage,
+                    can_redeem=False,
+                    reason_code=RedemptionBlockReason.safe_address_unavailable,
+                    message="Cannot resolve owner address for async vault redemption request check",
+                    pair_ticker=pair.get_ticker(),
+                    vault_address=pair.pool_address,
+                    max_redemption=0.0,
+                )
+            return None
+
+        try:
+            can_create_request = deposit_manager.can_create_redemption_request(owner)
+        except NotImplementedError:
+            return None
+
+        if can_create_request is False:
+            return RedemptionCheckResult(
+                timestamp=ts,
+                stage=stage,
+                can_redeem=False,
+                reason_code=RedemptionBlockReason.redemption_window_closed,
+                message="Vault deposit manager reports redemption requests are closed",
+                pair_ticker=pair.get_ticker(),
+                vault_address=pair.pool_address,
+                max_redemption=0.0,
+            )
+
+        return None
 
     def can_deposit(
         self,
         ts: datetime.datetime | None,
         pair: TradingPairIdentifier,
     ) -> bool:
+        can_create_request = self._can_create_deposit_request(pair)
+        if can_create_request is False:
+            return False
+
         max_deposit = self.get_max_deposit(ts, pair)
         if max_deposit is None:
             return True
         return max_deposit > 0
+
+    def check_redemption(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier | None,
+        *,
+        stage: RedemptionCheckStage = RedemptionCheckStage.unknown,
+        position=None,
+    ) -> RedemptionCheckResult:
+        if pair is not None:
+            request_check = self._check_redemption_request_availability(pair, ts, stage)
+            if request_check is not None:
+                return request_check
+        return super().check_redemption(ts, pair, stage=stage, position=position)

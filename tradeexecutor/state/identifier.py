@@ -14,7 +14,7 @@ from dataclasses_json import dataclass_json, config
 from eth_typing import HexAddress
 
 from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
-from eth_defi.erc_4626.core import ERC4626Feature
+from eth_defi.erc_4626.core import ERC4626Feature, is_generic_erc4626_protocol_slug
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
@@ -65,7 +65,7 @@ ASYNC_VAULT_FEATURES = {
 
 def _normalise_erc_4626_features(features) -> set[ERC4626Feature] | None:
     """Normalise persisted vault feature metadata to enum values."""
-    if not features:
+    if features is None:
         return None
 
     if isinstance(features, (str, ERC4626Feature)):
@@ -902,9 +902,14 @@ class TradingPairIdentifier:
 
         Needed for ERC-4626 compatibility.
         """
-        feats = self.other_data.get("vault_features")
-        if not feats:
-            metadata = self.other_data.get("token_metadata")
+        other_data = self.other_data or {}
+        if "vault_features" in other_data:
+            feats = other_data["vault_features"]
+        else:
+            feats = None
+
+        if feats is None:
+            metadata = other_data.get("token_metadata")
             if isinstance(metadata, dict):
                 feats = metadata.get("features")
             else:
@@ -926,7 +931,11 @@ class TradingPairIdentifier:
         """
         if not self.is_vault():
             return False
-        features = self.get_vault_features() or set()
+        features = self.get_vault_features()
+        if features is None:
+            return False
+        if not features:
+            return not is_generic_erc4626_protocol_slug(self.get_vault_protocol())
         return bool(features & ASYNC_VAULT_FEATURES)
 
     def get_vault_protocol(self) -> str | None:

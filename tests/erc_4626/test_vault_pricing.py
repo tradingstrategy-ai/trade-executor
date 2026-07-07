@@ -5,6 +5,9 @@ from unittest.mock import MagicMock
 import pytest
 import datetime
 
+from eth_defi.erc_4626.core import GENERIC_ERC4626_PROTOCOL_SLUG
+from eth_defi.compat import native_datetime_utc_now
+from tradeexecutor.ethereum.vault import vault_routing
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
 from tradeexecutor.ethereum.vault.vault_valuation import VaultValuator
 from tradeexecutor.state.position import TradingPosition
@@ -12,8 +15,7 @@ from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.state.identifier import TradingPairIdentifier
-from tradeexecutor.strategy.redemption import RedemptionCheckStage
-from eth_defi.compat import native_datetime_utc_now
+from tradeexecutor.strategy.redemption import RedemptionBlockReason, RedemptionCheckStage
 
 
 class _FixedCall:
@@ -22,6 +24,16 @@ class _FixedCall:
 
     def call(self, block_identifier=None) -> int:
         return self.value
+
+
+class _BlockNumberMustNotBeRead:
+    @property
+    def block_number(self):
+        raise AssertionError("block_number was read")
+
+
+class _NoBlockNumberWeb3:
+    eth = _BlockNumberMustNotBeRead()
 
 
 @pytest.fixture()
@@ -34,6 +46,76 @@ def vault_pricing(
     vault_pricing = pricing_model.pair_configurator.get_pricing(ipor_usdc)
     assert isinstance(vault_pricing, VaultPricing)
     return vault_pricing
+
+
+def test_vault_routing_autodetects_empty_feature_metadata(
+    vault_pricing: VaultPricing,
+    ipor_usdc: TradingPairIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Empty vault feature metadata is treated as unknown, not verified generic ERC-4626.
+
+    1. Create a vault pair with ambient empty feature metadata and no protocol marker.
+    2. Route the pair through the vault factory.
+    3. Check the slower autodetection path is used.
+    """
+    # 1. Create a vault pair with ambient empty feature metadata and no protocol marker.
+    vault_routing._vault_cache.clear()
+    ipor_usdc.other_data = dict(ipor_usdc.other_data or {})
+    ipor_usdc.other_data["vault_features"] = []
+    ipor_usdc.other_data.pop("vault_protocol", None)
+    autodetected_vault = object()
+
+    def create_vault_instance(*args, **kwargs):
+        raise AssertionError("Empty feature metadata must not be trusted as a generic sync vault")
+
+    monkeypatch.setattr(vault_routing, "create_vault_instance", create_vault_instance)
+    monkeypatch.setattr(vault_routing, "create_vault_instance_autodetect", lambda *args, **kwargs: autodetected_vault)
+
+    # 2. Route the pair through the vault factory.
+    vault = vault_routing.get_vault_for_pair(vault_pricing.web3, ipor_usdc)
+
+    # 3. Check the slower autodetection path is used.
+    assert vault is autodetected_vault
+    vault_routing._vault_cache.clear()
+
+
+def test_vault_routing_accepts_explicit_generic_erc4626_protocol_slug(
+    vault_pricing: VaultPricing,
+    ipor_usdc: TradingPairIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """An explicit generic ERC-4626 protocol slug opts in to a generic synchronous vault.
+
+    1. Create a vault pair with empty features and a generic ERC-4626 protocol marker.
+    2. Route the pair through the vault factory.
+    3. Check the generic factory path receives an empty feature set.
+    """
+    # 1. Create a vault pair with empty features and a generic ERC-4626 protocol marker.
+    vault_routing._vault_cache.clear()
+    ipor_usdc.other_data = dict(ipor_usdc.other_data or {})
+    ipor_usdc.other_data["vault_features"] = []
+    ipor_usdc.other_data["vault_protocol"] = GENERIC_ERC4626_PROTOCOL_SLUG
+    generic_vault = object()
+    captured_features = []
+
+    def create_vault_instance(*args, **kwargs):
+        captured_features.append(args[2])
+        return generic_vault
+
+    def create_vault_instance_autodetect(*args, **kwargs):
+        raise AssertionError("Explicit generic ERC-4626 marker should skip autodetection")
+
+    monkeypatch.setattr(vault_routing, "create_vault_instance", create_vault_instance)
+    monkeypatch.setattr(vault_routing, "create_vault_instance_autodetect", create_vault_instance_autodetect)
+
+    # 2. Route the pair through the vault factory.
+    vault = vault_routing.get_vault_for_pair(vault_pricing.web3, ipor_usdc)
+
+    # 3. Check the generic factory path receives an empty feature set.
+    assert vault is generic_vault
+    assert captured_features == [set()]
+    vault_routing._vault_cache.clear()
 
 
 def test_vault_estimate_buy(
@@ -165,6 +247,111 @@ def test_vault_tradeability_defaults_to_open_when_owner_unknown(
     assert vault_pricing.can_deposit(None, ipor_usdc) is True
     assert vault_pricing.can_redeem(None, ipor_usdc) is True
     assert vault_pricing.is_tradeable(None, ipor_usdc) is True
+
+
+def test_vault_async_request_manager_gates_deposit_and_redemption_independently(
+    vault_pricing: VaultPricing,
+    ipor_usdc: TradingPairIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Async vault DepositManager gates deposits and redemptions separately.
+
+    1. Install a fake async deposit manager for a vault pair.
+    2. Close only deposits and check redemptions stay open.
+    3. Close only redemptions and check deposits stay open.
+    """
+    # 1. Install a fake async deposit manager for a vault pair.
+    manager = MagicMock()
+    manager.has_synchronous_deposit.return_value = False
+    manager.has_synchronous_redemption.return_value = False
+    fake_vault = MagicMock()
+    fake_vault.get_deposit_manager.return_value = manager
+    monkeypatch.setattr(vault_pricing, "get_vault", lambda pair: fake_vault)
+    # Mock owner resolution to exercise DepositManager request windows without a live sync model.
+    monkeypatch.setattr(vault_pricing, "get_owner_address", lambda pair: "0x0000000000000000000000000000000000000001")
+
+    # 2. Close only deposits and check redemptions stay open.
+    manager.can_create_deposit_request.return_value = False
+    manager.can_create_redemption_request.return_value = True
+    assert vault_pricing.can_deposit(None, ipor_usdc) is False
+    assert vault_pricing.check_redemption(None, ipor_usdc).can_redeem is True
+
+    # 3. Close only redemptions and check deposits stay open.
+    manager.can_create_deposit_request.return_value = True
+    manager.can_create_redemption_request.return_value = False
+    redemption_check = vault_pricing.check_redemption(None, ipor_usdc)
+    assert vault_pricing.can_deposit(None, ipor_usdc) is True
+    assert redemption_check.can_redeem is False
+    assert redemption_check.reason_code == RedemptionBlockReason.redemption_window_closed
+
+
+def test_vault_async_request_manager_blocks_when_owner_unknown(
+    vault_pricing: VaultPricing,
+    ipor_usdc: TradingPairIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Async vault request checks need an owner address.
+
+    1. Install a fake async deposit manager for a vault pair.
+    2. Make owner resolution fail.
+    3. Check deposits and redemptions are blocked before protocol calls.
+    """
+    # 1. Install a fake async deposit manager for a vault pair.
+    manager = MagicMock()
+    manager.has_synchronous_deposit.return_value = False
+    manager.has_synchronous_redemption.return_value = False
+    fake_vault = MagicMock()
+    fake_vault.get_deposit_manager.return_value = manager
+    monkeypatch.setattr(vault_pricing, "get_vault", lambda pair: fake_vault)
+
+    # 2. Make owner resolution fail.
+    monkeypatch.setattr(vault_pricing, "get_owner_address", lambda pair: None)
+
+    # 3. Check deposits and redemptions are blocked before protocol calls.
+    redemption_check = vault_pricing.check_redemption(
+        None,
+        ipor_usdc,
+        stage=RedemptionCheckStage.sell_rebalance,
+    )
+    assert vault_pricing.can_deposit(None, ipor_usdc) is False
+    assert redemption_check.can_redeem is False
+    assert redemption_check.stage == RedemptionCheckStage.sell_rebalance
+    assert redemption_check.reason_code == RedemptionBlockReason.safe_address_unavailable
+    manager.can_create_deposit_request.assert_not_called()
+    manager.can_create_redemption_request.assert_not_called()
+
+
+def test_vault_async_request_manager_does_not_read_block_number_for_limits(
+    vault_pricing: VaultPricing,
+    ipor_usdc: TradingPairIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Async request-based vault limits skip maxDeposit/maxRedeem block reads.
+
+    1. Install a fake async deposit manager with open request windows.
+    2. Replace the pricing Web3 with one that fails on block number reads.
+    3. Check deposit and redemption availability can still be evaluated.
+    """
+    # 1. Install a fake async deposit manager with open request windows.
+    manager = MagicMock()
+    manager.has_synchronous_deposit.return_value = False
+    manager.has_synchronous_redemption.return_value = False
+    manager.can_create_deposit_request.return_value = True
+    manager.can_create_redemption_request.return_value = True
+    fake_vault = MagicMock()
+    fake_vault.get_deposit_manager.return_value = manager
+    monkeypatch.setattr(vault_pricing, "get_vault", lambda pair: fake_vault)
+    # Mock owner resolution to exercise DepositManager gating without a live sync model.
+    monkeypatch.setattr(vault_pricing, "get_owner_address", lambda pair: "0x0000000000000000000000000000000000000001")
+
+    # 2. Replace the pricing Web3 with one that fails on block number reads.
+    monkeypatch.setattr(vault_pricing, "get_web3_for_pair", lambda pair: _NoBlockNumberWeb3())
+
+    # 3. Check deposit and redemption availability can still be evaluated.
+    assert vault_pricing.get_max_deposit(None, ipor_usdc) is None
+    assert vault_pricing.get_max_redemption(None, ipor_usdc) is None
+    assert vault_pricing.can_deposit(None, ipor_usdc) is True
+    assert vault_pricing.check_redemption(None, ipor_usdc).can_redeem is True
 
 
 def test_vault_position_valuation(
