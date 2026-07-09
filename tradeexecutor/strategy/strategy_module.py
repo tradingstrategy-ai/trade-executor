@@ -18,6 +18,7 @@ from tradingstrategy.universe import Universe
 from web3.datastructures import AttributeDict, ReadableAttributeDict
 
 from tradeexecutor.state.state import State
+from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.chart.definition import ChartRegistry
@@ -52,6 +53,31 @@ logger = logging.getLogger()
 
 class StrategyModuleNotValid(Exception):
     """Raised when we cannot load a strategy module."""
+
+
+@dataclass(slots=True)
+class StrategyTickHookInput:
+    """Input for optional strategy module before/after tick hooks.
+
+    These hooks are intended for blackbox test strategies that need to drive
+    deterministic external state around a normal live execution cycle.
+    """
+
+    cycle: int
+    timestamp: datetime.datetime
+    state: State
+    universe: TradingStrategyUniverse
+    pricing_model: PricingModel
+    execution_context: ExecutionContext
+    execution_loop: object
+    store: StateStore
+
+
+class StrategyTickHookProtocol(Protocol):
+    """Optional strategy module hook called around a strategy tick."""
+
+    def __call__(self, input: StrategyTickHookInput) -> None:
+        pass
 
 
 class DecideTradesProtocol(Protocol):
@@ -319,6 +345,12 @@ class StrategyModuleInformation:
     #:
     create_charts: CreateChartsProtocol
 
+    #: Optional test hook called immediately before the strategy tick.
+    before_strategy_tick: StrategyTickHookProtocol | None = None
+
+    #: Optional test hook called immediately after the strategy tick.
+    after_strategy_tick: StrategyTickHookProtocol | None = None
+
     #: Routing hinting.
     #:
     #: Legacy option: most strategies can set this in
@@ -515,6 +547,12 @@ class StrategyModuleInformation:
             assert self.create_charts is not None, "create_charts() function missing"
             assert callable(self.create_charts), "create_charts() is not a function"
 
+        if self.before_strategy_tick is not None:
+            assert callable(self.before_strategy_tick), "before_strategy_tick() is not a function"
+
+        if self.after_strategy_tick is not None:
+            assert callable(self.after_strategy_tick), "after_strategy_tick() is not a function"
+
     def validate_backtest(self):
         """Validate that the module is backtest runnable."""
         self.validate()
@@ -617,6 +655,8 @@ def parse_strategy_module(
         sort_priority=python_module_exports.get("sort_priority"),
         create_indicators=python_module_exports.get("create_indicators"),
         create_charts=python_module_exports.get("create_charts"),
+        before_strategy_tick=python_module_exports.get("before_strategy_tick"),
+        after_strategy_tick=python_module_exports.get("after_strategy_tick"),
         parameters=python_module_exports.get("parameters"),
         management_fee=python_module_exports.get("management_fee"),
         trading_strategy_protocol_fee=python_module_exports.get("trading_strategy_protocol_fee"),

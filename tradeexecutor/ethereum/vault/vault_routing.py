@@ -158,7 +158,9 @@ class VaultRouting(RoutingModel):
                 profitability_estimation = None
                 profitability_estimation_error = str(e)
                 logger.error(
-                    "Vault trade %s profitatability estimation failed: %s",
+                    "Vault trade %s profitability estimation failed: %s",
+                    trade,
+                    e,
                 )
         else:
             token_in = trade.pair.base

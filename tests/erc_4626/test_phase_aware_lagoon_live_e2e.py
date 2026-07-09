@@ -7,19 +7,14 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-from pytest_mock import MockerFixture
 from eth_defi import token as token_module
 from eth_defi.deploy import deploy_contract
-from eth_defi.erc_4626.classification import ERC4626Feature, create_vault_instance
 from eth_defi.erc_4626.vault_protocol.lagoon import deployment as lagoon_deployment
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonConfig, LagoonAutomatedDeployment, LagoonDeploymentParameters, deploy_automated_lagoon_vault
 from eth_defi.erc_4626.vault_protocol.lagoon.testing import fund_lagoon_vault
-from eth_defi.event_reader.conversion import convert_uin256_to_bytes
-from eth_defi.event_reader.multicall_batcher import EncodedCall
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
-from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.safe import deployment as safe_deployment
 from eth_defi.token import create_token, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
@@ -27,15 +22,11 @@ from safe_eth.eth.contracts import get_proxy_factory_V1_4_1_contract, get_safe_V
 from typer.main import get_command
 from web3 import Web3
 
-from tradeexecutor.cli.loop import ExecutionLoop
 from tradeexecutor.cli.main import app
-from tradeexecutor.ethereum.lagoon.testing import set_lagoon_vault_open_for_testing
-from tradeexecutor.ethereum.vault import settlement_retry
 from tradeexecutor.ethereum.vault.testing import PHASE_AWARE_LIVE_E2E_OBSERVATION_KEY
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.phase_aware import EVENT_PARK, EVENT_PROMOTE, QUEUE_VAULT_EVENT_LOG_KEY
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
@@ -47,11 +38,11 @@ TARGET_VAULT_SCENARIO = tuple(
         "deposit_open_cycle": deposit_open_cycle,
         "deposit_close_cycle": deposit_open_cycle + 2,
         "deposit_settle_cycle": deposit_open_cycle + 1,
-        "redemption_open_cycle": deposit_open_cycle + 4,
-        "redemption_close_cycle": deposit_open_cycle + 6,
-        "redemption_settle_cycle": deposit_open_cycle + 5,
+        "redemption_open_cycle": deposit_open_cycle + 7,
+        "redemption_close_cycle": deposit_open_cycle + 9,
+        "redemption_settle_cycle": deposit_open_cycle + 8,
     }
-    for deposit_open_cycle in range(1, 4)
+    for deposit_open_cycle in (1, 3, 5)
 )
 
 
@@ -269,24 +260,6 @@ def _seed_safe_contracts(web3) -> None:
     web3.provider.make_request("anvil_setCode", [safe_deployment.SAFE_PROXY_FACTORY_ADDRESS, web3.eth.get_code(proxy_factory_impl).hex()])
 
 
-def _deploy_fresh_lagoon_protocol_from_abi(web3, deployer: HotWallet, safe, broadcast_func, **kwargs):
-    wrapped_native_token_address = lagoon_deployment.WRAPPED_NATIVE_TOKEN[web3.eth.chain_id]
-    fee_registry = deploy_contract(web3, "lagoon/ProtocolRegistry.json", deployer, False, gas=4_000_000)
-    tx_hash = broadcast_func(fee_registry.functions.initialize(safe.address, safe.address))
-    assert_transaction_success_with_explanation(web3, tx_hash)
-    implementation = deploy_contract(web3, "lagoon/v0.5.0/Vault.json", deployer, True, gas=9_000_000)
-    return deploy_contract(
-        web3,
-        "lagoon/BeaconProxyFactory.json",
-        deployer,
-        fee_registry.address,
-        implementation.address,
-        safe.address,
-        wrapped_native_token_address,
-        gas=6_000_000,
-    )
-
-
 @pytest.fixture()
 def anvil_lagoon_chain() -> AnvilLaunch:
     """Launch a fresh Anvil chain with no parent RPC."""
@@ -323,104 +296,117 @@ def deployed_lagoon_vaults(
     web3: Web3,
     lagoon_controller: HotWallet,
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> dict:
     """Deploy faux tokens, one sync queue vault and three async Lagoon target vaults."""
     deployer = web3.eth.accounts[0]
+    chain_id = web3.eth.chain_id
     _seed_safe_contracts(web3)
-    monkeypatch.setattr(lagoon_deployment, "deploy_fresh_lagoon_protocol", _deploy_fresh_lagoon_protocol_from_abi)
 
     usdc_contract = create_token(web3, deployer, "Faux USD Coin", "USDC", 100_000_000 * 10**6, decimals=6)
     weth_contract = create_token(web3, deployer, "Faux Wrapped Ether", "WETH", 100_000_000 * 10**18, decimals=18)
     assert web3.eth.get_code(usdc_contract.address)
     assert web3.eth.get_code(weth_contract.address)
-    monkeypatch.setitem(token_module.WRAPPED_NATIVE_TOKEN, web3.eth.chain_id, weth_contract.address)
-    monkeypatch.setitem(lagoon_deployment.WRAPPED_NATIVE_TOKEN, web3.eth.chain_id, weth_contract.address)
+    original_token_wrapped_native = token_module.WRAPPED_NATIVE_TOKEN.get(chain_id)
+    original_lagoon_wrapped_native = lagoon_deployment.WRAPPED_NATIVE_TOKEN.get(chain_id)
+    original_lagoon_factory = lagoon_deployment.LAGOON_BEACON_PROXY_FACTORIES.get(chain_id)
+    token_module.WRAPPED_NATIVE_TOKEN[chain_id] = weth_contract.address
+    lagoon_deployment.WRAPPED_NATIVE_TOKEN[chain_id] = weth_contract.address
 
-    usdc = fetch_erc20_details(web3, usdc_contract.address)
-    queue_vault = deploy_contract(
-        web3,
-        _compile_simple_erc4626(tmp_path).as_posix(),
-        deployer,
-        usdc.address,
-        "Cash Allocation Vault",
-        "caUSDC",
-        gas=4_000_000,
-    )
+    try:
+        usdc = fetch_erc20_details(web3, usdc_contract.address)
+        queue_vault = deploy_contract(
+            web3,
+            _compile_simple_erc4626(tmp_path).as_posix(),
+            deployer,
+            usdc.address,
+            "Cash Allocation Vault",
+            "caUSDC",
+            gas=4_000_000,
+        )
 
-    tx_hash = usdc.transfer(lagoon_controller.address, Decimal(50)).transact({"from": deployer, "gas": 100_000})
-    assert_transaction_success_with_explanation(web3, tx_hash)
-    lagoon_controller.sync_nonce(web3)
-
-    target_vaults = []
-    for index in range(3):
+        tx_hash = usdc.transfer(lagoon_controller.address, Decimal(50)).transact({"from": deployer, "gas": 100_000})
+        assert_transaction_success_with_explanation(web3, tx_hash)
         lagoon_controller.sync_nonce(web3)
-        parameters = LagoonDeploymentParameters(
-            underlying=usdc.address,
-            name=f"PhaseAwareTestLagoon{index + 1}",
-            symbol=f"PATL{index + 1}",
-        )
-        from_the_scratch = index == 0
-        deploy_info = deploy_automated_lagoon_vault(
-            web3=web3,
-            deployer=lagoon_controller,
-            config=LagoonConfig(
-                parameters=parameters,
-                safe_owners=[lagoon_controller.address],
-                safe_threshold=1,
-                asset_manager=lagoon_controller.address,
-                any_asset=True,
-                factory_contract=True,
-                from_the_scratch=from_the_scratch,
-                use_forge=from_the_scratch,
-                between_contracts_delay_seconds=0,
-                safe_salt_nonce=754_000 + index,
-            ),
-        )
-        assert isinstance(deploy_info, LagoonAutomatedDeployment)
-        if index == 0:
-            monkeypatch.setitem(
-                lagoon_deployment.LAGOON_BEACON_PROXY_FACTORIES,
-                web3.eth.chain_id,
-                {
+
+        target_vaults = []
+        for index in range(3):
+            lagoon_controller.sync_nonce(web3)
+            parameters = LagoonDeploymentParameters(
+                underlying=usdc.address,
+                name=f"PhaseAwareTestLagoon{index + 1}",
+                symbol=f"PATL{index + 1}",
+            )
+            from_the_scratch = index == 0
+            deploy_info = deploy_automated_lagoon_vault(
+                web3=web3,
+                deployer=lagoon_controller,
+                config=LagoonConfig(
+                    parameters=parameters,
+                    safe_owners=[lagoon_controller.address],
+                    safe_threshold=1,
+                    asset_manager=lagoon_controller.address,
+                    any_asset=True,
+                    factory_contract=True,
+                    from_the_scratch=from_the_scratch,
+                    use_forge=False,
+                    between_contracts_delay_seconds=0,
+                    safe_salt_nonce=754_000 + index,
+                ),
+            )
+            assert isinstance(deploy_info, LagoonAutomatedDeployment)
+            if index == 0:
+                lagoon_deployment.LAGOON_BEACON_PROXY_FACTORIES[chain_id] = {
                     "address": deploy_info.beacon_proxy_factory,
                     "abi": "lagoon/BeaconProxyFactory.json",
-                },
+                }
+            fund_lagoon_vault(
+                web3,
+                deploy_info.vault.vault_address,
+                lagoon_controller.address,
+                lagoon_controller.address,
+                deploy_info.trading_strategy_module.address,
+                amount=Decimal(1),
+                nav=Decimal(0),
             )
-        fund_lagoon_vault(
-            web3,
-            deploy_info.vault.vault_address,
-            lagoon_controller.address,
-            lagoon_controller.address,
-            deploy_info.trading_strategy_module.address,
-            amount=Decimal(1),
-            nav=Decimal(0),
-        )
-        target_vaults.append({
-            "address": deploy_info.vault.vault_address,
-            "asset_manager": lagoon_controller.address,
-            "trading_strategy_module": deploy_info.trading_strategy_module.address,
-            "safe": deploy_info.safe_address,
-            "deployment_block": int(deploy_info.block_number),
-        })
+            target_vaults.append({
+                "address": deploy_info.vault.vault_address,
+                "asset_manager": lagoon_controller.address,
+                "trading_strategy_module": deploy_info.trading_strategy_module.address,
+                "safe": deploy_info.safe_address,
+                "deployment_block": int(deploy_info.block_number),
+            })
 
-    deployment_file = tmp_path / "phase-aware-lagoon-deployments.json"
-    payload = {
-        "target_vaults": target_vaults,
-        "queue_vault": queue_vault.address,
-        "controller": lagoon_controller.address,
-        "usdc": usdc.address,
-        "weth": weth_contract.address,
-    }
-    deployment_file.write_text(json.dumps(payload, indent=2))
-    return {
-        "file": deployment_file,
-        "target_vaults": target_vaults,
-        "queue_vault": queue_vault.address,
-        "controller": lagoon_controller.address,
-        "usdc": usdc.address,
-        "weth": weth_contract.address,
-    }
+        deployment_file = tmp_path / "phase-aware-lagoon-deployments.json"
+        payload = {
+            "target_vaults": target_vaults,
+            "queue_vault": queue_vault.address,
+            "controller": lagoon_controller.address,
+            "usdc": usdc.address,
+            "weth": weth_contract.address,
+            "target_vault_scenario": TARGET_VAULT_SCENARIO,
+        }
+        deployment_file.write_text(json.dumps(payload, indent=2))
+        yield {
+            "file": deployment_file,
+            "target_vaults": target_vaults,
+            "queue_vault": queue_vault.address,
+            "controller": lagoon_controller.address,
+            "usdc": usdc.address,
+            "weth": weth_contract.address,
+        }
+    finally:
+        if original_token_wrapped_native is None:
+            token_module.WRAPPED_NATIVE_TOKEN.pop(chain_id, None)
+        else:
+            token_module.WRAPPED_NATIVE_TOKEN[chain_id] = original_token_wrapped_native
+        if original_lagoon_wrapped_native is None:
+            lagoon_deployment.WRAPPED_NATIVE_TOKEN.pop(chain_id, None)
+        else:
+            lagoon_deployment.WRAPPED_NATIVE_TOKEN[chain_id] = original_lagoon_wrapped_native
+        if original_lagoon_factory is None:
+            lagoon_deployment.LAGOON_BEACON_PROXY_FACTORIES.pop(chain_id, None)
+        else:
+            lagoon_deployment.LAGOON_BEACON_PROXY_FACTORIES[chain_id] = original_lagoon_factory
 
 
 @pytest.fixture()
@@ -454,15 +440,17 @@ def environment(
         "ASSET_MANAGEMENT_MODE": "hot_wallet",
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "disabled",
-        "MAX_CYCLES": "10",
+        "MAX_CYCLES": "15",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),
-        "MIN_GAS_BALANCE": "0.01",
+        "MIN_GAS_BALANCE": "0",
         "GAS_BALANCE_WARNING_LEVEL": "0.0",
         "PRIVATE_KEY": hexbytes_to_hex_str(hot_wallet.private_key),
         "CACHE_PATH": cache_path,
         "CYCLE_DURATION": "1s",
         "TRADE_IMMEDIATELY": "true",
+        "CONFIRMATION_BLOCK_COUNT": "0",
+        "DIRECT_ANVIL_BROADCAST": "true",
         "POSITION_TRIGGER_CHECK_MINUTES": "0",
         "STATS_REFRESH_MINUTES": "0",
         "CHECK_ACCOUNTS": "false",
@@ -471,263 +459,6 @@ def environment(
         "PHASE_AWARE_LAGOON_DEPLOYMENTS_FILE": deployed_lagoon_vaults["file"].as_posix(),
         "PATH": os.environ["PATH"],
     }
-
-
-def _trade_vault_address(trade: TradeExecution) -> str:
-    return trade.pair.pool_address.lower()
-
-
-def _trade_direction(trade: TradeExecution) -> str:
-    return "deposit" if trade.is_buy() else "redeem"
-
-
-def _has_claim_transaction(trade: TradeExecution) -> bool:
-    return any(tx.other.get("vault_settlement_action") == "claim" for tx in trade.blockchain_transactions)
-
-
-def _decimal_str(value) -> str | None:
-    if value is None:
-        return None
-    return str(value)
-
-
-def _datetime_str(value) -> str | None:
-    if value is None:
-        return None
-    return value.isoformat()
-
-
-def _raw_str(value: int) -> str:
-    return str(int(value))
-
-
-def _uint256_arg(value: int) -> str:
-    return f"{int(value):064x}"
-
-
-def _address_arg(address: str) -> str:
-    return address.removeprefix("0x").lower().zfill(64)
-
-
-def _eth_call_uint256(receipt_web3, address: str, signature: str, args: str = "") -> int:
-    data = "0x" + Web3.keccak(text=signature)[0:4].hex() + args
-    result = receipt_web3.eth.call(
-        {
-            "to": Web3.to_checksum_address(address),
-            "data": data,
-        },
-        block_identifier="latest",
-    )
-    if len(result) == 0:
-        return 0
-    return int.from_bytes(result, byteorder="big")
-
-
-def _trade_evidence(trade: TradeExecution) -> dict:
-    return {
-        "trade_id": trade.trade_id,
-        "vault": _trade_vault_address(trade),
-        "pair_internal_id": trade.pair.internal_id,
-        "direction": _trade_direction(trade),
-        "opened_at": _datetime_str(trade.opened_at),
-        "status": trade.get_status().value,
-        "pending": trade.get_status() == TradeStatus.vault_settlement_pending,
-        "processed": trade.is_success() and _has_claim_transaction(trade),
-        "claim_transaction": _has_claim_transaction(trade),
-        "planned_reserve": _decimal_str(trade.planned_reserve),
-        "planned_quantity": _decimal_str(trade.planned_quantity),
-        "executed_reserve": _decimal_str(trade.executed_reserve),
-        "executed_quantity": _decimal_str(trade.executed_quantity),
-    }
-
-
-def _load_lagoon_vault(receipt_web3, target_vault: str, vault_cache: dict[str, object]):
-    vault = vault_cache.get(target_vault)
-    if vault is None:
-        vault = create_vault_instance(
-            receipt_web3,
-            target_vault,
-            features={ERC4626Feature.lagoon_like, ERC4626Feature.erc_7540_like},
-        )
-        vault_cache[target_vault] = vault
-    return vault
-
-
-def _collect_onchain_vault_observations(
-    receipt_web3,
-    target_vaults: list[str],
-    owner_address: str,
-) -> dict[str, dict]:
-    onchain = {}
-    owner_arg = _address_arg(owner_address)
-    for target_vault in target_vaults:
-        request_args = _uint256_arg(0) + owner_arg
-        onchain[target_vault] = {
-            "paused": bool(_eth_call_uint256(receipt_web3, target_vault, "paused()")),
-            "pending_deposit_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "pendingDepositRequest(uint256,address)", request_args)),
-            "pending_redeem_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "pendingRedeemRequest(uint256,address)", request_args)),
-            "max_deposit_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "maxDeposit(address)", owner_arg)),
-            "max_redeem_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "maxRedeem(address)", owner_arg)),
-            "share_balance_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "balanceOf(address)", owner_arg)),
-        }
-    return onchain
-
-
-def _collect_queue_vault_observation(
-    receipt_web3,
-    queue_vault: str,
-    owner_address: str,
-) -> dict:
-    owner_arg = _address_arg(owner_address)
-    return {
-        "share_balance_raw": _raw_str(_eth_call_uint256(receipt_web3, queue_vault, "balanceOf(address)", owner_arg)),
-        "max_deposit_raw": _raw_str(_eth_call_uint256(receipt_web3, queue_vault, "maxDeposit(address)", owner_arg)),
-        "max_redeem_raw": _raw_str(_eth_call_uint256(receipt_web3, queue_vault, "maxRedeem(address)", owner_arg)),
-        "total_assets_raw": _raw_str(_eth_call_uint256(receipt_web3, queue_vault, "totalAssets()")),
-    }
-
-
-def _record_observation(
-    state: State,
-    cycle: int,
-    cycle_timestamp,
-    target_vaults: list[str],
-    queue_vault: str,
-    receipt_web3,
-    owner_address: str,
-    pre_tick_onchain_vaults: dict[str, dict],
-) -> None:
-    target_set = set(target_vaults)
-    existing_observation = state.other_data.data.get(cycle, {}).get(PHASE_AWARE_LIVE_E2E_OBSERVATION_KEY, {})
-    target_trades = [
-        _trade_evidence(trade)
-        for trade in state.portfolio.get_all_trades()
-        if _trade_vault_address(trade) in target_set
-    ]
-    queue_trades = [
-        {
-            "trade_id": trade.trade_id,
-            "vault": _trade_vault_address(trade),
-            "direction": _trade_direction(trade),
-            "opened_at": _datetime_str(trade.opened_at),
-            "status": trade.get_status().value,
-            "yield_decision": trade.get_yield_decision() is not None,
-            "planned_reserve": _decimal_str(trade.planned_reserve),
-            "planned_quantity": _decimal_str(trade.planned_quantity),
-            "executed_reserve": _decimal_str(trade.executed_reserve),
-            "executed_quantity": _decimal_str(trade.executed_quantity),
-        }
-        for trade in state.portfolio.get_all_trades()
-        if _trade_vault_address(trade) == queue_vault
-    ]
-    observation = {
-        **existing_observation,
-        "cycle": cycle,
-        "timestamp": _datetime_str(cycle_timestamp),
-        "target_trades": target_trades,
-        "pending_deposits": [trade for trade in target_trades if trade["direction"] == "deposit" and trade["pending"]],
-        "processed_deposits": [trade for trade in target_trades if trade["direction"] == "deposit" and trade["processed"]],
-        "pending_redemptions": [trade for trade in target_trades if trade["direction"] == "redeem" and trade["pending"]],
-        "processed_redemptions": [trade for trade in target_trades if trade["direction"] == "redeem" and trade["processed"]],
-        "queue_trades": queue_trades,
-        "queue_deposits": [trade for trade in queue_trades if trade["direction"] == "deposit" and trade["status"] == TradeStatus.success.value],
-        "queue_redemptions": [trade for trade in queue_trades if trade["direction"] == "redeem" and trade["status"] == TradeStatus.success.value],
-        "core_vaults": existing_observation.get("core_vaults", {}),
-        "pre_tick_onchain_vaults": pre_tick_onchain_vaults,
-        "onchain_vaults": _collect_onchain_vault_observations(receipt_web3, target_vaults, owner_address),
-        "queue_vault": _collect_queue_vault_observation(receipt_web3, queue_vault, owner_address),
-    }
-    state.other_data.save(cycle, PHASE_AWARE_LIVE_E2E_OBSERVATION_KEY, observation)
-
-
-def _controller_should_open_target_vault(index: int, cycle: int) -> bool:
-    """Private Anvil scenario controller for Lagoon open windows."""
-    schedule = TARGET_VAULT_SCENARIO[index]
-    deposit_open = schedule["deposit_open_cycle"] <= cycle <= schedule["deposit_close_cycle"]
-    redemption_open = schedule["redemption_open_cycle"] <= cycle <= schedule["redemption_close_cycle"]
-    return deposit_open or redemption_open
-
-
-def _set_controller_lagoon_open_states(
-    receipt_web3,
-    cycle: int,
-    target_vaults: list[str],
-    safe_addresses: list[str],
-    vault_cache: dict[str, object],
-) -> None:
-    for index, target_vault in enumerate(target_vaults):
-        _set_lagoon_vault_open_state(
-            receipt_web3,
-            target_vault,
-            safe_addresses[index],
-            _controller_should_open_target_vault(index, cycle),
-            vault_cache,
-        )
-
-
-def _set_lagoon_vault_open_state(
-    receipt_web3,
-    target_vault: str,
-    safe_address: str,
-    open_: bool,
-    vault_cache: dict[str, object],
-) -> None:
-    vault = _load_lagoon_vault(receipt_web3, target_vault, vault_cache)
-    tx_hash = set_lagoon_vault_open_for_testing(
-        receipt_web3,
-        vault.vault_contract,
-        safe_address,
-        open_,
-    )
-    if tx_hash is not None:
-        receipt = _wait_for_local_anvil_receipt(receipt_web3, tx_hash)
-        _assert_local_receipt_success(receipt_web3, tx_hash, receipt)
-
-
-def _force_settle_controller_vaults(
-    receipt_web3,
-    cycle: int,
-    target_vaults: list[str],
-    asset_managers: list[str],
-    safe_addresses: list[str],
-    vault_cache: dict[str, object],
-) -> None:
-    for index, target_vault in enumerate(target_vaults):
-        schedule = TARGET_VAULT_SCENARIO[index]
-        deposit_settle_cycle = schedule["deposit_settle_cycle"]
-        redemption_settle_cycle = schedule["redemption_settle_cycle"]
-        if cycle not in (deposit_settle_cycle, redemption_settle_cycle):
-            continue
-        vault = _load_lagoon_vault(receipt_web3, target_vault, vault_cache)
-        safe_address = safe_addresses[index]
-        settle_open_tx_hash = set_lagoon_vault_open_for_testing(
-            receipt_web3,
-            vault.vault_contract,
-            safe_address,
-            True,
-        )
-        if settle_open_tx_hash is not None:
-            settle_open_receipt = _wait_for_local_anvil_receipt(receipt_web3, settle_open_tx_hash)
-            _assert_local_receipt_success(receipt_web3, settle_open_tx_hash, settle_open_receipt)
-        valuation = vault.underlying_token.fetch_balance_of(vault.safe_address)
-        raw_valuation = vault.denomination_token.convert_to_raw(valuation)
-        valuation_tx_hash = vault.post_new_valuation(valuation).transact({"from": asset_managers[index], "gas": 1_000_000})
-        valuation_receipt = _wait_for_local_anvil_receipt(receipt_web3, valuation_tx_hash)
-        _assert_local_receipt_success(receipt_web3, valuation_tx_hash, valuation_receipt)
-        # Do not use force_lagoon_settle() here: this scenario needs the
-        # valuation tx from the asset manager and settleDeposit() from the Safe.
-        settle_call = EncodedCall.from_keccak_signature(
-            address=vault.address,
-            function="settleDeposit()",
-            signature=Web3.keccak(text="settleDeposit(uint256)")[0:4],
-            data=convert_uin256_to_bytes(raw_valuation),
-            extra_data=None,
-        )
-        receipt_web3.provider.make_request("anvil_setBalance", [safe_address, hex(5 * 10**18)])
-        receipt_web3.provider.make_request("anvil_impersonateAccount", [safe_address])
-        tx_hash = receipt_web3.eth.send_transaction(settle_call.transact(from_=safe_address, gas_limit=1_000_000))
-        receipt = _wait_for_local_anvil_receipt(receipt_web3, tx_hash)
-        _assert_local_receipt_success(receipt_web3, tx_hash, receipt)
 
 
 def _collect_observations(state: State) -> list[dict]:
@@ -752,118 +483,34 @@ def _positive_decimal(value: str | None) -> bool:
     return abs(Decimal(value)) > 0
 
 
-def _wait_for_local_anvil_receipt(web3, tx_hash):
-    return wait_for_transaction_receipt_robust(web3, tx_hash, timeout=15, poll_delay=0.1)
-
-
-def _assert_local_receipt_success(web3, tx_hash, receipt, func=None) -> None:
-    if receipt["status"] != 1:
-        assert_transaction_success_with_explanation(web3, tx_hash, func=func, tracing=True)
-    assert receipt["status"] == 1
-
-
 @pytest.mark.slow_test_group
 def test_phase_aware_lagoon_live_e2e(
     environment: dict,
-    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
     state_file: Path,
-    web3: Web3,
     deployed_lagoon_vaults: dict,
-    hot_wallet: HotWallet,
 ) -> None:
     """Run the phase-aware alpha model through the live CLI and Lagoon contracts.
 
-    1. Patch the CLI environment with three async Lagoon target vaults and one sync queue vault.
+    1. Replace the CLI environment with three async Lagoon target vaults and one sync queue vault.
     2. Start the normal live trade-executor loop with one-second cycles on a fresh Anvil chain.
-    3. Force-settle target vaults from the private Anvil scenario controller to simulate staggered vault epochs.
+    3. Let the strategy tick hooks toggle and settle target vaults to simulate staggered vault epochs.
     4. Read the persisted state JSON and assert queued deposits, queued redemptions, processed claims and queue-vault utilisation.
     """
     cli = get_command(app)
     target_vaults = [vault["address"].lower() for vault in deployed_lagoon_vaults["target_vaults"]]
-    asset_managers = [vault["asset_manager"] for vault in deployed_lagoon_vaults["target_vaults"]]
-    safe_addresses = [vault["safe"] for vault in deployed_lagoon_vaults["target_vaults"]]
-    queue_vault = deployed_lagoon_vaults["queue_vault"].lower()
     assert len(target_vaults) == len(TARGET_VAULT_SCENARIO)
-    original_tick = ExecutionLoop.tick
-    settlement_vault_cache = {}
-    settlement_receipt_web3 = create_multi_provider_web3(
-        environment["JSON_RPC_ANVIL"],
-        default_http_timeout=(3, 30.0),
-        retries=1,
-    )
-    def wait_and_broadcast_on_local_anvil(web3, txs, **kwargs):
-        receipts = {}
-        for tx in txs:
-            try:
-                web3.eth.send_raw_transaction(tx.rawTransaction)
-            except ValueError as e:
-                if "already known" not in str(e):
-                    raise
-        for tx in txs:
-            receipt = _wait_for_local_anvil_receipt(web3, tx.hash)
-            receipts[tx.hash] = receipt
-        return receipts
 
-    def tick_wrapper(self, *args, **kwargs):
-        state = kwargs.get("state") if "state" in kwargs else args[2]
-        cycle = kwargs.get("cycle") if "cycle" in kwargs else args[3]
-        if "strategy_cycle_timestamp" in kwargs:
-            cycle_timestamp = kwargs["strategy_cycle_timestamp"]
-        elif len(args) > 6:
-            cycle_timestamp = args[6]
-        else:
-            cycle_timestamp = None
-        _set_controller_lagoon_open_states(
-            settlement_receipt_web3,
-            cycle,
-            target_vaults,
-            safe_addresses,
-            settlement_vault_cache,
-        )
-        pre_tick_onchain_vaults = _collect_onchain_vault_observations(
-            settlement_receipt_web3,
-            target_vaults,
-            hot_wallet.address,
-        )
-        universe = original_tick(self, *args, **kwargs)
-        _record_observation(
-            state,
-            cycle,
-            cycle_timestamp,
-            target_vaults,
-            queue_vault,
-            settlement_receipt_web3,
-            hot_wallet.address,
-            pre_tick_onchain_vaults,
-        )
-        # 3. Force-settle target vaults from the private Anvil scenario controller to simulate staggered vault epochs.
-        _force_settle_controller_vaults(
-            settlement_receipt_web3,
-            cycle,
-            target_vaults,
-            asset_managers,
-            safe_addresses,
-            settlement_vault_cache,
-        )
-        self.store.sync(state)
-        return universe
-
-    # 1. Patch the CLI environment with three async Lagoon target vaults and one sync queue vault.
-    mocker.patch.dict("os.environ", environment, clear=True)
-    # The synthetic in-memory universe has fresh Anvil deployments whose data age is controlled by this test.
-    mocker.patch.object(TradingStrategyUniverseModel, "check_data_age", return_value=None)
-    mocker.patch.object(ExecutionLoop, "tick", tick_wrapper)
-    # This blackbox test restarts from local state only; live-run metadata refresh would call external services.
-    mocker.patch.object(ExecutionLoop, "refresh_live_run_state", return_value=None)
-    mocker.patch("tradeexecutor.ethereum.execution.wait_and_broadcast_multiple_nodes", side_effect=wait_and_broadcast_on_local_anvil)
-    mocker.patch.object(settlement_retry, "_wait_for_settlement_tx_receipt", side_effect=_wait_for_local_anvil_receipt)
-    # The target vaults are freshly deployed on Anvil and have no historical profitability data.
-    mocker.patch("tradeexecutor.ethereum.vault.vault_routing.estimate_4626_recent_profitability", return_value=None)
-    # Fresh Anvil automines transactions; the runner's extra manual mining can block the one-second test loop.
-    mocker.patch("tradeexecutor.strategy.runner.mine", return_value=None)
+    # 1. Replace the CLI environment with three async Lagoon target vaults and one sync queue vault.
+    for key in list(os.environ.keys()):
+        monkeypatch.delenv(key, raising=False)
+    for key, value in environment.items():
+        monkeypatch.setenv(key, value)
 
     # 2. Start the normal live trade-executor loop with one-second cycles on a fresh Anvil chain.
     cli.main(args=["init"], standalone_mode=False)
+
+    # 3. Let the strategy tick hooks toggle and settle target vaults to simulate staggered vault epochs.
     cli.main(args=["start"], standalone_mode=False)
 
     # 4. Read the persisted state JSON and assert queued deposits, queued redemptions, processed claims and queue-vault utilisation.

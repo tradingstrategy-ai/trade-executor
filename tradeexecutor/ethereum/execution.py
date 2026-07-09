@@ -24,8 +24,9 @@ from eth_defi.provider.fallback import FallbackProvider
 from eth_defi.provider.mev_blocker import MEVBlockerProvider, get_mev_blocker_provider
 from eth_defi.token import fetch_erc20_details, TokenDetails
 from eth_defi.confirmation import wait_transactions_to_complete, \
-    broadcast_and_wait_transactions_to_complete, broadcast_transactions, wait_and_broadcast_multiple_nodes, wait_and_broadcast_multiple_nodes_mev_blocker, OutOfGasFunds
+    broadcast_and_wait_transactions_to_complete, broadcast_transactions, wait_and_broadcast_multiple_nodes, wait_and_broadcast_multiple_nodes_mev_blocker, OutOfGasFunds, BroadcastFailure
 from eth_defi.trace import trace_evm_transaction, print_symbolic_trace
+from eth_defi.tx import get_tx_broadcast_data
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment, FOREVER_DEADLINE
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 
@@ -110,6 +111,7 @@ class EthereumExecution(ExecutionModel):
         self.mainnet_fork = mainnet_fork
         self.force_sequential_broadcast = force_sequential_broadcast
         self.disable_broadcast =disable_broadcast
+        self.direct_anvil_broadcast = False
         self.account_value_func = None
         self.web3config = None  # Set by CLI bootstrap for multichain support
         self.token_cache = None
@@ -214,7 +216,7 @@ class EthereumExecution(ExecutionModel):
             tx_data = {tx.tx_hash: (t, tx) for tx in t.blockchain_transactions}
 
             self.resolve_trades(
-                datetime.datetime.now(),
+                native_datetime_utc_now(),
                 state,
                 tx_data,
                 receipt_data,
@@ -300,7 +302,7 @@ class EthereumExecution(ExecutionModel):
         )
 
         self.resolve_trades(
-            datetime.datetime.now(),
+            native_datetime_utc_now(),
             routing_model,
             state,
             broadcasted,
@@ -510,7 +512,7 @@ class EthereumExecution(ExecutionModel):
                 t.mark_broadcasted(native_datetime_utc_now(), rebroadcast=False)
 
                 self.resolve_trades(
-                    datetime.datetime.now(),
+                    native_datetime_utc_now(),
                     routing_model,
                     state,
                     current_trade_tx_map,
@@ -519,6 +521,40 @@ class EthereumExecution(ExecutionModel):
             )
 
             completed_trades.append(t)
+
+    def _collect_signed_txs_by_chain(
+        self,
+        trades: List[TradeExecution],
+        rebroadcast: bool,
+        log_label: str,
+    ) -> tuple[Dict[int, list[SignedTransactionWithNonce]], Dict[HexStr, tuple]]:
+        """Collect signed transactions from trades for broadcasting."""
+        txs_by_chain: Dict[int, list[SignedTransactionWithNonce]] = {}
+        tx_map: Dict[HexStr, tuple] = dict()
+
+        for t in trades:
+            assert len(t.blockchain_transactions) > 0, f"Trade {t} does not have any blockchain transactions prepared"
+            for tx in t.blockchain_transactions:
+                assert tx.signed_bytes, f"Unsigned transaction: {tx}"
+                assert tx.tx_hash is not None
+                signed_tx = SignedTransactionWithNonce(
+                    rawTransaction=HexBytes(tx.signed_bytes),
+                    hash=HexBytes(tx.tx_hash),
+                    r=0,  # Not needed in this stage
+                    s=0,  # Not needed in this stage
+                    v=0,  # Not needed in this stage
+                    address=tx.from_address,
+                    nonce=tx.nonce,
+                    source=tx.details,
+                )
+                chain_id = tx.chain_id or self.chain_id
+                txs_by_chain.setdefault(chain_id, []).append(signed_tx)
+                logger.info("%s transaction %s, nonce %s, for trade\n:%s", log_label, signed_tx.hash.hex(), signed_tx.nonce, t)
+                tx_map[hexbytes_to_hex_str(signed_tx.hash)] = (t, tx)
+
+            t.mark_broadcasted(native_datetime_utc_now(), rebroadcast=rebroadcast)
+
+        return txs_by_chain, tx_map
 
     def broadcast_and_resolve_multiple_nodes(
         self,
@@ -568,31 +604,7 @@ class EthereumExecution(ExecutionModel):
             logger.info("Unit test path of no confirmation")
             return
 
-        # Group transactions by chain for multichain broadcasting
-        txs_by_chain: Dict[int, set] = {}
-        tx_map: Dict[HexStr, tuple] = dict()
-
-        for t in trades:
-            assert len(t.blockchain_transactions) > 0, f"Trade {t} does not have any blockchain transactions prepared"
-            for tx in t.blockchain_transactions:
-                assert tx.signed_bytes, f"Unsigned transaction: {tx}"
-                assert tx.tx_hash is not None
-                signed_tx = SignedTransactionWithNonce(
-                    rawTransaction=HexBytes(tx.signed_bytes),
-                    hash=HexBytes(tx.tx_hash),
-                    r=0,  # Not needed in this stage
-                    s=0,  # Not needed in this stage
-                    v=0,  # Not needed in this stage
-                    address=tx.from_address,
-                    nonce=tx.nonce,
-                    source=tx.details,
-                )
-                chain_id = tx.chain_id or self.chain_id
-                txs_by_chain.setdefault(chain_id, set()).add(signed_tx)
-                logger.info("Broadcasting transaction %s, nonce %s, for trade\n:%s", signed_tx.hash.hex(), signed_tx.nonce, t)
-                tx_map[hexbytes_to_hex_str(signed_tx.hash)] = (t, tx)
-
-            t.mark_broadcasted(native_datetime_utc_now(), rebroadcast=rebroadcast)
+        txs_by_chain, tx_map = self._collect_signed_txs_by_chain(trades, rebroadcast, "Broadcasting")
 
         all_receipts = {}
         for chain_id, chain_txs in txs_by_chain.items():
@@ -615,12 +627,80 @@ class EthereumExecution(ExecutionModel):
             all_receipts.update(receipts)
 
         self.resolve_trades(
-            datetime.datetime.now(),
+            native_datetime_utc_now(),
             routing_model,
             state,
             tx_map,
             all_receipts,
             stop_on_execution_failure=stop_on_execution_failure
+        )
+
+    def broadcast_and_resolve_direct(
+        self,
+        routing_model: RoutingModel,
+        state: State,
+        trades: List[TradeExecution],
+        confirmation_timeout: datetime.timedelta = datetime.timedelta(minutes=1),
+        confirmation_block_count: int = 0,
+        stop_on_execution_failure=False,
+        rebroadcast=False,
+    ):
+        """Broadcast through one local RPC provider and resolve receipts.
+
+        This is a local-Anvil test path for CLI blackbox tests that need real
+        on-chain execution but not production multi-node rebroadcast delays.
+        """
+        assert isinstance(confirmation_timeout, datetime.timedelta)
+        assert isinstance(routing_model, RoutingModel)
+
+        if confirmation_timeout == datetime.timedelta(0):
+            logger.info("Unit test path of no confirmation")
+            return
+
+        assert confirmation_block_count == 0, "Direct Anvil broadcast does not support waiting for extra confirmation blocks"
+        web3 = self.web3
+        txs_by_chain, tx_map = self._collect_signed_txs_by_chain(trades, rebroadcast, "Direct Anvil broadcast")
+
+        all_receipts = {}
+        for chain_id, chain_txs in txs_by_chain.items():
+            if chain_id != self.chain_id and self.web3config:
+                chain_web3 = self.web3config.get_connection(ChainId(chain_id))
+                logger.info("Direct Anvil broadcast for %d txs on satellite chain %d", len(chain_txs), chain_id)
+            else:
+                chain_web3 = web3
+                logger.info("Direct Anvil broadcast for %d txs on default chain", len(chain_txs))
+
+            for signed_tx in sorted(chain_txs, key=lambda tx: tx.nonce):
+                raw_bytes = get_tx_broadcast_data(signed_tx)
+                try:
+                    broadcast_hash = chain_web3.eth.send_raw_transaction(raw_bytes)
+                except ValueError as e:
+                    error_message = str(e).lower()
+                    nonce_error = "nonce too low" in error_message or "nonce too high" in error_message
+                    if "already known" not in error_message and not (rebroadcast and nonce_error):
+                        raise BroadcastFailure(f"Could not broadcast transaction: {signed_tx.hash.hex()}. JSON-RPC error: {e}") from e
+                else:
+                    if HexBytes(broadcast_hash) != HexBytes(signed_tx.hash):
+                        logger.warning(
+                            "Direct Anvil broadcast returned tx hash %s, expected %s",
+                            HexBytes(broadcast_hash).hex(),
+                            signed_tx.hash.hex(),
+                        )
+
+                receipt = chain_web3.eth.wait_for_transaction_receipt(
+                    signed_tx.hash,
+                    timeout=confirmation_timeout.total_seconds(),
+                    poll_latency=0.1,
+                )
+                all_receipts[HexBytes(signed_tx.hash)] = receipt
+
+        self.resolve_trades(
+            native_datetime_utc_now(),
+            routing_model,
+            state,
+            tx_map,
+            all_receipts,
+            stop_on_execution_failure=stop_on_execution_failure,
         )
 
     def _execute_trade_batch(
@@ -633,7 +713,16 @@ class EthereumExecution(ExecutionModel):
         """Broadcast and settle one prepared trade batch."""
         force_sequential_broadcast = self.force_sequential_broadcast
 
-        if isinstance(self.web3.provider, MEVBlockerProvider) or force_sequential_broadcast:
+        if self.direct_anvil_broadcast:
+            self.broadcast_and_resolve_direct(
+                routing_model,
+                state,
+                trades,
+                confirmation_timeout=self.confirmation_timeout,
+                confirmation_block_count=self.confirmation_block_count,
+                rebroadcast=rebroadcast,
+            )
+        elif isinstance(self.web3.provider, MEVBlockerProvider) or force_sequential_broadcast:
             self.broadcast_and_resolve_mev_blocker(
                 routing_model,
                 state,
