@@ -15,6 +15,15 @@ from tradeexecutor.strategy.phase_aware import is_queue_vault_position
 #: Band label for the yield-bearing queue venue, split out from directional chain bands and idle cash.
 QUEUE_VENUE_BAND = "Queue venue"
 
+#: Reserve-like colour for YieldManager-managed queue venue positions.
+YIELD_MANAGER_RESERVE_COLOUR = "#666"
+
+
+def _get_queue_asset_label(pair) -> str:
+    """Legend label for a YieldManager venue in asset allocation charts."""
+    venue_name = pair.get_chart_label() or pair.get_ticker()
+    return f"{venue_name} queue"
+
 
 def _calculate_and_cache_weights(input: ChartInput) -> pd.Series:
     """Calculate and cache asset weights for the input."""
@@ -24,6 +33,31 @@ def _calculate_and_cache_weights(input: ChartInput) -> pd.Series:
         weights_series = calculate_asset_weights(state)
         input.cache["weights"] = weights_series
     return weights_series
+
+
+def _calculate_asset_weights_with_queue_venue(input: ChartInput) -> pd.Series:
+    """Calculate asset weights, relabelling YieldManager vault venues as reserve-like bands."""
+    state = input.state
+    weights_series = calculate_asset_weights(state)
+    queue_asset_labels = {
+        p.pair.get_chart_label(): _get_queue_asset_label(p.pair)
+        for p in state.portfolio.get_all_positions()
+        if is_queue_vault_position(p)
+    }
+    if not queue_asset_labels:
+        return weights_series
+
+    df = weights_series.rename("value").reset_index()
+    df["asset"] = df["asset"].replace(queue_asset_labels)
+
+    queue_weights_series = df.set_index(["timestamp", "asset"])["value"].groupby(level=[0, 1]).sum()
+    queue_weights_series.attrs = dict(weights_series.attrs)
+    queue_weights_series.attrs["vault_symbols"] = [
+        symbol
+        for symbol in weights_series.attrs["vault_symbols"]
+        if symbol not in queue_asset_labels.keys()
+    ]
+    return queue_weights_series
 
 
 def volatile_weights_by_percent(
@@ -59,10 +93,21 @@ def equity_curve_by_asset(
 ) -> Figure:
     """Equity curve with assets colored.
     """
-    weights_series = calculate_asset_weights(input.state)
+    reserve_asset_symbol = input.state.portfolio.get_default_reserve_asset()[0].token_symbol
+    weights_series = _calculate_asset_weights_with_queue_venue(input)
+    queue_asset_labels = [
+        _get_queue_asset_label(p.pair)
+        for p in input.state.portfolio.get_all_positions()
+        if is_queue_vault_position(p)
+    ]
     fig = visualise_weights(
         weights_series,
         normalised=False,
+        extra_colours={label: YIELD_MANAGER_RESERVE_COLOUR for label in queue_asset_labels},
+        extra_sort_order={
+            reserve_asset_symbol: -1000,
+            **{label: -999 for label in queue_asset_labels},
+        },
     )
     return fig
 

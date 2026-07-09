@@ -135,6 +135,8 @@ def visualise_weights(
     legend_mode: LegendMode=LegendMode.side,
     aave_colour='#ccc',
     reserve_asset_colour='#aaa',
+    extra_colours: dict[str, str] | None = None,
+    extra_sort_order: dict[str, int] | None = None,
     clean=False,
 ) -> Figure:
     """Draw a chart of weights.
@@ -161,6 +163,8 @@ def visualise_weights(
     reserve_asset_symbol = weights_series.attrs["reserve_asset_symbol"]
     vault_symbols = weights_series.attrs["vault_symbols"]
     non_volatile_symbols = [weights_series.attrs["reserve_asset_symbol"]] + weights_series.attrs["credit_supply_symbols"]
+    extra_colours = extra_colours or {}
+    extra_sort_order = extra_sort_order or {}
 
     if not include_reserves:
         # Filter out reserve/credit position
@@ -169,6 +173,8 @@ def visualise_weights(
         ]
 
     def sort_key_reserve_first(col_name):
+        if col_name in extra_sort_order:
+            return extra_sort_order[col_name], col_name
         if col_name == reserve_asset_symbol:
             return -1000, col_name
         elif col_name in non_volatile_symbols:
@@ -229,6 +235,8 @@ def visualise_weights(
         )
 
     fig.update_traces(fillcolor=reserve_asset_colour, selector=dict(name=reserve_asset_symbol))
+    for symbol, colour in extra_colours.items():
+        fig.update_traces(fillcolor=colour, selector=dict(name=symbol))
     fig.update_traces(line_width=0)
 
     match legend_mode:

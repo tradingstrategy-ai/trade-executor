@@ -219,3 +219,31 @@ def test_visualise_weights(strategy_universe, tmp_path):
     weight_stats = calculate_weights_statistics(weights_series)
     assert isinstance(weight_stats, pd.DataFrame)
 
+
+def test_visualise_weights_extra_reserve_band_order_and_colour():
+    """Reserve-like extra bands can be pinned next to USDC and coloured explicitly."""
+    timestamp = pd.Timestamp("2024-01-01")
+    weights_series = pd.Series(
+        [100.0, 50.0, 25.0],
+        index=pd.MultiIndex.from_tuples(
+            [
+                (timestamp, "USDC"),
+                (timestamp, "Steakhouse USDC queue"),
+                (timestamp, "ETH"),
+            ],
+            names=["timestamp", "asset"],
+        ),
+    )
+    weights_series.attrs["reserve_asset_symbol"] = "USDC"
+    weights_series.attrs["credit_supply_symbols"] = []
+    weights_series.attrs["vault_symbols"] = []
+
+    fig = visualise_weights(
+        weights_series,
+        normalised=False,
+        extra_colours={"Steakhouse USDC queue": "#666"},
+        extra_sort_order={"USDC": -1000, "Steakhouse USDC queue": -999},
+    )
+
+    assert [trace.name for trace in fig.data[:2]] == ["USDC", "Steakhouse USDC queue"]
+    assert fig.data[1].fillcolor == "#666"
