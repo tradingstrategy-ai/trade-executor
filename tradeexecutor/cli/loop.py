@@ -1615,10 +1615,13 @@ class ExecutionLoop:
             try:
                 ts = native_datetime_utc_now()
 
-                # Post-valuation settlement is needed when an external system
-                # (FreqTrade) moves reserve cash outside the trade executor.
-                # The strategy universe itself drives the detection —
-                # no environment variable to misconfigure between deployments.
+                # Post-valuation settlement is needed for GMX strategies, where an
+                # external FreqTrade instance moves reserve cash between the Lagoon
+                # Safe and GMX outside the trade executor, leaving the tracked
+                # reserve balance stale until sync_treasury() reconciles it on-chain.
+                # The strategy universe itself drives the detection — no environment
+                # variable to misconfigure between deployments. See
+                # https://github.com/tradingstrategy-ai/trade-executor/pull/1558#issuecomment-4925733588
                 post_settlement = self.sync_model.has_async_deposits() and has_gmx_exchange_account_pairs(universe)
 
                 logger.info(

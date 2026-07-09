@@ -93,7 +93,11 @@ def update_position_valuations(
 
         Used when treasury settlement must reconcile reserve cash to on-chain
         before the statistics point is written, so a stale reserve balance is
-        never combined with a fresh position valuation.
+        never combined with a fresh position valuation. Needed for GMX
+        strategies where an external FreqTrade instance moves reserve cash
+        outside the trade executor; recording statistics before reconciliation
+        produced spurious NAV spikes on the public equity curve. See
+        https://github.com/tradingstrategy-ai/trade-executor/pull/1558#issuecomment-4925733588
     """
 
     # Set up the execution to perform the valuation
