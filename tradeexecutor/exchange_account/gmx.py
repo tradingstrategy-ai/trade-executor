@@ -102,21 +102,17 @@ def has_gmx_exchange_account_pairs(strategy_universe) -> bool:
 
     The strategy universe itself drives GMX feature discovery — no environment
     variable or CLI flag is needed, so a misconfigured deployment cannot
-    silently disable GMX-specific accounting. Used to
+    silently disable GMX-specific accounting. Used to auto-wire the GMX value
+    functions in
+    :py:class:`~tradeexecutor.ethereum.ethereum_protocol_adapters.EthereumPairConfigurator`.
 
-    - Auto-wire the GMX value functions in
-      :py:class:`~tradeexecutor.ethereum.ethereum_protocol_adapters.EthereumPairConfigurator`
-
-    - Enable post-valuation treasury settlement in the live stats refresh
-      (:py:mod:`tradeexecutor.cli.loop`)
-
-    Why GMX needs this: GMX positions are opened and closed by an external
-    FreqTrade instance that moves USDC between the Lagoon Safe and GMX without
-    the trade executor knowing. The tracked reserve balance goes stale until
-    treasury settlement reconciles it from on-chain, and any statistics point
-    recorded in between combines stale reserve cash with a fresh GMX position
-    valuation, producing spurious NAV spikes on the public equity curve.
-    Full analysis:
+    Why GMX needs special handling: GMX positions are opened and closed by an
+    external FreqTrade instance that moves USDC between the Lagoon Safe and GMX
+    without the trade executor knowing. The tracked reserve balance goes stale
+    until treasury settlement reconciles it from on-chain, and any statistics
+    point recorded in between combines stale reserve cash with a fresh GMX
+    position valuation, producing spurious NAV spikes on the public equity
+    curve. Full analysis:
     https://github.com/tradingstrategy-ai/trade-executor/pull/1558#issuecomment-4925733588
 
     :param strategy_universe:

@@ -1,8 +1,7 @@
 """CLI coverage for stats refresh post-valuation scheduling.
 
-Post-valuation treasury settlement during the background stats refresh is
-enabled by universe-driven detection: a Lagoon-style sync model (async
-deposits) combined with GMX exchange account pairs in the strategy universe.
+Post-valuation treasury settlement during the background stats refresh runs
+automatically for all Lagoon-style vaults (sync models with async deposits).
 There is no environment variable to configure.
 """
 
@@ -17,8 +16,6 @@ import pytest
 from tradeexecutor.cli import loop as loop_module
 from tradeexecutor.cli.loop import ExecutionLoop
 from tradeexecutor.cli.main import app
-from tradeexecutor.exchange_account.gmx import create_gmx_exchange_account_pair
-from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.sync_model import DummySyncModel
@@ -62,18 +59,6 @@ class FakeLagoonVaultSyncModel(DummySyncModel):
         return []
 
 
-def make_gmx_universe() -> SimpleNamespace:
-    """Universe stub containing a real GMX exchange account pair for detection."""
-    usdc = AssetIdentifier(
-        chain_id=42161,
-        address="0x0000000000000000000000000000000000000001",
-        token_symbol="USDC",
-        decimals=6,
-    )
-    gmx_pair = create_gmx_exchange_account_pair(quote=usdc)
-    return SimpleNamespace(reserve_assets=[], iterate_pairs=lambda: [gmx_pair])
-
-
 def make_cli_environment(strategy_path: Path, state_file: Path, cache_path: Path) -> dict:
     """CLI environment for a stats-refresh unit test run."""
     return {
@@ -96,10 +81,9 @@ def make_cli_environment(strategy_path: Path, state_file: Path, cache_path: Path
 def patch_cli_startup(
     monkeypatch: pytest.MonkeyPatch,
     fake_sync_model: DummySyncModel,
-    universe: SimpleNamespace,
     calls: list[tuple],
 ) -> None:
-    """Patch CLI start-up so the live loop runs offline with the given sync model and universe."""
+    """Patch CLI start-up so the live loop runs offline with the given sync model."""
     from tradeexecutor.cli.commands import start as start_module
 
     def fake_create_execution_and_sync_model(**kwargs):
@@ -112,7 +96,7 @@ def patch_cli_startup(
         return state
 
     def fake_warm_up_live_trading(self: ExecutionLoop):
-        return universe
+        return SimpleNamespace(reserve_assets=[])
 
     def fake_refresh_live_run_state(
         self: ExecutionLoop,
@@ -162,7 +146,7 @@ def patch_cli_startup(
     monkeypatch.setattr(loop_module, "display_strategy_universe", lambda universe: pd.DataFrame())
 
 
-def test_cli_stats_refresh_post_valuation_runs_once_for_lagoon_gmx(
+def test_cli_stats_refresh_post_valuation_runs_once_for_lagoon(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -170,12 +154,12 @@ def test_cli_stats_refresh_post_valuation_runs_once_for_lagoon_gmx(
 
     A statistics point written before treasury settlement combines a stale reserve
     balance with a fresh position valuation and records a spurious NAV spike when an
-    external system has moved cash in or out of the vault. For a Lagoon vault whose
-    universe trades GMX through an exchange account pair (detected from the universe,
-    no environment variable), the refresh must revalue first (statistics held back),
-    settle treasury, then write statistics once.
+    external system (e.g. FreqTrade on GMX) has moved cash in or out of the vault.
+    Settlement runs automatically for any Lagoon-style vault (async deposits detected
+    from the sync model, no environment variable): the refresh must revalue first
+    (statistics held back), settle treasury, then write statistics once.
 
-    1. Patch CLI start-up so it runs offline with a fake Lagoon sync model and a GMX universe, recording the call order.
+    1. Patch CLI start-up so it runs offline with a fake Lagoon sync model, recording the call order.
     2. Run `start` with a tiny stats refresh interval and the unit-testing shutdown hook enabled.
     3. Verify the call order is: revalue without statistics, treasury settlement, revalue with statistics.
     4. Verify one stats refresh and one post-valuation settlement were persisted in state.
@@ -188,8 +172,8 @@ def test_cli_stats_refresh_post_valuation_runs_once_for_lagoon_gmx(
     calls: list[tuple] = []
     fake_sync_model = FakeLagoonVaultSyncModel(calls)
 
-    # 1. Patch CLI start-up so it runs offline with a fake Lagoon sync model and a GMX universe.
-    patch_cli_startup(monkeypatch, fake_sync_model, make_gmx_universe(), calls)
+    # 1. Patch CLI start-up so it runs offline with a fake Lagoon sync model.
+    patch_cli_startup(monkeypatch, fake_sync_model, calls)
 
     # 2. Run `start` with a tiny stats refresh interval and the unit-testing shutdown hook enabled.
     environment = make_cli_environment(strategy_path, state_file, cache_path)
@@ -211,31 +195,30 @@ def test_cli_stats_refresh_post_valuation_runs_once_for_lagoon_gmx(
     assert state.uptime.post_valuation_settlements_completed == 1
 
 
-def test_cli_stats_refresh_post_valuation_skipped_without_gmx(
+def test_cli_stats_refresh_post_valuation_skipped_for_non_lagoon(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Stats refresh skips post-valuation settlement when the universe has no GMX pairs.
+    """Stats refresh skips post-valuation settlement for non-Lagoon strategies.
 
-    Post-valuation settlement is driven purely by universe detection, so a Lagoon
-    vault trading only spot pairs must keep the plain refresh path: one statistics
-    write, never held back, and no treasury settlement.
+    Settlement is driven by the sync model's async deposit capability, so a
+    strategy without async deposits (e.g. hot wallet) must keep the plain refresh
+    path: one statistics write, never held back, and no treasury settlement.
 
-    1. Patch CLI start-up so it runs offline with a fake Lagoon sync model and a universe without GMX pairs.
+    1. Patch CLI start-up so it runs offline with a non-Lagoon sync model.
     2. Run `start` with the same tiny stats refresh interval and unit-testing shutdown hook.
     3. Verify a single statistics write happened with statistics never held back and no treasury settlement.
     4. Verify the stats refresh counter increments once and the settlement counter stays at zero.
     """
     strategy_path = Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "test_only", "quickswap_dummy.py"))
-    state_file = tmp_path / "stats_refresh_post_valuation_no_gmx.json"
+    state_file = tmp_path / "stats_refresh_post_valuation_non_lagoon.json"
     cache_path = tmp_path / "cache"
 
     calls: list[tuple] = []
-    fake_sync_model = FakeLagoonVaultSyncModel(calls)
+    fake_sync_model = DummySyncModel()
 
-    # 1. Patch CLI start-up with a Lagoon sync model but a universe without GMX pairs.
-    universe = SimpleNamespace(reserve_assets=[])
-    patch_cli_startup(monkeypatch, fake_sync_model, universe, calls)
+    # 1. Patch CLI start-up so it runs offline with a non-Lagoon sync model.
+    patch_cli_startup(monkeypatch, fake_sync_model, calls)
 
     # 2. Run `start` with the same tiny stats refresh interval and unit-testing shutdown hook.
     environment = make_cli_environment(strategy_path, state_file, cache_path)
@@ -248,7 +231,6 @@ def test_cli_stats_refresh_post_valuation_skipped_without_gmx(
     assert calls == [
         ("update_position_valuations", False),
     ]
-    assert fake_sync_model.sync_treasury_calls == []
 
     # 4. Verify the stats refresh counter increments once and the settlement counter stays at zero.
     assert state.uptime.stats_refresh_completed == 1

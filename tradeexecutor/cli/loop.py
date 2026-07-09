@@ -27,7 +27,6 @@ from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.analysis.pair import display_strategy_universe
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
-from tradeexecutor.exchange_account.gmx import has_gmx_exchange_account_pairs
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.types import Percent
 from tradeexecutor.statistics.in_memory_statistics import refresh_run_state
@@ -1615,14 +1614,16 @@ class ExecutionLoop:
             try:
                 ts = native_datetime_utc_now()
 
-                # Post-valuation settlement is needed for GMX strategies, where an
-                # external FreqTrade instance moves reserve cash between the Lagoon
-                # Safe and GMX outside the trade executor, leaving the tracked
-                # reserve balance stale until sync_treasury() reconciles it on-chain.
-                # The strategy universe itself drives the detection — no environment
-                # variable to misconfigure between deployments. See
+                # Post-valuation settlement runs automatically for all Lagoon-style
+                # vaults (async deposits) — no environment variable to misconfigure
+                # between deployments. It reconciles reserve cash from on-chain before
+                # the statistics point is written. This matters most for GMX strategies,
+                # where an external FreqTrade instance moves reserve cash between the
+                # Lagoon Safe and GMX outside the trade executor, leaving the tracked
+                # reserve balance stale; recording statistics before reconciliation
+                # produced spurious NAV spikes on the public equity curve. See
                 # https://github.com/tradingstrategy-ai/trade-executor/pull/1558#issuecomment-4925733588
-                post_settlement = self.sync_model.has_async_deposits() and has_gmx_exchange_account_pairs(universe)
+                post_settlement = self.sync_model.has_async_deposits()
 
                 logger.info(
                     "Starting live position valuation refresh at %s, post valuation settlement: %s",
