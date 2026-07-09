@@ -713,6 +713,7 @@ class ExecutionLoop:
             universe: StrategyExecutionUniverse,
             execution_mode: ExecutionMode = None,
             interest=True,
+            skip_statistics: bool = False,
     ):
         """Revalue positions and update statistics.
 
@@ -723,6 +724,12 @@ class ExecutionLoop:
 
         :param execution_mode:
             Legacy argument, ignored.
+
+        :param skip_statistics:
+            Revalue positions but hold the statistics write.
+
+            Used by :py:func:`live_positions` when post-valuation treasury
+            settlement must reconcile reserve cash first.
         """
 
         if execution_mode is None:
@@ -760,6 +767,7 @@ class ExecutionLoop:
             routing_state=routing_state,
             valuation_model=valuation_model,
             long_short_metrics_latest=long_short_metrics_latest,
+            skip_statistics=skip_statistics,
         )
 
         # Check that state is good before writing it to the disk.
@@ -1612,12 +1620,19 @@ class ExecutionLoop:
                     self.stats_refresh_post_valuation,
                 )
 
-                self.update_position_valuations(ts, state, universe, execution_context.mode)
-                state.uptime.record_stats_refresh_complete()
+                post_settlement = self.stats_refresh_post_valuation and self.sync_model.has_async_deposits()
 
-                if self.stats_refresh_post_valuation and self.sync_model.has_async_deposits():
+                # Revalue positions first so sync_treasury()'s position freshness check
+                # and on-chain NAV posting see fresh valuations, but hold the statistics
+                # write until treasury settlement has reconciled reserve cash to on-chain.
+                # Writing statistics before reconciliation combines a stale reserve balance
+                # with a fresh position valuation and records a spurious NAV spike when
+                # an external system (e.g. FreqTrade) has moved cash in or out of the vault.
+                self.update_position_valuations(ts, state, universe, execution_context.mode, skip_statistics=post_settlement)
+
+                if post_settlement:
                     logger.info("Running post-valuation treasury settlement after live position valuation refresh")
-                    balance_updates = self.sync_model.sync_treasury(
+                    self.sync_model.sync_treasury(
                         ts,
                         state,
                         list(universe.reserve_assets),
@@ -1625,9 +1640,11 @@ class ExecutionLoop:
                     )
                     state.uptime.record_post_valuation_settlement_complete()
 
-                    if balance_updates:
-                        self.update_position_valuations(ts, state, universe, execution_context.mode)
-                        state.uptime.record_stats_refresh_complete()
+                    # The single statistics write of this refresh:
+                    # reconciled reserve cash + freshly revalued positions.
+                    self.update_position_valuations(ts, state, universe, execution_context.mode)
+
+                state.uptime.record_stats_refresh_complete()
 
                 self.store.sync(state)
 

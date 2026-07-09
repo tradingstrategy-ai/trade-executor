@@ -33,17 +33,26 @@ def test_cli_stats_refresh_post_valuation_runs_once_for_lagoon(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Stats refresh can drive one Lagoon post-valuation settlement in unit tests.
+    """Stats refresh writes statistics once, after Lagoon post-valuation settlement.
 
-    1. Patch CLI start-up so it runs offline with a fake Lagoon sync model.
+    A statistics point written before treasury settlement combines a stale reserve
+    balance with a fresh position valuation and records a spurious NAV spike when an
+    external system has moved cash in or out of the vault. The refresh must therefore
+    revalue first (statistics held back), settle treasury, then write statistics once.
+
+    1. Patch CLI start-up so it runs offline with a fake Lagoon sync model, recording the call order.
     2. Run `start` with a tiny stats refresh interval and the unit-testing shutdown hook enabled.
-    3. Verify one stats refresh and one post-valuation settlement were persisted in state.
+    3. Verify the call order is: revalue without statistics, treasury settlement, revalue with statistics.
+    4. Verify one stats refresh and one post-valuation settlement were persisted in state.
     """
     from tradeexecutor.cli.commands import start as start_module
 
     strategy_path = Path(os.path.join(os.path.dirname(__file__), "..", "..", "strategies", "test_only", "quickswap_dummy.py"))
     state_file = tmp_path / "stats_refresh_post_valuation_lagoon.json"
     cache_path = tmp_path / "cache"
+
+    # Shared event log capturing the order of valuation and settlement calls
+    calls: list[tuple] = []
 
     class FakeLagoonVaultSyncModel(DummySyncModel):
         def __init__(self) -> None:
@@ -62,6 +71,8 @@ def test_cli_stats_refresh_post_valuation_runs_once_for_lagoon(
             post_valuation=False,
         ):
             self.sync_treasury_calls.append(post_valuation)
+            calls.append(("sync_treasury", post_valuation))
+            # A reconciliation-only pass legitimately returns no balance updates
             return []
 
     fake_sync_model = FakeLagoonVaultSyncModel()
@@ -94,7 +105,9 @@ def test_cli_stats_refresh_post_valuation_runs_once_for_lagoon(
         universe,
         execution_mode=None,
         interest=True,
+        skip_statistics=False,
     ) -> None:
+        calls.append(("update_position_valuations", skip_statistics))
         return None
 
     def fake_tick(
@@ -146,7 +159,14 @@ def test_cli_stats_refresh_post_valuation_runs_once_for_lagoon(
 
     state = State.from_json(state_file.read_text())
 
-    # 3. Verify one stats refresh and one post-valuation settlement were persisted in state.
+    # 3. Verify the call order is: revalue without statistics, treasury settlement, revalue with statistics.
+    assert calls == [
+        ("update_position_valuations", True),
+        ("sync_treasury", True),
+        ("update_position_valuations", False),
+    ]
+
+    # 4. Verify one stats refresh and one post-valuation settlement were persisted in state.
     assert fake_sync_model.sync_treasury_calls == [True]
     assert state.uptime.stats_refresh_completed == 1
     assert state.uptime.post_valuation_settlements_completed == 1
@@ -198,7 +218,10 @@ def test_cli_stats_refresh_post_valuation_ignored_for_non_lagoon(
         universe,
         execution_mode=None,
         interest=True,
+        skip_statistics=False,
     ) -> None:
+        # A non-Lagoon refresh must never hold back the statistics write
+        assert skip_statistics is False
         return None
 
     def fake_tick(

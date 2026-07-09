@@ -27,6 +27,7 @@ def update_position_valuations(
     valuation_model: ValuationModel,
     routing_state: RoutingState,
     long_short_metrics_latest: StatisticsTable | None = None,
+    skip_statistics: bool = False,
 ):
     """Revalue positions and update statistics.
 
@@ -86,6 +87,13 @@ def update_position_valuations(
         Needed to calculate short statistics.
 
         Can be None - statistics skipped.
+
+    :param skip_statistics:
+        Revalue positions but do not record a statistics entry.
+
+        Used when treasury settlement must reconcile reserve cash to on-chain
+        before the statistics point is written, so a stale reserve balance is
+        never combined with a fresh position valuation.
     """
 
     # Set up the execution to perform the valuation
@@ -103,6 +111,10 @@ def update_position_valuations(
     with timed_task_context_manager("revalue_portfolio_statistics"):
         logger.info("Updating position valuations")
         revalue_state(state, timestamp, valuation_model)
+
+    if skip_statistics:
+        logger.info("Statistics recording skipped, waiting for treasury settlement")
+        return
 
     with timed_task_context_manager("update_statistics"):
         logger.info("Updating position statistics after revaluation")
