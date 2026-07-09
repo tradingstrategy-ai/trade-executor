@@ -59,7 +59,7 @@ def _make_erc4626_vault_pair(
         kind=TradingPairKind.vault,
         exchange_name=protocol_slug,
         other_data={
-            "vault_protocol": "erc4626",
+            "vault_protocol": protocol_slug,
             "vault_name": vault_name,
             "deposit_closed_reason": deposit_closed_reason,
             "redemption_closed_reason": redemption_closed_reason,
@@ -231,3 +231,60 @@ def test_tui_erc4626_vault_features_are_normalised_from_remote_metadata() -> Non
     # 3. Verify both pairs expose enum features for vault routing.
     assert top_level_features.get_vault_features() == {ERC4626Feature.ostium_like}
     assert nested_features.get_vault_features() == {ERC4626Feature.ostium_like}
+
+
+def test_tui_erc4626_empty_vault_features_are_preserved() -> None:
+    """ERC-4626 empty vault feature metadata marks a known synchronous vault.
+
+    Synchronous ERC-4626 queue vaults deliberately carry an empty feature list.
+    The empty list must not be collapsed to ``None``, because ``None`` means
+    the vault features are unknown and routing may need slow autodetection.
+
+    1. Create a vault pair with an explicit empty top-level vault_features list.
+    2. Include async-looking token metadata to prove top-level metadata wins.
+    3. Verify the pair exposes an empty feature set.
+    """
+    # 1. Create a vault pair with an explicit empty top-level vault_features list.
+    sync_vault = _make_erc4626_vault_pair(
+        chain_id=31337,
+        vault_address="0x0000000000000000000000000000000000007540",
+        vault_name="Cash Allocation Vault",
+        protocol_slug="erc4626",
+        vault_features=[],
+        token_metadata={"features": ["ostium_like"]},
+    )
+
+    # 2. Include async-looking token metadata to prove top-level metadata wins.
+    assert sync_vault.other_data["token_metadata"]["features"] == ["ostium_like"]
+
+    # 3. Verify the pair exposes an empty feature set.
+    assert sync_vault.get_vault_features() == set()
+    assert sync_vault.is_async_vault() is False
+
+
+def test_tui_erc4626_empty_vault_features_without_protocol_are_conservative() -> None:
+    """ERC-4626 empty vault feature metadata without a sync marker is unknown.
+
+    Empty features from remote or legacy metadata are ambiguous. Without an
+    explicit generic ERC-4626 protocol marker, treat the vault as async for
+    non-routing safety checks so cash is not reused before autodetection can
+    classify the vault.
+
+    1. Create a vault pair with an empty top-level vault_features list and no protocol slug.
+    2. Verify the empty feature set is preserved for routing.
+    3. Verify non-routing async checks treat the unknown vault conservatively.
+    """
+    # 1. Create a vault pair with an empty top-level vault_features list and no protocol slug.
+    unknown_vault = _make_erc4626_vault_pair(
+        chain_id=31337,
+        vault_address="0x0000000000000000000000000000000000007541",
+        vault_name="Unknown Vault",
+        protocol_slug=None,
+        vault_features=[],
+    )
+
+    # 2. Verify the empty feature set is preserved for routing.
+    assert unknown_vault.get_vault_features() == set()
+
+    # 3. Verify non-routing async checks treat the unknown vault conservatively.
+    assert unknown_vault.is_async_vault() is True

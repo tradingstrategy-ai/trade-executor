@@ -298,11 +298,14 @@ class HotWalletTransactionBuilder(TransactionBuilder):
         if gas_limit is None:
             gas_limit = 500_000
 
-        tx = args_bound_func.build_transaction({
+        tx_params = {
             "chainId": self.chain_id,
             "from": Web3.to_checksum_address(self.hot_wallet.address),
             "gas": gas_limit,
-        })
+        }
+        apply_gas(tx_params, gas_price_suggestion)
+
+        tx = args_bound_func.build_transaction(tx_params)
 
         apply_gas(tx, gas_price_suggestion)
 

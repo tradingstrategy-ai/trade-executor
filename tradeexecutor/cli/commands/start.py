@@ -637,6 +637,8 @@ def start(
         check_accounts=check_accounts,
         sync_treasury_on_startup=sync_treasury_on_startup,
         create_indicators=mod.create_indicators,
+        before_strategy_tick=mod.before_strategy_tick,
+        after_strategy_tick=mod.after_strategy_tick,
         parameters=mod.parameters,
         visualisation=visualisation,
         max_price_impact=mod.get_max_price_impact(),

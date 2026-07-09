@@ -20,6 +20,7 @@ from eth_defi.vault.deposit_redeem import VaultDepositManager
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
 from tradeexecutor.ethereum.token_cache import get_default_token_cache
 from tradeexecutor.ethereum.vault.settlement_estimate import refresh_vault_settlement_estimate
+from tradeexecutor.ethereum.vault.vault_utils import is_explicit_generic_erc4626_pair
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.state import State
@@ -157,7 +158,9 @@ class VaultRouting(RoutingModel):
                 profitability_estimation = None
                 profitability_estimation_error = str(e)
                 logger.error(
-                    "Vault trade %s profitatability estimation failed: %s",
+                    "Vault trade %s profitability estimation failed: %s",
+                    trade,
+                    e,
                 )
         else:
             token_in = trade.pair.base
@@ -584,11 +587,11 @@ def get_vault_for_pair(
     if cached:
         return cached
 
-    if features:
+    if features or is_explicit_generic_erc4626_pair(target_pair):
         cached = create_vault_instance(
             web3,
             vault_address,
-            features,
+            features or set(),
             token_cache=token_cache,
         )
     else:

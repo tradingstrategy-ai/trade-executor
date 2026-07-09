@@ -4,14 +4,19 @@ import hashlib
 from web3 import Web3
 
 from eth_defi.abi import ZERO_ADDRESS_STR
-from eth_defi.erc_4626.classification import create_vault_instance
-from eth_defi.erc_4626.core import get_vault_protocol_name
+from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
+from eth_defi.erc_4626.core import GENERIC_ERC4626_PROTOCOL_NAME, GENERIC_ERC4626_PROTOCOL_SLUG, get_vault_protocol_name, is_generic_erc4626_protocol_slug
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.vault.base import VaultBase
 
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind
 from tradingstrategy.vault import VaultMetadata
+
+
+def is_explicit_generic_erc4626_pair(pair: TradingPairIdentifier) -> bool:
+    """Has this pair opted in to generic synchronous ERC-4626 handling."""
+    return is_generic_erc4626_protocol_slug(pair.get_vault_protocol())
 
 
 def translate_vault_to_trading_pair(
@@ -26,14 +31,18 @@ def translate_vault_to_trading_pair(
     quote = translate_token_details(chain_quote)
 
     features = vault.features
-
-    assert features, "vault.features was not for the ERC4626Vault() constructor, needed to use this"
+    if features == {}:
+        features = set()
+    assert features is not None, "vault.features was not set for the ERC4626Vault() constructor, pass set() for a known synchronous vault"
 
     assert type(features) == set
-    assert len(features) >= 1
 
-    protocol_name = get_vault_protocol_name(vault.features)
-    protocol_slug = protocol_name.replace(" ", "_").lower()
+    if features:
+        protocol_name = get_vault_protocol_name(features)
+        protocol_slug = protocol_name.replace(" ", "_").lower()
+    else:
+        protocol_name = GENERIC_ERC4626_PROTOCOL_NAME
+        protocol_slug = GENERIC_ERC4626_PROTOCOL_SLUG
 
     try:
         management_fee = vault.get_management_fee("latest")
@@ -102,11 +111,17 @@ def get_vault_from_trading_pair(
 
     if vault is None:
         features = pair.get_vault_features()
-        vault = create_vault_instance(
-            web3,
-            pair.pool_address,
-            features=features,
-        )
+        if features or is_explicit_generic_erc4626_pair(pair):
+            vault = create_vault_instance(
+                web3,
+                pair.pool_address,
+                features=features or set(),
+            )
+        else:
+            vault = create_vault_instance_autodetect(
+                web3,
+                pair.pool_address,
+            )
 
         _vault_cache[pair] = vault
 
@@ -114,4 +129,3 @@ def get_vault_from_trading_pair(
 
 
 _vault_cache: dict[TradingPairIdentifier, VaultBase] = {}
-

@@ -821,6 +821,10 @@ class AlphaModel:
         """Signals that compete for currently deployable capital."""
         return [s for s in self.signals.values() if not s.carry_forward_position]
 
+    def _should_carry_forward_position(self, position) -> bool:
+        """Should a position be pinned by ``carry_forward_non_redeemable_positions()``."""
+        return True
+
     def carry_forward_non_redeemable_positions(
         self,
         position_manager: PositionManager,
@@ -845,6 +849,8 @@ class AlphaModel:
         locked_position_value = 0.0
 
         for position in position_manager.get_current_portfolio().open_positions.values():
+            if not self._should_carry_forward_position(position):
+                continue
 
             # The settlement check must run before the redemption check:
             # the base pricing model always reports can_redeem=True, and live
@@ -880,17 +886,20 @@ class AlphaModel:
             signal = self.raw_signals.get(position.pair.internal_id)
             if signal is None:
                 self.set_signal(position.pair, current_value)
-                signal = self.raw_signals[position.pair.internal_id]
+                # set_signal() drops zero-valued signals - in that case the
+                # rebalance trade generator still skips the position.
+                signal = self.raw_signals.get(position.pair.internal_id)
             else:
                 signal.signal = current_value
 
-            signal.carry_forward_position = True
-            signal.position_target = current_value
-            self._mark_signal_cannot_redeem(
-                signal,
-                redemption_result,
-                current_value=current_value,
-            )
+            if signal is not None:
+                signal.carry_forward_position = True
+                signal.position_target = current_value
+                self._mark_signal_cannot_redeem(
+                    signal,
+                    redemption_result,
+                    current_value=current_value,
+                )
             locked_position_value += current_value
 
         return locked_position_value
@@ -1776,8 +1785,13 @@ class AlphaModel:
         ]
         total = sum(value for _, value in position_values)
 
-        if alpha_model_positions:
-            assert total > 0, f"Portfolio equity is zero, cannot calculate weights: {total}. At {self.timestamp}, positions: {portfolio.open_positions.values()}"
+        if alpha_model_positions and total == 0:
+            logger.warning(
+                "Alpha model old weights resolve to zero portfolio equity at %s, setting old weights to zero for %d positions: %s",
+                self.timestamp,
+                len(alpha_model_positions),
+                portfolio.open_positions.values(),
+            )
 
         for position, value in position_values:
             weight = value / total if total > 0 else 0

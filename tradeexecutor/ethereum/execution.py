@@ -214,7 +214,7 @@ class EthereumExecution(ExecutionModel):
             tx_data = {tx.tx_hash: (t, tx) for tx in t.blockchain_transactions}
 
             self.resolve_trades(
-                datetime.datetime.now(),
+                native_datetime_utc_now(),
                 state,
                 tx_data,
                 receipt_data,
@@ -300,7 +300,7 @@ class EthereumExecution(ExecutionModel):
         )
 
         self.resolve_trades(
-            datetime.datetime.now(),
+            native_datetime_utc_now(),
             routing_model,
             state,
             broadcasted,
@@ -510,7 +510,7 @@ class EthereumExecution(ExecutionModel):
                 t.mark_broadcasted(native_datetime_utc_now(), rebroadcast=False)
 
                 self.resolve_trades(
-                    datetime.datetime.now(),
+                    native_datetime_utc_now(),
                     routing_model,
                     state,
                     current_trade_tx_map,
@@ -519,6 +519,40 @@ class EthereumExecution(ExecutionModel):
             )
 
             completed_trades.append(t)
+
+    def _collect_signed_txs_by_chain(
+        self,
+        trades: List[TradeExecution],
+        rebroadcast: bool,
+        log_label: str,
+    ) -> tuple[Dict[int, list[SignedTransactionWithNonce]], Dict[HexStr, tuple]]:
+        """Collect signed transactions from trades for broadcasting."""
+        txs_by_chain: Dict[int, list[SignedTransactionWithNonce]] = {}
+        tx_map: Dict[HexStr, tuple] = dict()
+
+        for t in trades:
+            assert len(t.blockchain_transactions) > 0, f"Trade {t} does not have any blockchain transactions prepared"
+            for tx in t.blockchain_transactions:
+                assert tx.signed_bytes, f"Unsigned transaction: {tx}"
+                assert tx.tx_hash is not None
+                signed_tx = SignedTransactionWithNonce(
+                    rawTransaction=HexBytes(tx.signed_bytes),
+                    hash=HexBytes(tx.tx_hash),
+                    r=0,  # Not needed in this stage
+                    s=0,  # Not needed in this stage
+                    v=0,  # Not needed in this stage
+                    address=tx.from_address,
+                    nonce=tx.nonce,
+                    source=tx.details,
+                )
+                chain_id = tx.chain_id or self.chain_id
+                txs_by_chain.setdefault(chain_id, []).append(signed_tx)
+                logger.info("%s transaction %s, nonce %s, for trade\n:%s", log_label, signed_tx.hash.hex(), signed_tx.nonce, t)
+                tx_map[hexbytes_to_hex_str(signed_tx.hash)] = (t, tx)
+
+            t.mark_broadcasted(native_datetime_utc_now(), rebroadcast=rebroadcast)
+
+        return txs_by_chain, tx_map
 
     def broadcast_and_resolve_multiple_nodes(
         self,
@@ -568,31 +602,7 @@ class EthereumExecution(ExecutionModel):
             logger.info("Unit test path of no confirmation")
             return
 
-        # Group transactions by chain for multichain broadcasting
-        txs_by_chain: Dict[int, set] = {}
-        tx_map: Dict[HexStr, tuple] = dict()
-
-        for t in trades:
-            assert len(t.blockchain_transactions) > 0, f"Trade {t} does not have any blockchain transactions prepared"
-            for tx in t.blockchain_transactions:
-                assert tx.signed_bytes, f"Unsigned transaction: {tx}"
-                assert tx.tx_hash is not None
-                signed_tx = SignedTransactionWithNonce(
-                    rawTransaction=HexBytes(tx.signed_bytes),
-                    hash=HexBytes(tx.tx_hash),
-                    r=0,  # Not needed in this stage
-                    s=0,  # Not needed in this stage
-                    v=0,  # Not needed in this stage
-                    address=tx.from_address,
-                    nonce=tx.nonce,
-                    source=tx.details,
-                )
-                chain_id = tx.chain_id or self.chain_id
-                txs_by_chain.setdefault(chain_id, set()).add(signed_tx)
-                logger.info("Broadcasting transaction %s, nonce %s, for trade\n:%s", signed_tx.hash.hex(), signed_tx.nonce, t)
-                tx_map[hexbytes_to_hex_str(signed_tx.hash)] = (t, tx)
-
-            t.mark_broadcasted(native_datetime_utc_now(), rebroadcast=rebroadcast)
+        txs_by_chain, tx_map = self._collect_signed_txs_by_chain(trades, rebroadcast, "Broadcasting")
 
         all_receipts = {}
         for chain_id, chain_txs in txs_by_chain.items():
@@ -615,7 +625,7 @@ class EthereumExecution(ExecutionModel):
             all_receipts.update(receipts)
 
         self.resolve_trades(
-            datetime.datetime.now(),
+            native_datetime_utc_now(),
             routing_model,
             state,
             tx_map,

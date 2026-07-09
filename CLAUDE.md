@@ -178,6 +178,7 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 ## Web3
 
 - Use create_multi_provider_web3() to create an RPC connection from JSON_xxx env vars
+- Always use `create_multi_provider_web3()` for Web3 objects. Do not construct raw `Web3(HTTPProvider(...))` instances in code or tests unless explicitly requested by the user for a narrow debugging experiment. The eth-defi helper installs required middleware, including cached `eth_chainId` reads, retry/fallback behaviour, Anvil metadata handling, and chain-specific middleware.
 - When waiting for a transaction and then making smart contract calls that depend on its state changes, always use [`wait_for_transaction_receipt_robust()`](deps/web3-ethereum-defi/eth_defi/provider/receipt.py) instead of `web3.eth.wait_for_transaction_receipt()`. The robust helper waits for the transaction state change to propagate across RPC nodes and avoids stale reads from load-balanced providers.
 
 ## Web Fetching and 403

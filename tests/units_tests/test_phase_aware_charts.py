@@ -12,15 +12,20 @@ Covers the three additions that surface the queue-venue mechanism to an operator
 All charts are built from a hand-made ``State`` + ``ChartInput`` (no backtest needed).
 """
 import datetime
+from decimal import Decimal
 
 import pandas as pd
 import pytest
 
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
+from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.statistics import PortfolioStatistics
+from tradeexecutor.state.statistics import PortfolioStatistics, PositionStatistics
+from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignal, format_signals
 from tradeexecutor.strategy.chart.definition import ChartInput
+from tradeexecutor.strategy.chart.standard.weight import equity_curve_by_asset
 from tradeexecutor.strategy.chart.standard.vault import pending_trigger_queue
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.phase_aware import (
@@ -35,16 +40,58 @@ from tradeexecutor.testing.synthetic_ethereum_data import generate_random_ethere
 from tradingstrategy.chain import ChainId
 
 
-def _make_pair(internal_id: int) -> TradingPairIdentifier:
+def _make_pair(
+    internal_id: int,
+    *,
+    kind: TradingPairKind = TradingPairKind.spot_market_hold,
+    vault_name: str | None = None,
+) -> TradingPairIdentifier:
     base = AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "VLT", 18, internal_id)
     quote = AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "USDC", 6, 999999)
-    return TradingPairIdentifier(
+    pair = TradingPairIdentifier(
         base,
         quote,
         generate_random_ethereum_address(),
         generate_random_ethereum_address(),
         internal_id=internal_id,
+        kind=kind,
     )
+    if vault_name is not None:
+        pair.other_data["vault_name"] = vault_name
+    return pair
+
+
+def _make_position(
+    position_id: int,
+    pair: TradingPairIdentifier,
+    reserve: AssetIdentifier,
+    timestamp: datetime.datetime,
+    queue_venue: bool = False,
+) -> TradingPosition:
+    position = TradingPosition(
+        position_id=position_id,
+        pair=pair,
+        opened_at=timestamp,
+        last_pricing_at=timestamp,
+        last_token_price=1.0,
+        last_reserve_price=1.0,
+        reserve_currency=reserve,
+    )
+    if queue_venue:
+        trade = TradeExecution(
+            trade_id=position_id,
+            position_id=position_id,
+            trade_type=TradeType.rebalance,
+            pair=pair,
+            opened_at=timestamp,
+            planned_quantity=Decimal(1),
+            planned_reserve=Decimal(1),
+            planned_price=1.0,
+            reserve_currency=reserve,
+        )
+        trade.other_data["yield_decision"] = {"weight": 1.0}
+        position.trades[trade.trade_id] = trade
+    return position
 
 
 def test_pending_trigger_queue_reconstructs_waiting_deposits():
@@ -137,3 +184,52 @@ def test_format_signals_phase_aware_columns():
     assert row["Parked USD"] == pytest.approx(1000.0)
     assert row["Waiting deposit USD"] == pytest.approx(500.0)
     assert row["Waiting redemption USD"] == pytest.approx(250.0)
+
+
+def test_equity_curve_by_asset_relabels_queue_venues_by_position_id():
+    """equity_curve_by_asset separates queue venues before same-label positions are grouped.
+
+    1. Build one non-queue vault with the same chart label as a queue venue.
+    2. Build another queue venue whose vault has no ``vault_name`` metadata.
+    3. Render equity_curve_by_asset and assert the same-label directional value is not repainted
+       as queue, while the missing-label venue falls back to ticker + ``" queue"`` instead of
+       disappearing from the grouped series.
+    """
+    timestamp = datetime.datetime(2024, 1, 1)
+    state = State()
+    usdc = AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "USDC", 6, 999999)
+    state.portfolio.reserves[usdc.get_identifier()] = ReservePosition(
+        asset=usdc,
+        quantity=Decimal(30),
+        last_sync_at=timestamp,
+        reserve_token_price=1.0,
+        last_pricing_at=timestamp,
+    )
+
+    # 1. Non-queue vault shares the same chart label as the queue venue below.
+    same_label = "Steakhouse USDC"
+    directional_pair = _make_pair(101, kind=TradingPairKind.vault, vault_name=same_label)
+    same_label_queue_pair = _make_pair(202, kind=TradingPairKind.vault, vault_name=same_label)
+    # 2. This queue venue has no vault_name metadata, so the chart must fall back to ticker.
+    missing_label_queue_pair = _make_pair(303, kind=TradingPairKind.vault)
+    state.portfolio.open_positions = {
+        1: _make_position(1, directional_pair, usdc, timestamp),
+        2: _make_position(2, same_label_queue_pair, usdc, timestamp, queue_venue=True),
+        3: _make_position(3, missing_label_queue_pair, usdc, timestamp, queue_venue=True),
+    }
+    state.stats.positions = {
+        1: [PositionStatistics(timestamp, timestamp, 0.0, 0.0, 70.0, 70.0)],
+        2: [PositionStatistics(timestamp, timestamp, 0.0, 0.0, 120.0, 120.0)],
+        3: [PositionStatistics(timestamp, timestamp, 0.0, 0.0, 50.0, 50.0)],
+    }
+    state.stats.portfolio.append(
+        PortfolioStatistics(calculated_at=timestamp, total_equity=270.0, open_position_equity=240.0),
+    )
+
+    # 3. Real chart path, not hand-built visualise_weights params.
+    fig = equity_curve_by_asset(ChartInput(execution_context=unit_test_execution_context, state=state))
+    trace_values = {trace.name: list(trace.y) for trace in fig.data}
+    assert trace_values["Steakhouse USDC"] == pytest.approx([70.0])
+    assert trace_values["Steakhouse USDC queue"] == pytest.approx([120.0])
+    assert trace_values["VLT-USDC queue"] == pytest.approx([50.0])
+    assert trace_values["USDC"] == pytest.approx([30.0])

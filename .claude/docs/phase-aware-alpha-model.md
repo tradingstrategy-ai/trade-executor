@@ -278,15 +278,30 @@ Proving idle→productive is the point, so the undeployed slice has structure:
 
 ## Limitations and follow-ups
 
-- **Chain-aware YieldManager.** A single hub venue can be swept with cash a
-  same-cycle satellite CCTP bridge still needs, which is why the acceptance
-  notebook runs a focused window rather than the full reference history. The
-  follow-up unlocks the retired full-run acceptance criteria.
+- **Same-cycle venue funding assumes fully redeemable sync venues.** In live
+  mode a synchronous venue can transiently report `maxRedeem` below its share
+  balance under high utilisation. The invariant-4 widening currently counts the
+  full venue value, so a promotion can still need more same-cycle cash than the
+  venue can actually release and fail with `NotEnoughMoney`. Use deep,
+  reliably redeemable hub-chain venues until a maxRedeem-aware clamp is added.
+- **Chain-aware YieldManager.** The hub-chain venue precondition is documented
+  but not enforced by the model: the invariant-4 widening is chain-blind. A
+  satellite venue's cash may need a bridge that does not settle same-cycle, and
+  a single hub venue can be swept with cash a same-cycle satellite CCTP bridge
+  still needs. Backtests can mask this because simulated bridge settlement is
+  synchronous. This is why the acceptance notebook runs a focused window rather
+  than the full reference history. The follow-up unlocks the retired full-run
+  acceptance criteria.
 - **Live ERC-4626 openness adapters** for deposit and redemption windows.
 - **Protocol-default cadences** (resolver layer 3) have no caller yet.
+- **Event log pruning is not implemented.** `state.other_data` is outside the
+  normal state-pruning path, so park/promote/redeem events accumulate in live
+  state. The full-history folds stay correct but get more expensive over time;
+  a one-hour live cycle can append thousands of events per vault per year.
 - **Redeem-event dedup is exact-float**, so live mark-to-market values append
   roughly one event per locked vault per cycle; the folds stay correct, log
-  size grows. A tolerance-based dedup is a possible follow-up.
+  size grows. A tolerance-based dedup and/or bounded event compaction is a
+  possible follow-up.
 - **Yield on the structural reserve** needs a higher `position_allocation` with
   the zero-release handling — a tuning follow-up.
 - **Stop-loss-only `BacktestPricing` construction** does not carry

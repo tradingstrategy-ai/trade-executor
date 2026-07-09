@@ -41,7 +41,7 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
-from tradeexecutor.strategy.strategy_module import CreateChartsProtocol
+from tradeexecutor.strategy.strategy_module import CreateChartsProtocol, StrategyTickHookInput, StrategyTickHookProtocol
 from tradeexecutor.strategy.valuation_update import update_position_valuations
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.state.state import State, BacktestData
@@ -232,6 +232,8 @@ class ExecutionLoop:
             sync_treasury_on_startup: bool = False,
             create_indicators: CreateIndicatorsProtocol = None,
             create_charts: CreateChartsProtocol = None,
+            before_strategy_tick: StrategyTickHookProtocol | None = None,
+            after_strategy_tick: StrategyTickHookProtocol | None = None,
             parameters: StrategyParameters = None,
             visualisation: bool = True,
             max_price_impact: Percent | None = None,
@@ -600,6 +602,19 @@ class ExecutionLoop:
             interest_timestamp = ts
             logger.info("Doing backtesting interest sync at %s", interest_timestamp)
 
+        tick_hook_input = StrategyTickHookInput(
+            cycle=cycle,
+            timestamp=ts,
+            state=state,
+            universe=universe,
+            pricing_model=routing_setup.pricing_model,
+            execution_context=self.execution_context,
+            execution_loop=self,
+            store=self.store,
+        )
+        if self.before_strategy_tick is not None:
+            self.before_strategy_tick(tick_hook_input)
+
         interest_events = self.sync_model.sync_interests(
             interest_timestamp,
             state,
@@ -628,6 +643,9 @@ class ExecutionLoop:
             indicators=indicators,
             allow_unaligned_strategy_cycle_timestamp=live and self.strategy_cycle_trigger == StrategyCycleTrigger.since_last_cycle_end,
         )
+
+        if self.after_strategy_tick is not None:
+            self.after_strategy_tick(tick_hook_input)
 
         # Update portfolio and position historical data tracking.
         #

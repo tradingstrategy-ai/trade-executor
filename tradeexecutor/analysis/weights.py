@@ -25,6 +25,7 @@ class LegendMode(enum.Enum):
 
 def calculate_asset_weights(
     state: State,
+    position_asset_label_overrides: dict[int, str] | None = None,
 ) -> pd.Series:
     """Get timeline of asset weights for a backtest.
 
@@ -33,6 +34,10 @@ def calculate_asset_weights(
     - Might not handle complex cases correctly
 
     - Uses portfolio positions as the input
+
+    :param position_asset_label_overrides:
+        Optional position id -> chart label overrides. Used when a chart needs
+        position identity before same-label positions are grouped.
 
     :return:
         Pandas Series of asset weights
@@ -54,9 +59,15 @@ def calculate_asset_weights(
         "kind": "reserve"
     } for ps in state.stats.portfolio]
 
+    def get_position_asset_label(position) -> str:
+        if position_asset_label_overrides and position.position_id in position_asset_label_overrides:
+            return position_asset_label_overrides[position.position_id]
+        return position.pair.get_chart_label() or position.pair.get_ticker()
+
     # Need to look up assets for every position
-    position_asset_map = {p.position_id: p.pair.get_chart_label() for p in state.portfolio.get_all_positions()}
-    position_kind_map = {p.position_id: p.pair.kind.value for p in state.portfolio.get_all_positions()}
+    all_positions = list(state.portfolio.get_all_positions())
+    position_asset_map = {p.position_id: get_position_asset_label(p) for p in all_positions}
+    position_kind_map = {p.position_id: p.pair.kind.value for p in all_positions}
 
     # Add position values
     position_rows = [{
@@ -113,10 +124,10 @@ def calculate_asset_weights(
         )
 
     # Get out all Aave aUSDC positions
-    credit_supply_symbols = [p.pair.base.token_symbol for p in state.portfolio.get_all_positions() if p.is_credit_supply()]
+    credit_supply_symbols = [p.pair.base.token_symbol for p in all_positions if p.is_credit_supply()]
 
     # Get vaults
-    vault_symbols = [p.pair.get_vault_name() for p in state.portfolio.get_all_positions() if p.is_vault()]
+    vault_symbols = [position_asset_map[p.position_id] for p in all_positions if p.is_vault()]
 
     # Pass to visualisation
     series_deduped.attrs["reserve_asset_symbol"] = reserve_asset_symbol
