@@ -205,7 +205,6 @@ class ExecutionLoop:
             strategy_factory: Optional[StrategyFactory],
             cycle_duration: CycleDuration,
             stats_refresh_frequency: Optional[datetime.timedelta],
-            stats_refresh_post_valuation: bool = False,
             stats_refresh_unit_testing: bool = False,
             position_trigger_check_frequency: Optional[datetime.timedelta],
             max_data_delay: Optional[datetime.timedelta] = None,
@@ -731,6 +730,7 @@ class ExecutionLoop:
             universe: StrategyExecutionUniverse,
             execution_mode: ExecutionMode = None,
             interest=True,
+            skip_statistics: bool = False,
     ):
         """Revalue positions and update statistics.
 
@@ -741,6 +741,12 @@ class ExecutionLoop:
 
         :param execution_mode:
             Legacy argument, ignored.
+
+        :param skip_statistics:
+            Revalue positions but hold the statistics write.
+
+            Used by :py:func:`live_positions` when post-valuation treasury
+            settlement must reconcile reserve cash first.
         """
 
         if execution_mode is None:
@@ -778,6 +784,7 @@ class ExecutionLoop:
             routing_state=routing_state,
             valuation_model=valuation_model,
             long_short_metrics_latest=long_short_metrics_latest,
+            skip_statistics=skip_statistics,
         )
 
         # Check that state is good before writing it to the disk.
@@ -1624,18 +1631,35 @@ class ExecutionLoop:
 
             try:
                 ts = native_datetime_utc_now()
+
+                # Post-valuation settlement runs automatically for all Lagoon-style
+                # vaults (async deposits) — no environment variable to misconfigure
+                # between deployments. It reconciles reserve cash from on-chain before
+                # the statistics point is written. This matters most for GMX strategies,
+                # where an external FreqTrade instance moves reserve cash between the
+                # Lagoon Safe and GMX outside the trade executor, leaving the tracked
+                # reserve balance stale; recording statistics before reconciliation
+                # produced spurious NAV spikes on the public equity curve. See
+                # https://github.com/tradingstrategy-ai/trade-executor/pull/1558#issuecomment-4925733588
+                post_settlement = self.sync_model.has_async_deposits()
+
                 logger.info(
                     "Starting live position valuation refresh at %s, post valuation settlement: %s",
                     ts,
-                    self.stats_refresh_post_valuation,
+                    post_settlement,
                 )
 
-                self.update_position_valuations(ts, state, universe, execution_context.mode)
-                state.uptime.record_stats_refresh_complete()
+                # Revalue positions first so sync_treasury()'s position freshness check
+                # and on-chain NAV posting see fresh valuations, but hold the statistics
+                # write until treasury settlement has reconciled reserve cash to on-chain.
+                # Writing statistics before reconciliation combines a stale reserve balance
+                # with a fresh position valuation and records a spurious NAV spike when
+                # an external system (e.g. FreqTrade) has moved cash in or out of the vault.
+                self.update_position_valuations(ts, state, universe, execution_context.mode, skip_statistics=post_settlement)
 
-                if self.stats_refresh_post_valuation and self.sync_model.has_async_deposits():
+                if post_settlement:
                     logger.info("Running post-valuation treasury settlement after live position valuation refresh")
-                    balance_updates = self.sync_model.sync_treasury(
+                    self.sync_model.sync_treasury(
                         ts,
                         state,
                         list(universe.reserve_assets),
@@ -1643,9 +1667,11 @@ class ExecutionLoop:
                     )
                     state.uptime.record_post_valuation_settlement_complete()
 
-                    if balance_updates:
-                        self.update_position_valuations(ts, state, universe, execution_context.mode)
-                        state.uptime.record_stats_refresh_complete()
+                    # The single statistics write of this refresh:
+                    # reconciled reserve cash + freshly revalued positions.
+                    self.update_position_valuations(ts, state, universe, execution_context.mode)
+
+                state.uptime.record_stats_refresh_complete()
 
                 self.store.sync(state)
 
@@ -1696,12 +1722,11 @@ class ExecutionLoop:
         start_time = datetime.datetime(1970, 1, 1)
         logger.info(
             "Live scheduler configuration: cycle_duration=%s, strategy_cycle_trigger=%s, "
-            "stats_refresh_frequency=%s, stats_refresh_post_valuation=%s, "
+            "stats_refresh_frequency=%s, "
             "position_trigger_check_frequency=%s",
             self.cycle_duration,
             self.strategy_cycle_trigger,
             self.stats_refresh_frequency,
-            self.stats_refresh_post_valuation,
             self.position_trigger_check_frequency,
         )
 
