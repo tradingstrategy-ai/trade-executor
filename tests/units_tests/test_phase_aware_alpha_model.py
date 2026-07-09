@@ -64,6 +64,7 @@ class _StubPosition:
     credit: bool = False
     vault: bool = False
     async_flow: bool = False
+    pending_settlement: bool = False
 
     def get_value(self) -> float:
         return self.value
@@ -76,6 +77,12 @@ class _StubPosition:
 
     def has_async_vault_flow(self) -> bool:
         return self.async_flow
+
+    def has_pending_vault_settlement(self) -> bool:
+        return self.pending_settlement
+
+    def get_vault_settlement_pending_value(self) -> float:
+        return 0.0
 
 
 @dataclasses.dataclass
@@ -108,6 +115,9 @@ class _StubPositionManager:
 
     def get_current_cash(self) -> float:
         return self.cash
+
+    def get_current_portfolio(self) -> _StubPortfolio:
+        return self.state.portfolio
 
     def get_current_position_for_pair(self, pair: TradingPairIdentifier, pending: bool = False):
         return (self.pending_positions or {}).get(pair.internal_id)
@@ -452,6 +462,32 @@ def test_venue_pair_rejected_from_signals():
     directional = _make_pair(202)
     alpha.set_signal(directional, 0.5)
     assert 202 in alpha.raw_signals
+
+
+def test_carry_forward_skips_queue_venue_pairs():
+    """Queue venues are skipped by the phase-aware carry-forward pin even if not redeemable.
+
+    A deep synchronous venue can transiently report maxRedeem == 0 under high utilisation.
+    YieldManager owns that venue, so the phase-aware carry-forward loop must not call
+    set_signal() on it; the invariant-1 signal guard remains for genuine misconfiguration.
+
+    1. A queue-venue position is open while pricing reports it non-redeemable.
+    2. carry_forward_non_redeemable_positions returns without creating a venue signal.
+    3. The same non-redeemable pair is still rejected when signalled directly.
+    """
+    venue_pair = _make_pair(101, "VENUE")
+    venue_pos = _StubPosition(pair=venue_pair, value=500.0, vault=True)
+    pm = _make_pm(OtherData(), open_pairs=set(), positions={1: venue_pos})
+    alpha = PhaseAwareAlphaModel(datetime.datetime(2024, 1, 1), cycle=1, venue_pair_ids={101})
+
+    # 1-2. Non-redeemable venue does not get carry-forward pinned into raw_signals.
+    locked = alpha.carry_forward_non_redeemable_positions(pm)
+    assert locked == pytest.approx(0.0)
+    assert alpha.raw_signals == {}
+
+    # 3. Direct alpha signals on the venue are still a configuration error.
+    with pytest.raises(AssertionError, match="must not receive an alpha signal"):
+        alpha.set_signal(venue_pair, 1.0)
 
 
 def test_redemption_wait_events_lifecycle():

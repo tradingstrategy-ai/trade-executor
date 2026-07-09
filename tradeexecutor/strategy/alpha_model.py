@@ -821,6 +821,10 @@ class AlphaModel:
         """Signals that compete for currently deployable capital."""
         return [s for s in self.signals.values() if not s.carry_forward_position]
 
+    def _should_carry_forward_position(self, position) -> bool:
+        """Should a position be pinned by ``carry_forward_non_redeemable_positions()``."""
+        return True
+
     def carry_forward_non_redeemable_positions(
         self,
         position_manager: PositionManager,
@@ -845,6 +849,8 @@ class AlphaModel:
         locked_position_value = 0.0
 
         for position in position_manager.get_current_portfolio().open_positions.values():
+            if not self._should_carry_forward_position(position):
+                continue
 
             # The settlement check must run before the redemption check:
             # the base pricing model always reports can_redeem=True, and live

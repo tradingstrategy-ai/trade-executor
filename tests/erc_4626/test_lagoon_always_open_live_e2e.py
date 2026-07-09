@@ -1,4 +1,4 @@
-"""Live CLI blackbox test for phase-aware alpha model with Lagoon vaults."""
+"""Live CLI blackbox test for always-open Lagoon ERC-7540 settlement with a queue vault."""
 
 import json
 import os
@@ -23,10 +23,9 @@ from typer.main import get_command
 from web3 import Web3
 
 from tradeexecutor.cli.main import app
-from tradeexecutor.ethereum.vault.testing import PHASE_AWARE_LIVE_E2E_OBSERVATION_KEY
+from tradeexecutor.ethereum.vault.testing import LAGOON_ALWAYS_OPEN_LIVE_E2E_OBSERVATION_KEY
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
-from tradeexecutor.strategy.phase_aware import EVENT_PARK, EVENT_PROMOTE, QUEUE_VAULT_EVENT_LOG_KEY
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
@@ -36,10 +35,8 @@ ANVIL_DEPLOYER_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efc
 TARGET_VAULT_SCENARIO = tuple(
     {
         "deposit_open_cycle": deposit_open_cycle,
-        "deposit_close_cycle": deposit_open_cycle + 2,
         "deposit_settle_cycle": deposit_open_cycle + 1,
         "redemption_open_cycle": deposit_open_cycle + 7,
-        "redemption_close_cycle": deposit_open_cycle + 9,
         "redemption_settle_cycle": deposit_open_cycle + 8,
     }
     for deposit_open_cycle in (1, 3, 5)
@@ -55,13 +52,13 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture()
 def strategy_file() -> Path:
     """Where do we load our strategy file."""
-    return Path(os.path.dirname(__file__)) / ".." / ".." / "strategies" / "test_only" / "phase-aware-lagoon-live.py"
+    return Path(os.path.dirname(__file__)) / ".." / ".." / "strategies" / "test_only" / "lagoon-always-open-live.py"
 
 
 @pytest.fixture()
 def state_file(tmp_path: Path) -> Path:
     """Where the CLI persists the state JSON."""
-    return tmp_path / "phase-aware-lagoon-live.json"
+    return tmp_path / "lagoon-always-open-live.json"
 
 
 SIMPLE_ERC4626_SOURCE = """
@@ -333,8 +330,8 @@ def deployed_lagoon_vaults(
             lagoon_controller.sync_nonce(web3)
             parameters = LagoonDeploymentParameters(
                 underlying=usdc.address,
-                name=f"PhaseAwareTestLagoon{index + 1}",
-                symbol=f"PATL{index + 1}",
+                name=f"AlwaysOpenTestLagoon{index + 1}",
+                symbol=f"AOTL{index + 1}",
             )
             from_the_scratch = index == 0
             deploy_info = deploy_automated_lagoon_vault(
@@ -372,11 +369,10 @@ def deployed_lagoon_vaults(
                 "address": deploy_info.vault.vault_address,
                 "asset_manager": lagoon_controller.address,
                 "trading_strategy_module": deploy_info.trading_strategy_module.address,
-                "safe": deploy_info.safe_address,
                 "deployment_block": int(deploy_info.block_number),
             })
 
-        deployment_file = tmp_path / "phase-aware-lagoon-deployments.json"
+        deployment_file = tmp_path / "lagoon-always-open-deployments.json"
         payload = {
             "target_vaults": target_vaults,
             "queue_vault": queue_vault.address,
@@ -432,8 +428,8 @@ def environment(
     """CLI environment for the fresh-Anvil live Lagoon run."""
     cache_path = persistent_test_client.transport.cache_path
     return {
-        "EXECUTOR_ID": "test_phase_aware_lagoon_live_e2e",
-        "NAME": "test_phase_aware_lagoon_live_e2e",
+        "EXECUTOR_ID": "test_lagoon_always_open_live_e2e",
+        "NAME": "test_lagoon_always_open_live_e2e",
         "STRATEGY_FILE": strategy_file.as_posix(),
         "JSON_RPC_ANVIL": anvil_lagoon_chain.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
@@ -450,30 +446,21 @@ def environment(
         "CYCLE_DURATION": "1s",
         "TRADE_IMMEDIATELY": "true",
         "CONFIRMATION_BLOCK_COUNT": "0",
-        "DIRECT_ANVIL_BROADCAST": "true",
         "POSITION_TRIGGER_CHECK_MINUTES": "0",
         "STATS_REFRESH_MINUTES": "0",
         "CHECK_ACCOUNTS": "false",
         "VISUALISATION": "false",
         "SYNC_TREASURY_ON_STARTUP": "true",
-        "PHASE_AWARE_LAGOON_DEPLOYMENTS_FILE": deployed_lagoon_vaults["file"].as_posix(),
+        "LAGOON_ALWAYS_OPEN_DEPLOYMENTS_FILE": deployed_lagoon_vaults["file"].as_posix(),
         "PATH": os.environ["PATH"],
     }
 
 
 def _collect_observations(state: State) -> list[dict]:
     return [
-        cycle_data[PHASE_AWARE_LIVE_E2E_OBSERVATION_KEY]
+        cycle_data[LAGOON_ALWAYS_OPEN_LIVE_E2E_OBSERVATION_KEY]
         for _, cycle_data in sorted(state.other_data.data.items(), key=lambda item: int(item[0]))
-        if PHASE_AWARE_LIVE_E2E_OBSERVATION_KEY in cycle_data
-    ]
-
-
-def _collect_phase_events(state: State) -> list[dict]:
-    return [
-        event
-        for _, cycle_data in sorted(state.other_data.data.items(), key=lambda item: int(item[0]))
-        for event in cycle_data.get(QUEUE_VAULT_EVENT_LOG_KEY, [])
+        if LAGOON_ALWAYS_OPEN_LIVE_E2E_OBSERVATION_KEY in cycle_data
     ]
 
 
@@ -484,18 +471,24 @@ def _positive_decimal(value: str | None) -> bool:
 
 
 @pytest.mark.slow_test_group
-def test_phase_aware_lagoon_live_e2e(
+def test_lagoon_always_open_live_e2e(
     environment: dict,
     monkeypatch: pytest.MonkeyPatch,
     state_file: Path,
     deployed_lagoon_vaults: dict,
 ) -> None:
-    """Run the phase-aware alpha model through the live CLI and Lagoon contracts.
+    """Run the live CLI through Lagoon async deposit/redeem settlement.
 
     1. Replace the CLI environment with three async Lagoon target vaults and one sync queue vault.
     2. Start the normal live trade-executor loop with one-second cycles on a fresh Anvil chain.
-    3. Let the strategy tick hooks toggle and settle target vaults to simulate staggered vault epochs.
-    4. Read the persisted state JSON and assert queued deposits, queued redemptions, processed claims and queue-vault utilisation.
+    3. Let the strategy tick hooks settle target vaults to simulate staggered vault epochs.
+    4. Read the persisted state JSON and assert async requests, processed claims and pre-redemption queue-vault utilisation.
+
+    The target vaults stay open throughout the run. Park/promote behaviour is
+    covered by phase-aware unit tests, and generic closed request-gate behaviour
+    is covered by vault-pricing unit tests. Lagoon pause/unpause is
+    intentionally outside this PR. This e2e is scoped to real Lagoon
+    request/settle/claim execution on a fresh Anvil chain.
     """
     cli = get_command(app)
     target_vaults = [vault["address"].lower() for vault in deployed_lagoon_vaults["target_vaults"]]
@@ -510,16 +503,14 @@ def test_phase_aware_lagoon_live_e2e(
     # 2. Start the normal live trade-executor loop with one-second cycles on a fresh Anvil chain.
     cli.main(args=["init"], standalone_mode=False)
 
-    # 3. Let the strategy tick hooks toggle and settle target vaults to simulate staggered vault epochs.
+    # 3. Let the strategy tick hooks settle target vaults to simulate staggered vault epochs.
     cli.main(args=["start"], standalone_mode=False)
 
-    # 4. Read the persisted state JSON and assert queued deposits, queued redemptions, processed claims and queue-vault utilisation.
+    # 4. Read the persisted state JSON and assert async requests, processed claims and pre-redemption queue-vault utilisation.
     state = State.read_json_file(state_file)
     observations = _collect_observations(state)
     assert observations
-    assert all(observation["core_vaults"] for observation in observations)
 
-    processed_redemption_cycles_by_vault = {}
     scenario_by_vault = {
         vault: TARGET_VAULT_SCENARIO[index]
         for index, vault in enumerate(target_vaults)
@@ -558,48 +549,6 @@ def test_phase_aware_lagoon_live_e2e(
         assert all(cycle >= schedule["redemption_open_cycle"] for cycle in pending_redemption_cycles)
         assert min(processed_redemption_cycles) == schedule["redemption_settle_cycle"] + 1
         assert all(cycle >= schedule["redemption_settle_cycle"] + 1 for cycle in processed_redemption_cycles)
-        processed_redemption_cycles_by_vault[vault] = min(processed_redemption_cycles)
-        assert any(
-            observation["core_vaults"][vault]["can_deposit"] is False
-            for observation in observations
-        )
-        assert any(
-            observation["core_vaults"][vault]["can_deposit"] is True
-            for observation in observations
-        )
-        assert any(
-            observation["core_vaults"][vault]["can_redeem"] is False
-            and int(observation["pre_tick_onchain_vaults"][vault]["share_balance_raw"]) > 0
-            for observation in observations
-        )
-        assert any(
-            observation["core_vaults"][vault]["can_redeem"] is True
-            for observation in observations
-        )
-        assert all(
-            observation["core_vaults"][vault]["can_deposit"] is False
-            and observation["core_vaults"][vault]["can_redeem"] is False
-            for observation in observations
-            if observation["pre_tick_onchain_vaults"][vault]["paused"] is True
-        )
-        for observation in observations:
-            cycle = observation["cycle"]
-            deposit_window = schedule["deposit_open_cycle"] <= cycle <= schedule["deposit_close_cycle"]
-            redemption_window = schedule["redemption_open_cycle"] <= cycle <= schedule["redemption_close_cycle"]
-            expected_open = deposit_window or redemption_window
-            assert observation["pre_tick_onchain_vaults"][vault]["paused"] is (not expected_open)
-            if not expected_open:
-                assert observation["core_vaults"][vault]["can_deposit"] is False
-                assert observation["core_vaults"][vault]["can_redeem"] is False
-        assert any(
-            observation["pre_tick_onchain_vaults"][vault]["paused"] is False
-            for observation in observations
-        )
-        assert any(
-            observation["pre_tick_onchain_vaults"][vault]["paused"] is True
-            and int(observation["pre_tick_onchain_vaults"][vault]["share_balance_raw"]) > 0
-            for observation in observations
-        )
         assert any(int(observation["pre_tick_onchain_vaults"][vault]["max_deposit_raw"]) > 0 for observation in observations)
         assert any(int(observation["onchain_vaults"][vault]["share_balance_raw"]) > 0 for observation in observations)
         assert any(int(observation["pre_tick_onchain_vaults"][vault]["max_redeem_raw"]) > 0 for observation in observations)
@@ -612,16 +561,6 @@ def test_phase_aware_lagoon_live_e2e(
     assert any(observation["queue_redemptions"] for observation in observations)
     assert any(int(observation["queue_vault"]["share_balance_raw"]) > 0 for observation in observations)
     assert any(int(observation["queue_vault"]["total_assets_raw"]) > 0 for observation in observations)
-    first_processed_redemption_cycle = min(processed_redemption_cycles_by_vault.values())
-    assert any(
-        observation["cycle"] >= first_processed_redemption_cycle
-        and any(
-            trade["opened_at"] == observation["timestamp"]
-            for trade in observation["queue_deposits"]
-        )
-        for observation in observations
-    )
-    assert int(observations[-1]["queue_vault"]["share_balance_raw"]) > 0
     assert any(
         _positive_decimal(trade["executed_reserve"]) or _positive_decimal(trade["planned_reserve"])
         for observation in observations
@@ -637,56 +576,6 @@ def test_phase_aware_lagoon_live_e2e(
         for observation in observations
         for trade in observation["queue_trades"]
     )
-
-    events = _collect_phase_events(state)
-    event_kinds = {event["kind"] for event in events}
-    assert EVENT_PARK in event_kinds
-    assert EVENT_PROMOTE in event_kinds
-    park_events = [event for event in events if event["kind"] == EVENT_PARK]
-    promote_events = [event for event in events if event["kind"] == EVENT_PROMOTE]
-    parked_vault_ids = {event["vault_internal_id"] for event in park_events}
-    promoted_vault_ids = {event["vault_internal_id"] for event in promote_events}
-    target_vault_ids = {
-        trade["pair_internal_id"]
-        for observation in observations
-        for trade in observation["target_trades"]
-    }
-    target_vault_by_id = {
-        trade["pair_internal_id"]: trade["vault"]
-        for observation in observations
-        for trade in observation["target_trades"]
-    }
-    observation_by_cycle = {observation["cycle"]: observation for observation in observations}
-    assert parked_vault_ids
-    assert parked_vault_ids == promoted_vault_ids
-    assert parked_vault_ids <= target_vault_ids
-    assert all(event["usd"] > 0 for event in park_events + promote_events)
-    for promote_event in promote_events:
-        vault_id = promote_event["vault_internal_id"]
-        vault = target_vault_by_id[vault_id]
-        expected_cycle = scenario_by_vault[vault]["deposit_open_cycle"]
-        promote_cycle = promote_event["cycle"]
-        promote_timestamp = promote_event["timestamp"]
-        observation = observation_by_cycle[promote_cycle]
-        assert promote_cycle == expected_cycle
-        assert any(
-            event["vault_internal_id"] == vault_id and event["cycle"] < expected_cycle
-            for event in park_events
-        )
-        assert any(
-            trade["pair_internal_id"] == vault_id
-            and trade["direction"] == "deposit"
-            and trade["opened_at"] == promote_timestamp
-            and (_positive_decimal(trade["planned_reserve"]) or _positive_decimal(trade["executed_reserve"]))
-            for trade in observation["target_trades"]
-        )
-        assert any(
-            trade["direction"] == "redeem"
-            and trade["yield_decision"]
-            and trade["opened_at"] == promote_timestamp
-            and (_positive_decimal(trade["planned_quantity"]) or _positive_decimal(trade["executed_quantity"]))
-            for trade in observation["queue_trades"]
-        )
 
     trades = list(state.portfolio.get_all_trades())
     assert len(state.portfolio.frozen_positions) == 0

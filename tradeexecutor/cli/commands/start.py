@@ -154,7 +154,6 @@ def start(
 
     run_single_cycle: bool = typer.Option(False, "--run-single-cycle", envvar="RUN_SINGLE_CYCLE", help="Run a single strategy decision cycle and exist, regardless of the current pending state."),
     disable_broadcast: bool = typer.Option(False, "--disable-broadcast", envvar="DISABLE_BROADCAST", help="Unit testing option used with Anvil."),
-    direct_anvil_broadcast: bool = typer.Option(False, "--direct-anvil-broadcast", envvar="DIRECT_ANVIL_BROADCAST", help="Unit testing option used with local Anvil: send transactions through the primary RPC without multi-node rebroadcast delays."),
     skip_crash_sleep: bool = typer.Option(False, "--skip-crash-sleep", envvar="SKIP_CRASH_SLEEP", help="Don't leave waiting after a crash. Unit test optimisation."),
 
     simulate: bool = shared_options.simulate,
@@ -337,7 +336,6 @@ def start(
             # Auto-discover satellite modules from the deployment artifact next to
             # the state file.
             deployment_file=deployment_file,
-            direct_anvil_broadcast=direct_anvil_broadcast,
         )
 
         # TODO: Unit test hack

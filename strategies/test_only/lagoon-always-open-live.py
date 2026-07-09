@@ -1,4 +1,4 @@
-"""Test-only phase-aware Lagoon strategy for live CLI blackbox tests."""
+"""Test-only always-open Lagoon async settlement strategy for live CLI blackbox tests."""
 
 import datetime
 import json
@@ -8,15 +8,12 @@ from pathlib import Path
 
 from eth_defi.abi import ZERO_ADDRESS_STR
 from eth_defi.erc_4626.classification import ERC4626Feature, create_vault_instance
-from eth_defi.event_reader.conversion import convert_uin256_to_bytes
-from eth_defi.event_reader.multicall_batcher import EncodedCall
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.trace import assert_transaction_success_with_explanation
 from web3 import Web3
 
-from tradeexecutor.ethereum.lagoon.testing import set_lagoon_vault_paused_storage_for_testing
-from tradeexecutor.ethereum.vault.testing import PHASE_AWARE_LIVE_E2E_OBSERVATION_KEY, collect_vault_availability
+from tradeexecutor.ethereum.vault.testing import LAGOON_ALWAYS_OPEN_LIVE_E2E_OBSERVATION_KEY
 from tradeexecutor.ethereum.vault.vault_utils import translate_vault_to_trading_pair
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.state import State
@@ -47,6 +44,8 @@ trading_strategy_engine_version = TRADING_STRATEGY_ENGINE_VERSION
 
 _CONTROLLER_STATE = {
     "web3": None,
+    "deployment_config": None,
+    "owner_address": None,
     "vault_cache": {},
     "pre_tick_onchain_vaults": {},
 }
@@ -72,12 +71,21 @@ def _normalise_address(address: str) -> str:
 
 
 def _deployment_config() -> dict:
-    with Path(os.environ["PHASE_AWARE_LAGOON_DEPLOYMENTS_FILE"]).open("rt") as inp:
-        return json.load(inp)
+    config = _CONTROLLER_STATE.get("deployment_config")
+    if config is not None:
+        return config
+    with Path(os.environ["LAGOON_ALWAYS_OPEN_DEPLOYMENTS_FILE"]).open("rt") as inp:
+        config = json.load(inp)
+    _CONTROLLER_STATE["deployment_config"] = config
+    return config
+
+
+def _target_vault_configs() -> list[dict]:
+    return _deployment_config()["target_vaults"]
 
 
 def _target_vault_addresses() -> list[str]:
-    return [_normalise_address(vault["address"]) for vault in _deployment_config()["target_vaults"]]
+    return [_normalise_address(vault["address"]) for vault in _target_vault_configs()]
 
 
 def _queue_vault_address() -> str:
@@ -88,12 +96,12 @@ def _target_vault_scenario() -> list[dict]:
     return _deployment_config()["target_vault_scenario"]
 
 
-def _target_vault_safe_addresses() -> list[str]:
-    return [vault["safe"] for vault in _deployment_config()["target_vaults"]]
-
-
 def _target_vault_asset_managers() -> list[str]:
-    return [vault["asset_manager"] for vault in _deployment_config()["target_vaults"]]
+    return [vault["asset_manager"] for vault in _target_vault_configs()]
+
+
+def _target_vault_trading_strategy_modules() -> list[str]:
+    return [vault["trading_strategy_module"] for vault in _target_vault_configs()]
 
 
 def _controller_web3():
@@ -101,7 +109,7 @@ def _controller_web3():
     if web3 is None:
         web3 = create_multi_provider_web3(
             os.environ["JSON_RPC_ANVIL"],
-            default_http_timeout=(3, 10.0),
+            default_http_timeout=(3, 60.0),
             retries=1,
         )
         _CONTROLLER_STATE["web3"] = web3
@@ -109,21 +117,18 @@ def _controller_web3():
 
 
 def _controller_owner_address() -> str:
-    return HotWallet.from_private_key(os.environ["PRIVATE_KEY"]).address
+    owner_address = _CONTROLLER_STATE.get("owner_address")
+    if owner_address is None:
+        owner_address = HotWallet.from_private_key(os.environ["PRIVATE_KEY"]).address
+        _CONTROLLER_STATE["owner_address"] = owner_address
+    return owner_address
 
 
 def _get_pair(strategy_universe: TradingStrategyUniverse, address: str) -> TradingPairIdentifier:
     return strategy_universe.get_pair_by_smart_contract(address)
 
 
-def _has_open_or_pending_position(state, pair: TradingPairIdentifier) -> bool:
-    return any(
-        position.pair.internal_id == pair.internal_id
-        for position in list(state.portfolio.open_positions.values()) + list(state.portfolio.pending_positions.values())
-    )
-
-
-def _has_target_trade(state, pair: TradingPairIdentifier) -> bool:
+def _has_target_trade(state: State, pair: TradingPairIdentifier) -> bool:
     return any(
         trade.pair.internal_id == pair.internal_id
         for trade in state.portfolio.get_all_trades()
@@ -180,7 +185,12 @@ def _eth_call_uint256(receipt_web3, address: str, signature: str, args: str = ""
     return int.from_bytes(result, byteorder="big")
 
 
-def _load_lagoon_vault(receipt_web3, target_vault: str, vault_cache: dict[str, object]):
+def _load_lagoon_vault(
+    receipt_web3,
+    target_vault: str,
+    trading_strategy_module: str,
+    vault_cache: dict[str, object],
+):
     vault = vault_cache.get(target_vault)
     if vault is None:
         vault = create_vault_instance(
@@ -188,44 +198,32 @@ def _load_lagoon_vault(receipt_web3, target_vault: str, vault_cache: dict[str, o
             target_vault,
             features={ERC4626Feature.lagoon_like, ERC4626Feature.erc_7540_like},
         )
+        vault.trading_strategy_module_address = trading_strategy_module
         vault_cache[target_vault] = vault
     return vault
 
 
-def _collect_onchain_vault_observations(
+def _collect_vault_observations(
     receipt_web3,
     target_vaults: list[str],
     owner_address: str,
+    include_availability: bool,
 ) -> dict[str, dict]:
     onchain = {}
     owner_arg = _address_arg(owner_address)
     for target_vault in target_vaults:
         request_args = _uint256_arg(0) + owner_arg
-        onchain[target_vault] = {
-            "paused": bool(_eth_call_uint256(receipt_web3, target_vault, "paused()")),
-            "pending_deposit_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "pendingDepositRequest(uint256,address)", request_args)),
-            "pending_redeem_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "pendingRedeemRequest(uint256,address)", request_args)),
-            "max_deposit_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "maxDeposit(address)", owner_arg)),
-            "max_redeem_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "maxRedeem(address)", owner_arg)),
-            "share_balance_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "balanceOf(address)", owner_arg)),
-        }
-    return onchain
-
-
-def _collect_post_tick_vault_observations(
-    receipt_web3,
-    target_vaults: list[str],
-    owner_address: str,
-) -> dict[str, dict]:
-    onchain = {}
-    owner_arg = _address_arg(owner_address)
-    for target_vault in target_vaults:
-        request_args = _uint256_arg(0) + owner_arg
-        onchain[target_vault] = {
+        vault_state = {
             "pending_deposit_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "pendingDepositRequest(uint256,address)", request_args)),
             "pending_redeem_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "pendingRedeemRequest(uint256,address)", request_args)),
             "share_balance_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "balanceOf(address)", owner_arg)),
         }
+        if include_availability:
+            vault_state.update({
+                "max_deposit_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "maxDeposit(address)", owner_arg)),
+                "max_redeem_raw": _raw_str(_eth_call_uint256(receipt_web3, target_vault, "maxRedeem(address)", owner_arg)),
+            })
+        onchain[target_vault] = vault_state
     return onchain
 
 
@@ -244,6 +242,7 @@ def _collect_queue_vault_observation(
 
 
 def _trade_evidence(trade: TradeExecution) -> dict:
+    claim_transaction = _has_claim_transaction(trade)
     return {
         "trade_id": trade.trade_id,
         "vault": _trade_vault_address(trade),
@@ -252,8 +251,8 @@ def _trade_evidence(trade: TradeExecution) -> dict:
         "opened_at": _datetime_str(trade.opened_at),
         "status": trade.get_status().value,
         "pending": trade.get_status() == TradeStatus.vault_settlement_pending,
-        "processed": trade.is_success() and _has_claim_transaction(trade),
-        "claim_transaction": _has_claim_transaction(trade),
+        "processed": trade.is_success() and claim_transaction,
+        "claim_transaction": claim_transaction,
         "planned_reserve": _decimal_str(trade.planned_reserve),
         "planned_quantity": _decimal_str(trade.planned_quantity),
         "executed_reserve": _decimal_str(trade.executed_reserve),
@@ -272,7 +271,6 @@ def _record_observation(
     pre_tick_onchain_vaults: dict[str, dict],
 ) -> None:
     target_set = set(target_vaults)
-    existing_observation = state.other_data.data.get(cycle, {}).get(PHASE_AWARE_LIVE_E2E_OBSERVATION_KEY, {})
     target_trades = [
         _trade_evidence(trade)
         for trade in state.portfolio.get_all_trades()
@@ -295,7 +293,6 @@ def _record_observation(
         if _trade_vault_address(trade) == queue_vault
     ]
     observation = {
-        **existing_observation,
         "cycle": cycle,
         "timestamp": _datetime_str(cycle_timestamp),
         "target_trades": target_trades,
@@ -306,52 +303,11 @@ def _record_observation(
         "queue_trades": queue_trades,
         "queue_deposits": [trade for trade in queue_trades if trade["direction"] == "deposit" and trade["status"] == TradeStatus.success.value],
         "queue_redemptions": [trade for trade in queue_trades if trade["direction"] == "redeem" and trade["status"] == TradeStatus.success.value],
-        "core_vaults": existing_observation.get("core_vaults", {}),
         "pre_tick_onchain_vaults": pre_tick_onchain_vaults,
-        "onchain_vaults": _collect_post_tick_vault_observations(receipt_web3, target_vaults, owner_address),
+        "onchain_vaults": _collect_vault_observations(receipt_web3, target_vaults, owner_address, include_availability=False),
         "queue_vault": _collect_queue_vault_observation(receipt_web3, queue_vault, owner_address),
     }
-    state.other_data.save(cycle, PHASE_AWARE_LIVE_E2E_OBSERVATION_KEY, observation)
-
-
-def _controller_should_open_target_vault(index: int, cycle: int) -> bool:
-    schedule = _target_vault_scenario()[index]
-    deposit_open = schedule["deposit_open_cycle"] <= cycle <= schedule["deposit_close_cycle"]
-    redemption_open = schedule["redemption_open_cycle"] <= cycle <= schedule["redemption_close_cycle"]
-    return deposit_open or redemption_open
-
-
-def _set_lagoon_vault_open_state(
-    receipt_web3,
-    target_vault: str,
-    safe_address: str,
-    open_: bool,
-    vault_cache: dict[str, object],
-) -> None:
-    del safe_address
-    vault = _load_lagoon_vault(receipt_web3, target_vault, vault_cache)
-    set_lagoon_vault_paused_storage_for_testing(
-        receipt_web3,
-        vault.vault_contract,
-        paused=not open_,
-    )
-
-
-def _set_controller_lagoon_open_states(
-    receipt_web3,
-    cycle: int,
-    target_vaults: list[str],
-    safe_addresses: list[str],
-    vault_cache: dict[str, object],
-) -> None:
-    for index, target_vault in enumerate(target_vaults):
-        _set_lagoon_vault_open_state(
-            receipt_web3,
-            target_vault,
-            safe_addresses[index],
-            _controller_should_open_target_vault(index, cycle),
-            vault_cache,
-        )
+    state.other_data.save(cycle, LAGOON_ALWAYS_OPEN_LIVE_E2E_OBSERVATION_KEY, observation)
 
 
 def _force_settle_controller_vaults(
@@ -359,58 +315,31 @@ def _force_settle_controller_vaults(
     cycle: int,
     target_vaults: list[str],
     asset_managers: list[str],
-    safe_addresses: list[str],
+    trading_strategy_modules: list[str],
     vault_cache: dict[str, object],
 ) -> None:
-    for index, target_vault in enumerate(target_vaults):
-        schedule = _target_vault_scenario()[index]
+    for index, (target_vault, schedule) in enumerate(zip(target_vaults, _target_vault_scenario())):
         deposit_settle_cycle = schedule["deposit_settle_cycle"]
         redemption_settle_cycle = schedule["redemption_settle_cycle"]
         if cycle not in (deposit_settle_cycle, redemption_settle_cycle):
             continue
-        vault = _load_lagoon_vault(receipt_web3, target_vault, vault_cache)
-        safe_address = safe_addresses[index]
-        set_lagoon_vault_paused_storage_for_testing(
-            receipt_web3,
-            vault.vault_contract,
-            paused=False,
-        )
+        vault = _load_lagoon_vault(receipt_web3, target_vault, trading_strategy_modules[index], vault_cache)
         valuation = vault.underlying_token.fetch_balance_of(vault.safe_address)
-        raw_valuation = vault.denomination_token.convert_to_raw(valuation)
-        valuation_tx_hash = vault.vault_contract.functions.updateNewTotalAssets(raw_valuation).transact({"from": asset_managers[index], "gas": 15_000_000})
+        valuation_tx_hash = vault.post_new_valuation(valuation).transact({"from": asset_managers[index], "gas": 15_000_000})
         assert_transaction_success_with_explanation(receipt_web3, valuation_tx_hash)
-        # Lagoon v0.5 settleDeposit() is Safe-only. The eth_defi force helper
-        # sends the second transaction from the asset manager and reverts with
-        # OnlySafe(address) for these freshly deployed vaults.
-        settle_call = EncodedCall.from_keccak_signature(
-            address=vault.address,
-            function="settleDeposit()",
-            signature=Web3.keccak(text="settleDeposit(uint256)")[0:4],
-            data=convert_uin256_to_bytes(raw_valuation),
-            extra_data=None,
-        )
-        receipt_web3.provider.make_request("anvil_setBalance", [safe_address, hex(5 * 10**18)])
-        receipt_web3.provider.make_request("anvil_impersonateAccount", [safe_address])
-        tx_hash = receipt_web3.eth.send_transaction(settle_call.transact(from_=safe_address, gas_limit=15_000_000))
-        assert_transaction_success_with_explanation(receipt_web3, tx_hash, tracing=True)
+        settle_tx_hash = vault.settle_via_trading_strategy_module(valuation).transact({"from": asset_managers[index], "gas": 15_000_000})
+        assert_transaction_success_with_explanation(receipt_web3, settle_tx_hash, tracing=True)
 
 
 def before_strategy_tick(input: StrategyTickHookInput) -> None:
-    """Mutate local Lagoon vault windows before the normal live strategy tick."""
+    """Record local Lagoon vault state before the normal live strategy tick."""
     receipt_web3 = _controller_web3()
     target_vaults = _target_vault_addresses()
-    vault_cache = _CONTROLLER_STATE["vault_cache"]
-    _set_controller_lagoon_open_states(
-        receipt_web3,
-        input.cycle,
-        target_vaults,
-        _target_vault_safe_addresses(),
-        vault_cache,
-    )
-    _CONTROLLER_STATE["pre_tick_onchain_vaults"][input.cycle] = _collect_onchain_vault_observations(
+    _CONTROLLER_STATE["pre_tick_onchain_vaults"][input.cycle] = _collect_vault_observations(
         receipt_web3,
         target_vaults,
         _controller_owner_address(),
+        include_availability=True,
     )
 
 
@@ -436,7 +365,7 @@ def after_strategy_tick(input: StrategyTickHookInput) -> None:
         input.cycle,
         target_vaults,
         _target_vault_asset_managers(),
-        _target_vault_safe_addresses(),
+        _target_vault_trading_strategy_modules(),
         vault_cache,
     )
     input.store.sync(input.state)
@@ -505,7 +434,7 @@ def create_trading_universe(
     strategy_universe.data_universe.pairs.exchange_universe = exchange_universe
     for address in target_addresses:
         pair = strategy_universe.get_pair_by_smart_contract(address)
-        pair.other_data["vault_role"] = "phase_aware_target"
+        pair.other_data["vault_role"] = "lagoon_target"
     strategy_universe.get_pair_by_smart_contract(queue_address).other_data["vault_role"] = "cash_allocation_queue"
     return strategy_universe
 
@@ -520,40 +449,40 @@ def _make_yield_rules(queue_pair: TradingPairIdentifier) -> YieldRuleset:
 
 
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
-    """Run phase-aware target-vault allocation followed by queue-vault cash management."""
+    """Run scheduled target-vault deposits/redemptions followed by pre-redemption queue-vault cash management."""
     state = input.state
     strategy_universe = input.strategy_universe
     target_pairs = [_get_pair(strategy_universe, address) for address in _target_vault_addresses()]
     queue_pair = _get_pair(strategy_universe, _queue_vault_address())
-    state.other_data.save(
-        input.cycle,
-        PHASE_AWARE_LIVE_E2E_OBSERVATION_KEY,
-        {
-            "core_vaults": collect_vault_availability(
-                input.pricing_model,
-                input.timestamp,
-                target_pairs,
-            ),
-        },
-    )
-
     position_manager = input.get_position_manager()
 
     yield_rules = _make_yield_rules(queue_pair)
     venue_pair_ids = queue_vault_pair_ids(yield_rules)
     alpha_model = PhaseAwareAlphaModel(input.timestamp, cycle=input.cycle, venue_pair_ids=venue_pair_ids)
 
-    for pair in target_pairs:
-        has_position = _has_open_or_pending_position(state, pair)
-        has_target_trade = _has_target_trade(state, pair)
-        alpha_model.set_signal(pair, 1.0 if not has_position and not has_target_trade else 0.0)
+    target_vault_scenario = _target_vault_scenario()
+    for pair, schedule in zip(target_pairs, target_vault_scenario):
+        if input.cycle < schedule["deposit_open_cycle"]:
+            alpha_model.set_signal(pair, 0.0)
+        elif input.cycle < schedule["redemption_open_cycle"]:
+            if _has_target_trade(state, pair):
+                position = position_manager.get_current_position_for_pair(pair, pending=True)
+                current_value = 0.0 if position is None else position.get_value() + position.get_vault_settlement_pending_value()
+                alpha_model.set_signal(pair, current_value)
+                signal = alpha_model.raw_signals.get(pair.internal_id)
+                if signal is not None:
+                    signal.carry_forward_position = True
+            else:
+                alpha_model.set_signal(pair, 1.0)
+        else:
+            alpha_model.set_signal(pair, 0.0)
 
-    locked = alpha_model.carry_forward_non_redeemable_positions(position_manager)
-    deployable = max(state.portfolio.get_total_equity() * Parameters.allocation - locked, 0.0)
+    alpha_model.carry_forward_non_redeemable_positions(position_manager)
+    deployable = state.portfolio.get_total_equity() * Parameters.allocation
 
     alpha_model.select_top_signals(count=len(target_pairs))
     alpha_model.assign_weights(method=weight_passthrouh)
-    alpha_model.normalise_weights(investable_equity=deployable, max_weight=1.0)
+    alpha_model.normalise_weights(investable_equity=deployable, max_weight=1.0 / len(target_pairs))
     alpha_model.update_old_weights(
         state.portfolio,
         portfolio_pairs=target_pairs,
@@ -570,14 +499,18 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     )
     alpha_model.reconcile_phase_aware_events(position_manager, trades)
 
-    yield_manager = YieldManager(position_manager=position_manager, rules=yield_rules)
-    yield_input = YieldDecisionInput(
-        execution_mode=input.execution_context.mode,
-        cycle=input.cycle,
-        timestamp=input.timestamp,
-        total_equity=state.portfolio.get_total_equity(),
-        directional_trades=trades,
-        pending_redemptions=position_manager.get_pending_redemptions(),
-    )
-    trades += yield_manager.calculate_yield_management_safe(yield_input).trades
+    first_redemption_open_cycle = min(schedule["redemption_open_cycle"] for schedule in target_vault_scenario)
+    if input.cycle < first_redemption_open_cycle:
+        # This live e2e proves queue-vault parking before target deposits; re-parking
+        # redeemed cash is covered by YieldManager tests and would lengthen the Anvil run.
+        yield_manager = YieldManager(position_manager=position_manager, rules=yield_rules)
+        yield_input = YieldDecisionInput(
+            execution_mode=input.execution_context.mode,
+            cycle=input.cycle,
+            timestamp=input.timestamp,
+            total_equity=state.portfolio.get_total_equity(),
+            directional_trades=trades,
+            pending_redemptions=position_manager.get_pending_redemptions(),
+        )
+        trades += yield_manager.calculate_yield_management_safe(yield_input).trades
     return trades

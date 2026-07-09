@@ -35,31 +35,6 @@ def _calculate_and_cache_weights(input: ChartInput) -> pd.Series:
     return weights_series
 
 
-def _calculate_asset_weights_with_queue_venue(input: ChartInput) -> pd.Series:
-    """Calculate asset weights, relabelling YieldManager vault venues as reserve-like bands."""
-    state = input.state
-    weights_series = calculate_asset_weights(state)
-    queue_asset_labels = {
-        p.pair.get_chart_label(): _get_queue_asset_label(p.pair)
-        for p in state.portfolio.get_all_positions()
-        if is_queue_vault_position(p)
-    }
-    if not queue_asset_labels:
-        return weights_series
-
-    df = weights_series.rename("value").reset_index()
-    df["asset"] = df["asset"].replace(queue_asset_labels)
-
-    queue_weights_series = df.set_index(["timestamp", "asset"])["value"].groupby(level=[0, 1]).sum()
-    queue_weights_series.attrs = dict(weights_series.attrs)
-    queue_weights_series.attrs["vault_symbols"] = [
-        symbol
-        for symbol in weights_series.attrs["vault_symbols"]
-        if symbol not in queue_asset_labels.keys()
-    ]
-    return queue_weights_series
-
-
 def volatile_weights_by_percent(
     input: ChartInput,
 ) -> Figure:
@@ -94,12 +69,13 @@ def equity_curve_by_asset(
     """Equity curve with assets colored.
     """
     reserve_asset_symbol = input.state.portfolio.get_default_reserve_asset()[0].token_symbol
-    weights_series = _calculate_asset_weights_with_queue_venue(input)
-    queue_asset_labels = [
-        _get_queue_asset_label(p.pair)
-        for p in input.state.portfolio.get_all_positions()
-        if is_queue_vault_position(p)
-    ]
+    queue_venue_labels = {}
+    for position in input.state.portfolio.get_all_positions():
+        if is_queue_vault_position(position):
+            queue_venue_labels[position.position_id] = _get_queue_asset_label(position.pair)
+
+    weights_series = calculate_asset_weights(input.state, position_asset_label_overrides=queue_venue_labels)
+    queue_asset_labels = list(queue_venue_labels.values())
     fig = visualise_weights(
         weights_series,
         normalised=False,

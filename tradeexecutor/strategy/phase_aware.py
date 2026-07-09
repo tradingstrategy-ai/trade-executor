@@ -396,6 +396,11 @@ class PhaseAwareAlphaModel(AlphaModel):
             return False
         return super()._count_position_in_old_weights(position, ignore_credit, portfolio_pairs)
 
+    def _should_carry_forward_position(self, position) -> bool:
+        if position.pair.internal_id in self.venue_pair_ids:
+            return False
+        return super()._should_carry_forward_position(position)
+
     # -- Phase 1 (park): defer closed-window deposits BEFORE trade generation --
     def apply_phase_aware_intent(self, position_manager: PositionManager) -> None:
         """Park closed-window deposits and classify open park events, before trade generation.

@@ -38,7 +38,6 @@ from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
 from tradeexecutor.cli.approval import CLIApprovalModel
 from tradeexecutor.ethereum.address_sync_model import AddressSyncModel
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
-from tradeexecutor.ethereum.execution import EthereumExecution
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.one_delta.one_delta_execution import OneDeltaExecution
@@ -185,7 +184,6 @@ def create_execution_model(
     sync_model: SyncModel,
     min_gas_balance: Optional[Decimal],
     mainnet_fork=False,
-    direct_anvil_broadcast=False,
 ):
     """Set up the code transaction building logic.
 
@@ -269,9 +267,6 @@ def create_execution_model(
         pricing_model_factory = EthereumGenericPricingFactory(sync_model.web3)
     else:
         raise RuntimeError(f"Does not know how to route: {routing_hint}")
-
-    if isinstance(execution_model, EthereumExecution):
-        execution_model.direct_anvil_broadcast = direct_anvil_broadcast
 
     return execution_model, valuation_model_factory, pricing_model_factory
 
@@ -484,7 +479,6 @@ def create_execution_and_sync_model(
     unit_testing: bool = False,
     token_cache: "TokenDiskCache | None" = None,
     deployment_file: "Path | None" = None,
-    direct_anvil_broadcast: bool = False,
 ) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory]:
     """Set up the wallet sync and execution mode for the command line client."""
 
@@ -534,7 +528,6 @@ def create_execution_and_sync_model(
             min_gas_balance=min_gas_balance,
             mainnet_fork=web3config.is_mainnet_fork(),
             sync_model=sync_model,
-            direct_anvil_broadcast=direct_anvil_broadcast,
         )
 
         # Pass web3config for multichain execution (e.g. CCTP bridge)
