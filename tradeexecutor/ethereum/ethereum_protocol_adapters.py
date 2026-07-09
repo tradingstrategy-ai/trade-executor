@@ -884,13 +884,9 @@ class EthereumPairConfigurator(PairConfigurator):
         This enables GMX support without requiring ``GMX_ENABLED=true``
         in the CLI — the universe itself drives discovery.
         """
-        has_gmx = False
-        for pair in strategy_universe.iterate_pairs():
-            if pair.is_exchange_account() and pair.get_exchange_account_protocol() == "gmx":
-                has_gmx = True
-                break
+        from tradeexecutor.exchange_account.gmx import create_gmx_account_value_func, create_gmx_vault_valuation_func, has_gmx_exchange_account_pairs
 
-        if not has_gmx:
+        if not has_gmx_exchange_account_pairs(strategy_universe):
             return
 
         # Check if existing func already handles GMX
@@ -902,7 +898,6 @@ class EthereumPairConfigurator(PairConfigurator):
             "pass execution_model to EthereumPairConfigurator"
 
         # Auto-create GMX value func from the execution model
-        from tradeexecutor.exchange_account.gmx import create_gmx_account_value_func, create_gmx_vault_valuation_func
         gmx_func = create_gmx_account_value_func(self.execution_model)
         self.account_value_func = gmx_func
 

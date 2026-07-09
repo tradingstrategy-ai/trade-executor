@@ -97,6 +97,31 @@ def create_gmx_exchange_account_pair(
     )
 
 
+def has_gmx_exchange_account_pairs(strategy_universe) -> bool:
+    """Detect whether a strategy trades GMX through an exchange account pair.
+
+    The strategy universe itself drives GMX feature discovery — no environment
+    variable or CLI flag is needed. Used to auto-wire the GMX value functions
+    (:py:class:`~tradeexecutor.ethereum.ethereum_protocol_adapters.EthereumPairConfigurator`)
+    and to enable post-valuation treasury settlement in the live stats refresh,
+    so reserve cash moved by the external FreqTrade instance is reconciled
+    before statistics are recorded.
+
+    :param strategy_universe:
+        Strategy universe. Any object without ``iterate_pairs()``
+        (e.g. a non-trading universe stub) counts as not using GMX.
+    :return:
+        True if the universe contains at least one GMX exchange account pair.
+    """
+    iterate_pairs = getattr(strategy_universe, "iterate_pairs", None)
+    if iterate_pairs is None:
+        return False
+    for pair in iterate_pairs():
+        if pair.is_exchange_account() and pair.get_exchange_account_protocol() == "gmx":
+            return True
+    return False
+
+
 def create_gmx_account_value_func(
     execution_model=None,
     *,

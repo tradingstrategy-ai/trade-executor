@@ -27,6 +27,7 @@ from tradingstrategy.timebucket import TimeBucket
 from tradeexecutor.analysis.pair import display_strategy_universe
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
+from tradeexecutor.exchange_account.gmx import has_gmx_exchange_account_pairs
 from tradeexecutor.state.metadata import Metadata
 from tradeexecutor.state.types import Percent
 from tradeexecutor.statistics.in_memory_statistics import refresh_run_state
@@ -205,7 +206,6 @@ class ExecutionLoop:
             strategy_factory: Optional[StrategyFactory],
             cycle_duration: CycleDuration,
             stats_refresh_frequency: Optional[datetime.timedelta],
-            stats_refresh_post_valuation: bool = False,
             stats_refresh_unit_testing: bool = False,
             position_trigger_check_frequency: Optional[datetime.timedelta],
             max_data_delay: Optional[datetime.timedelta] = None,
@@ -1614,13 +1614,18 @@ class ExecutionLoop:
 
             try:
                 ts = native_datetime_utc_now()
+
+                # Post-valuation settlement is needed when an external system
+                # (FreqTrade) moves reserve cash outside the trade executor.
+                # The strategy universe itself drives the detection —
+                # no environment variable to misconfigure between deployments.
+                post_settlement = self.sync_model.has_async_deposits() and has_gmx_exchange_account_pairs(universe)
+
                 logger.info(
                     "Starting live position valuation refresh at %s, post valuation settlement: %s",
                     ts,
-                    self.stats_refresh_post_valuation,
+                    post_settlement,
                 )
-
-                post_settlement = self.stats_refresh_post_valuation and self.sync_model.has_async_deposits()
 
                 # Revalue positions first so sync_treasury()'s position freshness check
                 # and on-chain NAV posting see fresh valuations, but hold the statistics
@@ -1695,12 +1700,11 @@ class ExecutionLoop:
         start_time = datetime.datetime(1970, 1, 1)
         logger.info(
             "Live scheduler configuration: cycle_duration=%s, strategy_cycle_trigger=%s, "
-            "stats_refresh_frequency=%s, stats_refresh_post_valuation=%s, "
+            "stats_refresh_frequency=%s, "
             "position_trigger_check_frequency=%s",
             self.cycle_duration,
             self.strategy_cycle_trigger,
             self.stats_refresh_frequency,
-            self.stats_refresh_post_valuation,
             self.position_trigger_check_frequency,
         )
 
