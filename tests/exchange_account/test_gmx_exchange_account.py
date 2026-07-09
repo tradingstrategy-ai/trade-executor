@@ -66,10 +66,10 @@ def test_gmx_pair_protocol_detection(usdc):
 def test_has_gmx_exchange_account_pairs(usdc: AssetIdentifier):
     """Universe-driven GMX detection finds GMX exchange account pairs and nothing else.
 
-    The live execution loop uses this detection to enable post-valuation
-    treasury settlement without any environment variable, so the check must be
-    positive exactly when the strategy universe trades GMX through an
-    exchange account pair.
+    EthereumPairConfigurator uses this detection to auto-wire the GMX value
+    functions without any environment variable, so the check must be positive
+    exactly when the strategy universe trades GMX through an exchange account
+    pair.
 
     1. Build a universe stub containing a GMX exchange account pair and verify detection is positive.
     2. Build a universe stub with only a spot pair and verify detection is negative.
