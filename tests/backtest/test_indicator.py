@@ -944,6 +944,49 @@ def test_get_indicators_combined(strategy_universe):
     assert list(pair_ids.unique()) == [1, 2]
 
 
+def test_dependency_resolver_get_indicators_combined_with_empty_pair(strategy_universe):
+    """Empty pair series do not shift the pair ids of later series."""
+
+    class Parameters:
+        pass
+
+    def sparse_value(close: pd.Series, pair: TradingPairIdentifier) -> pd.Series:
+        if pair.internal_id == 1:
+            return pd.Series(dtype="float64", index=pd.DatetimeIndex([]))
+        return close
+
+    def sparse_universe(dependency_resolver: IndicatorDependencyResolver) -> pd.Series:
+        return dependency_resolver.get_indicator_data_pairs_combined("sparse_value")
+
+    def create_indicators(
+        timestamp,
+        parameters,
+        strategy_universe,
+        execution_context,
+    ) -> IndicatorSet:
+        indicator_set = IndicatorSet()
+        indicator_set.add("sparse_value", sparse_value, order=1)
+        indicator_set.add(
+            "sparse_universe",
+            sparse_universe,
+            source=IndicatorSource.dependencies_only_universe,
+            order=2,
+        )
+        return indicator_set
+
+    indicators = calculate_and_load_indicators_inline(
+        strategy_universe=strategy_universe,
+        parameters=StrategyParameters.from_class(Parameters),
+        create_indicators=create_indicators,
+        max_workers=1,
+        storage=MemoryIndicatorStorage(strategy_universe.get_cache_key()),
+    )
+
+    series = indicators.get_indicator_series("sparse_universe", unlimited=True)
+    pair_ids = series.index.get_level_values("pair_id")
+    assert list(pair_ids.unique()) == [2]
+
+
 def test_calculate_indicators_tvl(strategy_universe):
     """Test calculate_and_load_indicators_inline() """
 
