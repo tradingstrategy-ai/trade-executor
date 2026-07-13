@@ -233,7 +233,12 @@ class BacktestExecution(ExecutionModel):
             else:
                 type = "spot buy"
             self.wallet.update_balance(base, executed_quantity, f"{type} trade #{trade.trade_id}")
-            self.wallet.update_balance(reserve, -executed_reserve, f"{type} trade #{trade.trade_id}")
+            # Tolerate sub-raw-unit rounding dust on the reserve debit, same as the
+            # async vault deposit path. CCTP bridge sizing can leave the reserve a
+            # fraction of a raw unit short of the planned buy, which must not crash
+            # the backtest.
+            raw_unit_epsilon = reserve.convert_to_decimal(2)
+            self.wallet.update_balance(reserve, -executed_reserve, f"{type} trade #{trade.trade_id}", epsilon=raw_unit_epsilon)
         else:
             if trade.is_credit_supply():
                 type = "credit recall"
@@ -426,7 +431,13 @@ class BacktestExecution(ExecutionModel):
         if trade.is_buy():
             request_reserve = trade.planned_reserve
             assert request_reserve > 0, f"Expected a positive async vault deposit reserve for trade {trade}"
-            self.wallet.update_balance(reserve, -request_reserve, f"vault deposit request #{trade.trade_id}")
+            raw_unit_epsilon = reserve.convert_to_decimal(2)
+            self.wallet.update_balance(
+                reserve,
+                -request_reserve,
+                f"vault deposit request #{trade.trade_id}",
+                epsilon=raw_unit_epsilon,
+            )
             trade.other_data[VAULT_SETTLEMENT_REQUEST_RESERVE_KEY] = str(request_reserve)
         else:
             base_balance = self.wallet.get_balance(base.address)

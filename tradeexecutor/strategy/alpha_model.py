@@ -2454,6 +2454,39 @@ class AlphaModel:
 
         return rows
 
+    def get_unallocatable_signals(self) -> list[dict]:
+        """Return positive rebalance targets blocked by venue availability.
+
+        The unallocatable weight is the blocked positive adjustment as a share of
+        this cycle's investable equity. It deliberately differs from the signal's
+        full target weight: an existing 5 % position targeted at 12 % has only
+        7 % of the portfolio unallocatable.
+        """
+        if not self.investable_equity:
+            return []
+
+        rows = []
+        for signal in self.iterate_signals():
+            if TradingPairSignalFlags.cannot_deposit not in signal.flags:
+                continue
+
+            unallocatable_usd = signal.position_adjust_usd
+            if unallocatable_usd <= 0:
+                continue
+
+            rows.append({
+                "asset_label": signal.pair.get_chart_label(),
+                "pair_ticker": signal.pair.get_ticker(),
+                "vault_name": signal.pair.get_vault_name(),
+                "vault_address": signal.pair.pool_address,
+                "target_weight": signal.normalised_weight,
+                "target_usd": signal.position_target,
+                "unallocatable_weight": unallocatable_usd / self.investable_equity,
+                "unallocatable_usd": unallocatable_usd,
+            })
+
+        return rows
+
     def get_flag_diagnostics_data(self) -> dict:
         """Get statistics explanation to add to the report of alpha model thinking.
 

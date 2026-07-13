@@ -82,7 +82,9 @@ def get_dust_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
 
     """
 
-    if pair.is_vault():
+    if pair.is_cctp_bridge():
+        return DEFAULT_DUST_EPSILON
+    elif pair.is_vault():
         return DEFAULT_VAULT_EPSILON
 
     return get_dust_epsilon_for_asset(pair.base)

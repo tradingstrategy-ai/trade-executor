@@ -26,11 +26,16 @@ from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignal, format_signals
 from tradeexecutor.strategy.chart.definition import ChartInput
 from tradeexecutor.strategy.chart.standard.weight import equity_curve_by_asset
-from tradeexecutor.strategy.chart.standard.vault import pending_trigger_queue
+from tradeexecutor.strategy.chart.standard.vault import (
+    pending_trigger_queue,
+    phase_aware_queue_duration,
+    phase_aware_queue_duration_summary,
+)
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.phase_aware import (
     EVENT_PARK,
     EVENT_PROMOTE,
+    EVENT_CLOSE,
     EVENT_REDEEM_BLOCK,
     EVENT_REDEEM_CLEAR,
     QueueVaultEvent,
@@ -161,6 +166,62 @@ def test_pending_trigger_queue_empty_without_events():
     # 1-2. No events -> empty frame.
     _fig, df = pending_trigger_queue(ChartInput(execution_context=unit_test_execution_context, state=state))
     assert df.empty
+
+
+def test_phase_aware_queue_duration_summary():
+    """phase_aware_queue_duration_summary reports completed and open wait intervals.
+
+    1. Vault 601 parks for three days and promotes.
+    2. Vault 602 parks, updates the parked amount, and is still open at the last stats timestamp.
+    3. The summary reports duration, episode counts, max queued USD, and USD-days.
+    """
+    start = datetime.datetime(2024, 1, 1)
+    one_day = datetime.timedelta(days=1)
+    state = State()
+
+    append_queue_event(state.other_data, QueueVaultEvent(EVENT_PARK, 601, 5000.0, 1, timestamp=(start + one_day).isoformat()))
+    append_queue_event(state.other_data, QueueVaultEvent(EVENT_PROMOTE, 601, 5000.0, 4, timestamp=(start + 4 * one_day).isoformat()))
+    append_queue_event(state.other_data, QueueVaultEvent(EVENT_PARK, 602, 2000.0, 2, timestamp=(start + 2 * one_day).isoformat()))
+    append_queue_event(state.other_data, QueueVaultEvent(EVENT_PARK, 602, 3000.0, 3, timestamp=(start + 3 * one_day).isoformat()))
+
+    for n in range(6):
+        state.stats.portfolio.append(PortfolioStatistics(calculated_at=start + n * one_day, total_equity=10_000.0))
+
+    df = phase_aware_queue_duration_summary(ChartInput(execution_context=unit_test_execution_context, state=state))
+
+    row_601 = df.loc[df["Vault id"] == 601].iloc[0]
+    assert row_601["Episodes"] == 1
+    assert row_601["Promoted"] == 1
+    assert row_601["Open"] == 0
+    assert row_601["Average wait days"] == pytest.approx(3.0)
+    assert row_601["USD days"] == pytest.approx(15_000.0)
+
+    row_602 = df.loc[df["Vault id"] == 602].iloc[0]
+    assert row_602["Episodes"] == 1
+    assert row_602["Promoted"] == 0
+    assert row_602["Open"] == 1
+    assert row_602["Average wait days"] == pytest.approx(3.0)
+    assert row_602["Max queued USD"] == pytest.approx(3000.0)
+    assert row_602["USD days"] == pytest.approx(8_000.0)
+
+
+def test_phase_aware_queue_duration_chart_and_closed_wait():
+    """phase_aware_queue_duration returns a chart and counts abandoned waits as closed."""
+    start = datetime.datetime(2024, 1, 1)
+    one_day = datetime.timedelta(days=1)
+    state = State()
+
+    append_queue_event(state.other_data, QueueVaultEvent(EVENT_PARK, 701, 1000.0, 1, timestamp=(start + one_day).isoformat()))
+    append_queue_event(state.other_data, QueueVaultEvent(EVENT_CLOSE, 701, 0.0, 3, timestamp=(start + 3 * one_day).isoformat()))
+    for n in range(4):
+        state.stats.portfolio.append(PortfolioStatistics(calculated_at=start + n * one_day, total_equity=10_000.0))
+
+    fig, df = phase_aware_queue_duration(ChartInput(execution_context=unit_test_execution_context, state=state))
+
+    assert fig is not None
+    row = df.loc[df["Vault id"] == 701].iloc[0]
+    assert row["Closed"] == 1
+    assert row["Average wait days"] == pytest.approx(2.0)
 
 
 def test_format_signals_phase_aware_columns():

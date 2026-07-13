@@ -5,6 +5,7 @@ import plotly.express as px
 from pandas.io.formats.style import Styler
 from plotly.graph_objects import Figure
 
+from tradeexecutor.analysis.unallocatable_signals import calculate_unallocatable_signal_weights
 from tradeexecutor.analysis.vault_missed_events import (
     analyse_missed_vault_deposit_redemption_event_timeline,
     analyse_missed_vault_deposit_redemption_events,
@@ -12,6 +13,7 @@ from tradeexecutor.analysis.vault_missed_events import (
 )
 from tradeexecutor.strategy.alpha_model import format_signals
 from tradeexecutor.strategy.chart.definition import ChartInput
+from tradeexecutor.analysis.weights import visualise_weights
 
 
 def alpha_model_diagnostics(
@@ -26,6 +28,30 @@ def alpha_model_diagnostics(
         return pd.DataFrame([])
     df = format_signals(alpha_model, signal_type="all")
     return df
+
+
+def skipped_signals(input: ChartInput) -> Figure:
+    """Show allocation weights blocked because the venue could not accept deposits."""
+    weights = calculate_unallocatable_signal_weights(input.state)
+    if weights.empty:
+        fig = Figure()
+        fig.update_layout(
+            title="Skipped signals (allocation weight)",
+            xaxis_title="Time",
+            yaxis_title="% of investable equity",
+            template="plotly_dark",
+        )
+        return fig
+
+    fig = visualise_weights(
+        weights,
+        normalised=False,
+        include_reserves=False,
+        chart_title="Skipped signals (allocation weight)",
+        y_axis_title="% of investable equity",
+    )
+    fig.update_yaxes(tickformat=".0%")
+    return fig
 
 
 def missed_vault_deposit_redemption_events(input: ChartInput) -> Styler:

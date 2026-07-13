@@ -1869,11 +1869,15 @@ class IndicatorDependencyResolver:
             raise IndicatorCalculationFailed(f"get_indicator_data_pairs_combined() cannot be called if the indicator {name} is not pair based")
 
         series_map = {pair.internal_id: self.get_indicator_data(name, pair=pair, parameters=parameters) for pair in self.strategy_universe.iterate_pairs()}
-        series_list = [s for s in series_map.values() if len(s) > 0]
-        pair_ids = list(series_map.keys())
+        series_items = [(pair_id, series) for pair_id, series in series_map.items() if len(series) > 0]
+
+        if not series_items:
+            return pd.Series(dtype="float64", index=pd.MultiIndex.from_arrays([[], []], names=["pair_id", "timestamp"]))
+
+        pair_ids = [pair_id for pair_id, _series in series_items]
+        series_list = [series for _pair_id, series in series_items]
 
         with warnings.catch_warnings():
-            # FutureWarning: The behavior of pd.concat with len(keys) != len(objs) is deprecated. In a future version this will raise instead of truncating to the smaller of the two sequences
             warnings.simplefilter(action='ignore', category=FutureWarning)
             combined = pd.concat(series_list, keys=pair_ids, names=['pair_id', 'timestamp'])
         return combined

@@ -36,6 +36,7 @@ from tradeexecutor.analysis.vault_missed_events import (
     analyse_missed_vault_deposit_redemption_events,
     format_missed_vault_deposit_redemption_events,
 )
+from tradeexecutor.analysis.unallocatable_signals import calculate_unallocatable_signal_weights
 from tradeexecutor.strategy import size_risk_model
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignalFlags
 from tradeexecutor.strategy.fixed_size_risk import FixedSizeRiskModel
@@ -1999,6 +2000,18 @@ def test_alpha_model_skips_buy_when_vault_deposits_closed(
             "missed_usd": 2500.0,
         }
     ]
+    assert alpha_model.get_unallocatable_signals() == [
+        {
+            "asset_label": signal.pair.get_chart_label(),
+            "pair_ticker": signal.pair.get_ticker(),
+            "vault_name": signal.pair.get_vault_name(),
+            "vault_address": signal.pair.pool_address,
+            "target_weight": 1.0,
+            "target_usd": 2500.0,
+            "unallocatable_weight": 1.0,
+            "unallocatable_usd": 2500.0,
+        }
+    ]
 
 
 def test_alpha_model_allows_sell_when_vault_deposits_closed_but_redemptions_open(
@@ -2765,6 +2778,40 @@ def test_analyse_missed_vault_deposit_redemption_event_timeline(start_ts: dateti
     assert "$1,250.00" in html
     assert "$300.00" in html
     assert "1.250000e+03" not in html
+
+
+def test_calculate_unallocatable_signal_weights(start_ts: datetime.datetime) -> None:
+    """Check blocked allocation weights are retained across strategy cycles."""
+    state = State()
+    state.visualisation.add_calculations(
+        start_ts,
+        {
+            "unallocatable_signals": [
+                {
+                    "asset_label": "Vault A",
+                    "unallocatable_weight": 0.25,
+                },
+            ],
+        },
+    )
+    state.visualisation.add_calculations(
+        start_ts + datetime.timedelta(days=1),
+        {
+            "unallocatable_signals": [
+                {
+                    "asset_label": "Vault B",
+                    "unallocatable_weight": 0.10,
+                },
+            ],
+        },
+    )
+
+    weights = calculate_unallocatable_signal_weights(state)
+
+    assert weights.loc[(pd.Timestamp(start_ts), "Vault A")] == pytest.approx(0.25)
+    assert weights.loc[(pd.Timestamp(start_ts), "Vault B")] == pytest.approx(0.0)
+    assert weights.loc[(pd.Timestamp(start_ts + datetime.timedelta(days=1)), "Vault A")] == pytest.approx(0.0)
+    assert weights.loc[(pd.Timestamp(start_ts + datetime.timedelta(days=1)), "Vault B")] == pytest.approx(0.10)
 
 
 def test_update_old_weights_reads_position_value_once(

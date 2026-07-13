@@ -74,6 +74,7 @@ from tradeexecutor.strategy.chart.standard.alpha_model import (
     alpha_model_diagnostics,
     missed_vault_deposit_redemption_events,
     missed_vault_deposit_redemption_timeline,
+    skipped_signals,
 )
 from tradeexecutor.strategy.chart.standard.cycle_snapshot import latest_cycle_snapshot
 from tradeexecutor.strategy.chart.standard.equity_curve import (
@@ -376,9 +377,13 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         execution_context=input.execution_context,
         same_cycle_cash_buffer_usd=parameters.cross_chain_cash_buffer_usd,
     )
-    missed_vault_events = alpha_model.get_missed_vault_events()
-    if missed_vault_events:
-        state.visualisation.add_calculations(timestamp, {"missed_vault_events": missed_vault_events})
+    state.visualisation.add_calculations(
+        timestamp,
+        {
+            "missed_vault_events": alpha_model.get_missed_vault_events(),
+            "unallocatable_signals": alpha_model.get_unallocatable_signals(),
+        },
+    )
 
     if input.is_visualisation_enabled():
         try:
@@ -657,6 +662,7 @@ def create_charts(
     charts.register(positions_at_end, ChartKind.state_all_pairs)
     charts.register(last_messages, ChartKind.state_all_pairs)
     charts.register(alpha_model_diagnostics, ChartKind.state_all_pairs)
+    charts.register(skipped_signals, ChartKind.state_all_pairs)
     charts.register(missed_vault_deposit_redemption_events, ChartKind.state_all_pairs)
     charts.register(missed_vault_deposit_redemption_timeline, ChartKind.state_all_pairs)
     charts.register(pending_vault_settlements, ChartKind.state_all_pairs)

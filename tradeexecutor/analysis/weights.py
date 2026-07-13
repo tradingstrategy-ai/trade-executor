@@ -148,6 +148,8 @@ def visualise_weights(
     reserve_asset_colour='#aaa',
     extra_colours: dict[str, str] | None = None,
     extra_sort_order: dict[str, int] | None = None,
+    chart_title: str | None = None,
+    y_axis_title: str | None = None,
     clean=False,
 ) -> Figure:
     """Draw a chart of weights.
@@ -211,10 +213,10 @@ def visualise_weights(
 
     fig = px.area(
         df,
-        title=f'Asset weights (%), {reserve_text}' if normalised else f'Asset weights (USD), {reserve_text}',
+        title=chart_title or (f'Asset weights (%), {reserve_text}' if normalised else f'Asset weights (USD), {reserve_text}'),
         labels={
             'index': 'Time',
-            'value': '% of portfolio' if normalised else 'US dollar size',
+            'value': y_axis_title or ('% of portfolio' if normalised else 'US dollar size'),
         },
         color_discrete_sequence=color_palette,
         template=template,
