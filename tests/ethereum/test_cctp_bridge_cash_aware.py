@@ -407,6 +407,34 @@ def test_bridge_out_uses_bridge_pair_decimals_when_reserve_asset_decimals_are_wr
     assert bridge_trades[0].planned_reserve == Decimal("1000")
 
 
+def test_sub_usdc_trade_dust_cctp_bridge_out_is_allowed(
+    usdc_arbitrum: AssetIdentifier,
+    cctp_pair: TradingPairIdentifier,
+    satellite_pair: TradingPairIdentifier,
+):
+    """CCTP bridge-outs below generic USDC trade dust are valid transfers.
+
+    A long cross-chain phase-aware backtest produced a 0.066557 USDC bridge-out.
+    Generic USDC trade dust is 0.1, but CCTP only needs raw-unit precision.
+    """
+    state = _make_state(usdc_arbitrum, Decimal(1))
+    buy = _create_satellite_buy(state, satellite_pair, usdc_arbitrum, Decimal("0.066557"))
+    universe = _make_mock_universe([cctp_pair, satellite_pair])
+
+    result = inject_cctp_bridge_trades(
+        state=state,
+        trades=[buy],
+        strategy_universe=universe,
+        primary_chain_id=PRIMARY_CHAIN_ID,
+        ts=TS,
+        reserve_asset=usdc_arbitrum,
+    )
+
+    bridge_trades = [t for t in result if t.pair.is_cctp_bridge()]
+    assert len(bridge_trades) == 1
+    assert bridge_trades[0].planned_reserve == Decimal("0.066557")
+
+
 def test_bridge_out_nets_against_partial_idle_capital(
     usdc_arbitrum: AssetIdentifier,
     cctp_pair: TradingPairIdentifier,

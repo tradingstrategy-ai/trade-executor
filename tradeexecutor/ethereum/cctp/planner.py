@@ -29,6 +29,7 @@ from tradeexecutor.state.identifier import (
 from tradeexecutor.state.portfolio import NotEnoughMoney
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import CCTP_BRIDGE_ORDER_BUMP, TradeExecution, TradeType
+from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.utils.accuracy import sum_decimal
 
 logger = logging.getLogger(__name__)
@@ -151,6 +152,14 @@ def _is_meaningful_bridge_amount(amount: Decimal, asset: AssetIdentifier) -> boo
     dust, even when it is larger than Decimal calculation epsilon.
     """
     return amount >= _get_raw_unit(asset)
+
+
+def _is_meaningful_bridge_trade_amount(amount: Decimal, bridge_pair: TradingPairIdentifier) -> bool:
+    """Is this amount large enough to pass bridge trade creation."""
+    return (
+        _is_meaningful_bridge_amount(amount, bridge_pair.base)
+        and abs(amount) > get_dust_epsilon_for_pair(bridge_pair)
+    )
 
 
 def _is_token_dust(amount: Decimal, asset: AssetIdentifier) -> bool:
@@ -374,7 +383,7 @@ def inject_cctp_bridge_trades(
         # minus same-cycle satellite buy needs).
         available = liquidity.free_idle_bridge_capital
         amount = _floor_to_raw_units(min(net_flow, available), bridge_pair.base)
-        if not _is_meaningful_bridge_amount(amount, bridge_pair.base):
+        if not _is_meaningful_bridge_trade_amount(amount, bridge_pair):
             logger.info(
                 "Skipping bridge-back for chain %d: net sell %s exceeds available bridge capital %s",
                 chain_id,
@@ -417,12 +426,12 @@ def inject_cctp_bridge_trades(
                     chain_id,
                 )
                 continue
-            if not _is_meaningful_bridge_amount(primary_shortfall, bridge_pair.quote):
+            if not _is_meaningful_bridge_trade_amount(primary_shortfall, bridge_pair):
                 break
             liquidity = liquidity_by_chain[chain_id]
             available = liquidity.free_idle_bridge_capital
             amount = _floor_to_raw_units(min(primary_shortfall, available), bridge_pair.quote)
-            if not _is_meaningful_bridge_amount(amount, bridge_pair.quote):
+            if not _is_meaningful_bridge_trade_amount(amount, bridge_pair):
                 continue
             liquidity.reserve_bridge_back(amount)
             total_bridge_back += amount
@@ -455,7 +464,7 @@ def inject_cctp_bridge_trades(
                 chain_id,
             )
             continue
-        if not _is_meaningful_bridge_amount(amount, bridge_pair.base):
+        if not _is_meaningful_bridge_trade_amount(amount, bridge_pair):
             continue
 
         bridge_position = state.portfolio.get_bridge_position_for_chain(chain_id)
@@ -539,7 +548,7 @@ def inject_cctp_bridge_trades(
         satellite_side_funding = liquidity.available_before_buy
 
         shortfall = liquidity.satellite_bridge_shortfall
-        if not _is_meaningful_bridge_amount(shortfall, bridge_pair.quote):
+        if not _is_meaningful_bridge_trade_amount(shortfall, bridge_pair):
             # Capital already parked on the satellite covers the net buy; the
             # satellite buy allocates from the bridge position at execution.
             logger.info(
@@ -564,11 +573,11 @@ def inject_cctp_bridge_trades(
                     f"- primary buys {primary_buys})"
                 )
 
-        if not _is_meaningful_bridge_amount(shortfall, bridge_pair.quote):
+        if not _is_meaningful_bridge_trade_amount(shortfall, bridge_pair):
             continue
 
         amount = _floor_to_raw_units(shortfall, bridge_pair.quote)
-        if not _is_meaningful_bridge_amount(amount, bridge_pair.quote):
+        if not _is_meaningful_bridge_trade_amount(amount, bridge_pair):
             continue
         fundable_primary -= amount
 
