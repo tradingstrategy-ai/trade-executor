@@ -426,7 +426,13 @@ class BacktestExecution(ExecutionModel):
         if trade.is_buy():
             request_reserve = trade.planned_reserve
             assert request_reserve > 0, f"Expected a positive async vault deposit reserve for trade {trade}"
-            self.wallet.update_balance(reserve, -request_reserve, f"vault deposit request #{trade.trade_id}")
+            raw_unit_epsilon = reserve.convert_to_decimal(2)
+            self.wallet.update_balance(
+                reserve,
+                -request_reserve,
+                f"vault deposit request #{trade.trade_id}",
+                epsilon=raw_unit_epsilon,
+            )
             trade.other_data[VAULT_SETTLEMENT_REQUEST_RESERVE_KEY] = str(request_reserve)
         else:
             base_balance = self.wallet.get_balance(base.address)
