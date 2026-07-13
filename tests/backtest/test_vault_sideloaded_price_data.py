@@ -114,6 +114,33 @@ def test_create_vault_universe(
     assert pair.get_vault_name() == "IndeFi USDC"
 
 
+def test_universe_indicator_cache_key_includes_data_fingerprint():
+    """Changing side-loaded data fingerprints invalidates indicator caches."""
+    strategy_universe = create_trading_universe(
+        None,
+        client=None,
+        execution_context=unit_test_execution_context,
+        universe_options=UniverseOptions.from_strategy_parameters_class(Parameters, unit_test_execution_context),
+    )
+    original_other_data = strategy_universe.other_data.copy()
+
+    try:
+        base_key = strategy_universe.get_cache_key()
+
+        strategy_universe.other_data["indicator_cache_fingerprint"] = "vault-history:first"
+        first_key = strategy_universe.get_cache_key()
+
+        strategy_universe.other_data["indicator_cache_fingerprint"] = "vault-history:second"
+        second_key = strategy_universe.get_cache_key()
+
+        assert first_key != base_key
+        assert second_key != first_key
+        assert strategy_universe.clone().get_cache_key() == second_key
+    finally:
+        strategy_universe.other_data.clear()
+        strategy_universe.other_data.update(original_other_data)
+
+
 def test_visualise_vault_analysis_chart(
     strategy_universe,
 ):
