@@ -69,6 +69,14 @@ class TradingUniverseIssue(Exception):
     """Raised in the case trading universe has some bad data etc. issues."""
 
 
+def _file_indicator_cache_fingerprint(path: Path, label: str) -> str:
+    """Create a cheap file version fingerprint for indicator cache invalidation."""
+    stat = path.stat()
+    payload = f"{path.resolve()}:{stat.st_size}:{stat.st_mtime_ns}"
+    digest = hashlib.md5(payload.encode()).hexdigest()[:12]
+    return f"{label}:{digest}"
+
+
 
 @dataclass
 class Dataset:
@@ -127,6 +135,12 @@ class Dataset:
     #: ``VAULT_STATE_COLUMNS``). ``None`` when the vault price source carries no availability
     #: columns. Used by the backtest pricing model to skip impossible rebalances.
     vault_state: Optional[pd.DataFrame] = None
+
+    #: Extra fingerprint that should invalidate indicator caches.
+    #:
+    #: Used for side-loaded datasets, such as vault price history, whose content can change
+    #: without changing pair ids or the backtest date range.
+    indicator_cache_fingerprint: str | None = None
 
     def __repr__(self):
         return f"<Dataset pairs:{len(self.pairs)} candles:{len(self.candles)} start:{self.start_at} end:{self.end_at} live history period:{self.history_period}>"
@@ -349,7 +363,14 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             case False:
                 cross_chain = f"{separator}ncross"
 
-        key = f"{chain_str}{separator}{time_bucket_str}{separator}{pair_str}{separator}{time_str}{ff}{cross_chain}"
+        data_fingerprint = self.other_data.get("indicator_cache_fingerprint")
+        if data_fingerprint:
+            digest = hashlib.md5(str(data_fingerprint).encode()).hexdigest()[:8]
+            data = f"{separator}d{digest}"
+        else:
+            data = ""
+
+        key = f"{chain_str}{separator}{time_bucket_str}{separator}{pair_str}{separator}{time_str}{ff}{cross_chain}{data}"
         assert len(key) < 256, f"Generated very long fname cache key, check the generation logic: {key}"
         return key
 
@@ -636,13 +657,17 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         new_universe = Universe(
             time_bucket=u.time_bucket,
             chains=u.chains,
-            exchanges=u.exchanges or set(),
+            exchanges=u.exchanges or None,
             exchange_universe=u.exchange_universe,
             pairs=u.pairs,
             candles=u.candles,
             liquidity=u.liquidity,
             resampled_liquidity=u.resampled_liquidity,
             lending_candles=u.lending_candles,
+            forward_filled=u.forward_filled,
+            vault_specs=u.vault_specs,
+            start_hint=u.start_hint,
+            end_hint=u.end_hint,
         )
         return TradingStrategyUniverse(
             data_universe=new_universe,
@@ -651,6 +676,8 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             reserve_assets=self.reserve_assets,
             required_history_period=self.required_history_period,
             vault_history_diagnostics=self.vault_history_diagnostics,
+            vault_state=self.vault_state,
+            other_data=self.other_data.copy(),
         )
 
     def write_pickle(self, path: Path):
@@ -1510,6 +1537,9 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             primary_chain=primary_chain,
             vault_history_diagnostics=dataset.vault_history_diagnostics,
             vault_state=dataset.vault_state,
+            other_data={
+                "indicator_cache_fingerprint": dataset.indicator_cache_fingerprint,
+            } if dataset.indicator_cache_fingerprint else {},
         )
 
     @staticmethod
@@ -2976,6 +3006,7 @@ def load_partial_data(
         # vault history source carries the availability columns. Stays None for sources that do
         # not (e.g. the daily price bundle), in which case backtests treat every vault as open.
         vault_state_df = None
+        indicator_cache_fingerprint = None
 
         if effective_vault_history_source == "bundled":
             assert vaults, "Vaults must be given to load bundled price data"
@@ -2988,6 +3019,7 @@ def load_partial_data(
             else:
                 vault_prices_bundle_path = DEFAULT_VAULT_PRICE_BUNDLE
 
+            indicator_cache_fingerprint = _file_indicator_cache_fingerprint(vault_prices_bundle_path, "vault-bundle")
             vault_prices_df = load_vault_price_data(
                 vault_pairs_df,
                 prices_path=vault_prices_bundle_path,    
@@ -3013,6 +3045,7 @@ def load_partial_data(
                         download_root=vault_history_download_root,
                     )
                 )
+                indicator_cache_fingerprint = _file_indicator_cache_fingerprint(vault_history_parquet_path, "vault-history")
                 filtered_website_vault_prices_df = read_vault_price_history_parquet(
                     vault_history_parquet_path,
                     vault_pairs_df=vault_pairs_df,
@@ -3033,6 +3066,9 @@ def load_partial_data(
                 raw_website_vault_prices_df = client.fetch_vault_price_history(
                     download_root=vault_history_download_root,
                 )
+                min_ts = raw_website_vault_prices_df["timestamp"].min()
+                max_ts = raw_website_vault_prices_df["timestamp"].max()
+                indicator_cache_fingerprint = f"vault-history-dataframe:{len(raw_website_vault_prices_df)}:{min_ts}:{max_ts}"
                 filtered_website_vault_prices_df = filter_vault_price_history(
                     raw_website_vault_prices_df,
                     vault_pairs_df,
@@ -3125,6 +3161,7 @@ def load_partial_data(
             vault_specs=vaults,
             vault_history_diagnostics=vault_history_diagnostics,
             vault_state=vault_state_df,
+            indicator_cache_fingerprint=indicator_cache_fingerprint,
         )
 
 
