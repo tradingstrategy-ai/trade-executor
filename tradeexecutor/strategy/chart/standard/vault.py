@@ -346,6 +346,210 @@ def pending_trigger_queue(input: ChartInput) -> tuple[Figure, pd.DataFrame]:
     return fig, df
 
 
+def _resolve_vault_label(input: ChartInput, vault_internal_id: int) -> dict:
+    """Resolve a queue-event vault id to display metadata."""
+    pair = None
+    strategy_universe = None
+    if input.strategy_input_indicators is not None:
+        strategy_universe = input.strategy_universe
+
+    if strategy_universe is not None:
+        try:
+            pair = strategy_universe.get_pair_by_id(vault_internal_id)
+        except KeyError:
+            pair = None
+
+    if pair is None:
+        return {
+            "Vault id": vault_internal_id,
+            "Vault": f"Vault {vault_internal_id}",
+            "Ticker": str(vault_internal_id),
+            "Protocol": "",
+            "Chain": "",
+        }
+
+    return {
+        "Vault id": vault_internal_id,
+        "Vault": pair.get_vault_name() or pair.get_ticker(),
+        "Ticker": pair.get_ticker(),
+        "Protocol": pair.get_vault_protocol() or "",
+        "Chain": pair.chain_id,
+    }
+
+
+def _build_queue_wait_intervals(input: ChartInput) -> pd.DataFrame:
+    """Build deposit-wait intervals from phase-aware park/promote/close events."""
+    state = input.state
+    if state is None:
+        return pd.DataFrame()
+
+    event_ts = [
+        (pd.Timestamp(e.timestamp), e)
+        for e in iter_all_events(state.other_data)
+        if e.timestamp is not None and e.kind in (EVENT_PARK, EVENT_PROMOTE, EVENT_CLOSE)
+    ]
+    if not event_ts:
+        return pd.DataFrame()
+    event_ts.sort(key=lambda pair: pair[0])
+
+    stats_timestamps = [pd.Timestamp(ps.calculated_at) for ps in state.stats.portfolio if ps.calculated_at is not None]
+    if stats_timestamps:
+        final_ts = max(stats_timestamps)
+    elif input.end_at is not None:
+        final_ts = pd.Timestamp(input.end_at)
+    else:
+        final_ts = max(ts for ts, _event in event_ts)
+
+    open_waits: dict[int, dict] = {}
+    rows = []
+
+    def _accrue(wait: dict, ts: pd.Timestamp) -> None:
+        elapsed_days = max((ts - wait["last_update"]).total_seconds() / 86400, 0.0)
+        wait["usd_days"] += wait["usd"] * elapsed_days
+        wait["last_update"] = ts
+
+    def _close_wait(vault_id: int, end_ts: pd.Timestamp, event_kind: str) -> None:
+        wait = open_waits.pop(vault_id, None)
+        if wait is None:
+            return
+        _accrue(wait, end_ts)
+        duration_days = max((end_ts - wait["started_at"]).total_seconds() / 86400, 0.0)
+        metadata = _resolve_vault_label(input, vault_id)
+        rows.append({
+            **metadata,
+            "Started at": wait["started_at"],
+            "Ended at": end_ts,
+            "Status": "promoted" if event_kind == EVENT_PROMOTE else "closed",
+            "Duration days": duration_days,
+            "Start USD": wait["start_usd"],
+            "End USD": wait["usd"],
+            "Max USD": wait["max_usd"],
+            "USD days": wait["usd_days"],
+            "Updates": wait["updates"],
+        })
+
+    for ts, event in event_ts:
+        vault_id = event.vault_internal_id
+        if event.kind == EVENT_PARK:
+            wait = open_waits.get(vault_id)
+            if wait is None:
+                open_waits[vault_id] = {
+                    "started_at": ts,
+                    "last_update": ts,
+                    "start_usd": event.usd,
+                    "usd": event.usd,
+                    "max_usd": event.usd,
+                    "usd_days": 0.0,
+                    "updates": 1,
+                }
+            else:
+                _accrue(wait, ts)
+                wait["usd"] = event.usd
+                wait["max_usd"] = max(wait["max_usd"], event.usd)
+                wait["updates"] += 1
+        elif event.kind in (EVENT_PROMOTE, EVENT_CLOSE):
+            _close_wait(vault_id, ts, event.kind)
+
+    for vault_id in list(open_waits):
+        wait = open_waits.pop(vault_id)
+        _accrue(wait, final_ts)
+        duration_days = max((final_ts - wait["started_at"]).total_seconds() / 86400, 0.0)
+        metadata = _resolve_vault_label(input, vault_id)
+        rows.append({
+            **metadata,
+            "Started at": wait["started_at"],
+            "Ended at": pd.NaT,
+            "Status": "open",
+            "Duration days": duration_days,
+            "Start USD": wait["start_usd"],
+            "End USD": wait["usd"],
+            "Max USD": wait["max_usd"],
+            "USD days": wait["usd_days"],
+            "Updates": wait["updates"],
+        })
+
+    if not rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(rows)
+    return df.sort_values(["Started at", "Vault id"]).reset_index(drop=True)
+
+
+def phase_aware_queue_duration_summary(input: ChartInput) -> pd.DataFrame:
+    """Average phase-aware queue wait duration by target vault."""
+    intervals = _build_queue_wait_intervals(input)
+    if intervals.empty:
+        return pd.DataFrame()
+
+    group_cols = ["Vault id", "Vault", "Ticker", "Protocol", "Chain"]
+    rows = []
+    for key, group in intervals.groupby(group_cols, dropna=False, sort=False):
+        duration = group["Duration days"]
+        usd_days = group["USD days"].sum()
+        max_usd = group["Max USD"].max()
+        start_usd = group["Start USD"].mean()
+        rows.append({
+            "Vault id": key[0],
+            "Vault": key[1],
+            "Ticker": key[2],
+            "Protocol": key[3],
+            "Chain": key[4],
+            "Episodes": len(group),
+            "Promoted": int((group["Status"] == "promoted").sum()),
+            "Closed": int((group["Status"] == "closed").sum()),
+            "Open": int((group["Status"] == "open").sum()),
+            "Average wait days": duration.mean(),
+            "Median wait days": duration.median(),
+            "Max wait days": duration.max(),
+            "Average start USD": start_usd,
+            "Max queued USD": max_usd,
+            "USD days": usd_days,
+        })
+
+    df = pd.DataFrame(rows)
+    return df.sort_values(["USD days", "Average wait days"], ascending=[False, False]).reset_index(drop=True)
+
+
+def phase_aware_queue_duration(input: ChartInput) -> tuple[Figure, pd.DataFrame]:
+    """Average phase-aware queue wait duration by target vault."""
+    df = phase_aware_queue_duration_summary(input)
+    if df.empty:
+        fig = Figure()
+        fig.update_layout(
+            title="Phase-aware queue wait duration by target vault",
+            xaxis_title="Average wait days",
+            yaxis_title="Target vault",
+            template="plotly_dark",
+        )
+        return fig, df
+
+    fig = px.bar(
+        df.sort_values("Average wait days", ascending=True),
+        x="Average wait days",
+        y="Vault",
+        orientation="h",
+        color="Status" if "Status" in df.columns else "Protocol",
+        title="Average phase-aware queue wait duration by target vault",
+        labels={
+            "Average wait days": "Average wait days",
+            "Vault": "Target vault",
+            "Protocol": "Protocol",
+        },
+        hover_data={
+            "Episodes": True,
+            "Promoted": True,
+            "Closed": True,
+            "Open": True,
+            "Max wait days": ":.2f",
+            "USD days": ":,.2f",
+            "Max queued USD": ":$,.2f",
+        },
+        template="plotly_dark",
+    )
+    fig.update_layout(yaxis={"categoryorder": "total ascending"})
+    return fig, df
+
+
 def vault_data_freshness(input: ChartInput) -> pd.DataFrame:
     """Data freshness timestamps for all vault pairs showing candle and TVL staleness.
 
