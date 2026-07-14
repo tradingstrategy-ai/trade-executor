@@ -196,6 +196,11 @@ claude ultrareview master --timeout 15
 
 For long-running `claude -p` jobs, prefer `--output-format stream-json --verbose`. Text mode can look idle because useful output may be buffered until the final answer.
 
+Use a 15-minute wall-clock deadline for an external-agent process, including
+Claude CLI and Codex CLI (for example, `timeout 900 claude -p ...`). This gives
+a legitimate review enough time to inspect the worktree; it does not override
+the separate one-minute no-output rule for a grounded Claude review.
+
 If a broad review stalls, first verify that basic non-interactive mode and
 read-only Bash tools work before assuming auth is broken:
 
