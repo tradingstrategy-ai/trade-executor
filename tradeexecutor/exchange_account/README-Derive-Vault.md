@@ -337,7 +337,7 @@ See Derive documentation [Depositing collateral assets](https://docs.derive.xyz/
 **Bridge steps:**
 1. From the wallet account that you're bridging USDC from, approve the amount you want to bridge on [USDC contract](https://arbiscan.io/token/0xaf88d065e77c8cc2239327c5edb3a432268e5831#writeProxyContract) with the bridge address as spender. Bridge address: `0x5e027ad442e031424b5a2c0ad6f656662be32882`
 
-2. Use the [bridge contract](https://arbiscan.io/address/0x5e027ad442e031424b5a2c0ad6f656662be32882#readContract#F5) `getMinFees` to get the estimated bridge price. Enter the above connector address and `100000` for gas limit.
+2. Use the [bridge contract](https://arbiscan.io/address/0x5e027ad442e031424b5a2c0ad6f656662be32882#readContract#F5) `getMinFees` to get the estimated bridge price. Enter the above connector address 0x17Fc4c7ea8267044b6D0ACC17a6C049Bed6F8B21 nd `100000` for gas limit.
 3. Use the [bridge contract](https://arbiscan.io/address/0x5e027ad442e031424b5a2c0ad6f656662be32882#writeContract#F2) `depositToAppChain` bridge the asset:
    - `payableAmount`: [convert](https://arbiscan.io/unitconverter) the amount from step 2 to ether: `0.0000025269`
    - `receiver`: address you're bridging to (same as address you're bridging from): ``
@@ -449,3 +449,16 @@ Now you can move the USDC from the vault's safe wallet to the subaccount for tra
 - The "Positions" tab in the bottom pane should now display the open position
 
 **Congratulations 🎉**
+
+# Lyra mainnet
+
+1. Add Lyra chain your wallet: https://chainlist.org/chain/957
+
+2. Add Socket bridged USDC on Lyra to your wallet: https://explorer.derive.xyz/token/0x6879287835A86F50f784313dBEd5E5cCC5bb8481 (click Metamask icon)
+
+3. You need ETH on your Derive account, use bridgeETH function https://etherscan.io/address/0x61e44dc0dae6888b5a301887732217d5725b0bff#writeProxyContract
+
+
+
+
+

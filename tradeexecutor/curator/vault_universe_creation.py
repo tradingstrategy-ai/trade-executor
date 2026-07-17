@@ -196,6 +196,20 @@ def parse_vault(
     )
 
 
+def is_subvault(v: VaultInfo) -> bool:
+    """Check whether a vault is a non-depositable sub-vault.
+
+    ``subvault`` is the explicit dataset flag.  Older Yearn records were
+    published before the flag was backfilled, but their non-depositable
+    wrappers consistently have a ``Compounder`` name suffix.
+    """
+    normalised_flags = {
+        str(flag).casefold().replace("-", "").replace("_", "").replace(" ", "")
+        for flag in v.flags
+    }
+    return "subvault" in normalised_flags or v.name.rstrip().casefold().endswith("compounder")
+
+
 def filter_vault(
     v: VaultInfo,
     min_tvl: float,
@@ -212,6 +226,10 @@ def filter_vault(
     use_peak_tvl: bool = False,
 ) -> tuple[bool, str]:
     """Check if a vault passes filters. Returns ``(passes, reason)``."""
+    # Never let the inclusion overrides admit a non-depositable sub-vault.
+    if is_subvault(v):
+        return False, f"subvault={v.name}"
+
     if v.must_include:
         return True, "must_include"
 
@@ -228,9 +246,6 @@ def filter_vault(
     matched_morpho_flags = get_morpho_vault_flags(v, morpho_vault_flag_filter)
     if matched_morpho_flags:
         return False, f"morpho_flags={format_morpho_flag_reason(matched_morpho_flags)}"
-
-    if "Compounder" in v.name:
-        return False, f"name_compounder={v.name}"
 
     if require_known_protocol and (not v.protocol_slug or "<" in v.protocol_slug or "not-yet-identified" in v.protocol_slug):
         return False, f"unknown_protocol={v.protocol_slug!r}"

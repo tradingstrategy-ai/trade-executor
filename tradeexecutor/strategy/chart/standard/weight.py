@@ -22,7 +22,7 @@ YIELD_MANAGER_RESERVE_COLOUR = "#666"
 def _get_queue_asset_label(pair) -> str:
     """Legend label for a YieldManager venue in asset allocation charts."""
     venue_name = pair.get_chart_label() or pair.get_ticker()
-    return f"{venue_name} queue"
+    return f"{venue_name} [queue]"
 
 
 def _calculate_and_cache_weights(input: ChartInput) -> pd.Series:

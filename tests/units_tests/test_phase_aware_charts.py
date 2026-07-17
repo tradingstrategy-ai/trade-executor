@@ -253,7 +253,7 @@ def test_equity_curve_by_asset_relabels_queue_venues_by_position_id():
     1. Build one non-queue vault with the same chart label as a queue venue.
     2. Build another queue venue whose vault has no ``vault_name`` metadata.
     3. Render equity_curve_by_asset and assert the same-label directional value is not repainted
-       as queue, while the missing-label venue falls back to ticker + ``" queue"`` instead of
+       as queue, while the missing-label venue falls back to ticker + ``" [queue]"`` instead of
        disappearing from the grouped series.
     """
     timestamp = datetime.datetime(2024, 1, 1)
@@ -291,6 +291,6 @@ def test_equity_curve_by_asset_relabels_queue_venues_by_position_id():
     fig = equity_curve_by_asset(ChartInput(execution_context=unit_test_execution_context, state=state))
     trace_values = {trace.name: list(trace.y) for trace in fig.data}
     assert trace_values["Steakhouse USDC"] == pytest.approx([70.0])
-    assert trace_values["Steakhouse USDC queue"] == pytest.approx([120.0])
-    assert trace_values["VLT-USDC queue"] == pytest.approx([50.0])
+    assert trace_values["Steakhouse USDC [queue]"] == pytest.approx([120.0])
+    assert trace_values["VLT-USDC [queue]"] == pytest.approx([50.0])
     assert trace_values["USDC"] == pytest.approx([30.0])
