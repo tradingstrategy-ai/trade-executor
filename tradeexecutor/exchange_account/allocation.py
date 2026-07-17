@@ -116,7 +116,16 @@ def get_redeemable_capital(
         return 0.0
 
     if hasattr(position, "get_available_trading_quantity"):
-        return float(position.get_available_trading_quantity())
+        # ``get_available_trading_quantity()`` returns a *token quantity* (the
+        # number of vault share units still available to trade, i.e. current
+        # holdings minus any in-flight redemption requests), not a USD amount.
+        # This function must return dollars, so value that quantity at the
+        # position's last marked share price. Returning the raw quantity
+        # inflated redeemable capital by the share-price factor for every vault
+        # whose share price is not 1.0 (e.g. a 148k USD portfolio reported
+        # hundreds of millions of "redeemable USD").
+        available_quantity = float(position.get_available_trading_quantity())
+        return available_quantity * position.get_current_price()
 
     return position.get_value()
 
