@@ -1,0 +1,796 @@
+"""Hyperliquid vault of vaults strategy - positive-Sharpe gate release candidate (v2).
+
+Based on ``16-backtest-positive-sharpe-gate-age-ramp-0875y-20asset-20pct-100k-poolcap20pct.ipynb`` notebook.
+
+Successor to ``hyper-ai.py``. This variant gates vault admission on a positive
+trailing 180-day Sharpe ratio before ranking and allocating survivors with a
+0.875-year age ramp, daily rebalancing, and redemption-aware target sizing.
+The per-pool capacity ceiling and TVL/age inclusion floors are tuned for a
+100,000 USD deployment with a 20% pool-TVL cap.
+
+Backtest results (2025-08-02 to 2026-07-09)
+===========================================
+
+Last backtest run: 2026-07-17
+
+==================  ==========  ==========  ==========
+Metric              Strategy    BTC         ETH
+==================  ==========  ==========  ==========
+Start Period        2025-08-02  2025-08-02  2025-08-02
+End Period          2026-07-09  2026-07-09  2026-07-09
+Risk-Free Rate      0.0%        0.0%        0.0%
+Time in Market      68.0%       99.0%       99.0%
+Cumulative Return   53.33%      -44.48%     -51.67%
+CAGR %              58.01%      -46.73%     -54.08%
+Sharpe              2.62        -1.21       -0.83
+Prob. Sharpe Ratio  99.93%      11.99%      21.14%
+Smart Sharpe        2.57        -1.19       -0.82
+Sortino             5.96        -1.61       -1.17
+Smart Sortino       5.85        -1.58       -1.14
+Sortino/√2          4.21        -1.14       -0.82
+Smart Sortino/√2    4.14        -1.11       -0.81
+Omega               1.88        1.88        1.88
+Max Drawdown        -7.17%      -53.23%     -67.6%
+==================  ==========  ==========  ==========
+"""
+
+#
+# Imports
+#
+
+import datetime
+import logging
+import re
+
+import pandas as pd
+from eth_defi.token import USDC_NATIVE_TOKEN
+from plotly.graph_objects import Figure
+from tradingstrategy.chain import ChainId
+from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.utils.forward_fill import forward_fill
+from tradingstrategy.utils.token_filter import filter_for_selected_pairs
+
+from tradeexecutor.curator import (build_hyperliquid_vault_universe,
+                                   is_quarantined)
+from tradeexecutor.exchange_account.allocation import (
+    calculate_portfolio_target_value, get_redeemable_portfolio_capital)
+from tradeexecutor.state.identifier import (AssetIdentifier,
+                                            TradingPairIdentifier)
+from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.strategy.alpha_model import AlphaModel
+from tradeexecutor.strategy.chart.definition import (ChartInput, ChartKind,
+                                                     ChartRegistry)
+from tradeexecutor.strategy.chart.standard.alpha_model import (
+    alpha_model_diagnostics, skipped_signals)
+from tradeexecutor.strategy.chart.standard.equity_curve import \
+    equity_curve as equity_curve_chart
+from tradeexecutor.strategy.chart.standard.equity_curve import \
+    equity_curve_with_drawdown
+from tradeexecutor.strategy.chart.standard.interest import vault_statistics
+from tradeexecutor.strategy.chart.standard.performance_metrics import \
+    performance_metrics
+from tradeexecutor.strategy.chart.standard.position import positions_at_end
+from tradeexecutor.strategy.chart.standard.profit_breakdown import \
+    trading_pair_breakdown
+from tradeexecutor.strategy.chart.standard.thinking import last_messages
+from tradeexecutor.strategy.chart.standard.trading_metrics import \
+    trading_metrics
+from tradeexecutor.strategy.chart.standard.trading_universe import (
+    available_trading_pairs, inclusion_criteria_check)
+from tradeexecutor.strategy.chart.standard.vault import all_vault_positions
+from tradeexecutor.strategy.chart.standard.weight import (
+    equity_curve_by_asset, equity_curve_by_chain, weight_allocation_statistics)
+from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.default_routing_options import TradeRouting
+from tradeexecutor.strategy.execution_context import (ExecutionContext,
+                                                      ExecutionMode)
+from tradeexecutor.strategy.pandas_trader.indicator import (
+    IndicatorDependencyResolver, IndicatorSource)
+from tradeexecutor.strategy.pandas_trader.indicator_decorator import \
+    IndicatorRegistry
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.pandas_trader.trading_universe_input import \
+    CreateTradingUniverseInput
+from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.tag import StrategyTag
+from tradeexecutor.strategy.trading_strategy_universe import (
+    TradingStrategyUniverse, load_partial_data,
+    load_vault_universe_with_metadata)
+from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
+from tradeexecutor.strategy.universe_model import UniverseOptions
+from tradeexecutor.strategy.weighting import weight_passthrouh
+from tradeexecutor.utils.dedent import dedent_any
+
+logger = logging.getLogger(__name__)
+
+
+#
+# Trading universe constants
+#
+
+trading_strategy_engine_version = "0.5"
+
+CHAIN_ID = ChainId.hyperliquid
+
+EXCHANGES = ("uniswap-v2", "uniswap-v3")
+
+SUPPORTING_PAIRS = [
+    (ChainId.arbitrum, "uniswap-v3", "WETH", "USDC", 0.0005),
+    (ChainId.ethereum, "uniswap-v3", "WETH", "USDC", 0.0005),
+    (ChainId.ethereum, "uniswap-v3", "WBTC", "USDC", 0.003),
+]
+
+LENDING_RESERVES = None
+
+PREFERRED_STABLECOIN = AssetIdentifier(
+    chain_id=ChainId.hyperliquid.value,
+    address=USDC_NATIVE_TOKEN[ChainId.hyperliquid].lower(),
+    token_symbol="USDC",
+    decimals=6,
+)
+
+ALLOWED_VAULT_DENOMINATION_TOKENS = {"USDC", "USDT", "USDC.e", "crvUSD", "USDT0", "USD₮0", "USDt", "USDS"}
+
+BENCHMARK_PAIRS = SUPPORTING_PAIRS
+
+#
+# Strategy parameters
+#
+
+
+class Parameters:
+    #: Strategy module identifier for the positive-Sharpe gate release candidate.
+    id = "hyper-ai-v2"
+
+    candle_time_bucket = TimeBucket.d1
+    cycle_duration = CycleDuration.cycle_1d
+    chain_id = CHAIN_ID
+    primary_chain_id = CHAIN_ID
+    exchanges = EXCHANGES
+
+    #: Fixed controls from the sampled stronger-deployment optimiser candidate.
+    max_assets_in_portfolio = 20
+    allocation_pct = 0.98
+    max_concentration_pct = 0.20
+    #: Raise the per-vault capacity ceiling to test 100,000 USD deployment.
+    per_position_cap_of_pool_pct = 0.20
+    min_portfolio_weight_pct = 0.005
+
+    absolute_min_vault_deposit_usd = 5.0
+    individual_rebalance_min_threshold_of_initial_cash_pct = 0.0005
+    sell_rebalance_min_threshold_of_initial_cash_pct = 0.0001
+
+    min_tvl_usd = 7_500
+    #: Require roughly 46 days of vault history before the Sharpe gate can admit it.
+    min_age = 0.125
+    weight_signal = "positive_180d_sharpe_gate_then_age_ramp"
+    age_ramp_period = 0.875
+    sharpe_lookback_days = 180
+
+    backtest_start = datetime.datetime(2025, 8, 1)
+    backtest_end = datetime.datetime(2026, 7, 10)
+    initial_cash = 100_000
+    individual_rebalance_min_threshold_usd = max(
+        absolute_min_vault_deposit_usd,
+        initial_cash * individual_rebalance_min_threshold_of_initial_cash_pct,
+    )
+    sell_rebalance_min_threshold_usd = max(
+        absolute_min_vault_deposit_usd,
+        initial_cash * sell_rebalance_min_threshold_of_initial_cash_pct,
+    )
+
+    routing = TradeRouting.default
+    #: Set deliberately high so live and notebook indicator calculations use effectively all available history.
+    #: ``age()``, ``rolling_sharpe()`` (180-day lookback), and other history-derived indicators depend on the
+    #: first available data point and would be silently biased by a truncated lookback window.
+    required_history_period = datetime.timedelta(days=365 * 20)
+    slippage_tolerance_pct = 0.0060
+    assummed_liquidity_when_data_missings_usd = 0.01
+
+
+#
+# Universe creation
+#
+
+
+def create_trading_universe(
+    input: CreateTradingUniverseInput,
+) -> TradingStrategyUniverse:
+    """Create the trading universe.
+
+    Keep the backtest trading window fixed to ``Parameters.backtest_start`` /
+    ``Parameters.backtest_end``, but let ``required_history_period`` extend the
+    data-loading window backwards so age and other history-derived indicators
+    can see the full pre-backtest history for the selected vaults.
+    """
+    execution_context = input.execution_context
+    client = input.client
+    timestamp = input.timestamp
+    parameters = input.parameters or Parameters
+    universe_options = input.universe_options
+
+    debug_printer = logger.info if execution_context.live_trading else print
+
+    chain_id = parameters.primary_chain_id
+
+    # Supporting benchmark pairs live on Uniswap on Ethereum and Arbitrum.
+    # We only need them for backtest benchmarking and research visualisations.
+    # In live-style runs such as trade execution, one-off diagnostics, and
+    # Lagoon deployment, we do not trade these pairs at all.
+    # Loading them anyway makes the universe look multichain to later routing
+    # and deployment code, even though the executable strategy is Hyperliquid
+    # vault-only on HyperEVM.
+    # That false multichain signal is what caused Lagoon deployment to demand
+    # an Ethereum Web3 connection for a Hyperliquid-only deployment.
+    if execution_context.live_trading:
+        supporting_pairs = []
+    else:
+        supporting_pairs = SUPPORTING_PAIRS
+
+    debug_printer(f"Preparing trading universe on chain {chain_id.get_name()}")
+
+    all_pairs_df = client.fetch_pair_universe().to_pandas()
+    # Filter the benchmark pairs only when we are in backtesting / research.
+    # In live paths this intentionally becomes an empty frame, because the
+    # strategy obtains its real tradeable instruments from the vault universe
+    # loaded below, not from spot benchmark pairs.
+    pairs_df = filter_for_selected_pairs(all_pairs_df, supporting_pairs)
+    debug_printer(f"We have total {len(all_pairs_df)} pairs in dataset and going to use {len(pairs_df)} pairs for the strategy")
+
+    source_vaults = build_hyperliquid_vault_universe(
+        min_tvl=parameters.min_tvl_usd,
+        min_age=0.0,
+    )
+    vault_universe = load_vault_universe_with_metadata(
+        client,
+        vaults=source_vaults,
+        check_all_vaults_found=False,
+    )
+    metadata_vault_specs = {
+        (ChainId(vault.chain_id), vault.vault_address.lower())
+        for vault in vault_universe.iterate_vaults()
+    }
+    missing_source_vaults = [
+        (chain_id, address)
+        for chain_id, address in source_vaults
+        if (chain_id, address.lower()) not in metadata_vault_specs
+    ]
+    if missing_source_vaults:
+        missing_vault_list = ", ".join(f"{chain_id.value}:{address}" for chain_id, address in missing_source_vaults)
+        debug_printer(f"Skipped {len(missing_source_vaults)} Hypercore vaults missing from remote vault metadata: {missing_vault_list}")
+    vault_universe = vault_universe.limit_to_denomination(ALLOWED_VAULT_DENOMINATION_TOKENS, check_all_vaults_found=True)
+    debug_printer(f"Loaded {vault_universe.get_vault_count()} vaults from remote vault metadata, source vaults count: {len(source_vaults)}")
+
+    # `load_partial_data()` now honours `required_history_period` in backtests
+    # as a loader-window extension instead of clipping history to the trading window.
+    dataset = load_partial_data(
+        client=client,
+        time_bucket=parameters.candle_time_bucket,
+        pairs=pairs_df,
+        execution_context=execution_context,
+        universe_options=universe_options,
+        liquidity=True,
+        liquidity_time_bucket=TimeBucket.d1,
+        lending_reserves=LENDING_RESERVES,
+        vaults=vault_universe,
+        vault_history_source="trading-strategy-website",
+        check_all_vaults_found=True,
+    )
+
+    return TradingStrategyUniverse.create_from_dataset(
+        dataset,
+        reserve_asset=PREFERRED_STABLECOIN,
+        forward_fill=True,
+        forward_fill_until=timestamp,
+        primary_chain=parameters.primary_chain_id,
+    )
+
+
+def _get_available_supporting_pair_ids(
+    strategy_universe: TradingStrategyUniverse,
+) -> set[int]:
+    """Return supporting pair ids that are actually present in the universe."""
+    pair_ids = set()
+
+    # Live universes intentionally skip SUPPORTING_PAIRS above.
+    # Because of that, any later benchmark lookup must tolerate the pairs being
+    # absent instead of crashing.
+    # We resolve only the pairs that are really present, so both backtest and
+    # live code paths can share the same indicator helpers safely.
+    #
+    # get_pair_by_human_description() raises:
+    # - KeyError when the pair itself is missing from the universe
+    # - RuntimeError when the exchange (e.g. uniswap-v3) is not in the universe at all
+    for desc in SUPPORTING_PAIRS:
+        try:
+            pair_ids.add(strategy_universe.get_pair_by_human_description(desc).internal_id)
+        except (KeyError, RuntimeError):
+            continue
+    return pair_ids
+
+
+#
+# Strategy logic
+#
+
+
+def decide_trades(input: StrategyInput) -> list[TradeExecution]:
+    """Gate on positive trailing Sharpe, then rank and allocate by a 0.875-year age ramp."""
+    parameters = input.parameters
+    position_manager = input.get_position_manager()
+    state = input.state
+    timestamp = input.timestamp
+    indicators = input.indicators
+    strategy_universe = input.strategy_universe
+
+    portfolio = position_manager.get_current_portfolio()
+    equity = portfolio.get_total_equity()
+    if input.execution_context.mode == ExecutionMode.backtesting and equity < parameters.initial_cash * 0.10:
+        return []
+
+    tvl_included_pair_count = indicators.get_indicator_value("tvl_included_pair_count")
+    included_pairs = indicators.get_indicator_value("inclusion_criteria", na_conversion=False)
+    included_pairs = [] if included_pairs is None else list(included_pairs)
+
+    gated_candidates = []
+    for pair_id in included_pairs:
+        pair = strategy_universe.get_pair_by_id(pair_id)
+        if not state.is_good_pair(pair) or is_quarantined(pair.pool_address, timestamp):
+            continue
+        trailing_sharpe = indicators.get_indicator_value("rolling_sharpe", pair=pair)
+        try:
+            trailing_sharpe = float(trailing_sharpe)
+        except (TypeError, ValueError):
+            continue
+        if not trailing_sharpe > 0.0:
+            continue
+        age_ramp_weight = indicators.get_indicator_value("age_ramp_weight", pair=pair)
+        try:
+            age_ramp_weight = max(float(age_ramp_weight), 0.05)
+        except (TypeError, ValueError):
+            age_ramp_weight = 0.05
+        gated_candidates.append((pair_id, pair, age_ramp_weight))
+
+    gated_candidates.sort(key=lambda item: (-item[2], item[0]))
+    selected_candidates = gated_candidates[:parameters.max_assets_in_portfolio]
+
+    alpha_model = AlphaModel(
+        timestamp,
+        close_position_weight_epsilon=parameters.min_portfolio_weight_pct,
+    )
+    for _pair_id, pair, age_ramp_weight in selected_candidates:
+        alpha_model.set_signal(pair, max(age_ramp_weight, 1e-12))
+
+    redeemable_capital = get_redeemable_portfolio_capital(position_manager)
+    portfolio_target_value = calculate_portfolio_target_value(
+        position_manager,
+        parameters.allocation_pct,
+    )
+
+    alpha_model.select_top_signals(count=len(selected_candidates))
+    alpha_model.assign_weights(method=weight_passthrouh)
+    size_risk_model = USDTVLSizeRiskModel(
+        pricing_model=input.pricing_model,
+        per_position_cap=parameters.per_position_cap_of_pool_pct,
+    )
+    alpha_model.normalise_weights(
+        investable_equity=portfolio_target_value,
+        size_risk_model=size_risk_model,
+        max_weight=parameters.max_concentration_pct,
+        max_positions=parameters.max_assets_in_portfolio,
+        waterfall=False,
+    )
+    alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
+    alpha_model.calculate_target_positions(position_manager)
+    trades = alpha_model.generate_rebalance_trades_and_triggers(
+        position_manager,
+        min_trade_threshold=parameters.individual_rebalance_min_threshold_usd,
+        individual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
+        sell_rebalance_min_threshold=parameters.sell_rebalance_min_threshold_usd,
+        execution_context=input.execution_context,
+    )
+    state.visualisation.add_calculations(
+        timestamp,
+        {"unallocatable_signals": alpha_model.get_unallocatable_signals()},
+    )
+
+    if input.is_visualisation_enabled():
+        try:
+            top_signal = next(iter(alpha_model.get_signals_sorted_by_weight()))
+            if top_signal.normalised_weight == 0:
+                top_signal = None
+        except StopIteration:
+            top_signal = None
+
+        rebalance_volume = sum(trade.get_value() for trade in trades)
+        report = dedent_any(
+            f"""
+            Cycle: #{input.cycle}
+            Rebalanced: {'👍' if alpha_model.is_rebalance_triggered() else '👎'}
+            Open/about to open positions: {len(state.portfolio.open_positions)}
+            Max position value change: {alpha_model.max_position_adjust_usd:,.2f} USD
+            Rebalance threshold: {alpha_model.position_adjust_threshold_usd:,.2f} USD
+            Trades decided: {len(trades)}
+            Pairs meeting inclusion criteria: {len(included_pairs)}
+            Pairs meeting TVL inclusion criteria: {tvl_included_pair_count}
+            Positive trailing-Sharpe gate survivors: {len(gated_candidates)}
+            Candidate signals created: {len(gated_candidates)}
+            Selected survivor signals: {len(alpha_model.signals)}
+            Weight signal: {parameters.weight_signal}
+            Trailing Sharpe lookback: {parameters.sharpe_lookback_days} days
+            Age ramp period: {parameters.age_ramp_period}
+            Total equity: {portfolio.get_total_equity():,.2f} USD
+            Cash: {position_manager.get_current_cash():,.2f} USD
+            Redeemable capital: {redeemable_capital:,.2f} USD
+            Pending redemptions: {position_manager.get_pending_redemptions():,.2f} USD
+            Investable equity: {alpha_model.investable_equity:,.2f} USD
+            Accepted investable equity: {alpha_model.accepted_investable_equity:,.2f} USD
+            Allocated to signals: {alpha_model.get_allocated_value():,.2f} USD
+            Discarded allocation because of lack of lit liquidity: {alpha_model.size_risk_discarded_value:,.2f} USD
+            Rebalance volume: {rebalance_volume:,.2f} USD
+            """
+        )
+
+        if top_signal:
+            assert top_signal.position_size_risk
+            report += dedent_any(
+                f"""
+                Top signal pair: {top_signal.pair.get_ticker()}
+                Top signal value: {top_signal.signal}
+                Top signal weight: {top_signal.raw_weight}
+                Top signal weight (normalised): {top_signal.normalised_weight * 100:.2f} % (got {top_signal.position_size_risk.get_relative_capped_amount() * 100:.2f} % of asked size)
+                """
+            )
+
+        for flag, count in alpha_model.get_flag_diagnostics_data().items():
+            report += f"Signals with flag {flag.name}: {count}" + "\n"
+
+        state.visualisation.add_message(timestamp, report)
+        state.visualisation.set_discardable_data("alpha_model", alpha_model)
+
+    return trades
+
+
+#
+# Indicators
+#
+
+indicators = IndicatorRegistry()
+
+
+@indicators.define(source=IndicatorSource.tvl)
+def tvl(
+    close: pd.Series,
+    execution_context: ExecutionContext,
+    timestamp: pd.Timestamp,
+) -> pd.Series:
+    if execution_context.live_trading:
+        df = pd.DataFrame({"close": close})
+        df_ff = forward_fill(
+            df,
+            Parameters.candle_time_bucket.to_frequency(),
+            columns=("close",),
+            forward_fill_until=timestamp,
+        )
+        return df_ff["close"]
+
+    return close.resample("1h").ffill()
+
+
+@indicators.define()
+def age(close: pd.Series) -> pd.Series:
+    inception = close.index[0]
+    age_years = (close.index - inception) / pd.Timedelta(days=365.25)
+    return pd.Series(age_years, index=close.index)
+
+
+@indicators.define(dependencies=(tvl,), source=IndicatorSource.dependencies_only_universe)
+def tvl_inclusion_criteria(
+    min_tvl_usd: USDollarAmount,
+    dependency_resolver: IndicatorDependencyResolver,
+) -> pd.Series:
+    series = dependency_resolver.get_indicator_data_pairs_combined(tvl)
+    mask = series >= min_tvl_usd
+    mask_true_values_only = mask[mask]
+    return mask_true_values_only.groupby(level="timestamp").apply(
+        lambda x: x.index.get_level_values("pair_id").tolist()
+    )
+
+
+@indicators.define(dependencies=(age,), source=IndicatorSource.dependencies_only_universe)
+def age_inclusion_criteria(
+    min_age: float,
+    dependency_resolver: IndicatorDependencyResolver,
+) -> pd.Series:
+    series = dependency_resolver.get_indicator_data_pairs_combined(age)
+    mask = series >= min_age
+    mask_true_values_only = mask[mask]
+    return mask_true_values_only.groupby(level="timestamp").apply(
+        lambda x: x.index.get_level_values("pair_id").tolist()
+    )
+
+
+@indicators.define(source=IndicatorSource.strategy_universe)
+def trading_availability_criteria(
+    strategy_universe: TradingStrategyUniverse,
+) -> pd.Series:
+    candle_series = strategy_universe.data_universe.candles.df["open"]
+    return candle_series.groupby(level="timestamp").apply(
+        lambda x: x.index.get_level_values("pair_id").tolist()
+    )
+
+
+@indicators.define(
+    dependencies=[
+        tvl_inclusion_criteria,
+        trading_availability_criteria,
+        age_inclusion_criteria,
+    ],
+    source=IndicatorSource.strategy_universe,
+)
+def inclusion_criteria(
+    strategy_universe: TradingStrategyUniverse,
+    min_tvl_usd: USDollarAmount,
+    min_age: float,
+    dependency_resolver: IndicatorDependencyResolver,
+) -> pd.Series:
+    # Supporting benchmark pairs are for comparison charts only.
+    # They must never compete with real vaults for allocation decisions.
+    # In live mode they are not loaded at all, so we resolve them defensively.
+    benchmark_pair_ids = _get_available_supporting_pair_ids(strategy_universe)
+
+    tvl_series = dependency_resolver.get_indicator_data(
+        tvl_inclusion_criteria,
+        parameters={"min_tvl_usd": min_tvl_usd},
+    )
+    trading_availability_series = dependency_resolver.get_indicator_data(trading_availability_criteria)
+    age_series = dependency_resolver.get_indicator_data(
+        age_inclusion_criteria,
+        parameters={"min_age": min_age},
+    )
+
+    df = pd.DataFrame(
+        {
+            "tvl_pair_ids": tvl_series,
+            "trading_availability_pair_ids": trading_availability_series,
+            "age_pair_ids": age_series,
+        }
+    )
+    df = df.fillna("").apply(list)
+
+    def _combine(row):
+        final_set = (
+            set(row["tvl_pair_ids"])
+            & set(row["trading_availability_pair_ids"])
+            & set(row["age_pair_ids"])
+        )
+        return final_set - benchmark_pair_ids
+
+    union_criteria = df.apply(_combine, axis=1)
+    full_index = pd.date_range(
+        start=union_criteria.index.min(),
+        end=union_criteria.index.max(),
+        freq=Parameters.candle_time_bucket.to_frequency(),
+    )
+    return union_criteria.reindex(full_index, fill_value=[])
+
+
+@indicators.define()
+def daily_return(close: pd.Series) -> pd.Series:
+    return close.resample("1D").last().pct_change(fill_method=None)
+
+
+@indicators.define(dependencies=(daily_return,), source=IndicatorSource.dependencies_only_per_pair)
+def rolling_sharpe(
+    pair: TradingPairIdentifier,
+    dependency_resolver: IndicatorDependencyResolver,
+    sharpe_lookback_days: int = 180,
+) -> pd.Series:
+    """Annualised trailing Sharpe, available after 14 valid daily returns."""
+    returns = dependency_resolver.get_indicator_data("daily_return", pair=pair)
+    lookback_days = int(sharpe_lookback_days)
+    mean = returns.rolling(lookback_days, min_periods=14).mean() * 365.0
+    volatility = returns.rolling(lookback_days, min_periods=14).std() * (365.0 ** 0.5)
+    return mean / volatility.replace(0.0, float("nan"))
+
+
+@indicators.define(dependencies=(age,), source=IndicatorSource.dependencies_only_per_pair)
+def age_ramp_weight(
+    pair: TradingPairIdentifier,
+    dependency_resolver: IndicatorDependencyResolver,
+    age_ramp_period: float = 1.0,
+) -> pd.Series:
+    vault_age = dependency_resolver.get_indicator_data("age", pair=pair)
+    return (vault_age / age_ramp_period).clip(upper=1.0).clip(lower=0.05)
+
+
+@indicators.define(dependencies=(inclusion_criteria,), source=IndicatorSource.dependencies_only_universe)
+def all_criteria_included_pair_count(
+    min_tvl_usd: USDollarAmount,
+    min_age: float,
+    dependency_resolver: IndicatorDependencyResolver,
+) -> pd.Series:
+    series = dependency_resolver.get_indicator_data(
+        "inclusion_criteria",
+        parameters={
+            "min_tvl_usd": min_tvl_usd,
+            "min_age": min_age,
+        },
+    )
+    return series.apply(len)
+
+
+@indicators.define(dependencies=(tvl_inclusion_criteria,), source=IndicatorSource.dependencies_only_universe)
+def tvl_included_pair_count(
+    min_tvl_usd: USDollarAmount,
+    dependency_resolver: IndicatorDependencyResolver,
+) -> pd.Series:
+    series = dependency_resolver.get_indicator_data(
+        "tvl_inclusion_criteria",
+        parameters={
+            "min_tvl_usd": min_tvl_usd,
+        },
+    )
+    return series.apply(len)
+
+
+@indicators.define(dependencies=(age_inclusion_criteria,), source=IndicatorSource.dependencies_only_universe)
+def age_included_pair_count(
+    min_age: float,
+    dependency_resolver: IndicatorDependencyResolver,
+) -> pd.Series:
+    series = dependency_resolver.get_indicator_data(
+        "age_inclusion_criteria",
+        parameters={
+            "min_age": min_age,
+        },
+    )
+    return series.apply(len)
+
+
+@indicators.define(source=IndicatorSource.strategy_universe)
+def trading_pair_count(
+    strategy_universe: TradingStrategyUniverse,
+) -> pd.Series:
+    # Exclude benchmark-only pairs from the cumulative tradeable pair count.
+    # This lookup must also work in live mode where the supporting pairs are
+    # intentionally absent from the universe.
+    benchmark_pair_ids = _get_available_supporting_pair_ids(strategy_universe)
+    series = strategy_universe.data_universe.candles.df["open"]
+    swap_index = series.index.swaplevel(0, 1)
+
+    seen_pairs = set()
+    seen_data = {}
+    for timestamp, pair_id in swap_index:
+        if pair_id in benchmark_pair_ids:
+            continue
+        seen_pairs.add(pair_id)
+        seen_data[timestamp] = len(seen_pairs)
+
+    return pd.Series(seen_data.values(), index=list(seen_data.keys()))
+
+
+def create_indicators(
+    timestamp: datetime.datetime | None,
+    parameters: StrategyParameters,
+    strategy_universe: TradingStrategyUniverse,
+    execution_context: ExecutionContext,
+):
+    """Create indicators for the strategy."""
+    return indicators.create_indicators(
+        timestamp=timestamp,
+        parameters=parameters,
+        strategy_universe=strategy_universe,
+        execution_context=execution_context,
+    )
+
+
+#
+# Charts
+#
+
+
+def equity_curve_with_benchmark(input: ChartInput) -> list[Figure]:
+    """Equity curve with ETH benchmark."""
+    return equity_curve_chart(
+        input,
+        benchmark_token_symbols=["ETH"],
+    )
+
+
+def inclusion_criteria_check_with_chain(input: ChartInput) -> pd.DataFrame:
+    """Inclusion criteria table with chain shown."""
+    return inclusion_criteria_check(
+        input,
+        show_chain=True,
+    )
+
+
+def trading_pair_breakdown_with_chain(input: ChartInput) -> pd.DataFrame:
+    """Trading pair breakdown with chain and address."""
+    return trading_pair_breakdown(
+        input,
+        show_chain=True,
+        show_address=True,
+    )
+
+
+def all_vault_positions_by_profit(input: ChartInput) -> pd.DataFrame:
+    """Vault positions sorted by profit."""
+    return all_vault_positions(
+        input,
+        sort_by="Profit USD",
+        sort_ascending=False,
+        show_address=True,
+    )
+
+
+def create_charts(
+    timestamp: datetime.datetime | None,
+    parameters: StrategyParameters,
+    strategy_universe: TradingStrategyUniverse,
+    execution_context: ExecutionContext,
+) -> ChartRegistry:
+    """Define charts we use in backtesting and live trading."""
+    # Live universes intentionally omit SUPPORTING_PAIRS above.
+    # Keeping them as default chart benchmark lookups would make the webhook
+    # chart API try to resolve pairs that are not present in the live universe.
+    default_benchmark_pairs = [] if execution_context.live_trading else BENCHMARK_PAIRS
+    charts = ChartRegistry(default_benchmark_pairs=default_benchmark_pairs)
+    charts.register(available_trading_pairs, ChartKind.indicator_all_pairs)
+    charts.register(inclusion_criteria_check_with_chain, ChartKind.indicator_all_pairs)
+    charts.register(equity_curve_with_benchmark, ChartKind.state_all_pairs)
+    charts.register(equity_curve_with_drawdown, ChartKind.state_all_pairs)
+    charts.register(performance_metrics, ChartKind.state_all_pairs)
+    charts.register(equity_curve_by_asset, ChartKind.state_all_pairs)
+    charts.register(equity_curve_by_chain, ChartKind.state_all_pairs)
+    charts.register(weight_allocation_statistics, ChartKind.state_all_pairs)
+    charts.register(positions_at_end, ChartKind.state_all_pairs)
+    charts.register(last_messages, ChartKind.state_all_pairs)
+    charts.register(alpha_model_diagnostics, ChartKind.state_all_pairs)
+    charts.register(skipped_signals, ChartKind.state_all_pairs)
+    charts.register(trading_pair_breakdown_with_chain, ChartKind.state_all_pairs)
+    charts.register(trading_metrics, ChartKind.state_all_pairs)
+    charts.register(vault_statistics, ChartKind.state_all_pairs)
+    charts.register(all_vault_positions_by_profit, ChartKind.state_all_pairs)
+    return charts
+
+
+#
+# Metadata
+#
+
+tags = {StrategyTag.beta, StrategyTag.live, StrategyTag.closed_source}
+
+name = "Hyper AI v2"
+
+short_description = "Positive-Sharpe gated vault-of-vaults strategy on Hyperliquid"
+
+icon = ""
+
+long_description = """
+# Hyper AI v2 strategy
+
+A diversified yield strategy that allocates across Hyperliquid native vaults, gating
+vault admission on a positive trailing 180-day Sharpe ratio and ranking survivors with
+an age-ramp weighting.
+
+## Strategy features
+
+- **Positive-Sharpe gate**: Vaults must show a positive trailing 180-day Sharpe ratio to be admitted
+- **Survivor-first selection**: Vaults must also pass TVL, age, and trading availability filters
+- **Age-ramp weighting**: Younger vaults receive lower weights, ramping up over 0.875 years
+- **Daily rebalancing**: Adjusts positions daily based on inclusion criteria and signal weights
+- **Size-risk capped sizing**: TVL-based per-position cap prevents over-concentration
+- **Redemption-aware**: Target value accounts for pending redemptions
+
+## Risk parameters
+
+- Maximum 20 positions at any time
+- 98% allocation target
+- 20% maximum concentration per asset
+- 20% per-position cap of pool TVL
+- 7,500 USD minimum vault TVL, ~46 day minimum vault age
+- 5 USD minimum vault deposit (Hyperliquid hard floor)
+"""
