@@ -974,7 +974,13 @@ class StrategyRunner(abc.ABC):
                 if hasattr(universe, 'get_reserve_asset') and hasattr(universe, 'primary_chain'):
                     from tradeexecutor.ethereum.cctp.planner import inject_cctp_bridge_trades
                     primary_chain = getattr(universe, 'primary_chain', None)
-                    if primary_chain is not None and len(rebalance_trades) > 0:
+                    # Idle-capital sweep (issue #1562): bridge settled satellite
+                    # capital back to the hub even on a quiet cycle, so the planner
+                    # must run with an empty trade list too. On by default; a
+                    # strategy that deliberately keeps satellite cash disables it.
+                    sweep_idle = self.parameters.get("sweep_idle_bridge_capital", True) if self.parameters else True
+                    bridge_sweep_min_usd = self.parameters.get("bridge_sweep_min_usd", 1.0) if self.parameters else 1.0
+                    if primary_chain is not None and (len(rebalance_trades) > 0 or sweep_idle):
                         rebalance_trades = inject_cctp_bridge_trades(
                             state=state,
                             trades=rebalance_trades,
@@ -982,6 +988,8 @@ class StrategyRunner(abc.ABC):
                             primary_chain_id=primary_chain.value,
                             ts=strategy_cycle_timestamp,
                             reserve_asset=universe.get_reserve_asset(),
+                            sweep_idle_bridge_capital=sweep_idle,
+                            bridge_sweep_min_usd=bridge_sweep_min_usd,
                         )
 
                 # If we have no trades, then we are done

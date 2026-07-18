@@ -1344,6 +1344,43 @@ class ExecutionLoop:
         with pd.option_context('display.max_rows', None, 'display.max_columns', None, 'display.width', 140):
             logger.trade("Trading universe is:\n%s", str(universe_diagnose_df))
 
+        # Resolve CCTP bridge trades stuck in transit from a previous run BEFORE
+        # the treasury sync and the accounting check below. A satellite->hub
+        # bridge-back that settled on-chain while the executor was down raises the
+        # real hub USDC balance, but state only credits the reserve when the retry
+        # calls mark_trade_success(). If the treasury sync ran first it would
+        # reconcile the reserve to the raised on-chain balance and the retry would
+        # then credit it again (double count); if the accounting check ran first it
+        # would see a spurious mismatch. Resolving in-transit transfers first keeps
+        # capital accounting correct. Automatic idle-capital sweeps (issue #1562)
+        # make in-transit bridge-backs routine, so this ordering is load-bearing.
+        web3config = getattr(self.execution_model, 'web3config', None)
+        if web3config is not None:
+            from tradeexecutor.ethereum.cctp.retry import check_and_retry_cctp_in_transit
+            resolved = check_and_retry_cctp_in_transit(
+                state=state,
+                execution_model=self.execution_model,
+                web3config=web3config,
+            )
+            if resolved:
+                logger.trade("Resolved %d CCTP in-transit trade(s) on startup", len(resolved))
+                self.store.sync(state)
+
+            # Check if any remain unresolved — halt if so
+            from tradeexecutor.state.trade import TradeStatus
+            unresolved = []
+            for position in state.portfolio.open_positions.values():
+                for trade in position.trades.values():
+                    if trade.get_status() == TradeStatus.cctp_in_transit:
+                        unresolved.append(trade)
+            if unresolved:
+                trade_ids = [t.trade_id for t in unresolved]
+                raise RuntimeError(
+                    f"Cannot start live trading: {len(unresolved)} CCTP bridge trade(s) "
+                    f"still in transit after startup retry. Trade IDs: {trade_ids}. "
+                    f"Resolve manually with trade-executor bridge-retry or receiveMessage."
+                )
+
         if self.sync_treasury_on_startup:
 
             reserve_assets = list(universe.reserve_assets)
@@ -1388,36 +1425,6 @@ class ExecutionLoop:
             )
         else:
             logger.info("Startup accounting check disabled (CHECK_ACCOUNTS=false)")
-
-        # Check for CCTP bridge trades stuck in transit from a previous run.
-        # Must resolve these before starting new cycles, otherwise capital
-        # accounting is incorrect.
-        web3config = getattr(self.execution_model, 'web3config', None)
-        if web3config is not None:
-            from tradeexecutor.ethereum.cctp.retry import check_and_retry_cctp_in_transit
-            resolved = check_and_retry_cctp_in_transit(
-                state=state,
-                execution_model=self.execution_model,
-                web3config=web3config,
-            )
-            if resolved:
-                logger.trade("Resolved %d CCTP in-transit trade(s) on startup", len(resolved))
-                self.store.sync(state)
-
-            # Check if any remain unresolved — halt if so
-            from tradeexecutor.state.trade import TradeStatus
-            unresolved = []
-            for position in state.portfolio.open_positions.values():
-                for trade in position.trades.values():
-                    if trade.get_status() == TradeStatus.cctp_in_transit:
-                        unresolved.append(trade)
-            if unresolved:
-                trade_ids = [t.trade_id for t in unresolved]
-                raise RuntimeError(
-                    f"Cannot start live trading: {len(unresolved)} CCTP bridge trade(s) "
-                    f"still in transit after startup retry. Trade IDs: {trade_ids}. "
-                    f"Resolve manually with trade-executor bridge-retry or receiveMessage."
-                )
 
         # Check for vault trades stuck in settlement pending from a previous run.
         # Unlike CCTP, do NOT halt on unresolved — vault settlements can take

@@ -237,6 +237,23 @@ Step  Action                     Home     Bridge   Bridge    Satellite
   Total equity at any point = home reserve + bridge qty + satellite positions = 5.00
 ```
 
+## Idle-capital sweep
+
+Capital can settle on a bridge position with no directional demand — a
+withheld net-sell excess, a settled async redemption, a profitable
+round-trip (`bridge_capital_allocated` gone negative). Left alone it earns
+nothing (issue #1562). The CCTP planner therefore runs an **idle-capital
+sweep** after demand-driven bridge planning: any free available bridge
+capital above a dust buffer is bridged back to the primary hub, where the
+hub-side `YieldManager` parks it in the queue vault on a following cycle.
+It is controlled by `inject_cctp_bridge_trades(sweep_idle_bridge_capital=…,
+bridge_sweep_min_usd=…)` (on by default; a strategy that deliberately keeps
+satellite cash disables it via the `sweep_idle_bridge_capital` /
+`bridge_sweep_min_usd` strategy parameters). The sweep only ever touches
+*available* capital — `get_available_bridge_capital()` already excludes
+capital committed to unsettled async deposits and to in-transit
+bridge-backs — so it never oversells physical satellite USDC.
+
 ## File reference
 
 | File | What it does |
@@ -247,3 +264,5 @@ Step  Action                     Home     Bridge   Bridge    Satellite
 | `state/portfolio.py` | `get_bridge_position_for_chain()`, `move_capital_from_bridge_to_spot_trade()`, `return_capital_to_bridge()` |
 | `state/state.py` | `start_execution()` routing logic, `mark_trade_success()` return logic |
 | `strategy/generic/generic_router.py` | Transaction builder switching for satellite chains |
+| `ethereum/cctp/planner.py` | `inject_cctp_bridge_trades()` — bridge planning and the idle-capital sweep |
+| `analysis/cctp.py` | `analyse_idle_bridge_capital()` — end-of-run report of any unswept bridge cash |

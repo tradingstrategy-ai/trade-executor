@@ -503,6 +503,27 @@ claude -p "Return {\"findings\": [...], \"risk\": \"...\"}" \
   --json-schema '{"type":"object","properties":{"findings":{"type":"array"},"risk":{"type":"string"}},"required":["findings","risk"]}'
 ```
 
+### Codex rejects the configured model
+
+Symptoms:
+
+- `codex exec` fails immediately with
+  `The '<model>' model requires a newer version of Codex. Please upgrade...`
+  (streamed as a `turn.failed` JSONL event).
+- Overriding with `-m <other-model>` fails with
+  `model is not supported when using Codex with a ChatGPT account` for every
+  alternative you try.
+
+Cause: the standalone Codex install is older than the model pinned in
+`~/.codex/config.toml`, and ChatGPT accounts cannot fall back to older models.
+
+Fix: self-update the standalone install, then retry — no config change needed:
+
+```shell
+codex update
+codex exec --json --sandbox read-only "Say OK and nothing else." < /dev/null
+```
+
 ### Authentication or MCP setup is broken
 
 Symptoms:

@@ -17,7 +17,7 @@ unnecessary round-trips when sells and buys partially cancel out.
 
 import datetime
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections import defaultdict
 from decimal import Decimal
 
@@ -29,6 +29,7 @@ from tradeexecutor.state.identifier import (
 from tradeexecutor.state.portfolio import NotEnoughMoney
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import CCTP_BRIDGE_ORDER_BUMP, TradeExecution, TradeType
+from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair
 from tradeexecutor.utils.accuracy import sum_decimal
 
@@ -55,6 +56,12 @@ class ChainLiquidity:
     free_idle_bridge_capital: Decimal = Decimal(0)
     bridge_back_amount: Decimal = Decimal(0)
 
+    #: Per-reason breakdown of ``bridge_back_amount``, keyed by planning reason
+    #: (``net_sell`` / ``primary_shortfall`` / ``idle_sweep``). A single chain's
+    #: bridge-back can combine several reasons; this records how much each
+    #: contributed so the injected trade can expose it for diagnostics.
+    bridge_back_reasons: dict[str, Decimal] = field(default_factory=dict)
+
     @property
     def available_before_buy(self) -> Decimal:
         """Satellite-side cash available this cycle: idle bridge capital plus all
@@ -78,10 +85,18 @@ class ChainLiquidity:
             Decimal(0),
         )
 
-    def reserve_bridge_back(self, amount: Decimal) -> None:
-        """Reserve free idle satellite capital for a CCTP bridge-back."""
+    def reserve_bridge_back(self, amount: Decimal, reason: str = "net_sell") -> None:
+        """Reserve free idle satellite capital for a CCTP bridge-back.
+
+        :param reason:
+            Planning-reason bucket this reservation belongs to
+            (``net_sell`` / ``primary_shortfall`` / ``idle_sweep``). Accumulated
+            into :py:attr:`bridge_back_reasons` so the emitted bridge trade can
+            expose a per-reason breakdown for diagnostics.
+        """
         self.bridge_back_amount += amount
         self.free_idle_bridge_capital -= amount
+        self.bridge_back_reasons[reason] = self.bridge_back_reasons.get(reason, Decimal(0)) + amount
 
 
 def _bridge_pairs_by_destination(
@@ -211,6 +226,8 @@ def inject_cctp_bridge_trades(
     primary_chain_id: int,
     ts: datetime.datetime,
     reserve_asset: AssetIdentifier,
+    sweep_idle_bridge_capital: bool = True,
+    bridge_sweep_min_usd: USDollarAmount = 1.0,
 ) -> list[TradeExecution]:
     """Inject CCTP bridge trades for cross-chain rebalancing.
 
@@ -231,12 +248,34 @@ def inject_cctp_bridge_trades(
       Raises :py:class:`tradeexecutor.state.portfolio.NotEnoughMoney` if a
       genuinely needed bridge-out cannot be funded from the primary reserve.
 
+    - **Idle-capital sweep** (``sweep_idle_bridge_capital``, on by default):
+      any free idle satellite capital left after the demand-driven planning
+      above is bridged back to the primary hub, so settled satellite USDC does
+      not sit idle earning nothing. The hub-side ``YieldManager`` then parks
+      the recovered cash in the queue vault on a following cycle. Capital
+      reserved for same-cycle satellite buys and capital committed to
+      unsettled async satellite deposits is excluded from the sweep. See
+      ``.claude/docs/phase-aware-alpha-model.md`` and issue #1562.
+
     The injected trades have correct sort positions (via
     ``get_execution_sort_position()``) so they execute in the right
     order: vault redeems -> spot sells -> bridge-backs -> bridge-outs ->
     buys -> vault deposits. Bridge-backs run after satellite sells (so they
     carry same-cycle sell proceeds to the hub) and bridge-outs run before
     buys (so satellite buys are funded).
+
+    Each injected bridge trade records a per-reason amount breakdown in
+    ``trade.other_data["cctp_planning_amounts"]`` (Decimal-as-string values,
+    JSON-safe) — buckets ``net_sell`` / ``primary_shortfall`` / ``idle_sweep``
+    for bridge-backs and ``bridge_out`` for bridge-outs — so diagnostics can
+    distinguish demand-driven bridging from idle sweeps.
+
+    **Live operational note:** each bridge trade halts the live execution batch
+    when it goes ``cctp_in_transit`` and resolves via the restart/retry path,
+    so enabling the sweep makes that operational path routine. This is the
+    existing contract for every live cross-chain strategy (demand-driven bridge
+    trades halt the same way); operators who cannot tolerate the extra
+    restarts disable the sweep or raise ``bridge_sweep_min_usd``.
 
     :param state:
         Current portfolio state.
@@ -257,6 +296,16 @@ def inject_cctp_bridge_trades(
 
     :param reserve_asset:
         The portfolio reserve currency asset (e.g. USDC on primary chain).
+
+    :param sweep_idle_bridge_capital:
+        When true (default), bridge any free idle satellite capital back to the
+        primary hub after demand-driven bridge planning. Set false for
+        strategies that deliberately keep satellite-chain cash.
+
+    :param bridge_sweep_min_usd:
+        Minimum idle amount worth an idle-sweep bridge trade; below this the
+        cash is left on the satellite as a dust buffer. The per-pair dust
+        epsilon and raw-unit floor still apply on top.
 
     :return:
         Augmented trade list with bridge trades injected.
@@ -392,7 +441,7 @@ def inject_cctp_bridge_trades(
             )
             continue
 
-        liquidity.reserve_bridge_back(amount)
+        liquidity.reserve_bridge_back(amount, reason="net_sell")
         total_bridge_back += amount
 
     # Primary-chain buys and bridge-outs both need primary-chain USDC. If the
@@ -433,7 +482,7 @@ def inject_cctp_bridge_trades(
             amount = _floor_to_raw_units(min(primary_shortfall, available), bridge_pair.quote)
             if not _is_meaningful_bridge_trade_amount(amount, bridge_pair):
                 continue
-            liquidity.reserve_bridge_back(amount)
+            liquidity.reserve_bridge_back(amount, reason="primary_shortfall")
             total_bridge_back += amount
             primary_shortfall -= amount
             logger.info(
@@ -452,6 +501,61 @@ def inject_cctp_bridge_trades(
             f"(reserve {current_primary_reserve} + primary sells {primary_sells} + "
             f"bridge-backs {total_bridge_back})"
         )
+
+    # 2b. Idle-capital sweep. Bridge genuinely idle satellite capital back to the
+    #     primary hub so settled satellite USDC does not sit earning nothing
+    #     (issue #1562). The reservation merges into the per-chain bridge-back
+    #     created below, and the hub-side YieldManager parks the recovered cash
+    #     in the queue vault on a following cycle.
+    #
+    #     The sweep only ever touches *physically settled* idle capital
+    #     (_available_bridge_capital, which excludes capital committed to
+    #     unsettled async deposits) — never same-cycle sell proceeds. Same-cycle
+    #     sells are the demand-driven planner's domain: their proceeds land at the
+    #     hub via the net-sell bridge-back above, and an async sell's proceeds do
+    #     not even settle this cycle, so sweeping against them would over-size the
+    #     bridge-back and starve it at execution. The sweepable amount is
+    #     therefore the chain's settled idle capital minus what same-cycle
+    #     satellite buys and the bridge-backs already reserved this cycle will
+    #     draw from it, so the total capital leaving the chain can never exceed
+    #     what is physically present and idle there. Any surplus that is
+    #     conservatively skipped (because a same-cycle sync sell funded a
+    #     bridge-back) is simply swept on a later quiet cycle.
+    if sweep_idle_bridge_capital:
+        min_sweep = Decimal(str(bridge_sweep_min_usd))
+        for chain_id in sorted(liquidity_by_chain):
+            liquidity = liquidity_by_chain[chain_id]
+            bridge_pair = bridge_pairs.get(chain_id)
+            if bridge_pair is None:
+                continue
+            # Physical settled idle capital we may sweep. Satellite buys and sells
+            # only ever mutate ``bridge_capital_allocated`` — the position quantity
+            # stays at the gross bridged amount — so ``available_bridge_capital``
+            # (quantity − allocated) IS the physical satellite USDC right now.
+            # This includes realised satellite profits (allocated gone negative);
+            # do NOT clamp to ``get_quantity()``, which would strand those profits
+            # unsweepable forever once the gross quantity is burned down to zero.
+            # It excludes capital committed to unsettled async deposits
+            # (allocated > 0) by the same arithmetic.
+            physical_idle = _available_bridge_capital(state, chain_id)
+            sweepable = min(
+                physical_idle - liquidity.satellite_buys - liquidity.bridge_back_amount,
+                liquidity.free_idle_bridge_capital,
+            )
+            amount = _floor_to_raw_units(max(sweepable, Decimal(0)), bridge_pair.base)
+            if amount < min_sweep:
+                # Below the configured dust buffer — deliberately left on the
+                # satellite; end-of-run diagnostics record why.
+                continue
+            if not _is_meaningful_bridge_trade_amount(amount, bridge_pair):
+                continue
+            liquidity.reserve_bridge_back(amount, reason="idle_sweep")
+            total_bridge_back += amount
+            logger.info(
+                "Reserved idle-capital sweep bridge-back of %s from chain %d",
+                amount,
+                chain_id,
+            )
 
     for chain_id in sorted(liquidity_by_chain):
         liquidity = liquidity_by_chain[chain_id]
@@ -487,6 +591,10 @@ def inject_cctp_bridge_trades(
             position=bridge_position,
             closing=closing,
         )
+        trade.other_data["cctp_planning_amounts"] = {
+            reason: str(reason_amount)
+            for reason, reason_amount in liquidity.bridge_back_reasons.items()
+        }
 
         logger.info(
             "Injected bridge-back sell of %s for chain %d (closing=%s)",
@@ -591,6 +699,7 @@ def inject_cctp_bridge_trades(
             reserve_currency=reserve_asset,
             reserve_currency_price=1.0,
         )
+        trade.other_data["cctp_planning_amounts"] = {"bridge_out": str(amount)}
 
         logger.info(
             "Injected bridge-out buy of %s for chain %d (satellite-side funding %s, satellite buys %s, net buy %s)",
