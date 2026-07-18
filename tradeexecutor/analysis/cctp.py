@@ -204,7 +204,12 @@ def analyse_idle_bridge_capital(
     - ``sweep_disabled`` — the sweep is off and idle capital at or above the
       threshold remains (this reproduces the pre-fix leak).
     - ``not_swept`` — available capital at or above the threshold remains with the
-      sweep enabled; unexpected, flags a genuine leak to investigate.
+      sweep enabled; flags a leak to investigate. Two benign causes exist:
+      capital that settled *after* the final planner run (e.g. an async
+      redemption settling on the last tick — it would be swept next cycle), and
+      a chain that also has a pending async deposit (the threshold branch wins
+      over ``reserved_for_async_deposit``). Persistent ``not_swept`` across
+      cycles is the genuine-leak signal.
 
     :param state:
         Portfolio state after a run.

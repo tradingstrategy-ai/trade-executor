@@ -365,6 +365,7 @@ def test_startup_retry_resolves_in_transit(
     assert resolved[0].trade_id == trade.trade_id
 
 
+@pytest.mark.timeout(300)
 def test_idle_sweep_skips_in_transit_bridge_back(
     cctp_pair: TradingPairIdentifier,
     usdc_arbitrum: AssetIdentifier,

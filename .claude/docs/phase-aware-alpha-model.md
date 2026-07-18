@@ -304,10 +304,14 @@ Proving idle→productive is the point, so the undeployed slice has structure:
   (`sweep_bridge_cash_to_queue`) remains the follow-up. End-of-run
   `analyse_idle_bridge_capital` (`tradeexecutor/analysis/cctp.py`) reports any
   bridge cash left unswept and why. **Live note:** each bridge trade halts the
-  execution batch when it goes `cctp_in_transit` and resolves via
-  restart/retry, so the sweep makes that operational path routine — the startup
-  ordering (CCTP retry before treasury sync and the accounting check in
-  `cli/loop.py`) is load-bearing for correct reserve accounting.
+  execution batch when it goes `cctp_in_transit` — expiring the remaining
+  planned trades in the batch, including a window-open promote deposit — and
+  resolves via restart/retry, so the sweep makes that operational path routine.
+  Strategies with short deposit windows should raise `bridge_sweep_min_usd`
+  (default 1.0 USD) so a small sweep cannot expire a promote into a closing
+  window. The startup ordering (CCTP retry before treasury sync and the
+  accounting check in `cli/loop.py`) is load-bearing for correct reserve
+  accounting.
 - **Live ERC-4626 openness adapters** for deposit and redemption windows.
 - **Protocol-default cadences** (resolver layer 3) have no caller yet.
 - **Event log pruning is not implemented.** `state.other_data` is outside the
