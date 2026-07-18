@@ -334,6 +334,9 @@ def test_bridge_out_funds_from_idle_satellite_capital(
         primary_chain_id=PRIMARY_CHAIN_ID,
         ts=TS,
         reserve_asset=usdc_arbitrum,
+        # Isolate demand-driven bridging from the idle-capital sweep (issue #1562),
+        # which is covered by tests/ethereum/test_cctp_idle_bridge_sweep.py.
+        sweep_idle_bridge_capital=False,
     )
 
     # 3. Execute — must not raise (reproduces the crash on buggy code).
@@ -644,6 +647,7 @@ def test_non_closing_satellite_sell_funds_same_cycle_bridge_back(
         primary_chain_id=PRIMARY_CHAIN_ID,
         ts=TS,
         reserve_asset=usdc_arbitrum,
+        sweep_idle_bridge_capital=False,  # isolate demand-driven bridging from the idle sweep (issue #1562)
     )
 
     # 3. Bridge-back carries the full 7_000 net sell; its proceeds are now
@@ -709,6 +713,7 @@ def test_closing_satellite_sell_can_fund_same_cycle_bridge_back(
         primary_chain_id=PRIMARY_CHAIN_ID,
         ts=TS,
         reserve_asset=usdc_arbitrum,
+        sweep_idle_bridge_capital=False,  # isolate demand-driven bridging from the idle sweep (issue #1562)
     )
 
     # 3. Bridge-back includes the 7_000 closing sell proceeds.
@@ -827,6 +832,7 @@ def test_primary_buy_funded_from_idle_satellite_bridge_capital(
         primary_chain_id=PRIMARY_CHAIN_ID,
         ts=TS,
         reserve_asset=usdc_arbitrum,
+        sweep_idle_bridge_capital=False,  # isolate demand-driven bridging from the idle sweep (issue #1562)
     )
     bridge_trades = [t for t in result if t.pair.is_cctp_bridge()]
     assert len(bridge_trades) == 1
@@ -896,6 +902,7 @@ def test_cross_satellite_bridge_out_funded_from_other_idle_satellite_capital(
         primary_chain_id=PRIMARY_CHAIN_ID,
         ts=TS,
         reserve_asset=usdc_arbitrum,
+        sweep_idle_bridge_capital=False,  # isolate demand-driven bridging from the idle sweep (issue #1562)
     )
     bridge_trades = [t for t in result if t.pair.is_cctp_bridge()]
     bridge_backs = [t for t in bridge_trades if t.is_sell()]
@@ -1332,6 +1339,7 @@ def test_async_vault_deposit_uses_idle_satellite_bridge_capital(
         primary_chain_id=PRIMARY_CHAIN_ID,
         ts=TS,
         reserve_asset=usdc_arbitrum,
+        sweep_idle_bridge_capital=False,  # isolate demand-driven bridging from the idle sweep (issue #1562)
     )
     assert [t for t in result if t.pair.is_cctp_bridge()] == []
 

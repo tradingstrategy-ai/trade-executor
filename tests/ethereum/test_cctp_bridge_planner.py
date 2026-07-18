@@ -352,6 +352,7 @@ def test_inject_bridge_back_for_satellite_sell(
         primary_chain_id=PRIMARY_CHAIN_ID,
         ts=TS,
         reserve_asset=usdc_arbitrum,
+        sweep_idle_bridge_capital=False,  # isolate demand-driven bridging from the idle sweep (issue #1562)
     )
 
     # 4. Assert one bridge trade was injected
@@ -454,6 +455,7 @@ def test_net_flow_same_chain_cancels(
         primary_chain_id=PRIMARY_CHAIN_ID,
         ts=TS,
         reserve_asset=usdc_arbitrum,
+        sweep_idle_bridge_capital=False,  # isolate demand-driven bridging from the idle sweep (issue #1562)
     )
 
     # 4. Assert only one bridge trade was injected (net $1000 bridge-back)

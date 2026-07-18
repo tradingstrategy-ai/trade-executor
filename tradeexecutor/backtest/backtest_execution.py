@@ -354,16 +354,37 @@ class BacktestExecution(ExecutionModel):
         base = trade.pair.base        # destination chain USDC
         reserve = trade.reserve_currency  # source chain USDC
 
+        # Clamp the burned side to the wallet balance when the planned burn
+        # overshoots it by no more than a couple of raw units (same intent as
+        # fix_sell_token_amount on the spot sell path). The idle-capital sweep
+        # bridges a chain's entire settled balance back to the hub (issue #1562),
+        # landing exactly on the boundary where the state's tracked bridge
+        # quantity and the simulated wallet balance can differ by a fraction of a
+        # raw unit from accumulated Decimal rounding — that must not crash the
+        # backtest. A clamp (rather than an update_balance epsilon) keeps tiny
+        # legitimate one-raw-unit burns intact and cannot mask a genuine
+        # over-burn beyond the dust bound.
         if trade.is_buy():
             # Bridge out: burn USDC on source, mint on destination
             executed_reserve = trade.planned_reserve
             executed_quantity = trade.planned_quantity
+            burn, _ = fix_sell_token_amount(
+                self.wallet.get_balance(reserve),
+                -executed_reserve,
+                epsilon=trade.pair.quote.convert_to_decimal(2),
+            )
+            executed_reserve = abs(burn)
+            executed_quantity = executed_reserve
             self.wallet.update_balance(base, executed_quantity, f"bridge out trade #{trade.trade_id}")
             self.wallet.update_balance(reserve, -executed_reserve, f"bridge out trade #{trade.trade_id}")
         else:
             # Bridge back: burn USDC on destination, mint on source
-            executed_quantity = trade.planned_quantity
-            executed_reserve = abs(Decimal(trade.planned_quantity) * Decimal(trade.planned_price))
+            executed_quantity, _ = fix_sell_token_amount(
+                self.wallet.get_balance(base),
+                trade.planned_quantity,
+                epsilon=base.convert_to_decimal(2),
+            )
+            executed_reserve = abs(Decimal(executed_quantity) * Decimal(trade.planned_price))
             self.wallet.update_balance(base, executed_quantity, f"bridge back trade #{trade.trade_id}")
             self.wallet.update_balance(reserve, executed_reserve, f"bridge back trade #{trade.trade_id}")
 

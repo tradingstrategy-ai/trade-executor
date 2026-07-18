@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tradeexecutor.ethereum.cctp.planner import inject_cctp_bridge_trades
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.identifier import (
     AssetIdentifier,
@@ -362,3 +363,90 @@ def test_startup_retry_resolves_in_transit(
     # 7. Verify the trade is in the returned resolved list
     assert len(resolved) == 1
     assert resolved[0].trade_id == trade.trade_id
+
+
+@pytest.mark.timeout(300)
+def test_idle_sweep_skips_in_transit_bridge_back(
+    cctp_pair: TradingPairIdentifier,
+    usdc_arbitrum: AssetIdentifier,
+):
+    """An in-transit sweep bridge-back is neither double-swept nor NAV-distorting.
+
+    The idle-capital sweep (issue #1562) bridges settled satellite capital back to
+    the hub. In live trading that bridge-back sits ``cctp_in_transit`` for a cycle
+    or more, so the next planner cycle must not see the same capital as still-idle
+    and sweep it again. It must not, because ``mark_bridge_in_transit`` locks the
+    burned amount via ``bridge_capital_allocated``, driving available bridge
+    capital to zero; and total NAV must be conserved across the burn window via
+    the in-transit value term.
+
+    1. Establish a settled satellite bridge position holding 10_000 idle capital.
+    2. Emit a closing bridge-back for the full balance and mark it in transit.
+    3. Assert available bridge capital is now zero and total equity is unchanged
+       (the in-transit value replaces the position equity).
+    4. Run the planner again on a quiet cycle with the sweep enabled and assert it
+       injects no further bridge trade.
+    """
+    state = State()
+    ts = datetime.datetime(2025, 1, 1)
+
+    # 1. Establish a settled satellite bridge position holding 10_000 idle capital.
+    state.portfolio.initialise_reserves(usdc_arbitrum)
+    reserve = state.portfolio.get_default_reserve_position()
+    reserve.quantity = Decimal(10_000)
+    reserve.reserve_token_price = 1.0
+    bridge_out = _create_bridge_trade(state, cctp_pair, usdc_arbitrum, Decimal(10_000), ts)
+    state.start_execution(ts, bridge_out)
+    bridge_out.mark_broadcasted(ts)
+    state.mark_trade_success(
+        ts,
+        bridge_out,
+        executed_price=1.0,
+        executed_amount=bridge_out.planned_quantity,
+        executed_reserve=bridge_out.planned_reserve,
+        lp_fees=0,
+        native_token_price=0,
+    )
+    bridge_pos = state.portfolio.get_bridge_position_for_chain(8453)
+    assert bridge_pos.get_available_bridge_capital() == Decimal(10_000)
+    equity_before = state.portfolio.calculate_total_equity()
+
+    # 2. Emit a closing bridge-back for the full balance and mark it in transit.
+    _, bridge_back, _ = state.create_trade(
+        strategy_cycle_at=ts,
+        pair=cctp_pair,
+        quantity=Decimal(-10_000),
+        reserve=None,
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc_arbitrum,
+        reserve_currency_price=1.0,
+        position=bridge_pos,
+        closing=True,
+    )
+    state.start_execution(ts, bridge_back)
+    bridge_back.mark_broadcasted(ts)
+    approve_tx = BlockchainTransaction()
+    approve_tx.tx_hash = "0xapprove"
+    burn_tx = BlockchainTransaction()
+    burn_tx.tx_hash = "0xburn"
+    bridge_back.blockchain_transactions = [approve_tx, burn_tx]
+    state.mark_bridge_in_transit(ts, bridge_back)
+    assert bridge_back.get_status() == TradeStatus.cctp_in_transit
+
+    # 3. Available capital is now locked to zero and NAV is conserved.
+    assert bridge_pos.get_available_bridge_capital() == Decimal(0)
+    assert state.portfolio.calculate_total_equity() == pytest.approx(equity_before)
+
+    # 4. Quiet cycle: the sweep sees no available capital and injects nothing.
+    universe = MagicMock()
+    universe.iterate_pairs.return_value = [cctp_pair]
+    result = inject_cctp_bridge_trades(
+        state=state,
+        trades=[],
+        strategy_universe=universe,
+        primary_chain_id=42161,
+        ts=ts,
+        reserve_asset=usdc_arbitrum,
+    )
+    assert [t for t in result if t.pair.is_cctp_bridge()] == []
