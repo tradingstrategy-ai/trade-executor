@@ -4,6 +4,7 @@ from base64 import b64decode, b64encode
 from collections import Counter
 
 import plotly.graph_objects as go
+import pytest
 from tradingstrategy.chain import ChainId
 from tradingstrategy.vault import VaultMetadata
 
@@ -16,10 +17,31 @@ from tradeexecutor.strategy.chart.asset_weight_legend import (
     IDENTITY_ICON_WIDTH,
     NAME_X,
     PROTOCOL_X,
+    ROW_BOTTOM_Y,
     ROW_FONT_SIZE,
+    ROW_TOP_Y,
+    VERTICAL_ALLOCATION_ICON_WIDTH,
+    VERTICAL_ALLOCATION_X,
+    VERTICAL_BASE_CHART_HEIGHT,
+    VERTICAL_CHAIN_X,
+    VERTICAL_COLUMN_GAP_PX,
+    VERTICAL_CURATOR_X,
+    VERTICAL_FIGURE_WIDTH,
+    VERTICAL_LEGEND_BOTTOM_MARGIN_PX,
+    VERTICAL_LEGEND_TOP_MARGIN_PX,
+    VERTICAL_HEADER_FONT_SIZE,
+    VERTICAL_IDENTITY_ICON_WIDTH,
+    VERTICAL_NAME_GAP_PX,
+    VERTICAL_NAME_X,
+    VERTICAL_PLOT_LEFT_MARGIN_PX,
+    VERTICAL_PLOT_WIDTH_PX,
+    VERTICAL_PROTOCOL_X,
+    VERTICAL_ROW_FONT_SIZE,
+    VERTICAL_ROW_HEIGHT_PX,
     AssetWeightLegendEntry,
     add_asset_weight_legend,
     allocation_swatch_data_url,
+    calculate_capital_time_allocation_percentages,
     merge_asset_weight_legend_entries,
 )
 from tradeexecutor.strategy.chart.vault_legend import get_vault_logo_coverage
@@ -157,8 +179,35 @@ def test_allocation_swatch_uses_trace_fill_and_plotly_replace_pattern() -> None:
     assert "<pattern" in svg
 
 
-def test_merged_cross_chain_vault_keeps_all_chain_and_protocol_icons(tmp_path) -> None:
-    """gTrade's Base and Arbitrum allocations share one chart label."""
+def test_capital_time_allocation_is_weighted_by_time_between_samples() -> None:
+    """Capital-time allocation uses elapsed time instead of a sample average.
+
+    1. Build two traces with unequal values and irregular sample times.
+    2. Integrate their USD allocations over the two intervals.
+    3. Check the legend allocation percentages use the resulting area share.
+    """
+    # 1. Build two traces with unequal values and irregular sample times.
+    figure = go.Figure(
+        [
+            go.Scatter(name="Intermittent vault", x=[0, 1, 3], y=[100, 0, 100]),
+            go.Scatter(name="Constant vault", x=[0, 1, 3], y=[100, 100, 100]),
+        ],
+    )
+
+    # 2. Integrate their USD allocations over the two intervals.
+    allocations = calculate_capital_time_allocation_percentages(figure)
+
+    # 3. Check the legend allocation percentages use the resulting area share.
+    assert allocations == pytest.approx({"Intermittent vault": 100 / 3, "Constant vault": 200 / 3})
+
+
+def test_cross_chain_vault_repeats_the_legend_row_for_each_chain(tmp_path) -> None:
+    """gTrade's Base and Arbitrum allocations get separate legend rows.
+
+    1. Create one aggregated chart trace with metadata from two chains.
+    2. Split its legend entries by chain while keeping the trace aggregation.
+    3. Render the legend and check every row has one aligned chain icon.
+    """
     gtrade_metadata = next(
         metadata
         for metadata in _xchain2_mock_metadata()
@@ -172,11 +221,10 @@ def test_merged_cross_chain_vault_keeps_all_chain_and_protocol_icons(tmp_path) -
         ],
     )
 
-    assert len(entries) == 1
-    entry = entries[0]
-    assert entry.chain_id is None
-    assert entry.chain_ids == tuple(sorted((ChainId.base.value, ChainId.arbitrum.value)))
-    assert entry.metadata is gtrade_metadata
+    assert len(entries) == 2
+    assert [entry.chain_id for entry in entries] == [ChainId.base.value, ChainId.arbitrum.value]
+    assert all(entry.chain_ids == (entry.chain_id,) for entry in entries)
+    assert all(entry.metadata is gtrade_metadata for entry in entries)
 
     figure = go.Figure(
         go.Scatter(
@@ -191,16 +239,92 @@ def test_merged_cross_chain_vault_keeps_all_chain_and_protocol_icons(tmp_path) -
     figure.update_layout(template="plotly_dark")
     add_asset_weight_legend(figure, entries, chain_icon_resolver=_mock_chain_icon_data_url)
 
-    gtrade_row_images = [image for image in figure.layout.images if image.y == 0.955]
-    chain_images = [image for image in gtrade_row_images if CHAIN_X - 0.02 < image.x < CHAIN_X + 0.02]
+    chain_images = [image for image in figure.layout.images if image.x == CHAIN_X]
     assert len(chain_images) == 2
-    assert {image.x for image in chain_images} == {CHAIN_X - 0.0099, CHAIN_X + 0.0099}
+    assert sorted(image.y for image in chain_images) == pytest.approx([ROW_BOTTOM_Y, ROW_TOP_Y])
     assert all(image.sizex == IDENTITY_ICON_WIDTH for image in chain_images)
-    assert any(image.x == PROTOCOL_X for image in gtrade_row_images)
-    assert not any(image.x == CURATOR_X for image in gtrade_row_images)
+    protocol_images = [image for image in figure.layout.images if image.x == PROTOCOL_X]
+    assert len(protocol_images) == 2
+    assert not [image for image in figure.layout.images if image.x == CURATOR_X]
+    assert len([image for image in figure.layout.images if image.x == ALLOCATION_X]) == 2
+    assert [annotation.text for annotation in figure.layout.annotations[5:]] == [
+        f'{label}: <span style="color:#aaa">100.0%</span>',
+        f'{label}: <span style="color:#aaa">100.0%</span>',
+    ]
 
     rendered = tmp_path / "gtrade-asset-weight-legend.png"
     figure.write_image(rendered, width=1800, height=900)
+    assert rendered.read_bytes().startswith(b"\x89PNG")
+
+
+def test_vertical_legend_is_below_the_chart_with_doubled_rows(tmp_path) -> None:
+    """The below-chart legend grows the figure and doubles its visual scale.
+
+    1. Create a two-row asset-weight legend.
+    2. Render it using the vertical below-chart layout.
+    3. Check the appended height, below-chart coordinates, and doubled sizes.
+    """
+    # 1. Create a two-row asset-weight legend.
+    metadata = _xchain2_mock_metadata()[0]
+    traces = [
+        go.Scatter(name="Vault A", x=[0, 1], y=[100, 100], fill="tozeroy"),
+        go.Scatter(name="Vault B", x=[0, 1], y=[50, 50], fill="tonexty"),
+    ]
+    entries = [
+        AssetWeightLegendEntry("Vault A", "#00ff66", ChainId.base.value, metadata, annualised_yield_percent=12.5),
+        AssetWeightLegendEntry("Vault B", "#0052ff", ChainId.arbitrum.value, metadata, annualised_yield_percent=-2.5),
+    ]
+    figure = go.Figure(traces)
+    figure.update_layout(template="plotly_dark")
+
+    # 2. Render it using the vertical below-chart layout.
+    add_asset_weight_legend(
+        figure,
+        entries,
+        chain_icon_resolver=_mock_chain_icon_data_url,
+        legend_layout="vertical",
+    )
+
+    # 3. Check the appended height, below-chart coordinates, and doubled sizes.
+    assert figure.layout.height == (
+        VERTICAL_BASE_CHART_HEIGHT
+        + 2 * VERTICAL_ROW_HEIGHT_PX
+        + VERTICAL_LEGEND_TOP_MARGIN_PX
+        + VERTICAL_LEGEND_BOTTOM_MARGIN_PX
+    )
+    assert figure.layout.width == VERTICAL_FIGURE_WIDTH
+    assert figure.layout.margin.l == VERTICAL_PLOT_LEFT_MARGIN_PX
+    assert figure.layout.xaxis.domain == (0, 1)
+    assert all(annotation.y < 0 for annotation in figure.layout.annotations)
+    assert all(annotation.font.size == VERTICAL_HEADER_FONT_SIZE for annotation in figure.layout.annotations[:5])
+    assert all(annotation.font.size == VERTICAL_ROW_FONT_SIZE for annotation in figure.layout.annotations[5:])
+    assert figure.layout.annotations[5].text == 'Vault A: <span style="color:#aaa">allocated <span style="color:#ffd700">66.7%</span>, yield <span style="color:#00ff66">12.5%</span></span>'
+    assert figure.layout.annotations[6].text == 'Vault B: <span style="color:#aaa">allocated <span style="color:#ffd700">33.3%</span>, yield <span style="color:#00ff66">-2.5%</span></span>'
+    assert all(image.sizex == VERTICAL_ALLOCATION_ICON_WIDTH for image in figure.layout.images if image.x == VERTICAL_ALLOCATION_X)
+    assert all(image.sizex == VERTICAL_IDENTITY_ICON_WIDTH for image in figure.layout.images if image.x != VERTICAL_ALLOCATION_X)
+    assert {image.x for image in figure.layout.images}.issubset({
+        VERTICAL_ALLOCATION_X,
+        VERTICAL_CHAIN_X,
+        VERTICAL_PROTOCOL_X,
+        VERTICAL_CURATOR_X,
+    })
+    assert VERTICAL_IDENTITY_ICON_WIDTH * VERTICAL_PLOT_WIDTH_PX == pytest.approx(VERTICAL_ROW_HEIGHT_PX)
+
+    def to_pixels(x: float) -> float:
+        return VERTICAL_PLOT_LEFT_MARGIN_PX + x * VERTICAL_PLOT_WIDTH_PX
+
+    allocation_right = to_pixels(VERTICAL_ALLOCATION_X) + VERTICAL_ALLOCATION_ICON_WIDTH * VERTICAL_PLOT_WIDTH_PX / 2
+    chain_left = to_pixels(VERTICAL_CHAIN_X) - VERTICAL_ROW_HEIGHT_PX / 2
+    protocol_left = to_pixels(VERTICAL_PROTOCOL_X) - VERTICAL_ROW_HEIGHT_PX / 2
+    curator_left = to_pixels(VERTICAL_CURATOR_X) - VERTICAL_ROW_HEIGHT_PX / 2
+    curator_right = to_pixels(VERTICAL_CURATOR_X) + VERTICAL_ROW_HEIGHT_PX / 2
+    assert chain_left - allocation_right == pytest.approx(VERTICAL_COLUMN_GAP_PX)
+    assert protocol_left - (chain_left + VERTICAL_ROW_HEIGHT_PX) == pytest.approx(VERTICAL_COLUMN_GAP_PX)
+    assert curator_left - (protocol_left + VERTICAL_ROW_HEIGHT_PX) == pytest.approx(VERTICAL_COLUMN_GAP_PX)
+    assert to_pixels(VERTICAL_NAME_X) - curator_right == pytest.approx(VERTICAL_NAME_GAP_PX)
+
+    rendered = tmp_path / "vertical-asset-weight-legend.png"
+    figure.write_image(rendered, width=figure.layout.width, height=figure.layout.height)
     assert rendered.read_bytes().startswith(b"\x89PNG")
 
 

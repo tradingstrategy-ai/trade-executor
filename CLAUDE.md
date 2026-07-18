@@ -111,6 +111,7 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 
 ## Pull requests
 
+- For pull request, issue, CI, and merge work, use the `git` and `gh` command-line tools; no plugins are required.
 - Pull request description must have sections Why (the rational of change), Lessons learnt (memory) and Summary (what was changed). No test plan or verification section. Use Markdown formatting, headings.
 - When updating a pull request description, prefer `gh api` with the REST pull request endpoint instead of `gh pr edit --body`, because `gh pr edit` can fail with `GraphQL: Projects (classic) is being deprecated ... (repository.pullRequest.projectCards)`. Write longer descriptions to a temporary Markdown file and run `gh api repos/:owner/:repo/pulls/{pr-number} --method PATCH -F body=@/tmp/pr-body.md`.
 - Only push changes to remote when asked, never update pull requess automatically.
