@@ -73,6 +73,43 @@ def analyse_pair_trades(
     }
 
 
+def calculate_pair_annualised_average_yield(
+    pair: TradingPairIdentifier,
+    portfolio: Portfolio,
+    end_at: datetime.datetime,
+) -> float:
+    """Calculate the capital- and time-weighted annualised yield for a pair.
+
+    This uses total PnL divided by the sum of each position's opening USD value
+    multiplied by its holding period. It is a simple annualised rate, avoiding
+    the unrealistic compounding caused by annualising individual short-lived
+    positions.
+
+    :return:
+        Annualised average yield as a decimal fraction, where ``0.05`` is 5%.
+    """
+    if pair.is_cctp_bridge():
+        return 0.0
+
+    total_profit_usd = 0.0
+    total_capital_days = 0.0
+    for position in (position for position in portfolio.get_all_positions() if position.pair == pair):
+        profit_data = calculate_pnl_generic(position, end_at=end_at)
+        duration = profit_data.duration
+        capital_at_open = float(position.get_value_at_open())
+        duration_days = duration.total_seconds() / datetime.timedelta(days=1).total_seconds()
+        if capital_at_open <= 0 or duration_days <= 0:
+            continue
+
+        total_profit_usd += float(profit_data.profit_usd)
+        total_capital_days += capital_at_open * duration_days
+
+    if total_capital_days == 0:
+        return 0.0
+
+    return total_profit_usd / total_capital_days * 365
+
+
 def analyse_multipair(
     state: State,
     show_chain: bool = False,

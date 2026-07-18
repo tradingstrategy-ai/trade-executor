@@ -9,8 +9,11 @@ from html import escape
 from io import BytesIO
 from math import sqrt
 from pathlib import Path
+from typing import Literal
 from urllib.request import Request, urlopen
 
+import numpy as np
+import pandas as pd
 import tradingstrategy.chain as chain_module
 from PIL import Image, ImageOps
 from plotly.graph_objects import Figure
@@ -37,27 +40,83 @@ class AssetWeightLegendEntry:
     metadata: VaultMetadata | None
 
     #: All chains represented by this trace. A same-named asset may be
-    #: aggregated across chains by the asset-weight chart.
+    #: aggregated across chains by the asset-weight chart, but the static
+    #: legend renders a separate row for every chain.
     chain_ids: tuple[int, ...] = ()
+
+    #: Capital- and time-weighted annualised average yield, in percent.
+    annualised_yield_percent: float = 0.0
 
 
 #: Horizontal centres in Plotly paper coordinates. Header and row elements use
 #: exactly the same values so column alignment does not depend on whitespace.
-ALLOCATION_X = 0.628
-CHAIN_X = 0.660
-PROTOCOL_X = 0.693
-CURATOR_X = 0.726
-NAME_X = 0.753
+ALLOCATION_X = 0.580
+CHAIN_X = 0.609
+PROTOCOL_X = 0.635
+CURATOR_X = 0.661
+NAME_X = 0.682
 
-ROW_TOP_Y = 0.955
-ROW_BOTTOM_Y = 0.035
-HEADER_Y = 0.982
+ROW_TOP_Y = 0.960
+ROW_BOTTOM_Y = 0.025
+HEADER_Y = 0.985
 
-ALLOCATION_ICON_WIDTH = 0.022
-IDENTITY_ICON_WIDTH = 0.018
-MAX_ICON_HEIGHT = 0.024
-HEADER_FONT_SIZE = 12
-ROW_FONT_SIZE = 13
+ALLOCATION_ICON_WIDTH = 0.0293
+IDENTITY_ICON_WIDTH = 0.024
+MAX_ICON_HEIGHT = 0.032
+HEADER_FONT_SIZE = 14
+ROW_FONT_SIZE = 16
+
+#: The below-chart legend keeps the original chart area and appends 40 pixels
+#: of height for each row.
+VERTICAL_FIGURE_WIDTH = 2200
+VERTICAL_BASE_CHART_HEIGHT = 900
+VERTICAL_ROW_HEIGHT_PX = 40
+VERTICAL_HEADER_HEIGHT_PX = 40
+VERTICAL_LEGEND_TOP_MARGIN_PX = 40
+VERTICAL_LEGEND_BOTTOM_MARGIN_PX = 40
+VERTICAL_PLOT_LEFT_MARGIN_PX = 80
+VERTICAL_PLOT_RIGHT_MARGIN_PX = 8
+VERTICAL_PLOT_TOP_MARGIN_PX = 80
+VERTICAL_PLOT_WIDTH_PX = VERTICAL_FIGURE_WIDTH - VERTICAL_PLOT_LEFT_MARGIN_PX - VERTICAL_PLOT_RIGHT_MARGIN_PX
+VERTICAL_PLOT_HEIGHT_PX = VERTICAL_BASE_CHART_HEIGHT - VERTICAL_PLOT_TOP_MARGIN_PX - VERTICAL_HEADER_HEIGHT_PX
+
+#: Identity images use ``contain`` and need a square bounding box. Otherwise a
+#: square logo is centred in a much wider invisible image box, creating the
+#: appearance of excessive padding between legend columns.
+VERTICAL_ALLOCATION_ICON_WIDTH = ALLOCATION_ICON_WIDTH * 2
+VERTICAL_ICON_HEIGHT = VERTICAL_ROW_HEIGHT_PX / VERTICAL_PLOT_HEIGHT_PX
+VERTICAL_IDENTITY_ICON_WIDTH = VERTICAL_ROW_HEIGHT_PX / VERTICAL_PLOT_WIDTH_PX
+VERTICAL_ALLOCATION_ICON_WIDTH_PX = VERTICAL_ALLOCATION_ICON_WIDTH * VERTICAL_PLOT_WIDTH_PX
+VERTICAL_COLUMN_GAP_PX = 12
+VERTICAL_NAME_GAP_PX = 16
+VERTICAL_LEGEND_LEFT_PX = 100
+
+#: Horizontal centres for the below-chart legend, derived from the visible
+#: icon bounds and pixel gaps rather than arbitrary paper-coordinate spacing.
+VERTICAL_ALLOCATION_X = (
+    VERTICAL_LEGEND_LEFT_PX
+    + VERTICAL_ALLOCATION_ICON_WIDTH_PX / 2
+    - VERTICAL_PLOT_LEFT_MARGIN_PX
+) / VERTICAL_PLOT_WIDTH_PX
+VERTICAL_CHAIN_X = (
+    VERTICAL_LEGEND_LEFT_PX
+    + VERTICAL_ALLOCATION_ICON_WIDTH_PX
+    + VERTICAL_COLUMN_GAP_PX
+    + VERTICAL_ROW_HEIGHT_PX / 2
+    - VERTICAL_PLOT_LEFT_MARGIN_PX
+) / VERTICAL_PLOT_WIDTH_PX
+VERTICAL_PROTOCOL_X = VERTICAL_CHAIN_X + (
+    VERTICAL_ROW_HEIGHT_PX + VERTICAL_COLUMN_GAP_PX
+) / VERTICAL_PLOT_WIDTH_PX
+VERTICAL_CURATOR_X = VERTICAL_PROTOCOL_X + (
+    VERTICAL_ROW_HEIGHT_PX + VERTICAL_COLUMN_GAP_PX
+) / VERTICAL_PLOT_WIDTH_PX
+VERTICAL_NAME_X = VERTICAL_CURATOR_X + (
+    VERTICAL_ROW_HEIGHT_PX / 2 + VERTICAL_NAME_GAP_PX
+) / VERTICAL_PLOT_WIDTH_PX
+
+VERTICAL_HEADER_FONT_SIZE = HEADER_FONT_SIZE * 2
+VERTICAL_ROW_FONT_SIZE = ROW_FONT_SIZE * 2
 
 
 def _entry_chain_ids(entry: AssetWeightLegendEntry) -> tuple[int, ...]:
@@ -82,34 +141,45 @@ def _has_same_logo_identity(left: VaultMetadata, right: VaultMetadata) -> bool:
 def merge_asset_weight_legend_entries(
     entries: Iterable[AssetWeightLegendEntry],
 ) -> list[AssetWeightLegendEntry]:
-    """Merge entries whose asset-weight trace shares the same label.
+    """Merge entries whose asset-weight trace shares the same label and chain.
 
-    Asset weights are grouped by their visible label. If a label aggregates
-    the same vault identity on more than one chain, retain its protocol and
-    curator metadata and render every represented chain icon. If identities
-    differ, omit the logo instead of associating a misleading protocol with
-    the aggregate.
+    Asset weights are grouped by their visible label, which means one chart
+    trace can aggregate the same vault on several chains. Keep those chains
+    as separate legend rows: each row has one allocation swatch, chain icon,
+    protocol logo, curator logo, and vault name. If duplicate positions on a
+    single chain disagree about their vault identity, omit the protocol and
+    curator logos rather than associating a misleading identity with the row.
     """
-    merged: dict[str, AssetWeightLegendEntry] = {}
+    merged: dict[tuple[str, int | None], AssetWeightLegendEntry] = {}
     for entry in entries:
-        previous = merged.get(entry.label)
-        if previous is None:
-            merged[entry.label] = entry
-            continue
+        chain_ids = _entry_chain_ids(entry) or (None,)
+        for chain_id in chain_ids:
+            key = (entry.label, chain_id)
+            previous = merged.get(key)
+            if previous is None:
+                merged[key] = AssetWeightLegendEntry(
+                    label=entry.label,
+                    colour=entry.colour,
+                chain_id=chain_id,
+                chain_ids=(chain_id,) if chain_id else (),
+                metadata=entry.metadata,
+                annualised_yield_percent=entry.annualised_yield_percent,
+            )
+                continue
 
-        chain_ids = tuple(sorted(set(_entry_chain_ids(previous)) | set(_entry_chain_ids(entry))))
-        metadata = (
-            previous.metadata
-            if previous.metadata and entry.metadata and _has_same_logo_identity(previous.metadata, entry.metadata)
-            else None
-        )
-        merged[entry.label] = AssetWeightLegendEntry(
-            label=previous.label,
-            colour=previous.colour,
-            chain_id=chain_ids[0] if len(chain_ids) == 1 else None,
-            chain_ids=chain_ids,
-            metadata=metadata,
-        )
+            metadata = (
+                previous.metadata
+                if previous.metadata and entry.metadata and _has_same_logo_identity(previous.metadata, entry.metadata)
+                else None
+            )
+            merged[key] = AssetWeightLegendEntry(
+                label=previous.label,
+                colour=previous.colour,
+                chain_id=chain_id,
+                chain_ids=(chain_id,) if chain_id else (),
+                metadata=metadata,
+                annualised_yield_percent=previous.annualised_yield_percent,
+            )
 
     return list(merged.values())
 
@@ -283,61 +353,196 @@ def resolve_chain_icon_data_url(chain_id: int) -> str | None:
         return None
 
 
+def calculate_capital_time_allocation_percentages(figure: Figure) -> dict[str, float]:
+    """Calculate each trace's share of the portfolio's capital-time allocation.
+
+    The asset-weight chart holds USD values, not normalised percentages. This
+    integrates each trace over the chart's timestamps and divides it by the
+    integrated total portfolio value. Unlike a simple average of sample
+    percentages, irregular time intervals contribute in proportion to their
+    duration.
+
+    Missing trace values represent no allocation and are treated as zero.
+    A single-sample chart has no time interval, so its instantaneous asset
+    weights are used as the best available allocation proxy.
+    """
+    trace_values = [
+        (trace.name, np.nan_to_num(np.asarray(trace.y, dtype=float), nan=0.0, posinf=0.0, neginf=0.0))
+        for trace in figure.data
+        if trace.name and trace.y is not None
+    ]
+    if not trace_values:
+        return {}
+
+    sample_count = len(trace_values[0][1])
+    trace_values = [item for item in trace_values if len(item[1]) == sample_count]
+    if not trace_values or sample_count == 0:
+        return {}
+
+    values = np.vstack([value for _name, value in trace_values])
+    if sample_count == 1:
+        capital_times = values[:, 0]
+    else:
+        x_values = np.asarray(figure.data[0].x)
+        if len(x_values) != sample_count:
+            durations = np.ones(sample_count - 1)
+        elif np.issubdtype(x_values.dtype, np.number):
+            durations = np.diff(x_values.astype(float))
+        elif np.issubdtype(x_values.dtype, np.datetime64):
+            durations = np.diff(x_values.astype("datetime64[ns]").astype("int64")) / 1_000_000_000
+        else:
+            timestamps = pd.to_datetime(x_values)
+            durations = np.diff(timestamps.asi8) / 1_000_000_000
+
+        durations = np.maximum(durations, 0)
+        capital_times = ((values[:, :-1] + values[:, 1:]) / 2 * durations).sum(axis=1)
+
+    total_capital_time = capital_times.sum()
+    if total_capital_time <= 0:
+        return {}
+
+    return {
+        name: float(capital_time / total_capital_time * 100)
+        for (name, _value), capital_time in zip(trace_values, capital_times, strict=True)
+    }
+
+
 def add_asset_weight_legend(
     figure: Figure,
     entries: Iterable[AssetWeightLegendEntry],
     *,
     chain_icon_resolver: Callable[[int], str | None] = resolve_chain_icon_data_url,
+    legend_layout: Literal["horizontal", "vertical"] = "horizontal",
 ) -> None:
     """Replace a native legend with aligned allocation and identity columns.
 
     The Plotly legend cannot render images. This layout puts all column headers
     and icon boxes on fixed paper-coordinate centres, so absent curator logos
-    reserve an empty but aligned slot.
+    reserve an empty but aligned slot. ``"horizontal"`` keeps the compact
+    right-side legend. ``"vertical"`` places doubled-size rows below the chart,
+    adds 40 pixels per row, and leaves 40-pixel top and bottom legend margins.
 
     :param figure:
         Asset-weight figure whose trace names identify legend entries.
     :param entries:
-        Trace metadata, keyed by :attr:`AssetWeightLegendEntry.label`.
+        Trace metadata. Same-named entries on different chains become
+        separate legend rows.
     :param chain_icon_resolver:
         Injectable resolver used by tests to avoid external icon downloads.
+    :param legend_layout:
+        ``"horizontal"`` for the compact right-side legend or ``"vertical"``
+        for the enlarged below-chart legend.
     """
-    entries_by_label = {entry.label: entry for entry in entries}
-    row_count = max(len(figure.data), 1)
-    row_step = (ROW_TOP_Y - ROW_BOTTOM_Y) / max(row_count - 1, 1)
-    icon_height = min(MAX_ICON_HEIGHT, row_step * 0.90)
-    figure_height = max(900, (row_count + 2) * 24)
+    if legend_layout not in {"horizontal", "vertical"}:
+        raise ValueError(f"Unsupported asset-weight legend layout: {legend_layout}")
 
-    figure.update_layout(
-        showlegend=False,
-        width=1800,
-        height=figure_height,
-        margin={"r": 20},
-    )
-    figure.update_xaxes(domain=[0, 0.608])
+    merged_entries = merge_asset_weight_legend_entries(entries)
+    capital_time_allocations = calculate_capital_time_allocation_percentages(figure)
+    entries_by_label: dict[str, list[AssetWeightLegendEntry]] = {}
+    for entry in merged_entries:
+        entries_by_label.setdefault(entry.label, []).append(entry)
+
+    legend_rows = [
+        (trace, entry)
+        for trace in figure.data
+        for entry in entries_by_label.get(trace.name, [None])
+    ]
+    row_count = max(len(legend_rows), 1)
+    if legend_layout == "horizontal":
+        row_step = (ROW_TOP_Y - ROW_BOTTOM_Y) / max(row_count - 1, 1)
+        icon_height = min(MAX_ICON_HEIGHT, row_step * 0.93)
+        figure_height = max(900, (row_count + 1) * 32)
+        allocation_x = ALLOCATION_X
+        chain_x = CHAIN_X
+        protocol_x = PROTOCOL_X
+        curator_x = CURATOR_X
+        name_x = NAME_X
+        header_y = HEADER_Y
+        header_font_size = HEADER_FONT_SIZE
+        row_font_size = ROW_FONT_SIZE
+        allocation_icon_width = ALLOCATION_ICON_WIDTH
+        identity_icon_width = IDENTITY_ICON_WIDTH
+
+        figure.update_layout(
+            showlegend=False,
+            width=1800,
+            height=figure_height,
+            margin={"r": 8},
+        )
+        figure.update_xaxes(domain=[0, 0.560])
+
+        def get_row_y(index: int) -> float:
+            return ROW_TOP_Y - index * row_step
+
+    else:
+        figure_height = (
+            VERTICAL_BASE_CHART_HEIGHT
+            + row_count * VERTICAL_ROW_HEIGHT_PX
+            + VERTICAL_LEGEND_TOP_MARGIN_PX
+            + VERTICAL_LEGEND_BOTTOM_MARGIN_PX
+        )
+        icon_height = VERTICAL_ICON_HEIGHT
+        allocation_x = VERTICAL_ALLOCATION_X
+        chain_x = VERTICAL_CHAIN_X
+        protocol_x = VERTICAL_PROTOCOL_X
+        curator_x = VERTICAL_CURATOR_X
+        name_x = VERTICAL_NAME_X
+        header_y = -(
+            VERTICAL_LEGEND_TOP_MARGIN_PX
+            + VERTICAL_HEADER_HEIGHT_PX / 2
+        ) / VERTICAL_PLOT_HEIGHT_PX
+        header_font_size = VERTICAL_HEADER_FONT_SIZE
+        row_font_size = VERTICAL_ROW_FONT_SIZE
+        allocation_icon_width = VERTICAL_ALLOCATION_ICON_WIDTH
+        identity_icon_width = VERTICAL_IDENTITY_ICON_WIDTH
+
+        figure.update_layout(
+            showlegend=False,
+            width=VERTICAL_FIGURE_WIDTH,
+            height=figure_height,
+            margin={
+                "l": VERTICAL_PLOT_LEFT_MARGIN_PX,
+                "r": VERTICAL_PLOT_RIGHT_MARGIN_PX,
+                "t": VERTICAL_PLOT_TOP_MARGIN_PX,
+                "b": (
+                    VERTICAL_LEGEND_TOP_MARGIN_PX
+                    + VERTICAL_HEADER_HEIGHT_PX
+                    + row_count * VERTICAL_ROW_HEIGHT_PX
+                    + VERTICAL_LEGEND_BOTTOM_MARGIN_PX
+                ),
+            },
+        )
+        figure.update_xaxes(domain=[0, 1])
+
+        def get_row_y(index: int) -> float:
+            return -(
+                VERTICAL_LEGEND_TOP_MARGIN_PX
+                +
+                VERTICAL_HEADER_HEIGHT_PX
+                + (index + 0.5) * VERTICAL_ROW_HEIGHT_PX
+            ) / VERTICAL_PLOT_HEIGHT_PX
 
     for label, x, xanchor in (
-        ("A", ALLOCATION_X, "center"),
-        ("C", CHAIN_X, "center"),
-        ("P", PROTOCOL_X, "center"),
-        ("C", CURATOR_X, "center"),
-        ("Name", NAME_X, "left"),
+        ("A", allocation_x, "center"),
+        ("C", chain_x, "center"),
+        ("P", protocol_x, "center"),
+        ("C", curator_x, "center"),
+        ("Name", name_x, "left"),
     ):
         figure.add_annotation(
             x=x,
-            y=HEADER_Y,
+            y=header_y,
             xref="paper",
             yref="paper",
             text=label,
             showarrow=False,
             xanchor=xanchor,
             yanchor="middle",
-            font={"size": HEADER_FONT_SIZE, "color": "#a8b1c1"},
+            font={"size": header_font_size, "color": "#a8b1c1"},
         )
 
-    for index, trace in enumerate(figure.data):
-        entry = entries_by_label.get(trace.name)
-        y = ROW_TOP_Y - index * row_step
+    for index, (trace, entry) in enumerate(legend_rows):
+        y = get_row_y(index)
         colour = trace.fillcolor or trace.line.color or (entry.colour if entry else "#a8b1c1")
         fillpattern = trace.fillpattern
         allocation_source = allocation_swatch_data_url(
@@ -352,11 +557,11 @@ def add_asset_weight_legend(
         )
         figure.add_layout_image(
             source=allocation_source,
-            x=ALLOCATION_X,
+            x=allocation_x,
             y=y,
             xref="paper",
             yref="paper",
-            sizex=ALLOCATION_ICON_WIDTH,
+            sizex=allocation_icon_width,
             sizey=icon_height,
             xanchor="center",
             yanchor="middle",
@@ -364,13 +569,8 @@ def add_asset_weight_legend(
             layer="above",
         )
 
-        chain_ids = _entry_chain_ids(entry) if entry else ()
-        chain_icon_size = min(IDENTITY_ICON_WIDTH, 0.036 / len(chain_ids)) if chain_ids else IDENTITY_ICON_WIDTH
-        chain_icon_spacing = chain_icon_size * 1.1
-        chain_sources = [
-            chain_icon_resolver(chain_id)
-            for chain_id in chain_ids
-        ]
+        chain_id = entry.chain_id if entry else None
+        chain_source = chain_icon_resolver(chain_id) if chain_id else None
         protocol_source = None
         curator_source = None
         if entry and entry.metadata:
@@ -378,17 +578,11 @@ def add_asset_weight_legend(
             protocol_source = local_png_data_url(logos.protocol) if logos.protocol else None
             curator_source = local_png_data_url(logos.curator) if logos.curator else None
 
-        chain_icon_offset = (len(chain_sources) - 1) * chain_icon_spacing / 2
         icon_specs = [
-            (CHAIN_X - chain_icon_offset + index * chain_icon_spacing, source, chain_icon_size)
-            for index, source in enumerate(chain_sources)
+            (chain_x, chain_source, identity_icon_width),
+            (protocol_x, protocol_source, identity_icon_width),
+            (curator_x, curator_source, identity_icon_width),
         ]
-        icon_specs.extend(
-            (
-                (PROTOCOL_X, protocol_source, IDENTITY_ICON_WIDTH),
-                (CURATOR_X, curator_source, IDENTITY_ICON_WIDTH),
-            ),
-        )
 
         for x, source, icon_width in icon_specs:
             if source:
@@ -407,14 +601,26 @@ def add_asset_weight_legend(
                 )
 
         figure.add_annotation(
-            x=NAME_X,
+            x=name_x,
             y=y,
             xref="paper",
             yref="paper",
-            text=trace.name,
+            text=(
+                (
+                    f'{trace.name}: <span style="color:#aaa">'
+                    f'allocated <span style="color:#ffd700">{capital_time_allocations[trace.name]:.1f}%</span>, '
+                    f'yield <span style="color:#00ff66">{entry.annualised_yield_percent if entry else 0.0:.1f}%</span></span>'
+                )
+                if legend_layout == "vertical" and trace.name in capital_time_allocations
+                else (
+                    f'{trace.name}: <span style="color:#aaa">{capital_time_allocations[trace.name]:.1f}%</span>'
+                    if trace.name in capital_time_allocations
+                    else trace.name
+                )
+            ),
             showarrow=False,
             xanchor="left",
             yanchor="middle",
             align="left",
-            font={"size": ROW_FONT_SIZE, "color": "#e5ecf6"},
+            font={"size": row_font_size, "color": "#e5ecf6"},
         )
