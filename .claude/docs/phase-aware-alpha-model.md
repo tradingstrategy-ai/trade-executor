@@ -11,7 +11,9 @@ yield-bearing **queue vault**, and re-emits the deposit when the window opens.
 This document explains why the model exists, the architecture and mechanism,
 the correctness invariants an implementer must not undo, how backtest window
 modelling works, and the operator diagnostics. The final section maps the code,
-tests and related documents.
+tests and related documents. For the base synchronous `AlphaModel` pipeline this
+subclass builds on (signals → weights → targets → trades), read
+`.claude/docs/alpha-model.md` first.
 
 **Scope note.** The queue vault here is a vault the strategy *deposits into* as
 a cash home (see `.claude/docs/vault-deposit-redeem.md` for depositor-side vault
