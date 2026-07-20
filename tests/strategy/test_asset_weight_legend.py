@@ -201,6 +201,48 @@ def test_capital_time_allocation_is_weighted_by_time_between_samples() -> None:
     assert allocations == pytest.approx({"Intermittent vault": 100 / 3, "Constant vault": 200 / 3})
 
 
+def test_legend_sort_does_not_reorder_chart_traces() -> None:
+    """Keep reserve-like entries first while retaining the chart stacking order.
+
+    The legend prioritises cash and queue entries, whereas the trace sequence
+    controls the stacked-area chart itself. Verify that sorting its legend rows
+    changes only the annotation order, leaving the original trace sequence
+    intact.
+    """
+    figure = go.Figure(
+        [
+            go.Scatter(name="Directional vault", x=[0, 1], y=[80, 80]),
+            go.Scatter(name="Cash", x=[0, 1], y=[5, 5]),
+            go.Scatter(name="Queue venue", x=[0, 1], y=[15, 15]),
+        ],
+    )
+    entries = [
+        AssetWeightLegendEntry(trace.name, "#00ff66", None, None)
+        for trace in figure.data
+    ]
+
+    add_asset_weight_legend(
+        figure,
+        entries,
+        legend_sort_key=lambda label, allocation: (
+            {"Cash": 0, "Queue venue": 1}.get(label, 2),
+            -allocation,
+            label,
+        ),
+    )
+
+    assert [trace.name for trace in figure.data] == [
+        "Directional vault",
+        "Cash",
+        "Queue venue",
+    ]
+    assert [annotation.text.split(":", 1)[0] for annotation in figure.layout.annotations[5:]] == [
+        "Cash",
+        "Queue venue",
+        "Directional vault",
+    ]
+
+
 def test_cross_chain_vault_repeats_the_legend_row_for_each_chain(tmp_path) -> None:
     """gTrade's Base and Arbitrum allocations get separate legend rows.
 

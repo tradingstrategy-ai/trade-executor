@@ -413,6 +413,7 @@ def add_asset_weight_legend(
     *,
     chain_icon_resolver: Callable[[int], str | None] = resolve_chain_icon_data_url,
     legend_layout: Literal["horizontal", "vertical"] = "horizontal",
+    legend_sort_key: Callable[[str, float], tuple] | None = None,
 ) -> None:
     """Replace a native legend with aligned allocation and identity columns.
 
@@ -432,6 +433,9 @@ def add_asset_weight_legend(
     :param legend_layout:
         ``"horizontal"`` for the compact right-side legend or ``"vertical"``
         for the enlarged below-chart legend.
+    :param legend_sort_key:
+        Optional key for legend rows. Receives the trace label and its
+        capital-time allocation percentage. The chart trace order is unchanged.
     """
     if legend_layout not in {"horizontal", "vertical"}:
         raise ValueError(f"Unsupported asset-weight legend layout: {legend_layout}")
@@ -447,6 +451,13 @@ def add_asset_weight_legend(
         for trace in figure.data
         for entry in entries_by_label.get(trace.name, [None])
     ]
+    if legend_sort_key:
+        legend_rows.sort(
+            key=lambda row: legend_sort_key(
+                row[0].name,
+                capital_time_allocations.get(row[0].name, 0.0),
+            ),
+        )
     row_count = max(len(legend_rows), 1)
     if legend_layout == "horizontal":
         row_step = (ROW_TOP_Y - ROW_BOTTOM_Y) / max(row_count - 1, 1)
