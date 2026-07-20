@@ -128,16 +128,50 @@ settlement-aware:
   `pending_redemption_usd` diagnostics, shown as columns in the
   `format_signals()` table and the `alpha_model_diagnostics` chart, and the
   `pending_vault_settlements` chart plots the queued buffers over time.
-- Same-cycle financing is settlement-aware: rebalance buys are normally
-  funded by the cycle's sells executing first, but a redemption requested
-  from an async vault pays out only after settlement. The alpha model scales
-  buys down to the cash that actually arrives this cycle (the
-  `capped_by_pending_settlement_cash` flag) and redeploys the withheld
-  capital on a later cycle once the redemption settles. Async vaults are
-  recognised by their feature flags (`pair.is_async_vault()`) or, for vaults
-  simulated as async only via a backtest delay override, by the
-  `vault_async_flow` stamp on the position's earlier settlement requests
-  (`position.has_async_vault_flow()`).
+- Same-cycle financing is settlement-aware, via two complementary buy caps on
+  `AlphaModel.generate_rebalance_trades_and_triggers()`. Rebalance buys are
+  normally funded by the cycle's sells executing first, but some "sells" free no
+  cash this cycle, and a buy sized as if they did overspends the reserve
+  (`OutOfSimulatedBalance` in backtest, a bounced deposit live):
+  - **Async redemptions** pay out only after settlement. The **async cap**
+    (`_cap_buys_by_async_sell_proceeds`, always on) scales buys down to cash plus
+    synchronous sell proceeds, flags `capped_by_pending_settlement_cash`, and
+    redeploys the withheld capital once the redemption settles. Async vaults are
+    recognised by feature flags (`pair.is_async_vault()`) or, for vaults simulated
+    as async via a backtest delay override, by the `vault_async_flow` stamp on the
+    position's earlier settlement requests (`position.has_async_vault_flow()`).
+  - **Synchronous trims below the sell threshold** are dropped by the per-signal
+    min-trade gate but still free no cash. The **sync cap**
+    (`_cap_buys_by_realisable_sync_cash`, **opt-in** via `cap_buys_to_sync_cash`)
+    scales spot/vault buys down to cash plus the sells that *actually* execute —
+    excluding sub-threshold trims, frozen/problematic/dust/pending-settlement/
+    non-redeemable sells, and async redemptions — and flags `capped_by_sync_cash`.
+    This bites when a strategy rebalances many small positions to ~equal weights and
+    one large underweight buy is funded by several trims that each fall below the
+    threshold (the Hyper AI 2025-08-20 overshoot: a $46.72 buy against $44.10
+    realisable). Classification is read-only — it mirrors the generation loop's own
+    drop gates — so opting in changes nothing for signals it does not scale.
+
+  Both caps read the overridable `_available_same_cycle_cash()` hook, so a subclass
+  that widens the budget (e.g. `PhaseAwareAlphaModel`, adding redeemable queue-venue
+  balance) applies to both.
+
+**Opting a strategy into the sync cap.** Pass `cap_buys_to_sync_cash=True` and a
+`sync_cash_headroom_usd` (a small margin for fee/slippage realisation, e.g.
+`max(0.50, initial_cash * 0.0005)`) to `generate_rebalance_trades_and_triggers()`;
+the default is opt-out, so existing strategies are unchanged until they do. Two
+constraints, both enforced or load-bearing:
+
+- **Supported scope only.** The opt-in asserts every reserve-spending buy is an
+  unleveraged, non-flipping spot or vault buy. Leveraged, short, flip and
+  credit-supply strategies must not opt in — their cash flow is not reserve-linear.
+- **Do not opt in if buys are funded by capital released *after* trade generation
+  and not visible to `_available_same_cycle_cash()`.** A plain-`AlphaModel` +
+  `YieldManager` strategy (e.g. `base-ath-ipor`) releases managed yield only after
+  `generate_rebalance_trades_and_triggers()` returns, so the sync cap — seeing only
+  raw reserve — would wrongly shrink those buys. Such a strategy either stays opted
+  out, or overrides `_available_same_cycle_cash()` to include that funding first
+  (as `PhaseAwareAlphaModel` does for its queue venue).
 
 For hand-rolled (non-AlphaModel) `decide_trades` the manual rules still
 apply:

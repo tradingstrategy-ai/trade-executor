@@ -9,6 +9,7 @@ working on that area:
 |-----|-------------|
 | `.claude/docs/agent-tricks-and-troubleshooting.md` | **MANDATORY read before ANY Claude CLI or Codex CLI invocation** (reviews, sanity checks, or one-off runs) |
 | `.claude/docs/cli-command.md` | CLI command patterns for trade-executor |
+| `.claude/docs/alpha-model.md` | Base synchronous `AlphaModel` — the signals → weights → targets → trades pipeline, risk caps, trade generation gates, diagnostics charts, with `hyper-ai.py` as the reference implementation |
 | `.claude/docs/vault-deposit-redeem.md` | Synchronous and async (ERC-7540 / Lagoon / Ostium) vault deposit and redeem flows |
 | `.claude/docs/hypercore-vault.md` | HyperCore native vault execution — properties, data structures, deposit/withdrawal phases, HyperEVM interactions, modules and diagrams |
 | `.claude/docs/phase-aware-alpha-model.md` | Phase-aware alpha model — parking window-gated vault deposits in a yield-bearing queue vault, park/promote event log, correctness invariants, backtest window modelling, diagnostics charts |

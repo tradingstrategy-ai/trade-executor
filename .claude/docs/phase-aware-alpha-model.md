@@ -11,7 +11,9 @@ yield-bearing **queue vault**, and re-emits the deposit when the window opens.
 This document explains why the model exists, the architecture and mechanism,
 the correctness invariants an implementer must not undo, how backtest window
 modelling works, and the operator diagnostics. The final section maps the code,
-tests and related documents.
+tests and related documents. For the base synchronous `AlphaModel` pipeline this
+subclass builds on (signals → weights → targets → trades), read
+`.claude/docs/alpha-model.md` first.
 
 **Scope note.** The queue vault here is a vault the strategy *deposits into* as
 a cash home (see `.claude/docs/vault-deposit-redeem.md` for depositor-side vault
@@ -97,7 +99,7 @@ copy-pasting large methods:
 
 | Hook | Base behaviour | Phase-aware override |
 |---|---|---|
-| `_available_same_cycle_cash` | `get_current_cash()` | `+ queue_venue_redeemable()` (invariant 4) |
+| `_available_same_cycle_cash` | `get_current_cash()` | `+ queue_venue_redeemable()` (invariant 4). Feeds **both** same-cycle buy caps — the always-on async cap (`_cap_buys_by_async_sell_proceeds`) and the opt-in sync cap (`_cap_buys_by_realisable_sync_cash`) — so the widening applies to whichever runs. |
 | `_count_position_in_old_weights` | composite predicate (CCTP bridges, credit) | additionally excludes venue pair ids (invariant 2) |
 | `_on_deposit_window_closed` | skip: `cannot_deposit` + `missed_deposit_usd` | **not overridden** — parking happens in `apply_phase_aware_intent` *before* generation, so deferred buys are excluded from the min-trade gate and the cash cap; the base hook remains the degraded/skip path |
 
@@ -228,6 +230,14 @@ Two phase-aware-driven behaviours to know:
   (feature flags, else the position's own settlement history — which also
   catches vaults simulated as async via a backtest delay override).
 
+The base `AlphaModel` also carries an **opt-in synchronous cash cap**
+(`_cap_buys_by_realisable_sync_cash`, `cap_buys_to_sync_cash=True`) that scales
+spot/vault buys down to cash plus the sells that actually execute this cycle —
+excluding sub-threshold trims that the min-trade gate drops. It reads the same
+`_available_same_cycle_cash()` hook, so invariant 4's widening applies to it too;
+a phase-aware strategy may opt in safely for that reason. See the two same-cycle
+financing caps in `vault-deposit-redeem.md` for the strategy-facing opt-in rules.
+
 The venue itself must be **synchronous** (`is_async_vault()` false): a sync
 ERC-4626 redeems same-cycle, which is what makes the promotion funding and the
 invariant-4 widening sound. Avoid Lagoon/Ostium/Gains-style venues.
@@ -334,7 +344,7 @@ Proving idle→productive is the point, so the undeployed slice has structure:
 | File | What |
 |---|---|
 | `tradeexecutor/strategy/phase_aware.py` | `PhaseAwareAlphaModel`, event log (`QueueVaultEvent`, `append_queue_event`, folds), venue identity helpers, `queue_venue_redeemable` |
-| `tradeexecutor/strategy/alpha_model.py` | base `AlphaModel` with the three hooks, `_cap_buys_by_async_sell_proceeds`, `format_signals` columns |
+| `tradeexecutor/strategy/alpha_model.py` | base `AlphaModel` with the three hooks, the always-on `_cap_buys_by_async_sell_proceeds` and the opt-in `_cap_buys_by_realisable_sync_cash` (+ its read-only `_will_sell_execute` / `_is_executable_cash_spending_buy` predicates), `format_signals` columns |
 | `tradeexecutor/strategy/pandas_trader/yield_manager.py` | sweep/release engine, `calculate_yield_management[_safe]`, shared availability helpers, `_is_async_vault_sell` |
 | `tradeexecutor/backtest/vault_windows.py` | `VaultWindowSchedule`, `get_assumed_open_close_time` resolver |
 | `tradeexecutor/backtest/backtest_pricing.py`, `backtest_runner.py`, `backtest_generic_router.py` | `vault_window_overrides` threading into `can_deposit` / `check_redemption` |
