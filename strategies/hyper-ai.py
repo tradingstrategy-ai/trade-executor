@@ -210,6 +210,14 @@ class Parameters:
         absolute_min_vault_deposit_usd,
         initial_cash * sell_rebalance_min_threshold_of_initial_cash_pct,
     )
+    #: Margin withheld from the same-cycle buy budget by the synchronous cash cap
+    #: (``cap_buys_to_sync_cash``): sell proceeds are sized mark-to-market but
+    #: execution realises slightly less (fees, price impact, raw-unit rounding).
+    #: Derived once at class creation from ``initial_cash`` (0.50 USD at the
+    #: 1,000 USD bankroll) so it scales across configured bankrolls — it does not
+    #: track intra-run treasury growth.
+    #: Revisit for live trading — HyperCore multi-phase withdrawals may need more.
+    sync_cash_headroom_usd = max(0.50, initial_cash * 0.0005)
 
     #: Default routing is still required by the strategy runtime even though it is not the alpha source.
     routing = TradeRouting.default
@@ -431,6 +439,15 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         individual_rebalance_min_threshold=parameters.individual_rebalance_min_threshold_usd,
         sell_rebalance_min_threshold=parameters.sell_rebalance_min_threshold_usd,
         execution_context=input.execution_context,
+        # Daily ~equal-weight rebalancing across many small (~120 USD) vault
+        # positions routinely produces one large underweight buy funded by several
+        # trims that are individually below the 5 USD sell threshold and get
+        # dropped, so the buy would overspend realisable cash (e.g. cycle
+        # 2025-08-20: a 46.72 USD Scared Money buy vs 44.10 USD available →
+        # OutOfSimulatedBalance). Opt in to scale buys down to the sells that
+        # actually execute this cycle.
+        cap_buys_to_sync_cash=True,
+        sync_cash_headroom_usd=parameters.sync_cash_headroom_usd,
     )
 
     if input.is_visualisation_enabled():
