@@ -763,34 +763,30 @@ def create_charts(
 
 tags = {StrategyTag.beta, StrategyTag.live, StrategyTag.closed_source}
 
-name = "Hyper AI v2"
+name = "Hyper AI"
 
-short_description = "Positive-Sharpe gated vault-of-vaults strategy on Hyperliquid"
+short_description = "Vault-of-vaults allocating across Hyperliquid ecosystem"
 
 icon = ""
 
 long_description = """
-# Hyper AI v2 strategy
+# Hyper AI strategy
 
-A diversified yield strategy that allocates across Hyperliquid native vaults, gating
-vault admission on a positive trailing 180-day Sharpe ratio and ranking survivors with
-an age-ramp weighting.
+A diversified yield strategy that allocates across Hyperliquid native vaults using
+robustness criteria.
 
 ## Strategy features
 
-- **Positive-Sharpe gate**: Vaults must show a positive trailing 180-day Sharpe ratio to be admitted
-- **Survivor-first selection**: Vaults must also pass TVL, age, and trading availability filters
-- **Age-ramp weighting**: Younger vaults receive lower weights, ramping up over 0.875 years
+- **Survivor-first selection**: Vaults must pass TVL, age, and trading availability filters
+- **Age-ramp weighting**: Younger vaults receive lower weights, ramping up over 0.75 years
 - **Daily rebalancing**: Adjusts positions daily based on inclusion criteria and signal weights
-- **Size-risk capped sizing**: TVL-based per-position cap prevents over-concentration
+- **Waterfall sizing**: Capped waterfall normalisation prevents over-concentration
 - **Redemption-aware**: Target value accounts for pending redemptions
 
 ## Risk parameters
 
 - Maximum 20 positions at any time
 - 98% allocation target
-- 20% maximum concentration per asset
-- 20% per-position cap of pool TVL
-- 7,500 USD minimum vault TVL, ~46 day minimum vault age
-- 5 USD minimum vault deposit (Hyperliquid hard floor)
+- 12% maximum portfolio concentration per one allocated vault
+- 20% maximum TVL participation of a target vault
 """
