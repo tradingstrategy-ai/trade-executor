@@ -1231,9 +1231,13 @@ class AlphaModel:
         cannot disagree; diagnostics of unscaled signals are untouched.
 
         Composition with :py:meth:`_cap_buys_by_async_sell_proceeds` (which runs
-        first, unchanged): this budget — cash + *executing* sync sells − headroom —
-        is always at most the async cap's budget, so when both fire the tighter
-        sync cap wins; async-cycle behaviour is otherwise unaffected.
+        first, unchanged): this cap re-derives its budget from the post-async
+        adjusts and re-scales, so the final buys always fit ``cash + executing
+        sync sells − headroom`` regardless of what the async cap did. (When
+        ``sync_cash_headroom_usd >= same_cycle_cash_buffer_usd`` — the hyper-ai
+        case, 0.50 vs 0.0 — this budget is also numerically ≤ the async budget,
+        so the sync cap is simply the tighter of the two.) Async-cycle behaviour
+        is otherwise unaffected.
 
         The withheld capital stays in reserve and is redeployed by a later
         rebalance once a trim grows past the sell threshold. If scaling pushes a
@@ -2678,10 +2682,20 @@ class AlphaModel:
             # proceeds — scale buys to the sells that actually execute. Supported
             # scope is plain long-only spot/vault strategies; leveraged and flip
             # signals size from position_target and are not reserve-linear.
+            # Supported scope: every reserve-spending buy must be an unleveraged,
+            # non-flipping spot/vault buy that the cap can actually cap. A buy that
+            # spends reserve but is neither spot nor vault (e.g. a credit supply)
+            # would be excluded by _is_executable_cash_spending_buy yet still drain
+            # the reserve uncapped, re-introducing the overspend — reject it here.
             assert all(
-                s.leverage is None and not s.is_flipping()
+                s.position_adjust_usd <= 0
+                or (
+                    s.leverage is None
+                    and not s.is_flipping()
+                    and ((s.synthetic_pair or s.pair).is_spot() or (s.synthetic_pair or s.pair).is_vault())
+                )
                 for s in self.iterate_signals()
-            ), "cap_buys_to_sync_cash supports only unleveraged, non-flipping spot/vault strategies"
+            ), "cap_buys_to_sync_cash supports only unleveraged, non-flipping spot/vault buys"
             self._cap_buys_by_realisable_sync_cash(
                 position_manager,
                 current_positions,

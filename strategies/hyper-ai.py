@@ -213,7 +213,9 @@ class Parameters:
     #: Margin withheld from the same-cycle buy budget by the synchronous cash cap
     #: (``cap_buys_to_sync_cash``): sell proceeds are sized mark-to-market but
     #: execution realises slightly less (fees, price impact, raw-unit rounding).
-    #: 0.50 USD at the 1,000 USD treasury bankroll; scales with capital.
+    #: Derived once at class creation from ``initial_cash`` (0.50 USD at the
+    #: 1,000 USD bankroll) so it scales across configured bankrolls — it does not
+    #: track intra-run treasury growth.
     #: Revisit for live trading — HyperCore multi-phase withdrawals may need more.
     sync_cash_headroom_usd = max(0.50, initial_cash * 0.0005)
 
