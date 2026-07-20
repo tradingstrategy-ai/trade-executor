@@ -108,6 +108,12 @@ class TradingPairSignalFlags(enum.Enum):
     #: queued async vault redemptions whose cash arrives only after settlement.
     capped_by_pending_settlement_cash = "capped_by_pending_settlement_cash"
 
+    #: This buy was scaled down because the cycle's synchronous sells that actually
+    #: execute (some trims are dropped e.g. for being below the sell threshold)
+    #: do not free enough cash to fund all buys at full size.
+    #: Only set when the strategy opts in via ``cap_buys_to_sync_cash=True``.
+    capped_by_sync_cash = "capped_by_sync_cash"
+
     #: This buy was deferred (not skipped) because its vault's deposit window is
     #: closed: the capital waits in the queue venue and a park event is logged,
     #: to be deposited once the window opens (PhaseAwareAlphaModel park step).
@@ -1021,6 +1027,288 @@ class AlphaModel:
                 continue
             s.position_adjust_usd *= scale
             s.flags.add(TradingPairSignalFlags.capped_by_pending_settlement_cash)
+
+    def _resolve_pending_settlement_position(
+        self,
+        signal: TradingPairSignal,
+        position_manager: PositionManager,
+        current_positions: dict,
+    ) -> TradingPosition | None:
+        """Resolve the position whose pending vault settlement would block this signal.
+
+        Mirrors the resolution in :py:meth:`_generate_signal_rebalance_trades`:
+        prefer the already-resolved current position, fall back to a
+        ``pending=True`` lookup so positions whose opening settlement is still
+        in flight are found too.
+        """
+        settlement_position = current_positions.get(signal.pair.internal_id)
+        if settlement_position is None:
+            settlement_position = position_manager.get_current_position_for_pair(
+                signal.synthetic_pair or signal.pair,
+                pending=True,
+            )
+        return settlement_position
+
+    def _will_sell_execute(
+        self,
+        signal: TradingPairSignal,
+        position_manager: PositionManager,
+        current_positions: dict,
+        redemption_results: dict,
+        frozen_pairs: set,
+        individual_rebalance_min_threshold: USDollarAmount,
+        sell_rebalance_min_threshold: USDollarAmount | None,
+    ) -> bool:
+        """Will this sell signal actually emit a trade and free cash this cycle?
+
+        Read-only mirror of the sell-side drop reasons applied later in
+        :py:meth:`generate_rebalance_trades_and_triggers` /
+        :py:meth:`_generate_signal_rebalance_trades`, in the same order and with the
+        same semantics, so :py:meth:`_cap_buys_by_realisable_sync_cash` and the
+        generation loop cannot disagree about which sells fund this cycle's buys:
+
+        - problematic / blacklisted pair (:py:meth:`_should_skip_signal_rebalance`)
+        - frozen position pair (ditto)
+        - sell size below the sell threshold (ditto — note the loop only *flags*
+          such a sell and leaves ``position_adjust_usd`` untouched, which is
+          exactly why the cash cap must not trust raw adjusts)
+        - sell quantity below the pair dust epsilon (ditto)
+        - pending async vault settlement on the position
+          (:py:meth:`_generate_signal_rebalance_trades`)
+        - position not redeemable yet (ditto)
+
+        A redemption check computed here is stored into ``redemption_results`` so
+        the generation loop reuses it — each pair is checked at most once.
+
+        Mutates nothing on the signal.
+        """
+        if position_manager.is_problematic_pair(signal.pair):
+            return False
+
+        if signal.pair in frozen_pairs:
+            return False
+
+        # Same gate semantics as _should_skip_signal_rebalance: a falsy
+        # individual threshold disables sell-size suppression entirely.
+        if individual_rebalance_min_threshold:
+            threshold = sell_rebalance_min_threshold or individual_rebalance_min_threshold
+            if abs(signal.position_adjust_usd) < threshold:
+                return False
+
+        if signal.leverage is None:
+            trade_quantity = abs(Decimal(str(signal.position_adjust_quantity)))
+            dust_epsilon = get_close_epsilon_for_pair(signal.synthetic_pair or signal.pair)
+            if trade_quantity <= dust_epsilon:
+                return False
+
+        settlement_position = self._resolve_pending_settlement_position(signal, position_manager, current_positions)
+        if settlement_position is not None and settlement_position.has_pending_vault_settlement():
+            return False
+
+        current_position = current_positions.get(signal.pair.internal_id)
+        if current_position is not None:
+            redemption_result = redemption_results.get(signal.pair.internal_id)
+            if redemption_result is None:
+                redemption_result = self._check_redemption_for_position(
+                    position_manager,
+                    current_position,
+                    stage=RedemptionCheckStage.sell_rebalance,
+                )
+                # Share with the generation loop so the check runs once per pair.
+                redemption_results[signal.pair.internal_id] = redemption_result
+            if not redemption_result.can_redeem:
+                return False
+
+        return True
+
+    def _is_executable_cash_spending_buy(
+        self,
+        signal: TradingPairSignal,
+        position_manager: PositionManager,
+        current_positions: dict,
+        frozen_pairs: set,
+        individual_rebalance_min_threshold: USDollarAmount,
+    ) -> bool:
+        """Will this buy signal actually emit a reserve-spending spot/vault trade this cycle?
+
+        Used by :py:meth:`_cap_buys_by_realisable_sync_cash` both to build the buy
+        demand (denominator) and to select which buys get scaled. A buy that the
+        generation loop will drop anyway (problematic/frozen pair, deposit window
+        closed, below the buy threshold, pending settlement) must not inflate the
+        demand, or the surviving real buys would be scaled down more than needed.
+
+        Cash-spending means unleveraged, non-flip, spot *or* vault: a Hyperliquid
+        vault pair is ``kind=vault`` and NOT ``is_spot()``
+        (see :py:meth:`tradeexecutor.state.identifier.TradingPairKind.is_spot`),
+        so both kinds must be included or vault deposits — the very trades that
+        overshoot in the Hyper AI strategies — would be exempt from the cap.
+        Leveraged, short and flip signals size from ``position_target`` in their
+        own generation branches and their cash flow is not reserve-linear, so the
+        cap never touches them.
+
+        Mutates nothing on the signal.
+        """
+        if signal.position_adjust_usd <= 0:
+            return False
+
+        if signal.leverage is not None:
+            return False
+
+        if signal.is_flipping():
+            return False
+
+        pair = signal.synthetic_pair or signal.pair
+        if not (pair.is_spot() or pair.is_vault()):
+            return False
+
+        if position_manager.is_problematic_pair(signal.pair):
+            return False
+
+        if signal.pair in frozen_pairs:
+            return False
+
+        # Same argument as the loop's deposit-window gate in _should_skip_signal_rebalance.
+        if not position_manager.pricing_model.can_deposit(self.timestamp, signal.pair):
+            return False
+
+        # Same gate semantics as _should_skip_signal_rebalance: falsy threshold disables.
+        if individual_rebalance_min_threshold and signal.position_adjust_usd < individual_rebalance_min_threshold:
+            return False
+
+        settlement_position = self._resolve_pending_settlement_position(signal, position_manager, current_positions)
+        if settlement_position is not None and settlement_position.has_pending_vault_settlement():
+            return False
+
+        return True
+
+    def _cap_buys_by_realisable_sync_cash(
+        self,
+        position_manager: PositionManager,
+        current_positions: dict,
+        redemption_results: dict,
+        frozen_pairs: set,
+        individual_rebalance_min_threshold: USDollarAmount,
+        sell_rebalance_min_threshold: USDollarAmount | None,
+        sync_cash_headroom_usd: USDollarAmount,
+    ) -> None:
+        """Scale spot/vault buys down to the synchronous cash that actually arrives this cycle.
+
+        Opt-in via ``generate_rebalance_trades_and_triggers(cap_buys_to_sync_cash=True)``;
+        with the default opt-out this method never runs and the generator behaves
+        byte-for-byte as before.
+
+        Rebalance buys are financed by the same cycle's sells executing first
+        (sells sort ahead of buys in
+        :py:meth:`tradeexecutor.state.trade.TradeExecution.get_execution_sort_position`).
+        But the per-signal generation loop drops some sells *after* buy sizing has
+        already assumed their proceeds — most importantly sub-threshold trims,
+        which are only flagged (``individual_trade_size_too_small``) and never
+        zeroed — so the buys can overspend the reserve and crash the backtest
+        wallet (``OutOfSimulatedBalance``) or, live, bounce a vault deposit.
+
+        Worked example — the exact cycle this cap was written for (hyper-ai.py,
+        cycle #19, 2025-08-20, sell threshold $5.00, headroom $0.50). Nine
+        ~equal-weight Hyperliquid vault positions want trims of −13.69, −8.61,
+        −4.99, −4.97, −4.39, −4.39, −3.81, −1.13 USD and one underweight buy of
+        +46.72 USD (Scared Money). Only the first two trims clear the $5 sell
+        threshold; the other six ($23.68 total) are dropped by the loop and free
+        no cash, yet the old cash math counted them::
+
+            cash                    = 21.80
+            realisable sync sells   = 13.69 + 8.61 = 22.30
+            budget                  = 21.80 + 22.30 - 0.50 = 43.60
+            buy demand              = 46.72  > budget   (would overshoot by 2.62 + headroom)
+            scale                   = 43.60 / 46.72 = 0.9332
+            scaled buy              = 43.60
+            reserve after cycle     = 0.50  (the headroom — safe)
+
+        Classification is **read-only**: nothing is mutated except the
+        ``position_adjust_usd`` of the buys that get scaled (plus their
+        :py:attr:`TradingPairSignalFlags.capped_by_sync_cash` flag). Signals the
+        loop will drop are excluded from the budget via the same predicates the
+        loop itself uses (:py:meth:`_will_sell_execute`,
+        :py:meth:`_is_executable_cash_spending_buy`), so the cap and the loop
+        cannot disagree; diagnostics of unscaled signals are untouched.
+
+        Composition with :py:meth:`_cap_buys_by_async_sell_proceeds` (which runs
+        first, unchanged): this budget — cash + *executing* sync sells − headroom —
+        is always at most the async cap's budget, so when both fire the tighter
+        sync cap wins; async-cycle behaviour is otherwise unaffected.
+
+        The withheld capital stays in reserve and is redeployed by a later
+        rebalance once a trim grows past the sell threshold. If scaling pushes a
+        buy below the buy threshold the loop drops it entirely: the full scaled
+        amount stays in cash — under-invested for a cycle, never overspent.
+
+        :param sync_cash_headroom_usd:
+            Margin subtracted from the buy budget because sell proceeds here are
+            mark-to-market while execution realises slightly less (fees, price
+            impact, raw-unit rounding).
+        """
+        sync_sell_usd = 0.0
+        executable_buys = []
+        for s in self.iterate_signals():
+            if s.position_adjust_ignored:
+                continue
+            adjust = s.position_adjust_usd
+            if adjust < 0:
+                # Only unleveraged spot/vault sells release reserve linearly;
+                # leveraged trims settle through collateral, not the reserve.
+                if s.leverage is not None:
+                    continue
+                pair = s.synthetic_pair or s.pair
+                if not (pair.is_spot() or pair.is_vault()):
+                    continue
+                # Async redemptions only enter a queue; their cash arrives in a
+                # later cycle and was already the async cap's concern. Check this
+                # before _will_sell_execute so we do not run a redemption check
+                # (a live RPC) on a sell we are about to exclude anyway.
+                if position_manager.is_async_vault_sell_pair(s.pair, position_pair=pair):
+                    continue
+                if not self._will_sell_execute(
+                    s,
+                    position_manager,
+                    current_positions,
+                    redemption_results,
+                    frozen_pairs,
+                    individual_rebalance_min_threshold,
+                    sell_rebalance_min_threshold,
+                ):
+                    continue
+                sync_sell_usd += -adjust
+            elif adjust > 0:
+                if self._is_executable_cash_spending_buy(
+                    s,
+                    position_manager,
+                    current_positions,
+                    frozen_pairs,
+                    individual_rebalance_min_threshold,
+                ):
+                    executable_buys.append(s)
+
+        buy_usd = sum(s.position_adjust_usd for s in executable_buys)
+        if buy_usd <= 0:
+            return
+
+        cash = self._available_same_cycle_cash(position_manager)
+        budget = max(cash + sync_sell_usd - sync_cash_headroom_usd, 0.0)
+        if buy_usd <= budget:
+            return
+
+        scale = budget / buy_usd
+        logger.info(
+            "Synchronous buys of %f USD exceed the %f USD realisable this cycle "
+            "(cash %f + executing synchronous sells %f - headroom %f), scaling buys by %f",
+            buy_usd,
+            budget,
+            cash,
+            sync_sell_usd,
+            sync_cash_headroom_usd,
+            scale,
+        )
+        for s in executable_buys:
+            s.position_adjust_usd *= scale
+            s.flags.add(TradingPairSignalFlags.capped_by_sync_cash)
 
     def _check_redemption_for_position(
         self,
@@ -2233,6 +2521,8 @@ class AlphaModel:
         sell_rebalance_min_threshold=None,
         execution_context: ExecutionContext = None,
         same_cycle_cash_buffer_usd: USDollarAmount = 0.0,
+        cap_buys_to_sync_cash: bool = False,
+        sync_cash_headroom_usd: USDollarAmount = 0.0,
     ) -> List[TradeExecution]:
         """Generate the trades that will rebalance the portfolio.
 
@@ -2301,6 +2591,27 @@ class AlphaModel:
             behaviour. For cross-chain strategies pass the strategy's
             ``cross_chain_cash_buffer_usd``.
 
+        :param cap_buys_to_sync_cash:
+            Opt in to the synchronous cash reconciliation
+            (:py:meth:`_cap_buys_by_realisable_sync_cash`): scale this cycle's
+            spot/vault buys down so they fit current cash plus the synchronous
+            sell proceeds that will *actually* be realised — excluding sells the
+            generation loop is going to drop (e.g. trims below
+            ``sell_rebalance_min_threshold``, which are only flagged and would
+            otherwise be counted as phantom funding, overspending the reserve).
+
+            Only plain long-only spot/vault strategies are supported (asserted);
+            leveraged and flip signals size from ``position_target`` and are not
+            reserve-linear. The default ``False`` preserves the previous behaviour
+            for all existing callers.
+
+        :param sync_cash_headroom_usd:
+            Margin withheld from the synchronous buy budget when
+            ``cap_buys_to_sync_cash`` is enabled, covering the gap between
+            mark-to-market sell proceeds and what execution realises (fees, price
+            impact, raw-unit rounding). Ignored when ``cap_buys_to_sync_cash``
+            is ``False``.
+
         :return:
             List of trades we need to execute to reach the target portfolio.
             The sells are sorted always before buys.
@@ -2360,6 +2671,26 @@ class AlphaModel:
         # async vault redemptions only enter the queue and pay out cycles later,
         # so buys must fit in the cash that actually arrives this cycle.
         self._cap_buys_by_async_sell_proceeds(position_manager, same_cycle_cash_buffer_usd)
+
+        if cap_buys_to_sync_cash:
+            # Opt-in synchronous cash reconciliation (see method docstring): the
+            # loop below drops some sells after buy sizing already assumed their
+            # proceeds — scale buys to the sells that actually execute. Supported
+            # scope is plain long-only spot/vault strategies; leveraged and flip
+            # signals size from position_target and are not reserve-linear.
+            assert all(
+                s.leverage is None and not s.is_flipping()
+                for s in self.iterate_signals()
+            ), "cap_buys_to_sync_cash supports only unleveraged, non-flipping spot/vault strategies"
+            self._cap_buys_by_realisable_sync_cash(
+                position_manager,
+                current_positions,
+                redemption_results,
+                frozen_pairs,
+                individual_rebalance_min_threshold,
+                sell_rebalance_min_threshold,
+                sync_cash_headroom_usd,
+            )
 
         for signal in self.iterate_signals():
 
