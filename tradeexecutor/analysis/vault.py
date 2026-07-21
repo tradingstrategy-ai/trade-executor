@@ -204,6 +204,7 @@ def display_vaults(
         data.append({
             "Chain": get_chain_name(v[0]),
             "Vault": v[1],
+            "Pair id": vault_pair.internal_id if vault_pair else "-",
             "Name": vault_pair.get_vault_name() if vault_pair else "-",
             "Protocol": vault_pair.get_vault_protocol() if vault_pair else "-",
             "Denomination": vault_pair.quote.token_symbol if vault_pair else "-",
@@ -213,8 +214,8 @@ def display_vaults(
     printer("Vault check list")
     df = pd.DataFrame(data)
     if execution_mode.is_live_trading():
-        # In live trading we can display dataframes directly
-        printer(df)
+        # Do not let pandas abbreviate pair details in Docker logs.
+        printer(df.to_string(index=False, max_colwidth=None))
     else:
         # Backtesting uses HTML output
         display(df)

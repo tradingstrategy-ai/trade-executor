@@ -2032,7 +2032,27 @@ class TradingStrategyUniverseModel(UniverseModel):
             liquidity_end = liquidity_end.to_pydatetime().replace(tzinfo=None)
 
             if liquidity_end < max_age:
-                raise DataTooOld(f"Liquidity data is too old to work with {liquidity_start} - {liquidity_end}")
+                liquidity_df = data_universe.liquidity.df
+                if "forward_filled" in liquidity_df.columns:
+                    liquidity_df = liquidity_df.loc[~liquidity_df["forward_filled"]]
+
+                latest_liquidity_by_pair = liquidity_df.groupby("pair_id")["timestamp"].max()
+                stale_pairs = []
+                for pair_id, latest_timestamp in latest_liquidity_by_pair.items():
+                    latest_timestamp = latest_timestamp.to_pydatetime().replace(tzinfo=None)
+                    if latest_timestamp < max_age:
+                        try:
+                            pair = data_universe.pairs.get_pair_by_id(int(pair_id))
+                            pair_name = (pair.other_data or {}).get("vault_name") or f"{pair.base_token_symbol}-{pair.quote_token_symbol}"
+                        except Exception:
+                            pair_name = "Unknown pair"
+                        stale_pairs.append(f"Pair #{pair_id}: {pair_name} (latest liquidity {latest_timestamp})")
+
+                stale_pairs_message = "\n".join(stale_pairs)
+                raise DataTooOld(
+                    f"Liquidity data is too old to work with {liquidity_start} - {liquidity_end}\n"
+                    f"Stale liquidity pairs:\n{stale_pairs_message}"
+                )
 
             return min(liquidity_end, candle_end)
 
