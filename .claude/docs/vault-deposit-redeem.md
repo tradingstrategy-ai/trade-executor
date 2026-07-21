@@ -251,6 +251,11 @@ The simulation mirrors the live lifecycle:
   a second time. The position is revalued at the settlement price so equity is
   immediately correct.
 
+Besides the settlement wait, backtests also gate deposits and redemptions on
+per-cycle window availability; `tradeexecutor.analysis.vault_windows.calculate_vault_window_diagnostics()`
+summarises those gating inputs (open/closed/unknown days per vault) for
+notebook inspection.
+
 ## Live trading
 
 In live trading nobody knows when a Lagoon operator will settle, so the

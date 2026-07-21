@@ -260,6 +260,10 @@ always-open and has no next-open column, so backtests can synthesise windows:
   cross-chain generic router (`backtest_generic_router.py`). The cross-chain
   backtest uses `GenericPricing` with per-vault pricing models, so an override
   set only on one path is silently ignored.
+- **Diagnostics:** `tradeexecutor.analysis.vault_windows.calculate_vault_window_diagnostics()`
+  replays these gating inputs per vault and cycle (open/closed/unknown days,
+  longest gaps, `vault_state` sample coverage) so a notebook can inspect them
+  before running the backtest.
 
 The gates consulted each cycle are `BacktestPricing.can_deposit()` /
 `check_redemption()` (live: `VaultPricing` / `HypercoreVaultPricing`). Live
