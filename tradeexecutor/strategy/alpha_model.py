@@ -726,6 +726,19 @@ class AlphaModel:
         if isinstance(alpha, np.float32):
             alpha = float(alpha)
 
+        ignore_reason = pair.get_ignore_reason()
+        if ignore_reason is not None and alpha != 0:
+            # Ignored pairs are retained in the universe for their data,
+            # but must not enter new positions. Zeroing the signal here still
+            # allows any existing position to be exited through the old weights.
+            logger.info(
+                "set_signal(): pair %s is ignored (%s), forcing signal %s to zero",
+                pair.get_ticker(),
+                ignore_reason,
+                alpha,
+            )
+            alpha = 0
+
         if alpha < 0:
             assert leverage is not None, f"Leverage must be set for short, received signal {alpha} for pair {pair.get_human_description(describe_type=True)}"
 
