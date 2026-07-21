@@ -52,6 +52,12 @@ class AssetType(enum.Enum):
     borrowed = "borrowed"
 
 
+#: Ignore reason for pairs whose fee metadata is too incomplete to model
+#: investor-net returns - see :py:meth:`TradingPairIdentifier.get_ignore_reason`
+#: and :py:mod:`tradeexecutor.strategy.vault_fee_data`.
+IGNORE_REASON_LACKS_FEE_DATA = "lacks_fee_data"
+
+
 #: Vault feature flags that mark a two-stage (request/claim) deposit and
 #: redemption flow. Capital sent to such a vault is queued until the vault
 #: operator or epoch settles the request - see
@@ -937,6 +943,44 @@ class TradingPairIdentifier:
         if not features:
             return not is_generic_erc4626_protocol_slug(self.get_vault_protocol())
         return bool(features & ASYNC_VAULT_FEATURES)
+
+    def get_ignore_reason(self) -> str | None:
+        """Why this pair is retained in the universe, but cannot be traded or backtested.
+
+        - Ignored pairs are kept in the trading universe for their price data
+          (benchmarks, diagnostics, incomplete metadata),
+          but the strategy must not enter new positions in them
+
+        - :py:meth:`AlphaModel.set_signal` forces the signal of an ignored pair to zero,
+          so no new position is entered, while any existing position can still be exited
+
+        - Known values: :py:data:`IGNORE_REASON_LACKS_FEE_DATA`
+
+        - See :py:meth:`set_ignore_reason`
+
+        :return:
+            Machine-readable reason string, or ``None`` if the pair is tradeable.
+        """
+        other_data = self.other_data or {}
+        return other_data.get("ignore_reason")
+
+    def set_ignore_reason(self, reason: str) -> None:
+        """Flag this pair as retained in the universe, but not tradeable.
+
+        - The flag lives in :py:attr:`other_data` and is not serialised with the state
+
+        - Set the flag when constructing the trading universe,
+          on pair instances cached by :py:attr:`tradeexecutor.strategy.trading_strategy_universe.TradingStrategyUniverse.pair_cache`
+
+        - See :py:meth:`get_ignore_reason`
+
+        :param reason:
+            Machine-readable snake_case reason, e.g. :py:data:`IGNORE_REASON_LACKS_FEE_DATA`.
+        """
+        assert type(reason) == str and reason, f"Got bad ignore reason: {reason}"
+        if self.other_data is None:
+            self.other_data = {}
+        self.other_data["ignore_reason"] = reason
 
     def get_vault_protocol(self) -> str | None:
         """Get the vault protocol name.

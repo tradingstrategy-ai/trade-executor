@@ -1,14 +1,25 @@
 """Portfolio weights visualisation."""
 
 
+from collections.abc import Callable
+
 import pandas as pd
 import plotly.colors as colors
 import plotly.express as px
 from plotly.graph_objects import Figure
 
 from tradingstrategy.chain import _chain_data
+from tradingstrategy.vault import VaultMetadata
 
+from tradeexecutor.analysis.multipair import calculate_pair_annualised_average_yield
 from tradeexecutor.analysis.weights import calculate_asset_weights, visualise_weights, calculate_weights_statistics
+from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.state import State
+from tradeexecutor.strategy.chart.asset_weight_legend import (
+    AssetWeightLegendEntry,
+    add_asset_weight_legend,
+    merge_asset_weight_legend_entries,
+)
 from tradeexecutor.strategy.chart.definition import ChartInput
 from tradeexecutor.strategy.phase_aware import is_queue_vault_position
 
@@ -17,6 +28,9 @@ QUEUE_VENUE_BAND = "Queue venue"
 
 #: Reserve-like colour for YieldManager-managed queue venue positions.
 YIELD_MANAGER_RESERVE_COLOUR = "#666"
+
+#: Neutral swatch colour used for asset-weight legend rows.
+ASSET_WEIGHT_LEGEND_SWATCH_COLOUR = "#a8b1c1"
 
 
 def _get_queue_asset_label(pair) -> str:
@@ -164,3 +178,96 @@ def equity_curve_by_chain(input: ChartInput) -> tuple[Figure, pd.DataFrame]:
     )
     fig.update_traces(line_width=0)
     return fig, df
+
+
+def get_asset_weight_label(position: TradingPosition) -> str:
+    """Get the trace label used for a position in the asset weight chart.
+
+    Queue venue positions get the ``[queue]`` suffixed label,
+    other positions use the pair chart label.
+    """
+    if is_queue_vault_position(position):
+        return _get_queue_asset_label(position.pair)
+    return position.pair.get_chart_label() or position.pair.get_ticker()
+
+
+def build_asset_weight_legend_entries(state: State) -> list[AssetWeightLegendEntry]:
+    """Map each asset-weight trace label to its chain and vault metadata.
+
+    Builds one entry for the reserve asset and one per position,
+    carrying the capital- and time-weighted annualised yield of each pair,
+    for :py:func:`tradeexecutor.strategy.chart.asset_weight_legend.add_asset_weight_legend`.
+    """
+    reserve_asset, _ = state.portfolio.get_default_reserve_asset()
+    _, strategy_end_at = state.get_strategy_time_range()
+    annualised_yield_percent_by_pair_id = {
+        pair.internal_id: calculate_pair_annualised_average_yield(pair, state.portfolio, end_at=strategy_end_at) * 100
+        for pair in state.portfolio.get_all_traded_pairs()
+    }
+    entries = [
+        AssetWeightLegendEntry(
+            label=reserve_asset.token_symbol,
+            colour=ASSET_WEIGHT_LEGEND_SWATCH_COLOUR,
+            chain_id=reserve_asset.chain_id,
+            metadata=None,
+            annualised_yield_percent=0.0,
+        ),
+    ]
+
+    for position in state.portfolio.get_all_positions():
+        metadata = position.pair.get_token_metadata()
+        if not isinstance(metadata, VaultMetadata):
+            metadata = None
+        entries.append(AssetWeightLegendEntry(
+            label=get_asset_weight_label(position),
+            colour=ASSET_WEIGHT_LEGEND_SWATCH_COLOUR,
+            chain_id=position.pair.chain_id,
+            chain_ids=(position.pair.chain_id,),
+            metadata=metadata,
+            annualised_yield_percent=annualised_yield_percent_by_pair_id.get(position.pair.internal_id, 0.0),
+        ))
+
+    return merge_asset_weight_legend_entries(entries)
+
+
+def make_asset_weight_legend_sort_key(state: State) -> Callable[[str, float], tuple]:
+    """Build the default asset-weight legend row order.
+
+    Keeps the reserve asset first and queue venues second,
+    then sorts directional holdings by descending allocation.
+    """
+    reserve_symbol = state.portfolio.get_default_reserve_asset()[0].token_symbol
+    queue_labels = {
+        get_asset_weight_label(position)
+        for position in state.portfolio.get_all_positions()
+        if is_queue_vault_position(position)
+    }
+
+    def sort_key(label: str, allocation_pct: float) -> tuple:
+        if label == reserve_symbol:
+            priority = 0
+        elif label in queue_labels:
+            priority = 1
+        else:
+            priority = 2
+        return priority, -allocation_pct, label
+
+    return sort_key
+
+
+def equity_curve_by_asset_with_legend(input: ChartInput) -> Figure:
+    """Equity curve by asset with the vault-logo legend below the chart.
+
+    Renders :py:func:`equity_curve_by_asset` and replaces the native Plotly
+    legend with the aligned allocation, chain, protocol and curator logo rows.
+    """
+    state = input.state
+    fig = equity_curve_by_asset(input)
+    fig.update_layout(title="Portfolio asset weights by token")
+    add_asset_weight_legend(
+        fig,
+        build_asset_weight_legend_entries(state),
+        legend_layout="vertical",
+        legend_sort_key=make_asset_weight_legend_sort_key(state),
+    )
+    return fig

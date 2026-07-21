@@ -206,3 +206,16 @@ def inclusion_criteria_check(
         df["Rolling volume first entry at"] = df.apply(_map_volume_timestamp, axis=1)
         df["Rolling volume initial"] = df.apply(_map_volume_value, axis=1)
     return df
+
+
+def ignored_vault_data(input: ChartInput) -> "Styler":
+    """Table of vaults retained in the universe but ignored because of missing fee data.
+
+    - Lists vault pairs flagged by
+      :py:func:`tradeexecutor.strategy.vault_fee_data.mark_missing_fee_vaults_ignored`
+
+    - These pairs keep their price data for diagnostics,
+      but the strategy does not enter new positions in them
+    """
+    from tradeexecutor.strategy.vault_fee_data import build_ignored_vault_dataframe, style_ignored_vault_table
+    return style_ignored_vault_table(build_ignored_vault_dataframe(input.strategy_universe))
