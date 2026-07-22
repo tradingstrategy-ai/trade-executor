@@ -28,12 +28,14 @@ from tradeexecutor.cli.testtrade import perform_test_trade
 from tradeexecutor.cli.vault_test_trade import build_vault_test_universe
 from tradeexecutor.cli.vault_test_trade_state import (
     close_simulated_positions,
+    capture_vault_test_error,
     create_vault_test_diagnostic_pair,
     get_latest_vault_position,
     get_vault_test_status,
     get_vault_trade_position,
     merge_simulated_attempt,
     record_attempt_result,
+    redact_vault_test_error_text,
     stamp_position_vault_test_attempt,
 )
 from tradeexecutor.cli.vault_test_trade_setup import VaultTestRuntime
@@ -255,6 +257,10 @@ class VaultTestBatchRunner:
         pair = None
         previous = get_latest_vault_position(self.state, spec)
         stop_batch = False
+        phase = "prepare"
+        original_trade_ids = {
+            trade.trade_id for trade in self.state.portfolio.get_all_trades()
+        }
 
         try:
             if self.auto_simulated:
@@ -267,18 +273,44 @@ class VaultTestBatchRunner:
 
             attempt = self._prepare_attempt(spec, vault, previous)
             pair = attempt.pair
+            phase = "execute"
             stop_batch = self._process_attempt(attempt, alarm)
         except SimulatedVaultAttemptTimeout as e:
             infrastructure_failure = e
             alarm.disarm()
-            self._handle_infrastructure_failure(e, spec, vault, pair, previous)
+            self._handle_infrastructure_failure(
+                e,
+                spec,
+                vault,
+                pair,
+                previous,
+                original_trade_ids=original_trade_ids,
+                phase=phase,
+            )
         except ExecutionHaltableIssue as e:
             alarm.disarm()
             if self.auto_simulated and is_simulated_infrastructure_failure(e):
                 infrastructure_failure = e
-                self._handle_infrastructure_failure(e, spec, vault, pair, previous)
+                self._handle_infrastructure_failure(
+                    e,
+                    spec,
+                    vault,
+                    pair,
+                    previous,
+                    original_trade_ids=original_trade_ids,
+                    phase=phase,
+                )
             elif not self._record_in_transit_halt(spec, vault):
-                self._record_failure(spec, vault, pair, previous, e, halted=True)
+                self._record_failure(
+                    spec,
+                    vault,
+                    pair,
+                    previous,
+                    e,
+                    original_trade_ids=original_trade_ids,
+                    phase=phase,
+                    halted=True,
+                )
         except OutOfBalance as e:
             alarm.disarm()
             self._record_failure(
@@ -288,15 +320,33 @@ class VaultTestBatchRunner:
                 previous,
                 e,
                 detail=f"Insufficient cash: {e}",
+                original_trade_ids=original_trade_ids,
+                phase=phase,
             )
             stop_batch = True
         except Exception as e:
             alarm.disarm()
             if self.auto_simulated and is_simulated_infrastructure_failure(e):
                 infrastructure_failure = e
-                self._handle_infrastructure_failure(e, spec, vault, pair, previous)
+                self._handle_infrastructure_failure(
+                    e,
+                    spec,
+                    vault,
+                    pair,
+                    previous,
+                    original_trade_ids=original_trade_ids,
+                    phase=phase,
+                )
             else:
-                self._record_failure(spec, vault, pair, previous, e)
+                self._record_failure(
+                    spec,
+                    vault,
+                    pair,
+                    previous,
+                    e,
+                    original_trade_ids=original_trade_ids,
+                    phase=phase,
+                )
         finally:
             alarm.close()
             if fork_snapshots and infrastructure_failure is None:
@@ -659,30 +709,43 @@ class VaultTestBatchRunner:
         # simulated balances, valuations and settlement changes equally isolated.
         fork_state = deepcopy(self.state)
         is_async = attempt.pair.is_async_vault()
-        perform_test_trade(
-            web3=self.runtime.web3config.get_default(),
-            execution_model=self.runtime.execution_model,
-            pricing_model=attempt.pricing_model,
-            sync_model=self.runtime.sync_model,
-            state=fork_state,
-            universe=attempt.universe,
-            routing_model=attempt.routing_model,
-            routing_state=attempt.routing_state,
-            max_slippage=self.max_slippage,
-            amount=self.amount,
-            pair=attempt.pair,
-            buy_only=should_leave_deposit_open(
-                operation=operation,
-                is_async=is_async,
-                redemption_available=redemption_available,
-                manual=False,
-            ),
-            close_only=operation == "redeem",
-            web3config=self.runtime.web3config,
-            trade_flags={TradeFlag.simulated},
-            test_short=False,
-            force_async_settlement_on_anvil=False,
-        )
+        try:
+            perform_test_trade(
+                web3=self.runtime.web3config.get_default(),
+                execution_model=self.runtime.execution_model,
+                pricing_model=attempt.pricing_model,
+                sync_model=self.runtime.sync_model,
+                state=fork_state,
+                universe=attempt.universe,
+                routing_model=attempt.routing_model,
+                routing_state=attempt.routing_state,
+                max_slippage=self.max_slippage,
+                amount=self.amount,
+                pair=attempt.pair,
+                buy_only=should_leave_deposit_open(
+                    operation=operation,
+                    is_async=is_async,
+                    redemption_available=redemption_available,
+                    manual=False,
+                ),
+                close_only=operation == "redeem",
+                web3config=self.runtime.web3config,
+                trade_flags={TradeFlag.simulated},
+                test_short=False,
+                force_async_settlement_on_anvil=False,
+            )
+        except Exception as error:
+            # The outer handler records the result on the persistent state. Keep
+            # the disposable fork state attached long enough to extract its
+            # transaction-level revert trace before the snapshot is restored.
+            try:
+                error.vault_test_failure_state = fork_state
+            except (AttributeError, TypeError):
+                # A few third-party exception classes disallow arbitrary
+                # attributes. Preserve their original failure rather than
+                # replacing it with a diagnostic bookkeeping error.
+                pass
+            raise
 
         # From here onwards only in-memory/state-store work remains.  Do not let
         # the external-operation timeout interrupt the persistent JSON write.
@@ -819,6 +882,9 @@ class VaultTestBatchRunner:
         vault: Any,
         pair: TradingPairIdentifier | None,
         previous: TradingPosition | None,
+        *,
+        original_trade_ids: set[int],
+        phase: str,
     ) -> None:
         """Queue one clean rerun or record a repeated Anvil failure."""
 
@@ -844,7 +910,16 @@ class VaultTestBatchRunner:
             self.runtime.reserve_asset,
             vault,
         )
-        detail = f"Anvil infrastructure failed after replacement: {error}"
+        detail = redact_vault_test_error_text(
+            f"Anvil infrastructure failed after replacement: {error}"
+        )
+        error_data = capture_vault_test_error(
+            error,
+            state=getattr(error, "vault_test_failure_state", self.state),
+            original_trade_ids=original_trade_ids,
+            web3config=self.runtime.web3config,
+            phase=phase,
+        )
         record_attempt_result(
             self.state,
             diagnostic_pair,
@@ -852,6 +927,7 @@ class VaultTestBatchRunner:
             simulated=True,
             result="infrastructure_failed",
             detail=detail,
+            error=error_data,
             source_position_id=previous.position_id if previous else None,
         )
         self.store.sync(self.state)
@@ -866,6 +942,8 @@ class VaultTestBatchRunner:
         error: Exception,
         *,
         detail: str | None = None,
+        original_trade_ids: set[int],
+        phase: str,
         halted: bool = False,
     ) -> None:
         """Persist one protocol, adapter or balance failure and its output row."""
@@ -880,7 +958,15 @@ class VaultTestBatchRunner:
             self.runtime.reserve_asset,
             vault,
         )
-        detail = detail or str(error)
+        detail = redact_vault_test_error_text(detail or error)
+        error_state = getattr(error, "vault_test_failure_state", self.state)
+        error_data = capture_vault_test_error(
+            error,
+            state=error_state,
+            original_trade_ids=original_trade_ids,
+            web3config=self.runtime.web3config,
+            phase=phase,
+        )
         record_attempt_result(
             self.state,
             diagnostic_pair,
@@ -888,6 +974,7 @@ class VaultTestBatchRunner:
             simulated=self.auto_simulated,
             result="failed",
             detail=detail,
+            error=error_data,
             source_position_id=previous.position_id if previous else None,
         )
         self.store.sync(self.state)

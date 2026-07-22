@@ -7,7 +7,10 @@ must remain unaware of it.
 """
 
 import hashlib
+import re
+import traceback
 from copy import deepcopy
+from typing import Any
 
 from eth_defi.abi import ZERO_ADDRESS_STR
 from eth_defi.compat import native_datetime_utc_now
@@ -21,6 +24,135 @@ from tradeexecutor.state.identifier import (
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
+
+
+_URL_PATTERN = re.compile(r"https?://[^\s'\"<>]+")
+
+
+def redact_vault_test_error_text(value: object) -> str:
+    """Make exception text safe to persist and hand to external reporters.
+
+    JSON-RPC client exceptions can include their full provider URL, including an
+    API key.  The diagnostic state must be shareable without leaking it.
+    """
+
+    return _URL_PATTERN.sub("<redacted-url>", str(value))
+
+
+def _serialise_exception_chain(error: BaseException) -> list[dict]:
+    """Return the causal exception chain without retaining exception objects."""
+
+    chain: list[dict] = []
+    current: BaseException | None = error
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        chain.append(
+            {
+                "type": f"{current.__class__.__module__}.{current.__class__.__qualname__}",
+                "message": redact_vault_test_error_text(current),
+                "arguments": [
+                    redact_vault_test_error_text(argument) for argument in current.args
+                ],
+            }
+        )
+        current = current.__cause__ or current.__context__
+    return chain
+
+
+def _serialise_vault_test_transactions(
+    state: State,
+    *,
+    original_trade_ids: set[int],
+) -> list[dict]:
+    """Extract persisted transaction diagnostics created by the failed attempt."""
+
+    transactions: list[dict] = []
+    for position in state.portfolio.get_all_positions():
+        for trade in position.trades.values():
+            if trade.trade_id in original_trade_ids:
+                continue
+            for transaction in trade.blockchain_transactions:
+                transactions.append(
+                    {
+                        "position_id": position.position_id,
+                        "trade_id": trade.trade_id,
+                        "chain_id": transaction.chain_id,
+                        "tx_hash": str(transaction.tx_hash)
+                        if transaction.tx_hash
+                        else None,
+                        "contract_address": transaction.contract_address,
+                        "function_selector": transaction.function_selector,
+                        "wrapped_target": transaction.wrapped_target,
+                        "wrapped_function_selector": transaction.wrapped_function_selector,
+                        "nonce": transaction.nonce,
+                        "block_number": transaction.block_number,
+                        "block_hash": str(transaction.block_hash)
+                        if transaction.block_hash
+                        else None,
+                        "status": transaction.status,
+                        "revert_reason": redact_vault_test_error_text(
+                            transaction.revert_reason
+                        )
+                        if transaction.revert_reason
+                        else None,
+                        "stack_trace": redact_vault_test_error_text(
+                            transaction.stack_trace
+                        )
+                        if transaction.stack_trace
+                        else None,
+                    }
+                )
+    return transactions
+
+
+def _capture_chain_blocks(web3config: Any | None) -> dict[str, dict]:
+    """Capture the current block for every configured chain without masking failure."""
+
+    if web3config is None:
+        return {}
+
+    blocks: dict[str, dict] = {}
+    for chain_id, web3 in web3config.connections.items():
+        chain_key = str(getattr(chain_id, "value", chain_id))
+        try:
+            blocks[chain_key] = {"block_number": int(web3.eth.block_number)}
+        except Exception as block_error:
+            blocks[chain_key] = {"error": redact_vault_test_error_text(block_error)}
+    return blocks
+
+
+def capture_vault_test_error(
+    error: BaseException,
+    *,
+    state: State,
+    original_trade_ids: set[int],
+    web3config: Any | None,
+    phase: str,
+) -> dict:
+    """Create complete, JSON-safe diagnostics for a failed vault-test attempt.
+
+    The payload intentionally contains both the Python-level error and every
+    transaction created during this invocation.  Anvil adds an EVM stack trace
+    to reverted :class:`BlockchainTransaction` objects, so preserving it here
+    lets external reporters consume the same evidence after the fork is gone.
+    """
+
+    exception_chain = _serialise_exception_chain(error)
+    return {
+        "captured_at": native_datetime_utc_now().isoformat(),
+        "phase": phase,
+        "exception": exception_chain[0],
+        "exception_chain": exception_chain,
+        "traceback": redact_vault_test_error_text(
+            "".join(traceback.format_exception(type(error), error, error.__traceback__))
+        ),
+        "chain_blocks": _capture_chain_blocks(web3config),
+        "transactions": _serialise_vault_test_transactions(
+            state,
+            original_trade_ids=original_trade_ids,
+        ),
+    }
 
 
 def get_latest_vault_position(
@@ -233,6 +365,7 @@ def record_attempt_result(
     simulated: bool,
     result: str,
     detail: str | None = None,
+    error: dict | None = None,
     source_position_id: int | None = None,
 ) -> TradingPosition:
     """Create a closed diagnostic position in the dedicated vault-test state.
@@ -257,6 +390,8 @@ def record_attempt_result(
     attempt["result"] = result
     if detail:
         attempt["detail"] = detail
+    if error:
+        attempt["error"] = error
     if source_position_id is not None:
         attempt["source_position_id"] = source_position_id
     position.other_data["vault_test_attempt"] = attempt

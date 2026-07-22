@@ -26,6 +26,7 @@ from tradeexecutor.cli.vault_test_trade import (
     parse_vault_ids,
 )
 from tradeexecutor.cli.vault_test_trade_state import (
+    capture_vault_test_error,
     create_vault_test_diagnostic_pair,
     get_vault_trade_position,
     record_attempt_result,
@@ -348,6 +349,103 @@ def test_adapter_failure_can_be_recorded_as_a_normal_position() -> None:
         position.position_id
     )
     assert restored_position.simulated is False
+
+
+def test_vault_test_failure_persists_redacted_traceback_and_revert_evidence() -> None:
+    """Vault-test failures preserve reporter-ready diagnostics in the state.
+
+    1. Create a failed transaction containing its receipt block and Anvil trace.
+    2. Capture an exception that includes a credential-bearing JSON-RPC URL.
+    3. Persist the diagnostic result and verify state serialisation retains the
+       traceback, blocks and revert evidence while redacting the URL.
+    """
+    # 1. Create a failed transaction containing its receipt block and Anvil trace.
+    state = State()
+    reserve_asset = AssetIdentifier(
+        ChainId.base.value,
+        "0x0000000000000000000000000000000000000010",
+        "USDC",
+        6,
+    )
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    spec = VaultSpec(
+        ChainId.arbitrum.value,
+        "0x0000000000000000000000000000000000000020",
+    )
+    transaction = MagicMock(
+        chain_id=ChainId.arbitrum.value,
+        tx_hash="0xdeadbeef",
+        contract_address=spec.vault_address,
+        function_selector="deposit",
+        wrapped_target=None,
+        wrapped_function_selector=None,
+        nonce=7,
+        block_number=123_456,
+        block_hash="0xblock",
+        status=False,
+        revert_reason="custom error 0x12345678",
+        stack_trace="revert: VaultNotOpen()",
+    )
+    trade = MagicMock(trade_id=42, blockchain_transactions=[transaction])
+    failed_position = MagicMock(position_id=3, trades={42: trade})
+    state.portfolio.get_all_positions = MagicMock(return_value=[failed_position])
+
+    # 2. Capture an exception that includes a credential-bearing JSON-RPC URL.
+    web3 = MagicMock()
+    web3.eth.block_number = 654_321
+    web3config = MagicMock(connections={ChainId.arbitrum: web3})
+    try:
+        raise RuntimeError("RPC https://rpc.example.test/secret-key rejected the call")
+    except RuntimeError as error:
+        diagnostics = capture_vault_test_error(
+            error,
+            state=state,
+            original_trade_ids=set(),
+            web3config=web3config,
+            phase="execute",
+        )
+
+    # 3. Persist the diagnostics and verify external consumers can read them safely.
+    pair = create_vault_test_diagnostic_pair(spec, reserve_asset)
+    position = record_attempt_result(
+        state,
+        pair,
+        spec,
+        simulated=True,
+        result="failed",
+        detail="deposit failed",
+        error=diagnostics,
+    )
+    payload = json.loads(state.to_json_safe())
+    error_payload = payload["portfolio"]["closed_positions"][str(position.position_id)][
+        "other_data"
+    ]["vault_test_attempt"]["error"]
+
+    assert error_payload["phase"] == "execute"
+    assert (
+        error_payload["chain_blocks"][str(ChainId.arbitrum.value)]["block_number"]
+        == 654_321
+    )
+    assert error_payload["transactions"] == [
+        {
+            "position_id": 3,
+            "trade_id": 42,
+            "chain_id": ChainId.arbitrum.value,
+            "tx_hash": "0xdeadbeef",
+            "contract_address": spec.vault_address,
+            "function_selector": "deposit",
+            "wrapped_target": None,
+            "wrapped_function_selector": None,
+            "nonce": 7,
+            "block_number": 123_456,
+            "block_hash": "0xblock",
+            "status": False,
+            "revert_reason": "custom error 0x12345678",
+            "stack_trace": "revert: VaultNotOpen()",
+        }
+    ]
+    assert "secret-key" not in error_payload["traceback"]
+    assert "<redacted-url>" in error_payload["traceback"]
 
 
 def test_simulated_vault_attempt_timeout_is_recordable() -> None:
