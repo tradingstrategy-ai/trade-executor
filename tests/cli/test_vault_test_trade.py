@@ -21,11 +21,14 @@ from tradeexecutor.cli import (
     vault_test_trade_simulation as vault_test_trade_simulation_module,
 )
 from tradeexecutor.cli.vault_test_trade import (
-    create_vault_test_diagnostic_pair,
     filter_rpc_kwargs_for_vault_specs,
-    get_vault_trade_position,
     load_lagoon_deployment,
     parse_vault_ids,
+)
+from tradeexecutor.cli.vault_test_trade_state import (
+    create_vault_test_diagnostic_pair,
+    get_vault_trade_position,
+    record_attempt_result,
 )
 from tradeexecutor.cli.vault_test_trade_tui import (
     VaultChoice,
@@ -41,7 +44,7 @@ from tradeexecutor.cli.vault_test_trade_simulation import (
     take_simulated_snapshots,
 )
 from tradeexecutor.cli.vault_test_trade_runner import (
-    record_attempt_result,
+    get_bridge_conflict,
     should_leave_deposit_open,
 )
 from tradeexecutor.ethereum import web3config as web3config_module
@@ -49,6 +52,7 @@ from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.cli.log import setup_custom_log_levels
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
+from tradeexecutor.state.trade import TradeStatus
 
 
 class VaultSearchHarness(App):
@@ -256,6 +260,45 @@ def test_deposit_round_trip_gating() -> None:
         )
         is False
     )
+
+
+def test_shared_bridge_position_blocks_unrelated_vault() -> None:
+    """One vault cannot consume another vault's per-chain CCTP lane.
+
+    1. Model an in-transit bridge owned by the first vault.
+    2. Verify both the owner and a second vault are blocked while it is in transit.
+    3. Settle the transfer and verify only the owning vault may consume its capital.
+    """
+    first = VaultSpec(
+        ChainId.arbitrum.value,
+        "0x0000000000000000000000000000000000000001",
+    )
+    second = VaultSpec(
+        ChainId.arbitrum.value,
+        "0x0000000000000000000000000000000000000002",
+    )
+    trade = MagicMock()
+    trade.get_status.return_value = TradeStatus.cctp_in_transit
+    bridge_position = MagicMock()
+    bridge_position.trades = {1: trade}
+    bridge_position.other_data = {
+        "vault_test_attempt": {
+            "vault_id": first.as_string_id(),
+            "phase": "bridge_out_pending",
+        },
+    }
+
+    # 1. Model an in-transit bridge owned by the first vault.
+    assert trade.get_status() == TradeStatus.cctp_in_transit
+
+    # 2. Verify both the owner and a second vault are blocked while it is in transit.
+    assert "still in transit" in get_bridge_conflict(bridge_position, first)
+    assert "still in transit" in get_bridge_conflict(bridge_position, second)
+
+    # 3. Settle the transfer and verify only the owning vault may consume its capital.
+    trade.get_status.return_value = TradeStatus.success
+    assert get_bridge_conflict(bridge_position, first) is None
+    assert first.as_string_id() in get_bridge_conflict(bridge_position, second)
 
 
 def test_adapter_failure_can_be_recorded_as_a_normal_position() -> None:

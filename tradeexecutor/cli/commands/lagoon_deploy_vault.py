@@ -995,9 +995,9 @@ def lagoon_deploy_vault(
     # The operator-facing vault record may live at any --vault-record-file path,
     # but vault-test-trade deliberately discovers deployments through the normal
     # state/{executor-id}.deployment.json convention.  Emit that runtime copy for
-    # standalone single-chain deployments, which have no strategy_file to derive
-    # the executor id from.  Simulated deployments return inside the helper and
-    # never overwrite a real runtime artefact.
+    # standalone single-chain deployments when EXECUTOR_ID identifies the target,
+    # because these have no strategy_file from which to derive it. Simulated
+    # deployments return inside the helper and never overwrite a real artefact.
     _write_state_sibling_deployment_artifact(
         None,
         json_payload,

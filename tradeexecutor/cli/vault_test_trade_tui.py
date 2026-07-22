@@ -11,7 +11,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Input, Label, Static
 from tradingstrategy.chain import ChainId
 
-from tradeexecutor.cli.vault_test_trade import (
+from tradeexecutor.cli.vault_test_trade_state import (
     get_latest_vault_position,
     get_vault_test_status,
     get_vault_trade_position,

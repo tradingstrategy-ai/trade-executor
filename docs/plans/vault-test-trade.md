@@ -13,6 +13,9 @@ module or invoke `create_trading_universe()` / `decide_trades()`.
   `state/{id}.deployment.json`, which provides the source Lagoon vault, guard
   module and satellite modules. `--auto-simulated` instead deploys an ephemeral
   Lagoon topology on fresh Anvil forks and removes its artefact at shutdown.
+- A standalone single-chain `lagoon-deploy-vault` invocation writes that sibling
+  artefact when `EXECUTOR_ID` is set to the vault-test executor id; `STATE_FILE`
+  may override its directory.
 - `--vault-id` / `VAULT_ID` accepts an ordered comma-separated list of
   eth-defi `chain_id-address` vault specifications.
 - `--amount` is the test reserve amount. For CCTP, the satellite deposit uses
@@ -68,11 +71,13 @@ module or invoke `create_trading_universe()` / `decide_trades()`.
   runtime construction, dedicated state loading and startup settlement.
 - `vault_test_trade_runner.py` owns the sequential per-vault lifecycle state
   machine, action selection, execution and result recording.
+- `vault_test_trade_state.py` owns the dedicated position metadata, status,
+  diagnostic and simulated-position merge rules.
 - `vault_test_trade_simulation.py` owns disposable Anvil generations,
   infrastructure classification and snapshot helpers.
 - `vault_test_trade_tui.py` owns manual selection and typeahead widgets.
-- `vault_test_trade.py` contains shared deployment, universe and special-state
-  helper functions used by setup, runner and TUI modules.
+- `vault_test_trade.py` contains shared deployment and universe construction
+  used by setup and runner modules.
 
 ## Manual interface
 

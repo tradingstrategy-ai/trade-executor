@@ -25,15 +25,15 @@ from tradeexecutor.cli.bootstrap import (
     check_universe_contracts_resolve,
 )
 from tradeexecutor.cli.testtrade import perform_test_trade
-from tradeexecutor.cli.vault_test_trade import (
-    build_vault_test_universe,
+from tradeexecutor.cli.vault_test_trade import build_vault_test_universe
+from tradeexecutor.cli.vault_test_trade_state import (
     close_simulated_positions,
-    create_vault_test_attempt_metadata,
     create_vault_test_diagnostic_pair,
     get_latest_vault_position,
     get_vault_test_status,
     get_vault_trade_position,
     merge_simulated_attempt,
+    record_attempt_result,
     stamp_position_vault_test_attempt,
 )
 from tradeexecutor.cli.vault_test_trade_setup import VaultTestRuntime
@@ -139,46 +139,41 @@ def should_leave_deposit_open(
     )
 
 
-def record_attempt_result(
-    state: State,
-    pair: TradingPairIdentifier,
+def get_bridge_conflict(
+    bridge_position: TradingPosition | None,
     vault_spec: VaultSpec,
-    *,
-    simulated: bool,
-    result: str,
-    detail: str | None = None,
-    source_position_id: int | None = None,
-) -> TradingPosition:
-    """Create a closed diagnostic position in the dedicated vault-test state.
+) -> str | None:
+    """Explain why a shared per-chain bridge cannot serve this vault yet.
 
-    Some failures happen before a transaction or even an adapter can be
-    constructed.  They still need one normal ``TradingPosition`` so the latest
-    result for the vault remains discoverable by the TUI and subsequent runs.
+    A chain has one bridge position, so another vault must not overwrite its
+    attempt metadata or consume capital already bridged for the owning vault.
     """
 
-    reserve = state.portfolio.get_default_reserve_position().asset
-    now = native_datetime_utc_now()
-    position = state.portfolio.open_new_position(
-        now,
-        pair,
-        assumed_price=1.0,
-        reserve_currency=reserve,
-        reserve_currency_price=1.0,
+    if bridge_position is None:
+        return None
+
+    attempt = bridge_position.other_data.get("vault_test_attempt", {})
+    owner_vault_id = attempt.get("vault_id")
+    in_transit = next(
+        (
+            trade
+            for trade in bridge_position.trades.values()
+            if trade.get_status() == TradeStatus.cctp_in_transit
+        ),
+        None,
     )
-    position.simulated = simulated
+    if in_transit is not None:
+        return f"CCTP transfer for {owner_vault_id or 'another vault'} is still in transit"
 
-    attempt = create_vault_test_attempt_metadata(vault_spec, simulated=simulated)
-    attempt["result"] = result
-    if detail:
-        attempt["detail"] = detail
-    if source_position_id is not None:
-        attempt["source_position_id"] = source_position_id
-    position.other_data["vault_test_attempt"] = attempt
+    phase = attempt.get("phase")
+    if (
+        owner_vault_id
+        and owner_vault_id != vault_spec.as_string_id()
+        and phase in {"bridge_out_pending", "bridge_back_pending"}
+    ):
+        return f"Bridge capital belongs to pending vault {owner_vault_id}"
 
-    # Diagnostic positions never represent live holdings, so close them at the
-    # same timestamp at which they were created.
-    state.portfolio.close_position(position, now)
-    return position
+    return None
 
 
 @dataclass(slots=True)
@@ -474,21 +469,12 @@ class VaultTestBatchRunner:
 
         spec = attempt.spec
         bridge_position = attempt.bridge_position
-        bridge_attempt = (
-            bridge_position.other_data.get("vault_test_attempt", {})
-            if bridge_position
-            else {}
-        )
-        bridge_in_transit = bool(
-            bridge_position
-            and bridge_attempt.get("vault_id") == spec.as_string_id()
-            and self._find_in_transit_trade(bridge_position) is not None
-        )
-        if bridge_in_transit:
+        bridge_conflict = get_bridge_conflict(bridge_position, spec)
+        if bridge_conflict:
             return self._skip_attempt(
                 attempt,
                 alarm,
-                "CCTP transfer is still in transit",
+                bridge_conflict,
             )
 
         if self.manual_action is not None:

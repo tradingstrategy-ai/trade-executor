@@ -166,7 +166,8 @@ class TradeFlag(enum.Enum):
 
     #: This trade was executed only on a fork for vault-test-trade diagnostics.
     #:
-    #: It must never be reconciled, retried or rebroadcast against a live chain.
+    #: The dedicated vault-test state closes it before persistence; its recorded
+    #: fork transactions must never be rebroadcast against a live chain.
     simulated = "simulated"
 
     #: This trade is a trigger order.
