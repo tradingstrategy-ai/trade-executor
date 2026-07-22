@@ -439,7 +439,7 @@ def calculate_realised_profitability(
 
         Empty series if there are no trades.
     """
-    data = [(p.closed_at, p.get_realised_profit_percent()) for p in state.portfolio.closed_positions.values() if p.trades and not p.simulated]
+    data = [(p.closed_at, p.get_realised_profit_percent()) for p in state.portfolio.closed_positions.values()]
 
     if len(data) == 0:
         return pd.Series(dtype='float64')
@@ -463,7 +463,7 @@ def calculate_size_relative_realised_trading_returns(
 
         Empty series if there are no trades.
     """
-    positions = [p for p in state.portfolio.closed_positions.values() if p.is_closed() and p.trades and not p.simulated]
+    positions = [p for p in state.portfolio.closed_positions.values() if p.is_closed()]
     return _calculate_size_relative_trading_returns(positions)
 
 
@@ -515,7 +515,7 @@ def calculate_compounding_realised_trading_profitability(
         of the strategy over its lifetime.
     """
     started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
-    positions = [p for p in state.portfolio.closed_positions.values() if p.is_closed() and p.trades and not p.simulated]
+    positions = [p for p in state.portfolio.closed_positions.values() if p.is_closed()]
     return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
 
 
@@ -544,11 +544,7 @@ def calculate_compounding_unrealised_trading_profitability(
         portfolio = state_or_portfolio
 
     # Calculate unrealised/realised profit pct for each position
-    profit_data = [
-        (p.get_profit_timeline_timestamp(), p.get_size_relative_unrealised_or_realised_profit_percent())
-        for p in portfolio.get_all_positions()
-        if p.trades and not p.simulated
-    ]
+    profit_data = [(p.get_profit_timeline_timestamp(), p.get_size_relative_unrealised_or_realised_profit_percent()) for p in portfolio.get_all_positions()]
 
     if len(profit_data) == 0:
         return pd.Series([], index=pd.to_datetime([]), dtype='float64')
@@ -636,7 +632,7 @@ def _calculate_compounding_trading_profitability(
 
 
     started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
-    positions = [p for p in state.portfolio.get_all_positions() if p.trades and not p.simulated]  # TODO: Frozen positions may cause issues
+    positions = state.portfolio.get_all_positions()  # TODO: Frozen positions may cause issues
     return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
 
 
@@ -671,13 +667,13 @@ def _calculate_compounding_realised_trading_profitability(
 
 def calculate_long_compounding_realised_trading_profitability(state, fill_time_gaps=True):
     started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
-    positions = [p for p in state.portfolio.closed_positions.values() if p.trades and not p.simulated and p.is_closed() and p.is_long()]
+    positions = [p for p in state.portfolio.closed_positions.values() if (p.is_closed() and p.is_long())]
     return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
 
 
 def calculate_short_compounding_realised_trading_profitability(state, fill_time_gaps=True):
     started_at, last_ts = _get_strategy_time_range(state, fill_time_gaps)
-    positions = [p for p in state.portfolio.closed_positions.values() if p.trades and not p.simulated and p.is_closed() and p.is_short()]
+    positions = [p for p in state.portfolio.closed_positions.values() if (p.is_closed() and p.is_short())]
     return _calculate_compounding_trading_profitability(positions, fill_time_gaps, started_at, last_ts)
   
 

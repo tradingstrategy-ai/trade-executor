@@ -53,6 +53,9 @@ The consumer-side flow and its design notes are:
 - `/home/mikko/code/trade-executor-vault-test-trade/tradeexecutor/cli/testtrade.py`
 - `/home/mikko/code/trade-executor-vault-test-trade/tradeexecutor/ethereum/vault/vault_routing.py`
 - `/home/mikko/code/trade-executor-vault-test-trade/tradeexecutor/cli/vault_test_trade.py`
+- `/home/mikko/code/trade-executor-vault-test-trade/tradeexecutor/cli/vault_test_trade_setup.py`
+- `/home/mikko/code/trade-executor-vault-test-trade/tradeexecutor/cli/vault_test_trade_runner.py`
+- `/home/mikko/code/trade-executor-vault-test-trade/tradeexecutor/cli/vault_test_trade_simulation.py`
 - `/home/mikko/code/trade-executor-vault-test-trade/tradeexecutor/cli/commands/vault_test_trade.py`
 - `/home/mikko/code/trade-executor-vault-test-trade/tests/lagoon/test_lagoon_e2e.py`
 

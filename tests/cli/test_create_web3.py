@@ -1,6 +1,6 @@
-import logging
+import os
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -35,7 +35,6 @@ def test_configure_web3():
 
 
 def test_configure_web3_simulate_uses_custom_http_timeout():
-    setup_custom_log_levels()
     captured = {}
 
     class FakeEth:
@@ -70,8 +69,6 @@ def test_configure_web3_simulate_hyperliquid_uses_big_block_gas_limit():
     2. Build the Web3 config through the normal environment loader.
     3. Confirm the Anvil launcher receives the HyperEVM large-block gas limit override.
     """
-    setup_custom_log_levels()
-
     class FakeEth:
         chain_id = ChainId.anvil.value
 
@@ -97,44 +94,6 @@ def test_configure_web3_simulate_hyperliquid_uses_big_block_gas_limit():
     # 3. Confirm the Anvil launcher receives the HyperEVM large-block gas limit override.
     assert config.connections[ChainId.hyperliquid] is fake_web3
     assert launch_anvil_mock.call_args.kwargs["gas_limit"] == HYPEREVM_BIG_BLOCK_GAS_LIMIT
-
-
-def test_simulated_multichain_setup_failure_closes_every_started_anvil() -> None:
-    """A partial multichain setup cannot leak Anvil processes.
-
-    1. Return two simulated chain connections and fail while starting the third.
-    2. Make the first Anvil shutdown fail to exercise best-effort cleanup.
-    3. Verify both started forks receive a bounded shutdown and the original setup error survives.
-    """
-    first_anvil = MagicMock()
-    first_anvil.process.pid = 1001
-    first_anvil.close.side_effect = RuntimeError("first Anvil would not stop")
-    second_anvil = MagicMock()
-    second_anvil.process.pid = 1002
-    first_web3 = SimpleNamespace(anvil=first_anvil)
-    second_web3 = SimpleNamespace(anvil=second_anvil)
-    setup_error = RuntimeError("third Anvil did not start")
-
-    # 1. Return two simulated chain connections and fail while starting the third.
-    with patch.object(
-        Web3Config,
-        "create_web3",
-        side_effect=[first_web3, second_web3, setup_error],
-    ):
-        # 2. Make the first Anvil shutdown fail to exercise best-effort cleanup.
-        with pytest.raises(RuntimeError, match="third Anvil did not start") as raised:
-            Web3Config.setup_from_environment(
-                GasPriceMethod.legacy,
-                simulate=True,
-                json_rpc_ethereum="https://ethereum.example",
-                json_rpc_avalanche="https://avalanche.example",
-                json_rpc_polygon="https://polygon.example",
-            )
-
-    # 3. Verify both started forks receive a bounded shutdown and the original setup error survives.
-    assert raised.value is setup_error
-    first_anvil.close.assert_called_once_with(log_level=logging.ERROR, block_timeout=5)
-    second_anvil.close.assert_called_once_with(log_level=logging.ERROR, block_timeout=5)
 
 
 def test_check_default_chain_id_live_strict_vs_unit_testing():

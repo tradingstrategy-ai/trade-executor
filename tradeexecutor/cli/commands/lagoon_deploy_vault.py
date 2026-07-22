@@ -277,6 +277,12 @@ def _write_state_sibling_deployment_artifact(
 
     The executor id comes from ``EXECUTOR_ID`` for standalone deployment or is
     derived from the strategy module for the legacy strategy deployment path.
+    ``state_file`` is an explicit override used by standalone commands and
+    tests; otherwise normal ``STATE_FILE`` environment resolution is preserved.
+
+    Single-chain deploy reports predate the multichain JSON schema.  Supplying
+    ``primary_chain_id`` lets this helper wrap that report in the same
+    ``deployments`` map consumed by runtime bootstrap.
     """
     if simulate:
         return
@@ -296,6 +302,9 @@ def _write_state_sibling_deployment_artifact(
     # to the state/ convention used by all CLI commands.
     path = resolve_deployment_file(executor_id, state_file or os.environ.get("STATE_FILE"))
     path.parent.mkdir(parents=True, exist_ok=True)
+    # Multichain deploy already returns the canonical schema.  Normalise the
+    # older flat single-chain report at this writer boundary so readers support
+    # one deployment-file format only.
     if "deployments" not in json_payload:
         assert primary_chain_id is not None, "Single-chain deployment artifact requires its chain id"
         vault_address = json_payload.get("Vault")
@@ -982,6 +991,13 @@ def lagoon_deploy_vault(
         simulate=simulate,
         logger=logger,
     )
+
+    # The operator-facing vault record may live at any --vault-record-file path,
+    # but vault-test-trade deliberately discovers deployments through the normal
+    # state/{executor-id}.deployment.json convention.  Emit that runtime copy for
+    # standalone single-chain deployments, which have no strategy_file to derive
+    # the executor id from.  Simulated deployments return inside the helper and
+    # never overwrite a real runtime artefact.
     _write_state_sibling_deployment_artifact(
         None,
         json_payload,
@@ -1216,8 +1232,10 @@ def _deploy_multichain(
         logger=logger,
     )
 
-    # Also place the artifact next to the strategy state file so the runtime
-    # auto-discovers satellite modules without a manual SATELLITE_MODULES env var.
+    # Multichain deployments already contain the complete source/satellite map.
+    # Copy that canonical map next to the strategy state so start, trade-ui and
+    # vault-test-trade all discover the same modules without SATELLITE_MODULES.
+    # The helper derives the executor id from strategy_file on this legacy path.
     _write_state_sibling_deployment_artifact(strategy_file, json_payload, simulate=simulate, logger=logger)
 
     _write_markdown_report(vault_record_file, markdown_report, logger)

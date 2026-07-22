@@ -16,10 +16,6 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.cli.commands.lagoon_deploy_vault import (
     _write_state_sibling_deployment_artifact,
 )
-from tradeexecutor.cli.commands.vault_test_trade import (
-    _record_attempt_result,
-    _should_leave_deposit_open,
-)
 from tradeexecutor.cli import vault_test_trade_tui as vault_test_trade_tui_module
 from tradeexecutor.cli import (
     vault_test_trade_simulation as vault_test_trade_simulation_module,
@@ -44,22 +40,15 @@ from tradeexecutor.cli.vault_test_trade_simulation import (
     raise_simulated_vault_attempt_timeout,
     take_simulated_snapshots,
 )
-from tradeexecutor.analysis.trade_analyser import TradeAnalysis
+from tradeexecutor.cli.vault_test_trade_runner import (
+    record_attempt_result,
+    should_leave_deposit_open,
+)
 from tradeexecutor.ethereum import web3config as web3config_module
 from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.cli.log import setup_custom_log_levels
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
-from tradeexecutor.statistics.core import update_statistics
-from tradeexecutor.strategy.execution_context import ExecutionMode
-from tradeexecutor.visual.equity_curve import (
-    calculate_compounding_realised_trading_profitability,
-    calculate_compounding_unrealised_trading_profitability,
-    calculate_long_compounding_realised_trading_profitability,
-    calculate_realised_profitability,
-    calculate_short_compounding_realised_trading_profitability,
-    calculate_size_relative_realised_trading_returns,
-)
 
 
 class VaultSearchHarness(App):
@@ -231,7 +220,7 @@ def test_deposit_round_trip_gating() -> None:
     """
     # 1. Check an automatic instant deposit with redemption available.
     assert (
-        _should_leave_deposit_open(
+        should_leave_deposit_open(
             operation="deposit", is_async=False, redemption_available=True, manual=False
         )
         is False
@@ -239,13 +228,13 @@ def test_deposit_round_trip_gating() -> None:
 
     # 2. Check async, redemption-unavailable and manual deposits.
     assert (
-        _should_leave_deposit_open(
+        should_leave_deposit_open(
             operation="deposit", is_async=True, redemption_available=True, manual=False
         )
         is True
     )
     assert (
-        _should_leave_deposit_open(
+        should_leave_deposit_open(
             operation="deposit",
             is_async=False,
             redemption_available=False,
@@ -254,7 +243,7 @@ def test_deposit_round_trip_gating() -> None:
         is True
     )
     assert (
-        _should_leave_deposit_open(
+        should_leave_deposit_open(
             operation="deposit", is_async=False, redemption_available=True, manual=True
         )
         is True
@@ -262,7 +251,7 @@ def test_deposit_round_trip_gating() -> None:
 
     # 3. Verify a redemption operation is never treated as a deposit-only action.
     assert (
-        _should_leave_deposit_open(
+        should_leave_deposit_open(
             operation="redeem", is_async=True, redemption_available=False, manual=True
         )
         is False
@@ -292,7 +281,7 @@ def test_adapter_failure_can_be_recorded_as_a_normal_position() -> None:
     pair = create_vault_test_diagnostic_pair(spec, reserve_asset)
 
     # 2. Record the adapter failure through the normal attempt-state path.
-    position = _record_attempt_result(
+    position = record_attempt_result(
         state,
         pair,
         spec,
@@ -316,25 +305,6 @@ def test_adapter_failure_can_be_recorded_as_a_normal_position() -> None:
         position.position_id
     )
     assert restored_position.simulated is False
-    assert list(TradeAnalysis(state.portfolio).get_all_positions()) == []
-    assert calculate_realised_profitability(state).empty
-    assert calculate_size_relative_realised_trading_returns(state).empty
-    assert calculate_compounding_realised_trading_profitability(
-        state, fill_time_gaps=False
-    ).empty
-    assert calculate_compounding_unrealised_trading_profitability(
-        state, freq=None
-    ).empty
-    assert calculate_long_compounding_realised_trading_profitability(
-        state, fill_time_gaps=False
-    ).empty
-    assert calculate_short_compounding_realised_trading_profitability(
-        state, fill_time_gaps=False
-    ).empty
-    update_statistics(
-        position.closed_at, state.stats, state.portfolio, ExecutionMode.one_off
-    )
-    assert position.position_id not in state.stats.closed_positions
 
 
 def test_simulated_vault_attempt_timeout_is_recordable() -> None:

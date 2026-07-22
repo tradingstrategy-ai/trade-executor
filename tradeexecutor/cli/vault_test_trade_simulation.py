@@ -67,7 +67,12 @@ class SimulatedVaultAttemptTimeout(BaseException):
 
 @dataclass(slots=True)
 class SimulatedVaultRuntime:
-    """One disposable generation of the multichain Anvil simulation."""
+    """One disposable generation of the multichain Anvil simulation.
+
+    All fields belong to the same fork generation and must be replaced
+    together.  ``temporary_deployment_dir`` owns the generated deployment
+    artefact consumed by normal Lagoon execution-model bootstrap.
+    """
 
     generation: int
     web3config: Any
@@ -94,7 +99,11 @@ class SimulatedVaultRuntime:
 
 
 def is_simulated_infrastructure_failure(error: BaseException) -> bool:
-    """Check if a failed simulated attempt needs a fresh Anvil generation."""
+    """Check if a failed simulated attempt needs a fresh Anvil generation.
+
+    Only transport/process failures qualify.  Reverts and adapter errors are
+    vault results and must be persisted without an automatic retry.
+    """
 
     if isinstance(error, SimulatedVaultAttemptTimeout):
         return True
@@ -130,7 +139,12 @@ def queue_simulated_infrastructure_retry(
     pending_specs: deque,
     restart_counts: dict[str, int],
 ) -> bool:
-    """Queue one clean rerun of a vault after replacing all Anvil forks."""
+    """Queue one clean rerun of a vault after replacing all Anvil forks.
+
+    :return:
+        ``True`` when the id was put back at the front of the sequential queue,
+        or ``False`` after its single infrastructure retry was already used.
+    """
 
     vault_id = spec.as_string_id()
     if restart_counts[vault_id] >= SIMULATED_VAULT_INFRASTRUCTURE_RESTARTS:
@@ -165,11 +179,19 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
     max_slippage: float,
     token_cache,
 ) -> SimulatedVaultRuntime:
-    """Create a complete disposable Anvil and Lagoon simulation generation."""
+    """Create a complete disposable Anvil and Lagoon simulation generation.
+
+    Setup uses normal command bootstrap after writing an ephemeral deployment
+    artefact.  Any failure closes every Anvil already started for this
+    generation before propagating to the bounded replacement loop.
+    """
 
     web3config = None
     temporary_deployment_dir = None
     try:
+        # Web3Config launches one local Anvil proxy for every selected upstream
+        # RPC.  Local RPC retries are disabled; a dead process is replaced by the
+        # generation-level retry outside this function.
         primary_chain_id = ChainId(vault_specs[0].chain_id)
         web3config = create_web3_config(
             **rpc_kwargs,
@@ -182,6 +204,8 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
         web3config.set_default_chain(primary_chain_id)
         web3config.check_default_chain_id()
 
+        # Deploy the same hub/satellite Lagoon contracts used by integration
+        # tests before constructing trade-executor models around them.
         deployment, artifact = deploy_simulated_lagoon_multichain(
             web3config=web3config,
             vault_specs=vault_specs,
@@ -189,6 +213,8 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
             private_key=private_key,
             amount=amount,
         )
+        # Normal bootstrap consumes a deployment file, so write the ephemeral
+        # topology in its standard JSON shape rather than adding a special path.
         artifact["simulation_generation"] = generation
         temporary_deployment_dir = tempfile.TemporaryDirectory(
             prefix=f"vault-test-trade-generation-{generation}-"
@@ -198,6 +224,8 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
         )
         deployment_file.write_text(json.dumps(artifact, indent=2))
 
+        # Reuse production Lagoon transaction builders and sync models.  This is
+        # what makes simulation diagnose real adapter/routing compatibility.
         execution_model, sync_model, _, _ = create_execution_and_sync_model(
             asset_management_mode=asset_management_mode,
             private_key=private_key,
@@ -232,6 +260,8 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
             temporary_deployment_dir=temporary_deployment_dir,
         )
     except BaseException:
+        # Multichain setup can fail after earlier forks and contracts exist.
+        # Always tear down the partial generation before retrying from scratch.
         if web3config is not None:
             try:
                 web3config.close(log_level=logging.ERROR, block_timeout=5)
@@ -245,7 +275,11 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
 
 
 def start_simulated_vault_runtime_with_replacement(**kwargs) -> SimulatedVaultRuntime:
-    """Replace a failed start with one wholly new Anvil generation."""
+    """Start a generation with one bounded whole-generation replacement.
+
+    Deterministic deployment, adapter and contract errors escape immediately.
+    Only failures classified as infrastructure consume the replacement budget.
+    """
 
     generation = kwargs.pop("generation")
     last_error = None
@@ -273,7 +307,11 @@ def start_simulated_vault_runtime_with_replacement(**kwargs) -> SimulatedVaultRu
 def take_simulated_snapshots(
     web3config, deployment, spec: VaultSpec
 ) -> dict[ChainId, str]:
-    """Snapshot only chains that the selected vault attempt can mutate."""
+    """Snapshot only chains that the selected vault attempt can mutate.
+
+    A home-chain vault touches one fork.  A satellite vault touches the hub for
+    CCTP and its destination fork for the vault transaction.
+    """
 
     affected_chains = {
         deployment.primary_chain_id,
@@ -289,7 +327,12 @@ def take_simulated_snapshots(
 
 
 def restore_simulated_snapshots(web3config, fork_snapshots: dict[ChainId, str]) -> None:
-    """Restore and health-check a still-responsive Anvil generation."""
+    """Restore and health-check a still-responsive Anvil generation.
+
+    ``evm_revert`` returning false means the snapshot is unusable.  A following
+    block-number request catches a process that accepted the revert but became
+    unresponsive immediately afterwards.
+    """
 
     for chain_id, snapshot in fork_snapshots.items():
         web3 = web3config.get_connection(chain_id)

@@ -316,10 +316,6 @@ def update_statistics(
     missing_closed_position_stats = all_closed_position_ids - closed_position_stat_ids
     for position_id in missing_closed_position_stats:
         position = portfolio.closed_positions[position_id]
-        if position.simulated or not position.trades:
-            # Fork-only positions and diagnostics without trades have no live
-            # closing PnL statistics.
-            continue
         # Calculate the closing value for the profitability
         position_stats = calculate_position_statistics(clock, position)
         stats.add_positions_stats(position_id, position_stats)

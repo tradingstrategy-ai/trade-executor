@@ -30,10 +30,13 @@ module or invoke `create_trading_universe()` / `decide_trades()`.
 
 ## State model
 
-- One ordinary executor state file contains all attempts as normal
-  `TradingPosition` objects; there is no separate simulated-state store.
+- One dedicated vault-test executor state file contains all attempts using the
+  normal `State` / `TradingPosition` serialisation; there is no second file for
+  simulated results.
 - `TradingPosition.simulated` identifies fork-only diagnostics. Simulated
-  positions are always closed before being merged back to the normal state.
+  positions are always closed before being merged into this dedicated state.
+  The flag is interpreted only by vault-test helpers and the Textual UI; normal
+  portfolio analysis and accounting code does not branch on it.
 - Position `other_data["vault_test_attempt"]` records vault id, execution
   mode, phase, diagnostic result and detail.
 - The latest position for a vault is authoritative. Statuses are `success`,
@@ -56,6 +59,20 @@ module or invoke `create_trading_universe()` / `decide_trades()`.
    Pending requests are displayed and skipped without an automatic retry.
 6. Stop the batch if no reserve cash remains. Print a `tabulate()` outcome row
    after every requested vault.
+
+## Implementation layout
+
+- `commands/vault_test_trade.py` contains only Typer option validation,
+  high-level orchestration, table output and resource cleanup.
+- `vault_test_trade_setup.py` owns client/universe loading, real or simulated
+  runtime construction, dedicated state loading and startup settlement.
+- `vault_test_trade_runner.py` owns the sequential per-vault lifecycle state
+  machine, action selection, execution and result recording.
+- `vault_test_trade_simulation.py` owns disposable Anvil generations,
+  infrastructure classification and snapshot helpers.
+- `vault_test_trade_tui.py` owns manual selection and typeahead widgets.
+- `vault_test_trade.py` contains shared deployment, universe and special-state
+  helper functions used by setup, runner and TUI modules.
 
 ## Manual interface
 
