@@ -6,7 +6,8 @@ from decimal import Decimal
 from web3 import Web3
 
 from eth_defi.compat import native_datetime_utc_now
-from eth_defi.provider.anvil import is_anvil, mine
+from eth_defi.provider.anvil import fund_erc20_on_anvil, is_anvil, mine
+from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
 from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingReserveDescription
@@ -24,11 +25,11 @@ from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.utils.accuracy import sum_decimal
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
-from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +54,6 @@ def _materialise_bridge_on_anvil(
     uses for the real depositForBurn call. For Lagoon/Safe multichain setups
     this is the per-chain Safe address, not the hot wallet.
     """
-    from eth_defi.provider.anvil import fund_erc20_on_anvil
-    from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
-
     # Resolve mint recipient from CCTP routing config
     pair_config = routing_model.pair_configurator.get_config(
         routing_model.pair_configurator.match_router(bridge_pair)
@@ -73,7 +71,11 @@ def _materialise_bridge_on_anvil(
     # fund_erc20_on_anvil uses anvil_setStorageAt which OVERWRITES the balance,
     # so we must read the existing balance first and add to it.
     dest_usdc = fetch_erc20_details(dest_web3, usdc_address)
-    bridge_amount_raw = dest_usdc.convert_to_raw(bridge_trade.executed_reserve)
+    if bridge_trade.is_buy():
+        bridged_amount = abs(bridge_trade.executed_quantity)
+    else:
+        bridged_amount = bridge_trade.executed_reserve
+    bridge_amount_raw = dest_usdc.convert_to_raw(bridged_amount)
     existing_balance_raw = dest_usdc.contract.functions.balanceOf(
         Web3.to_checksum_address(recipient)
     ).call()
@@ -81,7 +83,7 @@ def _materialise_bridge_on_anvil(
 
     logger.info(
         "Anvil fork: materialising %s USDC on chain %s for %s (existing balance: %s)",
-        bridge_trade.executed_reserve, ChainId(dest_chain_id).get_name(), recipient,
+        bridged_amount, ChainId(dest_chain_id).get_name(), recipient,
         dest_usdc.convert_to_decimals(existing_balance_raw),
     )
     fund_erc20_on_anvil(dest_web3, usdc_address, recipient, total_raw)
@@ -108,6 +110,8 @@ def _make_cross_chain_test_trade(
     hot_wallet,
     reserve_currency: str,
     reserve_currency_at_start: float,
+    trade_flags: set[TradeFlag] | None = None,
+    force_async_settlement_on_anvil: bool = True,
     anvil_time_skip_seconds: int = 24 * 3600,
 ):
     """Cross-chain test trade: bridge in, open position, close position, bridge out.
@@ -119,7 +123,8 @@ def _make_cross_chain_test_trade(
     and receiveMessage automatically. On Anvil forks, USDC is materialised
     via fund_erc20_on_anvil() after bridge trades succeed.
     """
-    from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
+    if trade_flags is None:
+        trade_flags = {TradeFlag.test_trade}
 
     assert isinstance(pricing_model, GenericPricing), \
         f"Cross-chain test trades require GenericPricing, got {type(pricing_model)}"
@@ -156,14 +161,23 @@ def _make_cross_chain_test_trade(
             chain_name=chain_name,
             state=state,
             execution_model=execution_model,
+            force_on_anvil=force_async_settlement_on_anvil,
         )
 
     if close_only:
         # Close-only: find existing positions and close them
         satellite_position = state.portfolio.get_position_by_trading_pair(pair)
-        if satellite_position is None or not satellite_position.is_open():
+        closed_satellite_position = next(
+            (
+                position
+                for position in state.portfolio.closed_positions.values()
+                if position.pair == pair
+            ),
+            None,
+        )
+        if satellite_position is None and closed_satellite_position is None:
             raise RuntimeError(
-                f"Close-only mode but no open position for {pair.get_ticker()} on {chain_name}."
+                f"Close-only mode but no position for {pair.get_ticker()} on {chain_name}."
             )
 
         bridge_position = state.portfolio.get_bridge_position_for_chain(dest_chain_id)
@@ -172,20 +186,24 @@ def _make_cross_chain_test_trade(
                 f"Close-only mode but no open bridge position for chain {chain_name}."
             )
 
-        # Step 1: Close satellite position
-        logger.info("Cross-chain close step 1: closing %s on %s", pair.get_ticker(), chain_name)
-        ts = native_datetime_utc_now()
-        position_manager = PositionManager(
-            ts, universe, state, pricing_model,
-            default_slippage_tolerance=max_slippage,
-        )
-        trades = position_manager.close_position(
-            satellite_position, notes=notes, flags={TradeFlag.test_trade},
-        )
-        execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
-        if _settle_satellite_async_trade(trades[0]):
-            return
-        assert trades[0].is_success(), f"Satellite close failed: {trades[0].get_revert_reason()}"
+        # Step 1: Close satellite position, unless an earlier async redemption
+        # has now settled and only its bridge-back leg remains.
+        if satellite_position is not None:
+            logger.info("Cross-chain close step 1: closing %s on %s", pair.get_ticker(), chain_name)
+            ts = native_datetime_utc_now()
+            position_manager = PositionManager(
+                ts, universe, state, pricing_model,
+                default_slippage_tolerance=max_slippage,
+            )
+            trades = position_manager.close_position(
+                satellite_position, notes=notes, flags=trade_flags,
+            )
+            execution_model.execute_trades(ts, state, trades, routing_model, routing_state)
+            if _settle_satellite_async_trade(trades[0]):
+                return
+            assert trades[0].is_success(), f"Satellite close failed: {trades[0].get_revert_reason()}"
+        else:
+            logger.info("Cross-chain close step 1 already settled; continuing with bridge back")
 
         # Step 2: Bridge back — sized by get_available_bridge_capital()
         logger.info("Cross-chain close step 2: bridging back from %s", chain_name)
@@ -195,9 +213,11 @@ def _make_cross_chain_test_trade(
             default_slippage_tolerance=max_slippage,
         )
         bridge_back_trades = position_manager.close_position(
-            bridge_position, notes=notes, flags={TradeFlag.test_trade},
+            bridge_position, notes=notes, flags=trade_flags,
         )
         execution_model.execute_trades(ts, state, bridge_back_trades, routing_model, routing_state)
+        if bridge_back_trades[0].get_status() == TradeStatus.cctp_in_transit:
+            return
         assert bridge_back_trades[0].is_success(), \
             f"Bridge back failed: {bridge_back_trades[0].get_revert_reason()}"
 
@@ -214,22 +234,42 @@ def _make_cross_chain_test_trade(
     else:
         # Buy flow: bridge in, then open satellite position
 
-        # Step 1: Bridge USDC to satellite chain
-        logger.info("Cross-chain step 1: bridge %s USDC to %s via CCTP", amount, chain_name)
-        bridge_trades = position_manager.open_cctp_bridge_position(
-            bridge_pair, float(amount), notes=notes, flags={TradeFlag.test_trade},
+        expected_vault_id = f"{pair.chain_id}-{pair.pool_address}"
+        bridge_position = state.portfolio.get_bridge_position_for_chain(dest_chain_id)
+        bridge_attempt = bridge_position.other_data.get("vault_test_attempt", {}) if bridge_position else {}
+        resume_bridge_out = (
+            bridge_position is not None
+            and bridge_attempt.get("vault_id") == expected_vault_id
+            and bridge_attempt.get("phase") == "bridge_out_pending"
+            and bridge_position.get_available_bridge_capital() > 0
         )
-        execution_model.execute_trades(ts, state, bridge_trades, routing_model, routing_state)
-        bridge_buy_trade = bridge_trades[0]
-        assert bridge_buy_trade.is_success(), \
-            f"Bridge in failed: {bridge_buy_trade.get_revert_reason()}"
 
-        # Materialise USDC on Anvil fork
-        if on_anvil:
-            _materialise_bridge_on_anvil(
-                web3config, routing_model, bridge_pair,
-                dest_chain_id, hot_wallet.address, bridge_buy_trade,
+        if resume_bridge_out:
+            logger.info("Cross-chain step 1 already settled; continuing with satellite deposit")
+            bridge_buy_trade = max(
+                (trade for trade in bridge_position.trades.values() if trade.is_buy() and trade.is_success()),
+                key=lambda trade: trade.trade_id,
+                default=None,
             )
+        else:
+            # Step 1: Bridge USDC to satellite chain
+            logger.info("Cross-chain step 1: bridge %s USDC to %s via CCTP", amount, chain_name)
+            bridge_trades = position_manager.open_cctp_bridge_position(
+                bridge_pair, float(amount), notes=notes, flags=trade_flags,
+            )
+            execution_model.execute_trades(ts, state, bridge_trades, routing_model, routing_state)
+            bridge_buy_trade = bridge_trades[0]
+            if bridge_buy_trade.get_status() == TradeStatus.cctp_in_transit:
+                return
+            assert bridge_buy_trade.is_success(), \
+                f"Bridge in failed: {bridge_buy_trade.get_revert_reason()}"
+
+            # Materialise USDC on Anvil fork
+            if on_anvil:
+                _materialise_bridge_on_anvil(
+                    web3config, routing_model, bridge_pair,
+                    dest_chain_id, hot_wallet.address, bridge_buy_trade,
+                )
 
         # Step 2: Open position on satellite chain
         logger.info("Cross-chain step 2: open %s on %s", pair.get_ticker(), chain_name)
@@ -238,11 +278,27 @@ def _make_cross_chain_test_trade(
             ts, universe, state, pricing_model,
             default_slippage_tolerance=max_slippage,
         )
+        bridge_position = state.portfolio.get_bridge_position_for_chain(dest_chain_id)
+        assert bridge_position is not None, f"No bridge position available for {chain_name} after bridge settlement"
+        available_bridge_capital = bridge_position.get_available_bridge_capital()
+        if bridge_buy_trade is not None and bridge_buy_trade.executed_quantity:
+            deposited_amount = min(abs(bridge_buy_trade.executed_quantity), available_bridge_capital)
+        else:
+            deposited_amount = available_bridge_capital
+        assert deposited_amount > 0, f"No bridge capital available for {chain_name} satellite deposit"
         satellite_trades = position_manager.open_spot(
-            pair, float(amount), notes=notes, flags={TradeFlag.test_trade},
+            pair, float(deposited_amount), notes=notes, flags=trade_flags,
         )
         execution_model.execute_trades(ts, state, satellite_trades, routing_model, routing_state)
         satellite_buy_trade = satellite_trades[0]
+        if resume_bridge_out and satellite_buy_trade.get_status() in {
+            TradeStatus.success,
+            TradeStatus.vault_settlement_pending,
+        }:
+            # The bridge leg is no longer the action to resume.  Keeping its
+            # stale marker would make a later invocation request the same
+            # satellite deposit for a second time.
+            bridge_attempt["phase"] = "deposit_requested"
         # Async ERC-7540 (Lagoon) / Ostium V1.5 deposits settle off-chain in a
         # second stage; the request tx succeeds but the trade stays pending.
         if _settle_satellite_async_trade(satellite_buy_trade):
@@ -251,7 +307,8 @@ def _make_cross_chain_test_trade(
             f"Satellite open failed: {satellite_buy_trade.get_revert_reason()}"
 
         satellite_position = state.portfolio.get_position_by_id(satellite_buy_trade.position_id)
-        bridge_position = state.portfolio.get_position_by_id(bridge_buy_trade.position_id)
+        bridge_position = state.portfolio.get_bridge_position_for_chain(dest_chain_id)
+        assert bridge_position is not None
 
         long_short_metrics_latest = serialise_long_short_stats_as_json_table(state, None)
         update_statistics(native_datetime_utc_now(), state.stats, state.portfolio,
@@ -273,7 +330,7 @@ def _make_cross_chain_test_trade(
                 default_slippage_tolerance=max_slippage,
             )
             close_trades = position_manager.close_position(
-                satellite_position, notes=notes, flags={TradeFlag.test_trade},
+                satellite_position, notes=notes, flags=trade_flags,
             )
             execution_model.execute_trades(ts, state, close_trades, routing_model, routing_state)
             if _settle_satellite_async_trade(close_trades[0]):
@@ -289,11 +346,13 @@ def _make_cross_chain_test_trade(
                 default_slippage_tolerance=max_slippage,
             )
             bridge_back_trades = position_manager.close_position(
-                bridge_position, notes=notes, flags={TradeFlag.test_trade},
+                bridge_position, notes=notes, flags=trade_flags,
             )
             execution_model.execute_trades(
                 ts, state, bridge_back_trades, routing_model, routing_state,
             )
+            if bridge_back_trades[0].get_status() == TradeStatus.cctp_in_transit:
+                return
             assert bridge_back_trades[0].is_success(), \
                 f"Bridge back failed: {bridge_back_trades[0].get_revert_reason()}"
 
@@ -410,6 +469,7 @@ def _resolve_satellite_async_settlement(
     chain_name: str,
     state: State,
     execution_model,
+    force_on_anvil: bool = True,
 ) -> bool:
     """Resolve an async satellite vault trade left in ``vault_settlement_pending``.
 
@@ -451,7 +511,7 @@ def _resolve_satellite_async_settlement(
     if trade.get_status() != TradeStatus.vault_settlement_pending:
         return False
 
-    if on_anvil:
+    if on_anvil and force_on_anvil:
         logger.info(
             "Satellite trade #%d is vault_settlement_pending on Anvil, forcing settlement on chain %s...",
             trade.trade_id, dest_chain_id,
@@ -485,6 +545,7 @@ def _resolve_home_chain_async_settlement(
     web3: Web3,
     state: State,
     execution_model,
+    force_on_anvil: bool = True,
 ) -> bool:
     """Resolve a home-chain async vault trade left in ``vault_settlement_pending``.
 
@@ -528,7 +589,7 @@ def _resolve_home_chain_async_settlement(
     if trade.get_status() != TradeStatus.vault_settlement_pending:
         return False
 
-    if is_anvil(web3):
+    if is_anvil(web3) and force_on_anvil:
         logger.info(
             "Test trade #%d is vault_settlement_pending on Anvil, forcing settlement...",
             trade.trade_id,
@@ -571,6 +632,8 @@ def make_test_trade(
     test_short: bool = True,
     anvil_time_skip_seconds: int = 24*3600,
     web3config=None,
+    trade_flags: set[TradeFlag] | None = None,
+    force_async_settlement_on_anvil: bool = True,
 ):
     """Perform a test trade.
 
@@ -586,6 +649,12 @@ def make_test_trade(
         Only close an existing position. Raises if no open position exists.
     """
     assert not (buy_only and close_only), "Cannot set both buy_only and close_only"
+
+    if trade_flags is None:
+        trade_flags = {TradeFlag.test_trade}
+    else:
+        trade_flags = set(trade_flags)
+        trade_flags.add(TradeFlag.test_trade)
 
     assert isinstance(sync_model, SyncModel)
     assert isinstance(universe, TradingStrategyUniverse)
@@ -759,6 +828,8 @@ def make_test_trade(
             hot_wallet=hot_wallet,
             reserve_currency=reserve_currency,
             reserve_currency_at_start=reserve_currency_at_start,
+            trade_flags=trade_flags,
+            force_async_settlement_on_anvil=force_async_settlement_on_anvil,
             anvil_time_skip_seconds=anvil_time_skip_seconds,
         )
 
@@ -788,7 +859,7 @@ def make_test_trade(
                 lending_reserve_identifier=lending_reserve,
                 amount=float(amount),
                 notes=notes,
-                flags={TradeFlag.test_trade},
+                flags=trade_flags,
             )
 
             open_credit_supply_trade = trades[0]
@@ -797,7 +868,7 @@ def make_test_trade(
                 pair,
                 float(amount),
                 notes=notes,
-                flags={TradeFlag.test_trade},
+                flags=trade_flags,
             )
 
         trade = trades[0]
@@ -824,7 +895,11 @@ def make_test_trade(
         # vault_settlement_pending after execute. On Anvil we force settlement
         # and resolve; on a real chain we report the status and stop.
         if _resolve_home_chain_async_settlement(
-            trade=trade, web3=web3, state=state, execution_model=execution_model,
+            trade=trade,
+            web3=web3,
+            state=state,
+            execution_model=execution_model,
+            force_on_anvil=force_async_settlement_on_anvil,
         ):
             return
 
@@ -883,14 +958,14 @@ def make_test_trade(
             trades = position_manager.close_credit_supply_position(
                 position,
                 notes=notes,
-                flags={TradeFlag.test_trade},
+                flags=trade_flags,
             )
             close_credit_supply_trade = trades[0]
         else:
             trades = position_manager.close_position(
                 position,
                 notes=notes,
-                flags={TradeFlag.test_trade},
+                flags=trade_flags,
             )
         assert len(trades) == 1
         sell_trade = trades[0]
@@ -915,7 +990,11 @@ def make_test_trade(
         # misleading "Test sell failed" even though the request succeeded and
         # nothing reverted (the production trade-ui Ostium close crash).
         if _resolve_home_chain_async_settlement(
-            trade=sell_trade, web3=web3, state=state, execution_model=execution_model,
+            trade=sell_trade,
+            web3=web3,
+            state=state,
+            execution_model=execution_model,
+            force_on_anvil=force_async_settlement_on_anvil,
         ):
             return
 
@@ -956,7 +1035,7 @@ def make_test_trade(
                 float(amount),
                 notes=notes,
                 leverage=2,
-                flags={TradeFlag.test_trade},
+                flags=trade_flags,
             )
 
             trade = trades[0]
@@ -1021,7 +1100,7 @@ def make_test_trade(
         # Create trades to open the position
         trades = position_manager.close_short(
             position,
-            flags={TradeFlag.test_trade},
+            flags=trade_flags,
         )
 
         trade = trades[0]
@@ -1090,3 +1169,8 @@ def make_test_trade(
         logger.info("  Open credit supply, expected: %s, actual: %s (%s)", open_credit_supply_trade.planned_price, open_credit_supply_trade.executed_price, credit_pair.get_ticker())
     if close_credit_supply_trade:
         logger.info("  Close credit supply, expected: %s, actual: %s (%s)", close_credit_supply_trade.planned_price, close_credit_supply_trade.executed_price, credit_pair.get_ticker())
+
+
+# Public programmatic entry point shared by operational commands.  An alias
+# retains the complete callable signature for introspection and type checking.
+perform_test_trade = make_test_trade

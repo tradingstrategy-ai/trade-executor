@@ -7,13 +7,13 @@ from typing import Dict, List, Optional
 from eth_defi.gas import GasPriceMethod, node_default_gas_price_strategy
 from eth_defi.hotwallet import HotWallet
 from eth_defi.hyperliquid.block import HYPEREVM_BIG_BLOCK_GAS_LIMIT
-from eth_defi.middleware import http_retry_request_with_sleep_middleware
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 from eth_defi.provider.broken_provider import set_block_tip_latency
 from eth_defi.provider.multi_provider import (MultiProviderWeb3,
                                               create_multi_provider_web3)
+from eth_defi.provider.rpc_proxy import RPCProxyConfig
 from tradingstrategy.chain import ChainId
-from web3 import HTTPProvider, Web3
+from web3 import Web3
 
 from tradeexecutor.monkeypatch.web3 import \
     construct_sign_and_send_raw_middleware
@@ -44,7 +44,7 @@ _CHAIN_SLUG_OVERRIDES: dict[ChainId, str] = {
 }
 
 
-def _get_chain_slug(chain_id: ChainId) -> str:
+def get_chain_slug(chain_id: ChainId) -> str:
     """Get the RPC kwarg slug for a chain, with overrides for broken slugs."""
     return _CHAIN_SLUG_OVERRIDES.get(chain_id, chain_id.get_slug())
 
@@ -57,7 +57,7 @@ def get_rpc_env_var_name(chain_id: ChainId) -> str:
     """
     if chain_id == ChainId.hypercore:
         chain_id = ChainId.hyperliquid
-    return f"JSON_RPC_{_get_chain_slug(chain_id).upper()}"
+    return f"JSON_RPC_{get_chain_slug(chain_id).upper()}"
 
 
 #: Funny chain ids used. e.g. with mainnet forks
@@ -93,8 +93,8 @@ def filter_rpc_kwargs_by_chain(chain_name: str, **rpc_kwargs) -> dict:
             if slug == chain_name:
                 selected = chain_id
                 break
-    assert selected is not None, f"Unknown chain slug: {chain_name}. Supported: {[_get_chain_slug(c) for c in SUPPORTED_CHAINS]}"
-    target_key = f"json_rpc_{_get_chain_slug(selected)}"
+    assert selected is not None, f"Unknown chain slug: {chain_name}. Supported: {[get_chain_slug(c) for c in SUPPORTED_CHAINS]}"
+    target_key = f"json_rpc_{get_chain_slug(selected)}"
     assert rpc_kwargs.get(target_key), (
         f"No JSON-RPC configured for chain {chain_name} "
         f"(expected env var JSON_RPC_{chain_name.upper()})"
@@ -240,7 +240,7 @@ class Web3Config:
 
         """
 
-        assert type(configuration_line) == str, f"Got: {configuration_line.__class__}"
+        assert isinstance(configuration_line, str), f"Got: {configuration_line.__class__}"
 
         if simulate:
             # Pass all RPCs to launch_anvil and let its proxy_multiple_upstream
@@ -248,11 +248,16 @@ class Web3Config:
             # MEV endpoints are filtered out by launch_anvil internally.
             logger.info(f"Simulating transactions with Anvil, forking from {configuration_line}")
 
-            if rpc_proxy_verbose:
-                from eth_defi.provider.rpc_proxy import RPCProxyConfig
-                proxy_config = RPCProxyConfig(request_log_level=logging.INFO)
-            else:
-                proxy_config = True
+            # Anvil itself has no useful recovery path after its local RPC
+            # becomes unresponsive. Keep the upstream failover budget below
+            # the local Anvil timeout so the caller can tear down the whole
+            # fork instead of retrying localhost indefinitely.
+            proxy_config = RPCProxyConfig(
+                timeout=10.0,
+                retries=3,
+                backoff=0.5,
+                request_log_level=logging.INFO if rpc_proxy_verbose else logging.DEBUG,
+            )
 
             launch_kwargs = {
                 "attempts": 1,
@@ -268,10 +273,15 @@ class Web3Config:
                 launch_kwargs["gas_limit"] = HYPEREVM_BIG_BLOCK_GAS_LIMIT
 
             anvil = launch_anvil(configuration_line, **launch_kwargs)
+            local_anvil_timeout = simulate_http_timeout or (3.0, 40.0)
             web3 = create_multi_provider_web3(
                 anvil.json_rpc_url,
                 switchover_noisiness=logging.TRADE,
-                default_http_timeout=simulate_http_timeout,
+                default_http_timeout=local_anvil_timeout,
+                # Retrying a failed local Anvil request only talks to the same
+                # unhealthy process. Simulation callers must replace the Anvil
+                # instance instead.
+                retries=0,
             )
             web3.anvil = anvil
             web3.simulate = True
@@ -339,15 +349,31 @@ class Web3Config:
 
         return web3
 
-    def close(self, log_level: int | None = None):
+    def close(self, log_level: int | None = None, block_timeout: float = 30):
         """Close all connections.
 
-        :param level:
+        :param log_level:
             Logging level to copy Anvil stdout
+
+        :param block_timeout:
+            Maximum shutdown wait passed to each Anvil process.
         """
-        for anvil_instance in self.anvils.values():
-            anvil_instance.close(log_level=log_level)
-        self.anvils.clear()
+        failures: list[Exception] = []
+        try:
+            for anvil_instance in self.anvils.values():
+                try:
+                    anvil_instance.close(log_level=log_level, block_timeout=block_timeout)
+                except Exception as e:
+                    failures.append(e)
+                    logger.exception(
+                        "Could not close Anvil process %s",
+                        getattr(getattr(anvil_instance, "process", None), "pid", "unknown"),
+                    )
+        finally:
+            self.anvils.clear()
+
+        if failures:
+            raise RuntimeError(f"Could not close {len(failures)} Anvil process(es)") from failures[0]
 
     def has_chain_configured(self) -> bool:
         """Do we have one or more chains configured."""
@@ -468,26 +494,36 @@ class Web3Config:
         # Lowercase all key names
         kwargs = {k.lower(): v for k, v in kwargs.items()}
 
-        for chain_id in SUPPORTED_CHAINS:
-            key = f"json_rpc_{_get_chain_slug(chain_id)}"
-            configuration_line = kwargs.get(key)
-            if configuration_line:
-                web3config.connections[chain_id] = Web3Config.create_web3(
-                    configuration_line,
-                    gas_price_method,
-                    unit_testing=unit_testing,
-                    simulate=simulate,
-                    mev_endpoint_disabled=mev_endpoint_disabled,
-                    simulate_http_timeout=simulate_http_timeout,
-                    chain_id=chain_id,
-                    rpc_proxy_verbose=rpc_proxy_verbose,
-                    anvil_verbose=anvil_verbose,
-                    anvil_inherit_stdio=anvil_inherit_stdio,
-                    anvil_warm_up_block=anvil_warm_up_block,
-                )
+        try:
+            for chain_id in SUPPORTED_CHAINS:
+                key = f"json_rpc_{get_chain_slug(chain_id)}"
+                configuration_line = kwargs.get(key)
+                if configuration_line:
+                    web3config.connections[chain_id] = Web3Config.create_web3(
+                        configuration_line,
+                        gas_price_method,
+                        unit_testing=unit_testing,
+                        simulate=simulate,
+                        mev_endpoint_disabled=mev_endpoint_disabled,
+                        simulate_http_timeout=simulate_http_timeout,
+                        chain_id=chain_id,
+                        rpc_proxy_verbose=rpc_proxy_verbose,
+                        anvil_verbose=anvil_verbose,
+                        anvil_inherit_stdio=anvil_inherit_stdio,
+                        anvil_warm_up_block=anvil_warm_up_block,
+                    )
 
-                if simulate:
-                    web3config.anvils[chain_id] = getattr(web3config.connections[chain_id], "anvil")
+                    if simulate:
+                        web3config.anvils[chain_id] = getattr(web3config.connections[chain_id], "anvil")
+        except BaseException:
+            # Multichain setup may fail after one or more forks have already
+            # started. Never leave those processes behind for the next fresh
+            # simulation generation.
+            try:
+                web3config.close(log_level=logging.ERROR, block_timeout=5)
+            except Exception:
+                logger.exception("Could not fully clean up a failed multichain Web3 setup")
+            raise
 
         return web3config
 

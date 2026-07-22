@@ -878,7 +878,7 @@ class Portfolio:
 
     def get_closed_profit_usd(self) -> USDollarAmount:
         """Get the value of the portfolio based on the latest pricing."""
-        return sum([p.get_total_profit_usd() for p in self.closed_positions.values()])
+        return sum([p.get_total_profit_usd() for p in self.closed_positions.values() if p.trades and not p.simulated])
 
     def find_position_for_trade(self, trade, pending=False) -> Optional[TradingPosition]:
         """Find a position that a trade belongs for.
@@ -1215,6 +1215,12 @@ class Portfolio:
         :raise: AssertionError
         """
         for p in self.get_all_positions():
+            # Fork-only attempts are deliberately reverted between vault tests,
+            # so their transaction nonces may be reused by the next simulation
+            # or by a later real run. They are diagnostics, not part of the live
+            # account's nonce ledger.
+            if p.simulated:
+                continue
             for t in p.trades.values():
                 for tx in t.blockchain_transactions:
                     assert tx.nonce != nonce, f"Nonce {nonce} is already being used by trade {t} with txinfo {t.tx_info}"

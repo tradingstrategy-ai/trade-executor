@@ -164,6 +164,11 @@ class TradeFlag(enum.Enum):
     #:
     test_trade = "test_trade"
 
+    #: This trade was executed only on a fork for vault-test-trade diagnostics.
+    #:
+    #: It must never be reconciled, retried or rebroadcast against a live chain.
+    simulated = "simulated"
+
     #: This trade is a trigger order.
     #:
     #: Set when :py:attr:`TradeExecution.triggers` is filled

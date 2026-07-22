@@ -181,6 +181,39 @@ def test_pending_satellite_trade_on_anvil_force_settles_on_destination_chain(mon
     assert captured["execution_model"] is execution_model
 
 
+def test_pending_satellite_simulation_on_anvil_stops_without_forcing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A simulated async satellite deposit remains a closed diagnostic.
+
+    1. Build a satellite deposit pending operator settlement on an Anvil fork.
+    2. Resolve it with forced settlement explicitly disabled for simulation.
+    3. Verify the caller is told to stop and no chain mutation is attempted.
+    """
+    # 1. Build a satellite deposit pending operator settlement on an Anvil fork.
+    trade = _make_trade(TradeStatus.vault_settlement_pending)
+    monkeypatch.setattr(
+        testtrade,
+        "_force_vault_settlement_and_resolve",
+        lambda *a, **k: pytest.fail("Simulation must not force async settlement"),
+    )
+    web3config = MagicMock()
+
+    # 2. Resolve it with forced settlement explicitly disabled for simulation.
+    stop = _resolve_satellite_async_settlement(
+        trade=trade,
+        on_anvil=True,
+        web3config=web3config,
+        dest_chain_id=BASE_CHAIN_ID,
+        chain_name="Base",
+        state=MagicMock(),
+        execution_model=MagicMock(),
+        force_on_anvil=False,
+    )
+
+    # 3. Verify the caller is told to stop and no chain mutation is attempted.
+    assert stop is True
+    web3config.get_connection.assert_not_called()
+
+
 def test_cross_chain_buy_does_not_crash_when_satellite_open_is_pending(monkeypatch) -> None:
     """The cross-chain buy flow tolerates an async satellite open (production crash).
 
@@ -216,6 +249,7 @@ def test_cross_chain_buy_does_not_crash_when_satellite_open_is_pending(monkeypat
 
     bridge_trade = MagicMock()
     bridge_trade.is_success.return_value = True
+    bridge_trade.executed_quantity = Decimal("5")
     bridge_pm = MagicMock()
     bridge_pm.open_cctp_bridge_position.return_value = [bridge_trade]
 
@@ -236,13 +270,18 @@ def test_cross_chain_buy_does_not_crash_when_satellite_open_is_pending(monkeypat
     pair.chain_id = BASE_CHAIN_ID
 
     # 3. Run the cross-chain buy-only test trade.
+    state = MagicMock()
+    bridge_position = MagicMock()
+    bridge_position.other_data = {}
+    bridge_position.get_available_bridge_capital.return_value = Decimal("4.95")
+    state.portfolio.get_bridge_position_for_chain.return_value = bridge_position
     result = _make_cross_chain_test_trade(
         web3=MagicMock(),
         web3config=MagicMock(),
         execution_model=execution_model,
         pricing_model=pricing_model,
         sync_model=MagicMock(),
-        state=MagicMock(),
+        state=state,
         universe=MagicMock(),
         routing_model=routing_model,
         routing_state=MagicMock(),
@@ -266,3 +305,131 @@ def test_cross_chain_buy_does_not_crash_when_satellite_open_is_pending(monkeypat
     satellite_pm.open_spot.assert_called_once()
     execution_model.execute_trades.assert_called()
     satellite_trade.is_success.assert_not_called()
+
+
+def test_cross_chain_buy_resumes_from_available_bridge_capital_without_trade_history(monkeypatch) -> None:
+    """A settled CCTP leg resumes safely even without a successful buy-trade record.
+
+    1. Model a bridge position marked for resume with capital but no successful trade.
+    2. Make the satellite deposit enter async settlement pending.
+    3. Run the resumed cross-chain buy flow.
+    4. Verify it deposits only available bridge capital and advances the resume phase.
+    """
+    # 1. Model a bridge position marked for resume with capital but no successful trade.
+    monkeypatch.setattr(testtrade, "is_anvil", lambda web3: False)
+    vault_address = "0x0000000000000000000000000000000000000001"
+    pair = MagicMock()
+    pair.chain_id = BASE_CHAIN_ID
+    pair.pool_address = vault_address
+    pair.get_ticker.return_value = "VAULT-USDC"
+    bridge_attempt = {
+        "vault_id": f"{BASE_CHAIN_ID}-{vault_address}",
+        "phase": "bridge_out_pending",
+    }
+    bridge_position = MagicMock()
+    bridge_position.other_data = {"vault_test_attempt": bridge_attempt}
+    bridge_position.trades = {}
+    bridge_position.get_available_bridge_capital.return_value = Decimal("4.75")
+    state = MagicMock()
+    state.portfolio.get_bridge_position_for_chain.return_value = bridge_position
+
+    # 2. Make the satellite deposit enter async settlement pending.
+    satellite_trade = _make_trade(TradeStatus.vault_settlement_pending)
+    satellite_pm = MagicMock()
+    satellite_pm.open_spot.return_value = [satellite_trade]
+    monkeypatch.setattr(testtrade, "PositionManager", MagicMock(return_value=satellite_pm))
+
+    # 3. Run the resumed cross-chain buy flow.
+    original_position_manager = MagicMock()
+    _make_cross_chain_test_trade(
+        web3=MagicMock(),
+        web3config=MagicMock(),
+        execution_model=MagicMock(),
+        pricing_model=MagicMock(spec=GenericPricing),
+        sync_model=MagicMock(),
+        state=state,
+        universe=MagicMock(),
+        routing_model=MagicMock(),
+        routing_state=MagicMock(),
+        position_manager=original_position_manager,
+        pair=pair,
+        bridge_pair=MagicMock(),
+        amount=Decimal("5"),
+        max_slippage=0.05,
+        buy_only=True,
+        close_only=False,
+        gas_at_start=Decimal("1"),
+        hot_wallet=MagicMock(),
+        reserve_currency="USDC",
+        reserve_currency_at_start=5.0,
+    )
+
+    # 4. Verify it deposits only available bridge capital and advances the resume phase.
+    original_position_manager.open_cctp_bridge_position.assert_not_called()
+    assert satellite_pm.open_spot.call_args.args[1] == pytest.approx(4.75)
+    assert bridge_attempt["phase"] == "deposit_requested"
+
+
+def test_cross_chain_close_resumes_bridge_back_after_async_redemption_settles(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A later invocation finishes CCTP after an async redemption has settled.
+
+    1. Model a closed satellite position and its still-open CCTP bridge position.
+    2. Make the position manager create a successful bridge-back trade.
+    3. Run the close-only cross-chain flow as a later command invocation.
+    4. Verify it skips a second vault redemption and closes only the bridge.
+    """
+    # 1. Model a closed satellite position and its still-open CCTP bridge position.
+    monkeypatch.setattr(testtrade, "is_anvil", lambda web3: False)
+    pair = MagicMock()
+    pair.chain_id = BASE_CHAIN_ID
+    pair.get_ticker.return_value = "VAULT-USDC"
+    closed_satellite_position = MagicMock()
+    closed_satellite_position.pair = pair
+    bridge_position = MagicMock()
+    bridge_position.is_open.return_value = True
+    state = MagicMock()
+    state.portfolio.get_position_by_trading_pair.return_value = None
+    state.portfolio.closed_positions = {1: closed_satellite_position}
+    state.portfolio.get_bridge_position_for_chain.return_value = bridge_position
+    state.portfolio.get_default_reserve_position.return_value.get_value.return_value = 4.9
+    state.portfolio.get_all_trades.return_value = []
+
+    # 2. Make the position manager create a successful bridge-back trade.
+    bridge_back_trade = _make_trade(TradeStatus.success)
+    bridge_back_trade.is_success.return_value = True
+    resumed_position_manager = MagicMock()
+    resumed_position_manager.close_position.return_value = [bridge_back_trade]
+    monkeypatch.setattr(testtrade, "PositionManager", MagicMock(return_value=resumed_position_manager))
+    execution_model = MagicMock()
+    hot_wallet = MagicMock()
+    hot_wallet.get_native_currency_balance.return_value = Decimal("1")
+
+    # 3. Run the close-only cross-chain flow as a later command invocation.
+    result = _make_cross_chain_test_trade(
+        web3=MagicMock(),
+        web3config=MagicMock(),
+        execution_model=execution_model,
+        pricing_model=MagicMock(spec=GenericPricing),
+        sync_model=MagicMock(),
+        state=state,
+        universe=MagicMock(),
+        routing_model=MagicMock(),
+        routing_state=MagicMock(),
+        position_manager=MagicMock(),
+        pair=pair,
+        bridge_pair=MagicMock(),
+        amount=Decimal("5"),
+        max_slippage=0.05,
+        buy_only=False,
+        close_only=True,
+        gas_at_start=Decimal("1"),
+        hot_wallet=hot_wallet,
+        reserve_currency="USDC",
+        reserve_currency_at_start=5.0,
+    )
+
+    # 4. Verify it skips a second vault redemption and closes only the bridge.
+    assert result is None
+    resumed_position_manager.close_position.assert_called_once()
+    assert resumed_position_manager.close_position.call_args.args[0] is bridge_position
+    execution_model.execute_trades.assert_called_once()

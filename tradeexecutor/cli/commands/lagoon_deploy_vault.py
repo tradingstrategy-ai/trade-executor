@@ -87,7 +87,8 @@ from typer import Option
 from web3 import Web3
 
 from tradeexecutor.cli.bootstrap import (create_web3_config, prepare_cache,
-                                         prepare_token_cache)
+                                         prepare_executor_id, prepare_token_cache,
+                                         resolve_deployment_file)
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.commands.lagoon_utils import create_hot_wallet
@@ -264,6 +265,9 @@ def _write_state_sibling_deployment_artifact(
     *,
     simulate: bool,
     logger,
+    executor_id: str | None = None,
+    state_file: Path | None = None,
+    primary_chain_id: ChainId | None = None,
 ) -> None:
     """Copy the machine-readable deployment JSON next to the strategy state file.
 
@@ -271,25 +275,44 @@ def _write_state_sibling_deployment_artifact(
     Lagoon modules (see :py:func:`tradeexecutor.cli.bootstrap.resolve_satellite_modules`),
     so every CLI command picks them up without a manual ``SATELLITE_MODULES`` env var.
 
-    The executor id is derived from the strategy module, matching the
-    ``state/{id}.json`` convention used by all commands.
+    The executor id comes from ``EXECUTOR_ID`` for standalone deployment or is
+    derived from the strategy module for the legacy strategy deployment path.
     """
-    if simulate or not strategy_file:
+    if simulate:
         return
-
-    from tradeexecutor.cli.bootstrap import prepare_executor_id, resolve_deployment_file
 
     # Resolve the executor id the same way the runtime commands do (EXECUTOR_ID
     # env, falling back to the strategy filename) so the artifact filename matches
     # what start / perform-test-trade look for.
-    executor_id = prepare_executor_id(os.environ.get("EXECUTOR_ID"), strategy_file)
+    if executor_id is None:
+        if strategy_file is None and not os.environ.get("EXECUTOR_ID"):
+            logger.info("Skipping state-sibling deployment artifact because EXECUTOR_ID is not set")
+            return
+        executor_id = prepare_executor_id(os.environ.get("EXECUTOR_ID"), strategy_file)
     # Derive the artifact path through the same helper the readers use, so writer
     # and readers share a single source of truth and can never drift apart. It
     # honours an explicit STATE_FILE location (artifact lands next to the state
     # file, and tests don't pollute the repo's state/ dir) and otherwise defaults
     # to the state/ convention used by all CLI commands.
-    path = resolve_deployment_file(executor_id, os.environ.get("STATE_FILE"))
+    path = resolve_deployment_file(executor_id, state_file or os.environ.get("STATE_FILE"))
     path.parent.mkdir(parents=True, exist_ok=True)
+    if "deployments" not in json_payload:
+        assert primary_chain_id is not None, "Single-chain deployment artifact requires its chain id"
+        vault_address = json_payload.get("Vault")
+        module_address = json_payload.get("Trading strategy module")
+        if not vault_address or not module_address:
+            raise RuntimeError("Single-chain Lagoon deployment report did not contain vault/module addresses")
+        json_payload = {
+            "multichain": False,
+            "deployments": {
+                primary_chain_id.get_slug(): {
+                    "vault_address": vault_address,
+                    "module_address": module_address,
+                    "is_satellite": False,
+                },
+            },
+            "deployment_record": json_payload,
+        }
     _write_json_file(path, json_payload, indent=2)
     logger.info("Wrote deployment artifact for runtime satellite discovery to %s", os.path.abspath(path))
 
@@ -958,6 +981,15 @@ def lagoon_deploy_vault(
         json_payload=json_payload,
         simulate=simulate,
         logger=logger,
+    )
+    _write_state_sibling_deployment_artifact(
+        None,
+        json_payload,
+        simulate=simulate,
+        logger=logger,
+        executor_id=os.environ.get("EXECUTOR_ID"),
+        state_file=Path(os.environ["STATE_FILE"]) if os.environ.get("STATE_FILE") else None,
+        primary_chain_id=chain_id,
     )
 
     logger.info("Token cache %s contains %d entries", token_cache.filename, len(token_cache))

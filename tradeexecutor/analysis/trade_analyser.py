@@ -631,6 +631,10 @@ class TradeAnalysis:
         Positions are sorted by position_id."""
 
         for position in self.portfolio.get_all_positions():
+            # Fork-only vault tests and diagnostic positions without any trade
+            # belong in state history, but cannot contribute to live PnL.
+            if position.simulated or (not position.trades and not position.pending_trades):
+                continue
             # pair_id, position
             yield position.pair.internal_id, position
 
