@@ -15,6 +15,7 @@ from eth_typing import HexAddress
 
 from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
 from eth_defi.erc_4626.core import ERC4626Feature, is_generic_erc4626_protocol_slug
+from eth_defi.utils import is_good_multichain_address
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingProtocolType
 from tradingstrategy.stablecoin import is_stablecoin_like
@@ -231,7 +232,10 @@ class AssetIdentifier:
     def __post_init__(self):
         """Validate asset description initialisation."""
         assert type(self.address) == str, f"Got address {self.address} as {type(self.address)}"
-        assert self.address.startswith("0x")
+        # Accept EVM 0x addresses plus synthetic non-EVM vault ids (Lighter
+        # ``lighter-pool-``, GRVT ``vlt:``, Hibachi ``hibachi-vault-``), whose
+        # share tokens have no on-chain ERC-20 address.
+        assert is_good_multichain_address(self.address), f"Bad asset address: {self.address}"
         self.address= self.address.lower()
         assert type(self.chain_id) == int
         if isinstance(self.decimals, np.int64):

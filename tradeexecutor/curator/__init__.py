@@ -10,6 +10,7 @@ from .curator import (
     is_quarantined,
 )
 from .hyperliquid_vault_universe import build_hyperliquid_vault_universe
+from .lighter_vault_universe import build_lighter_vault_universe
 
 __all__ = [
     "EXCLUDED_PROTOCOLS",

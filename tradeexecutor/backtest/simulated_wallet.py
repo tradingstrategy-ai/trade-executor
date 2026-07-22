@@ -14,6 +14,8 @@ from typing import Dict, Tuple
 
 import pandas as pd
 
+from eth_defi.utils import is_good_multichain_address
+
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.utils.accuracy import QUANTITY_EPSILON
 from tradeexecutor.state.types import JSONHexAddress
@@ -130,7 +132,9 @@ class SimulatedWallet:
             token_address = token
 
         assert token_address.lower() == token_address, f"No checksummed addresses: {token_address}"
-        assert token_address.startswith("0x")
+        # Accept EVM 0x addresses plus synthetic non-EVM vault ids (e.g. Lighter
+        # ``lighter-pool-``) that are valid balance keys in a simulated wallet.
+        assert is_good_multichain_address(token_address), f"Bad token address: {token_address}"
         assert isinstance(amount, Decimal), f"Expected decimal got: {amount.__class__}: {amount}"
         self.balances[token_address] = amount
 
