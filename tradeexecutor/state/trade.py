@@ -164,6 +164,12 @@ class TradeFlag(enum.Enum):
     #:
     test_trade = "test_trade"
 
+    #: This trade was executed only on a fork for vault-test-trade diagnostics.
+    #:
+    #: The dedicated vault-test state closes it before persistence; its recorded
+    #: fork transactions must never be rebroadcast against a live chain.
+    simulated = "simulated"
+
     #: This trade is a trigger order.
     #:
     #: Set when :py:attr:`TradeExecution.triggers` is filled

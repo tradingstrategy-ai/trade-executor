@@ -47,7 +47,7 @@ from ..slippage import configure_max_slippage_tolerance
 from ..testtrade import make_test_trade
 from ..trade_ui_tui import display_pair_selection_ui
 from ...ethereum.routing_state import OutOfBalance
-from ...ethereum.web3config import SUPPORTED_CHAINS, _get_chain_slug, filter_rpc_kwargs_by_chain
+from ...ethereum.web3config import SUPPORTED_CHAINS, filter_rpc_kwargs_by_chain, get_chain_slug
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -169,7 +169,7 @@ def trade_ui(
     if simulate:
         chain_id = mod.get_default_chain_id()
         if chain_id and chain_id in SUPPORTED_CHAINS:
-            chain_slug = _get_chain_slug(chain_id)
+            chain_slug = get_chain_slug(chain_id)
             logger.info("Simulate mode: restricting Anvil fork to %s", chain_slug)
             rpc_kwargs = filter_rpc_kwargs_by_chain(chain_slug, **rpc_kwargs)
 

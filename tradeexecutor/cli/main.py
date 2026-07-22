@@ -43,6 +43,7 @@ from .commands.blacklist import blacklist
 from .commands.prune import prune_state
 from .commands.distribute_gas_funds import distribute_gas_funds
 from .commands.trade_ui import trade_ui
+from .commands.vault_test_trade import vault_test_trade
 
 # Dummy export commands even though they are already registered
 # to make the linter happy
@@ -52,6 +53,6 @@ __all__ = [
     correct_accounts, correct_history, deploy_guard, distribute_gas_funds, enzyme_asset_list, enzyme_deploy_vault,
     export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_reclaim_satellites, lagoon_redeem, lagoon_settle, perform_test_trade, prepare_report, prune_state,
     repair, repair_hypercore_dust, reset, reset_deposits, retry, send_log_message, show_positions,
-    show_valuation, start, token_cache, trade_ui, trading_pair,
+    show_valuation, start, token_cache, trade_ui, trading_pair, vault_test_trade,
     version, visualise, webapi,
 ]

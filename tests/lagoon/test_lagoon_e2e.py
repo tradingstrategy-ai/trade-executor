@@ -7,6 +7,7 @@ from pathlib import Path
 import flaky
 import pytest
 from typer.main import get_command
+from tradingstrategy.chain import ChainId
 from web3 import Web3
 
 from eth_defi.abi import get_deployed_contract
@@ -751,3 +752,173 @@ def test_cli_lagoon_first_deposit(
     assert reserve_position.get_value() == pytest.approx(0, abs=1e-4), (
         f"Expected reserves == 0 after full redemption, got {reserve_position.get_value()}"
     )
+
+
+@pytest.mark.slow_test_group
+def test_cli_vault_test_trade_lagoon_anvil_black_box(
+    web3,
+    anvil_base_fork,
+    strategy_file: Path,
+    mocker,
+    tmp_path: Path,
+    base_usdc,
+    asset_manager,
+    usdc_holder,
+    persistent_test_client,
+) -> None:
+    """The standalone command performs an instant vault round trip through Lagoon.
+
+    1. Deploy a Lagoon tester whose guard permits the selected ERC-4626 vault.
+    2. Fund the deployed Lagoon vault and verify its deployment artefact exists.
+    3. Invoke ``vault-test-trade --auto-real`` through Typer with no strategy file.
+    4. Verify the special state contains one closed real deposit/redemption position.
+    """
+    # 1. Deploy a Lagoon tester whose guard permits the selected ERC-4626 vault.
+    executor_id = "vault-test-trade-black-box"
+    state_file = tmp_path / "vault-test-trade-black-box.json"
+    vault_record_file = tmp_path / "vault-test-trade-black-box-vault.json"
+    target_vault_address = "0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a"
+    target_vault_id = f"{ChainId.base.value}-{target_vault_address}"
+    cache_path = persistent_test_client.transport.cache_path
+    multisig_owners = f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
+    common_env = {
+        "PATH": os.environ["PATH"],
+        "EXECUTOR_ID": executor_id,
+        "NAME": "Vault test trade black box",
+        "JSON_RPC_BASE": anvil_base_fork.json_rpc_url,
+        "STATE_FILE": state_file.as_posix(),
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+        "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "PRIVATE_KEY": hexbytes_to_hex_str(asset_manager.private_key),
+        "CACHE_PATH": cache_path,
+        "GENERATE_REPORT": "false",
+        "MIN_GAS_BALANCE": "0.0",
+        "CONFIRMATION_BLOCK_COUNT": "1",
+    }
+    deploy_env = {
+        **common_env,
+        "VAULT_RECORD_FILE": vault_record_file.as_posix(),
+        "FUND_NAME": "Vault Test Trade",
+        "FUND_SYMBOL": "VTT",
+        "MULTISIG_OWNERS": multisig_owners,
+        "DENOMINATION_ASSET": base_usdc.address,
+        "ERC_4626_VAULTS": target_vault_address,
+        "ANY_ASSET": "true",
+    }
+    cli = get_command(app)
+    mocker.patch.dict("os.environ", deploy_env, clear=True)
+    cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
+
+    # 2. Fund the deployed Lagoon vault and verify its deployment artefact exists.
+    deployment_record = json.load(vault_record_file.open("rt"))
+    init_env = {
+        **common_env,
+        "STRATEGY_FILE": strategy_file.as_posix(),
+        "VAULT_ADDRESS": deployment_record["Vault"],
+        "VAULT_ADAPTER_ADDRESS": deployment_record["Trading strategy module"],
+    }
+    mocker.patch.dict("os.environ", init_env, clear=True)
+    cli.main(args=["init"], standalone_mode=False)
+    usdc_token = fetch_erc20_details(web3, base_usdc.address)
+    funding_amount = Decimal("10")
+    tx_hash = usdc_token.contract.functions.transfer(
+        asset_manager.address,
+        usdc_token.convert_to_raw(funding_amount),
+    ).transact({"from": usdc_holder, "gas": 100_000})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    mocker.patch.dict("os.environ", {**init_env, "DEPOSIT_AMOUNT": str(funding_amount)}, clear=True)
+    cli.main(args=["lagoon-first-deposit"], standalone_mode=False)
+    deployment_file = state_file.with_name(f"{executor_id}.deployment.json")
+    assert deployment_file.exists()
+
+    # 3. Invoke vault-test-trade --auto-real through Typer with no strategy file.
+    vault_test_env = {key: value for key, value in common_env.items() if key != "STRATEGY_FILE"}
+    mocker.patch.dict("os.environ", vault_test_env, clear=True)
+    cli.main(
+        args=[
+            "vault-test-trade",
+            "--auto-real",
+            "--vault-id",
+            target_vault_id,
+            "--amount",
+            "1",
+        ],
+        standalone_mode=False,
+    )
+
+    # 4. Verify the special state contains one closed real deposit/redemption position.
+    state = State.read_json_file(state_file)
+    target_positions = [
+        position
+        for position in state.portfolio.get_all_positions()
+        if position.pair.pool_address.lower() == target_vault_address.lower()
+    ]
+    assert len(target_positions) == 1
+    position = target_positions[0]
+    assert position.is_closed()
+    assert position.simulated is False
+    assert len(position.trades) == 2
+    assert all(trade.is_success() for trade in position.trades.values())
+
+
+@pytest.mark.slow_test_group
+def test_cli_vault_test_trade_simulated_deploys_lagoon_on_fork(
+    anvil_base_fork,
+    mocker,
+    tmp_path: Path,
+    persistent_test_client,
+) -> None:
+    """Automatic simulation deploys and uses an ephemeral Lagoon tester.
+
+    1. Configure a pristine executor with only a Base RPC and no deployment artefact or private key.
+    2. Invoke ``vault-test-trade --auto-simulated`` for a synchronous vault.
+    3. Verify a closed simulated round-trip is persisted without a live deployment artefact.
+    """
+    # 1. Configure a pristine executor with only a Base RPC and no deployment artefact or private key.
+    executor_id = "vault-test-trade-simulated-deployment"
+    state_file = tmp_path / f"{executor_id}.json"
+    target_vault_address = "0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a"
+    environment = {
+        "PATH": os.environ["PATH"],
+        "EXECUTOR_ID": executor_id,
+        "NAME": "Vault test simulated deployment",
+        "JSON_RPC_BASE": anvil_base_fork.json_rpc_url,
+        "STATE_FILE": state_file.as_posix(),
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "UNIT_TESTING": "false",
+        "LOG_LEVEL": "disabled",
+        "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "CACHE_PATH": persistent_test_client.transport.cache_path,
+        "MIN_GAS_BALANCE": "0.0",
+        "CONFIRMATION_BLOCK_COUNT": "0",
+    }
+
+    # 2. Invoke vault-test-trade --auto-simulated for a synchronous vault.
+    cli = get_command(app)
+    mocker.patch.dict("os.environ", environment, clear=True)
+    cli.main(
+        args=[
+            "vault-test-trade",
+            "--auto-simulated",
+            "--vault-id",
+            f"{ChainId.base.value}-{target_vault_address}",
+            "--amount",
+            "1",
+        ],
+        standalone_mode=False,
+    )
+
+    # 3. Verify a closed simulated round-trip is persisted without a live deployment artefact.
+    state = State.read_json_file(state_file)
+    positions = [
+        position
+        for position in state.portfolio.get_all_positions()
+        if position.pair.pool_address.lower() == target_vault_address
+    ]
+    assert len(positions) == 1
+    assert positions[0].is_closed()
+    assert positions[0].simulated is True
+    assert len(positions[0].trades) == 2
+    assert not state_file.with_name(f"{executor_id}.deployment.json").exists()

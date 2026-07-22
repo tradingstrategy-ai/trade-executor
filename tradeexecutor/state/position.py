@@ -311,6 +311,11 @@ class TradingPosition(GenericPosition):
     #: Misc bag of data, not often needed
     other_data: PositionOtherData = field(default_factory=dict)
 
+    #: Position was produced by a fork-only vault-test-trade simulation.
+    #:
+    #: Such positions are retained as closed diagnostics but are not live assets.
+    simulated: bool = False
+
     #: For CCTP bridge positions: how much capital has been allocated to satellite chain trades.
     #:
     #: The available bridge capital is ``get_quantity() - bridge_capital_allocated``.
