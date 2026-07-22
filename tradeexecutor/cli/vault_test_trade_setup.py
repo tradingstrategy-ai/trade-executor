@@ -9,7 +9,8 @@ real invocation.
 
 import datetime
 import logging
-from dataclasses import dataclass
+import subprocess
+from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -85,6 +86,7 @@ class VaultTestRuntime:
     reserve_asset: AssetIdentifier
     simulated_runtime: SimulatedVaultRuntime | None = None
     simulated_runtime_kwargs: dict | None = None
+    provenance: dict = field(default_factory=dict)
 
     @property
     def is_simulated(self) -> bool:
@@ -139,6 +141,63 @@ class VaultTestRuntime:
             self.web3config.close()
         except Exception:
             logger.exception("One or more Web3 connections did not close cleanly")
+
+    def get_provenance(self) -> dict:
+        """Return JSON-safe immutable inputs needed to reproduce an attempt."""
+
+        provenance = dict(self.provenance or {})
+        deployment = {
+            "primary_chain_id": self.deployment.primary_chain_id.value,
+            "vault_address": self.deployment.vault_address,
+            "module_address": self.deployment.module_address,
+            "satellite_modules": {
+                str(chain_id.value): address
+                for chain_id, address in self.deployment.satellite_modules.items()
+            },
+        }
+        provenance["lagoon_deployment"] = deployment
+        if self.simulated_runtime is not None:
+            provenance["anvil_generation"] = self.simulated_runtime.generation
+            provenance["fork_blocks"] = self.simulated_runtime.fork_blocks
+        return provenance
+
+
+def _read_git_commit(path: Path) -> str | None:
+    """Read a local Git revision without making provenance mandatory."""
+
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return completed.stdout.strip() or None
+
+
+def _create_vault_test_provenance(*, mode: str, web3config: Web3Config) -> dict:
+    """Capture source revisions and initial chain heights for a tester run."""
+
+    repository_root = Path(__file__).resolve().parents[2]
+    eth_defi_root = repository_root / "deps" / "web3-ethereum-defi"
+    initial_chain_blocks = {}
+    for chain_id, web3 in web3config.connections.items():
+        try:
+            initial_chain_blocks[str(chain_id.value)] = int(web3.eth.block_number)
+        except Exception:
+            initial_chain_blocks[str(chain_id.value)] = {
+                "error": "Could not capture initial chain block",
+            }
+    return {
+        "schema_version": 2,
+        "execution_mode": mode,
+        "run_started_at": native_datetime_utc_now().isoformat(),
+        "trade_executor_commit": _read_git_commit(repository_root),
+        "eth_defi_commit": _read_git_commit(eth_defi_root),
+        "initial_chain_blocks": initial_chain_blocks,
+    }
 
 
 def load_vault_test_data(
@@ -272,6 +331,10 @@ def _create_simulated_vault_test_runtime(
         reserve_asset=simulated_runtime.reserve_asset,
         simulated_runtime=simulated_runtime,
         simulated_runtime_kwargs=simulated_runtime_kwargs,
+        provenance=_create_vault_test_provenance(
+            mode="auto_simulated",
+            web3config=simulated_runtime.web3config,
+        ),
     )
 
 
@@ -336,6 +399,10 @@ def _create_real_vault_test_runtime(
         execution_model=execution_model,
         sync_model=sync_model,
         reserve_asset=reserve_asset,
+        provenance=_create_vault_test_provenance(
+            mode="real",
+            web3config=web3config,
+        ),
     )
 
 
@@ -349,7 +416,10 @@ def load_vault_test_state(
 
     store = create_state_store(state_file)
     if not store.is_pristine():
-        return store.load(), store
+        state = store.load()
+        if state.other_data.load_latest("vault_test_run") is None:
+            state.other_data.save(0, "vault_test_run", runtime.get_provenance())
+        return state, store
 
     # A pristine state must first learn its reserve asset and current Lagoon
     # treasury balance before any test position can be created.
@@ -364,6 +434,7 @@ def load_vault_test_state(
         state,
         [runtime.reserve_asset],
     )
+    state.other_data.save(0, "vault_test_run", runtime.get_provenance())
     store.sync(state)
     return state, store
 

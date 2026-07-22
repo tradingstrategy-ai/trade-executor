@@ -873,12 +873,13 @@ def test_cli_vault_test_trade_simulated_deploys_lagoon_on_fork(
     """Automatic simulation deploys and uses an ephemeral Lagoon tester.
 
     1. Configure a pristine executor with only a Base RPC and no deployment artefact or private key.
-    2. Invoke ``vault-test-trade --auto-simulated`` for a synchronous vault.
-    3. Verify a closed simulated round-trip is persisted without a live deployment artefact.
+    2. Invoke ``vault-test-trade --auto-simulated`` for a synchronous vault and JSON report.
+    3. Verify a closed simulated round-trip and reproducible report are persisted without a live deployment artefact.
     """
     # 1. Configure a pristine executor with only a Base RPC and no deployment artefact or private key.
     executor_id = "vault-test-trade-simulated-deployment"
     state_file = tmp_path / f"{executor_id}.json"
+    report_file = tmp_path / f"{executor_id}.report.json"
     target_vault_address = "0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a"
     environment = {
         "PATH": os.environ["PATH"],
@@ -895,7 +896,7 @@ def test_cli_vault_test_trade_simulated_deploys_lagoon_on_fork(
         "CONFIRMATION_BLOCK_COUNT": "0",
     }
 
-    # 2. Invoke vault-test-trade --auto-simulated for a synchronous vault.
+    # 2. Invoke vault-test-trade --auto-simulated for a synchronous vault and report.
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
     cli.main(
@@ -906,11 +907,13 @@ def test_cli_vault_test_trade_simulated_deploys_lagoon_on_fork(
             f"{ChainId.base.value}-{target_vault_address}",
             "--amount",
             "1",
+            "--report-json",
+            report_file.as_posix(),
         ],
         standalone_mode=False,
     )
 
-    # 3. Verify a closed simulated round-trip is persisted without a live deployment artefact.
+    # 3. Verify persisted simulated lifecycle and reproducible report provenance.
     state = State.read_json_file(state_file)
     positions = [
         position
@@ -922,3 +925,6 @@ def test_cli_vault_test_trade_simulated_deploys_lagoon_on_fork(
     assert positions[0].simulated is True
     assert len(positions[0].trades) == 2
     assert not state_file.with_name(f"{executor_id}.deployment.json").exists()
+    report = json.loads(report_file.read_text())
+    assert report["results"][0]["vault_id"] == f"{ChainId.base.value}-{target_vault_address}"
+    assert report["results"][0]["attempt"]["provenance"]["fork_blocks"]

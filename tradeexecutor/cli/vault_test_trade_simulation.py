@@ -5,7 +5,7 @@ import json
 import logging
 import tempfile
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -82,6 +82,9 @@ class SimulatedVaultRuntime:
     sync_model: Any
     reserve_asset: Any
     temporary_deployment_dir: tempfile.TemporaryDirectory
+    #: Immutable upstream heights immediately after Anvil forks start, before
+    #: the test Lagoon topology deploys any contracts.
+    fork_blocks: dict[str, int] = field(default_factory=dict)
 
     def close(self) -> None:
         """Hard-stop all forks and remove this generation's artefact."""
@@ -203,6 +206,10 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
             raise RuntimeError("vault-test-trade requires JSON-RPC connections")
         web3config.set_default_chain(primary_chain_id)
         web3config.check_default_chain_id()
+        fork_blocks = {
+            str(chain_id.value): int(web3.eth.block_number)
+            for chain_id, web3 in web3config.connections.items()
+        }
 
         # Deploy the same hub/satellite Lagoon contracts used by integration
         # tests before constructing trade-executor models around them.
@@ -258,6 +265,7 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
             sync_model=sync_model,
             reserve_asset=reserve_asset,
             temporary_deployment_dir=temporary_deployment_dir,
+            fork_blocks=fork_blocks,
         )
     except BaseException:
         # Multichain setup can fail after earlier forks and contracts exist.

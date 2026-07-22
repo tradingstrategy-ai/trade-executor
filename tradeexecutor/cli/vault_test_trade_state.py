@@ -7,8 +7,10 @@ must remain unaware of it.
 """
 
 import hashlib
+import json
 import re
 import traceback
+import uuid
 from copy import deepcopy
 from typing import Any
 
@@ -27,6 +29,33 @@ from tradeexecutor.state.trade import TradeStatus
 
 
 _URL_PATTERN = re.compile(r"https?://[^\s'\"<>]+")
+
+
+VAULT_TEST_ATTEMPT_SCHEMA_VERSION = 2
+
+# Persisted status values deliberately remain strings.  A newer executor might
+# write a value an older executor does not recognise; state loading must remain
+# lossless in that situation.
+VAULT_TEST_RESULTS = {
+    "metadata_failed",
+    "preflight_failed",
+    "transaction_build_failed",
+    "gas_estimation_reverted",
+    "broadcast_failed",
+    "transaction_reverted",
+    "receipt_analysis_failed",
+    "state_inference_failed",
+    "infrastructure_failed",
+    "deposit_closed",
+    "redemption_unavailable",
+    "simulation_unsupported_async",
+    # Version 1 diagnostic states used this generic value.  Keep presenting it
+    # normally when an older state file is reopened, while new attempts use
+    # the more specific values above.
+    "failed",
+    "success",
+    "success_simulated",
+}
 
 
 def redact_vault_test_error_text(value: object) -> str:
@@ -106,6 +135,60 @@ def _serialise_vault_test_transactions(
     return transactions
 
 
+def _serialise_vault_test_call_context(
+    state: State,
+    *,
+    original_trade_ids: set[int],
+) -> list[dict]:
+    """Capture unsigned call details for failures without a receipt.
+
+    The state already owns the transaction details.  Keep a compact subset so
+    a reporter can reproduce a failed estimate without persisting signed bytes
+    or an arbitrarily large calldata blob.
+    """
+
+    calls: list[dict] = []
+    for position in state.portfolio.get_all_positions():
+        for trade in position.trades.values():
+            if trade.trade_id in original_trade_ids:
+                continue
+            for transaction in trade.blockchain_transactions:
+                if transaction.block_number is not None:
+                    continue
+                details = transaction.details or {}
+                calldata = details.get("data")
+                calls.append(
+                    {
+                        "position_id": position.position_id,
+                        "trade_id": trade.trade_id,
+                        "chain_id": transaction.chain_id,
+                        "sender": transaction.from_address,
+                        "target": transaction.contract_address,
+                        "function_selector": transaction.function_selector,
+                        "wrapped_target": transaction.wrapped_target,
+                        "wrapped_function_selector": transaction.wrapped_function_selector,
+                        "value": str(details.get("value", 0)),
+                        "gas": details.get("gas"),
+                        "gas_price": details.get("gasPrice"),
+                        "max_fee_per_gas": details.get("maxFeePerGas"),
+                        "max_priority_fee_per_gas": details.get(
+                            "maxPriorityFeePerGas"
+                        ),
+                        "nonce": transaction.nonce,
+                        # This is unsigned ABI calldata, not a signed payload.
+                        # Keeping it makes the report independently replayable
+                        # with eth-defi at the recorded fork height.
+                        "calldata": str(calldata) if calldata else None,
+                        "calldata_hash": hashlib.sha256(
+                            str(calldata).encode("utf-8")
+                        ).hexdigest()
+                        if calldata
+                        else None,
+                    }
+                )
+    return calls
+
+
 def _capture_chain_blocks(web3config: Any | None) -> dict[str, dict]:
     """Capture the current block for every configured chain without masking failure."""
 
@@ -139,6 +222,14 @@ def capture_vault_test_error(
     """
 
     exception_chain = _serialise_exception_chain(error)
+    call_context = _serialise_vault_test_call_context(
+        state,
+        original_trade_ids=original_trade_ids,
+    )
+    transactions = _serialise_vault_test_transactions(
+        state,
+        original_trade_ids=original_trade_ids,
+    )
     return {
         "captured_at": native_datetime_utc_now().isoformat(),
         "phase": phase,
@@ -148,11 +239,35 @@ def capture_vault_test_error(
             "".join(traceback.format_exception(type(error), error, error.__traceback__))
         ),
         "chain_blocks": _capture_chain_blocks(web3config),
-        "transactions": _serialise_vault_test_transactions(
-            state,
-            original_trade_ids=original_trade_ids,
-        ),
+        "transactions": transactions,
+        "call_context": call_context,
     }
+
+
+def classify_vault_test_failure(
+    *,
+    phase: str,
+    error_data: dict,
+) -> str:
+    """Classify a failure from its lifecycle phase and transaction evidence."""
+
+    if phase == "preflight":
+        return "preflight_failed"
+    if phase == "metadata":
+        return "metadata_failed"
+    if phase == "state_inference":
+        return "state_inference_failed"
+
+    transactions = error_data.get("transactions", [])
+    if any(transaction.get("status") is False for transaction in transactions):
+        return "transaction_reverted"
+    if any(transaction.get("status") is True for transaction in transactions):
+        return "receipt_analysis_failed"
+    if any(transaction.get("tx_hash") for transaction in transactions):
+        return "broadcast_failed"
+    if error_data.get("call_context"):
+        return "gas_estimation_reverted"
+    return "transaction_build_failed"
 
 
 def get_latest_vault_position(
@@ -216,6 +331,10 @@ def get_vault_test_status(position: TradingPosition | None) -> str:
     attempt = position.other_data.get("vault_test_attempt", {})
     result = attempt.get("result")
     if result:
+        if result not in VAULT_TEST_RESULTS:
+            # Do not write this presentation normalisation back to state: the
+            # original raw value may have been written by a newer executor.
+            return "legacy result"
         return result.replace("_", " ")
 
     phase_status = {
@@ -319,15 +438,24 @@ def create_vault_test_diagnostic_pair(
 
 
 def create_vault_test_attempt_metadata(
-    vault_spec: VaultSpec, *, simulated: bool
+    vault_spec: VaultSpec,
+    *,
+    simulated: bool,
+    attempt_id: str | None = None,
+    operation: str | None = None,
+    provenance: dict | None = None,
 ) -> dict:
     """Create JSON-serialisable metadata carried by the authoritative position."""
 
     return {
+        "schema_version": VAULT_TEST_ATTEMPT_SCHEMA_VERSION,
+        "attempt_id": attempt_id or uuid.uuid4().hex,
         "vault_id": vault_spec.as_string_id(),
         "simulated": simulated,
+        "operation": operation,
         "phase": "created",
         "created_at": native_datetime_utc_now().isoformat(),
+        "provenance": provenance or {},
     }
 
 
@@ -339,16 +467,35 @@ def stamp_position_vault_test_attempt(
     phase: str | None = None,
     result: str | None = None,
     detail: str | None = None,
+    attempt_id: str | None = None,
+    operation: str | None = None,
+    provenance: dict | None = None,
 ) -> None:
     """Attach vault-test provenance to a specific target or bridge position."""
 
     position.simulated = simulated
     attempt = position.other_data.setdefault(
         "vault_test_attempt",
-        create_vault_test_attempt_metadata(vault_spec, simulated=simulated),
+        create_vault_test_attempt_metadata(
+            vault_spec,
+            simulated=simulated,
+            attempt_id=attempt_id,
+            operation=operation,
+            provenance=provenance,
+        ),
+    )
+    attempt.setdefault("schema_version", VAULT_TEST_ATTEMPT_SCHEMA_VERSION)
+    # A position may be revisited for redemption or a retry. Its metadata must
+    # describe the latest action, not retain the id of its original deposit.
+    attempt["attempt_id"] = (
+        attempt_id or attempt.get("attempt_id") or uuid.uuid4().hex
     )
     attempt["vault_id"] = vault_spec.as_string_id()
     attempt["simulated"] = simulated
+    if operation:
+        attempt["operation"] = operation
+    if provenance:
+        attempt["provenance"] = provenance
     if phase:
         attempt["phase"] = phase
     if result:
@@ -367,6 +514,9 @@ def record_attempt_result(
     detail: str | None = None,
     error: dict | None = None,
     source_position_id: int | None = None,
+    attempt_id: str | None = None,
+    operation: str | None = None,
+    provenance: dict | None = None,
 ) -> TradingPosition:
     """Create a closed diagnostic position in the dedicated vault-test state.
 
@@ -386,7 +536,13 @@ def record_attempt_result(
     )
     position.simulated = simulated
 
-    attempt = create_vault_test_attempt_metadata(vault_spec, simulated=simulated)
+    attempt = create_vault_test_attempt_metadata(
+        vault_spec,
+        simulated=simulated,
+        attempt_id=attempt_id,
+        operation=operation,
+        provenance=provenance,
+    )
     attempt["result"] = result
     if detail:
         attempt["detail"] = detail
@@ -402,12 +558,54 @@ def record_attempt_result(
     return position
 
 
+def export_vault_test_report(
+    state: State,
+    rows: list[dict],
+) -> dict:
+    """Build a compact external report without copying unrelated state history."""
+
+    results = []
+    for row in rows:
+        vault_id = row["vault id"]
+        matches = [
+            candidate
+            for candidate in state.portfolio.get_all_positions()
+            if candidate.other_data.get("vault_test_attempt", {}).get("vault_id")
+            == vault_id
+        ]
+        position = max(matches, key=lambda candidate: candidate.position_id, default=None)
+        attempt = position.other_data.get("vault_test_attempt", {}) if position else {}
+        results.append(
+            {
+                "vault_id": vault_id,
+                "position_id": position.position_id if position else None,
+                "row": row,
+                "attempt": attempt,
+            }
+        )
+    return {
+        "schema_version": VAULT_TEST_ATTEMPT_SCHEMA_VERSION,
+        "run": state.other_data.load_latest("vault_test_run", {}),
+        "results": results,
+    }
+
+
+def write_vault_test_report(path, state: State, rows: list[dict]) -> None:
+    """Write the deterministic machine-readable vault-test result report."""
+
+    path.write_text(json.dumps(export_vault_test_report(state, rows), indent=2, sort_keys=True))
+
+
 def close_simulated_positions(
     state: State,
     *,
     vault_spec: VaultSpec,
     position_ids: set[int],
     result: str | None = None,
+    phase: str | None = None,
+    attempt_id: str | None = None,
+    operation: str | None = None,
+    provenance: dict | None = None,
 ) -> None:
     """Close all newly-created fork positions and stamp their vault-test role.
 
@@ -434,8 +632,16 @@ def close_simulated_positions(
         position.simulated = True
         if position.pair.pool_address.lower() == vault_spec.vault_address.lower():
             attempt = position.other_data.setdefault("vault_test_attempt", {})
+            attempt.setdefault("schema_version", VAULT_TEST_ATTEMPT_SCHEMA_VERSION)
+            attempt.setdefault("attempt_id", attempt_id or uuid.uuid4().hex)
             attempt.setdefault("vault_id", vault_id)
             attempt["simulated"] = True
+            if operation:
+                attempt["operation"] = operation
+            if phase:
+                attempt["phase"] = phase
+            if provenance:
+                attempt["provenance"] = provenance
             if result:
                 attempt["result"] = result
         if position.is_open():

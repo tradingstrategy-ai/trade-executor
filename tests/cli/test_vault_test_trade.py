@@ -16,6 +16,7 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.cli.commands.lagoon_deploy_vault import (
     _write_state_sibling_deployment_artifact,
 )
+from tradeexecutor.cli.commands.vault_test_trade import _validate_vault_test_options
 from tradeexecutor.cli import vault_test_trade_tui as vault_test_trade_tui_module
 from tradeexecutor.cli import (
     vault_test_trade_simulation as vault_test_trade_simulation_module,
@@ -27,9 +28,13 @@ from tradeexecutor.cli.vault_test_trade import (
 )
 from tradeexecutor.cli.vault_test_trade_state import (
     capture_vault_test_error,
+    classify_vault_test_failure,
     create_vault_test_diagnostic_pair,
+    export_vault_test_report,
+    get_vault_test_status,
     get_vault_trade_position,
     record_attempt_result,
+    stamp_position_vault_test_attempt,
 )
 from tradeexecutor.cli.vault_test_trade_tui import (
     VaultChoice,
@@ -54,6 +59,7 @@ from tradeexecutor.cli.log import setup_custom_log_levels
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
+from tradeexecutor.strategy.execution_model import AssetManagementMode
 
 
 class VaultSearchHarness(App):
@@ -446,6 +452,238 @@ def test_vault_test_failure_persists_redacted_traceback_and_revert_evidence() ->
     ]
     assert "secret-key" not in error_payload["traceback"]
     assert "<redacted-url>" in error_payload["traceback"]
+
+
+def test_vault_test_report_retains_provenance_and_legacy_result_values() -> None:
+    """Reports expose authoritative diagnostics without mutating legacy state.
+
+    1. Create a diagnostic attempt with reproducible provenance.
+    2. Mark its raw result as a future/unknown legacy value and serialise it.
+    3. Build the compact report and verify display normalisation never overwrites
+       the raw persisted result.
+    """
+    # 1. Create a diagnostic attempt with reproducible provenance.
+    state = State()
+    reserve_asset = AssetIdentifier(
+        ChainId.base.value,
+        "0x0000000000000000000000000000000000000010",
+        "USDC",
+        6,
+    )
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    spec = VaultSpec(
+        ChainId.arbitrum.value,
+        "0x0000000000000000000000000000000000000020",
+    )
+    position = record_attempt_result(
+        state,
+        create_vault_test_diagnostic_pair(spec, reserve_asset),
+        spec,
+        simulated=True,
+        result="transaction_reverted",
+        attempt_id="attempt-1",
+        operation="deposit",
+        provenance={"fork_blocks": {"42161": 123_456}},
+    )
+
+    # 2. Mark its raw result as a future/unknown legacy value and serialise it.
+    attempt = position.other_data["vault_test_attempt"]
+    attempt["result"] = "future_executor_result"
+    restored = State.from_json(state.to_json_safe())
+    restored_position = restored.portfolio.get_position_by_id(position.position_id)
+
+    # 3. Build the report and verify display normalisation never overwrites state.
+    assert get_vault_test_status(restored_position) == "legacy result"
+    report = export_vault_test_report(
+        restored,
+        [{"vault id": spec.as_string_id(), "status": "legacy result"}],
+    )
+    assert report["results"][0]["attempt"]["result"] == "future_executor_result"
+    assert report["results"][0]["attempt"]["provenance"] == {
+        "fork_blocks": {"42161": 123_456}
+    }
+
+
+def test_vault_failure_classifier_uses_transaction_evidence() -> None:
+    """Failure status is determined by lifecycle evidence rather than text.
+
+    1. Classify a preflight exception with no transaction evidence.
+    2. Classify reverted, successful and broadcast receipts during execution.
+    3. Verify an unsigned call context is reported as an estimation failure.
+    """
+    # 1. Classify a preflight exception with no transaction evidence.
+    assert classify_vault_test_failure(phase="preflight", error_data={}) == "preflight_failed"
+
+    # 2. Classify reverted and successful receipts during execution.
+    assert (
+        classify_vault_test_failure(
+            phase="execute",
+            error_data={"transactions": [{"status": False}]},
+        )
+        == "transaction_reverted"
+    )
+    assert (
+        classify_vault_test_failure(
+            phase="execute",
+            error_data={"transactions": [{"status": True}]},
+        )
+        == "receipt_analysis_failed"
+    )
+    assert (
+        classify_vault_test_failure(
+            phase="execute",
+            error_data={"transactions": [{"tx_hash": "0xdeadbeef"}]},
+        )
+        == "broadcast_failed"
+    )
+
+    # 3. Verify an unsigned call context is reported as an estimation failure.
+    assert (
+        classify_vault_test_failure(
+            phase="execute",
+            error_data={"call_context": [{"function_selector": "deposit"}]},
+        )
+        == "gas_estimation_reverted"
+    )
+
+
+def test_vault_error_call_context_contains_replayable_unsigned_calldata() -> None:
+    """An estimate failure report is sufficient for eth-defi to replay the call.
+
+    1. Model an unsigned vault transaction that stopped before a receipt.
+    2. Capture the failure diagnostics from the attempted trade.
+    3. Verify the report contains target, sender, gas and full unsigned calldata.
+    """
+    # 1. Model an unsigned vault transaction that stopped before a receipt.
+    transaction = MagicMock(
+        chain_id=ChainId.base.value,
+        from_address="0x0000000000000000000000000000000000000001",
+        contract_address="0x0000000000000000000000000000000000000002",
+        function_selector="deposit",
+        wrapped_target=None,
+        wrapped_function_selector=None,
+        nonce=7,
+        block_number=None,
+    )
+    transaction.details = {
+        "data": "0xd0e30db0",
+        "value": 123,
+        "gas": 456_789,
+        "maxFeePerGas": 10,
+        "maxPriorityFeePerGas": 2,
+    }
+    trade = MagicMock(trade_id=42, blockchain_transactions=[transaction])
+    position = MagicMock(position_id=3, trades={42: trade})
+    state = MagicMock()
+    state.portfolio.get_all_positions.return_value = [position]
+
+    # 2. Capture the failure diagnostics from the attempted trade.
+    try:
+        raise RuntimeError("estimate reverted")
+    except RuntimeError as error:
+        diagnostics = capture_vault_test_error(
+            error,
+            state=state,
+            original_trade_ids=set(),
+            web3config=None,
+            phase="execute",
+        )
+
+    # 3. Verify the report contains target, sender, gas and full unsigned calldata.
+    assert diagnostics["call_context"] == [
+        {
+            "position_id": 3,
+            "trade_id": 42,
+            "chain_id": ChainId.base.value,
+            "sender": "0x0000000000000000000000000000000000000001",
+            "target": "0x0000000000000000000000000000000000000002",
+            "function_selector": "deposit",
+            "wrapped_target": None,
+            "wrapped_function_selector": None,
+            "value": "123",
+            "gas": 456_789,
+            "gas_price": None,
+            "max_fee_per_gas": 10,
+            "max_priority_fee_per_gas": 2,
+            "nonce": 7,
+            "calldata": "0xd0e30db0",
+            "calldata_hash": "5cd92c6d850367a4db763ab4a4c33567ade46ebfddfdd73cd31d130db24c6b0f",
+        }
+    ]
+
+
+def test_vault_attempt_stamp_replaces_previous_attempt_identity() -> None:
+    """A resumed vault lifecycle retains the identity of its latest operation.
+
+    1. Persist a deposit diagnostic with an initial attempt id.
+    2. Stamp the same position as a later redemption attempt.
+    3. Verify the reporter-visible metadata identifies the latter attempt.
+    """
+    # 1. Persist a deposit diagnostic with an initial attempt id.
+    state = State()
+    reserve_asset = AssetIdentifier(
+        ChainId.base.value,
+        "0x0000000000000000000000000000000000000010",
+        "USDC",
+        6,
+    )
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    spec = VaultSpec(
+        ChainId.base.value,
+        "0x0000000000000000000000000000000000000020",
+    )
+    position = record_attempt_result(
+        state,
+        create_vault_test_diagnostic_pair(spec, reserve_asset),
+        spec,
+        simulated=False,
+        result="failed",
+        attempt_id="deposit-attempt",
+        operation="deposit",
+    )
+
+    # 2. Stamp the same position as a later redemption attempt.
+    stamp_position_vault_test_attempt(
+        position,
+        spec,
+        simulated=False,
+        phase="redemption_requested",
+        attempt_id="redeem-attempt",
+        operation="redeem",
+    )
+
+    # 3. Verify the reporter-visible metadata identifies the latter attempt.
+    attempt = position.other_data["vault_test_attempt"]
+    assert attempt["attempt_id"] == "redeem-attempt"
+    assert attempt["operation"] == "redeem"
+
+
+def test_async_anvil_settlement_option_requires_simulated_mode() -> None:
+    """Async Anvil settlement cannot accidentally run against a live vault.
+
+    1. Validate an opt-in simulated Anvil invocation.
+    2. Request the option in real mode.
+    3. Verify validation rejects the unsafe combination before any RPC is opened.
+    """
+    # 1. Validate an opt-in simulated Anvil invocation.
+    _validate_vault_test_options(
+        auto_simulated=True,
+        auto_real=False,
+        rerun=False,
+        settle_async_on_anvil=True,
+        asset_management_mode=AssetManagementMode.lagoon,
+    )
+
+    # 2. Request the option in real mode.
+    with pytest.raises(RuntimeError, match="requires --auto-simulated"):
+        # 3. Verify validation rejects the unsafe combination before any RPC is opened.
+        _validate_vault_test_options(
+            auto_simulated=False,
+            auto_real=True,
+            rerun=False,
+            settle_async_on_anvil=True,
+            asset_management_mode=AssetManagementMode.lagoon,
+        )
 
 
 def test_simulated_vault_attempt_timeout_is_recordable() -> None:
