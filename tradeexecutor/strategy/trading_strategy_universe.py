@@ -22,6 +22,7 @@ import pandas as pd
 from tabulate import tabulate
 
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.utils import is_good_multichain_address
 from tradingstrategy.lending import LendingReserveUniverse, LendingReserveDescription, LendingCandleType, LendingCandleUniverse, UnknownLendingReserve, LendingProtocolType, LendingReserve
 from tradingstrategy.token import Token
 from tradingstrategy.candle import GroupedCandleUniverse
@@ -453,7 +454,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
         chain_id = vault_spec[0]
         assert isinstance(chain_id, ChainId), f"Expected ChainId, got {chain_id.__class__}: {chain_id}"
         address = vault_spec[1]
-        assert address.startswith("0x"), f"Expected address, got {address}"
+        assert is_good_multichain_address(address), f"Expected address, got {address}"
 
         # Raises if not found
         vault_pair = self.data_universe.pairs.get_pair_by_smart_contract(

@@ -97,18 +97,19 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
 
     base_token_decimals = dex_pair.base_token_decimals
 
-    # Hypercore-native vaults (e.g. HLP) have no on-chain ERC-20 share token, so the data
-    # server emits share_token_decimals=null and base_token_decimals arrives as None. The
-    # share token is purely an internal accounting unit for these vaults (positions are
-    # valued via NAV/share price), so a representational 18 decimals is safe. We default
-    # ONLY the base/share token of Hypercore-native vaults here — never the quote/
-    # denomination token (defaulting 6-decimal USDC to 18 scaled raw amounts by 10**12 and
-    # reverted on-chain CCTP transfers; see trading-strategy #234) and never a real
-    # ERC-4626 vault, whose missing decimals should still surface as an error.
+    # Synthetic non-EVM vaults (Hypercore HLP, Lighter pools) have no on-chain ERC-20
+    # share token, so the data server emits share_token_decimals=null and
+    # base_token_decimals arrives as None. The share token is purely an internal
+    # accounting unit for these vaults (positions are valued via NAV/share price), so a
+    # representational 18 decimals is safe. We default ONLY the base/share token of these
+    # synthetic vaults here — never the quote/denomination token (defaulting 6-decimal
+    # USDC to 18 scaled raw amounts by 10**12 and reverted on-chain CCTP transfers; see
+    # trading-strategy #234) and never a real ERC-4626 vault, whose missing decimals
+    # should still surface as an error.
     if (
         base_token_decimals is None
         and dex_pair.dex_type == ExchangeType.erc_4626_vault
-        and dex_pair.chain_id == ChainId.hypercore
+        and dex_pair.chain_id in (ChainId.hypercore, ChainId.lighter)
     ):
         base_token_decimals = 18
 
