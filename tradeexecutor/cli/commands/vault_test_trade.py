@@ -10,10 +10,10 @@ from tradeexecutor.cli.bootstrap import prepare_executor_id
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.log import setup_logging
-from tradeexecutor.cli.vault_test_trade import parse_vault_ids
-from tradeexecutor.cli.vault_test_trade_runner import VaultTestBatchRunner
-from tradeexecutor.cli.vault_test_trade_state import write_vault_test_report
-from tradeexecutor.cli.vault_test_trade_setup import (
+from eth_defi.cli.vault_trade.core import parse_vault_ids
+from eth_defi.cli.vault_trade.runner import VaultTestBatchRunner
+from eth_defi.cli.vault_trade.state import write_vault_test_report
+from eth_defi.cli.vault_trade.setup import (
     choose_manual_vault_action,
     create_vault_test_runtime,
     load_vault_test_data,

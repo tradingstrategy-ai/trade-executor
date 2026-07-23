@@ -17,16 +17,14 @@ from tradeexecutor.cli.commands.lagoon_deploy_vault import (
     _write_state_sibling_deployment_artifact,
 )
 from tradeexecutor.cli.commands.vault_test_trade import _validate_vault_test_options
-from tradeexecutor.cli import vault_test_trade_tui as vault_test_trade_tui_module
-from tradeexecutor.cli import (
-    vault_test_trade_simulation as vault_test_trade_simulation_module,
-)
-from tradeexecutor.cli.vault_test_trade import (
+from eth_defi.cli.vault_trade import tui as vault_test_trade_tui_module
+from eth_defi.cli.vault_trade import simulation as vault_test_trade_simulation_module
+from eth_defi.cli.vault_trade.core import (
     filter_rpc_kwargs_for_vault_specs,
     load_lagoon_deployment,
     parse_vault_ids,
 )
-from tradeexecutor.cli.vault_test_trade_state import (
+from eth_defi.cli.vault_trade.state import (
     capture_vault_test_error,
     classify_vault_test_failure,
     create_vault_test_diagnostic_pair,
@@ -36,13 +34,13 @@ from tradeexecutor.cli.vault_test_trade_state import (
     record_attempt_result,
     stamp_position_vault_test_attempt,
 )
-from tradeexecutor.cli.vault_test_trade_tui import (
+from eth_defi.cli.vault_trade.tui import (
     VaultChoice,
     VaultSearchScreen,
     VaultTestTradeApp,
 )
-from tradeexecutor.cli.vault_test_trade_setup import load_vault_test_state
-from tradeexecutor.cli.vault_test_trade_simulation import (
+from eth_defi.cli.vault_trade.setup import load_vault_test_state
+from eth_defi.cli.vault_trade.simulation import (
     SimulatedVaultAttemptTimeout,
     SimulatedVaultRuntime,
     is_simulated_infrastructure_failure,
@@ -50,7 +48,7 @@ from tradeexecutor.cli.vault_test_trade_simulation import (
     raise_simulated_vault_attempt_timeout,
     take_simulated_snapshots,
 )
-from tradeexecutor.cli.vault_test_trade_runner import (
+from eth_defi.cli.vault_trade.runner import (
     VaultAttemptContext,
     VaultTestBatchRunner,
     get_bridge_conflict,
