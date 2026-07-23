@@ -26,8 +26,8 @@ from tradeexecutor.cli.bootstrap import (
     check_universe_contracts_resolve,
 )
 from tradeexecutor.cli.testtrade import perform_test_trade
-from tradeexecutor.cli.vault_test_trade import build_vault_test_universe
-from tradeexecutor.cli.vault_test_trade_state import (
+from tradeexecutor.cli.vault_trade.core import build_vault_test_universe
+from tradeexecutor.cli.vault_trade.state import (
     close_simulated_positions,
     capture_vault_test_error,
     classify_vault_test_failure,
@@ -40,8 +40,8 @@ from tradeexecutor.cli.vault_test_trade_state import (
     redact_vault_test_error_text,
     stamp_position_vault_test_attempt,
 )
-from tradeexecutor.cli.vault_test_trade_setup import VaultTestRuntime
-from tradeexecutor.cli.vault_test_trade_simulation import (
+from tradeexecutor.cli.vault_trade.setup import VaultTestRuntime
+from tradeexecutor.cli.vault_trade.simulation import (
     SIMULATED_VAULT_ATTEMPT_TIMEOUT,
     SimulatedVaultAttemptTimeout,
     is_simulated_infrastructure_failure,
@@ -50,7 +50,7 @@ from tradeexecutor.cli.vault_test_trade_simulation import (
     restore_simulated_snapshots,
     take_simulated_snapshots,
 )
-from tradeexecutor.cli.vault_test_trade_tui import VaultTestAction
+from tradeexecutor.cli.vault_trade.tui import VaultTestAction
 from tradeexecutor.ethereum.routing_state import OutOfBalance
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition

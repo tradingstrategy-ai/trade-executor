@@ -30,7 +30,7 @@ from tradeexecutor.cli.bootstrap import (
     create_execution_and_sync_model,
     create_web3_config,
 )
-from tradeexecutor.cli.vault_test_trade import deploy_simulated_lagoon_multichain
+from tradeexecutor.cli.vault_trade.core import deploy_simulated_lagoon_multichain
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 

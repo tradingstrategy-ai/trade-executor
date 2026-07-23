@@ -26,17 +26,17 @@ from tradeexecutor.cli.bootstrap import (
     prepare_cache_and_token_cache,
     resolve_deployment_file,
 )
-from tradeexecutor.cli.vault_test_trade import (
+from tradeexecutor.cli.vault_trade.core import (
     LagoonDeployment,
     SIMULATED_LAGOON_PRIVATE_KEY,
     filter_rpc_kwargs_for_vault_specs,
     load_lagoon_deployment,
 )
-from tradeexecutor.cli.vault_test_trade_simulation import (
+from tradeexecutor.cli.vault_trade.simulation import (
     SimulatedVaultRuntime,
     start_simulated_vault_runtime_with_replacement,
 )
-from tradeexecutor.cli.vault_test_trade_tui import (
+from tradeexecutor.cli.vault_trade.tui import (
     VaultChoice,
     VaultTestAction,
     display_vault_test_trade_ui,
