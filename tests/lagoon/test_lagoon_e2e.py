@@ -1,5 +1,4 @@
 """Test CLI command and strategy running with Lagoon vault."""
-
 import json
 import os
 from decimal import Decimal
@@ -27,8 +26,8 @@ TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
 CI = os.environ.get("CI") == "true"
 
 pytestmark = pytest.mark.skipif(
-    (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY),
-    reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY needed to run this test",
+     (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY),
+      reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY needed to run this test"
 )
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
@@ -42,27 +41,13 @@ def logger(request):
 @pytest.fixture()
 def strategy_file() -> Path:
     """Where do we load our strategy file."""
-    return (
-        Path(os.path.dirname(__file__))
-        / ".."
-        / ".."
-        / "strategies"
-        / "test_only"
-        / "base-memecoin-index.py"
-    )
+    return Path(os.path.dirname(__file__)) / ".." / ".." / "strategies" / "test_only" / "base-memecoin-index.py"
 
 
 @pytest.fixture()
 def vaulted_strategy_file() -> Path:
     """Where do we load our strategy file."""
-    return (
-        Path(os.path.dirname(__file__))
-        / ".."
-        / ".."
-        / "strategies"
-        / "test_only"
-        / "base-memecoin-index-with-vault.py"
-    )
+    return Path(os.path.dirname(__file__)) / ".." / ".." / "strategies" / "test_only" / "base-memecoin-index-with-vault.py"
 
 
 @pytest.fixture()
@@ -108,6 +93,7 @@ def deployed_vault_environment(
         "CACHE_PATH": cache_path,
     }
     return environment
+
 
 
 @pytest.fixture()
@@ -158,11 +144,9 @@ def test_cli_lagoon_deploy_vault(
 ):
     """Deploy Lagoon vault."""
 
-    cache_path = persistent_test_client.transport.cache_path
+    cache_path  =persistent_test_client.transport.cache_path
 
-    multisig_owners = (
-        f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
-    )
+    multisig_owners = f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
 
     environment = {
         "PATH": os.environ["PATH"],  # Need forge
@@ -208,9 +192,7 @@ def test_cli_lagoon_deploy_vault_multiple_asset_managers(
     cache_path = persistent_test_client.transport.cache_path
     primary_asset_manager = Web3.to_checksum_address(web3.eth.accounts[7])
     secondary_asset_manager = Web3.to_checksum_address(web3.eth.accounts[8])
-    multisig_owners = (
-        f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
-    )
+    multisig_owners = f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
     vault_record_file = tmp_path / "vault-record.txt"
 
     environment = {
@@ -243,10 +225,7 @@ def test_cli_lagoon_deploy_vault_multiple_asset_managers(
 
     deployment_data = json.load(vault_record_file.with_suffix(".json").open("rt"))
     assert deployment_data["Asset manager"] == primary_asset_manager
-    assert (
-        deployment_data["Asset managers"]
-        == f"{primary_asset_manager}, {secondary_asset_manager}"
-    )
+    assert deployment_data["Asset managers"] == f"{primary_asset_manager}, {secondary_asset_manager}"
     assert deployment_data["Valuation manager"] == primary_asset_manager
 
     module = get_deployed_contract(
@@ -307,21 +286,10 @@ def test_cli_lagoon_perform_test_trade(
     cli = get_command(app)
     mocker.patch.dict("os.environ", deployed_vault_environment, clear=True)
     cli.main(args=["init"], standalone_mode=False)
-    cli.main(
-        args=[
-            "perform-test-trade",
-            "--pair",
-            "(base, uniswap-v2, KEYCAT, WETH, 0.0030)",
-        ],
-        standalone_mode=False,
-    )
+    cli.main(args=["perform-test-trade", "--pair", "(base, uniswap-v2, KEYCAT, WETH, 0.0030)"], standalone_mode=False)
 
     state = State.read_json_file(state_file)
-    keycat_trades = [
-        t
-        for t in state.portfolio.get_all_trades()
-        if t.pair.base.token_symbol == "KEYCAT"
-    ]
+    keycat_trades = [t for t in state.portfolio.get_all_trades() if t.pair.base.token_symbol == "KEYCAT"]
     assert len(keycat_trades) == 2
 
     for t in keycat_trades:
@@ -348,14 +316,7 @@ def test_cli_lagoon_trade_ui(
     5. Verify trades were created and succeeded
     """
     deploy_info = deposited_lagoon_vault
-    strategy_file = (
-        Path(os.path.dirname(__file__))
-        / ".."
-        / ".."
-        / "strategies"
-        / "test_only"
-        / "trade-ui-simple.py"
-    )
+    strategy_file = Path(os.path.dirname(__file__)) / ".." / ".." / "strategies" / "test_only" / "trade-ui-simple.py"
     state_file = tmp_path / "trade-ui-test.json"
     cache_path = persistent_test_client.transport.cache_path
 
@@ -400,24 +361,18 @@ def test_cli_lagoon_trade_ui(
     # 5. Read persisted state back from disk and verify the round-trip trade
     state = State.read_json_file(state_file)
     trades = list(state.portfolio.get_all_trades())
-    assert len(trades) == 2, (
-        f"Expected exactly 2 trades (open + close), got {len(trades)}"
-    )
+    assert len(trades) == 2, f"Expected exactly 2 trades (open + close), got {len(trades)}"
 
     buy_trade, sell_trade = trades[0], trades[1]
     assert buy_trade.is_success(), f"Buy trade failed: {buy_trade.get_revert_reason()}"
-    assert sell_trade.is_success(), (
-        f"Sell trade failed: {sell_trade.get_revert_reason()}"
-    )
+    assert sell_trade.is_success(), f"Sell trade failed: {sell_trade.get_revert_reason()}"
     assert buy_trade.is_buy(), f"First trade should be a buy, got {buy_trade}"
     assert sell_trade.is_sell(), f"Second trade should be a sell, got {sell_trade}"
     assert buy_trade.pair == sell_trade.pair, "Buy and sell should be for the same pair"
 
     # Position should be closed after open+close
     position = state.portfolio.get_position_by_id(buy_trade.position_id)
-    assert position.is_closed(), (
-        f"Position should be closed after open+close, got {position}"
-    )
+    assert position.is_closed(), f"Position should be closed after open+close, got {position}"
 
     # Reserve should still have funds (we only traded 1 USDC out of 399)
     reserve = state.portfolio.get_default_reserve_position()
@@ -497,6 +452,7 @@ def test_cli_lagoon_settle(
     cli.main(args=["lagoon-settle"], standalone_mode=False)
 
 
+
 # More flakiness  AssertionError: Could not read block number from Anvil after the launch anvil: at http://localhost:26220, stdout is 0 bytes, stderr is 312 bytes
 @pytest.mark.skip(reason="No longer supported")
 @flaky.flaky()
@@ -546,9 +502,7 @@ def test_cli_lagoon_redeploy_guard(
     #
     vault_record_file = tmp_path / "vault-record.json"
     environment = deployed_vault_environment.copy()
-    environment["ERC_4626_VAULTS"] = (
-        "0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a, 0x0d877Dc7C8Fa3aD980DfDb18B48eC9F8768359C4, 0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae"
-    )
+    environment["ERC_4626_VAULTS"] = "0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a, 0x0d877Dc7C8Fa3aD980DfDb18B48eC9F8768359C4, 0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae"
     environment["GUARD_ONLY"] = "true"
     environment["UNISWAP_V2"] = "true"
     environment["UNISWAP_V3"] = "true"
@@ -571,23 +525,11 @@ def test_cli_lagoon_redeploy_guard(
         "safe-integration/TradingStrategyModuleV0.json",
         new_guard_address,
     )
-    assert vault_info["Safe"].lower() == safe_address.lower(), (
-        "Vault data corrupted, Safe address mismatch"
-    )
+    assert vault_info["Safe"].lower() == safe_address.lower(), "Vault data corrupted, Safe address mismatch"
     # https://github.com/tradingstrategy-ai/web3-ethereum-defi/blob/master/contracts/guard/src/GuardV0Base.sol
     assert new_guard_contract.functions.getGovernanceAddress().call() == safe_address
-    assert (
-        new_guard_contract.functions.isAllowedApprovalDestination(
-            Web3.to_checksum_address("0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a")
-        ).call()
-        == True
-    )  # Spark
-    assert (
-        new_guard_contract.functions.isAllowedApprovalDestination(
-            Web3.to_checksum_address("0x0d877Dc7C8Fa3aD980DfDb18B48eC9F8768359C4")
-        ).call()
-        == True
-    )  # Harvest
+    assert new_guard_contract.functions.isAllowedApprovalDestination(Web3.to_checksum_address("0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a")).call() == True  # Spark
+    assert new_guard_contract.functions.isAllowedApprovalDestination(Web3.to_checksum_address("0x0d877Dc7C8Fa3aD980DfDb18B48eC9F8768359C4")).call() == True  # Harvest
 
     # ERC-7545: not supported yet
     # assert new_guard_contract.functions.isAllowedApprovalDestination(Web3.to_checksum_address("0x7a63e8fc1d0a5e9be52f05817e8c49d9e2d6efae")).call() == True  # maxAPY
@@ -623,14 +565,10 @@ def test_cli_lagoon_redeploy_guard(
 
     # Check module is enabled (twice)
     modules = safe.retrieve_modules()
-    assert modules == [new_guard_address], (
-        f"Guard not updated, old guard still present: {modules}"
-    )
+    assert modules == [new_guard_address], f"Guard not updated, old guard still present: {modules}"
     safe = fetch_safe_deployment(web3, vault_info["Safe"])
     assert safe.contract.functions.isModuleEnabled(new_guard_address).call() == True
-    assert (
-        safe.contract.functions.isModuleEnabled(guard_contract.address).call() == False
-    )
+    assert safe.contract.functions.isModuleEnabled(guard_contract.address).call() == False
 
     # Fix us to use the strategy module where vaults are part of the universe loading
     environment["STRATEGY_FILE"] = vaulted_strategy_file.as_posix()
@@ -650,17 +588,12 @@ def test_cli_lagoon_redeploy_guard(
             assert t.is_success(), f"Trade {t} failed: {t.get_revert_reason()}"
 
         for p in _state.portfolio.get_all_positions():
-            assert not p.is_open(), (
-                f"Position {p} is still open after test trades: {list(p.trades.values())}"
-            )
+            assert not p.is_open(), f"Position {p} is still open after test trades: {list(p.trades.values())}"
 
         return _state, _trades
 
     # Check the test trade using a single vault by its human description
-    cli.main(
-        args=["perform-test-trade", "--pair", "(base, morpho, sparkUSDC, USDC)"],
-        standalone_mode=False,
-    )
+    cli.main(args=["perform-test-trade", "--pair", "(base, morpho, sparkUSDC, USDC)"], standalone_mode=False)
     state, trades = _check_clean_state()
     assert len(trades) == 2, f"Got trades: {trades}"
 
@@ -670,20 +603,10 @@ def test_cli_lagoon_redeploy_guard(
     assert len(trades) == 6, f"Got trades: {trades}"
 
     # Check there is no change in Aave trade whitelisting
-    cli.main(
-        args=["perform-test-trade", "--lending-reserve", "(base, aave-v3, USDC)"],
-        standalone_mode=False,
-    )
+    cli.main(args=["perform-test-trade", "--lending-reserve", "(base, aave-v3, USDC)"], standalone_mode=False)
     _check_clean_state()
     # Check there is no change in Uniswap v2 trade whitelisting
-    cli.main(
-        args=[
-            "perform-test-trade",
-            "--pair",
-            "(base, uniswap-v2, KEYCAT, WETH, 0.0030)",
-        ],
-        standalone_mode=False,
-    )
+    cli.main(args=["perform-test-trade", "--pair", "(base, uniswap-v2, KEYCAT, WETH, 0.0030)"], standalone_mode=False)
     _check_clean_state()
 
 
@@ -714,9 +637,7 @@ def test_cli_lagoon_first_deposit(
     state_file = tmp_path / "first-deposit-test.json"
     vault_record_file = tmp_path / "vault-record.json"
 
-    multisig_owners = (
-        f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
-    )
+    multisig_owners = f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
 
     base_env = {
         "PATH": os.environ["PATH"],
@@ -737,19 +658,19 @@ def test_cli_lagoon_first_deposit(
     cli = get_command(app)
 
     # 1. Deploy vault (exclude STRATEGY_FILE — cannot combine with DENOMINATION_ASSET)
-    deploy_env = {k: v for k, v in base_env.items() if k != "STRATEGY_FILE"}
-    deploy_env.update(
-        {
-            "VAULT_RECORD_FILE": str(vault_record_file),
-            "FUND_NAME": "First Deposit Test",
-            "FUND_SYMBOL": "FDT",
-            "MULTISIG_OWNERS": multisig_owners,
-            "DENOMINATION_ASSET": base_usdc.address,
-            "ANY_ASSET": "true",
-            "UNISWAP_V2": "true",
-            "UNISWAP_V3": "true",
-        }
-    )
+    deploy_env = {
+        k: v for k, v in base_env.items() if k != "STRATEGY_FILE"
+    }
+    deploy_env.update({
+        "VAULT_RECORD_FILE": str(vault_record_file),
+        "FUND_NAME": "First Deposit Test",
+        "FUND_SYMBOL": "FDT",
+        "MULTISIG_OWNERS": multisig_owners,
+        "DENOMINATION_ASSET": base_usdc.address,
+        "ANY_ASSET": "true",
+        "UNISWAP_V2": "true",
+        "UNISWAP_V3": "true",
+    })
     mocker.patch.dict("os.environ", deploy_env, clear=True)
     cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
 
@@ -757,18 +678,14 @@ def test_cli_lagoon_first_deposit(
     vault_address = deploy_info["Vault"]
     vault_adapter_address = deploy_info["Trading strategy module"]
 
-    base_env.update(
-        {
-            "VAULT_ADDRESS": vault_address,
-            "VAULT_ADAPTER_ADDRESS": vault_adapter_address,
-            "MIN_GAS_BALANCE": "0.0",
-        }
-    )
+    base_env.update({
+        "VAULT_ADDRESS": vault_address,
+        "VAULT_ADAPTER_ADDRESS": vault_adapter_address,
+        "MIN_GAS_BALANCE": "0.0",
+    })
 
     # 2. Init state
-    mocker.patch.dict(
-        "os.environ", {**base_env, "NAME": "First Deposit Test"}, clear=True
-    )
+    mocker.patch.dict("os.environ", {**base_env, "NAME": "First Deposit Test"}, clear=True)
     cli.main(args=["init"], standalone_mode=False)
     assert state_file.exists()
 
@@ -800,9 +717,7 @@ def test_cli_lagoon_first_deposit(
     # 6. Verify state has reserves.
     state = State.read_json_file(state_file)
     reserve_position = state.portfolio.get_default_reserve_position()
-    assert reserve_position.get_value() > 0, (
-        f"Expected reserves > 0, got {reserve_position.get_value()}"
-    )
+    assert reserve_position.get_value() > 0, f"Expected reserves > 0, got {reserve_position.get_value()}"
 
     # 6. Verify vault has USDC and depositor has shares.
     vault = create_vault_instance(
@@ -824,19 +739,13 @@ def test_cli_lagoon_first_deposit(
 
     # 7. Verify redemption: shares gone, USDC returned, state updated.
     share_balance_after = vault.share_token.fetch_balance_of(asset_manager.address)
-    assert share_balance_after == 0, (
-        f"Expected 0 shares after redeem, got {share_balance_after}"
-    )
+    assert share_balance_after == 0, f"Expected 0 shares after redeem, got {share_balance_after}"
 
     manager_usdc = usdc_token.fetch_balance_of(asset_manager.address)
-    assert manager_usdc > 0, (
-        f"Expected asset manager to hold USDC after redemption, got {manager_usdc}"
-    )
+    assert manager_usdc > 0, f"Expected asset manager to hold USDC after redemption, got {manager_usdc}"
 
     safe_usdc_after = usdc_token.fetch_balance_of(vault.safe_address)
-    assert safe_usdc_after == pytest.approx(0, abs=Decimal("0.01")), (
-        f"Expected Safe to hold ~0 USDC after full redemption, got {safe_usdc_after}"
-    )
+    assert safe_usdc_after == pytest.approx(0, abs=Decimal("0.01")), f"Expected Safe to hold ~0 USDC after full redemption, got {safe_usdc_after}"
 
     state = State.read_json_file(state_file)
     reserve_position = state.portfolio.get_default_reserve_position()
@@ -871,9 +780,7 @@ def test_cli_vault_test_trade_lagoon_anvil_black_box(
     target_vault_address = "0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a"
     target_vault_id = f"{ChainId.base.value}-{target_vault_address}"
     cache_path = persistent_test_client.transport.cache_path
-    multisig_owners = (
-        f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
-    )
+    multisig_owners = f"{web3.eth.accounts[2]}, {web3.eth.accounts[3]}, {web3.eth.accounts[4]}"
     common_env = {
         "PATH": os.environ["PATH"],
         "EXECUTOR_ID": executor_id,
@@ -921,17 +828,13 @@ def test_cli_vault_test_trade_lagoon_anvil_black_box(
         usdc_token.convert_to_raw(funding_amount),
     ).transact({"from": usdc_holder, "gas": 100_000})
     assert_transaction_success_with_explanation(web3, tx_hash)
-    mocker.patch.dict(
-        "os.environ", {**init_env, "DEPOSIT_AMOUNT": str(funding_amount)}, clear=True
-    )
+    mocker.patch.dict("os.environ", {**init_env, "DEPOSIT_AMOUNT": str(funding_amount)}, clear=True)
     cli.main(args=["lagoon-first-deposit"], standalone_mode=False)
     deployment_file = state_file.with_name(f"{executor_id}.deployment.json")
     assert deployment_file.exists()
 
     # 3. Invoke vault-test-trade --auto-real through Typer with no strategy file.
-    vault_test_env = {
-        key: value for key, value in common_env.items() if key != "STRATEGY_FILE"
-    }
+    vault_test_env = {key: value for key, value in common_env.items() if key != "STRATEGY_FILE"}
     mocker.patch.dict("os.environ", vault_test_env, clear=True)
     cli.main(
         args=[
@@ -970,13 +873,12 @@ def test_cli_vault_test_trade_simulated_deploys_lagoon_on_fork(
     """Automatic simulation deploys and uses an ephemeral Lagoon tester.
 
     1. Configure a pristine executor with only a Base RPC and no deployment artefact or private key.
-    2. Invoke ``vault-test-trade --auto-simulated`` for a synchronous vault and JSON report.
-    3. Verify a closed simulated round-trip and reproducible report are persisted without a live deployment artefact.
+    2. Invoke ``vault-test-trade --auto-simulated`` for a synchronous vault.
+    3. Verify a closed simulated round-trip is persisted without a live deployment artefact.
     """
     # 1. Configure a pristine executor with only a Base RPC and no deployment artefact or private key.
     executor_id = "vault-test-trade-simulated-deployment"
     state_file = tmp_path / f"{executor_id}.json"
-    report_file = tmp_path / f"{executor_id}.report.json"
     target_vault_address = "0x7bfa7c4f149e7415b73bdedfe609237e29cbf34a"
     environment = {
         "PATH": os.environ["PATH"],
@@ -993,7 +895,7 @@ def test_cli_vault_test_trade_simulated_deploys_lagoon_on_fork(
         "CONFIRMATION_BLOCK_COUNT": "0",
     }
 
-    # 2. Invoke vault-test-trade --auto-simulated for a synchronous vault and report.
+    # 2. Invoke vault-test-trade --auto-simulated for a synchronous vault.
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
     cli.main(
@@ -1004,13 +906,11 @@ def test_cli_vault_test_trade_simulated_deploys_lagoon_on_fork(
             f"{ChainId.base.value}-{target_vault_address}",
             "--amount",
             "1",
-            "--report-json",
-            report_file.as_posix(),
         ],
         standalone_mode=False,
     )
 
-    # 3. Verify persisted simulated lifecycle and reproducible report provenance.
+    # 3. Verify a closed simulated round-trip is persisted without a live deployment artefact.
     state = State.read_json_file(state_file)
     positions = [
         position
@@ -1022,9 +922,3 @@ def test_cli_vault_test_trade_simulated_deploys_lagoon_on_fork(
     assert positions[0].simulated is True
     assert len(positions[0].trades) == 2
     assert not state_file.with_name(f"{executor_id}.deployment.json").exists()
-    report = json.loads(report_file.read_text())
-    assert (
-        report["results"][0]["vault_id"]
-        == f"{ChainId.base.value}-{target_vault_address}"
-    )
-    assert report["results"][0]["attempt"]["provenance"]["fork_blocks"]

@@ -28,7 +28,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
 
 
-_URL_PATTERN = re.compile(r"https?://[^\s'\"<>]+")
+_URL_PATTERN = re.compile(r"(?:https?|wss?)://[^\s'\"<>]+")
 
 
 VAULT_TEST_ATTEMPT_SCHEMA_VERSION = 2
@@ -45,6 +45,7 @@ VAULT_TEST_RESULTS = {
     "transaction_reverted",
     "receipt_analysis_failed",
     "state_inference_failed",
+    "execution_failed",
     "infrastructure_failed",
     "deposit_closed",
     "redemption_unavailable",
@@ -210,6 +211,7 @@ def capture_vault_test_error(
     original_trade_ids: set[int],
     web3config: Any | None,
     phase: str,
+    capture_chain_blocks: bool = True,
 ) -> dict:
     """Create complete, JSON-safe diagnostics for a failed vault-test attempt.
 
@@ -236,7 +238,9 @@ def capture_vault_test_error(
         "traceback": redact_vault_test_error_text(
             "".join(traceback.format_exception(type(error), error, error.__traceback__))
         ),
-        "chain_blocks": _capture_chain_blocks(web3config),
+        "chain_blocks": _capture_chain_blocks(web3config)
+        if capture_chain_blocks
+        else {},
         "transactions": transactions,
         "call_context": call_context,
     }
@@ -251,8 +255,6 @@ def classify_vault_test_failure(
 
     if phase == "preflight":
         return "preflight_failed"
-    if phase == "metadata":
-        return "metadata_failed"
     if phase == "state_inference":
         return "state_inference_failed"
 
@@ -265,6 +267,8 @@ def classify_vault_test_failure(
         return "broadcast_failed"
     if error_data.get("call_context"):
         return "gas_estimation_reverted"
+    if phase == "execute":
+        return "execution_failed"
     return "transaction_build_failed"
 
 
@@ -299,11 +303,15 @@ def get_vault_trade_position(
     *,
     open_only: bool = False,
     simulated: bool | None = None,
+    position_ids: set[int] | None = None,
+    trade_ids: set[int] | None = None,
 ) -> TradingPosition | None:
     """Return the latest position that actually traded the selected vault pair.
 
     ``simulated`` is interpreted only by the vault-test command because its
     dedicated state intentionally contains both fork and real diagnostics.
+    ``position_ids`` and ``trade_ids`` constrain lookup to evidence created by
+    the current attempt, preventing a later failure from relabelling history.
     """
 
     matches = [
@@ -314,6 +322,11 @@ def get_vault_trade_position(
         and position.trades
         and (not open_only or position.is_open())
         and (simulated is None or position.simulated is simulated)
+        and (position_ids is None or position.position_id in position_ids)
+        and (
+            trade_ids is None
+            or any(trade_id in trade_ids for trade_id in position.trades)
+        )
     ]
     return max(matches, key=lambda position: position.position_id, default=None)
 
@@ -583,13 +596,23 @@ def export_vault_test_report(
         )
     return {
         "schema_version": VAULT_TEST_ATTEMPT_SCHEMA_VERSION,
-        "run": state.other_data.load_latest("vault_test_run", {}),
+        "run": _get_latest_vault_test_run(state),
         "results": results,
     }
 
 
+def _get_latest_vault_test_run(state: State) -> dict:
+    """Read the latest run record even when another key exists in a newer cycle."""
+
+    for cycle in sorted(state.other_data.data, reverse=True):
+        run = state.other_data.data[cycle].get("vault_test_run")
+        if run is not None:
+            return run
+    return {}
+
+
 def write_vault_test_report(path, state: State, rows: list[dict]) -> None:
-    """Write the deterministic machine-readable vault-test result report."""
+    """Write a machine-readable vault-test report with stable JSON key ordering."""
 
     path.write_text(
         json.dumps(export_vault_test_report(state, rows), indent=2, sort_keys=True)

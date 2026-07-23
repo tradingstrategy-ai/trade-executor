@@ -41,6 +41,7 @@ from tradeexecutor.cli.vault_test_trade_tui import (
     VaultSearchScreen,
     VaultTestTradeApp,
 )
+from tradeexecutor.cli.vault_test_trade_setup import load_vault_test_state
 from tradeexecutor.cli.vault_test_trade_simulation import (
     SimulatedVaultAttemptTimeout,
     SimulatedVaultRuntime,
@@ -50,6 +51,8 @@ from tradeexecutor.cli.vault_test_trade_simulation import (
     take_simulated_snapshots,
 )
 from tradeexecutor.cli.vault_test_trade_runner import (
+    VaultAttemptContext,
+    VaultTestBatchRunner,
     get_bridge_conflict,
     should_leave_deposit_open,
 )
@@ -401,7 +404,7 @@ def test_vault_test_failure_persists_redacted_traceback_and_revert_evidence() ->
     web3.eth.block_number = 654_321
     web3config = MagicMock(connections={ChainId.arbitrum: web3})
     try:
-        raise RuntimeError("RPC https://rpc.example.test/secret-key rejected the call")
+        raise RuntimeError("RPC wss://rpc.example.test/secret-key rejected the call")
     except RuntimeError as error:
         diagnostics = capture_vault_test_error(
             error,
@@ -509,7 +512,7 @@ def test_vault_failure_classifier_uses_transaction_evidence() -> None:
 
     1. Classify a preflight exception with no transaction evidence.
     2. Classify reverted, successful and broadcast receipts during execution.
-    3. Verify an unsigned call context is reported as an estimation failure.
+    3. Verify unsigned call context and no-evidence execution classifications.
     """
     # 1. Classify a preflight exception with no transaction evidence.
     assert (
@@ -540,13 +543,17 @@ def test_vault_failure_classifier_uses_transaction_evidence() -> None:
         == "broadcast_failed"
     )
 
-    # 3. Verify an unsigned call context is reported as an estimation failure.
+    # 3. Verify unsigned call context and no-evidence execution classifications.
     assert (
         classify_vault_test_failure(
             phase="execute",
             error_data={"call_context": [{"function_selector": "deposit"}]},
         )
         == "gas_estimation_reverted"
+    )
+    assert (
+        classify_vault_test_failure(phase="execute", error_data={})
+        == "execution_failed"
     )
 
 
@@ -927,6 +934,103 @@ def test_real_position_lookup_does_not_relabel_simulated_history() -> None:
     # 3. Verify real execution can never select and relabel the simulated record.
     assert latest is simulated_position
     assert latest_real is real_position
+
+
+def test_failure_attachment_ignores_positions_from_previous_attempts() -> None:
+    """A new failed attempt must not overwrite its predecessor's result.
+
+    1. Model a successful real vault position created by an earlier attempt.
+    2. Invoke the failure-attachment path with that position in the baseline.
+    3. Verify the earlier attempt's success metadata remains unchanged.
+    """
+    # 1. Model a successful real vault position created by an earlier attempt.
+    spec = VaultSpec(ChainId.base.value, "0x0000000000000000000000000000000000000001")
+    old_trade = MagicMock(trade_id=1)
+    old_position = MagicMock(position_id=1, simulated=False, trades={1: old_trade})
+    old_position.pair.chain_id = spec.chain_id
+    old_position.pair.pool_address = spec.vault_address
+    old_position.other_data = {"vault_test_attempt": {"result": "success"}}
+    state = MagicMock()
+    state.portfolio.get_all_positions.return_value = [old_position]
+    state.portfolio.get_all_trades.return_value = [old_trade]
+
+    # 2. Invoke the failure-attachment path with that position in the baseline.
+    runner = object.__new__(VaultTestBatchRunner)
+    runner.auto_simulated = False
+    runner.state = state
+    runner.current_attempt = VaultAttemptContext(
+        attempt_id="attempt-2",
+        original_position_ids={1},
+        original_trade_ids={1},
+        provenance={},
+        phase="preflight",
+    )
+    attached_position_id = runner._attach_failure_to_attempt_position(
+        spec=spec,
+        error_state=state,
+        result="preflight_failed",
+        detail="RPC unavailable",
+        error_data={},
+        previous=old_position,
+    )
+
+    # 3. Verify the earlier attempt's success metadata remains unchanged.
+    assert attached_position_id is None
+    assert old_position.other_data["vault_test_attempt"] == {"result": "success"}
+
+
+def test_vault_test_report_reads_the_latest_run_record() -> None:
+    """The exported report must use the current run provenance.
+
+    1. Store an initial vault-test run and a later unrelated state cycle.
+    2. Export a report and verify the initial run remains discoverable.
+    3. Replace the run record in the newest cycle and verify the report updates.
+    """
+    # 1. Store an initial vault-test run and a later unrelated state cycle.
+    state = State()
+    state.other_data.save(0, "vault_test_run", {"run_started_at": "first"})
+    state.other_data.save(1, "unrelated", True)
+
+    # 2. Export a report and verify the initial run remains discoverable.
+    report = export_vault_test_report(state, [])
+    assert report["run"] == {"run_started_at": "first"}
+
+    # 3. Replace the run record in the newest cycle and verify the report updates.
+    state.other_data.save(1, "vault_test_run", {"run_started_at": "second"})
+    assert export_vault_test_report(state, [])["run"] == {
+        "run_started_at": "second"
+    }
+
+
+def test_vault_test_state_refreshes_run_provenance(tmp_path: Path) -> None:
+    """Reloading tester state must record the current command provenance.
+
+    1. Write an existing tester state with stale run provenance.
+    2. Load it through the command state helper with a new runtime provenance.
+    3. Verify the in-memory and persisted state contain the new run record.
+    """
+    # 1. Write an existing tester state with stale run provenance.
+    state_file = tmp_path / "vault-test-state.json"
+    state = State()
+    state.other_data.save(0, "vault_test_run", {"run_started_at": "old"})
+    state.write_json_file(state_file)
+
+    # 2. Load it through the command state helper with a new runtime provenance.
+    runtime = MagicMock()
+    runtime.get_provenance.return_value = {"run_started_at": "new"}
+    loaded, _ = load_vault_test_state(
+        state_file=state_file,
+        state_name="vault-test",
+        runtime=runtime,
+    )
+
+    # 3. Verify the in-memory and persisted state contain the new run record.
+    assert loaded.other_data.load_latest("vault_test_run") == {
+        "run_started_at": "new"
+    }
+    assert State.read_json_file(state_file).other_data.load_latest("vault_test_run") == {
+        "run_started_at": "new"
+    }
 
 
 @pytest.mark.anyio

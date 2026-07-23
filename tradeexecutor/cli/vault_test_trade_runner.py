@@ -744,6 +744,11 @@ class VaultTestBatchRunner:
             self.state,
             attempt.spec,
             simulated=False,
+            trade_ids={
+                trade.trade_id
+                for trade in self.state.portfolio.get_all_trades()
+                if trade.trade_id not in self.current_attempt.original_trade_ids
+            },
         )
         if target_position is None:
             raise RuntimeError(
@@ -820,6 +825,12 @@ class VaultTestBatchRunner:
             for position in fork_state.portfolio.get_all_positions()
             if position.position_id not in original_position_ids
         }
+        created_target_position_ids = {
+            position.position_id
+            for position in fork_state.portfolio.get_all_positions()
+            if position.position_id in created_position_ids
+            and position.pair.pool_address.lower() == attempt.spec.vault_address.lower()
+        }
         close_simulated_positions(
             fork_state,
             vault_spec=attempt.spec,
@@ -853,7 +864,7 @@ class VaultTestBatchRunner:
 
         # Adapter flows that return without creating a target position still
         # need an authoritative terminal row in the dedicated state.
-        if not created_position_ids:
+        if not created_target_position_ids:
             record_attempt_result(
                 self.state,
                 attempt.pair,
@@ -883,6 +894,11 @@ class VaultTestBatchRunner:
             self.state,
             attempt.spec,
             simulated=False,
+            trade_ids={
+                trade.trade_id
+                for trade in self.state.portfolio.get_all_trades()
+                if trade.trade_id not in self.current_attempt.original_trade_ids
+            },
         )
         bridge_position = self.state.portfolio.get_bridge_position_for_chain(
             attempt.spec.chain_id
@@ -1043,6 +1059,7 @@ class VaultTestBatchRunner:
             original_trade_ids=original_trade_ids,
             web3config=self.runtime.web3config,
             phase=phase,
+            capture_chain_blocks=False,
         )
         record_attempt_result(
             self.state,
@@ -1147,7 +1164,12 @@ class VaultTestBatchRunner:
         """Attach failure evidence to the actual target position when present."""
 
         assert self.current_attempt is not None
-        if self.auto_simulated and error_state is not self.state:
+        if self.auto_simulated:
+            if error_state is self.state:
+                # A simulated preflight failure has no disposable fork position.
+                # Never relabel a real or historical simulated position as this
+                # attempt; create a fresh diagnostic result instead.
+                return None
             position_ids = {
                 position.position_id
                 for position in error_state.portfolio.get_all_positions()
@@ -1174,12 +1196,18 @@ class VaultTestBatchRunner:
                 self.state,
                 spec,
                 simulated=True,
+                position_ids=position_ids,
             )
         else:
             target_position = get_vault_trade_position(
                 self.state,
                 spec,
                 simulated=False,
+                trade_ids={
+                    trade.trade_id
+                    for trade in self.state.portfolio.get_all_trades()
+                    if trade.trade_id not in self.current_attempt.original_trade_ids
+                },
             )
 
         if target_position is None:

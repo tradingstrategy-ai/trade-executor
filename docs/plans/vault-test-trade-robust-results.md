@@ -70,7 +70,8 @@ Add and document these fields:
     "lagoon_deployment": {
       "primary_chain_id": 1,
       "vault_address": "0x...",
-      "module_addresses": {"42161": "0x..."}
+      "module_address": "0x...",
+      "satellite_modules": {"42161": "0x..."}
     }
   },
   "error": {
@@ -93,7 +94,7 @@ Rules:
    function. Missing `schema_version`, `provenance` or `error` means
    legacy/incomplete diagnostics, not a parse failure. Treat missing
    `schema_version` as version 1. Keep an unknown legacy `result` string
-   unchanged in persisted state and expose `legacy_result` only as an in-memory
+   unchanged in persisted state and expose `legacy result` only as an in-memory
    display/report classification. Never write a normalised status over the raw
    value during a later state save.
 4. `detail` remains a compact human table summary; it must never be the only
@@ -167,6 +168,7 @@ layer.
    - `transaction_reverted`
    - `receipt_analysis_failed`
    - `state_inference_failed`
+   - `execution_failed`
    - `infrastructure_failed`
    - existing explicit outcomes such as `deposit_closed` and
      `simulation_unsupported_async`
@@ -222,9 +224,9 @@ for both successes and failures.
 4. Record the simulated Lagoon primary vault/module/satellite module addresses
    that were used for the attempt. For real mode record the deployment-artifact
    addresses instead.
-5. Add `--report-json PATH` as a deterministic export of requested result rows
-   plus their full attempt metadata. It must not include the state file's
-   unrelated portfolio history or credentials.
+5. Add `--report-json PATH` as an export with stable JSON key ordering of
+   requested result rows plus their full attempt metadata. It must not include
+   the state file's unrelated portfolio history or credentials.
 6. Document an independent reproduction recipe generated from this record:
    selected vault id, source commit, eth-defi commit, chain fork blocks, mode,
    amount and target transaction hashes.

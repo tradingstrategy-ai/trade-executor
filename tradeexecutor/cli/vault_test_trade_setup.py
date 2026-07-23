@@ -177,7 +177,13 @@ def _read_git_commit(path: Path) -> str | None:
     return completed.stdout.strip() or None
 
 
-def _create_vault_test_provenance(*, mode: str, web3config: Web3Config) -> dict:
+def _create_vault_test_provenance(
+    *,
+    mode: str,
+    web3config: Web3Config,
+    amount: Decimal,
+    max_slippage: float,
+) -> dict:
     """Capture source revisions and initial chain heights for a tester run."""
 
     repository_root = Path(__file__).resolve().parents[2]
@@ -193,6 +199,8 @@ def _create_vault_test_provenance(*, mode: str, web3config: Web3Config) -> dict:
     return {
         "schema_version": 2,
         "execution_mode": mode,
+        "amount": str(amount),
+        "max_slippage": max_slippage,
         "run_started_at": native_datetime_utc_now().isoformat(),
         "trade_executor_commit": _read_git_commit(repository_root),
         "eth_defi_commit": _read_git_commit(eth_defi_root),
@@ -280,6 +288,7 @@ def create_vault_test_runtime(
         confirmation_block_count=confirmation_block_count,
         confirmation_timeout=confirmation_timeout,
         unit_testing=unit_testing,
+        amount=amount,
         data=data,
     )
 
@@ -334,6 +343,8 @@ def _create_simulated_vault_test_runtime(
         provenance=_create_vault_test_provenance(
             mode="auto_simulated",
             web3config=simulated_runtime.web3config,
+            amount=amount,
+            max_slippage=max_slippage,
         ),
     )
 
@@ -350,6 +361,7 @@ def _create_real_vault_test_runtime(
     confirmation_block_count: int,
     confirmation_timeout: int,
     unit_testing: bool,
+    amount: Decimal,
     data: VaultTestData,
 ) -> VaultTestRuntime:
     """Create execution objects from the mandatory state-sibling deployment."""
@@ -402,6 +414,8 @@ def _create_real_vault_test_runtime(
         provenance=_create_vault_test_provenance(
             mode="real",
             web3config=web3config,
+            amount=amount,
+            max_slippage=max_slippage,
         ),
     )
 
@@ -417,8 +431,12 @@ def load_vault_test_state(
     store = create_state_store(state_file)
     if not store.is_pristine():
         state = store.load()
-        if state.other_data.load_latest("vault_test_run") is None:
-            state.other_data.save(0, "vault_test_run", runtime.get_provenance())
+        state.other_data.save(
+            state.other_data.get_latest_stored_cycle(),
+            "vault_test_run",
+            runtime.get_provenance(),
+        )
+        store.sync(state)
         return state, store
 
     # A pristine state must first learn its reserve asset and current Lagoon
