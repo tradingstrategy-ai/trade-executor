@@ -16,26 +16,33 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.cli.commands.lagoon_deploy_vault import (
     _write_state_sibling_deployment_artifact,
 )
-from tradeexecutor.cli import vault_test_trade_tui as vault_test_trade_tui_module
-from tradeexecutor.cli import (
-    vault_test_trade_simulation as vault_test_trade_simulation_module,
+from tradeexecutor.cli.commands.vault_test_trade import _validate_vault_test_options
+from tradeexecutor.cli.vault_trade import tui as tui_module
+from tradeexecutor.cli.vault_trade import (
+    simulation as simulation_module,
 )
-from tradeexecutor.cli.vault_test_trade import (
+from tradeexecutor.cli.vault_trade.core import (
     filter_rpc_kwargs_for_vault_specs,
     load_lagoon_deployment,
     parse_vault_ids,
 )
-from tradeexecutor.cli.vault_test_trade_state import (
+from tradeexecutor.cli.vault_trade.state import (
+    capture_vault_test_error,
+    classify_vault_test_failure,
     create_vault_test_diagnostic_pair,
+    export_vault_test_report,
+    get_vault_test_status,
     get_vault_trade_position,
     record_attempt_result,
+    stamp_position_vault_test_attempt,
 )
-from tradeexecutor.cli.vault_test_trade_tui import (
+from tradeexecutor.cli.vault_trade.tui import (
     VaultChoice,
     VaultSearchScreen,
     VaultTestTradeApp,
 )
-from tradeexecutor.cli.vault_test_trade_simulation import (
+from tradeexecutor.cli.vault_trade.setup import load_vault_test_state
+from tradeexecutor.cli.vault_trade.simulation import (
     SimulatedVaultAttemptTimeout,
     SimulatedVaultRuntime,
     is_simulated_infrastructure_failure,
@@ -43,7 +50,9 @@ from tradeexecutor.cli.vault_test_trade_simulation import (
     raise_simulated_vault_attempt_timeout,
     take_simulated_snapshots,
 )
-from tradeexecutor.cli.vault_test_trade_runner import (
+from tradeexecutor.cli.vault_trade.runner import (
+    VaultAttemptContext,
+    VaultTestBatchRunner,
     get_bridge_conflict,
     should_leave_deposit_open,
 )
@@ -53,6 +62,7 @@ from tradeexecutor.cli.log import setup_custom_log_levels
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeStatus
+from tradeexecutor.strategy.execution_model import AssetManagementMode
 
 
 class VaultSearchHarness(App):
@@ -350,6 +360,342 @@ def test_adapter_failure_can_be_recorded_as_a_normal_position() -> None:
     assert restored_position.simulated is False
 
 
+def test_vault_test_failure_persists_redacted_traceback_and_revert_evidence() -> None:
+    """Vault-test failures preserve reporter-ready diagnostics in the state.
+
+    1. Create a failed transaction containing its receipt block and Anvil trace.
+    2. Capture an exception that includes a credential-bearing JSON-RPC URL.
+    3. Persist the diagnostic result and verify state serialisation retains the
+       traceback, blocks and revert evidence while redacting the URL.
+    """
+    # 1. Create a failed transaction containing its receipt block and Anvil trace.
+    state = State()
+    reserve_asset = AssetIdentifier(
+        ChainId.base.value,
+        "0x0000000000000000000000000000000000000010",
+        "USDC",
+        6,
+    )
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    spec = VaultSpec(
+        ChainId.arbitrum.value,
+        "0x0000000000000000000000000000000000000020",
+    )
+    transaction = MagicMock(
+        chain_id=ChainId.arbitrum.value,
+        tx_hash="0xdeadbeef",
+        contract_address=spec.vault_address,
+        function_selector="deposit",
+        wrapped_target=None,
+        wrapped_function_selector=None,
+        nonce=7,
+        block_number=123_456,
+        block_hash="0xblock",
+        status=False,
+        revert_reason="custom error 0x12345678",
+        stack_trace="revert: VaultNotOpen()",
+    )
+    trade = MagicMock(trade_id=42, blockchain_transactions=[transaction])
+    failed_position = MagicMock(position_id=3, trades={42: trade})
+    state.portfolio.get_all_positions = MagicMock(return_value=[failed_position])
+
+    # 2. Capture an exception that includes a credential-bearing JSON-RPC URL.
+    web3 = MagicMock()
+    web3.eth.block_number = 654_321
+    web3config = MagicMock(connections={ChainId.arbitrum: web3})
+    try:
+        raise RuntimeError("RPC wss://rpc.example.test/secret-key rejected the call")
+    except RuntimeError as error:
+        diagnostics = capture_vault_test_error(
+            error,
+            state=state,
+            original_trade_ids=set(),
+            web3config=web3config,
+            phase="execute",
+        )
+
+    # 3. Persist the diagnostics and verify external consumers can read them safely.
+    pair = create_vault_test_diagnostic_pair(spec, reserve_asset)
+    position = record_attempt_result(
+        state,
+        pair,
+        spec,
+        simulated=True,
+        result="failed",
+        detail="deposit failed",
+        error=diagnostics,
+    )
+    payload = json.loads(state.to_json_safe())
+    error_payload = payload["portfolio"]["closed_positions"][str(position.position_id)][
+        "other_data"
+    ]["vault_test_attempt"]["error"]
+
+    assert error_payload["phase"] == "execute"
+    assert (
+        error_payload["chain_blocks"][str(ChainId.arbitrum.value)]["block_number"]
+        == 654_321
+    )
+    assert error_payload["transactions"] == [
+        {
+            "position_id": 3,
+            "trade_id": 42,
+            "chain_id": ChainId.arbitrum.value,
+            "tx_hash": "0xdeadbeef",
+            "contract_address": spec.vault_address,
+            "function_selector": "deposit",
+            "wrapped_target": None,
+            "wrapped_function_selector": None,
+            "nonce": 7,
+            "block_number": 123_456,
+            "block_hash": "0xblock",
+            "status": False,
+            "revert_reason": "custom error 0x12345678",
+            "stack_trace": "revert: VaultNotOpen()",
+        }
+    ]
+    assert "secret-key" not in error_payload["traceback"]
+    assert "<redacted-url>" in error_payload["traceback"]
+
+
+def test_vault_test_report_retains_provenance_and_legacy_result_values() -> None:
+    """Reports expose authoritative diagnostics without mutating legacy state.
+
+    1. Create a diagnostic attempt with reproducible provenance.
+    2. Mark its raw result as a future/unknown legacy value and serialise it.
+    3. Build the compact report and verify display normalisation never overwrites
+       the raw persisted result.
+    """
+    # 1. Create a diagnostic attempt with reproducible provenance.
+    state = State()
+    reserve_asset = AssetIdentifier(
+        ChainId.base.value,
+        "0x0000000000000000000000000000000000000010",
+        "USDC",
+        6,
+    )
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    spec = VaultSpec(
+        ChainId.arbitrum.value,
+        "0x0000000000000000000000000000000000000020",
+    )
+    position = record_attempt_result(
+        state,
+        create_vault_test_diagnostic_pair(spec, reserve_asset),
+        spec,
+        simulated=True,
+        result="transaction_reverted",
+        attempt_id="attempt-1",
+        operation="deposit",
+        provenance={"fork_blocks": {"42161": 123_456}},
+    )
+
+    # 2. Mark its raw result as a future/unknown legacy value and serialise it.
+    attempt = position.other_data["vault_test_attempt"]
+    attempt["result"] = "future_executor_result"
+    restored = State.from_json(state.to_json_safe())
+    restored_position = restored.portfolio.get_position_by_id(position.position_id)
+
+    # 3. Build the report and verify display normalisation never overwrites state.
+    assert get_vault_test_status(restored_position) == "legacy result"
+    report = export_vault_test_report(
+        restored,
+        [{"vault id": spec.as_string_id(), "status": "legacy result"}],
+    )
+    assert report["results"][0]["attempt"]["result"] == "future_executor_result"
+    assert report["results"][0]["attempt"]["provenance"] == {
+        "fork_blocks": {"42161": 123_456}
+    }
+
+
+def test_vault_failure_classifier_uses_transaction_evidence() -> None:
+    """Failure status is determined by lifecycle evidence rather than text.
+
+    1. Classify a preflight exception with no transaction evidence.
+    2. Classify reverted, successful and broadcast receipts during execution.
+    3. Verify unsigned call context and no-evidence execution classifications.
+    """
+    # 1. Classify a preflight exception with no transaction evidence.
+    assert (
+        classify_vault_test_failure(phase="preflight", error_data={})
+        == "preflight_failed"
+    )
+
+    # 2. Classify reverted and successful receipts during execution.
+    assert (
+        classify_vault_test_failure(
+            phase="execute",
+            error_data={"transactions": [{"status": False}]},
+        )
+        == "transaction_reverted"
+    )
+    assert (
+        classify_vault_test_failure(
+            phase="execute",
+            error_data={"transactions": [{"status": True}]},
+        )
+        == "receipt_analysis_failed"
+    )
+    assert (
+        classify_vault_test_failure(
+            phase="execute",
+            error_data={"transactions": [{"tx_hash": "0xdeadbeef"}]},
+        )
+        == "broadcast_failed"
+    )
+
+    # 3. Verify unsigned call context and no-evidence execution classifications.
+    assert (
+        classify_vault_test_failure(
+            phase="execute",
+            error_data={"call_context": [{"function_selector": "deposit"}]},
+        )
+        == "gas_estimation_reverted"
+    )
+    assert (
+        classify_vault_test_failure(phase="execute", error_data={})
+        == "execution_failed"
+    )
+
+
+def test_vault_error_call_context_contains_replayable_unsigned_calldata() -> None:
+    """An estimate failure report is sufficient for eth-defi to replay the call.
+
+    1. Model an unsigned vault transaction that stopped before a receipt.
+    2. Capture the failure diagnostics from the attempted trade.
+    3. Verify the report contains target, sender, gas and full unsigned calldata.
+    """
+    # 1. Model an unsigned vault transaction that stopped before a receipt.
+    transaction = MagicMock(
+        chain_id=ChainId.base.value,
+        from_address="0x0000000000000000000000000000000000000001",
+        contract_address="0x0000000000000000000000000000000000000002",
+        function_selector="deposit",
+        wrapped_target=None,
+        wrapped_function_selector=None,
+        nonce=7,
+        block_number=None,
+    )
+    transaction.details = {
+        "data": "0xd0e30db0",
+        "value": 123,
+        "gas": 456_789,
+        "maxFeePerGas": 10,
+        "maxPriorityFeePerGas": 2,
+    }
+    trade = MagicMock(trade_id=42, blockchain_transactions=[transaction])
+    position = MagicMock(position_id=3, trades={42: trade})
+    state = MagicMock()
+    state.portfolio.get_all_positions.return_value = [position]
+
+    # 2. Capture the failure diagnostics from the attempted trade.
+    try:
+        raise RuntimeError("estimate reverted")
+    except RuntimeError as error:
+        diagnostics = capture_vault_test_error(
+            error,
+            state=state,
+            original_trade_ids=set(),
+            web3config=None,
+            phase="execute",
+        )
+
+    # 3. Verify the report contains target, sender, gas and full unsigned calldata.
+    assert diagnostics["call_context"] == [
+        {
+            "position_id": 3,
+            "trade_id": 42,
+            "chain_id": ChainId.base.value,
+            "sender": "0x0000000000000000000000000000000000000001",
+            "target": "0x0000000000000000000000000000000000000002",
+            "function_selector": "deposit",
+            "wrapped_target": None,
+            "wrapped_function_selector": None,
+            "value": "123",
+            "gas": 456_789,
+            "gas_price": None,
+            "max_fee_per_gas": 10,
+            "max_priority_fee_per_gas": 2,
+            "nonce": 7,
+            "calldata": "0xd0e30db0",
+            "calldata_hash": "5cd92c6d850367a4db763ab4a4c33567ade46ebfddfdd73cd31d130db24c6b0f",
+        }
+    ]
+
+
+def test_vault_attempt_stamp_replaces_previous_attempt_identity() -> None:
+    """A resumed vault lifecycle retains the identity of its latest operation.
+
+    1. Persist a deposit diagnostic with an initial attempt id.
+    2. Stamp the same position as a later redemption attempt.
+    3. Verify the reporter-visible metadata identifies the latter attempt.
+    """
+    # 1. Persist a deposit diagnostic with an initial attempt id.
+    state = State()
+    reserve_asset = AssetIdentifier(
+        ChainId.base.value,
+        "0x0000000000000000000000000000000000000010",
+        "USDC",
+        6,
+    )
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    spec = VaultSpec(
+        ChainId.base.value,
+        "0x0000000000000000000000000000000000000020",
+    )
+    position = record_attempt_result(
+        state,
+        create_vault_test_diagnostic_pair(spec, reserve_asset),
+        spec,
+        simulated=False,
+        result="failed",
+        attempt_id="deposit-attempt",
+        operation="deposit",
+    )
+
+    # 2. Stamp the same position as a later redemption attempt.
+    stamp_position_vault_test_attempt(
+        position,
+        spec,
+        simulated=False,
+        phase="redemption_requested",
+        attempt_id="redeem-attempt",
+        operation="redeem",
+    )
+
+    # 3. Verify the reporter-visible metadata identifies the latter attempt.
+    attempt = position.other_data["vault_test_attempt"]
+    assert attempt["attempt_id"] == "redeem-attempt"
+    assert attempt["operation"] == "redeem"
+
+
+def test_async_anvil_settlement_option_requires_simulated_mode() -> None:
+    """Async Anvil settlement cannot accidentally run against a live vault.
+
+    1. Validate an opt-in simulated Anvil invocation.
+    2. Request the option in real mode.
+    3. Verify validation rejects the unsafe combination before any RPC is opened.
+    """
+    # 1. Validate an opt-in simulated Anvil invocation.
+    _validate_vault_test_options(
+        auto_simulated=True,
+        auto_real=False,
+        rerun=False,
+        settle_async_on_anvil=True,
+        asset_management_mode=AssetManagementMode.lagoon,
+    )
+
+    # 2. Request the option in real mode.
+    with pytest.raises(RuntimeError, match="requires --auto-simulated"):
+        # 3. Verify validation rejects the unsafe combination before any RPC is opened.
+        _validate_vault_test_options(
+            auto_simulated=False,
+            auto_real=True,
+            rerun=False,
+            settle_async_on_anvil=True,
+            asset_management_mode=AssetManagementMode.lagoon,
+        )
+
+
 def test_simulated_vault_attempt_timeout_is_recordable() -> None:
     """A stuck simulated adapter is interrupted with a normal catchable error.
 
@@ -462,7 +808,7 @@ def test_simulated_snapshots_only_touch_attempt_chains(
         return hex(len(snapshotted_connections))
 
     monkeypatch.setattr(
-        vault_test_trade_simulation_module, "make_anvil_custom_rpc_request", snapshot
+        simulation_module, "make_anvil_custom_rpc_request", snapshot
     )
 
     # 2. Take snapshots for an Arbitrum vault with Base as the source.
@@ -590,6 +936,103 @@ def test_real_position_lookup_does_not_relabel_simulated_history() -> None:
     assert latest_real is real_position
 
 
+def test_failure_attachment_ignores_positions_from_previous_attempts() -> None:
+    """A new failed attempt must not overwrite its predecessor's result.
+
+    1. Model a successful real vault position created by an earlier attempt.
+    2. Invoke the failure-attachment path with that position in the baseline.
+    3. Verify the earlier attempt's success metadata remains unchanged.
+    """
+    # 1. Model a successful real vault position created by an earlier attempt.
+    spec = VaultSpec(ChainId.base.value, "0x0000000000000000000000000000000000000001")
+    old_trade = MagicMock(trade_id=1)
+    old_position = MagicMock(position_id=1, simulated=False, trades={1: old_trade})
+    old_position.pair.chain_id = spec.chain_id
+    old_position.pair.pool_address = spec.vault_address
+    old_position.other_data = {"vault_test_attempt": {"result": "success"}}
+    state = MagicMock()
+    state.portfolio.get_all_positions.return_value = [old_position]
+    state.portfolio.get_all_trades.return_value = [old_trade]
+
+    # 2. Invoke the failure-attachment path with that position in the baseline.
+    runner = object.__new__(VaultTestBatchRunner)
+    runner.auto_simulated = False
+    runner.state = state
+    runner.current_attempt = VaultAttemptContext(
+        attempt_id="attempt-2",
+        original_position_ids={1},
+        original_trade_ids={1},
+        provenance={},
+        phase="preflight",
+    )
+    attached_position_id = runner._attach_failure_to_attempt_position(
+        spec=spec,
+        error_state=state,
+        result="preflight_failed",
+        detail="RPC unavailable",
+        error_data={},
+        previous=old_position,
+    )
+
+    # 3. Verify the earlier attempt's success metadata remains unchanged.
+    assert attached_position_id is None
+    assert old_position.other_data["vault_test_attempt"] == {"result": "success"}
+
+
+def test_vault_test_report_reads_the_latest_run_record() -> None:
+    """The exported report must use the current run provenance.
+
+    1. Store an initial vault-test run and a later unrelated state cycle.
+    2. Export a report and verify the initial run remains discoverable.
+    3. Replace the run record in the newest cycle and verify the report updates.
+    """
+    # 1. Store an initial vault-test run and a later unrelated state cycle.
+    state = State()
+    state.other_data.save(0, "vault_test_run", {"run_started_at": "first"})
+    state.other_data.save(1, "unrelated", True)
+
+    # 2. Export a report and verify the initial run remains discoverable.
+    report = export_vault_test_report(state, [])
+    assert report["run"] == {"run_started_at": "first"}
+
+    # 3. Replace the run record in the newest cycle and verify the report updates.
+    state.other_data.save(1, "vault_test_run", {"run_started_at": "second"})
+    assert export_vault_test_report(state, [])["run"] == {
+        "run_started_at": "second"
+    }
+
+
+def test_vault_test_state_refreshes_run_provenance(tmp_path: Path) -> None:
+    """Reloading tester state must record the current command provenance.
+
+    1. Write an existing tester state with stale run provenance.
+    2. Load it through the command state helper with a new runtime provenance.
+    3. Verify the in-memory and persisted state contain the new run record.
+    """
+    # 1. Write an existing tester state with stale run provenance.
+    state_file = tmp_path / "vault-test-state.json"
+    state = State()
+    state.other_data.save(0, "vault_test_run", {"run_started_at": "old"})
+    state.write_json_file(state_file)
+
+    # 2. Load it through the command state helper with a new runtime provenance.
+    runtime = MagicMock()
+    runtime.get_provenance.return_value = {"run_started_at": "new"}
+    loaded, _ = load_vault_test_state(
+        state_file=state_file,
+        state_name="vault-test",
+        runtime=runtime,
+    )
+
+    # 3. Verify the in-memory and persisted state contain the new run record.
+    assert loaded.other_data.load_latest("vault_test_run") == {
+        "run_started_at": "new"
+    }
+    assert State.read_json_file(state_file).other_data.load_latest("vault_test_run") == {
+        "run_started_at": "new"
+    }
+
+
 @pytest.mark.anyio
 async def test_vault_typeahead_filters_downloaded_vaults():
     """The manual new-deposit dialogue filters the complete downloaded vault list.
@@ -647,17 +1090,17 @@ async def test_vault_main_table_enter_selects_redemption(
     position.simulated = False
     position.is_open.return_value = True
     monkeypatch.setattr(
-        vault_test_trade_tui_module,
+        tui_module,
         "get_latest_vault_position",
         lambda state, vault_spec: position,
     )
     monkeypatch.setattr(
-        vault_test_trade_tui_module,
+        tui_module,
         "get_vault_trade_position",
         lambda state, vault_spec, open_only=False: position,
     )
     monkeypatch.setattr(
-        vault_test_trade_tui_module,
+        tui_module,
         "get_vault_test_status",
         lambda position: "deposited",
     )

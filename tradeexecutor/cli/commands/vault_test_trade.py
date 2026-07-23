@@ -10,9 +10,10 @@ from tradeexecutor.cli.bootstrap import prepare_executor_id
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.log import setup_logging
-from tradeexecutor.cli.vault_test_trade import parse_vault_ids
-from tradeexecutor.cli.vault_test_trade_runner import VaultTestBatchRunner
-from tradeexecutor.cli.vault_test_trade_setup import (
+from tradeexecutor.cli.vault_trade.core import parse_vault_ids
+from tradeexecutor.cli.vault_trade.runner import VaultTestBatchRunner
+from tradeexecutor.cli.vault_trade.state import write_vault_test_report
+from tradeexecutor.cli.vault_trade.setup import (
     choose_manual_vault_action,
     create_vault_test_runtime,
     load_vault_test_data,
@@ -27,6 +28,7 @@ def _validate_vault_test_options(
     auto_simulated: bool,
     auto_real: bool,
     rerun: bool,
+    settle_async_on_anvil: bool,
     asset_management_mode: AssetManagementMode | None,
 ) -> None:
     """Reject option combinations before downloading data or opening RPCs."""
@@ -35,10 +37,10 @@ def _validate_vault_test_options(
         raise RuntimeError("--auto-simulated and --auto-real are mutually exclusive")
     if rerun and not (auto_simulated or auto_real):
         raise RuntimeError("--rerun requires --auto-simulated or --auto-real")
+    if settle_async_on_anvil and not auto_simulated:
+        raise RuntimeError("--settle-async-on-anvil requires --auto-simulated")
     if asset_management_mode != AssetManagementMode.lagoon:
-        raise RuntimeError(
-            "vault-test-trade requires ASSET_MANAGEMENT_MODE=lagoon"
-        )
+        raise RuntimeError("vault-test-trade requires ASSET_MANAGEMENT_MODE=lagoon")
 
 
 @app.command()
@@ -86,6 +88,16 @@ def vault_test_trade(
         "--rerun",
         help="Create a new attempt after a terminal result.",
     ),
+    settle_async_on_anvil: bool = Option(
+        False,
+        "--settle-async-on-anvil",
+        help="Force supported async vault settlements on simulated Anvil forks.",
+    ),
+    report_json: Path | None = Option(
+        None,
+        "--report-json",
+        help="Write a machine-readable report containing the selected vault results.",
+    ),
 ) -> None:
     """Test selected external vaults using one Lagoon executor.
 
@@ -103,6 +115,7 @@ def vault_test_trade(
         auto_simulated=auto_simulated,
         auto_real=auto_real,
         rerun=rerun,
+        settle_async_on_anvil=settle_async_on_anvil,
         asset_management_mode=asset_management_mode,
     )
     assert asset_management_mode == AssetManagementMode.lagoon
@@ -176,9 +189,12 @@ def vault_test_trade(
             max_slippage=slippage_tolerance,
             auto_simulated=auto_simulated,
             rerun=rerun,
+            settle_async_on_anvil=settle_async_on_anvil,
             manual_action=manual_action,
         )
         rows = runner.run()
         print(tabulate(rows, headers="keys", tablefmt="rounded_outline"))
+        if report_json:
+            write_vault_test_report(report_json, state, rows)
     finally:
         runtime.close()
