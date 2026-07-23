@@ -150,9 +150,7 @@ def should_leave_deposit_open(
     permits redemption.
     """
 
-    return operation == "deposit" and (
-        manual or is_async or not redemption_available
-    )
+    return operation == "deposit" and (manual or is_async or not redemption_available)
 
 
 def get_bridge_conflict(
@@ -179,7 +177,9 @@ def get_bridge_conflict(
         None,
     )
     if in_transit is not None:
-        return f"CCTP transfer for {owner_vault_id or 'another vault'} is still in transit"
+        return (
+            f"CCTP transfer for {owner_vault_id or 'another vault'} is still in transit"
+        )
 
     phase = attempt.get("phase")
     if (
@@ -411,7 +411,9 @@ class VaultTestBatchRunner:
         # Perform all connectivity, gas and contract checks before constructing
         # any irreversible CCTP burn or vault transaction.
         check_universe_chains_have_rpc(self.runtime.web3config, universe)
-        wallet_address = self.runtime.execution_model.tx_builder.get_gas_wallet_address()
+        wallet_address = (
+            self.runtime.execution_model.tx_builder.get_gas_wallet_address()
+        )
         min_gas = getattr(self.runtime.execution_model, "min_balance_threshold", 0)
         check_universe_chains_have_gas(
             self.runtime.web3config,
@@ -498,27 +500,35 @@ class VaultTestBatchRunner:
 
         # Deposit/redemption window checks are diagnostic outcomes, not command
         # failures, and automatic mode continues with the next explicit id.
-        if operation == "deposit" and attempt.pricing_model.can_deposit(
-            native_datetime_utc_now(), pair
-        ) is False:
+        if (
+            operation == "deposit"
+            and attempt.pricing_model.can_deposit(native_datetime_utc_now(), pair)
+            is False
+        ):
             self._record_terminal_result(
                 attempt,
                 alarm,
                 result="deposit_closed",
             )
             return False
-        if operation == "redeem" and attempt.pricing_model.can_redeem(
-            native_datetime_utc_now(), pair
-        ) is False:
+        if (
+            operation == "redeem"
+            and attempt.pricing_model.can_redeem(native_datetime_utc_now(), pair)
+            is False
+        ):
             alarm.disarm()
-            self._append_result(attempt.vault, spec, "Redemption is not currently available")
+            self._append_result(
+                attempt.vault, spec, "Redemption is not currently available"
+            )
             return False
 
         if operation == "deposit" and not self._is_resuming_bridge_out(attempt):
             cash = self.state.portfolio.get_default_reserve_position().get_value()
             if cash <= 0:
                 alarm.disarm()
-                self._append_result(attempt.vault, spec, "No cash remains for another deposit")
+                self._append_result(
+                    attempt.vault, spec, "No cash remains for another deposit"
+                )
                 return True
 
         # A pre-deposit live redemption quote sees zero shares.  The pair-level
@@ -648,9 +658,15 @@ class VaultTestBatchRunner:
                 simulated=False,
                 phase="complete",
                 result="success",
-                attempt_id=self.current_attempt.attempt_id if self.current_attempt else None,
-                operation=self.current_attempt.operation if self.current_attempt else None,
-                provenance=self.current_attempt.provenance if self.current_attempt else None,
+                attempt_id=self.current_attempt.attempt_id
+                if self.current_attempt
+                else None,
+                operation=self.current_attempt.operation
+                if self.current_attempt
+                else None,
+                provenance=self.current_attempt.provenance
+                if self.current_attempt
+                else None,
             )
             self.store.sync(self.state)
             self._append_result(attempt.vault, spec)
@@ -746,7 +762,8 @@ class VaultTestBatchRunner:
         """Execute on a state copy and merge only closed diagnostic positions."""
 
         original_position_ids = {
-            position.position_id for position in self.state.portfolio.get_all_positions()
+            position.position_id
+            for position in self.state.portfolio.get_all_positions()
         }
         original_trade_ids = {
             trade.trade_id for trade in self.state.portfolio.get_all_trades()
@@ -819,9 +836,13 @@ class VaultTestBatchRunner:
                 if not is_async or complete_async_lifecycle
                 else "deposit_requested"
             ),
-            attempt_id=self.current_attempt.attempt_id if self.current_attempt else None,
+            attempt_id=self.current_attempt.attempt_id
+            if self.current_attempt
+            else None,
             operation=operation,
-            provenance=self.current_attempt.provenance if self.current_attempt else None,
+            provenance=self.current_attempt.provenance
+            if self.current_attempt
+            else None,
         )
         merge_simulated_attempt(
             source_state=fork_state,
@@ -845,9 +866,13 @@ class VaultTestBatchRunner:
                 source_position_id=(
                     attempt.previous.position_id if attempt.previous else None
                 ),
-                attempt_id=self.current_attempt.attempt_id if self.current_attempt else None,
+                attempt_id=self.current_attempt.attempt_id
+                if self.current_attempt
+                else None,
                 operation=operation,
-                provenance=self.current_attempt.provenance if self.current_attempt else None,
+                provenance=self.current_attempt.provenance
+                if self.current_attempt
+                else None,
             )
         self.store.sync(self.state)
 
@@ -875,9 +900,13 @@ class VaultTestBatchRunner:
                 attempt.spec,
                 simulated=False,
                 phase=phase,
-                attempt_id=self.current_attempt.attempt_id if self.current_attempt else None,
+                attempt_id=self.current_attempt.attempt_id
+                if self.current_attempt
+                else None,
                 operation=operation,
-                provenance=self.current_attempt.provenance if self.current_attempt else None,
+                provenance=self.current_attempt.provenance
+                if self.current_attempt
+                else None,
             )
             if phase == "bridge_back_pending" and target_position is not None:
                 stamp_position_vault_test_attempt(
@@ -885,9 +914,13 @@ class VaultTestBatchRunner:
                     attempt.spec,
                     simulated=False,
                     phase=phase,
-                    attempt_id=self.current_attempt.attempt_id if self.current_attempt else None,
+                    attempt_id=self.current_attempt.attempt_id
+                    if self.current_attempt
+                    else None,
                     operation=operation,
-                    provenance=self.current_attempt.provenance if self.current_attempt else None,
+                    provenance=self.current_attempt.provenance
+                    if self.current_attempt
+                    else None,
                 )
             return
 
@@ -902,9 +935,13 @@ class VaultTestBatchRunner:
                 attempt.spec,
                 simulated=False,
                 phase=phase,
-                attempt_id=self.current_attempt.attempt_id if self.current_attempt else None,
+                attempt_id=self.current_attempt.attempt_id
+                if self.current_attempt
+                else None,
                 operation=operation,
-                provenance=self.current_attempt.provenance if self.current_attempt else None,
+                provenance=self.current_attempt.provenance
+                if self.current_attempt
+                else None,
             )
 
     def _record_in_transit_halt(self, spec: VaultSpec, vault: Any) -> bool:
@@ -927,9 +964,13 @@ class VaultTestBatchRunner:
             spec,
             simulated=False,
             phase=phase,
-            attempt_id=self.current_attempt.attempt_id if self.current_attempt else None,
+            attempt_id=self.current_attempt.attempt_id
+            if self.current_attempt
+            else None,
             operation=self.current_attempt.operation if self.current_attempt else None,
-            provenance=self.current_attempt.provenance if self.current_attempt else None,
+            provenance=self.current_attempt.provenance
+            if self.current_attempt
+            else None,
         )
         if phase == "bridge_back_pending":
             target_position = get_vault_trade_position(
@@ -943,9 +984,15 @@ class VaultTestBatchRunner:
                     spec,
                     simulated=False,
                     phase=phase,
-                    attempt_id=self.current_attempt.attempt_id if self.current_attempt else None,
-                    operation=self.current_attempt.operation if self.current_attempt else None,
-                    provenance=self.current_attempt.provenance if self.current_attempt else None,
+                    attempt_id=self.current_attempt.attempt_id
+                    if self.current_attempt
+                    else None,
+                    operation=self.current_attempt.operation
+                    if self.current_attempt
+                    else None,
+                    provenance=self.current_attempt.provenance
+                    if self.current_attempt
+                    else None,
                 )
 
         self.store.sync(self.state)
@@ -1006,9 +1053,13 @@ class VaultTestBatchRunner:
             detail=detail,
             error=error_data,
             source_position_id=previous.position_id if previous else None,
-            attempt_id=self.current_attempt.attempt_id if self.current_attempt else None,
+            attempt_id=self.current_attempt.attempt_id
+            if self.current_attempt
+            else None,
             operation=self.current_attempt.operation if self.current_attempt else None,
-            provenance=self.current_attempt.provenance if self.current_attempt else None,
+            provenance=self.current_attempt.provenance
+            if self.current_attempt
+            else None,
         )
         self.store.sync(self.state)
         self._append_result(vault, spec, detail)
@@ -1072,9 +1123,13 @@ class VaultTestBatchRunner:
             detail=detail,
             error=error_data,
             source_position_id=previous.position_id if previous else None,
-            attempt_id=self.current_attempt.attempt_id if self.current_attempt else None,
+            attempt_id=self.current_attempt.attempt_id
+            if self.current_attempt
+            else None,
             operation=self.current_attempt.operation if self.current_attempt else None,
-            provenance=self.current_attempt.provenance if self.current_attempt else None,
+            provenance=self.current_attempt.provenance
+            if self.current_attempt
+            else None,
         )
         self.store.sync(self.state)
         self._append_result(vault, spec, detail)
@@ -1096,7 +1151,8 @@ class VaultTestBatchRunner:
             position_ids = {
                 position.position_id
                 for position in error_state.portfolio.get_all_positions()
-                if position.position_id not in self.current_attempt.original_position_ids
+                if position.position_id
+                not in self.current_attempt.original_position_ids
             }
             close_simulated_positions(
                 error_state,
@@ -1167,9 +1223,13 @@ class VaultTestBatchRunner:
             result=result,
             detail=detail,
             source_position_id=source_position_id,
-            attempt_id=self.current_attempt.attempt_id if self.current_attempt else None,
+            attempt_id=self.current_attempt.attempt_id
+            if self.current_attempt
+            else None,
             operation=self.current_attempt.operation if self.current_attempt else None,
-            provenance=self.current_attempt.provenance if self.current_attempt else None,
+            provenance=self.current_attempt.provenance
+            if self.current_attempt
+            else None,
         )
         self.store.sync(self.state)
         self._append_result(attempt.vault, attempt.spec, detail)

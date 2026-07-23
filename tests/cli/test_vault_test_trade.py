@@ -512,7 +512,10 @@ def test_vault_failure_classifier_uses_transaction_evidence() -> None:
     3. Verify an unsigned call context is reported as an estimation failure.
     """
     # 1. Classify a preflight exception with no transaction evidence.
-    assert classify_vault_test_failure(phase="preflight", error_data={}) == "preflight_failed"
+    assert (
+        classify_vault_test_failure(phase="preflight", error_data={})
+        == "preflight_failed"
+    )
 
     # 2. Classify reverted and successful receipts during execution.
     assert (

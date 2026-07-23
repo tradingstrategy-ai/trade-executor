@@ -40,9 +40,7 @@ def _validate_vault_test_options(
     if settle_async_on_anvil and not auto_simulated:
         raise RuntimeError("--settle-async-on-anvil requires --auto-simulated")
     if asset_management_mode != AssetManagementMode.lagoon:
-        raise RuntimeError(
-            "vault-test-trade requires ASSET_MANAGEMENT_MODE=lagoon"
-        )
+        raise RuntimeError("vault-test-trade requires ASSET_MANAGEMENT_MODE=lagoon")
 
 
 @app.command()

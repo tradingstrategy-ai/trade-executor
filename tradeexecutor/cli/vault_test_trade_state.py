@@ -171,9 +171,7 @@ def _serialise_vault_test_call_context(
                         "gas": details.get("gas"),
                         "gas_price": details.get("gasPrice"),
                         "max_fee_per_gas": details.get("maxFeePerGas"),
-                        "max_priority_fee_per_gas": details.get(
-                            "maxPriorityFeePerGas"
-                        ),
+                        "max_priority_fee_per_gas": details.get("maxPriorityFeePerGas"),
                         "nonce": transaction.nonce,
                         # This is unsigned ABI calldata, not a signed payload.
                         # Keeping it makes the report independently replayable
@@ -487,9 +485,7 @@ def stamp_position_vault_test_attempt(
     attempt.setdefault("schema_version", VAULT_TEST_ATTEMPT_SCHEMA_VERSION)
     # A position may be revisited for redemption or a retry. Its metadata must
     # describe the latest action, not retain the id of its original deposit.
-    attempt["attempt_id"] = (
-        attempt_id or attempt.get("attempt_id") or uuid.uuid4().hex
-    )
+    attempt["attempt_id"] = attempt_id or attempt.get("attempt_id") or uuid.uuid4().hex
     attempt["vault_id"] = vault_spec.as_string_id()
     attempt["simulated"] = simulated
     if operation:
@@ -573,7 +569,9 @@ def export_vault_test_report(
             if candidate.other_data.get("vault_test_attempt", {}).get("vault_id")
             == vault_id
         ]
-        position = max(matches, key=lambda candidate: candidate.position_id, default=None)
+        position = max(
+            matches, key=lambda candidate: candidate.position_id, default=None
+        )
         attempt = position.other_data.get("vault_test_attempt", {}) if position else {}
         results.append(
             {
@@ -593,7 +591,9 @@ def export_vault_test_report(
 def write_vault_test_report(path, state: State, rows: list[dict]) -> None:
     """Write the deterministic machine-readable vault-test result report."""
 
-    path.write_text(json.dumps(export_vault_test_report(state, rows), indent=2, sort_keys=True))
+    path.write_text(
+        json.dumps(export_vault_test_report(state, rows), indent=2, sort_keys=True)
+    )
 
 
 def close_simulated_positions(
