@@ -1115,9 +1115,9 @@ def guess_data_delay_tolerance(universe: TradingStrategyUniverse) -> pd.Timedelt
     if universe.price_data_delay_tolerance:
         return pd.Timedelta(universe.price_data_delay_tolerance)
     elif universe.data_universe.time_bucket == TimeBucket.d7:
-        data_delay_tolerance = pd.Timedelta("9d")
+        data_delay_tolerance = pd.Timedelta(9, unit="d")
     else:
-        data_delay_tolerance = pd.Timedelta("2d")
+        data_delay_tolerance = pd.Timedelta(2, unit="d")
 
     return data_delay_tolerance
 

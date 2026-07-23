@@ -142,7 +142,7 @@ class StrategyInputIndicators:
     def get_price(
         self,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription |  None = None,
-        data_lag_tolerance=pd.Timedelta(days=7),
+        data_lag_tolerance=pd.Timedelta(7, unit="D"),
         index: int = -1,
         timestamp: pd.Timestamp | None = None,
         column="close",
@@ -227,7 +227,7 @@ class StrategyInputIndicators:
     def get_tvl(
         self,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription |  None = None,
-        data_lag_tolerance=pd.Timedelta(days=7),
+        data_lag_tolerance=pd.Timedelta(7, unit="D"),
         index: int = -1,
         timestamp: pd.Timestamp | None = None,
     ) -> USDollarPrice | None:
@@ -310,7 +310,7 @@ class StrategyInputIndicators:
         column: str | None = None,
         pair: TradingPairIdentifier | HumanReadableTradingPairDescription | None = None,
         index: int = -1,
-        clock_shift: pd.Timedelta = pd.Timedelta(hours=0),
+        clock_shift: pd.Timedelta = pd.Timedelta(0, unit="h"),
         data_delay_tolerance: pd.Timedelta="auto",
         na_conversion=True,
         parameters: dict=None,
@@ -449,11 +449,15 @@ class StrategyInputIndicators:
             return None
 
         weekly_hack = False
-        if time_frame == pd.Timedelta(days=7):
+        # Use an explicit ``unit=`` to avoid the NumPy "generic" timedelta
+        # DeprecationWarning that ``pd.Timedelta(days=...)`` triggers on
+        # NumPy 2.x. This comparison runs once per decision cycle per pair,
+        # so the bare-int form otherwise floods stderr in optimiser runs.
+        if time_frame == pd.Timedelta(7, unit="D"):
             # TODO: Hot fix for weekly timeframe
             floored = ts.to_period("W").start_time
-            shifted_ts = floored - pd.Timedelta(days=7)
-            data_delay_tolerance = pd.Timedelta(days=14)
+            shifted_ts = floored - pd.Timedelta(7, unit="D")
+            data_delay_tolerance = pd.Timedelta(14, unit="D")
             logger.info("get_indicator_value(): weekly hack, floored %s, shifted %s", floored, shifted_ts)
             weekly_hack = True
         else:
