@@ -48,6 +48,7 @@ VAULT_TEST_RESULTS = {
     "execution_failed",
     "infrastructure_failed",
     "deposit_closed",
+    "whitelisting-needed",
     "redemption_unavailable",
     "simulation_unsupported_async",
     # Version 1 diagnostic states used this generic value.  Keep presenting it

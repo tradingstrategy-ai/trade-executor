@@ -54,6 +54,7 @@ from tradeexecutor.cli.vault_trade.runner import (
     VaultAttemptContext,
     VaultTestBatchRunner,
     get_bridge_conflict,
+    get_whitelisting_needed_detail,
     should_leave_deposit_open,
 )
 from tradeexecutor.ethereum import web3config as web3config_module
@@ -358,6 +359,81 @@ def test_adapter_failure_can_be_recorded_as_a_normal_position() -> None:
         position.position_id
     )
     assert restored_position.simulated is False
+
+
+def test_whitelisted_vault_permission_gap_is_reported_before_execution() -> None:
+    """A known vault allow-list denial gets a dedicated report outcome.
+
+    1. Model an eth-defi vault adapter that requires a whitelisted depositor.
+    2. Resolve the executor Safe address through the pricing route.
+    3. Verify the report helper classifies only the denied account.
+    """
+    # 1. Model an eth-defi vault adapter that requires a whitelisted depositor.
+    vault = MagicMock()
+    vault.is_whitelisted_deposit.return_value = True
+    vault.is_account_whitelisted.return_value = False
+
+    # 2. Resolve the executor Safe address through the pricing route.
+    pair = MagicMock()
+    route = MagicMock()
+    route.get_vault.return_value = vault
+    route.get_owner_address.return_value = "0x0000000000000000000000000000000000000001"
+    pricing_model = MagicMock()
+    pricing_model.route.return_value = route
+    attempt = MagicMock(pair=pair, pricing_model=pricing_model)
+
+    # 3. Verify the report helper classifies only the denied account.
+    detail = get_whitelisting_needed_detail(attempt)
+    assert detail == (
+        "Vault requires whitelisting for executor Safe "
+        "0x0000000000000000000000000000000000000001"
+    )
+    vault.is_account_whitelisted.return_value = True
+    assert get_whitelisting_needed_detail(attempt) is None
+    vault.is_whitelisted_deposit.return_value = False
+    assert get_whitelisting_needed_detail(attempt) is None
+
+
+def test_whitelisting_needed_status_round_trips_as_report_outcome() -> None:
+    """The new whitelisting outcome remains stable in state and reports.
+
+    1. Record a whitelisting-needed diagnostic attempt.
+    2. Serialise and reload the normal state JSON.
+    3. Verify display status and report output preserve the exact condition.
+    """
+    # 1. Record a whitelisting-needed diagnostic attempt.
+    state = State()
+    reserve_asset = AssetIdentifier(
+        ChainId.base.value,
+        "0x0000000000000000000000000000000000000010",
+        "USDC",
+        6,
+    )
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    spec = VaultSpec(
+        ChainId.arbitrum.value,
+        "0x0000000000000000000000000000000000000020",
+    )
+    position = record_attempt_result(
+        state,
+        create_vault_test_diagnostic_pair(spec, reserve_asset),
+        spec,
+        simulated=True,
+        result="whitelisting-needed",
+        detail="Vault requires whitelisting for executor Safe 0x1",
+    )
+
+    # 2. Serialise and reload the normal state JSON.
+    restored = State.from_json(state.to_json_safe())
+    restored_position = restored.portfolio.get_position_by_id(position.position_id)
+
+    # 3. Verify display status and report output preserve the exact condition.
+    assert get_vault_test_status(restored_position) == "whitelisting-needed"
+    report = export_vault_test_report(
+        restored,
+        [{"vault id": spec.as_string_id(), "status": "whitelisting-needed"}],
+    )
+    assert report["results"][0]["attempt"]["result"] == "whitelisting-needed"
 
 
 def test_vault_test_failure_persists_redacted_traceback_and_revert_evidence() -> None:

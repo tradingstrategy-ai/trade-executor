@@ -153,6 +153,41 @@ def should_leave_deposit_open(
     return operation == "deposit" and (manual or is_async or not redemption_available)
 
 
+def get_whitelisting_needed_detail(attempt: "VaultAttempt") -> str | None:
+    """Return a terminal report detail when the executor Safe lacks vault admission.
+
+    Unknown permission APIs deliberately return ``None`` so the normal adapter
+    path can still record its transaction or preflight diagnostics.
+    """
+
+    route = attempt.pricing_model.route(attempt.pair)
+    get_vault = getattr(route, "get_vault", None)
+    get_owner_address = getattr(route, "get_owner_address", None)
+    if get_vault is None or get_owner_address is None:
+        return None
+
+    vault = get_vault(attempt.pair)
+    try:
+        whitelisted = vault.is_whitelisted_deposit()
+    except NotImplementedError:
+        return None
+    if not whitelisted:
+        return None
+
+    owner_address = get_owner_address(attempt.pair)
+    if owner_address is None:
+        return "Vault requires whitelisting, but the executor Safe address could not be resolved"
+
+    try:
+        admitted = vault.is_account_whitelisted(owner_address)
+    except NotImplementedError:
+        return None
+    if admitted:
+        return None
+
+    return f"Vault requires whitelisting for executor Safe {owner_address}"
+
+
 def get_bridge_conflict(
     bridge_position: TradingPosition | None,
     vault_spec: VaultSpec,
@@ -500,6 +535,16 @@ class VaultTestBatchRunner:
 
         # Deposit/redemption window checks are diagnostic outcomes, not command
         # failures, and automatic mode continues with the next explicit id.
+        if operation == "deposit":
+            whitelisting_detail = get_whitelisting_needed_detail(attempt)
+            if whitelisting_detail is not None:
+                self._record_terminal_result(
+                    attempt,
+                    alarm,
+                    result="whitelisting-needed",
+                    detail=whitelisting_detail,
+                )
+                return False
         if (
             operation == "deposit"
             and attempt.pricing_model.can_deposit(native_datetime_utc_now(), pair)
