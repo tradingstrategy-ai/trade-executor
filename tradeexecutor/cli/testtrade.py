@@ -479,6 +479,9 @@ def _make_cross_chain_test_trade(
         _record_planned_bridge_back(bridge_position, bridge_back_trades[0])
         if sync_state_callback is not None:
             sync_state_callback()
+        # TODO: A process crash after broadcast and before this call returns
+        # leaves only the planned trade state.  Deferred: resume must inspect
+        # the persisted burn transaction before it can safely avoid a reburn.
         execution_model.execute_trades(ts, state, bridge_back_trades, routing_model, routing_state)
         # Store the signed/broadcast transaction evidence for retry handling.
         if sync_state_callback is not None:
@@ -652,6 +655,9 @@ def _make_cross_chain_test_trade(
             _record_planned_bridge_back(bridge_position, bridge_back_trades[0])
             if sync_state_callback is not None:
                 sync_state_callback()
+            # TODO: A process crash after broadcast and before this call
+            # returns needs transaction-aware CCTP resume handling to avoid a
+            # duplicate burn.  Deferred from this vault-test PR.
             execution_model.execute_trades(
                 ts, state, bridge_back_trades, routing_model, routing_state,
             )
@@ -669,7 +675,7 @@ def _make_cross_chain_test_trade(
                     web3config, routing_model, bridge_pair,
                     home_chain_id, hot_wallet.address, bridge_back_trades[0],
                 )
-                sync_model.sync_treasury(
+            sync_model.sync_treasury(
                     native_datetime_utc_now(), state, list(universe.reserve_assets),
                 )
 

@@ -270,6 +270,10 @@ def perform_test_trade(
 
     assert not (all_vaults and all_pairs), "Cannot specify both --all-vaults and --all-pairs"
 
+    # TODO: Cross-chain vault redemptions can record a balance baseline through
+    # ``sync_state_callback``, but this public command persists state only at
+    # command completion.  Deferred: thread the store callback through every
+    # ``make_test_trade()`` invocation before relying on crash-safe resume.
     try:
         if all_vaults:
             logger.info("Testing all vaults")
