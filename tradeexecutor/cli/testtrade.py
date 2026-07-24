@@ -2,6 +2,7 @@
 import logging
 import datetime
 from decimal import Decimal
+from typing import Callable
 
 from web3 import Web3
 
@@ -32,6 +33,26 @@ from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
 logger = logging.getLogger(__name__)
+
+
+class BridgeProceedsUnavailable(RuntimeError):
+    """A satellite vault redemption cannot safely fund the CCTP return burn."""
+
+
+def _update_test_trade_statistics(state: State, *, enabled: bool) -> None:
+    """Refresh statistics when a normal test trade needs persisted analytics."""
+
+    if not enabled:
+        return
+
+    long_short_metrics_latest = serialise_long_short_stats_as_json_table(state, None)
+    update_statistics(
+        native_datetime_utc_now(),
+        state.stats,
+        state.portfolio,
+        ExecutionMode.real_trading,
+        long_short_metrics_latest=long_short_metrics_latest,
+    )
 
 
 def _materialise_bridge_on_anvil(
@@ -89,6 +110,205 @@ def _materialise_bridge_on_anvil(
     fund_erc20_on_anvil(dest_web3, usdc_address, recipient, total_raw)
 
 
+def _get_cctp_custody_address(
+    routing_model: RoutingModel,
+    bridge_pair: TradingPairIdentifier,
+    chain_id: int,
+    fallback_address: str,
+) -> str:
+    """Resolve the address which actually holds bridged USDC on one chain."""
+
+    pair_config = routing_model.pair_configurator.get_config(
+        routing_model.pair_configurator.match_router(bridge_pair)
+    )
+    cctp_routing = pair_config.routing_model
+    if (
+        hasattr(cctp_routing, "custody_address_resolver")
+        and cctp_routing.custody_address_resolver
+    ):
+        return cctp_routing.custody_address_resolver(chain_id)
+    return fallback_address
+
+
+def _record_satellite_redemption_balance(
+    *,
+    web3config,
+    routing_model: RoutingModel,
+    bridge_pair: TradingPairIdentifier,
+    bridge_position,
+    pair: TradingPairIdentifier,
+    fallback_address: str,
+) -> None:
+    """Persist the pre-redemption satellite USDC balance for bridge-back sizing.
+
+    The caller synchronises the state before broadcasting the redemption in
+    real mode.  A later balance must never be repurposed as this baseline.
+    """
+
+    chain_id = pair.chain_id
+    custody_address = _get_cctp_custody_address(
+        routing_model,
+        bridge_pair,
+        chain_id,
+        fallback_address,
+    )
+    token = fetch_erc20_details(
+        web3config.get_connection(ChainId(chain_id)),
+        pair.quote.address,
+        chain_id=chain_id,
+    )
+    balance = token.fetch_balance_of(custody_address)
+    bridge_position.other_data["vault_test_satellite_redemption"] = {
+        "schema_version": 1,
+        "vault_id": f"{pair.chain_id}-{pair.pool_address}",
+        "chain_id": chain_id,
+        "token_address": pair.quote.address,
+        "custody_address": custody_address,
+        "balance_before": str(balance),
+    }
+
+
+def _get_satellite_bridge_back_amount(
+    *,
+    web3config,
+    routing_model: RoutingModel,
+    bridge_pair: TradingPairIdentifier,
+    bridge_position,
+    pair: TradingPairIdentifier,
+    redemption_trade,
+    fallback_address: str,
+) -> Decimal:
+    """Reconcile CCTP burn size to the completed vault redemption proceeds.
+
+    The bridge accounting ledger can contain a planned amount which is larger
+    than a lossy redemption's token balance.  Use the smaller of independently
+    observed wallet proceeds and the vault receipt analysis, retaining the
+    measured custody balance and any difference in diagnostic metadata.
+    """
+
+    expected_vault_id = f"{pair.chain_id}-{pair.pool_address}"
+    chain_id = pair.chain_id
+    metadata = bridge_position.other_data.get("vault_test_satellite_redemption", {})
+    custody_address = metadata.get("custody_address") or _get_cctp_custody_address(
+        routing_model,
+        bridge_pair,
+        chain_id,
+        fallback_address,
+    )
+    token = fetch_erc20_details(
+        web3config.get_connection(ChainId(chain_id)),
+        pair.quote.address,
+        chain_id=chain_id,
+    )
+    analysed_proceeds = redemption_trade.executed_reserve
+    if analysed_proceeds is None or analysed_proceeds <= 0:
+        raise BridgeProceedsUnavailable(
+            "bridge_proceeds_unavailable: vault redemption has no executed USDC proceeds"
+        )
+
+    balance_after = token.fetch_balance_of(custody_address)
+    if (
+        metadata.get("vault_id") != expected_vault_id
+        or metadata.get("balance_before") is None
+    ):
+        # A state written before baseline persistence can still be resumed when
+        # the settled manager analysis has already established the exact
+        # proceeds.  Never replace this branch with a fresh balance baseline:
+        # it would turn pre-existing USDC into redemption proceeds.
+        bridge_amount = min(balance_after, analysed_proceeds)
+        if bridge_amount <= 0:
+            raise BridgeProceedsUnavailable(
+                "bridge_proceeds_unavailable: legacy redemption has no USDC available "
+                f"for {expected_vault_id}"
+            )
+        bridge_position.other_data["vault_test_satellite_redemption"] = {
+            "schema_version": 1,
+            "vault_id": expected_vault_id,
+            "chain_id": chain_id,
+            "token_address": pair.quote.address,
+            "custody_address": custody_address,
+            "balance_before": None,
+            "balance_after": str(balance_after),
+            "wallet_proceeds": None,
+            "analysed_proceeds": str(analysed_proceeds),
+            "bridge_back_amount": str(bridge_amount),
+            "residual": str(balance_after - bridge_amount),
+            "redemption_trade_id": redemption_trade.trade_id,
+            "recovered_from_manager_analysis": True,
+        }
+        return bridge_amount
+
+    balance_before = Decimal(metadata["balance_before"])
+    wallet_proceeds = max(balance_after - balance_before, Decimal(0))
+
+    bridge_amount = min(wallet_proceeds, analysed_proceeds)
+    if bridge_amount <= 0:
+        raise BridgeProceedsUnavailable(
+            "bridge_proceeds_unavailable: no newly available satellite USDC after redemption"
+        )
+
+    metadata.update(
+        {
+            "balance_after": str(balance_after),
+            "wallet_proceeds": str(wallet_proceeds),
+            "analysed_proceeds": str(analysed_proceeds),
+            "bridge_back_amount": str(bridge_amount),
+            "residual": str(balance_after - bridge_amount),
+            "redemption_trade_id": redemption_trade.trade_id,
+        }
+    )
+    bridge_position.other_data["vault_test_satellite_redemption"] = metadata
+    return bridge_amount
+
+
+def _record_planned_bridge_back(
+    bridge_position,
+    bridge_back_trade,
+) -> None:
+    """Persist the planned burn identity before it can be broadcast."""
+
+    metadata = bridge_position.other_data.setdefault(
+        "vault_test_satellite_redemption",
+        {},
+    )
+    metadata["bridge_back_trade_id"] = bridge_back_trade.trade_id
+
+
+def _get_completed_satellite_redemption_trade(position):
+    """Return the latest successful vault sell used to fund bridge-back."""
+
+    trade = max(
+        (
+            candidate
+            for candidate in position.trades.values()
+            if candidate.is_sell() and candidate.is_success()
+        ),
+        key=lambda candidate: candidate.trade_id,
+        default=None,
+    )
+    assert trade is not None, f"No completed satellite redemption on {position}"
+    return trade
+
+
+def _get_pending_bridge_back_trade(bridge_position):
+    """Return an already-started CCTP burn so a resume cannot duplicate it."""
+
+    return max(
+        (
+            trade
+            for trade in bridge_position.trades.values()
+            if trade.is_sell()
+            and trade.get_status() in {
+                TradeStatus.started,
+                TradeStatus.broadcasted,
+                TradeStatus.cctp_in_transit,
+            }
+        ),
+        key=lambda trade: trade.trade_id,
+        default=None,
+    )
+
+
 def _make_cross_chain_test_trade(
     web3: "Web3",
     web3config,
@@ -113,6 +333,8 @@ def _make_cross_chain_test_trade(
     trade_flags: set[TradeFlag] | None = None,
     force_async_settlement_on_anvil: bool = True,
     anvil_time_skip_seconds: int = 24 * 3600,
+    update_statistics_after_trade: bool = True,
+    sync_state_callback: Callable[[], None] | None = None,
 ):
     """Cross-chain test trade: bridge in, open position, close position, bridge out.
 
@@ -167,13 +389,17 @@ def _make_cross_chain_test_trade(
     if close_only:
         # Close-only: find existing positions and close them
         satellite_position = state.portfolio.get_position_by_trading_pair(pair)
-        closed_satellite_position = next(
+        # A resumed async redemption has already moved its position to closed.
+        # Select the newest matching position: earlier test attempts can remain
+        # in the same state file and must not supply their redemption proceeds.
+        closed_satellite_position = max(
             (
                 position
                 for position in state.portfolio.closed_positions.values()
                 if position.pair == pair
             ),
-            None,
+            key=lambda position: position.position_id,
+            default=None,
         )
         if satellite_position is None and closed_satellite_position is None:
             raise RuntimeError(
@@ -190,6 +416,17 @@ def _make_cross_chain_test_trade(
         # has now settled and only its bridge-back leg remains.
         if satellite_position is not None:
             logger.info("Cross-chain close step 1: closing %s on %s", pair.get_ticker(), chain_name)
+            _record_satellite_redemption_balance(
+                web3config=web3config,
+                routing_model=routing_model,
+                bridge_pair=bridge_pair,
+                bridge_position=bridge_position,
+                pair=pair,
+                fallback_address=hot_wallet.address,
+            )
+            # Persist the observed balance before the close can move USDC.
+            if sync_state_callback is not None:
+                sync_state_callback()
             ts = native_datetime_utc_now()
             position_manager = PositionManager(
                 ts, universe, state, pricing_model,
@@ -205,17 +442,50 @@ def _make_cross_chain_test_trade(
         else:
             logger.info("Cross-chain close step 1 already settled; continuing with bridge back")
 
-        # Step 2: Bridge back — sized by get_available_bridge_capital()
+        # Step 2: Bridge back only the USDC made available by redemption.
         logger.info("Cross-chain close step 2: bridging back from %s", chain_name)
+        pending_bridge_back = _get_pending_bridge_back_trade(bridge_position)
+        if pending_bridge_back is not None:
+            logger.info(
+                "Cross-chain close step 2 already has bridge-back trade #%d in %s; not creating a duplicate burn",
+                pending_bridge_back.trade_id,
+                pending_bridge_back.get_status(),
+            )
+            return
+        redemption_position = satellite_position or closed_satellite_position
+        redemption_trade = _get_completed_satellite_redemption_trade(redemption_position)
+        bridge_back_amount = _get_satellite_bridge_back_amount(
+            web3config=web3config,
+            routing_model=routing_model,
+            bridge_pair=bridge_pair,
+            bridge_position=bridge_position,
+            pair=pair,
+            redemption_trade=redemption_trade,
+            fallback_address=hot_wallet.address,
+        )
         ts = native_datetime_utc_now()
         position_manager = PositionManager(
             ts, universe, state, pricing_model,
             default_slippage_tolerance=max_slippage,
         )
-        bridge_back_trades = position_manager.close_position(
-            bridge_position, notes=notes, flags=trade_flags,
+        bridge_back_trades = position_manager.close_cctp_bridge_position(
+            bridge_position,
+            quantity=bridge_back_amount,
+            notes=notes,
+            flags=trade_flags,
         )
+        # A crash after CCTP broadcast must retain this trade identity so a
+        # later invocation does not create another burn.
+        _record_planned_bridge_back(bridge_position, bridge_back_trades[0])
+        if sync_state_callback is not None:
+            sync_state_callback()
+        # TODO: A process crash after broadcast and before this call returns
+        # leaves only the planned trade state.  Deferred: resume must inspect
+        # the persisted burn transaction before it can safely avoid a reburn.
         execution_model.execute_trades(ts, state, bridge_back_trades, routing_model, routing_state)
+        # Store the signed/broadcast transaction evidence for retry handling.
+        if sync_state_callback is not None:
+            sync_state_callback()
         if bridge_back_trades[0].get_status() == TradeStatus.cctp_in_transit:
             return
         assert bridge_back_trades[0].is_success(), \
@@ -310,9 +580,10 @@ def _make_cross_chain_test_trade(
         bridge_position = state.portfolio.get_bridge_position_for_chain(dest_chain_id)
         assert bridge_position is not None
 
-        long_short_metrics_latest = serialise_long_short_stats_as_json_table(state, None)
-        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio,
-                          ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+        _update_test_trade_statistics(
+            state,
+            enabled=update_statistics_after_trade,
+        )
 
         if not buy_only:
             # Sell flow: close satellite, then bridge back
@@ -324,6 +595,17 @@ def _make_cross_chain_test_trade(
 
             # Step 3: Close satellite position
             logger.info("Cross-chain step 3: close %s on %s", pair.get_ticker(), chain_name)
+            _record_satellite_redemption_balance(
+                web3config=web3config,
+                routing_model=routing_model,
+                bridge_pair=bridge_pair,
+                bridge_position=bridge_position,
+                pair=pair,
+                fallback_address=hot_wallet.address,
+            )
+            # Persist the observed balance before the close can move USDC.
+            if sync_state_callback is not None:
+                sync_state_callback()
             ts = native_datetime_utc_now()
             position_manager = PositionManager(
                 ts, universe, state, pricing_model,
@@ -338,19 +620,50 @@ def _make_cross_chain_test_trade(
             assert close_trades[0].is_success(), \
                 f"Satellite close failed: {close_trades[0].get_revert_reason()}"
 
-            # Step 4: Bridge back — sized by get_available_bridge_capital()
+            # Step 4: Bridge back only the USDC made available by redemption.
             logger.info("Cross-chain step 4: bridge back from %s", chain_name)
+            pending_bridge_back = _get_pending_bridge_back_trade(bridge_position)
+            if pending_bridge_back is not None:
+                logger.info(
+                    "Cross-chain step 4 already has bridge-back trade #%d in %s; not creating a duplicate burn",
+                    pending_bridge_back.trade_id,
+                    pending_bridge_back.get_status(),
+                )
+                return
+            bridge_back_amount = _get_satellite_bridge_back_amount(
+                web3config=web3config,
+                routing_model=routing_model,
+                bridge_pair=bridge_pair,
+                bridge_position=bridge_position,
+                pair=pair,
+                redemption_trade=close_trades[0],
+                fallback_address=hot_wallet.address,
+            )
             ts = native_datetime_utc_now()
             position_manager = PositionManager(
                 ts, universe, state, pricing_model,
                 default_slippage_tolerance=max_slippage,
             )
-            bridge_back_trades = position_manager.close_position(
-                bridge_position, notes=notes, flags=trade_flags,
+            bridge_back_trades = position_manager.close_cctp_bridge_position(
+                bridge_position,
+                quantity=bridge_back_amount,
+                notes=notes,
+                flags=trade_flags,
             )
+            # A crash after CCTP broadcast must retain this trade identity so a
+            # later invocation does not create another burn.
+            _record_planned_bridge_back(bridge_position, bridge_back_trades[0])
+            if sync_state_callback is not None:
+                sync_state_callback()
+            # TODO: A process crash after broadcast and before this call
+            # returns needs transaction-aware CCTP resume handling to avoid a
+            # duplicate burn.  Deferred from this vault-test PR.
             execution_model.execute_trades(
                 ts, state, bridge_back_trades, routing_model, routing_state,
             )
+            # Store the signed/broadcast transaction evidence for retry handling.
+            if sync_state_callback is not None:
+                sync_state_callback()
             if bridge_back_trades[0].get_status() == TradeStatus.cctp_in_transit:
                 return
             assert bridge_back_trades[0].is_success(), \
@@ -362,13 +675,14 @@ def _make_cross_chain_test_trade(
                     web3config, routing_model, bridge_pair,
                     home_chain_id, hot_wallet.address, bridge_back_trades[0],
                 )
-                sync_model.sync_treasury(
+            sync_model.sync_treasury(
                     native_datetime_utc_now(), state, list(universe.reserve_assets),
                 )
 
-            long_short_metrics_latest = serialise_long_short_stats_as_json_table(state, None)
-            update_statistics(native_datetime_utc_now(), state.stats, state.portfolio,
-                              ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+            _update_test_trade_statistics(
+                state,
+                enabled=update_statistics_after_trade,
+            )
 
     # Final report
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
@@ -634,6 +948,8 @@ def make_test_trade(
     web3config=None,
     trade_flags: set[TradeFlag] | None = None,
     force_async_settlement_on_anvil: bool = True,
+    update_statistics_after_trade: bool = True,
+    sync_state_callback: Callable[[], None] | None = None,
 ):
     """Perform a test trade.
 
@@ -831,6 +1147,8 @@ def make_test_trade(
             trade_flags=trade_flags,
             force_async_settlement_on_anvil=force_async_settlement_on_anvil,
             anvil_time_skip_seconds=anvil_time_skip_seconds,
+            update_statistics_after_trade=update_statistics_after_trade,
+            sync_state_callback=sync_state_callback,
         )
 
     # The message left on the test positions and trades
@@ -923,11 +1241,10 @@ def make_test_trade(
             raise AssertionError("Test buy succeed, but the position was not opened\n"
                                  "Check for dust corrections.")
 
-        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-            state, None
+        _update_test_trade_statistics(
+            state,
+            enabled=update_statistics_after_trade,
         )
-        
-        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
     else:
         logger.info("Position %s is already open. No need to open it again.", position)
 
@@ -1003,11 +1320,10 @@ def make_test_trade(
             logger.error("Trade dump:\n%s", sell_trade.get_debug_dump())
             raise AssertionError("Test sell failed")
 
-        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-            state, None
+        _update_test_trade_statistics(
+            state,
+            enabled=update_statistics_after_trade,
         )
-        
-        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     else:
         sell_trade = None
@@ -1078,11 +1394,10 @@ def make_test_trade(
                 raise AssertionError("Test buy succeed, but the position was not opened\n"
                                      "Check for dust corrections.")
 
-            long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-                state, None
+            _update_test_trade_statistics(
+                state,
+                enabled=update_statistics_after_trade,
             )
-
-            update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
         # Close the short
 
@@ -1142,11 +1457,10 @@ def make_test_trade(
             raise AssertionError("Short close succeed, but the position was not opened\n"
                                  "Check for dust corrections.")
 
-        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-            state, None
+        _update_test_trade_statistics(
+            state,
+            enabled=update_statistics_after_trade,
         )
-        
-        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()

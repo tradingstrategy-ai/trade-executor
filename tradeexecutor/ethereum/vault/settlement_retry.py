@@ -29,7 +29,10 @@ from web3.contract.contract import ContractFunction
 
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
 from tradeexecutor.ethereum.vault.settlement_estimate import refresh_vault_settlement_estimate
-from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
+from tradeexecutor.ethereum.vault.vault_routing import (
+    convert_vault_flow_analysis,
+    get_vault_for_pair,
+)
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
@@ -426,8 +429,14 @@ def _resolve_single_vault_trade(
     refresh_vault_settlement_estimate(trade, deposit_manager, ticket, direction)
 
     # STEP A: Check for existing post-request tx (idempotent handling)
-    request_tx_count = trade.other_data.get("vault_request_tx_count", 1)
-    has_existing_post_tx = len(trade.blockchain_transactions) > request_tx_count
+    # ``vault_request_tx_count`` now means manager request calls only, excluding
+    # a separately signed allowance.  Keep the old field as a fallback for
+    # state files created before ``vault_initial_tx_count`` was introduced.
+    initial_tx_count = trade.other_data.get(
+        "vault_initial_tx_count",
+        trade.other_data.get("vault_request_tx_count", 1),
+    )
+    has_existing_post_tx = len(trade.blockchain_transactions) > initial_tx_count
     tx_already_confirmed = False
     confirmed_receipt = None
     is_reclaim_tx = False
@@ -608,15 +617,12 @@ def _resolve_single_vault_trade(
             )
             return
 
+        executed_reserve, executed_amount, price = convert_vault_flow_analysis(
+            analysis,
+            direction=direction,
+        )
         if direction == "deposit":
-            executed_reserve = analysis.denomination_amount
-            executed_amount = analysis.share_count
-            price = float(executed_reserve / executed_amount) if executed_amount else 0
             _ensure_legacy_pending_deposit_capital_allocated(state, trade)
-        else:
-            executed_amount = -analysis.share_count
-            executed_reserve = analysis.denomination_amount
-            price = float(executed_reserve / analysis.share_count) if analysis.share_count else 0
 
         # Clear pending status before marking success
         trade.vault_settlement_pending_at = None
@@ -624,7 +630,7 @@ def _resolve_single_vault_trade(
         state.mark_trade_success(
             ts,
             trade,
-            executed_price=price,
+            executed_price=float(price),
             executed_amount=executed_amount,
             executed_reserve=executed_reserve,
             lp_fees=0,

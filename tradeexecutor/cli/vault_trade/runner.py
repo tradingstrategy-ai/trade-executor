@@ -18,6 +18,7 @@ from typing import Any
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.vault.base import VaultSpec
+from eth_defi.vault.deposit_redeem import UnsupportedVaultSimulation, VaultFlowUnavailable
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.cli.bootstrap import (
@@ -25,7 +26,7 @@ from tradeexecutor.cli.bootstrap import (
     check_universe_chains_have_rpc,
     check_universe_contracts_resolve,
 )
-from tradeexecutor.cli.testtrade import perform_test_trade
+from tradeexecutor.cli.testtrade import BridgeProceedsUnavailable, perform_test_trade
 from tradeexecutor.cli.vault_trade.core import build_vault_test_universe
 from tradeexecutor.cli.vault_trade.state import (
     close_simulated_positions,
@@ -52,6 +53,7 @@ from tradeexecutor.cli.vault_trade.simulation import (
 )
 from tradeexecutor.cli.vault_trade.tui import VaultTestAction
 from tradeexecutor.ethereum.routing_state import OutOfBalance
+from tradeexecutor.ethereum.vault.vault_routing import VaultReceiptAnalysisError
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
@@ -112,7 +114,13 @@ class VaultAttempt:
     """Prepared per-vault objects shared by action selection and execution."""
 
     spec: VaultSpec
+    # Discovery metadata is retained for stable report labels.  The route may
+    # resolve this to a richer eth-defi adapter, but that object must not leak
+    # into the persisted/reporting schema.
     vault: Any
+    # Capability, admission and deposit-window checks must use the same adapter
+    # as transaction routing, not the discovery record above.
+    executable_vault: Any
     universe: Any
     pair: TradingPairIdentifier
     routing_model: Any
@@ -134,6 +142,7 @@ class VaultAttemptContext:
     provenance: dict
     phase: str = "preflight"
     operation: str | None = None
+    operation_original_trade_ids: set[int] | None = None
 
 
 def should_leave_deposit_open(
@@ -151,6 +160,162 @@ def should_leave_deposit_open(
     """
 
     return operation == "deposit" and (manual or is_async or not redemption_available)
+
+
+def get_whitelisting_needed_detail(attempt: "VaultAttempt") -> str | None:
+    """Return a terminal report detail when the executor Safe lacks vault admission.
+
+    Unknown permission APIs deliberately return ``None`` so the normal adapter
+    path can still record its transaction or preflight diagnostics.
+    """
+
+    # Ownership is routing-specific, while admission is adapter-specific.
+    # Keep those sources separate so a metadata record cannot bypass a live
+    # allow-list check.
+    route = attempt.pricing_model.route(attempt.pair)
+    get_owner_address = getattr(route, "get_owner_address", None)
+    if get_owner_address is None:
+        return None
+
+    vault = attempt.executable_vault
+    try:
+        whitelisted = vault.is_whitelisted_deposit()
+    except (AttributeError, NotImplementedError):
+        return None
+    if not whitelisted:
+        return None
+
+    owner_address = get_owner_address(attempt.pair)
+    if owner_address is None:
+        return "Vault requires whitelisting, but the executor Safe address could not be resolved"
+
+    try:
+        admitted = vault.is_account_whitelisted(owner_address)
+    except (AttributeError, NotImplementedError):
+        return None
+    if admitted:
+        return None
+
+    return f"Vault requires whitelisting for executor Safe {owner_address}"
+
+
+def get_adapter_unsupported_detail(
+    attempt: "VaultAttempt",
+    operation: str,
+) -> tuple[str, dict] | None:
+    """Return an explicit adapter limitation before a transaction is built."""
+
+    get_capability = getattr(
+        attempt.executable_vault,
+        "get_deposit_manager_capability",
+        None,
+    )
+    if get_capability is None:
+        # Some adapters have not adopted eth-defi's optional capability API.
+        # Preserve their existing execution path and diagnostics.
+        return None
+
+    capability = get_capability()
+    if capability is None:
+        return None
+
+    supported = capability.can_deposit if operation == "deposit" else capability.can_redeem
+    if supported:
+        return None
+
+    return (
+        f"eth-defi adapter does not support {operation} for this vault",
+        {"operation": operation, "capability": capability.as_dict()},
+    )
+
+
+def get_deposit_closed_detail(attempt: "VaultAttempt") -> str | None:
+    """Read a protocol-specific deposit closure before requesting a price."""
+
+    fetch_reason = getattr(
+        attempt.executable_vault,
+        "fetch_deposit_closed_reason",
+        None,
+    )
+    if fetch_reason is None:
+        return None
+
+    try:
+        return fetch_reason()
+    except NotImplementedError:
+        return None
+
+
+def normalise_vault_flow_failure(
+    error: BaseException,
+) -> tuple[str, str, dict] | None:
+    """Convert eth-defi typed flow failures into stable vault-test outcomes."""
+
+    current: BaseException | None = error
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, VaultFlowUnavailable):
+            outcome_data = {
+                "protocol": current.protocol,
+                "direction": current.direction,
+                "phase": current.phase,
+                "requested_raw_amount": str(current.requested_raw_amount)
+                if current.requested_raw_amount is not None
+                else None,
+                "available_raw_amount": str(current.available_raw_amount)
+                if current.available_raw_amount is not None
+                else None,
+            }
+            minimum_raw_amount = getattr(current, "minimum_raw_amount", None)
+            if minimum_raw_amount is not None:
+                outcome_data["minimum_raw_amount"] = str(minimum_raw_amount)
+            next_open = getattr(current, "next_open", None)
+            if next_open is not None:
+                outcome_data["next_open"] = next_open.isoformat()
+            if (
+                current.direction == "redeem"
+                and current.requested_raw_amount is not None
+                and current.available_raw_amount is not None
+                and current.requested_raw_amount > current.available_raw_amount
+            ):
+                return (
+                    "redemption_capacity_limited",
+                    redact_vault_test_error_text(current.reason),
+                    outcome_data,
+                )
+            if current.direction == "deposit":
+                return (
+                    "deposit_closed",
+                    redact_vault_test_error_text(current.reason),
+                    outcome_data,
+                )
+            if current.direction == "redeem":
+                return (
+                    "redemption_unavailable",
+                    redact_vault_test_error_text(current.reason),
+                    outcome_data,
+                )
+        if isinstance(current, UnsupportedVaultSimulation):
+            return (
+                "simulation_unsupported_async",
+                redact_vault_test_error_text(current),
+                {},
+            )
+        if isinstance(current, VaultReceiptAnalysisError):
+            return (
+                "receipt_analysis_failed",
+                redact_vault_test_error_text(current),
+                {},
+            )
+        if isinstance(current, BridgeProceedsUnavailable):
+            return (
+                "bridge_proceeds_unavailable",
+                redact_vault_test_error_text(current),
+                {},
+            )
+        current = current.__cause__ or current.__context__
+    return None
 
 
 def get_bridge_conflict(
@@ -437,6 +602,19 @@ class VaultTestBatchRunner:
             self.runtime.execution_model.get_routing_state_details(),
         )
 
+        # Keep discovery metadata for report rows while preflights use the
+        # executable route adapter.  The two objects have different APIs and
+        # substituting one for the other loses report labels and protocol data.
+        executable_vault = vault
+        try:
+            route = pricing_model.route(pair)
+            get_vault = getattr(route, "get_vault", None)
+            resolved_vault = get_vault(pair) if get_vault is not None else None
+            if resolved_vault is not None:
+                executable_vault = resolved_vault
+        except (AttributeError, NotImplementedError):
+            pass
+
         open_trade_position = get_vault_trade_position(
             self.state,
             spec,
@@ -449,6 +627,7 @@ class VaultTestBatchRunner:
         return VaultAttempt(
             spec=spec,
             vault=vault,
+            executable_vault=executable_vault,
             universe=universe,
             pair=pair,
             routing_model=routing_model,
@@ -473,9 +652,24 @@ class VaultTestBatchRunner:
 
         assert self.current_attempt is not None
         self.current_attempt.operation = operation
+        self.current_attempt.operation_original_trade_ids = {
+            trade.trade_id for trade in self.state.portfolio.get_all_trades()
+        }
 
         pair = attempt.pair
         spec = attempt.spec
+
+        adapter_unsupported = get_adapter_unsupported_detail(attempt, operation)
+        if adapter_unsupported is not None:
+            detail, outcome_data = adapter_unsupported
+            self._record_terminal_result(
+                attempt,
+                alarm,
+                result="adapter_unsupported",
+                detail=detail,
+                outcome_data=outcome_data,
+            )
+            return False
 
         # The default async simulation verifies requestDeposit only. The explicit
         # Anvil option invokes eth-defi's supported settlement helper instead.
@@ -500,6 +694,25 @@ class VaultTestBatchRunner:
 
         # Deposit/redemption window checks are diagnostic outcomes, not command
         # failures, and automatic mode continues with the next explicit id.
+        if operation == "deposit":
+            whitelisting_detail = get_whitelisting_needed_detail(attempt)
+            if whitelisting_detail is not None:
+                self._record_terminal_result(
+                    attempt,
+                    alarm,
+                    result="whitelisting-needed",
+                    detail=whitelisting_detail,
+                )
+                return False
+            deposit_closed_detail = get_deposit_closed_detail(attempt)
+            if deposit_closed_detail is not None:
+                self._record_terminal_result(
+                    attempt,
+                    alarm,
+                    result="deposit_closed",
+                    detail=deposit_closed_detail,
+                )
+                return False
         if (
             operation == "deposit"
             and attempt.pricing_model.can_deposit(native_datetime_utc_now(), pair)
@@ -736,6 +949,8 @@ class VaultTestBatchRunner:
             close_only=operation == "redeem",
             web3config=self.runtime.web3config,
             test_short=False,
+            update_statistics_after_trade=False,
+            sync_state_callback=lambda: self.store.sync(self.state),
         )
 
         assert self.current_attempt is not None
@@ -803,6 +1018,7 @@ class VaultTestBatchRunner:
                 trade_flags={TradeFlag.simulated},
                 test_short=False,
                 force_async_settlement_on_anvil=complete_async_lifecycle,
+                update_statistics_after_trade=False,
             )
         except Exception as error:
             # The outer handler records the result on the persistent state. Keep
@@ -836,7 +1052,7 @@ class VaultTestBatchRunner:
             vault_spec=attempt.spec,
             position_ids=created_position_ids,
             result=(
-                "simulation_unsupported_async"
+                "async_request_only"
                 if is_async and not complete_async_lifecycle
                 else "redemption_unavailable"
                 if not redemption_available
@@ -846,6 +1062,11 @@ class VaultTestBatchRunner:
                 "complete"
                 if not is_async or complete_async_lifecycle
                 else "deposit_requested"
+            ),
+            detail=(
+                "Async deposit request completed; full lifecycle was not requested"
+                if is_async and not complete_async_lifecycle
+                else None
             ),
             attempt_id=self.current_attempt.attempt_id
             if self.current_attempt
@@ -1108,23 +1329,41 @@ class VaultTestBatchRunner:
         )
         detail = redact_vault_test_error_text(detail or error)
         error_state = getattr(error, "vault_test_failure_state", self.state)
+        evidence_trade_ids = (
+            self.current_attempt.operation_original_trade_ids
+            if self.current_attempt
+            and self.current_attempt.operation_original_trade_ids is not None
+            else original_trade_ids
+        )
         error_data = capture_vault_test_error(
             error,
             state=error_state,
-            original_trade_ids=original_trade_ids,
+            original_trade_ids=evidence_trade_ids,
             web3config=self.runtime.web3config,
             phase=phase,
         )
-        result = classify_vault_test_failure(
-            phase=phase,
-            error_data=error_data,
+        has_reverted_transaction = any(
+            transaction.get("status") is False
+            for transaction in error_data.get("transactions", [])
         )
+        normalised_failure = (
+            None if has_reverted_transaction else normalise_vault_flow_failure(error)
+        )
+        if normalised_failure is None:
+            result = classify_vault_test_failure(
+                phase=phase,
+                error_data=error_data,
+            )
+            outcome_data = None
+        else:
+            result, detail, outcome_data = normalised_failure
         source_position_id = self._attach_failure_to_attempt_position(
             spec=spec,
             error_state=error_state,
             result=result,
             detail=detail,
             error_data=error_data,
+            outcome_data=outcome_data,
             previous=previous,
         )
         if source_position_id is not None:
@@ -1139,6 +1378,7 @@ class VaultTestBatchRunner:
             result=result,
             detail=detail,
             error=error_data,
+            outcome_data=outcome_data,
             source_position_id=previous.position_id if previous else None,
             attempt_id=self.current_attempt.attempt_id
             if self.current_attempt
@@ -1159,6 +1399,7 @@ class VaultTestBatchRunner:
         result: str,
         detail: str,
         error_data: dict,
+        outcome_data: dict | None,
         previous: TradingPosition | None,
     ) -> int | None:
         """Attach failure evidence to the actual target position when present."""
@@ -1182,6 +1423,8 @@ class VaultTestBatchRunner:
                 position_ids=position_ids,
                 result=result,
                 phase=self.current_attempt.phase,
+                detail=detail,
+                outcome_data=outcome_data,
                 attempt_id=self.current_attempt.attempt_id,
                 operation=self.current_attempt.operation,
                 provenance=self.current_attempt.provenance,
@@ -1220,6 +1463,7 @@ class VaultTestBatchRunner:
             phase=self.current_attempt.phase,
             result=result,
             detail=detail,
+            outcome_data=outcome_data,
             attempt_id=self.current_attempt.attempt_id,
             operation=self.current_attempt.operation,
             provenance=self.current_attempt.provenance,
@@ -1238,6 +1482,7 @@ class VaultTestBatchRunner:
         *,
         result: str,
         detail: str | None = None,
+        outcome_data: dict | None = None,
         source_position_id: int | None = None,
     ) -> None:
         """Persist a non-exception terminal diagnostic for one prepared vault."""
@@ -1250,6 +1495,7 @@ class VaultTestBatchRunner:
             simulated=self.auto_simulated,
             result=result,
             detail=detail,
+            outcome_data=outcome_data,
             source_position_id=source_position_id,
             attempt_id=self.current_attempt.attempt_id
             if self.current_attempt
