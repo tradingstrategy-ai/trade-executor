@@ -178,8 +178,8 @@ def _get_satellite_bridge_back_amount(
 
     The bridge accounting ledger can contain a planned amount which is larger
     than a lossy redemption's token balance.  Use the smaller of independently
-    observed wallet proceeds and the vault receipt analysis, and keep any dust
-    visible on the open bridge position for a later attempt.
+    observed wallet proceeds and the vault receipt analysis, retaining the
+    measured custody balance and any difference in diagnostic metadata.
     """
 
     expected_vault_id = f"{pair.chain_id}-{pair.pool_address}"
@@ -385,13 +385,14 @@ def _make_cross_chain_test_trade(
     if close_only:
         # Close-only: find existing positions and close them
         satellite_position = state.portfolio.get_position_by_trading_pair(pair)
-        closed_satellite_position = next(
+        closed_satellite_position = max(
             (
                 position
                 for position in state.portfolio.closed_positions.values()
                 if position.pair == pair
             ),
-            None,
+            key=lambda position: position.position_id,
+            default=None,
         )
         if satellite_position is None and closed_satellite_position is None:
             raise RuntimeError(

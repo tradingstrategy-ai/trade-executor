@@ -394,7 +394,11 @@ def test_whitelisted_vault_permission_gap_is_reported_before_execution() -> None
     route.get_owner_address.return_value = "0x0000000000000000000000000000000000000001"
     pricing_model = MagicMock()
     pricing_model.route.return_value = route
-    attempt = MagicMock(pair=pair, pricing_model=pricing_model)
+    attempt = MagicMock(
+        pair=pair,
+        pricing_model=pricing_model,
+        executable_vault=vault,
+    )
 
     # 3. Verify the report helper classifies only the denied account.
     detail = get_whitelisting_needed_detail(attempt)
@@ -1184,7 +1188,7 @@ def test_adapter_capability_gap_is_reported_before_execution() -> None:
     capability.as_dict.return_value = {"can_deposit": True, "can_redeem": False}
     vault = MagicMock()
     vault.get_deposit_manager_capability.return_value = capability
-    attempt = MagicMock(vault=vault)
+    attempt = MagicMock(vault=vault, executable_vault=vault)
 
     # 2. Check the batch preflight helper for a redemption operation.
     detail, outcome_data = get_adapter_unsupported_detail(attempt, "redeem")
@@ -1207,7 +1211,7 @@ def test_unknown_adapter_capability_continues_to_execution() -> None:
     # 1. Model a vault whose eth-defi adapter has no published capability.
     vault = MagicMock()
     vault.get_deposit_manager_capability.return_value = None
-    attempt = MagicMock(vault=vault)
+    attempt = MagicMock(vault=vault, executable_vault=vault)
 
     # 2. Run the directional preflight helper for a deposit.
     result = get_adapter_unsupported_detail(attempt, "deposit")
@@ -1224,7 +1228,8 @@ def test_adapter_without_capability_api_continues_to_execution() -> None:
     3. Verify the helper leaves the normal execution path available.
     """
     # 1. Model a legacy vault adapter without capability metadata.
-    attempt = MagicMock(vault=object())
+    vault = object()
+    attempt = MagicMock(vault=vault, executable_vault=vault)
 
     # 2. Run the directional preflight helper for a deposit.
     result = get_adapter_unsupported_detail(attempt, "deposit")
@@ -1241,7 +1246,8 @@ def test_adapter_without_deposit_closure_api_continues_to_execution() -> None:
     3. Verify the helper leaves the normal execution path available.
     """
     # 1. Model a legacy vault adapter without deposit-closure metadata.
-    attempt = MagicMock(vault=object())
+    vault = object()
+    attempt = MagicMock(vault=vault, executable_vault=vault)
 
     # 2. Read its closure detail through the batch preflight helper.
     result = get_deposit_closed_detail(attempt)

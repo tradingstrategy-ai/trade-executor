@@ -115,6 +115,7 @@ class VaultAttempt:
 
     spec: VaultSpec
     vault: Any
+    executable_vault: Any
     universe: Any
     pair: TradingPairIdentifier
     routing_model: Any
@@ -164,12 +165,11 @@ def get_whitelisting_needed_detail(attempt: "VaultAttempt") -> str | None:
     """
 
     route = attempt.pricing_model.route(attempt.pair)
-    get_vault = getattr(route, "get_vault", None)
     get_owner_address = getattr(route, "get_owner_address", None)
-    if get_vault is None or get_owner_address is None:
+    if get_owner_address is None:
         return None
 
-    vault = get_vault(attempt.pair)
+    vault = attempt.executable_vault
     try:
         whitelisted = vault.is_whitelisted_deposit()
     except (AttributeError, NotImplementedError):
@@ -197,7 +197,11 @@ def get_adapter_unsupported_detail(
 ) -> tuple[str, dict] | None:
     """Return an explicit adapter limitation before a transaction is built."""
 
-    get_capability = getattr(attempt.vault, "get_deposit_manager_capability", None)
+    get_capability = getattr(
+        attempt.executable_vault,
+        "get_deposit_manager_capability",
+        None,
+    )
     if get_capability is None:
         # Some adapters have not adopted eth-defi's optional capability API.
         # Preserve their existing execution path and diagnostics.
@@ -220,7 +224,11 @@ def get_adapter_unsupported_detail(
 def get_deposit_closed_detail(attempt: "VaultAttempt") -> str | None:
     """Read a protocol-specific deposit closure before requesting a price."""
 
-    fetch_reason = getattr(attempt.vault, "fetch_deposit_closed_reason", None)
+    fetch_reason = getattr(
+        attempt.executable_vault,
+        "fetch_deposit_closed_reason",
+        None,
+    )
     if fetch_reason is None:
         return None
 
@@ -586,14 +594,15 @@ class VaultTestBatchRunner:
             self.runtime.execution_model.get_routing_state_details(),
         )
 
-        # Keep the executable adapter on the attempt. The vault universe entry
-        # remains a fallback only for older routes that cannot expose a vault.
+        # Keep discovery metadata for report rows while preflights use the
+        # executable route adapter.
+        executable_vault = vault
         try:
             route = pricing_model.route(pair)
             get_vault = getattr(route, "get_vault", None)
             resolved_vault = get_vault(pair) if get_vault is not None else None
             if resolved_vault is not None:
-                vault = resolved_vault
+                executable_vault = resolved_vault
         except (AttributeError, NotImplementedError):
             pass
 
@@ -609,6 +618,7 @@ class VaultTestBatchRunner:
         return VaultAttempt(
             spec=spec,
             vault=vault,
+            executable_vault=executable_vault,
             universe=universe,
             pair=pair,
             routing_model=routing_model,

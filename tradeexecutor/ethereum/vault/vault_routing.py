@@ -7,7 +7,6 @@ from typing import Dict, cast
 
 from eth_typing import HexAddress
 from hexbytes import HexBytes
-from web3.exceptions import Web3Exception
 
 from eth_defi.erc_4626.analysis import analyse_4626_flow_transaction
 from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
@@ -421,7 +420,7 @@ class VaultRouting(RoutingModel):
             trade.other_data["vault_deposit_amount"] = str(swap_amount)
             try:
                 settles_at = deposit_manager.get_deposit_delay_over(address)
-            except (NotImplementedError, ValueError, Web3Exception) as error:
+            except Exception as error:
                 logger.warning(
                     "Could not estimate vault deposit settlement time for %s: %s",
                     target_vault.vault_address,
