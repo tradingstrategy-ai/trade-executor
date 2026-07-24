@@ -34,6 +34,22 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 logger = logging.getLogger(__name__)
 
 
+def _update_test_trade_statistics(state: State, *, enabled: bool) -> None:
+    """Refresh statistics when a normal test trade needs persisted analytics."""
+
+    if not enabled:
+        return
+
+    long_short_metrics_latest = serialise_long_short_stats_as_json_table(state, None)
+    update_statistics(
+        native_datetime_utc_now(),
+        state.stats,
+        state.portfolio,
+        ExecutionMode.real_trading,
+        long_short_metrics_latest=long_short_metrics_latest,
+    )
+
+
 def _materialise_bridge_on_anvil(
     web3config,
     routing_model: RoutingModel,
@@ -113,6 +129,7 @@ def _make_cross_chain_test_trade(
     trade_flags: set[TradeFlag] | None = None,
     force_async_settlement_on_anvil: bool = True,
     anvil_time_skip_seconds: int = 24 * 3600,
+    update_statistics_after_trade: bool = True,
 ):
     """Cross-chain test trade: bridge in, open position, close position, bridge out.
 
@@ -310,9 +327,10 @@ def _make_cross_chain_test_trade(
         bridge_position = state.portfolio.get_bridge_position_for_chain(dest_chain_id)
         assert bridge_position is not None
 
-        long_short_metrics_latest = serialise_long_short_stats_as_json_table(state, None)
-        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio,
-                          ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+        _update_test_trade_statistics(
+            state,
+            enabled=update_statistics_after_trade,
+        )
 
         if not buy_only:
             # Sell flow: close satellite, then bridge back
@@ -366,9 +384,10 @@ def _make_cross_chain_test_trade(
                     native_datetime_utc_now(), state, list(universe.reserve_assets),
                 )
 
-            long_short_metrics_latest = serialise_long_short_stats_as_json_table(state, None)
-            update_statistics(native_datetime_utc_now(), state.stats, state.portfolio,
-                              ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+            _update_test_trade_statistics(
+                state,
+                enabled=update_statistics_after_trade,
+            )
 
     # Final report
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
@@ -634,6 +653,7 @@ def make_test_trade(
     web3config=None,
     trade_flags: set[TradeFlag] | None = None,
     force_async_settlement_on_anvil: bool = True,
+    update_statistics_after_trade: bool = True,
 ):
     """Perform a test trade.
 
@@ -831,6 +851,7 @@ def make_test_trade(
             trade_flags=trade_flags,
             force_async_settlement_on_anvil=force_async_settlement_on_anvil,
             anvil_time_skip_seconds=anvil_time_skip_seconds,
+            update_statistics_after_trade=update_statistics_after_trade,
         )
 
     # The message left on the test positions and trades
@@ -923,11 +944,10 @@ def make_test_trade(
             raise AssertionError("Test buy succeed, but the position was not opened\n"
                                  "Check for dust corrections.")
 
-        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-            state, None
+        _update_test_trade_statistics(
+            state,
+            enabled=update_statistics_after_trade,
         )
-        
-        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
     else:
         logger.info("Position %s is already open. No need to open it again.", position)
 
@@ -1003,11 +1023,10 @@ def make_test_trade(
             logger.error("Trade dump:\n%s", sell_trade.get_debug_dump())
             raise AssertionError("Test sell failed")
 
-        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-            state, None
+        _update_test_trade_statistics(
+            state,
+            enabled=update_statistics_after_trade,
         )
-        
-        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     else:
         sell_trade = None
@@ -1078,11 +1097,10 @@ def make_test_trade(
                 raise AssertionError("Test buy succeed, but the position was not opened\n"
                                      "Check for dust corrections.")
 
-            long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-                state, None
+            _update_test_trade_statistics(
+                state,
+                enabled=update_statistics_after_trade,
             )
-
-            update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
         # Close the short
 
@@ -1142,11 +1160,10 @@ def make_test_trade(
             raise AssertionError("Short close succeed, but the position was not opened\n"
                                  "Check for dust corrections.")
 
-        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-            state, None
+        _update_test_trade_statistics(
+            state,
+            enabled=update_statistics_after_trade,
         )
-        
-        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
