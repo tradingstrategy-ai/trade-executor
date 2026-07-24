@@ -15,12 +15,14 @@ The corrected 129-vault matrix ran on 2026-07-24 from this worktree with:
   and
 - `--auto-simulated --settle-async-on-anvil`.
 
-The report's trade-executor commit field records HEAD rather than dirty source
-state. Traceback paths and explicit import checks confirm that the run used the
-worktree implementation, including manager-owned Lagoon settlement. The final
-operation-attribution, share-reconciliation and capability-based async
-detection patches described below were added after this matrix snapshot and
-have focused test coverage.
+The run used uncommitted manager-owned settlement changes that were later
+included in `9220345b`, but its JSON provenance records only the then-current
+HEAD `2479c991`. Traceback paths and explicit import checks confirm the
+worktree source was imported, but the exact dirty source state cannot be
+reconstructed from the JSON. Treat the counts as observed behavioural evidence,
+not as a commit-reproducible run. Operation attribution, share reconciliation
+and capability-based async detection were added after this matrix snapshot and
+have focused test coverage only.
 
 ## Corrected matrix output
 
@@ -93,7 +95,7 @@ was unreachable. The routing path now:
 - retains the planned amount when the balance covers it;
 - caps to the actual on-chain balance for a shortfall within the configured
   epsilon; and
-- preserves the accounting assertion for a material shortfall.
+- raises the accounting assertion before broadcasting for a material shortfall.
 
 This addresses the two 40acres `transfer amount exceeds balance` rows. A
 post-fix live rerun could not start because two fresh ephemeral Lagoon

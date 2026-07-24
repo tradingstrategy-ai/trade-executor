@@ -1428,7 +1428,7 @@ def test_vault_redemption_amount_reconciles_only_small_share_shortfalls() -> Non
     assert small_shortfall == Decimal("0.99")
 
     # 3. Verify a material accounting shortfall remains an error.
-    with pytest.raises(AssertionError, match="large relative difference"):
+    with pytest.raises(AssertionError, match="large relative shortfall"):
         reconcile_vault_redemption_amount(
             Decimal("1"),
             Decimal("0.9"),

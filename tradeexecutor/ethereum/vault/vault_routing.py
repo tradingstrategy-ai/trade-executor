@@ -63,8 +63,9 @@ def reconcile_vault_redemption_amount(
     relative_shortfall = (planned_amount - onchain_balance) / planned_amount
     if relative_shortfall > Decimal(str(epsilon)):
         raise AssertionError(
-            "Vault share token has a large relative difference in onchain balance "
-            "when trying to redeem the share token"
+            f"Vault share token balance has a large relative shortfall: "
+            f"planned {planned_amount}, on-chain {onchain_balance}, "
+            f"relative shortfall {relative_shortfall}, epsilon {epsilon}"
         )
 
     return onchain_balance
@@ -280,7 +281,8 @@ class VaultRouting(RoutingModel):
         else:
             token_in = trade.pair.base
             token_out = reserve_asset
-            # Swap amount is negative
+            # Sells have a negative planned quantity, but redemption requests
+            # take a positive share amount.
             swap_amount = -trade.planned_quantity
 
             share_token = target_vault.share_token
@@ -297,26 +299,11 @@ class VaultRouting(RoutingModel):
                 onchain_balance,
                 position.get_quantity(planned=True),
             )
-            try:
-                reconciled_amount = reconcile_vault_redemption_amount(
-                    swap_amount,
-                    onchain_balance,
-                    epsilon=self.redeem_epsilon,
-                )
-            except AssertionError:
-                relative_shortfall = (swap_amount - onchain_balance) / swap_amount
-                logger.error(
-                    "Vault trade %s, position %s, share token %s, has a large relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, epsilon is %f",
-                    trade.trade_id,
-                    position,
-                    share_token,
-                    relative_shortfall,
-                    trade.planned_quantity,
-                    onchain_balance,
-                    self.redeem_epsilon,
-                )
-                raise
-
+            reconciled_amount = reconcile_vault_redemption_amount(
+                swap_amount,
+                onchain_balance,
+                epsilon=self.redeem_epsilon,
+            )
             if reconciled_amount < swap_amount:
                 relative_shortfall = (swap_amount - onchain_balance) / swap_amount
                 logger.warning(
