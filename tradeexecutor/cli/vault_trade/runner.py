@@ -114,7 +114,12 @@ class VaultAttempt:
     """Prepared per-vault objects shared by action selection and execution."""
 
     spec: VaultSpec
+    # Discovery metadata is retained for stable report labels.  The route may
+    # resolve this to a richer eth-defi adapter, but that object must not leak
+    # into the persisted/reporting schema.
     vault: Any
+    # Capability, admission and deposit-window checks must use the same adapter
+    # as transaction routing, not the discovery record above.
     executable_vault: Any
     universe: Any
     pair: TradingPairIdentifier
@@ -164,6 +169,9 @@ def get_whitelisting_needed_detail(attempt: "VaultAttempt") -> str | None:
     path can still record its transaction or preflight diagnostics.
     """
 
+    # Ownership is routing-specific, while admission is adapter-specific.
+    # Keep those sources separate so a metadata record cannot bypass a live
+    # allow-list check.
     route = attempt.pricing_model.route(attempt.pair)
     get_owner_address = getattr(route, "get_owner_address", None)
     if get_owner_address is None:
@@ -595,7 +603,8 @@ class VaultTestBatchRunner:
         )
 
         # Keep discovery metadata for report rows while preflights use the
-        # executable route adapter.
+        # executable route adapter.  The two objects have different APIs and
+        # substituting one for the other loses report labels and protocol data.
         executable_vault = vault
         try:
             route = pricing_model.route(pair)

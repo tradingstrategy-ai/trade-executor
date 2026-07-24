@@ -139,7 +139,11 @@ def _record_satellite_redemption_balance(
     pair: TradingPairIdentifier,
     fallback_address: str,
 ) -> None:
-    """Persist the pre-redemption satellite USDC balance for bridge-back sizing."""
+    """Persist the pre-redemption satellite USDC balance for bridge-back sizing.
+
+    The caller synchronises the state before broadcasting the redemption in
+    real mode.  A later balance must never be repurposed as this baseline.
+    """
 
     chain_id = pair.chain_id
     custody_address = _get_cctp_custody_address(
@@ -385,6 +389,9 @@ def _make_cross_chain_test_trade(
     if close_only:
         # Close-only: find existing positions and close them
         satellite_position = state.portfolio.get_position_by_trading_pair(pair)
+        # A resumed async redemption has already moved its position to closed.
+        # Select the newest matching position: earlier test attempts can remain
+        # in the same state file and must not supply their redemption proceeds.
         closed_satellite_position = max(
             (
                 position
@@ -417,6 +424,7 @@ def _make_cross_chain_test_trade(
                 pair=pair,
                 fallback_address=hot_wallet.address,
             )
+            # Persist the observed balance before the close can move USDC.
             if sync_state_callback is not None:
                 sync_state_callback()
             ts = native_datetime_utc_now()
@@ -466,10 +474,13 @@ def _make_cross_chain_test_trade(
             notes=notes,
             flags=trade_flags,
         )
+        # A crash after CCTP broadcast must retain this trade identity so a
+        # later invocation does not create another burn.
         _record_planned_bridge_back(bridge_position, bridge_back_trades[0])
         if sync_state_callback is not None:
             sync_state_callback()
         execution_model.execute_trades(ts, state, bridge_back_trades, routing_model, routing_state)
+        # Store the signed/broadcast transaction evidence for retry handling.
         if sync_state_callback is not None:
             sync_state_callback()
         if bridge_back_trades[0].get_status() == TradeStatus.cctp_in_transit:
@@ -589,6 +600,7 @@ def _make_cross_chain_test_trade(
                 pair=pair,
                 fallback_address=hot_wallet.address,
             )
+            # Persist the observed balance before the close can move USDC.
             if sync_state_callback is not None:
                 sync_state_callback()
             ts = native_datetime_utc_now()
@@ -635,12 +647,15 @@ def _make_cross_chain_test_trade(
                 notes=notes,
                 flags=trade_flags,
             )
+            # A crash after CCTP broadcast must retain this trade identity so a
+            # later invocation does not create another burn.
             _record_planned_bridge_back(bridge_position, bridge_back_trades[0])
             if sync_state_callback is not None:
                 sync_state_callback()
             execution_model.execute_trades(
                 ts, state, bridge_back_trades, routing_model, routing_state,
             )
+            # Store the signed/broadcast transaction evidence for retry handling.
             if sync_state_callback is not None:
                 sync_state_callback()
             if bridge_back_trades[0].get_status() == TradeStatus.cctp_in_transit:
