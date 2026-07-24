@@ -29,7 +29,10 @@ from web3.contract.contract import ContractFunction
 
 from tradeexecutor.ethereum.tx import HotWalletTransactionBuilder, TransactionBuilder
 from tradeexecutor.ethereum.vault.settlement_estimate import refresh_vault_settlement_estimate
-from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
+from tradeexecutor.ethereum.vault.vault_routing import (
+    convert_vault_flow_analysis,
+    get_vault_for_pair,
+)
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
@@ -608,15 +611,12 @@ def _resolve_single_vault_trade(
             )
             return
 
+        executed_reserve, executed_amount, price = convert_vault_flow_analysis(
+            analysis,
+            direction=direction,
+        )
         if direction == "deposit":
-            executed_reserve = analysis.denomination_amount
-            executed_amount = analysis.share_count
-            price = float(executed_reserve / executed_amount) if executed_amount else 0
             _ensure_legacy_pending_deposit_capital_allocated(state, trade)
-        else:
-            executed_amount = -analysis.share_count
-            executed_reserve = analysis.denomination_amount
-            price = float(executed_reserve / analysis.share_count) if analysis.share_count else 0
 
         # Clear pending status before marking success
         trade.vault_settlement_pending_at = None
@@ -624,7 +624,7 @@ def _resolve_single_vault_trade(
         state.mark_trade_success(
             ts,
             trade,
-            executed_price=price,
+            executed_price=float(price),
             executed_amount=executed_amount,
             executed_reserve=executed_reserve,
             lp_fees=0,

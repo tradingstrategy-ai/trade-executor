@@ -48,7 +48,11 @@ VAULT_TEST_RESULTS = {
     "execution_failed",
     "infrastructure_failed",
     "deposit_closed",
+    "whitelisting-needed",
     "redemption_unavailable",
+    "redemption_capacity_limited",
+    "adapter_unsupported",
+    "async_request_only",
     "simulation_unsupported_async",
     # Version 1 diagnostic states used this generic value.  Keep presenting it
     # normally when an older state file is reopened, while new attempts use
@@ -261,9 +265,10 @@ def classify_vault_test_failure(
     transactions = error_data.get("transactions", [])
     if any(transaction.get("status") is False for transaction in transactions):
         return "transaction_reverted"
-    if any(transaction.get("status") is True for transaction in transactions):
-        return "receipt_analysis_failed"
-    if any(transaction.get("tx_hash") for transaction in transactions):
+    if any(
+        transaction.get("tx_hash") and transaction.get("status") is None
+        for transaction in transactions
+    ):
         return "broadcast_failed"
     if error_data.get("call_context"):
         return "gas_estimation_reverted"
@@ -478,6 +483,7 @@ def stamp_position_vault_test_attempt(
     phase: str | None = None,
     result: str | None = None,
     detail: str | None = None,
+    outcome_data: dict | None = None,
     attempt_id: str | None = None,
     operation: str | None = None,
     provenance: dict | None = None,
@@ -511,6 +517,8 @@ def stamp_position_vault_test_attempt(
         attempt["result"] = result
     if detail:
         attempt["detail"] = detail
+    if outcome_data:
+        attempt["outcome_data"] = outcome_data
 
 
 def record_attempt_result(
@@ -521,6 +529,7 @@ def record_attempt_result(
     simulated: bool,
     result: str,
     detail: str | None = None,
+    outcome_data: dict | None = None,
     error: dict | None = None,
     source_position_id: int | None = None,
     attempt_id: str | None = None,
@@ -555,6 +564,8 @@ def record_attempt_result(
     attempt["result"] = result
     if detail:
         attempt["detail"] = detail
+    if outcome_data:
+        attempt["outcome_data"] = outcome_data
     if error:
         attempt["error"] = error
     if source_position_id is not None:
@@ -626,6 +637,8 @@ def close_simulated_positions(
     position_ids: set[int],
     result: str | None = None,
     phase: str | None = None,
+    detail: str | None = None,
+    outcome_data: dict | None = None,
     attempt_id: str | None = None,
     operation: str | None = None,
     provenance: dict | None = None,
@@ -667,6 +680,10 @@ def close_simulated_positions(
                 attempt["provenance"] = provenance
             if result:
                 attempt["result"] = result
+            if detail:
+                attempt["detail"] = detail
+            if outcome_data:
+                attempt["outcome_data"] = outcome_data
         if position.is_open():
             state.portfolio.close_position(position, now)
 

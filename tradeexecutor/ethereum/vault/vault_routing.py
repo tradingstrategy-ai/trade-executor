@@ -12,10 +12,15 @@ from eth_defi.erc_4626.analysis import analyse_4626_flow_transaction
 from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
 from eth_defi.erc_4626.flow import approve_and_deposit_4626, approve_and_redeem_4626
 from eth_defi.erc_4626.profit_and_loss import estimate_4626_recent_profitability
+from eth_defi.erc_4626.deposit_redeem import ERC4626DepositManager
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.token import fetch_erc20_details, TokenDiskCache
 from eth_defi.trade import TradeSuccess
-from eth_defi.vault.deposit_redeem import VaultDepositManager
+from eth_defi.vault.deposit_redeem import (
+    DepositRedeemEventAnalysis,
+    DepositRedeemEventFailure,
+    VaultDepositManager,
+)
 
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
 from tradeexecutor.ethereum.token_cache import get_default_token_cache
@@ -39,6 +44,27 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 
 logger = logging.getLogger(__name__)
+
+
+class VaultReceiptAnalysisError(RuntimeError):
+    """A mined vault transaction could not be decoded into executed amounts."""
+
+
+def convert_vault_flow_analysis(
+    analysis: DepositRedeemEventAnalysis,
+    *,
+    direction: str,
+) -> tuple[Decimal, Decimal, Decimal]:
+    """Convert a manager receipt analysis to executor trade quantities."""
+
+    executed_reserve = analysis.denomination_amount
+    if direction == "deposit":
+        executed_amount = analysis.share_count
+    else:
+        executed_amount = -analysis.share_count
+    price = executed_reserve / analysis.share_count
+    assert executed_reserve > 0 and executed_amount != 0 and price > 0
+    return executed_reserve, executed_amount, price
 
 
 class VaultRoutingState(RoutingState):
@@ -492,27 +518,60 @@ class VaultRouting(RoutingModel):
             return
 
         # Synchronous vault flow — analyse the deposit/redeem result
-        base_token_details = fetch_erc20_details(
-            web3,
-            trade.pair.base.checksum_address,
-            cache=self.token_cache,
-            chain_id=trade.pair.base.chain_id,
-        )
-        reserve = trade.reserve_currency
         direction = "deposit" if trade.is_buy() else "redeem"
 
-        try:
-            result = analyse_4626_flow_transaction(
-                vault=vault,
-                tx_hash=swap_tx.tx_hash,
-                tx_receipt=receipt,
-                direction=direction,
-                hot_wallet=False,
-            )
-        except Exception as e:
-            raise RuntimeError(f"Failed to analyse vault tx: {swap_tx.wrapped_function_selector}: {swap_tx.tx_hash} direction: {direction}, receipt: {receipt}, vault: {vault}") from e
+        if receipt["status"] == 0:
+            report_failure(ts, state, trade, stop_on_execution_failure)
+            return
+
+        deposit_manager = vault.get_deposit_manager()
+        manager_analyser = (
+            type(deposit_manager).analyse_deposit
+            if direction == "deposit"
+            else type(deposit_manager).analyse_redemption
+        )
+        generic_analyser = (
+            ERC4626DepositManager.analyse_deposit
+            if direction == "deposit"
+            else ERC4626DepositManager.analyse_redemption
+        )
+        if manager_analyser is generic_analyser:
+            # The generic manager requires a ticket to identify a GuardV0
+            # wrapper. Synchronous executor trades do not persist one yet.
+            # Keep its existing guarded-wrapper analyser until eth-defi exposes
+            # ticket-free support for this specific compatibility path.
+            try:
+                result = analyse_4626_flow_transaction(
+                    vault=vault,
+                    tx_hash=swap_tx.tx_hash,
+                    tx_receipt=receipt,
+                    direction=direction,
+                    hot_wallet=False,
+                )
+            except Exception as e:
+                raise VaultReceiptAnalysisError(
+                    f"Failed to analyse vault tx {swap_tx.tx_hash} ({direction})"
+                ) from e
+        else:
+            try:
+                if direction == "deposit":
+                    result = deposit_manager.analyse_deposit(swap_tx.tx_hash, None)
+                else:
+                    result = deposit_manager.analyse_redemption(swap_tx.tx_hash, None)
+            except Exception as e:
+                raise VaultReceiptAnalysisError(
+                    f"Failed to analyse vault tx {swap_tx.tx_hash} ({direction})"
+                ) from e
 
         if isinstance(result, TradeSuccess):
+
+            base_token_details = fetch_erc20_details(
+                web3,
+                trade.pair.base.checksum_address,
+                cache=self.token_cache,
+                chain_id=trade.pair.base.chain_id,
+            )
+            reserve = trade.reserve_currency
 
             path = result.path
 
@@ -554,6 +613,29 @@ class VaultRouting(RoutingModel):
             slippage = trade.get_slippage()
             logger.info(f"Executed: {executed_amount} {trade.pair.base.token_symbol}, {executed_reserve} {trade.pair.quote.token_symbol}, price: {trade.executed_price}, expected reserve: {trade.planned_reserve} {trade.pair.quote.token_symbol}, slippage {slippage:.2%}")
 
+        elif isinstance(result, DepositRedeemEventAnalysis):
+            executed_reserve, executed_amount, price = convert_vault_flow_analysis(
+                result,
+                direction=direction,
+            )
+            gas_used = receipt.get("gasUsed", 0)
+            gas_price = receipt.get("effectiveGasPrice", 0)
+
+            state.mark_trade_success(
+                ts,
+                trade,
+                executed_price=float(price),
+                executed_amount=executed_amount,
+                executed_reserve=executed_reserve,
+                lp_fees=0,
+                native_token_price=0,
+                cost_of_gas=float(Decimal(gas_used) * Decimal(gas_price) / Decimal(10**18)),
+            )
+        elif isinstance(result, DepositRedeemEventFailure):
+            raise VaultReceiptAnalysisError(
+                f"Vault manager could not analyse successful {direction} {swap_tx.tx_hash}: "
+                f"{result.revert_reason}"
+            )
         else:
             # Trade failed
             report_failure(ts, state, trade, stop_on_execution_failure)
