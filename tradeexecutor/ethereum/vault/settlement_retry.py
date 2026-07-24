@@ -429,8 +429,14 @@ def _resolve_single_vault_trade(
     refresh_vault_settlement_estimate(trade, deposit_manager, ticket, direction)
 
     # STEP A: Check for existing post-request tx (idempotent handling)
-    request_tx_count = trade.other_data.get("vault_request_tx_count", 1)
-    has_existing_post_tx = len(trade.blockchain_transactions) > request_tx_count
+    # ``vault_request_tx_count`` now means manager request calls only, excluding
+    # a separately signed allowance.  Keep the old field as a fallback for
+    # state files created before ``vault_initial_tx_count`` was introduced.
+    initial_tx_count = trade.other_data.get(
+        "vault_initial_tx_count",
+        trade.other_data.get("vault_request_tx_count", 1),
+    )
+    has_existing_post_tx = len(trade.blockchain_transactions) > initial_tx_count
     tx_already_confirmed = False
     confirmed_receipt = None
     is_reclaim_tx = False

@@ -26,7 +26,7 @@ from tradeexecutor.cli.bootstrap import (
     check_universe_chains_have_rpc,
     check_universe_contracts_resolve,
 )
-from tradeexecutor.cli.testtrade import perform_test_trade
+from tradeexecutor.cli.testtrade import BridgeProceedsUnavailable, perform_test_trade
 from tradeexecutor.cli.vault_trade.core import build_vault_test_universe
 from tradeexecutor.cli.vault_trade.state import (
     close_simulated_positions,
@@ -136,6 +136,7 @@ class VaultAttemptContext:
     provenance: dict
     phase: str = "preflight"
     operation: str | None = None
+    operation_original_trade_ids: set[int] | None = None
 
 
 def should_leave_deposit_open(
@@ -250,6 +251,12 @@ def normalise_vault_flow_failure(
                 if current.available_raw_amount is not None
                 else None,
             }
+            minimum_raw_amount = getattr(current, "minimum_raw_amount", None)
+            if minimum_raw_amount is not None:
+                outcome_data["minimum_raw_amount"] = str(minimum_raw_amount)
+            next_open = getattr(current, "next_open", None)
+            if next_open is not None:
+                outcome_data["next_open"] = next_open.isoformat()
             if (
                 current.direction == "redeem"
                 and current.requested_raw_amount is not None
@@ -282,6 +289,12 @@ def normalise_vault_flow_failure(
         if isinstance(current, VaultReceiptAnalysisError):
             return (
                 "receipt_analysis_failed",
+                redact_vault_test_error_text(current),
+                {},
+            )
+        if isinstance(current, BridgeProceedsUnavailable):
+            return (
+                "bridge_proceeds_unavailable",
                 redact_vault_test_error_text(current),
                 {},
             )
@@ -573,6 +586,17 @@ class VaultTestBatchRunner:
             self.runtime.execution_model.get_routing_state_details(),
         )
 
+        # Keep the executable adapter on the attempt. The vault universe entry
+        # remains a fallback only for older routes that cannot expose a vault.
+        try:
+            route = pricing_model.route(pair)
+            get_vault = getattr(route, "get_vault", None)
+            resolved_vault = get_vault(pair) if get_vault is not None else None
+            if resolved_vault is not None:
+                vault = resolved_vault
+        except (AttributeError, NotImplementedError):
+            pass
+
         open_trade_position = get_vault_trade_position(
             self.state,
             spec,
@@ -609,6 +633,9 @@ class VaultTestBatchRunner:
 
         assert self.current_attempt is not None
         self.current_attempt.operation = operation
+        self.current_attempt.operation_original_trade_ids = {
+            trade.trade_id for trade in self.state.portfolio.get_all_trades()
+        }
 
         pair = attempt.pair
         spec = attempt.spec
@@ -904,6 +931,7 @@ class VaultTestBatchRunner:
             web3config=self.runtime.web3config,
             test_short=False,
             update_statistics_after_trade=False,
+            sync_state_callback=lambda: self.store.sync(self.state),
         )
 
         assert self.current_attempt is not None
@@ -1282,10 +1310,16 @@ class VaultTestBatchRunner:
         )
         detail = redact_vault_test_error_text(detail or error)
         error_state = getattr(error, "vault_test_failure_state", self.state)
+        evidence_trade_ids = (
+            self.current_attempt.operation_original_trade_ids
+            if self.current_attempt
+            and self.current_attempt.operation_original_trade_ids is not None
+            else original_trade_ids
+        )
         error_data = capture_vault_test_error(
             error,
             state=error_state,
-            original_trade_ids=original_trade_ids,
+            original_trade_ids=evidence_trade_ids,
             web3config=self.runtime.web3config,
             phase=phase,
         )

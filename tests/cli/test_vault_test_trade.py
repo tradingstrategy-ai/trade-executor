@@ -1,5 +1,6 @@
 """Unit tests for the standalone vault-test-trade command helpers."""
 
+import datetime
 import json
 import logging
 from collections import defaultdict, deque
@@ -63,9 +64,14 @@ from tradeexecutor.cli.vault_trade.runner import (
     normalise_vault_flow_failure,
     should_leave_deposit_open,
 )
+from tradeexecutor.cli.testtrade import BridgeProceedsUnavailable
 from tradeexecutor.ethereum import web3config as web3config_module
 from tradeexecutor.ethereum.vault import vault_routing
-from tradeexecutor.ethereum.vault.vault_routing import convert_vault_flow_analysis
+from tradeexecutor.ethereum.vault.vault_routing import (
+    convert_vault_flow_analysis,
+    get_async_vault_request_transactions,
+)
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.cli.log import setup_custom_log_levels
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -1125,6 +1131,8 @@ def test_vault_flow_failures_have_typed_report_outcomes() -> None:
         requested_raw_amount=200,
         available_raw_amount=100,
     )
+    error.minimum_raw_amount = 10
+    error.next_open = datetime.datetime(2026, 7, 24, 12, 30)
 
     # 2. Normalise the error through the vault-test reporting helper.
     result, detail, outcome_data = normalise_vault_flow_failure(error)
@@ -1138,7 +1146,28 @@ def test_vault_flow_failures_have_typed_report_outcomes() -> None:
         "phase": "preflight",
         "requested_raw_amount": "200",
         "available_raw_amount": "100",
+        "minimum_raw_amount": "10",
+        "next_open": "2026-07-24T12:30:00",
     }
+
+
+def test_bridge_proceeds_failure_has_typed_report_outcome() -> None:
+    """Unavailable satellite redemption proceeds stay distinguishable in reports.
+
+    1. Create the bridge reconciliation failure.
+    2. Normalise it through the vault-test reporting helper.
+    3. Verify the report records the actionable bridge outcome.
+    """
+    # 1. Create the bridge reconciliation failure.
+    error = BridgeProceedsUnavailable("bridge_proceeds_unavailable: no new USDC")
+
+    # 2. Normalise it through the vault-test reporting helper.
+    result, detail, outcome_data = normalise_vault_flow_failure(error)
+
+    # 3. Verify the report records the actionable bridge outcome.
+    assert result == "bridge_proceeds_unavailable"
+    assert detail == "bridge_proceeds_unavailable: no new USDC"
+    assert outcome_data == {}
 
 
 def test_adapter_capability_gap_is_reported_before_execution() -> None:
@@ -1241,6 +1270,134 @@ def test_vault_flow_analysis_conversion_preserves_trade_signs() -> None:
     # 3. Verify reserve, share sign and price follow the executor trade contract.
     assert deposit == (Decimal("10"), Decimal("8"), Decimal("1.25"))
     assert redemption == (Decimal("10"), Decimal("-8"), Decimal("1.25"))
+
+
+def test_async_vault_request_transaction_roles_ignore_selectors() -> None:
+    """Async settlement selects persisted request roles instead of function names.
+
+    1. Create an approval and two arbitrarily named manager request transactions.
+    2. Select the manager request transaction set for settlement.
+    3. Verify approval exclusion and request ordering do not depend on selectors.
+    """
+    # 1. Create an approval and two arbitrarily named manager request transactions.
+    approval = BlockchainTransaction(function_selector="approve", other={
+        "vault_transaction_role": "vault_approval",
+    })
+    second_request = BlockchainTransaction(function_selector="makeWithdrawRequest", other={
+        "vault_transaction_role": "vault_request",
+        "vault_request_ordinal": 1,
+    })
+    first_request = BlockchainTransaction(function_selector="redeemShares", other={
+        "vault_transaction_role": "vault_request",
+        "vault_request_ordinal": 0,
+    })
+    trade = MagicMock(
+        blockchain_transactions=[approval, second_request, first_request],
+        other_data={},
+    )
+
+    # 2. Select the manager request transaction set for settlement.
+    selected = get_async_vault_request_transactions(
+        trade,
+        request_function_count=2,
+    )
+
+    # 3. Verify approval exclusion and request ordering do not depend on selectors.
+    assert selected == [first_request, second_request]
+
+
+def test_async_vault_request_transaction_legacy_upgrade() -> None:
+    """Legacy pending requests gain durable roles before their settlement retry.
+
+    1. Create a legacy approval plus manager request transaction set without roles.
+    2. Select the final manager calls using the rebuilt request function count.
+    3. Verify role metadata and durable transaction indices are persisted.
+    """
+    # 1. Create a legacy approval plus manager request transaction set without roles.
+    approval = BlockchainTransaction(function_selector="approve")
+    first_request = BlockchainTransaction(function_selector="redeemShares")
+    second_request = BlockchainTransaction(function_selector="makeWithdrawRequest")
+    trade = MagicMock(
+        trade_id=42,
+        blockchain_transactions=[approval, first_request, second_request],
+        other_data={},
+    )
+
+    # 2. Select the final manager calls using the rebuilt request function count.
+    selected = get_async_vault_request_transactions(
+        trade,
+        request_function_count=2,
+    )
+
+    # 3. Verify role metadata and durable transaction indices are persisted.
+    assert selected == [first_request, second_request]
+    assert trade.other_data["vault_request_transaction_indices"] == [1, 2]
+    assert first_request.other["vault_request_ordinal"] == 0
+    assert second_request.other["vault_request_ordinal"] == 1
+
+
+def test_async_settlement_parses_only_manager_request_transactions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Async settlement gives manager parsing only persisted request calls.
+
+    1. Model an approval and an arbitrarily named async manager request.
+    2. Settle the trade with successful receipts for both transactions.
+    3. Verify the manager sees only the request hash and no global selector is used.
+    """
+    # 1. Model an approval and an arbitrarily named async manager request.
+    approval_hash = HexBytes("0x" + "01" * 32)
+    request_hash = HexBytes("0x" + "02" * 32)
+    approval = BlockchainTransaction(
+        tx_hash=approval_hash,
+        function_selector="approve",
+        other={"vault_transaction_role": "vault_approval"},
+    )
+    request = BlockchainTransaction(
+        tx_hash=request_hash,
+        function_selector="redeemShares",
+        other={
+            "vault_transaction_role": "vault_request",
+            "vault_request_ordinal": 0,
+        },
+    )
+    trade = MagicMock()
+    trade.trade_id = 12
+    trade.other_data = {
+        "vault_async_flow": True,
+        "vault_direction": "deposit",
+        "vault_owner_address": "0x0000000000000000000000000000000000000001",
+        "vault_raw_amount": "1000000",
+    }
+    trade.blockchain_transactions = [approval, request]
+    trade.is_buy.return_value = True
+    manager = MagicMock()
+    manager_request = MagicMock(funcs=[MagicMock()])
+    manager.create_deposit_request.return_value = manager_request
+    manager.serialize_deposit_ticket.return_value = {"ticket": "request"}
+    vault = MagicMock()
+    vault.get_deposit_manager.return_value = manager
+    routing = vault_routing.VaultRouting(
+        "0x0000000000000000000000000000000000000001"
+    )
+    state = MagicMock()
+
+    # 2. Settle the trade with successful receipts for both transactions.
+    monkeypatch.setattr(vault_routing, "get_vault_for_pair", lambda *_, **__: vault)
+    monkeypatch.setattr(vault_routing, "get_block_timestamp", lambda *_: None)
+    routing.settle_trade(
+        MagicMock(),
+        state,
+        trade,
+        {
+            approval_hash: {"status": 1, "blockNumber": 100},
+            request_hash: {"status": 1, "blockNumber": 101},
+        },
+    )
+
+    # 3. Verify the manager sees only the request hash and no global selector is used.
+    manager_request.parse_deposit_transaction.assert_called_once_with([request_hash])
+    state.mark_vault_settlement_pending.assert_called_once()
 
 
 def test_reverted_synchronous_vault_trade_skips_receipt_manager(

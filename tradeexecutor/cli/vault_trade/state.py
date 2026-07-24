@@ -51,6 +51,7 @@ VAULT_TEST_RESULTS = {
     "whitelisting-needed",
     "redemption_unavailable",
     "redemption_capacity_limited",
+    "bridge_proceeds_unavailable",
     "adapter_unsupported",
     "async_request_only",
     "simulation_unsupported_async",

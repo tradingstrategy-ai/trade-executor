@@ -374,7 +374,7 @@ def test_cross_chain_close_resumes_bridge_back_after_async_redemption_settles(mo
     """A later invocation finishes CCTP after an async redemption has settled.
 
     1. Model a closed satellite position and its still-open CCTP bridge position.
-    2. Make the position manager create a successful bridge-back trade.
+    2. Make the proceeds reconciler and position manager create a successful bridge-back trade.
     3. Run the close-only cross-chain flow as a later command invocation.
     4. Verify it skips a second vault redemption and closes only the bridge.
     """
@@ -394,12 +394,22 @@ def test_cross_chain_close_resumes_bridge_back_after_async_redemption_settles(mo
     state.portfolio.get_default_reserve_position.return_value.get_value.return_value = 4.9
     state.portfolio.get_all_trades.return_value = []
 
-    # 2. Make the position manager create a successful bridge-back trade.
+    # 2. Make the proceeds reconciler and position manager create a successful bridge-back trade.
     bridge_back_trade = _make_trade(TradeStatus.success)
     bridge_back_trade.is_success.return_value = True
     resumed_position_manager = MagicMock()
-    resumed_position_manager.close_position.return_value = [bridge_back_trade]
+    resumed_position_manager.close_cctp_bridge_position.return_value = [bridge_back_trade]
     monkeypatch.setattr(testtrade, "PositionManager", MagicMock(return_value=resumed_position_manager))
+    monkeypatch.setattr(
+        testtrade,
+        "_get_completed_satellite_redemption_trade",
+        MagicMock(),
+    )
+    monkeypatch.setattr(
+        testtrade,
+        "_get_satellite_bridge_back_amount",
+        MagicMock(return_value=Decimal("4.75")),
+    )
     execution_model = MagicMock()
     hot_wallet = MagicMock()
     hot_wallet.get_native_currency_balance.return_value = Decimal("1")
@@ -430,6 +440,103 @@ def test_cross_chain_close_resumes_bridge_back_after_async_redemption_settles(mo
 
     # 4. Verify it skips a second vault redemption and closes only the bridge.
     assert result is None
-    resumed_position_manager.close_position.assert_called_once()
-    assert resumed_position_manager.close_position.call_args.args[0] is bridge_position
+    resumed_position_manager.close_cctp_bridge_position.assert_called_once()
+    assert resumed_position_manager.close_cctp_bridge_position.call_args.args[0] is bridge_position
+    assert resumed_position_manager.close_cctp_bridge_position.call_args.kwargs["quantity"] == Decimal("4.75")
     execution_model.execute_trades.assert_called_once()
+
+
+def test_cross_chain_bridge_back_uses_actual_redemption_proceeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bridge-back is capped by newly received satellite USDC, not accounting capital.
+
+    1. Record the custody balance before a vault redemption.
+    2. Model a smaller on-chain balance increase than analysed redemption proceeds.
+    3. Verify the bridge amount uses the smaller observed amount and persists it.
+    """
+    # 1. Record the custody balance before a vault redemption.
+    pair = MagicMock()
+    pair.chain_id = BASE_CHAIN_ID
+    pair.pool_address = "0x0000000000000000000000000000000000000abc"
+    pair.quote.address = "0x0000000000000000000000000000000000000def"
+    bridge_position = MagicMock()
+    bridge_position.other_data = {}
+    token = MagicMock()
+    token.fetch_balance_of.side_effect = [Decimal("3"), Decimal("3.8")]
+    monkeypatch.setattr(testtrade, "fetch_erc20_details", MagicMock(return_value=token))
+    monkeypatch.setattr(
+        testtrade,
+        "_get_cctp_custody_address",
+        MagicMock(return_value="0x0000000000000000000000000000000000000001"),
+    )
+    web3config = MagicMock()
+    testtrade._record_satellite_redemption_balance(
+        web3config=web3config,
+        routing_model=MagicMock(),
+        bridge_pair=MagicMock(),
+        bridge_position=bridge_position,
+        pair=pair,
+        fallback_address="0x0000000000000000000000000000000000000002",
+    )
+
+    # 2. Model a smaller on-chain balance increase than analysed redemption proceeds.
+    redemption_trade = MagicMock(executed_reserve=Decimal("1"), trade_id=99)
+    amount = testtrade._get_satellite_bridge_back_amount(
+        web3config=web3config,
+        routing_model=MagicMock(),
+        bridge_pair=MagicMock(),
+        bridge_position=bridge_position,
+        pair=pair,
+        redemption_trade=redemption_trade,
+        fallback_address="0x0000000000000000000000000000000000000002",
+    )
+
+    # 3. Verify the bridge amount uses the smaller observed amount and persists it.
+    assert amount == Decimal("0.8")
+    assert bridge_position.other_data["vault_test_satellite_redemption"]["bridge_back_amount"] == "0.8"
+    assert bridge_position.other_data["vault_test_satellite_redemption"]["residual"] == "3.0"
+
+
+def test_cross_chain_bridge_back_recovers_legacy_settled_redemption(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Legacy state uses persisted manager analysis when no balance baseline exists.
+
+    1. Model a settled redemption from a state version without a balance baseline.
+    2. Supply valid analysed proceeds and a sufficient current USDC wallet balance.
+    3. Verify the bridge amount is recovered without treating the current balance as new proceeds.
+    """
+    # 1. Model a settled redemption from a state version without a balance baseline.
+    pair = MagicMock()
+    pair.chain_id = BASE_CHAIN_ID
+    pair.pool_address = "0x0000000000000000000000000000000000000abc"
+    pair.quote.address = "0x0000000000000000000000000000000000000def"
+    bridge_position = MagicMock()
+    bridge_position.other_data = {}
+    token = MagicMock()
+    token.fetch_balance_of.return_value = Decimal("5")
+    monkeypatch.setattr(testtrade, "fetch_erc20_details", MagicMock(return_value=token))
+    monkeypatch.setattr(
+        testtrade,
+        "_get_cctp_custody_address",
+        MagicMock(return_value="0x0000000000000000000000000000000000000001"),
+    )
+
+    # 2. Supply valid analysed proceeds and a sufficient current USDC wallet balance.
+    redemption_trade = MagicMock(executed_reserve=Decimal("3"), trade_id=100)
+    amount = testtrade._get_satellite_bridge_back_amount(
+        web3config=MagicMock(),
+        routing_model=MagicMock(),
+        bridge_pair=MagicMock(),
+        bridge_position=bridge_position,
+        pair=pair,
+        redemption_trade=redemption_trade,
+        fallback_address="0x0000000000000000000000000000000000000002",
+    )
+
+    # 3. Verify the bridge amount is recovered without treating the current balance as new proceeds.
+    metadata = bridge_position.other_data["vault_test_satellite_redemption"]
+    assert amount == Decimal("3")
+    assert metadata["recovered_from_manager_analysis"] is True
+    assert metadata["wallet_proceeds"] is None
