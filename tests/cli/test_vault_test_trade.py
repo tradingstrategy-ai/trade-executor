@@ -14,6 +14,7 @@ from eth_defi.vault.deposit_redeem import (
     UnsupportedVaultSimulation,
     VaultDepositManagerCapability,
     VaultFlowUnavailable,
+    WhitelistingRequired,
 )
 from hexbytes import HexBytes
 from requests.exceptions import ReadTimeout
@@ -1210,11 +1211,64 @@ def test_vault_flow_failures_have_typed_report_outcomes() -> None:
         "protocol": "csigma",
         "direction": "redeem",
         "phase": "preflight",
+        "decoded_error": None,
         "requested_raw_amount": "200",
         "available_raw_amount": "100",
         "minimum_raw_amount": "10",
         "next_open": "2026-07-24T12:30:00",
     }
+
+
+def test_decoded_vault_errors_map_to_typed_results() -> None:
+    """eth-defi #1374 decoded custom errors become distinct typed results.
+
+    1. Map a missing deposit whitelist to whitelisting-needed.
+    2. Map each redemption custom error to its stable current-state result.
+    3. Map a below-minimum deposit refusal to below_minimum.
+    """
+    # 1. Map a missing deposit whitelist to whitelisting-needed.
+    whitelist_error = WhitelistingRequired(
+        "Depositor not whitelisted on chain 1 vault 0xabc for 0xdef",
+        protocol="lagoon",
+        direction="deposit",
+        phase="preflight",
+    )
+    result, _detail, outcome_data = normalise_vault_flow_failure(whitelist_error)
+    assert result == "whitelisting-needed"
+    assert outcome_data["direction"] == "deposit"
+
+    # 2. Map each redemption custom error to its stable current-state result.
+    cases = {
+        "EndOfEpoch": "redemption_window_closed",
+        "WithdrawalsArePaused": "redemption_paused",
+        "WithdrawalPending": "redemption_capacity_limited",
+        "ExceededMaxRedeem": "redemption_capacity_limited",
+        "AddressNotAllowed": "whitelisting-needed",
+    }
+    for decoded_error, expected in cases.items():
+        error = VaultFlowUnavailable(
+            f"redeem refused: {decoded_error}",
+            protocol="gains",
+            direction="redeem",
+            phase="preflight",
+            decoded_error=decoded_error,
+        )
+        result, _detail, outcome_data = normalise_vault_flow_failure(error)
+        assert result == expected, f"{decoded_error} -> {result}"
+        assert outcome_data["decoded_error"] == decoded_error
+
+    # 3. Map a below-minimum deposit refusal to below_minimum.
+    minimum_error = VaultFlowUnavailable(
+        "deposit below minimum",
+        protocol="accountable",
+        direction="deposit",
+        phase="preflight",
+        decoded_error="InsufficientAmount",
+        minimum_raw_amount=1000,
+    )
+    result, _detail, outcome_data = normalise_vault_flow_failure(minimum_error)
+    assert result == "below_minimum"
+    assert outcome_data["minimum_raw_amount"] == "1000"
 
 
 def test_unsupported_vault_simulation_has_typed_report_outcome() -> None:
