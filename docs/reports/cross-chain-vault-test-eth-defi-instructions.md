@@ -127,58 +127,94 @@ means a raw or re-untyped failure still leaks.
 
 ## 4. Target table (exact ids → required result)
 
-Signatures marked *(confirmed 2026-07-25, eth-defi 38fa4f945)* were observed
-after PR #1374 merged; *(pending matrix)* rows are being re-measured and will be
-finalised from the full run — but the required result already applies.
+All signatures are from the **authoritative full 129-vault matrix run on
+2026-07-25 against eth-defi `38fa4f945` (#1374 merged)**, trade-executor
+`71607299`. #1374 genuinely closed a lot (52 success, up from 43; Lagoon 6→1
+gaps; Accountable Monad and Gains-Arbitrum now typed). Nine eth-defi items
+remain, and **six of them are the same defect: `supports_anvil_settlement=True`
+on a driver that leaves the ticket `pending` (invariant I2).**
 
-| # | vault_id | Vault | Current signature | Required result |
+### 4a. MUST-FIX (eth-defi) — still failing at #1374
+
+| # | vault_id | Vault | Current result @#1374 | Required result |
 |--:|---|---|---|---|
-| 1 | `1-0x9be9294722f8aad37b11a9792be2c782182cafa2` | Ember Earn | force_settle runs, ticket stays `pending` *(confirmed)* | `success (simulated)` **or** `simulation_unsupported_async` with `supports_anvil_settlement=False` (I2) |
-| 2 | `1-0x0b9342c15143e8f54a83f887c280a922f4c48771` | Ember Polymarket | as above *(confirmed)* | same as #1 |
-| 3 | `1-0xf3190a3ecc109f88e7947b849b281918c798a0c4` | Ember Third Eye | as above *(confirmed)* | same as #1 |
-| 4 | `1-0x373152feef81cc59502da2c8de877b3d5ae2e342` | Ember UDL | as above *(confirmed)* | same as #1 |
-| 5 | `1-0x2b13311fd553e74b421d4ccc96e348f71e179dcf` | Ember Apollo ACRED | raw `ValueError` "shares … below minimum" *(confirmed)* | `below_minimum` (typed, `minimum_raw_amount`, `direction=redeem`) |
-| 6 | `1-0x438982ea288763370946625fd76c2508ee1fb229` | cSuperior | on-chain revert `Withdrawal pending` *(confirmed)* | typed preflight before broadcast → `redemption_capacity_limited` (or `redemption_paused`), **no revert** |
-| 7 | `143-0x7cd231120a60f500887444a9baf5e1bd753a5e59` | Accountable Hyperithm (Monad) | raw revert `0x5945ea56` on this exact address *(confirmed)* | typed for **this** address (`below_minimum` / `whitelisting-needed` / typed unsupported) |
-| 8 | `42161-0xd3443ee1e91af28e5fb858fbd0d72a63ba8046e0` | Gains gTrade (Arbitrum) | revert `custom error 0xa73449b9` *(pending matrix)* | `redemption_window_closed` (EndOfEpoch + `next_open`) **or** `success (simulated)` |
-| 9 | `8453-0xad20523a7dc37babc1cc74897e4977232b3d02e5` | Gains gTrade (Base) | async, driver added in #1374 *(pending matrix)* | `success (simulated)` (I2) **or** `simulation_unsupported_async` false-capability |
-| 10 | `8453-0x2bff679b1a9fbcc202316c1402172747ba2fbf56` | Lagoon For Yield v2 (Base) | `settleDeposit()` `transfer amount exceeds allowance` *(pending matrix)* | `success (simulated)` **or** typed unsupported — **no broadcast_failed** |
-| 11 | `8453-0x63b04d3ce2c14f6d308657ab73ac92fc1a0b1075` | Lagoon RB Capital (Base) | as #10 *(pending matrix)* | same as #10 |
-| 12 | `8453-0xbe7db44f4ce20dac83b578b94fd35087f66e9754` | Lagoon TruMarket (Base) | as #10 *(pending matrix)* | same as #10 |
-| 13 | `1-0xa00f63e85b3d242568a9edecb48f5e2cf879b07b` | Lagoon Moon Digital | `pending -> pending` before #1374 *(pending matrix)* | `success (simulated)` **or** typed unsupported |
-| 14 | `42161-0x1723cb57af58efb35a013870c90fcc3d60174a4e` | Lagoon Angmar (Arbitrum) | `pending -> pending` before #1374 *(pending matrix)* | same as #13 |
-| 15 | `42161-0x58bfc95a864e18e8f3041d2fcd3418f48393fe6a` | Plutus Hedge (Arbitrum) | async manager added, `force_settle` deferred *(pending matrix)* | `simulation_unsupported_async` (typed, false capability) **or** `success (simulated)` |
+| 1 | `1-0x9be9294722f8aad37b11a9792be2c782182cafa2` | Ember Earn | `simulation_unsupported_async` — force_settle runs, ticket stays `pending`, but capability advertises `True` | `success (simulated)` (driver actually settles, I2 assert passes) **or** set `supports_anvil_settlement=False` + typed reason |
+| 2 | `1-0x0b9342c15143e8f54a83f887c280a922f4c48771` | Ember Polymarket | same capability-lie | same as #1 |
+| 3 | `1-0xf3190a3ecc109f88e7947b849b281918c798a0c4` | Ember Third Eye | same capability-lie | same as #1 |
+| 4 | `1-0x373152feef81cc59502da2c8de877b3d5ae2e342` | Ember UDL | same capability-lie | same as #1 |
+| 5 | `8453-0xad20523a7dc37babc1cc74897e4977232b3d02e5` | Gains gTrade (Base) | `simulation_unsupported_async` — satellite force_settle leaves `pending`, capability `True` | same as #1 |
+| 6 | `8453-0x4efc07dca8697792119484af33549f33ab11bf3c` | Lagoon MoneyFi FlowForge (Base) | `simulation_unsupported_async` — satellite force_settle leaves `pending` | same as #1 |
+| 7 | `1-0x2b13311fd553e74b421d4ccc96e348f71e179dcf` | Ember Apollo ACRED | `execution_failed` — raw `ValueError` "shares 904 below minimum 9170000" | `below_minimum` (typed `VaultFlowUnavailable`, `minimum_raw_amount`, `direction=redeem`) |
+| 8 | `1-0x438982ea288763370946625fd76c2508ee1fb229` | cSuperior | `transaction_reverted` — on-chain `execution reverted: Withdrawal pending` | typed **preflight before broadcast** → `redemption_capacity_limited` / `redemption_paused`, **no revert** |
+| 9 | `1-0x093272c07700d3ca5301c3bf9b3a392624179e2f` | Morpho Hyperithm USDC Degen | `transaction_reverted` — undecoded `custom error 0xace2a47e` on redeem | decode `0xace2a47e`, raise the matching typed result **before broadcast** |
 
-Already accepted after #1374, listed so they are not regressed:
-`1-0xd17049…` Lagoon Syntropia → `success (simulated)`;
-`1-0xd5d097…` cSigma USD → `redemption_capacity_limited`;
-`1-0x01ba69…` YieldNest RWA MAX → `redemption_capacity_limited`.
+### 4b. CONFIRM (typed, verify it is the intended terminal state)
 
-`1-0x74ad2f…` Upshift Sentora is now an **executor-side** result
-(`incompatible_deposit_asset`: the vault accepts RLUSD/PYUSD/USDT, not USDC) —
-no further eth-defi work unless we want USDC accepted.
+| vault_id | Vault | Current result @#1374 | Action |
+|---|---|---|---|
+| `42161-0x58bfc95a864e18e8f3041d2fcd3418f48393fe6a` | Plutus Hedge (Arbitrum) | `redemption_unavailable` (typed) | Confirm this is correct for current state, or implement the request/claim flow and reach `success` |
+
+### 4c. ACCEPTED after #1374 — do NOT regress
+
+- `143-0x7cd231120a60f500887444a9baf5e1bd753a5e59` Accountable Hyperithm (Monad)
+  → `below_minimum` ✓ (was raw `0x5945ea56` — now fixed on the exact address)
+- `42161-0xd3443ee1e91af28e5fb858fbd0d72a63ba8046e0` Gains gTrade (Arbitrum)
+  → `redemption_window_closed` ✓ (EndOfEpoch typed)
+- Lagoon `1-0xd17049…` Syntropia, `1-0xa00f63…` Moon Digital,
+  `42161-0x1723cb…` Angmar, `8453-0x2bff67…` For Yield v2,
+  `8453-0x63b04d…` RB Capital, `8453-0xbe7db4…` TruMarket → `success`/closed ✓
+  (5 of the original 6 Lagoon gaps closed by the Safe-provisioning change)
+- `1-0xd5d097…` cSigma USD → `redemption_capacity_limited` ✓
+- `1-0x01ba69…` YieldNest RWA MAX → `redemption_capacity_limited` ✓
+
+### 4d. NOT eth-defi (do not touch here — tracked on the executor side)
+
+- `8453-0xd6701905c59ee618dc36dc747506bce0a4ac760a` IPOR Autopilot (Base) —
+  `transaction_reverted` satellite close; executor must surface the reason and
+  reconcile.
+- `43114-0x124d00b1ce4453ffc5a5f65ce83af13a7709bac7` 40acres Pharaoh (Avalanche)
+  — `transaction_reverted` satellite share reconciliation (executor).
+- `1-0x3cd3718f8f047aa32f775e2cb4245a164e1c99fb` Euler Hyperithm —
+  `infrastructure_failed` (transient Anvil disconnect); rerun, not an adapter
+  defect.
+- `1-0x74ad2f789ed583dbd141bbdafc673fe1f033718b` Upshift Sentora — now
+  `incompatible_deposit_asset` (accepts RLUSD/PYUSD/USDT, not USDC); executor
+  concern, no eth-defi work unless USDC support is wanted.
 
 ## 5. Protocol-specific notes (only beyond the invariants)
 
-- **Ember (#1–4).** Either make the operator-impersonation driver actually
-  advance the queue so `status_after == claimable` on the pinned fork block
-  (then I2's assert passes and the vault reaches `success`), or set
-  `supports_anvil_settlement=False` with the concrete reason the operator path
-  cannot be reproduced. Do not advertise `True` and leave the ticket pending.
-- **Ember minimum (#5).** Type the redemption-minimum branch in
-  `ember/deposit_redeem.py` exactly as the deposit `InsufficientAmount` branch
-  is typed. This is a two-line change plus a test that asserts the type.
-- **cSuperior (#6).** Keeping it synchronous is fine, but add a preflight that
-  detects the queued/withdrawal-pending state (read the queue or `maxRedeem`)
-  and raises `VaultFlowUnavailable(decoded_error="WithdrawalPending")` **before**
-  building the redeem transaction, so no revert is broadcast.
-- **Accountable (#7).** Fix and test the **exact** Monad address. If it is
-  unusable in current state, that is fine — but then that exact address must
-  yield a typed refusal at a pinned block, and the test must use that address.
-- **Lagoon Base (#10–12).** The `settleDeposit()` allowance revert must be made
-  impossible from the caller's view: provision the approval on the fork so the
-  lifecycle completes, or raise a typed unsupported result. A `broadcast_failed`
-  row is an automatic fail.
+- **The capability-lie group (#1–6): Ember Earn/Polymarket/Third Eye/UDL, Gains
+  Base, Lagoon MoneyFi FlowForge.** This is the dominant remaining defect. For
+  each, `force_settle()` runs but the ERC-7540/queue ticket is still `pending`
+  afterwards, while `get_deposit_manager_capability().supports_anvil_settlement`
+  returns `True`. Per I2 that is a defect. Do **one** of:
+  1. make the driver actually advance the queue so `status_after == claimable`
+     at the pinned fork block (impersonate the real operator/keeper, advance
+     time/epoch, top up and disclose via `synthetic_assets_injected_raw`), so
+     the mandatory I2 assert in `force_settle` passes and the vault reaches
+     `success (simulated)`; **or**
+  2. set `supports_anvil_settlement=False` and raise `UnsupportedVaultSimulation`
+     with the concrete reason the operator path cannot be reproduced.
+
+  Add the I2 self-assert to `force_settle` so this class of defect cannot
+  regress silently again.
+- **Ember redemption minimum (#7).** Type the redemption-minimum branch in
+  `ember/deposit_redeem.py` (currently `raise ValueError(f"Ember redemption
+  shares … below minimum …")`) exactly as the deposit `InsufficientAmount`
+  branch is typed. Two-line change plus a test asserting the raised type and
+  `minimum_raw_amount`.
+- **cSuperior (#8).** Keeping it synchronous is fine (off-chain FIFO), but add a
+  preflight that detects the queued/withdrawal-pending state (read the queue or
+  `maxRedeem`) and raises
+  `VaultFlowUnavailable(decoded_error="WithdrawalPending")` **before** building
+  the redeem transaction, so no revert is broadcast.
+- **Morpho Hyperithm USDC Degen (#9).** Redemption reverts with an undecoded
+  `custom error 0xace2a47e`. Add the deployed ABI error, decode the selector,
+  and raise the matching typed result (capacity / cooldown / window) before
+  broadcast. An undecoded revert reaching the caller is an I1 violation.
+- **Do not regress the §4c wins.** In particular the Lagoon Safe-provisioning
+  path (Syntropia, Moon Digital, Angmar, For Yield v2, RB Capital, TruMarket)
+  and the Accountable/Gains-Arbitrum typing must still hold in your run.
 
 ## 6. Mandatory self-verification before requesting review
 
