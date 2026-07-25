@@ -405,10 +405,20 @@ def normalise_vault_flow_failure(
                     outcome_data,
                 )
         if isinstance(current, UnsupportedVaultSimulation):
+            # eth-defi carries the stable false-capability contract as fields:
+            # retain them verbatim so the report says *why* the async lifecycle
+            # cannot be simulated, instead of only the exception prose.
+            unsupported_data = {
+                "unsupported_reason": getattr(current, "unsupported_reason", None),
+                "protocol": getattr(current, "protocol", None),
+                "vault_address": getattr(current, "vault_address", None),
+                "direction": getattr(current, "direction", None),
+                "phase": getattr(current, "phase", None),
+            }
             return (
                 "simulation_unsupported_async",
                 redact_vault_test_error_text(current),
-                {},
+                {key: value for key, value in unsupported_data.items() if value is not None},
             )
         if isinstance(current, VaultReceiptAnalysisError):
             return (

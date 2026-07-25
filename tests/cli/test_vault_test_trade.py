@@ -1363,6 +1363,7 @@ def test_unsupported_vault_simulation_has_typed_report_outcome() -> None:
     1. Create the typed eth-defi simulation capability failure.
     2. Normalise it through the vault-test reporting helper.
     3. Verify the report result remains distinct from execution failures.
+    4. Verify the structured false-capability context is retained verbatim.
     """
     # 1. Create the typed eth-defi simulation capability failure.
     error = UnsupportedVaultSimulation(
@@ -1378,7 +1379,19 @@ def test_unsupported_vault_simulation_has_typed_report_outcome() -> None:
         detail
         == "AccountableDepositManager does not advertise Anvil settlement"
     )
-    assert outcome_data == {}
+
+    # 4. Verify the structured false-capability context is retained verbatim.
+    contextual = UnsupportedVaultSimulation(
+        "Ember cannot settle on this fork",
+        unsupported_reason="operator_role_required",
+        protocol="ember",
+        vault_address="0x9be9294722f8AAd37b11a9792Be2C782182caFA2",
+        direction="redeem",
+    )
+    _result, _detail, contextual_data = normalise_vault_flow_failure(contextual)
+    assert contextual_data["unsupported_reason"] == "operator_role_required"
+    assert contextual_data["protocol"] == "ember"
+    assert contextual_data["direction"] == "redeem"
 
 
 def test_failure_operation_uses_latest_attempt_vault_trade() -> None:
