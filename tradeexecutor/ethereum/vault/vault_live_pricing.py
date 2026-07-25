@@ -191,16 +191,32 @@ class VaultPricing(PricingModel):
             return None
 
         vault = self.get_vault(pair)
+        deposit_manager = vault.get_deposit_manager()
 
-        if not vault.get_deposit_manager().has_synchronous_deposit():
+        if not deposit_manager.has_synchronous_deposit():
             # On asynchronous vaults (ERC-7540) maxDeposit() returns the claimable
             # amount of settled deposit requests, not the deposit capacity.
             # Request-based deposits have no on-chain capacity limit.
             return None
 
-        web3 = self.get_web3_for_pair(pair)
-        block_number = web3.eth.block_number
-        raw_amount = vault.vault_contract.functions.maxDeposit(owner).call(block_identifier=block_number)
+        # Prefer the manager's deposit-limit hook so non-standard vaults (e.g.
+        # Upshift multi-asset, which has no ERC-4626 maxDeposit()) resolve their
+        # capacity through the adapter instead of a raw contract call that would
+        # raise "maxDeposit not found in abi". The base manager reads maxDeposit()
+        # itself, so standard vaults are unaffected.
+        fetch_depositable = getattr(
+            deposit_manager, "fetch_depositable_raw_assets", None
+        )
+        if fetch_depositable is not None:
+            raw_amount = fetch_depositable(owner)
+        else:
+            web3 = self.get_web3_for_pair(pair)
+            block_number = web3.eth.block_number
+            raw_amount = vault.vault_contract.functions.maxDeposit(owner).call(
+                block_identifier=block_number
+            )
+        if raw_amount is None:
+            return None
         return vault.denomination_token.convert_to_decimals(raw_amount)
 
     def get_max_redemption(

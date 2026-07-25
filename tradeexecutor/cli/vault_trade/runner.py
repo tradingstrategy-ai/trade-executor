@@ -18,7 +18,11 @@ from typing import Any
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.vault.base import VaultSpec
-from eth_defi.vault.deposit_redeem import UnsupportedVaultSimulation, VaultFlowUnavailable
+from eth_defi.vault.deposit_redeem import (
+    UnsupportedVaultSimulation,
+    VaultFlowUnavailable,
+    WhitelistingRequired,
+)
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.cli.bootstrap import (
@@ -277,11 +281,27 @@ def normalise_vault_flow_failure(
     seen: set[int] = set()
     while current is not None and id(current) not in seen:
         seen.add(id(current))
+        # A missing deposit whitelist is a distinct, first-class admission
+        # state.  Check it before the generic VaultFlowUnavailable parent so it
+        # is reported as "whitelisting-needed" rather than "deposit_closed".
+        if isinstance(current, WhitelistingRequired):
+            return (
+                "whitelisting-needed",
+                redact_vault_test_error_text(current.reason),
+                {
+                    "protocol": current.protocol,
+                    "direction": current.direction,
+                    "phase": current.phase,
+                    "decoded_error": getattr(current, "decoded_error", None),
+                },
+            )
         if isinstance(current, VaultFlowUnavailable):
+            decoded_error = getattr(current, "decoded_error", None)
             outcome_data = {
                 "protocol": current.protocol,
                 "direction": current.direction,
                 "phase": current.phase,
+                "decoded_error": decoded_error,
                 "requested_raw_amount": str(current.requested_raw_amount)
                 if current.requested_raw_amount is not None
                 else None,
@@ -295,6 +315,25 @@ def normalise_vault_flow_failure(
             next_open = getattr(current, "next_open", None)
             if next_open is not None:
                 outcome_data["next_open"] = next_open.isoformat()
+            access_delay = getattr(current, "access_delay", None)
+            if access_delay is not None:
+                outcome_data["access_delay"] = access_delay
+
+            # eth-defi decodes protocol custom errors into stable names; map
+            # each to a typed current-state result the operator can act on,
+            # rather than a generic execution/transaction failure.
+            reason_text = redact_vault_test_error_text(current.reason)
+            if decoded_error == "EndOfEpoch":
+                return ("redemption_window_closed", reason_text, outcome_data)
+            if decoded_error == "WithdrawalsArePaused":
+                return ("redemption_paused", reason_text, outcome_data)
+            if decoded_error == "InsufficientAmount":
+                return ("below_minimum", reason_text, outcome_data)
+            if decoded_error in ("WithdrawalPending", "ExceededMaxRedeem"):
+                return ("redemption_capacity_limited", reason_text, outcome_data)
+            if decoded_error == "AddressNotAllowed":
+                return ("whitelisting-needed", reason_text, outcome_data)
+
             if (
                 current.direction == "redeem"
                 and current.requested_raw_amount is not None
@@ -303,19 +342,19 @@ def normalise_vault_flow_failure(
             ):
                 return (
                     "redemption_capacity_limited",
-                    redact_vault_test_error_text(current.reason),
+                    reason_text,
                     outcome_data,
                 )
             if current.direction == "deposit":
                 return (
                     "deposit_closed",
-                    redact_vault_test_error_text(current.reason),
+                    reason_text,
                     outcome_data,
                 )
             if current.direction == "redeem":
                 return (
                     "redemption_unavailable",
-                    redact_vault_test_error_text(current.reason),
+                    reason_text,
                     outcome_data,
                 )
         if isinstance(current, UnsupportedVaultSimulation):
