@@ -69,14 +69,16 @@ withdrawal and async capability are surfaced with structured metadata.
 | Accountable | 1 | 1 | eth-defi (Monad selector) |
 | Upshift | 1 | 1 | trade-executor + eth-defi (preflight routing) |
 | 40acres | 1 | 2 | trade-executor (satellite reconciliation) |
-| IPOR Fusion | 1 | 0 | trade-executor (satellite close diagnostics) — **new** |
+| IPOR Fusion | 1 | 0 | trade-executor (gas limit) — **resolved**, see §4 |
 
-## Remaining trade-executor work
+## Trade-executor work items
 
-No protocol-specific settlement logic belongs in trade-executor. The executor
-work below is diagnostics, cross-chain reconciliation and provenance.
+No protocol-specific settlement logic belongs in trade-executor. The items below
+are diagnostics, cross-chain reconciliation and provenance. Sections marked
+*done* were implemented on this branch; section 2 was investigated and found not
+to be an executor defect at all.
 
-### 1. Surface the real revert reason for home-chain vault redemptions
+### 1. Surface the real revert reason for home-chain vault redemptions — done
 
 `cSuperior Quality Private Credit USDC`
 (`1-0x438982ea288763370946625fd76c2508ee1fb229`) and `YieldNest RWA MAX`
@@ -92,19 +94,29 @@ Satellite-chain closes already surface the revert reason
 vault trades must carry the same `revert_reason` into the diagnostic result
 detail so the table is actionable and eth-defi can be given the exact selector.
 
-### 2. Apply redemption-share reconciliation on the satellite close path
+### 2. 40acres Pharaoh — not a reconciliation bug (superseded)
 
-`40acres Pharaoh USDC` (`43114-0x124d00b1ce4453ffc5a5f65ce83af13a7709bac7`,
-Avalanche) still fails redemption with
-`Satellite close failed: execution reverted: ERC20: transfer amount exceeds
-balance`. This is the same class of shortfall the PR #1577 reconciliation fix
-resolved for the home chain (40acres Aerodrome now succeeds). The satellite
-redemption/close path must reconcile the planned share quantity against the
-actual satellite module balance before building the burn, reusing the existing
-`get_available_bridge_capital()`/epsilon reconciliation rather than requesting
-the planned quantity.
+An earlier revision of this report claimed the satellite close path needed
+redemption-share reconciliation, by analogy with the PR #1577 home-chain fix.
+**That was wrong.** The existing reconciliation already runs correctly on the
+satellite path and requests exactly what is held:
 
-### 3. Route the Upshift deposit preflight through the eth-defi manager
+```text
+Vault redeem. Position quantity 0.916656, trade quantity -0.916656,
+              onchain balance 0.916656, position planned quantity 0.916656
+Onchain balance covers the planned shares to redeem: planned 0.916656, onchain 0.916656
+```
+
+The real cause is vault-side: `43114-0x124d00b1ce4453ffc5a5f65ce83af13a7709bac7`
+holds **zero** idle underlying while reporting ~510k USDC of `totalAssets`, so
+`redeem()` cannot transfer the underlying. That is an adapter preflight gap,
+addressed by eth-defi #1378, which returns a typed
+`redemption_capacity_limited` scoped to this exact deployment so 40acres
+Aerodrome continues to succeed.
+
+No executor change is required.
+
+### 3. Route the Upshift deposit preflight through the eth-defi manager — done
 
 `Sentora USD Earn` (`1-0x74ad2f789ed583dbd141bbdafc673fe1f033718b`) now fails at
 deposit with `The function 'maxDeposit' was not found in this contract's abi`.
@@ -117,16 +129,27 @@ capability/preview when the manager provides one, and fall back to generic
 `maxDeposit` shim or preview on the Upshift vault reader; see the eth-defi
 report.)
 
-### 4. Investigate the new IPOR Fusion satellite-close regression
+### 4. IPOR Fusion satellite-close regression — resolved
 
 `Autopilot USDC Morpho (Base)`
-(`8453-0xd6701905c59ee618dc36dc747506bce0a4ac760a`) is a new gap that was not
-present in the baseline: it deposits, then the Base satellite redemption reverts
-with a bare `Satellite close failed: execution reverted` (no reason). IPOR
-Fusion redeems synchronously and succeeds on Ethereum in the same run, so the
-failure is specific to the cross-chain satellite close. Surface the decoded
-revert reason first, then determine whether this is a satellite guard/slippage
-issue in executor routing or a genuine protocol state to be typed.
+(`8453-0xd6701905c59ee618dc36dc747506bce0a4ac760a`) deposited, then its Base
+satellite redemption reverted with OpenZeppelin `FailedInnerCall()`
+(`0x1425ea42`).
+
+This was **our own gas cap, not a vault or adapter defect**. The redemption
+spends 10,489,529 gas because the PlasmaVault requests liquidity from its Morpho
+market fuses, just over the previous 10,000,000
+`VaultRouting.vault_interaction_gas_limit`. The out-of-gas inner call surfaced
+through OpenZeppelin's wrapper error, which reads like a vault liquidity failure
+from the outside.
+
+Fixed by raising the limit to 15,000,000 — above the measured cost, below Base's
+16,777,216 per-transaction cap. Verified: with that change alone, and no adapter
+preflight, the vault completes a full deposit and redemption lifecycle.
+
+The lesson generalises: an unmetered `eth_call` preflight cannot observe a
+caller-side gas limit, so gas used versus the caller's cap must be ruled out
+before concluding that a vault cannot service a redemption.
 
 ### 5. Continue mapping typed eth-defi exceptions to stable terminal results
 

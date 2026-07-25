@@ -33,9 +33,9 @@ drift rather than a code effect; the Lagoon +6 is the code-attributable part.
 
 ## Remaining 15 gaps
 
-13 of 15 are typed current-state results carrying machine-readable reasons.
-Only two are genuine failures, both cross-chain satellite redemptions where the
-vault holds no immediate underlying liquidity:
+13 of 15 are typed current-state results carrying machine-readable reasons. Two
+were genuine failures at the time of this run; both have since been diagnosed
+and are **not** the same class of problem:
 
 | Protocol | # | Nature |
 |---|---:|---|
@@ -46,8 +46,22 @@ vault holds no immediate underlying liquidity:
 | Accountable | 1 | `below_minimum` on the exact Monad address |
 | Upshift | 1 | `incompatible_deposit_asset` |
 | YieldNest | 1 | `redemption_unavailable` |
-| **IPOR Fusion** | **1** | **`transaction_reverted`** — Autopilot USDC Morpho (Base) |
-| **40acres** | **1** | **`transaction_reverted`** — Pharaoh USDC (Avalanche) |
+| **IPOR Fusion** | **1** | `transaction_reverted` — Autopilot USDC Morpho (Base). **Fixed in trade-executor**: our own gas cap, not vault liquidity |
+| **40acres** | **1** | `transaction_reverted` — Pharaoh USDC (Avalanche). Adapter gap; fixed by eth-defi #1378 |
+
+### Post-run corrections
+
+- **IPOR Autopilot was not an adapter gap.** Its `redeem()` spends 10,489,529
+  gas while the PlasmaVault pulls liquidity from Morpho market fuses, just over
+  the executor's previous 10,000,000 `vault_interaction_gas_limit`. The
+  out-of-gas inner call surfaced as OpenZeppelin `FailedInnerCall()`
+  (`0x1425ea42`), which reads like a liquidity failure from outside. Raising the
+  limit to 15,000,000 (below Base's 16,777,216 per-transaction cap) makes the
+  vault complete a full lifecycle with no adapter change.
+- **40acres Pharaoh is a genuine adapter gap** — the vault holds zero idle
+  underlying and cannot service the redemption. eth-defi #1378 returns a typed
+  `redemption_capacity_limited` for it, scoped to that exact deployment so
+  40acres Aerodrome keeps succeeding.
 
 ## Full matrix
 

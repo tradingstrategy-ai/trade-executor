@@ -33,6 +33,7 @@ from tradeexecutor.cli.bootstrap import (
 from tradeexecutor.cli.testtrade import BridgeProceedsUnavailable, perform_test_trade
 from tradeexecutor.cli.vault_trade.core import build_vault_test_universe
 from tradeexecutor.cli.vault_trade.state import (
+    VAULT_TEST_RESULTS,
     close_simulated_positions,
     capture_vault_test_error,
     classify_vault_test_failure,
@@ -284,17 +285,9 @@ def get_adapter_unsupported_detail(
 ) -> tuple[str, dict] | None:
     """Return an explicit adapter limitation before a transaction is built."""
 
-    get_capability = getattr(
-        attempt.executable_vault,
-        "get_deposit_manager_capability",
-        None,
-    )
-    if get_capability is None:
-        # Some adapters have not adopted eth-defi's optional capability API.
-        # Preserve their existing execution path and diagnostics.
-        return None
-
-    capability = get_capability()
+    # Some adapters have not adopted eth-defi's optional capability API.
+    # Preserve their existing execution path and diagnostics.
+    capability = get_vault_manager_capability(attempt.executable_vault)
     if capability is None:
         return None
 
@@ -329,7 +322,7 @@ def get_deposit_closed_detail(attempt: "VaultAttempt") -> str | None:
 # ``VaultFlowError.preflight_result`` (the repo-to-repo contract). A value
 # outside this set is ignored so a new/unknown eth-defi result cannot silently
 # become an unrecognised status; the decoded-error fallback then applies.
-ALLOWED_PREFLIGHT_RESULTS = frozenset(
+ALLOWED_PREFLIGHT_RESULTS: frozenset[str] = frozenset(
     {
         "whitelisting-needed",
         "below_minimum",
@@ -339,6 +332,12 @@ ALLOWED_PREFLIGHT_RESULTS = frozenset(
         "redemption_unavailable",
         "deposit_closed",
     }
+)
+
+# Copying a preflight result verbatim would write an unrenderable status if it
+# were not also a persisted vault-test result, so keep the two sets in step.
+assert ALLOWED_PREFLIGHT_RESULTS <= VAULT_TEST_RESULTS, (
+    f"Unknown preflight results: {ALLOWED_PREFLIGHT_RESULTS - VAULT_TEST_RESULTS}"
 )
 
 
