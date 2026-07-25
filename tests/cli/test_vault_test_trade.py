@@ -1214,6 +1214,7 @@ def test_vault_flow_failures_have_typed_report_outcomes() -> None:
         "direction": "redeem",
         "phase": "preflight",
         "decoded_error": None,
+        "preflight_result": None,
         "requested_raw_amount": "200",
         "available_raw_amount": "100",
         "minimum_raw_amount": "10",
@@ -1271,6 +1272,44 @@ def test_decoded_vault_errors_map_to_typed_results() -> None:
     result, _detail, outcome_data = normalise_vault_flow_failure(minimum_error)
     assert result == "below_minimum"
     assert outcome_data["minimum_raw_amount"] == "1000"
+
+
+def test_preflight_result_is_copied_verbatim() -> None:
+    """The authoritative eth-defi preflight_result maps regardless of decoded_error.
+
+    1. Simulate an adapter that sets preflight_result plus a decoded_error name
+       the executor heuristic does not enumerate (e.g. InsufficientShares).
+    2. Verify the executor copies preflight_result verbatim as the result.
+    3. Verify an unrecognised preflight_result falls back to the decoded_error map.
+    """
+
+    # 1. Adapter sets preflight_result + a decoded_error name outside the heuristic.
+    error = VaultFlowUnavailable(
+        "redeem refused",
+        protocol="ember",
+        direction="redeem",
+        phase="preflight",
+    )
+    error.preflight_result = "below_minimum"
+    error.decoded_error = "InsufficientShares"  # not in the decoded-error heuristic
+
+    # 2. Verify the executor copies preflight_result verbatim as the result.
+    result, _detail, outcome_data = normalise_vault_flow_failure(error)
+    assert result == "below_minimum"
+    assert outcome_data["preflight_result"] == "below_minimum"
+    assert outcome_data["decoded_error"] == "InsufficientShares"
+
+    # 3. Verify an unrecognised preflight_result falls back to the decoded_error map.
+    fallback = VaultFlowUnavailable(
+        "redeem refused",
+        protocol="gains",
+        direction="redeem",
+        phase="preflight",
+        decoded_error="EndOfEpoch",
+    )
+    fallback.preflight_result = "not_a_known_result"
+    result, _detail, _outcome_data = normalise_vault_flow_failure(fallback)
+    assert result == "redemption_window_closed"
 
 
 def test_incompatible_deposit_asset_lists_supported_and_selected() -> None:

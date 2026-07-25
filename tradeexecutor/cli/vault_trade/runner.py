@@ -275,6 +275,23 @@ def get_deposit_closed_detail(attempt: "VaultAttempt") -> str | None:
         return None
 
 
+# The result strings eth-defi may carry verbatim in
+# ``VaultFlowError.preflight_result`` (the repo-to-repo contract). A value
+# outside this set is ignored so a new/unknown eth-defi result cannot silently
+# become an unrecognised status; the decoded-error fallback then applies.
+ALLOWED_PREFLIGHT_RESULTS = frozenset(
+    {
+        "whitelisting-needed",
+        "below_minimum",
+        "redemption_capacity_limited",
+        "redemption_window_closed",
+        "redemption_paused",
+        "redemption_unavailable",
+        "deposit_closed",
+    }
+)
+
+
 def normalise_vault_flow_failure(
     error: BaseException,
 ) -> tuple[str, str, dict] | None:
@@ -315,11 +332,13 @@ def normalise_vault_flow_failure(
             )
         if isinstance(current, VaultFlowUnavailable):
             decoded_error = getattr(current, "decoded_error", None)
+            preflight_result = getattr(current, "preflight_result", None)
             outcome_data = {
                 "protocol": current.protocol,
                 "direction": current.direction,
                 "phase": current.phase,
                 "decoded_error": decoded_error,
+                "preflight_result": preflight_result,
                 "requested_raw_amount": str(current.requested_raw_amount)
                 if current.requested_raw_amount is not None
                 else None,
@@ -337,10 +356,20 @@ def normalise_vault_flow_failure(
             if access_delay is not None:
                 outcome_data["access_delay"] = access_delay
 
-            # eth-defi decodes protocol custom errors into stable names; map
-            # each to a typed current-state result the operator can act on,
-            # rather than a generic execution/transaction failure.
             reason_text = redact_vault_test_error_text(current.reason)
+
+            # eth-defi's ``preflight_result`` is the authoritative, stable
+            # result string for a predictable refusal (the repo-to-repo
+            # contract). Copy it verbatim when it is a recognised result, in
+            # preference to inferring from the ``decoded_error`` name — protocol
+            # adapters use several decoded-error spellings (e.g. InsufficientShares,
+            # WithdrawalsPaused, RedemptionPending) that the heuristic below does
+            # not enumerate.
+            if preflight_result in ALLOWED_PREFLIGHT_RESULTS:
+                return (preflight_result, reason_text, outcome_data)
+
+            # Fallback for eth-defi revisions without ``preflight_result``: map
+            # the decoded custom-error name to a typed current-state result.
             if decoded_error == "EndOfEpoch":
                 return ("redemption_window_closed", reason_text, outcome_data)
             if decoded_error == "WithdrawalsArePaused":
