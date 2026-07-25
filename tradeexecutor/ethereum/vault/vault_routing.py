@@ -436,6 +436,15 @@ class VaultRouting(RoutingModel):
             is_async = not deposit_manager.has_synchronous_deposit()
             direction = "deposit"
         else:
+            # We assume a redemption is filled in full. Some protocols are
+            # partial-fill: cSigma pays out whatever its reserve covers now and
+            # queues the remainder as an off-chain FIFO "pending position" that
+            # keeps earning yield (see cSigma's withdraw-flow design doc). We do
+            # not model that split, so a partially fillable redemption is either
+            # refused by the adapter preflight or reverts on chain.
+            # TODO: model partial fills for cSigma-style reserve-limited pools —
+            # redeem the reserve-covered portion and track the queued remainder
+            # instead of treating the redemption as all-or-nothing.
             request = deposit_manager.create_redemption_request(
                 owner=address,
                 shares=swap_amount,

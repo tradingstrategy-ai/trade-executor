@@ -376,6 +376,13 @@ def normalise_vault_flow_failure(
                 return ("redemption_paused", reason_text, outcome_data)
             if decoded_error == "InsufficientAmount":
                 return ("below_minimum", reason_text, outcome_data)
+            # We assume redemptions fill in full, so a reserve/capacity shortfall
+            # is reported as a flat refusal. For cSigma this is a simplification:
+            # canonically the lender would receive a partial payout now and keep
+            # the remainder as a queued FIFO position, so "capacity limited" is
+            # stricter than the protocol actually behaves.
+            # TODO: once partial fills are modelled, distinguish "partially
+            # fillable" (payout + queued remainder) from a true refusal here.
             if decoded_error in ("WithdrawalPending", "ExceededMaxRedeem"):
                 return ("redemption_capacity_limited", reason_text, outcome_data)
             if decoded_error == "AddressNotAllowed":
