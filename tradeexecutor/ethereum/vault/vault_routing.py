@@ -1,6 +1,5 @@
 """Route trades for ERC-4626 and similar vaults."""
 
-import inspect
 import logging
 from decimal import Decimal
 from typing import cast
@@ -47,6 +46,70 @@ logger = logging.getLogger(__name__)
 
 class VaultReceiptAnalysisError(RuntimeError):
     """A mined vault transaction could not be decoded into executed amounts."""
+
+
+class IncompatibleDepositAsset(Exception):
+    """The selected deposit asset is not accepted by a multi-asset vault.
+
+    Multi-asset vaults (e.g. Upshift) whitelist a specific set of input assets
+    that can differ from the ERC-4626 accounting asset.  This is raised when the
+    selected asset (the ``--deposit-asset`` override, or the native USDC default)
+    is not on that whitelist, so the operator sees both the vault's accepted
+    assets and the asset that was attempted.
+    """
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        selected_asset: str | None = None,
+        accepted_assets: list[tuple[str, str]] | None = None,
+    ):
+        super().__init__(reason)
+        #: Address of the asset we tried to deposit, when known.
+        self.selected_asset = selected_asset
+        #: ``(symbol, address)`` tuples the vault accepts.
+        self.accepted_assets = accepted_assets or []
+
+
+def resolve_multi_asset_deposit_asset(
+    deposit_manager,
+    chain_id: int,
+    override: str | None = None,
+) -> str | None:
+    """Resolve and validate the accepted input asset for a multi-asset vault.
+
+    Single-asset vaults need no explicit selection and return ``None``.  For a
+    multi-asset vault the asset is the ``--deposit-asset`` override, or native
+    USDC on the vault's own chain by default.
+
+    :raise IncompatibleDepositAsset:
+        When the vault is multi-asset and the selected asset is not on its
+        accepted-asset whitelist.  The exception carries both the vault's
+        accepted assets and the asset that was attempted.
+    """
+
+    fetch_accepted = getattr(deposit_manager, "fetch_accepted_assets", None)
+    if fetch_accepted is None:
+        # Single-asset ERC-4626 vault: the reserve asset is deposited directly.
+        return None
+
+    selected = override or USDC_NATIVE_TOKEN.get(chain_id)
+    accepted_pairs = [(token.symbol, token.address) for token in fetch_accepted()]
+    accepted_addresses = {address.lower() for _symbol, address in accepted_pairs}
+    if selected is None or selected.lower() not in accepted_addresses:
+        supported = ", ".join(
+            f"{symbol} ({address})" for symbol, address in accepted_pairs
+        )
+        source = "--deposit-asset override" if override else "native USDC default"
+        raise IncompatibleDepositAsset(
+            f"Selected deposit asset {selected or '<none>'} ({source}) is not "
+            f"accepted by this vault. Vault accepts: {supported or '<none>'}. "
+            f"Set --deposit-asset to one of the accepted assets.",
+            selected_asset=selected,
+            accepted_assets=accepted_pairs,
+        )
+    return selected
 
 
 def reconcile_vault_redemption_amount(
@@ -358,17 +421,17 @@ class VaultRouting(RoutingModel):
             # Multi-asset vaults (e.g. Upshift) accept several deposit assets and
             # require an explicit selection; their manager exposes an
             # ``accepted_asset`` parameter.  Default to native USDC on the vault's
-            # own chain, overridable per run via ``deposit_asset_override``.
+            # own chain, overridable per run via ``deposit_asset_override``.  An
+            # asset not on the vault whitelist raises IncompatibleDepositAsset.
             # TODO: exercise the override end-to-end (see the vault-test-trade
             # --deposit-asset TODO); only the USDC default is covered today.
-            if "accepted_asset" in inspect.signature(
-                deposit_manager.create_deposit_request
-            ).parameters:
-                accepted_asset = self.deposit_asset_override or USDC_NATIVE_TOKEN.get(
-                    target_vault.chain_id
-                )
-                if accepted_asset is not None:
-                    deposit_kwargs["accepted_asset"] = HexAddress(accepted_asset)
+            accepted_asset = resolve_multi_asset_deposit_asset(
+                deposit_manager,
+                target_vault.chain_id,
+                self.deposit_asset_override,
+            )
+            if accepted_asset is not None:
+                deposit_kwargs["accepted_asset"] = HexAddress(accepted_asset)
             request = deposit_manager.create_deposit_request(**deposit_kwargs)
             is_async = not deposit_manager.has_synchronous_deposit()
             direction = "deposit"

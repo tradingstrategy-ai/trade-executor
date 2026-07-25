@@ -75,9 +75,11 @@ from tradeexecutor.cli.testtrade import BridgeProceedsUnavailable
 from tradeexecutor.ethereum import web3config as web3config_module
 from tradeexecutor.ethereum.vault import vault_routing
 from tradeexecutor.ethereum.vault.vault_routing import (
+    IncompatibleDepositAsset,
     convert_vault_flow_analysis,
     get_async_vault_request_transactions,
     reconcile_vault_redemption_amount,
+    resolve_multi_asset_deposit_asset,
 )
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.ethereum.web3config import Web3Config
@@ -1269,6 +1271,51 @@ def test_decoded_vault_errors_map_to_typed_results() -> None:
     result, _detail, outcome_data = normalise_vault_flow_failure(minimum_error)
     assert result == "below_minimum"
     assert outcome_data["minimum_raw_amount"] == "1000"
+
+
+def test_incompatible_deposit_asset_lists_supported_and_selected() -> None:
+    """A multi-asset vault whitelist mismatch reports its own failure mode.
+
+    1. Resolve a deposit asset for a multi-asset vault that excludes our asset.
+    2. Verify the raised error names both the supported assets and our asset.
+    3. Verify the reporting helper maps it to the incompatible_deposit_asset result.
+    """
+
+    # A minimal fake multi-asset manager whose whitelist excludes USDC.
+    class _Token:
+        def __init__(self, symbol: str, address: str):
+            self.symbol = symbol
+            self.address = address
+
+    class _MultiAssetManager:
+        def fetch_accepted_assets(self) -> list[_Token]:
+            return [
+                _Token("USDT", "0xdAC17F958D2ee523a2206206994597C13D831ec7"),
+                _Token("PYUSD", "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8"),
+            ]
+
+    # 1. Resolve a deposit asset for a multi-asset vault that excludes our asset.
+    try:
+        resolve_multi_asset_deposit_asset(_MultiAssetManager(), 1)
+    except IncompatibleDepositAsset as error:
+        raised = error
+    else:
+        raised = None
+
+    # 2. Verify the raised error names both the supported assets and our asset.
+    assert raised is not None
+    message = str(raised)
+    assert "USDT" in message and "PYUSD" in message
+    assert raised.selected_asset is not None
+    assert raised.selected_asset in message  # our attempted asset is shown
+
+    # 3. Verify the reporting helper maps it to the incompatible_deposit_asset result.
+    result, _detail, outcome_data = normalise_vault_flow_failure(raised)
+    assert result == "incompatible_deposit_asset"
+    assert outcome_data["selected_asset"] == raised.selected_asset
+    assert {"symbol": "USDT", "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7"} in (
+        outcome_data["accepted_assets"]
+    )
 
 
 def test_unsupported_vault_simulation_has_typed_report_outcome() -> None:

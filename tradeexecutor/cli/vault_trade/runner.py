@@ -57,7 +57,10 @@ from tradeexecutor.cli.vault_trade.simulation import (
 )
 from tradeexecutor.cli.vault_trade.tui import VaultTestAction
 from tradeexecutor.ethereum.routing_state import OutOfBalance
-from tradeexecutor.ethereum.vault.vault_routing import VaultReceiptAnalysisError
+from tradeexecutor.ethereum.vault.vault_routing import (
+    IncompatibleDepositAsset,
+    VaultReceiptAnalysisError,
+)
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
@@ -281,6 +284,21 @@ def normalise_vault_flow_failure(
     seen: set[int] = set()
     while current is not None and id(current) not in seen:
         seen.add(id(current))
+        # A multi-asset vault whose whitelist excludes our selected deposit
+        # asset is its own failure mode: report both the accepted assets and
+        # the asset we attempted so the operator can pick a valid one.
+        if isinstance(current, IncompatibleDepositAsset):
+            return (
+                "incompatible_deposit_asset",
+                redact_vault_test_error_text(current),
+                {
+                    "selected_asset": current.selected_asset,
+                    "accepted_assets": [
+                        {"symbol": symbol, "address": address}
+                        for symbol, address in current.accepted_assets
+                    ],
+                },
+            )
         # A missing deposit whitelist is a distinct, first-class admission
         # state.  Check it before the generic VaultFlowUnavailable parent so it
         # is reported as "whitelisting-needed" rather than "deposit_closed".

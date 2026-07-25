@@ -54,6 +54,7 @@ VAULT_TEST_RESULTS = {
     "redemption_window_closed",
     "redemption_paused",
     "below_minimum",
+    "incompatible_deposit_asset",
     "bridge_proceeds_unavailable",
     "adapter_unsupported",
     "async_request_only",

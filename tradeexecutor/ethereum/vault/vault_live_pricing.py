@@ -6,10 +6,12 @@ from typing import Callable
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.vault import ERC4626Vault
-from eth_defi.token import USDC_NATIVE_TOKEN
 from web3 import Web3
 
-from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
+from tradeexecutor.ethereum.vault.vault_routing import (
+    get_vault_for_pair,
+    resolve_multi_asset_deposit_asset,
+)
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -125,13 +127,14 @@ class VaultPricing(PricingModel):
         deposit_manager = vault.get_deposit_manager()
         # Multi-asset vaults (e.g. Upshift) cannot estimate a deposit without an
         # explicitly selected accepted asset; they expose an asset-aware
-        # estimator. Default the accepted asset to native USDC on the vault's own
-        # chain, matching VaultRouting.deposit_or_redeem's deposit default.
+        # estimator. Resolve the accepted asset (native USDC default on the
+        # vault's own chain) and raise IncompatibleDepositAsset — listing the
+        # vault's accepted assets and our asset — when it is not on the whitelist.
         # TODO: honour the vault-test-trade --deposit-asset override here too;
         # it currently lives on the routing model, not the pricing model (task #10).
+        accepted_asset = resolve_multi_asset_deposit_asset(deposit_manager, vault.chain_id)
         estimate_for_asset = getattr(deposit_manager, "estimate_deposit_for_asset", None)
-        accepted_asset = USDC_NATIVE_TOKEN.get(vault.chain_id)
-        if estimate_for_asset is not None and accepted_asset is not None:
+        if accepted_asset is not None and estimate_for_asset is not None:
             estimated_shares = estimate_for_asset(
                 owner=self.get_owner_address(pair),
                 amount=reserve,
