@@ -1,11 +1,14 @@
 """Route trades for ERC-4626 and similar vaults."""
 
+import inspect
 import logging
 from decimal import Decimal
 from typing import cast
 
 from eth_typing import HexAddress
 from hexbytes import HexBytes
+
+from eth_defi.token import USDC_NATIVE_TOKEN
 
 from eth_defi.erc_4626.analysis import analyse_4626_flow_transaction
 from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
@@ -206,12 +209,20 @@ class VaultRouting(RoutingModel):
         reserve_token_address: JSONHexAddress,
         epsilon=Decimal(1e-6),
         redeem_epsilon=0.025,
+        deposit_asset_override: JSONHexAddress | None = None,
     ):
         super().__init__(
             allowed_intermediary_pairs={},
             reserve_token_address=reserve_token_address,
         )
         self.epsilon = epsilon
+
+        # Accepted input asset for multi-asset vaults (e.g. Upshift), where the
+        # ERC-4626 accounting asset differs from the deposit assets and the
+        # manager requires an explicit selection. ``None`` means "use the
+        # default", which :meth:`deposit_or_redeem` resolves to native USDC on
+        # the vault's own chain. Set this to override the default per run.
+        self.deposit_asset_override = deposit_asset_override
 
         # 3M gas was not enough to withdraw from IPOR, but Base has a per-tx gas cap 16,777,216
         self.vault_interaction_gas_limit = 10_000_000
@@ -339,11 +350,26 @@ class VaultRouting(RoutingModel):
         # both synchronous and asynchronous flows.  In particular, this keeps
         # cSigma's owner-specific immediate-redemption capacity check intact.
         if trade.is_buy():
-            request = deposit_manager.create_deposit_request(
+            deposit_kwargs = dict(
                 owner=address,
                 amount=swap_amount,
                 check_enough_token=False,
             )
+            # Multi-asset vaults (e.g. Upshift) accept several deposit assets and
+            # require an explicit selection; their manager exposes an
+            # ``accepted_asset`` parameter.  Default to native USDC on the vault's
+            # own chain, overridable per run via ``deposit_asset_override``.
+            # TODO: exercise the override end-to-end (see the vault-test-trade
+            # --deposit-asset TODO); only the USDC default is covered today.
+            if "accepted_asset" in inspect.signature(
+                deposit_manager.create_deposit_request
+            ).parameters:
+                accepted_asset = self.deposit_asset_override or USDC_NATIVE_TOKEN.get(
+                    target_vault.chain_id
+                )
+                if accepted_asset is not None:
+                    deposit_kwargs["accepted_asset"] = HexAddress(accepted_asset)
+            request = deposit_manager.create_deposit_request(**deposit_kwargs)
             is_async = not deposit_manager.has_synchronous_deposit()
             direction = "deposit"
         else:

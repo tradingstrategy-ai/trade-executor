@@ -399,6 +399,26 @@ def get_latest_attempt_vault_operation(
     return "deposit" if latest_vault_trade.is_buy() else "redeem"
 
 
+def apply_deposit_asset_override(routing_model: Any, deposit_asset: str) -> None:
+    """Set the multi-asset deposit-asset override on materialised vault routers.
+
+    The vault-test-trade ``--deposit-asset`` value overrides the default accepted
+    input asset (native USDC on the vault's own chain) for multi-asset vaults.
+    Only routers already created in the generic pair configurator are patched;
+    lazily-created ones fall back to the USDC default until this is threaded
+    through the configurator factory (see task #10 TODO).
+    """
+
+    configurator = getattr(routing_model, "pair_configurator", None)
+    configs = getattr(configurator, "configs", None)
+    if not configs:
+        return
+    for config in configs.values():
+        vault_router = getattr(config, "routing_model", None)
+        if hasattr(vault_router, "deposit_asset_override"):
+            vault_router.deposit_asset_override = deposit_asset
+
+
 def get_bridge_conflict(
     bridge_position: TradingPosition | None,
     vault_spec: VaultSpec,
@@ -454,6 +474,9 @@ class VaultTestBatchRunner:
     rerun: bool
     settle_async_on_anvil: bool = False
     manual_action: VaultTestAction | None = None
+    #: Override the accepted input asset for multi-asset vaults (e.g. Upshift).
+    #: ``None`` uses the default, native USDC on the vault's own chain.
+    deposit_asset: str | None = None
 
     rows: list[dict] = field(default_factory=list, init=False)
     pending_specs: deque = field(init=False)
@@ -676,6 +699,16 @@ class VaultTestBatchRunner:
         routing_model = self.runtime.execution_model.create_default_routing_model(
             universe
         )
+        # Propagate the multi-asset deposit-asset override to the vault routers
+        # so multi-asset vaults (e.g. Upshift) use the requested input asset.
+        # The USDC-on-chain default lives in VaultRouting.deposit_or_redeem and
+        # needs no propagation; only an explicit override travels here.
+        # TODO: only vault routers already materialised in the pair configurator
+        # receive the override; lazily-created ones fall back to the USDC
+        # default. Thread it through the configurator factory and add a fork
+        # test before relying on the override (see task #10).
+        if self.deposit_asset:
+            apply_deposit_asset_override(routing_model, self.deposit_asset)
         pricing_model = GenericPricing(routing_model.pair_configurator)
         valuation_model = GenericValuation(routing_model.pair_configurator)
         routing_state = routing_model.create_routing_state(
