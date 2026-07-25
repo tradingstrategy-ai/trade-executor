@@ -68,7 +68,7 @@ withdrawal and async capability are surfaced with structured metadata.
 | Plutus | 1 | 1 | eth-defi (live-state vs adapter) |
 | Accountable | 1 | 1 | eth-defi (Monad selector) |
 | Upshift | 1 | 1 | trade-executor + eth-defi (preflight routing) |
-| 40acres | 1 | 2 | trade-executor (satellite reconciliation) |
+| 40acres | 1 | 2 | eth-defi (liquidity preflight, PR #1378) — see section 2 |
 | IPOR Fusion | 1 | 0 | trade-executor (gas limit) — **resolved**, see §4 |
 
 ## Trade-executor work items
