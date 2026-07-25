@@ -287,8 +287,16 @@ class VaultRouting(RoutingModel):
         # the vault's own chain. Set this to override the default per run.
         self.deposit_asset_override = deposit_asset_override
 
-        # 3M gas was not enough to withdraw from IPOR, but Base has a per-tx gas cap 16,777,216
-        self.vault_interaction_gas_limit = 10_000_000
+        # Vault redemptions can be very gas heavy when the vault pulls liquidity
+        # back from its underlying markets on withdraw. Measured worst case so
+        # far: IPOR Autopilot USDC Morpho on Base spends 10,489,529 gas on
+        # redeem() while its PlasmaVault requests liquidity from Morpho market
+        # fuses. At the previous 10,000,000 limit that redemption ran out of gas
+        # and surfaced as OpenZeppelin FailedInnerCall() (0x1425ea42), which
+        # looks like a vault liquidity failure but is purely our own cap.
+        # Base enforces a per-transaction gas cap of 16,777,216, so stay below
+        # it while leaving headroom above the measured worst case.
+        self.vault_interaction_gas_limit = 15_000_000
 
         # 2.5% is the maximum relative difference for redeeming vault shares,
         # when checking onchain balance vs our internal accounting
