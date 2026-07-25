@@ -2,15 +2,13 @@
 
 import logging
 from decimal import Decimal
-import datetime
-from typing import Dict, cast
+from typing import cast
 
 from eth_typing import HexAddress
 from hexbytes import HexBytes
 
 from eth_defi.erc_4626.analysis import analyse_4626_flow_transaction
 from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
-from eth_defi.erc_4626.profit_and_loss import estimate_4626_recent_profitability
 from eth_defi.erc_4626.deposit_redeem import ERC4626DepositManager
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.token import fetch_erc20_details, TokenDiskCache
@@ -46,6 +44,31 @@ logger = logging.getLogger(__name__)
 
 class VaultReceiptAnalysisError(RuntimeError):
     """A mined vault transaction could not be decoded into executed amounts."""
+
+
+def reconcile_vault_redemption_amount(
+    planned_amount: Decimal,
+    onchain_balance: Decimal,
+    *,
+    epsilon: float,
+) -> Decimal:
+    """Cap a redemption to a tolerably smaller on-chain share balance."""
+
+    assert planned_amount > 0, f"Planned redemption must be positive, got {planned_amount}"
+    assert onchain_balance >= 0, f"On-chain share balance cannot be negative, got {onchain_balance}"
+
+    if onchain_balance >= planned_amount:
+        return planned_amount
+
+    relative_shortfall = (planned_amount - onchain_balance) / planned_amount
+    if relative_shortfall > Decimal(str(epsilon)):
+        raise AssertionError(
+            f"Vault share token balance has a large relative shortfall: "
+            f"planned {planned_amount}, on-chain {onchain_balance}, "
+            f"relative shortfall {relative_shortfall}, epsilon {epsilon}"
+        )
+
+    return onchain_balance
 
 
 def convert_vault_flow_analysis(
@@ -181,7 +204,6 @@ class VaultRouting(RoutingModel):
     def __init__(
         self,
         reserve_token_address: JSONHexAddress,
-        profitability_estimation_lookback_window=datetime.timedelta(days=7),
         epsilon=Decimal(1e-6),
         redeem_epsilon=0.025,
     ):
@@ -189,7 +211,6 @@ class VaultRouting(RoutingModel):
             allowed_intermediary_pairs={},
             reserve_token_address=reserve_token_address,
         )
-        self.profitability_estimation_lookback_window = profitability_estimation_lookback_window
         self.epsilon = epsilon
 
         # 3M gas was not enough to withdraw from IPOR, but Base has a per-tx gas cap 16,777,216
@@ -257,26 +278,11 @@ class VaultRouting(RoutingModel):
             token_in = reserve_asset
             token_out = trade.pair.base
             swap_amount = trade.get_planned_reserve()
-
-            try:
-                profitability_estimation = estimate_4626_recent_profitability(
-                    vault=target_vault,
-                    lookback_window=self.profitability_estimation_lookback_window,
-                )
-                profitability_estimation_error = None
-            except Exception as e:
-                # Ok to fail, data used only for diagnostics and UI
-                profitability_estimation = None
-                profitability_estimation_error = str(e)
-                logger.error(
-                    "Vault trade %s profitability estimation failed: %s",
-                    trade,
-                    e,
-                )
         else:
             token_in = trade.pair.base
             token_out = reserve_asset
-            # Swap amount is negative
+            # Sells have a negative planned quantity, but redemption requests
+            # take a positive share amount.
             swap_amount = -trade.planned_quantity
 
             share_token = target_vault.share_token
@@ -293,38 +299,30 @@ class VaultRouting(RoutingModel):
                 onchain_balance,
                 position.get_quantity(planned=True),
             )
-            rel_diff = abs((onchain_balance - swap_amount) / swap_amount)
-            if rel_diff != 0 and onchain_balance + swap_amount < 0:
-                if rel_diff > self.redeem_epsilon:
-                    # Accounting broken
-
-                    logger.error(
-                        "Vault trade %s, position %s, share token %s, has a large relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, epsilon is %f",
-                        trade.trade_id,
-                        position,
-                        share_token,
-                        rel_diff,
-                        trade.planned_quantity,
-                        onchain_balance,
-                        self.redeem_epsilon,
-                    )
-                    raise AssertionError("Vault share token has a large relative difference in onchain balance when trying to redeem the share token")
-                else:
-                    # Epsilon rounding
-                    logger.warning(
-                        "Vault trade %s, position %s, share token %s, has a small relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, automatically rounding, epsilon is %f",
-                        trade.trade_id,
-                        position,
-                        share_token,
-                        rel_diff,
-                        trade.planned_quantity,
-                        onchain_balance,
-                        self.redeem_epsilon,
-                    )
-                    swap_amount = onchain_balance
+            reconciled_amount = reconcile_vault_redemption_amount(
+                swap_amount,
+                onchain_balance,
+                epsilon=self.redeem_epsilon,
+            )
+            if reconciled_amount < swap_amount:
+                relative_shortfall = (swap_amount - onchain_balance) / swap_amount
+                logger.warning(
+                    "Vault trade %s, position %s, share token %s, has a small relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, automatically rounding, epsilon is %f",
+                    trade.trade_id,
+                    position,
+                    share_token,
+                    relative_shortfall,
+                    trade.planned_quantity,
+                    onchain_balance,
+                    self.redeem_epsilon,
+                )
+                swap_amount = reconciled_amount
             else:
-                # Exact match
-                logger.info("Onchain balance and accounting has exact match for shares to redeem: %s", swap_amount)
+                logger.info(
+                    "Onchain balance covers the planned shares to redeem: planned %s, onchain %s",
+                    swap_amount,
+                    onchain_balance,
+                )
 
         logger.info(
             "Preparing vault flow %s -> %s, amount %s (%s), slippage tolerance %f",
@@ -468,7 +466,7 @@ class VaultRouting(RoutingModel):
         web3: Web3,
         state: State,
         trade: TradeExecution,
-        receipts: Dict[str, dict],
+        receipts: dict[str, dict],
         stop_on_execution_failure=False,
     ):
 

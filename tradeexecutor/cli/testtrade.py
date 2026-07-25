@@ -1,22 +1,33 @@
 """Perform a test trade on a universe."""
 import logging
-import datetime
 from decimal import Decimal
 from typing import Callable
 
 from web3 import Web3
 
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.erc_4626.vault_protocol.gains.testing import force_ostium_v15_settlement
+from eth_defi.erc_4626.vault_protocol.gains.vault import OstiumVault, OstiumVersion
 from eth_defi.provider.anvil import fund_erc20_on_anvil, is_anvil, mine
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
-from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind
+from eth_defi.vault.deposit_redeem import (
+    AsyncVaultRequestStatus,
+    UnsupportedVaultSimulation,
+    VaultDepositManager,
+    VaultForcedSettlementResult,
+)
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingReserveDescription
 from tradingstrategy.universe import Universe
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.exchange import ExchangeUniverse
 
+from tradeexecutor.ethereum.cctp.planner import _find_bridge_pair
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
+from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
+from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
+from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
 from tradeexecutor.state.trade import TradeFlag, TradeStatus
 from tradeexecutor.state.types import Percent
 from tradeexecutor.statistics.core import update_statistics
@@ -53,6 +64,32 @@ def _update_test_trade_statistics(state: State, *, enabled: bool) -> None:
         ExecutionMode.real_trading,
         long_short_metrics_latest=long_short_metrics_latest,
     )
+
+
+def _serialise_forced_vault_settlement(
+    deposit_manager: VaultDepositManager,
+    direction: str,
+    settlement: VaultForcedSettlementResult,
+) -> dict:
+    """Convert manager-owned Anvil settlement evidence to JSON-safe values."""
+
+    def serialise_status(status: AsyncVaultRequestStatus | None) -> str | None:
+        return status.value if status is not None else None
+
+    def serialise_hash(tx_hash) -> str:
+        value = tx_hash.hex()
+        return value if value.startswith("0x") else f"0x{value}"
+
+    return {
+        "manager": deposit_manager.__class__.__name__,
+        "direction": direction,
+        "settlement_required": settlement.settlement_required,
+        "status_before": serialise_status(settlement.status_before),
+        "status_after": serialise_status(settlement.status_after),
+        "transaction_hashes": [
+            serialise_hash(tx_hash) for tx_hash in settlement.transaction_hashes
+        ],
+    }
 
 
 def _materialise_bridge_on_anvil(
@@ -698,8 +735,9 @@ def _make_cross_chain_test_trade(
 def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web3config=None):
     """Force settlement on Anvil for an async vault test trade and resolve it.
 
-    Uses protocol-specific settlement forcing (e.g. tryNewSettlement for Ostium V1.5,
-    force_lagoon_settle for ERC-7540) then runs the generic settlement retry.
+    Uses the selected eth-defi manager's ticket-aware settlement driver. Ostium
+    V1.5 retains its earlier permissionless compatibility path until its manager
+    exposes the same capability.
 
     :param web3:
         Web3 connection for the chain the vault lives on. For cross-chain
@@ -714,11 +752,6 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web
         it the resolver falls back to the execution model's default connection,
         which is only correct for home-chain vaults.
     """
-    from eth_defi.erc_4626.vault_protocol.gains.vault import OstiumVault, OstiumVersion
-    from eth_defi.erc_4626.vault_protocol.gains.testing import force_ostium_v15_settlement
-    from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
-    from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
-
     # This function impersonates the vault operator and only makes sense against
     # an Anvil fork — on a real chain nobody can force a settlement. Enforce the
     # test-only invariant here rather than relying on every caller's is_anvil()
@@ -726,25 +759,48 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web
     assert is_anvil(web3), "_force_vault_settlement_and_resolve() is Anvil-only (forces operator settlement)"
 
     vault = get_vault_for_pair(web3, trade.pair)
-    owner = trade.other_data.get("vault_owner_address")
+    deposit_manager = vault.get_deposit_manager()
+    direction = trade.other_data.get(
+        "vault_direction",
+        "deposit" if trade.is_buy() else "redeem",
+    )
+    if direction not in {"deposit", "redeem"}:
+        raise UnsupportedVaultSimulation(
+            f"Unknown vault settlement direction {direction!r} for {vault.address}"
+        )
 
-    # Ostium's tryNewSettlement() is permissionless and is broadcast with
-    # node-side signing (eth_sendTransaction {"from": ...}), so its gas payer must
-    # be an account the node can sign for. The vault owner is the executor's hot
-    # wallet — a random key whose local signer middleware lives only on the
-    # executor's own web3, not on the Anvil node — so paying from it fails with
-    # "No Signer available". On Anvil we therefore pay tryNewSettlement() gas from
-    # a node-unlocked dev account instead. (The Lagoon branch below keeps `owner`:
-    # its settlement is permissioned and must come from the actual asset manager.)
-    settlement_caller = owner
-    dev_accounts = web3.eth.accounts
-    if dev_accounts:
+    get_capability = getattr(vault, "get_deposit_manager_capability", None)
+    capability = get_capability() if get_capability is not None else None
+    supports_manager_settlement = (
+        getattr(capability, "supports_anvil_settlement", None) is True
+    )
+
+    if supports_manager_settlement:
+        if direction == "deposit":
+            ticket = deposit_manager.reconstruct_deposit_ticket(trade.other_data)
+        else:
+            ticket = deposit_manager.reconstruct_redemption_ticket(trade.other_data)
+
+        settlement = deposit_manager.force_settle(ticket)
+        trade.other_data["vault_forced_settlement"] = (
+            _serialise_forced_vault_settlement(
+                deposit_manager,
+                direction,
+                settlement,
+            )
+        )
+    elif isinstance(vault, OstiumVault) and vault.version == OstiumVersion.v1_5:
+        # Ostium's tryNewSettlement() is permissionless and uses node-side
+        # signing, so pay gas from an Anvil-unlocked account rather than the
+        # executor hot wallet whose local signer is unknown to the node.
+        dev_accounts = web3.eth.accounts
+        if not dev_accounts:
+            raise UnsupportedVaultSimulation(
+                "Ostium V1.5 settlement requires an Anvil-unlocked gas payer"
+            )
         settlement_caller = dev_accounts[0]
 
-    # Protocol-specific settlement forcing
-    if isinstance(vault, OstiumVault) and vault.version == OstiumVersion.v1_5:
         # May need multiple settlements for withdrawal
-        direction = trade.other_data.get("vault_direction", "deposit")
         settlements_needed = 1
         if direction == "redeem":
             withdraw_target = vault.vault_contract.functions.targetSettlementId(False).call()
@@ -753,13 +809,16 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web
         for _ in range(settlements_needed):
             force_ostium_v15_settlement(vault, settlement_caller)
     else:
-        # ERC-7540 (Lagoon) — use force_lagoon_settle if available. Lagoon
-        # settlement is permissioned, so it must be sent from the vault manager
-        # (the owner for test trades), not the dev account used for Ostium above.
-        from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
-        if isinstance(vault, LagoonVault):
-            from eth_defi.erc_4626.vault_protocol.lagoon.testing import force_lagoon_settle
-            force_lagoon_settle(vault, owner)
+        capability_data = (
+            capability.as_dict()
+            if capability is not None and hasattr(capability, "as_dict")
+            else None
+        )
+        raise UnsupportedVaultSimulation(
+            f"{deposit_manager.__class__.__name__} does not advertise Anvil "
+            f"settlement for vault {vault.address}, direction={direction}, "
+            f"capability={capability_data}"
+        )
 
     # Now run the generic settlement retry. Pass web3config so the claim is
     # broadcast on the vault's own chain for cross-chain satellite vaults.
@@ -974,8 +1033,8 @@ def make_test_trade(
 
     assert isinstance(sync_model, SyncModel)
     assert isinstance(universe, TradingStrategyUniverse)
-    assert type(max_slippage) == float
-    assert max_slippage > 0, f"max_slippage not set"
+    assert isinstance(max_slippage, float)
+    assert max_slippage > 0, "max_slippage not set"
 
     ts = native_datetime_utc_now()
 
@@ -1015,7 +1074,6 @@ def make_test_trade(
         # (callers managing bridging themselves pass web3config=None).
         # Also skip when the default chain is a test chain (Anvil fork)
         # because the fork chain_id won't match real pair chain_ids.
-        from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
         is_cross_chain = False
         if web3config is not None and web3config.default_chain_id not in TEST_CHAIN_IDS:
             home_chain_id = web3config.default_chain_id.value
@@ -1113,8 +1171,6 @@ def make_test_trade(
     # Cross-chain dispatch: if the target pair is on a satellite chain,
     # delegate to the cross-chain helper that handles bridge in/out
     if is_cross_chain:
-        from tradeexecutor.ethereum.cctp.planner import _find_bridge_pair
-
         all_pairs = list(universe.iterate_pairs())
         bridge_pair = _find_bridge_pair(all_pairs, pair.chain_id)
         if bridge_pair is None:

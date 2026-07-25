@@ -162,6 +162,28 @@ def should_leave_deposit_open(
     return operation == "deposit" and (manual or is_async or not redemption_available)
 
 
+def has_async_vault_lifecycle(
+    pair: TradingPairIdentifier,
+    vault: Any,
+) -> bool:
+    """Detect async directions declared by either routing or manager metadata."""
+
+    if pair.is_async_vault():
+        return True
+
+    get_capability = getattr(vault, "get_deposit_manager_capability", None)
+    if get_capability is None:
+        return False
+    capability = get_capability()
+    if capability is None:
+        return False
+
+    return "asynchronous" in (
+        getattr(capability, "deposit_flow", None),
+        getattr(capability, "redemption_flow", None),
+    )
+
+
 def get_whitelisting_needed_detail(attempt: "VaultAttempt") -> str | None:
     """Return a terminal report detail when the executor Safe lacks vault admission.
 
@@ -316,6 +338,26 @@ def normalise_vault_flow_failure(
             )
         current = current.__cause__ or current.__context__
     return None
+
+
+def get_latest_attempt_vault_operation(
+    state: State,
+    original_trade_ids: set[int],
+) -> str | None:
+    """Infer the failing inner operation from vault trades created by an attempt."""
+
+    latest_vault_trade = max(
+        (
+            trade
+            for trade in state.portfolio.get_all_trades()
+            if trade.trade_id not in original_trade_ids and trade.is_vault()
+        ),
+        key=lambda trade: trade.trade_id,
+        default=None,
+    )
+    if latest_vault_trade is None:
+        return None
+    return "deposit" if latest_vault_trade.is_buy() else "redeem"
 
 
 def get_bridge_conflict(
@@ -992,7 +1034,10 @@ class VaultTestBatchRunner:
         # RPC effects are reverted after the attempt.  A deep-copied state keeps
         # simulated balances, valuations and settlement changes equally isolated.
         fork_state = deepcopy(self.state)
-        is_async = attempt.pair.is_async_vault()
+        is_async = has_async_vault_lifecycle(
+            attempt.pair,
+            attempt.executable_vault,
+        )
         complete_async_lifecycle = is_async and self.settle_async_on_anvil
         try:
             perform_test_trade(
@@ -1335,6 +1380,12 @@ class VaultTestBatchRunner:
             and self.current_attempt.operation_original_trade_ids is not None
             else original_trade_ids
         )
+        failure_operation = get_latest_attempt_vault_operation(
+            error_state,
+            evidence_trade_ids,
+        )
+        if failure_operation is not None and self.current_attempt is not None:
+            self.current_attempt.operation = failure_operation
         error_data = capture_vault_test_error(
             error,
             state=error_state,

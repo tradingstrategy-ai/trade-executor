@@ -10,7 +10,11 @@ from unittest.mock import MagicMock
 
 import pytest
 from eth_defi.vault.base import VaultSpec
-from eth_defi.vault.deposit_redeem import VaultFlowUnavailable
+from eth_defi.vault.deposit_redeem import (
+    UnsupportedVaultSimulation,
+    VaultDepositManagerCapability,
+    VaultFlowUnavailable,
+)
 from hexbytes import HexBytes
 from requests.exceptions import ReadTimeout
 from textual.app import App, ComposeResult
@@ -60,6 +64,8 @@ from tradeexecutor.cli.vault_trade.runner import (
     get_adapter_unsupported_detail,
     get_bridge_conflict,
     get_deposit_closed_detail,
+    has_async_vault_lifecycle,
+    get_latest_attempt_vault_operation,
     get_whitelisting_needed_detail,
     normalise_vault_flow_failure,
     should_leave_deposit_open,
@@ -70,6 +76,7 @@ from tradeexecutor.ethereum.vault import vault_routing
 from tradeexecutor.ethereum.vault.vault_routing import (
     convert_vault_flow_analysis,
     get_async_vault_request_transactions,
+    reconcile_vault_redemption_amount,
 )
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.ethereum.web3config import Web3Config
@@ -284,6 +291,61 @@ def test_deposit_round_trip_gating() -> None:
             operation="redeem", is_async=True, redemption_available=False, manual=True
         )
         is False
+    )
+
+
+def test_async_vault_lifecycle_uses_manager_capability_metadata() -> None:
+    """Manager flow metadata supplements static pair-kind async detection.
+
+    1. Model real string capabilities for mixed and synchronous-only lifecycles.
+    2. Model absent capability metadata and an intrinsically asynchronous pair.
+    3. Verify every async source is recognised without changing safe fallbacks.
+
+    Mocks cover metadata combinations without constructing chain-backed adapters.
+    """
+    # 1. Model real string capabilities for mixed and synchronous-only lifecycles.
+    synchronous_pair = MagicMock()
+    synchronous_pair.is_async_vault.return_value = False
+    mixed_vault = MagicMock()
+    mixed_vault.get_deposit_manager_capability.return_value = (
+        VaultDepositManagerCapability(
+            can_deposit=True,
+            can_redeem=True,
+            deposit_flow="synchronous",
+            redemption_flow="asynchronous",
+        )
+    )
+    synchronous_vault = MagicMock()
+    synchronous_vault.get_deposit_manager_capability.return_value = (
+        VaultDepositManagerCapability(
+            can_deposit=True,
+            can_redeem=True,
+            deposit_flow="synchronous",
+            redemption_flow="synchronous",
+        )
+    )
+
+    # 2. Model absent capability metadata and an intrinsically asynchronous pair.
+    missing_capability_vault = object()
+    null_capability_vault = MagicMock()
+    null_capability_vault.get_deposit_manager_capability.return_value = None
+    asynchronous_pair = MagicMock()
+    asynchronous_pair.is_async_vault.return_value = True
+
+    # 3. Verify every async source is recognised without changing safe fallbacks.
+    assert has_async_vault_lifecycle(synchronous_pair, mixed_vault) is True
+    assert has_async_vault_lifecycle(synchronous_pair, synchronous_vault) is False
+    assert (
+        has_async_vault_lifecycle(synchronous_pair, missing_capability_vault)
+        is False
+    )
+    assert (
+        has_async_vault_lifecycle(synchronous_pair, null_capability_vault)
+        is False
+    )
+    assert (
+        has_async_vault_lifecycle(asynchronous_pair, missing_capability_vault)
+        is True
     )
 
 
@@ -1155,6 +1217,64 @@ def test_vault_flow_failures_have_typed_report_outcomes() -> None:
     }
 
 
+def test_unsupported_vault_simulation_has_typed_report_outcome() -> None:
+    """Unsupported manager settlement becomes an actionable terminal result.
+
+    1. Create the typed eth-defi simulation capability failure.
+    2. Normalise it through the vault-test reporting helper.
+    3. Verify the report result remains distinct from execution failures.
+    """
+    # 1. Create the typed eth-defi simulation capability failure.
+    error = UnsupportedVaultSimulation(
+        "AccountableDepositManager does not advertise Anvil settlement"
+    )
+
+    # 2. Normalise it through the vault-test reporting helper.
+    result, detail, outcome_data = normalise_vault_flow_failure(error)
+
+    # 3. Verify the report result remains distinct from execution failures.
+    assert result == "simulation_unsupported_async"
+    assert (
+        detail
+        == "AccountableDepositManager does not advertise Anvil settlement"
+    )
+    assert outcome_data == {}
+
+
+def test_failure_operation_uses_latest_attempt_vault_trade() -> None:
+    """A redemption failure is not labelled as the outer deposit attempt.
+
+    1. Model an old vault trade and new deposit/redemption trades.
+    2. Add a newer non-vault bridge trade that must not own the operation.
+    3. Verify the latest new vault trade identifies the redemption phase.
+
+    Mocks isolate trade ordering from portfolio serialisation.
+    """
+    # 1. Model an old vault trade and new deposit/redemption trades.
+    old_trade = MagicMock(trade_id=1)
+    old_trade.is_vault.return_value = True
+    deposit_trade = MagicMock(trade_id=2)
+    deposit_trade.is_vault.return_value = True
+    deposit_trade.is_buy.return_value = True
+    redemption_trade = MagicMock(trade_id=3)
+    redemption_trade.is_vault.return_value = True
+    redemption_trade.is_buy.return_value = False
+
+    # 2. Add a newer non-vault bridge trade that must not own the operation.
+    bridge_trade = MagicMock(trade_id=4)
+    bridge_trade.is_vault.return_value = False
+    state = MagicMock()
+    state.portfolio.get_all_trades.return_value = [
+        old_trade,
+        deposit_trade,
+        redemption_trade,
+        bridge_trade,
+    ]
+
+    # 3. Verify the latest new vault trade identifies the redemption phase.
+    assert get_latest_attempt_vault_operation(state, {1}) == "redeem"
+
+
 def test_bridge_proceeds_failure_has_typed_report_outcome() -> None:
     """Unavailable satellite redemption proceeds stay distinguishable in reports.
 
@@ -1276,6 +1396,44 @@ def test_vault_flow_analysis_conversion_preserves_trade_signs() -> None:
     # 3. Verify reserve, share sign and price follow the executor trade contract.
     assert deposit == (Decimal("10"), Decimal("8"), Decimal("1.25"))
     assert redemption == (Decimal("10"), Decimal("-8"), Decimal("1.25"))
+
+
+def test_vault_redemption_amount_reconciles_only_small_share_shortfalls() -> None:
+    """Vault redemption uses the available balance only for tolerable shortfalls.
+
+    1. Reconcile exact, surplus and small-shortfall on-chain share balances.
+    2. Verify a small shortfall caps the redemption while other balances retain the plan.
+    3. Verify a material accounting shortfall remains an error.
+    """
+    # 1. Reconcile exact, surplus and small-shortfall on-chain share balances.
+    exact = reconcile_vault_redemption_amount(
+        Decimal("1"),
+        Decimal("1"),
+        epsilon=0.025,
+    )
+    surplus = reconcile_vault_redemption_amount(
+        Decimal("1"),
+        Decimal("1.01"),
+        epsilon=0.025,
+    )
+    small_shortfall = reconcile_vault_redemption_amount(
+        Decimal("1"),
+        Decimal("0.99"),
+        epsilon=0.025,
+    )
+
+    # 2. Verify a small shortfall caps the redemption while other balances retain the plan.
+    assert exact == Decimal("1")
+    assert surplus == Decimal("1")
+    assert small_shortfall == Decimal("0.99")
+
+    # 3. Verify a material accounting shortfall remains an error.
+    with pytest.raises(AssertionError, match="large relative shortfall"):
+        reconcile_vault_redemption_amount(
+            Decimal("1"),
+            Decimal("0.9"),
+            epsilon=0.025,
+        )
 
 
 def test_async_vault_request_transaction_roles_ignore_selectors() -> None:
