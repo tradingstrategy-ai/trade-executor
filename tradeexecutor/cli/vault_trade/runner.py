@@ -18,7 +18,11 @@ from typing import Any
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.vault.base import VaultSpec
-from eth_defi.vault.deposit_redeem import UnsupportedVaultSimulation, VaultFlowUnavailable
+from eth_defi.vault.deposit_redeem import (
+    UnsupportedVaultSimulation,
+    VaultFlowUnavailable,
+    WhitelistingRequired,
+)
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.cli.bootstrap import (
@@ -29,6 +33,7 @@ from tradeexecutor.cli.bootstrap import (
 from tradeexecutor.cli.testtrade import BridgeProceedsUnavailable, perform_test_trade
 from tradeexecutor.cli.vault_trade.core import build_vault_test_universe
 from tradeexecutor.cli.vault_trade.state import (
+    VAULT_TEST_RESULTS,
     close_simulated_positions,
     capture_vault_test_error,
     classify_vault_test_failure,
@@ -53,7 +58,10 @@ from tradeexecutor.cli.vault_trade.simulation import (
 )
 from tradeexecutor.cli.vault_trade.tui import VaultTestAction
 from tradeexecutor.ethereum.routing_state import OutOfBalance
-from tradeexecutor.ethereum.vault.vault_routing import VaultReceiptAnalysisError
+from tradeexecutor.ethereum.vault.vault_routing import (
+    IncompatibleDepositAsset,
+    VaultReceiptAnalysisError,
+)
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
@@ -162,6 +170,15 @@ def should_leave_deposit_open(
     return operation == "deposit" and (manual or is_async or not redemption_available)
 
 
+def get_vault_manager_capability(vault: Any) -> Any | None:
+    """Read the live eth-defi deposit-manager capability, when the adapter has one."""
+
+    get_capability = getattr(vault, "get_deposit_manager_capability", None)
+    if get_capability is None:
+        return None
+    return get_capability()
+
+
 def has_async_vault_lifecycle(
     pair: TradingPairIdentifier,
     vault: Any,
@@ -171,16 +188,77 @@ def has_async_vault_lifecycle(
     if pair.is_async_vault():
         return True
 
-    get_capability = getattr(vault, "get_deposit_manager_capability", None)
-    if get_capability is None:
-        return False
-    capability = get_capability()
+    capability = get_vault_manager_capability(vault)
     if capability is None:
         return False
 
     return "asynchronous" in (
         getattr(capability, "deposit_flow", None),
         getattr(capability, "redemption_flow", None),
+    )
+
+
+def resolve_redemption_available(
+    pair: TradingPairIdentifier,
+    vault: Any,
+) -> bool:
+    """Decide whether the simulation should attempt the redemption leg.
+
+    Neither input is a live chain read, and they mean different things:
+
+    - :py:attr:`VaultDepositManagerCapability.can_redeem` is **static** eth-defi
+      integration metadata — whether a complete redemption lifecycle is
+      implemented. Its own docstring excludes the vault's live cap, pause,
+      allow-list, balance and liquidity state.
+    - :py:meth:`TradingPairIdentifier.can_redeem` is a point-in-time Trading
+      Strategy data-pipeline snapshot, which can encode observed venue state but
+      may be stale.
+
+    ``can_redeem is False`` is therefore used only as a **veto**: if eth-defi
+    implements no redemption lifecycle, no chain state can make one work.
+
+    When the adapter does implement redemption, this deliberately attempts the
+    leg even if the snapshot says otherwise. ``vault-test-trade`` is a
+    diagnostic harness: attempting and recording a typed refusal is more useful
+    than silently skipping the leg and reporting a bare
+    ``redemption_unavailable``. Plutus Hedge is the motivating case — a stale
+    ``False`` hid the adapter's own ``simulation_unsupported_async`` reason.
+
+    .. warning::
+
+        This is safe for ``--auto-simulated``, which is fork-only. In real mode
+        the cost of attempting is a failed or pending on-chain request, so live
+        gating for a real redemption must come from
+        :py:meth:`PricingModel.can_redeem`, which the redeem path already uses.
+    """
+
+    capability = get_vault_manager_capability(vault)
+    if capability is not None and getattr(capability, "can_redeem", None) is False:
+        return False
+    return pair.can_redeem() or bool(
+        capability is not None and getattr(capability, "can_redeem", None)
+    )
+
+
+def get_redemption_unavailable_detail(vault: Any) -> str:
+    """Explain why no redemption was attempted, so the result is never reasonless.
+
+    A ``redemption_unavailable`` row must carry a concrete reason.  Prefer the
+    adapter's published reason and otherwise state explicitly that none was
+    available, rather than persisting an empty detail.
+    """
+
+    capability = get_vault_manager_capability(vault)
+    reason = (
+        getattr(capability, "redemption_unsupported_reason", None)
+        if capability is not None
+        else None
+    )
+    if reason:
+        return f"Adapter reports redemption unsupported: {reason}"
+    return (
+        "Vault metadata reports no redemption path and the adapter published no "
+        "reason; the redemption leg was not attempted"
     )
 
 
@@ -227,17 +305,9 @@ def get_adapter_unsupported_detail(
 ) -> tuple[str, dict] | None:
     """Return an explicit adapter limitation before a transaction is built."""
 
-    get_capability = getattr(
-        attempt.executable_vault,
-        "get_deposit_manager_capability",
-        None,
-    )
-    if get_capability is None:
-        # Some adapters have not adopted eth-defi's optional capability API.
-        # Preserve their existing execution path and diagnostics.
-        return None
-
-    capability = get_capability()
+    # Some adapters have not adopted eth-defi's optional capability API.
+    # Preserve their existing execution path and diagnostics.
+    capability = get_vault_manager_capability(attempt.executable_vault)
     if capability is None:
         return None
 
@@ -268,6 +338,29 @@ def get_deposit_closed_detail(attempt: "VaultAttempt") -> str | None:
         return None
 
 
+# The result strings eth-defi may carry verbatim in
+# ``VaultFlowError.preflight_result`` (the repo-to-repo contract). A value
+# outside this set is ignored so a new/unknown eth-defi result cannot silently
+# become an unrecognised status; the decoded-error fallback then applies.
+ALLOWED_PREFLIGHT_RESULTS: frozenset[str] = frozenset(
+    {
+        "whitelisting-needed",
+        "below_minimum",
+        "redemption_capacity_limited",
+        "redemption_window_closed",
+        "redemption_paused",
+        "redemption_unavailable",
+        "deposit_closed",
+    }
+)
+
+# Copying a preflight result verbatim would write an unrenderable status if it
+# were not also a persisted vault-test result, so keep the two sets in step.
+assert ALLOWED_PREFLIGHT_RESULTS <= VAULT_TEST_RESULTS, (
+    f"Unknown preflight results: {ALLOWED_PREFLIGHT_RESULTS - VAULT_TEST_RESULTS}"
+)
+
+
 def normalise_vault_flow_failure(
     error: BaseException,
 ) -> tuple[str, str, dict] | None:
@@ -277,11 +370,44 @@ def normalise_vault_flow_failure(
     seen: set[int] = set()
     while current is not None and id(current) not in seen:
         seen.add(id(current))
+        # A multi-asset vault whose whitelist excludes our selected deposit
+        # asset is its own failure mode: report both the accepted assets and
+        # the asset we attempted so the operator can pick a valid one.
+        if isinstance(current, IncompatibleDepositAsset):
+            return (
+                "incompatible_deposit_asset",
+                redact_vault_test_error_text(current),
+                {
+                    "selected_asset": current.selected_asset,
+                    "accepted_assets": [
+                        {"symbol": symbol, "address": address}
+                        for symbol, address in current.accepted_assets
+                    ],
+                },
+            )
+        # A missing deposit whitelist is a distinct, first-class admission
+        # state.  Check it before the generic VaultFlowUnavailable parent so it
+        # is reported as "whitelisting-needed" rather than "deposit_closed".
+        if isinstance(current, WhitelistingRequired):
+            return (
+                "whitelisting-needed",
+                redact_vault_test_error_text(current.reason),
+                {
+                    "protocol": current.protocol,
+                    "direction": current.direction,
+                    "phase": current.phase,
+                    "decoded_error": getattr(current, "decoded_error", None),
+                },
+            )
         if isinstance(current, VaultFlowUnavailable):
+            decoded_error = getattr(current, "decoded_error", None)
+            preflight_result = getattr(current, "preflight_result", None)
             outcome_data = {
                 "protocol": current.protocol,
                 "direction": current.direction,
                 "phase": current.phase,
+                "decoded_error": decoded_error,
+                "preflight_result": preflight_result,
                 "requested_raw_amount": str(current.requested_raw_amount)
                 if current.requested_raw_amount is not None
                 else None,
@@ -295,6 +421,42 @@ def normalise_vault_flow_failure(
             next_open = getattr(current, "next_open", None)
             if next_open is not None:
                 outcome_data["next_open"] = next_open.isoformat()
+            access_delay = getattr(current, "access_delay", None)
+            if access_delay is not None:
+                outcome_data["access_delay"] = access_delay
+
+            reason_text = redact_vault_test_error_text(current.reason)
+
+            # eth-defi's ``preflight_result`` is the authoritative, stable
+            # result string for a predictable refusal (the repo-to-repo
+            # contract). Copy it verbatim when it is a recognised result, in
+            # preference to inferring from the ``decoded_error`` name — protocol
+            # adapters use several decoded-error spellings (e.g. InsufficientShares,
+            # WithdrawalsPaused, RedemptionPending) that the heuristic below does
+            # not enumerate.
+            if preflight_result in ALLOWED_PREFLIGHT_RESULTS:
+                return (preflight_result, reason_text, outcome_data)
+
+            # Fallback for eth-defi revisions without ``preflight_result``: map
+            # the decoded custom-error name to a typed current-state result.
+            if decoded_error == "EndOfEpoch":
+                return ("redemption_window_closed", reason_text, outcome_data)
+            if decoded_error == "WithdrawalsArePaused":
+                return ("redemption_paused", reason_text, outcome_data)
+            if decoded_error == "InsufficientAmount":
+                return ("below_minimum", reason_text, outcome_data)
+            # We assume redemptions fill in full, so a reserve/capacity shortfall
+            # is reported as a flat refusal. For cSigma this is a simplification:
+            # canonically the lender would receive a partial payout now and keep
+            # the remainder as a queued FIFO position, so "capacity limited" is
+            # stricter than the protocol actually behaves.
+            # TODO: once partial fills are modelled, distinguish "partially
+            # fillable" (payout + queued remainder) from a true refusal here.
+            if decoded_error in ("WithdrawalPending", "ExceededMaxRedeem"):
+                return ("redemption_capacity_limited", reason_text, outcome_data)
+            if decoded_error == "AddressNotAllowed":
+                return ("whitelisting-needed", reason_text, outcome_data)
+
             if (
                 current.direction == "redeem"
                 and current.requested_raw_amount is not None
@@ -303,26 +465,36 @@ def normalise_vault_flow_failure(
             ):
                 return (
                     "redemption_capacity_limited",
-                    redact_vault_test_error_text(current.reason),
+                    reason_text,
                     outcome_data,
                 )
             if current.direction == "deposit":
                 return (
                     "deposit_closed",
-                    redact_vault_test_error_text(current.reason),
+                    reason_text,
                     outcome_data,
                 )
             if current.direction == "redeem":
                 return (
                     "redemption_unavailable",
-                    redact_vault_test_error_text(current.reason),
+                    reason_text,
                     outcome_data,
                 )
         if isinstance(current, UnsupportedVaultSimulation):
+            # eth-defi carries the stable false-capability contract as fields:
+            # retain them verbatim so the report says *why* the async lifecycle
+            # cannot be simulated, instead of only the exception prose.
+            unsupported_data = {
+                "unsupported_reason": getattr(current, "unsupported_reason", None),
+                "protocol": getattr(current, "protocol", None),
+                "vault_address": getattr(current, "vault_address", None),
+                "direction": getattr(current, "direction", None),
+                "phase": getattr(current, "phase", None),
+            }
             return (
                 "simulation_unsupported_async",
                 redact_vault_test_error_text(current),
-                {},
+                {key: value for key, value in unsupported_data.items() if value is not None},
             )
         if isinstance(current, VaultReceiptAnalysisError):
             return (
@@ -358,6 +530,26 @@ def get_latest_attempt_vault_operation(
     if latest_vault_trade is None:
         return None
     return "deposit" if latest_vault_trade.is_buy() else "redeem"
+
+
+def apply_deposit_asset_override(routing_model: Any, deposit_asset: str) -> None:
+    """Set the multi-asset deposit-asset override on materialised vault routers.
+
+    The vault-test-trade ``--deposit-asset`` value overrides the default accepted
+    input asset (native USDC on the vault's own chain) for multi-asset vaults.
+    Only routers already created in the generic pair configurator are patched;
+    lazily-created ones fall back to the USDC default until this is threaded
+    through the configurator factory (see task #10 TODO).
+    """
+
+    configurator = getattr(routing_model, "pair_configurator", None)
+    configs = getattr(configurator, "configs", None)
+    if not configs:
+        return
+    for config in configs.values():
+        vault_router = getattr(config, "routing_model", None)
+        if hasattr(vault_router, "deposit_asset_override"):
+            vault_router.deposit_asset_override = deposit_asset
 
 
 def get_bridge_conflict(
@@ -415,6 +607,9 @@ class VaultTestBatchRunner:
     rerun: bool
     settle_async_on_anvil: bool = False
     manual_action: VaultTestAction | None = None
+    #: Override the accepted input asset for multi-asset vaults (e.g. Upshift).
+    #: ``None`` uses the default, native USDC on the vault's own chain.
+    deposit_asset: str | None = None
 
     rows: list[dict] = field(default_factory=list, init=False)
     pending_specs: deque = field(init=False)
@@ -637,6 +832,16 @@ class VaultTestBatchRunner:
         routing_model = self.runtime.execution_model.create_default_routing_model(
             universe
         )
+        # Propagate the multi-asset deposit-asset override to the vault routers
+        # so multi-asset vaults (e.g. Upshift) use the requested input asset.
+        # The USDC-on-chain default lives in VaultRouting.deposit_or_redeem and
+        # needs no propagation; only an explicit override travels here.
+        # TODO: only vault routers already materialised in the pair configurator
+        # receive the override; lazily-created ones fall back to the USDC
+        # default. Thread it through the configurator factory and add a fork
+        # test before relying on the override (see task #10).
+        if self.deposit_asset:
+            apply_deposit_asset_override(routing_model, self.deposit_asset)
         pricing_model = GenericPricing(routing_model.pair_configurator)
         valuation_model = GenericValuation(routing_model.pair_configurator)
         routing_state = routing_model.create_routing_state(
@@ -786,10 +991,15 @@ class VaultTestBatchRunner:
                 )
                 return True
 
-        # A pre-deposit live redemption quote sees zero shares.  The pair-level
-        # venue gate is the correct indication for same-run instant redemption.
+        # A pre-deposit live redemption quote sees zero shares, so the venue gate
+        # is used instead.  Resolve it through the adapter capability first: the
+        # pair flag alone is a stale data-pipeline snapshot and must not suppress
+        # a redemption the adapter actually supports.
         if operation == "deposit":
-            redemption_available = pair.can_redeem()
+            redemption_available = resolve_redemption_available(
+                pair,
+                attempt.executable_vault,
+            )
         else:
             redemption_available = attempt.pricing_model.can_redeem(
                 native_datetime_utc_now(),
@@ -1111,6 +1321,10 @@ class VaultTestBatchRunner:
             detail=(
                 "Async deposit request completed; full lifecycle was not requested"
                 if is_async and not complete_async_lifecycle
+                # A refusal must never be reasonless: say why redemption was
+                # skipped, using the adapter's published reason when it has one.
+                else get_redemption_unavailable_detail(attempt.executable_vault)
+                if not redemption_available
                 else None
             ),
             attempt_id=self.current_attempt.attempt_id

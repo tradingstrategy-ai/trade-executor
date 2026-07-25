@@ -6,6 +6,7 @@ import logging
 from collections import defaultdict, deque
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,6 +15,7 @@ from eth_defi.vault.deposit_redeem import (
     UnsupportedVaultSimulation,
     VaultDepositManagerCapability,
     VaultFlowUnavailable,
+    WhitelistingRequired,
 )
 from hexbytes import HexBytes
 from requests.exceptions import ReadTimeout
@@ -64,19 +66,23 @@ from tradeexecutor.cli.vault_trade.runner import (
     get_adapter_unsupported_detail,
     get_bridge_conflict,
     get_deposit_closed_detail,
+    get_redemption_unavailable_detail,
     has_async_vault_lifecycle,
     get_latest_attempt_vault_operation,
     get_whitelisting_needed_detail,
     normalise_vault_flow_failure,
+    resolve_redemption_available,
     should_leave_deposit_open,
 )
 from tradeexecutor.cli.testtrade import BridgeProceedsUnavailable
 from tradeexecutor.ethereum import web3config as web3config_module
 from tradeexecutor.ethereum.vault import vault_routing
 from tradeexecutor.ethereum.vault.vault_routing import (
+    IncompatibleDepositAsset,
     convert_vault_flow_analysis,
     get_async_vault_request_transactions,
     reconcile_vault_redemption_amount,
+    resolve_multi_asset_deposit_asset,
 )
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.ethereum.web3config import Web3Config
@@ -1210,11 +1216,208 @@ def test_vault_flow_failures_have_typed_report_outcomes() -> None:
         "protocol": "csigma",
         "direction": "redeem",
         "phase": "preflight",
+        "decoded_error": None,
+        "preflight_result": None,
         "requested_raw_amount": "200",
         "available_raw_amount": "100",
         "minimum_raw_amount": "10",
         "next_open": "2026-07-24T12:30:00",
     }
+
+
+def test_decoded_vault_errors_map_to_typed_results() -> None:
+    """eth-defi #1374 decoded custom errors become distinct typed results.
+
+    1. Map a missing deposit whitelist to whitelisting-needed.
+    2. Map each redemption custom error to its stable current-state result.
+    3. Map a below-minimum deposit refusal to below_minimum.
+    """
+    # 1. Map a missing deposit whitelist to whitelisting-needed.
+    whitelist_error = WhitelistingRequired(
+        "Depositor not whitelisted on chain 1 vault 0xabc for 0xdef",
+        protocol="lagoon",
+        direction="deposit",
+        phase="preflight",
+    )
+    result, _detail, outcome_data = normalise_vault_flow_failure(whitelist_error)
+    assert result == "whitelisting-needed"
+    assert outcome_data["direction"] == "deposit"
+
+    # 2. Map each redemption custom error to its stable current-state result.
+    cases = {
+        "EndOfEpoch": "redemption_window_closed",
+        "WithdrawalsArePaused": "redemption_paused",
+        "WithdrawalPending": "redemption_capacity_limited",
+        "ExceededMaxRedeem": "redemption_capacity_limited",
+        "AddressNotAllowed": "whitelisting-needed",
+    }
+    for decoded_error, expected in cases.items():
+        error = VaultFlowUnavailable(
+            f"redeem refused: {decoded_error}",
+            protocol="gains",
+            direction="redeem",
+            phase="preflight",
+            decoded_error=decoded_error,
+        )
+        result, _detail, outcome_data = normalise_vault_flow_failure(error)
+        assert result == expected, f"{decoded_error} -> {result}"
+        assert outcome_data["decoded_error"] == decoded_error
+
+    # 3. Map a below-minimum deposit refusal to below_minimum.
+    minimum_error = VaultFlowUnavailable(
+        "deposit below minimum",
+        protocol="accountable",
+        direction="deposit",
+        phase="preflight",
+        decoded_error="InsufficientAmount",
+        minimum_raw_amount=1000,
+    )
+    result, _detail, outcome_data = normalise_vault_flow_failure(minimum_error)
+    assert result == "below_minimum"
+    assert outcome_data["minimum_raw_amount"] == "1000"
+
+
+def test_preflight_result_is_copied_verbatim() -> None:
+    """The authoritative eth-defi preflight_result maps regardless of decoded_error.
+
+    1. Simulate an adapter that sets preflight_result plus a decoded_error name
+       the executor heuristic does not enumerate (e.g. InsufficientShares).
+    2. Verify the executor copies preflight_result verbatim as the result.
+    3. Verify an unrecognised preflight_result falls back to the decoded_error map.
+    """
+
+    # 1. Adapter sets preflight_result + a decoded_error name outside the heuristic.
+    error = VaultFlowUnavailable(
+        "redeem refused",
+        protocol="ember",
+        direction="redeem",
+        phase="preflight",
+    )
+    error.preflight_result = "below_minimum"
+    error.decoded_error = "InsufficientShares"  # not in the decoded-error heuristic
+
+    # 2. Verify the executor copies preflight_result verbatim as the result.
+    result, _detail, outcome_data = normalise_vault_flow_failure(error)
+    assert result == "below_minimum"
+    assert outcome_data["preflight_result"] == "below_minimum"
+    assert outcome_data["decoded_error"] == "InsufficientShares"
+
+    # 3. Verify an unrecognised preflight_result falls back to the decoded_error map.
+    fallback = VaultFlowUnavailable(
+        "redeem refused",
+        protocol="gains",
+        direction="redeem",
+        phase="preflight",
+        decoded_error="EndOfEpoch",
+    )
+    fallback.preflight_result = "not_a_known_result"
+    result, _detail, _outcome_data = normalise_vault_flow_failure(fallback)
+    assert result == "redemption_window_closed"
+
+
+def test_live_capability_outranks_stale_pair_redemption_flag() -> None:
+    """A stale pair snapshot must not suppress an adapter-supported redemption.
+
+    ``TradingPairIdentifier.can_redeem()`` is a data-pipeline snapshot, so a
+    stale ``False`` previously skipped the redemption leg entirely and reported
+    a bare ``redemption_unavailable`` (Plutus Hedge), hiding the adapter's own
+    typed async result.
+
+    1. Resolve availability when the pair says no but the adapter says yes.
+    2. Resolve availability when the adapter says no.
+    3. Fall back to the pair flag when the adapter publishes no capability.
+    """
+
+    class _Pair:
+        def __init__(self, flag: bool):
+            self._flag = flag
+
+        def can_redeem(self) -> bool:
+            return self._flag
+
+    # 1. Resolve availability when the pair says no but the adapter says yes.
+    supported = SimpleNamespace(can_redeem=True, redemption_unsupported_reason=None)
+    vault = SimpleNamespace(get_deposit_manager_capability=lambda: supported)
+    assert resolve_redemption_available(_Pair(False), vault) is True
+
+    # 2. Resolve availability when the adapter says no.
+    refused = SimpleNamespace(
+        can_redeem=False,
+        redemption_unsupported_reason="vault_is_wind_down_only",
+    )
+    refused_vault = SimpleNamespace(get_deposit_manager_capability=lambda: refused)
+    assert resolve_redemption_available(_Pair(True), refused_vault) is False
+
+    # 3. Fall back to the pair flag when the adapter publishes no capability.
+    assert resolve_redemption_available(_Pair(True), SimpleNamespace()) is True
+    assert resolve_redemption_available(_Pair(False), SimpleNamespace()) is False
+
+
+def test_redemption_unavailable_always_has_a_reason() -> None:
+    """A skipped redemption must never be recorded without a reason.
+
+    1. Use the adapter's published reason when it has one.
+    2. State explicitly that no reason was published when it has none.
+    """
+
+    # 1. Use the adapter's published reason when it has one.
+    capability = SimpleNamespace(
+        can_redeem=False,
+        redemption_unsupported_reason="vault_is_wind_down_only",
+    )
+    vault = SimpleNamespace(get_deposit_manager_capability=lambda: capability)
+    detail = get_redemption_unavailable_detail(vault)
+    assert "vault_is_wind_down_only" in detail
+
+    # 2. State explicitly that no reason was published when it has none.
+    fallback = get_redemption_unavailable_detail(SimpleNamespace())
+    assert fallback
+    assert "no reason" in fallback
+
+
+def test_incompatible_deposit_asset_lists_supported_and_selected() -> None:
+    """A multi-asset vault whitelist mismatch reports its own failure mode.
+
+    1. Resolve a deposit asset for a multi-asset vault that excludes our asset.
+    2. Verify the raised error names both the supported assets and our asset.
+    3. Verify the reporting helper maps it to the incompatible_deposit_asset result.
+    """
+
+    # A minimal fake multi-asset manager whose whitelist excludes USDC.
+    class _Token:
+        def __init__(self, symbol: str, address: str):
+            self.symbol = symbol
+            self.address = address
+
+    class _MultiAssetManager:
+        def fetch_accepted_assets(self) -> list[_Token]:
+            return [
+                _Token("USDT", "0xdAC17F958D2ee523a2206206994597C13D831ec7"),
+                _Token("PYUSD", "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8"),
+            ]
+
+    # 1. Resolve a deposit asset for a multi-asset vault that excludes our asset.
+    try:
+        resolve_multi_asset_deposit_asset(_MultiAssetManager(), 1)
+    except IncompatibleDepositAsset as error:
+        raised = error
+    else:
+        raised = None
+
+    # 2. Verify the raised error names both the supported assets and our asset.
+    assert raised is not None
+    message = str(raised)
+    assert "USDT" in message and "PYUSD" in message
+    assert raised.selected_asset is not None
+    assert raised.selected_asset in message  # our attempted asset is shown
+
+    # 3. Verify the reporting helper maps it to the incompatible_deposit_asset result.
+    result, _detail, outcome_data = normalise_vault_flow_failure(raised)
+    assert result == "incompatible_deposit_asset"
+    assert outcome_data["selected_asset"] == raised.selected_asset
+    assert {"symbol": "USDT", "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7"} in (
+        outcome_data["accepted_assets"]
+    )
 
 
 def test_unsupported_vault_simulation_has_typed_report_outcome() -> None:
@@ -1223,6 +1426,7 @@ def test_unsupported_vault_simulation_has_typed_report_outcome() -> None:
     1. Create the typed eth-defi simulation capability failure.
     2. Normalise it through the vault-test reporting helper.
     3. Verify the report result remains distinct from execution failures.
+    4. Verify the structured false-capability context is retained verbatim.
     """
     # 1. Create the typed eth-defi simulation capability failure.
     error = UnsupportedVaultSimulation(
@@ -1238,7 +1442,19 @@ def test_unsupported_vault_simulation_has_typed_report_outcome() -> None:
         detail
         == "AccountableDepositManager does not advertise Anvil settlement"
     )
-    assert outcome_data == {}
+
+    # 4. Verify the structured false-capability context is retained verbatim.
+    contextual = UnsupportedVaultSimulation(
+        "Ember cannot settle on this fork",
+        unsupported_reason="operator_role_required",
+        protocol="ember",
+        vault_address="0x9be9294722f8AAd37b11a9792Be2C782182caFA2",
+        direction="redeem",
+    )
+    _result, _detail, contextual_data = normalise_vault_flow_failure(contextual)
+    assert contextual_data["unsupported_reason"] == "operator_role_required"
+    assert contextual_data["protocol"] == "ember"
+    assert contextual_data["direction"] == "redeem"
 
 
 def test_failure_operation_uses_latest_attempt_vault_trade() -> None:

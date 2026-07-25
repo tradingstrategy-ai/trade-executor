@@ -80,12 +80,21 @@ def _serialise_forced_vault_settlement(
         value = tx_hash.hex()
         return value if value.startswith("0x") else f"0x{value}"
 
+    # A fork "claimable" is not solvency: an Anvil driver may top the Safe up
+    # with synthetic liquidity to prove the settlement mechanism.  eth-defi
+    # discloses that through synthetic_assets_injected_raw; persist it so a
+    # green settlement is never mistaken for a live-solvent vault.
+    synthetic_assets_injected_raw = getattr(
+        settlement, "synthetic_assets_injected_raw", 0
+    )
     return {
         "manager": deposit_manager.__class__.__name__,
         "direction": direction,
         "settlement_required": settlement.settlement_required,
         "status_before": serialise_status(settlement.status_before),
         "status_after": serialise_status(settlement.status_after),
+        "synthetic_assets_injected_raw": str(synthetic_assets_injected_raw),
+        "synthetic_liquidity_injected": bool(synthetic_assets_injected_raw),
         "transaction_hashes": [
             serialise_hash(tx_hash) for tx_hash in settlement.transaction_hashes
         ],
@@ -814,10 +823,24 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web
             if capability is not None and hasattr(capability, "as_dict")
             else None
         )
+        # eth-defi publishes the concrete false-capability reason alongside
+        # supports_anvil_settlement=False. Carry it through as structured
+        # context so the report says *why* this lifecycle cannot be simulated
+        # rather than only that the capability was absent.
+        unsupported_reason = getattr(
+            capability, "anvil_settlement_unsupported_reason", None
+        )
         raise UnsupportedVaultSimulation(
             f"{deposit_manager.__class__.__name__} does not advertise Anvil "
-            f"settlement for vault {vault.address}, direction={direction}, "
-            f"capability={capability_data}"
+            f"settlement for vault {vault.address}, direction={direction}"
+            + (f": {unsupported_reason}" if unsupported_reason else "")
+            + f", capability={capability_data}",
+            unsupported_reason=unsupported_reason,
+            protocol=vault.get_protocol_name()
+            if hasattr(vault, "get_protocol_name")
+            else None,
+            vault_address=vault.address,
+            direction=direction,
         )
 
     # Now run the generic settlement retry. Pass web3config so the claim is
@@ -893,14 +916,17 @@ def _resolve_satellite_async_settlement(
         _force_vault_settlement_and_resolve(
             dest_web3, state, trade, execution_model, web3config=web3config,
         )
-        # Surface a clear error if forcing did not resolve the queue, instead of
-        # falling through to the caller's is_success() assertion (which would
-        # report the misleading "Satellite open failed: None" this fix removes).
-        assert trade.get_status() != TradeStatus.vault_settlement_pending, (
-            f"Forced settlement on Anvil did not resolve satellite trade #{trade.trade_id} "
-            f"on chain {dest_chain_id}; it is still vault_settlement_pending. Check that the "
-            f"test vault operator/asset manager can settle the queue (vault_owner_address)."
-        )
+        # If forcing did not resolve the queue, the async redemption lifecycle
+        # cannot be reproduced on this fork even though the manager advertised
+        # Anvil settlement.  Report it as an unsupported async simulation rather
+        # than falling through to a generic execution failure.
+        if trade.get_status() == TradeStatus.vault_settlement_pending:
+            raise UnsupportedVaultSimulation(
+                f"Forced settlement on Anvil did not resolve satellite trade #{trade.trade_id} "
+                f"on chain {dest_chain_id}; it is still vault_settlement_pending. The test "
+                f"vault operator/asset manager settlement could not be reproduced on the fork "
+                f"(vault_owner_address)."
+            )
         return False
 
     logger.info(
@@ -968,14 +994,16 @@ def _resolve_home_chain_async_settlement(
             trade.trade_id,
         )
         _force_vault_settlement_and_resolve(web3, state, trade, execution_model)
-        # Surface a clear error if forcing did not resolve the queue, instead of
-        # falling through to the caller's is_success() assertion (which would
-        # report a misleading "Test buy/sell failed" with no revert reason).
-        assert trade.get_status() != TradeStatus.vault_settlement_pending, (
-            f"Forced settlement on Anvil did not resolve test trade #{trade.trade_id}; "
-            f"it is still vault_settlement_pending. Check that the test vault "
-            f"operator/keeper can settle the queue (vault_owner_address)."
-        )
+        # If forcing did not resolve the queue, the async redemption lifecycle
+        # cannot be reproduced on this fork even though the manager advertised
+        # Anvil settlement.  Report it as an unsupported async simulation rather
+        # than falling through to a generic execution/"Test sell failed" error.
+        if trade.get_status() == TradeStatus.vault_settlement_pending:
+            raise UnsupportedVaultSimulation(
+                f"Forced settlement on Anvil did not resolve test trade #{trade.trade_id}; "
+                f"it is still vault_settlement_pending. The test vault operator/keeper "
+                f"settlement could not be reproduced on the fork (vault_owner_address)."
+            )
         return False
 
     logger.info(
@@ -1372,9 +1400,15 @@ def make_test_trade(
             return
 
         if not sell_trade.is_success():
+            # Mirror the buy path: carry the decoded revert reason into the
+            # raised error so a home-chain redemption failure is not collapsed
+            # to a bare "Test sell failed" that hides the underlying selector
+            # (e.g. cSigma WithdrawalPending, YieldNest ExceededMaxRedeem).
             logger.error("Test sell failed: %s", sell_trade)
+            logger.error("Tx hash: %s", sell_trade.blockchain_transactions[-1].tx_hash)
+            logger.error("Revert reason: %s", sell_trade.blockchain_transactions[-1].revert_reason)
             logger.error("Trade dump:\n%s", sell_trade.get_debug_dump())
-            raise AssertionError("Test sell failed")
+            raise AssertionError(f"Test sell failed: {sell_trade}, {sell_trade.get_revert_reason()}")
 
         _update_test_trade_statistics(
             state,

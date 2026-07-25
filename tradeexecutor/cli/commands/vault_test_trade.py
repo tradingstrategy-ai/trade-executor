@@ -93,6 +93,18 @@ def vault_test_trade(
         "--settle-async-on-anvil",
         help="Force supported async vault settlements on simulated Anvil forks.",
     ),
+    deposit_asset: str | None = Option(
+        None,
+        "--deposit-asset",
+        envvar="DEPOSIT_ASSET",
+        help=(
+            "Accepted input asset for multi-asset vaults (e.g. Upshift). "
+            "Defaults to native USDC on the vault's primary chain. "
+            "INCOMPLETE: the override reaches only already-materialised vault "
+            "routers, and the deposit price preflight always uses native USDC, "
+            "so a non-USDC override can still be refused."
+        ),
+    ),
     report_json: Path | None = Option(
         None,
         "--report-json",
@@ -191,6 +203,7 @@ def vault_test_trade(
             rerun=rerun,
             settle_async_on_anvil=settle_async_on_anvil,
             manual_action=manual_action,
+            deposit_asset=deposit_asset,
         )
         rows = runner.run()
         print(tabulate(rows, headers="keys", tablefmt="rounded_outline"))

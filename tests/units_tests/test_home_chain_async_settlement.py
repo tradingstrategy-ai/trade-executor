@@ -249,12 +249,17 @@ def test_forced_anvil_settlement_uses_manager_ticket(
     manager.force_settle.assert_called_once_with(ticket)
 
     # 4. Verify JSON-safe evidence was saved before the shared claim resolver ran.
+    # A fork settlement that injects synthetic liquidity must disclose it, so a
+    # claimable result is never mistaken for live solvency. This driver injected
+    # none, so the disclosure fields record zero.
     assert trade.other_data["vault_forced_settlement"] == {
         "manager": manager.__class__.__name__,
         "direction": direction,
         "settlement_required": True,
         "status_before": "pending",
         "status_after": "claimable",
+        "synthetic_assets_injected_raw": "0",
+        "synthetic_liquidity_injected": False,
         "transaction_hashes": ["0x" + "01" * 32],
     }
     resolve.assert_called_once_with(
@@ -378,16 +383,19 @@ def test_forced_anvil_settlement_preserves_ostium_compatibility(
 
 
 def test_pending_home_trade_on_anvil_unresolved_raises(monkeypatch) -> None:
-    """If forced settlement on Anvil does not resolve, surface a clear error.
+    """If forced settlement on Anvil does not resolve, surface a typed error.
 
     A failed force-settle must not silently fall through to the caller's
     ``is_success()`` assertion (which would report a misleading "Test sell
-    failed" with no revert reason). The helper asserts the trade left the
-    pending state.
+    failed" with no revert reason). A ticket left pending after the manager
+    advertised Anvil settlement means the async lifecycle cannot be reproduced
+    on this fork, so it is raised as :class:`UnsupportedVaultSimulation` and
+    reported as ``simulation_unsupported_async`` rather than a generic
+    execution failure.
 
     1. Build a trade left in ``vault_settlement_pending``.
     2. Force settlement on Anvil but leave the trade still pending (no-op).
-    3. Verify the helper raises AssertionError naming the trade.
+    3. Verify the helper raises UnsupportedVaultSimulation naming the trade.
     """
     # 1. Build a trade left in vault_settlement_pending.
     trade = _make_trade(TradeStatus.vault_settlement_pending)
@@ -399,8 +407,10 @@ def test_pending_home_trade_on_anvil_unresolved_raises(monkeypatch) -> None:
         lambda *a, **k: None,  # does not change status -> stays pending
     )
 
-    # 3. Verify the helper raises AssertionError naming the trade.
-    with pytest.raises(AssertionError, match="did not resolve test trade #17"):
+    # 3. Verify the helper raises UnsupportedVaultSimulation naming the trade.
+    with pytest.raises(
+        UnsupportedVaultSimulation, match="did not resolve test trade #17"
+    ):
         _resolve_home_chain_async_settlement(
             trade=trade,
             web3=MagicMock(),

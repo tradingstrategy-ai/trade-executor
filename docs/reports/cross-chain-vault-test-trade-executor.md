@@ -2,143 +2,174 @@
 
 ## Evidence and scope
 
-The earlier report was invalid for this branch: its persisted provenance named
-trade-executor commit `42781eea`, and its tracebacks imported the parent
-checkout, despite the report prose claiming `248e1e20`. It must not be used as
-an adapter baseline.
+The 129-vault cross-chain matrix was re-run on 2026-07-25 with the updated
+eth-defi vault support:
 
-The corrected 129-vault matrix ran on 2026-07-24 from this worktree with:
-
-- trade-executor HEAD `2479c991`;
-- eth-defi master `b5803bdc52606190969ca44af878b25cde8e3dec`;
-- worktree-first imports for both `tradeexecutor` and the eth-defi submodule;
-  and
+- trade-executor `f311d0fa` (merged PR #1577 `0e84f313` plus the eth-defi
+  submodule bump);
+- eth-defi master `b42ef5747` (#1368 "close vault simulation adapter gaps");
+- worktree-first imports verified for both `tradeexecutor` and the eth-defi
+  submodule; and
 - `--auto-simulated --settle-async-on-anvil`.
 
-The run used uncommitted manager-owned settlement changes that were later
-included in `9220345b`, but its JSON provenance records only the then-current
-HEAD `2479c991`. Traceback paths and explicit import checks confirm the
-worktree source was imported, but the exact dirty source state cannot be
-reconstructed from the JSON. Treat the counts as observed behavioural evidence,
-not as a commit-reproducible run. Operation attribution, share reconciliation
-and capability-based async detection were added after this matrix snapshot and
-have focused test coverage only.
+The machine-readable report is
+`docs/reports/cross-chain-vault-test-2026-07-25.report.json`, the ordered vault
+list is `docs/reports/cross-chain-vault-test-vault-ids.txt`, and the full
+per-vault table is
+`docs/reports/cross-chain-vault-test-2026-07-25-results.md`. This report covers
+the executor-side work; protocol adapter work is in the separate eth-defi
+report.
 
 ## Corrected matrix output
 
-| Status | Vaults | Interpretation |
-|---|---:|---|
-| Success (simulated) | 43 | Deposit and redemption lifecycle completed |
-| Redemption pending | 6 | Four Ember and two Gains redemptions were not recognised as async from manager metadata |
-| Deposit closed | 51 | Current on-chain admission state, principally Yearn `maxDeposit=0` |
-| Whitelisting needed | 14 | The simulated executor Safe is not admitted |
-| Adapter unsupported | 1 | Upshift multi-asset deposit is not implemented |
-| Simulation unsupported async | 3 | Lagoon settlement ran but left the redemption ticket pending |
-| Broadcast failed | 3 | Lagoon forced deposit settlement reverted for insufficient allowance |
-| Transaction reverted | 5 | Two 40acres closes, cSigma redemption, YieldNest redemption and Accountable deposit |
-| Execution failed | 2 | cSigma capacity assertion and Ember minimum-withdrawal error |
-| Redemption unavailable | 1 | Plutus Hedge Token accepted the deposit but did not offer redemption |
+| Status | Vaults | Baseline (eth-defi b5803bdc5) | Interpretation |
+|---|---:|---:|---|
+| Success (simulated) | 43 | 43 | Deposit and redemption lifecycle completed |
+| Deposit closed | 51 | 51 | Current on-chain admission (mostly Yearn `maxDeposit=0`) |
+| Whitelisting needed | 14 | 14 | Simulated executor Safe is not admitted |
+| Simulation unsupported async | 8 | 3 | Async redemption ticket left pending, no Anvil driver |
+| Transaction reverted | 6 | 5 | Home-chain or satellite redemption/deposit revert |
+| Execution failed | 3 | 2 | Typed capacity/minimum/preflight failures |
+| Broadcast failed | 3 | 3 | Lagoon `settleDeposit()` allowance reverts |
+| Redemption unavailable | 1 | 1 | Plutus accepted the deposit but offered no redemption |
+| Redemption pending | 0 | 6 | Now resolved to typed async-unsupported/reverted |
+| Adapter unsupported | 0 | 1 | Upshift now routed to a manager (see below) |
 
-The 51 closed and 14 whitelist-gated rows are useful admission results, not
-adapter regressions. The 21 rows below are incomplete or unsupported lifecycle
-coverage in this snapshot.
+The **total gap count is unchanged at 21**. The lifecycle completion count (43
+success) is identical to the baseline, so the eth-defi update did not regress
+any previously working vault. What improved is *classification*: the six
+baseline "redemption pending" rows (four Ember, two Gains) that were not
+recognised as asynchronous are now terminal typed results, and Ember's minimum
+withdrawal and async capability are surfaced with structured metadata.
 
-| Protocol | Vaults with gaps | Matrix result |
-|---|---:|---|
-| 40acres | 2 | Redemption transferred slightly more shares than the satellite module held |
-| Accountable | 1 | Monad deposit reverted with undecoded custom error `0x5945ea56` |
-| cSigma Finance | 2 | One `maxRedeem` capacity assertion; one `Withdrawal pending` redemption revert |
-| Ember | 5 | Four asynchronous redemptions pending; Apollo ACRED below protocol minimum |
-| Gains Network | 2 | Asynchronous redemptions pending |
-| Lagoon Finance | 6 | Three tickets remained pending; three `settleDeposit()` allowance reverts |
-| Plutus | 1 | Redemption currently unavailable |
-| Upshift | 1 | Multi-asset deposit adapter unsupported |
-| YieldNest | 1 | Redemption reverted with custom error `0xb8b8b59c` |
+## What the eth-defi update changed (observed)
 
-## Implemented trade-executor fixes
+- **40acres: 2 → 1 gap.** 40acres Aerodrome USDC (Base) now completes deposit
+  and redemption — the PR #1577 redemption-share reconciliation fix is
+  effective on that path.
+- **Ember / Gains async classification.** Four Ember vaults and Gains on Base
+  now report `simulation_unsupported_async` with
+  `VaultDepositManagerCapability` metadata (`deposit_flow=synchronous`,
+  `redemption_flow=asynchronous`) instead of the previous
+  "Failed to analyse vault tx" receipt errors.
+- **Ember Apollo ACRED minimum** is now a typed `execution_failed`
+  ("redemption shares 904 are below minimum 9170000") rather than a generic
+  `ValueError`.
 
-### Manager-owned forced settlement
+## Gap rows by protocol (new run)
 
-`_force_vault_settlement_and_resolve()` now:
+| Protocol | Gaps | Baseline | Owner of remaining fix |
+|---|---:|---:|---|
+| Lagoon Finance | 6 | 6 | eth-defi (settlement diagnostics + allowance path) |
+| Ember | 5 | 5 | eth-defi (Anvil settlement driver + minimum typing) |
+| cSigma Finance | 2 | 2 | eth-defi (capacity typing + async withdrawal) |
+| Gains Network | 2 | 2 | eth-defi (Anvil settlement + custom error) |
+| YieldNest | 1 | 1 | eth-defi (custom error decode) |
+| Plutus | 1 | 1 | eth-defi (live-state vs adapter) |
+| Accountable | 1 | 1 | eth-defi (Monad selector) |
+| Upshift | 1 | 1 | trade-executor + eth-defi (preflight routing) |
+| 40acres | 1 | 2 | eth-defi (liquidity preflight, PR #1378) — see section 2 |
+| IPOR Fusion | 1 | 0 | trade-executor (gas limit) — **resolved**, see §4 |
 
-1. resolves the eth-defi manager and its capability;
-2. reconstructs the persisted deposit or redemption ticket for the actual
-   direction;
-3. calls `manager.force_settle(ticket)` only when
-   `supports_anvil_settlement is True`;
-4. stores JSON-safe before/after statuses and settlement transaction hashes in
-   `trade.other_data`;
-5. retains the existing Ostium V1.5 permissionless Anvil compatibility path;
-   and
-6. raises `UnsupportedVaultSimulation` before broadcasting for every other
-   manager.
+## Trade-executor work items
 
-This removes the signer-less Lagoon call. The corrected matrix contains no
-`No Signer available`, `receipt_analysis_failed`, or
-`state_inference_failed` rows. A focused Lagoon lifecycle completed both
-deposit and redemption and persisted manager settlement evidence.
+No protocol-specific settlement logic belongs in trade-executor. The items below
+are diagnostics, cross-chain reconciliation and provenance. Sections marked
+*done* were implemented on this branch; section 2 was investigated and found not
+to be an executor defect at all.
 
-### Failure operation attribution
+### 1. Surface the real revert reason for home-chain vault redemptions — done
 
-Automatic deposit attempts perform a deposit and, where possible, a
-redemption. Failure capture now examines only new vault trades and labels the
-attempt from the newest one. A failed sell is therefore reported as `redeem`
-instead of inheriting the outer `deposit` label; later bridge trades cannot
-overwrite it.
+`cSuperior Quality Private Credit USDC`
+(`1-0x438982ea288763370946625fd76c2508ee1fb229`) and `YieldNest RWA MAX`
+(`1-0x01ba69727e2860b37bc1a2bd56999c1afb4c15d8`) both display only
+`Test sell failed` in the result table, even though the executor log records the
+actual reverts:
 
-### Redemption share reconciliation
+- cSuperior: `execution reverted: Withdrawal pending`;
+- YieldNest: `execution reverted: custom error 0xb8b8b59c: 0000…a2b04c6a…`.
 
-The old epsilon branch tested
-`onchain_balance + planned_redemption < 0`. Both operands are positive, so it
-was unreachable. The routing path now:
+Satellite-chain closes already surface the revert reason
+("Satellite close failed: execution reverted: custom error 0x…"). Home-chain
+vault trades must carry the same `revert_reason` into the diagnostic result
+detail so the table is actionable and eth-defi can be given the exact selector.
 
-- retains the planned amount when the balance covers it;
-- caps to the actual on-chain balance for a shortfall within the configured
-  epsilon; and
-- raises the accounting assertion before broadcasting for a material shortfall.
+### 2. 40acres Pharaoh — not a reconciliation bug (superseded)
 
-This addresses the two 40acres `transfer amount exceeds balance` rows. A
-post-fix live rerun could not start because two fresh ephemeral Lagoon
-deployments reverted during guard configuration, before either target vault
-was executed; the deterministic reconciliation cases pass.
+An earlier revision of this report claimed the satellite close path needed
+redemption-share reconciliation, by analogy with the PR #1577 home-chain fix.
+**That was wrong.** The existing reconciliation already runs correctly on the
+satellite path and requests exactly what is held:
 
-### Manager-declared async lifecycle detection
+```text
+Vault redeem. Position quantity 0.916656, trade quantity -0.916656,
+              onchain balance 0.916656, position planned quantity 0.916656
+Onchain balance covers the planned shares to redeem: planned 0.916656, onchain 0.916656
+```
 
-The batch runner now combines the pair kind with
-`VaultDepositManagerCapability.deposit_flow` and `redemption_flow`. This
-recognises mixed synchronous-deposit/asynchronous-redemption managers such as
-Ember and Gains. With forced simulation enabled, their pending redemption now
-reaches the existing direction-specific resolver and becomes
-`simulation_unsupported_async` unless eth-defi advertises a settlement driver.
-A successful synchronous deposit never enters forced settlement because the
-resolver is gated by `TradeStatus.vault_settlement_pending`.
+The real cause is vault-side: `43114-0x124d00b1ce4453ffc5a5f65ce83af13a7709bac7`
+holds **zero** idle underlying while reporting ~510k USDC of `totalAssets`, so
+`redeem()` cannot transfer the underlying. That is an adapter preflight gap,
+addressed by eth-defi #1378, which returns a typed
+`redemption_capacity_limited` scoped to this exact deployment so 40acres
+Aerodrome continues to succeed.
 
-## Remaining trade-executor work
+No executor change is required.
 
-No protocol-specific settlement logic should be added to trade-executor.
-Remaining executor work is verification and report provenance:
+### 3. Route the Upshift deposit preflight through the eth-defi manager — done
 
-1. Repeat the full matrix after the ephemeral Lagoon deployment issue is
-   resolved. Confirm the two 40acres rows close successfully, the six
-   Ember/Gains rows become explicit unsupported-simulation results, and all
-   redemption failures carry `operation=redeem`.
-2. Record the imported eth-defi commit and dirty-worktree state in report
-   provenance. The corrected JSON reports `eth_defi_commit=null`, and HEAD alone
-   cannot identify uncommitted executor code.
-3. Continue mapping typed eth-defi `UnsupportedVaultSimulation` and
-   `VaultFlowUnavailable` exceptions to stable terminal results. Do not infer
-   protocol policy from generic RPC assertion text.
+`Sentora USD Earn` (`1-0x74ad2f789ed583dbd141bbdafc673fe1f033718b`) now fails at
+deposit with `The function 'maxDeposit' was not found in this contract's abi`.
+eth-defi #1368 added a dedicated Upshift multi-asset `VaultDepositManager`, but
+the executor's deposit-availability preflight still calls generic ERC-4626
+`maxDeposit()` on this non-standard vault. The preflight (`can_deposit` /
+`fetch_deposit_closed_reason`) must ask the resolved manager for its deposit
+capability/preview when the manager provides one, and fall back to generic
+`maxDeposit()` only for standard ERC-4626 vaults. (eth-defi should also expose a
+`maxDeposit` shim or preview on the Upshift vault reader; see the eth-defi
+report.)
 
-The protocol-specific work required for completed simulations is listed in the
-separate eth-defi report.
+### 4. IPOR Fusion satellite-close regression — resolved
+
+`Autopilot USDC Morpho (Base)`
+(`8453-0xd6701905c59ee618dc36dc747506bce0a4ac760a`) deposited, then its Base
+satellite redemption reverted with OpenZeppelin `FailedInnerCall()`
+(`0x1425ea42`).
+
+This was **our own gas cap, not a vault or adapter defect**. The redemption
+spends 10,489,529 gas because the PlasmaVault requests liquidity from its Morpho
+market fuses, just over the previous 10,000,000
+`VaultRouting.vault_interaction_gas_limit`. The out-of-gas inner call surfaced
+through OpenZeppelin's wrapper error, which reads like a vault liquidity failure
+from the outside.
+
+Fixed by raising the limit to 15,000,000 — above the measured cost, below Base's
+16,777,216 per-transaction cap. Verified: with that change alone, and no adapter
+preflight, the vault completes a full deposit and redemption lifecycle.
+
+The lesson generalises: an unmetered `eth_call` preflight cannot observe a
+caller-side gas limit, so gas used versus the caller's cap must be ruled out
+before concluding that a vault cannot service a redemption.
+
+### 5. Continue mapping typed eth-defi exceptions to stable terminal results
+
+Ember minimum and async-unsupported now flow through cleanly as typed results.
+Extend the same mapping to the cSigma capacity assertion and the cSuperior
+`Withdrawal pending` case once eth-defi raises `VaultFlowUnavailable` /
+`UnsupportedVaultSimulation` for them, so the executor never has to infer
+protocol policy from generic RPC assertion text.
+
+### 6. Record the eth-defi commit in report provenance
+
+The report JSON still records `eth_defi_commit=null`. The executor imports the
+submodule at a known commit (this run: `b42ef5747`) and must persist it in
+`run` provenance so a matrix can be reproduced without external notes.
 
 ## Verification
 
-Focused checks after implementation:
-
-| Test | Result |
+| Check | Result |
 |---|---:|
-| `tests/cli/test_vault_test_trade.py` | 44 passed |
-| `tests/units_tests/test_home_chain_async_settlement.py` | 9 passed |
-| `tests/units_tests/test_cross_chain_satellite_async_settlement.py` | 9 passed |
-| `deps/web3-ethereum-defi/tests/lagoon/test_erc_7540_deposit_redeem.py` | 2 passed |
+| Full 129-vault matrix rerun | 129/129 completed, exit 0 |
+| trade-executor imports vs eth-defi master | clean (`vault_routing`, `testtrade`, `runner`, command) |
+| Previously working vaults | 43/43 success retained, no regression |
+| Focused smoke (Morpho/Ember/cSigma/Lagoon) | matches full-run classifications |

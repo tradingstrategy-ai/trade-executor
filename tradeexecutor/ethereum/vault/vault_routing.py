@@ -7,6 +7,8 @@ from typing import cast
 from eth_typing import HexAddress
 from hexbytes import HexBytes
 
+from eth_defi.token import USDC_NATIVE_TOKEN
+
 from eth_defi.erc_4626.analysis import analyse_4626_flow_transaction
 from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
 from eth_defi.erc_4626.deposit_redeem import ERC4626DepositManager
@@ -44,6 +46,70 @@ logger = logging.getLogger(__name__)
 
 class VaultReceiptAnalysisError(RuntimeError):
     """A mined vault transaction could not be decoded into executed amounts."""
+
+
+class IncompatibleDepositAsset(Exception):
+    """The selected deposit asset is not accepted by a multi-asset vault.
+
+    Multi-asset vaults (e.g. Upshift) whitelist a specific set of input assets
+    that can differ from the ERC-4626 accounting asset.  This is raised when the
+    selected asset (the ``--deposit-asset`` override, or the native USDC default)
+    is not on that whitelist, so the operator sees both the vault's accepted
+    assets and the asset that was attempted.
+    """
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        selected_asset: str | None = None,
+        accepted_assets: list[tuple[str, str]] | None = None,
+    ):
+        super().__init__(reason)
+        #: Address of the asset we tried to deposit, when known.
+        self.selected_asset = selected_asset
+        #: ``(symbol, address)`` tuples the vault accepts.
+        self.accepted_assets = accepted_assets or []
+
+
+def resolve_multi_asset_deposit_asset(
+    deposit_manager,
+    chain_id: int,
+    override: str | None = None,
+) -> str | None:
+    """Resolve and validate the accepted input asset for a multi-asset vault.
+
+    Single-asset vaults need no explicit selection and return ``None``.  For a
+    multi-asset vault the asset is the ``--deposit-asset`` override, or native
+    USDC on the vault's own chain by default.
+
+    :raise IncompatibleDepositAsset:
+        When the vault is multi-asset and the selected asset is not on its
+        accepted-asset whitelist.  The exception carries both the vault's
+        accepted assets and the asset that was attempted.
+    """
+
+    fetch_accepted = getattr(deposit_manager, "fetch_accepted_assets", None)
+    if fetch_accepted is None:
+        # Single-asset ERC-4626 vault: the reserve asset is deposited directly.
+        return None
+
+    selected = override or USDC_NATIVE_TOKEN.get(chain_id)
+    accepted_pairs = [(token.symbol, token.address) for token in fetch_accepted()]
+    accepted_addresses = {address.lower() for _symbol, address in accepted_pairs}
+    if selected is None or selected.lower() not in accepted_addresses:
+        supported = ", ".join(
+            f"{symbol} ({address})" for symbol, address in accepted_pairs
+        )
+        source = "--deposit-asset override" if override else "native USDC default"
+        raise IncompatibleDepositAsset(
+            f"Selected deposit asset {selected or '<none>'} ({source}) is not "
+            f"accepted by this vault. Vault accepts: {supported or '<none>'}. "
+            f"Set --deposit-asset to one of the accepted assets.",
+            selected_asset=selected,
+            accepted_assets=accepted_pairs,
+        )
+    return selected
 
 
 def reconcile_vault_redemption_amount(
@@ -206,6 +272,7 @@ class VaultRouting(RoutingModel):
         reserve_token_address: JSONHexAddress,
         epsilon=Decimal(1e-6),
         redeem_epsilon=0.025,
+        deposit_asset_override: JSONHexAddress | None = None,
     ):
         super().__init__(
             allowed_intermediary_pairs={},
@@ -213,8 +280,23 @@ class VaultRouting(RoutingModel):
         )
         self.epsilon = epsilon
 
-        # 3M gas was not enough to withdraw from IPOR, but Base has a per-tx gas cap 16,777,216
-        self.vault_interaction_gas_limit = 10_000_000
+        # Accepted input asset for multi-asset vaults (e.g. Upshift), where the
+        # ERC-4626 accounting asset differs from the deposit assets and the
+        # manager requires an explicit selection. ``None`` means "use the
+        # default", which :meth:`deposit_or_redeem` resolves to native USDC on
+        # the vault's own chain. Set this to override the default per run.
+        self.deposit_asset_override = deposit_asset_override
+
+        # Vault redemptions can be very gas heavy when the vault pulls liquidity
+        # back from its underlying markets on withdraw. Measured worst case so
+        # far: IPOR Autopilot USDC Morpho on Base spends 10,489,529 gas on
+        # redeem() while its PlasmaVault requests liquidity from Morpho market
+        # fuses. At the previous 10,000,000 limit that redemption ran out of gas
+        # and surfaced as OpenZeppelin FailedInnerCall() (0x1425ea42), which
+        # looks like a vault liquidity failure but is purely our own cap.
+        # Base enforces a per-transaction gas cap of 16,777,216, so stay below
+        # it while leaving headroom above the measured worst case.
+        self.vault_interaction_gas_limit = 15_000_000
 
         # 2.5% is the maximum relative difference for redeeming vault shares,
         # when checking onchain balance vs our internal accounting
@@ -339,14 +421,38 @@ class VaultRouting(RoutingModel):
         # both synchronous and asynchronous flows.  In particular, this keeps
         # cSigma's owner-specific immediate-redemption capacity check intact.
         if trade.is_buy():
-            request = deposit_manager.create_deposit_request(
+            deposit_kwargs = dict(
                 owner=address,
                 amount=swap_amount,
                 check_enough_token=False,
             )
+            # Multi-asset vaults (e.g. Upshift) accept several deposit assets and
+            # require an explicit selection; their manager exposes an
+            # ``accepted_asset`` parameter.  Default to native USDC on the vault's
+            # own chain, overridable per run via ``deposit_asset_override``.  An
+            # asset not on the vault whitelist raises IncompatibleDepositAsset.
+            # TODO: exercise the override end-to-end (see the vault-test-trade
+            # --deposit-asset TODO); only the USDC default is covered today.
+            accepted_asset = resolve_multi_asset_deposit_asset(
+                deposit_manager,
+                target_vault.chain_id,
+                self.deposit_asset_override,
+            )
+            if accepted_asset is not None:
+                deposit_kwargs["accepted_asset"] = HexAddress(accepted_asset)
+            request = deposit_manager.create_deposit_request(**deposit_kwargs)
             is_async = not deposit_manager.has_synchronous_deposit()
             direction = "deposit"
         else:
+            # We assume a redemption is filled in full. Some protocols are
+            # partial-fill: cSigma pays out whatever its reserve covers now and
+            # queues the remainder as an off-chain FIFO "pending position" that
+            # keeps earning yield (see cSigma's withdraw-flow design doc). We do
+            # not model that split, so a partially fillable redemption is either
+            # refused by the adapter preflight or reverts on chain.
+            # TODO: model partial fills for cSigma-style reserve-limited pools —
+            # redeem the reserve-covered portion and track the queued remainder
+            # instead of treating the redemption as all-or-nothing.
             request = deposit_manager.create_redemption_request(
                 owner=address,
                 shares=swap_amount,
