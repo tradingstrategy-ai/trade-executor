@@ -202,22 +202,42 @@ def resolve_redemption_available(
     pair: TradingPairIdentifier,
     vault: Any,
 ) -> bool:
-    """Decide whether a vault offers redemption, preferring live adapter capability.
+    """Decide whether the simulation should attempt the redemption leg.
 
-    :py:meth:`TradingPairIdentifier.can_redeem` is a point-in-time Trading
-    Strategy data-pipeline snapshot, not a live check.  When the eth-defi
-    manager publishes a live capability it is authoritative: a stale metadata
-    flag must never suppress a redemption the adapter says is supported,
-    because that silently skips the redemption leg and reports a bare
-    ``redemption_unavailable`` instead of the adapter's own typed result.
+    Neither input is a live chain read, and they mean different things:
+
+    - :py:attr:`VaultDepositManagerCapability.can_redeem` is **static** eth-defi
+      integration metadata — whether a complete redemption lifecycle is
+      implemented. Its own docstring excludes the vault's live cap, pause,
+      allow-list, balance and liquidity state.
+    - :py:meth:`TradingPairIdentifier.can_redeem` is a point-in-time Trading
+      Strategy data-pipeline snapshot, which can encode observed venue state but
+      may be stale.
+
+    ``can_redeem is False`` is therefore used only as a **veto**: if eth-defi
+    implements no redemption lifecycle, no chain state can make one work.
+
+    When the adapter does implement redemption, this deliberately attempts the
+    leg even if the snapshot says otherwise. ``vault-test-trade`` is a
+    diagnostic harness: attempting and recording a typed refusal is more useful
+    than silently skipping the leg and reporting a bare
+    ``redemption_unavailable``. Plutus Hedge is the motivating case — a stale
+    ``False`` hid the adapter's own ``simulation_unsupported_async`` reason.
+
+    .. warning::
+
+        This is safe for ``--auto-simulated``, which is fork-only. In real mode
+        the cost of attempting is a failed or pending on-chain request, so live
+        gating for a real redemption must come from
+        :py:meth:`PricingModel.can_redeem`, which the redeem path already uses.
     """
 
     capability = get_vault_manager_capability(vault)
-    if capability is not None:
-        can_redeem = getattr(capability, "can_redeem", None)
-        if can_redeem is not None:
-            return bool(can_redeem)
-    return pair.can_redeem()
+    if capability is not None and getattr(capability, "can_redeem", None) is False:
+        return False
+    return pair.can_redeem() or bool(
+        capability is not None and getattr(capability, "can_redeem", None)
+    )
 
 
 def get_redemption_unavailable_detail(vault: Any) -> str:

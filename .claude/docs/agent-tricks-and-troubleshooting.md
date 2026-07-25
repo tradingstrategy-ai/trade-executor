@@ -524,6 +524,22 @@ codex update
 codex exec --json --sandbox read-only "Say OK and nothing else." < /dev/null
 ```
 
+Some models are gated by **account entitlement**, not by CLI version, and
+updating will not unlock them. Observed 2026-07-25 with a ChatGPT account:
+
+```text
+The 'sol' model is not supported when using Codex with a ChatGPT account.
+```
+
+`codex update` (0.144.4 → 0.145.0) did not change this, and the `sol-preview`,
+`gpt-5-sol` and `solaris` spellings were rejected the same way, while the
+default model answered normally. Distinguish the two cases before spending time
+on upgrades: a *version* problem says "requires a newer version of Codex", an
+*entitlement* problem says "not supported when using Codex with a ChatGPT
+account". For the latter, either use a different account/auth method or fall
+back to the default model and state in the review write-up which model actually
+ran.
+
 ### Authentication or MCP setup is broken
 
 Symptoms:

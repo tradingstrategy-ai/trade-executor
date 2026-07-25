@@ -99,7 +99,10 @@ def vault_test_trade(
         envvar="DEPOSIT_ASSET",
         help=(
             "Accepted input asset for multi-asset vaults (e.g. Upshift). "
-            "Defaults to native USDC on the vault's primary chain."
+            "Defaults to native USDC on the vault's primary chain. "
+            "INCOMPLETE: the override reaches only already-materialised vault "
+            "routers, and the deposit price preflight always uses native USDC, "
+            "so a non-USDC override can still be refused."
         ),
     ),
     report_json: Path | None = Option(
