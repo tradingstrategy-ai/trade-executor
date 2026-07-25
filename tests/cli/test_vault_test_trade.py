@@ -6,6 +6,7 @@ import logging
 from collections import defaultdict, deque
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -65,10 +66,12 @@ from tradeexecutor.cli.vault_trade.runner import (
     get_adapter_unsupported_detail,
     get_bridge_conflict,
     get_deposit_closed_detail,
+    get_redemption_unavailable_detail,
     has_async_vault_lifecycle,
     get_latest_attempt_vault_operation,
     get_whitelisting_needed_detail,
     normalise_vault_flow_failure,
+    resolve_redemption_available,
     should_leave_deposit_open,
 )
 from tradeexecutor.cli.testtrade import BridgeProceedsUnavailable
@@ -1310,6 +1313,66 @@ def test_preflight_result_is_copied_verbatim() -> None:
     fallback.preflight_result = "not_a_known_result"
     result, _detail, _outcome_data = normalise_vault_flow_failure(fallback)
     assert result == "redemption_window_closed"
+
+
+def test_live_capability_outranks_stale_pair_redemption_flag() -> None:
+    """A stale pair snapshot must not suppress an adapter-supported redemption.
+
+    ``TradingPairIdentifier.can_redeem()`` is a data-pipeline snapshot, so a
+    stale ``False`` previously skipped the redemption leg entirely and reported
+    a bare ``redemption_unavailable`` (Plutus Hedge), hiding the adapter's own
+    typed async result.
+
+    1. Resolve availability when the pair says no but the adapter says yes.
+    2. Resolve availability when the adapter says no.
+    3. Fall back to the pair flag when the adapter publishes no capability.
+    """
+
+    class _Pair:
+        def __init__(self, flag: bool):
+            self._flag = flag
+
+        def can_redeem(self) -> bool:
+            return self._flag
+
+    # 1. Resolve availability when the pair says no but the adapter says yes.
+    supported = SimpleNamespace(can_redeem=True, redemption_unsupported_reason=None)
+    vault = SimpleNamespace(get_deposit_manager_capability=lambda: supported)
+    assert resolve_redemption_available(_Pair(False), vault) is True
+
+    # 2. Resolve availability when the adapter says no.
+    refused = SimpleNamespace(
+        can_redeem=False,
+        redemption_unsupported_reason="vault_is_wind_down_only",
+    )
+    refused_vault = SimpleNamespace(get_deposit_manager_capability=lambda: refused)
+    assert resolve_redemption_available(_Pair(True), refused_vault) is False
+
+    # 3. Fall back to the pair flag when the adapter publishes no capability.
+    assert resolve_redemption_available(_Pair(True), SimpleNamespace()) is True
+    assert resolve_redemption_available(_Pair(False), SimpleNamespace()) is False
+
+
+def test_redemption_unavailable_always_has_a_reason() -> None:
+    """A skipped redemption must never be recorded without a reason.
+
+    1. Use the adapter's published reason when it has one.
+    2. State explicitly that no reason was published when it has none.
+    """
+
+    # 1. Use the adapter's published reason when it has one.
+    capability = SimpleNamespace(
+        can_redeem=False,
+        redemption_unsupported_reason="vault_is_wind_down_only",
+    )
+    vault = SimpleNamespace(get_deposit_manager_capability=lambda: capability)
+    detail = get_redemption_unavailable_detail(vault)
+    assert "vault_is_wind_down_only" in detail
+
+    # 2. State explicitly that no reason was published when it has none.
+    fallback = get_redemption_unavailable_detail(SimpleNamespace())
+    assert fallback
+    assert "no reason" in fallback
 
 
 def test_incompatible_deposit_asset_lists_supported_and_selected() -> None:

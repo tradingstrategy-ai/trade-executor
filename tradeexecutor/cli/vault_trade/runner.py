@@ -169,6 +169,15 @@ def should_leave_deposit_open(
     return operation == "deposit" and (manual or is_async or not redemption_available)
 
 
+def get_vault_manager_capability(vault: Any) -> Any | None:
+    """Read the live eth-defi deposit-manager capability, when the adapter has one."""
+
+    get_capability = getattr(vault, "get_deposit_manager_capability", None)
+    if get_capability is None:
+        return None
+    return get_capability()
+
+
 def has_async_vault_lifecycle(
     pair: TradingPairIdentifier,
     vault: Any,
@@ -178,16 +187,57 @@ def has_async_vault_lifecycle(
     if pair.is_async_vault():
         return True
 
-    get_capability = getattr(vault, "get_deposit_manager_capability", None)
-    if get_capability is None:
-        return False
-    capability = get_capability()
+    capability = get_vault_manager_capability(vault)
     if capability is None:
         return False
 
     return "asynchronous" in (
         getattr(capability, "deposit_flow", None),
         getattr(capability, "redemption_flow", None),
+    )
+
+
+def resolve_redemption_available(
+    pair: TradingPairIdentifier,
+    vault: Any,
+) -> bool:
+    """Decide whether a vault offers redemption, preferring live adapter capability.
+
+    :py:meth:`TradingPairIdentifier.can_redeem` is a point-in-time Trading
+    Strategy data-pipeline snapshot, not a live check.  When the eth-defi
+    manager publishes a live capability it is authoritative: a stale metadata
+    flag must never suppress a redemption the adapter says is supported,
+    because that silently skips the redemption leg and reports a bare
+    ``redemption_unavailable`` instead of the adapter's own typed result.
+    """
+
+    capability = get_vault_manager_capability(vault)
+    if capability is not None:
+        can_redeem = getattr(capability, "can_redeem", None)
+        if can_redeem is not None:
+            return bool(can_redeem)
+    return pair.can_redeem()
+
+
+def get_redemption_unavailable_detail(vault: Any) -> str:
+    """Explain why no redemption was attempted, so the result is never reasonless.
+
+    A ``redemption_unavailable`` row must carry a concrete reason.  Prefer the
+    adapter's published reason and otherwise state explicitly that none was
+    available, rather than persisting an empty detail.
+    """
+
+    capability = get_vault_manager_capability(vault)
+    reason = (
+        getattr(capability, "redemption_unsupported_reason", None)
+        if capability is not None
+        else None
+    )
+    if reason:
+        return f"Adapter reports redemption unsupported: {reason}"
+    return (
+        "Vault metadata reports no redemption path and the adapter published no "
+        "reason; the redemption leg was not attempted"
     )
 
 
@@ -922,10 +972,15 @@ class VaultTestBatchRunner:
                 )
                 return True
 
-        # A pre-deposit live redemption quote sees zero shares.  The pair-level
-        # venue gate is the correct indication for same-run instant redemption.
+        # A pre-deposit live redemption quote sees zero shares, so the venue gate
+        # is used instead.  Resolve it through the adapter capability first: the
+        # pair flag alone is a stale data-pipeline snapshot and must not suppress
+        # a redemption the adapter actually supports.
         if operation == "deposit":
-            redemption_available = pair.can_redeem()
+            redemption_available = resolve_redemption_available(
+                pair,
+                attempt.executable_vault,
+            )
         else:
             redemption_available = attempt.pricing_model.can_redeem(
                 native_datetime_utc_now(),
@@ -1247,6 +1302,10 @@ class VaultTestBatchRunner:
             detail=(
                 "Async deposit request completed; full lifecycle was not requested"
                 if is_async and not complete_async_lifecycle
+                # A refusal must never be reasonless: say why redemption was
+                # skipped, using the adapter's published reason when it has one.
+                else get_redemption_unavailable_detail(attempt.executable_vault)
+                if not redemption_available
                 else None
             ),
             attempt_id=self.current_attempt.attempt_id
