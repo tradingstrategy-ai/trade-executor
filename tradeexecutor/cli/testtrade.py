@@ -823,10 +823,24 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web
             if capability is not None and hasattr(capability, "as_dict")
             else None
         )
+        # eth-defi publishes the concrete false-capability reason alongside
+        # supports_anvil_settlement=False. Carry it through as structured
+        # context so the report says *why* this lifecycle cannot be simulated
+        # rather than only that the capability was absent.
+        unsupported_reason = getattr(
+            capability, "anvil_settlement_unsupported_reason", None
+        )
         raise UnsupportedVaultSimulation(
             f"{deposit_manager.__class__.__name__} does not advertise Anvil "
-            f"settlement for vault {vault.address}, direction={direction}, "
-            f"capability={capability_data}"
+            f"settlement for vault {vault.address}, direction={direction}"
+            + (f": {unsupported_reason}" if unsupported_reason else "")
+            + f", capability={capability_data}",
+            unsupported_reason=unsupported_reason,
+            protocol=vault.get_protocol_name()
+            if hasattr(vault, "get_protocol_name")
+            else None,
+            vault_address=vault.address,
+            direction=direction,
         )
 
     # Now run the generic settlement retry. Pass web3config so the claim is
