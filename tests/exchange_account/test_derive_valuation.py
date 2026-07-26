@@ -37,11 +37,7 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 
-# Skip tests if credentials not configured
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("DERIVE_OWNER_PRIVATE_KEY") or not os.environ.get("DERIVE_SESSION_PRIVATE_KEY"),
-    reason="Set DERIVE_OWNER_PRIVATE_KEY and DERIVE_SESSION_PRIVATE_KEY for Derive tests. See tests/derive/derive-test-key-setup.md",
-)
+pytestmark = pytest.mark.skip(reason="Needs fresh API key")
 
 
 @pytest.fixture(scope="module")

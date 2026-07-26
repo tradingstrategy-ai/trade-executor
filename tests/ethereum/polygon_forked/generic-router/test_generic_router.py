@@ -28,10 +28,14 @@ from tradeexecutor.strategy.runner import post_process_trade_decision
 from eth_defi.compat import native_datetime_utc_now
 
 
-pytestmark = pytest.mark.skipif(
-    (os.environ.get("JSON_RPC_POLYGON") is None) or (shutil.which("anvil") is None),
-    reason="Set JSON_RPC_POLYGON env install anvil command to run these tests",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        (os.environ.get("JSON_RPC_POLYGON") is None) or (shutil.which("anvil") is None),
+        reason="Set JSON_RPC_POLYGON env install anvil command to run these tests",
+    ),
+    pytest.mark.warm_rpc_high_value_group,
+    pytest.mark.xdist_group("fork:polygon:51000000:isolated"),
+]
 
 
 
@@ -420,4 +424,3 @@ def test_generic_routing_check_accounts(
     )
     corrections = list(corrections)
     assert len(corrections) == 0, f"Got corrections: {corrections}"
-

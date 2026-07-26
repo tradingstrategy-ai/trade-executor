@@ -8,9 +8,8 @@ the full multichain lifecycle using Anvil forks:
 3. Bridge USDC via CCTP (Arb → HyperEVM, forged attestation)
 4. Deposit into Hypercore HLP vault (batched multicall, mock contracts)
 5. Verify vault position
-6. Run correct-accounts
-7. Withdraw from Hypercore vault
-8. Bridge USDC back via CCTP (HyperEVM → Arb, forged attestation)
+6. Withdraw from Hypercore vault
+7. Bridge USDC back via CCTP (HyperEVM → Arb, forged attestation)
 
 Requires ``JSON_RPC_ARBITRUM`` and ``JSON_RPC_HYPERLIQUID`` environment
 variables pointing at real mainnet RPCs (used as Anvil fork sources).
@@ -97,11 +96,19 @@ def simulation_setup():
 
 
 @pytest.mark.timeout(300)
-def test_crosschain_hypercore_vault(simulation_setup, strategy_file):
-    """Full cross-chain lifecycle: bridge to HyperEVM, deposit into Hypercore vault, withdraw, bridge back."""
+def test_crosschain_hypercore_vault(simulation_setup: dict, strategy_file: Path):
+    """Exercise the simulated CCTP and Hypercore round trip.
+
+    1. Start isolated Arbitrum and HyperEVM forks with test CCTP attesters.
+    2. Bridge USDC to HyperEVM and deposit it into the Hypercore vault.
+    3. Simulate the vault withdrawal and submit the reverse CCTP burn.
+    4. Forge the reverse attestation and verify the lifecycle completes.
+    """
+    # 1. Start isolated Arbitrum and HyperEVM forks with test CCTP attesters.
     s = simulation_setup
     trading_strategy_api_key = os.environ.get("TRADING_STRATEGY_API_KEY", "")
 
+    # 2-4. Run the bridge, vault, withdrawal and reverse-attestation lifecycle.
     s["mod"]._run_test_lifecycle(
         simulate=True,
         test_attesters=s["test_attesters"],

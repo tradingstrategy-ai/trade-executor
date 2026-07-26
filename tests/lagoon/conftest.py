@@ -23,6 +23,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.deployment import deploy_automated_
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
+from eth_defi.testing.fork_blocks import BASE_MIDNIGHT_BLOCK
 from eth_defi.token import TokenDetails, fetch_erc20_details, USDC_NATIVE_TOKEN
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
@@ -63,7 +64,7 @@ def usdc_holder() -> HexAddress:
 
 @pytest.fixture()
 def anvil_base_fork(request, usdc_holder) -> AnvilLaunch:
-    """Create a testable fork of live BNB chain.
+    """Create an isolated fork of Base at the cached canonical block.
 
     :return: JSON-RPC URL for Web3
     """
@@ -76,6 +77,7 @@ def anvil_base_fork(request, usdc_holder) -> AnvilLaunch:
             launch = fork_network_anvil(
                 rpc_url,
                 unlocked_addresses=[usdc_holder],
+                fork_block_number=BASE_MIDNIGHT_BLOCK,
             )
             break
         except AssertionError:

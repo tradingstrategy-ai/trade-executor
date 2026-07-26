@@ -606,22 +606,27 @@ def _run_test_lifecycle(
         # ===================================================================
         print("\n=== Step 9: Correct accounts ===")
 
-        correct_env = {**start_env}
-        try:
-            run_cli(["correct-accounts"], correct_env)
-            print("  correct-accounts completed")
-        except SystemExit as e:
-            # Exit code 1 is acceptable (minor mismatches)
-            if e.code in (0, 1):
-                print(f"  correct-accounts completed (exit code {e.code})")
-            else:
-                raise
-        except Exception as e:
-            # correct-accounts may fail on cross-chain positions because
-            # it tries to query satellite-chain tokens on the primary chain.
-            # This is a known limitation — skip for now.
-            logger.warning("correct-accounts failed (expected for cross-chain): %s", e)
-            print(f"  correct-accounts skipped (cross-chain limitation): {type(e).__name__}")
+        if simulate:
+            # correct-accounts auto-creates a reverse CCTP placeholder from the
+            # bidirectional test universe, which would hide the real burn below.
+            print("  correct-accounts skipped during simulated reverse bridge")
+        else:
+            correct_env = {**start_env}
+            try:
+                run_cli(["correct-accounts"], correct_env)
+                print("  correct-accounts completed")
+            except SystemExit as e:
+                # Exit code 1 is acceptable (minor mismatches)
+                if e.code in (0, 1):
+                    print(f"  correct-accounts completed (exit code {e.code})")
+                else:
+                    raise
+            except Exception as e:
+                # correct-accounts may fail on cross-chain positions because
+                # it tries to query satellite-chain tokens on the primary chain.
+                # This is a known limitation — skip for now.
+                logger.warning("correct-accounts failed (expected for cross-chain): %s", e)
+                print(f"  correct-accounts skipped (cross-chain limitation): {type(e).__name__}")
 
         # ===================================================================
         # Steps 10-11: Simulate-only — withdraw and bridge back

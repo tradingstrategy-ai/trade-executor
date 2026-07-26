@@ -25,10 +25,14 @@ JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
 CI = os.environ.get("CI") == "true"
 
-pytestmark = pytest.mark.skipif(
-     (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY),
-      reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY needed to run this test"
-)
+pytestmark = [
+    pytest.mark.skipif(
+        (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY),
+        reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY needed to run this test",
+    ),
+    pytest.mark.warm_rpc_high_value_group,
+    pytest.mark.xdist_group("fork:base:49030926:isolated"),
+]
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 

@@ -740,6 +740,10 @@ def sync_interests(
         pricing_model
     )
 
+    if not interest_distribution.assets:
+        logger.info("No interest-bearing assets in open or frozen positions, skipping interest sync")
+        return []
+
     # Then sync interest back from the chain
     block_identifier = get_almost_latest_block_number(web3)
 
