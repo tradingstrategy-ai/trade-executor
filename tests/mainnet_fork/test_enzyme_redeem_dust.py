@@ -16,16 +16,20 @@ from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 CI = os.environ.get("CI") == "true"
 
+FORK_BLOCK = 62_255_643
 
-pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test")
+pytestmark = [
+    pytest.mark.skipif(not os.environ.get("JSON_RPC_POLYGON") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test"),
+    pytest.mark.warm_rpc_test_group,
+    # This repair writes chain state, so it needs its own Anvil despite the warm cache.
+    pytest.mark.xdist_group("fork:polygon:62255643:isolated"),
+]
 
 
 @pytest.fixture(scope="module")
 def end_block() -> int:
     """The chain point of time when we simulate the events."""
-    block_time = 2
-    days = 6
-    return 62514843 - days*24*3600//block_time
+    return FORK_BLOCK
 
 
 @pytest.fixture()
@@ -159,5 +163,4 @@ def test_enzyme_redeem_dust(
     with pytest.raises(SystemExit) as sys_exit:
         app(["correct-accounts"], standalone_mode=False)
     assert sys_exit.value.code == 0
-
 

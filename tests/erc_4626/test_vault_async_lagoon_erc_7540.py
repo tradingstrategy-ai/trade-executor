@@ -32,6 +32,7 @@ Steps:
 import datetime
 import logging
 import os
+from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
 
@@ -47,6 +48,8 @@ from eth_defi.erc_4626.vault_protocol.lagoon.testing import force_lagoon_settle
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import fork_network_anvil, fund_erc20_on_anvil, launch_anvil, AnvilLaunch
 from eth_defi.provider.multi_provider import create_multi_provider_web3
+from eth_defi.testing.anvil_fork_pool import AnvilForkPool
+from eth_defi.testing.evm_snapshot_fixture import evm_snapshot_revert
 from eth_defi.token import fetch_erc20_details, USDC_NATIVE_TOKEN
 from eth_defi.trace import assert_transaction_success_with_explanation
 
@@ -78,7 +81,11 @@ from tradingstrategy.universe import Universe
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 JSON_RPC_ARBITRUM = os.environ.get("JSON_RPC_ARBITRUM")
-pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="Set JSON_RPC_BASE to run this test")
+pytestmark = [
+    pytest.mark.skipif(not JSON_RPC_BASE, reason="Set JSON_RPC_BASE to run this test"),
+    pytest.mark.warm_rpc_test_group,
+    pytest.mark.xdist_group("fork:base:41950000"),
+]
 
 #: Real ERC-7540 Lagoon vault on Base (722 capital), as used by eth_defi's Lagoon 7540 test.
 LAGOON_7540_VAULT = "0xb09f761cb13baca8ec087ac476647361b6314f98"
@@ -91,18 +98,20 @@ USDC_WHALE_BASE = "0x40EbC1Ac8d4Fedd2E144b75fe9C0420BE82750c6"
 DEPOSIT_VALUE = 50.0
 
 
-@pytest.fixture()
-def anvil_base_fork() -> AnvilLaunch:
-    """Fork Base with the USDC whale and the target vault's asset manager unlocked."""
-    launch = fork_network_anvil(
+@pytest.fixture(scope="module")
+def anvil_base_fork(anvil_fork_pool: AnvilForkPool) -> AnvilLaunch:
+    """Return the shared fixed-block Base fork with required accounts unlocked."""
+    return anvil_fork_pool.get_launch(
         JSON_RPC_BASE,
-        fork_block_number=FORK_BLOCK,
+        FORK_BLOCK,
         unlocked_addresses=[USDC_WHALE_BASE, TARGET_VAULT_ASSET_MANAGER],
     )
-    try:
-        yield launch
-    finally:
-        launch.close(log_level=logging.ERROR)
+
+
+@pytest.fixture(autouse=True)
+def _restore_base_snapshot(anvil_base_fork: AnvilLaunch) -> Iterator[None]:
+    """Restore the shared Base fork after each state-mutating lifecycle test."""
+    yield from evm_snapshot_revert(anvil_base_fork)
 
 
 @pytest.fixture()

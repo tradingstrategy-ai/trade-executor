@@ -17,7 +17,11 @@ from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 CI = os.environ.get("CI") == "true"
 
-pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test")
+pytestmark = [
+    pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test"),
+    pytest.mark.warm_rpc_test_group,
+    pytest.mark.xdist_group("fork:base:27664435:isolated"),
+]
 
 
 @pytest.fixture()
@@ -93,18 +97,21 @@ def test_repair_credit_position_open_failed(
     environment: dict,
     mocker,
 ):
-    """Fix a creidt position that failed to open.
+    """Repair a credit position that failed to open.
 
-    - Execution crashes in broadcasting phase
+    1. Configure the recorded execution environment.
+    2. Run the repair command that reproduces the broadcasting failure.
+    3. Correct accounts and require Click's successful exit status.
     """
 
+    # 1. Configure the recorded execution environment.
     mocker.patch.dict("os.environ", environment, clear=True)
+
+    # 2. Run the repair command that reproduces the broadcasting failure.
     app(["repair"], standalone_mode=False)
-    app(["correct-accounts"], standalone_mode=False)
 
-
-
-    # Check accounts now to verify if balance is good
-    # with pytest.raises(SystemExit) as sys_exit:
-
-    # assert sys_exit.value.code == 0
+    # 3. Correct accounts and require Click's successful exit status.
+    # Click reports successful command completion by raising SystemExit(0).
+    with pytest.raises(SystemExit) as sys_exit:
+        app(["correct-accounts"], standalone_mode=False)
+    assert sys_exit.value.code == 0

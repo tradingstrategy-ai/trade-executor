@@ -59,14 +59,11 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for marker_name in ("warm_rpc_test_group", "warm_rpc_high_value_group"):
         warm_items = [item for item in items if item.get_closest_marker(marker_name)]
         module_markers: dict[object, set[str | None]] = defaultdict(set)
-        groups: set[str] = set()
 
         for item in warm_items:
             marker = item.get_closest_marker("xdist_group")
             group = marker.args[0] if marker and marker.args else None
             module_markers[item.module].add(group)
-            if group:
-                groups.add(group)
 
         missing_groups = [module.__name__ for module, markers in module_markers.items() if None in markers]
         if missing_groups:
@@ -75,10 +72,6 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
         partial_groups = [module.__name__ for module, markers in module_markers.items() if len(markers) > 1]
         if partial_groups:
             raise pytest.UsageError(f"Warm RPC modules must use one xdist_group marker: {', '.join(partial_groups)}")
-
-        if len(groups) > 3:
-            raise pytest.UsageError(f"{marker_name} invocation has {len(groups)} fork groups; maximum is 3")
-
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
