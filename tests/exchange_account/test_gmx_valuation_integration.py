@@ -58,9 +58,13 @@ from decimal import Decimal
 import pytest
 from web3 import HTTPProvider, Web3
 
+from web3.contract import Contract
+
+from eth_defi.abi import get_deployed_contract
 from eth_defi.chain import install_chain_middleware
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.gas import node_default_gas_price_strategy
+from eth_defi.gmx import valuation as gmx_valuation
 from eth_defi.gmx.valuation import fetch_gmx_total_equity
 from eth_defi.provider.anvil import fork_network_anvil
 from eth_defi.token import fetch_erc20_details
@@ -94,6 +98,46 @@ FORK_BLOCK = 401_729_535
 
 #: Arbitrum mainnet chain ID
 ARBITRUM_CHAIN_ID = 42161
+
+#: GMX SyntheticsReader deployment that is live at :py:data:`FORK_BLOCK`.
+#:
+#: The reader must be pinned alongside the fork block.
+#: :py:func:`eth_defi.gmx.contracts.get_contract_addresses` resolves the reader
+#: from GMX's published ``contracts.json`` at call time, preferring their
+#: ``updates`` branch, so it always returns the *current* deployment. GMX
+#: redeploys the reader periodically: the deployment it currently advertises
+#: (``0xfA26cBb46e2614609406de08CA1Dc7f70a684184``) was created at Arbitrum
+#: block 483,924,493, which is roughly 82 million blocks *after* this fork
+#: block. Calling it here hits an address with no code, and web3 reports the
+#: empty return as ``BadFunctionCallOutput: ... is contract deployed correctly
+#: and chain synced?``, which hides the real cause.
+#:
+#: This address is the reader listed on GMX's stable ``main`` branch. It has
+#: code at the fork block and returns the position sets these tests assert on.
+GMX_READER_AT_FORK_BLOCK = "0x470fbC46bcC0f16532691Df360A07d8Bf5ee0789"
+
+
+@pytest.fixture(autouse=True)
+def pinned_gmx_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the GMX reader to the deployment live at the fork block.
+
+    Without this, the reader address is resolved live from GMX and drifts ahead
+    of the pinned fork block whenever GMX redeploys, breaking these tests for
+    reasons unrelated to the code under test.
+    """
+
+    def get_pinned_reader_contract(web3: Web3, chain: str) -> Contract:
+        return get_deployed_contract(
+            web3,
+            "gmx/Reader.json",
+            Web3.to_checksum_address(GMX_READER_AT_FORK_BLOCK),
+        )
+
+    monkeypatch.setattr(
+        gmx_valuation,
+        "get_reader_contract",
+        get_pinned_reader_contract,
+    )
 
 
 @pytest.fixture()
