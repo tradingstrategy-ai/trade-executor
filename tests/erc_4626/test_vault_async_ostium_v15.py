@@ -18,6 +18,7 @@ Steps:
 11. Verify final equity approximately equals starting equity
 """
 
+import logging
 import os
 from collections.abc import Iterator
 
@@ -30,10 +31,8 @@ from eth_defi.erc_4626.classification import create_vault_instance_autodetect
 from eth_defi.erc_4626.vault_protocol.gains.testing import force_ostium_v15_settlement
 from eth_defi.erc_4626.vault_protocol.gains.vault import OstiumVault, OstiumVersion
 from eth_defi.hotwallet import HotWallet
-from eth_defi.provider.anvil import AnvilLaunch
+from eth_defi.provider.anvil import fork_network_anvil, AnvilLaunch
 from eth_defi.provider.multi_provider import create_multi_provider_web3
-from eth_defi.testing.anvil_fork_pool import AnvilForkPool
-from eth_defi.testing.evm_snapshot_fixture import evm_snapshot_revert
 from eth_defi.token import fetch_erc20_details, USDC_NATIVE_TOKEN, USDC_WHALE
 from eth_defi.trace import assert_transaction_success_with_explanation
 
@@ -64,27 +63,26 @@ pytestmark = [
     pytest.mark.skipif(not JSON_RPC_ARBITRUM, reason="Set JSON_RPC_ARBITRUM to run this test"),
     pytest.mark.warm_rpc_test_group,
     pytest.mark.xdist_group("fork:arbitrum:470000000"),
-    pytest.mark.filterwarnings("error::eth_defi.testing.anvil_fork_pool.WedgedForkRecycledWarning"),
 ]
 
 OSTIUM_VAULT_ADDRESS = "0x20d419a8e12c45f88fda7c5760bb6923cee27f98"
 FORK_BLOCK = 470_000_000
 
 
-@pytest.fixture(scope="module")
-def anvil_arbitrum_fork(anvil_fork_pool: AnvilForkPool) -> AnvilLaunch:
-    """Return the shared Anvil fork with the USDC whale unlocked."""
-    return anvil_fork_pool.get_launch(
+@pytest.fixture()
+def anvil_arbitrum_fork() -> Iterator[AnvilLaunch]:
+    """Create an isolated fixed-block Arbitrum fork with the USDC whale unlocked."""
+    # This lifecycle test writes extensively to the fork, so it cannot share
+    # Anvil state; the fixed block still reuses Foundry's persisted RPC cache.
+    launch = fork_network_anvil(
         JSON_RPC_ARBITRUM,
-        FORK_BLOCK,
+        fork_block_number=FORK_BLOCK,
         unlocked_addresses=[USDC_WHALE[42161]],
     )
-
-
-@pytest.fixture(autouse=True)
-def _restore_anvil_snapshot(anvil_arbitrum_fork: AnvilLaunch) -> Iterator[None]:
-    """Restore the shared fork after each state-mutating test."""
-    yield from evm_snapshot_revert(anvil_arbitrum_fork)
+    try:
+        yield launch
+    finally:
+        launch.close(log_level=logging.ERROR)
 
 
 @pytest.fixture()
