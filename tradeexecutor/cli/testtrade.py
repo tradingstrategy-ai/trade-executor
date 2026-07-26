@@ -462,6 +462,12 @@ def _make_cross_chain_test_trade(
         # has now settled and only its bridge-back leg remains.
         if satellite_position is not None:
             logger.info("Cross-chain close step 1: closing %s on %s", pair.get_ticker(), chain_name)
+            if on_anvil:
+                # The vault lock-up is enforced on the satellite chain, not on
+                # the home-chain connection passed to make_test_trade().
+                logger.info("Skipping satellite time forward by %d seconds", anvil_time_skip_seconds)
+                dest_web3 = web3config.get_connection(ChainId(dest_chain_id))
+                mine(dest_web3, increase_timestamp=anvil_time_skip_seconds)
             _record_satellite_redemption_balance(
                 web3config=web3config,
                 routing_model=routing_model,
