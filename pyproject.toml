@@ -219,4 +219,6 @@ filterwarnings = [
 ]
 markers = [
   "slow_test_group: manually separated group of tests that take individually long time to run",
+  "warm_rpc_test_group: fixed-block Anvil tests that share a warmed RPC cache and fork pool",
+  "warm_rpc_high_value_group: separately scheduled warm-RPC group for high-value fork clusters",
 ]

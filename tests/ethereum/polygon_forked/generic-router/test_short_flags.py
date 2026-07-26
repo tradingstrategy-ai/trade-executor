@@ -28,10 +28,14 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 from tradeexecutor.strategy.universe_model import default_universe_options
 from eth_defi.compat import native_datetime_utc_now
 
-pytestmark = pytest.mark.skipif(
-    (os.environ.get("JSON_RPC_POLYGON") is None) or (shutil.which("anvil") is None),
-    reason="Set JSON_RPC_POLYGON env install anvil command to run these tests",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        (os.environ.get("JSON_RPC_POLYGON") is None) or (shutil.which("anvil") is None),
+        reason="Set JSON_RPC_POLYGON env install anvil command to run these tests",
+    ),
+    pytest.mark.warm_rpc_high_value_group,
+    pytest.mark.xdist_group("fork:polygon:51000000:isolated"),
+]
 
 
 @pytest.fixture()
@@ -178,5 +182,4 @@ def test_short_flags(
         routing_state,
         check_balances=True,
     )
-
 

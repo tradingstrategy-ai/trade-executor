@@ -12,6 +12,7 @@ the full CLI pipeline works end-to-end with async vault deposits/redeems.
 
 import logging
 import os
+from collections.abc import Iterator
 from pathlib import Path
 
 import flaky
@@ -34,22 +35,27 @@ from tradeexecutor.utils.hex import hexbytes_to_hex_str
 JSON_RPC_ARBITRUM = os.environ.get("JSON_RPC_ARBITRUM")
 TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
 
-pytestmark = pytest.mark.skipif(
-    not JSON_RPC_ARBITRUM or not TRADING_STRATEGY_API_KEY,
-    reason="Set JSON_RPC_ARBITRUM and TRADING_STRATEGY_API_KEY to run",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not JSON_RPC_ARBITRUM or not TRADING_STRATEGY_API_KEY,
+        reason="Set JSON_RPC_ARBITRUM and TRADING_STRATEGY_API_KEY to run",
+    ),
+    pytest.mark.warm_rpc_test_group,
+    pytest.mark.xdist_group("fork:arbitrum:470000000"),
+]
 
 FORK_BLOCK = 470_000_000
 
 
 @pytest.fixture()
-def anvil_arbitrum_fork() -> AnvilLaunch:
-    """Arbitrum fork with unlocked USDC whale."""
-    usdc_whale = USDC_WHALE[42161]
+def anvil_arbitrum_fork() -> Iterator[AnvilLaunch]:
+    """Create an isolated fixed-block Arbitrum fork with the USDC whale unlocked."""
+    # CLI workflows write and settle on-chain, so retaining a pooled Anvil here
+    # can leak state or wedge; the fixed fork block still warms the RPC cache.
     launch = fork_network_anvil(
         JSON_RPC_ARBITRUM,
         fork_block_number=FORK_BLOCK,
-        unlocked_addresses=[usdc_whale],
+        unlocked_addresses=[USDC_WHALE[42161]],
     )
     try:
         yield launch

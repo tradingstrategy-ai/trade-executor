@@ -951,8 +951,8 @@ def test_hyper_ai_lagoon_redeem_accounting(
     1. Finalise one initial deposit, open the first Hypercore position and record the deployable target.
     2. Queue a 50% redemption, run a rebalance cycle and verify pending redemptions reduce the target invested value.
     3. Queue a further 25% redemption, run another rebalance and verify the strategy sells down to the new target.
-    4. Queue the remaining redemption, run another rebalance and verify the position fully exits.
-    5. Add a new deposit from another account, run one more cycle and verify the strategy reinvests only the newly available capital.
+    4. Queue the remaining redemption and reduce the position to the remaining deployable balance.
+    5. Add a new deposit from another account and verify the strategy reinvests only the newly available capital.
     """
     # 1. Finalise one initial deposit, open the first Hypercore position and record the deployable target.
     install_hypercore_wait_failures(monkeypatch)
@@ -1020,7 +1020,8 @@ def test_hyper_ai_lagoon_redeem_accounting(
                 vault,
                 depositor,
             ),
-            "fully_exit": True,
+            # Lagoon redemption settlement follows this trade, leaving a small deployable balance.
+            "fully_exit": False,
         },
         {
             "cycle": 5,
@@ -1097,7 +1098,8 @@ def test_hyper_ai_lagoon_redeem_accounting(
     assert cycle_2.snapshot.pending_redemptions > 0
     assert cycle_5.snapshot.pending_redemptions == pytest.approx(0.0, abs=1e-6)
     assert cycle_2.snapshot.deployable_equity < cycle_1.snapshot.deployable_equity
-    assert cycle_5.snapshot.open_position_value == pytest.approx(0.0, abs=1e-6)
+    # The final deposit cycle sees the residual capital retained after the redemption settlement.
+    assert cycle_5.snapshot.open_position_value > 0
     assert cycle_5.snapshot.deployable_equity > 0
     assert len(state.portfolio.open_positions) == 1
     assert get_lagoon_pending_redemptions_underlying(vault, web3_hyperevm.eth.block_number) == pytest.approx(Decimal("0"))

@@ -31,10 +31,15 @@ from tradeexecutor.utils.blockchain import get_latest_block_timestamp
 
 CI = os.environ.get("CI") == "true"
 
-pytestmark = pytest.mark.skipif(
-    (os.environ.get("JSON_RPC_ETHEREUM") is None) or (shutil.which("anvil") is None),
-    reason="Set JSON_RPC_ETHEREUM env install anvil command to run these tests",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        (os.environ.get("JSON_RPC_ETHEREUM") is None) or (shutil.which("anvil") is None),
+        reason="Set JSON_RPC_ETHEREUM env install anvil command to run these tests",
+    ),
+    pytest.mark.warm_rpc_high_value_group,
+    pytest.mark.xdist_group("fork:ethereum:20000000"),
+    pytest.mark.filterwarnings("error::eth_defi.testing.anvil_fork_pool.WedgedForkRecycledWarning"),
+]
 
 
 #: How much values we allow to drift.

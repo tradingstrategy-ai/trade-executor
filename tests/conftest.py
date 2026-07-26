@@ -1,14 +1,77 @@
 import logging
 import os
+from collections import defaultdict
+from collections.abc import Iterator
 from logging import Logger
+from pathlib import Path
 
 import pytest
+
+from eth_defi.testing.anvil_fork_pool import AnvilForkPool
+from eth_defi.testing.token_cache import (
+    install_token_cache,
+    is_token_cache_rebuild_requested,
+    is_token_cache_seeding_disabled,
+    merge_into_token_cache_seed,
+)
+from eth_defi.testing.rpc_cache import seed_default_foundry_rpc_cache, seed_foundry_rpc_cache
 
 from tradeexecutor.testing.pytest_helpers import phase_report_key
 from tradingstrategy.client import Client
 
 from tradeexecutor.cli.log import setup_pytest_logging
 
+
+@pytest.fixture(scope="session", autouse=True)
+def _seed_token_cache(worker_id: str) -> Iterator[None]:
+    """Install eth-defi's private per-worker token cache."""
+    if is_token_cache_seeding_disabled():
+        yield
+        return
+
+    cache = install_token_cache(worker_id)
+    try:
+        yield
+    finally:
+        if is_token_cache_rebuild_requested():
+            merge_into_token_cache_seed(cache)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _seed_foundry_rpc_cache() -> None:
+    """Populate Foundry's mutable fork cache from eth-defi and project seeds."""
+    seed_default_foundry_rpc_cache()
+    seed_foundry_rpc_cache(Path(__file__).parent / "rpc_cache_seed")
+
+
+@pytest.fixture(scope="session")
+def anvil_fork_pool() -> Iterator[AnvilForkPool]:
+    """Provide one worker-local pool of reusable fixed-block Anvil forks."""
+    pool = AnvilForkPool()
+    try:
+        yield pool
+    finally:
+        pool.close_all()
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Require every warm fork user to be scheduled with compatible fork users."""
+    for marker_name in ("warm_rpc_test_group", "warm_rpc_high_value_group"):
+        warm_items = [item for item in items if item.get_closest_marker(marker_name)]
+        module_markers: dict[object, set[str | None]] = defaultdict(set)
+
+        for item in warm_items:
+            marker = item.get_closest_marker("xdist_group")
+            group = marker.args[0] if marker and marker.args else None
+            module_markers[item.module].add(group)
+
+        missing_groups = [module.__name__ for module, markers in module_markers.items() if None in markers]
+        if missing_groups:
+            raise pytest.UsageError(f"{marker_name} modules need xdist_group markers: {', '.join(missing_groups)}")
+
+        partial_groups = [module.__name__ for module, markers in module_markers.items() if len(markers) > 1]
+        if partial_groups:
+            raise pytest.UsageError(f"Warm RPC modules must use one xdist_group marker: {', '.join(partial_groups)}")
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):

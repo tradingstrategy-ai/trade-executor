@@ -115,8 +115,24 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
                     has_cctp_bridge = True
                     non_dex_exchange_ids.add(row["exchange_id"])
 
+    # HyperCore pairs use synthetic chain id 9999, while their exchange metadata is
+    # anchored to HyperEVM (999). Discover them from pair semantics so the router state exists.
+    has_hypercore_vault = any(
+        pair.is_hyperliquid_vault()
+        for pair in strategy_universe.iterate_pairs()
+    )
+
     vaults_done = False
     hypercore_vault_done = False
+
+    if has_hypercore_vault:
+        configs.add(
+            ProtocolRoutingId(
+                router_name="hypercore_vault",
+                exchange_slug=None,
+            )
+        )
+        hypercore_vault_done = True
 
     # Only 9999 (ChainId.hypercore): our synthetic chain ID for native
     # Hyperliquid vaults. Chain 999 (HyperEVM) is the actual L1 and does

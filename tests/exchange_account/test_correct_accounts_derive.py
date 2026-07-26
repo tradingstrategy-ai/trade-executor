@@ -19,10 +19,7 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.state.identifier import TradingPairKind
 from tradeexecutor.state.state import State
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("DERIVE_OWNER_PRIVATE_KEY") or not os.environ.get("DERIVE_SESSION_PRIVATE_KEY"),
-    reason="Set DERIVE_OWNER_PRIVATE_KEY and DERIVE_SESSION_PRIVATE_KEY for Derive tests",
-)
+pytestmark = pytest.mark.skip(reason="Needs fresh API key")
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 
@@ -380,4 +377,3 @@ def test_correct_accounts_auto_creates_positions(
         f"Expected 1 balance update from sync, got {len(position.balance_updates)}"
     assert len(final_state.sync.accounting.balance_update_refs) == 1, \
         f"Expected 1 balance update ref, got {len(final_state.sync.accounting.balance_update_refs)}"
-

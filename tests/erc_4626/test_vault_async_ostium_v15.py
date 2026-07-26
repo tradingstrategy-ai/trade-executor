@@ -20,6 +20,7 @@ Steps:
 
 import logging
 import os
+from collections.abc import Iterator
 
 import flaky
 import pytest
@@ -58,20 +59,25 @@ from tradingstrategy.universe import Universe
 
 
 JSON_RPC_ARBITRUM = os.environ.get("JSON_RPC_ARBITRUM")
-pytestmark = pytest.mark.skipif(not JSON_RPC_ARBITRUM, reason="Set JSON_RPC_ARBITRUM to run this test")
+pytestmark = [
+    pytest.mark.skipif(not JSON_RPC_ARBITRUM, reason="Set JSON_RPC_ARBITRUM to run this test"),
+    pytest.mark.warm_rpc_test_group,
+    pytest.mark.xdist_group("fork:arbitrum:470000000"),
+]
 
 OSTIUM_VAULT_ADDRESS = "0x20d419a8e12c45f88fda7c5760bb6923cee27f98"
 FORK_BLOCK = 470_000_000
 
 
 @pytest.fixture()
-def anvil_arbitrum_fork() -> AnvilLaunch:
-    """Create an Anvil fork of Arbitrum at a post-V1.5 block."""
-    usdc_whale = USDC_WHALE[42161]
+def anvil_arbitrum_fork() -> Iterator[AnvilLaunch]:
+    """Create an isolated fixed-block Arbitrum fork with the USDC whale unlocked."""
+    # This lifecycle test writes extensively to the fork, so it cannot share
+    # Anvil state; the fixed block still reuses Foundry's persisted RPC cache.
     launch = fork_network_anvil(
         JSON_RPC_ARBITRUM,
         fork_block_number=FORK_BLOCK,
-        unlocked_addresses=[usdc_whale],
+        unlocked_addresses=[USDC_WHALE[42161]],
     )
     try:
         yield launch

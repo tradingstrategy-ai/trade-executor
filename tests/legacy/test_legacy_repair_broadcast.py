@@ -34,6 +34,12 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 from eth_defi.compat import native_datetime_utc_now
 
 
+pytestmark = [
+    pytest.mark.warm_rpc_test_group,
+    pytest.mark.xdist_group("fork:polygon:49132512:isolated"),
+]
+
+
 @pytest.fixture(scope="module")
 def logger(request):
     """Setup test logger."""

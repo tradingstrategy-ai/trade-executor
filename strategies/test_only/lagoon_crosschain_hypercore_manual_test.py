@@ -256,6 +256,10 @@ def decide_trades(
         p.is_vault() and p.pair.other_data.get("vault_protocol") == "hypercore"
         for p in state.portfolio.closed_positions.values()
     )
+    has_reverse_bridge = any(
+        p.pair.is_cctp_bridge() and p.pair.quote.chain_id == DEST_CHAIN_ID.value
+        for p in state.portfolio.open_positions.values()
+    )
     forward_bridge_open = next(
         (
             p for p in state.portfolio.open_positions.values()
@@ -289,8 +293,13 @@ def decide_trades(
         return position_manager.close_position(vault_pos)
 
     # Step 4 (simulate only): Bridge USDC back from HyperEVM to Arbitrum
-    if has_vault_closed and forward_bridge_open is not None:
-        return position_manager.close_position(forward_bridge_open)
+    if has_vault_closed and not has_reverse_bridge:
+        pair = universe.get_pair_by_human_description(
+            (DEST_CHAIN_ID, "cctp-bridge", "USDC", "USDC"),
+        )
+        # The completed forward bridge is source-chain bookkeeping, not spendable HyperEVM USDC.
+        # Open the explicit reverse pair so CCTP burns from the satellite Safe and records its txs.
+        return position_manager.open_spot(pair, value=REVERSE_BRIDGE_AMOUNT)
 
     # No-op: all steps completed
     return []
