@@ -299,6 +299,48 @@ def get_whitelisting_needed_detail(attempt: "VaultAttempt") -> str | None:
     return f"Vault requires whitelisting for executor Safe {owner_address}"
 
 
+def get_incorrect_whitelisting_detail(
+    attempt: "VaultAttempt",
+) -> tuple[str, dict] | None:
+    """Compare downloaded vault JSON policy with the simulated onchain policy.
+
+    The JSON field is a scanner-time, vault-wide policy snapshot.  A simulated
+    attempt reads the same policy from the fork before a deposit is attempted,
+    so a recognised disagreement is evidence that the downloaded universe is
+    stale or incorrectly populated.  ``unknown`` deliberately remains
+    non-blocking because it is not a statement about the policy.
+    """
+
+    metadata = getattr(attempt.vault, "metadata", None)
+    json_permission = getattr(metadata, "deposit_permission", None)
+    if json_permission not in {"whitelisted", "permissionless"}:
+        return None
+
+    try:
+        onchain_whitelisted = attempt.executable_vault.is_whitelisted_deposit()
+    except (AttributeError, NotImplementedError):
+        return None
+
+    if type(onchain_whitelisted) is not bool:
+        return None
+
+    onchain_permission = (
+        "whitelisted" if onchain_whitelisted else "permissionless"
+    )
+    if json_permission == onchain_permission:
+        return None
+
+    return (
+        "Vault JSON deposit permission "
+        f"{json_permission!r} does not match simulated onchain permission "
+        f"{onchain_permission!r}",
+        {
+            "json_deposit_permission": json_permission,
+            "onchain_deposit_permission": onchain_permission,
+        },
+    )
+
+
 def get_adapter_unsupported_detail(
     attempt: "VaultAttempt",
     operation: str,
@@ -942,6 +984,18 @@ class VaultTestBatchRunner:
         # Deposit/redemption window checks are diagnostic outcomes, not command
         # failures, and automatic mode continues with the next explicit id.
         if operation == "deposit":
+            if self.auto_simulated:
+                incorrectly_whitelisted = get_incorrect_whitelisting_detail(attempt)
+                if incorrectly_whitelisted is not None:
+                    detail, outcome_data = incorrectly_whitelisted
+                    self._record_terminal_result(
+                        attempt,
+                        alarm,
+                        result="whitelisted-incorrectly",
+                        detail=detail,
+                        outcome_data=outcome_data,
+                    )
+                    return False
             whitelisting_detail = get_whitelisting_needed_detail(attempt)
             if whitelisting_detail is not None:
                 self._record_terminal_result(

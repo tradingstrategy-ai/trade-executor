@@ -49,6 +49,7 @@ VAULT_TEST_RESULTS = {
     "infrastructure_failed",
     "deposit_closed",
     "whitelisting-needed",
+    "whitelisted-incorrectly",
     "redemption_unavailable",
     "redemption_capacity_limited",
     "redemption_window_closed",

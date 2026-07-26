@@ -7,7 +7,7 @@ from collections import defaultdict, deque
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from eth_defi.vault.base import VaultSpec
@@ -66,6 +66,7 @@ from tradeexecutor.cli.vault_trade.runner import (
     get_adapter_unsupported_detail,
     get_bridge_conflict,
     get_deposit_closed_detail,
+    get_incorrect_whitelisting_detail,
     get_redemption_unavailable_detail,
     has_async_vault_lifecycle,
     get_latest_attempt_vault_operation,
@@ -1222,6 +1223,98 @@ def test_vault_flow_failures_have_typed_report_outcomes() -> None:
         "available_raw_amount": "100",
         "minimum_raw_amount": "10",
         "next_open": "2026-07-24T12:30:00",
+    }
+
+
+def test_simulated_vault_detects_incorrect_json_whitelist_status() -> None:
+    """A simulated fork exposes stale vault JSON deposit permissions.
+
+    1. Model matching downloaded and onchain whitelist policies.
+    2. Change the onchain policy while retaining the downloaded status.
+    3. Verify the mismatch is a structured terminal diagnostic and unknown stays non-blocking.
+    """
+    # 1. Model matching downloaded and onchain whitelist policies.
+    matching_attempt = SimpleNamespace(
+        vault=SimpleNamespace(
+            metadata=SimpleNamespace(deposit_permission="whitelisted"),
+        ),
+        executable_vault=SimpleNamespace(
+            is_whitelisted_deposit=lambda: True,
+        ),
+    )
+    assert get_incorrect_whitelisting_detail(matching_attempt) is None
+
+    # 2. Change the onchain policy while retaining the downloaded status.
+    mismatched_attempt = SimpleNamespace(
+        vault=SimpleNamespace(
+            metadata=SimpleNamespace(deposit_permission="whitelisted"),
+        ),
+        executable_vault=SimpleNamespace(
+            is_whitelisted_deposit=lambda: False,
+        ),
+    )
+    detail, outcome_data = get_incorrect_whitelisting_detail(mismatched_attempt)
+
+    # 3. Verify the mismatch is structured and unknown remains non-blocking.
+    assert "does not match" in detail
+    assert outcome_data == {
+        "json_deposit_permission": "whitelisted",
+        "onchain_deposit_permission": "permissionless",
+    }
+    unknown_attempt = SimpleNamespace(
+        vault=SimpleNamespace(
+            metadata=SimpleNamespace(deposit_permission="unknown"),
+        ),
+        executable_vault=SimpleNamespace(
+            is_whitelisted_deposit=lambda: False,
+        ),
+    )
+    assert get_incorrect_whitelisting_detail(unknown_attempt) is None
+
+
+def test_simulated_vault_records_incorrect_json_whitelist_status() -> None:
+    """The simulated deposit runner persists a whitelist metadata disagreement.
+
+    1. Prepare an automatic simulated deposit with disagreeing JSON and fork policies.
+    2. Process the attempt without allowing it to construct a deposit transaction.
+    3. Verify the dedicated terminal status and both policy values are recorded.
+    """
+    # 1. Prepare an automatic simulated deposit with disagreeing JSON and fork policies.
+    runner = object.__new__(VaultTestBatchRunner)
+    runner.auto_simulated = True
+    runner.current_attempt = SimpleNamespace()
+    runner.state = SimpleNamespace(
+        portfolio=SimpleNamespace(get_all_trades=lambda: []),
+    )
+    attempt = SimpleNamespace(
+        vault=SimpleNamespace(
+            metadata=SimpleNamespace(deposit_permission="permissionless"),
+        ),
+        executable_vault=SimpleNamespace(
+            is_whitelisted_deposit=lambda: True,
+        ),
+        pair=MagicMock(),
+        spec=MagicMock(),
+    )
+
+    # 2. Process the attempt without allowing it to construct a deposit transaction.
+    with (
+        patch.object(VaultTestBatchRunner, "_choose_operation", return_value="deposit"),
+        patch.object(VaultTestBatchRunner, "_record_terminal_result") as record_result,
+    ):
+        stop_batch = runner._process_attempt(attempt, MagicMock())
+
+    # 3. Verify the dedicated terminal status and both policy values are recorded.
+    assert stop_batch is False
+    record_result.assert_called_once()
+    assert record_result.call_args.kwargs == {
+        "result": "whitelisted-incorrectly",
+        "detail": "Vault JSON deposit permission 'permissionless' does not match "
+        "simulated onchain permission 'whitelisted'",
+        "outcome_data": {
+            "json_deposit_permission": "permissionless",
+            "onchain_deposit_permission": "whitelisted",
+        },
     }
 
 
