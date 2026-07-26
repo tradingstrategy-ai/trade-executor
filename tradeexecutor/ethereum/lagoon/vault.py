@@ -603,9 +603,16 @@ class LagoonVaultSyncModel(AddressSyncModel):
             )
             settle_tx_hash = signed_tx_2.hash
 
-        # Wait for all read RPCs to see the settlement receipt and let state
-        # propagate before reading on-chain analysis data
-        wait_for_transaction_receipt_robust(web3, settle_tx_hash, confirmation_block_count=2, extra_sleep=2.0)
+        # Let all read RPCs see the settlement receipt and state propagate before
+        # analysis. The preceding broadcast helper already confirmed the transaction,
+        # so a permanently unhealthy secondary reader may fall back after the timeout.
+        wait_for_transaction_receipt_robust(
+            web3,
+            settle_tx_hash,
+            confirmation_block_count=2,
+            extra_sleep=2.0,
+            allow_partial_visibility_after_timeout=True,
+        )
 
         analysis = analyse_vault_flow_in_settlement(
             vault,
