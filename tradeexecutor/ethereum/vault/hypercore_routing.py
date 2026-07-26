@@ -3021,12 +3021,9 @@ class HypercoreVaultRouting(RoutingModel):
                         vault_equity_before_phase1_snapshot - remaining_equity
                     )
                     if equity_decrease > 0:
-                        # EVM arrival already verified the phase-3 proceeds; a delayed API equity
-                        # snapshot must not overwrite that amount and turn a full close into a partial one.
-                        gross_vault_redeemed_reserve = max(
-                            gross_vault_redeemed_reserve,
-                            equity_decrease,
-                        )
+                        # EVM arrival verifies net proceeds, while HyperCore's observed gross debit
+                        # determines the quantity settled when a withdrawal under-redeems.
+                        gross_vault_redeemed_reserve = equity_decrease
                     expected_decrease = executed_reserve
                     tolerance = expected_decrease * Decimal("0.01")
                     if equity_decrease < expected_decrease - tolerance:
