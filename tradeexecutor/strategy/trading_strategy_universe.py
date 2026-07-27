@@ -3064,6 +3064,10 @@ def load_partial_data(
                 vault_history_parquet_path = Path(
                     client.transport.fetch_vault_price_history(
                         download_root=vault_history_download_root,
+                        # Live universe loads must not silently reuse a cached parquet
+                        # that was never checked against the remote -- see the
+                        # `revalidate` docs on fetch_vault_price_history().
+                        revalidate=execution_context.mode.is_live_trading(),
                     )
                 )
                 indicator_cache_fingerprint = _file_indicator_cache_fingerprint(vault_history_parquet_path, "vault-history")
@@ -3086,6 +3090,7 @@ def load_partial_data(
             else:
                 raw_website_vault_prices_df = client.fetch_vault_price_history(
                     download_root=vault_history_download_root,
+                    revalidate=execution_context.mode.is_live_trading(),
                 )
                 min_ts = raw_website_vault_prices_df["timestamp"].min()
                 max_ts = raw_website_vault_prices_df["timestamp"].max()
