@@ -88,7 +88,7 @@ def test_load_partial_data_uses_unfloored_vault_history_cutoff(
     )
     client = Client(None, transport)
     client.fetch_exchange_universe = lambda: ExchangeUniverse({})
-    client.fetch_vault_price_history = lambda download_root=None: pd.DataFrame(
+    client.fetch_vault_price_history = lambda download_root=None, revalidate=False: pd.DataFrame(
         [
             {
                 "timestamp": pd.Timestamp("2026-04-11 04:22:29.962000"),
@@ -170,6 +170,104 @@ def test_load_partial_data_uses_unfloored_vault_history_cutoff(
     assert dataset.end_at == datetime.datetime(2026, 4, 11, 0, 0, 0)
 
 
+def test_load_partial_data_revalidates_vault_history_cache_only_when_live(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Verify live universe loads force a HEAD revalidation of the vault history cache.
+
+    A live executor restart must not start trading on a locally cached vault parquet
+    that merely looks recent, so ``load_partial_data()`` has to ask the transport to
+    revalidate against the remote file. Backtests keep the cheap cached behaviour.
+
+    1. Stub the transport parquet fetch so the ``revalidate`` flag it receives is captured.
+    2. Run ``load_partial_data()`` in live trading mode.
+    3. Run ``load_partial_data()`` again in backtesting mode.
+    4. Assert revalidation is requested for the live run only.
+    """
+    fixed_now = datetime.datetime(2026, 4, 11, 17, 9, 41)
+    captured: dict[str, object] = {}
+    parquet_path = tmp_path / "vault-price-history.parquet"
+    pd.DataFrame(
+        [
+            {
+                "timestamp": pd.Timestamp("2026-04-11 04:22:29.962000"),
+                "chain": 9999,
+                "address": "0xabc",
+                "share_price": 1.01,
+                "total_assets": 1_000.0,
+            },
+        ]
+    ).to_parquet(parquet_path)
+
+    # 1. Stub the transport parquet fetch so the ``revalidate`` flag it receives is captured.
+    def _capture_fetch(download_root: str | None = None, revalidate: bool = False) -> Path:
+        captured["revalidate"] = revalidate
+        return parquet_path
+
+    transport = SimpleNamespace(
+        requests=None,
+        fetch_vault_price_history=_capture_fetch,
+        get_cached_file_path=lambda filename, cache_path=None: parquet_path,
+    )
+    client = Client(None, transport)
+    client.fetch_exchange_universe = lambda: ExchangeUniverse({})
+
+    monkeypatch.setattr(trading_strategy_universe, "native_datetime_utc_now", lambda: fixed_now)
+    monkeypatch.setattr(
+        trading_strategy_universe,
+        "load_multiple_vaults",
+        lambda vaults, check_all_vaults_found=True: (
+            [],
+            pd.DataFrame([{"chain_id": 9999, "address": "0xabc", "pair_id": 1}]),
+        ),
+    )
+    monkeypatch.setattr(
+        trading_strategy_universe,
+        "convert_vault_prices_to_candles",
+        lambda df, frequency: (
+            pd.DataFrame({"timestamp": [pd.Timestamp("2026-04-11 00:00:00")], "pair_id": [1]}),
+            pd.DataFrame(),
+        ),
+    )
+    monkeypatch.setattr(vault_checks, "build_vault_history_diagnostics", lambda *args, **kwargs: None)
+    monkeypatch.setattr(vault_checks, "log_vault_history_diagnostics", lambda *args, **kwargs: None)
+    monkeypatch.setattr(vault_checks, "log_stale_vault_candle_data", lambda *args, **kwargs: None)
+
+    def _load(mode: ExecutionMode) -> None:
+        if mode.is_backtesting():
+            # Backtests need an explicit window instead of a live history period.
+            universe_options = UniverseOptions(
+                start_at=datetime.datetime(2026, 3, 11),
+                end_at=datetime.datetime(2026, 4, 11),
+            )
+        else:
+            universe_options = UniverseOptions(history_period=datetime.timedelta(days=30))
+
+        load_partial_data(
+            client=client,
+            execution_context=ExecutionContext(mode),
+            time_bucket=TimeBucket.d1,
+            pairs=pd.DataFrame(columns=["dex_type", "exchange_id", "pair_id"]),
+            universe_options=universe_options,
+            liquidity=False,
+            vaults=object(),
+            vault_history_source="trading-strategy-website",
+        )
+
+    # 2. Run ``load_partial_data()`` in live trading mode.
+    _load(ExecutionMode.real_trading)
+    live_revalidate = captured["revalidate"]
+
+    # 3. Run ``load_partial_data()`` again in backtesting mode.
+    _load(ExecutionMode.backtesting)
+    backtest_revalidate = captured["revalidate"]
+
+    # 4. Assert revalidation is requested for the live run only.
+    assert live_revalidate is True
+    assert backtest_revalidate is False
+
+
 def test_load_partial_data_fast_vault_history_path_filters_parquet(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -222,7 +320,7 @@ def test_load_partial_data_fast_vault_history_path_filters_parquet(
 
     transport = SimpleNamespace(
         requests=None,
-        fetch_vault_price_history=lambda download_root=None: parquet_path,
+        fetch_vault_price_history=lambda download_root=None, revalidate=False: parquet_path,
         get_cached_file_path=lambda filename, cache_path=None: parquet_path,
     )
     client = Client(None, transport)
