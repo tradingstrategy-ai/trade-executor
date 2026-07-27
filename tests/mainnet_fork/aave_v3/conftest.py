@@ -3,6 +3,7 @@
 import os
 import pandas as pd
 import pytest as pytest
+from collections.abc import Iterator
 from web3 import Web3
 
 from eth_account import Account
@@ -11,9 +12,11 @@ from eth_typing import HexAddress, HexStr
 
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import fetch_erc20_details, TokenDetails
-from eth_defi.provider.anvil import fork_network_anvil, mine
+from eth_defi.provider.anvil import AnvilLaunch, mine
 from eth_defi.uniswap_v3.deployment import UniswapV3Deployment, fetch_deployment as fetch_uniswap_v3_deployment
 from eth_defi.provider.multi_provider import create_multi_provider_web3
+from eth_defi.testing.anvil_fork_pool import AnvilForkPool
+from eth_defi.testing.evm_snapshot_fixture import evm_snapshot_revert
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse
@@ -46,23 +49,26 @@ def large_usdc_holder() -> HexAddress:
     return HexAddress(HexStr("0x5041ed759Dd4aFc3a72b8192C143F72f4724081A"))
 
 
-@pytest.fixture
-def anvil_ethereum_fork(request, large_usdc_holder) -> str:
-    """Create a testable fork of live Arbitrum.
-
-    :return: JSON-RPC URL for Web3
-    """
-    launch = fork_network_anvil(
+@pytest.fixture(scope="module")
+def anvil_ethereum_fork_launch(anvil_fork_pool: AnvilForkPool, large_usdc_holder: HexAddress) -> AnvilLaunch:
+    """Return the shared Ethereum fork with the USDC holder unlocked."""
+    return anvil_fork_pool.get_launch(
         os.environ["JSON_RPC_ETHEREUM"],
         unlocked_addresses=[large_usdc_holder],
         fork_block_number=20_000_000,
     )
-    try:
-        yield launch.json_rpc_url
-    finally:
-        # Wind down Anvil process after the test is complete
-        # launch.close(log_level=logging.ERROR)
-        launch.close()
+
+
+@pytest.fixture(autouse=True)
+def _restore_anvil_snapshot(anvil_ethereum_fork_launch: AnvilLaunch) -> Iterator[None]:
+    """Restore the fixed-block shared fork after each state-mutating test."""
+    yield from evm_snapshot_revert(anvil_ethereum_fork_launch)
+
+
+@pytest.fixture
+def anvil_ethereum_fork(anvil_ethereum_fork_launch: AnvilLaunch) -> str:
+    """Return the shared fork URL for legacy fixture consumers."""
+    return anvil_ethereum_fork_launch.json_rpc_url
 
 
 @pytest.fixture

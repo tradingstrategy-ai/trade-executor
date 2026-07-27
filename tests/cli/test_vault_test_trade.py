@@ -1,13 +1,23 @@
 """Unit tests for the standalone vault-test-trade command helpers."""
 
+import datetime
 import json
 import logging
 from collections import defaultdict, deque
+from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 from eth_defi.vault.base import VaultSpec
+from eth_defi.vault.deposit_redeem import (
+    UnsupportedVaultSimulation,
+    VaultDepositManagerCapability,
+    VaultFlowUnavailable,
+    WhitelistingRequired,
+)
+from hexbytes import HexBytes
 from requests.exceptions import ReadTimeout
 from textual.app import App, ComposeResult
 from textual.widgets import DataTable, Input
@@ -53,10 +63,28 @@ from tradeexecutor.cli.vault_trade.simulation import (
 from tradeexecutor.cli.vault_trade.runner import (
     VaultAttemptContext,
     VaultTestBatchRunner,
+    get_adapter_unsupported_detail,
     get_bridge_conflict,
+    get_deposit_closed_detail,
+    get_redemption_unavailable_detail,
+    has_async_vault_lifecycle,
+    get_latest_attempt_vault_operation,
+    get_whitelisting_needed_detail,
+    normalise_vault_flow_failure,
+    resolve_redemption_available,
     should_leave_deposit_open,
 )
+from tradeexecutor.cli.testtrade import BridgeProceedsUnavailable
 from tradeexecutor.ethereum import web3config as web3config_module
+from tradeexecutor.ethereum.vault import vault_routing
+from tradeexecutor.ethereum.vault.vault_routing import (
+    IncompatibleDepositAsset,
+    convert_vault_flow_analysis,
+    get_async_vault_request_transactions,
+    reconcile_vault_redemption_amount,
+    resolve_multi_asset_deposit_asset,
+)
+from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.ethereum.web3config import Web3Config
 from tradeexecutor.cli.log import setup_custom_log_levels
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -272,6 +300,61 @@ def test_deposit_round_trip_gating() -> None:
     )
 
 
+def test_async_vault_lifecycle_uses_manager_capability_metadata() -> None:
+    """Manager flow metadata supplements static pair-kind async detection.
+
+    1. Model real string capabilities for mixed and synchronous-only lifecycles.
+    2. Model absent capability metadata and an intrinsically asynchronous pair.
+    3. Verify every async source is recognised without changing safe fallbacks.
+
+    Mocks cover metadata combinations without constructing chain-backed adapters.
+    """
+    # 1. Model real string capabilities for mixed and synchronous-only lifecycles.
+    synchronous_pair = MagicMock()
+    synchronous_pair.is_async_vault.return_value = False
+    mixed_vault = MagicMock()
+    mixed_vault.get_deposit_manager_capability.return_value = (
+        VaultDepositManagerCapability(
+            can_deposit=True,
+            can_redeem=True,
+            deposit_flow="synchronous",
+            redemption_flow="asynchronous",
+        )
+    )
+    synchronous_vault = MagicMock()
+    synchronous_vault.get_deposit_manager_capability.return_value = (
+        VaultDepositManagerCapability(
+            can_deposit=True,
+            can_redeem=True,
+            deposit_flow="synchronous",
+            redemption_flow="synchronous",
+        )
+    )
+
+    # 2. Model absent capability metadata and an intrinsically asynchronous pair.
+    missing_capability_vault = object()
+    null_capability_vault = MagicMock()
+    null_capability_vault.get_deposit_manager_capability.return_value = None
+    asynchronous_pair = MagicMock()
+    asynchronous_pair.is_async_vault.return_value = True
+
+    # 3. Verify every async source is recognised without changing safe fallbacks.
+    assert has_async_vault_lifecycle(synchronous_pair, mixed_vault) is True
+    assert has_async_vault_lifecycle(synchronous_pair, synchronous_vault) is False
+    assert (
+        has_async_vault_lifecycle(synchronous_pair, missing_capability_vault)
+        is False
+    )
+    assert (
+        has_async_vault_lifecycle(synchronous_pair, null_capability_vault)
+        is False
+    )
+    assert (
+        has_async_vault_lifecycle(asynchronous_pair, missing_capability_vault)
+        is True
+    )
+
+
 def test_shared_bridge_position_blocks_unrelated_vault() -> None:
     """One vault cannot consume another vault's per-chain CCTP lane.
 
@@ -358,6 +441,130 @@ def test_adapter_failure_can_be_recorded_as_a_normal_position() -> None:
         position.position_id
     )
     assert restored_position.simulated is False
+
+
+def test_whitelisted_vault_permission_gap_is_reported_before_execution() -> None:
+    """A known vault allow-list denial gets a dedicated report outcome.
+
+    1. Model an eth-defi vault adapter that requires a whitelisted depositor.
+    2. Resolve the executor Safe address through the pricing route.
+    3. Verify the report helper classifies only the denied account.
+    """
+    # 1. Model an eth-defi vault adapter that requires a whitelisted depositor.
+    vault = MagicMock()
+    vault.is_whitelisted_deposit.return_value = True
+    vault.is_account_whitelisted.return_value = False
+
+    # 2. Resolve the executor Safe address through the pricing route.
+    pair = MagicMock()
+    route = MagicMock()
+    route.get_vault.return_value = vault
+    route.get_owner_address.return_value = "0x0000000000000000000000000000000000000001"
+    pricing_model = MagicMock()
+    pricing_model.route.return_value = route
+    attempt = MagicMock(
+        pair=pair,
+        pricing_model=pricing_model,
+        executable_vault=vault,
+    )
+
+    # 3. Verify the report helper classifies only the denied account.
+    detail = get_whitelisting_needed_detail(attempt)
+    assert detail == (
+        "Vault requires whitelisting for executor Safe "
+        "0x0000000000000000000000000000000000000001"
+    )
+    vault.is_account_whitelisted.return_value = True
+    assert get_whitelisting_needed_detail(attempt) is None
+    vault.is_whitelisted_deposit.return_value = False
+    assert get_whitelisting_needed_detail(attempt) is None
+
+
+def test_whitelisting_needed_status_round_trips_as_report_outcome() -> None:
+    """The new whitelisting outcome remains stable in state and reports.
+
+    1. Record a whitelisting-needed diagnostic attempt.
+    2. Serialise and reload the normal state JSON.
+    3. Verify display status and report output preserve the exact condition.
+    """
+    # 1. Record a whitelisting-needed diagnostic attempt.
+    state = State()
+    reserve_asset = AssetIdentifier(
+        ChainId.base.value,
+        "0x0000000000000000000000000000000000000010",
+        "USDC",
+        6,
+    )
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    spec = VaultSpec(
+        ChainId.arbitrum.value,
+        "0x0000000000000000000000000000000000000020",
+    )
+    position = record_attempt_result(
+        state,
+        create_vault_test_diagnostic_pair(spec, reserve_asset),
+        spec,
+        simulated=True,
+        result="whitelisting-needed",
+        detail="Vault requires whitelisting for executor Safe 0x1",
+        outcome_data={"executor_safe": "0x1"},
+    )
+
+    # 2. Serialise and reload the normal state JSON.
+    restored = State.from_json(state.to_json_safe())
+    restored_position = restored.portfolio.get_position_by_id(position.position_id)
+
+    # 3. Verify display status and report output preserve the exact condition.
+    assert get_vault_test_status(restored_position) == "whitelisting-needed"
+    report = export_vault_test_report(
+        restored,
+        [{"vault id": spec.as_string_id(), "status": "whitelisting-needed"}],
+    )
+    assert report["results"][0]["attempt"]["result"] == "whitelisting-needed"
+    assert report["results"][0]["attempt"]["outcome_data"] == {
+        "executor_safe": "0x1"
+    }
+
+
+def test_async_request_only_status_round_trips_as_report_outcome() -> None:
+    """A request-only simulation is distinct from unsupported settlement.
+
+    1. Record an async request-only simulated attempt.
+    2. Serialise and reload the normal state JSON.
+    3. Verify the raw result and display status remain distinct and readable.
+    """
+    # 1. Record an async request-only simulated attempt.
+    state = State()
+    reserve_asset = AssetIdentifier(
+        ChainId.base.value,
+        "0x0000000000000000000000000000000000000010",
+        "USDC",
+        6,
+    )
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    spec = VaultSpec(
+        ChainId.arbitrum.value,
+        "0x0000000000000000000000000000000000000020",
+    )
+    position = record_attempt_result(
+        state,
+        create_vault_test_diagnostic_pair(spec, reserve_asset),
+        spec,
+        simulated=True,
+        result="async_request_only",
+        detail="Async deposit request completed; full lifecycle was not requested",
+    )
+
+    # 2. Serialise and reload the normal state JSON.
+    restored = State.from_json(state.to_json_safe())
+    restored_position = restored.portfolio.get_position_by_id(position.position_id)
+
+    # 3. Verify the raw result and display status remain distinct and readable.
+    assert get_vault_test_status(restored_position) == "async request only"
+    assert (
+        restored_position.other_data["vault_test_attempt"]["result"]
+        == "async_request_only"
+    )
 
 
 def test_vault_test_failure_persists_redacted_traceback_and_revert_evidence() -> None:
@@ -511,7 +718,7 @@ def test_vault_failure_classifier_uses_transaction_evidence() -> None:
     """Failure status is determined by lifecycle evidence rather than text.
 
     1. Classify a preflight exception with no transaction evidence.
-    2. Classify reverted, successful and broadcast receipts during execution.
+    2. Classify reverted and broadcast receipts during execution.
     3. Verify unsigned call context and no-evidence execution classifications.
     """
     # 1. Classify a preflight exception with no transaction evidence.
@@ -520,7 +727,7 @@ def test_vault_failure_classifier_uses_transaction_evidence() -> None:
         == "preflight_failed"
     )
 
-    # 2. Classify reverted and successful receipts during execution.
+    # 2. Classify reverted and broadcast receipts during execution.
     assert (
         classify_vault_test_failure(
             phase="execute",
@@ -533,7 +740,7 @@ def test_vault_failure_classifier_uses_transaction_evidence() -> None:
             phase="execute",
             error_data={"transactions": [{"status": True}]},
         )
-        == "receipt_analysis_failed"
+        == "execution_failed"
     )
     assert (
         classify_vault_test_failure(
@@ -971,12 +1178,649 @@ def test_failure_attachment_ignores_positions_from_previous_attempts() -> None:
         result="preflight_failed",
         detail="RPC unavailable",
         error_data={},
+        outcome_data=None,
         previous=old_position,
     )
 
     # 3. Verify the earlier attempt's success metadata remains unchanged.
     assert attached_position_id is None
     assert old_position.other_data["vault_test_attempt"] == {"result": "success"}
+
+
+def test_vault_flow_failures_have_typed_report_outcomes() -> None:
+    """Typed eth-defi flow failures retain their protocol capacity context.
+
+    1. Create a redemption failure with a requested amount above available capacity.
+    2. Normalise the error through the vault-test reporting helper.
+    3. Verify the result and JSON-safe capacity evidence are explicit.
+    """
+    # 1. Create a redemption failure with a requested amount above available capacity.
+    error = VaultFlowUnavailable(
+        "Only part of the redemption is currently available at https://rpc.example/api-key",
+        protocol="csigma",
+        direction="redeem",
+        phase="preflight",
+        requested_raw_amount=200,
+        available_raw_amount=100,
+    )
+    error.minimum_raw_amount = 10
+    error.next_open = datetime.datetime(2026, 7, 24, 12, 30)
+
+    # 2. Normalise the error through the vault-test reporting helper.
+    result, detail, outcome_data = normalise_vault_flow_failure(error)
+
+    # 3. Verify the result and JSON-safe capacity evidence are explicit.
+    assert result == "redemption_capacity_limited"
+    assert detail == "Only part of the redemption is currently available at <redacted-url>"
+    assert outcome_data == {
+        "protocol": "csigma",
+        "direction": "redeem",
+        "phase": "preflight",
+        "decoded_error": None,
+        "preflight_result": None,
+        "requested_raw_amount": "200",
+        "available_raw_amount": "100",
+        "minimum_raw_amount": "10",
+        "next_open": "2026-07-24T12:30:00",
+    }
+
+
+def test_decoded_vault_errors_map_to_typed_results() -> None:
+    """eth-defi #1374 decoded custom errors become distinct typed results.
+
+    1. Map a missing deposit whitelist to whitelisting-needed.
+    2. Map each redemption custom error to its stable current-state result.
+    3. Map a below-minimum deposit refusal to below_minimum.
+    """
+    # 1. Map a missing deposit whitelist to whitelisting-needed.
+    whitelist_error = WhitelistingRequired(
+        "Depositor not whitelisted on chain 1 vault 0xabc for 0xdef",
+        protocol="lagoon",
+        direction="deposit",
+        phase="preflight",
+    )
+    result, _detail, outcome_data = normalise_vault_flow_failure(whitelist_error)
+    assert result == "whitelisting-needed"
+    assert outcome_data["direction"] == "deposit"
+
+    # 2. Map each redemption custom error to its stable current-state result.
+    cases = {
+        "EndOfEpoch": "redemption_window_closed",
+        "WithdrawalsArePaused": "redemption_paused",
+        "WithdrawalPending": "redemption_capacity_limited",
+        "ExceededMaxRedeem": "redemption_capacity_limited",
+        "AddressNotAllowed": "whitelisting-needed",
+    }
+    for decoded_error, expected in cases.items():
+        error = VaultFlowUnavailable(
+            f"redeem refused: {decoded_error}",
+            protocol="gains",
+            direction="redeem",
+            phase="preflight",
+            decoded_error=decoded_error,
+        )
+        result, _detail, outcome_data = normalise_vault_flow_failure(error)
+        assert result == expected, f"{decoded_error} -> {result}"
+        assert outcome_data["decoded_error"] == decoded_error
+
+    # 3. Map a below-minimum deposit refusal to below_minimum.
+    minimum_error = VaultFlowUnavailable(
+        "deposit below minimum",
+        protocol="accountable",
+        direction="deposit",
+        phase="preflight",
+        decoded_error="InsufficientAmount",
+        minimum_raw_amount=1000,
+    )
+    result, _detail, outcome_data = normalise_vault_flow_failure(minimum_error)
+    assert result == "below_minimum"
+    assert outcome_data["minimum_raw_amount"] == "1000"
+
+
+def test_preflight_result_is_copied_verbatim() -> None:
+    """The authoritative eth-defi preflight_result maps regardless of decoded_error.
+
+    1. Simulate an adapter that sets preflight_result plus a decoded_error name
+       the executor heuristic does not enumerate (e.g. InsufficientShares).
+    2. Verify the executor copies preflight_result verbatim as the result.
+    3. Verify an unrecognised preflight_result falls back to the decoded_error map.
+    """
+
+    # 1. Adapter sets preflight_result + a decoded_error name outside the heuristic.
+    error = VaultFlowUnavailable(
+        "redeem refused",
+        protocol="ember",
+        direction="redeem",
+        phase="preflight",
+    )
+    error.preflight_result = "below_minimum"
+    error.decoded_error = "InsufficientShares"  # not in the decoded-error heuristic
+
+    # 2. Verify the executor copies preflight_result verbatim as the result.
+    result, _detail, outcome_data = normalise_vault_flow_failure(error)
+    assert result == "below_minimum"
+    assert outcome_data["preflight_result"] == "below_minimum"
+    assert outcome_data["decoded_error"] == "InsufficientShares"
+
+    # 3. Verify an unrecognised preflight_result falls back to the decoded_error map.
+    fallback = VaultFlowUnavailable(
+        "redeem refused",
+        protocol="gains",
+        direction="redeem",
+        phase="preflight",
+        decoded_error="EndOfEpoch",
+    )
+    fallback.preflight_result = "not_a_known_result"
+    result, _detail, _outcome_data = normalise_vault_flow_failure(fallback)
+    assert result == "redemption_window_closed"
+
+
+def test_live_capability_outranks_stale_pair_redemption_flag() -> None:
+    """A stale pair snapshot must not suppress an adapter-supported redemption.
+
+    ``TradingPairIdentifier.can_redeem()`` is a data-pipeline snapshot, so a
+    stale ``False`` previously skipped the redemption leg entirely and reported
+    a bare ``redemption_unavailable`` (Plutus Hedge), hiding the adapter's own
+    typed async result.
+
+    1. Resolve availability when the pair says no but the adapter says yes.
+    2. Resolve availability when the adapter says no.
+    3. Fall back to the pair flag when the adapter publishes no capability.
+    """
+
+    class _Pair:
+        def __init__(self, flag: bool):
+            self._flag = flag
+
+        def can_redeem(self) -> bool:
+            return self._flag
+
+    # 1. Resolve availability when the pair says no but the adapter says yes.
+    supported = SimpleNamespace(can_redeem=True, redemption_unsupported_reason=None)
+    vault = SimpleNamespace(get_deposit_manager_capability=lambda: supported)
+    assert resolve_redemption_available(_Pair(False), vault) is True
+
+    # 2. Resolve availability when the adapter says no.
+    refused = SimpleNamespace(
+        can_redeem=False,
+        redemption_unsupported_reason="vault_is_wind_down_only",
+    )
+    refused_vault = SimpleNamespace(get_deposit_manager_capability=lambda: refused)
+    assert resolve_redemption_available(_Pair(True), refused_vault) is False
+
+    # 3. Fall back to the pair flag when the adapter publishes no capability.
+    assert resolve_redemption_available(_Pair(True), SimpleNamespace()) is True
+    assert resolve_redemption_available(_Pair(False), SimpleNamespace()) is False
+
+
+def test_redemption_unavailable_always_has_a_reason() -> None:
+    """A skipped redemption must never be recorded without a reason.
+
+    1. Use the adapter's published reason when it has one.
+    2. State explicitly that no reason was published when it has none.
+    """
+
+    # 1. Use the adapter's published reason when it has one.
+    capability = SimpleNamespace(
+        can_redeem=False,
+        redemption_unsupported_reason="vault_is_wind_down_only",
+    )
+    vault = SimpleNamespace(get_deposit_manager_capability=lambda: capability)
+    detail = get_redemption_unavailable_detail(vault)
+    assert "vault_is_wind_down_only" in detail
+
+    # 2. State explicitly that no reason was published when it has none.
+    fallback = get_redemption_unavailable_detail(SimpleNamespace())
+    assert fallback
+    assert "no reason" in fallback
+
+
+def test_incompatible_deposit_asset_lists_supported_and_selected() -> None:
+    """A multi-asset vault whitelist mismatch reports its own failure mode.
+
+    1. Resolve a deposit asset for a multi-asset vault that excludes our asset.
+    2. Verify the raised error names both the supported assets and our asset.
+    3. Verify the reporting helper maps it to the incompatible_deposit_asset result.
+    """
+
+    # A minimal fake multi-asset manager whose whitelist excludes USDC.
+    class _Token:
+        def __init__(self, symbol: str, address: str):
+            self.symbol = symbol
+            self.address = address
+
+    class _MultiAssetManager:
+        def fetch_accepted_assets(self) -> list[_Token]:
+            return [
+                _Token("USDT", "0xdAC17F958D2ee523a2206206994597C13D831ec7"),
+                _Token("PYUSD", "0x6c3ea9036406852006290770BEdFcAbA0e23A0e8"),
+            ]
+
+    # 1. Resolve a deposit asset for a multi-asset vault that excludes our asset.
+    try:
+        resolve_multi_asset_deposit_asset(_MultiAssetManager(), 1)
+    except IncompatibleDepositAsset as error:
+        raised = error
+    else:
+        raised = None
+
+    # 2. Verify the raised error names both the supported assets and our asset.
+    assert raised is not None
+    message = str(raised)
+    assert "USDT" in message and "PYUSD" in message
+    assert raised.selected_asset is not None
+    assert raised.selected_asset in message  # our attempted asset is shown
+
+    # 3. Verify the reporting helper maps it to the incompatible_deposit_asset result.
+    result, _detail, outcome_data = normalise_vault_flow_failure(raised)
+    assert result == "incompatible_deposit_asset"
+    assert outcome_data["selected_asset"] == raised.selected_asset
+    assert {"symbol": "USDT", "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7"} in (
+        outcome_data["accepted_assets"]
+    )
+
+
+def test_unsupported_vault_simulation_has_typed_report_outcome() -> None:
+    """Unsupported manager settlement becomes an actionable terminal result.
+
+    1. Create the typed eth-defi simulation capability failure.
+    2. Normalise it through the vault-test reporting helper.
+    3. Verify the report result remains distinct from execution failures.
+    4. Verify the structured false-capability context is retained verbatim.
+    """
+    # 1. Create the typed eth-defi simulation capability failure.
+    error = UnsupportedVaultSimulation(
+        "AccountableDepositManager does not advertise Anvil settlement"
+    )
+
+    # 2. Normalise it through the vault-test reporting helper.
+    result, detail, outcome_data = normalise_vault_flow_failure(error)
+
+    # 3. Verify the report result remains distinct from execution failures.
+    assert result == "simulation_unsupported_async"
+    assert (
+        detail
+        == "AccountableDepositManager does not advertise Anvil settlement"
+    )
+
+    # 4. Verify the structured false-capability context is retained verbatim.
+    contextual = UnsupportedVaultSimulation(
+        "Ember cannot settle on this fork",
+        unsupported_reason="operator_role_required",
+        protocol="ember",
+        vault_address="0x9be9294722f8AAd37b11a9792Be2C782182caFA2",
+        direction="redeem",
+    )
+    _result, _detail, contextual_data = normalise_vault_flow_failure(contextual)
+    assert contextual_data["unsupported_reason"] == "operator_role_required"
+    assert contextual_data["protocol"] == "ember"
+    assert contextual_data["direction"] == "redeem"
+
+
+def test_failure_operation_uses_latest_attempt_vault_trade() -> None:
+    """A redemption failure is not labelled as the outer deposit attempt.
+
+    1. Model an old vault trade and new deposit/redemption trades.
+    2. Add a newer non-vault bridge trade that must not own the operation.
+    3. Verify the latest new vault trade identifies the redemption phase.
+
+    Mocks isolate trade ordering from portfolio serialisation.
+    """
+    # 1. Model an old vault trade and new deposit/redemption trades.
+    old_trade = MagicMock(trade_id=1)
+    old_trade.is_vault.return_value = True
+    deposit_trade = MagicMock(trade_id=2)
+    deposit_trade.is_vault.return_value = True
+    deposit_trade.is_buy.return_value = True
+    redemption_trade = MagicMock(trade_id=3)
+    redemption_trade.is_vault.return_value = True
+    redemption_trade.is_buy.return_value = False
+
+    # 2. Add a newer non-vault bridge trade that must not own the operation.
+    bridge_trade = MagicMock(trade_id=4)
+    bridge_trade.is_vault.return_value = False
+    state = MagicMock()
+    state.portfolio.get_all_trades.return_value = [
+        old_trade,
+        deposit_trade,
+        redemption_trade,
+        bridge_trade,
+    ]
+
+    # 3. Verify the latest new vault trade identifies the redemption phase.
+    assert get_latest_attempt_vault_operation(state, {1}) == "redeem"
+
+
+def test_bridge_proceeds_failure_has_typed_report_outcome() -> None:
+    """Unavailable satellite redemption proceeds stay distinguishable in reports.
+
+    1. Create the bridge reconciliation failure.
+    2. Normalise it through the vault-test reporting helper.
+    3. Verify the report records the actionable bridge outcome.
+    """
+    # 1. Create the bridge reconciliation failure.
+    error = BridgeProceedsUnavailable("bridge_proceeds_unavailable: no new USDC")
+
+    # 2. Normalise it through the vault-test reporting helper.
+    result, detail, outcome_data = normalise_vault_flow_failure(error)
+
+    # 3. Verify the report records the actionable bridge outcome.
+    assert result == "bridge_proceeds_unavailable"
+    assert detail == "bridge_proceeds_unavailable: no new USDC"
+    assert outcome_data == {}
+
+
+def test_adapter_capability_gap_is_reported_before_execution() -> None:
+    """Unsupported eth-defi adapters become terminal diagnostics before routing.
+
+    1. Model a vault whose manager explicitly declines redemption support.
+    2. Check the batch preflight helper for a redemption operation.
+    3. Verify the result contains the directional capability record.
+    """
+    # 1. Model a vault whose manager explicitly declines redemption support.
+    capability = MagicMock()
+    capability.can_deposit = True
+    capability.can_redeem = False
+    capability.as_dict.return_value = {"can_deposit": True, "can_redeem": False}
+    vault = MagicMock()
+    vault.get_deposit_manager_capability.return_value = capability
+    attempt = MagicMock(vault=vault, executable_vault=vault)
+
+    # 2. Check the batch preflight helper for a redemption operation.
+    detail, outcome_data = get_adapter_unsupported_detail(attempt, "redeem")
+
+    # 3. Verify the result contains the directional capability record.
+    assert detail == "eth-defi adapter does not support redeem for this vault"
+    assert outcome_data == {
+        "operation": "redeem",
+        "capability": {"can_deposit": True, "can_redeem": False},
+    }
+
+
+def test_unknown_adapter_capability_continues_to_execution() -> None:
+    """Unknown adapter support does not become an unsupported result.
+
+    1. Model a vault whose eth-defi adapter has no published capability.
+    2. Run the directional preflight helper for a deposit.
+    3. Verify the helper leaves the normal execution path available.
+    """
+    # 1. Model a vault whose eth-defi adapter has no published capability.
+    vault = MagicMock()
+    vault.get_deposit_manager_capability.return_value = None
+    attempt = MagicMock(vault=vault, executable_vault=vault)
+
+    # 2. Run the directional preflight helper for a deposit.
+    result = get_adapter_unsupported_detail(attempt, "deposit")
+
+    # 3. Verify the helper leaves the normal execution path available.
+    assert result is None
+
+
+def test_adapter_without_capability_api_continues_to_execution() -> None:
+    """Adapters without the optional eth-defi capability API retain their flow.
+
+    1. Model a legacy vault adapter without capability metadata.
+    2. Run the directional preflight helper for a deposit.
+    3. Verify the helper leaves the normal execution path available.
+    """
+    # 1. Model a legacy vault adapter without capability metadata.
+    vault = object()
+    attempt = MagicMock(vault=vault, executable_vault=vault)
+
+    # 2. Run the directional preflight helper for a deposit.
+    result = get_adapter_unsupported_detail(attempt, "deposit")
+
+    # 3. Verify the helper leaves the normal execution path available.
+    assert result is None
+
+
+def test_adapter_without_deposit_closure_api_continues_to_execution() -> None:
+    """Legacy adapters without a closure probe continue to their normal flow.
+
+    1. Model a legacy vault adapter without deposit-closure metadata.
+    2. Read its closure detail through the batch preflight helper.
+    3. Verify the helper leaves the normal execution path available.
+    """
+    # 1. Model a legacy vault adapter without deposit-closure metadata.
+    vault = object()
+    attempt = MagicMock(vault=vault, executable_vault=vault)
+
+    # 2. Read its closure detail through the batch preflight helper.
+    result = get_deposit_closed_detail(attempt)
+
+    # 3. Verify the helper leaves the normal execution path available.
+    assert result is None
+
+
+def test_vault_flow_analysis_conversion_preserves_trade_signs() -> None:
+    """Shared receipt conversion uses the same signs for sync and async settlement.
+
+    1. Model a successful manager analysis with reserve and share quantities.
+    2. Convert it once as a deposit and once as a redemption.
+    3. Verify reserve, share sign and price follow the executor trade contract.
+    """
+    # 1. Model a successful manager analysis with reserve and share quantities.
+    analysis = MagicMock(
+        denomination_amount=Decimal("10"),
+        share_count=Decimal("8"),
+    )
+
+    # 2. Convert it once as a deposit and once as a redemption.
+    deposit = convert_vault_flow_analysis(analysis, direction="deposit")
+    redemption = convert_vault_flow_analysis(analysis, direction="redeem")
+
+    # 3. Verify reserve, share sign and price follow the executor trade contract.
+    assert deposit == (Decimal("10"), Decimal("8"), Decimal("1.25"))
+    assert redemption == (Decimal("10"), Decimal("-8"), Decimal("1.25"))
+
+
+def test_vault_redemption_amount_reconciles_only_small_share_shortfalls() -> None:
+    """Vault redemption uses the available balance only for tolerable shortfalls.
+
+    1. Reconcile exact, surplus and small-shortfall on-chain share balances.
+    2. Verify a small shortfall caps the redemption while other balances retain the plan.
+    3. Verify a material accounting shortfall remains an error.
+    """
+    # 1. Reconcile exact, surplus and small-shortfall on-chain share balances.
+    exact = reconcile_vault_redemption_amount(
+        Decimal("1"),
+        Decimal("1"),
+        epsilon=0.025,
+    )
+    surplus = reconcile_vault_redemption_amount(
+        Decimal("1"),
+        Decimal("1.01"),
+        epsilon=0.025,
+    )
+    small_shortfall = reconcile_vault_redemption_amount(
+        Decimal("1"),
+        Decimal("0.99"),
+        epsilon=0.025,
+    )
+
+    # 2. Verify a small shortfall caps the redemption while other balances retain the plan.
+    assert exact == Decimal("1")
+    assert surplus == Decimal("1")
+    assert small_shortfall == Decimal("0.99")
+
+    # 3. Verify a material accounting shortfall remains an error.
+    with pytest.raises(AssertionError, match="large relative shortfall"):
+        reconcile_vault_redemption_amount(
+            Decimal("1"),
+            Decimal("0.9"),
+            epsilon=0.025,
+        )
+
+
+def test_async_vault_request_transaction_roles_ignore_selectors() -> None:
+    """Async settlement selects persisted request roles instead of function names.
+
+    1. Create an approval and two arbitrarily named manager request transactions.
+    2. Select the manager request transaction set for settlement.
+    3. Verify approval exclusion and request ordering do not depend on selectors.
+    """
+    # 1. Create an approval and two arbitrarily named manager request transactions.
+    approval = BlockchainTransaction(function_selector="approve", other={
+        "vault_transaction_role": "vault_approval",
+    })
+    second_request = BlockchainTransaction(function_selector="makeWithdrawRequest", other={
+        "vault_transaction_role": "vault_request",
+        "vault_request_ordinal": 1,
+    })
+    first_request = BlockchainTransaction(function_selector="redeemShares", other={
+        "vault_transaction_role": "vault_request",
+        "vault_request_ordinal": 0,
+    })
+    trade = MagicMock(
+        blockchain_transactions=[approval, second_request, first_request],
+        other_data={},
+    )
+
+    # 2. Select the manager request transaction set for settlement.
+    selected = get_async_vault_request_transactions(
+        trade,
+        request_function_count=2,
+    )
+
+    # 3. Verify approval exclusion and request ordering do not depend on selectors.
+    assert selected == [first_request, second_request]
+
+
+def test_async_vault_request_transaction_legacy_upgrade() -> None:
+    """Legacy pending requests gain durable roles before their settlement retry.
+
+    1. Create a legacy approval plus manager request transaction set without roles.
+    2. Select the final manager calls using the rebuilt request function count.
+    3. Verify role metadata and durable transaction indices are persisted.
+    """
+    # 1. Create a legacy approval plus manager request transaction set without roles.
+    approval = BlockchainTransaction(function_selector="approve")
+    first_request = BlockchainTransaction(function_selector="redeemShares")
+    second_request = BlockchainTransaction(function_selector="makeWithdrawRequest")
+    trade = MagicMock(
+        trade_id=42,
+        blockchain_transactions=[approval, first_request, second_request],
+        other_data={},
+    )
+
+    # 2. Select the final manager calls using the rebuilt request function count.
+    selected = get_async_vault_request_transactions(
+        trade,
+        request_function_count=2,
+    )
+
+    # 3. Verify role metadata and durable transaction indices are persisted.
+    assert selected == [first_request, second_request]
+    assert trade.other_data["vault_request_transaction_indices"] == [1, 2]
+    assert first_request.other["vault_request_ordinal"] == 0
+    assert second_request.other["vault_request_ordinal"] == 1
+
+
+def test_async_settlement_parses_only_manager_request_transactions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Async settlement gives manager parsing only persisted request calls.
+
+    1. Model an approval and an arbitrarily named async manager request.
+    2. Settle the trade with successful receipts for both transactions.
+    3. Verify the manager sees only the request hash and no global selector is used.
+    """
+    # 1. Model an approval and an arbitrarily named async manager request.
+    approval_hash = HexBytes("0x" + "01" * 32)
+    request_hash = HexBytes("0x" + "02" * 32)
+    approval = BlockchainTransaction(
+        tx_hash=approval_hash,
+        function_selector="approve",
+        other={"vault_transaction_role": "vault_approval"},
+    )
+    request = BlockchainTransaction(
+        tx_hash=request_hash,
+        function_selector="redeemShares",
+        other={
+            "vault_transaction_role": "vault_request",
+            "vault_request_ordinal": 0,
+        },
+    )
+    trade = MagicMock()
+    trade.trade_id = 12
+    trade.other_data = {
+        "vault_async_flow": True,
+        "vault_direction": "deposit",
+        "vault_owner_address": "0x0000000000000000000000000000000000000001",
+        "vault_raw_amount": "1000000",
+    }
+    trade.blockchain_transactions = [approval, request]
+    trade.is_buy.return_value = True
+    manager = MagicMock()
+    manager_request = MagicMock(funcs=[MagicMock()])
+    manager.create_deposit_request.return_value = manager_request
+    manager.serialize_deposit_ticket.return_value = {"ticket": "request"}
+    vault = MagicMock()
+    vault.get_deposit_manager.return_value = manager
+    routing = vault_routing.VaultRouting(
+        "0x0000000000000000000000000000000000000001"
+    )
+    state = MagicMock()
+
+    # 2. Settle the trade with successful receipts for both transactions.
+    monkeypatch.setattr(vault_routing, "get_vault_for_pair", lambda *_, **__: vault)
+    monkeypatch.setattr(vault_routing, "get_block_timestamp", lambda *_: None)
+    routing.settle_trade(
+        MagicMock(),
+        state,
+        trade,
+        {
+            approval_hash: {"status": 1, "blockNumber": 100},
+            request_hash: {"status": 1, "blockNumber": 101},
+        },
+    )
+
+    # 3. Verify the manager sees only the request hash and no global selector is used.
+    manager_request.parse_deposit_transaction.assert_called_once_with([request_hash])
+    state.mark_vault_settlement_pending.assert_called_once()
+
+
+def test_reverted_synchronous_vault_trade_skips_receipt_manager(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A status-zero receipt is reported before a manager tries event parsing.
+
+    1. Build a synchronous vault trade with a reverted receipt.
+    2. Settle it with a manager whose analyser would fail if called.
+    3. Verify normal trade failure reporting occurs without manager analysis.
+    """
+    # 1. Build a synchronous vault trade with a reverted receipt.
+    routing = vault_routing.VaultRouting(
+        "0x0000000000000000000000000000000000000001"
+    )
+    tx_hash = HexBytes("0x" + "01" * 32)
+    swap_transaction = MagicMock(tx_hash=tx_hash)
+    trade = MagicMock()
+    trade.other_data = {}
+    trade.is_buy.return_value = True
+    vault = MagicMock()
+    report_failure = MagicMock()
+    receipt = {"status": 0, "blockNumber": 123}
+
+    # 2. Settle it with a manager whose analyser would fail if called.
+    monkeypatch.setattr(vault_routing, "get_vault_for_pair", lambda *_, **__: vault)
+    monkeypatch.setattr(
+        vault_routing,
+        "get_swap_transactions",
+        lambda _: swap_transaction,
+    )
+    monkeypatch.setattr(vault_routing, "get_block_timestamp", lambda *_: None)
+    monkeypatch.setattr(vault_routing, "report_failure", report_failure)
+    routing.settle_trade(
+        MagicMock(),
+        MagicMock(),
+        trade,
+        {tx_hash: receipt},
+    )
+
+    # 3. Verify normal trade failure reporting occurs without manager analysis.
+    report_failure.assert_called_once()
+    vault.get_deposit_manager.assert_not_called()
 
 
 def test_vault_test_report_reads_the_latest_run_record() -> None:

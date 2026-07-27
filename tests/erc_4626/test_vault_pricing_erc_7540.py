@@ -17,8 +17,7 @@ from web3 import Web3
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.classification import create_vault_instance_autodetect
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
-from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
-from eth_defi.provider.multi_provider import create_multi_provider_web3
+from eth_defi.testing.anvil_fork_pool import AnvilForkPool
 from eth_typing import HexAddress
 
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
@@ -32,29 +31,16 @@ from tradeexecutor.state.valuation import ValuationUpdate
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 
-pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable")
+pytestmark = [
+    pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable"),
+    pytest.mark.warm_rpc_test_group,
+    pytest.mark.xdist_group("fork:base:35094246"),
+]
 
 
 @pytest.fixture()
-def anvil_base_fork() -> AnvilLaunch:
-    """Fork Base at a pinned block so price asserts are deterministic."""
-    launch = fork_network_anvil(
-        JSON_RPC_BASE,
-        fork_block_number=35_094_246,
-    )
-    try:
-        yield launch
-    finally:
-        launch.close()
-
-
-@pytest.fixture()
-def web3(anvil_base_fork: AnvilLaunch) -> Web3:
-    web3 = create_multi_provider_web3(
-        anvil_base_fork.json_rpc_url,
-        retries=1,
-        default_http_timeout=(3, 250.0),
-    )
+def web3(anvil_fork_pool: AnvilForkPool) -> Web3:
+    web3 = anvil_fork_pool.get_web3(JSON_RPC_BASE, 35_094_246, web3_retries=1)
     assert web3.eth.chain_id == 8453
     return web3
 

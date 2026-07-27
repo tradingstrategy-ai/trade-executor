@@ -2,20 +2,23 @@
 
 import logging
 from decimal import Decimal
-import datetime
-from typing import Dict, cast
+from typing import cast
 
 from eth_typing import HexAddress
 from hexbytes import HexBytes
 
+from eth_defi.token import USDC_NATIVE_TOKEN
+
 from eth_defi.erc_4626.analysis import analyse_4626_flow_transaction
 from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
-from eth_defi.erc_4626.flow import approve_and_deposit_4626, approve_and_redeem_4626
-from eth_defi.erc_4626.profit_and_loss import estimate_4626_recent_profitability
+from eth_defi.erc_4626.deposit_redeem import ERC4626DepositManager
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.token import fetch_erc20_details, TokenDiskCache
 from eth_defi.trade import TradeSuccess
-from eth_defi.vault.deposit_redeem import VaultDepositManager
+from eth_defi.vault.deposit_redeem import (
+    DepositRedeemEventAnalysis,
+    DepositRedeemEventFailure,
+)
 
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
 from tradeexecutor.ethereum.token_cache import get_default_token_cache
@@ -39,6 +42,203 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 
 logger = logging.getLogger(__name__)
+
+
+class VaultReceiptAnalysisError(RuntimeError):
+    """A mined vault transaction could not be decoded into executed amounts."""
+
+
+class IncompatibleDepositAsset(Exception):
+    """The selected deposit asset is not accepted by a multi-asset vault.
+
+    Multi-asset vaults (e.g. Upshift) whitelist a specific set of input assets
+    that can differ from the ERC-4626 accounting asset.  This is raised when the
+    selected asset (the ``--deposit-asset`` override, or the native USDC default)
+    is not on that whitelist, so the operator sees both the vault's accepted
+    assets and the asset that was attempted.
+    """
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        selected_asset: str | None = None,
+        accepted_assets: list[tuple[str, str]] | None = None,
+    ):
+        super().__init__(reason)
+        #: Address of the asset we tried to deposit, when known.
+        self.selected_asset = selected_asset
+        #: ``(symbol, address)`` tuples the vault accepts.
+        self.accepted_assets = accepted_assets or []
+
+
+def resolve_multi_asset_deposit_asset(
+    deposit_manager,
+    chain_id: int,
+    override: str | None = None,
+) -> str | None:
+    """Resolve and validate the accepted input asset for a multi-asset vault.
+
+    Single-asset vaults need no explicit selection and return ``None``.  For a
+    multi-asset vault the asset is the ``--deposit-asset`` override, or native
+    USDC on the vault's own chain by default.
+
+    :raise IncompatibleDepositAsset:
+        When the vault is multi-asset and the selected asset is not on its
+        accepted-asset whitelist.  The exception carries both the vault's
+        accepted assets and the asset that was attempted.
+    """
+
+    fetch_accepted = getattr(deposit_manager, "fetch_accepted_assets", None)
+    if fetch_accepted is None:
+        # Single-asset ERC-4626 vault: the reserve asset is deposited directly.
+        return None
+
+    selected = override or USDC_NATIVE_TOKEN.get(chain_id)
+    accepted_pairs = [(token.symbol, token.address) for token in fetch_accepted()]
+    accepted_addresses = {address.lower() for _symbol, address in accepted_pairs}
+    if selected is None or selected.lower() not in accepted_addresses:
+        supported = ", ".join(
+            f"{symbol} ({address})" for symbol, address in accepted_pairs
+        )
+        source = "--deposit-asset override" if override else "native USDC default"
+        raise IncompatibleDepositAsset(
+            f"Selected deposit asset {selected or '<none>'} ({source}) is not "
+            f"accepted by this vault. Vault accepts: {supported or '<none>'}. "
+            f"Set --deposit-asset to one of the accepted assets.",
+            selected_asset=selected,
+            accepted_assets=accepted_pairs,
+        )
+    return selected
+
+
+def reconcile_vault_redemption_amount(
+    planned_amount: Decimal,
+    onchain_balance: Decimal,
+    *,
+    epsilon: float,
+) -> Decimal:
+    """Cap a redemption to a tolerably smaller on-chain share balance."""
+
+    assert planned_amount > 0, f"Planned redemption must be positive, got {planned_amount}"
+    assert onchain_balance >= 0, f"On-chain share balance cannot be negative, got {onchain_balance}"
+
+    if onchain_balance >= planned_amount:
+        return planned_amount
+
+    relative_shortfall = (planned_amount - onchain_balance) / planned_amount
+    if relative_shortfall > Decimal(str(epsilon)):
+        raise AssertionError(
+            f"Vault share token balance has a large relative shortfall: "
+            f"planned {planned_amount}, on-chain {onchain_balance}, "
+            f"relative shortfall {relative_shortfall}, epsilon {epsilon}"
+        )
+
+    return onchain_balance
+
+
+def convert_vault_flow_analysis(
+    analysis: DepositRedeemEventAnalysis,
+    *,
+    direction: str,
+) -> tuple[Decimal, Decimal, Decimal]:
+    """Convert a manager receipt analysis to executor trade quantities."""
+
+    executed_reserve = analysis.denomination_amount
+    if direction == "deposit":
+        executed_amount = analysis.share_count
+    else:
+        executed_amount = -analysis.share_count
+    price = executed_reserve / analysis.share_count
+    assert executed_reserve > 0 and executed_amount != 0 and price > 0
+    return executed_reserve, executed_amount, price
+
+
+def _mark_vault_transaction(
+    transaction: BlockchainTransaction,
+    *,
+    role: str,
+    request_ordinal: int | None = None,
+) -> None:
+    """Persist the role of one transaction in a manager-owned vault flow.
+
+    Function selectors are protocol implementation details: an asynchronous
+    request may be called ``requestRedeem``, ``redeemShares`` or something not
+    yet known to the executor.  The role is therefore the durable settlement
+    identity, while a transaction hash remains execution evidence only.
+    """
+
+    if transaction.other is None:
+        transaction.other = {}
+    transaction.other["vault_transaction_role"] = role
+    if request_ordinal is not None:
+        transaction.other["vault_request_ordinal"] = request_ordinal
+
+
+def _get_contract_for_vault_function(
+    vault: ERC4626Vault,
+    function,
+):
+    """Get the contract object matching a manager-returned bound function.
+
+    Lagoon transaction construction validates that the supplied contract and
+    function target agree.  Managers are allowed to return calls directed at a
+    protocol helper rather than the vault itself, so retain known token/vault
+    contract objects and construct a minimal address wrapper for other targets.
+    """
+
+    address = function.address
+    if address.lower() == vault.vault_contract.address.lower():
+        return vault.vault_contract
+    if address.lower() == vault.denomination_token.contract.address.lower():
+        return vault.denomination_token.contract
+    if vault.share_token and address.lower() == vault.share_token.contract.address.lower():
+        return vault.share_token.contract
+    return vault.web3.eth.contract(address=address, abi=[])
+
+
+def get_async_vault_request_transactions(
+    trade: TradeExecution,
+    *,
+    request_function_count: int,
+) -> list[BlockchainTransaction]:
+    """Select ordered manager request transactions without selector matching.
+
+    New trades carry a role and ordinal on every signed transaction.  A legacy
+    pending trade has neither, so use the rebuilt manager request's function
+    count to select its final request calls, then upgrade the state in place.
+    """
+
+    request_transactions = [
+        tx
+        for tx in trade.blockchain_transactions
+        if (tx.other or {}).get("vault_transaction_role") == "vault_request"
+    ]
+    if request_transactions:
+        request_transactions.sort(
+            key=lambda tx: (tx.other or {}).get("vault_request_ordinal", 0)
+        )
+        return request_transactions
+
+    assert request_function_count > 0, "Manager request must contain at least one call"
+    assert len(trade.blockchain_transactions) >= request_function_count, (
+        f"Vault trade #{trade.trade_id} has fewer signed transactions than its "
+        f"rebuilt manager request: {len(trade.blockchain_transactions)} < {request_function_count}"
+    )
+    request_transactions = trade.blockchain_transactions[-request_function_count:]
+    for ordinal, transaction in enumerate(request_transactions):
+        _mark_vault_transaction(
+            transaction,
+            role="vault_request",
+            request_ordinal=ordinal,
+        )
+    trade.other_data["vault_request_transaction_indices"] = [
+        len(trade.blockchain_transactions) - request_function_count + offset
+        for offset in range(request_function_count)
+    ]
+    trade.other_data["vault_request_tx_count"] = request_function_count
+    trade.other_data.setdefault("vault_initial_tx_count", len(trade.blockchain_transactions))
+    return request_transactions
 
 
 class VaultRoutingState(RoutingState):
@@ -70,19 +270,33 @@ class VaultRouting(RoutingModel):
     def __init__(
         self,
         reserve_token_address: JSONHexAddress,
-        profitability_estimation_lookback_window=datetime.timedelta(days=7),
         epsilon=Decimal(1e-6),
         redeem_epsilon=0.025,
+        deposit_asset_override: JSONHexAddress | None = None,
     ):
         super().__init__(
             allowed_intermediary_pairs={},
             reserve_token_address=reserve_token_address,
         )
-        self.profitability_estimation_lookback_window = profitability_estimation_lookback_window
         self.epsilon = epsilon
 
-        # 3M gas was not enough to withdraw from IPOR, but Base has a per-tx gas cap 16,777,216
-        self.vault_interaction_gas_limit = 10_000_000
+        # Accepted input asset for multi-asset vaults (e.g. Upshift), where the
+        # ERC-4626 accounting asset differs from the deposit assets and the
+        # manager requires an explicit selection. ``None`` means "use the
+        # default", which :meth:`deposit_or_redeem` resolves to native USDC on
+        # the vault's own chain. Set this to override the default per run.
+        self.deposit_asset_override = deposit_asset_override
+
+        # Vault redemptions can be very gas heavy when the vault pulls liquidity
+        # back from its underlying markets on withdraw. Measured worst case so
+        # far: IPOR Autopilot USDC Morpho on Base spends 10,489,529 gas on
+        # redeem() while its PlasmaVault requests liquidity from Morpho market
+        # fuses. At the previous 10,000,000 limit that redemption ran out of gas
+        # and surfaced as OpenZeppelin FailedInnerCall() (0x1425ea42), which
+        # looks like a vault liquidity failure but is purely our own cap.
+        # Base enforces a per-transaction gas cap of 16,777,216, so stay below
+        # it while leaving headroom above the measured worst case.
+        self.vault_interaction_gas_limit = 15_000_000
 
         # 2.5% is the maximum relative difference for redeeming vault shares,
         # when checking onchain balance vs our internal accounting
@@ -146,26 +360,11 @@ class VaultRouting(RoutingModel):
             token_in = reserve_asset
             token_out = trade.pair.base
             swap_amount = trade.get_planned_reserve()
-
-            try:
-                profitability_estimation = estimate_4626_recent_profitability(
-                    vault=target_vault,
-                    lookback_window=self.profitability_estimation_lookback_window,
-                )
-                profitability_estimation_error = None
-            except Exception as e:
-                # Ok to fail, data used only for diagnostics and UI
-                profitability_estimation = None
-                profitability_estimation_error = str(e)
-                logger.error(
-                    "Vault trade %s profitability estimation failed: %s",
-                    trade,
-                    e,
-                )
         else:
             token_in = trade.pair.base
             token_out = reserve_asset
-            # Swap amount is negative
+            # Sells have a negative planned quantity, but redemption requests
+            # take a positive share amount.
             swap_amount = -trade.planned_quantity
 
             share_token = target_vault.share_token
@@ -182,38 +381,30 @@ class VaultRouting(RoutingModel):
                 onchain_balance,
                 position.get_quantity(planned=True),
             )
-            rel_diff = abs((onchain_balance - swap_amount) / swap_amount)
-            if rel_diff != 0 and onchain_balance + swap_amount < 0:
-                if rel_diff > self.redeem_epsilon:
-                    # Accounting broken
-
-                    logger.error(
-                        "Vault trade %s, position %s, share token %s, has a large relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, epsilon is %f",
-                        trade.trade_id,
-                        position,
-                        share_token,
-                        rel_diff,
-                        trade.planned_quantity,
-                        onchain_balance,
-                        self.redeem_epsilon,
-                    )
-                    raise AssertionError("Vault share token has a large relative difference in onchain balance when trying to redeem the share token")
-                else:
-                    # Epsilon rounding
-                    logger.warning(
-                        "Vault trade %s, position %s, share token %s, has a small relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, automatically rounding, epsilon is %f",
-                        trade.trade_id,
-                        position,
-                        share_token,
-                        rel_diff,
-                        trade.planned_quantity,
-                        onchain_balance,
-                        self.redeem_epsilon,
-                    )
-                    swap_amount = onchain_balance
+            reconciled_amount = reconcile_vault_redemption_amount(
+                swap_amount,
+                onchain_balance,
+                epsilon=self.redeem_epsilon,
+            )
+            if reconciled_amount < swap_amount:
+                relative_shortfall = (swap_amount - onchain_balance) / swap_amount
+                logger.warning(
+                    "Vault trade %s, position %s, share token %s, has a small relative difference in onchain balance: %f, planned quantity: %s, onchain balance: %s, automatically rounding, epsilon is %f",
+                    trade.trade_id,
+                    position,
+                    share_token,
+                    relative_shortfall,
+                    trade.planned_quantity,
+                    onchain_balance,
+                    self.redeem_epsilon,
+                )
+                swap_amount = reconciled_amount
             else:
-                # Exact match
-                logger.info("Onchain balance and accounting has exact match for shares to redeem: %s", swap_amount)
+                logger.info(
+                    "Onchain balance covers the planned shares to redeem: planned %s, onchain %s",
+                    swap_amount,
+                    onchain_balance,
+                )
 
         logger.info(
             "Preparing vault flow %s -> %s, amount %s (%s), slippage tolerance %f",
@@ -224,155 +415,129 @@ class VaultRouting(RoutingModel):
             trade.slippage_tolerance,
         )
 
-        asset_deltas = trade.calculate_asset_deltas()
-
         deposit_manager = target_vault.get_deposit_manager()
 
-        # Async vault flow (Ostium V1.5, ERC-7540 Lagoon)
-        if trade.is_buy() and not deposit_manager.has_synchronous_deposit():
-            return self._build_async_deposit_txs(
-                tx_builder, target_vault, deposit_manager, trade, address, swap_amount,
-            )
-        elif trade.is_sell() and not deposit_manager.has_synchronous_redemption():
-            return self._build_async_redeem_txs(
-                tx_builder, target_vault, deposit_manager, trade, address, swap_amount,
-            )
-
-        # Synchronous vault flow (standard ERC-4626)
+        # The manager owns protocol-specific amount checks and request calls for
+        # both synchronous and asynchronous flows.  In particular, this keeps
+        # cSigma's owner-specific immediate-redemption capacity check intact.
         if trade.is_buy():
-            approve_call, swap_call = approve_and_deposit_4626(
-                vault=target_vault,
-                from_=address,
+            deposit_kwargs = dict(
+                owner=address,
                 amount=swap_amount,
                 check_enough_token=False,
             )
-        else:
-            approve_call, swap_call = approve_and_redeem_4626(
-                vault=target_vault,
-                from_=address,
-                amount=swap_amount
+            # Multi-asset vaults (e.g. Upshift) accept several deposit assets and
+            # require an explicit selection; their manager exposes an
+            # ``accepted_asset`` parameter.  Default to native USDC on the vault's
+            # own chain, overridable per run via ``deposit_asset_override``.  An
+            # asset not on the vault whitelist raises IncompatibleDepositAsset.
+            # TODO: exercise the override end-to-end (see the vault-test-trade
+            # --deposit-asset TODO); only the USDC default is covered today.
+            accepted_asset = resolve_multi_asset_deposit_asset(
+                deposit_manager,
+                target_vault.chain_id,
+                self.deposit_asset_override,
             )
+            if accepted_asset is not None:
+                deposit_kwargs["accepted_asset"] = HexAddress(accepted_asset)
+            request = deposit_manager.create_deposit_request(**deposit_kwargs)
+            is_async = not deposit_manager.has_synchronous_deposit()
+            direction = "deposit"
+        else:
+            # We assume a redemption is filled in full. Some protocols are
+            # partial-fill: cSigma pays out whatever its reserve covers now and
+            # queues the remainder as an off-chain FIFO "pending position" that
+            # keeps earning yield (see cSigma's withdraw-flow design doc). We do
+            # not model that split, so a partially fillable redemption is either
+            # refused by the adapter preflight or reverts on chain.
+            # TODO: model partial fills for cSigma-style reserve-limited pools —
+            # redeem the reserve-covered portion and track the queued remainder
+            # instead of treating the redemption as all-or-nothing.
+            request = deposit_manager.create_redemption_request(
+                owner=address,
+                shares=swap_amount,
+            )
+            is_async = not deposit_manager.has_synchronous_redemption()
+            direction = "redeem"
 
-        approve_gas_limit = 500_000
-        swap_gas_limit = self.vault_interaction_gas_limit
+        txs: list[BlockchainTransaction] = []
 
-        tx_1 = tx_builder.sign_transaction(
-            contract=target_vault.denomination_token.contract,
-            args_bound_func=approve_call,
-            gas_limit=approve_gas_limit,
-            asset_deltas=[],
-            notes=trade.notes,
-        )
+        # Current eth-defi request classes expose manager lifecycle calls in
+        # ``funcs`` and a manager-level approval target.  Preserve the selected
+        # asset's approval as a separate prerequisite; a request-provided
+        # approval call remains in ``funcs`` and is a request transaction.
+        if trade.is_buy():
+            get_approval_target = getattr(
+                deposit_manager,
+                "get_deposit_approval_target",
+                None,
+            )
+            approval_target = (
+                get_approval_target()
+                if get_approval_target is not None
+                else target_vault.vault_address
+            )
+            approve_call = target_vault.denomination_token.approve(
+                approval_target,
+                swap_amount,
+            )
+            approve_tx = tx_builder.sign_transaction(
+                contract=target_vault.denomination_token.contract,
+                args_bound_func=approve_call,
+                gas_limit=500_000,
+                asset_deltas=[],
+                notes=trade.notes,
+            )
+            _mark_vault_transaction(approve_tx, role="vault_approval")
+            txs.append(approve_tx)
 
-        tx_2 = tx_builder.sign_transaction(
-            contract=target_vault.vault_contract,
-            args_bound_func=swap_call,
-            gas_limit=swap_gas_limit,
-            asset_deltas=[],
-            notes=trade.notes,
-        )
-        return [tx_1, tx_2]
-
-    def _build_async_deposit_txs(
-        self,
-        tx_builder: TransactionBuilder,
-        target_vault: ERC4626Vault,
-        deposit_manager: VaultDepositManager,
-        trade: TradeExecution,
-        address: HexAddress,
-        swap_amount: Decimal,
-    ) -> list[BlockchainTransaction]:
-        """Build approve + requestDeposit transactions for async vault deposit."""
-
-        deposit_request = deposit_manager.create_deposit_request(
-            owner=address,
-            amount=swap_amount,
-        )
-        approve_call = target_vault.denomination_token.approve(
-            target_vault.vault_address,
-            swap_amount,
-        )
-
-        # Mark trade for async handling — store both raw and decimal amounts
-        # so we can reconstruct the request during settle_trade() parsing.
-        # Raw amounts are stored as strings: 18-decimal values exceed the
-        # JavaScript safe-integer limit enforced by the state file validator.
-        trade.other_data["vault_async_flow"] = True
-        trade.other_data["vault_raw_amount"] = str(deposit_request.raw_amount)
-        trade.other_data["vault_deposit_amount"] = str(swap_amount)
-        trade.other_data["vault_owner_address"] = address
-
-        # Estimate when this async deposit will settle, so the trade-ui can show
-        # an ETA while the request is in vault_settlement_pending. Ostium V1.5
-        # returns a real timestamp; operator-driven ERC-7540 vaults (Lagoon)
-        # return None (no deterministic on-chain schedule).
-        try:
-            settles_at = deposit_manager.get_deposit_delay_over(address)
-        except Exception as e:
-            logger.warning("Could not estimate vault deposit settlement time for %s: %s", target_vault.vault_address, e)
-            settles_at = None
-        trade.other_data["vault_settlement_estimated_at"] = settles_at.isoformat() if settles_at else None
-
-        # Sign approve tx first
-        txs = [tx_builder.sign_transaction(
-            contract=target_vault.denomination_token.contract,
-            args_bound_func=approve_call,
-            gas_limit=500_000,
-            asset_deltas=[],
-            notes=trade.notes,
-        )]
-
-        # Sign all request funcs (most adapters have 1, but support multiple)
-        for func in deposit_request.funcs:
-            txs.append(tx_builder.sign_transaction(
-                contract=target_vault.vault_contract,
-                args_bound_func=func,
+        for ordinal, function in enumerate(request.funcs):
+            request_tx = tx_builder.sign_transaction(
+                contract=_get_contract_for_vault_function(target_vault, function),
+                args_bound_func=function,
                 gas_limit=self.vault_interaction_gas_limit,
                 asset_deltas=[],
                 notes=trade.notes,
-            ))
+            )
+            _mark_vault_transaction(
+                request_tx,
+                role="vault_request",
+                request_ordinal=ordinal,
+            )
+            txs.append(request_tx)
 
-        trade.other_data["vault_request_tx_count"] = len(txs)
-        return txs
+        if not is_async:
+            return txs
 
-    def _build_async_redeem_txs(
-        self,
-        tx_builder: TransactionBuilder,
-        target_vault: ERC4626Vault,
-        deposit_manager: VaultDepositManager,
-        trade: TradeExecution,
-        address: HexAddress,
-        swap_amount: Decimal,
-    ) -> list[BlockchainTransaction]:
-        """Build requestWithdraw transaction for async vault redemption."""
-
-        redemption_request = deposit_manager.create_redemption_request(
-            owner=address,
-            shares=swap_amount,
-        )
-
-        # Mark trade for async handling — store both raw and decimal amounts.
-        # We store vault_redeem_shares (Decimal) for adapters like Lagoon that
-        # assert `not raw_shares` and require the decimal form for reconstruction.
-        # Raw amounts are stored as strings: 18-decimal share counts exceed the
-        # JavaScript safe-integer limit enforced by the state file validator.
+        # Persist request identity and reconstruction inputs.  The transaction
+        # indices and roles survive a re-sign; the hashes do not define identity.
         trade.other_data["vault_async_flow"] = True
-        trade.other_data["vault_raw_amount"] = str(redemption_request.raw_shares)
-        trade.other_data["vault_redeem_shares"] = str(swap_amount)
+        trade.other_data["vault_direction"] = direction
         trade.other_data["vault_owner_address"] = address
+        trade.other_data["vault_request_tx_count"] = len(request.funcs)
+        trade.other_data["vault_initial_tx_count"] = len(txs)
+        trade.other_data["vault_request_transaction_indices"] = list(
+            range(len(txs) - len(request.funcs), len(txs))
+        )
+        if direction == "deposit":
+            trade.other_data["vault_raw_amount"] = str(request.raw_amount)
+            trade.other_data["vault_deposit_amount"] = str(swap_amount)
+            try:
+                settles_at = deposit_manager.get_deposit_delay_over(address)
+            except Exception as error:
+                logger.warning(
+                    "Could not estimate vault deposit settlement time for %s: %s",
+                    target_vault.vault_address,
+                    error,
+                )
+                settles_at = None
+            trade.other_data["vault_settlement_estimated_at"] = (
+                settles_at.isoformat() if settles_at else None
+            )
+        else:
+            trade.other_data["vault_raw_amount"] = str(request.raw_shares)
+            trade.other_data["vault_redeem_shares"] = str(swap_amount)
 
-        # Sign all request funcs (most adapters have 1, but support multiple)
-        txs = []
-        for func in redemption_request.funcs:
-            txs.append(tx_builder.sign_transaction(
-                contract=target_vault.vault_contract,
-                args_bound_func=func,
-                gas_limit=self.vault_interaction_gas_limit,
-                asset_deltas=[],
-                notes=trade.notes,
-            ))
-
-        trade.other_data["vault_request_tx_count"] = len(txs)
         return txs
 
     def setup_trades(
@@ -407,7 +572,7 @@ class VaultRouting(RoutingModel):
         web3: Web3,
         state: State,
         trade: TradeExecution,
-        receipts: Dict[str, dict],
+        receipts: dict[str, dict],
         stop_on_execution_failure=False,
     ):
 
@@ -418,25 +583,11 @@ class VaultRouting(RoutingModel):
         )
         logger.info(f"Settling vault trade: #{trade.trade_id} for {vault}")
 
-        swap_tx = get_swap_transactions(trade)
-
-        try:
-            receipt = receipts[HexBytes(swap_tx.tx_hash)]
-        except KeyError as e:
-            raise KeyError(f"Could not find hash: {swap_tx.tx_hash} in {receipts}") from e
-
-        ts = get_block_timestamp(web3, receipt["blockNumber"])
-
         # Async vault flow — parse request event and mark as pending settlement
         if trade.other_data.get("vault_async_flow"):
-            if receipt["status"] == 0:
-                report_failure(ts, state, trade, stop_on_execution_failure)
-                return
-
             deposit_manager = vault.get_deposit_manager()
             direction = trade.other_data.get("vault_direction", "deposit" if trade.is_buy() else "redeem")
             owner_address = HexAddress(trade.other_data["vault_owner_address"])
-            tx_hashes = [HexBytes(tx.tx_hash) for tx in trade.blockchain_transactions if tx.tx_hash]
 
             if direction == "deposit":
                 # Reconstruct deposit request using raw_amount (int) —
@@ -446,14 +597,11 @@ class VaultRouting(RoutingModel):
                     owner=owner_address,
                     raw_amount=int(trade.other_data["vault_raw_amount"]),
                 )
-                ticket = deposit_request.parse_deposit_transaction(tx_hashes)
-                ticket_data = deposit_manager.serialize_deposit_ticket(ticket)
-                refresh_vault_settlement_estimate(
+                request_transactions = get_async_vault_request_transactions(
                     trade,
-                    deposit_manager,
-                    ticket,
-                    direction,
+                    request_function_count=len(deposit_request.funcs),
                 )
+                parse_request = deposit_request.parse_deposit_transaction
             else:
                 # Reconstruct redemption request using shares (Decimal) —
                 # Lagoon asserts `not raw_shares` so we must pass the decimal form.
@@ -475,14 +623,42 @@ class VaultRouting(RoutingModel):
                         raw_shares=int(trade.other_data["vault_raw_amount"]),
                         check_enough_token=False,
                     )
-                ticket = redemption_request.parse_redeem_transaction(tx_hashes)
-                ticket_data = deposit_manager.serialize_redemption_ticket(ticket)
-                refresh_vault_settlement_estimate(
+                request_transactions = get_async_vault_request_transactions(
                     trade,
-                    deposit_manager,
-                    ticket,
-                    direction,
+                    request_function_count=len(redemption_request.funcs),
                 )
+                parse_request = redemption_request.parse_redeem_transaction
+
+            request_receipts: list[dict] = []
+            for request_transaction in request_transactions:
+                try:
+                    request_receipt = receipts[HexBytes(request_transaction.tx_hash)]
+                except KeyError as e:
+                    raise KeyError(
+                        f"Could not find request hash: {request_transaction.tx_hash} in {receipts}"
+                    ) from e
+                request_receipts.append(request_receipt)
+                if request_receipt["status"] == 0:
+                    ts = get_block_timestamp(web3, request_receipt["blockNumber"])
+                    report_failure(ts, state, trade, stop_on_execution_failure)
+                    return
+
+            # The final manager request call is the lifecycle timestamp. Do not
+            # include a preceding token approval or infer the request by name.
+            receipt = request_receipts[-1]
+            ts = get_block_timestamp(web3, receipt["blockNumber"])
+            tx_hashes = [HexBytes(tx.tx_hash) for tx in request_transactions]
+            ticket = parse_request(tx_hashes)
+            if direction == "deposit":
+                ticket_data = deposit_manager.serialize_deposit_ticket(ticket)
+            else:
+                ticket_data = deposit_manager.serialize_redemption_ticket(ticket)
+            refresh_vault_settlement_estimate(
+                trade,
+                deposit_manager,
+                ticket,
+                direction,
+            )
 
             state.mark_vault_settlement_pending(ts, trade, ticket_data)
             logger.info(
@@ -491,28 +667,79 @@ class VaultRouting(RoutingModel):
             )
             return
 
-        # Synchronous vault flow — analyse the deposit/redeem result
-        base_token_details = fetch_erc20_details(
-            web3,
-            trade.pair.base.checksum_address,
-            cache=self.token_cache,
-            chain_id=trade.pair.base.chain_id,
-        )
-        reserve = trade.reserve_currency
-        direction = "deposit" if trade.is_buy() else "redeem"
+        # New manager-owned requests have an explicit role even for a
+        # synchronous flow.  This allows a specialised manager to use a
+        # non-standard function name without teaching the global swap selector
+        # list about its protocol.  Keep selector discovery for legacy trades.
+        request_transactions = [
+            tx
+            for tx in trade.blockchain_transactions
+            if (tx.other or {}).get("vault_transaction_role") == "vault_request"
+        ]
+        swap_tx = request_transactions[-1] if request_transactions else get_swap_transactions(trade)
 
         try:
-            result = analyse_4626_flow_transaction(
-                vault=vault,
-                tx_hash=swap_tx.tx_hash,
-                tx_receipt=receipt,
-                direction=direction,
-                hot_wallet=False,
-            )
-        except Exception as e:
-            raise RuntimeError(f"Failed to analyse vault tx: {swap_tx.wrapped_function_selector}: {swap_tx.tx_hash} direction: {direction}, receipt: {receipt}, vault: {vault}") from e
+            receipt = receipts[HexBytes(swap_tx.tx_hash)]
+        except KeyError as e:
+            raise KeyError(f"Could not find hash: {swap_tx.tx_hash} in {receipts}") from e
+
+        ts = get_block_timestamp(web3, receipt["blockNumber"])
+
+        # Synchronous vault flow — analyse the deposit/redeem result
+        direction = "deposit" if trade.is_buy() else "redeem"
+
+        if receipt["status"] == 0:
+            report_failure(ts, state, trade, stop_on_execution_failure)
+            return
+
+        deposit_manager = vault.get_deposit_manager()
+        manager_analyser = (
+            type(deposit_manager).analyse_deposit
+            if direction == "deposit"
+            else type(deposit_manager).analyse_redemption
+        )
+        generic_analyser = (
+            ERC4626DepositManager.analyse_deposit
+            if direction == "deposit"
+            else ERC4626DepositManager.analyse_redemption
+        )
+        if manager_analyser is generic_analyser:
+            # The generic manager requires a ticket to identify a GuardV0
+            # wrapper. Synchronous executor trades do not persist one yet.
+            # Keep its existing guarded-wrapper analyser until eth-defi exposes
+            # ticket-free support for this specific compatibility path.
+            try:
+                result = analyse_4626_flow_transaction(
+                    vault=vault,
+                    tx_hash=swap_tx.tx_hash,
+                    tx_receipt=receipt,
+                    direction=direction,
+                    hot_wallet=False,
+                )
+            except Exception as e:
+                raise VaultReceiptAnalysisError(
+                    f"Failed to analyse vault tx {swap_tx.tx_hash} ({direction})"
+                ) from e
+        else:
+            try:
+                if direction == "deposit":
+                    result = deposit_manager.analyse_deposit(swap_tx.tx_hash, None)
+                else:
+                    result = deposit_manager.analyse_redemption(swap_tx.tx_hash, None)
+            except Exception as e:
+                raise VaultReceiptAnalysisError(
+                    f"Failed to analyse vault tx {swap_tx.tx_hash} ({direction})"
+                ) from e
 
         if isinstance(result, TradeSuccess):
+
+            base_token_details = fetch_erc20_details(
+                web3,
+                trade.pair.base.checksum_address,
+                cache=self.token_cache,
+                chain_id=trade.pair.base.chain_id,
+            )
+            reserve = trade.reserve_currency
 
             path = result.path
 
@@ -554,6 +781,29 @@ class VaultRouting(RoutingModel):
             slippage = trade.get_slippage()
             logger.info(f"Executed: {executed_amount} {trade.pair.base.token_symbol}, {executed_reserve} {trade.pair.quote.token_symbol}, price: {trade.executed_price}, expected reserve: {trade.planned_reserve} {trade.pair.quote.token_symbol}, slippage {slippage:.2%}")
 
+        elif isinstance(result, DepositRedeemEventAnalysis):
+            executed_reserve, executed_amount, price = convert_vault_flow_analysis(
+                result,
+                direction=direction,
+            )
+            gas_used = receipt.get("gasUsed", 0)
+            gas_price = receipt.get("effectiveGasPrice", 0)
+
+            state.mark_trade_success(
+                ts,
+                trade,
+                executed_price=float(price),
+                executed_amount=executed_amount,
+                executed_reserve=executed_reserve,
+                lp_fees=0,
+                native_token_price=0,
+                cost_of_gas=float(Decimal(gas_used) * Decimal(gas_price) / Decimal(10**18)),
+            )
+        elif isinstance(result, DepositRedeemEventFailure):
+            raise VaultReceiptAnalysisError(
+                f"Vault manager could not analyse successful {direction} {swap_tx.tx_hash}: "
+                f"{result.revert_reason}"
+            )
         else:
             # Trade failed
             report_failure(ts, state, trade, stop_on_execution_failure)

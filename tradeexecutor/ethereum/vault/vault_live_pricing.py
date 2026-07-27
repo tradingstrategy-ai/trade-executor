@@ -8,7 +8,10 @@ from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.vault import ERC4626Vault
 from web3 import Web3
 
-from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
+from tradeexecutor.ethereum.vault.vault_routing import (
+    get_vault_for_pair,
+    resolve_multi_asset_deposit_asset,
+)
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
@@ -122,11 +125,28 @@ class VaultPricing(PricingModel):
         vault = self.get_vault(pair)
 
         deposit_manager = vault.get_deposit_manager()
-        estimated_shares = deposit_manager.estimate_deposit(
-            owner=self.get_owner_address(pair),
-            amount=reserve,
-            block_identifier=block_number,
-        )
+        # Multi-asset vaults (e.g. Upshift) cannot estimate a deposit without an
+        # explicitly selected accepted asset; they expose an asset-aware
+        # estimator. Resolve the accepted asset (native USDC default on the
+        # vault's own chain) and raise IncompatibleDepositAsset — listing the
+        # vault's accepted assets and our asset — when it is not on the whitelist.
+        # TODO: honour the vault-test-trade --deposit-asset override here too;
+        # it currently lives on the routing model, not the pricing model (task #10).
+        accepted_asset = resolve_multi_asset_deposit_asset(deposit_manager, vault.chain_id)
+        estimate_for_asset = getattr(deposit_manager, "estimate_deposit_for_asset", None)
+        if accepted_asset is not None and estimate_for_asset is not None:
+            estimated_shares = estimate_for_asset(
+                owner=self.get_owner_address(pair),
+                amount=reserve,
+                accepted_asset=accepted_asset,
+                block_identifier=block_number,
+            )
+        else:
+            estimated_shares = deposit_manager.estimate_deposit(
+                owner=self.get_owner_address(pair),
+                amount=reserve,
+                block_identifier=block_number,
+            )
 
         price = float(reserve / estimated_shares)
         mid_price = price
@@ -191,16 +211,32 @@ class VaultPricing(PricingModel):
             return None
 
         vault = self.get_vault(pair)
+        deposit_manager = vault.get_deposit_manager()
 
-        if not vault.get_deposit_manager().has_synchronous_deposit():
+        if not deposit_manager.has_synchronous_deposit():
             # On asynchronous vaults (ERC-7540) maxDeposit() returns the claimable
             # amount of settled deposit requests, not the deposit capacity.
             # Request-based deposits have no on-chain capacity limit.
             return None
 
-        web3 = self.get_web3_for_pair(pair)
-        block_number = web3.eth.block_number
-        raw_amount = vault.vault_contract.functions.maxDeposit(owner).call(block_identifier=block_number)
+        # Prefer the manager's deposit-limit hook so non-standard vaults (e.g.
+        # Upshift multi-asset, which has no ERC-4626 maxDeposit()) resolve their
+        # capacity through the adapter instead of a raw contract call that would
+        # raise "maxDeposit not found in abi". The base manager reads maxDeposit()
+        # itself, so standard vaults are unaffected.
+        fetch_depositable = getattr(
+            deposit_manager, "fetch_depositable_raw_assets", None
+        )
+        if fetch_depositable is not None:
+            raw_amount = fetch_depositable(owner)
+        else:
+            web3 = self.get_web3_for_pair(pair)
+            block_number = web3.eth.block_number
+            raw_amount = vault.vault_contract.functions.maxDeposit(owner).call(
+                block_identifier=block_number
+            )
+        if raw_amount is None:
+            return None
         return vault.denomination_token.convert_to_decimals(raw_amount)
 
     def get_max_redemption(

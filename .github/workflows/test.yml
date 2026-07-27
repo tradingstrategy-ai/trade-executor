@@ -18,6 +18,14 @@ jobs:
         with:
           submodules: 'recursive'
 
+      - name: Verify recursive submodules
+        run: |
+          git submodule sync --recursive
+          git submodule update --init --recursive
+          test -f spec/trade-executor-api.yaml
+          test -f deps/web3-ethereum-defi/contracts/lagoon-v0/src/protocol-v2/ProtocolRegistry.sol
+          test -f deps/web3-ethereum-defi/contracts/guard/lib/openzeppelin-contracts/contracts/access/Ownable.sol
+
       - name: Set up Python 3.14
         uses: actions/setup-python@v6
         with:
@@ -91,7 +99,9 @@ jobs:
       # https://github.com/pytest-dev/pytest/issues/3216#issuecomment-2572882817
       - name: Run test scripts
         run: |
-            poetry run pytest --tb=native --dist loadscope -n 5 --durations=10 -m "not slow_test_group" --timeout=390
+            poetry run pytest --tb=native --dist loadscope -n 5 --durations=10 -m "not slow_test_group and not warm_rpc_test_group and not warm_rpc_high_value_group" --timeout=390
+            poetry run pytest --tb=native --dist loadgroup -n 5 --durations=20 -m "not slow_test_group and warm_rpc_test_group" --timeout=390
+            poetry run pytest --tb=native --dist loadgroup -n 5 --durations=20 -m "not slow_test_group and warm_rpc_high_value_group" --timeout=390
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
           JSON_RPC_BINANCE: ${{ secrets.JSON_RPC_BINANCE }}

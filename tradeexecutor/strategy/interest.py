@@ -740,9 +740,15 @@ def sync_interests(
         pricing_model
     )
 
-    # Then sync interest back from the chain
     block_identifier = get_almost_latest_block_number(web3)
 
+    if not interest_distribution.assets:
+        # Preserve the checkpoint invariant even when there are no balances to fetch.
+        set_interest_checkpoint(state, timestamp, block_identifier, interest_distribution)
+        logger.info("No interest-bearing assets in open or frozen positions, skipping interest sync")
+        return []
+
+    # Then sync interest back from the chain
     logger.info("Preparing interest distribution for assets: %s", interest_distribution.assets)
 
     onchain_balances = fetch_address_balances(

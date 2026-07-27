@@ -15,6 +15,7 @@ Requires ``JSON_RPC_ARBITRUM`` and ``JSON_RPC_BASE`` environment variables.
 import datetime
 import logging
 import os
+from collections.abc import Iterator
 from decimal import Decimal
 
 import pytest
@@ -24,6 +25,8 @@ from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import fork_network_anvil, AnvilLaunch, set_balance, fund_erc20_on_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
+from eth_defi.testing.anvil_fork_pool import AnvilForkPool
+from eth_defi.testing.evm_snapshot_fixture import evm_snapshot_revert
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
 from eth_defi.cctp.constants import TOKEN_MESSENGER_V2
 
@@ -63,10 +66,14 @@ TEST_TRADE_AMOUNT = Decimal("3")
 #: deposit headroom (vault's totalSupplyCap fills up quickly).
 BASE_FORK_BLOCK = 45_960_642
 
-pytestmark = pytest.mark.skipif(
-    not JSON_RPC_ARBITRUM or not JSON_RPC_BASE,
-    reason="JSON_RPC_ARBITRUM and JSON_RPC_BASE environment variables required",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not JSON_RPC_ARBITRUM or not JSON_RPC_BASE,
+        reason="JSON_RPC_ARBITRUM and JSON_RPC_BASE environment variables required",
+    ),
+    pytest.mark.warm_rpc_test_group,
+    pytest.mark.xdist_group("fork:base:45960642"),
+]
 
 
 # --- Fixtures ---
@@ -81,18 +88,21 @@ def arb_anvil() -> AnvilLaunch:
         launch.close(log_level=logging.ERROR)
 
 
-@pytest.fixture()
-def base_anvil() -> AnvilLaunch:
-    launch = fork_network_anvil(
+@pytest.fixture(scope="module")
+def base_anvil(anvil_fork_pool: AnvilForkPool) -> AnvilLaunch:
+    # Both cross-chain modules must use identical launch settings to share this fork.
+    return anvil_fork_pool.get_launch(
         JSON_RPC_BASE,
-        fork_block_number=BASE_FORK_BLOCK,
+        BASE_FORK_BLOCK,
         launch_wait_seconds=60.0,
         test_request_timeout=30.0,
     )
-    try:
-        yield launch
-    finally:
-        launch.close(log_level=logging.ERROR)
+
+
+@pytest.fixture(autouse=True)
+def _restore_base_snapshot(base_anvil: AnvilLaunch) -> Iterator[None]:
+    """Restore the shared Base fork after each state-mutating test."""
+    yield from evm_snapshot_revert(base_anvil)
 
 
 @pytest.fixture()

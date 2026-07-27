@@ -28,9 +28,19 @@ from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pytest
+from eth_defi.erc_4626.vault_protocol.gains.vault import OstiumVault, OstiumVersion
+from eth_defi.vault.deposit_redeem import (
+    AsyncVaultRequestStatus,
+    UnsupportedVaultSimulation,
+    VaultForcedSettlementResult,
+)
+from hexbytes import HexBytes
 
 from tradeexecutor.cli import testtrade
-from tradeexecutor.cli.testtrade import _resolve_home_chain_async_settlement
+from tradeexecutor.cli.testtrade import (
+    _force_vault_settlement_and_resolve,
+    _resolve_home_chain_async_settlement,
+)
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.trade import TradeStatus
 from tradeexecutor.strategy.sync_model import SyncModel
@@ -167,17 +177,225 @@ def test_pending_home_trade_on_anvil_force_settles(monkeypatch) -> None:
     assert captured["execution_model"] is execution_model
 
 
+@pytest.mark.parametrize(
+    ("direction", "reconstruct_method"),
+    [
+        ("deposit", "reconstruct_deposit_ticket"),
+        ("redeem", "reconstruct_redemption_ticket"),
+    ],
+)
+def test_forced_anvil_settlement_uses_manager_ticket(
+    monkeypatch: pytest.MonkeyPatch,
+    direction: str,
+    reconstruct_method: str,
+) -> None:
+    """A capable async manager owns ticket reconstruction and Anvil settlement.
+
+    1. Model a pending async trade and manager with explicit Anvil capability.
+    2. Force settlement through the trade-executor helper.
+    3. Verify the direction-specific ticket and manager driver were used.
+    4. Verify JSON-safe evidence was saved before the shared claim resolver ran.
+
+    Mocks isolate settlement orchestration from chain-backed manager execution.
+    """
+    # 1. Model a pending async trade and manager with explicit Anvil capability.
+    trade = _make_trade(TradeStatus.vault_settlement_pending)
+    trade.pair = MagicMock()
+    trade.other_data = {"vault_direction": direction, "ticket": "serialised"}
+    ticket = object()
+    manager = MagicMock()
+    getattr(manager, reconstruct_method).return_value = ticket
+    manager.force_settle.return_value = VaultForcedSettlementResult(
+        ticket=ticket,
+        settlement_required=True,
+        status_before=AsyncVaultRequestStatus.pending,
+        status_after=AsyncVaultRequestStatus.claimable,
+        transaction_hashes=(HexBytes("0x" + "01" * 32),),
+    )
+    capability = MagicMock(supports_anvil_settlement=True)
+    vault = MagicMock()
+    vault.address = "0x0000000000000000000000000000000000000001"
+    vault.get_deposit_manager.return_value = manager
+    vault.get_deposit_manager_capability.return_value = capability
+    monkeypatch.setattr(testtrade, "is_anvil", lambda _: True)
+    monkeypatch.setattr(testtrade, "get_vault_for_pair", lambda *_: vault)
+    resolve = MagicMock(return_value=[trade])
+    monkeypatch.setattr(
+        testtrade,
+        "check_and_resolve_vault_settlements",
+        resolve,
+    )
+
+    # 2. Force settlement through the trade-executor helper.
+    state = MagicMock()
+    execution_model = MagicMock()
+    web3config = MagicMock()
+    _force_vault_settlement_and_resolve(
+        MagicMock(),
+        state,
+        trade,
+        execution_model,
+        web3config=web3config,
+    )
+
+    # 3. Verify the direction-specific ticket and manager driver were used.
+    getattr(manager, reconstruct_method).assert_called_once_with(trade.other_data)
+    other_reconstruct_method = (
+        "reconstruct_redemption_ticket"
+        if direction == "deposit"
+        else "reconstruct_deposit_ticket"
+    )
+    getattr(manager, other_reconstruct_method).assert_not_called()
+    manager.force_settle.assert_called_once_with(ticket)
+
+    # 4. Verify JSON-safe evidence was saved before the shared claim resolver ran.
+    # A fork settlement that injects synthetic liquidity must disclose it, so a
+    # claimable result is never mistaken for live solvency. This driver injected
+    # none, so the disclosure fields record zero.
+    assert trade.other_data["vault_forced_settlement"] == {
+        "manager": manager.__class__.__name__,
+        "direction": direction,
+        "settlement_required": True,
+        "status_before": "pending",
+        "status_after": "claimable",
+        "synthetic_assets_injected_raw": "0",
+        "synthetic_liquidity_injected": False,
+        "transaction_hashes": ["0x" + "01" * 32],
+    }
+    resolve.assert_called_once_with(
+        state=state,
+        execution_model=execution_model,
+        web3config=web3config,
+    )
+
+
+def test_forced_anvil_settlement_fails_closed_for_unknown_manager(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An async manager without capability fails before settlement or claiming.
+
+    1. Model a pending async trade whose manager has no forced-settlement support.
+    2. Request forced Anvil settlement.
+    3. Verify a typed unsupported result is raised before manager or claim calls.
+
+    Mocks verify fail-closed control flow without issuing an RPC transaction.
+    """
+    # 1. Model a pending async trade whose manager has no forced-settlement support.
+    trade = _make_trade(TradeStatus.vault_settlement_pending)
+    trade.pair = MagicMock()
+    trade.other_data = {"vault_direction": "deposit"}
+    manager = MagicMock()
+    capability = MagicMock(supports_anvil_settlement=None)
+    capability.as_dict.return_value = {
+        "can_deposit": True,
+        "deposit_flow": "asynchronous",
+    }
+    vault = MagicMock()
+    vault.address = "0x0000000000000000000000000000000000000001"
+    vault.get_deposit_manager.return_value = manager
+    vault.get_deposit_manager_capability.return_value = capability
+    monkeypatch.setattr(testtrade, "is_anvil", lambda _: True)
+    monkeypatch.setattr(testtrade, "get_vault_for_pair", lambda *_: vault)
+    resolve = MagicMock()
+    monkeypatch.setattr(
+        testtrade,
+        "check_and_resolve_vault_settlements",
+        resolve,
+    )
+
+    # 2. Request forced Anvil settlement.
+    with pytest.raises(
+        UnsupportedVaultSimulation,
+        match="does not advertise Anvil settlement",
+    ):
+        _force_vault_settlement_and_resolve(
+            MagicMock(),
+            MagicMock(),
+            trade,
+            MagicMock(),
+        )
+
+    # 3. Verify a typed unsupported result is raised before manager or claim calls.
+    manager.reconstruct_deposit_ticket.assert_not_called()
+    manager.force_settle.assert_not_called()
+    resolve.assert_not_called()
+
+
+def test_forced_anvil_settlement_preserves_ostium_compatibility(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ostium V1.5 keeps its permissionless settlement compatibility path.
+
+    1. Model an Ostium V1.5 pending trade without manager-owned settlement support.
+    2. Force settlement using an Anvil-unlocked development account.
+    3. Verify the Ostium helper and shared claim resolver ran.
+    4. Verify the generic manager driver was not called.
+
+    Mocks isolate the compatibility branch from live Ostium settlement.
+    """
+    # 1. Model an Ostium V1.5 pending trade without manager-owned settlement support.
+    trade = _make_trade(TradeStatus.vault_settlement_pending)
+    trade.pair = MagicMock()
+    trade.other_data = {"vault_direction": "deposit"}
+    manager = MagicMock()
+    capability = MagicMock(supports_anvil_settlement=None)
+    vault = MagicMock(spec=OstiumVault)
+    vault.version = OstiumVersion.v1_5
+    vault.get_deposit_manager.return_value = manager
+    vault.get_deposit_manager_capability.return_value = capability
+    monkeypatch.setattr(testtrade, "is_anvil", lambda _: True)
+    monkeypatch.setattr(testtrade, "get_vault_for_pair", lambda *_: vault)
+    force_ostium = MagicMock()
+    monkeypatch.setattr(
+        testtrade,
+        "force_ostium_v15_settlement",
+        force_ostium,
+    )
+    resolve = MagicMock(return_value=[trade])
+    monkeypatch.setattr(
+        testtrade,
+        "check_and_resolve_vault_settlements",
+        resolve,
+    )
+
+    # 2. Force settlement using an Anvil-unlocked development account.
+    web3 = MagicMock()
+    web3.eth.accounts = ["0x0000000000000000000000000000000000000002"]
+    state = MagicMock()
+    execution_model = MagicMock()
+    _force_vault_settlement_and_resolve(
+        web3,
+        state,
+        trade,
+        execution_model,
+    )
+
+    # 3. Verify the Ostium helper and shared claim resolver ran.
+    force_ostium.assert_called_once_with(vault, web3.eth.accounts[0])
+    resolve.assert_called_once_with(
+        state=state,
+        execution_model=execution_model,
+        web3config=None,
+    )
+
+    # 4. Verify the generic manager driver was not called.
+    manager.force_settle.assert_not_called()
+
+
 def test_pending_home_trade_on_anvil_unresolved_raises(monkeypatch) -> None:
-    """If forced settlement on Anvil does not resolve, surface a clear error.
+    """If forced settlement on Anvil does not resolve, surface a typed error.
 
     A failed force-settle must not silently fall through to the caller's
     ``is_success()`` assertion (which would report a misleading "Test sell
-    failed" with no revert reason). The helper asserts the trade left the
-    pending state.
+    failed" with no revert reason). A ticket left pending after the manager
+    advertised Anvil settlement means the async lifecycle cannot be reproduced
+    on this fork, so it is raised as :class:`UnsupportedVaultSimulation` and
+    reported as ``simulation_unsupported_async`` rather than a generic
+    execution failure.
 
     1. Build a trade left in ``vault_settlement_pending``.
     2. Force settlement on Anvil but leave the trade still pending (no-op).
-    3. Verify the helper raises AssertionError naming the trade.
+    3. Verify the helper raises UnsupportedVaultSimulation naming the trade.
     """
     # 1. Build a trade left in vault_settlement_pending.
     trade = _make_trade(TradeStatus.vault_settlement_pending)
@@ -189,8 +407,10 @@ def test_pending_home_trade_on_anvil_unresolved_raises(monkeypatch) -> None:
         lambda *a, **k: None,  # does not change status -> stays pending
     )
 
-    # 3. Verify the helper raises AssertionError naming the trade.
-    with pytest.raises(AssertionError, match="did not resolve test trade #17"):
+    # 3. Verify the helper raises UnsupportedVaultSimulation naming the trade.
+    with pytest.raises(
+        UnsupportedVaultSimulation, match="did not resolve test trade #17"
+    ):
         _resolve_home_chain_async_settlement(
             trade=trade,
             web3=MagicMock(),

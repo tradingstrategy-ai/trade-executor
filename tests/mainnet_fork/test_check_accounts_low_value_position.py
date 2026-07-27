@@ -21,7 +21,11 @@ from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
 CI = os.environ.get("CI") == "true"
 
-pytestmark = pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test")
+pytestmark = [
+    pytest.mark.skipif(not os.environ.get("JSON_RPC_BASE") or not os.environ.get("TRADING_STRATEGY_API_KEY"), reason="Set JSON_RPC_POLYGON and TRADING_STRATEGY_API_KEY environment variables to run this test"),
+    pytest.mark.warm_rpc_test_group,
+    pytest.mark.xdist_group("fork:base:30814817:isolated"),
+]
 
 
 @pytest.fixture()

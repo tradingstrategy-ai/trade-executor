@@ -271,7 +271,7 @@ def set_up_simulated_execution_loop_one_delta(
     This allows us to step through trades block by block and have
     strategies to respodn to price action (e.g. stop loss)
 
-    See `test_one_delta_live_short.py` for an example.
+    See the simulated execution loop tests for an example.
 
     :return:
         Execution loop you can manually poke forward tick by tick,

@@ -298,6 +298,53 @@ Avoid asking for broad "thoughts" on a large diff. Ask for a scoped review:
 - missing tests
 - test fragility
 - security or money-movement risks
+
+## Grok CLI
+
+Grok CLI is available locally as `grok`. Use its headless single-turn mode for
+an independent review. As with Claude and Codex, do not let a review agent edit
+the worktree.
+
+Verify the installed command and its current flags before changing an existing
+recipe, because Grok CLI releases can change options:
+
+```shell
+grok --help
+grok --version
+```
+
+For a bounded, read-only code review, disable memory, web search and subagents.
+Use `streaming-json` so progress is visible, and save the raw stream rather
+than piping it through `tail` or `head`:
+
+```shell
+timeout 900 grok -p "Review the current uncommitted diff for correctness bugs only.
+Do not edit files or run the full test suite. First inspect git status --short,
+git diff --name-only, and targeted diffs. Return findings first with file:line
+references. If there are no high-confidence bugs, say so clearly." \
+  --tools "" \
+  --permission-mode dontAsk \
+  --sandbox read-only \
+  --disable-web-search \
+  --no-memory \
+  --no-subagents \
+  --max-turns 12 \
+  --output-format streaming-json \
+  < /dev/null > /tmp/grok-review.jsonl
+```
+
+Do not use `--always-approve`, `--permission-mode bypassPermissions`, or
+`--fs-write` for a review. Grok 0.2.93 has an internal error when headless mode
+builds the terminal tool (``auto_background_on_timeout`` is incompatible with
+its disabled background setting). Use the toolless mode above and include a
+focused diff bundle through `-p`; the `--prompt-file` form was cancelled after
+its planning turn in 0.2.93. For a prepared bundle at
+`/tmp/grok-review-input.txt`, invoke it as
+`grok -p "$(sed -n '1,$p' /tmp/grok-review-input.txt)" ...` without
+`--no-wait-for-background`, because that option cancels multi-turn reasoning
+before findings are returned. Do not request repository inspection until the
+installed version changes. Keep the 15-minute outer deadline and terminate a
+no-output review after checking the raw stream and process state.
 - repository instruction compliance
 
 ## Common failure modes
@@ -523,6 +570,22 @@ Fix: self-update the standalone install, then retry — no config change needed:
 codex update
 codex exec --json --sandbox read-only "Say OK and nothing else." < /dev/null
 ```
+
+Some models are gated by **account entitlement**, not by CLI version, and
+updating will not unlock them. Observed 2026-07-25 with a ChatGPT account:
+
+```text
+The 'sol' model is not supported when using Codex with a ChatGPT account.
+```
+
+`codex update` (0.144.4 → 0.145.0) did not change this, and the `sol-preview`,
+`gpt-5-sol` and `solaris` spellings were rejected the same way, while the
+default model answered normally. Distinguish the two cases before spending time
+on upgrades: a *version* problem says "requires a newer version of Codex", an
+*entitlement* problem says "not supported when using Codex with a ChatGPT
+account". For the latter, either use a different account/auth method or fall
+back to the default model and state in the review write-up which model actually
+ran.
 
 ### Authentication or MCP setup is broken
 

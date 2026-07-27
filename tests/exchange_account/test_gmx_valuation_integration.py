@@ -51,18 +51,19 @@ Test accounts at block 401_729_535
     zero USDC/WETH wallet reserves.  Tests non-USDC collateral handling.
 """
 
-import logging
 import os
 from decimal import Decimal
 
 import pytest
-from web3 import HTTPProvider, Web3
+from web3 import Web3
+from web3.contract import Contract
 
-from eth_defi.chain import install_chain_middleware
+from eth_defi.abi import get_deployed_contract
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.gas import node_default_gas_price_strategy
+from eth_defi.gmx import valuation as gmx_valuation
 from eth_defi.gmx.valuation import fetch_gmx_total_equity
-from eth_defi.provider.anvil import fork_network_anvil
+from eth_defi.testing.anvil_fork_pool import AnvilForkPool
 from eth_defi.token import fetch_erc20_details
 
 from tradeexecutor.exchange_account.gmx import (
@@ -75,10 +76,14 @@ from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("JSON_RPC_ARBITRUM"),
-    reason="JSON_RPC_ARBITRUM environment variable not set",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not os.environ.get("JSON_RPC_ARBITRUM"),
+        reason="JSON_RPC_ARBITRUM environment variable not set",
+    ),
+    pytest.mark.warm_rpc_test_group,
+    pytest.mark.xdist_group("fork:arbitrum:401729535"),
+]
 
 #: Arbitrum USDC (native) address
 USDC_ADDRESS = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
@@ -95,28 +100,63 @@ FORK_BLOCK = 401_729_535
 #: Arbitrum mainnet chain ID
 ARBITRUM_CHAIN_ID = 42161
 
+#: GMX SyntheticsReader used by these fork tests.
+#:
+#: The reader must be pinned alongside the fork block.
+#: :py:func:`eth_defi.gmx.contracts.get_contract_addresses` resolves the reader
+#: from GMX's published ``contracts.json`` at call time and tries their
+#: ``updates`` branch first, so it returns the *current* deployment. GMX
+#: redeploys the reader periodically: the deployment currently advertised there
+#: (``0xfA26cBb46e2614609406de08CA1Dc7f70a684184``) was created at Arbitrum
+#: block 483,924,493, roughly 82 million blocks *after* :py:data:`FORK_BLOCK`.
+#: Calling it here hits an address with no code, and web3 reports the empty
+#: return as ``BadFunctionCallOutput: ... is contract deployed correctly and
+#: chain synced?``, which hides the real cause.
+#:
+#: This address is the reader listed on GMX's stable ``main`` branch. It was
+#: chosen because it is verified to have code at :py:data:`FORK_BLOCK` and to
+#: return the position sets these tests assert on; it is not necessarily the
+#: deployment GMX advertised at that block.
+GMX_READER_AT_FORK_BLOCK = "0x470fbC46bcC0f16532691Df360A07d8Bf5ee0789"
+
+
+@pytest.fixture(autouse=True)
+def pinned_gmx_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the GMX reader to the deployment live at the fork block.
+
+    Without this, the reader address is resolved live from GMX and drifts ahead
+    of the pinned fork block whenever GMX redeploys, breaking these tests for
+    reasons unrelated to the code under test.
+    """
+
+    def get_pinned_reader_contract(web3: Web3, chain: str) -> Contract:
+        # ``chain`` is accepted to match get_reader_contract() and ignored
+        # because the pinned address already identifies the deployment.
+        del chain
+        return get_deployed_contract(
+            web3,
+            "gmx/Reader.json",
+            Web3.to_checksum_address(GMX_READER_AT_FORK_BLOCK),
+        )
+
+    monkeypatch.setattr(
+        gmx_valuation,
+        "get_reader_contract",
+        get_pinned_reader_contract,
+    )
+
 
 @pytest.fixture()
-def anvil_arbitrum():
-    """Launch an Anvil mainnet fork of Arbitrum at a fixed block."""
-    rpc_url = os.environ["JSON_RPC_ARBITRUM"]
-    launch = fork_network_anvil(
-        rpc_url,
-        fork_block_number=FORK_BLOCK,
+def web3(anvil_fork_pool: AnvilForkPool) -> Web3:
+    """Web3 connected to the shared fixed-block Anvil fork."""
+    web3 = anvil_fork_pool.get_web3(
+        os.environ["JSON_RPC_ARBITRUM"],
+        FORK_BLOCK,
+        web3_retries=1,
+        web3_http_timeout=(3, 100.0),
         test_request_timeout=100,
         launch_wait_seconds=60,
     )
-    try:
-        yield launch.json_rpc_url
-    finally:
-        launch.close(log_level=logging.ERROR)
-
-
-@pytest.fixture()
-def web3(anvil_arbitrum):
-    """Web3 connected to the Anvil fork."""
-    web3 = Web3(HTTPProvider(anvil_arbitrum, request_kwargs={"timeout": 100}))
-    install_chain_middleware(web3)
     web3.eth.set_gas_price_strategy(node_default_gas_price_strategy)
     return web3
 

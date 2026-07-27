@@ -111,23 +111,36 @@ def install_hypercore_live_withdrawal_mocks(
         "tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault.fetch_info",
         lambda self, user=None: SimpleNamespace(max_withdrawable=Decimal("1000000")),
     )
+    mocked_vault_equity = Decimal("1000000")
+
+    def fetch_mocked_vault_equity(session, user, vault_address, **kwargs) -> UserVaultEquity:
+        return UserVaultEquity(
+            vault_address=vault_address,
+            equity=mocked_vault_equity,
+            locked_until=datetime.datetime(2020, 1, 1),
+        )
+
     monkeypatch.setattr(
         "tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity",
-        lambda session, user, vault_address, **kwargs: UserVaultEquity(
-            vault_address=vault_address,
-            equity=Decimal("1000000"),
-            locked_until=datetime.datetime(2020, 1, 1),
-        ),
+        fetch_mocked_vault_equity,
     )
     monkeypatch.setattr(router, "_fetch_safe_evm_usdc_balance", lambda: 0)
     monkeypatch.setattr(router, "_fetch_safe_perp_withdrawable_balance", lambda: Decimal("0"))
     monkeypatch.setattr(router, "_fetch_safe_spot_free_usdc_balance", lambda: Decimal("0"))
+    def wait_for_mocked_perp_withdrawable_balance(
+        baseline_balance,
+        expected_increase_raw,
+        relative_tolerance=None,
+        performance_fee_tolerance=None,
+        timeout=30.0,
+        poll_interval=2.0,
+    ) -> Decimal:
+        return baseline_balance + raw_to_usdc(expected_increase_raw)
+
     monkeypatch.setattr(
         router,
         "_wait_for_perp_withdrawable_balance",
-        lambda baseline_balance, expected_increase_raw, relative_tolerance=None, timeout=30.0, poll_interval=2.0: (
-            baseline_balance + raw_to_usdc(expected_increase_raw)
-        ),
+        wait_for_mocked_perp_withdrawable_balance,
     )
     monkeypatch.setattr(
         router,
@@ -136,11 +149,19 @@ def install_hypercore_live_withdrawal_mocks(
             baseline_balance + raw_to_usdc(expected_increase_raw)
         ),
     )
-    monkeypatch.setattr(
-        router,
-        "_wait_for_usdc_arrival",
-        lambda baseline_balance_raw, expected_increase_raw, timeout=30.0, poll_interval=2.0: expected_increase_raw,
-    )
+    def wait_for_mocked_usdc_arrival(
+        baseline_balance_raw,
+        expected_increase_raw,
+        timeout=30.0,
+        poll_interval=2.0,
+    ) -> int:
+        nonlocal mocked_vault_equity
+        # Apply the equity change only once the mock knows the EVM settlement amount.
+        # This prevents a bridge-fee adjustment from turning a complete close into a partial one.
+        mocked_vault_equity -= raw_to_usdc(expected_increase_raw)
+        return expected_increase_raw
+
+    monkeypatch.setattr(router, "_wait_for_usdc_arrival", wait_for_mocked_usdc_arrival)
 
     # 3. Return the router so the caller can toggle ``simulate`` between buy
     # and sell cycles within the same replay test.

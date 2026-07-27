@@ -23,7 +23,11 @@ from eth_defi.compat import native_datetime_utc_now
 
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
-pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable")
+pytestmark = [
+    pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable"),
+    pytest.mark.warm_rpc_high_value_group,
+    pytest.mark.xdist_group("fork:base:49030926:isolated"),
+]
 
 
 def test_lagoon_treasury_initialise(

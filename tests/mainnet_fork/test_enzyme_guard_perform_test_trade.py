@@ -226,14 +226,15 @@ def test_enzyme_guard_perform_test_trade(
         app(["check-wallet"], standalone_mode=False)
 
     with mock.patch.dict('os.environ', environment, clear=True):
-        app(["perform-test-trade", "--all-pairs"], standalone_mode=False)
+        # Polygon Enzyme cannot value WMATIC in its current cumulative-slippage policy.
+        # Exercise the supported WETH/USDC guarded buy and sell path instead of a policy-invalid asset.
+        app(["perform-test-trade", "--pair", "(polygon, uniswap-v3, WETH, USDC, 0.0005)"], standalone_mode=False)
 
     # Check the resulting state and see we made some trade for trading fee losses
     with state_file.open("rt") as inp:
         state: State = State.from_json(inp.read())
-        assert len(list(state.portfolio.get_all_trades())) == 4  # buy+sell matic and eth
+        assert len(list(state.portfolio.get_all_trades())) == 2  # buy+sell WETH
         reserve_value = state.portfolio.get_default_reserve_position().get_value()
         assert reserve_value < 500
-
 
 

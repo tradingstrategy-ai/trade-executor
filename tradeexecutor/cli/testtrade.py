@@ -1,21 +1,33 @@
 """Perform a test trade on a universe."""
 import logging
-import datetime
 from decimal import Decimal
+from typing import Callable
 
 from web3 import Web3
 
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.erc_4626.vault_protocol.gains.testing import force_ostium_v15_settlement
+from eth_defi.erc_4626.vault_protocol.gains.vault import OstiumVault, OstiumVersion
 from eth_defi.provider.anvil import fund_erc20_on_anvil, is_anvil, mine
 from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
-from tradeexecutor.state.identifier import TradingPairIdentifier, TradingPairKind
+from eth_defi.vault.deposit_redeem import (
+    AsyncVaultRequestStatus,
+    UnsupportedVaultSimulation,
+    VaultDepositManager,
+    VaultForcedSettlementResult,
+)
+from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradingstrategy.chain import ChainId
 from tradingstrategy.lending import LendingReserveDescription
 from tradingstrategy.universe import Universe
 from tradingstrategy.pair import HumanReadableTradingPairDescription
 from tradingstrategy.exchange import ExchangeUniverse
 
+from tradeexecutor.ethereum.cctp.planner import _find_bridge_pair
 from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
+from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
+from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
+from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
 from tradeexecutor.state.trade import TradeFlag, TradeStatus
 from tradeexecutor.state.types import Percent
 from tradeexecutor.statistics.core import update_statistics
@@ -32,6 +44,61 @@ from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair
 
 logger = logging.getLogger(__name__)
+
+
+class BridgeProceedsUnavailable(RuntimeError):
+    """A satellite vault redemption cannot safely fund the CCTP return burn."""
+
+
+def _update_test_trade_statistics(state: State, *, enabled: bool) -> None:
+    """Refresh statistics when a normal test trade needs persisted analytics."""
+
+    if not enabled:
+        return
+
+    long_short_metrics_latest = serialise_long_short_stats_as_json_table(state, None)
+    update_statistics(
+        native_datetime_utc_now(),
+        state.stats,
+        state.portfolio,
+        ExecutionMode.real_trading,
+        long_short_metrics_latest=long_short_metrics_latest,
+    )
+
+
+def _serialise_forced_vault_settlement(
+    deposit_manager: VaultDepositManager,
+    direction: str,
+    settlement: VaultForcedSettlementResult,
+) -> dict:
+    """Convert manager-owned Anvil settlement evidence to JSON-safe values."""
+
+    def serialise_status(status: AsyncVaultRequestStatus | None) -> str | None:
+        return status.value if status is not None else None
+
+    def serialise_hash(tx_hash) -> str:
+        value = tx_hash.hex()
+        return value if value.startswith("0x") else f"0x{value}"
+
+    # A fork "claimable" is not solvency: an Anvil driver may top the Safe up
+    # with synthetic liquidity to prove the settlement mechanism.  eth-defi
+    # discloses that through synthetic_assets_injected_raw; persist it so a
+    # green settlement is never mistaken for a live-solvent vault.
+    synthetic_assets_injected_raw = getattr(
+        settlement, "synthetic_assets_injected_raw", 0
+    )
+    return {
+        "manager": deposit_manager.__class__.__name__,
+        "direction": direction,
+        "settlement_required": settlement.settlement_required,
+        "status_before": serialise_status(settlement.status_before),
+        "status_after": serialise_status(settlement.status_after),
+        "synthetic_assets_injected_raw": str(synthetic_assets_injected_raw),
+        "synthetic_liquidity_injected": bool(synthetic_assets_injected_raw),
+        "transaction_hashes": [
+            serialise_hash(tx_hash) for tx_hash in settlement.transaction_hashes
+        ],
+    }
 
 
 def _materialise_bridge_on_anvil(
@@ -89,6 +156,205 @@ def _materialise_bridge_on_anvil(
     fund_erc20_on_anvil(dest_web3, usdc_address, recipient, total_raw)
 
 
+def _get_cctp_custody_address(
+    routing_model: RoutingModel,
+    bridge_pair: TradingPairIdentifier,
+    chain_id: int,
+    fallback_address: str,
+) -> str:
+    """Resolve the address which actually holds bridged USDC on one chain."""
+
+    pair_config = routing_model.pair_configurator.get_config(
+        routing_model.pair_configurator.match_router(bridge_pair)
+    )
+    cctp_routing = pair_config.routing_model
+    if (
+        hasattr(cctp_routing, "custody_address_resolver")
+        and cctp_routing.custody_address_resolver
+    ):
+        return cctp_routing.custody_address_resolver(chain_id)
+    return fallback_address
+
+
+def _record_satellite_redemption_balance(
+    *,
+    web3config,
+    routing_model: RoutingModel,
+    bridge_pair: TradingPairIdentifier,
+    bridge_position,
+    pair: TradingPairIdentifier,
+    fallback_address: str,
+) -> None:
+    """Persist the pre-redemption satellite USDC balance for bridge-back sizing.
+
+    The caller synchronises the state before broadcasting the redemption in
+    real mode.  A later balance must never be repurposed as this baseline.
+    """
+
+    chain_id = pair.chain_id
+    custody_address = _get_cctp_custody_address(
+        routing_model,
+        bridge_pair,
+        chain_id,
+        fallback_address,
+    )
+    token = fetch_erc20_details(
+        web3config.get_connection(ChainId(chain_id)),
+        pair.quote.address,
+        chain_id=chain_id,
+    )
+    balance = token.fetch_balance_of(custody_address)
+    bridge_position.other_data["vault_test_satellite_redemption"] = {
+        "schema_version": 1,
+        "vault_id": f"{pair.chain_id}-{pair.pool_address}",
+        "chain_id": chain_id,
+        "token_address": pair.quote.address,
+        "custody_address": custody_address,
+        "balance_before": str(balance),
+    }
+
+
+def _get_satellite_bridge_back_amount(
+    *,
+    web3config,
+    routing_model: RoutingModel,
+    bridge_pair: TradingPairIdentifier,
+    bridge_position,
+    pair: TradingPairIdentifier,
+    redemption_trade,
+    fallback_address: str,
+) -> Decimal:
+    """Reconcile CCTP burn size to the completed vault redemption proceeds.
+
+    The bridge accounting ledger can contain a planned amount which is larger
+    than a lossy redemption's token balance.  Use the smaller of independently
+    observed wallet proceeds and the vault receipt analysis, retaining the
+    measured custody balance and any difference in diagnostic metadata.
+    """
+
+    expected_vault_id = f"{pair.chain_id}-{pair.pool_address}"
+    chain_id = pair.chain_id
+    metadata = bridge_position.other_data.get("vault_test_satellite_redemption", {})
+    custody_address = metadata.get("custody_address") or _get_cctp_custody_address(
+        routing_model,
+        bridge_pair,
+        chain_id,
+        fallback_address,
+    )
+    token = fetch_erc20_details(
+        web3config.get_connection(ChainId(chain_id)),
+        pair.quote.address,
+        chain_id=chain_id,
+    )
+    analysed_proceeds = redemption_trade.executed_reserve
+    if analysed_proceeds is None or analysed_proceeds <= 0:
+        raise BridgeProceedsUnavailable(
+            "bridge_proceeds_unavailable: vault redemption has no executed USDC proceeds"
+        )
+
+    balance_after = token.fetch_balance_of(custody_address)
+    if (
+        metadata.get("vault_id") != expected_vault_id
+        or metadata.get("balance_before") is None
+    ):
+        # A state written before baseline persistence can still be resumed when
+        # the settled manager analysis has already established the exact
+        # proceeds.  Never replace this branch with a fresh balance baseline:
+        # it would turn pre-existing USDC into redemption proceeds.
+        bridge_amount = min(balance_after, analysed_proceeds)
+        if bridge_amount <= 0:
+            raise BridgeProceedsUnavailable(
+                "bridge_proceeds_unavailable: legacy redemption has no USDC available "
+                f"for {expected_vault_id}"
+            )
+        bridge_position.other_data["vault_test_satellite_redemption"] = {
+            "schema_version": 1,
+            "vault_id": expected_vault_id,
+            "chain_id": chain_id,
+            "token_address": pair.quote.address,
+            "custody_address": custody_address,
+            "balance_before": None,
+            "balance_after": str(balance_after),
+            "wallet_proceeds": None,
+            "analysed_proceeds": str(analysed_proceeds),
+            "bridge_back_amount": str(bridge_amount),
+            "residual": str(balance_after - bridge_amount),
+            "redemption_trade_id": redemption_trade.trade_id,
+            "recovered_from_manager_analysis": True,
+        }
+        return bridge_amount
+
+    balance_before = Decimal(metadata["balance_before"])
+    wallet_proceeds = max(balance_after - balance_before, Decimal(0))
+
+    bridge_amount = min(wallet_proceeds, analysed_proceeds)
+    if bridge_amount <= 0:
+        raise BridgeProceedsUnavailable(
+            "bridge_proceeds_unavailable: no newly available satellite USDC after redemption"
+        )
+
+    metadata.update(
+        {
+            "balance_after": str(balance_after),
+            "wallet_proceeds": str(wallet_proceeds),
+            "analysed_proceeds": str(analysed_proceeds),
+            "bridge_back_amount": str(bridge_amount),
+            "residual": str(balance_after - bridge_amount),
+            "redemption_trade_id": redemption_trade.trade_id,
+        }
+    )
+    bridge_position.other_data["vault_test_satellite_redemption"] = metadata
+    return bridge_amount
+
+
+def _record_planned_bridge_back(
+    bridge_position,
+    bridge_back_trade,
+) -> None:
+    """Persist the planned burn identity before it can be broadcast."""
+
+    metadata = bridge_position.other_data.setdefault(
+        "vault_test_satellite_redemption",
+        {},
+    )
+    metadata["bridge_back_trade_id"] = bridge_back_trade.trade_id
+
+
+def _get_completed_satellite_redemption_trade(position):
+    """Return the latest successful vault sell used to fund bridge-back."""
+
+    trade = max(
+        (
+            candidate
+            for candidate in position.trades.values()
+            if candidate.is_sell() and candidate.is_success()
+        ),
+        key=lambda candidate: candidate.trade_id,
+        default=None,
+    )
+    assert trade is not None, f"No completed satellite redemption on {position}"
+    return trade
+
+
+def _get_pending_bridge_back_trade(bridge_position):
+    """Return an already-started CCTP burn so a resume cannot duplicate it."""
+
+    return max(
+        (
+            trade
+            for trade in bridge_position.trades.values()
+            if trade.is_sell()
+            and trade.get_status() in {
+                TradeStatus.started,
+                TradeStatus.broadcasted,
+                TradeStatus.cctp_in_transit,
+            }
+        ),
+        key=lambda trade: trade.trade_id,
+        default=None,
+    )
+
+
 def _make_cross_chain_test_trade(
     web3: "Web3",
     web3config,
@@ -113,6 +379,8 @@ def _make_cross_chain_test_trade(
     trade_flags: set[TradeFlag] | None = None,
     force_async_settlement_on_anvil: bool = True,
     anvil_time_skip_seconds: int = 24 * 3600,
+    update_statistics_after_trade: bool = True,
+    sync_state_callback: Callable[[], None] | None = None,
 ):
     """Cross-chain test trade: bridge in, open position, close position, bridge out.
 
@@ -167,13 +435,17 @@ def _make_cross_chain_test_trade(
     if close_only:
         # Close-only: find existing positions and close them
         satellite_position = state.portfolio.get_position_by_trading_pair(pair)
-        closed_satellite_position = next(
+        # A resumed async redemption has already moved its position to closed.
+        # Select the newest matching position: earlier test attempts can remain
+        # in the same state file and must not supply their redemption proceeds.
+        closed_satellite_position = max(
             (
                 position
                 for position in state.portfolio.closed_positions.values()
                 if position.pair == pair
             ),
-            None,
+            key=lambda position: position.position_id,
+            default=None,
         )
         if satellite_position is None and closed_satellite_position is None:
             raise RuntimeError(
@@ -190,6 +462,23 @@ def _make_cross_chain_test_trade(
         # has now settled and only its bridge-back leg remains.
         if satellite_position is not None:
             logger.info("Cross-chain close step 1: closing %s on %s", pair.get_ticker(), chain_name)
+            if on_anvil:
+                # The vault lock-up is enforced on the satellite chain, not on
+                # the home-chain connection passed to make_test_trade().
+                logger.info("Skipping satellite time forward by %d seconds", anvil_time_skip_seconds)
+                dest_web3 = web3config.get_connection(ChainId(dest_chain_id))
+                mine(dest_web3, increase_timestamp=anvil_time_skip_seconds)
+            _record_satellite_redemption_balance(
+                web3config=web3config,
+                routing_model=routing_model,
+                bridge_pair=bridge_pair,
+                bridge_position=bridge_position,
+                pair=pair,
+                fallback_address=hot_wallet.address,
+            )
+            # Persist the observed balance before the close can move USDC.
+            if sync_state_callback is not None:
+                sync_state_callback()
             ts = native_datetime_utc_now()
             position_manager = PositionManager(
                 ts, universe, state, pricing_model,
@@ -205,17 +494,50 @@ def _make_cross_chain_test_trade(
         else:
             logger.info("Cross-chain close step 1 already settled; continuing with bridge back")
 
-        # Step 2: Bridge back — sized by get_available_bridge_capital()
+        # Step 2: Bridge back only the USDC made available by redemption.
         logger.info("Cross-chain close step 2: bridging back from %s", chain_name)
+        pending_bridge_back = _get_pending_bridge_back_trade(bridge_position)
+        if pending_bridge_back is not None:
+            logger.info(
+                "Cross-chain close step 2 already has bridge-back trade #%d in %s; not creating a duplicate burn",
+                pending_bridge_back.trade_id,
+                pending_bridge_back.get_status(),
+            )
+            return
+        redemption_position = satellite_position or closed_satellite_position
+        redemption_trade = _get_completed_satellite_redemption_trade(redemption_position)
+        bridge_back_amount = _get_satellite_bridge_back_amount(
+            web3config=web3config,
+            routing_model=routing_model,
+            bridge_pair=bridge_pair,
+            bridge_position=bridge_position,
+            pair=pair,
+            redemption_trade=redemption_trade,
+            fallback_address=hot_wallet.address,
+        )
         ts = native_datetime_utc_now()
         position_manager = PositionManager(
             ts, universe, state, pricing_model,
             default_slippage_tolerance=max_slippage,
         )
-        bridge_back_trades = position_manager.close_position(
-            bridge_position, notes=notes, flags=trade_flags,
+        bridge_back_trades = position_manager.close_cctp_bridge_position(
+            bridge_position,
+            quantity=bridge_back_amount,
+            notes=notes,
+            flags=trade_flags,
         )
+        # A crash after CCTP broadcast must retain this trade identity so a
+        # later invocation does not create another burn.
+        _record_planned_bridge_back(bridge_position, bridge_back_trades[0])
+        if sync_state_callback is not None:
+            sync_state_callback()
+        # TODO: A process crash after broadcast and before this call returns
+        # leaves only the planned trade state.  Deferred: resume must inspect
+        # the persisted burn transaction before it can safely avoid a reburn.
         execution_model.execute_trades(ts, state, bridge_back_trades, routing_model, routing_state)
+        # Store the signed/broadcast transaction evidence for retry handling.
+        if sync_state_callback is not None:
+            sync_state_callback()
         if bridge_back_trades[0].get_status() == TradeStatus.cctp_in_transit:
             return
         assert bridge_back_trades[0].is_success(), \
@@ -310,9 +632,10 @@ def _make_cross_chain_test_trade(
         bridge_position = state.portfolio.get_bridge_position_for_chain(dest_chain_id)
         assert bridge_position is not None
 
-        long_short_metrics_latest = serialise_long_short_stats_as_json_table(state, None)
-        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio,
-                          ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+        _update_test_trade_statistics(
+            state,
+            enabled=update_statistics_after_trade,
+        )
 
         if not buy_only:
             # Sell flow: close satellite, then bridge back
@@ -324,6 +647,17 @@ def _make_cross_chain_test_trade(
 
             # Step 3: Close satellite position
             logger.info("Cross-chain step 3: close %s on %s", pair.get_ticker(), chain_name)
+            _record_satellite_redemption_balance(
+                web3config=web3config,
+                routing_model=routing_model,
+                bridge_pair=bridge_pair,
+                bridge_position=bridge_position,
+                pair=pair,
+                fallback_address=hot_wallet.address,
+            )
+            # Persist the observed balance before the close can move USDC.
+            if sync_state_callback is not None:
+                sync_state_callback()
             ts = native_datetime_utc_now()
             position_manager = PositionManager(
                 ts, universe, state, pricing_model,
@@ -338,19 +672,50 @@ def _make_cross_chain_test_trade(
             assert close_trades[0].is_success(), \
                 f"Satellite close failed: {close_trades[0].get_revert_reason()}"
 
-            # Step 4: Bridge back — sized by get_available_bridge_capital()
+            # Step 4: Bridge back only the USDC made available by redemption.
             logger.info("Cross-chain step 4: bridge back from %s", chain_name)
+            pending_bridge_back = _get_pending_bridge_back_trade(bridge_position)
+            if pending_bridge_back is not None:
+                logger.info(
+                    "Cross-chain step 4 already has bridge-back trade #%d in %s; not creating a duplicate burn",
+                    pending_bridge_back.trade_id,
+                    pending_bridge_back.get_status(),
+                )
+                return
+            bridge_back_amount = _get_satellite_bridge_back_amount(
+                web3config=web3config,
+                routing_model=routing_model,
+                bridge_pair=bridge_pair,
+                bridge_position=bridge_position,
+                pair=pair,
+                redemption_trade=close_trades[0],
+                fallback_address=hot_wallet.address,
+            )
             ts = native_datetime_utc_now()
             position_manager = PositionManager(
                 ts, universe, state, pricing_model,
                 default_slippage_tolerance=max_slippage,
             )
-            bridge_back_trades = position_manager.close_position(
-                bridge_position, notes=notes, flags=trade_flags,
+            bridge_back_trades = position_manager.close_cctp_bridge_position(
+                bridge_position,
+                quantity=bridge_back_amount,
+                notes=notes,
+                flags=trade_flags,
             )
+            # A crash after CCTP broadcast must retain this trade identity so a
+            # later invocation does not create another burn.
+            _record_planned_bridge_back(bridge_position, bridge_back_trades[0])
+            if sync_state_callback is not None:
+                sync_state_callback()
+            # TODO: A process crash after broadcast and before this call
+            # returns needs transaction-aware CCTP resume handling to avoid a
+            # duplicate burn.  Deferred from this vault-test PR.
             execution_model.execute_trades(
                 ts, state, bridge_back_trades, routing_model, routing_state,
             )
+            # Store the signed/broadcast transaction evidence for retry handling.
+            if sync_state_callback is not None:
+                sync_state_callback()
             if bridge_back_trades[0].get_status() == TradeStatus.cctp_in_transit:
                 return
             assert bridge_back_trades[0].is_success(), \
@@ -362,13 +727,14 @@ def _make_cross_chain_test_trade(
                     web3config, routing_model, bridge_pair,
                     home_chain_id, hot_wallet.address, bridge_back_trades[0],
                 )
-                sync_model.sync_treasury(
+            sync_model.sync_treasury(
                     native_datetime_utc_now(), state, list(universe.reserve_assets),
                 )
 
-            long_short_metrics_latest = serialise_long_short_stats_as_json_table(state, None)
-            update_statistics(native_datetime_utc_now(), state.stats, state.portfolio,
-                              ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
+            _update_test_trade_statistics(
+                state,
+                enabled=update_statistics_after_trade,
+            )
 
     # Final report
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
@@ -384,8 +750,9 @@ def _make_cross_chain_test_trade(
 def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web3config=None):
     """Force settlement on Anvil for an async vault test trade and resolve it.
 
-    Uses protocol-specific settlement forcing (e.g. tryNewSettlement for Ostium V1.5,
-    force_lagoon_settle for ERC-7540) then runs the generic settlement retry.
+    Uses the selected eth-defi manager's ticket-aware settlement driver. Ostium
+    V1.5 retains its earlier permissionless compatibility path until its manager
+    exposes the same capability.
 
     :param web3:
         Web3 connection for the chain the vault lives on. For cross-chain
@@ -400,11 +767,6 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web
         it the resolver falls back to the execution model's default connection,
         which is only correct for home-chain vaults.
     """
-    from eth_defi.erc_4626.vault_protocol.gains.vault import OstiumVault, OstiumVersion
-    from eth_defi.erc_4626.vault_protocol.gains.testing import force_ostium_v15_settlement
-    from tradeexecutor.ethereum.vault.vault_routing import get_vault_for_pair
-    from tradeexecutor.ethereum.vault.settlement_retry import check_and_resolve_vault_settlements
-
     # This function impersonates the vault operator and only makes sense against
     # an Anvil fork — on a real chain nobody can force a settlement. Enforce the
     # test-only invariant here rather than relying on every caller's is_anvil()
@@ -412,25 +774,48 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web
     assert is_anvil(web3), "_force_vault_settlement_and_resolve() is Anvil-only (forces operator settlement)"
 
     vault = get_vault_for_pair(web3, trade.pair)
-    owner = trade.other_data.get("vault_owner_address")
+    deposit_manager = vault.get_deposit_manager()
+    direction = trade.other_data.get(
+        "vault_direction",
+        "deposit" if trade.is_buy() else "redeem",
+    )
+    if direction not in {"deposit", "redeem"}:
+        raise UnsupportedVaultSimulation(
+            f"Unknown vault settlement direction {direction!r} for {vault.address}"
+        )
 
-    # Ostium's tryNewSettlement() is permissionless and is broadcast with
-    # node-side signing (eth_sendTransaction {"from": ...}), so its gas payer must
-    # be an account the node can sign for. The vault owner is the executor's hot
-    # wallet — a random key whose local signer middleware lives only on the
-    # executor's own web3, not on the Anvil node — so paying from it fails with
-    # "No Signer available". On Anvil we therefore pay tryNewSettlement() gas from
-    # a node-unlocked dev account instead. (The Lagoon branch below keeps `owner`:
-    # its settlement is permissioned and must come from the actual asset manager.)
-    settlement_caller = owner
-    dev_accounts = web3.eth.accounts
-    if dev_accounts:
+    get_capability = getattr(vault, "get_deposit_manager_capability", None)
+    capability = get_capability() if get_capability is not None else None
+    supports_manager_settlement = (
+        getattr(capability, "supports_anvil_settlement", None) is True
+    )
+
+    if supports_manager_settlement:
+        if direction == "deposit":
+            ticket = deposit_manager.reconstruct_deposit_ticket(trade.other_data)
+        else:
+            ticket = deposit_manager.reconstruct_redemption_ticket(trade.other_data)
+
+        settlement = deposit_manager.force_settle(ticket)
+        trade.other_data["vault_forced_settlement"] = (
+            _serialise_forced_vault_settlement(
+                deposit_manager,
+                direction,
+                settlement,
+            )
+        )
+    elif isinstance(vault, OstiumVault) and vault.version == OstiumVersion.v1_5:
+        # Ostium's tryNewSettlement() is permissionless and uses node-side
+        # signing, so pay gas from an Anvil-unlocked account rather than the
+        # executor hot wallet whose local signer is unknown to the node.
+        dev_accounts = web3.eth.accounts
+        if not dev_accounts:
+            raise UnsupportedVaultSimulation(
+                "Ostium V1.5 settlement requires an Anvil-unlocked gas payer"
+            )
         settlement_caller = dev_accounts[0]
 
-    # Protocol-specific settlement forcing
-    if isinstance(vault, OstiumVault) and vault.version == OstiumVersion.v1_5:
         # May need multiple settlements for withdrawal
-        direction = trade.other_data.get("vault_direction", "deposit")
         settlements_needed = 1
         if direction == "redeem":
             withdraw_target = vault.vault_contract.functions.targetSettlementId(False).call()
@@ -439,13 +824,30 @@ def _force_vault_settlement_and_resolve(web3, state, trade, execution_model, web
         for _ in range(settlements_needed):
             force_ostium_v15_settlement(vault, settlement_caller)
     else:
-        # ERC-7540 (Lagoon) — use force_lagoon_settle if available. Lagoon
-        # settlement is permissioned, so it must be sent from the vault manager
-        # (the owner for test trades), not the dev account used for Ostium above.
-        from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
-        if isinstance(vault, LagoonVault):
-            from eth_defi.erc_4626.vault_protocol.lagoon.testing import force_lagoon_settle
-            force_lagoon_settle(vault, owner)
+        capability_data = (
+            capability.as_dict()
+            if capability is not None and hasattr(capability, "as_dict")
+            else None
+        )
+        # eth-defi publishes the concrete false-capability reason alongside
+        # supports_anvil_settlement=False. Carry it through as structured
+        # context so the report says *why* this lifecycle cannot be simulated
+        # rather than only that the capability was absent.
+        unsupported_reason = getattr(
+            capability, "anvil_settlement_unsupported_reason", None
+        )
+        raise UnsupportedVaultSimulation(
+            f"{deposit_manager.__class__.__name__} does not advertise Anvil "
+            f"settlement for vault {vault.address}, direction={direction}"
+            + (f": {unsupported_reason}" if unsupported_reason else "")
+            + f", capability={capability_data}",
+            unsupported_reason=unsupported_reason,
+            protocol=vault.get_protocol_name()
+            if hasattr(vault, "get_protocol_name")
+            else None,
+            vault_address=vault.address,
+            direction=direction,
+        )
 
     # Now run the generic settlement retry. Pass web3config so the claim is
     # broadcast on the vault's own chain for cross-chain satellite vaults.
@@ -520,14 +922,17 @@ def _resolve_satellite_async_settlement(
         _force_vault_settlement_and_resolve(
             dest_web3, state, trade, execution_model, web3config=web3config,
         )
-        # Surface a clear error if forcing did not resolve the queue, instead of
-        # falling through to the caller's is_success() assertion (which would
-        # report the misleading "Satellite open failed: None" this fix removes).
-        assert trade.get_status() != TradeStatus.vault_settlement_pending, (
-            f"Forced settlement on Anvil did not resolve satellite trade #{trade.trade_id} "
-            f"on chain {dest_chain_id}; it is still vault_settlement_pending. Check that the "
-            f"test vault operator/asset manager can settle the queue (vault_owner_address)."
-        )
+        # If forcing did not resolve the queue, the async redemption lifecycle
+        # cannot be reproduced on this fork even though the manager advertised
+        # Anvil settlement.  Report it as an unsupported async simulation rather
+        # than falling through to a generic execution failure.
+        if trade.get_status() == TradeStatus.vault_settlement_pending:
+            raise UnsupportedVaultSimulation(
+                f"Forced settlement on Anvil did not resolve satellite trade #{trade.trade_id} "
+                f"on chain {dest_chain_id}; it is still vault_settlement_pending. The test "
+                f"vault operator/asset manager settlement could not be reproduced on the fork "
+                f"(vault_owner_address)."
+            )
         return False
 
     logger.info(
@@ -595,14 +1000,16 @@ def _resolve_home_chain_async_settlement(
             trade.trade_id,
         )
         _force_vault_settlement_and_resolve(web3, state, trade, execution_model)
-        # Surface a clear error if forcing did not resolve the queue, instead of
-        # falling through to the caller's is_success() assertion (which would
-        # report a misleading "Test buy/sell failed" with no revert reason).
-        assert trade.get_status() != TradeStatus.vault_settlement_pending, (
-            f"Forced settlement on Anvil did not resolve test trade #{trade.trade_id}; "
-            f"it is still vault_settlement_pending. Check that the test vault "
-            f"operator/keeper can settle the queue (vault_owner_address)."
-        )
+        # If forcing did not resolve the queue, the async redemption lifecycle
+        # cannot be reproduced on this fork even though the manager advertised
+        # Anvil settlement.  Report it as an unsupported async simulation rather
+        # than falling through to a generic execution/"Test sell failed" error.
+        if trade.get_status() == TradeStatus.vault_settlement_pending:
+            raise UnsupportedVaultSimulation(
+                f"Forced settlement on Anvil did not resolve test trade #{trade.trade_id}; "
+                f"it is still vault_settlement_pending. The test vault operator/keeper "
+                f"settlement could not be reproduced on the fork (vault_owner_address)."
+            )
         return False
 
     logger.info(
@@ -634,6 +1041,8 @@ def make_test_trade(
     web3config=None,
     trade_flags: set[TradeFlag] | None = None,
     force_async_settlement_on_anvil: bool = True,
+    update_statistics_after_trade: bool = True,
+    sync_state_callback: Callable[[], None] | None = None,
 ):
     """Perform a test trade.
 
@@ -658,8 +1067,8 @@ def make_test_trade(
 
     assert isinstance(sync_model, SyncModel)
     assert isinstance(universe, TradingStrategyUniverse)
-    assert type(max_slippage) == float
-    assert max_slippage > 0, f"max_slippage not set"
+    assert isinstance(max_slippage, float)
+    assert max_slippage > 0, "max_slippage not set"
 
     ts = native_datetime_utc_now()
 
@@ -699,7 +1108,6 @@ def make_test_trade(
         # (callers managing bridging themselves pass web3config=None).
         # Also skip when the default chain is a test chain (Anvil fork)
         # because the fork chain_id won't match real pair chain_ids.
-        from tradeexecutor.ethereum.web3config import TEST_CHAIN_IDS
         is_cross_chain = False
         if web3config is not None and web3config.default_chain_id not in TEST_CHAIN_IDS:
             home_chain_id = web3config.default_chain_id.value
@@ -797,8 +1205,6 @@ def make_test_trade(
     # Cross-chain dispatch: if the target pair is on a satellite chain,
     # delegate to the cross-chain helper that handles bridge in/out
     if is_cross_chain:
-        from tradeexecutor.ethereum.cctp.planner import _find_bridge_pair
-
         all_pairs = list(universe.iterate_pairs())
         bridge_pair = _find_bridge_pair(all_pairs, pair.chain_id)
         if bridge_pair is None:
@@ -831,6 +1237,8 @@ def make_test_trade(
             trade_flags=trade_flags,
             force_async_settlement_on_anvil=force_async_settlement_on_anvil,
             anvil_time_skip_seconds=anvil_time_skip_seconds,
+            update_statistics_after_trade=update_statistics_after_trade,
+            sync_state_callback=sync_state_callback,
         )
 
     # The message left on the test positions and trades
@@ -923,11 +1331,10 @@ def make_test_trade(
             raise AssertionError("Test buy succeed, but the position was not opened\n"
                                  "Check for dust corrections.")
 
-        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-            state, None
+        _update_test_trade_statistics(
+            state,
+            enabled=update_statistics_after_trade,
         )
-        
-        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
     else:
         logger.info("Position %s is already open. No need to open it again.", position)
 
@@ -999,15 +1406,20 @@ def make_test_trade(
             return
 
         if not sell_trade.is_success():
+            # Mirror the buy path: carry the decoded revert reason into the
+            # raised error so a home-chain redemption failure is not collapsed
+            # to a bare "Test sell failed" that hides the underlying selector
+            # (e.g. cSigma WithdrawalPending, YieldNest ExceededMaxRedeem).
             logger.error("Test sell failed: %s", sell_trade)
+            logger.error("Tx hash: %s", sell_trade.blockchain_transactions[-1].tx_hash)
+            logger.error("Revert reason: %s", sell_trade.blockchain_transactions[-1].revert_reason)
             logger.error("Trade dump:\n%s", sell_trade.get_debug_dump())
-            raise AssertionError("Test sell failed")
+            raise AssertionError(f"Test sell failed: {sell_trade}, {sell_trade.get_revert_reason()}")
 
-        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-            state, None
+        _update_test_trade_statistics(
+            state,
+            enabled=update_statistics_after_trade,
         )
-        
-        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     else:
         sell_trade = None
@@ -1078,11 +1490,10 @@ def make_test_trade(
                 raise AssertionError("Test buy succeed, but the position was not opened\n"
                                      "Check for dust corrections.")
 
-            long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-                state, None
+            _update_test_trade_statistics(
+                state,
+                enabled=update_statistics_after_trade,
             )
-
-            update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
         # Close the short
 
@@ -1142,11 +1553,10 @@ def make_test_trade(
             raise AssertionError("Short close succeed, but the position was not opened\n"
                                  "Check for dust corrections.")
 
-        long_short_metrics_latest = serialise_long_short_stats_as_json_table(
-            state, None
+        _update_test_trade_statistics(
+            state,
+            enabled=update_statistics_after_trade,
         )
-        
-        update_statistics(native_datetime_utc_now(), state.stats, state.portfolio, ExecutionMode.real_trading, long_short_metrics_latest=long_short_metrics_latest)
 
     gas_at_end = hot_wallet.get_native_currency_balance(web3)
     reserve_currency_at_end = state.portfolio.get_default_reserve_position().get_value()
