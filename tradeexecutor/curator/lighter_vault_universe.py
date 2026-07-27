@@ -13,6 +13,7 @@ pipeline publishes them under the synthetic chain id ``9998``.
 import hashlib
 import inspect
 import json
+import re
 from collections.abc import Callable
 from pathlib import Path
 
@@ -59,10 +60,41 @@ REQUIRE_KNOWN_PROTOCOL = True
 
 TRACKED_PERIODS = ("1M", "3M", "1Y")
 
+#: Blacklist rule: declared single-asset leveraged directional pools.
+#:
+#: Lighter hosts pools whose *name* declares them as leveraged market beta
+#: rather than manager skill — e.g. ``BTC 3x long``, ``ETH 3x short``,
+#: ``HYPE 2x long``. Holding these inside a vault-of-vaults duplicates
+#: (leveraged) market exposure with none of the hedging a discretionary pool
+#: could provide; they also account for most historical pool blow-ups
+#: (``LINK 2x long`` -100%, ``ETH 3x long`` -97%, ``BTC 3x long`` -84%).
+#: Matching is by declared name, so the rule uses no look-ahead.
+LEVERAGED_BETA_NAME_PATTERN = re.compile(
+    # "3x long", "2.5x short", "3 x long"
+    r"\b\d+(?:\.\d+)?\s*x\s+(?:long|short)\b"
+    # "long 3x", "short 2x"
+    r"|\b(?:long|short)\s+\d+(?:\.\d+)?\s*x\b",
+    re.IGNORECASE,
+)
+
+#: Explicit per-address Lighter pool blacklist for curated exclusions the name
+#: rule cannot express. Address -> human-readable reason.
+EXCLUDED_LIGHTER_POOLS: dict[str, str] = {}
+
+
+def is_leveraged_beta_pool(name: str) -> bool:
+    """Check whether a pool's declared name marks it as leveraged directional beta.
+
+    :param name:
+        Pool display name from the metrics feed, e.g. ``BTC 3x long``.
+    """
+    return LEVERAGED_BETA_NAME_PATTERN.search(name) is not None
+
+
 CACHE_DIR = Path.home() / ".cache" / "indicators"
 
 #: Bump this whenever cache invalidation needs to cover a new policy dimension.
-CURATOR_POLICY_VERSION = 1
+CURATOR_POLICY_VERSION = 2
 
 
 def _source_digest(*objects) -> str:
@@ -92,12 +124,15 @@ def _curator_fingerprint() -> str:
         "excluded_risks": sorted(EXCLUDED_RISKS),
         "excluded_flags": sorted(EXCLUDED_FLAGS),
         "require_known_protocol": REQUIRE_KNOWN_PROTOCOL,
+        "leveraged_beta_name_pattern": LEVERAGED_BETA_NAME_PATTERN.pattern,
+        "excluded_lighter_pools": sorted(EXCLUDED_LIGHTER_POOLS.items()),
         "selection_behaviour": {
             "skip_cagr_filter": True,
             "use_peak_tvl": True,
         },
         "implementation_digest": _source_digest(
             build_lighter_vault_universe,
+            is_leveraged_beta_pool,
             fetch_vaults,
             parse_vault,
             select_top_vaults,
@@ -109,11 +144,12 @@ def _curator_fingerprint() -> str:
     return digest
 
 
-def _make_cache_key(min_tvl: float, top_n: int | None, min_age: float, sort_period: str, include_closed_vaults: bool) -> str:
+def _make_cache_key(min_tvl: float, top_n: int | None, min_age: float, sort_period: str, include_closed_vaults: bool, exclude_leveraged_beta: bool) -> str:
     """Derive a cache key from filter parameters."""
     top_part = "topall" if top_n is None else f"top{top_n}"
     closed_part = "-closed" if include_closed_vaults else ""
-    return f"lighter-tvl{int(min_tvl)}-{top_part}-age{min_age}-sort{sort_period}{closed_part}-cur{_curator_fingerprint()}"
+    beta_part = "-nobeta" if exclude_leveraged_beta else ""
+    return f"lighter-tvl{int(min_tvl)}-{top_part}-age{min_age}-sort{sort_period}{closed_part}{beta_part}-cur{_curator_fingerprint()}"
 
 
 def _cache_path(cache_key: str) -> Path:
@@ -144,6 +180,7 @@ def build_lighter_vault_universe(
     min_age: float = 0.15,
     sort_period: str = "1Y",
     include_closed_vaults: bool = False,
+    exclude_leveraged_beta: bool = False,
     printer: Callable[[str], None] = print,
 ) -> list[tuple[ChainId, str]]:
     """Build a filtered Lighter vault universe, cached by parameters.
@@ -151,12 +188,19 @@ def build_lighter_vault_universe(
     Mirrors :py:func:`~tradeexecutor.curator.hyperliquid_vault_universe.build_hyperliquid_vault_universe`
     but targets the synthetic Lighter chain (``9998``).
 
+    :param exclude_leveraged_beta:
+        Apply the blacklist rules: drop pools whose declared name matches
+        :py:data:`LEVERAGED_BETA_NAME_PATTERN` (single-asset leveraged
+        directional pools such as ``BTC 3x long``) and pools explicitly
+        listed in :py:data:`EXCLUDED_LIGHTER_POOLS`. Off by default so
+        existing research notebooks reproduce unchanged.
+
     :param printer:
         Output callback used for cache and selection diagnostics.
         Defaults to :py:func:`print` so notebook calls surface the
         fingerprint and vault count in cell output.
     """
-    cache_key = _make_cache_key(min_tvl, top_n, min_age, sort_period, include_closed_vaults)
+    cache_key = _make_cache_key(min_tvl, top_n, min_age, sort_period, include_closed_vaults, exclude_leveraged_beta)
     fingerprint = _curator_fingerprint()
     printer(f"Lighter universe fingerprint: {fingerprint}")
     cached = _load_cache(cache_key)
@@ -198,6 +242,8 @@ def build_lighter_vault_universe(
     )
 
     result = []
+    beta_excluded: list[str] = []
+    blacklist_excluded: list[str] = []
     for chain_id in CHAIN_ORDER:
         for v in selected.get(chain_id, []):
             if v.excluded or v.excluded_protocol_reason is not None:
@@ -207,7 +253,19 @@ def build_lighter_vault_universe(
             # survivor-first Hypercore behaviour.
             if not include_closed_vaults and v.deposit_closed_reason is not None:
                 continue
+            if exclude_leveraged_beta:
+                if is_leveraged_beta_pool(v.name):
+                    beta_excluded.append(v.name)
+                    continue
+                if v.address in EXCLUDED_LIGHTER_POOLS:
+                    blacklist_excluded.append(f"{v.name}: {EXCLUDED_LIGHTER_POOLS[v.address]}")
+                    continue
             result.append((ChainId.lighter, v.address))
+
+    if beta_excluded:
+        printer(f"Excluded {len(beta_excluded)} leveraged-beta pools by name rule: {', '.join(sorted(beta_excluded))}")
+    if blacklist_excluded:
+        printer(f"Excluded {len(blacklist_excluded)} blacklisted pools: {'; '.join(sorted(blacklist_excluded))}")
 
     top_label = f"top {top_n}" if top_n is not None else "all"
     printer(f"Selected {len(result)} Lighter vaults (peak TVL >= ${min_tvl:,.0f}, {top_label})")
