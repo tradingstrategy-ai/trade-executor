@@ -12,10 +12,14 @@ from web3.contract.contract import ContractFunction
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.confirmation import wait_and_broadcast_multiple_nodes_mev_blocker
-from eth_defi.erc_4626.vault_protocol.lagoon.analysis import \
-    analyse_vault_flow_in_settlement
+from eth_defi.erc_4626.vault_protocol.lagoon.analysis import (
+    analyse_vault_flow_in_settlement,
+)
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import (
-    DEFAULT_LAGOON_POST_VALUATION_GAS, DEFAULT_LAGOON_SETTLE_GAS, LagoonVault)
+    DEFAULT_LAGOON_POST_VALUATION_GAS,
+    DEFAULT_LAGOON_SETTLE_GAS,
+    LagoonVault,
+)
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import is_anvil
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
@@ -28,19 +32,25 @@ from tradingstrategy.chain import ChainId
 
 from tradeexecutor.ethereum.address_sync_model import AddressSyncModel
 from tradeexecutor.ethereum.lagoon.tx import LagoonTransactionBuilder
-from tradeexecutor.state.balance_update import (BalanceUpdate,
-                                                BalanceUpdateCause,
-                                                BalanceUpdatePositionType)
+from tradeexecutor.state.balance_update import (
+    BalanceUpdate,
+    BalanceUpdateCause,
+    BalanceUpdatePositionType,
+)
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
-from tradeexecutor.state.types import (BlockNumber, JSONHexAddress, Percent,
-                                       USDollarAmount, USDollarPrice)
+from tradeexecutor.state.types import (
+    BlockNumber,
+    JSONHexAddress,
+    Percent,
+    USDollarAmount,
+    USDollarPrice,
+)
 from tradeexecutor.strategy.interest import sync_interests
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.sync_model import OnChainBalance
-from tradeexecutor.strategy.trading_strategy_universe import \
-    TradingStrategyUniverse
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +121,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         hot_wallet: HotWallet | None,
         extra_gnosis_gas: int = 500_000,
         valuation_data_freshness=datetime.timedelta(hours=4),
-        min_nav_change_update: Percent=0.005,
+        min_nav_change_update: Percent = 0.005,
         unit_testing=False,
         calculate_valuation_func: Callable[..., USDollarPrice] | None = None,
         abort_lagoon_settlement_on_frozen_positions: bool = False,
@@ -158,10 +168,14 @@ class LagoonVaultSyncModel(AddressSyncModel):
             frozen positions manually first and avoids miscounting or double
             counting capital in the posted NAV.
         """
-        assert isinstance(vault, LagoonVault), f"Got {type(vault)} instead of LagoonVault"
+        assert isinstance(vault, LagoonVault), (
+            f"Got {type(vault)} instead of LagoonVault"
+        )
         if hot_wallet is not None:
             # We can do initial setup without hot wallet
-            assert isinstance(hot_wallet, HotWallet), f"Got {type(hot_wallet)} instead of HotWallet"
+            assert isinstance(hot_wallet, HotWallet), (
+                f"Got {type(hot_wallet)} instead of HotWallet"
+            )
         self.vault = vault
         self.hot_wallet = hot_wallet
         self.extra_gnosis_gas = extra_gnosis_gas
@@ -170,12 +184,18 @@ class LagoonVaultSyncModel(AddressSyncModel):
         self.anvil = is_anvil(self.web3)  # Running test mode
         self.unit_testing = unit_testing  #
         self.calculate_valuation_func = calculate_valuation_func
-        self.abort_lagoon_settlement_on_frozen_positions = abort_lagoon_settlement_on_frozen_positions
-        assert vault.trading_strategy_module, "LagoonVault.trading_strategy_module initialisation param not set - needed to run the sync model properly"
+        self.abort_lagoon_settlement_on_frozen_positions = (
+            abort_lagoon_settlement_on_frozen_positions
+        )
+        assert vault.trading_strategy_module, (
+            "LagoonVault.trading_strategy_module initialisation param not set - needed to run the sync model properly"
+        )
         # assert isinstance(self.web3.provider, MEVBlockerProvider), f"This sync model needs MEVBlockerProvider, got {type(self.web3.provider)}"
 
     def __repr__(self):
-        return f"<LagoonVaultSyncModel for vault {self.vault.name} ({self.vault_address})>"
+        return (
+            f"<LagoonVaultSyncModel for vault {self.vault.name} ({self.vault_address})>"
+        )
 
     @property
     def web3(self):
@@ -241,7 +261,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
             return get_almost_latest_block_number(self.web3)
 
     def create_transaction_builder(self) -> LagoonTransactionBuilder:
-        return LagoonTransactionBuilder(self.vault, self.hot_wallet, self.extra_gnosis_gas)
+        return LagoonTransactionBuilder(
+            self.vault, self.hot_wallet, self.extra_gnosis_gas
+        )
 
     def sync_initial(
         self,
@@ -306,7 +328,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
             block_identifier=block_identifier,
         )
 
-    def calculate_valuation(self, state: State, *, block_number: int | None = None) -> USDollarPrice:
+    def calculate_valuation(
+        self, state: State, *, block_number: int | None = None
+    ) -> USDollarPrice:
         """Calculate NAV of the vault.
 
         - Calculate the equity of all assets in the vault
@@ -354,7 +378,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 )
 
                 # Try to dump as much as possible information for diagnostics
-                assert updated_ago < self.valuation_data_freshness, f"The last valuation of this position is too old for us to comfortably update the onchain share price. Position {p}. Now: {now}, updated at: {valued_at}, diff: {updated_ago}, threshold: {self.valuation_data_freshness}, last valuation event: {last_event}"
+                assert updated_ago < self.valuation_data_freshness, (
+                    f"The last valuation of this position is too old for us to comfortably update the onchain share price. Position {p}. Now: {now}, updated at: {valued_at}, diff: {updated_ago}, threshold: {self.valuation_data_freshness}, last valuation event: {last_event}"
+                )
             else:
                 logger.info(
                     "Freshness check position #%d %s: skipped (quantity=0)%s",
@@ -380,7 +406,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
         treasury_sync.last_cycle_at = strategy_cycle_ts
         treasury_sync.last_block_scanned = block_number
 
-    def check_nav_update_and_settle_needed(self, calculated_nav: USDollarAmount) -> bool:
+    def check_nav_update_and_settle_needed(
+        self, calculated_nav: USDollarAmount
+    ) -> bool:
         """Do we need to settle or change onchain NAV.
 
         - Avoid unnecessary txs if NAV price has not moved
@@ -441,12 +469,16 @@ class LagoonVaultSyncModel(AddressSyncModel):
         treasury_sync = sync.treasury
         portfolio = state.portfolio
 
-        assert sync.is_initialised(), f"Vault sync not initialised: {sync}\nPlease run trade-executor init command"
+        assert sync.is_initialised(), (
+            f"Vault sync not initialised: {sync}\nPlease run trade-executor init command"
+        )
 
         match len(portfolio.reserves):
             case 1:
                 # We have already run sync once
-                logger.info("Reserve previously synced at %s", treasury_sync.last_updated_at)
+                logger.info(
+                    "Reserve previously synced at %s", treasury_sync.last_updated_at
+                )
                 reserve_position = portfolio.get_default_reserve_position()
                 reserve_asset = reserve_position.asset
             case 0:
@@ -454,7 +486,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 logger.info("Creating initial reserve")
                 assert supported_reserves is not None
                 reserve_asset = supported_reserves[0]
-                state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+                state.portfolio.initialise_reserves(
+                    reserve_asset, reserve_token_price=1.0
+                )
                 reserve_position = portfolio.get_default_reserve_position()
             case _:
                 raise NotImplementedError("Multireserve not supported")
@@ -507,7 +541,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
         valuation = self.calculate_valuation(state, block_number=block_number)
 
         if not post_valuation:
-            logger.warning("LagoonVaultSyncModel.sync_treasury() called with post_valuation=False")
+            logger.warning(
+                "LagoonVaultSyncModel.sync_treasury() called with post_valuation=False"
+            )
             return []
 
         if not self.check_nav_update_and_settle_needed(valuation):
@@ -516,10 +552,14 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 strategy_cycle_ts=strategy_cycle_ts,
                 block_number=block_number,
             )
-            logger.info("LagoonVaultSyncModel.sync_treasury() no actionable changes detected")
+            logger.info(
+                "LagoonVaultSyncModel.sync_treasury() no actionable changes detected"
+            )
             return []
 
-        assert self.hot_wallet, "asset_manager HotWallet needed in order to sync Lagoon vault"
+        assert self.hot_wallet, (
+            "asset_manager HotWallet needed in order to sync Lagoon vault"
+        )
 
         old_balance = reserve_token.fetch_balance_of(self.get_token_storage_address())
 
@@ -543,7 +583,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 required_usdc = pending_shares * share_price
 
                 # Check actual USDC balance in the Safe
-                safe_usdc_balance = reserve_token.fetch_balance_of(vault.safe_address, block_number)
+                safe_usdc_balance = reserve_token.fetch_balance_of(
+                    vault.safe_address, block_number
+                )
 
                 logger.info(
                     "Redemption check: pending shares=%s, share price=%s, required USDC=%s, Safe balance=%s",
@@ -589,13 +631,13 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 valuation_func,
                 tx_params={"gas": DEFAULT_LAGOON_POST_VALUATION_GAS},
                 web3=web3,
-                fill_gas_price=True
+                fill_gas_price=True,
             )
             signed_tx_2 = self.hot_wallet.sign_bound_call_with_new_nonce(
                 settle_func,
                 tx_params={"gas": DEFAULT_LAGOON_SETTLE_GAS},
                 web3=web3,
-                fill_gas_price=True
+                fill_gas_price=True,
             )
             wait_and_broadcast_multiple_nodes_mev_blocker(
                 web3.provider,
@@ -621,7 +663,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         logger.info(
             "Lagoon settled. Settle result is:\n%s",
-            pformat(analysis.get_serialiable_diagnostics_data())
+            pformat(analysis.get_serialiable_diagnostics_data()),
         )
 
         # Post-settlement check: warn if redemptions were pending but not processed
@@ -681,7 +723,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
         treasury_sync.last_block_scanned = analysis.block_number
         treasury_sync.last_updated_at = native_datetime_utc_now()
         treasury_sync.last_cycle_at = strategy_cycle_ts
-        treasury_sync.pending_redemptions = float(analysis.pending_redemptions_underlying)
+        treasury_sync.pending_redemptions = float(
+            analysis.pending_redemptions_underlying
+        )
         treasury_sync.share_count = share_count
 
         logger.info(

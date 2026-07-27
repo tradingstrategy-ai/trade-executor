@@ -324,9 +324,7 @@ def get_incorrect_whitelisting_detail(
     if type(onchain_whitelisted) is not bool:
         return None
 
-    onchain_permission = (
-        "whitelisted" if onchain_whitelisted else "permissionless"
-    )
+    onchain_permission = "whitelisted" if onchain_whitelisted else "permissionless"
     if json_permission == onchain_permission:
         return None
 
@@ -353,7 +351,9 @@ def get_adapter_unsupported_detail(
     if capability is None:
         return None
 
-    supported = capability.can_deposit if operation == "deposit" else capability.can_redeem
+    supported = (
+        capability.can_deposit if operation == "deposit" else capability.can_redeem
+    )
     if supported:
         return None
 
@@ -536,7 +536,11 @@ def normalise_vault_flow_failure(
             return (
                 "simulation_unsupported_async",
                 redact_vault_test_error_text(current),
-                {key: value for key, value in unsupported_data.items() if value is not None},
+                {
+                    key: value
+                    for key, value in unsupported_data.items()
+                    if value is not None
+                },
             )
         if isinstance(current, VaultReceiptAnalysisError):
             return (
@@ -1562,12 +1566,12 @@ class VaultTestBatchRunner:
     ) -> None:
         """Queue one clean rerun or record a repeated Anvil failure."""
 
-        self.restart_requested = error
         if queue_simulated_infrastructure_retry(
             spec,
             self.pending_specs,
             self.infrastructure_restart_counts,
         ):
+            self.restart_requested = error
             logger.warning(
                 "Vault simulation infrastructure failed for %s; rerunning with a new Anvil generation: %s",
                 spec.as_string_id(),

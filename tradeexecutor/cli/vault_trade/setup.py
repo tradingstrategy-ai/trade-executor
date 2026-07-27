@@ -34,6 +34,7 @@ from tradeexecutor.cli.vault_trade.core import (
 )
 from tradeexecutor.cli.vault_trade.simulation import (
     SimulatedVaultRuntime,
+    rotate_simulated_rpc_upstreams,
     start_simulated_vault_runtime_with_replacement,
 )
 from tradeexecutor.cli.vault_trade.tui import (
@@ -115,6 +116,13 @@ class VaultTestRuntime:
         # No object belonging to a failed Anvil generation may survive into the
         # next vault attempt.
         self.simulated_runtime.close()
+        # The first fork captures stable heights. Every replacement forks the
+        # same heights, allowing Foundry's disk cache to be shared across the
+        # command's simulated Lagoon deployments.
+        self.simulated_runtime_kwargs["pinned_fork_blocks"] = (
+            self.simulated_runtime.pinned_fork_blocks
+        )
+        rotate_simulated_rpc_upstreams(self.simulated_runtime_kwargs["rpc_kwargs"])
         replacement = start_simulated_vault_runtime_with_replacement(
             generation=failed_generation + 1,
             **self.simulated_runtime_kwargs,
