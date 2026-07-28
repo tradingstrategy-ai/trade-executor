@@ -7,7 +7,7 @@ from collections import defaultdict, deque
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 from eth_defi.middleware import ProbablyNodeHasNoBlock
@@ -79,7 +79,9 @@ from tradeexecutor.cli.vault_trade.runner import (
     get_whitelisting_needed_detail,
     normalise_vault_flow_failure,
     resolve_redemption_available,
+    SimulatedSuccessOutcome,
     should_leave_deposit_open,
+    validate_simulated_closed_deposit,
 )
 from tradeexecutor.cli.testtrade import BridgeProceedsUnavailable
 from tradeexecutor.ethereum import web3config as web3config_module
@@ -1494,6 +1496,438 @@ def test_simulated_vault_records_incorrect_json_whitelist_status() -> None:
             "onchain_deposit_permission": "whitelisted",
         },
     }
+
+
+def test_simulated_closed_deposit_records_guard_validation_evidence() -> None:
+    """A typed closure becomes a non-broadcast GuardV0 success.
+
+    1. Raise a typed deposit closure from the manager's normal request.
+    2. Return eth-defi evidence for the matching validation-only request.
+    3. Verify trade-executor preserves both closure and GuardV0 call evidence.
+    """
+    # 1. Raise a typed deposit closure from the manager's normal request.
+    owner = "0x0000000000000000000000000000000000000001"
+    vault_address = "0x0000000000000000000000000000000000000002"
+    guard_address = "0x0000000000000000000000000000000000000003"
+    asset_manager = "0x0000000000000000000000000000000000000004"
+    closure = VaultFlowUnavailable(
+        "Global deposit cap reached",
+        protocol="yearn",
+        vault_address=vault_address,
+        caller=owner,
+        direction="deposit",
+        phase="preflight",
+        preflight_result="deposit_closed",
+        requested_raw_amount=1_000_000,
+        available_raw_amount=0,
+    )
+    manager = MagicMock()
+    manager.create_deposit_request.side_effect = closure
+    validation_request = object()
+    manager.create_deposit_request_for_guard_validation.return_value = (
+        validation_request
+    )
+    executable_vault = MagicMock(
+        denomination_token=MagicMock(convert_to_raw=MagicMock(return_value=1_000_000)),
+    )
+    executable_vault.get_deposit_manager.return_value = manager
+
+    route = MagicMock()
+    route.get_owner_address.return_value = owner
+    attempt = SimpleNamespace(
+        pricing_model=MagicMock(route=MagicMock(return_value=route)),
+        pair=MagicMock(),
+        spec=SimpleNamespace(chain_id=ChainId.ethereum.value),
+        executable_vault=executable_vault,
+    )
+    guard = SimpleNamespace(address=guard_address)
+    execution_vault = SimpleNamespace(
+        safe_address=owner,
+        trading_strategy_module=guard,
+    )
+    tx_builder = MagicMock(vault=execution_vault)
+    tx_builder.get_gas_wallet_address.return_value = asset_manager
+    runtime = SimpleNamespace(
+        deployment=SimpleNamespace(primary_chain_id=ChainId.ethereum),
+        execution_model=SimpleNamespace(
+            tx_builder=tx_builder,
+            satellite_vaults={},
+        ),
+    )
+    evidence = SimpleNamespace(
+        vault_address=vault_address,
+        owner=owner,
+        raw_amount=1_000_000,
+        preflight_result="deposit_closed",
+        closure_reason=closure.reason,
+        calls=(
+            SimpleNamespace(
+                target=vault_address,
+                selector=HexBytes("0x6e553f65"),
+                calldata="0x6e553f65",
+            ),
+        ),
+    )
+
+    # 2. Mock eth-defi's static Guard call to isolate executor evidence serialisation.
+    with patch.object(
+        runner_module,
+        "validate_closed_deposit_request_with_guard",
+        return_value=evidence,
+    ) as validate_guard:
+        result = validate_simulated_closed_deposit(
+            attempt,
+            runtime,
+            Decimal("1"),
+        )
+
+    # 3. Verify trade-executor preserves both closure and GuardV0 call evidence.
+    detail, outcome_data = result
+    assert detail == "Global deposit cap reached"
+    assert outcome_data["preflight_result"] == "deposit_closed"
+    assert outcome_data["requested_raw_amount"] == "1000000"
+    assert outcome_data["available_raw_amount"] == "0"
+    assert outcome_data["deposit_executed"] is False
+    assert outcome_data["guard_validation"] == {
+        "mode": "closed_deposit_guard_v0",
+        "guard_address": guard_address,
+        "asset_manager": asset_manager,
+        "vault_address": vault_address,
+        "owner": owner,
+        "raw_amount": "1000000",
+        "preflight_result": "deposit_closed",
+        "closure_reason": "Global deposit cap reached",
+        "calls": [
+            {
+                "target": vault_address,
+                "selector": "6e553f65",
+                "calldata": "0x6e553f65",
+            },
+        ],
+    }
+    validate_guard.assert_called_once_with(
+        validation_request,
+        closure,
+        guard,
+        asset_manager,
+    )
+    manager.create_deposit_request.assert_called_once_with(
+        owner=owner,
+        raw_amount=1_000_000,
+        check_enough_token=True,
+    )
+
+
+def test_simulated_closed_deposit_ignores_satellite_prefunding() -> None:
+    """Satellite preflight waits for the normal CCTP funding lifecycle.
+
+    1. Prepare an open satellite vault whose Safe has not received USDC yet.
+    2. Run the closed-deposit preflight before the normal simulated trade.
+    3. Verify only the temporary token-balance check is disabled.
+    """
+    # 1. Prepare an open satellite vault whose Safe has not received USDC yet.
+    owner = "0x0000000000000000000000000000000000000001"
+    manager = MagicMock()
+    executable_vault = MagicMock(
+        denomination_token=MagicMock(convert_to_raw=MagicMock(return_value=1_000_000)),
+    )
+    executable_vault.get_deposit_manager.return_value = manager
+    route = MagicMock()
+    route.get_owner_address.return_value = owner
+    attempt = SimpleNamespace(
+        pricing_model=MagicMock(route=MagicMock(return_value=route)),
+        pair=MagicMock(),
+        spec=SimpleNamespace(chain_id=ChainId.base.value),
+        executable_vault=executable_vault,
+    )
+    runtime = SimpleNamespace(
+        deployment=SimpleNamespace(primary_chain_id=ChainId.ethereum),
+    )
+
+    # 2. Run the closed-deposit preflight before the normal simulated trade.
+    result = validate_simulated_closed_deposit(
+        attempt,
+        runtime,
+        Decimal("1"),
+    )
+
+    # 3. Verify only the temporary token-balance check is disabled.
+    assert result is None
+    manager.create_deposit_request.assert_called_once_with(
+        owner=owner,
+        raw_amount=1_000_000,
+        check_enough_token=False,
+    )
+
+
+def test_simulated_closed_deposit_requires_typed_closure() -> None:
+    """An untyped manager refusal cannot enter GuardV0-only validation.
+
+    1. Raise an ordinary deposit preflight failure without a closed result.
+    2. Attempt the closed-deposit simulation helper.
+    3. Verify the original refusal propagates and no bypass request is built.
+    """
+    # 1. Raise an ordinary deposit preflight failure without a closed result.
+    refusal = VaultFlowUnavailable(
+        "Deposit cannot be prepared",
+        protocol="example",
+        direction="deposit",
+        phase="preflight",
+    )
+    manager = MagicMock()
+    manager.create_deposit_request.side_effect = refusal
+    executable_vault = MagicMock(
+        denomination_token=MagicMock(convert_to_raw=MagicMock(return_value=1)),
+    )
+    executable_vault.get_deposit_manager.return_value = manager
+    route = MagicMock()
+    route.get_owner_address.return_value = (
+        "0x0000000000000000000000000000000000000001"
+    )
+    attempt = SimpleNamespace(
+        pricing_model=MagicMock(route=MagicMock(return_value=route)),
+        pair=MagicMock(),
+        spec=SimpleNamespace(chain_id=ChainId.ethereum.value),
+        executable_vault=executable_vault,
+    )
+
+    # 2. Attempt the closed-deposit simulation helper.
+    with pytest.raises(VaultFlowUnavailable) as exc_info:
+        validate_simulated_closed_deposit(
+            attempt,
+            MagicMock(),
+            Decimal("1"),
+        )
+
+    # 3. Verify the original refusal propagates and no bypass request is built.
+    assert exc_info.value is refusal
+    manager.create_deposit_request_for_guard_validation.assert_not_called()
+
+
+def test_simulated_closed_deposit_is_persisted_as_terminal_success() -> None:
+    """The automatic runner records the combined closed-vault outcome.
+
+    1. Prepare an automatic deposit attempt with successful Guard evidence.
+    2. Process the attempt without entering the normal trade lifecycle.
+    3. Verify the combined outcome is persisted with its evidence.
+    """
+    # 1. Prepare an automatic deposit attempt with successful Guard evidence.
+    runner = object.__new__(VaultTestBatchRunner)
+    runner.auto_simulated = True
+    runner.current_attempt = SimpleNamespace()
+    runner.runtime = MagicMock()
+    runner.amount = Decimal("1")
+    runner.state = SimpleNamespace(
+        portfolio=SimpleNamespace(get_all_trades=lambda: []),
+    )
+    attempt = SimpleNamespace(
+        vault=SimpleNamespace(
+            metadata=SimpleNamespace(
+                deposit_closed_reason="Global deposit cap reached",
+            ),
+        ),
+        executable_vault=MagicMock(),
+        pair=MagicMock(),
+        spec=MagicMock(),
+    )
+    evidence = {
+        "deposit_executed": False,
+        "guard_validation": {"mode": "closed_deposit_guard_v0"},
+    }
+
+    # 2. Mock routing helpers so this test isolates terminal-result persistence.
+    with (
+        patch.object(VaultTestBatchRunner, "_choose_operation", return_value="deposit"),
+        patch.object(VaultTestBatchRunner, "_record_terminal_result") as record_result,
+        patch.object(
+            runner_module,
+            "get_incorrect_whitelisting_detail",
+            return_value=None,
+        ),
+        patch.object(
+            runner_module,
+            "get_whitelisting_needed_detail",
+            return_value=None,
+        ),
+        patch.object(
+            runner_module,
+            "validate_simulated_closed_deposit",
+            return_value=("Global deposit cap reached", evidence),
+        ),
+    ):
+        stop_batch = runner._process_attempt(attempt, MagicMock())
+
+    # 3. Verify the combined outcome is persisted with its evidence.
+    assert stop_batch is False
+    record_result.assert_called_once_with(
+        attempt,
+        ANY,
+        result="simulated-success-deposit-closed",
+        detail="Global deposit cap reached",
+        outcome_data=evidence,
+    )
+
+
+def test_simulated_closed_deposit_open_json_gets_directional_result() -> None:
+    """The runner distinguishes a live closure missing from vault JSON.
+
+    1. Prepare an automatic deposit attempt whose JSON reports deposits open.
+    2. Process typed live closure evidence through GuardV0 validation.
+    3. Verify the incorrect-reporting outcome includes both status observations.
+    """
+    # 1. Prepare an automatic deposit attempt whose JSON reports deposits open.
+    runner = object.__new__(VaultTestBatchRunner)
+    runner.auto_simulated = True
+    runner.current_attempt = SimpleNamespace()
+    runner.runtime = MagicMock()
+    runner.amount = Decimal("1")
+    runner.state = SimpleNamespace(
+        portfolio=SimpleNamespace(get_all_trades=lambda: []),
+    )
+    attempt = SimpleNamespace(
+        vault=SimpleNamespace(
+            metadata=SimpleNamespace(deposit_closed_reason=None),
+        ),
+        executable_vault=MagicMock(),
+        pair=MagicMock(),
+        spec=MagicMock(),
+    )
+    evidence = {
+        "deposit_executed": False,
+        "guard_validation": {"mode": "closed_deposit_guard_v0"},
+    }
+
+    # 2. Mock routing helpers so this test isolates directional result persistence.
+    with (
+        patch.object(VaultTestBatchRunner, "_choose_operation", return_value="deposit"),
+        patch.object(VaultTestBatchRunner, "_record_terminal_result") as record_result,
+        patch.object(
+            runner_module,
+            "get_incorrect_whitelisting_detail",
+            return_value=None,
+        ),
+        patch.object(
+            runner_module,
+            "get_whitelisting_needed_detail",
+            return_value=None,
+        ),
+        patch.object(
+            runner_module,
+            "validate_simulated_closed_deposit",
+            return_value=("Global deposit cap reached", evidence),
+        ),
+    ):
+        stop_batch = runner._process_attempt(attempt, MagicMock())
+
+    # 3. Verify the incorrect-reporting outcome includes both status observations.
+    assert stop_batch is False
+    record_result.assert_called_once_with(
+        attempt,
+        ANY,
+        result="simulated-success-deposit-closed-incorrectly-reported-open",
+        detail="Global deposit cap reached",
+        outcome_data={
+            **evidence,
+            "vault_json_deposit_status": "open",
+            "vault_json_deposit_closed_reason": None,
+            "onchain_deposit_status": "closed",
+        },
+    )
+
+
+def test_simulated_open_deposit_closed_json_is_executed_and_persisted() -> None:
+    """The runner tests an onchain-open deposit despite stale closed vault JSON.
+
+    1. Prepare an automatic deposit whose JSON reports a closure.
+    2. Accept the live preflight and execute the simulated deposit.
+    3. Verify the successful interaction receives the directional mismatch label.
+    """
+    # 1. Prepare an automatic deposit whose JSON reports a closure.
+    runner = object.__new__(VaultTestBatchRunner)
+    runner.auto_simulated = True
+    runner.current_attempt = SimpleNamespace()
+    runner.runtime = MagicMock()
+    runner.amount = Decimal("1")
+    runner.state = SimpleNamespace(
+        portfolio=SimpleNamespace(
+            get_all_trades=lambda: [],
+            get_default_reserve_position=lambda: SimpleNamespace(get_value=lambda: 1),
+        ),
+    )
+    pair = MagicMock()
+    pair.is_async_vault.return_value = False
+    pricing_model = MagicMock()
+    pricing_model.can_deposit.return_value = False
+    attempt = SimpleNamespace(
+        vault=SimpleNamespace(
+            metadata=SimpleNamespace(
+                deposit_closed_reason="Scanner reported deposits closed",
+            ),
+        ),
+        executable_vault=MagicMock(),
+        pair=pair,
+        pricing_model=pricing_model,
+        spec=MagicMock(),
+        previous=None,
+        bridge_position=None,
+    )
+
+    # 2. Mock execution dependencies so this test isolates stale-JSON gate bypass.
+    with (
+        patch.object(VaultTestBatchRunner, "_choose_operation", return_value="deposit"),
+        patch.object(VaultTestBatchRunner, "_execute_simulated") as execute_simulated,
+        patch.object(VaultTestBatchRunner, "_append_result"),
+        patch.object(
+            runner_module,
+            "get_adapter_unsupported_detail",
+            return_value=None,
+        ),
+        patch.object(
+            runner_module,
+            "get_incorrect_whitelisting_detail",
+            return_value=None,
+        ),
+        patch.object(
+            runner_module,
+            "get_whitelisting_needed_detail",
+            return_value=None,
+        ),
+        patch.object(
+            runner_module,
+            "validate_simulated_closed_deposit",
+            return_value=None,
+        ),
+        patch.object(
+            runner_module,
+            "resolve_redemption_available",
+            return_value=True,
+        ),
+    ):
+        stop_batch = runner._process_attempt(attempt, MagicMock())
+
+    # 3. Verify the successful interaction receives the directional mismatch label.
+    assert stop_batch is False
+    pricing_model.can_deposit.assert_not_called()
+    execute_simulated.assert_called_once_with(
+        attempt,
+        "deposit",
+        True,
+        ANY,
+        simulated_success=ANY,
+    )
+    simulated_success = execute_simulated.call_args.kwargs["simulated_success"]
+    assert simulated_success == SimulatedSuccessOutcome(
+        result="simulated-success-deposit-open-incorrectly-reported-closed",
+        detail=(
+            "Vault JSON reports deposits closed, but simulated "
+            "onchain preflight accepted the deposit"
+        ),
+        outcome_data={
+            "vault_json_deposit_status": "closed",
+            "vault_json_deposit_closed_reason": "Scanner reported deposits closed",
+            "onchain_deposit_status": "open",
+        },
+    )
 
 
 def test_decoded_vault_errors_map_to_typed_results() -> None:

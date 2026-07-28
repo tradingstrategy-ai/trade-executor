@@ -23,6 +23,12 @@ from tradeexecutor.cli.vault_trade.setup import (
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 
 
+# Accountable uses the greater of MIN_AMOUNT_WEI and strategy loan().minDeposit;
+# $1,001 clears Hyperithm's current $1,000 minimum with a $1 buffer.
+# See https://web3-ethereum-defi.tradingstrategy.ai/vaults/accountable/
+DEFAULT_VAULT_TEST_TRADE_AMOUNT = 1_001.0
+
+
 def _validate_vault_test_options(
     *,
     auto_simulated: bool,
@@ -66,7 +72,12 @@ def vault_test_trade(
     confirmation_block_count: int = shared_options.confirmation_block_count,
     confirmation_timeout: int = shared_options.confirmation_timeout,
     unit_testing: bool = shared_options.unit_testing,
-    amount: float = Option(1.0, "--amount", envvar="AMOUNT", min=0.0000001),
+    amount: float = Option(
+        DEFAULT_VAULT_TEST_TRADE_AMOUNT,
+        "--amount",
+        envvar="AMOUNT",
+        min=0.0000001,
+    ),
     vault_id: str | None = Option(
         None,
         "--vault-id",

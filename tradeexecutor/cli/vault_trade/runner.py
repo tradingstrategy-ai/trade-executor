@@ -22,6 +22,7 @@ from eth_defi.vault.deposit_redeem import (
     UnsupportedVaultSimulation,
     VaultFlowUnavailable,
     WhitelistingRequired,
+    validate_closed_deposit_request_with_guard,
 )
 from tradingstrategy.chain import ChainId
 
@@ -151,6 +152,15 @@ class VaultAttemptContext:
     phase: str = "preflight"
     operation: str | None = None
     operation_original_trade_ids: set[int] | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SimulatedSuccessOutcome:
+    """A successful simulated interaction whose metadata needs a typed result."""
+
+    result: str
+    detail: str
+    outcome_data: dict
 
 
 def should_leave_deposit_open(
@@ -339,6 +349,36 @@ def get_incorrect_whitelisting_detail(
     )
 
 
+def get_incorrect_deposit_status_reporting(
+    attempt: "VaultAttempt",
+    onchain_deposit_status: str,
+) -> dict | None:
+    """Return evidence when vault JSON disagrees with the onchain deposit status."""
+
+    assert onchain_deposit_status in {"open", "closed"}
+
+    metadata = getattr(attempt.vault, "metadata", None)
+    if metadata is None:
+        return None
+
+    missing = object()
+    deposit_closed_reason = getattr(metadata, "deposit_closed_reason", missing)
+    if deposit_closed_reason is missing:
+        return None
+
+    vault_json_deposit_status = (
+        "open" if deposit_closed_reason is None else "closed"
+    )
+    if vault_json_deposit_status == onchain_deposit_status:
+        return None
+
+    return {
+        "vault_json_deposit_status": vault_json_deposit_status,
+        "vault_json_deposit_closed_reason": deposit_closed_reason,
+        "onchain_deposit_status": onchain_deposit_status,
+    }
+
+
 def get_adapter_unsupported_detail(
     attempt: "VaultAttempt",
     operation: str,
@@ -380,6 +420,107 @@ def get_deposit_closed_detail(attempt: "VaultAttempt") -> str | None:
         return None
 
 
+def validate_simulated_closed_deposit(
+    attempt: "VaultAttempt",
+    runtime: VaultTestRuntime,
+    amount: Decimal,
+) -> tuple[str, dict] | None:
+    """Validate a typed closed deposit through the active simulated Guard.
+
+    The normal manager request is always attempted first. Only its explicit
+    ``deposit_closed`` or ``deposit_paused`` preflight unlocks eth-defi's
+    non-broadcast validation path.
+    """
+
+    route = attempt.pricing_model.route(attempt.pair)
+    get_owner_address = getattr(route, "get_owner_address", None)
+    if get_owner_address is None:
+        return None
+    owner = get_owner_address(attempt.pair)
+    if owner is None:
+        return None
+
+    manager = attempt.executable_vault.get_deposit_manager()
+    denomination_token = attempt.executable_vault.denomination_token
+    raw_amount = denomination_token.convert_to_raw(amount)
+    is_primary_chain = (
+        attempt.spec.chain_id == runtime.deployment.primary_chain_id.value
+    )
+    closure_error: VaultFlowUnavailable | None = None
+    try:
+        manager.create_deposit_request(
+            owner=owner,
+            raw_amount=raw_amount,
+            # A satellite Safe receives its assets from CCTP later in the normal
+            # trade lifecycle. Keep every other production preflight enabled.
+            check_enough_token=is_primary_chain,
+        )
+    except VaultFlowUnavailable as error:
+        if (
+            error.direction != "deposit"
+            or error.preflight_result not in {"deposit_closed", "deposit_paused"}
+        ):
+            raise
+        closure_error = error
+    else:
+        return None
+    assert closure_error is not None
+
+    execution_model = runtime.execution_model
+    execution_vault = (
+        getattr(execution_model, "satellite_vaults", {}).get(attempt.spec.chain_id)
+        if attempt.spec.chain_id != runtime.deployment.primary_chain_id.value
+        else execution_model.tx_builder.vault
+    )
+    if execution_vault is None:
+        raise RuntimeError(
+            f"No simulated Lagoon execution vault for chain {attempt.spec.chain_id}"
+        )
+    if execution_vault.safe_address.lower() != owner.lower():
+        raise RuntimeError(
+            f"Resolved deposit owner {owner} does not match simulated Safe "
+            f"{execution_vault.safe_address} on chain {attempt.spec.chain_id}"
+        )
+
+    validation_request = manager.create_deposit_request_for_guard_validation(
+        owner,
+        raw_amount,
+    )
+    guard = execution_vault.trading_strategy_module
+    asset_manager = execution_model.tx_builder.get_gas_wallet_address()
+    evidence = validate_closed_deposit_request_with_guard(
+        validation_request,
+        closure_error,
+        guard,
+        asset_manager,
+    )
+
+    _result, detail, closure_data = normalise_vault_flow_failure(closure_error)
+    outcome_data = {
+        **closure_data,
+        "deposit_executed": False,
+        "guard_validation": {
+            "mode": "closed_deposit_guard_v0",
+            "guard_address": guard.address,
+            "asset_manager": asset_manager,
+            "vault_address": evidence.vault_address,
+            "owner": evidence.owner,
+            "raw_amount": str(evidence.raw_amount),
+            "preflight_result": evidence.preflight_result,
+            "closure_reason": evidence.closure_reason,
+            "calls": [
+                {
+                    "target": call.target,
+                    "selector": call.selector.hex(),
+                    "calldata": call.calldata,
+                }
+                for call in evidence.calls
+            ],
+        },
+    }
+    return detail, outcome_data
+
+
 # The result strings eth-defi may carry verbatim in
 # ``VaultFlowError.preflight_result`` (the repo-to-repo contract). A value
 # outside this set is ignored so a new/unknown eth-defi result cannot silently
@@ -393,6 +534,7 @@ ALLOWED_PREFLIGHT_RESULTS: frozenset[str] = frozenset(
         "redemption_paused",
         "redemption_unavailable",
         "deposit_closed",
+        "deposit_paused",
     }
 )
 
@@ -951,6 +1093,7 @@ class VaultTestBatchRunner:
 
         pair = attempt.pair
         spec = attempt.spec
+        simulated_success: SimulatedSuccessOutcome | None = None
 
         adapter_unsupported = get_adapter_unsupported_detail(attempt, operation)
         if adapter_unsupported is not None:
@@ -1009,17 +1152,63 @@ class VaultTestBatchRunner:
                     detail=whitelisting_detail,
                 )
                 return False
-            deposit_closed_detail = get_deposit_closed_detail(attempt)
-            if deposit_closed_detail is not None:
-                self._record_terminal_result(
+            if self.auto_simulated:
+                closed_validation = validate_simulated_closed_deposit(
                     attempt,
-                    alarm,
-                    result="deposit_closed",
-                    detail=deposit_closed_detail,
+                    self.runtime,
+                    self.amount,
                 )
-                return False
+                if closed_validation is not None:
+                    detail, outcome_data = closed_validation
+                    incorrect_reporting = get_incorrect_deposit_status_reporting(
+                        attempt,
+                        "closed",
+                    )
+                    if incorrect_reporting is not None:
+                        result = (
+                            "simulated-success-deposit-closed-"
+                            "incorrectly-reported-open"
+                        )
+                        outcome_data = outcome_data | incorrect_reporting
+                    else:
+                        result = "simulated-success-deposit-closed"
+                    self._record_terminal_result(
+                        attempt,
+                        alarm,
+                        result=result,
+                        detail=detail,
+                        outcome_data=outcome_data,
+                    )
+                    return False
+                incorrect_reporting = get_incorrect_deposit_status_reporting(
+                    attempt,
+                    "open",
+                )
+                if incorrect_reporting is not None:
+                    simulated_success = SimulatedSuccessOutcome(
+                        result=(
+                            "simulated-success-deposit-open-"
+                            "incorrectly-reported-closed"
+                        ),
+                        detail=(
+                            "Vault JSON reports deposits closed, but simulated "
+                            "onchain preflight accepted the deposit"
+                        ),
+                        outcome_data=incorrect_reporting,
+                    )
+            else:
+                deposit_closed_detail = get_deposit_closed_detail(attempt)
+                if deposit_closed_detail is not None:
+                    self._record_terminal_result(
+                        attempt,
+                        alarm,
+                        result="deposit_closed",
+                        detail=deposit_closed_detail,
+                    )
+                    return False
         if (
             operation == "deposit"
+            and simulated_success is None
             and attempt.pricing_model.can_deposit(native_datetime_utc_now(), pair)
             is False
         ):
@@ -1065,7 +1254,13 @@ class VaultTestBatchRunner:
             )
 
         if self.auto_simulated:
-            self._execute_simulated(attempt, operation, redemption_available, alarm)
+            self._execute_simulated(
+                attempt,
+                operation,
+                redemption_available,
+                alarm,
+                simulated_success=simulated_success,
+            )
         else:
             self._execute_real(attempt, operation, redemption_available)
 
@@ -1288,6 +1483,8 @@ class VaultTestBatchRunner:
         operation: str,
         redemption_available: bool,
         alarm: SimulatedAttemptAlarm,
+        *,
+        simulated_success: SimulatedSuccessOutcome | None = None,
     ) -> None:
         """Execute on a state copy and merge only closed diagnostic positions."""
 
@@ -1360,31 +1557,32 @@ class VaultTestBatchRunner:
             if position.position_id in created_position_ids
             and position.pair.pool_address.lower() == attempt.spec.vault_address.lower()
         }
+        result = None
+        detail = None
+        outcome_data = None
+        if simulated_success is not None:
+            result = simulated_success.result
+            detail = simulated_success.detail
+            outcome_data = simulated_success.outcome_data
+        elif is_async and not complete_async_lifecycle:
+            result = "async_request_only"
+            detail = "Async deposit request completed; full lifecycle was not requested"
+        elif not redemption_available:
+            # A refusal must never be reasonless: use the adapter's published reason.
+            result = "redemption_unavailable"
+            detail = get_redemption_unavailable_detail(attempt.executable_vault)
         close_simulated_positions(
             fork_state,
             vault_spec=attempt.spec,
             position_ids=created_position_ids,
-            result=(
-                "async_request_only"
-                if is_async and not complete_async_lifecycle
-                else "redemption_unavailable"
-                if not redemption_available
-                else None
-            ),
+            result=result,
             phase=(
                 "complete"
                 if not is_async or complete_async_lifecycle
                 else "deposit_requested"
             ),
-            detail=(
-                "Async deposit request completed; full lifecycle was not requested"
-                if is_async and not complete_async_lifecycle
-                # A refusal must never be reasonless: say why redemption was
-                # skipped, using the adapter's published reason when it has one.
-                else get_redemption_unavailable_detail(attempt.executable_vault)
-                if not redemption_available
-                else None
-            ),
+            detail=detail,
+            outcome_data=outcome_data,
             attempt_id=self.current_attempt.attempt_id
             if self.current_attempt
             else None,
