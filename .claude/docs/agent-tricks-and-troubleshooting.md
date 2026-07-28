@@ -301,51 +301,111 @@ Avoid asking for broad "thoughts" on a large diff. Ask for a scoped review:
 
 ## Grok CLI
 
-Grok CLI is available locally as `grok`. Use its headless single-turn mode for
-an independent review. As with Claude and Codex, do not let a review agent edit
-the worktree.
-
-Verify the installed command and its current flags before changing an existing
-recipe, because Grok CLI releases can change options:
+Grok is an independent second opinion for plans, diffs and pull requests. Its
+headless mode is `-p` / `--single`. Verify the installed flags before changing
+these commands: releases have changed their review and permission behaviour.
 
 ```shell
 grok --help
 grok --version
 ```
 
-For a bounded, read-only code review, disable memory, web search and subagents.
-Use `streaming-json` so progress is visible, and save the raw stream rather
-than piping it through `tail` or `head`:
+### How to run a Grok review
+
+Use `--output-format streaming-json` for every non-trivial review. It writes
+JSONL events while Grok reasons, calls tools and produces its answer; plain JSON
+only appears when the run ends and can look indistinguishable from a hang. Write
+the raw stream to a file. Do not pipe the review through `head` or `tail`.
+
+For a repository-grounded review, start a detached process with a 15-minute
+deadline. Grok's current headless CLI can cancel after its first tool request
+under `dontAsk`; a grounded review therefore requires
+`bypassPermissions --always-approve`. This grants the process broad authority,
+so use it only in a trusted repository, disable web search, forbid edits in the
+prompt, and never combine it with an untrusted prompt or repository.
 
 ```shell
-timeout 900 grok -p "Review the current uncommitted diff for correctness bugs only.
-Do not edit files or run the full test suite. First inspect git status --short,
-git diff --name-only, and targeted diffs. Return findings first with file:line
-references. If there are no high-confidence bugs, say so clearly." \
-  --tools "" \
-  --permission-mode dontAsk \
-  --sandbox read-only \
-  --disable-web-search \
-  --no-memory \
-  --no-subagents \
-  --max-turns 12 \
+# Write the prompt with a normal file-editing tool first.
+nohup timeout 900 grok --prompt-file /tmp/grok-pr-review.md \
+  --model grok-4.5 \
+  --reasoning-effort high \
+  --permission-mode bypassPermissions --always-approve \
+  --disable-web-search --no-plan --no-subagents --max-turns 48 \
   --output-format streaming-json \
-  < /dev/null > /tmp/grok-review.jsonl
+  --cwd "$(pwd)" \
+  < /dev/null > /tmp/grok-review.jsonl 2>/tmp/grok-review.err &
+review_pid=$!
 ```
 
-Do not use `--always-approve`, `--permission-mode bypassPermissions`, or
-`--fs-write` for a review. Grok 0.2.93 has an internal error when headless mode
-builds the terminal tool (``auto_background_on_timeout`` is incompatible with
-its disabled background setting). Use the toolless mode above and include a
-focused diff bundle through `-p`; the `--prompt-file` form was cancelled after
-its planning turn in 0.2.93. For a prepared bundle at
-`/tmp/grok-review-input.txt`, invoke it as
-`grok -p "$(sed -n '1,$p' /tmp/grok-review-input.txt)" ...` without
-`--no-wait-for-background`, because that option cancels multi-turn reasoning
-before findings are returned. Do not request repository inspection until the
-installed version changes. Keep the 15-minute outer deadline and terminate a
-no-output review after checking the raw stream and process state.
-- repository instruction compliance
+Use a focused prompt such as:
+
+```text
+Review the current pull request read-only. Do not edit files, change GitHub
+state, or run tests. First inspect the PR metadata and changed-file list, then
+inspect only the relevant source and test hunks. Focus on correctness bugs,
+behavioural regressions, missing tests, security or money-movement risks, and
+repository-instruction compliance. Return findings first with file:line
+references, then residual risks.
+```
+
+For GitHub PRs, tell Grok to use `gh pr view` and `gh pr diff` rather than a
+stale local branch. Do not ask it to fetch an unfiltered full diff. Exclude
+generated artefacts, lock files and large narrative plans from the initial pass;
+review security-relevant generated output separately. If it reaches its turn
+limit, split the changed files into review groups instead of raising the limit.
+
+### Validate the result
+
+Poll the detached process and raw files from a later command. A review is valid
+only when the final JSONL event is `type == "end"` and
+`stopReason == "EndTurn"`:
+
+```shell
+ps -p "$review_pid" -o pid=,stat=,etime=,cmd=
+wc -c /tmp/grok-review.jsonl /tmp/grok-review.err
+tail -n 30 /tmp/grok-review.jsonl
+python3 -c "import json; events=[json.loads(line) for line in open('/tmp/grok-review.jsonl')]; end=events[-1]; assert end['type'] == 'end' and end['stopReason'] == 'EndTurn'; print(''.join(event['data'] for event in events if event['type'] == 'text'))"
+```
+
+Treat `Cancelled`, `PermissionCancelled`, an absent `end` event, a blank raw
+file, and `max turns reached` as incomplete reviews, never as no findings. A
+short preamble followed by cancellation is not a review result. Inspect stderr,
+the process state and a small smoke test before retrying; do not automatically
+run `grok update` while diagnosing a failure.
+
+### No-tools fallback
+
+If grounded mode fails, put only the highest-risk, self-contained excerpts in a
+prompt file and run a no-tools review. Keep the excerpts small: an inline full
+diff can exhaust the context or produce findings based on missing surrounding
+code.
+
+```shell
+timeout 240 grok -p "$(cat /tmp/grok-notools-review.txt)" \
+  --model grok-4.5 --no-plan --no-subagents --tools '' \
+  --disable-web-search --output-format streaming-json --cwd "$(pwd)" \
+  < /dev/null > /tmp/grok-notools-review.jsonl 2>/tmp/grok-notools-review.err
+```
+
+Start this prompt with `NO TOOLS — review only the code below.` It must include
+the changed function and enough of the caller or guard to establish control
+flow. Validate `EndTurn` for this output too.
+
+### Review rules and gotchas
+
+- Smoke-test the CLI before a costly review. `grok models` alone is not a
+  reliable authentication check; require a non-empty streaming result ending in
+  `EndTurn` from `grok -p 'Reply with exactly: OK. Do not use tools.'`.
+- Do not use partial tool allow-lists for grounded PR review: they can remove a
+  supporting inspection tool and cause an opaque cancellation. Conversely, do
+  not use broad permission flags for a no-tools review.
+- Verify every finding against the actual file and cited line before changing
+  code. Incomplete runs and no-tools excerpts can hallucinate paths or infer a
+  defect from omitted context.
+- Confirm `--cwd` identifies the intended worktree and that the reviewed diff
+  is non-empty before trusting a no-findings result.
+- Remove `/tmp/grok-*.jsonl`, error logs and prompt files when the review is
+  complete.
 
 ## Common failure modes
 

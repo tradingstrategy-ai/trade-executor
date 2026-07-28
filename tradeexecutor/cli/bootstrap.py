@@ -1,4 +1,5 @@
 """Command line application initialisation helpers."""
+
 import datetime
 import json
 import logging
@@ -41,15 +42,27 @@ from tradeexecutor.ethereum.enzyme.vault import EnzymeVaultSyncModel
 from tradeexecutor.ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.one_delta.one_delta_execution import OneDeltaExecution
-from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import one_delta_live_pricing_factory
-from tradeexecutor.ethereum.one_delta.one_delta_valuation import one_delta_valuation_factory
+from tradeexecutor.ethereum.one_delta.one_delta_live_pricing import (
+    one_delta_live_pricing_factory,
+)
+from tradeexecutor.ethereum.one_delta.one_delta_valuation import (
+    one_delta_valuation_factory,
+)
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_execution import UniswapV2Execution
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import uniswap_v2_live_pricing_factory
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_live_pricing import (
+    uniswap_v2_live_pricing_factory,
+)
 from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_routing import UniswapV2Routing
-from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import uniswap_v2_sell_valuation_factory
+from tradeexecutor.ethereum.uniswap_v2.uniswap_v2_valuation import (
+    uniswap_v2_sell_valuation_factory,
+)
 from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_execution import UniswapV3Execution
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import uniswap_v3_live_pricing_factory
-from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import uniswap_v3_sell_valuation_factory
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_live_pricing import (
+    uniswap_v3_live_pricing_factory,
+)
+from tradeexecutor.ethereum.uniswap_v3.uniswap_v3_valuation import (
+    uniswap_v3_sell_valuation_factory,
+)
 from tradeexecutor.ethereum.velvet.execution import VelvetExecution
 from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
 from tradeexecutor.ethereum.web3config import Web3Config, get_rpc_env_var_name
@@ -59,16 +72,24 @@ from tradeexecutor.state.deployment_info import DeploymentInfo
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore, SimulateStore
 from tradeexecutor.strategy.default_routing_options import TradeRouting
-from tradeexecutor.strategy.generic.generic_pricing_model import  EthereumGenericPricingFactory
+from tradeexecutor.strategy.generic.generic_pricing_model import (
+    EthereumGenericPricingFactory,
+)
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
-from tradeexecutor.strategy.generic.generic_valuation import  GenericValuationModelFactory
+from tradeexecutor.strategy.generic.generic_valuation import (
+    GenericValuationModelFactory,
+)
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.strategy_module import StrategyModuleInformation
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.sync_model import SyncModel, DummySyncModel
 from tradeexecutor.strategy.valuation import ValuationModelFactory
-from tradeexecutor.strategy.approval import UncheckedApprovalModel, ApprovalType, ApprovalModel
+from tradeexecutor.strategy.approval import (
+    UncheckedApprovalModel,
+    ApprovalType,
+    ApprovalModel,
+)
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.execution_model import AssetManagementMode, ExecutionModel
 from eth_defi.compat import native_datetime_utc_now
@@ -109,14 +130,15 @@ def create_web3_config(
     json_rpc_hyperliquid_testnet=None,
     json_rpc_monad=None,
     gas_price_method: Optional[GasPriceMethod] = None,
-    unit_testing: bool=False,
-    simulate: bool=False,
-    mev_endpoint_disabled: bool=False,
+    unit_testing: bool = False,
+    simulate: bool = False,
+    mev_endpoint_disabled: bool = False,
     simulate_http_timeout: tuple[float, float] | None = None,
     rpc_proxy_verbose: bool = False,
     anvil_verbose: bool = False,
     anvil_inherit_stdio: bool = False,
     anvil_warm_up_block: bool = False,
+    simulate_fork_blocks: dict[ChainId, int] | None = None,
 ) -> Web3Config:
     """Create Web3 connection to the live node we are executing against.
 
@@ -163,6 +185,7 @@ def create_web3_config(
         anvil_verbose=anvil_verbose,
         anvil_inherit_stdio=anvil_inherit_stdio,
         anvil_warm_up_block=anvil_warm_up_block,
+        simulate_fork_blocks=simulate_fork_blocks,
     )
 
     # Allow externally-created Anvil forks to signal mainnet fork mode
@@ -190,7 +213,9 @@ def create_execution_model(
     Choose between Uniswap v2 and v3 trade routing.
     """
 
-    logger.info("create_execution_model(): confirmation_timeout: %s", confirmation_timeout)
+    logger.info(
+        "create_execution_model(): confirmation_timeout: %s", confirmation_timeout
+    )
     # TODO: user_supplied_routing_model can be uni v3 as well
     if asset_management_mode == AssetManagementMode.velvet:
         # Velvet vaults are hardcoded to use Enzo
@@ -199,11 +224,11 @@ def create_execution_model(
         execution_model = VelvetExecution(
             vault=sync_model.vault,
             tx_builder=tx_builder,
-            confirmation_timeout = confirmation_timeout,
-            confirmation_block_count = confirmation_block_count,
-            max_slippage = max_slippage,
-            min_balance_threshold = min_gas_balance,
-            mainnet_fork = mainnet_fork,
+            confirmation_timeout=confirmation_timeout,
+            confirmation_block_count=confirmation_block_count,
+            max_slippage=max_slippage,
+            min_balance_threshold=min_gas_balance,
+            mainnet_fork=mainnet_fork,
         )
         valuation_model_factory = GenericValuationModelFactory()
         pricing_model_factory = EthereumGenericPricingFactory(sync_model.web3)
@@ -222,7 +247,11 @@ def create_execution_model(
         )
         valuation_model_factory = GenericValuationModelFactory()
         pricing_model_factory = EthereumGenericPricingFactory(sync_model.web3)
-    elif routing_hint is None or routing_hint.is_uniswap_v2() or routing_hint == TradeRouting.user_supplied_routing_model:
+    elif (
+        routing_hint is None
+        or routing_hint.is_uniswap_v2()
+        or routing_hint == TradeRouting.user_supplied_routing_model
+    ):
         logger.info("Uniswap v2 like exchange. Routing hint is %s", routing_hint)
         execution_model = UniswapV2Execution(
             tx_builder,
@@ -308,7 +337,8 @@ def resolve_satellite_modules(deployment_file: "Path | None") -> dict:
             if modules:
                 logger.info(
                     "Discovered %d satellite module(s) from deployment artifact %s",
-                    len(modules), deployment_file,
+                    len(modules),
+                    deployment_file,
                 )
             return modules
 
@@ -347,14 +377,24 @@ def log_multichain_deployment_information(deployment_file: "Path | None") -> Non
             dep.get("valuation_manager"),
             dep.get("deployment_mode"),
         )
-        _log_multichain_deployment_section(slug, "Deployment", dep.get("deployment_data") or {})
-        _log_multichain_deployment_section(slug, "Lagoon config", dep.get("config") or {})
-        _log_multichain_deployment_section(slug, "Guard whitelist", {"entries": dep.get("whitelisted_items") or []})
+        _log_multichain_deployment_section(
+            slug, "Deployment", dep.get("deployment_data") or {}
+        )
+        _log_multichain_deployment_section(
+            slug, "Lagoon config", dep.get("config") or {}
+        )
+        _log_multichain_deployment_section(
+            slug, "Guard whitelist", {"entries": dep.get("whitelisted_items") or []}
+        )
         if dep.get("guard_migration"):
-            _log_multichain_deployment_section(slug, "Guard migration", dep.get("guard_migration") or {})
+            _log_multichain_deployment_section(
+                slug, "Guard migration", dep.get("guard_migration") or {}
+            )
 
 
-def _log_multichain_deployment_section(chain_slug: str, section: str, values: object, prefix: str = "") -> None:
+def _log_multichain_deployment_section(
+    chain_slug: str, section: str, values: object, prefix: str = ""
+) -> None:
     """Log deployment artifact data in the same sections as lagoon-deploy-vault."""
 
     if values is None:
@@ -369,7 +409,9 @@ def _log_multichain_deployment_section(chain_slug: str, section: str, values: ob
 
             next_prefix = f"{prefix}{key}."
             if isinstance(value, (dict, list)):
-                _log_multichain_deployment_section(chain_slug, section, value, next_prefix)
+                _log_multichain_deployment_section(
+                    chain_slug, section, value, next_prefix
+                )
             else:
                 logger.info("Multichain deployment %s %s: %s", chain_slug, label, value)
     elif isinstance(values, list):
@@ -380,7 +422,9 @@ def _log_multichain_deployment_section(chain_slug: str, section: str, values: ob
             next_prefix = f"{prefix}{idx}."
             label = f"{section}.{prefix}{idx}"
             if isinstance(value, (dict, list)):
-                _log_multichain_deployment_section(chain_slug, section, value, next_prefix)
+                _log_multichain_deployment_section(
+                    chain_slug, section, value, next_prefix
+                )
             else:
                 logger.info("Multichain deployment %s %s: %s", chain_slug, label, value)
     else:
@@ -407,7 +451,9 @@ def strip_deployment_state_abi(data: object) -> object:
         return data
 
 
-def update_strategy_file_deployment_info(state: State, deployment_file: "Path | None") -> bool:
+def update_strategy_file_deployment_info(
+    state: State, deployment_file: "Path | None"
+) -> bool:
     """Persist strategy-file deployment information to the state if it changed.
 
     Only multichain strategy-file deployment artifacts are recorded here. Legacy
@@ -482,7 +528,9 @@ def create_execution_and_sync_model(
 ) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory]:
     """Set up the wallet sync and execution mode for the command line client."""
 
-    assert isinstance(confirmation_timeout, datetime.timedelta), f"Got {confirmation_timeout}"
+    assert isinstance(confirmation_timeout, datetime.timedelta), (
+        f"Got {confirmation_timeout}"
+    )
 
     if asset_management_mode == AssetManagementMode.dummy:
         # Used in test_strategy_cycle_trigger.py
@@ -491,11 +539,18 @@ def create_execution_and_sync_model(
         valuation_model_factory = uniswap_v2_sell_valuation_factory
         pricing_model_factory = uniswap_v2_live_pricing_factory
         sync_model = DummySyncModel()
-        return execution_model, sync_model, valuation_model_factory, pricing_model_factory
+        return (
+            execution_model,
+            sync_model,
+            valuation_model_factory,
+            pricing_model_factory,
+        )
     elif asset_management_mode.is_live_trading():
         assert private_key, "Private key is needed for live trading"
         web3 = web3config.get_default()
-        hot_wallet = HotWallet.from_private_key(ensure_0x_prefixed_private_key(private_key))
+        hot_wallet = HotWallet.from_private_key(
+            ensure_0x_prefixed_private_key(private_key)
+        )
         sync_model = create_sync_model(
             asset_management_mode,
             web3,
@@ -518,16 +573,18 @@ def create_execution_and_sync_model(
             confirmation_timeout,
         )
 
-        execution_model, valuation_model_factory, pricing_model_factory = create_execution_model(
-            asset_management_mode=asset_management_mode,
-            routing_hint=routing_hint,
-            tx_builder=sync_model.create_transaction_builder(),
-            confirmation_timeout=confirmation_timeout,
-            confirmation_block_count=confirmation_block_count,
-            max_slippage=max_slippage,
-            min_gas_balance=min_gas_balance,
-            mainnet_fork=web3config.is_mainnet_fork(),
-            sync_model=sync_model,
+        execution_model, valuation_model_factory, pricing_model_factory = (
+            create_execution_model(
+                asset_management_mode=asset_management_mode,
+                routing_hint=routing_hint,
+                tx_builder=sync_model.create_transaction_builder(),
+                confirmation_timeout=confirmation_timeout,
+                confirmation_block_count=confirmation_block_count,
+                max_slippage=max_slippage,
+                min_gas_balance=min_gas_balance,
+                mainnet_fork=web3config.is_mainnet_fork(),
+                sync_model=sync_model,
+            )
         )
 
         # Pass web3config for multichain execution (e.g. CCTP bridge)
@@ -541,35 +598,63 @@ def create_execution_and_sync_model(
         if isinstance(execution_model, LagoonExecution):
             satellite_modules = resolve_satellite_modules(deployment_file)
             if satellite_modules:
-                from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonSatelliteVault
+                from eth_defi.erc_4626.vault_protocol.lagoon.vault import (
+                    LagoonSatelliteVault,
+                )
+
                 # The Safe address is shared across all chains (CREATE2)
                 safe_address = sync_model.vault.safe_address
                 satellite_vaults = {}
                 for chain_slug, module_address in satellite_modules.items():
                     sat_chain_id = ChainId[chain_slug]
                     sat_web3 = web3config.get_connection(sat_chain_id)
-                    assert sat_web3, f"No Web3 connection for satellite chain {chain_slug}"
+                    assert sat_web3, (
+                        f"No Web3 connection for satellite chain {chain_slug}"
+                    )
                     sat_vault = LagoonSatelliteVault(
                         sat_web3,
                         safe_address=sat_web3.to_checksum_address(safe_address),
-                        trading_strategy_module_address=sat_web3.to_checksum_address(module_address),
+                        trading_strategy_module_address=sat_web3.to_checksum_address(
+                            module_address
+                        ),
                     )
                     satellite_vaults[sat_chain_id.value] = sat_vault
-                    logger.info("Satellite vault on %s: safe=%s, module=%s", chain_slug, safe_address, module_address)
+                    logger.info(
+                        "Satellite vault on %s: safe=%s, module=%s",
+                        chain_slug,
+                        safe_address,
+                        module_address,
+                    )
                 execution_model.satellite_vaults = satellite_vaults
 
-        return execution_model, sync_model, valuation_model_factory, pricing_model_factory
+        return (
+            execution_model,
+            sync_model,
+            valuation_model_factory,
+            pricing_model_factory,
+        )
 
     elif asset_management_mode == AssetManagementMode.backtest:
-        logger.info("TODO: Command line backtests are always executed with initial deposit of $10,000")
+        logger.info(
+            "TODO: Command line backtests are always executed with initial deposit of $10,000"
+        )
         wallet = SimulatedWallet()
-        execution_model = BacktestExecution(wallet, max_slippage=0.01, stop_loss_data_available=True)
+        execution_model = BacktestExecution(
+            wallet, max_slippage=0.01, stop_loss_data_available=True
+        )
         sync_model = BacktestSyncModel(wallet, Decimal(10_000))
         pricing_model_factory = backtest_pricing_factory
         valuation_model_factory = backtest_valuation_factory
-        return execution_model, sync_model, valuation_model_factory, pricing_model_factory
+        return (
+            execution_model,
+            sync_model,
+            valuation_model_factory,
+            pricing_model_factory,
+        )
     else:
-        raise NotImplementedError(f"Unsupported asset management mode: {asset_management_mode} - did you pass ASSET_MANAGEMENT_MODE environment variable?")
+        raise NotImplementedError(
+            f"Unsupported asset management mode: {asset_management_mode} - did you pass ASSET_MANAGEMENT_MODE environment variable?"
+        )
 
 
 def create_approval_model(approval_type: ApprovalType) -> ApprovalModel:
@@ -581,7 +666,9 @@ def create_approval_model(approval_type: ApprovalType) -> ApprovalModel:
         raise NotImplementedError()
 
 
-def create_state_store(state_file: Path, simulate: bool = False) -> JSONFileStore | SimulateStore:
+def create_state_store(
+    state_file: Path, simulate: bool = False
+) -> JSONFileStore | SimulateStore:
     if simulate:
         return SimulateStore(state_file)
     return JSONFileStore(state_file)
@@ -593,12 +680,12 @@ def prepare_cache(
     unit_testing=False,
 ) -> Path:
     """Prepare a cache location for this trade-executor.
-    
+
     - Fail early if the cache path is not writable.
       Otherwise Docker might spit misleading "Device or resource busy" message.
-    
+
     - Default is `./cache/$EXECUTOR_ID`
-    
+
     - Unit tests share a fixed cache path across tests to speed
       up them
     """
@@ -617,9 +704,11 @@ def prepare_cache(
     else:
         generated = False
 
-    logger.info("Dataset cache is %s, was generated from the executor id %s",
-                os.path.realpath(cache_path),
-                generated)
+    logger.info(
+        "Dataset cache is %s, was generated from the executor id %s",
+        os.path.realpath(cache_path),
+        generated,
+    )
 
     os.makedirs(cache_path, exist_ok=True)
 
@@ -657,7 +746,9 @@ def prepare_token_cache(
     from tradeexecutor.ethereum.token_cache import get_default_token_cache
 
     assert cache_path, "cache_path must be provided"
-    assert cache_path.exists(), f"Cache path {cache_path} does not exist - call prepare_cache() first"
+    assert cache_path.exists(), (
+        f"Cache path {cache_path} does not exist - call prepare_cache() first"
+    )
 
     token_cache = get_default_token_cache(cache_path, unit_testing=unit_testing)
 
@@ -721,41 +812,58 @@ def create_metadata(
     )
 
     if vault:
-
         assert asset_management_mode.is_vault()
 
         match asset_management_mode:
             case AssetManagementMode.enzyme:
                 assert isinstance(vault, Vault)
                 on_chain_data.owner = vault.get_owner()
-                on_chain_data.smart_contracts.update(vault.deployment.contracts.get_all_addresses())
-                on_chain_data.smart_contracts.update({
-                    "vault": vault.vault.address,
-                    "comptroller": vault.comptroller.address,
-                    "generic_adapter": vault.generic_adapter.address,
-                    "payment_forwarder": vault.payment_forwarder.address if vault.payment_forwarder else None,
-                    "terms_of_service": vault.terms_of_service_contract.address if vault.terms_of_service_contract else None,
-                    "guard": vault.guard_contract.address if vault.guard_contract else None,
-                })
+                on_chain_data.smart_contracts.update(
+                    vault.deployment.contracts.get_all_addresses()
+                )
+                on_chain_data.smart_contracts.update(
+                    {
+                        "vault": vault.vault.address,
+                        "comptroller": vault.comptroller.address,
+                        "generic_adapter": vault.generic_adapter.address,
+                        "payment_forwarder": vault.payment_forwarder.address
+                        if vault.payment_forwarder
+                        else None,
+                        "terms_of_service": vault.terms_of_service_contract.address
+                        if vault.terms_of_service_contract
+                        else None,
+                        "guard": vault.guard_contract.address
+                        if vault.guard_contract
+                        else None,
+                    }
+                )
 
                 if vault.deployment.contracts.fund_value_calculator is None:
                     # Hot fix for Polygon
                     # TODO: Fix properly, legacy
                     match vault.web3.eth.chain_id:
                         case 137 | 31337:
-                            on_chain_data.smart_contracts.update({
-                                "fund_value_calculator": "0xcdf038Dd3b66506d2e5378aee185b2f0084B7A33",
-                            })
+                            on_chain_data.smart_contracts.update(
+                                {
+                                    "fund_value_calculator": "0xcdf038Dd3b66506d2e5378aee185b2f0084B7A33",
+                                }
+                            )
                         case 1:
-                            on_chain_data.smart_contracts.update({
-                                "fund_value_calculator": "0x490e64E0690b4aa481Fb02255aED3d052Bad7BF1",
-                            })
+                            on_chain_data.smart_contracts.update(
+                                {
+                                    "fund_value_calculator": "0x490e64E0690b4aa481Fb02255aED3d052Bad7BF1",
+                                }
+                            )
                         case 42161:
-                            on_chain_data.smart_contracts.update({
-                                "fund_value_calculator": "0xea609eeb38d1ee8e8719597d47cc9276df9f8707",
-                            })
+                            on_chain_data.smart_contracts.update(
+                                {
+                                    "fund_value_calculator": "0xea609eeb38d1ee8e8719597d47cc9276df9f8707",
+                                }
+                            )
                         case _:
-                            raise NotImplementedError(f"Chain {vault.web3.eth.chain_id}")
+                            raise NotImplementedError(
+                                f"Chain {vault.web3.eth.chain_id}"
+                            )
             case AssetManagementMode.velvet:
                 assert isinstance(vault, VelvetVault)
                 on_chain_data.smart_contracts.update(vault.info)
@@ -765,7 +873,9 @@ def create_metadata(
                 on_chain_data.smart_contracts.update(vault.info)
                 on_chain_data.owner = vault.safe_address
             case _:
-                raise NotImplementedError(f"Unsupported asset management mode: {asset_management_mode}")
+                raise NotImplementedError(
+                    f"Unsupported asset management mode: {asset_management_mode}"
+                )
 
     if derive_addresses:
         on_chain_data.smart_contracts.update(derive_addresses)
@@ -786,7 +896,9 @@ def create_metadata(
         backtested_state=backtested_state,
         backtest_notebook=backtest_notebook,
         backtest_html=backtest_html,
-        key_metrics_backtest_cut_off=datetime.timedelta(days=key_metrics_backtest_cut_off_days),
+        key_metrics_backtest_cut_off=datetime.timedelta(
+            days=key_metrics_backtest_cut_off_days
+        ),
         badges=Metadata.parse_badges_configuration(badges),
         tags=tags or set(),  # Always fill empty set
         sort_priority=sort_priority,
@@ -857,12 +969,11 @@ def create_sync_model(
                 VaultSpec(web3.eth.chain_id, cast(HexAddress, vault_address)),
             )
             vault.check_valid_contract()
-            return VelvetVaultSyncModel(
-                vault,
-                hot_wallet
-            )
+            return VelvetVaultSyncModel(vault, hot_wallet)
         case AssetManagementMode.lagoon:
-            assert vault_adapter_address, "TradingStrategyModuleV0 address must be given with Lagoon vault using VAULT_ADAPTER_ACCESS env option"
+            assert vault_adapter_address, (
+                "TradingStrategyModuleV0 address must be given with Lagoon vault using VAULT_ADAPTER_ACCESS env option"
+            )
             vault = LagoonVault(
                 web3,
                 VaultSpec(web3.eth.chain_id, cast(HexAddress, vault_address)),
@@ -874,7 +985,9 @@ def create_sync_model(
                 vault,
                 hot_wallet,
                 unit_testing=unit_testing,
-                valuation_data_freshness=datetime.timedelta(days=2) if unit_testing else datetime.timedelta(hours=4),
+                valuation_data_freshness=datetime.timedelta(days=2)
+                if unit_testing
+                else datetime.timedelta(hours=4),
             )
         case _:
             raise NotImplementedError()
@@ -925,7 +1038,11 @@ def create_client(
         if mod.trade_routing == TradeRouting.user_supplied_routing_model:
             routing_model = UniswapV2Routing(
                 factory_router_map={
-                    test_evm_uniswap_v2_factory: (test_evm_uniswap_v2_router, test_evm_uniswap_v2_init_code_hash)},
+                    test_evm_uniswap_v2_factory: (
+                        test_evm_uniswap_v2_router,
+                        test_evm_uniswap_v2_init_code_hash,
+                    )
+                },
                 allowed_intermediary_pairs={},
                 reserve_token_address=client.get_default_quote_token_address(),
             )
@@ -945,7 +1062,6 @@ def create_client(
 
     # TODO: Move this to its own function
     if mod.trade_routing == TradeRouting.default:
-
         if asset_management_mode == AssetManagementMode.velvet:
             # Will be created later?
             routing_model = None
@@ -957,7 +1073,9 @@ def create_client(
     return client, routing_model
 
 
-def backup_state(state_file: Path | str, backup_suffix="backup", unit_testing=False) -> Tuple[JSONFileStore, State]:
+def backup_state(
+    state_file: Path | str, backup_suffix="backup", unit_testing=False
+) -> Tuple[JSONFileStore, State]:
     """Take a copy of the state file, then read the original file."""
 
     logger.info("Backing up %s", state_file)
@@ -969,7 +1087,9 @@ def backup_state(state_file: Path | str, backup_suffix="backup", unit_testing=Fa
     # Make a backup
     # https://stackoverflow.com/a/47528275/315168
     backup_file = None
-    backup_attempts = 1 if unit_testing else 99  # Don't pollute folders when unit testing
+    backup_attempts = (
+        1 if unit_testing else 99
+    )  # Don't pollute folders when unit testing
     for i in range(1, backup_attempts):  # Try 99 different iterateive backup filenames
         backup_file = state_file.with_suffix(f".{backup_suffix}-{i}.json")
         if os.path.exists(backup_file):
@@ -992,7 +1112,6 @@ def configure_default_chain(
     mod: StrategyModuleInformation,
 ):
     if web3config is not None:
-
         if isinstance(mod, StrategyModuleInformation):
             # This path is not enabled for legacy strategy modules
             default_chain_id = mod.get_default_chain_id()
@@ -1071,7 +1190,9 @@ def check_universe_chains_have_rpc(
             f"{c.get_name()} ({get_rpc_env_var_name(c)})"
             for c in sorted(missing, key=lambda c: c.value)
         )
-        configured_names = ", ".join(c.get_name() for c in sorted(configured_chains, key=lambda c: c.value))
+        configured_names = ", ".join(
+            c.get_name() for c in sorted(configured_chains, key=lambda c: c.value)
+        )
         raise RuntimeError(
             f"Strategy universe uses chains that do not have JSON-RPC connections configured.\n"
             f"Missing RPCs for: {missing_names}\n"
@@ -1199,7 +1320,9 @@ def check_universe_contracts_resolve(
     # must not be flagged. This mirrors the custody resolver: a tx_builder with a
     # ``vault`` resolves the mint recipient to the per-chain Safe, whereas a plain
     # hot-wallet tx_builder uses its own address everywhere.
-    requires_satellites = tx_builder is not None and getattr(tx_builder, "vault", None) is not None
+    requires_satellites = (
+        tx_builder is not None and getattr(tx_builder, "vault", None) is not None
+    )
 
     errors: list[str] = []
 
@@ -1256,7 +1379,9 @@ def check_universe_contracts_resolve(
     # (2) Configured satellite Safe + trading strategy module must resolve on-chain.
     for chain_id_value, satellite_vault in satellite_vaults.items():
         safe_address = getattr(satellite_vault, "safe_address", None)
-        module_address = getattr(satellite_vault, "trading_strategy_module_address", None)
+        module_address = getattr(
+            satellite_vault, "trading_strategy_module_address", None
+        )
         if safe_address and _has_code(chain_id_value, safe_address) is False:
             errors.append(
                 f"Satellite Safe {safe_address} has no code on "
@@ -1272,6 +1397,5 @@ def check_universe_contracts_resolve(
     if errors:
         bullet = "\n".join(f"  - {e}" for e in errors)
         raise RuntimeError(
-            "Cannot resolve all required contracts before trading:\n"
-            f"{bullet}"
+            f"Cannot resolve all required contracts before trading:\n{bullet}"
         )

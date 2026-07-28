@@ -16,10 +16,16 @@ from eth_defi.provider.anvil import (
     RPCRequestError,
     make_anvil_custom_rpc_request,
 )
+from eth_defi.testing.rpc_cache import (
+    seed_default_foundry_rpc_cache,
+    seed_foundry_rpc_cache,
+)
+from eth_defi.testing.fork_blocks import MIDNIGHT_BLOCKS
 from eth_defi.vault.base import VaultSpec
 from requests.exceptions import RequestException
 from tradingstrategy.chain import ChainId
 from web3.exceptions import (
+    BadFunctionCallOutput,
     CannotHandleRequest,
     MultipleFailedRequests,
     ProviderConnectionError,
@@ -39,6 +45,15 @@ logger = logging.getLogger(__name__)
 
 SIMULATED_VAULT_ATTEMPT_TIMEOUT = 60
 SIMULATED_VAULT_INFRASTRUCTURE_RESTARTS = 1
+
+
+#: Project cache seeds supplement eth-defi's generic test seeds.
+PROJECT_RPC_CACHE_SEED_DIR = Path(__file__).parents[3] / "tests" / "rpc_cache_seed"
+
+#: These providers cannot supply the historic state required by the simulated
+#: Lagoon balance path. Capture their live tip once per command and retain that
+#: value only for whole-generation replacements.
+LIVE_TIP_VAULT_TEST_CHAINS = frozenset({ChainId.base, ChainId.monad})
 
 
 SIMULATED_INFRASTRUCTURE_EXCEPTIONS = (
@@ -86,6 +101,11 @@ class SimulatedVaultRuntime:
     #: the test Lagoon topology deploys any contracts.
     fork_blocks: dict[str, int] = field(default_factory=dict)
 
+    #: Fork blocks requested for this generation. The first generation captures
+    #: them, and each replacement uses exactly the same heights so Foundry can
+    #: reuse its disk cache and diagnostics remain reproducible.
+    pinned_fork_blocks: dict[ChainId, int] = field(default_factory=dict)
+
     def close(self) -> None:
         """Hard-stop all forks and remove this generation's artefact."""
 
@@ -113,6 +133,18 @@ def is_simulated_infrastructure_failure(error: BaseException) -> bool:
     if isinstance(error, SIMULATED_INFRASTRUCTURE_EXCEPTIONS):
         return True
 
+    # eth-defi detects an empty Anvil ``eth_call`` as
+    # ``ProbablyNodeHasNoBlock``. Web3 can then wrap that in its ABI decode
+    # error, keeping the original exception only in the wrapper's context.
+    # This specific wrapper is still an infrastructure error; do not apply the
+    # same context rule to arbitrary adapter exceptions.
+    if isinstance(error, BadFunctionCallOutput):
+        nested = error.__cause__ or error.__context__
+        while nested is not None and nested is not error:
+            if isinstance(nested, ProbablyNodeHasNoBlock):
+                return True
+            nested = nested.__cause__ or nested.__context__
+
     message = str(error).lower()
     if any(
         clue in message
@@ -126,7 +158,7 @@ def is_simulated_infrastructure_failure(error: BaseException) -> bool:
     ):
         return True
 
-    # Only follow explicit exception chaining.  ``__context__`` merely means
+    # Only follow explicit exception chaining. ``__context__`` merely means
     # this exception was raised while another was being handled: treating that
     # as causation can turn a deterministic adapter failure into an Anvil retry.
     nested = error.__cause__
@@ -165,6 +197,46 @@ def raise_simulated_vault_attempt_timeout(signum, frame) -> None:
     )
 
 
+def get_shared_simulation_fork_blocks(
+    vault_specs: list[VaultSpec],
+) -> dict[ChainId, int]:
+    """Choose eth-defi's canonical cached fork block where archive history permits.
+
+    Monad intentionally has no fixed historical block because its archive state
+    is incomplete. Such chains are captured from the first live generation and
+    still remain pinned for any replacement within that command invocation.
+    """
+
+    selected_chain_ids = {
+        ChainId(spec.chain_id)
+        for spec in vault_specs
+        if ChainId(spec.chain_id) not in LIVE_TIP_VAULT_TEST_CHAINS
+    }
+    return {
+        chain_id: MIDNIGHT_BLOCKS[chain_id.value]
+        for chain_id in selected_chain_ids
+        if chain_id.value in MIDNIGHT_BLOCKS
+    }
+
+
+def rotate_simulated_rpc_upstreams(rpc_kwargs: dict) -> None:
+    """Move each configured upstream's first provider behind its fallbacks.
+
+    An upstream returning HTTP 200 with an empty ``eth_call`` result is not a
+    transport error, so eth-defi's proxy cannot safely fail over by itself. A
+    complete Anvil-generation retry is the right recovery boundary; rotate the
+    provider order at that boundary so the new proxy starts with another
+    archive provider instead of reproducing the same faulty response.
+    """
+
+    for key, value in rpc_kwargs.items():
+        if not key.startswith("json_rpc_") or not isinstance(value, str):
+            continue
+        upstreams = value.split()
+        if len(upstreams) > 1:
+            rpc_kwargs[key] = " ".join(upstreams[1:] + upstreams[:1])
+
+
 def start_simulated_vault_runtime(  # noqa: PLR0917
     *,
     generation: int,
@@ -181,6 +253,7 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
     min_gas_balance: float | None,
     max_slippage: float,
     token_cache,
+    pinned_fork_blocks: dict[ChainId, int] | None = None,
 ) -> SimulatedVaultRuntime:
     """Create a complete disposable Anvil and Lagoon simulation generation.
 
@@ -192,6 +265,16 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
     web3config = None
     temporary_deployment_dir = None
     try:
+        # Seed eth-defi's non-destructive Foundry cache before starting the
+        # forks. Replacements share this on-disk cache because they use the
+        # same fixed blocks captured by the first generation.
+        seed_default_foundry_rpc_cache()
+        seed_foundry_rpc_cache(PROJECT_RPC_CACHE_SEED_DIR)
+
+        initial_pinned_fork_blocks = (
+            pinned_fork_blocks or get_shared_simulation_fork_blocks(vault_specs)
+        )
+
         # Web3Config launches one local Anvil proxy for every selected upstream
         # RPC.  Local RPC retries are disabled; a dead process is replaced by the
         # generation-level retry outside this function.
@@ -201,6 +284,8 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
             unit_testing=unit_testing,
             simulate=True,
             simulate_http_timeout=(3.0, 40.0),
+            simulate_fork_blocks=initial_pinned_fork_blocks,
+            anvil_warm_up_block=True,
         )
         if not web3config.has_any_connection():
             raise RuntimeError("vault-test-trade requires JSON-RPC connections")
@@ -209,6 +294,11 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
         fork_blocks = {
             str(chain_id.value): int(web3.eth.block_number)
             for chain_id, web3 in web3config.connections.items()
+        }
+        effective_pinned_fork_blocks = initial_pinned_fork_blocks | {
+            chain_id: int(web3.eth.block_number)
+            for chain_id, web3 in web3config.connections.items()
+            if chain_id not in initial_pinned_fork_blocks
         }
 
         # Deploy the same hub/satellite Lagoon contracts used by integration
@@ -266,6 +356,7 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
             reserve_asset=reserve_asset,
             temporary_deployment_dir=temporary_deployment_dir,
             fork_blocks=fork_blocks,
+            pinned_fork_blocks=effective_pinned_fork_blocks,
         )
     except BaseException:
         # Multichain setup can fail after earlier forks and contracts exist.

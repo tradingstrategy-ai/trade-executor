@@ -9,14 +9,14 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.hyperliquid.block import HYPEREVM_BIG_BLOCK_GAS_LIMIT
 from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
 from eth_defi.provider.broken_provider import set_block_tip_latency
-from eth_defi.provider.multi_provider import (MultiProviderWeb3,
-                                              create_multi_provider_web3)
-from eth_defi.provider.rpc_proxy import RPCProxyConfig
+from eth_defi.provider.multi_provider import (
+    MultiProviderWeb3,
+    create_multi_provider_web3,
+)
 from tradingstrategy.chain import ChainId
 from web3 import Web3
 
-from tradeexecutor.monkeypatch.web3 import \
-    construct_sign_and_send_raw_middleware
+from tradeexecutor.monkeypatch.web3 import construct_sign_and_send_raw_middleware
 from tradeexecutor.utils.url import get_url_domain
 
 #: List of currently supportd EVM blockchains
@@ -93,7 +93,9 @@ def filter_rpc_kwargs_by_chain(chain_name: str, **rpc_kwargs) -> dict:
             if slug == chain_name:
                 selected = chain_id
                 break
-    assert selected is not None, f"Unknown chain slug: {chain_name}. Supported: {[get_chain_slug(c) for c in SUPPORTED_CHAINS]}"
+    assert selected is not None, (
+        f"Unknown chain slug: {chain_name}. Supported: {[get_chain_slug(c) for c in SUPPORTED_CHAINS]}"
+    )
     target_key = f"json_rpc_{get_chain_slug(selected)}"
     assert rpc_kwargs.get(target_key), (
         f"No JSON-RPC configured for chain {chain_name} "
@@ -193,15 +195,16 @@ class Web3Config:
     def create_web3(
         configuration_line: str,
         gas_price_method: Optional[GasPriceMethod] = None,
-        unit_testing: bool=False,
-        simulate: bool=False,
-        mev_endpoint_disabled: bool=False,
+        unit_testing: bool = False,
+        simulate: bool = False,
+        mev_endpoint_disabled: bool = False,
         simulate_http_timeout: tuple[float, float] | None = None,
         chain_id: ChainId | None = None,
-        rpc_proxy_verbose: bool=False,
-        anvil_verbose: bool=False,
-        anvil_inherit_stdio: bool=False,
-        anvil_warm_up_block: bool=False,
+        rpc_proxy_verbose: bool = False,
+        anvil_verbose: bool = False,
+        anvil_inherit_stdio: bool = False,
+        anvil_warm_up_block: bool = False,
+        fork_block_number: int | None = None,
     ) -> MultiProviderWeb3:
         """Create a new Web3.py connection.
 
@@ -240,32 +243,31 @@ class Web3Config:
 
         """
 
-        assert isinstance(configuration_line, str), f"Got: {configuration_line.__class__}"
+        assert isinstance(configuration_line, str), (
+            f"Got: {configuration_line.__class__}"
+        )
 
         if simulate:
             # Pass all RPCs to launch_anvil and let its proxy_multiple_upstream
             # handle failover across multiple upstream providers.
             # MEV endpoints are filtered out by launch_anvil internally.
-            logger.info(f"Simulating transactions with Anvil, forking from {configuration_line}")
-
-            # Anvil itself has no useful recovery path after its local RPC
-            # becomes unresponsive. Keep the upstream failover budget below
-            # the local Anvil timeout so the caller can tear down the whole
-            # fork instead of retrying localhost indefinitely.
-            proxy_config = RPCProxyConfig(
-                timeout=10.0,
-                retries=3,
-                backoff=0.5,
-                request_log_level=logging.INFO if rpc_proxy_verbose else logging.DEBUG,
+            logger.info(
+                f"Simulating transactions with Anvil, forking from {configuration_line}"
             )
 
             launch_kwargs = {
                 "attempts": 1,
-                "proxy_multiple_upstream": proxy_config,
+                # Let eth-defi derive a bounded failover pass from the number
+                # of configured upstreams. This tries each provider once and
+                # never compounds a failed localhost Anvil request.
+                "proxy_multiple_upstream": True,
                 "verbose": anvil_verbose,
                 "inherit_stdio": anvil_inherit_stdio,
                 "warm_up_block": anvil_warm_up_block,
             }
+
+            if fork_block_number is not None:
+                launch_kwargs["fork_block_number"] = fork_block_number
 
             # HyperEVM contract deployments need the large-block gas limit even on
             # local forks, because big-block routing is disabled on Anvil.
@@ -285,14 +287,19 @@ class Web3Config:
             )
             web3.anvil = anvil
             web3.simulate = True
-            configuration_line = anvil.json_rpc_url  # Override whatever configuration given earlier
+            configuration_line = (
+                anvil.json_rpc_url
+            )  # Override whatever configuration given earlier
         else:
-
             if mev_endpoint_disabled:
                 configuration_items = configuration_line.split(" ")
-                configuration_items = [c for c in configuration_items if not c.startswith("mev+https://")]
+                configuration_items = [
+                    c for c in configuration_items if not c.startswith("mev+https://")
+                ]
                 configuration_line = " ".join(configuration_items)
-                logger.info("mev_endpoint_disabled: running with RPCs %s", configuration_line)
+                logger.info(
+                    "mev_endpoint_disabled: running with RPCs %s", configuration_line
+                )
 
             web3 = create_multi_provider_web3(configuration_line)
 
@@ -300,7 +307,17 @@ class Web3Config:
         chain_id = web3.eth.chain_id
 
         if gas_price_method is None:
-            if chain_id in (ChainId.ethereum.value, ChainId.ganache.value, ChainId.avalanche.value, ChainId.polygon.value, ChainId.anvil.value, ChainId.arbitrum.value, ChainId.base.value, ChainId.arbitrum_sepolia.value, ChainId.base_sepolia.value):
+            if chain_id in (
+                ChainId.ethereum.value,
+                ChainId.ganache.value,
+                ChainId.avalanche.value,
+                ChainId.polygon.value,
+                ChainId.anvil.value,
+                ChainId.arbitrum.value,
+                ChainId.base.value,
+                ChainId.arbitrum_sepolia.value,
+                ChainId.base_sepolia.value,
+            ):
                 # Ethereum supports maxBaseFee method (London hard fork)
                 # Same for Avalanche C-chain https://twitter.com/avalancheavax/status/1389763933448323073
 
@@ -333,11 +350,12 @@ class Web3Config:
         rpc_urls = [get_url_domain(rpc) for rpc in configuration_line.split()]
         logger.info("Chain %s connects using %s", chain_label, rpc_urls)
 
-        logger.trade("Connected to chain: %s, gas pricing method: %s, providers %s",
-                     chain_label,
-                     gas_price_method.name,
-                     rpc_urls,
-                     )
+        logger.trade(
+            "Connected to chain: %s, gas pricing method: %s, providers %s",
+            chain_label,
+            gas_price_method.name,
+            rpc_urls,
+        )
 
         # London is the default method
         if gas_price_method == GasPriceMethod.legacy:
@@ -362,18 +380,24 @@ class Web3Config:
         try:
             for anvil_instance in self.anvils.values():
                 try:
-                    anvil_instance.close(log_level=log_level, block_timeout=block_timeout)
+                    anvil_instance.close(
+                        log_level=log_level, block_timeout=block_timeout
+                    )
                 except Exception as e:
                     failures.append(e)
                     logger.exception(
                         "Could not close Anvil process %s",
-                        getattr(getattr(anvil_instance, "process", None), "pid", "unknown"),
+                        getattr(
+                            getattr(anvil_instance, "process", None), "pid", "unknown"
+                        ),
                     )
         finally:
             self.anvils.clear()
 
         if failures:
-            raise RuntimeError(f"Could not close {len(failures)} Anvil process(es)") from failures[0]
+            raise RuntimeError(
+                f"Could not close {len(failures)} Anvil process(es)"
+            ) from failures[0]
 
     def has_chain_configured(self) -> bool:
         """Do we have one or more chains configured."""
@@ -392,11 +416,17 @@ class Web3Config:
             self.set_default_chain(default_chain_id)
             self.check_default_chain_id()
         else:
-            assert len(self.connections) == 1, f"Expected a single web3 connection, got JSON-RPC for chains {list(self.connections.keys())}"
+            assert len(self.connections) == 1, (
+                f"Expected a single web3 connection, got JSON-RPC for chains {list(self.connections.keys())}"
+            )
             default_chain_id = next(iter(self.connections.keys()))
             self.set_default_chain(default_chain_id)
             self.check_default_chain_id()
-        logger.info("Chosen to use a single blockchain. Chain id: %d: Provider: %s", default_chain_id, self.connections[default_chain_id].provider)
+        logger.info(
+            "Chosen to use a single blockchain. Chain id: %d: Provider: %s",
+            default_chain_id,
+            self.connections[default_chain_id].provider,
+        )
 
     def set_default_chain(self, chain_id: ChainId):
         """Set the default chain our strategy runs on.
@@ -404,7 +434,9 @@ class Web3Config:
         Most strategies are single chain strategies.
         Set the chain id we expect these strategies to run on.
         """
-        assert isinstance(chain_id, ChainId), f"Attempt to set null chain as the default: {chain_id}"
+        assert isinstance(chain_id, ChainId), (
+            f"Attempt to set null chain as the default: {chain_id}"
+        )
         self.default_chain_id = chain_id
 
     def get_connection(self, chain_id: ChainId) -> Optional[Web3]:
@@ -427,7 +459,9 @@ class Web3Config:
         try:
             return self.connections[self.default_chain_id]
         except KeyError:
-            raise RuntimeError(f"We have {self.default_chain_id.name} configured as the default blockchain, but we do not have a connection for it in the connection pool. Did you pass right RPC configuration?")
+            raise RuntimeError(
+                f"We have {self.default_chain_id.name} configured as the default blockchain, but we do not have a connection for it in the connection pool. Did you pass right RPC configuration?"
+            )
 
     def check_default_chain_id(self):
         """Check that we are connected to the correct chain.
@@ -455,23 +489,25 @@ class Web3Config:
             # a real chain when explicitly in unit testing or fork simulation mode.
             in_test_or_fork = self.unit_testing or self.mainnet_fork_simulation
             if not (in_test_or_fork and actual in test_chain_id_values):
-                assert actual == expected, \
-                    f"Strategy expected chain id {self.default_chain_id} ({expected}), " \
+                assert actual == expected, (
+                    f"Strategy expected chain id {self.default_chain_id} ({expected}), "
                     f"RPC says we got {actual}"
+                )
 
     @classmethod
     def setup_from_environment(
         cls,
-       gas_price_method: Optional[GasPriceMethod],
-       unit_testing: bool=False,
-       simulate: bool=False,
-       mev_endpoint_disabled: bool=False,
-       simulate_http_timeout: tuple[float, float] | None = None,
-       rpc_proxy_verbose: bool=False,
-       anvil_verbose: bool=False,
-       anvil_inherit_stdio: bool=False,
-       anvil_warm_up_block: bool=False,
-       **kwargs
+        gas_price_method: Optional[GasPriceMethod],
+        unit_testing: bool = False,
+        simulate: bool = False,
+        mev_endpoint_disabled: bool = False,
+        simulate_http_timeout: tuple[float, float] | None = None,
+        rpc_proxy_verbose: bool = False,
+        anvil_verbose: bool = False,
+        anvil_inherit_stdio: bool = False,
+        anvil_warm_up_block: bool = False,
+        simulate_fork_blocks: dict[ChainId, int] | None = None,
+        **kwargs,
     ) -> "Web3Config":
         """Setup connections based on given RPC URLs.
 
@@ -511,10 +547,13 @@ class Web3Config:
                         anvil_verbose=anvil_verbose,
                         anvil_inherit_stdio=anvil_inherit_stdio,
                         anvil_warm_up_block=anvil_warm_up_block,
+                        fork_block_number=(simulate_fork_blocks or {}).get(chain_id),
                     )
 
                     if simulate:
-                        web3config.anvils[chain_id] = getattr(web3config.connections[chain_id], "anvil")
+                        web3config.anvils[chain_id] = getattr(
+                            web3config.connections[chain_id], "anvil"
+                        )
         except BaseException:
             # Multichain setup may fail after one or more forks have already
             # started. Never leave those processes behind for the next fresh
@@ -522,7 +561,9 @@ class Web3Config:
             try:
                 web3config.close(log_level=logging.ERROR, block_timeout=5)
             except Exception:
-                logger.exception("Could not fully clean up a failed multichain Web3 setup")
+                logger.exception(
+                    "Could not fully clean up a failed multichain Web3 setup"
+                )
             raise
 
         return web3config
@@ -545,5 +586,7 @@ class Web3Config:
         """Make web3.py native signing available in the console."""
         assert isinstance(hot_wallet, HotWallet)
         for web3 in self.connections.values():
-            web3.middleware_onion.add(construct_sign_and_send_raw_middleware(hot_wallet.account))
+            web3.middleware_onion.add(
+                construct_sign_and_send_raw_middleware(hot_wallet.account)
+            )
             hot_wallet.sync_nonce(web3)
