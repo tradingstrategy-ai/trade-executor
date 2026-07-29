@@ -335,6 +335,43 @@ the phase-1 performance-fee shortfall. The constants and inline comments in
 references); the `CHANGELOG.md` and git history record each fix. Read those
 comments before changing settlement logic.
 
+## Small-position cleanup
+
+`correct-accounts` cleans tracked **HyperCore-native** vault positions below
+the strategy's minimum allocation by default, plus positions already marked as
+awaiting a previous cleanup redemption.  This is implemented in
+`tradeexecutor/ethereum/vault/hypercore_small_position_cleanup.py`; it does
+not apply to ERC-4626, ERC-7540, or Ostium vault positions.  It currently runs
+through a Lagoon strategy vault's HyperCore execution route, but it cleans
+HyperCore positions, not Lagoon vault shares.  Use
+`--no-cleanup-hypercore-small-positions` to opt out for one run.
+
+The cleaner uses `individual_rebalance_min_threshold_usd` (or the legacy
+`minimum_rebalance_trade_threshold`) as the strategy allocation floor.  It
+revalues the existing HyperCore position first, then plans a full-close trade
+through the normal HyperCore router so the verified vault → perp → spot → EVM
+withdrawal sequence credits actual USDC to the strategy reserve.
+
+HyperCore silently rejects withdrawals below 5 USDC and full withdrawals that
+are marginally above live equity.  Before each pass the cleaner refreshes live
+equity.  If needed, it tops up enough to leave the 5 USDC withdrawal floor even
+for the largest 10 USDC retry margin (at least 5 USDC; e.g. a 3.45 USDC
+position receives an 11.55 USDC top-up).  It skips the position if reserves do
+not cover that temporary capital.  The top-up is an isolated trade: HyperCore
+locks the whole vault position after every deposit, so the cleaner records a
+pending-redemption marker and waits for a later `correct-accounts` run after
+the live lock-up has expired.  It never attempts a same-run top-up and redeem.
+
+Once unlocked, the normal redeem path retries a phase-1 silent no-op with
+progressively larger 3, 5, and 10 USDC safety margins.  A retry that leaves
+more than the 2 USDC state-close epsilon remains tracked for a later cleanup
+run, where it can be topped up again if necessary.  A still-open residual
+confirmed at or below 2 USDC is locally closed with a zero-quantity repair.
+On a successful cleanup the top-up is temporary capital and actual withdrawn
+proceeds return to reserves.  If a routed cleanup trade fails, its state is
+saved and it is left for the normal failed-trade repair flow rather than being
+silently written off.
+
 ## Testing
 
 HyperCore execution cannot be exercised against a normal EVM testnet — the

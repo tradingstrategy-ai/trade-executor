@@ -169,6 +169,16 @@ HYPERCORE_LIKELY_CLOSE_TOLERANCE = 0.975
 #: accounting later.
 HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 1_500_000
 
+#: A HyperCore small-position cleanup retries a silent phase-1 no-op with
+#: increasingly conservative safety margins.  This is deliberately scoped to
+#: the correct-accounts clean-up marker: normal strategy rebalances retain
+#: their single 1.50 USDC retry margin and fail loudly after a repeat no-op.
+HYPERCORE_SMALL_POSITION_CLEANUP_RETRY_SAFETY_MARGINS_RAW = (
+    3_000_000,
+    5_000_000,
+    10_000_000,
+)
+
 #: Normal live preflight cap drift tolerance (raw USDC, 6 decimals).
 #:
 #: Incident reference:
@@ -1247,6 +1257,7 @@ class HypercoreVaultRouting(RoutingModel):
         self,
         current_vault_equity: Decimal,
         previous_raw: int,
+        safety_margin_raw: int = HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,
     ) -> int | None:
         """Return a smaller phase-1 retry amount after a suspected silent no-op.
 
@@ -1271,7 +1282,7 @@ class HypercoreVaultRouting(RoutingModel):
         # Subtract the normal full-close safety margin from the fresh equity so
         # the second queued action has room for another small NAV move before
         # HyperCore processes it.
-        retry_raw = current_raw - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+        retry_raw = current_raw - safety_margin_raw
 
         # Hyperliquid silently rejects vault transfers below the same 5 USDC
         # floor used for deposits.  If the retry amount is below the floor, the
@@ -1289,6 +1300,34 @@ class HypercoreVaultRouting(RoutingModel):
             return None
 
         return retry_raw
+
+    def _get_phase1_noop_retry_safety_margins(
+        self,
+        trade: TradeExecution,
+    ) -> tuple[int, ...]:
+        """Get phase-1 retry margins for a normal or cleanup withdrawal."""
+
+        if trade.other_data.get("hypercore_small_position_cleanup"):
+            return HYPERCORE_SMALL_POSITION_CLEANUP_RETRY_SAFETY_MARGINS_RAW
+        return (HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,) * HYPERCORE_WITHDRAWAL_PHASE1_RETRY_ATTEMPTS
+
+    def _cleanup_retry_leaves_material_residual(self, trade: TradeExecution) -> bool:
+        """Whether a cleanup retry must retain its residual in state.
+
+        A higher retry safety margin protects against a HyperCore no-op, but
+        it also leaves that amount in the vault.  Retain it for another
+        top-up-and-redeem pass instead of treating it as normal close dust.
+        """
+
+        safety_margin_raw = trade.other_data.get(
+            "hypercore_phase1_retry_safety_margin_raw"
+        )
+        return (
+            bool(trade.other_data.get("hypercore_small_position_cleanup"))
+            and safety_margin_raw is not None
+            and raw_to_usdc(int(safety_margin_raw))
+            > Decimal(str(get_close_epsilon_for_pair(trade.pair)))
+        )
 
     def _wait_for_spot_free_usdc_balance(
         self,
@@ -2634,40 +2673,36 @@ class HypercoreVaultRouting(RoutingModel):
                         perp_balance,
                     )
                 else:
-                    retry_raw = None
-                    if current_vault_equity is not None:
+                    retry_margins = self._get_phase1_noop_retry_safety_margins(trade)
+                    retry_succeeded = False
+                    last_retry_wait_error: HypercoreWithdrawalVerificationError | None = None
+                    for retry_number, retry_safety_margin_raw in enumerate(retry_margins, start=1):
+                        if current_vault_equity is None:
+                            break
+
                         retry_raw = self._get_phase1_noop_retry_raw(
                             current_vault_equity=current_vault_equity,
                             previous_raw=expected_raw,
+                            safety_margin_raw=retry_safety_margin_raw,
                         )
+                        if retry_raw is None:
+                            break
 
-                    if retry_raw is not None and HYPERCORE_WITHDRAWAL_PHASE1_RETRY_ATTEMPTS > 0:
-                        # 2026-04-15 DOEZOE incident:
-                        #
-                        # The first phase-1 tx had EVM status=1, but perp
-                        # withdrawable stayed flat for 30 seconds. The fresh
-                        # vault-equity snapshot was slightly below the amount
-                        # we had asked HyperCore to withdraw, which is the
-                        # known silent no-op pattern for ``vaultTransfer``.
-                        #
-                        # Retry once using the latest equity minus the same
-                        # safety margin used for full closes. This salvages the
-                        # trade and keeps the sequential rebalance moving,
-                        # while still leaving meaningful repeated failures for
-                        # operator recovery.
                         logger.warning(
                             "Withdrawal phase 1 for trade %s appears to have silently no-opped: %s. "
                             "Fresh vault equity is %s USDC, previous phase-1 amount was %d raw "
-                            "(%s USDC). Retrying phase 1 (%d/%d) with %d raw (%s USDC).",
+                            "(%s USDC). Retrying phase 1 (%d/%d) with %d raw (%s USDC), "
+                            "using a %s raw safety margin.",
                             trade.trade_id,
                             e,
                             current_vault_equity,
                             expected_raw,
                             raw_to_usdc(expected_raw),
-                            1,
-                            HYPERCORE_WITHDRAWAL_PHASE1_RETRY_ATTEMPTS,
+                            retry_number,
+                            len(retry_margins),
                             retry_raw,
                             raw_to_usdc(retry_raw),
+                            retry_safety_margin_raw,
                         )
 
                         self.deployer.sync_nonce(web3)
@@ -2703,14 +2738,12 @@ class HypercoreVaultRouting(RoutingModel):
 
                         expected_raw = retry_raw
                         phase1_requested_reserve = raw_to_usdc(expected_raw)
-                        # Recompute the fee tolerance for the smaller retry amount.
-                        # Reusing the original (larger) tolerance would let the
-                        # retry wait accept little or no perp increase.
                         phase1_performance_fee_tolerance = estimate_max_withdrawal_commission(
                             phase1_requested_reserve,
                             performance_fee_rate,
                         )
                         trade.other_data["hypercore_capped_withdrawal_raw"] = retry_raw
+                        trade.other_data["hypercore_phase1_retry_safety_margin_raw"] = retry_safety_margin_raw
                         vault_equity_before_phase1_snapshot = current_vault_equity
                         has_pre_phase1_vault_equity_snapshot = True
 
@@ -2723,20 +2756,52 @@ class HypercoreVaultRouting(RoutingModel):
                                 timeout=30.0,
                                 poll_interval=2.0,
                             )
-                        except HypercoreWithdrawalVerificationError as retry_wait_error:
-                            logger.error(
-                                "Withdrawal phase 1 retry verification failed for trade %s: %s",
+                            retry_succeeded = True
+                            break
+                        except HypercoreWithdrawalVerificationError as retry_error:
+                            last_retry_wait_error = retry_error
+                            logger.warning(
+                                "Withdrawal phase 1 retry %d/%d verification failed for trade %s: %s",
+                                retry_number,
+                                len(retry_margins),
                                 trade.trade_id,
-                                retry_wait_error,
+                                retry_error,
                             )
+                            try:
+                                refreshed_equity = fetch_user_vault_equity(
+                                    session,
+                                    user=self.safe_address,
+                                    vault_address=vault_address,
+                                    bypass_cache=True,
+                                )
+                                current_vault_equity = (
+                                    refreshed_equity.equity
+                                    if refreshed_equity is not None
+                                    else None
+                                )
+                            except Exception as refresh_error:
+                                logger.warning(
+                                    "Could not refresh vault equity before retrying trade %s: %s",
+                                    trade.trade_id,
+                                    refresh_error,
+                                )
+                                current_vault_equity = None
+
+                    if not retry_succeeded:
+                        if (
+                            not trade.other_data.get("hypercore_small_position_cleanup")
+                            and last_retry_wait_error is not None
+                        ):
                             self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
                             self.diagnose_hyperliquid_vault_redemption_failure(
-                                trade, vault_address, "phase1_retry_perp_wait",
-                                str(retry_wait_error),
+                                trade,
+                                vault_address,
+                                "phase1_retry_perp_wait",
+                                str(last_retry_wait_error),
                             )
                             report_failure(ts, state, trade, stop_on_execution_failure)
                             return
-                    else:
+
                         logger.error(
                             "Withdrawal phase 1 verification failed for trade %s: %s",
                             trade.trade_id, e,
@@ -2759,8 +2824,10 @@ class HypercoreVaultRouting(RoutingModel):
                         else:
                             self._mark_stranded_usdc(trade, expected_raw, "hypercore_perp")
                         self.diagnose_hyperliquid_vault_redemption_failure(
-                            trade, vault_address, "phase1_perp_wait",
-                            str(e),
+                            trade,
+                            vault_address,
+                            "phase1_retry_perp_wait" if last_retry_wait_error else "phase1_perp_wait",
+                            str(last_retry_wait_error or e),
                         )
                         report_failure(ts, state, trade, stop_on_execution_failure)
                         return
@@ -3080,6 +3147,14 @@ class HypercoreVaultRouting(RoutingModel):
             (trade.closing or TradeFlag.close in trade.flags or closes_position_quantity)
             and not close_materially_short
         )
+
+        # A cleanup retry may deliberately use a safety margin larger than
+        # HyperCore's normal close epsilon.  Do not discard that material
+        # residual from state: the small-position cleaner will top it up and
+        # redeem it in a follow-up pass.  Normal full closes retain their
+        # established close behaviour and may write off the <= 2 USDC margin.
+        if self._cleanup_retry_leaves_material_residual(trade):
+            should_close_full_quantity = False
 
         if should_close_full_quantity:
             executed_amount = trade.planned_quantity
