@@ -169,21 +169,21 @@ HYPERCORE_LIKELY_CLOSE_TOLERANCE = 0.975
 #: accounting later.
 HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 1_500_000
 
-#: Tiny live preflight cap tolerance (raw USDC, 6 decimals).
+#: Normal live preflight cap drift tolerance (raw USDC, 6 decimals).
 #:
 #: Incident reference:
 #:
 #: - HyperAI crashed on 2026-04-15 during trade #336, Jay Pennie.
-#: - Planned withdrawal was 13.104554 USDC.
-#: - Live HyperCore ``max_withdrawable`` had drifted to 13.104323 USDC.
-#: - The difference was only 231 raw USDC (0.000231 USDC).
-#: - Treating that dust-sized drift as fatal stopped the whole 21-trade
-#:   sequential rebalance and left the executor down.
+#: - The requested withdrawal can be based on a live planning snapshot a few
+#:   seconds older than the preflight snapshot.
+#: - Active vault NAV can move enough in that interval to change the reported
+#:   cap by dollars, not merely by a few raw units.
 #:
-#: Keep this tolerance deliberately small. It is only for raw-unit/API/NAV
-#: drift between decision making and live execution, not for real liquidity
-#: shortages.
-HYPERCORE_WITHDRAWAL_PREFLIGHT_CAP_TOLERANCE_RAW = 500_000
+#: This is deliberately separate from the execution safety margin below: it
+#: controls the maximum planning-to-execution drift we accept, not the amount
+#: left behind once the action is queued. Larger gaps still indicate a material
+#: liquidity change that must not silently alter same-cycle cash planning.
+HYPERCORE_WITHDRAWAL_PREFLIGHT_CAP_TOLERANCE_RAW = 1_500_000
 
 #: Number of phase-1 retry attempts after HyperCore silently no-ops a
 #: ``vaultTransfer`` withdrawal.
@@ -842,19 +842,22 @@ class HypercoreVaultRouting(RoutingModel):
             # snapshots taken slightly earlier.
             overshoot_raw = requested_raw - max_withdrawable_raw
             if overshoot_raw <= HYPERCORE_WITHDRAWAL_PREFLIGHT_CAP_TOLERANCE_RAW:
-                # 2026-04-15 HyperAI incident:
-                # - Trade #336 requested 13.104554 USDC.
-                # - Live max_withdrawable was 13.104323 USDC.
-                # - Overshoot was 231 raw units, i.e. 0.000231 USDC.
-                #
-                # A strict abort here is worse than a tiny live cap because
-                # sequential execution stops at the first exception. The
-                # earlier trades may already have executed, while the remaining
-                # planned trades are stranded and the executor exits.
+                # A strict abort here is worse than a normal live-NAV cap
+                # because sequential execution stops at the first exception.
+                # Do not request the exact fresh cap: it may move again before
+                # HyperCore processes the queued vaultTransfer and then silently
+                # no-op. Leave the same safety margin used by full closes.
+                safe_max_withdrawable_raw = max_withdrawable_raw - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+                if safe_max_withdrawable_raw <= 0:
+                    raise HypercoreWithdrawalPreflightError(
+                        f"Hypercore withdrawal blocked for Safe {self.safe_address} in vault {vault_address}: "
+                        f"current max_withdrawable {vault_info.max_withdrawable} USDC is too small after "
+                        f"the {raw_to_usdc(HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW)} USDC safety margin."
+                    )
                 logger.warning(
                     "Hypercore withdrawal request for Safe %s in vault %s is %d raw USDC "
                     "(%s USDC) above current max_withdrawable %s USDC; capping withdrawal "
-                    "from %d raw (%s USDC) to %d raw (%s USDC)",
+                    "from %d raw (%s USDC) to %d raw (%s USDC), leaving %d raw (%s USDC) safety margin",
                     self.safe_address,
                     vault_address,
                     overshoot_raw,
@@ -862,14 +865,12 @@ class HypercoreVaultRouting(RoutingModel):
                     vault_info.max_withdrawable,
                     requested_raw,
                     raw_to_usdc(requested_raw),
-                    max_withdrawable_raw,
-                    raw_to_usdc(max_withdrawable_raw),
+                    safe_max_withdrawable_raw,
+                    raw_to_usdc(safe_max_withdrawable_raw),
+                    HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,
+                    raw_to_usdc(HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW),
                 )
-                # Use the live cap for the phase-1 vaultTransfer call. This is
-                # the amount HyperCore says can be withdrawn now, so it avoids
-                # the silent no-op behaviour seen when vaultTransfer is asked
-                # for even a tiny amount above the live cap.
-                effective_requested_raw = max_withdrawable_raw
+                effective_requested_raw = safe_max_withdrawable_raw
                 # Settlement phases 2-3 must use exactly the same amount that
                 # phase 1 was built with. Reuse the existing key used by
                 # full-close live-equity caps so downstream code remains on a
