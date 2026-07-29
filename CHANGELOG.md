@@ -2,6 +2,7 @@
 
 ## 0.2
 
+- Add default-on `correct-accounts` cleanup for undersized HyperCore vault positions, with isolated top-up/redemption passes and increasingly tolerant withdrawal retries (2026-07-29)
 
 - Extend `vault-test-trade` simulations to validate typed closed deposits through GuardV0 without broadcasting, and distinguish vault JSON statuses that incorrectly report deposits open or closed (2026-07-28)
 

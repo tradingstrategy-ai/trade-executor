@@ -15,6 +15,11 @@ from typer import Option
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
+from eth_defi.hyperliquid.session import (
+    HYPERLIQUID_API_URL,
+    HYPERLIQUID_TESTNET_API_URL,
+    create_hyperliquid_session,
+)
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
 from tradeexecutor.exchange_account.derive import DeriveNetwork
@@ -29,6 +34,11 @@ from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.hot_wallet_sync_model import HotWalletSyncModel
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.tx import HotWalletTransactionBuilder
+from ...ethereum.vault.hypercore_small_position_cleanup import (
+    discover_hypercore_small_positions,
+    get_hypercore_minimum_allocation,
+    run_hypercore_small_position_cleanup,
+)
 from ...state.repair import close_hypercore_dust_positions
 from ...state.state import UncleanState
 from ...state.trade import TradeType
@@ -81,11 +91,6 @@ def _sync_hypercore_vault_positions(
     safe_address = sync_model.get_token_storage_address()
     chain_id = web3.eth.chain_id
 
-    from eth_defi.hyperliquid.session import (
-        HYPERLIQUID_API_URL,
-        HYPERLIQUID_TESTNET_API_URL,
-        create_hyperliquid_session,
-    )
     from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_value_func
     from tradeexecutor.strategy.account_correction import create_missing_vault_positions
     from tradeexecutor.state.valuation import ValuationUpdate
@@ -390,6 +395,7 @@ def correct_accounts(
     transfer_away: bool = Option(False, "--transfer-away", envvar="TRANSFER_AWAY", help="For tokens without assigned position, scoop them to the hot wallet instead of trying to construct a new position"),
     raise_on_unclean: bool = typer.Option(False, is_flag=True, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
     skip_hypercore_transit_recovery: bool = Option(False, "--skip-hypercore-transit-recovery", envvar="SKIP_HYPERCORE_TRANSIT_RECOVERY", help="Skip automatic Safe-level HyperCore spot/perp USDC recovery before account correction."),
+    cleanup_hypercore_small_positions: bool = Option(True, "--cleanup-hypercore-small-positions/--no-cleanup-hypercore-small-positions", envvar="CLEANUP_HYPERCORE_SMALL_POSITIONS", help="Redeem open HyperCore vault positions below the strategy minimum allocation before correcting accounts."),
 
     # Derive exchange account options
     derive_owner_private_key: Optional[str] = Option(None, envvar="DERIVE_OWNER_PRIVATE_KEY", help="Derive owner wallet private key"),
@@ -703,6 +709,52 @@ def correct_accounts(
         web3=web3,
         state=state,
     )
+
+    if cleanup_hypercore_small_positions and asset_management_mode.is_vault():
+        minimum_allocation = get_hypercore_minimum_allocation(mod.parameters)
+        if minimum_allocation is None:
+            logger.info(
+                "HyperCore small-position cleanup skipped: strategy does not define a minimum allocation parameter"
+            )
+        elif not isinstance(sync_model, LagoonVaultSyncModel):
+            logger.info(
+                "HyperCore small-position cleanup skipped: it is only implemented for Lagoon vault strategies"
+            )
+        else:
+            cleanup_candidates = discover_hypercore_small_positions(
+                state,
+                minimum_allocation,
+            )
+            if not cleanup_candidates:
+                logger.info("HyperCore small-position cleanup found no eligible positions")
+            else:
+                ensure_routing_setup()
+                if routing_state is None:
+                    logger.warning(
+                        "HyperCore small-position cleanup skipped: routing is unavailable for this strategy"
+                    )
+                else:
+                    is_testnet = web3.eth.chain_id == 998
+                    api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
+                    session = create_hyperliquid_session(api_url=api_url)
+                    cleanup_report = run_hypercore_small_position_cleanup(
+                        state=state,
+                        timestamp=native_datetime_utc_now(),
+                        candidates=cleanup_candidates,
+                        execution_model=execution_model,
+                        routing_model=runner.routing_model,
+                        routing_state=routing_state,
+                        session=session,
+                        safe_address=sync_model.get_token_storage_address(),
+                        store=store,
+                    )
+                    logger.info(
+                        "HyperCore small-position cleanup processed %d trade(s) across %d candidate(s); "
+                        "%d position(s) were closed",
+                        len(cleanup_report.executed_trades),
+                        len(cleanup_report.candidates),
+                        len(cleanup_report.closed_position_ids),
+                    )
 
     closed_dust_trades = close_hypercore_dust_positions(state.portfolio)
     if closed_dust_trades:
