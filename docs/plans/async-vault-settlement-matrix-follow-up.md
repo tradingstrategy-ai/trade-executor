@@ -7,6 +7,9 @@ successful trial is a valid matrix success, but the persisted result must say
 which simulation concession, if any, made it possible. The runner must try the
 following modes in order for every vault that reaches its redemption leg:
 
+0. **Not whitelisted** — retain the typed preflight refusal as a valid,
+   completed matrix outcome when the executor is not admitted. Do not mutate
+   whitelist state merely to make this initial trial pass.
 1. **Simulated ok** — settle and claim/payout against the unmodified fork.
 2. **Simulated, liquidity added** — repeat only after the strict mode cannot
    settle because the fork lacks redemption liquidity; inject the required
@@ -15,9 +18,9 @@ following modes in order for every vault that reaches its redemption leg:
    blocked by a closed/paused/admission status; use an Anvil-only state or
    policy override, then settle/claim/payout.
 
-All three modes are valid success results for trade-executor. They must remain
-distinct so the report never implies that a live vault was liquid or open when
-the fork trial supplied that condition.
+All four modes are valid success results for trade-executor. They must remain
+distinct so the report never implies that a live vault was whitelisted, liquid
+or open when the fork trial did not demonstrate that condition.
 
 ## Verdict to correct
 
@@ -50,6 +53,11 @@ transient aggregate into a review comment.
 2. Implement one ordered fallback state machine in `vault-test-trade`, used
    for every protocol and every vault rather than a Lagoon-only branch:
 
+   - Run the normal whitelist/admission preflight first. If the executor is not
+     admitted, record `success_simulated` with
+     `simulation_mode="not_whitelisted"` and the decoded policy evidence.
+     This is a successful diagnostic result, not an execution failure and not
+     a signal to mutate the whitelist.
    - Run strict settlement first, with no balance or policy mutation. On a
      terminal claim/payout record `success_simulated` with
      `simulation_mode="simulated_ok"`.
@@ -67,7 +75,8 @@ transient aggregate into a review comment.
 
    A fallback applies only after the preceding mode reports its matching typed
    condition. Do not combine concessions in one attempt: the matrix must make
-   it clear whether liquidity, closed status, or neither was required.
+   it clear whether whitelist admission, liquidity, closed status, or neither
+   was required.
 
 3. Thread a structured `SimulationTrialMode` rather than independent booleans
    from `vault-test-trade` through `VaultTestRunner`, `perform_test_trade()`,
@@ -119,9 +128,10 @@ transient aggregate into a review comment.
   material shortfall. Strict mode must preserve the unmodified fork; the
   second trial must settle only on Anvil and persist the injected amount,
   original balance and `simulated_liquidity_added` mode.
-- Add adapter tests for all three trial hooks. Cover closed, paused, capacity
-  and whitelist preflight outcomes, verify a bypass starts from a clean fork
-  snapshot, and prove no balance/policy override reaches a non-Anvil provider.
+- Add adapter tests for all four outcomes. Cover the unwhitelisted terminal
+  result plus closed, paused and capacity bypasses; verify a bypass starts from
+  a clean fork snapshot, and prove no balance/policy override reaches a
+  non-Anvil provider.
 - Add positive Ember and Plutus fork coverage that completes the direct payout
   or fulfil-and-claim lifecycle. Keep a typed unsupported result only for a
   genuinely unimplemented adapter path, never for a vault merely requiring one
