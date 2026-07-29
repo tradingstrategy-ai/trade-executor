@@ -22,6 +22,11 @@ All four modes are valid success results for trade-executor. They must remain
 distinct so the report never implies that a live vault was whitelisted, liquid
 or open when the fork trial did not demonstrate that condition.
 
+The ordered trials and successive vaults must reuse the already-prepared Anvil
+fork for their chain. A new fork is not needed for every attempt: snapshot and
+revert restore the clean baseline cheaply while retaining Anvil's in-memory
+state and the reusable on-disk warm RPC cache.
+
 ## Verdict to correct
 
 The 2026-07-29 follow-up comment correctly treats the affected outcomes as
@@ -50,7 +55,27 @@ transient aggregate into a review comment.
    groups it by `result` and `outcome_data.unsupported_reason`. Preserve the
    raw result and publish the derived table, so a matrix count is auditable.
 
-2. Implement one ordered fallback state machine in `vault-test-trade`, used
+2. Build a matrix-level fork pool rather than creating and tearing down Anvil
+   for each vault or each fallback. Group selected vaults by the complete
+   `(chain, fixed_fork_block, launch_configuration)` key, launch one Anvil
+   process per group, and use a fixed per-chain block for reproducible and
+   cacheable matrix runs (the shared `*_MIDNIGHT_BLOCK` constants for regression
+   tests). Reuse the process for all vaults and all trial modes in that group.
+   At matrix setup, take a clean baseline snapshot; before every trial revert
+   to that baseline and take its replacement snapshot, then discard the trial
+   mutation before the next mode or vault. This retains a consistent clean
+   state without redeployment. Keep a chain-grouped execution order and bounded
+   liveness probe; replace a fork only when it is actually wedged or cannot be
+   started, then recreate its baseline snapshot.
+
+   Follow the shared Anvil fork-pool rules: do not fork `latest`, use one stable
+   xdist group for each shared test fork, use the same launch configuration for
+   every sharer, and close an unusable process gracefully so Foundry flushes
+   `~/.foundry/cache/rpc/<network>/<block>/`. The warm cache is an intentional
+   performance feature; do not defeat it with per-vault arbitrary fork blocks
+   or process churn.
+
+3. Implement one ordered fallback state machine in `vault-test-trade`, used
    for every protocol and every vault rather than a Lagoon-only branch:
 
    - Run the normal whitelist/admission preflight first. If the executor is not
@@ -78,14 +103,14 @@ transient aggregate into a review comment.
    it clear whether whitelist admission, liquidity, closed status, or neither
    was required.
 
-3. Thread a structured `SimulationTrialMode` rather than independent booleans
+4. Thread a structured `SimulationTrialMode` rather than independent booleans
    from `vault-test-trade` through `VaultTestRunner`, `perform_test_trade()`,
    `_force_vault_settlement_and_resolve()` and eth-defi manager calls. Expose
    automatic ordered trials in matrix mode and explicit single-mode selection
    for focused debugging. Assert Anvil at the runner and adapter boundary, and
    reject all liquidity/status overrides in real test trades.
 
-4. Replace the boolean-only settlement promise with a terminal-postcondition
+5. Replace the boolean-only settlement promise with a terminal-postcondition
    contract for supported async adapters. A manager may advertise Anvil
    settlement only if it can return enough evidence for the executor to move
    the trade out of `vault_settlement_pending`: either a request-specific
@@ -95,7 +120,7 @@ transient aggregate into a review comment.
    `UnsupportedVaultSimulation` with a stable reason before the matrix records
    success.
 
-5. Fix the Gains capability discrepancy first. The Arbitrum driver currently
+6. Fix the Gains capability discrepancy first. The Arbitrum driver currently
    advertises `supports_anvil_settlement=True`, but the matrix can leave the
    satellite trade pending after the epoch hook. Trace the exact destination
    fork transaction sequence, including connection selection, epoch advance,
@@ -105,7 +130,7 @@ transient aggregate into a review comment.
    operator/oracle path; never let a pending trade fall through as an execution
    failure.
 
-6. Give every async adapter the same three trial-mode hooks, with safe default
+7. Give every async adapter the same ordered trial-mode hooks, with safe default
    no-ops for concessions it does not need. Lagoon implements the liquidity
    hook through its existing `ignore_liquidity=True` provisioning path. Add
    Anvil-only closed-status bypass hooks for capped/paused/whitelisted vaults,
@@ -137,6 +162,9 @@ transient aggregate into a review comment.
   genuinely unimplemented adapter path, never for a vault merely requiring one
   of the ordered simulation trials.
 - Add trade-executor tests for order, stop conditions, option plumbing and
-  result normalisation, then run the targeted matrix with `--rerun`. The final
-  report must list exact revisions, fork blocks, per-mode success counts and
-  the remaining unsupported-reason grouping.
+  result normalisation, then run the targeted matrix with `--rerun`. Add a
+  matrix-pool test proving sequential vaults and all fallback modes reuse the
+  same Anvil process while each begins from its clean snapshot baseline; cover
+  the bounded replacement path separately. The final report must list exact
+  revisions, fork blocks, per-mode success counts and the remaining
+  unsupported-reason grouping.
