@@ -16,6 +16,7 @@ from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hyperliquid.api import UserVaultEquity
 
 from tradeexecutor.ethereum.vault.hypercore_routing import (
+    HypercoreWithdrawalPreflightError,
     compute_spot_to_evm_withdrawal_amount,
     usdc_to_raw,
 )
@@ -416,8 +417,6 @@ def test_live_withdrawal_preflight_blocks_active_lockup():
     2. Mock Hyperliquid to report an active user lock-up for the Safe.
     3. Verify the preflight raises before any withdrawal can be broadcast.
     """
-    from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreWithdrawalPreflightError
-
     routing = _make_routing(simulate=False)
     trade = _make_trade(planned_reserve=Decimal("25.0"), is_buy=False)
 
@@ -477,36 +476,67 @@ def test_live_withdrawal_preflight_blocks_requests_above_max_withdrawable():
     assert "exceeds current max_withdrawable" in str(exc_info.value)
 
 
-def test_live_withdrawal_preflight_caps_tiny_max_withdrawable_drift():
-    """Live withdrawal preflight caps dust-sized max-withdrawable drift instead of crashing.
+def test_live_withdrawal_preflight_caps_normal_max_withdrawable_drift_with_safety_margin():
+    """Live withdrawal preflight caps normal NAV drift below the fresh live limit.
 
-    1. Create one live Hypercore sell trade whose request is only tiny raw units above max_withdrawable.
-    2. Mock Hyperliquid to report an expired lock-up and the slightly lower live max_withdrawable.
-    3. Verify the preflight returns the live max_withdrawable and stores it for settlement.
+    1. Create the 2026-07-28 HyperAI sell whose planning snapshot was 0.642134 USDC above the execution-time cap.
+    2. Mock Hyperliquid to report an expired lock-up and the lower fresh max_withdrawable.
+    3. Verify preflight leaves the full-close safety margin and stores that exact amount for settlement.
     """
     routing = _make_routing(simulate=False)
-    trade = _make_trade(planned_reserve=Decimal("13.104554"), is_buy=False)
+    trade = _make_trade(planned_reserve=Decimal("3473.748012"), is_buy=False)
 
     unlocked_equity = UserVaultEquity(
         vault_address="0xVAULT",
-        equity=Decimal("13.104323"),
+        equity=Decimal("3475.062534"),
         locked_until=native_datetime_utc_now() - datetime.timedelta(days=1),
     )
 
-    # 1. Create one live Hypercore sell trade whose request is only tiny raw units above max_withdrawable.
-    # 2. Mock Hyperliquid to report an expired lock-up and the slightly lower live max_withdrawable.
-    # 3. Verify the preflight returns the live max_withdrawable and stores it for settlement.
-    with patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault.fetch_info", return_value=SimpleNamespace(max_withdrawable=Decimal("13.104323"))):
+    # 1. Create the 2026-07-28 HyperAI sell whose planning snapshot was 0.642134 USDC above the execution-time cap.
+    # 2. Mock Hyperliquid to report an expired lock-up and the lower fresh max_withdrawable.
+    # 3. Verify preflight leaves the full-close safety margin and stores that exact amount for settlement.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault.fetch_info", return_value=SimpleNamespace(max_withdrawable=Decimal("3473.105878"))):
         with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=unlocked_equity):
             with patch.object(routing, "_get_session", return_value=routing._session):
                 effective_raw = routing._check_live_withdrawal_preconditions(
                     trade=trade,
-                    requested_raw=13_104_554,
+                    requested_raw=3_473_748_012,
                     vault_address="0xVAULT",
                 )
 
-    assert effective_raw == 13_104_323
-    assert trade.other_data["hypercore_capped_withdrawal_raw"] == 13_104_323
+    assert effective_raw == 3_471_605_878
+    assert trade.other_data["hypercore_capped_withdrawal_raw"] == 3_471_605_878
+
+
+def test_live_withdrawal_preflight_blocks_cap_below_safety_margin():
+    """Live withdrawal preflight must not persist a zero or negative safe cap.
+
+    1. Create a sell that is within the normal live-drift tolerance above a small live cap.
+    2. Mock Hyperliquid to report an expired lock-up and a cap below the withdrawal safety margin.
+    3. Verify preflight aborts instead of building an invalid zero or negative withdrawal.
+    """
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("1.6"), is_buy=False)
+    unlocked_equity = UserVaultEquity(
+        vault_address="0xVAULT",
+        equity=Decimal("1.0"),
+        locked_until=native_datetime_utc_now() - datetime.timedelta(days=1),
+    )
+
+    # 1. Create a sell that is within the normal live-drift tolerance above a small live cap.
+    # 2. Mock Hyperliquid to report an expired lock-up and a cap below the withdrawal safety margin.
+    # 3. Verify preflight aborts instead of building an invalid zero or negative withdrawal.
+    with patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault.fetch_info", return_value=SimpleNamespace(max_withdrawable=Decimal("1.0"))):
+        with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=unlocked_equity):
+            with patch.object(routing, "_get_session", return_value=routing._session):
+                with pytest.raises(HypercoreWithdrawalPreflightError) as exc_info:
+                    routing._check_live_withdrawal_preconditions(
+                        trade=trade,
+                        requested_raw=1_600_000,
+                        vault_address="0xVAULT",
+                    )
+
+    assert "too small after" in str(exc_info.value)
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
