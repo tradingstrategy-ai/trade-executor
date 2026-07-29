@@ -59,6 +59,17 @@ The source matrix contained 129 vaults. Fifteen ended with
 No `eth-defi` API added by this work may accept Trading Strategy metadata,
 Trade Executor result strings or a Trade Executor simulation-mode enum.
 
+### Consumer hand-off
+
+This work makes the protocol capabilities truthful and executable; it does not
+select them for a consumer. In particular, completing the Lagoon workstream
+proves the strict pre-settlement refusal and the existing explicit
+`ignore_liquidity=True` path against all nine exact deployments. The nine
+matrix rows will continue to report strict liquidity shortfalls until Trade
+Executor explicitly chooses that existing synthetic path. Record this as a
+cross-repository handoff, without adding fallback policy or Trade Executor
+result semantics to eth-defi.
+
 ## Exact affected deployments
 
 ### Ember
@@ -152,9 +163,11 @@ At minimum add or preserve:
 - `anvil_settlement_driver_not_implemented`
 - `liquidity_bypass_simulation_not_implemented`
 - `lagoon_settlement_insufficient_liquidity`
+- `ember_operator_settlement_has_no_claimable_ticket_status`
 - `ember_operator_not_discoverable`
 - `ember_operator_processing_not_reproducible`
 - `ember_direct_payout_not_proven`
+- `plutus_redeem_fulfilment_is_access_control_role_gated`
 - `plutus_fulfilment_role_not_discoverable`
 - `plutus_fulfiller_not_authorised`
 - `plutus_fulfilment_not_claimable`
@@ -164,6 +177,13 @@ At minimum add or preserve:
 
 Use a more specific deployment reason where the same adapter has materially
 different versions.
+
+Treat the two current capability reasons as compatibility contracts. Preserve
+them on the existing false-capability path. More specific runtime or
+deployment-characterisation failures may use the new reasons, but must not
+silently rename a reason already exposed to consumers. Add regression tests
+for both current strings and document any future rename as an explicit
+consumer-visible migration.
 
 ### Protocol terminal evidence
 
@@ -198,6 +218,11 @@ success with:
 - a request/event identifier mismatch
 - no transaction evidence when settlement was required
 
+Expose one protocol-neutral validation/property on
+`VaultForcedSettlementResult` that recognises only the claimable and verified
+direct-payout outcomes above. Consumers must not need protocol-name branches to
+decide whether the result proves terminal settlement.
+
 ### Anvil-only enforcement
 
 Every public or internal helper that performs any of the following must check
@@ -214,6 +239,33 @@ The outer caller's check is not sufficient. Add negative tests using a
 non-Anvil provider stub and prove the function raises
 `UnsupportedVaultSimulation(unsupported_reason="anvil_provider_required")`
 before any mutation or broadcast.
+
+Any helper that impersonates an account must stop impersonating that exact
+account in a `finally` block, including when settlement or evidence validation
+raises. Snapshot reversion restores EVM state but must not be relied on to
+clear node-level impersonation. Add a failure-path test that reuses the pooled
+fork and proves the account is no longer impersonated after an exception.
+
+## Exact-address redemption test setup
+
+Every positive exact-address test must state how it obtains shares and creates
+the request ticket at its fixed fork block:
+
+1. Prefer a real adapter deposit followed by protocol settlement when the
+   deployment admits the test owner.
+2. If deposit admission prevents that setup, do not mutate the whitelist.
+   Resolve a current share holder at or before the fixed fork block, verify its
+   share balance on the fork, fund native gas and impersonate it on Anvil, then
+   create the redemption request through the production adapter.
+3. Assert the selected owner holds at least the exact redemption size and that
+   the parsed ticket belongs to that owner and vault.
+4. If neither setup is deterministic, keep the deployment as explicit negative
+   characterisation with a stable prerequisite reason instead of fabricating a
+   successful lifecycle.
+
+Use Hypersync rather than JSON-RPC `eth_getLogs` if event history is needed to
+locate a holder. Bound every historical query at the fixed fork block so later
+chain events cannot make the test nondeterministic.
 
 ## Workstream 1: Lagoon synthetic liquidity
 
@@ -236,6 +288,8 @@ a new mode or API.
    - `status_before == pending`
    - `status_after == claimable`
    - settlement and approval transaction hashes are retained
+   - the denomination-token `balanceOf(Safe)` after storage injection equals
+     the requested absolute target
 4. Make all Lagoon Anvil and ticket-type refusals use stable structured
    reasons.
 5. Verify each of the nine exact deployments. Do not infer coverage from one
@@ -362,6 +416,12 @@ must not know about Trade Executor bridge or satellite-trade state.
 
 ### Required changes
 
+Before changing the loop, trace the exact deployed open-PnL ABI and reproduce
+the pending result. Record the transition function, its time/oracle/timeout
+preconditions and the redemption claim window. Warp before each transition
+when required by that contract, stop at the ticket's unlock epoch, and never
+advance beyond a bounded claim window merely to satisfy a generic safety cap.
+
 1. Verify the manager's Web3 chain ID matches the vault chain ID before
    settlement. Raise a stable typed reason on mismatch.
 2. Reproduce the exact Arbitrum gTrade request at a fixed block.
@@ -413,6 +473,12 @@ whitelist bypass.
 - Never weaken the normal `create_deposit_request()` preflight. The override
   must be an explicit Anvil-only method.
 
+The distinction is intentional: whitelist/admission status is specific to the
+caller and bypassing it would claim support for an executor that cannot trade
+the live vault. A closed, paused or capped state may be a transient,
+vault-global condition and may be overridden only to characterise a verified
+protocol path, with the original state preserved in the result evidence.
+
 ### Suggested narrow API
 
 If at least one production adapter can support this safely, add an optional
@@ -421,7 +487,7 @@ manager method such as:
 ```python
 apply_anvil_deposit_availability_override(
     owner: HexAddress,
-    raw_amount: int,
+    raw_amount: int | None = None,
 ) -> VaultAnvilDepositOverrideResult
 ```
 
@@ -432,6 +498,9 @@ The base method raises typed unsupported. The result should contain:
 - state before and after
 - transaction hashes, if any
 - storage mutation description, if any
+
+`raw_amount` is required only for amount-dependent caps and is omitted for
+closed or paused blockers.
 
 Do not add this API speculatively if no exact production deployment can
 satisfy the contract.
@@ -465,6 +534,25 @@ Follow the repository's shared Anvil fork rules from
 
 Use normal repository fixtures and `create_multi_provider_web3()` conventions.
 Never construct a raw `Web3(HTTPProvider(...))` for these tests.
+
+Before implementation starts, select and record the numeric fixed block for
+Ethereum, Base and Arbitrum in module-level constants. Prefer the canonical
+midnight constants only when all required deployment state exists there;
+otherwise record one named exceptional block and its matching xdist group.
+Do not leave the exact-address suite anchored only to the moving date of the
+original matrix.
+
+Parametrise the exact deployment tables into shared protocol test bodies rather
+than creating one fork test function per address. Keep one positive lifecycle
+and one negative/capability body per protocol where possible, with multiple
+assertions per case. Apply the same `xdist_group` to every test sharing a
+chain/block fork.
+
+Guard modules with `pytest.mark.skipif` for their required
+`JSON_RPC_ETHEREUM`, `JSON_RPC_BASE` or `JSON_RPC_ARBITRUM` value. Tests that
+query role, operator or holder history must additionally require
+`HYPERSYNC_API_KEY`. Missing optional credentials must skip the affected module
+instead of failing unrelated local test runs.
 
 ## File-level work
 
@@ -541,12 +629,11 @@ before the operator-discovery work required by Ember and Plutus.
 Run focused tests only, using the repository environment:
 
 ```shell
-source .local-test.env
-poetry run pytest tests/vault/test_deposit_redeem.py
-poetry run pytest tests/erc_4626/vault_protocol/test_ember_deposit_redeem.py
-poetry run pytest tests/erc_4626/vault_protocol/test_plutus.py
-poetry run pytest tests/gains/test_gtrade_usdc.py
-poetry run pytest tests/lagoon/test_erc_7540_deposit_redeem.py
+source .local-test.env && poetry run pytest tests/vault/test_deposit_redeem.py
+source .local-test.env && poetry run pytest -n auto --dist loadgroup tests/erc_4626/vault_protocol/test_ember_deposit_redeem.py
+source .local-test.env && poetry run pytest -n auto --dist loadgroup tests/erc_4626/vault_protocol/test_plutus.py
+source .local-test.env && poetry run pytest -n auto --dist loadgroup tests/gains/test_gtrade_usdc.py
+source .local-test.env && poetry run pytest -n auto --dist loadgroup tests/lagoon/test_erc_7540_deposit_redeem.py
 ```
 
 Run each mainnet-fork module with a three-minute command timeout.
