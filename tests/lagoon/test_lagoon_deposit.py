@@ -13,7 +13,10 @@ from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonAutomatedDe
 from eth_defi.token import TokenDetails, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 
-from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from tradeexecutor.ethereum.lagoon.vault import (
+    LagoonFrozenPositionSettlementError,
+    LagoonVaultSyncModel,
+)
 from tradeexecutor.state.portfolio import ReserveMissing
 from tradeexecutor.state.state import State
 from tradeexecutor.statistics.core import calculate_statistics
@@ -257,7 +260,7 @@ def test_lagoon_sync_treasury_aborts_when_frozen_positions_exist(
     sync_model.calculate_valuation = Mock(side_effect=AssertionError("NAV calculation must not run when frozen positions block settlement"))
 
     # 3. Verify `sync_treasury(post_valuation=True)` aborts before attempting NAV calculation.
-    with pytest.raises(RuntimeError, match="Resolve frozen positions manually before calculating NAV"):
+    with pytest.raises(LagoonFrozenPositionSettlementError, match="Resolve frozen positions manually before calculating NAV"):
         sync_model.sync_treasury(
             native_datetime_utc_now(),
             state,
