@@ -267,6 +267,10 @@ def check_and_resolve_vault_settlements(
         state.portfolio.closed_positions.values(),
     )
     for position in all_positions:
+        # vault-test-trade persists closed fork diagnostics in the ordinary
+        # state file. They must never be retried against a live chain.
+        if position.simulated:
+            continue
         for trade in position.trades.values():
             if trade.get_status() == TradeStatus.vault_settlement_pending:
                 pending_trades.append(trade)
@@ -551,6 +555,12 @@ def _resolve_single_vault_trade(
                 func = deposit_manager.finish_deposit(ticket)
             else:
                 func = deposit_manager.finish_redemption(ticket)
+            if func is None:
+                logger.error(
+                    "Vault reported claimable status without a claim call for trade #%d",
+                    trade.trade_id,
+                )
+                return
             is_reclaim_tx = False
         elif status == AsyncVaultRequestStatus.reclaimable:
             if direction == "deposit":

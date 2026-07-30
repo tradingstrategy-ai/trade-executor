@@ -309,6 +309,54 @@ def test_vault_settlement_retry_scans_closed_async_redemption(
     assert resolve.call_args.args[1] is trade
 
 
+def test_vault_settlement_retry_skips_simulated_closed_redemption(
+    vault_pair: TradingPairIdentifier,
+    usdc_arbitrum: AssetIdentifier,
+) -> None:
+    """Keep persisted fork diagnostics out of the live settlement retry loop.
+
+    1. Create a closed pending redemption retained as a simulated diagnostic.
+    2. Run the generic settlement scan with the per-trade resolver mocked.
+    3. Verify no simulated trade is sent to a live-chain resolver.
+    """
+    state = State()
+    ts = datetime.datetime(2025, 1, 1)
+
+    # 1. Create a pending redemption and mark its closed position as simulated.
+    state.portfolio.initialise_reserves(usdc_arbitrum)
+    reserve = state.portfolio.get_default_reserve_position()
+    reserve.quantity = Decimal(10_000)
+    reserve.reserve_token_price = 1.0
+    trade = _create_vault_sell_trade(state, vault_pair, usdc_arbitrum, Decimal(100), ts)
+    state.start_execution(ts, trade)
+    trade.mark_broadcasted(ts)
+    state.mark_vault_settlement_pending(
+        ts,
+        trade,
+        {
+            "vault_address": OLP_ARBITRUM_ADDRESS,
+            "vault_owner": "0xTestOwner",
+            "vault_to": "0xTestOwner",
+            "vault_raw_amount": 100 * 10**18,
+            "vault_request_tx_hash": "0xsimulated_request",
+            "vault_settlement_id": 44,
+        },
+    )
+    position = state.portfolio.find_position_for_trade(trade)
+    position.simulated = True
+    state.portfolio.close_position(position, ts)
+
+    # 2. Run the live settlement scan.
+    execution_model = MagicMock()
+    with patch(
+        "tradeexecutor.ethereum.vault.settlement_retry._resolve_single_vault_trade"
+    ) as resolve:
+        check_and_resolve_vault_settlements(state=state, execution_model=execution_model)
+
+    # 3. Fork-only diagnostics cannot create live settlement transactions.
+    resolve.assert_not_called()
+
+
 def test_vault_settlement_retry_recovers_operator_direct_payout(
     monkeypatch: pytest.MonkeyPatch,
     vault_pair: TradingPairIdentifier,
@@ -347,6 +395,8 @@ def test_vault_settlement_retry_recovers_operator_direct_payout(
             "vault_initial_tx_count": 1,
         },
     )
+    position = state.portfolio.find_position_for_trade(trade)
+    state.portfolio.close_position(position, ts)
 
     # 2. Have its manager validate and return the operator payout transaction.
     ticket = MagicMock()
@@ -406,6 +456,7 @@ def test_vault_settlement_retry_recovers_operator_direct_payout(
     # 4. Verify the redemption is persisted as successful.
     assert resolved == [trade]
     assert trade.is_success()
+    assert position.is_closed()
     manager.finish_redemption.assert_not_called()
     assert trade.blockchain_transactions[-1].other["vault_settlement_action"] == "direct payout"
 

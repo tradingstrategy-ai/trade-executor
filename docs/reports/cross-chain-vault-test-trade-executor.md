@@ -4,19 +4,22 @@
 
 The 2026-07-25 matrix below is a historical baseline, not the current Ember or
 Plutus support status. With the follow-up eth-defi settlement driver and
-executor direct-payout recovery, a targeted rerun completed all five previously
-unsupported async redemptions:
+executor direct-payout recovery, a targeted rerun completed the selected five
+previously unresolved async redemptions:
 
 | Protocol | Vaults | Current result |
 |---|---:|---|
-| Ember | 4 | Success (simulated): the operator queue processing was recovered as a direct payout |
-| Plutus | 1 | Success (simulated): the fulfilled redemption was claimed through the Safe module |
+| Ember | 4 | Previously `simulation_unsupported_async`; now success (simulated) after operator direct-payout recovery |
+| Plutus | 1 | Previously redemption unavailable; now success (simulated) through the Safe module |
 
 The Ember result can include synthetic Anvil denomination-token liquidity. It
 proves that the request, operator settlement, receipt analysis and executor
 lifecycle are wired correctly; it does **not** prove that the live vault or
 operator can fund its FIFO queue. The selected rerun is not a replacement for a
-new 129-vault matrix.
+new 129-vault matrix. The source files were `/tmp/async-vault-settlement-final-4/report.json`
+and `/tmp/async-vault-settlement-final-4/run.log`, using trade-executor branch
+`fix/plutus-satellite-settlement` with eth-defi branch
+`fix/async-vault-anvil-settlement` first on `PYTHONPATH`.
 
 ## Evidence and scope
 
