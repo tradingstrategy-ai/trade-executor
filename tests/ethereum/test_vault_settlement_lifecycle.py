@@ -259,6 +259,157 @@ def test_vault_settlement_pending_sell_not_counted(
     assert pending_value == pytest.approx(0.0)
 
 
+def test_vault_settlement_retry_scans_closed_async_redemption(
+    vault_pair: TradingPairIdentifier,
+    usdc_arbitrum: AssetIdentifier,
+) -> None:
+    """Resolve a redemption left pending after its position was closed.
+
+    1. Create an asynchronous vault redemption and move its zero-quantity
+       position to the closed collection.
+    2. Run the generic settlement scan with the per-trade resolver mocked.
+    3. Verify the pending redemption is still handed to the resolver.
+    """
+    state = State()
+    ts = datetime.datetime(2025, 1, 1)
+
+    # 1. Create and persist an asynchronous vault redemption.
+    state.portfolio.initialise_reserves(usdc_arbitrum)
+    reserve = state.portfolio.get_default_reserve_position()
+    reserve.quantity = Decimal(10_000)
+    reserve.reserve_token_price = 1.0
+    trade = _create_vault_sell_trade(state, vault_pair, usdc_arbitrum, Decimal(100), ts)
+    state.start_execution(ts, trade)
+    trade.mark_broadcasted(ts)
+    state.mark_vault_settlement_pending(
+        ts,
+        trade,
+        {
+            "vault_address": OLP_ARBITRUM_ADDRESS,
+            "vault_owner": "0xTestOwner",
+            "vault_to": "0xTestOwner",
+            "vault_raw_amount": 100 * 10**18,
+            "vault_request_tx_hash": "0xrequest_withdraw",
+            "vault_settlement_id": 43,
+        },
+    )
+    position = state.portfolio.find_position_for_trade(trade)
+    state.portfolio.close_position(position, ts)
+    assert trade.get_status() is TradeStatus.vault_settlement_pending
+
+    # 2. Resolve all pending vault trades.
+    execution_model = MagicMock()
+    with patch(
+        "tradeexecutor.ethereum.vault.settlement_retry._resolve_single_vault_trade"
+    ) as resolve:
+        check_and_resolve_vault_settlements(state=state, execution_model=execution_model)
+
+    # 3. The closed position's pending redemption remains eligible for claim.
+    resolve.assert_called_once()
+    assert resolve.call_args.args[1] is trade
+
+
+def test_vault_settlement_retry_recovers_operator_direct_payout(
+    monkeypatch: pytest.MonkeyPatch,
+    vault_pair: TradingPairIdentifier,
+    usdc_arbitrum: AssetIdentifier,
+) -> None:
+    """Resolve a redemption paid directly by a vault operator.
+
+    1. Create a pending redemption whose request has been consumed.
+    2. Have its manager validate and return the operator payout transaction.
+    3. Resolve the trade without attempting a depositor-owned claim call.
+    4. Verify the redemption is persisted as successful.
+    """
+    state = State()
+    ts = datetime.datetime(2025, 1, 1)
+
+    # 1. Create a pending redemption whose request has been consumed.
+    state.portfolio.initialise_reserves(usdc_arbitrum)
+    reserve = state.portfolio.get_default_reserve_position()
+    reserve.quantity = Decimal(10_000)
+    reserve.reserve_token_price = 1.0
+    trade = _create_vault_sell_trade(state, vault_pair, usdc_arbitrum, Decimal(100), ts)
+    state.start_execution(ts, trade)
+    trade.mark_broadcasted(ts)
+    request_tx = BlockchainTransaction()
+    request_tx.tx_hash = "0x" + "11" * 32
+    trade.blockchain_transactions = [request_tx]
+    state.mark_vault_settlement_pending(
+        ts,
+        trade,
+        {
+            "vault_address": OLP_ARBITRUM_ADDRESS,
+            "vault_owner": "0x0000000000000000000000000000000000000001",
+            "vault_to": "0x0000000000000000000000000000000000000001",
+            "vault_raw_shares": 100 * 10**18,
+            "vault_request_tx_hash": request_tx.tx_hash,
+            "vault_initial_tx_count": 1,
+        },
+    )
+
+    # 2. Have its manager validate and return the operator payout transaction.
+    ticket = MagicMock()
+    payout_tx_hash = HexBytes("0x" + "22" * 32)
+    manager = MagicMock()
+    manager.reconstruct_redemption_ticket.return_value = ticket
+    manager.get_redemption_request_status.return_value = AsyncVaultRequestStatus.none
+    manager.fetch_completed_redemption_tx_hash.return_value = payout_tx_hash
+    manager.get_redemption_ticket_delay_over.return_value = None
+    manager.analyse_redemption.return_value = DepositRedeemEventAnalysis(
+        from_="0x0000000000000000000000000000000000000001",
+        to="0x0000000000000000000000000000000000000001",
+        denomination_amount=Decimal(100),
+        share_count=Decimal(100),
+        tx_hash=payout_tx_hash,
+        block_number=123,
+        block_timestamp=ts,
+    )
+    vault = MagicMock()
+    vault.vault_contract.address = OLP_ARBITRUM_ADDRESS
+    vault.get_deposit_manager.return_value = manager
+
+    mock_web3 = MagicMock()
+    mock_web3.eth.get_transaction.return_value = {
+        "from": "0x0000000000000000000000000000000000000002",
+        "to": OLP_ARBITRUM_ADDRESS,
+        "nonce": 1,
+    }
+    receipt = {
+        "status": 1,
+        "transactionHash": payout_tx_hash,
+        "blockNumber": 123,
+        "blockHash": HexBytes("0x" + "33" * 32),
+        "effectiveGasPrice": 1,
+        "gasUsed": 2,
+    }
+    mock_web3.eth.get_transaction_receipt.return_value = receipt
+    execution_model = MagicMock()
+    execution_model.web3 = mock_web3
+
+    monkeypatch.setattr(
+        "tradeexecutor.ethereum.vault.settlement_retry.get_vault_for_pair",
+        lambda *_: vault,
+    )
+    monkeypatch.setattr(
+        "tradeexecutor.ethereum.vault.settlement_retry._find_already_completed_claim_tx_hash",
+        lambda *_: None,
+    )
+    monkeypatch.setattr(
+        "tradeexecutor.ethereum.vault.settlement_retry._wait_for_settlement_tx_receipt",
+        lambda *_: receipt,
+    )
+
+    # 3. Resolve the direct payout without constructing a user claim call.
+    resolved = check_and_resolve_vault_settlements(state, execution_model)
+
+    # 4. Verify the redemption is persisted as successful.
+    assert resolved == [trade]
+    assert trade.is_success()
+    manager.finish_redemption.assert_not_called()
+    assert trade.blockchain_transactions[-1].other["vault_settlement_action"] == "direct payout"
+
+
 def test_vault_settlement_pending_metadata_stored(
     vault_pair: TradingPairIdentifier,
     usdc_arbitrum: AssetIdentifier,

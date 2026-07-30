@@ -257,11 +257,14 @@ def check_and_resolve_vault_settlements(
     """
     resolved: list[TradeExecution] = []
 
-    # Scan both open and pending positions
+    # An async redemption can move its position to closed before the operator
+    # fulfils the request. Keep scanning that trade until the later claim marks
+    # it successful.
     pending_trades: list[TradeExecution] = []
     all_positions = ichain(
         state.portfolio.open_positions.values(),
         state.portfolio.pending_positions.values(),
+        state.portfolio.closed_positions.values(),
     )
     for position in all_positions:
         for trade in position.trades.values():
@@ -495,6 +498,15 @@ def _resolve_single_vault_trade(
                 ticket,
                 direction,
             )
+            direct_payout = False
+            if recovered_tx_hash is None and direction == "redeem":
+                # Operator-finalised protocols do not emit a user claim. Their
+                # manager validates the protocol-specific direct payout event
+                # before exposing it as a terminal transaction.
+                recovered_tx_hash = deposit_manager.fetch_completed_redemption_tx_hash(
+                    ticket
+                )
+                direct_payout = recovered_tx_hash is not None
             if recovered_tx_hash is None:
                 logger.warning(
                     "Unexpected NONE status for vault trade #%d (direction=%s)",
@@ -502,11 +514,13 @@ def _resolve_single_vault_trade(
                 )
                 return
 
-            action_label = "claim"
             if direction == "deposit":
                 func = deposit_manager.finish_deposit(ticket)
-            else:
+            elif not direct_payout:
                 func = deposit_manager.finish_redemption(ticket)
+            else:
+                func = None
+            action_label = "direct payout" if direct_payout else "claim"
             # Even recovered claims need the same read-after-write guard before
             # immediate event analysis on multi-RPC providers.
             confirmed_receipt = _wait_for_settlement_tx_receipt(web3, recovered_tx_hash)
@@ -523,7 +537,8 @@ def _resolve_single_vault_trade(
             tx_already_confirmed = True
             is_reclaim_tx = False
             logger.info(
-                "Recovered already-confirmed vault claim for trade #%d from tx %s",
+                "Recovered already-confirmed vault %s for trade #%d from tx %s",
+                action_label,
                 trade.trade_id,
                 recovered_tx_hash.hex(),
             )
