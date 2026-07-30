@@ -260,11 +260,24 @@ def _sync_hypercore_vault_positions(
     return closed_phantom
 
 
-def _has_closed_hypercore_positions(state) -> bool:
-    """Check whether state has closed Hypercore vault positions."""
+def _has_hypercore_vault_positions(state) -> bool:
+    """Check whether the strategy tracks any HyperCore vault position.
+
+    This deliberately includes open, frozen, and closed positions. Transit USDC
+    belongs to the Safe rather than a position, so only looking at closed
+    positions could skip the default #1486 recovery for a strategy which has
+    started following HyperCore vaults but has not closed one yet. The planner
+    separately reads the live perp account and refuses recovery when it finds
+    an actual active perp position.
+    """
     return any(
         position.pair.is_hyperliquid_vault()
-        for position in state.portfolio.closed_positions.values()
+        for position_collection in (
+            getattr(state.portfolio, "open_positions", {}),
+            getattr(state.portfolio, "frozen_positions", {}),
+            getattr(state.portfolio, "closed_positions", {}),
+        )
+        for position in position_collection.values()
     )
 
 
@@ -276,30 +289,44 @@ def _recover_hypercore_transit_balances(
     hot_wallet: HotWallet | None,
     state,
     skip_hypercore_transit_recovery: bool,
+    dry_run: bool,
 ) -> list[str]:
-    """Recover Safe-level HyperCore spot/perp USDC before account correction."""
+    """Plan or recover Safe-level HyperCore spot/perp USDC before correction.
+
+    HyperAI trade #1486 (Citadel, 2026-07-30; PR #1593) is the reason this runs before
+    generic account correction. Its combined CoreWriter request received a
+    successful HyperEVM receipt, moved 48.884068 USDC from spot to perp, and
+    silently did not move that USDC from perp to the vault. Generic accounting
+    cannot see HyperCore's internal USDC classes, so it must never decide that
+    the stranded balance is Safe cash.
+
+    The live snapshot is authoritative: recovery is Safe-level rather than
+    trade-level because an older state file can predate the failure marker.
+    Recovery only returns unencumbered spot/perp USDC to HyperEVM, and the
+    lower-level planner refuses active perp positions. ``dry_run`` deliberately
+    follows the same snapshot and planning path without requiring a signer or
+    broadcasting. The normal planner is enabled by default for every eligible
+    HyperCore vault strategy and returns the transferable excess which it just
+    moved from perp to spot; it leaves only HyperCore's mandatory bridge-fee
+    margin when the pre-existing spot balance cannot cover it. This prevents
+    the #1486 amount being reduced by unrelated pre-existing spot dust.
+    """
     if not asset_management_mode.is_vault():
         return []
 
-    if not _has_closed_hypercore_positions(state):
+    if not _has_hypercore_vault_positions(state):
         return []
 
     if skip_hypercore_transit_recovery:
         logger.info(
-            "Skipping HyperCore transit recovery although closed Hypercore positions exist"
+            "Skipping HyperCore transit recovery although HyperCore vault positions exist"
         )
         return []
 
     if not isinstance(sync_model, LagoonVaultSyncModel):
         raise RuntimeError(
-            "Closed Hypercore positions exist, but automatic HyperCore transit recovery "
+            "HyperCore vault positions exist, but automatic HyperCore transit recovery "
             f"is only implemented for Lagoon vaults. Got sync model {type(sync_model)}."
-        )
-
-    if hot_wallet is None:
-        raise RuntimeError(
-            "Closed Hypercore positions exist and HyperCore transit recovery is needed, "
-            "but no hot wallet/private key is configured for broadcasting Safe transactions."
         )
 
     from eth_defi.hyperliquid.session import (
@@ -320,7 +347,7 @@ def _recover_hypercore_transit_balances(
     reserve_token = sync_model.vault.underlying_token
 
     logger.info(
-        "Closed Hypercore positions detected; checking Safe-level HyperCore transit balances for %s",
+        "HyperCore vault positions detected; checking Safe-level HyperCore transit balances for %s",
         safe_address,
     )
     snapshot = fetch_hypercore_transit_balances(
@@ -339,6 +366,24 @@ def _recover_hypercore_transit_balances(
             action.action_kind,
             action.amount,
             action.reason,
+        )
+
+    if dry_run:
+        # This is intentionally after the live snapshot and action planner.
+        # Before this change, correct-accounts --dry-run skipped the exact
+        # perp->spot->EVM plan that would have made the #1486 recovery visible.
+        logger.warning(
+            "Dry run: HyperCore transit recovery would broadcast %s for Safe %s; "
+            "no transaction is signed, broadcast, or persisted.",
+            ", ".join(action.action_kind for action in actions),
+            safe_address,
+        )
+        return [action.action_kind for action in actions]
+
+    if hot_wallet is None:
+        raise RuntimeError(
+            "HyperCore vault positions exist and HyperCore transit recovery is needed, "
+            "but no hot wallet/private key is configured for broadcasting Safe transactions."
         )
 
     hot_wallet.sync_nonce(web3)
@@ -394,9 +439,9 @@ def correct_accounts(
     process_redemption_end_block_hint: int = Option(None, "--process-redemption-end-block-hint", envvar="PROCESS_REDEMPTION_END_BLOCK_HINT", help="Used in integration testing."),
     transfer_away: bool = Option(False, "--transfer-away", envvar="TRANSFER_AWAY", help="For tokens without assigned position, scoop them to the hot wallet instead of trying to construct a new position"),
     raise_on_unclean: bool = typer.Option(False, is_flag=True, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
-    skip_hypercore_transit_recovery: bool = Option(False, "--skip-hypercore-transit-recovery", envvar="SKIP_HYPERCORE_TRANSIT_RECOVERY", help="Skip automatic Safe-level HyperCore spot/perp USDC recovery before account correction."),
+    skip_hypercore_transit_recovery: bool = Option(False, "--skip-hypercore-transit-recovery", envvar="SKIP_HYPERCORE_TRANSIT_RECOVERY", help="Skip Safe-level HyperCore spot/perp USDC recovery before account correction."),
     cleanup_hypercore_small_positions: bool = Option(True, "--cleanup-hypercore-small-positions/--no-cleanup-hypercore-small-positions", envvar="CLEANUP_HYPERCORE_SMALL_POSITIONS", help="Redeem open HyperCore vault positions below the strategy minimum allocation before correcting accounts."),
-    dry_run: bool = Option(False, "--dry-run", envvar="DRY_RUN", help="Read live balances, rehearse HyperCore cleanup through phase-1 transaction construction without persisting state or broadcasting, then report accounting corrections."),
+    dry_run: bool = Option(False, "--dry-run", envvar="DRY_RUN", help="Read live balances and print any Safe-level HyperCore perp->spot->EVM recovery plan without signing, broadcasting, persisting state, or applying accounting corrections."),
 
     # Derive exchange account options
     derive_owner_private_key: Optional[str] = Option(None, envvar="DERIVE_OWNER_PRIVATE_KEY", help="Derive owner wallet private key"),
@@ -422,10 +467,12 @@ def correct_accounts(
     positions cannot carry over with the current event based tracking logic.
 
     This command is interactive and you need to confirm any changes applied to the state.
-    Use ``--dry-run`` for a read-only rehearsal. HyperCore cleanup performs
-    every pre-broadcast step on isolated state copies, including transaction
-    construction and signing. Dry-run never broadcasts transactions and does
-    not write or back up the state file.
+    Use ``--dry-run`` for a read-only rehearsal. It includes the live
+    Safe-level HyperCore transit-recovery planner: this reads spot/perp/EVM
+    balances and prints any ``perp -> spot -> EVM`` actions, but never signs or
+    broadcasts them. This makes a partial CoreWriter settlement visible before
+    generic correction changes state. Dry-run never writes or backs up the
+    state file.
 
     An old state file is automatically backed up.
     """
@@ -783,15 +830,15 @@ def correct_accounts(
             len(closed_dust_trades),
         )
 
-    if not dry_run:
-        _recover_hypercore_transit_balances(
-            asset_management_mode=asset_management_mode,
-            sync_model=sync_model,
-            web3=web3,
-            hot_wallet=hot_wallet,
-            state=state,
-            skip_hypercore_transit_recovery=skip_hypercore_transit_recovery,
-        )
+    _recover_hypercore_transit_balances(
+        asset_management_mode=asset_management_mode,
+        sync_model=sync_model,
+        web3=web3,
+        hot_wallet=hot_wallet,
+        state=state,
+        skip_hypercore_transit_recovery=skip_hypercore_transit_recovery,
+        dry_run=dry_run,
+    )
 
     block_number = get_almost_latest_block_number(web3)
     logger.info(f"Correcting accounts at block {block_number:,}")

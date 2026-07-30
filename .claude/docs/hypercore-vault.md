@@ -93,9 +93,10 @@ the contract between `setup_trades()` and `settle_trade()`:
 | `hypercore_phase1_perp_baseline_usdc` | setup, before withdrawal phase 1 | Perp withdrawable baseline; captured *before* broadcast because `vaultTransfer` can settle before receipt handling. |
 | `hypercore_phase1_vault_equity_usdc` | setup / preflight | Pre-withdrawal vault equity, the "before" value for detecting whether a withdrawal already reduced equity. |
 | `hypercore_activation_cost_raw` | setup, first buy | USDC consumed activating the Safe on HyperCore (deducted once per cycle). |
+| `hypercore_deposit_capital_at_risk` | during phase-1 preparation, persisted immediately before broadcast | Conservative checkpoint for USDC a node may already have accepted from the Safe. It blocks generic failed-buy refunds after a crash or indeterminate broadcast until live reconciliation. |
 | `hypercore_capped_deposit_raw` | deposit preflight | Deposit capped to actual Safe EVM USDC balance. |
 | `hypercore_capped_withdrawal_raw` | withdrawal preflight / retry | Withdrawal capped to live vault equity minus safety margin. |
-| `hypercore_stranded_usdc` | on failure | Records USDC stranded mid-pipeline (perp/spot) for operator recovery. |
+| `hypercore_stranded_usdc` | on failure | Records USDC stranded mid-pipeline (perp/spot) for operator recovery and retains its reserve allocation. |
 | `hypercore_failure_diagnosis` | on failure | Full diagnostic snapshot string. |
 
 ## How execution is wired
@@ -127,8 +128,9 @@ A deposit walks USDC from the HyperEVM Safe into the HyperCore vault:
    HyperEVM Safe into HyperCore **spot** (built in `setup_trades`).
 2. **Escrow wait**: poll `spotClearinghouseState` until the bridged USDC clears
    the EVM escrow into spot (`wait_for_evm_escrow_clear`).
-3. **Phase 2**: `transferUsdClass(spot→perp)` + `vaultTransfer(perp→vault)` —
-   move into the vault (built in `_settle_deposit`); then
+3. **Phase 2**: `transferUsdClass(spot→perp)` then prove both the spot
+   decrease and the perp increase.
+4. **Phase 3**: `vaultTransfer(perp→vault)` after the perp arrival is visible;
    `wait_for_vault_deposit_confirmation` verifies vault equity rose.
 
 ```mermaid
@@ -148,7 +150,9 @@ sequenceDiagram
     EX->>R: settle_trade(buy)
     R->>HC: poll spotClearinghouseState (escrow wait)
     HC-->>R: USDC cleared into spot
-    R->>Safe: phase 2 — transferUsdClass(spot→perp) + vaultTransfer(perp→vault)
+    R->>Safe: phase 2 — transferUsdClass(spot→perp)
+    R->>HC: poll perp balance until USDC arrived
+    R->>Safe: phase 3 — vaultTransfer(perp→vault)
     R->>HC: wait_for_vault_deposit_confirmation (equity rose?)
     alt confirmed
         R->>EX: mark_trade_success (executed = net deposited)
@@ -183,6 +187,78 @@ the funds were safely in the vault. The relative tolerance was raised to **5%**
 to absorb normal perp-vault volatility over the window while still catching
 genuinely rejected deposits (which show ~0% increase, not a few-percent
 shortfall).
+
+### Deposit failures, recovery and crashes
+
+The three CoreWriter actions are not atomic at the HyperCore boundary. A
+successful EVM receipt proves only EVM inclusion: HyperCore can apply the
+spot→perp action while silently not applying the following perp→vault action.
+The router records a conservative location and stops; it never retries a
+deposit action automatically.
+
+| Failure | Recorded location | Operator rule |
+|---|---|---|
+| Escrow wait times out | `hypercore_evm_escrow_or_spot` | Inspect before acting. |
+| Spot→perp broadcast/poll is indeterminate | `hypercore_spot_or_perp` | Do not send a vault transfer. |
+| Perp→vault broadcast/confirmation is indeterminate | `hypercore_perp_or_vault` | Recheck both perp and vault equity before repeating anything. |
+| Receipt definitely reverts | Previous account (spot or perp) | The attempted action did not move funds. |
+
+`hypercore_deposit_capital_at_risk` is written during phase-1 preparation, and
+the execution model persists state after preparation and immediately before
+broadcast. It remains on a trade if the process dies, a receipt is missing, or
+a broadcast is ambiguous. Both automatic unconfirmed-trade repair and
+state-only `repair` refuse to release that allocation: inspect the Safe, EVM
+escrow, spot, perp and vault first with `check-hypercore-user.py`. A confirmed
+phase-1 revert clears the marker for ordinary failed-buy accounting; a fully
+confirmed vault deposit clears it as successful, non-transit capital.
+
+For recovery, USDC in perp must move **perp → spot** before `spotSend` can
+bridge it back to the HyperEVM Safe. Never run a recovery action from a timeout
+message alone; a late HyperCore settlement can otherwise turn a retry into a
+double deposit.
+
+### Correct-accounts transit recovery
+
+`correct-accounts` includes a Safe-level HyperCore transit recovery before it
+performs generic reserve correction. This was added for the same failure class
+as HyperAI trade #1486 and is expanded in PR #1593: a CoreWriter receipt can
+be successful while USDC is actually stranded in HyperCore perp or spot.
+Generic ERC-20 account correction cannot see either internal balance class.
+
+For a Lagoon Safe with open, frozen, or closed HyperCore positions, the command snapshots live
+EVM, spot and perp balances. It refuses to act when the Safe has any active
+perp position; otherwise it plans `perp → spot`, waits for that exact movement,
+then plans `spot → EVM` and waits for the Safe's EVM USDC balance to increase.
+The normal recovery planner is enabled by default. It retains the configured
+perp dust margin, but requests the entire amount just recovered from perp to
+spot before separately considering pre-existing spot USDC. That distinction
+returns all of the current stranded transfer when the existing spot balance
+has the 0.01 USDC bridge-fee headroom; otherwise the protocol retains only that
+fee margin rather than an arbitrary 0.50 USDC spot dust balance. If the amount
+left after that margin is too small to balance-verify, no first leg is sent and
+the tiny balance remains safely in perp for a later recovery.
+
+Always start with:
+
+```shell
+poetry run trade-executor correct-accounts --dry-run
+```
+
+Dry-run now executes the same live snapshot and transit-action planner, and
+prints each proposed recovery action, but does not require the Safe signer,
+sign or broadcast a transaction, alter state, or create a state backup. It is
+therefore the safe way to inspect a normal dust-preserving sweep before running
+the live command.
+
+For #1486, the default dry run above plans exactly
+`perp_to_spot 48.884068` followed by `spot_to_evm 48.884068`: no incident
+option is necessary. The recovery is on by default for every eligible
+HyperCore vault strategy, as are the other HyperCore repair checks.
+
+This does **not** make generic repair safe. A state file that predates a failed
+deposit can still show the trade as planned and lack its at-risk marker. After
+recovery, expire/reconcile that stale planned trade before restarting
+the executor, then use the normal account correction to align reserve state.
 
 ## Withdrawal (sell) flow
 
@@ -415,7 +491,8 @@ balance readers and `time.time` / `time.sleep`, then call a single verifier
 `_settle_withdrawal`) and assert on tolerances, fee handling, retries and
 failure branches. Files: `test_hypercore_dual_chain.py`,
 `test_hypercore_routing.py`, `test_hypercore_deposit_verification.py`,
-`test_hypercore_stranded_usdc.py`, `test_hypercore_escrow_robust.py`.
+`test_hypercore_deposit_settlement.py`, `test_hypercore_stranded_usdc.py`,
+`test_hypercore_escrow_robust.py`.
 
 When mocking, patch in the module namespace
 (`tradeexecutor.ethereum.vault.hypercore_routing.<name>`), and remember that

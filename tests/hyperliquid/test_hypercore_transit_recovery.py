@@ -46,12 +46,12 @@ def _snapshot(
     )
 
 
-def test_hypercore_transit_plan_leaves_perp_and_spot_dust() -> None:
-    """Perp and spot recovery leaves fixed dust on both HyperCore balances.
+def test_hypercore_transit_plan_recovers_perp_excess_before_existing_spot() -> None:
+    """Default recovery returns all newly recovered perp USDC before spot cleanup.
 
     1. Build a snapshot with meaningful Safe-level spot and perp USDC.
     2. Plan HyperCore transit recovery actions.
-    3. Assert the planner moves only balances above the fixed dust amount.
+    3. Assert the planner bridges the full perp excess, then cleans old spot USDC.
     """
     # Step 1: Build a snapshot with meaningful Safe-level spot and perp USDC.
     snapshot = _snapshot(
@@ -62,13 +62,15 @@ def test_hypercore_transit_plan_leaves_perp_and_spot_dust() -> None:
     # Step 2: Plan HyperCore transit recovery actions.
     actions = plan_hypercore_transit_recovery_actions(snapshot)
 
-    # Step 3: Assert the planner moves only balances above the fixed dust amount.
+    # Step 3: Assert the full perp excess returns before old spot cleanup.
     assert [action.action_kind for action in actions] == [
         "perp_to_spot",
         "spot_to_evm",
+        "spot_to_evm",
     ]
     assert actions[0].amount == Decimal("768.375892")
-    assert actions[1].amount == Decimal("801.487490")
+    assert actions[1].amount == Decimal("768.375892")
+    assert actions[2].amount == Decimal("33.111598")
 
 
 def test_hypercore_transit_plan_handles_spot_only_balance() -> None:
@@ -89,12 +91,12 @@ def test_hypercore_transit_plan_handles_spot_only_balance() -> None:
     assert actions[0].amount == Decimal("9.50")
 
 
-def test_hypercore_transit_plan_handles_perp_only_balance() -> None:
-    """Perp-only recovery plans perp-to-spot and then bridges the post-transfer spot balance.
+def test_hypercore_transit_plan_keeps_bridge_fee_margin_for_perp_only_balance() -> None:
+    """Perp-only recovery leaves only HyperCore's bridge-fee margin in spot.
 
     1. Build a snapshot with only Safe-level perp USDC.
     2. Plan HyperCore transit recovery actions.
-    3. Assert the planner leaves fixed dust in both perp and spot.
+    3. Assert the planner retains perp dust and its required bridge-fee margin.
     """
     # Step 1: Build a snapshot with only Safe-level perp USDC.
     snapshot = _snapshot(perp_withdrawable=Decimal("10"))
@@ -102,13 +104,58 @@ def test_hypercore_transit_plan_handles_perp_only_balance() -> None:
     # Step 2: Plan HyperCore transit recovery actions.
     actions = plan_hypercore_transit_recovery_actions(snapshot)
 
-    # Step 3: Assert the planner leaves fixed dust in both perp and spot.
+    # Step 3: Assert the planner retains perp dust and the required fee margin.
     assert [action.action_kind for action in actions] == [
         "perp_to_spot",
         "spot_to_evm",
     ]
     assert actions[0].amount == Decimal("9.50")
-    assert actions[1].amount == Decimal("9.00")
+    assert actions[1].amount == Decimal("9.49")
+
+
+def test_hypercore_transit_plan_keeps_unbridgeable_perp_dust_in_perp() -> None:
+    """Planner does not strand a dust-sized perp-to-spot first leg.
+
+    1. Build a perp-only snapshot whose recovered excess cannot cover bridge headroom.
+    2. Plan HyperCore transit recovery actions.
+    3. Assert neither half of an unexecutable two-leg recovery is emitted.
+    """
+    # Step 1: 0.021 USDC excess becomes an unbridgeable 0.011 USDC after the fee margin.
+    snapshot = _snapshot(perp_withdrawable=Decimal("0.521"))
+
+    # Step 2: Plan recovery before any Safe/CoreWriter transaction is created.
+    actions = plan_hypercore_transit_recovery_actions(snapshot)
+
+    # Step 3: Retain the tiny perp balance instead of stranding it in spot.
+    assert actions == []
+
+
+def test_hypercore_transit_plan_recovers_incident_amount_by_default() -> None:
+    """Default #1486 recovery preserves pre-existing HyperCore balances.
+
+    1. Build the incident snapshot: 48.884068 USDC above 0.50 perp dust and
+       0.217882 USDC already in spot.
+    2. Plan the default HyperCore transit recovery.
+    3. Assert both transfer legs use exactly that amount, not a dust sweep.
+    """
+    # Step 1: Build the #1486 balances recorded after the failed vault deposit.
+    snapshot = _snapshot(
+        spot_free_usdc=Decimal("0.217882"),
+        perp_withdrawable=Decimal("49.384068"),
+    )
+
+    # Step 2: Plan default recovery; no incident-specific command option is needed.
+    actions = plan_hypercore_transit_recovery_actions(snapshot)
+
+    # Step 3: The original spot/perp balances remain untouched by the default plan.
+    assert [action.action_kind for action in actions] == [
+        "perp_to_spot",
+        "spot_to_evm",
+    ]
+    assert [action.amount for action in actions] == [
+        Decimal("48.884068"),
+        Decimal("48.884068"),
+    ]
 
 
 def test_hypercore_transit_plan_ignores_dust_only_balances() -> None:
@@ -234,17 +281,69 @@ def test_hypercore_transit_execution_uses_dust_safe_spot_amount(monkeypatch) -> 
     ]
 
 
-def test_correct_accounts_recovery_helper_executes_for_closed_hypercore_position(monkeypatch) -> None:
-    """Correct-accounts recovery helper executes when a closed Hypercore position exists.
+def test_hypercore_spot_to_evm_execution_keeps_bridge_fee_margin(monkeypatch) -> None:
+    """Spot-to-EVM execution leaves HyperCore's mandatory fee headroom.
 
-    1. Build a fake Lagoon sync model and state with one closed Hypercore position.
+    1. Mock a spot account which contains only newly recovered perp USDC.
+    2. Execute the requested full bridge amount through the real fee calculation.
+    3. Assert the CoreWriter call keeps exactly the 0.01 USDC bridge-fee margin.
+
+    The account reader, transaction builder, broadcaster, and confirmation wait
+    are mocked because this verifies the client-side fee-safety calculation,
+    not a live Safe/module transaction.
+    """
+    # Step 1: Model a 4.50 USDC perp recovery with no pre-existing spot headroom.
+    monkeypatch.setattr(
+        hypercore_transit_recovery,
+        "fetch_hypercore_transit_balances",
+        lambda **kwargs: _snapshot(spot_free_usdc=Decimal("4.50")),
+    )
+    reserve_token = MagicMock()
+    reserve_token.convert_to_raw.side_effect = lambda amount: int(
+        (Decimal(amount) * Decimal(10**6)).to_integral_value()
+    )
+    sent_calls: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        hypercore_transit_recovery,
+        "build_hypercore_send_asset_to_evm_call",
+        lambda lagoon_vault, evm_usdc_amount: ("spot_to_evm", evm_usdc_amount),
+    )
+    monkeypatch.setattr(
+        hypercore_transit_recovery,
+        "broadcast_bound_call",
+        lambda web3, hot_wallet, bound_func, gas_limit=650000: sent_calls.append(bound_func) or "0x1",
+    )
+    monkeypatch.setattr(
+        hypercore_transit_recovery,
+        "wait_for_evm_usdc_balance",
+        lambda token, address, baseline_balance, expected_increase: expected_increase,
+    )
+
+    # Step 2: Request the full recovered amount; execution applies the protocol margin.
+    hypercore_transit_recovery.execute_spot_to_evm(
+        web3=MagicMock(),
+        hot_wallet=MagicMock(),
+        lagoon_vault=SimpleNamespace(safe_address=SAFE_ADDRESS),
+        session=object(),
+        reserve_token=reserve_token,
+        amount=Decimal("4.50"),
+    )
+
+    # Step 3: The builder receives 4.49 USDC, retaining exactly 0.01 USDC in spot.
+    assert sent_calls == [("spot_to_evm", 4_490_000)]
+
+
+def test_correct_accounts_recovery_helper_executes_for_open_hypercore_position(monkeypatch) -> None:
+    """Correct-accounts recovery runs for an open HyperCore position by default.
+
+    1. Build a fake Lagoon sync model and state with one open HyperCore position.
     2. Mock HyperCore snapshot planning and execution.
     3. Assert recovery is broadcast through the shared executor.
 
     The Lagoon sync model is mocked because this is a command hook test, not a
     Lagoon vault deployment test.
     """
-    # Step 1: Build a fake Lagoon sync model and state with one closed Hypercore position.
+    # Step 1: Build a fake Lagoon sync model and state with one open HyperCore position.
     class FakeLagoonVaultSyncModel:
         def __init__(self) -> None:
             self.vault = SimpleNamespace(
@@ -257,11 +356,13 @@ def test_correct_accounts_recovery_helper_executes_for_closed_hypercore_position
 
     state = SimpleNamespace(
         portfolio=SimpleNamespace(
-            closed_positions={
+            open_positions={
                 1: SimpleNamespace(
                     pair=SimpleNamespace(is_hyperliquid_vault=lambda: True)
                 )
-            }
+            },
+            frozen_positions={},
+            closed_positions={},
         )
     )
     sync_model = FakeLagoonVaultSyncModel()
@@ -286,7 +387,7 @@ def test_correct_accounts_recovery_helper_executes_for_closed_hypercore_position
     monkeypatch.setattr(
         hypercore_transit_recovery,
         "plan_hypercore_transit_recovery_actions",
-        lambda snapshot: [action],
+        lambda snapshot, **kwargs: [action],
     )
     executed_arguments = {}
     monkeypatch.setattr(
@@ -303,12 +404,104 @@ def test_correct_accounts_recovery_helper_executes_for_closed_hypercore_position
         hot_wallet=hot_wallet,
         state=state,
         skip_hypercore_transit_recovery=False,
+        dry_run=False,
     )
 
     # Step 3: Assert recovery is broadcast through the shared executor.
     assert executed == ["spot_to_evm"]
     assert executed_arguments["actions"] == [action]
     hot_wallet.sync_nonce.assert_called_once()
+
+
+def test_correct_accounts_detects_frozen_hypercore_position() -> None:
+    """Frozen HyperCore positions enable the default Safe-level recovery check.
+
+    1. Build a state with only a frozen HyperCore vault position.
+    2. Check whether the correct-accounts gate detects HyperCore strategy usage.
+    3. Assert the Safe-level transit recovery remains enabled for that strategy.
+    """
+    # Step 1: A frozen position can retain the only state evidence after a failed trade.
+    state = SimpleNamespace(
+        portfolio=SimpleNamespace(
+            open_positions={},
+            frozen_positions={
+                1: SimpleNamespace(
+                    pair=SimpleNamespace(is_hyperliquid_vault=lambda: True)
+                )
+            },
+            closed_positions={},
+        )
+    )
+
+    # Step 2: Inspect the state-only gate before any live HyperCore API read.
+    has_hypercore_position = correct_accounts_command._has_hypercore_vault_positions(state)
+
+    # Step 3: Frozen strategies use the same default recovery path as open ones.
+    assert has_hypercore_position is True
+
+
+def test_correct_accounts_dry_run_plans_transit_recovery_without_signer(monkeypatch) -> None:
+    """Dry-run exposes #1486-style transit recovery without broadcasting it.
+
+    1. Build a Lagoon state with a closed HyperCore position and stranded perp USDC.
+    2. Run the correct-accounts recovery hook in dry-run mode without a hot-wallet signer.
+    3. Verify it reports the planned recovery while never invoking the broadcaster.
+
+    The HyperCore snapshot and broadcaster are mocked because this test checks
+    the command's no-side-effect contract rather than a live Safe transaction.
+    """
+    # Step 1: Model the legacy-state condition: closed positions exist even
+    # though the state may predate the #1486 failure marker.
+    class FakeLagoonVaultSyncModel:
+        def __init__(self) -> None:
+            self.vault = SimpleNamespace(
+                safe_address=SAFE_ADDRESS,
+                underlying_token=MagicMock(),
+            )
+
+        def get_token_storage_address(self) -> str:
+            return SAFE_ADDRESS
+
+    state = SimpleNamespace(
+        portfolio=SimpleNamespace(
+            closed_positions={
+                1: SimpleNamespace(
+                    pair=SimpleNamespace(is_hyperliquid_vault=lambda: True)
+                )
+            }
+        )
+    )
+    monkeypatch.setattr(
+        correct_accounts_command,
+        "LagoonVaultSyncModel",
+        FakeLagoonVaultSyncModel,
+    )
+    monkeypatch.setattr(
+        hypercore_transit_recovery,
+        "fetch_hypercore_transit_balances",
+        lambda **kwargs: _snapshot(perp_withdrawable=Decimal("49.384068")),
+    )
+    broadcast = MagicMock(side_effect=AssertionError("dry run must not broadcast"))
+    monkeypatch.setattr(
+        hypercore_transit_recovery,
+        "execute_hypercore_transit_recovery_actions",
+        broadcast,
+    )
+
+    # Step 2: Dry-run must require only read access, not the Safe's private key.
+    planned = correct_accounts_command._recover_hypercore_transit_balances(
+        asset_management_mode=AssetManagementMode.lagoon,
+        sync_model=FakeLagoonVaultSyncModel(),
+        web3=SimpleNamespace(eth=SimpleNamespace(chain_id=999)),
+        hot_wallet=None,
+        state=state,
+        skip_hypercore_transit_recovery=False,
+        dry_run=True,
+    )
+
+    # Step 3: The operator can inspect the exact incident recovery with no mutation.
+    assert planned == ["perp_to_spot", "spot_to_evm"]
+    broadcast.assert_not_called()
 
 
 def test_correct_accounts_recovery_helper_can_be_skipped(monkeypatch) -> None:
@@ -343,6 +536,7 @@ def test_correct_accounts_recovery_helper_can_be_skipped(monkeypatch) -> None:
         hot_wallet=MagicMock(),
         state=state,
         skip_hypercore_transit_recovery=True,
+        dry_run=False,
     )
 
     # Step 3: Assert no HyperCore session or broadcast is attempted.

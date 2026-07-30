@@ -854,6 +854,7 @@ class ExecutionLoop:
             pricing_model,
             routing_state,
             long_short_metrics_latest=long_short_metrics_latest,
+            state_sync_callback=lambda: self.store.sync(state),
         )
 
         # Check that state is good before writing it to the disk

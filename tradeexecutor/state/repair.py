@@ -41,6 +41,17 @@ class RepairAborted(Exception):
     """User chose no"""
 
 
+class HypercoreTransitRecoveryRequired(RepairAborted):
+    """A failed HyperCore deposit needs live balance reconciliation first.
+
+    State-only repair has no HyperCore Info API evidence. It cannot determine
+    whether a failed buy's allocation is still in EVM escrow, spot, perp, or
+    already deposited into the vault, so creating a zero-value counter trade
+    would be an unaudited refund. This exception protects the #1486 accounting
+    invariant: physical USDC must have exactly one state-side home.
+    """
+
+
 class HypercoreDuplicateCloseError(Exception):
     """A Hypercore duplicate group was not safe to close automatically."""
 
@@ -714,6 +725,24 @@ def repair_trades(
             [],
             trades_to_be_repaired,
             [],
+        )
+
+    at_risk_hypercore_trades = [
+        trade
+        for trade in trades_to_be_repaired
+        if trade.other_data.get("hypercore_deposit_capital_at_risk") is not None
+        or trade.other_data.get("hypercore_stranded_usdc") is not None
+    ]
+    if at_risk_hypercore_trades:
+        trade_ids = ", ".join(str(trade.trade_id) for trade in at_risk_hypercore_trades)
+        # ``repair_trade()`` would otherwise make a counter trade and restore
+        # the planned reserve without querying HyperCore. Refuse rather than
+        # infer a location from the failed status or a successful EVM wrapper
+        # receipt; both were misleading in the production incident.
+        raise HypercoreTransitRecoveryRequired(
+            f"Cannot state-repair HyperCore deposit trade(s) {trade_ids}: USDC may be in "
+            "HyperCore escrow, spot, perp, or vault. Run check-hypercore-user.py and "
+            "reconcile the live destination before releasing any allocation."
         )
 
     if interactive:

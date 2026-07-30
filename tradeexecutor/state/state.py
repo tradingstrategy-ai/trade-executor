@@ -1090,9 +1090,39 @@ class State:
             )
 
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
-        """Unroll the allocated capital."""
+        """Unroll allocated capital unless it is recoverably outside the Safe.
+
+        HyperCore deposit phase 1 is marked at risk before broadcast. This
+        deliberately fails closed across a process crash or RPC timeout: the
+        allocation stays committed until a live reconciliation proves that the
+        Safe never lost the USDC.
+
+        Incident rationale: on 2026-07-30 HyperAI trade #1486 bridged 48.884068
+        USDC out of its Safe and reached HyperCore perp, while the following
+        vault transfer silently no-op'd. The old generic failed-buy path added
+        the same amount back to internal reserves. The strategy could then plan
+        another buy with cash that physically remained on HyperCore. The marker
+        below is intentionally generic-state-level logic, so every failure
+        caller—including startup repair—preserves the no-double-spend invariant.
+        """
         trade.mark_failed(failed_at)
         if trade.is_buy():
+            retain_reserve_allocation = (
+                trade.other_data.get("retain_reserve_allocation_on_failure", False)
+                or trade.other_data.get("hypercore_deposit_capital_at_risk") is not None
+            )
+            if retain_reserve_allocation:
+                # Keep ``reserve_currency_allocated`` / bridge allocation in
+                # place. This makes portfolio cash conservative until an
+                # operator resolves the physical destination; do not "tidy"
+                # this into the normal failed-buy refund path.
+                logger.error(
+                    "Keeping %s %s allocated after failed trade %s: funds are stranded outside the Safe",
+                    trade.reserve_currency_allocated or trade.bridge_currency_allocated,
+                    trade.reserve_currency.token_symbol,
+                    trade.trade_id,
+                )
+                return
             # Return unused reserves back to accounting.
             if trade.reserve_currency_allocated is not None:
                 self.portfolio.adjust_reserves(

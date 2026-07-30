@@ -102,9 +102,23 @@ def plan_hypercore_transit_recovery_actions(
 ) -> list[HypercoreTransitRecoveryAction]:
     """Plan recovery actions for Safe-level HyperCore spot/perp USDC.
 
-    Leaves ``leave_dust`` in both perp and spot balances. The spot action is
-    planned against the post-perp-to-spot balance when a perp recovery is
-    needed.
+    By default, leaves ``leave_dust`` in the source perp balance, then returns
+    the recovered amount which just arrived in spot to HyperEVM. This is the
+    default recovery path for every eligible HyperCore vault strategy, not an
+    opt-in incident tool. It preserves any pre-existing spot balance instead
+    of accidentally leaving part of a newly stranded deposit behind as spot
+    dust. When that balance is below HyperCore's 0.01 USDC bridge-fee margin,
+    the plan retains only the missing margin from the recovered amount. If the
+    original spot balance also exceeds ``leave_dust``, it is planned as a
+    separate later spot-to-EVM action.
+
+    This behaviour exists for HyperAI trade #1486 (Citadel, 2026-07-30;
+    PR #1593). Its state snapshot predated the failed CoreWriter request, but
+    the live account showed 48.884068 USDC newly present in perp. The default
+    plan therefore uses authoritative live balances, not an incident marker or
+    an operator-supplied amount. The caller must not run it for a Safe with an
+    open perp position, because free perp USDC cannot then be interpreted as
+    recoverable transit capital.
     """
     if snapshot.perp_position_count > 0:
         raise RuntimeError(
@@ -119,19 +133,51 @@ def plan_hypercore_transit_recovery_actions(
         snapshot.perp_withdrawable - leave_dust
     )
     if perp_recovery_amount > 0:
-        actions.append(
-            HypercoreTransitRecoveryAction(
-                action_kind="perp_to_spot",
-                amount=perp_recovery_amount,
-                reason=(
-                    f"Recover HyperCore perp USDC back to HyperCore spot, "
-                    f"leaving {leave_dust} USDC perp dust"
-                ),
-            )
+        # HyperAI #1486 proved that a successful CoreWriter receipt can leave
+        # the exact deposit amount in perp.  Bridge that same amount after the
+        # perp->spot leg.  Calculating ``projected_spot - leave_dust`` here
+        # would preserve a synthetic 0.50 USDC spot dust balance and return
+        # less than the stranded amount whenever spot had pre-existing dust.
+        # HyperCore requires 0.01 USDC fee headroom for spot->EVM. When the
+        # old spot balance cannot provide it, reserve only the missing margin
+        # from this recovered amount. This makes the plan match execution,
+        # avoids silently consuming pre-existing spot USDC, and makes the
+        # unavoidable residual visible to correct-accounts dry runs.
+        bridge_fee_shortfall = max(
+            Decimal(0),
+            HYPERCORE_BRIDGE_FEE_MARGIN - snapshot.spot_free_usdc,
         )
+        perp_to_evm_amount = perp_recovery_amount - bridge_fee_shortfall
+        if perp_to_evm_amount > BALANCE_TOLERANCE:
+            actions.extend(
+                [
+                    HypercoreTransitRecoveryAction(
+                        action_kind="perp_to_spot",
+                        amount=perp_recovery_amount,
+                        reason=(
+                            f"Recover HyperCore perp USDC back to HyperCore spot, "
+                            f"leaving {leave_dust} USDC perp dust"
+                        ),
+                    ),
+                    HypercoreTransitRecoveryAction(
+                        action_kind="spot_to_evm",
+                        amount=perp_to_evm_amount,
+                        reason=(
+                            "Return USDC just recovered from HyperCore perp to the Safe on "
+                            "HyperEVM, retaining only any missing HyperCore bridge-fee margin"
+                        ),
+                    ),
+                ]
+            )
+        # Do not move dust from perp to spot unless the paired bridge action
+        # can execute and be balance-verified. Otherwise correct-accounts
+        # would strand a first leg and fail before accounting correction, e.g.
+        # 0.521 USDC perp with no spot headroom becomes a 0.011 USDC bridge
+        # after the required 0.01 margin.
 
-    projected_spot_free = snapshot.spot_free_usdc + perp_recovery_amount
-    spot_recovery_amount = _positive_recovery_amount(projected_spot_free - leave_dust)
+    spot_recovery_amount = _positive_recovery_amount(
+        snapshot.spot_free_usdc - leave_dust
+    )
     if spot_recovery_amount > 0:
         actions.append(
             HypercoreTransitRecoveryAction(

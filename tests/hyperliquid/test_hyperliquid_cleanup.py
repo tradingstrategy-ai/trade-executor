@@ -276,14 +276,15 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
     assert [action.action_kind for action in report.planned_actions] == [
         "perp_to_spot",
         "spot_to_evm",
+        "spot_to_evm",
     ]
     assert "vault_to_perp" not in {
         action.action_kind for action in report.planned_actions
     }
 
     # Step 5: Confirm the mocked broadcasts executed in the expected order.
-    assert broadcast_order == ["perp_to_spot", "spot_to_evm"]
-    assert report.executed_action_kinds == ["perp_to_spot", "spot_to_evm"]
+    assert broadcast_order == ["perp_to_spot", "spot_to_evm", "spot_to_evm"]
+    assert report.executed_action_kinds == ["perp_to_spot", "spot_to_evm", "spot_to_evm"]
 
     # Step 6: Confirm repair, account correction, and final save completed.
     assert repair_calls == ["repair"]
@@ -292,18 +293,8 @@ def test_hyperliquid_cleanup_recovers_stranded_safe_balances(
     assert report.state_saved is True
     assert state_file.with_suffix(".backup-1.json").exists()
 
-    # Step 7: Confirm the spot->EVM withdrawal leaves the configured spot dust.
-    # Total spot after perp->spot recovery: 1 + (6.99345 - 0.50) = 7.49345 USDC.
-    # The withdrawal should be 7.49345 - 0.50 = 6.99345 USDC
-    # = 6_993_450 raw (6 decimals).
-    assert len(captured_evm_usdc_amounts) == 1
-    total_spot = Decimal("1") + Decimal("6.99345") - Decimal("0.50")
-    expected_raw = int(
-        (
-            (total_spot - Decimal("0.50")) * Decimal(10**6)
-        ).to_integral_value()
-    )
-    assert captured_evm_usdc_amounts[0] == expected_raw
+    # Step 7: Return the recovered perp amount first, then clean old spot to dust.
+    assert captured_evm_usdc_amounts == [6_493_450, 500_000]
 
 
 def test_hyperliquid_cleanup_raises_on_dust_spot_balance(monkeypatch):
@@ -433,7 +424,7 @@ def test_hyperliquid_cleanup_allows_live_vault_rows_when_stranded_recovery_exist
         "spot_to_evm",
     ]
     assert actions[0].amount == Decimal("4177.23")
-    assert actions[1].amount == Decimal("4176.739252")
+    assert actions[1].amount == Decimal("4177.229252")
 
 
 def test_wait_for_spot_free_balance_accepts_threshold_instead_of_exact_match(

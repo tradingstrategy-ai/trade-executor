@@ -234,6 +234,66 @@ phase-1 transaction. It stops before broadcast and settlement.
 Do not use `--skip-save` as a dry-run substitute: it only skips the final state
 write and may still broadcast transactions.
 
+### Recovering an interrupted HyperCore deposit
+
+A HyperCore deposit moves USDC Safe → EVM escrow → spot → perp → vault. An EVM
+receipt does not prove that every HyperCore action applied. If a trade reports
+`hypercore_stranded_usdc` or `hypercore_deposit_capital_at_risk`, do not run
+the generic `repair` command or re-submit the last transfer.
+
+1. Run `check-hypercore-user.py` for the Safe and inspect Safe EVM USDC, EVM
+   escrow, spot USDC, perp withdrawable USDC and vault equity.
+2. If USDC is confirmed in spot, either complete spot → perp → vault or bridge
+   spot → EVM.
+3. If USDC is confirmed in perp, either complete perp → vault or first move
+   **perp → spot**, then use `spotSend` to bridge back to EVM. Perp USDC cannot
+   be sent directly to EVM.
+4. If the recorded location is `*_or_*`, recheck live balances before acting:
+   the queued action may still settle after the original timeout.
+5. Reconcile state only after exactly one destination is confirmed: increased
+   vault equity or USDC returned to the Safe.
+
+#### Correct-accounts recovery for stranded Safe-level USDC
+
+`correct-accounts` has a HyperCore-specific Safe-level transit recovery before
+ordinary reserve accounting. It exists because of HyperAI Citadel trade #1486
+(2026-07-30; PR #1593): the HyperEVM CoreWriter receipt succeeded, but the
+combined HyperCore request moved 48.884068 USDC only from spot to perp. A
+generic ERC-20 correction cannot see that perp balance and must not restore it
+as Safe cash.
+
+First inspect the recovery plan without a private key or any transaction:
+
+```shell
+poetry run trade-executor correct-accounts --dry-run
+```
+
+The dry run fetches the Safe's EVM, spot and perp balances and prints any
+`perp_to_spot` and `spot_to_evm` actions. It refuses recovery if the Safe has
+an active HyperCore perp position. It does not sign, broadcast, save or back up
+state. The live command verifies the spot increase after the first action and
+the EVM USDC increase after the second before proceeding to normal accounting.
+
+The normal recovery is enabled by default for eligible HyperCore vault
+strategies. For the live #1486 balances, the ordinary dry run plans exactly
+48.884068 USDC from perp to spot and then from spot to EVM, while preserving
+the earlier 0.50 USDC perp dust and 0.217882 USDC spot balance. The spot
+balance exceeds HyperCore's 0.01 USDC bridge-fee headroom, so this incident
+does not need any bridge-fee adjustment.
+
+If a smaller future transit balance cannot cover the bridge-fee headroom and
+the normal balance-verification tolerance, `correct-accounts` leaves it in
+perp rather than sending only the first `perp_to_spot` leg. A later recovery
+can safely include that dust once the balance is sufficient.
+
+When resolving an ambiguous deposit, inspect vault equity before recovery: a
+late vault settlement changes which destination should retain the USDC. The
+transit helper is deliberately Safe-level, because an old state file may
+predate the failed trade's metadata; it preserves its configured spot/perp dust
+margin rather than assuming every internal USDC cent belongs to one failed
+trade. After recovery, explicitly expire or reconcile stale planned trades
+before restarting the executor; `repair` alone cannot infer this history.
+
 ### Close single position (for single-pair strategies)
 
 ```python

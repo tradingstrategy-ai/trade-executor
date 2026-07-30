@@ -1318,6 +1318,85 @@ def test_single_buy_failed(usdc, weth, weth_usdc, start_ts):
     assert trade.portfolio_value_at_creation == 1000.0
 
 
+def test_failed_buy_with_recoverable_stranded_capital_keeps_reserve_allocation(
+    usdc: AssetIdentifier,
+    weth_usdc: TradingPairIdentifier,
+    start_ts: datetime.datetime,
+):
+    """A failed HyperCore buy keeps reserve capital allocated while it is stranded.
+
+    1. Start and broadcast a normal reserve-funded vault-like buy.
+    2. Mark the trade as having recoverable capital outside the Safe.
+    3. Fail the trade and verify the reserve remains debited until recovery.
+    """
+    # 1. Start and broadcast a normal reserve-funded vault-like buy.
+    state = State()
+    state.update_reserves([
+        ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts),
+    ])
+    _position, trade, _created = state.create_trade(
+        strategy_cycle_at=start_ts,
+        pair=weth_usdc,
+        quantity=Decimal("0.1"),
+        reserve=None,
+        assumed_price=1700,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        reserve_currency_price=1.0,
+    )
+    state.start_execution(start_ts, trade, "0xffffff", 1)
+    state.mark_broadcasted(start_ts, trade)
+
+    # 2. Mark the trade as having recoverable capital outside the Safe.
+    trade.other_data["retain_reserve_allocation_on_failure"] = True
+
+    # 3. Fail the trade and verify the reserve remains debited until recovery.
+    state.mark_trade_failed(start_ts, trade)
+    assert trade.get_status() == TradeStatus.failed
+    assert state.portfolio.get_cash() == 830
+
+
+def test_failed_buy_with_hypercore_phase1_at_risk_keeps_reserve_allocation(
+    usdc: AssetIdentifier,
+    weth_usdc: TradingPairIdentifier,
+    start_ts: datetime.datetime,
+):
+    """An unclassified HyperCore phase-1 crash must retain reserve allocation.
+
+    1. Start and broadcast a reserve-funded buy.
+    2. Persist only the pre-broadcast HyperCore capital-at-risk marker.
+    3. Fail the trade and verify generic accounting cannot refund it.
+    """
+    # 1. Start and broadcast a reserve-funded buy.
+    state = State()
+    state.update_reserves([
+        ReservePosition(usdc, Decimal(1000), start_ts, 1.0, start_ts),
+    ])
+    _position, trade, _created = state.create_trade(
+        strategy_cycle_at=start_ts,
+        pair=weth_usdc,
+        quantity=Decimal("0.1"),
+        reserve=None,
+        assumed_price=1700,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        reserve_currency_price=1.0,
+    )
+    state.start_execution(start_ts, trade, "0xffffff", 1)
+    state.mark_broadcasted(start_ts, trade)
+
+    # 2. Reproduce a process death after phase-1 broadcast but before receipt classification.
+    trade.other_data["hypercore_deposit_capital_at_risk"] = {
+        "amount_raw": 170_000_000,
+        "phase": "phase1_broadcast_pending",
+    }
+
+    # 3. The failed-buy handler fails closed until a live reconciliation clears it.
+    state.mark_trade_failed(start_ts, trade)
+    assert trade.get_status() == TradeStatus.failed
+    assert state.portfolio.get_cash() == pytest.approx(830)
+
+
 def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):
     """Dump and reload the internal state."""
 

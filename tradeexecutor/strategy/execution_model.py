@@ -10,7 +10,7 @@ import abc
 import datetime
 import enum
 from types import NoneType
-from typing import List,TypedDict
+from typing import Callable, List,TypedDict
 from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
@@ -72,6 +72,27 @@ class ExecutionModel(abc.ABC):
     
     Used directly by BacktestExecutionModel, and indirectly (through EthereumExecutionModel) by UniswapV2ExecutionModel and UniswapV3ExecutionModel
     """
+
+    def set_pre_broadcast_state_sync_callback(
+        self,
+        callback: Callable[[], None] | None,
+    ) -> None:
+        """Set the live-state checkpoint used after transaction preparation.
+
+        The strategy runner supplies this only for live execution.  Transaction
+        preparation can mutate durable trade state (for example the HyperCore
+        phase-1 capital-at-risk marker) after the runner's initial checkpoint
+        but before a node accepts a signed transaction.  Keeping this callback
+        on the execution model lets every broadcast path checkpoint that state
+        at the only safe boundary: after setup and before broadcast.
+        """
+        self._pre_broadcast_state_sync_callback = callback
+
+    def sync_state_before_broadcast(self) -> None:
+        """Persist prepared transaction state when live execution provided a callback."""
+        callback = getattr(self, "_pre_broadcast_state_sync_callback", None)
+        if callback is not None:
+            callback()
 
     @abc.abstractmethod
     def get_balance_address(self) -> str | None:
@@ -288,7 +309,6 @@ class AssetManagementMode(enum.Enum):
     def is_vault(self) -> bool:
         """Are we trading using a vault smart contract"""
         return self in (AssetManagementMode.enzyme, AssetManagementMode.velvet, AssetManagementMode.lagoon,)
-
 
 
 

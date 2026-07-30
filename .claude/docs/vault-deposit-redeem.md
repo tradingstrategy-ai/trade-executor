@@ -366,6 +366,11 @@ How each command or context takes a request from pending to settled:
 - **`repair` / `retry`** — not involved: they act on *failed* trades, and a
   pending settlement is not a failure. Both explicitly leave
   `vault_settlement_pending` trades alone.
+- **HyperCore native vaults** — use neither this pending-event model nor its
+  generic repair path. Their bridge deposit is a separate spot → perp → vault
+  state machine. Once phase 1 may have left the Safe, the failed trade retains
+  its allocation until HyperCore live balances are reconciled; see
+  [`hypercore-vault.md`](./hypercore-vault.md).
 - **`close-position` / `close-all`** — the full re-run pattern. Each run
   first sweeps claimable settlements (so a re-run after the operator settles
   claims the earlier redeem and may close the position with no new on-chain

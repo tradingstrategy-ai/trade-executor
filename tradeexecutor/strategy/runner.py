@@ -1052,16 +1052,16 @@ class StrategyRunner(abc.ABC):
                         crash=True,
                     )
 
-                    # Sync state before broadcasting,
-                    # so we have generated tx hashes on the disk
-                    # and trades flagged with broadcasting/broadcasted status.
-                    # This allows us to recover and rebroadcast,
-                    # if the execution crashes e.g. due to blockchain being down,
-                    # node issues, or gas fee spikes
-                    if self.execution_context.mode.is_live_trading():
-                        if store is not None:
-                            logger.info("Syncing state file before the trade execution")
-                            store.sync(state)
+                    # Checkpoint planned trades before preparation.  The
+                    # execution model performs a second checkpoint after it
+                    # creates transaction hashes and route-specific safety
+                    # metadata, immediately before broadcast.
+                    if self.execution_context.mode.is_live_trading() and store is not None:
+                        logger.info("Syncing state file before the trade execution")
+                        store.sync(state)
+                        self.execution_model.set_pre_broadcast_state_sync_callback(
+                            lambda: store.sync(state),
+                        )
 
                     try:
                         self.execution_model.execute_trades(
@@ -1114,6 +1114,7 @@ class StrategyRunner(abc.ABC):
         stop_loss_pricing_model: PricingModel,
         routing_state: RoutingState,
         long_short_metrics_latest: StatisticsTable | None = None,
+        state_sync_callback: Callable[[], None] | None = None,
         ) -> List[TradeExecution]:
         """Check stop loss/take profit for positions.
 
@@ -1138,6 +1139,11 @@ class StrategyRunner(abc.ABC):
 
         assert isinstance(routing_state, RoutingState)
         assert isinstance(stop_loss_pricing_model, PricingModel)
+
+        # Trigger trades share the same irreversible-broadcast boundary as
+        # regular strategy trades.  The live loop passes its state store here;
+        # backtests and manual analysis commands deliberately leave it unset.
+        self.execution_model.set_pre_broadcast_state_sync_callback(state_sync_callback)
 
         debug_details = {}
 

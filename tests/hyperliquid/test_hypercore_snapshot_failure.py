@@ -92,7 +92,12 @@ def test_snapshot_success_proceeds_with_phase2(
     mock_fetch_equity, mock_wait_confirm, mock_escrow, mock_block_ts,
     mock_report_failure,
 ):
-    """When equity snapshot succeeds, phase 2 proceeds normally."""
+    """When equity snapshot succeeds, the separated deposit legs proceed normally.
+
+    1. Build a successful phase-1 receipt and a vault-equity snapshot.
+    2. Mock the verified spot-to-perp and perp-to-vault settlement legs.
+    3. Assert the final equity confirmation marks the trade successful.
+    """
     from eth_defi.hyperliquid.api import UserVaultEquity
 
     routing = _make_routing()
@@ -105,7 +110,7 @@ def test_snapshot_success_proceeds_with_phase2(
 
     mock_escrow.return_value = None
 
-    # Snapshot returns existing equity
+    # Step 1: Snapshot returns existing equity after a successful phase 1.
     eq = UserVaultEquity(
         vault_address=VAULT_ADDR,
         equity=Decimal("100.0"),
@@ -113,9 +118,11 @@ def test_snapshot_success_proceeds_with_phase2(
     )
     mock_fetch_equity.return_value = eq
 
-    # Phase 2 broadcast
+    # Step 2: Mock both settlement legs and the phase-2 balance proof.
     phase2_tx = MagicMock(tx_hash="0xbb")
     phase2_receipt = {"status": 1, "blockNumber": 101}
+    phase3_tx = MagicMock(tx_hash="0xcc")
+    phase3_receipt = {"status": 1, "blockNumber": 102}
 
     # Deposit verification
     confirmed_eq = UserVaultEquity(
@@ -125,13 +132,35 @@ def test_snapshot_success_proceeds_with_phase2(
     )
     mock_wait_confirm.return_value = confirmed_eq
 
-    with patch.object(routing, "_broadcast_phase2", return_value=(phase2_tx, phase2_receipt)):
+    with (
+        patch.object(
+            routing,
+            "_fetch_safe_spot_free_usdc_balance",
+            return_value=Decimal("0"),
+        ),
+        patch.object(
+            routing,
+            "_fetch_safe_perp_withdrawable_balance",
+            return_value=Decimal("0"),
+        ),
+        patch.object(
+            routing,
+            "_broadcast_deposit_spot_to_perp",
+            return_value=(phase2_tx, phase2_receipt),
+        ),
+        patch.object(routing, "_wait_for_deposit_spot_to_perp_transfer"),
+        patch.object(
+            routing,
+            "_broadcast_deposit_perp_to_vault",
+            return_value=(phase3_tx, phase3_receipt),
+        ),
+    ):
         routing._settle_deposit(
             routing.web3, state, trade, receipts,
             stop_on_execution_failure=False,
         )
 
-    # Trade should succeed
+    # Step 3: The final vault-equity proof marks the trade successful.
     state.mark_trade_success.assert_called_once()
     # report_failure should NOT have been called
     mock_report_failure.assert_not_called()
