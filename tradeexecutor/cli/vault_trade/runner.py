@@ -353,7 +353,13 @@ def get_incorrect_deposit_status_reporting(
     attempt: "VaultAttempt",
     onchain_deposit_status: str,
 ) -> dict | None:
-    """Return evidence when vault JSON disagrees with the onchain deposit status."""
+    """Return evidence when an explicit vault JSON status disagrees onchain.
+
+    ``deposit_closed_reason`` is useful context but cannot establish availability:
+    it may be stale, absent, or retained after the producer observed a later
+    opening. Only the typed ``deposit_status`` field is authoritative. Missing,
+    unknown and future producer values deliberately remain non-blocking.
+    """
 
     assert onchain_deposit_status in {"open", "closed"}
 
@@ -361,22 +367,35 @@ def get_incorrect_deposit_status_reporting(
     if metadata is None:
         return None
 
-    missing = object()
-    deposit_closed_reason = getattr(metadata, "deposit_closed_reason", missing)
-    if deposit_closed_reason is missing:
+    deposit_status = getattr(metadata, "deposit_status", None)
+    deposit_status = getattr(deposit_status, "value", deposit_status)
+    if deposit_status not in {"open", "closed"}:
         return None
 
-    vault_json_deposit_status = (
-        "open" if deposit_closed_reason is None else "closed"
-    )
-    if vault_json_deposit_status == onchain_deposit_status:
+    if deposit_status == onchain_deposit_status:
         return None
 
-    return {
-        "vault_json_deposit_status": vault_json_deposit_status,
-        "vault_json_deposit_closed_reason": deposit_closed_reason,
+    outcome_data = {
+        "vault_json_deposit_status": deposit_status,
+        "vault_json_deposit_closed_reason": getattr(
+            metadata,
+            "deposit_closed_reason",
+            None,
+        ),
         "onchain_deposit_status": onchain_deposit_status,
     }
+    for field in (
+        "deposit_status_source",
+        "deposit_status_observed_block",
+    ):
+        value = getattr(metadata, field, None)
+        if value is not None:
+            outcome_data[f"vault_json_{field}"] = value
+    observed_at = getattr(metadata, "deposit_status_observed_at", None)
+    if observed_at is not None:
+        outcome_data["vault_json_deposit_status_observed_at"] = observed_at.isoformat()
+
+    return outcome_data
 
 
 def get_adapter_unsupported_detail(
