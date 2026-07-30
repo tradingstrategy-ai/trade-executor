@@ -58,7 +58,9 @@ class RepairResult:
     #: What positions we managed to unfreeze
     unfrozen_positions: List[TradingPosition]
 
-    #: How many individual trades we repaired
+    #: Individual trades that needed repair or were deliberately deferred for
+    #: live reconciliation. Deferred HyperCore deposits must not be mistaken
+    #: for completed accounting repairs.
     trades_needing_repair: List[TradeExecution]
 
     #: New trades we made to fix the accounting
