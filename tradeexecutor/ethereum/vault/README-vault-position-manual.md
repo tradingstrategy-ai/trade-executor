@@ -253,6 +253,50 @@ the generic `repair` command or re-submit the last transfer.
 5. Reconcile state only after exactly one destination is confirmed: increased
    vault equity or USDC returned to the Safe.
 
+#### Correct-accounts recovery for stranded Safe-level USDC
+
+`correct-accounts` has a HyperCore-specific Safe-level transit recovery before
+ordinary reserve accounting. It exists because of HyperAI Citadel trade #1486
+(2026-07-30; PR #1593): the HyperEVM CoreWriter receipt succeeded, but the
+combined HyperCore request moved 48.884068 USDC only from spot to perp. A
+generic ERC-20 correction cannot see that perp balance and must not restore it
+as Safe cash.
+
+First inspect the recovery plan without a private key or any transaction:
+
+```shell
+poetry run trade-executor correct-accounts --dry-run
+```
+
+The dry run fetches the Safe's EVM, spot and perp balances and prints any
+`perp_to_spot` and `spot_to_evm` actions. It refuses recovery if the Safe has
+an active HyperCore perp position. It does not sign, broadcast, save or back up
+state. The live command verifies the spot increase after the first action and
+the EVM USDC increase after the second before proceeding to normal accounting.
+
+For the known #1486 amount, use the explicit dry run rather than the generic
+dust-preserving sweep:
+
+```shell
+poetry run trade-executor correct-accounts \
+  --dry-run \
+  --recover-hypercore-transit-usdc 48.884068
+```
+
+This plans exactly 48.884068 USDC from perp to spot and then from spot to EVM;
+it leaves the pre-incident spot/perp balances alone. It is safe only after
+checking that current vault equity did not receive the deposit. To perform the
+same live recovery, add `--confirm-hypercore-transit-recovery`. The explicit
+confirmation exists because a successful EVM CoreWriter receipt is not proof
+that every HyperCore action settled.
+
+Use this only after checking vault equity has not already received the deposit.
+The transit helper is deliberately Safe-level, because an old state file may
+predate the failed trade's metadata; it preserves its configured spot/perp dust
+margin rather than assuming every internal USDC cent belongs to one failed
+trade. After recovery, explicitly expire or reconcile stale planned trades
+before restarting the executor; `repair` alone cannot infer this history.
+
 ### Close single position (for single-pair strategies)
 
 ```python

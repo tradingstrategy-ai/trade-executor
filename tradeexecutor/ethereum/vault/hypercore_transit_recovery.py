@@ -99,18 +99,79 @@ def plan_hypercore_transit_recovery_actions(
     snapshot: HypercoreTransitBalanceSnapshot,
     *,
     leave_dust: Decimal = HYPERCORE_TRANSIT_RECOVERY_DUST_USDC,
+    verified_recovery_amount: Decimal | None = None,
 ) -> list[HypercoreTransitRecoveryAction]:
     """Plan recovery actions for Safe-level HyperCore spot/perp USDC.
 
-    Leaves ``leave_dust`` in both perp and spot balances. The spot action is
-    planned against the post-perp-to-spot balance when a perp recovery is
-    needed.
+    By default, leaves ``leave_dust`` in both perp and spot balances. The spot
+    action is planned against the post-perp-to-spot balance when a perp
+    recovery is needed.
+
+    ``verified_recovery_amount`` is the deliberately narrower incident path.
+    It returns precisely an amount which an operator has independently proved
+    is stranded, instead of treating all non-dust HyperCore cash as stranded.
+    This exists for HyperAI trade #1486 (Citadel, 2026-07-30; PR #1593): the
+    state snapshot predates the failed CoreWriter request, but the live account
+    showed 48.884068 USDC newly present in perp.  In that case, move the exact
+    amount from perp to spot and then from spot to HyperEVM, preserving the
+    pre-incident spot/perp balances.  The caller must never infer this amount
+    from a receipt alone: it is safe only after confirming that the vault
+    equity did not receive the deposit.
     """
     if snapshot.perp_position_count > 0:
         raise RuntimeError(
             f"Refusing HyperCore transit recovery because Safe {snapshot.safe_address} "
             f"has {snapshot.perp_position_count} active HyperCore perp position(s). "
             "Manual review is required before stranded USDC can be interpreted safely."
+        )
+
+    if verified_recovery_amount is not None:
+        if verified_recovery_amount <= BALANCE_TOLERANCE:
+            raise ValueError(
+                "Verified HyperCore transit recovery amount must exceed the "
+                f"{BALANCE_TOLERANCE} USDC balance tolerance, got {verified_recovery_amount}"
+            )
+
+        # Do not combine partial spot and perp balances here.  An exact amount
+        # must have one unambiguous source, otherwise a transient in-flight
+        # transfer could be mistaken for the #1486-style stranded deposit.
+        if snapshot.perp_withdrawable + BALANCE_TOLERANCE >= verified_recovery_amount:
+            return [
+                HypercoreTransitRecoveryAction(
+                    action_kind="perp_to_spot",
+                    amount=verified_recovery_amount,
+                    reason=(
+                        "Return operator-verified stranded USDC from HyperCore perp to spot "
+                        "without consuming pre-existing perp dust"
+                    ),
+                ),
+                HypercoreTransitRecoveryAction(
+                    action_kind="spot_to_evm",
+                    amount=verified_recovery_amount,
+                    reason=(
+                        "Return the same operator-verified stranded USDC from HyperCore spot "
+                        "to the Safe on HyperEVM"
+                    ),
+                ),
+            ]
+
+        if snapshot.spot_free_usdc + BALANCE_TOLERANCE >= verified_recovery_amount:
+            return [
+                HypercoreTransitRecoveryAction(
+                    action_kind="spot_to_evm",
+                    amount=verified_recovery_amount,
+                    reason=(
+                        "Return operator-verified stranded USDC from HyperCore spot "
+                        "to the Safe on HyperEVM"
+                    ),
+                )
+            ]
+
+        raise RuntimeError(
+            f"Safe {snapshot.safe_address} does not hold the operator-verified "
+            f"{verified_recovery_amount} USDC recovery amount wholly in free spot or "
+            f"withdrawable perp (spot {snapshot.spot_free_usdc}, "
+            f"perp {snapshot.perp_withdrawable}). Manual review is required."
         )
 
     actions: list[HypercoreTransitRecoveryAction] = []

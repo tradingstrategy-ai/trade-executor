@@ -217,6 +217,54 @@ bridge it back to the HyperEVM Safe. Never run a recovery action from a timeout
 message alone; a late HyperCore settlement can otherwise turn a retry into a
 double deposit.
 
+### Correct-accounts transit recovery
+
+`correct-accounts` includes a Safe-level HyperCore transit recovery before it
+performs generic reserve correction. This was added for the same failure class
+as HyperAI trade #1486 and is expanded in PR #1593: a CoreWriter receipt can
+be successful while USDC is actually stranded in HyperCore perp or spot.
+Generic ERC-20 account correction cannot see either internal balance class.
+
+For a Lagoon Safe with closed HyperCore positions, the command snapshots live
+EVM, spot and perp balances. It refuses to act when the Safe has any active
+perp position; otherwise it plans `perp → spot`, waits for that exact movement,
+then plans `spot → EVM` and waits for the Safe's EVM USDC balance to increase.
+The normal recovery planner retains its configured dust margin rather than
+attempting to drain an internal account to zero.
+
+Always start with:
+
+```shell
+poetry run trade-executor correct-accounts --dry-run
+```
+
+Dry-run now executes the same live snapshot and transit-action planner, and
+prints each proposed recovery action, but does not require the Safe signer,
+sign or broadcast a transaction, alter state, or create a state backup. It is
+therefore the safe way to inspect a normal dust-preserving sweep before running
+the live command.
+
+When the amount and failed vault outcome are independently verified, use the
+narrow incident path instead of the sweep.  For #1486 its dry run is:
+
+```shell
+poetry run trade-executor correct-accounts \
+  --dry-run \
+  --recover-hypercore-transit-usdc 48.884068
+```
+
+It plans exactly `perp_to_spot 48.884068` followed by
+`spot_to_evm 48.884068`, preserving the pre-existing 0.50 USDC perp dust and
+0.217882 USDC spot balance recorded for this Safe. A live invocation must add
+`--confirm-hypercore-transit-recovery`; that confirmation means the operator
+has checked live vault equity and established that the amount was not a late
+deposit. The explicit amount is never inferred from an EVM-success receipt.
+
+This does **not** make generic repair safe. A state file that predates a failed
+deposit can still show the trade as planned and lack its at-risk marker. After
+confirmed recovery, expire/reconcile that stale planned trade before restarting
+the executor, then use the normal account correction to align reserve state.
+
 ## Withdrawal (sell) flow
 
 A withdrawal walks USDC back from the vault to the HyperEVM Safe through three

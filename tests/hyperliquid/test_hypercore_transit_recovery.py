@@ -111,6 +111,37 @@ def test_hypercore_transit_plan_handles_perp_only_balance() -> None:
     assert actions[1].amount == Decimal("9.00")
 
 
+def test_hypercore_transit_plan_recovers_only_verified_incident_amount() -> None:
+    """Verified #1486 recovery preserves pre-existing HyperCore balances.
+
+    1. Build the incident snapshot: 48.884068 USDC above 0.50 perp dust and
+       0.217882 USDC already in spot.
+    2. Plan the exact operator-verified recovery amount.
+    3. Assert both transfer legs use exactly that amount, not a dust sweep.
+    """
+    # Step 1: Build the #1486 balances recorded after the failed vault deposit.
+    snapshot = _snapshot(
+        spot_free_usdc=Decimal("0.217882"),
+        perp_withdrawable=Decimal("49.384068"),
+    )
+
+    # Step 2: Plan the amount independently verified as absent from vault equity.
+    actions = plan_hypercore_transit_recovery_actions(
+        snapshot,
+        verified_recovery_amount=Decimal("48.884068"),
+    )
+
+    # Step 3: The original spot/perp balances remain untouched by the exact plan.
+    assert [action.action_kind for action in actions] == [
+        "perp_to_spot",
+        "spot_to_evm",
+    ]
+    assert [action.amount for action in actions] == [
+        Decimal("48.884068"),
+        Decimal("48.884068"),
+    ]
+
+
 def test_hypercore_transit_plan_ignores_dust_only_balances() -> None:
     """Dust-only spot and perp balances do not produce recovery actions.
 
@@ -286,7 +317,7 @@ def test_correct_accounts_recovery_helper_executes_for_closed_hypercore_position
     monkeypatch.setattr(
         hypercore_transit_recovery,
         "plan_hypercore_transit_recovery_actions",
-        lambda snapshot: [action],
+        lambda snapshot, **kwargs: [action],
     )
     executed_arguments = {}
     monkeypatch.setattr(
@@ -303,12 +334,134 @@ def test_correct_accounts_recovery_helper_executes_for_closed_hypercore_position
         hot_wallet=hot_wallet,
         state=state,
         skip_hypercore_transit_recovery=False,
+        dry_run=False,
     )
 
     # Step 3: Assert recovery is broadcast through the shared executor.
     assert executed == ["spot_to_evm"]
     assert executed_arguments["actions"] == [action]
     hot_wallet.sync_nonce.assert_called_once()
+
+
+def test_correct_accounts_dry_run_plans_transit_recovery_without_signer(monkeypatch) -> None:
+    """Dry-run exposes #1486-style transit recovery without broadcasting it.
+
+    1. Build a Lagoon state with a closed HyperCore position and stranded perp USDC.
+    2. Run the correct-accounts recovery hook in dry-run mode without a hot-wallet signer.
+    3. Verify it reports the planned recovery while never invoking the broadcaster.
+
+    The HyperCore snapshot and broadcaster are mocked because this test checks
+    the command's no-side-effect contract rather than a live Safe transaction.
+    """
+    # Step 1: Model the legacy-state condition: closed positions exist even
+    # though the state may predate the #1486 failure marker.
+    class FakeLagoonVaultSyncModel:
+        def __init__(self) -> None:
+            self.vault = SimpleNamespace(
+                safe_address=SAFE_ADDRESS,
+                underlying_token=MagicMock(),
+            )
+
+        def get_token_storage_address(self) -> str:
+            return SAFE_ADDRESS
+
+    state = SimpleNamespace(
+        portfolio=SimpleNamespace(
+            closed_positions={
+                1: SimpleNamespace(
+                    pair=SimpleNamespace(is_hyperliquid_vault=lambda: True)
+                )
+            }
+        )
+    )
+    monkeypatch.setattr(
+        correct_accounts_command,
+        "LagoonVaultSyncModel",
+        FakeLagoonVaultSyncModel,
+    )
+    monkeypatch.setattr(
+        hypercore_transit_recovery,
+        "fetch_hypercore_transit_balances",
+        lambda **kwargs: _snapshot(perp_withdrawable=Decimal("49.384068")),
+    )
+    broadcast = MagicMock(side_effect=AssertionError("dry run must not broadcast"))
+    monkeypatch.setattr(
+        hypercore_transit_recovery,
+        "execute_hypercore_transit_recovery_actions",
+        broadcast,
+    )
+
+    # Step 2: Dry-run must require only read access, not the Safe's private key.
+    planned = correct_accounts_command._recover_hypercore_transit_balances(
+        asset_management_mode=AssetManagementMode.lagoon,
+        sync_model=FakeLagoonVaultSyncModel(),
+        web3=SimpleNamespace(eth=SimpleNamespace(chain_id=999)),
+        hot_wallet=None,
+        state=state,
+        skip_hypercore_transit_recovery=False,
+        dry_run=True,
+        verified_recovery_amount=Decimal("48.884068"),
+    )
+
+    # Step 3: The operator can inspect the exact incident recovery with no mutation.
+    assert planned == ["perp_to_spot", "spot_to_evm"]
+    broadcast.assert_not_called()
+
+
+def test_correct_accounts_requires_confirmation_for_exact_recovery(monkeypatch) -> None:
+    """Exact live recovery refuses to move funds without the second operator confirmation.
+
+    1. Build the stale-state #1486 condition and mock its live HyperCore balances.
+    2. Attempt the exact recovery without the confirmation option.
+    3. Assert no Safe broadcaster is reached and the command requests confirmation.
+
+    The live balance reader and broadcaster are mocked because this safety test
+    verifies the command gate, rather than a live transfer from a real Safe.
+    """
+    # Step 1: Model the stale state and the exact #1486 perp balance.
+    class FakeLagoonVaultSyncModel:
+        def __init__(self) -> None:
+            self.vault = SimpleNamespace(
+                safe_address=SAFE_ADDRESS,
+                underlying_token=MagicMock(),
+            )
+
+        def get_token_storage_address(self) -> str:
+            return SAFE_ADDRESS
+
+    state = SimpleNamespace(portfolio=SimpleNamespace(closed_positions={}))
+    monkeypatch.setattr(
+        correct_accounts_command,
+        "LagoonVaultSyncModel",
+        FakeLagoonVaultSyncModel,
+    )
+    monkeypatch.setattr(
+        hypercore_transit_recovery,
+        "fetch_hypercore_transit_balances",
+        lambda **kwargs: _snapshot(perp_withdrawable=Decimal("49.384068")),
+    )
+    broadcast = MagicMock(side_effect=AssertionError("unconfirmed recovery must not broadcast"))
+    monkeypatch.setattr(
+        hypercore_transit_recovery,
+        "execute_hypercore_transit_recovery_actions",
+        broadcast,
+    )
+
+    # Step 2: Request recovery with the known amount but omit confirmation.
+    with pytest.raises(RuntimeError, match="--confirm-hypercore-transit-recovery"):
+        correct_accounts_command._recover_hypercore_transit_balances(
+            asset_management_mode=AssetManagementMode.lagoon,
+            sync_model=FakeLagoonVaultSyncModel(),
+            web3=SimpleNamespace(eth=SimpleNamespace(chain_id=999)),
+            hot_wallet=MagicMock(),
+            state=state,
+            skip_hypercore_transit_recovery=False,
+            dry_run=False,
+            verified_recovery_amount=Decimal("48.884068"),
+        )
+
+    # Step 3: The command failed before a nonce sync or a Safe transaction.
+    broadcast.assert_not_called()
 
 
 def test_correct_accounts_recovery_helper_can_be_skipped(monkeypatch) -> None:
@@ -343,6 +496,7 @@ def test_correct_accounts_recovery_helper_can_be_skipped(monkeypatch) -> None:
         hot_wallet=MagicMock(),
         state=state,
         skip_hypercore_transit_recovery=True,
+        dry_run=False,
     )
 
     # Step 3: Assert no HyperCore session or broadcast is attempted.
