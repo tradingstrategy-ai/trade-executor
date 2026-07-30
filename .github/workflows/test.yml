@@ -45,6 +45,7 @@ jobs:
 
       # Do not let Poetry to install again if we do not detect a lock file change
       - name: Load cached venv
+        id: cached-poetry-dependencies
         uses: actions/cache@v6
         with:
           path: .venv

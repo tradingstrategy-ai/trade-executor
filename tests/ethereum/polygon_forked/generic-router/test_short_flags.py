@@ -34,7 +34,7 @@ pytestmark = [
         reason="Set JSON_RPC_POLYGON env install anvil command to run these tests",
     ),
     pytest.mark.warm_rpc_high_value_group,
-    pytest.mark.xdist_group("fork:polygon:51000000:isolated"),
+    pytest.mark.xdist_group("fork:polygon:51000000:isolated:short-flags"),
 ]
 
 
@@ -182,4 +182,3 @@ def test_short_flags(
         routing_state,
         check_balances=True,
     )
-

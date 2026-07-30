@@ -619,6 +619,7 @@ def test_broadcast_failed_and_repair_state(
 
 
 @flaky.flaky
+@pytest.mark.slow_test_group
 def test_refresh_visualisations(
         logger,
         web3: Web3,
@@ -698,6 +699,7 @@ def test_refresh_visualisations(
         open_bytes_in_browser(large_image_png)
 
 
+@pytest.mark.slow_test_group
 def test_metadata_stats(
     logger,
     web3: Web3,

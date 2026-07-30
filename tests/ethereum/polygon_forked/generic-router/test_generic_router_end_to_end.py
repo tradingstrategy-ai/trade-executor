@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 pytestmark = [
     pytest.mark.warm_rpc_high_value_group,
-    pytest.mark.xdist_group("fork:polygon:51000000:isolated"),
+    pytest.mark.xdist_group("fork:polygon:51000000:isolated:generic-router-e2e"),
 ]
 
 
