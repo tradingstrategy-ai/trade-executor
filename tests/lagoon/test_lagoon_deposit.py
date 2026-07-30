@@ -173,7 +173,7 @@ def test_lagoon_sync_treasury_marks_noop_startup_sync(
 
     1. Create a Lagoon state and settle an initial deposit
     2. Run ``sync_treasury(post_valuation=True)`` again with no pending flows
-    3. Verify treasury sync metadata is still updated without new balance events
+    3. Verify it posts NAV while updating treasury metadata without a balance event
     """
 
     vault = automated_lagoon_vault.vault
@@ -209,13 +209,15 @@ def test_lagoon_sync_treasury_marks_noop_startup_sync(
     treasury = state.sync.treasury
     previous_block = treasury.last_block_scanned
     previous_ref_count = len(treasury.balance_update_refs)
+    nonce_before = web3.eth.get_transaction_count(asset_manager.address)
 
     # 2. Run sync_treasury(post_valuation=True) again with no pending flows.
     second_cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(second_cycle, state, post_valuation=True)
 
-    # 3. Verify treasury sync metadata is still updated without new balance events.
+    # 3. Verify it posts NAV while updating treasury metadata without a balance event.
     assert events == []
+    assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 1
     assert treasury.last_updated_at is not None
     assert treasury.last_cycle_at == second_cycle
     assert treasury.last_block_scanned is not None
