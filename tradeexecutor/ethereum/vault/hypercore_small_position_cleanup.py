@@ -6,19 +6,18 @@ protocols have different redemption and settlement semantics.  The current
 caller uses Lagoon's HyperCore execution route, but this module never handles
 Lagoon vault shares.
 
-HyperCore ``vaultTransfer`` has no withdraw-all operation and rejects an
-amount that is even slightly above live equity.  A small position is therefore
-redeemed through the normal HyperCore router, with a full-close flag and a
-larger retry margin if the first vaultTransfer silently no-ops.  When the
-position is too small to leave the protocol's 5 USDC withdrawal floor after
-the safety margin, the cleaner first tops it up by enough to make every retry
-withdrawable from fresh live equity.  The subsequent full close returns the
-usable capital to reserves.  A deposit locks the whole vault position, so the
-top-up and the later redemption deliberately happen in separate runs.
-Any retry residual above the close epsilon remains state-tracked and is
-redeemed on a later run; only final protocol dust is written off in state.
-If a routed trade fails, the updated state is saved and the normal failed-trade
-repair flow takes over.
+HyperCore ``vaultTransfer`` has no withdraw-all operation and silently no-ops
+for an amount that is even slightly above live equity. A small position is
+therefore redeemed through the normal HyperCore router, with a full-close flag
+and progressively larger retry margins if the first ``vaultTransfer`` silently
+no-ops. ``MINIMUM_VAULT_DEPOSIT`` is enforced by the deposit encoder; the
+withdrawal encoder has no equivalent client-side check. The cleaner therefore
+never tops up a position it is trying to close. Settlement checks detect a
+backend no-op. Cleanup uses an adaptive 0.10 USDC initial margin instead of the
+normal 1.50 USDC close margin, so almost all of a small position is recovered.
+If too little remains to verify all withdrawal phases, the position is closed
+locally as protocol dust. If a routed trade fails, the updated state is saved
+and the normal failed-trade repair flow takes over.
 """
 
 import datetime
@@ -27,24 +26,30 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from eth_defi.hyperliquid.api import fetch_user_vault_equity
-from eth_defi.hyperliquid.core_writer import MINIMUM_VAULT_DEPOSIT
-
 from tradeexecutor.ethereum.vault.hypercore_routing import (
-    HYPERCORE_SMALL_POSITION_CLEANUP_RETRY_SAFETY_MARGINS_RAW,
+    HYPERCORE_SMALL_POSITION_CLEANUP_MIN_REDEMPTION_RAW,
     HypercoreWithdrawalPreflightError,
     raw_to_usdc,
-    usdc_to_raw,
 )
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.repair import close_position_with_empty_trade
 from tradeexecutor.state.trade import TradeExecution, TradeType
-from tradeexecutor.strategy.dust import HYPERLIQUID_VAULT_CLOSE_EPSILON
+from tradeexecutor.strategy.dust import (
+    HYPERCORE_SMALL_POSITION_CLEANUP_CLOSE_EPSILON,
+    HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM,
+)
 from tradeexecutor.strategy.execution_model import ExecutionHaltableIssue
 
 
 logger = logging.getLogger(__name__)
 
 USDC_QUANTUM = Decimal("0.000001")
+HYPERCORE_SMALL_POSITION_MINIMUM_REDEEMABLE_EQUITY = (
+    HYPERCORE_SMALL_POSITION_CLEANUP_CLOSE_EPSILON
+)
+assert HYPERCORE_SMALL_POSITION_MINIMUM_REDEEMABLE_EQUITY == raw_to_usdc(
+    HYPERCORE_SMALL_POSITION_CLEANUP_MIN_REDEMPTION_RAW
+)
 
 
 #: Strategy parameters that express the lowest useful allocation.  HyperAI
@@ -65,7 +70,6 @@ class HypercoreSmallPositionCandidate:
     vault_address: str
     live_equity: Decimal
     minimum_allocation: Decimal
-    top_up_reserve: Decimal | None
     is_pending_cleanup: bool
 
 
@@ -97,22 +101,6 @@ def get_hypercore_minimum_allocation(parameters) -> Decimal | None:
     return None
 
 
-def get_hypercore_small_position_top_up_reserve(
-    live_equity: Decimal,
-) -> Decimal | None:
-    """Get the temporary top-up that makes every cleanup retry withdrawable now."""
-
-    live_equity = raw_to_usdc(usdc_to_raw(live_equity))
-    minimum_deposit = raw_to_usdc(MINIMUM_VAULT_DEPOSIT)
-    largest_retry_margin = raw_to_usdc(
-        max(HYPERCORE_SMALL_POSITION_CLEANUP_RETRY_SAFETY_MARGINS_RAW)
-    )
-    minimum_equity_for_retry_ladder = minimum_deposit + largest_retry_margin
-    if live_equity >= minimum_equity_for_retry_ladder:
-        return None
-    return max(minimum_deposit, minimum_equity_for_retry_ladder - live_equity)
-
-
 def discover_hypercore_small_positions(
     state,
     minimum_allocation: Decimal,
@@ -139,7 +127,10 @@ def discover_hypercore_small_positions(
 
         live_equity = Decimal(str(position.get_value(include_interest=False))).quantize(USDC_QUANTUM)
         is_pending_cleanup = (
-            position.other_data.get("hypercore_small_position_cleanup_pending_redeem") is True
+            position.other_data.get(
+                HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM
+            )
+            is True
         )
         if live_equity <= 0 or (
             not is_pending_cleanup and live_equity >= minimum_allocation
@@ -154,7 +145,6 @@ def discover_hypercore_small_positions(
                 vault_address=vault_address,
                 live_equity=live_equity,
                 minimum_allocation=minimum_allocation,
-                top_up_reserve=get_hypercore_small_position_top_up_reserve(live_equity),
                 is_pending_cleanup=is_pending_cleanup,
             )
         )
@@ -167,10 +157,11 @@ def plan_hypercore_small_position_cleanup(
     candidate: HypercoreSmallPositionCandidate,
     timestamp: datetime.datetime,
 ) -> list[TradeExecution]:
-    """Create one top-up or full-close trade for a cleanup candidate.
+    """Create a full-close trade for a cleanup candidate with redeemable equity.
 
-    A HyperCore deposit locks the whole vault position, so a top-up must be
-    persisted and allowed to unlock before its later redemption.
+    ``MINIMUM_VAULT_DEPOSIT`` is deliberately irrelevant here because the
+    withdrawal encoder does not apply that client-side deposit check. Dust
+    cleanup must not add capital or extend the vault lock-up.
     """
 
     position = state.portfolio.open_positions[candidate.position_id]
@@ -188,25 +179,6 @@ def plan_hypercore_small_position_cleanup(
             f"allocation {candidate.minimum_allocation:.6f} USDC"
         )
     note_prefix = f"correct-accounts HyperCore small-position cleanup: {cleanup_reason}."
-
-    if candidate.top_up_reserve is not None:
-        _position, top_up_trade, _created = state.portfolio.create_trade(
-            strategy_cycle_at=timestamp,
-            pair=position.pair,
-            quantity=None,
-            reserve=candidate.top_up_reserve,
-            assumed_price=position.last_token_price,
-            trade_type=TradeType.rebalance,
-            reserve_currency=reserve_asset,
-            reserve_currency_price=1.0,
-            position=position,
-            notes=(
-                f"{note_prefix} Topping up {candidate.top_up_reserve:.6f} USDC so every "
-                "HyperCore retry can meet the withdrawal floor."
-            ),
-        )
-        top_up_trade.other_data["hypercore_small_position_cleanup"] = True
-        return [top_up_trade]
 
     close_quantity = -position.get_quantity(planned=True)
     assert close_quantity < 0, (
@@ -252,14 +224,14 @@ def _close_confirmed_hypercore_residual(
         bypass_cache=True,
     )
     residual_equity = Decimal(0) if live_equity is None else live_equity.equity
-    if residual_equity > HYPERLIQUID_VAULT_CLOSE_EPSILON:
-        position.other_data["hypercore_small_position_cleanup_pending_redeem"] = True
+    if residual_equity > HYPERCORE_SMALL_POSITION_MINIMUM_REDEEMABLE_EQUITY:
+        position.other_data[HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM] = True
         logger.warning(
             "HyperCore cleanup left %.6f USDC in position %d, above the %.2f "
             "dust write-off threshold; leaving it open for a later cleanup run",
             residual_equity,
             position.position_id,
-            HYPERLIQUID_VAULT_CLOSE_EPSILON,
+            HYPERCORE_SMALL_POSITION_MINIMUM_REDEEMABLE_EQUITY,
         )
         return residual_equity
 
@@ -287,13 +259,20 @@ def run_hypercore_small_position_cleanup(
     session,
     safe_address: str,
     store,
+    dry_run: bool = False,
 ) -> HypercoreSmallPositionCleanupReport:
     """Redeem tracked small HyperCore positions and return proceeds to reserves.
 
     Trades use the normal HyperCore execution router, so all three withdrawal
     phases are verified and an actual successful sell credits the portfolio
-    reserve.  A top-up is persisted by itself because it locks the whole vault
-    position until HyperCore's lock-up expires.
+    reserve. The cleaner never tops up a position because the local 5 USDC
+    check belongs to deposits and a deposit would create a new lock-up.
+    Positions too small for meaningful phase verification are closed locally
+    without broadcasting.
+
+    :param dry_run:
+        Refresh and report eligible positions without creating trades,
+        broadcasting transactions, or saving state.
     """
 
     executed_trades: list[TradeExecution] = []
@@ -318,6 +297,13 @@ def run_hypercore_small_position_cleanup(
 
         live_equity = Decimal(0) if live_equity_result is None else live_equity_result.equity
         if live_equity <= 0:
+            if dry_run:
+                logger.info(
+                    "Dry run: would close zero-equity HyperCore position %d (%s)",
+                    candidate.position_id,
+                    candidate.vault_name,
+                )
+                continue
             position = state.portfolio.open_positions.get(candidate.position_id)
             if position is not None:
                 close_position_with_empty_trade(state.portfolio, position)
@@ -342,33 +328,48 @@ def run_hypercore_small_position_cleanup(
             )
             continue
 
-        current_candidate = replace(
-            candidate,
-            live_equity=live_equity,
-            top_up_reserve=get_hypercore_small_position_top_up_reserve(live_equity),
-        )
-        is_top_up = current_candidate.top_up_reserve is not None
-        if is_top_up:
-            reserve_quantity = state.portfolio.get_default_reserve_position().quantity
-            if reserve_quantity < current_candidate.top_up_reserve:
-                logger.warning(
-                    "HyperCore small-position cleanup skipped position %d: needs %.6f USDC "
-                    "temporary top-up but only %.6f USDC is in reserves",
-                    current_candidate.position_id,
-                    current_candidate.top_up_reserve,
-                    reserve_quantity,
+        current_candidate = replace(candidate, live_equity=live_equity)
+
+        if live_equity <= HYPERCORE_SMALL_POSITION_MINIMUM_REDEEMABLE_EQUITY:
+            if dry_run:
+                logger.info(
+                    "Dry run: would close HyperCore position %d (%s) locally because "
+                    "%.6f USDC is not enough to verify all withdrawal phases",
+                    candidate.position_id,
+                    candidate.vault_name,
+                    live_equity,
                 )
                 continue
+            position = state.portfolio.open_positions.get(candidate.position_id)
+            if position is not None:
+                close_position_with_empty_trade(state.portfolio, position)
+                position.add_notes_message(
+                    "correct-accounts closed the HyperCore position locally because "
+                    f"{live_equity:.6f} USDC was not enough to verify all withdrawal phases"
+                )
+                store.sync(state)
+                closed_position_ids.append(candidate.position_id)
+            continue
+
+        if dry_run:
+            logger.info(
+                "Dry run: would redeem HyperCore small position %d (%s), "
+                "live equity %.6f USDC, strategy minimum allocation %.6f USDC",
+                current_candidate.position_id,
+                current_candidate.vault_name,
+                current_candidate.live_equity,
+                current_candidate.minimum_allocation,
+            )
+            continue
 
         trades = plan_hypercore_small_position_cleanup(state, current_candidate, timestamp)
         logger.info(
-            "Cleaning HyperCore small position %d (%s): equity %.6f USDC, minimum "
-            "allocation %.6f USDC, action=%s",
+            "Cleaning HyperCore small position %d (%s): equity %.6f USDC, "
+            "minimum allocation %.6f USDC, action=redeem",
             current_candidate.position_id,
             current_candidate.vault_name,
             current_candidate.live_equity,
             current_candidate.minimum_allocation,
-            "top_up" if is_top_up else "redeem",
         )
         try:
             execution_model.execute_trades(
@@ -384,6 +385,8 @@ def run_hypercore_small_position_cleanup(
             if isinstance(e, HypercoreWithdrawalPreflightError) and trade.is_started():
                 state.mark_trade_failed(timestamp, trade)
                 freeze_position_on_failed_trade(timestamp, state, [trade])
+            elif isinstance(e, HypercoreWithdrawalPreflightError) and trade.is_planned():
+                trade.mark_expired(timestamp)
             logger.error(
                 "HyperCore small-position cleanup failed for position %d: %s. "
                 "The updated state has been saved; repair the failed trade before retrying.",
@@ -399,24 +402,6 @@ def run_hypercore_small_position_cleanup(
 
         trade = trades[0]
         if not trade.is_success():
-            continue
-        if is_top_up:
-            position = state.portfolio.open_positions.get(current_candidate.position_id)
-            if position is None:
-                logger.error(
-                    "HyperCore small-position cleanup top-up trade %d succeeded but position %d "
-                    "is no longer open",
-                    trade.trade_id,
-                    current_candidate.position_id,
-                )
-                continue
-            position.other_data["hypercore_small_position_cleanup_pending_redeem"] = True
-            store.sync(state)
-            logger.info(
-                "HyperCore small-position cleanup topped up position %d; redemption will run "
-                "after the vault lock-up expires",
-                current_candidate.position_id,
-            )
             continue
 
         residual_equity = _close_confirmed_hypercore_residual(

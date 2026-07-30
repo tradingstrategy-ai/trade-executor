@@ -125,7 +125,11 @@ from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.strategy.dust import get_close_epsilon_for_pair
+from tradeexecutor.strategy.dust import (
+    HYPERCORE_SMALL_POSITION_CLEANUP_CLOSE_EPSILON,
+    HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM,
+    get_close_epsilon_for_pair,
+)
 from tradingstrategy.pair import PandasPairUniverse
 
 if TYPE_CHECKING:
@@ -164,19 +168,26 @@ HYPERCORE_LIKELY_CLOSE_TOLERANCE = 0.975
 #: proved insufficient for some live withdrawals when vault share price moved
 #: between the API read and HyperCore processing the queued action.
 #:
-#: This will leave up to ~$1.50 unclaimable dust in the vault (below the $5
-#: minimum vault withdrawal threshold) that must be cleaned up in
-#: accounting later.
+#: This may leave up to ~$1.50 in the vault. The withdrawal encoder does not
+#: apply ``MINIMUM_VAULT_DEPOSIT``, so a later cleanup pass may attempt the
+#: remaining positive amount. Final residual dust is handled in accounting.
 HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 1_500_000
+
+#: Initial full-close margin used only by ``correct-accounts`` small-position
+#: cleanup. Withholding the normal 1.50 USDC margin from a 3–5 USDC position
+#: would strand a material share of the capital. Cleanup starts with 0.10 USDC
+#: and falls back to its larger silent-no-op retry ladder if live NAV moves by
+#: more than this before HyperCore processes the action.
+HYPERCORE_SMALL_POSITION_CLEANUP_INITIAL_SAFETY_MARGIN_RAW = 100_000
 
 #: A HyperCore small-position cleanup retries a silent phase-1 no-op with
 #: increasingly conservative safety margins.  This is deliberately scoped to
 #: the correct-accounts clean-up marker: normal strategy rebalances retain
 #: their single 1.50 USDC retry margin and fail loudly after a repeat no-op.
 HYPERCORE_SMALL_POSITION_CLEANUP_RETRY_SAFETY_MARGINS_RAW = (
-    3_000_000,
-    5_000_000,
-    10_000_000,
+    250_000,
+    500_000,
+    1_000_000,
 )
 
 #: Normal live preflight cap drift tolerance (raw USDC, 6 decimals).
@@ -216,6 +227,14 @@ HYPERCORE_WITHDRAWAL_PHASE1_RETRY_ATTEMPTS = 1
 # Proper fix: carry the actually observed amount from one phase to the next.
 # Remove this extra slack once settlement becomes amount-adaptive across phases.
 HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW = 200_000
+
+#: Cleanup withdrawals must remain large enough for every balance verifier to
+#: require observable movement. The initial 0.10 USDC NAV margin is withheld
+#: before the 0.20 USDC follow-up phase tolerance is applied.
+HYPERCORE_SMALL_POSITION_CLEANUP_MIN_REDEMPTION_RAW = (
+    HYPERCORE_SMALL_POSITION_CLEANUP_INITIAL_SAFETY_MARGIN_RAW
+    + HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW
+)
 
 # Relative tolerance for live HyperCore balance waits.
 #
@@ -760,12 +779,15 @@ class HypercoreVaultRouting(RoutingModel):
         #    actual equity — even by 1 raw USDC.  The vault NAV fluctuates
         #    due to fees, PnL, and mark-to-market during the ~2-5 s between
         #    reading the API and HyperCore processing the queued action.
-        #    This leaves ~$1.50 unclaimable dust in the vault that must be
-        #    cleaned up in accounting later.
-        safe_raw = live_raw - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+        #    Small-position cleanup uses a smaller adaptive margin so the
+        #    generic 1.50 USDC margin does not strand a material share of a
+        #    3–5 USDC position. Its settlement path has larger automatic
+        #    retries if the first attempt silently no-ops.
+        safety_margin_raw = self._get_full_close_safety_margin_raw(trade, live_raw)
+        safe_raw = live_raw - safety_margin_raw
         assert safe_raw > 0, (
             f"Live vault equity {live_raw} raw ({equity.equity} USDC) is too small to "
-            f"withdraw after subtracting safety margin {HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW} raw"
+            f"withdraw after subtracting safety margin {safety_margin_raw} raw"
         )
 
         logger.info(
@@ -773,7 +795,7 @@ class HypercoreVaultRouting(RoutingModel):
             "safety margin %d raw, withdrawal amount %d raw (%s USDC), "
             "planned %s USDC (%d raw) for Safe %s, vault %s",
             equity.equity, live_raw,
-            HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW, safe_raw, raw_to_usdc(safe_raw),
+            safety_margin_raw, safe_raw, raw_to_usdc(safe_raw),
             raw_to_usdc(planned_raw), planned_raw,
             self.safe_address, vault_address,
         )
@@ -784,6 +806,29 @@ class HypercoreVaultRouting(RoutingModel):
         trade.other_data["hypercore_capped_withdrawal_raw"] = safe_raw
 
         return safe_raw
+
+    def _get_full_close_safety_margin_raw(
+        self,
+        trade: TradeExecution,
+        available_raw: int,
+    ) -> int:
+        """Return the NAV-drift margin for a full-close redemption.
+
+        Normal strategy withdrawals retain the proven 1.50 USDC margin.
+        ``correct-accounts`` cleanup uses a fixed 0.10 USDC margin and rejects
+        amounts that cannot produce verifiable movement in every later phase.
+        ``MINIMUM_VAULT_DEPOSIT`` is deliberately irrelevant because the
+        withdrawal encoder does not apply it.
+        """
+        if trade.other_data.get("hypercore_small_position_cleanup"):
+            if available_raw <= HYPERCORE_SMALL_POSITION_CLEANUP_MIN_REDEMPTION_RAW:
+                raise HypercoreWithdrawalPreflightError(
+                    f"HyperCore cleanup has only {raw_to_usdc(available_raw)} USDC available; "
+                    f"more than {raw_to_usdc(HYPERCORE_SMALL_POSITION_CLEANUP_MIN_REDEMPTION_RAW)} "
+                    "USDC is required to verify every withdrawal phase"
+                )
+            return HYPERCORE_SMALL_POSITION_CLEANUP_INITIAL_SAFETY_MARGIN_RAW
+        return HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
 
     def _check_live_withdrawal_preconditions(
         self,
@@ -856,13 +901,17 @@ class HypercoreVaultRouting(RoutingModel):
                 # because sequential execution stops at the first exception.
                 # Do not request the exact fresh cap: it may move again before
                 # HyperCore processes the queued vaultTransfer and then silently
-                # no-op. Leave the same safety margin used by full closes.
-                safe_max_withdrawable_raw = max_withdrawable_raw - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+                # no-op. Leave the same safety margin used by this full close.
+                safety_margin_raw = self._get_full_close_safety_margin_raw(
+                    trade,
+                    max_withdrawable_raw,
+                )
+                safe_max_withdrawable_raw = max_withdrawable_raw - safety_margin_raw
                 if safe_max_withdrawable_raw <= 0:
                     raise HypercoreWithdrawalPreflightError(
                         f"Hypercore withdrawal blocked for Safe {self.safe_address} in vault {vault_address}: "
                         f"current max_withdrawable {vault_info.max_withdrawable} USDC is too small after "
-                        f"the {raw_to_usdc(HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW)} USDC safety margin."
+                        f"the {raw_to_usdc(safety_margin_raw)} USDC safety margin."
                     )
                 logger.warning(
                     "Hypercore withdrawal request for Safe %s in vault %s is %d raw USDC "
@@ -877,8 +926,8 @@ class HypercoreVaultRouting(RoutingModel):
                     raw_to_usdc(requested_raw),
                     safe_max_withdrawable_raw,
                     raw_to_usdc(safe_max_withdrawable_raw),
-                    HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,
-                    raw_to_usdc(HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW),
+                    safety_margin_raw,
+                    raw_to_usdc(safety_margin_raw),
                 )
                 effective_requested_raw = safe_max_withdrawable_raw
                 # Settlement phases 2-3 must use exactly the same amount that
@@ -1284,11 +1333,11 @@ class HypercoreVaultRouting(RoutingModel):
         # HyperCore processes it.
         retry_raw = current_raw - safety_margin_raw
 
-        # Hyperliquid silently rejects vault transfers below the same 5 USDC
-        # floor used for deposits.  If the retry amount is below the floor, the
-        # right answer is to leave the position as dust for accounting cleanup,
-        # not to spend another tx that we already know will no-op.
-        if retry_raw < MINIMUM_VAULT_DEPOSIT:
+        # MINIMUM_VAULT_DEPOSIT is deliberately not checked here. The deposit
+        # encoder enforces it, while encode_vault_withdraw() has no equivalent
+        # check. A retry becomes invalid when its expected movement is no
+        # longer larger than the follow-up phase verification tolerance.
+        if retry_raw <= HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW:
             return None
 
         # Only retry when the fresh-equity-based amount is actually smaller
@@ -1310,24 +1359,6 @@ class HypercoreVaultRouting(RoutingModel):
         if trade.other_data.get("hypercore_small_position_cleanup"):
             return HYPERCORE_SMALL_POSITION_CLEANUP_RETRY_SAFETY_MARGINS_RAW
         return (HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,) * HYPERCORE_WITHDRAWAL_PHASE1_RETRY_ATTEMPTS
-
-    def _cleanup_retry_leaves_material_residual(self, trade: TradeExecution) -> bool:
-        """Whether a cleanup retry must retain its residual in state.
-
-        A higher retry safety margin protects against a HyperCore no-op, but
-        it also leaves that amount in the vault.  Retain it for another
-        top-up-and-redeem pass instead of treating it as normal close dust.
-        """
-
-        safety_margin_raw = trade.other_data.get(
-            "hypercore_phase1_retry_safety_margin_raw"
-        )
-        return (
-            bool(trade.other_data.get("hypercore_small_position_cleanup"))
-            and safety_margin_raw is not None
-            and raw_to_usdc(int(safety_margin_raw))
-            > Decimal(str(get_close_epsilon_for_pair(trade.pair)))
-        )
 
     def _wait_for_spot_free_usdc_balance(
         self,
@@ -1715,12 +1746,9 @@ class HypercoreVaultRouting(RoutingModel):
                         trade.trade_id,
                     )
 
-        # Enforce Hyperliquid minimum vault deposit/withdrawal amounts.
-        # Hyperliquid silently rejects vault transfers below the minimum
-        # threshold — no error, no event, the USDC just stays in the
-        # escrow. The minimum is 5 USDC (MINIMUM_VAULT_DEPOSIT = 5_000_000
-        # raw, 6 decimals), determined by reverse-engineering the
-        # Hyperliquid web UI. See eth_defi.hyperliquid.core_writer.
+        # Enforce the deposit encoder's 5 USDC minimum
+        # (MINIMUM_VAULT_DEPOSIT = 5_000_000 raw, 6 decimals). The withdrawal
+        # encoder has no equivalent check. See eth_defi.hyperliquid.core_writer.
         if trade.is_buy():
             activation_hint = (
                 f" Note: {activation_cost_raw / 1e6:.0f} USDC was deducted for "
@@ -2488,9 +2516,9 @@ class HypercoreVaultRouting(RoutingModel):
                 capped_raw = trade.other_data["hypercore_capped_withdrawal_raw"]
                 logger.info(
                     "Using live equity withdrawal amount for settlement: %d raw USDC (%s USDC) "
-                    "(planned was %d raw USDC, safety margin was %d raw)",
+                    "(planned was %d raw USDC)",
                     capped_raw, raw_to_usdc(capped_raw),
-                    expected_raw, HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,
+                    expected_raw,
                 )
                 expected_raw = capped_raw
 
@@ -2595,6 +2623,9 @@ class HypercoreVaultRouting(RoutingModel):
             Decimal(str(trade.slippage_tolerance or 0)),
         )
         phase1_requested_reserve = raw_to_usdc(expected_raw)
+        remaining_equity_after_withdrawal: Decimal | None = (
+            Decimal(0) if self.simulate else None
+        )
 
         if self.simulate:
             # Simulate mode: mock CoreWriter does not bridge USDC,
@@ -3083,6 +3114,7 @@ class HypercoreVaultRouting(RoutingModel):
                     bypass_cache=True,
                 )
                 remaining_equity = eq_after.equity if eq_after else Decimal(0)
+                remaining_equity_after_withdrawal = remaining_equity
 
                 if vault_equity_before_phase1_snapshot is not None:
                     equity_decrease = (
@@ -3148,13 +3180,22 @@ class HypercoreVaultRouting(RoutingModel):
             and not close_materially_short
         )
 
-        # A cleanup retry may deliberately use a safety margin larger than
-        # HyperCore's normal close epsilon.  Do not discard that material
-        # residual from state: the small-position cleaner will top it up and
-        # redeem it in a follow-up pass.  Normal full closes retain their
-        # established close behaviour and may write off the <= 2 USDC margin.
-        if self._cleanup_retry_leaves_material_residual(trade):
-            should_close_full_quantity = False
+        if trade.other_data.get("hypercore_small_position_cleanup") and position is not None:
+            retain_cleanup_residual = (
+                remaining_equity_after_withdrawal is None
+                or remaining_equity_after_withdrawal
+                > HYPERCORE_SMALL_POSITION_CLEANUP_CLOSE_EPSILON
+            )
+            if retain_cleanup_residual:
+                position.other_data[
+                    HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM
+                ] = True
+                should_close_full_quantity = False
+            else:
+                position.other_data.pop(
+                    HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM,
+                    None,
+                )
 
         if should_close_full_quantity:
             executed_amount = trade.planned_quantity

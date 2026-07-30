@@ -54,6 +54,16 @@ DEFAULT_VAULT_EPSILON = Decimal(10 ** -6)
 #: residual as dust and the runner can auto-close it before account checks.
 HYPERLIQUID_VAULT_CLOSE_EPSILON = Decimal("2.00")
 
+#: A HyperCore small-position cleanup residual above this amount can still
+#: produce verifiable movement through every withdrawal phase.
+HYPERCORE_SMALL_POSITION_CLEANUP_CLOSE_EPSILON = Decimal("0.30")
+
+#: Position marker that keeps a verifiable cleanup residual open despite the
+#: normal 2 USDC HyperCore close epsilon.
+HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM = (
+    "hypercore_small_position_cleanup_pending_redeem"
+)
+
 #: Hypercore vault equities fluctuate every block due to active trading
 #: inside the vault, and live cycles can spend a long time in sequential
 #: settlement before the final accounting read happens.

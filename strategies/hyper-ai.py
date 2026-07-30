@@ -175,7 +175,9 @@ class Parameters:
     #: Keep it because the alpha model uses it when cleaning up tiny residual positions.
     min_portfolio_weight_pct = 0.005
 
-    #: Hyperliquid has a hard 5 USD minimum deposit.
+    #: Client-side minimum enforced by the HyperCore deposit encoder. The same
+    #: value is reused below as a strategy sell-materiality policy, not as a
+    #: HyperCore withdrawal requirement.
     absolute_min_vault_deposit_usd = 5.0
     #: Preserve the old 50 USD buy threshold at 100k initial cash.
     individual_rebalance_min_threshold_of_initial_cash_pct = 0.0005
@@ -200,12 +202,13 @@ class Parameters:
     backtest_end = datetime.datetime(2026, 3, 11)
     #: Low-value treasury bankroll for small-cap forward-testing validation.
     initial_cash = 1000
-    #: Derived at class creation time from the configured initial cash and the 5 USD hard floor.
+    #: Buy sizing must respect the deposit encoder's 5 USD minimum.
     individual_rebalance_min_threshold_usd = max(
         absolute_min_vault_deposit_usd,
         initial_cash * individual_rebalance_min_threshold_of_initial_cash_pct,
     )
-    #: Derived at class creation time from the configured initial cash and the 5 USD hard floor.
+    #: Sell sizing uses a strategy materiality threshold. The withdrawal
+    #: encoder has no equivalent 5 USD check.
     sell_rebalance_min_threshold_usd = max(
         absolute_min_vault_deposit_usd,
         initial_cash * sell_rebalance_min_threshold_of_initial_cash_pct,
@@ -838,5 +841,5 @@ survivor-first selection and age-ramp weighting.
 - 98% allocation target
 - 12% maximum concentration per asset
 - 20% per-position cap of pool TVL
-- 5 USD minimum vault deposit (Hyperliquid hard floor)
+- 5 USD client-side minimum vault deposit
 """

@@ -572,8 +572,8 @@ def close_hypercore_dust_positions(
 
         trade = close_position_with_empty_trade(portfolio, position)
         position.add_notes_message(
-            "Auto-closed Hypercore dust position because Hypercore vault "
-            f"withdrawals cannot fully redeem the final residual balance ({now.isoformat()})"
+            "Auto-closed Hypercore dust position after the safety-margin "
+            f"redemption left a final residual balance ({now.isoformat()})"
         )
         logger.info(
             "Auto-closed Hypercore dust position %s with repair trade %s",

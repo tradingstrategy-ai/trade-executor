@@ -1,4 +1,9 @@
-"""Claim untracked Hypercore vault dust back to Lagoon reserves."""
+"""Claim untracked Hypercore vault dust back to Lagoon reserves.
+
+``MINIMUM_VAULT_DEPOSIT`` is enforced by the deposit encoder. The withdrawal
+encoder has no equivalent client-side check, so this command attempts amounts
+that remain large enough to verify every settlement phase.
+"""
 
 import datetime
 import logging
@@ -17,7 +22,6 @@ from eth_defi.hyperliquid.api import (
     fetch_user_vault_equity,
 )
 from eth_defi.hyperliquid.core_writer import (
-    MINIMUM_VAULT_DEPOSIT,
     build_hypercore_send_asset_to_evm_call,
     build_hypercore_transfer_usd_class_call,
     build_hypercore_withdraw_from_vault_call,
@@ -291,7 +295,7 @@ def _classify_candidate(
         context.reserve_token.convert_to_raw(requested_amount)
         - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
     )
-    if safe_raw_claim_amount < MINIMUM_VAULT_DEPOSIT:
+    if safe_raw_claim_amount <= 0:
         return HypercoreDustCandidate(
             vault_address=vault_address,
             vault_name=vault_name,
@@ -300,10 +304,26 @@ def _classify_candidate(
             locked_until=equity.locked_until,
             safe_raw_claim_amount=max(safe_raw_claim_amount, 0),
             estimated_reserve_increase=Decimal(0),
-            status="below_floor",
+            status="consumed_by_safety_margin",
             reason=(
-                f"Safe claim amount after withdrawal safety margin is below "
-                f"Hyperliquid floor {raw_to_usdc(MINIMUM_VAULT_DEPOSIT)} USDC"
+                "No positive claim amount remains after applying the "
+                "withdrawal safety margin"
+            ),
+        )
+
+    if safe_raw_claim_amount <= HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW:
+        return HypercoreDustCandidate(
+            vault_address=vault_address,
+            vault_name=vault_name,
+            equity=equity.equity,
+            max_withdrawable=max_withdrawable,
+            locked_until=equity.locked_until,
+            safe_raw_claim_amount=safe_raw_claim_amount,
+            estimated_reserve_increase=Decimal(0),
+            status="below_bridge_threshold",
+            reason=(
+                "Claim amount is too small to verify the perp-to-spot and "
+                "spot-to-EVM phases safely"
             ),
         )
 
@@ -502,11 +522,15 @@ def _get_phase1_noop_retry_raw(
     current_vault_equity: Decimal,
     previous_raw: int,
 ) -> int | None:
-    """Return a smaller phase-1 retry amount after a suspected silent no-op."""
+    """Return a smaller phase-1 retry amount after a suspected silent no-op.
+
+    ``MINIMUM_VAULT_DEPOSIT`` is deliberately irrelevant because the
+    withdrawal encoder does not apply it.
+    """
     retry_raw = (
         usdc_to_raw(current_vault_equity) - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
     )
-    if retry_raw < MINIMUM_VAULT_DEPOSIT:
+    if retry_raw <= HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW:
         return None
     if retry_raw >= previous_raw:
         return None

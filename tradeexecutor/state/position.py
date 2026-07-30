@@ -28,7 +28,11 @@ from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.state.trigger import Trigger
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier, LegacyDataException
 from tradeexecutor.state.valuation import ValuationUpdate
-from tradeexecutor.strategy.dust import get_dust_epsilon_for_pair, get_close_epsilon_for_pair
+from tradeexecutor.strategy.dust import (
+    HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM,
+    get_close_epsilon_for_pair,
+    get_dust_epsilon_for_pair,
+)
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.lending_protocol_leverage import create_short_loan, update_short_loan, create_credit_supply_loan, update_credit_supply_loan
 from tradeexecutor.strategy.pnl import calculate_pnl
@@ -1411,6 +1415,15 @@ class TradingPosition(GenericPosition):
         if self.is_spot() or self.is_credit_supply():
             if quantity <= 0:
                 return True
+
+        if (
+            self.pair.is_hyperliquid_vault()
+            and self.other_data.get(HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM)
+        ):
+            # A cleanup withdrawal can deliberately leave 0.30–1.00 USDC for
+            # another verified pass. Do not let the normal 2 USDC HyperCore
+            # close epsilon discard that still-redeemable position.
+            return quantity <= 0
 
         if self.pair.is_cctp_bridge():
             available_bridge_capital = self.get_available_bridge_capital()
