@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Fix HyperCore vault deposits whose spot-to-perp CoreWriter action succeeded while the batched perp-to-vault action silently no-op'd: execute and verify the two legs separately, and retain recoverable stranded capital in state rather than restoring it to Safe reserve accounting (2026-07-30)
+
 - Fix default-on `correct-accounts` cleanup for undersized HyperCore vault positions to redeem directly without deposits or new lock-ups, keep verifiable residuals tracked, supersede stale planned close trades, use a valid live confirmation count, and make `--dry-run` rehearse live preflight, routing, and transaction construction without state writes or broadcasts (2026-07-30)
 
 - Extend `vault-test-trade` simulations to validate typed closed deposits through GuardV0 without broadcasting, and distinguish vault JSON statuses that incorrectly report deposits open or closed (2026-07-28)

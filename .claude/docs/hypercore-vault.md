@@ -95,7 +95,7 @@ the contract between `setup_trades()` and `settle_trade()`:
 | `hypercore_activation_cost_raw` | setup, first buy | USDC consumed activating the Safe on HyperCore (deducted once per cycle). |
 | `hypercore_capped_deposit_raw` | deposit preflight | Deposit capped to actual Safe EVM USDC balance. |
 | `hypercore_capped_withdrawal_raw` | withdrawal preflight / retry | Withdrawal capped to live vault equity minus safety margin. |
-| `hypercore_stranded_usdc` | on failure | Records USDC stranded mid-pipeline (perp/spot) for operator recovery. |
+| `hypercore_stranded_usdc` | on failure | Records USDC stranded mid-pipeline (perp/spot) for operator recovery and retains its reserve allocation. |
 | `hypercore_failure_diagnosis` | on failure | Full diagnostic snapshot string. |
 
 ## How execution is wired
@@ -127,8 +127,8 @@ A deposit walks USDC from the HyperEVM Safe into the HyperCore vault:
    HyperEVM Safe into HyperCore **spot** (built in `setup_trades`).
 2. **Escrow wait**: poll `spotClearinghouseState` until the bridged USDC clears
    the EVM escrow into spot (`wait_for_evm_escrow_clear`).
-3. **Phase 2**: `transferUsdClass(spot→perp)` + `vaultTransfer(perp→vault)` —
-   move into the vault (built in `_settle_deposit`); then
+3. **Phase 2**: `transferUsdClass(spot→perp)` then poll the perp balance.
+4. **Phase 3**: `vaultTransfer(perp→vault)` after the perp arrival is visible;
    `wait_for_vault_deposit_confirmation` verifies vault equity rose.
 
 ```mermaid
@@ -148,7 +148,9 @@ sequenceDiagram
     EX->>R: settle_trade(buy)
     R->>HC: poll spotClearinghouseState (escrow wait)
     HC-->>R: USDC cleared into spot
-    R->>Safe: phase 2 — transferUsdClass(spot→perp) + vaultTransfer(perp→vault)
+    R->>Safe: phase 2 — transferUsdClass(spot→perp)
+    R->>HC: poll perp balance until USDC arrived
+    R->>Safe: phase 3 — vaultTransfer(perp→vault)
     R->>HC: wait_for_vault_deposit_confirmation (equity rose?)
     alt confirmed
         R->>EX: mark_trade_success (executed = net deposited)

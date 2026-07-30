@@ -1090,9 +1090,21 @@ class State:
             )
 
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
-        """Unroll the allocated capital."""
+        """Unroll allocated capital unless it is recoverably stranded outside the Safe."""
         trade.mark_failed(failed_at)
         if trade.is_buy():
+            retain_reserve_allocation = trade.other_data.get(
+                "retain_reserve_allocation_on_failure",
+                False,
+            )
+            if retain_reserve_allocation:
+                logger.error(
+                    "Keeping %s %s allocated after failed trade %s: funds are stranded outside the Safe",
+                    trade.reserve_currency_allocated or trade.bridge_currency_allocated,
+                    trade.reserve_currency.token_symbol,
+                    trade.trade_id,
+                )
+                return
             # Return unused reserves back to accounting.
             if trade.reserve_currency_allocated is not None:
                 self.portfolio.adjust_reserves(

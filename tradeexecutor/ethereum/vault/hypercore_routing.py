@@ -8,7 +8,8 @@ Hypercore vault deposits/withdrawals use a multi-phase flow:
    :py:func:`~eth_defi.hyperliquid.evm_escrow.activate_account` in ``setup_trades()``
 1. Phase 1: separate ``approve`` and ``CDW.deposit`` Safe calls — bridge USDC to HyperCore spot
 2. Escrow wait: poll ``spotClearinghouseState`` until USDC clears
-3. Phase 2: ``transferUsdClass`` + ``vaultTransfer`` — move to perp, deposit into vault
+3. Phase 2: ``transferUsdClass`` — move USDC from spot to perp and verify it
+4. Phase 3: ``vaultTransfer`` — deposit the verified perp USDC into the vault
 
 If the Safe is already activated, step 0 is skipped.
 
@@ -85,7 +86,7 @@ from eth_defi.hyperliquid.core_writer import (
     build_hypercore_approve_deposit_wallet_call,
     build_hypercore_deposit_multicall,
     build_hypercore_deposit_to_spot_call,
-    build_hypercore_deposit_phase2,
+    build_hypercore_deposit_to_vault_call,
     compute_spot_to_evm_withdrawal_amount,
     build_hypercore_withdraw_from_vault_call,
     build_hypercore_send_asset_to_evm_call,
@@ -1446,6 +1447,10 @@ class HypercoreVaultRouting(RoutingModel):
         }
         if not hasattr(trade, "other_data") or trade.other_data is None:
             trade.other_data = {}
+        # The phase-1 bridge has already removed this USDC from the Safe. Do
+        # not let the generic failed-buy handler add it back to reserve
+        # accounting: it is a recoverable HyperCore balance, not Safe cash.
+        trade.other_data["retain_reserve_allocation_on_failure"] = True
         trade.other_data["hypercore_stranded_usdc"] = stranded_info
         trade.add_note(
             f"USDC stranded on HyperCore ({human_amount} USDC in {location})"
@@ -1993,13 +1998,12 @@ class HypercoreVaultRouting(RoutingModel):
     # Settlement helpers
     # ------------------------------------------------------------------
 
-    def _broadcast_phase2(
+    def _broadcast_deposit_spot_to_perp(
         self,
         trade: TradeExecution,
-        vault_address: str,
         raw_amount: int,
     ) -> tuple[BlockchainTransaction, dict]:
-        """Build, sign, and broadcast phase 2 (transferUsdClass + vaultTransfer).
+        """Build, sign, and broadcast the deposit spot-to-perp leg.
 
         :return:
             Tuple of (BlockchainTransaction, receipt dict).
@@ -2007,14 +2011,39 @@ class HypercoreVaultRouting(RoutingModel):
             If the broadcast or confirmation fails.  The exception carries
             the signed ``BlockchainTransaction`` with error info.
         """
-        fn = build_hypercore_deposit_phase2(
+        fn = build_hypercore_transfer_usd_class_call(
             self.lagoon_vault,
             hypercore_usdc_amount=raw_amount,
-            vault_address=vault_address,
+            to_perp=True,
         )
         tx = self._sign_module_call(
             fn,
-            notes=f"Hypercore deposit phase 2: {raw_amount} raw USDC to vault {vault_address}",
+            notes=f"Hypercore deposit phase 2: {raw_amount} raw USDC spot->perp",
+            logical_function_name="sendRawAction",
+        )
+
+        try:
+            receipt = self._broadcast_and_confirm_settlement_tx(tx)
+        except Exception as e:
+            raise SettlementBroadcastError(tx, e) from e
+        return tx, receipt
+
+    def _broadcast_deposit_perp_to_vault(
+        self,
+        trade: TradeExecution,
+        vault_address: str,
+        raw_amount: int,
+    ) -> tuple[BlockchainTransaction, dict]:
+        """Build, sign, and broadcast the verified deposit perp-to-vault leg."""
+        fn = build_hypercore_deposit_to_vault_call(
+            self.lagoon_vault,
+            vault_address=vault_address,
+            hypercore_usdc_amount=raw_amount,
+        )
+        tx = self._sign_module_call(
+            fn,
+            notes=f"Hypercore deposit phase 3: {raw_amount} raw USDC to vault {vault_address}",
+            logical_function_name="sendRawAction",
         )
 
         try:
@@ -2261,6 +2290,11 @@ class HypercoreVaultRouting(RoutingModel):
             )
         except TimeoutError as e:
             logger.error("EVM escrow did not clear: %s", e)
+            self._mark_stranded_usdc(
+                trade,
+                deposit_raw,
+                "hypercore_evm_escrow_or_spot",
+            )
             self.diagnose_hyperliquid_vault_redemption_failure(
                 trade, vault_address, "deposit_escrow_timeout",
                 str(e),
@@ -2268,7 +2302,7 @@ class HypercoreVaultRouting(RoutingModel):
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
 
-        logger.info("Escrow cleared. Building and broadcasting phase 2...")
+        logger.info("Escrow cleared. Building and broadcasting deposit settlement legs...")
 
         # Snapshot existing vault equity before phase 2 so we can detect
         # the increase after deposit.  If the snapshot fails, abort: without
@@ -2300,19 +2334,21 @@ class HypercoreVaultRouting(RoutingModel):
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
 
-        # --- Phase 2 ---
-        # Note: RPC failure during nonce sync between phases could strand
-        # USDC in HyperCore spot.  Manual recovery via check-hypercore-user.py.
+        # --- Phase 2: spot -> perp ---
+        # CoreWriter actions can have a successful EVM receipt while only a
+        # prefix takes effect on HyperCore. Keep the legs separate and prove
+        # the perp arrival before asking HyperCore to deposit from perp.
+        perp_baseline = self._fetch_safe_perp_withdrawable_balance()
         self.deployer.sync_nonce(web3)
 
         try:
-            phase2_tx, phase2_receipt = self._broadcast_phase2(trade, vault_address, deposit_raw)
+            phase2_tx, phase2_receipt = self._broadcast_deposit_spot_to_perp(trade, deposit_raw)
         except SettlementBroadcastError as e:
-            logger.error("Phase 2 broadcast failed: %s", e.__cause__)
+            logger.error("Deposit spot-to-perp broadcast failed: %s", e.__cause__)
             trade.blockchain_transactions.append(e.tx)
             self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot")
             self.diagnose_hyperliquid_vault_redemption_failure(
-                trade, vault_address, "deposit_phase2_broadcast",
+                trade, vault_address, "deposit_spot_to_perp_broadcast",
                 str(e.__cause__),
             )
             report_failure(ts, state, trade, stop_on_execution_failure)
@@ -2321,17 +2357,69 @@ class HypercoreVaultRouting(RoutingModel):
         trade.blockchain_transactions.append(phase2_tx)
 
         if phase2_receipt["status"] != 1:
-            logger.error("Hypercore deposit phase 2 reverted: tx %s", phase2_tx.tx_hash)
-            self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot_or_perp")
+            logger.error("Hypercore deposit spot-to-perp reverted: tx %s", phase2_tx.tx_hash)
+            self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot")
             self.diagnose_hyperliquid_vault_redemption_failure(
-                trade, vault_address, "deposit_phase2_reverted",
+                trade, vault_address, "deposit_spot_to_perp_reverted",
                 f"tx {phase2_tx.tx_hash} reverted",
             )
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
 
         ts = get_block_timestamp(web3, phase2_receipt["blockNumber"])
-        logger.info("Hypercore deposit phase 2 succeeded (tx %s)", phase2_tx.tx_hash)
+        try:
+            self._wait_for_perp_withdrawable_balance(
+                perp_baseline,
+                deposit_raw,
+                relative_tolerance=Decimal(0),
+                timeout=60.0,
+            )
+        except HypercoreWithdrawalVerificationError as e:
+            logger.error("Hypercore deposit spot-to-perp verification failed: %s", e)
+            self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot_or_perp")
+            self.diagnose_hyperliquid_vault_redemption_failure(
+                trade, vault_address, "deposit_spot_to_perp_verification", str(e),
+            )
+            report_failure(ts, state, trade, stop_on_execution_failure)
+            return
+
+        # --- Phase 3: perp -> vault ---
+        self.deployer.sync_nonce(web3)
+        try:
+            phase3_tx, phase3_receipt = self._broadcast_deposit_perp_to_vault(
+                trade,
+                vault_address,
+                deposit_raw,
+            )
+        except SettlementBroadcastError as e:
+            logger.error("Deposit perp-to-vault broadcast failed: %s", e.__cause__)
+            trade.blockchain_transactions.append(e.tx)
+            self._mark_stranded_usdc(trade, deposit_raw, "hypercore_perp")
+            self.diagnose_hyperliquid_vault_redemption_failure(
+                trade,
+                vault_address,
+                "deposit_perp_to_vault_broadcast",
+                str(e.__cause__),
+            )
+            report_failure(ts, state, trade, stop_on_execution_failure)
+            return
+
+        trade.blockchain_transactions.append(phase3_tx)
+
+        if phase3_receipt["status"] != 1:
+            logger.error("Hypercore deposit perp-to-vault reverted: tx %s", phase3_tx.tx_hash)
+            self._mark_stranded_usdc(trade, deposit_raw, "hypercore_perp")
+            self.diagnose_hyperliquid_vault_redemption_failure(
+                trade,
+                vault_address,
+                "deposit_perp_to_vault_reverted",
+                f"tx {phase3_tx.tx_hash} reverted",
+            )
+            report_failure(ts, state, trade, stop_on_execution_failure)
+            return
+
+        ts = get_block_timestamp(web3, phase3_receipt["blockNumber"])
+        logger.info("Hypercore deposit perp-to-vault succeeded (tx %s)", phase3_tx.tx_hash)
 
         # --- Verify deposit on HyperCore via poll loop ---
         # CoreWriter actions are NOT atomic: the EVM tx can succeed but the

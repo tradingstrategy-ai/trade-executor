@@ -579,9 +579,11 @@ def test_settlement_second_buy_no_activation_cost(
         locked_until=datetime.datetime(2030, 1, 1),
     )
 
-    # Phase 2 broadcast
+    # Deposit settlement broadcasts and verifies each HyperCore leg separately.
     phase2_tx = MagicMock(tx_hash="0xbb")
     phase2_receipt = {"status": 1, "blockNumber": 101}
+    phase3_tx = MagicMock(tx_hash="0xcc")
+    phase3_receipt = {"status": 1, "blockNumber": 102}
 
     # Deposit confirmation
     confirmed_eq = UserVaultEquity(
@@ -591,8 +593,14 @@ def test_settlement_second_buy_no_activation_cost(
     )
     mock_wait_confirm.return_value = confirmed_eq
 
-    mock_phase2 = MagicMock(return_value=(phase2_tx, phase2_receipt))
-    with patch.object(routing, "_broadcast_phase2", mock_phase2):
+    mock_spot_to_perp = MagicMock(return_value=(phase2_tx, phase2_receipt))
+    mock_perp_to_vault = MagicMock(return_value=(phase3_tx, phase3_receipt))
+    with (
+        patch.object(routing, "_broadcast_deposit_spot_to_perp", mock_spot_to_perp),
+        patch.object(routing, "_broadcast_deposit_perp_to_vault", mock_perp_to_vault),
+        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
+        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("50")),
+    ):
         routing._settle_deposit(
             routing.web3, state, trade, receipts,
             stop_on_execution_failure=False,
@@ -610,8 +618,8 @@ def test_settlement_second_buy_no_activation_cost(
         f"activation cost was incorrectly deducted"
     )
 
-    # Verify _broadcast_phase2 received the full 50 USDC raw (not 48)
-    deposit_raw_passed = mock_phase2.call_args[0][2]
+    # Verify spot-to-perp received the full 50 USDC raw (not 48)
+    deposit_raw_passed = mock_spot_to_perp.call_args[0][1]
     assert deposit_raw_passed == 50_000_000
 
     mock_escrow.assert_called_once_with(
@@ -972,9 +980,11 @@ def test_settlement_uses_capped_deposit_and_refunds_reserve(
         locked_until=datetime.datetime(2030, 1, 1),
     )
 
-    # 2. Phase 2 broadcast.
+    # 2. Deposit settlement broadcasts and verifies each HyperCore leg separately.
     phase2_tx = MagicMock(tx_hash="0xbb")
     phase2_receipt = {"status": 1, "blockNumber": 101}
+    phase3_tx = MagicMock(tx_hash="0xcc")
+    phase3_receipt = {"status": 1, "blockNumber": 102}
 
     # 3. Deposit confirmation.
     confirmed_eq = UserVaultEquity(
@@ -984,15 +994,21 @@ def test_settlement_uses_capped_deposit_and_refunds_reserve(
     )
     mock_wait_confirm.return_value = confirmed_eq
 
-    mock_phase2 = MagicMock(return_value=(phase2_tx, phase2_receipt))
-    with patch.object(routing, "_broadcast_phase2", mock_phase2):
+    mock_spot_to_perp = MagicMock(return_value=(phase2_tx, phase2_receipt))
+    mock_perp_to_vault = MagicMock(return_value=(phase3_tx, phase3_receipt))
+    with (
+        patch.object(routing, "_broadcast_deposit_spot_to_perp", mock_spot_to_perp),
+        patch.object(routing, "_broadcast_deposit_perp_to_vault", mock_perp_to_vault),
+        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
+        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("80")),
+    ):
         routing._settle_deposit(
             routing.web3, state, trade, receipts,
             stop_on_execution_failure=False,
         )
 
     # 3. Verify phase 2 received capped amount.
-    deposit_raw_passed = mock_phase2.call_args[0][2]
+    deposit_raw_passed = mock_spot_to_perp.call_args[0][1]
     assert deposit_raw_passed == 80_000_000
 
     # 4. Verify mark_trade_success with correct values.
@@ -1061,9 +1077,11 @@ def test_settlement_capped_deposit_with_activation_cost(
         locked_until=datetime.datetime(2030, 1, 1),
     )
 
-    # 2. Phase 2 broadcast.
+    # 2. Deposit settlement broadcasts and verifies each HyperCore leg separately.
     phase2_tx = MagicMock(tx_hash="0xbb")
     phase2_receipt = {"status": 1, "blockNumber": 101}
+    phase3_tx = MagicMock(tx_hash="0xcc")
+    phase3_receipt = {"status": 1, "blockNumber": 102}
 
     # 3. Deposit confirmation.
     confirmed_eq = UserVaultEquity(
@@ -1073,15 +1091,21 @@ def test_settlement_capped_deposit_with_activation_cost(
     )
     mock_wait_confirm.return_value = confirmed_eq
 
-    mock_phase2 = MagicMock(return_value=(phase2_tx, phase2_receipt))
-    with patch.object(routing, "_broadcast_phase2", mock_phase2):
+    mock_spot_to_perp = MagicMock(return_value=(phase2_tx, phase2_receipt))
+    mock_perp_to_vault = MagicMock(return_value=(phase3_tx, phase3_receipt))
+    with (
+        patch.object(routing, "_broadcast_deposit_spot_to_perp", mock_spot_to_perp),
+        patch.object(routing, "_broadcast_deposit_perp_to_vault", mock_perp_to_vault),
+        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
+        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("95")),
+    ):
         routing._settle_deposit(
             routing.web3, state, trade, receipts,
             stop_on_execution_failure=False,
         )
 
     # 3. Verify phase 2 received capped deposit amount (not including activation).
-    deposit_raw_passed = mock_phase2.call_args[0][2]
+    deposit_raw_passed = mock_spot_to_perp.call_args[0][1]
     assert deposit_raw_passed == 95_000_000
 
     # 4. Verify mark_trade_success with correct values.
@@ -1152,6 +1176,8 @@ def test_settlement_capped_deposit_refunds_bridge_not_reserves(
 
     phase2_tx = MagicMock(tx_hash="0xbb")
     phase2_receipt = {"status": 1, "blockNumber": 101}
+    phase3_tx = MagicMock(tx_hash="0xcc")
+    phase3_receipt = {"status": 1, "blockNumber": 102}
 
     confirmed_eq = UserVaultEquity(
         vault_address="0xVAULT",
@@ -1161,8 +1187,14 @@ def test_settlement_capped_deposit_refunds_bridge_not_reserves(
     mock_wait_confirm.return_value = confirmed_eq
 
     # 2. Run settlement.
-    mock_phase2 = MagicMock(return_value=(phase2_tx, phase2_receipt))
-    with patch.object(routing, "_broadcast_phase2", mock_phase2):
+    mock_spot_to_perp = MagicMock(return_value=(phase2_tx, phase2_receipt))
+    mock_perp_to_vault = MagicMock(return_value=(phase3_tx, phase3_receipt))
+    with (
+        patch.object(routing, "_broadcast_deposit_spot_to_perp", mock_spot_to_perp),
+        patch.object(routing, "_broadcast_deposit_perp_to_vault", mock_perp_to_vault),
+        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
+        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("80")),
+    ):
         routing._settle_deposit(
             routing.web3, state, trade, receipts,
             stop_on_execution_failure=False,
@@ -1218,3 +1250,22 @@ def test_deposit_cap_skipped_when_balance_below_minimum():
     build_approve.assert_called_once_with(routing.lagoon_vault, evm_usdc_amount=100_000_000)
     build_deposit.assert_called_once_with(routing.lagoon_vault, evm_usdc_amount=100_000_000)
     assert "hypercore_capped_deposit_raw" not in trade.other_data
+
+
+def test_stranded_hypercore_usdc_retains_reserve_allocation():
+    """A partial HyperCore deposit must not be restored to Safe reserve accounting.
+
+    1. Create a live HyperCore buy trade.
+    2. Record USDC stranded after a successful bridge leg.
+    3. Verify the failed-trade accounting marker and recovery location are persisted.
+    """
+    # 1. Create a live HyperCore buy trade.
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("48.884068"))
+
+    # 2. Record USDC stranded after a successful bridge leg.
+    routing._mark_stranded_usdc(trade, 48_884_068, "hypercore_perp")
+
+    # 3. Verify the failed-trade accounting marker and recovery location are persisted.
+    assert trade.other_data["retain_reserve_allocation_on_failure"] is True
+    assert trade.other_data["hypercore_stranded_usdc"]["location"] == "hypercore_perp"
