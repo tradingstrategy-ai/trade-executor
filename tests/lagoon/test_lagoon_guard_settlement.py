@@ -82,6 +82,7 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
     3. Post NAV and automatically settle the deposit through the guarded module.
     4. Serialise GuardV0's live cap and cooldown into the frontend metadata.
     5. Queue another below-cap deposit during the cooldown and verify NAV-only deferral.
+    6. Disable broadcasts and verify it suppresses both the mandatory NAV post and settlement.
     """
     vault = guarded_lagoon_vault.vault
     sync_model = LagoonVaultSyncModel(vault=vault, hot_wallet=asset_manager)
@@ -138,6 +139,16 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
     assert base_usdc_token.fetch_balance_of(vault.silo_address) == Decimal(1)
     assert vault.trading_strategy_module.functions.getLagoonSettlementSafetyConfig(vault.address).call()[6:] == safety_config[6:]
     assert "The queue will be retried automatically" in caplog.text
+
+    # 6. Disable broadcasts and verify it suppresses both the mandatory NAV post and settlement.
+    sync_model.disable_broadcast = True
+    nonce_before = web3.eth.get_transaction_count(asset_manager.address)
+    with caplog.at_level(logging.INFO):
+        events = sync_model.sync_treasury(native_datetime_utc_now(), state, post_valuation=True)
+    assert events == []
+    assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before
+    assert base_usdc_token.fetch_balance_of(vault.silo_address) == Decimal(1)
+    assert "not posting NAV or settling the investor queue" in caplog.text
 
 
 def test_lagoon_guard_posts_nav_but_defers_oversized_flow_to_safe(

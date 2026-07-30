@@ -307,6 +307,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         unit_testing=False,
         calculate_valuation_func: Callable[..., USDollarPrice] | None = None,
         abort_lagoon_settlement_on_frozen_positions: bool = False,
+        disable_broadcast: bool = False,
     ):
         """
         :param extra_gnosis_gas:
@@ -323,6 +324,12 @@ class LagoonVaultSyncModel(AddressSyncModel):
             Don't use minor regorg safe latest block protection.
 
             Needed for tenderly.
+
+        :param disable_broadcast:
+            Unit-testing switch that suppresses every Lagoon treasury
+            transaction, including the mandatory GuardV0 NAV post. The sync
+            still reads and values the treasury, but does not post NAV or
+            settle the investor queue.
 
         :param min_nav_change_update:
             Deprecated compatibility parameter. It is ignored: post-valuation
@@ -363,6 +370,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         self.min_nav_change_update = min_nav_change_update
         self.anvil = is_anvil(self.web3)  # Running test mode
         self.unit_testing = unit_testing  #
+        self.disable_broadcast = disable_broadcast
         self.calculate_valuation_func = calculate_valuation_func
         self.abort_lagoon_settlement_on_frozen_positions = abort_lagoon_settlement_on_frozen_positions
         assert vault.trading_strategy_module, "LagoonVault.trading_strategy_module initialisation param not set - needed to run the sync model properly"
@@ -879,6 +887,16 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         if not post_valuation:
             logger.warning("LagoonVaultSyncModel.sync_treasury() called with post_valuation=False")
+            return []
+
+        if self.disable_broadcast:
+            # GuardV0 requires a current NAV before settlement. Consequently,
+            # DISABLE_BROADCAST must skip both transaction types: posting NAV
+            # alone would still spend gas and violates the caller's explicit
+            # dry-run/unit-test contract.
+            logger.info(
+                "Lagoon treasury broadcasting disabled: not posting NAV or settling the investor queue"
+            )
             return []
 
         assert self.hot_wallet, "asset_manager HotWallet needed in order to sync Lagoon vault"
