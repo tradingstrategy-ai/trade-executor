@@ -1520,3 +1520,21 @@ def check_state_internal_coherence(state: State):
         quantity = p.get_quantity()
         trading_quantity = p.get_available_trading_quantity()
         assert quantity == trading_quantity, f"Position {p}, quantity {quantity}, available for trading {trading_quantity}, probably unexecuted trades. You need to run repair command first."
+
+
+def preflight_state_for_account_correction(state: State) -> None:
+    """Refuse account correction before an unexecuted trade can cause a partial run.
+
+    Account correction may include external side effects such as protocol-specific
+    balance recovery.  Validate the internal state before those effects so a
+    caller either receives a complete reconciliation or makes no balance move.
+    """
+    try:
+        check_state_internal_coherence(state)
+    except AssertionError as exc:
+        raise AssertionError(
+            "Cannot run correct-accounts because state has unexecuted trades. "
+            "Run repair first, then retry correct-accounts --dry-run. "
+            "This preflight runs before any HyperCore transit recovery or "
+            "accounting mutation."
+        ) from exc

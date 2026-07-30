@@ -24,7 +24,7 @@ from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
 from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.exchange_account.utils import create_exchange_account_value_func
-from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts, UnknownTokenPositionFix, check_state_internal_coherence
+from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts, UnknownTokenPositionFix, preflight_state_for_account_correction
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_client, backup_state, create_execution_and_sync_model, resolve_deployment_file, configure_default_chain, create_state_store
 from ..double_position import check_double_position
@@ -542,6 +542,13 @@ def correct_accounts(
     else:
         store, state = backup_state(state_file, unit_testing=unit_testing)
 
+    # This must precede universe construction, vault synchronisation, and the
+    # HyperCore transit hook below.  The hook can broadcast real Safe actions;
+    # discovering an unfinished trade afterwards reproduces the #1486 incident
+    # where funds were recovered but the command could not complete its state
+    # reconciliation.
+    preflight_state_for_account_correction(state)
+
     slippage_tolerance = 0.013
     if mod:
         if mod.parameters:
@@ -872,8 +879,6 @@ def correct_accounts(
 
     if len(corrections) == 0:
         logger.info("No account corrections found")
-
-    check_state_internal_coherence(state)
 
     if dry_run:
         logger.info("Dry run found %d accounting correction(s)", len(corrections))
