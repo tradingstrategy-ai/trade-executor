@@ -10,6 +10,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 NOTEBOOK_PATH = Path(__file__).resolve().parents[1] / "strategies" / "test_only" / "158-backtest-hyperliquid-waterfall-release-candidate.ipynb"
 
@@ -59,6 +61,7 @@ def _has_any_execution_output(notebook_path: Path) -> bool:
     return any(cell.get("outputs") for cell in notebook.get("cells", []) if cell.get("cell_type") == "code")
 
 
+@pytest.mark.slow_test_group
 def test_hyperliquid_waterfall_release_candidate_notebook(tmp_path: Path) -> None:
     """Verify the release-candidate notebook executes and reports crashes clearly.
 

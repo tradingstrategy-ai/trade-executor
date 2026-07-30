@@ -16,6 +16,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 NOTEBOOK_PATH = Path(__file__).resolve().parents[1] / "strategies" / "test_only" / "08-backtest-capped-waterfall.ipynb"
 
@@ -65,6 +67,7 @@ def _has_any_execution_output(notebook_path: Path) -> bool:
     return any(cell.get("outputs") for cell in notebook.get("cells", []) if cell.get("cell_type") == "code")
 
 
+@pytest.mark.slow_test_group
 def test_capped_waterfall_notebook(tmp_path: Path) -> None:
     """Verify the capped-waterfall CCTP backtest notebook executes after the phase-order fix.
 
