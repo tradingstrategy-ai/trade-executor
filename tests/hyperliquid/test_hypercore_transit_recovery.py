@@ -113,6 +113,23 @@ def test_hypercore_transit_plan_keeps_bridge_fee_margin_for_perp_only_balance() 
     assert actions[1].amount == Decimal("9.49")
 
 
+def test_hypercore_transit_plan_keeps_unbridgeable_perp_dust_in_perp() -> None:
+    """Planner does not strand a dust-sized perp-to-spot first leg.
+
+    1. Build a perp-only snapshot whose recovered excess cannot cover bridge headroom.
+    2. Plan HyperCore transit recovery actions.
+    3. Assert neither half of an unexecutable two-leg recovery is emitted.
+    """
+    # Step 1: 0.021 USDC excess becomes an unbridgeable 0.011 USDC after the fee margin.
+    snapshot = _snapshot(perp_withdrawable=Decimal("0.521"))
+
+    # Step 2: Plan recovery before any Safe/CoreWriter transaction is created.
+    actions = plan_hypercore_transit_recovery_actions(snapshot)
+
+    # Step 3: Retain the tiny perp balance instead of stranding it in spot.
+    assert actions == []
+
+
 def test_hypercore_transit_plan_recovers_incident_amount_by_default() -> None:
     """Default #1486 recovery preserves pre-existing HyperCore balances.
 
@@ -394,6 +411,33 @@ def test_correct_accounts_recovery_helper_executes_for_open_hypercore_position(m
     assert executed == ["spot_to_evm"]
     assert executed_arguments["actions"] == [action]
     hot_wallet.sync_nonce.assert_called_once()
+
+
+def test_correct_accounts_detects_frozen_hypercore_position() -> None:
+    """Frozen HyperCore positions enable the default Safe-level recovery check.
+
+    1. Build a state with only a frozen HyperCore vault position.
+    2. Check whether the correct-accounts gate detects HyperCore strategy usage.
+    3. Assert the Safe-level transit recovery remains enabled for that strategy.
+    """
+    # Step 1: A frozen position can retain the only state evidence after a failed trade.
+    state = SimpleNamespace(
+        portfolio=SimpleNamespace(
+            open_positions={},
+            frozen_positions={
+                1: SimpleNamespace(
+                    pair=SimpleNamespace(is_hyperliquid_vault=lambda: True)
+                )
+            },
+            closed_positions={},
+        )
+    )
+
+    # Step 2: Inspect the state-only gate before any live HyperCore API read.
+    has_hypercore_position = correct_accounts_command._has_hypercore_vault_positions(state)
+
+    # Step 3: Frozen strategies use the same default recovery path as open ones.
+    assert has_hypercore_position is True
 
 
 def test_correct_accounts_dry_run_plans_transit_recovery_without_signer(monkeypatch) -> None:

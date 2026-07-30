@@ -281,6 +281,11 @@ the earlier 0.50 USDC perp dust and 0.217882 USDC spot balance. The spot
 balance exceeds HyperCore's 0.01 USDC bridge-fee headroom, so this incident
 does not need any bridge-fee adjustment.
 
+If a smaller future transit balance cannot cover the bridge-fee headroom and
+the normal balance-verification tolerance, `correct-accounts` leaves it in
+perp rather than sending only the first `perp_to_spot` leg. A later recovery
+can safely include that dust once the balance is sufficient.
+
 When resolving an ambiguous deposit, inspect vault equity before recovery: a
 late vault settlement changes which destination should retain the USDC. The
 transit helper is deliberately Safe-level, because an old state file may

@@ -225,7 +225,7 @@ as HyperAI trade #1486 and is expanded in PR #1593: a CoreWriter receipt can
 be successful while USDC is actually stranded in HyperCore perp or spot.
 Generic ERC-20 account correction cannot see either internal balance class.
 
-For a Lagoon Safe with closed HyperCore positions, the command snapshots live
+For a Lagoon Safe with open, frozen, or closed HyperCore positions, the command snapshots live
 EVM, spot and perp balances. It refuses to act when the Safe has any active
 perp position; otherwise it plans `perp → spot`, waits for that exact movement,
 then plans `spot → EVM` and waits for the Safe's EVM USDC balance to increase.
@@ -234,7 +234,9 @@ perp dust margin, but requests the entire amount just recovered from perp to
 spot before separately considering pre-existing spot USDC. That distinction
 returns all of the current stranded transfer when the existing spot balance
 has the 0.01 USDC bridge-fee headroom; otherwise the protocol retains only that
-fee margin rather than an arbitrary 0.50 USDC spot dust balance.
+fee margin rather than an arbitrary 0.50 USDC spot dust balance. If the amount
+left after that margin is too small to balance-verify, no first leg is sent and
+the tiny balance remains safely in perp for a later recovery.
 
 Always start with:
 
