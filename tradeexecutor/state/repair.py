@@ -41,17 +41,6 @@ class RepairAborted(Exception):
     """User chose no"""
 
 
-class HypercoreTransitRecoveryRequired(RepairAborted):
-    """A failed HyperCore deposit needs live balance reconciliation first.
-
-    State-only repair has no HyperCore Info API evidence. It cannot determine
-    whether a failed buy's allocation is still in EVM escrow, spot, perp, or
-    already deposited into the vault, so creating a zero-value counter trade
-    would be an unaudited refund. This exception protects the #1486 accounting
-    invariant: physical USDC must have exactly one state-side home.
-    """
-
-
 class HypercoreDuplicateCloseError(Exception):
     """A Hypercore duplicate group was not safe to close automatically."""
 
@@ -69,7 +58,9 @@ class RepairResult:
     #: What positions we managed to unfreeze
     unfrozen_positions: List[TradingPosition]
 
-    #: How many individual trades we repaired
+    #: Individual trades that needed repair or were deliberately deferred for
+    #: live reconciliation. Deferred HyperCore deposits must not be mistaken
+    #: for completed accounting repairs.
     trades_needing_repair: List[TradeExecution]
 
     #: New trades we made to fix the accounting
@@ -733,33 +724,66 @@ def repair_trades(
         if trade.other_data.get("hypercore_deposit_capital_at_risk") is not None
         or trade.other_data.get("hypercore_stranded_usdc") is not None
     ]
+    protected_position_ids = {trade.position_id for trade in at_risk_hypercore_trades}
+    repairable_trades = [
+        trade
+        for trade in trades_to_be_repaired
+        if trade.position_id not in protected_position_ids
+    ]
     if at_risk_hypercore_trades:
         trade_ids = ", ".join(str(trade.trade_id) for trade in at_risk_hypercore_trades)
         # ``repair_trade()`` would otherwise make a counter trade and restore
-        # the planned reserve without querying HyperCore. Refuse rather than
-        # infer a location from the failed status or a successful EVM wrapper
-        # receipt; both were misleading in the production incident.
-        raise HypercoreTransitRecoveryRequired(
-            f"Cannot state-repair HyperCore deposit trade(s) {trade_ids}: USDC may be in "
-            "HyperCore escrow, spot, perp, or vault. Run check-hypercore-user.py and "
-            "reconcile the live destination before releasing any allocation."
+        # the planned reserve without querying HyperCore.  Never infer a
+        # location from a failed status or a successful EVM wrapper receipt:
+        # trade #1486 proved that either can coexist with USDC in HyperCore.
+        #
+        # Do not abort the entire repair command, however.  Production also had
+        # an unrelated planned no-transaction trade which blocked
+        # correct-accounts' coherence check.  Deferring the protected trade
+        # lets repair clear that independent blocker, after which
+        # correct-accounts --dry-run can safely inspect and plan the live
+        # HyperCore recovery.  The affected position remains frozen below.
+        logger.error(
+            "Deferring state repair for HyperCore deposit trade(s) %s: USDC may be in "
+            "HyperCore escrow, spot, perp, or vault. Their positions remain frozen; "
+            "run correct-accounts --dry-run and reconcile the live destination before "
+            "releasing any allocation.",
+            trade_ids,
         )
+        if not repairable_trades:
+            # Do not reach the unfreeze loop when every repair candidate is
+            # protected. In interactive mode there is no safe mutation for the
+            # operator to confirm, and silently unfreezing another position
+            # would make ``repair`` stateful despite showing no prompt.
+            return RepairResult(
+                frozen_positions,
+                [],
+                trades_to_be_repaired,
+                [],
+            )
 
     if interactive:
 
-        for t in trades_to_be_repaired:
+        for t in repairable_trades:
             print("Needs repair:", t)
 
-        confirmation = input("Attempt to repair [y/n]").lower()
-        if confirmation != "y":
-            raise RepairAborted()
+        if repairable_trades:
+            confirmation = input("Attempt to repair [y/n]").lower()
+            if confirmation != "y":
+                raise RepairAborted()
 
     new_trades = []
-    for t in trades_to_be_repaired:
+    for t in repairable_trades:
         new_trades.append(repair_trade(state.portfolio, t))
 
     unfrozen_positions = []
     for p in frozen_positions:
+        if p.position_id in protected_position_ids:
+            logger.warning(
+                "Leaving position %s frozen because its HyperCore deposit still needs live reconciliation",
+                p,
+            )
+            continue
         if unfreeze_position(state.portfolio, p):
             unfrozen_positions.append(p)
             logger.info("Position unfrozen: %s", p)
@@ -776,13 +800,20 @@ def repair_trades(
 
 
 def repair_tx_not_generated(state: State, interactive=True):
-    """Repair command to fix trades that did not generate tranasctions.
+    """Repair planned/started trades that did not generate transactions.
 
     - Reasons include
 
     - Currently only manually callable from console
 
-    - Simple deletes trades that have an empty transaction list
+    - Creates accounting counter-trades for planned/started trades with an
+      empty transaction list
+
+    - Ignores terminal trades such as expired triggers.  An expired trade is
+      deliberately a planned trade without a transaction, so treating every
+      empty transaction list as broken makes ``repair`` abort on valid history.
+      This happened during the HyperAI #1486 recovery incident and prevented
+      repair from clearing a different genuinely unexecuted trade.
 
     Example exception:
 
@@ -825,9 +856,19 @@ def repair_tx_not_generated(state: State, interactive=True):
             # Already repaired
             continue
 
-        if not t.blockchain_transactions:
-            assert t.get_status() in (TradeStatus.planned, TradeStatus.started), f"Trade missing tx, but status is not planned/repaired {t}"
+        if not t.blockchain_transactions and t.get_status() in (TradeStatus.planned, TradeStatus.started):
             tx_missing_trades.add(t)
+        elif not t.blockchain_transactions:
+            # ``expired`` is the important normal case: mark_expired() can
+            # only be called for a planned trade, before it has any on-chain
+            # work. Other non-repairable states are also left for their
+            # dedicated recovery paths instead of making an unsafe counter
+            # trade merely to satisfy this legacy command.
+            logger.info(
+                "Ignoring no-transaction trade %s with non-repairable status %s",
+                t.trade_id,
+                t.get_status().value,
+            )
 
     if not tx_missing_trades:
         if interactive:

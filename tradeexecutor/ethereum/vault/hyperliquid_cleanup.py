@@ -747,11 +747,31 @@ def _repair_and_correct_state(
 ) -> tuple[bool, bool]:
     """Repair failed trades, correct accounts, and save when clean."""
     store, state = backup_state(context.state_file, unit_testing=context.unit_testing)
-    repair_trades(
+    repair_result = repair_trades(
         state,
         attempt_repair=True,
         interactive=False,
     )
+    deferred_hypercore_trades = [
+        trade
+        for trade in repair_result.trades_needing_repair
+        if trade.other_data.get("hypercore_deposit_capital_at_risk") is not None
+        or trade.other_data.get("hypercore_stranded_usdc") is not None
+    ]
+    if deferred_hypercore_trades:
+        # This legacy cleanup tool has no transaction-level evidence for a
+        # failed deposit and no Safe-level transit-recovery planner. Letting
+        # generic account correction continue could re-credit Safe reserves
+        # while the same USDC still has an unknown HyperCore location. Keep
+        # the historical fail-closed behaviour and leave reconciliation to
+        # ``correct-accounts --dry-run`` followed by the live command.
+        logger.error(
+            "Hyperliquid cleanup stopped: deferred HyperCore deposit trade(s) %s "
+            "need live reconciliation before account correction",
+            ", ".join(str(trade.trade_id) for trade in deferred_hypercore_trades),
+        )
+        return False, False
+
     closed_dust_trades = close_hypercore_dust_positions(state.portfolio)
     if closed_dust_trades:
         logger.info(

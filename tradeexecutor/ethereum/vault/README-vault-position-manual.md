@@ -239,7 +239,14 @@ write and may still broadcast transactions.
 A HyperCore deposit moves USDC Safe → EVM escrow → spot → perp → vault. An EVM
 receipt does not prove that every HyperCore action applied. If a trade reports
 `hypercore_stranded_usdc` or `hypercore_deposit_capital_at_risk`, do not run
-the generic `repair` command or re-submit the last transfer.
+the generic repair logic for that marked trade or re-submit the last transfer.
+The guarded `repair` command deliberately leaves that position frozen and does
+not create a counter-trade for it, but it may safely repair an unrelated
+planned/started trade with no transaction. Run it first when
+`correct-accounts` preflight reports an unfinished trade; then inspect the
+marked HyperCore trade with `correct-accounts --dry-run`. If every repair
+candidate is protected, `repair` deliberately makes no state change and shows
+no confirmation prompt.
 
 1. Run `check-hypercore-user.py` for the Safe and inspect Safe EVM USDC, EVM
    escrow, spot USDC, perp withdrawable USDC and vault equity.
@@ -292,7 +299,9 @@ transit helper is deliberately Safe-level, because an old state file may
 predate the failed trade's metadata; it preserves its configured spot/perp dust
 margin rather than assuming every internal USDC cent belongs to one failed
 trade. After recovery, explicitly expire or reconcile stale planned trades
-before restarting the executor; `repair` alone cannot infer this history.
+before restarting the executor. `repair` cannot determine the destination of
+an ambiguous HyperCore deposit and intentionally preserves that evidence for
+the account-correction planner.
 
 ### Close single position (for single-pair strategies)
 

@@ -250,15 +250,44 @@ sign or broadcast a transaction, alter state, or create a state backup. It is
 therefore the safe way to inspect a normal dust-preserving sweep before running
 the live command.
 
+Before either a live recovery or this dry-run planner, `correct-accounts`
+checks that no open or frozen position has a planned trade or a started trade
+without a transaction. This preflight is intentionally before all HyperCore
+calls and mutations. It was added after the HyperAI #1486 recovery: the first
+implementation returned real USDC to the Safe and only afterwards discovered an
+unrelated unexecuted trade, so the command could not complete its accounting
+pass. A preflight failure now proves that no Safe action was broadcast.
+
+When the preflight names an unfinished trade, use `repair` first. Repair treats
+an `expired` no-transaction trade as valid terminal history, rather than trying
+to repair it: expiry happens before a transaction is created. It repairs only
+planned/started no-transaction trades. If it also finds a failed HyperCore
+deposit with an at-risk or stranded-USDC marker, it logs the trade and leaves
+that position frozen; it does not create a counter-trade or refund an unknown
+HyperCore balance. This partial repair is deliberate: it clears unrelated
+coherence blockers so that the next `correct-accounts --dry-run` can inspect
+the live transit balance safely. If every candidate is protected, repair makes
+no state change and does not show an interactive confirmation prompt: there is
+nothing safe for it to repair.
+
+The safe operator sequence is therefore:
+
+1. Run `repair` to clear ordinary missing-transaction trades; review any
+   explicitly deferred HyperCore trade.
+2. Run `correct-accounts --dry-run`; it must pass preflight and show the
+   proposed `perp → spot → EVM` actions without broadcasting them.
+3. Run `correct-accounts` only after reviewing that plan. It reconciles the
+   recovered Safe balance through the normal accounting path.
+
 For #1486, the default dry run above plans exactly
 `perp_to_spot 48.884068` followed by `spot_to_evm 48.884068`: no incident
 option is necessary. The recovery is on by default for every eligible
 HyperCore vault strategy, as are the other HyperCore repair checks.
 
 This does **not** make generic repair safe. A state file that predates a failed
-deposit can still show the trade as planned and lack its at-risk marker. After
-recovery, expire/reconcile that stale planned trade before restarting
-the executor, then use the normal account correction to align reserve state.
+deposit can still show the trade as planned and lack its at-risk marker. Do not
+manually expire an ambiguous deposit merely to pass the preflight: reconcile
+its live Safe, escrow, spot, perp, and vault balances first.
 
 ## Withdrawal (sell) flow
 

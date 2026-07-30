@@ -21,6 +21,7 @@ from tradeexecutor.strategy.account_correction import (
     AccountingBalanceCheck,
     AccountingCorrectionCause,
     apply_accounting_correction,
+    preflight_state_for_account_correction,
 )
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 
@@ -441,10 +442,11 @@ def test_correct_accounts_detects_frozen_hypercore_position() -> None:
 
 
 def test_correct_accounts_dry_run_plans_transit_recovery_without_signer(monkeypatch) -> None:
-    """Dry-run exposes #1486-style transit recovery without broadcasting it.
+    """Dry-run reaches #1486-style transit recovery after the command preflight.
 
     1. Build a Lagoon state with a closed HyperCore position and stranded perp USDC.
-    2. Run the correct-accounts recovery hook in dry-run mode without a hot-wallet signer.
+    2. Run the same state-coherence preflight used by correct-accounts, then its
+       recovery hook in dry-run mode without a hot-wallet signer.
     3. Verify it reports the planned recovery while never invoking the broadcaster.
 
     The HyperCore snapshot and broadcaster are mocked because this test checks
@@ -468,7 +470,8 @@ def test_correct_accounts_dry_run_plans_transit_recovery_without_signer(monkeypa
                 1: SimpleNamespace(
                     pair=SimpleNamespace(is_hyperliquid_vault=lambda: True)
                 )
-            }
+            },
+            get_open_and_frozen_positions=lambda: [],
         )
     )
     monkeypatch.setattr(
@@ -488,7 +491,10 @@ def test_correct_accounts_dry_run_plans_transit_recovery_without_signer(monkeypa
         broadcast,
     )
 
-    # Step 2: Dry-run must require only read access, not the Safe's private key.
+    # Step 2: A coherent repaired state reaches dry-run recovery without a
+    # signer. The actual CLI invokes this preflight immediately after loading
+    # state, before the transit hook can broadcast a Safe transaction.
+    preflight_state_for_account_correction(state)
     planned = correct_accounts_command._recover_hypercore_transit_balances(
         asset_management_mode=AssetManagementMode.lagoon,
         sync_model=FakeLagoonVaultSyncModel(),

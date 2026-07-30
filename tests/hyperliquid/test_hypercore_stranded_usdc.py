@@ -2,10 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreVaultRouting
-from tradeexecutor.state.repair import HypercoreTransitRecoveryRequired, repair_trades
+from tradeexecutor.state.repair import repair_trades
 
 
 def test_mark_stranded_usdc_stores_info() -> None:
@@ -97,22 +95,76 @@ def test_phase1_at_risk_marker_is_written_before_broadcast() -> None:
     assert trade.other_data["retain_reserve_allocation_on_failure"] is True
 
 
-def test_state_only_repair_refuses_unreconciled_hypercore_deposit() -> None:
-    """State-only repair must not refund a deposit whose location is unknown.
+def test_state_only_repair_defers_unreconciled_hypercore_deposit() -> None:
+    """Repair must leave an unreconciled HyperCore deposit frozen without prompting.
 
     1. Create a failed trade carrying the HyperCore at-risk marker.
-    2. Present it to the state-only repair workflow.
-    3. Verify repair stops and instructs the operator to reconcile live balances.
+    2. Present it as the only frozen repair candidate to interactive repair.
+    3. Verify repair creates no counter-trade, does not prompt or unfreeze, and
+       leaves live reconciliation to correct-accounts.
     """
     # 1. This mock represents a crash before HyperCore receipt classification.
     state = MagicMock()
-    state.portfolio.frozen_positions.values.return_value = []
+    position = MagicMock()
+    position.position_id = 489
+    state.portfolio.frozen_positions.values.return_value = [position]
     trade = MagicMock()
     trade.trade_id = 1486
+    trade.position_id = 489
     trade.other_data = {"hypercore_deposit_capital_at_risk": {"amount_raw": 48_884_068}}
 
     # 2. State-only repair has no RPC/Info API evidence to resolve the location.
-    with patch("tradeexecutor.state.repair.find_trades_to_be_repaired", return_value=[trade]):
-        # 3. It must fail closed rather than manufacture a counter-trade refund.
-        with pytest.raises(HypercoreTransitRecoveryRequired, match="check-hypercore-user.py"):
-            repair_trades(state, attempt_repair=True, interactive=False)
+    with patch("tradeexecutor.state.repair.find_trades_to_be_repaired", return_value=[trade]), patch(
+        "tradeexecutor.state.repair.unfreeze_position",
+    ) as unfreeze_position, patch("builtins.input") as input_mock:
+        # 3. It must defer rather than manufacture a counter-trade refund. This
+        # lets repair unblock unrelated planned trades before correct-accounts
+        # performs the Safe-level live recovery, without an unprompted state
+        # change when this is the only repair candidate.
+        result = repair_trades(state, attempt_repair=True, interactive=True)
+
+    assert result.trades_needing_repair == [trade]
+    assert result.new_trades == []
+    assert result.unfrozen_positions == []
+    input_mock.assert_not_called()
+    unfreeze_position.assert_not_called()
+
+
+def test_state_only_repair_repairs_unrelated_trade_while_deferring_hypercore_deposit() -> None:
+    """Repair must clear independent failures without refunding stranded HyperCore USDC.
+
+    1. Model the production combination of one ordinary failed trade and one
+       failed HyperCore deposit carrying its stranded-USDC marker.
+    2. Run the state-only repair workflow without interactive confirmation.
+    3. Verify only the ordinary trade receives a counter-trade and the
+       HyperCore trade remains explicitly deferred for live reconciliation.
+
+    Trades are mocked because this test isolates the command's selection rule;
+    the real state-bookkeeping path is covered by the no-transaction regression
+    in ``test_repair_trade_missing_tx.py``.
+    """
+    # 1. The protected trade models #1486, while the ordinary trade models the
+    # independent failure which made correct-accounts' coherence check fail.
+    state = MagicMock()
+    state.portfolio.frozen_positions.values.return_value = []
+    hypercore_trade = MagicMock()
+    hypercore_trade.trade_id = 1486
+    hypercore_trade.position_id = 489
+    hypercore_trade.other_data = {"hypercore_stranded_usdc": {"amount_raw": 48_884_068}}
+    ordinary_trade = MagicMock()
+    ordinary_trade.trade_id = 4700
+    ordinary_trade.position_id = 470
+    ordinary_trade.other_data = {}
+    counter_trade = MagicMock()
+
+    # 2. Repair may create accounting entries only for the ordinary failure.
+    with patch("tradeexecutor.state.repair.find_trades_to_be_repaired", return_value=[hypercore_trade, ordinary_trade]), patch(
+        "tradeexecutor.state.repair.repair_trade",
+        return_value=counter_trade,
+    ) as repair_trade:
+        result = repair_trades(state, attempt_repair=True, interactive=False)
+
+    # 3. The command completes, but never manufactures a refund for #1486.
+    repair_trade.assert_called_once_with(state.portfolio, ordinary_trade)
+    assert result.trades_needing_repair == [hypercore_trade, ordinary_trade]
+    assert result.new_trades == [counter_trade]

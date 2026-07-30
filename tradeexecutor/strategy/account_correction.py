@@ -32,7 +32,7 @@ from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
-from tradeexecutor.state.trade import TradeFlag, TradeExecution, TradeType
+from tradeexecutor.state.trade import TradeFlag, TradeExecution, TradeStatus, TradeType
 from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_close_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON, \
     get_relative_epsilon_for_asset, get_relative_epsilon_for_pair, DEFAULT_USD_LOW_VALUE_THRESHOLD
 from tradeexecutor.strategy.lending_protocol_leverage import reset_credit_supply_loan
@@ -1514,9 +1514,44 @@ def _format_account_check_row(
 
 
 def check_state_internal_coherence(state: State):
-    """Check that we do not have any positions with non-executed trades."""
+    """Check that no position has a trade which makes accounting unsafe.
+
+    A planned trade is included in a position's available trading quantity, so
+    the existing quantity comparison detects it. A started trade without a
+    transaction is a separate crash window: reserve capital may already be
+    allocated, but no transaction exists for the normal on-chain checks to
+    reconcile. Detect it explicitly before any account correction can move
+    funds or make that allocation look available again.
+    """
 
     for p in state.portfolio.get_open_and_frozen_positions():
         quantity = p.get_quantity()
         trading_quantity = p.get_available_trading_quantity()
         assert quantity == trading_quantity, f"Position {p}, quantity {quantity}, available for trading {trading_quantity}, probably unexecuted trades. You need to run repair command first."
+        started_without_transaction = [
+            trade
+            for trade in p.trades.values()
+            if trade.get_status() == TradeStatus.started and not trade.blockchain_transactions
+        ]
+        assert not started_without_transaction, (
+            f"Position {p} has started trade(s) without blockchain transactions "
+            f"{started_without_transaction}. Run repair command first."
+        )
+
+
+def preflight_state_for_account_correction(state: State) -> None:
+    """Refuse account correction before an unexecuted trade can cause a partial run.
+
+    Account correction may include external side effects such as protocol-specific
+    balance recovery.  Validate the internal state before those effects so a
+    caller either receives a complete reconciliation or makes no balance move.
+    """
+    try:
+        check_state_internal_coherence(state)
+    except AssertionError as exc:
+        raise AssertionError(
+            "Cannot run correct-accounts because state has unexecuted trades. "
+            "Run repair first, then retry correct-accounts --dry-run. "
+            "This preflight runs before any HyperCore transit recovery or "
+            "accounting mutation."
+        ) from exc
