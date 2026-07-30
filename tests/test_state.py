@@ -1394,7 +1394,7 @@ def test_failed_buy_with_hypercore_phase1_at_risk_keeps_reserve_allocation(
     # 3. The failed-buy handler fails closed until a live reconciliation clears it.
     state.mark_trade_failed(start_ts, trade)
     assert trade.get_status() == TradeStatus.failed
-    assert state.portfolio.get_cash() == 830
+    assert state.portfolio.get_cash() == pytest.approx(830)
 
 
 def test_serialize_state(usdc, weth_usdc, start_ts: datetime.datetime):

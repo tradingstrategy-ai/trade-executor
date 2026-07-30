@@ -750,6 +750,12 @@ class EthereumExecution(ExecutionModel):
                 rebroadcast=rebroadcast,
             )
 
+            # setup_trades() may create a fail-closed checkpoint together with
+            # signed transactions.  Persist both before any RPC broadcast: a
+            # process crash after node acceptance must restart with the same
+            # uncertainty marker, not refund possibly moved Safe capital.
+            self.sync_state_before_broadcast()
+
             self._execute_trade_batch(
                 routing_model,
                 state,
@@ -842,6 +848,11 @@ class EthereumExecution(ExecutionModel):
             check_balances=check_balances,
             rebroadcast=rebroadcast,
         )
+
+        # See the sequential path above.  This deliberately occurs after
+        # setup, because transaction hashes and route-specific safety metadata
+        # do not exist at the runner's earlier pre-execution checkpoint.
+        self.sync_state_before_broadcast()
 
         self._execute_trade_batch(
             routing_model,

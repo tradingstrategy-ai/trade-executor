@@ -1356,7 +1356,7 @@ def _build_hypercore_vault_account_checks(
         # operator while the routing/repair guards retain the allocation.
         logger.warning(
             "HyperCore transit capital retained for failed trade #%s: %s. "
-            "Account correction will not release it; reconcile live balances first.",
+            "This HyperCore-specific check will not release it; reconcile live balances first.",
             trade_id,
             transit,
         )

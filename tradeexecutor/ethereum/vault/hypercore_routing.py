@@ -244,18 +244,6 @@ HYPERCORE_SMALL_POSITION_CLEANUP_MIN_REDEMPTION_RAW = (
 # tolerance to avoid false failures.
 HYPERCORE_RELATIVE_BALANCE_TOLERANCE = Decimal("0.01")
 
-#: Fixed USDC tolerance for the deposit ``spot -> perp`` balance proof.
-#:
-#: Production incident reference: HyperAI trade #1486 (Citadel, 2026-07-30)
-#: submitted ``transferUsdClass(spot->perp)`` and ``vaultTransfer(perp->vault)``
-#: together. The EVM receipt succeeded but only the first CoreWriter action
-#: settled. The Safe's perp account rose by exactly 48.884068 USDC while vault
-#: equity did not move. This tolerance is therefore *not* a vault-NAV or
-#: performance-fee tolerance: accepting a shortfall large enough to hide a
-#: missing transfer would reproduce the incident. It only absorbs Info API
-#: rounding while requiring both sides of the internal transfer to move.
-HYPERCORE_DEPOSIT_TRANSFER_TOLERANCE = Decimal("0.10")
-
 #: Persisted trade metadata keys for a deposit that may already have consumed
 #: Safe USDC. The at-risk marker is written before phase 1 is broadcast, so a
 #: process crash, RPC timeout, or node failover cannot fall through to generic
@@ -1148,15 +1136,13 @@ class HypercoreVaultRouting(RoutingModel):
         1. Free HyperCore spot USDC decreased by the expected deposit amount.
         2. HyperCore perp withdrawable USDC increased by the same amount.
 
-        A small fixed tolerance covers API rounding only. It intentionally does
-        not reuse vault NAV, trade slippage, or leader-performance-fee tolerance:
-        none apply to this internal USDC class transfer. Requiring coherent
-        movement on both sides prevents a later vault action from being sent on
-        stale or partially-settled state, which would otherwise create another
-        stranded or duplicate deposit.
+        USDC is represented to six decimals, matching the raw transfer amount,
+        so this proof uses no monetary tolerance.  Vault NAV, trade slippage,
+        and leader-performance-fee tolerances do not apply to this internal
+        class transfer.  Requiring the full coherent movement on both sides
+        prevents a vault action from being sent with insufficient perp USDC.
         """
         expected_increase = raw_to_usdc(expected_increase_raw)
-        expected_threshold = expected_increase - HYPERCORE_DEPOSIT_TRANSFER_TOLERANCE
         deadline = time.time() + timeout
         attempt = 0
 
@@ -1167,15 +1153,15 @@ class HypercoreVaultRouting(RoutingModel):
             spot_decrease = spot_baseline - current_spot
             perp_increase = current_perp - perp_baseline
 
-            if spot_decrease >= expected_threshold and perp_increase >= expected_threshold:
+            if spot_decrease >= expected_increase and perp_increase >= expected_increase:
                 logger.info(
                     "HyperCore deposit spot->perp transfer verified for Safe %s after %d poll(s): "
-                    "spot decrease %s USDC, perp increase %s USDC (expected at least %s USDC)",
+                    "spot decrease %s USDC, perp increase %s USDC (expected %s USDC)",
                     self.safe_address,
                     attempt,
                     spot_decrease,
                     perp_increase,
-                    expected_threshold,
+                    expected_increase,
                 )
                 return current_spot, current_perp
 
@@ -1183,8 +1169,8 @@ class HypercoreVaultRouting(RoutingModel):
             if remaining <= 0:
                 raise HypercoreWithdrawalVerificationError(
                     f"HyperCore deposit spot->perp transfer could not be verified for Safe "
-                    f"{self.safe_address} within {timeout}s. Expected at least "
-                    f"{expected_threshold} USDC movement, observed spot decrease "
+                f"{self.safe_address} within {timeout}s. Expected "
+                    f"{expected_increase} USDC movement, observed spot decrease "
                     f"{spot_decrease} USDC and perp increase {perp_increase} USDC. "
                     f"Baseline spot/perp: {spot_baseline}/{perp_baseline}; current "
                     f"spot/perp: {current_spot}/{current_perp}; after {attempt} poll(s)."
@@ -1196,9 +1182,9 @@ class HypercoreVaultRouting(RoutingModel):
                 "(%.0fs remaining, poll #%d)",
                 self.safe_address,
                 spot_decrease,
-                expected_threshold,
+                expected_increase,
                 perp_increase,
-                expected_threshold,
+                expected_increase,
                 remaining,
                 attempt,
             )
@@ -1629,11 +1615,7 @@ class HypercoreVaultRouting(RoutingModel):
             "amount_human": str(human_amount),
             "location": location,
             "safe_address": self.safe_address,
-            "recovery": HypercoreVaultRouting._get_stranded_usdc_recovery_message(
-                self,
-                human_amount,
-                location,
-            ),
+            "recovery": self._get_stranded_usdc_recovery_message(human_amount, location),
         }
         if not hasattr(trade, "other_data") or trade.other_data is None:
             trade.other_data = {}
@@ -2397,6 +2379,10 @@ class HypercoreVaultRouting(RoutingModel):
             lp_fees=0,
             native_token_price=0,
         )
+        # Vault equity now proves that this deposit completed.  Remove the
+        # phase-1 uncertainty checkpoint so successful positions are never
+        # misreported as stranded capital by later account checks.
+        self._clear_deposit_capital_at_risk(trade)
 
         logger.info(
             "Hypercore vault deposit (simulate) settled: %s USDC deposited",
@@ -2736,6 +2722,12 @@ class HypercoreVaultRouting(RoutingModel):
             lp_fees=0,
             native_token_price=0,
         )
+
+        # The final vault-equity proof makes phase-1 uncertainty obsolete.
+        # Remove the retained-allocation marker before later account checks so
+        # a normal, successfully settled deposit is never treated as transit
+        # capital from the #1486 failure class.
+        self._clear_deposit_capital_at_risk(trade)
 
         # Refund the unused portion of planned reserve back to the same
         # source that funded the trade.  start_execution() allocates the full

@@ -88,11 +88,12 @@ CoreWriter transactions in
    balance.
 3. Broadcast only `transferUsdClass(spot→perp)`.
 4. Check its EVM receipt and use a deposit-specific verifier to observe the
-   spot decrease and corresponding perp increase. Compare human USDC values
-   after the correct per-account conversion and allow only a small explicit
-   rounding tolerance; do not reuse the vault performance-fee tolerance.
-   Accept an increase of at least the threshold rather than exact equality so
-   unrelated positive balance movement cannot cause a false timeout.
+   full spot decrease and corresponding perp increase. Compare human USDC
+   values after the correct per-account conversion; six-decimal USDC values
+   exactly represent the raw transfer amount, so no monetary tolerance is
+   permitted. Do not reuse the vault performance-fee tolerance. Unrelated
+   positive movement may exceed the requested amount, but either side must
+   still have moved by at least the complete requested amount.
 5. Only after that poll succeeds, broadcast
    `vaultTransfer(perp→vault)`.
 6. Check its EVM receipt and use
@@ -343,6 +344,8 @@ Before production deployment, use `check-hypercore-user.py` to reconcile trade
 
 - No EVM transaction contains both deposit settlement actions.
 - The vault action cannot be broadcast before the perp increase is observed.
+- The phase-2 proof rejects any partial spot or perp movement, including a
+  shortfall that would otherwise be hidden by a monetary tolerance.
 - Every post-bridge failure records a conservative recovery location.
 - A crash or indeterminate phase-1 broadcast cannot reach generic refund
   without live reconciliation.

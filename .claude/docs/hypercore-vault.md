@@ -93,7 +93,7 @@ the contract between `setup_trades()` and `settle_trade()`:
 | `hypercore_phase1_perp_baseline_usdc` | setup, before withdrawal phase 1 | Perp withdrawable baseline; captured *before* broadcast because `vaultTransfer` can settle before receipt handling. |
 | `hypercore_phase1_vault_equity_usdc` | setup / preflight | Pre-withdrawal vault equity, the "before" value for detecting whether a withdrawal already reduced equity. |
 | `hypercore_activation_cost_raw` | setup, first buy | USDC consumed activating the Safe on HyperCore (deducted once per cycle). |
-| `hypercore_deposit_capital_at_risk` | before deposit phase 1 broadcast | Conservative checkpoint for USDC a node may already have accepted from the Safe. It blocks generic failed-buy refunds after a crash or indeterminate broadcast until live reconciliation. |
+| `hypercore_deposit_capital_at_risk` | during phase-1 preparation, persisted immediately before broadcast | Conservative checkpoint for USDC a node may already have accepted from the Safe. It blocks generic failed-buy refunds after a crash or indeterminate broadcast until live reconciliation. |
 | `hypercore_capped_deposit_raw` | deposit preflight | Deposit capped to actual Safe EVM USDC balance. |
 | `hypercore_capped_withdrawal_raw` | withdrawal preflight / retry | Withdrawal capped to live vault equity minus safety margin. |
 | `hypercore_stranded_usdc` | on failure | Records USDC stranded mid-pipeline (perp/spot) for operator recovery and retains its reserve allocation. |
@@ -203,12 +203,14 @@ deposit action automatically.
 | Perp→vault broadcast/confirmation is indeterminate | `hypercore_perp_or_vault` | Recheck both perp and vault equity before repeating anything. |
 | Receipt definitely reverts | Previous account (spot or perp) | The attempted action did not move funds. |
 
-`hypercore_deposit_capital_at_risk` is written before phase 1 is broadcast. It
-remains on a trade if the process dies, a receipt is missing, or a broadcast is
-ambiguous. Both automatic unconfirmed-trade repair and state-only `repair`
-refuse to release that allocation: inspect the Safe, EVM escrow, spot, perp
-and vault first with `check-hypercore-user.py`. A confirmed phase-1 revert is
-the only path that clears the marker and allows ordinary failed-buy accounting.
+`hypercore_deposit_capital_at_risk` is written during phase-1 preparation, and
+the execution model persists state after preparation and immediately before
+broadcast. It remains on a trade if the process dies, a receipt is missing, or
+a broadcast is ambiguous. Both automatic unconfirmed-trade repair and
+state-only `repair` refuse to release that allocation: inspect the Safe, EVM
+escrow, spot, perp and vault first with `check-hypercore-user.py`. A confirmed
+phase-1 revert clears the marker for ordinary failed-buy accounting; a fully
+confirmed vault deposit clears it as successful, non-transit capital.
 
 For recovery, USDC in perp must move **perp → spot** before `spotSend` can
 bridge it back to the HyperEVM Safe. Never run a recovery action from a timeout
