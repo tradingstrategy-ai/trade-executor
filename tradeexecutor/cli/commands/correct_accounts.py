@@ -26,7 +26,7 @@ from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.exchange_account.utils import create_exchange_account_value_func
 from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts, UnknownTokenPositionFix, check_state_internal_coherence
 from .app import app
-from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_client, backup_state, create_execution_and_sync_model, resolve_deployment_file, configure_default_chain
+from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_client, backup_state, create_execution_and_sync_model, resolve_deployment_file, configure_default_chain, create_state_store
 from ..double_position import check_double_position
 from ..log import setup_logging
 from ...ethereum.enzyme.tx import EnzymeTransactionBuilder
@@ -396,6 +396,7 @@ def correct_accounts(
     raise_on_unclean: bool = typer.Option(False, is_flag=True, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
     skip_hypercore_transit_recovery: bool = Option(False, "--skip-hypercore-transit-recovery", envvar="SKIP_HYPERCORE_TRANSIT_RECOVERY", help="Skip automatic Safe-level HyperCore spot/perp USDC recovery before account correction."),
     cleanup_hypercore_small_positions: bool = Option(True, "--cleanup-hypercore-small-positions/--no-cleanup-hypercore-small-positions", envvar="CLEANUP_HYPERCORE_SMALL_POSITIONS", help="Redeem open HyperCore vault positions below the strategy minimum allocation before correcting accounts."),
+    dry_run: bool = Option(False, "--dry-run", envvar="DRY_RUN", help="Read live balances and report corrections and HyperCore small-position redemptions without persisting trades, broadcasting transactions, backing up, or saving state."),
 
     # Derive exchange account options
     derive_owner_private_key: Optional[str] = Option(None, envvar="DERIVE_OWNER_PRIVATE_KEY", help="Derive owner wallet private key"),
@@ -421,6 +422,8 @@ def correct_accounts(
     positions cannot carry over with the current event based tracking logic.
 
     This command is interactive and you need to confirm any changes applied to the state.
+    Use ``--dry-run`` for a read-only report. Dry-run never broadcasts
+    transactions and does not write or back up the state file.
 
     An old state file is automatically backed up.
     """
@@ -482,7 +485,13 @@ def correct_accounts(
     if not state_file:
         state_file = f"state/{id}.json"
 
-    store, state = backup_state(state_file, unit_testing=unit_testing)
+    if dry_run:
+        store = create_state_store(Path(state_file), simulate=True)
+        assert not store.is_pristine(), f"State file does not exist: {state_file}"
+        state = store.load()
+        logger.warning("Dry run enabled: no transactions will be broadcast and no state will be written")
+    else:
+        store, state = backup_state(state_file, unit_testing=unit_testing)
 
     slippage_tolerance = 0.013
     if mod:
@@ -728,32 +737,39 @@ def correct_accounts(
             if not cleanup_candidates:
                 logger.info("HyperCore small-position cleanup found no eligible positions")
             else:
+                is_testnet = web3.eth.chain_id == 998
+                api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
+                session = create_hyperliquid_session(api_url=api_url)
                 ensure_routing_setup()
-                if routing_state is None:
-                    logger.warning(
-                        "HyperCore small-position cleanup skipped: routing is unavailable for this strategy"
-                    )
-                else:
-                    is_testnet = web3.eth.chain_id == 998
-                    api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
-                    session = create_hyperliquid_session(api_url=api_url)
+                if dry_run or routing_state is not None:
                     cleanup_report = run_hypercore_small_position_cleanup(
                         state=state,
                         timestamp=native_datetime_utc_now(),
                         candidates=cleanup_candidates,
-                        execution_model=execution_model,
-                        routing_model=runner.routing_model,
-                        routing_state=routing_state,
+                        execution_model=None if dry_run else execution_model,
+                        routing_model=None if dry_run else runner.routing_model,
+                        routing_state=None if dry_run else routing_state,
                         session=session,
                         safe_address=sync_model.get_token_storage_address(),
                         store=store,
+                        dry_run=dry_run,
                     )
-                    logger.info(
-                        "HyperCore small-position cleanup processed %d trade(s) across %d candidate(s); "
-                        "%d position(s) were closed",
-                        len(cleanup_report.executed_trades),
-                        len(cleanup_report.candidates),
-                        len(cleanup_report.closed_position_ids),
+                    if dry_run:
+                        logger.info(
+                            "Dry run: HyperCore small-position cleanup found %d candidate(s)",
+                            len(cleanup_report.candidates),
+                        )
+                    else:
+                        logger.info(
+                            "HyperCore small-position cleanup processed %d trade(s) across %d candidate(s); "
+                            "%d position(s) were closed",
+                            len(cleanup_report.executed_trades),
+                            len(cleanup_report.candidates),
+                            len(cleanup_report.closed_position_ids),
+                        )
+                else:
+                    logger.warning(
+                        "HyperCore small-position cleanup skipped: routing is unavailable for this strategy"
                     )
 
     closed_dust_trades = close_hypercore_dust_positions(state.portfolio)
@@ -763,14 +779,15 @@ def correct_accounts(
             len(closed_dust_trades),
         )
 
-    _recover_hypercore_transit_balances(
-        asset_management_mode=asset_management_mode,
-        sync_model=sync_model,
-        web3=web3,
-        hot_wallet=hot_wallet,
-        state=state,
-        skip_hypercore_transit_recovery=skip_hypercore_transit_recovery,
-    )
+    if not dry_run:
+        _recover_hypercore_transit_balances(
+            asset_management_mode=asset_management_mode,
+            sync_model=sync_model,
+            web3=web3,
+            hot_wallet=hot_wallet,
+            state=state,
+            skip_hypercore_transit_recovery=skip_hypercore_transit_recovery,
+        )
 
     block_number = get_almost_latest_block_number(web3)
     logger.info(f"Correcting accounts at block {block_number:,}")
@@ -806,6 +823,14 @@ def correct_accounts(
         logger.info("No account corrections found")
 
     check_state_internal_coherence(state)
+
+    if dry_run:
+        logger.info("Dry run found %d accounting correction(s)", len(corrections))
+        for correction in corrections:
+            logger.info("  Would apply: %s", correction)
+        logger.info("Dry run complete: no transactions broadcast and no state written")
+        web3config.close()
+        return
 
     tx_builder = sync_model.create_transaction_builder()
 

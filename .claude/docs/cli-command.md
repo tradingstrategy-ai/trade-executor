@@ -96,6 +96,14 @@ Representative code:
 - `tradeexecutor/cli/commands/close_position.py`
 - `tradeexecutor/cli/commands/start.py`
 
+`correct-accounts --dry-run` is the read-only variant for live reconciliation.
+It loads the existing state through `SimulateStore`, reads current balances,
+reports HyperCore small-position redemptions and generic accounting
+corrections, and returns before transaction builders or correction execution.
+It does not create a backup, broadcast, or persist state. Do not substitute
+`--skip-save`: that option skips the final state write but does not prevent
+earlier transaction broadcasts.
+
 ### Hybrid commands
 
 Some commands are mostly local-state commands but still construct strategy plumbing or universe data.

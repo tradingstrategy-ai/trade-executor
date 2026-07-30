@@ -10,14 +10,17 @@ import pytest
 from eth_defi.hyperliquid.api import UserVaultEquity
 from hexbytes import HexBytes
 from tradingstrategy.chain import ChainId
+from typer.main import get_command
 from typer.testing import CliRunner
 from web3 import Web3
 
+from tradeexecutor.cli import main
 from tradeexecutor.ethereum.vault import hypercore_dust_claim
 from tradeexecutor.ethereum.vault.hypercore_dust_claim import (
     HYPERCORE_DUST_CLAIM_NOTE,
 )
 from tradeexecutor.ethereum.vault.hypercore_routing import (
+    HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW,
     HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,
     raw_to_usdc,
 )
@@ -241,13 +244,14 @@ def _patch_execution(
 
 
 def test_claim_hypercore_vault_dust_persists_actual_delta_before_later_failure(
-    monkeypatch,
-):
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     """Claim Hypercore dust and persist state before a later claim fails.
 
     1. Create two live claimable vault equities and a reserve-only state.
     2. Run the mocked claim flow, forcing the second vault to fail.
-    3. Verify the first vault went through all phases and saved actual reserve delta accounting.
+    3. Verify the first vault went through all phases, saved actual reserve delta accounting, and emitted only captured operator output.
     """
     # 1. Create two live claimable vault equities and a reserve-only state.
     state = _make_state()
@@ -304,7 +308,7 @@ def test_claim_hypercore_vault_dust_persists_actual_delta_before_later_failure(
             unit_testing=True,
         )
 
-    # 3. Verify the first vault went through all phases and saved actual reserve delta accounting.
+    # 3. Verify the first vault went through all phases, saved actual reserve delta accounting, and emitted only captured operator output.
     reserve = state.portfolio.get_default_reserve_position()
     event = next(iter(reserve.balance_updates.values()))
     assert broadcast_order == ["vault_to_perp", "perp_to_spot", "spot_to_evm"]
@@ -316,16 +320,19 @@ def test_claim_hypercore_vault_dust_persists_actual_delta_before_later_failure(
         state.sync.accounting.balance_update_refs[-1].balance_event_id
         == event.balance_update_id
     )
+    captured = capsys.readouterr()
+    assert "Hypercore vault dust candidates" in captured.out
 
 
 def test_claim_hypercore_vault_dust_safety_guards_and_cli_registration(
-    monkeypatch,
-):
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     """Verify Hypercore dust claim safety guards and command registration.
 
     1. Verify active perp positions abort the command before broadcasting.
-    2. Verify open-state, above-cap, below-floor, and re-read stale-state candidates are not executed.
-    3. Verify the CLI command is exported and the Typer app can build the command tree.
+    2. Verify open-state, above-cap, sub-5 redemption, bridge-threshold, and re-read stale-state handling.
+    3. Verify the CLI command is exported, Typer builds the command tree, and operator output is captured.
     """
     # 1. Verify active perp positions abort the command before broadcasting.
     active_state = _make_state()
@@ -357,7 +364,7 @@ def test_claim_hypercore_vault_dust_safety_guards_and_cli_registration(
         active_context.hot_wallet.transact_and_broadcast_with_contract.call_count == 0
     )
 
-    # 2. Verify open-state, above-cap, below-floor, and re-read stale-state candidates are not executed.
+    # 2. Verify open-state, above-cap, sub-5 redemption, and re-read stale-state handling.
     reserve_asset = _make_reserve_asset()
 
     open_state = _make_state()
@@ -424,29 +431,68 @@ def test_claim_hypercore_vault_dust_safety_guards_and_cli_registration(
         == 0
     )
 
-    below_floor_state = _make_state()
-    below_floor_balances = {
+    sub_five_state = _make_state()
+    sub_five_balances = {
         "evm_usdc": Decimal("1"),
         "spot_total": Decimal("0"),
         "spot_free": Decimal("0"),
         "perp_withdrawable": Decimal("0"),
         "perp_position_count": 0,
     }
-    below_floor_context = _make_context(below_floor_state, below_floor_balances)
-    below_floor_equity = raw_to_usdc(HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW) + Decimal(
+    sub_five_context = _make_context(sub_five_state, sub_five_balances)
+    sub_five_equity = raw_to_usdc(HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW) + Decimal(
         "4.99"
     )
     _patch_live_reads(
         monkeypatch,
-        below_floor_balances,
-        [_make_equity(equity=below_floor_equity)],
-        max_withdrawable=below_floor_equity,
+        sub_five_balances,
+        [_make_equity(equity=sub_five_equity)],
+        max_withdrawable=sub_five_equity,
     )
-    below_floor_candidate = hypercore_dust_claim.discover_hypercore_dust_candidates(
-        below_floor_context, Decimal("25")
+    sub_five_candidate = hypercore_dust_claim.discover_hypercore_dust_candidates(
+        sub_five_context, Decimal("25")
     )[0]
-    assert below_floor_candidate.status == "below_floor"
-    assert below_floor_candidate.safe_raw_claim_amount < 5_000_000
+    assert sub_five_candidate.status == "claimable"
+    assert sub_five_candidate.safe_raw_claim_amount == 4_990_000
+
+    bridge_threshold_state = _make_state()
+    bridge_threshold_context = _make_context(
+        bridge_threshold_state,
+        sub_five_balances,
+    )
+    bridge_threshold_equity = raw_to_usdc(
+        HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+        + HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW
+    )
+    _patch_live_reads(
+        monkeypatch,
+        sub_five_balances,
+        [_make_equity(equity=bridge_threshold_equity)],
+        max_withdrawable=bridge_threshold_equity,
+    )
+    bridge_threshold_candidate = (
+        hypercore_dust_claim.discover_hypercore_dust_candidates(
+            bridge_threshold_context,
+            Decimal("25"),
+        )[0]
+    )
+    assert bridge_threshold_candidate.status == "below_bridge_threshold"
+    assert not bridge_threshold_candidate.is_claimable
+
+    assert (
+        hypercore_dust_claim._get_phase1_noop_retry_raw(
+            current_vault_equity=Decimal("3.45"),
+            previous_raw=2_000_000,
+        )
+        == 1_950_000
+    )
+    assert (
+        hypercore_dust_claim._get_phase1_noop_retry_raw(
+            current_vault_equity=Decimal("1.65"),
+            previous_raw=200_000,
+        )
+        is None
+    )
 
     reread_state = _make_state()
     reread_balances = {
@@ -496,16 +542,12 @@ def test_claim_hypercore_vault_dust_safety_guards_and_cli_registration(
         reread_context.hot_wallet.transact_and_broadcast_with_contract.call_count == 0
     )
 
-    # 3. Verify the CLI command is exported and the Typer app can build the command tree.
-    from tradeexecutor.cli import main
-
+    # 3. Verify the CLI command is exported, Typer builds the command tree, and operator output is captured.
     assert main.claim_hypercore_vault_dust in set(main.__all__)
     runner = CliRunner()
     assert runner.invoke(main.app, ["version"]).exit_code == 0
     claim_help = runner.invoke(main.app, ["claim-hypercore-vault-dust", "--help"])
     assert claim_help.exit_code == 0
-
-    from typer.main import get_command
 
     click_command = get_command(main.app).commands["claim-hypercore-vault-dust"]
     max_claim_params = [
@@ -514,3 +556,5 @@ def test_claim_hypercore_vault_dust_safety_guards_and_cli_registration(
     assert len(max_claim_params) == 1
     assert max_claim_params[0].opts == ["--max-claim-usdc"]
     assert str(max_claim_params[0].type) == "STRING"
+    captured = capsys.readouterr()
+    assert "Hypercore vault dust candidates" in captured.out

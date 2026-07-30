@@ -194,6 +194,37 @@ store.sync(state)
 
 ## Closing a position
 
+### HyperCore deposit and redemption thresholds
+
+HyperCore native vault deposits and redemptions use different client-side
+validation:
+
+- The client **deposit** path requires at least 5 USDC. The
+  `MINIMUM_VAULT_DEPOSIT` constant and deposit encoder enforce this.
+- The `vaultTransfer` withdrawal encoder has no equivalent check. No backend
+  redemption minimum has been confirmed, so the client permits redemptions
+  below 5 USDC and relies on settlement verification to detect a no-op.
+- A redemption must still be positive, within live `max_withdrawable`, and
+  below fresh vault equity after the safety margin. It must also wait for the
+  depositor lock-up to expire.
+
+`correct-accounts` uses these rules to redeem undersized HyperCore positions
+directly. It never tops up a position being closed, because a deposit would
+extend the lock-up. Cleanup uses an adaptive safety margin of at most 0.10 USDC
+instead of the normal 1.50 USDC full-close margin, then falls back to 0.25,
+0.50, and 1.00 USDC verified retry margins if HyperCore silently no-ops.
+Positions at or below 0.30 USDC are closed locally because they cannot produce
+enough balance movement to verify every withdrawal phase safely. Larger
+residuals remain tracked for another direct redemption pass. Preview the live
+actions without changing persisted state or broadcasting transactions:
+
+```shell
+poetry run trade-executor correct-accounts --dry-run
+```
+
+Do not use `--skip-save` as a dry-run substitute: it only skips the final state
+write and may still broadcast transactions.
+
 ### Close single position (for single-pair strategies)
 
 ```python

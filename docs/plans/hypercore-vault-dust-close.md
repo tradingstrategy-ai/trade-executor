@@ -1,5 +1,13 @@
 # Fix plan: Hypercore vault dust pollutes closed positions
 
+> **Historical note:** This plan's original conclusion that small residuals
+> were inherently unredeemable was not established. `MINIMUM_VAULT_DEPOSIT`
+> is enforced by the deposit encoder; the withdrawal encoder has no equivalent
+> client-side check. No backend redemption minimum has been confirmed. Current
+> `correct-accounts` cleanup attempts sufficiently large residual redemptions
+> and verifies settlement. The write-off behaviour described below remains
+> relevant for amounts too small to verify safely.
+
 ## Problem
 
 The hyper-ai strategy (Lagoon vault-of-vaults on Hyperliquid, chain 999) shows
@@ -48,7 +56,8 @@ off and `continue`** — instead of creating + immediately closing a phantom
 position. This mirrors how leftover spot dust is treated.
 
 - The genuine exit already closes the real position, so nothing economic is lost.
-- The residual is < $2 per vault and genuinely un-withdrawable.
+- The residual is < $2 per vault and was treated as accounting dust by this
+  historical fix.
 - `_build_hypercore_vault_account_checks()` only checks open/frozen positions,
   and the docstring confirms Hypercore vaults "never enter the generic asset-map
   based correction path", so the written-off residual will not trigger a
@@ -93,7 +102,8 @@ USD-equity vs epsilon comparison is sound. Two minor suggestions applied:
 
 - The 27 unfilled-rebalance empty positions (planned buy never executed) are a
   separate issue.
-- Lowering `HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW` would reduce stranded dust
-  but cannot eliminate it (protocol refuses exact full exits). Not pursued here.
+- The normal withdrawal safety margin cannot eliminate final NAV-drift dust.
+  Later cleanup work added a smaller adaptive margin and verified retries for
+  tracked small positions.
 - Existing dust positions already in production state are not retro-cleaned by
   this change; `repair_hypercore_dust` / `correct-accounts` history remains.

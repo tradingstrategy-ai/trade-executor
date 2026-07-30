@@ -43,11 +43,12 @@ Key properties that shape our execution:
   redemption returns can therefore be materially smaller than the gross amount
   requested. The rate is carried per vault on the trading pair
   (`other_data["vault_performance_fee"]`), not assumed as a constant.
-- **Lock-ups and minimums (per vault).** Deposits lock for a period that also
-  differs per vault — 1 day for leader vaults, 4 days for protocol/HLP vaults;
-  withdrawals below a ~5 USDC floor are silently rejected; `vaultTransfer` has
-  no "withdraw all" mode and silently no-ops if you ask for more than current
-  equity.
+- **Lock-ups and deposit minimums (per vault).** Deposits lock for a period
+  that also differs per vault — 1 day for leader vaults, 4 days for
+  protocol/HLP vaults. The client-side `MINIMUM_VAULT_DEPOSIT` check applies
+  only to the deposit encoder; the withdrawal encoder has no equivalent check.
+  `vaultTransfer` has no "withdraw all" mode and silently no-ops if a
+  redemption asks for more than current equity.
 - **Silent failures.** Bridge and transfer actions can have a successful EVM
   receipt while HyperCore moves nothing. Every phase must therefore be
   *verified* against HyperCore state, not trusted on receipt status.
@@ -73,7 +74,7 @@ The driver lives in `tradeexecutor/ethereum/vault/hypercore_routing.py`.
 | `HypercoreVaultRouting(RoutingModel)` | Builds, signs, broadcasts and verifies all phases. Holds the HyperEVM `web3`, the `LagoonVault` (whose Safe is the on-chain account), the deployer `HotWallet`, and the reserve token address. |
 | `HypercoreVaultRoutingState(RoutingState)` | Per-cycle routing state. |
 | `HypercoreWithdrawalVerificationError` | A phase did not reach the expected HyperCore balance within the timeout. |
-| `HypercoreWithdrawalPreflightError` | Live preconditions (lock-up, equity, minimum) failed before broadcasting. |
+| `HypercoreWithdrawalPreflightError` | Live preconditions (lock-up, positive amount, equity or liquidity) failed before broadcasting. |
 | `SettlementBroadcastError` | A settlement transaction failed to broadcast/confirm; carries the partial `BlockchainTransaction`. |
 
 From eth_defi (`eth_defi.hyperliquid`): `HyperliquidSession` (Info API client),
@@ -352,25 +353,37 @@ revalues the existing HyperCore position first, then plans a full-close trade
 through the normal HyperCore router so the verified vault → perp → spot → EVM
 withdrawal sequence credits actual USDC to the strategy reserve.
 
-HyperCore silently rejects withdrawals below 5 USDC and full withdrawals that
-are marginally above live equity.  Before each pass the cleaner refreshes live
-equity.  If needed, it tops up enough to leave the 5 USDC withdrawal floor even
-for the largest 10 USDC retry margin (at least 5 USDC; e.g. a 3.45 USDC
-position receives an 11.55 USDC top-up).  It skips the position if reserves do
-not cover that temporary capital.  The top-up is an isolated trade: HyperCore
-locks the whole vault position after every deposit, so the cleaner records a
-pending-redemption marker and waits for a later `correct-accounts` run after
-the live lock-up has expired.  It never attempts a same-run top-up and redeem.
+Full withdrawals that are marginally above live equity silently no-op. Before
+each pass the cleaner refreshes live equity and checks the existing lock-up.
+Once unlocked, it directly attempts a full-close redemption at any amount
+that is large enough to verify every withdrawal phase after the
+live-equity safety margin. It never tops up a position: the client-side 5 USDC
+check belongs to the **deposit encoder**, not the withdrawal encoder, and
+depositing would unnecessarily create a new lock-up. No backend redemption
+minimum has been confirmed; every attempted redemption is verified for actual
+balance movement.
 
-Once unlocked, the normal redeem path retries a phase-1 silent no-op with
-progressively larger 3, 5, and 10 USDC safety margins.  A retry that leaves
-more than the 2 USDC state-close epsilon remains tracked for a later cleanup
-run, where it can be topped up again if necessary.  A still-open residual
-confirmed at or below 2 USDC is locally closed with a zero-quantity repair.
-On a successful cleanup the top-up is temporary capital and actual withdrawn
-proceeds return to reserves.  If a routed cleanup trade fails, its state is
-saved and it is left for the normal failed-trade repair flow rather than being
-silently written off.
+Cleanup uses an adaptive initial margin of at most 0.10 USDC instead of the
+normal 1.50 USDC full-close margin, because withholding 1.50 USDC would strand
+a material share of a 3–5 USDC position. The redeem path retries a phase-1
+silent no-op with progressively larger 0.25, 0.50, and 1.00 USDC safety
+margins, but only while the resulting redemption remains above the 0.20 USDC
+follow-up phase verification tolerance. The deposit constant is deliberately
+not reused in the withdrawal path; normal settlement verification detects a
+backend no-op. A position with
+0.30 USDC or less cannot produce enough balance movement to verify every
+follow-up phase after the initial margin, so it is locally closed as protocol
+dust without broadcasting. A still-open residual above 0.30 USDC remains
+tracked for another direct redemption pass; a residual at or below 0.30 USDC
+is locally closed with a zero-quantity repair. If a routed cleanup trade
+fails, its state is saved and it is left for the normal failed-trade repair
+flow rather than being silently written off.
+
+Use `correct-accounts --dry-run` to refresh live balances and report eligible
+HyperCore redemptions and accounting corrections without persisting trades,
+broadcasting transactions, backing up, or saving state. `--skip-save` is not a
+dry-run flag: it can still broadcast transactions before skipping the final
+state write.
 
 ## Testing
 
@@ -452,7 +465,8 @@ environment, never hardcoded):
 - `scripts/audit-hypercore-redemption-state.py` (→ `audit-redemption-state.py`) —
   audit a state file for stranded USDC / unfinished redemptions.
 - `trade-executor repair-hypercore-dust` (`tradeexecutor/cli/commands/repair_hypercore_dust.py`) —
-  clean up sub-minimum vault dust left after capped withdrawals.
+  clean up untracked vault dust left after capped withdrawals. Its withdrawal
+  path does not reuse the deposit encoder's 5 USDC check.
 - `check-hypercore-user.py` — referenced by the failure diagnostics
   (`hypercore_stranded_usdc` recovery note) to inspect a Safe's live HyperCore
   perp/spot/vault balances before manually completing a `spotSend` or deposit.
