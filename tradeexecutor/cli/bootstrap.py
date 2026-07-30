@@ -23,7 +23,10 @@ from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
-from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from tradeexecutor.ethereum.lagoon.vault import (
+    LagoonVaultSyncModel,
+    fetch_lagoon_guard_v0_settlement_metadata,
+)
 from tradeexecutor.ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
 
 from tradingstrategy.chain import ChainId
@@ -871,6 +874,13 @@ def create_metadata(
             case AssetManagementMode.lagoon:
                 assert isinstance(vault, LagoonVault)
                 on_chain_data.smart_contracts.update(vault.info)
+                # GuardV0 caps gross flow per automatic settlement and normally
+                # imposes a 24-hour cooldown. Publish its live cap separately
+                # from contract addresses so the frontend can explain when a
+                # Lagoon queue needs direct Safe-governance settlement.
+                guard_v0_metadata = fetch_lagoon_guard_v0_settlement_metadata(vault)
+                if guard_v0_metadata is not None:
+                    on_chain_data.smart_contracts["lagoon_guard_v0"] = guard_v0_metadata
                 on_chain_data.owner = vault.safe_address
             case _:
                 raise NotImplementedError(

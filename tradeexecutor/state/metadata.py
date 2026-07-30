@@ -5,12 +5,14 @@ on the executor start up.
 """
 import datetime
 from dataclasses import dataclass, field
+from decimal import Decimal
 from pathlib import Path
-from typing import Optional, Dict, TypedDict, List, Set
+from typing import Optional, Dict, TypedDict, List, Set, NotRequired
 
 from dataclasses_json import dataclass_json
 
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVaultInfo
 from eth_defi.velvet.vault import VelvetVaultInfo
 from tradeexecutor.strategy.tag import StrategyTag
 from tradingstrategy.chain import ChainId
@@ -72,6 +74,40 @@ class VelvetSmartContracts(VelvetVaultInfo):
     Just inherit directly from eth_defi package."""
 
 
+class LagoonGuardV0SettlementMetadata(TypedDict):
+    """Live GuardV0 automatic-settlement policy displayed by the frontend.
+
+    GuardV0 caps gross flow for one settlement and then applies a cooldown.
+    The two values together are the displayed daily automatic settlement limit;
+    see ``.claude/docs/lagoon-treasury-settlement.md`` for the full flow.
+    """
+
+    #: The on-chain settlement policy that supplied this metadata.
+    guard_version: str
+
+    #: Whether GuardV0 currently applies a cap to automated settlement.
+    daily_automatic_settlement_limit_enabled: bool
+
+    #: Gross underlying-token amount allowed per automated settlement, or None when uncapped.
+    daily_automatic_settlement_limit: Decimal | None
+
+    #: Exact raw-token equivalent of ``daily_automatic_settlement_limit``.
+    daily_automatic_settlement_limit_raw: int | None
+
+    #: GuardV0 wait after a successful non-empty automated settlement, in seconds.
+    settlement_cooldown_seconds: int
+
+    #: Unix timestamp for the next eligible automated settlement, or zero before the first one.
+    next_automatic_settlement_timestamp: int
+
+
+class LagoonSmartContracts(LagoonVaultInfo):
+    """Lagoon vault addresses and optional GuardV0 settlement policy."""
+
+    #: Current GuardV0 automatic-settlement limit exposed for the frontend.
+    lagoon_guard_v0: NotRequired[LagoonGuardV0SettlementMetadata]
+
+
 @dataclass_json
 @dataclass
 class OnChainData:
@@ -91,7 +127,7 @@ class OnChainData:
     #:
     #: Depend on the vault backend.
     #:
-    smart_contracts: EnzymeSmartContracts | VelvetSmartContracts = field(default_factory=dict)
+    smart_contracts: EnzymeSmartContracts | VelvetSmartContracts | LagoonSmartContracts = field(default_factory=dict)
 
     #: Vault owner address
     #:

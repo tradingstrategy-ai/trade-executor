@@ -13,7 +13,10 @@ from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonAutomatedDe
 from eth_defi.token import TokenDetails, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 
-from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from tradeexecutor.ethereum.lagoon.vault import (
+    LagoonFrozenPositionSettlementError,
+    LagoonVaultSyncModel,
+)
 from tradeexecutor.state.portfolio import ReserveMissing
 from tradeexecutor.state.state import State
 from tradeexecutor.statistics.core import calculate_statistics
@@ -173,7 +176,7 @@ def test_lagoon_sync_treasury_marks_noop_startup_sync(
 
     1. Create a Lagoon state and settle an initial deposit
     2. Run ``sync_treasury(post_valuation=True)`` again with no pending flows
-    3. Verify treasury sync metadata is still updated without new balance events
+    3. Verify it posts NAV while updating treasury metadata without a balance event
     """
 
     vault = automated_lagoon_vault.vault
@@ -209,13 +212,15 @@ def test_lagoon_sync_treasury_marks_noop_startup_sync(
     treasury = state.sync.treasury
     previous_block = treasury.last_block_scanned
     previous_ref_count = len(treasury.balance_update_refs)
+    nonce_before = web3.eth.get_transaction_count(asset_manager.address)
 
     # 2. Run sync_treasury(post_valuation=True) again with no pending flows.
     second_cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(second_cycle, state, post_valuation=True)
 
-    # 3. Verify treasury sync metadata is still updated without new balance events.
+    # 3. Verify it posts NAV while updating treasury metadata without a balance event.
     assert events == []
+    assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 1
     assert treasury.last_updated_at is not None
     assert treasury.last_cycle_at == second_cycle
     assert treasury.last_block_scanned is not None
@@ -255,7 +260,7 @@ def test_lagoon_sync_treasury_aborts_when_frozen_positions_exist(
     sync_model.calculate_valuation = Mock(side_effect=AssertionError("NAV calculation must not run when frozen positions block settlement"))
 
     # 3. Verify `sync_treasury(post_valuation=True)` aborts before attempting NAV calculation.
-    with pytest.raises(RuntimeError, match="Resolve frozen positions manually before calculating NAV"):
+    with pytest.raises(LagoonFrozenPositionSettlementError, match="Resolve frozen positions manually before calculating NAV"):
         sync_model.sync_treasury(
             native_datetime_utc_now(),
             state,

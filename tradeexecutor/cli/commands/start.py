@@ -152,7 +152,7 @@ def start(
     visualisation: bool = typer.Option(True, "--visualisation", envvar="VISUALISATION", help="Disable generation of charts using Kaleido library. Helps with issues with broken installations"),
 
     run_single_cycle: bool = typer.Option(False, "--run-single-cycle", envvar="RUN_SINGLE_CYCLE", help="Run a single strategy decision cycle and exist, regardless of the current pending state."),
-    disable_broadcast: bool = typer.Option(False, "--disable-broadcast", envvar="DISABLE_BROADCAST", help="Unit testing option used with Anvil."),
+    disable_broadcast: bool = typer.Option(False, "--disable-broadcast", envvar="DISABLE_BROADCAST", help="Unit testing option that skips trade and Lagoon treasury broadcasts on Anvil."),
     skip_crash_sleep: bool = typer.Option(False, "--skip-crash-sleep", envvar="SKIP_CRASH_SLEEP", help="Don't leave waiting after a crash. Unit test optimisation."),
 
     simulate: bool = shared_options.simulate,
@@ -339,6 +339,10 @@ def start(
 
         # TODO: Unit test hack
         execution_model.disable_broadcast = disable_broadcast
+        if isinstance(sync_model, LagoonVaultSyncModel):
+            # Keep the CLI dry-run promise coherent: Lagoon NAV posting bypasses
+            # ExecutionModel.execute_trades(), so it needs the same switch.
+            sync_model.disable_broadcast = disable_broadcast
 
         # Wire up exchange account value function if Derive credentials provided
         derive_addresses = None
