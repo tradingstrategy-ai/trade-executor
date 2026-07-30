@@ -297,7 +297,7 @@ def test_vault_settlement_retry_scans_closed_async_redemption(
     state.portfolio.close_position(position, ts)
     assert trade.get_status() is TradeStatus.vault_settlement_pending
 
-    # 2. Resolve all pending vault trades.
+    # 2. Mock the lower-level resolver to isolate position collection behaviour.
     execution_model = MagicMock()
     with patch(
         "tradeexecutor.ethereum.vault.settlement_retry._resolve_single_vault_trade"
@@ -346,7 +346,7 @@ def test_vault_settlement_retry_skips_simulated_closed_redemption(
     position.simulated = True
     state.portfolio.close_position(position, ts)
 
-    # 2. Run the live settlement scan.
+    # 2. Mock the lower-level resolver and run the live settlement scan.
     execution_model = MagicMock()
     with patch(
         "tradeexecutor.ethereum.vault.settlement_retry._resolve_single_vault_trade"
@@ -398,7 +398,8 @@ def test_vault_settlement_retry_recovers_operator_direct_payout(
     position = state.portfolio.find_position_for_trade(trade)
     state.portfolio.close_position(position, ts)
 
-    # 2. Have its manager validate and return the operator payout transaction.
+    # 2. Mock the manager and receipt because eth-defi owns protocol-specific
+    # event validation; this test covers the executor lifecycle only.
     ticket = MagicMock()
     payout_tx_hash = HexBytes("0x" + "22" * 32)
     manager = MagicMock()
