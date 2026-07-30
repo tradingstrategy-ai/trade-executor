@@ -1803,7 +1803,7 @@ def test_simulated_closed_deposit_is_persisted_as_terminal_success() -> None:
     record_result.assert_called_once_with(
         attempt,
         ANY,
-        result="simulated-success-deposit-closed",
+        result="success-deposit-closed",
         detail="Global deposit cap reached",
         outcome_data=evidence,
     )
@@ -1868,7 +1868,7 @@ def test_simulated_closed_deposit_open_json_gets_directional_result() -> None:
     record_result.assert_called_once_with(
         attempt,
         ANY,
-        result="simulated-success-deposit-closed-incorrectly-reported-open",
+        result="success-deposit-closed-incorrectly-reported-open",
         detail="Global deposit cap reached",
         outcome_data={
             **evidence,
