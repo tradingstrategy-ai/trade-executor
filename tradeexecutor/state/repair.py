@@ -722,10 +722,11 @@ def repair_trades(
         if trade.other_data.get("hypercore_deposit_capital_at_risk") is not None
         or trade.other_data.get("hypercore_stranded_usdc") is not None
     ]
+    protected_position_ids = {trade.position_id for trade in at_risk_hypercore_trades}
     repairable_trades = [
         trade
         for trade in trades_to_be_repaired
-        if trade not in at_risk_hypercore_trades
+        if trade.position_id not in protected_position_ids
     ]
     if at_risk_hypercore_trades:
         trade_ids = ", ".join(str(trade.trade_id) for trade in at_risk_hypercore_trades)
@@ -764,7 +765,7 @@ def repair_trades(
 
     unfrozen_positions = []
     for p in frozen_positions:
-        if any(trade.position_id == p.position_id for trade in at_risk_hypercore_trades):
+        if p.position_id in protected_position_ids:
             logger.warning(
                 "Leaving position %s frozen because its HyperCore deposit still needs live reconciliation",
                 p,
