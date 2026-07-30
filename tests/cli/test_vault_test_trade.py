@@ -24,6 +24,7 @@ from requests.exceptions import ReadTimeout
 from textual.app import App, ComposeResult
 from textual.widgets import DataTable, Input
 from tradingstrategy.chain import ChainId
+from tradingstrategy.vault import VaultDepositStatus
 from web3.exceptions import BadFunctionCallOutput
 
 from tradeexecutor.cli.commands.lagoon_deploy_vault import (
@@ -72,6 +73,7 @@ from tradeexecutor.cli.vault_trade.runner import (
     get_adapter_unsupported_detail,
     get_bridge_conflict,
     get_deposit_closed_detail,
+    get_incorrect_deposit_status_reporting,
     get_incorrect_whitelisting_detail,
     get_redemption_unavailable_detail,
     has_async_vault_lifecycle,
@@ -1498,6 +1500,44 @@ def test_simulated_vault_records_incorrect_json_whitelist_status() -> None:
     }
 
 
+def test_simulated_vault_uses_explicit_json_deposit_status() -> None:
+    """Only an explicit recognised JSON deposit status creates mismatch evidence.
+
+    1. Compare explicit open JSON status with a closed onchain observation.
+    2. Verify status provenance and the legacy reason are retained in the report.
+    3. Confirm missing, unknown and future JSON values remain non-blocking.
+    """
+    # 1. Compare explicit open JSON status with a closed onchain observation.
+    observed_at = datetime.datetime(2026, 7, 30, 7, 0)
+    attempt = SimpleNamespace(
+        vault=SimpleNamespace(
+            metadata=SimpleNamespace(
+                deposit_status=VaultDepositStatus.open,
+                deposit_closed_reason=None,
+                deposit_status_source="eth-defi",
+                deposit_status_observed_at=observed_at,
+                deposit_status_observed_block=23_456_789,
+            ),
+        ),
+    )
+    mismatch = get_incorrect_deposit_status_reporting(attempt, "closed")
+
+    # 2. Verify status provenance and the legacy reason are retained in the report.
+    assert mismatch == {
+        "vault_json_deposit_status": "open",
+        "vault_json_deposit_closed_reason": None,
+        "onchain_deposit_status": "closed",
+        "vault_json_deposit_status_source": "eth-defi",
+        "vault_json_deposit_status_observed_at": "2026-07-30T07:00:00",
+        "vault_json_deposit_status_observed_block": 23_456_789,
+    }
+
+    # 3. Confirm missing, unknown and future JSON values remain non-blocking.
+    for status in (None, VaultDepositStatus.unknown, "maintenance"):
+        attempt.vault.metadata.deposit_status = status
+        assert get_incorrect_deposit_status_reporting(attempt, "closed") is None
+
+
 def test_simulated_closed_deposit_records_guard_validation_evidence() -> None:
     """A typed closure becomes a non-broadcast GuardV0 success.
 
@@ -1723,6 +1763,7 @@ def test_simulated_closed_deposit_is_persisted_as_terminal_success() -> None:
     attempt = SimpleNamespace(
         vault=SimpleNamespace(
             metadata=SimpleNamespace(
+                deposit_status=VaultDepositStatus.closed,
                 deposit_closed_reason="Global deposit cap reached",
             ),
         ),
@@ -1786,7 +1827,10 @@ def test_simulated_closed_deposit_open_json_gets_directional_result() -> None:
     )
     attempt = SimpleNamespace(
         vault=SimpleNamespace(
-            metadata=SimpleNamespace(deposit_closed_reason=None),
+            metadata=SimpleNamespace(
+                deposit_status=VaultDepositStatus.open,
+                deposit_closed_reason=None,
+            ),
         ),
         executable_vault=MagicMock(),
         pair=MagicMock(),
@@ -1861,6 +1905,7 @@ def test_simulated_open_deposit_closed_json_is_executed_and_persisted() -> None:
     attempt = SimpleNamespace(
         vault=SimpleNamespace(
             metadata=SimpleNamespace(
+                deposit_status=VaultDepositStatus.closed,
                 deposit_closed_reason="Scanner reported deposits closed",
             ),
         ),

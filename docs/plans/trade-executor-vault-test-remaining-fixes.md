@@ -20,7 +20,12 @@ request-only asynchronous results remain valid terminal outcomes.
 
 ## Evidence and scope
 
-The latest run covered 129 vaults and produced:
+This is a historical implementation plan. Its result counts are the original
+129-vault baseline that motivated the work, not the latest published matrix.
+For the later rerun, see
+[`cross-chain-vault-test-2026-07-25-rerun-results.md`](../reports/cross-chain-vault-test-2026-07-25-rerun-results.md).
+
+The baseline run covered 129 vaults and produced:
 
 | Result | Count | Interpretation |
 |---|---:|---|
@@ -377,7 +382,7 @@ operation.
 - Yearn and YieldNest receipt results become successful when their eth-defi
   analysers return valid event analysis; otherwise they remain explicit
   `receipt_analysis_failed` rows.
-- Existing 20 `deposit_closed`, 14 `whitelisting-needed` and 29
+- The baseline's 20 `deposit_closed`, 14 `whitelisting-needed` and 29
   `async_request_only` outcomes are not treated as acceptance failures.
 - Every vault in the twelve-row disposition table reaches its stated expected
   outcome, or remains as an explicitly owned eth-defi dependency with the
