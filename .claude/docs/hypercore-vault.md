@@ -266,7 +266,9 @@ deposit with an at-risk or stranded-USDC marker, it logs the trade and leaves
 that position frozen; it does not create a counter-trade or refund an unknown
 HyperCore balance. This partial repair is deliberate: it clears unrelated
 coherence blockers so that the next `correct-accounts --dry-run` can inspect
-the live transit balance safely.
+the live transit balance safely. If every candidate is protected, repair makes
+no state change and does not show an interactive confirmation prompt: there is
+nothing safe for it to repair.
 
 The safe operator sequence is therefore:
 

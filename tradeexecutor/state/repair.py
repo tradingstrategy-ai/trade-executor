@@ -748,6 +748,17 @@ def repair_trades(
             "releasing any allocation.",
             trade_ids,
         )
+        if not repairable_trades:
+            # Do not reach the unfreeze loop when every repair candidate is
+            # protected. In interactive mode there is no safe mutation for the
+            # operator to confirm, and silently unfreezing another position
+            # would make ``repair`` stateful despite showing no prompt.
+            return RepairResult(
+                frozen_positions,
+                [],
+                trades_to_be_repaired,
+                [],
+            )
 
     if interactive:
 

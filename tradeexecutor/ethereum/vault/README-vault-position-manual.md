@@ -244,7 +244,9 @@ The guarded `repair` command deliberately leaves that position frozen and does
 not create a counter-trade for it, but it may safely repair an unrelated
 planned/started trade with no transaction. Run it first when
 `correct-accounts` preflight reports an unfinished trade; then inspect the
-marked HyperCore trade with `correct-accounts --dry-run`.
+marked HyperCore trade with `correct-accounts --dry-run`. If every repair
+candidate is protected, `repair` deliberately makes no state change and shows
+no confirmation prompt.
 
 1. Run `check-hypercore-user.py` for the Safe and inspect Safe EVM USDC, EVM
    escrow, spot USDC, perp withdrawable USDC and vault equity.

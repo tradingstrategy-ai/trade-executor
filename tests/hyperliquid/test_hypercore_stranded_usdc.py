@@ -96,30 +96,38 @@ def test_phase1_at_risk_marker_is_written_before_broadcast() -> None:
 
 
 def test_state_only_repair_defers_unreconciled_hypercore_deposit() -> None:
-    """State-only repair must defer a deposit whose location is unknown.
+    """Repair must leave an unreconciled HyperCore deposit frozen without prompting.
 
     1. Create a failed trade carrying the HyperCore at-risk marker.
-    2. Present it to the state-only repair workflow.
-    3. Verify repair creates no counter-trade, leaving live reconciliation to
-       correct-accounts instead of refunding an unknown balance location.
+    2. Present it as the only frozen repair candidate to interactive repair.
+    3. Verify repair creates no counter-trade, does not prompt or unfreeze, and
+       leaves live reconciliation to correct-accounts.
     """
     # 1. This mock represents a crash before HyperCore receipt classification.
     state = MagicMock()
-    state.portfolio.frozen_positions.values.return_value = []
+    position = MagicMock()
+    position.position_id = 489
+    state.portfolio.frozen_positions.values.return_value = [position]
     trade = MagicMock()
     trade.trade_id = 1486
+    trade.position_id = 489
     trade.other_data = {"hypercore_deposit_capital_at_risk": {"amount_raw": 48_884_068}}
 
     # 2. State-only repair has no RPC/Info API evidence to resolve the location.
-    with patch("tradeexecutor.state.repair.find_trades_to_be_repaired", return_value=[trade]):
+    with patch("tradeexecutor.state.repair.find_trades_to_be_repaired", return_value=[trade]), patch(
+        "tradeexecutor.state.repair.unfreeze_position",
+    ) as unfreeze_position, patch("builtins.input") as input_mock:
         # 3. It must defer rather than manufacture a counter-trade refund. This
         # lets repair unblock unrelated planned trades before correct-accounts
-        # performs the Safe-level live recovery.
-        result = repair_trades(state, attempt_repair=True, interactive=False)
+        # performs the Safe-level live recovery, without an unprompted state
+        # change when this is the only repair candidate.
+        result = repair_trades(state, attempt_repair=True, interactive=True)
 
     assert result.trades_needing_repair == [trade]
     assert result.new_trades == []
     assert result.unfrozen_positions == []
+    input_mock.assert_not_called()
+    unfreeze_position.assert_not_called()
 
 
 def test_state_only_repair_repairs_unrelated_trade_while_deferring_hypercore_deposit() -> None:
