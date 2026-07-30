@@ -251,9 +251,9 @@ therefore the safe way to inspect a normal dust-preserving sweep before running
 the live command.
 
 Before either a live recovery or this dry-run planner, `correct-accounts`
-checks that no open or frozen position has a planned/started trade affecting its
-available quantity. This preflight is intentionally before all HyperCore calls
-and mutations. It was added after the HyperAI #1486 recovery: the first
+checks that no open or frozen position has a planned trade or a started trade
+without a transaction. This preflight is intentionally before all HyperCore
+calls and mutations. It was added after the HyperAI #1486 recovery: the first
 implementation returned real USDC to the Safe and only afterwards discovered an
 unrelated unexecuted trade, so the command could not complete its accounting
 pass. A preflight failure now proves that no Safe action was broadcast.

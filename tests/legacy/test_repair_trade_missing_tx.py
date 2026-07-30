@@ -77,8 +77,9 @@ def test_repair_trade_missing_tx(
 def test_repair_skips_expired_trade_then_unblocks_correct_accounts_preflight() -> None:
     """Repair clears executable no-TX trades without mistaking expired history for a failure.
 
-    1. Load a real state fixture with planned no-transaction trades and expire one,
-       reproducing the terminal trade #1482 shape from the HyperAI incident.
+    1. Load a real state fixture with planned no-transaction trades, expire one,
+       and mark another started without a transaction, reproducing both relevant
+       HyperAI command blockers.
     2. Verify correct-accounts' side-effect-free preflight refuses the still
        unexecuted state, then run the state-only missing-TX repair.
     3. Verify the expired trade remains terminal, all repairable trades receive
@@ -89,7 +90,7 @@ def test_repair_skips_expired_trade_then_unblocks_correct_accounts_preflight() -
     bookkeeping interacting exactly as the command does in production.
     """
     # 1. Build the production-shaped state: one intentionally expired no-TX
-    # trade and several separate planned no-TX trades that really need repair.
+    # trade, one started no-TX crash, and separate planned trades needing repair.
     fixture_path = Path(__file__).with_name("trade-missing-tx.json")
     state = State.from_json(fixture_path.read_text())
     original_missing_transaction_trades = [
@@ -100,6 +101,8 @@ def test_repair_skips_expired_trade_then_unblocks_correct_accounts_preflight() -
     assert len(original_missing_transaction_trades) > 1
     expired_trade = original_missing_transaction_trades[0]
     expired_trade.mark_expired(datetime.datetime(2026, 7, 30, 21, 2))
+    started_trade = original_missing_transaction_trades[1]
+    started_trade.started_at = datetime.datetime(2026, 7, 30, 21, 2)
 
     # 2. The account-correction command must refuse before it can recover
     # HyperCore funds. Repair then fixes only the genuinely unexecuted trades.
@@ -107,10 +110,11 @@ def test_repair_skips_expired_trade_then_unblocks_correct_accounts_preflight() -
         preflight_state_for_account_correction(state)
     repair_trades = repair_tx_not_generated(state, interactive=False)
 
-    # 3. Expiry is a legitimate terminal state, while the independent planned
-    # trades become repaired and no longer make correct-accounts halt.
+    # 3. Expiry is legitimate terminal history, while both the started crash
+    # and independent planned trades become repaired before account correction.
     assert expired_trade.get_status() == TradeStatus.expired
     assert expired_trade.blockchain_transactions == []
+    assert started_trade.get_status() == TradeStatus.repaired
     assert len(repair_trades) == len(original_missing_transaction_trades) - 1
     assert all(
         trade.get_status() in (TradeStatus.repaired, TradeStatus.expired)

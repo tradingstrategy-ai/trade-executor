@@ -21,6 +21,7 @@ from hexbytes import HexBytes
 
 from tradeexecutor.ethereum.vault import hyperliquid_cleanup
 from tradeexecutor.ethereum.vault import hypercore_transit_recovery
+from tradeexecutor.state.repair import RepairResult
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
 
@@ -490,3 +491,47 @@ def test_wait_for_evm_usdc_balance_accepts_threshold_instead_of_exact_match():
 
     # Step 3: Verify the helper accepts the observed balance without requiring an exact final match.
     assert result == Decimal("108.992")
+
+
+def test_cleanup_stops_before_accounting_for_deferred_hypercore_deposit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cleanup must not apply generic accounting after a protected deposit is deferred.
+
+    1. Mock the state repair report for a failed deposit whose USDC location is unknown.
+    2. Run the isolated repair-and-correct phase used by the cleanup command.
+    3. Verify it returns unclean without constructing accounting or saving state.
+
+    Mocks isolate this fail-closed gate: reaching the accounting context would
+    require live RPC, strategy-universe, and Safe data unrelated to the guard.
+    """
+    # 1. A marker means generic repair deliberately did not create a refund.
+    state = MagicMock()
+    store = MagicMock()
+    protected_trade = MagicMock()
+    protected_trade.trade_id = 1486
+    protected_trade.other_data = {
+        "hypercore_stranded_usdc": {"amount_raw": 48_884_068},
+    }
+    repair_result = RepairResult(
+        frozen_positions=[],
+        unfrozen_positions=[],
+        trades_needing_repair=[protected_trade],
+        new_trades=[],
+    )
+    context = MagicMock()
+    context.state_file = Path("unused-state.json")
+    context.unit_testing = True
+    build_accounting_context = MagicMock()
+    monkeypatch.setattr(hyperliquid_cleanup, "backup_state", lambda *args, **kwargs: (store, state))
+    monkeypatch.setattr(hyperliquid_cleanup, "repair_trades", lambda *args, **kwargs: repair_result)
+    monkeypatch.setattr(hyperliquid_cleanup, "_build_accounting_correction_context", build_accounting_context)
+
+    # 2. The cleanup command reaches the repair report before any account action.
+    accounts_clean, state_saved = hyperliquid_cleanup._repair_and_correct_state(context)
+
+    # 3. The unknown HyperCore location prevents both accounting and persistence.
+    assert accounts_clean is False
+    assert state_saved is False
+    build_accounting_context.assert_not_called()
+    store.sync.assert_not_called()
