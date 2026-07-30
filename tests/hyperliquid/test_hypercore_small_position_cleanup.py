@@ -91,26 +91,28 @@ def test_cleanup_plans_direct_redemption_below_deposit_minimum():
     # 2. Discover it and plan the cleanup.
     candidates = discover_hypercore_small_positions(state, Decimal("50"))
     assert len(candidates) == 1
-    trades = plan_hypercore_small_position_cleanup(state, candidates[0], NOW)
+    trade = plan_hypercore_small_position_cleanup(state, candidates[0], NOW)
 
     # 3. Verify the plan is a full close and does not add capital or extend the lock-up.
-    assert len(trades) == 1
-    assert trades[0].is_sell()
-    assert trades[0].planned_quantity == -position.get_quantity()
-    assert trades[0].planned_reserve == pytest.approx(Decimal("3.45"))
-    assert trades[0].other_data["hypercore_small_position_cleanup"] is True
+    assert trade.is_sell()
+    assert trade.planned_quantity == -position.get_quantity()
+    assert trade.planned_reserve == pytest.approx(Decimal("3.45"))
+    assert trade.other_data["hypercore_small_position_cleanup"] is True
 
 
 def test_cleanup_dry_run_supersedes_planned_close_without_mutating_state():
     """Dry-run validates cleanup when an old planned close consumes the position quantity.
 
-    1. Create a live undersized position and an unstarted full-close trade.
+    1. Create a live undersized position and a planned full-close trade.
     2. Run cleanup in dry-run mode against the otherwise eligible position.
     3. Verify the isolated rehearsal expires the old trade and prepares a replacement.
     4. Verify the supplied state and state store remain untouched.
+
+    Live HyperCore reads and routing are mocked so the unit test cannot sign or
+    broadcast a mainnet transaction.
     """
 
-    # 1. Create a live undersized position and an unstarted full-close trade.
+    # 1. Create a live undersized position and a planned full-close trade.
     state, position = _make_position(Decimal("3.45"))
     reserve_asset = state.portfolio.get_default_reserve_position().asset
     _position, old_close_trade, _created = state.portfolio.create_trade(
@@ -164,11 +166,12 @@ def test_cleanup_dry_run_supersedes_planned_close_without_mutating_state():
     assert prepared_new_trade.trade_id != old_close_trade.trade_id
     assert prepared_new_trade.is_started()
     assert prepared_new_trade.planned_quantity == -position.get_quantity()
-    rehearsed_position = report.rehearsed_state.portfolio.open_positions[
+    assert report.simulated_state is not None
+    simulated_position = report.simulated_state.portfolio.open_positions[
         position.position_id
     ]
-    assert rehearsed_position.trades[old_close_trade.trade_id].expired_at == NOW
-    assert rehearsed_position.get_quantity(planned=True) == position.get_quantity()
+    assert simulated_position.trades[old_close_trade.trade_id].expired_at == NOW
+    assert simulated_position.get_quantity(planned=True) == position.get_quantity()
     assert report.executed_trades == []
     assert report.closed_position_ids == []
 
@@ -204,13 +207,12 @@ def test_cleanup_uses_strategy_minimum_allocation_and_pending_marker():
     state, position = _make_position(Decimal("25"))
     candidates = discover_hypercore_small_positions(state, minimum_allocation)
     assert len(candidates) == 1
-    trades = plan_hypercore_small_position_cleanup(state, candidates[0], NOW)
+    trade = plan_hypercore_small_position_cleanup(state, candidates[0], NOW)
 
     # 3. Verify cleanup plans one full-close trade and preserves pending-cleanup discovery.
-    assert len(trades) == 1
-    assert trades[0].is_sell()
-    assert trades[0].planned_quantity == -position.get_quantity()
-    assert trades[0].other_data["hypercore_small_position_cleanup"] is True
+    assert trade.is_sell()
+    assert trade.planned_quantity == -position.get_quantity()
+    assert trade.other_data["hypercore_small_position_cleanup"] is True
     position.other_data[HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM] = True
     pending_candidates = discover_hypercore_small_positions(state, Decimal("5"))
     assert pending_candidates[0].is_pending_cleanup is True
@@ -391,7 +393,7 @@ def test_cleanup_directly_redeems_dust_and_defers_locked_position():
     with (
         patch(
             "tradeexecutor.ethereum.vault.hypercore_small_position_cleanup.plan_hypercore_small_position_cleanup",
-            return_value=[close_trade],
+            return_value=close_trade,
         ),
         patch(
             "tradeexecutor.ethereum.vault.hypercore_small_position_cleanup.fetch_user_vault_equity",
@@ -451,6 +453,9 @@ def test_cleanup_dry_run_validates_local_closure_without_mutating_state():
     1. Arrange a tracked HyperCore position whose live equity has become zero.
     2. Run the cleaner in dry-run mode with the live balance mocked.
     3. Verify the supplied state and state store remain untouched.
+
+    The live equity read is mocked because this test covers local state
+    simulation rather than HyperCore API behaviour.
     """
 
     # 1. Arrange a tracked HyperCore position whose live equity has become zero.
@@ -532,7 +537,7 @@ def test_cleanup_saves_preflight_failure_without_leaving_a_planned_trade():
     # 2. Run the cleaner with mocked execution because this unit test must not broadcast to HyperCore.
     with patch(
         "tradeexecutor.ethereum.vault.hypercore_small_position_cleanup.plan_hypercore_small_position_cleanup",
-        side_effect=[[failed_close_trade], [planned_close_trade]],
+        side_effect=[failed_close_trade, planned_close_trade],
     ), patch(
         "tradeexecutor.ethereum.vault.hypercore_small_position_cleanup.fetch_user_vault_equity",
         side_effect=[

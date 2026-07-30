@@ -396,7 +396,7 @@ def correct_accounts(
     raise_on_unclean: bool = typer.Option(False, is_flag=True, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
     skip_hypercore_transit_recovery: bool = Option(False, "--skip-hypercore-transit-recovery", envvar="SKIP_HYPERCORE_TRANSIT_RECOVERY", help="Skip automatic Safe-level HyperCore spot/perp USDC recovery before account correction."),
     cleanup_hypercore_small_positions: bool = Option(True, "--cleanup-hypercore-small-positions/--no-cleanup-hypercore-small-positions", envvar="CLEANUP_HYPERCORE_SMALL_POSITIONS", help="Redeem open HyperCore vault positions below the strategy minimum allocation before correcting accounts."),
-    dry_run: bool = Option(False, "--dry-run", envvar="DRY_RUN", help="Read live balances and fully prepare HyperCore small-position redemptions without persisting state or broadcasting transactions, then report accounting corrections."),
+    dry_run: bool = Option(False, "--dry-run", envvar="DRY_RUN", help="Read live balances, rehearse HyperCore cleanup through phase-1 transaction construction without persisting state or broadcasting, then report accounting corrections."),
 
     # Derive exchange account options
     derive_owner_private_key: Optional[str] = Option(None, envvar="DERIVE_OWNER_PRIVATE_KEY", help="Derive owner wallet private key"),
@@ -743,7 +743,7 @@ def correct_accounts(
                 api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
                 session = create_hyperliquid_session(api_url=api_url)
                 ensure_routing_setup()
-                if dry_run or routing_state is not None:
+                if routing_state is not None:
                     cleanup_report = run_hypercore_small_position_cleanup(
                         state=state,
                         timestamp=native_datetime_utc_now(),
@@ -757,8 +757,8 @@ def correct_accounts(
                         dry_run=dry_run,
                     )
                     if dry_run:
-                        assert cleanup_report.rehearsed_state is not None
-                        state = cleanup_report.rehearsed_state
+                        assert cleanup_report.simulated_state is not None
+                        state = cleanup_report.simulated_state
                         logger.info(
                             "Dry run: HyperCore small-position cleanup found %d candidate(s)",
                             len(cleanup_report.candidates),
