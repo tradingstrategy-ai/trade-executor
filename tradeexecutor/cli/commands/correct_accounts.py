@@ -837,6 +837,13 @@ def correct_accounts(
             len(closed_dust_trades),
         )
 
+    # The initial preflight protects external work performed during command
+    # setup. Recheck immediately before the transit hook as a defence against
+    # any position-discovery or cleanup step above introducing an unfinished
+    # trade. This preserves the #1486 invariant: a transit recovery is never
+    # the first irreversible action after a coherence failure.
+    preflight_state_for_account_correction(state)
+
     _recover_hypercore_transit_balances(
         asset_management_mode=asset_management_mode,
         sync_model=sync_model,
