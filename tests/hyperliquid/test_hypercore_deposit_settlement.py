@@ -78,41 +78,104 @@ def test_deposit_confirmation_timeout_keeps_capital_at_risk_in_perp_or_vault(
     mock_block_timestamp: MagicMock,
     mock_report_failure: MagicMock,
 ) -> None:
-    """A successful receipt and timed-out confirmation must retain USDC conservatively.
+    """The complete #1486 sequence must fail closed after a silent final-leg no-op.
 
-    1. Reproduce trade #1486 with the 0.5 USDC perp baseline and successful spot-to-perp proof.
-    2. Return a successful perp-to-vault receipt but time out vault equity confirmation.
-    3. Verify retained allocation and the ambiguous perp-or-vault recovery location.
+    1. Simulate the real spot→perp movement from trade #1486 using stateful Info API balances.
+    2. Return an EVM-success receipt for perp→vault while deliberately leaving vault equity unchanged.
+    3. Verify the router detects the no-op, halts success accounting and retains the allocation.
+
+    The mocks represent the two independent protocol layers that no testnet can
+    reproduce: a CoreWriter receipt can be successful while the subsequent
+    HyperCore vault action silently does nothing.  Unlike a shallow call-order
+    mock, phase 2 uses the real dual-balance verifier against changing balances.
     """
-    # 1. Reproduce the production balances with mocked CoreWriter and Info API calls.
+    # 1. Reproduce #1486's 0.5 USDC perp float, 0.217882 USDC spot baseline,
+    # and 48.884068 USDC phase-1 arrival. The mutable balances make the real
+    # phase-2 poll prove the transfer before the final leg is allowed.
     routing = _make_routing()
     trade = _make_trade()
     state = MagicMock()
     phase2_tx = MagicMock(tx_hash="0xbbb")
     phase3_tx = MagicMock(tx_hash="0xccc")
     receipts = {HexBytes("0xaaa"): {"status": 1, "blockNumber": 100}}
-    mock_block_timestamp.return_value = datetime.datetime(2026, 7, 30)
-    mock_fetch_equity.return_value = _make_equity(Decimal("9326.891623"))
-    mock_wait_confirmation.side_effect = HypercoreDepositVerificationError("vault unchanged")
+    spot_usdc = Decimal("49.101950")
+    perp_usdc = Decimal("0.5")
+    vault_equity = Decimal("9326.891623")
+    requested_usdc = Decimal("48.884068")
+    action_order: list[str] = []
 
-    # 2. Settle phase 2 then receive a successful phase-3 receipt without vault confirmation.
+    def broadcast_spot_to_perp(mock_trade: MagicMock, raw_amount: int) -> tuple[MagicMock, dict]:
+        """Model the first CoreWriter action applying fully on HyperCore."""
+        nonlocal spot_usdc, perp_usdc
+        assert mock_trade is trade
+        assert raw_amount == 48_884_068
+        spot_usdc -= requested_usdc
+        perp_usdc += requested_usdc
+        action_order.append("spot_to_perp")
+        return phase2_tx, {"status": 1, "blockNumber": 101}
+
+    def confirm_phase1_spot_arrival(
+        session: MagicMock,
+        user: str,
+        timeout: float,
+        poll_interval: float,
+        expected_usdc: Decimal,
+        baseline_usdc: Decimal,
+    ) -> None:
+        """Model the phase-1 escrow proof before internal settlement begins."""
+        assert session is routing._session
+        assert user == "0xSAFE"
+        assert timeout == 60.0
+        assert poll_interval == 2.0
+        assert expected_usdc == requested_usdc
+        assert baseline_usdc == Decimal("0.217882")
+        action_order.append("phase1_spot_arrival")
+
+    def broadcast_perp_to_vault(mock_trade: MagicMock, vault_address: str, raw_amount: int) -> tuple[MagicMock, dict]:
+        """Model #1486: EVM accepts phase 3 but HyperCore silently no-ops it."""
+        assert mock_trade is trade
+        assert vault_address == "0xVAULT"
+        assert raw_amount == 48_884_068
+        assert spot_usdc == Decimal("0.217882")
+        assert perp_usdc == Decimal("49.384068")
+        action_order.append("perp_to_vault")
+        # Crucially do not debit perp or increase vault_equity. This is the
+        # asynchronous HyperCore no-op the old bundled transaction concealed.
+        return phase3_tx, {"status": 1, "blockNumber": 102}
+
+    def confirm_unchanged_vault(session: MagicMock, **kwargs) -> UserVaultEquity:
+        """Reject the successful EVM receipt because vault equity did not move."""
+        assert session is routing._session
+        action_order.append("vault_confirmation")
+        assert kwargs["existing_equity"] == vault_equity
+        assert kwargs["expected_deposit"] == requested_usdc
+        raise HypercoreDepositVerificationError("vault equity unchanged after successful EVM receipt")
+
+    mock_block_timestamp.return_value = datetime.datetime(2026, 7, 30)
+    mock_fetch_equity.return_value = _make_equity(vault_equity)
+    mock_wait_escrow.side_effect = confirm_phase1_spot_arrival
+    mock_wait_confirmation.side_effect = confirm_unchanged_vault
+
+    # 2. CoreWriter phase 2 changes both real mock balances, phase 3 returns
+    # receipt status 1 but preserves them and vault equity exactly as #1486 did.
     with (
-        patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("49.101950")),
-        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0.5")),
-        patch.object(
-            routing,
-            "_wait_for_deposit_spot_to_perp_transfer",
-            return_value=(Decimal("0.217882"), Decimal("49.384068")),
-        ),
-        patch.object(routing, "_broadcast_deposit_spot_to_perp", return_value=(phase2_tx, {"status": 1, "blockNumber": 101})),
-        patch.object(routing, "_broadcast_deposit_perp_to_vault", return_value=(phase3_tx, {"status": 1, "blockNumber": 102})),
+        patch.object(routing, "_fetch_safe_spot_free_usdc_balance", side_effect=lambda: spot_usdc),
+        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", side_effect=lambda: perp_usdc),
+        patch.object(routing, "_broadcast_deposit_spot_to_perp", side_effect=broadcast_spot_to_perp),
+        patch.object(routing, "_broadcast_deposit_perp_to_vault", side_effect=broadcast_perp_to_vault),
     ):
         routing._settle_deposit(routing.web3, state, trade, receipts, stop_on_execution_failure=False)
 
-    # 3. A timeout cannot prove where an accepted vault action will finally settle.
+    # 3. The successful phase-3 receipt cannot create a successful trade or a
+    # reserve refund when its asynchronous vault action failed to settle.
+    assert action_order == ["phase1_spot_arrival", "spot_to_perp", "perp_to_vault", "vault_confirmation"]
+    assert spot_usdc == Decimal("0.217882")
+    assert perp_usdc == Decimal("49.384068")
+    assert vault_equity == Decimal("9326.891623")
     assert trade.other_data["retain_reserve_allocation_on_failure"] is True
     assert trade.other_data["hypercore_stranded_usdc"]["location"] == "hypercore_perp_or_vault"
     assert len(trade.blockchain_transactions) == 3
+    state.mark_trade_success.assert_not_called()
     mock_report_failure.assert_called_once()
 
 
