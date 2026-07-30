@@ -246,13 +246,22 @@ HYPERCORE_RELATIVE_BALANCE_TOLERANCE = Decimal("0.01")
 
 #: Fixed USDC tolerance for the deposit ``spot -> perp`` balance proof.
 #:
-#: This is not a vault-NAV or performance-fee tolerance.  It only absorbs API
+#: Production incident reference: HyperAI trade #1486 (Citadel, 2026-07-30)
+#: submitted ``transferUsdClass(spot->perp)`` and ``vaultTransfer(perp->vault)``
+#: together. The EVM receipt succeeded but only the first CoreWriter action
+#: settled. The Safe's perp account rose by exactly 48.884068 USDC while vault
+#: equity did not move. This tolerance is therefore *not* a vault-NAV or
+#: performance-fee tolerance: accepting a shortfall large enough to hide a
+#: missing transfer would reproduce the incident. It only absorbs Info API
 #: rounding while requiring both sides of the internal transfer to move.
 HYPERCORE_DEPOSIT_TRANSFER_TOLERANCE = Decimal("0.10")
 
 #: Persisted trade metadata keys for a deposit that may already have consumed
-#: Safe USDC.  The at-risk marker is written before phase 1 is broadcast, so a
-#: process crash cannot fall through to generic failed-buy reserve recovery.
+#: Safe USDC. The at-risk marker is written before phase 1 is broadcast, so a
+#: process crash, RPC timeout, or node failover cannot fall through to generic
+#: failed-buy reserve recovery. Re-crediting a Safe after the deposit was in
+#: fact accepted would make the same USDC both spendable in portfolio state and
+#: present on HyperCore: the accounting half of the #1486 incident.
 HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY = "hypercore_deposit_capital_at_risk"
 HYPERCORE_STRANDED_USDC_KEY = "hypercore_stranded_usdc"
 RETAIN_RESERVE_ALLOCATION_ON_FAILURE_KEY = "retain_reserve_allocation_on_failure"
@@ -1121,13 +1130,30 @@ class HypercoreVaultRouting(RoutingModel):
         timeout: float = 60.0,
         poll_interval: float = 2.0,
     ) -> tuple[Decimal, Decimal]:
-        """Prove the deposit ``spot -> perp`` transfer before vault deposit.
+        """Prove the deposit ``spot -> perp`` transfer before the vault action.
 
-        A successful CoreWriter receipt is not sufficient: HyperCore may apply
-        only a prefix of the requested actions.  Observe the spot decrease and
-        the corresponding perp increase, using only a small API-rounding
-        tolerance.  This is deliberately separate from withdrawal verification
-        because deposits do not incur vault performance fees.
+        This is the safety boundary introduced after HyperAI trade #1486
+        (Citadel, 2026-07-30). Its EVM phase-2 receipt was successful, but
+        HyperCore applied only ``transferUsdClass(spot->perp)`` and silently
+        skipped the following ``vaultTransfer(perp->vault)``. A receipt is
+        consequently evidence only that the CoreWriter request reached EVM;
+        it is not evidence that either, or both, HyperCore balance changes
+        happened.
+
+        The caller has already waited for the EVM escrow to clear, then captures
+        fresh spot and perp baselines immediately before sending the transfer.
+        We require both of the following from the Info API before the next
+        irreversible action is permitted:
+
+        1. Free HyperCore spot USDC decreased by the expected deposit amount.
+        2. HyperCore perp withdrawable USDC increased by the same amount.
+
+        A small fixed tolerance covers API rounding only. It intentionally does
+        not reuse vault NAV, trade slippage, or leader-performance-fee tolerance:
+        none apply to this internal USDC class transfer. Requiring coherent
+        movement on both sides prevents a later vault action from being sent on
+        stale or partially-settled state, which would otherwise create another
+        stranded or duplicate deposit.
         """
         expected_increase = raw_to_usdc(expected_increase_raw)
         expected_threshold = expected_increase - HYPERCORE_DEPOSIT_TRANSFER_TOLERANCE
@@ -1496,7 +1522,21 @@ class HypercoreVaultRouting(RoutingModel):
         trade: TradeExecution,
         raw_amount: int,
     ):
-        """Fail closed before phase-1 deposit broadcast can consume Safe USDC."""
+        """Persist a fail-closed checkpoint before phase 1 can consume Safe USDC.
+
+        The marker is deliberately written *before* signing and broadcasting
+        ``CoreDepositWallet.deposit``. A node can accept the signed transaction
+        and the process can then die before receipt handling records whether
+        USDC reached EVM escrow or HyperCore spot. Without this checkpoint,
+        startup repair would see only a failed buy and restore its allocation
+        to reserves, duplicating funds that may already be outside the Safe.
+
+        This is not a claim that the deposit definitely settled. It records an
+        uncertainty boundary: generic accounting must retain the allocation
+        until a confirmed phase-1 revert or an operator's live reconciliation
+        resolves the location. Keeping cash unavailable is conservative; making
+        unverified cash spendable is unsafe.
+        """
         if not hasattr(trade, "other_data") or trade.other_data is None:
             trade.other_data = {}
 
@@ -1517,7 +1557,13 @@ class HypercoreVaultRouting(RoutingModel):
         )
 
     def _clear_deposit_capital_at_risk(self, trade: TradeExecution):
-        """Allow normal failed-buy accounting after phase-1 non-consumption is proven."""
+        """Allow normal failed-buy accounting only after phase-1 non-consumption is proven.
+
+        Call this only for a definite phase-1 receipt revert or a local signing
+        failure before any transaction could reach a node. Do not clear it for
+        RPC errors, missing receipts, or settlement timeouts: all of those can
+        coexist with a transaction that HyperCore processes later.
+        """
         if not getattr(trade, "other_data", None):
             return
 
@@ -1530,7 +1576,15 @@ class HypercoreVaultRouting(RoutingModel):
         human_amount: Decimal,
         location: str,
     ) -> str:
-        """Build recovery guidance that cannot suggest an unsafe repeated transfer."""
+        """Build recovery guidance that cannot suggest an unsafe repeated transfer.
+
+        ``hypercore_perp_or_vault`` is intentional after a vault-confirmation
+        timeout. Trade #1486 happened to show the full amount in perp during its
+        diagnostic snapshot, but an asynchronous vault action may also settle
+        after the timeout. Recovery text must therefore require a fresh balance
+        inspection rather than tell an operator to submit another vault transfer
+        and potentially deposit the same USDC twice.
+        """
         prefix = (
             f"USDC ({human_amount}) is stranded or pending in {location} for Safe "
             f"{self.safe_address}. Use check-hypercore-user.py to inspect live "
@@ -1548,11 +1602,19 @@ class HypercoreVaultRouting(RoutingModel):
         raw_amount: int,
         location: str,
     ):
-        """Record stranded USDC info on a failed trade for operator recovery.
+        """Record potentially stranded USDC and preserve its allocation.
 
-        When phase 2 fails after phase 1 bridged USDC to HyperCore,
-        or when the vault deposit is silently rejected, this method
-        stores recovery info in ``trade.other_data``.
+        HyperCore can acknowledge an EVM transaction while moving no USDC, or
+        while moving only the first action from a requested sequence. Once phase
+        1 may have left the Safe, a generic failed-buy refund is no longer valid:
+        it would overstate cash and make the already-bridged amount available to
+        later strategy trades. This method ties the operational diagnosis and
+        accounting invariant together by persisting the location *and* the
+        reserve-retention marker in the same durable trade metadata.
+
+        Locations use ``*_or_*`` whenever the evidence cannot distinguish a
+        pending action from a completed one. Ambiguity is intentionally exposed
+        to the operator rather than hidden behind a tempting but unsafe retry.
 
         :param trade:
             The failed trade.
@@ -2351,12 +2413,27 @@ class HypercoreVaultRouting(RoutingModel):
     ):
         """Settle a Hypercore vault deposit (buy).
 
-        Phase 1 approve + deposit txs were broadcast by the execution model. This method:
+        Phase 1 approve + deposit txs were broadcast by the execution model.
+        The remaining legs are intentionally not bundled, despite sharing the
+        same Safe and CoreWriter precompile. HyperAI trade #1486 demonstrated
+        that a successful wrapper receipt is not an atomic HyperCore settlement:
+        spot->perp settled, perp->vault did not, and old generic failure
+        accounting briefly treated the still-stranded USDC as Safe cash.
+
+        This method establishes a durable, verified state machine:
 
         1. Verifies the phase 1 receipt.
         2. Waits for EVM escrow to clear.
-        3. Builds and broadcasts phase 2 (transferUsdClass + vaultTransfer).
-        4. Queries vault equity and marks trade success.
+        3. Snapshots spot, perp and vault-equity baselines.
+        4. Broadcasts only spot->perp and proves both Info API balance changes.
+        5. Broadcasts perp->vault only after the phase-2 proof succeeds.
+        6. Queries vault equity and marks trade success only after the final
+           deposit confirmation.
+
+        Any uncertainty after phase 1 records stranded metadata and freezes the
+        trade with its allocation retained. This deliberately halts sequential
+        execution rather than allowing the next buy to spend capital whose
+        physical location is not yet known.
 
         Activation (if needed) was already handled in :py:meth:`setup_trades`.
         """
@@ -2384,6 +2461,8 @@ class HypercoreVaultRouting(RoutingModel):
             return
 
         if trade.other_data.get(HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY):
+            # Receipt success only proves inclusion. Keep the allocation locked
+            # until every later HyperCore balance proof has succeeded.
             trade.other_data[HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY]["phase"] = "phase1_confirmed"
 
         vault_address = self._get_vault_address(trade)
@@ -2485,10 +2564,11 @@ class HypercoreVaultRouting(RoutingModel):
             return
 
         # --- Phase 2: spot -> perp ---
-        # CoreWriter actions can have a successful EVM receipt while only a
-        # prefix takes effect on HyperCore. Keep the legs separate and prove
-        # both sides of the internal transfer before asking HyperCore to
-        # deposit from perp.
+        # Do not collapse this with phase 3. In #1486, a bundled CoreWriter
+        # request received EVM status=1 while HyperCore performed exactly this
+        # first leg and silently omitted the vault transfer. These fresh
+        # baselines make the following proof about this action only, not an
+        # earlier bridge arrival or pre-existing perp float.
         try:
             spot_baseline = self._fetch_safe_spot_free_usdc_balance()
             perp_baseline = self._fetch_safe_perp_withdrawable_balance()
@@ -2508,7 +2588,8 @@ class HypercoreVaultRouting(RoutingModel):
             logger.error("Deposit spot-to-perp broadcast failed: %s", e.__cause__)
             trade.blockchain_transactions.append(e.tx)
             # A timeout or RPC error does not prove the signed action was not
-            # accepted. Do not tell an operator to repeat it blindly.
+            # accepted. The only safe statement is "spot or perp"; telling an
+            # operator to repeat it blindly can double-transfer the deposit.
             self._mark_stranded_usdc(trade, deposit_raw, "hypercore_spot_or_perp")
             self.diagnose_hyperliquid_vault_redemption_failure(
                 trade, vault_address, "deposit_spot_to_perp_broadcast",
@@ -2547,6 +2628,9 @@ class HypercoreVaultRouting(RoutingModel):
             return
 
         # --- Phase 3: perp -> vault ---
+        # Reaching this point means phase 2 was observed in both balances. This
+        # is the crucial ordering rule that the former bundled implementation
+        # lacked: vaultTransfer is never requested against unverified perp USDC.
         self.deployer.sync_nonce(web3)
         try:
             phase3_tx, phase3_receipt = self._broadcast_deposit_perp_to_vault(
@@ -2629,8 +2713,10 @@ class HypercoreVaultRouting(RoutingModel):
                 "Vault deposit verification failed for trade %s: %s",
                 trade.trade_id, e,
             )
-            # The vault action may still settle after the timeout. Require a
-            # fresh perp/vault inspection before any manual recovery action.
+            # The vault action may still settle after the timeout. The #1486
+            # snapshot showed the money in perp, but the timeout alone cannot
+            # prove a late vault credit will not occur. Require a fresh
+            # perp/vault inspection before any manual recovery action.
             self._mark_stranded_usdc(trade, deposit_raw, "hypercore_perp_or_vault")
             self.diagnose_hyperliquid_vault_redemption_failure(
                 trade, vault_address, "deposit_verification",

@@ -1351,6 +1351,9 @@ def _build_hypercore_vault_account_checks(
             if transit is not None:
                 transit_trades.append((trade.trade_id, transit))
     for trade_id, transit in transit_trades:
+        # HyperCore transit USDC is not an ERC-20 Safe balance and must not be
+        # manufactured by account correction. Keep the condition visible to the
+        # operator while the routing/repair guards retain the allocation.
         logger.warning(
             "HyperCore transit capital retained for failed trade #%s: %s. "
             "Account correction will not release it; reconcile live balances first.",

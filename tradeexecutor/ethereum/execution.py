@@ -200,6 +200,11 @@ class EthereumExecution(ExecutionModel):
         ]
         if at_risk_hypercore_trades:
             trade_ids = ", ".join(str(trade.trade_id) for trade in at_risk_hypercore_trades)
+            # Do not use this generic receipt-repair loop for CoreWriter
+            # deposits. A missing receipt or a receipt for a wrapper call does
+            # not say whether HyperCore left USDC in escrow, spot, perp, or the
+            # vault. Treating it as an ordinary failed buy could re-credit the
+            # Safe and repeat the #1486 double-spend accounting failure.
             raise RuntimeError(
                 f"Cannot automatically repair HyperCore deposit trade(s) {trade_ids}: "
                 "reconcile the Safe, escrow, spot, perp and vault balances with "
