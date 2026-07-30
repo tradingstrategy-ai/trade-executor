@@ -1,5 +1,26 @@
 # Trade-executor cross-chain vault test report
 
+## 2026-07-30 settlement update
+
+The 2026-07-25 matrix below is a historical baseline, not the current Ember or
+Plutus support status. With the follow-up eth-defi settlement driver and
+executor direct-payout recovery, a targeted rerun completed the selected five
+previously unresolved async redemptions:
+
+| Protocol | Vaults | Current result |
+|---|---:|---|
+| Ember | 4 | Previously `simulation_unsupported_async`; now success (simulated) after operator direct-payout recovery |
+| Plutus | 1 | Previously redemption unavailable; now success (simulated) through the Safe module |
+
+The Ember result can include synthetic Anvil denomination-token liquidity. It
+proves that the request, operator settlement, receipt analysis and executor
+lifecycle are wired correctly; it does **not** prove that the live vault or
+operator can fund its FIFO queue. The selected rerun is not a replacement for a
+new 129-vault matrix. The source files were `/tmp/async-vault-settlement-final-4/report.json`
+and `/tmp/async-vault-settlement-final-4/run.log`, using trade-executor branch
+`fix/plutus-satellite-settlement` with eth-defi branch
+`fix/async-vault-anvil-settlement` first on `PYTHONPATH`.
+
 ## Evidence and scope
 
 The 129-vault cross-chain matrix was re-run on 2026-07-25 with the updated
@@ -20,7 +41,7 @@ per-vault table is
 the executor-side work; protocol adapter work is in the separate eth-defi
 report.
 
-## Corrected matrix output
+## 2026-07-25 historical matrix output
 
 | Status | Vaults | Baseline (eth-defi b5803bdc5) | Interpretation |
 |---|---:|---:|---|
@@ -42,13 +63,13 @@ baseline "redemption pending" rows (four Ember, two Gains) that were not
 recognised as asynchronous are now terminal typed results, and Ember's minimum
 withdrawal and async capability are surfaced with structured metadata.
 
-## What the eth-defi update changed (observed)
+## What the 2026-07-25 eth-defi update changed (observed)
 
 - **40acres: 2 → 1 gap.** 40acres Aerodrome USDC (Base) now completes deposit
   and redemption — the PR #1577 redemption-share reconciliation fix is
   effective on that path.
 - **Ember / Gains async classification.** Four Ember vaults and Gains on Base
-  now report `simulation_unsupported_async` with
+  then reported `simulation_unsupported_async` with
   `VaultDepositManagerCapability` metadata (`deposit_flow=synchronous`,
   `redemption_flow=asynchronous`) instead of the previous
   "Failed to analyse vault tx" receipt errors.
@@ -61,7 +82,7 @@ withdrawal and async capability are surfaced with structured metadata.
 | Protocol | Gaps | Baseline | Owner of remaining fix |
 |---|---:|---:|---|
 | Lagoon Finance | 6 | 6 | eth-defi (settlement diagnostics + allowance path) |
-| Ember | 5 | 5 | eth-defi (Anvil settlement driver + minimum typing) |
+| Ember | 5 | 5 | eth-defi (Anvil settlement driver + minimum typing); four queue rows resolved in the 2026-07-30 targeted rerun |
 | cSigma Finance | 2 | 2 | eth-defi (capacity typing + async withdrawal) |
 | Gains Network | 2 | 2 | eth-defi (Anvil settlement + custom error) |
 | YieldNest | 1 | 1 | eth-defi (custom error decode) |
@@ -73,10 +94,12 @@ withdrawal and async capability are surfaced with structured metadata.
 
 ## Trade-executor work items
 
-No protocol-specific settlement logic belongs in trade-executor. The items below
-are diagnostics, cross-chain reconciliation and provenance. Sections marked
-*done* were implemented on this branch; section 2 was investigated and found not
-to be an executor defect at all.
+Protocol-specific settlement actions belong in eth-defi. Trade-executor owns the
+generic lifecycle around them, including scanning closed positions and recovering
+an operator-finalised direct payout through the manager's validated transaction
+lookup. The items below are diagnostics, cross-chain reconciliation and
+provenance. Sections marked *done* were implemented on this branch; section 2
+was investigated and found not to be an executor defect at all.
 
 ### 1. Surface the real revert reason for home-chain vault redemptions — done
 
