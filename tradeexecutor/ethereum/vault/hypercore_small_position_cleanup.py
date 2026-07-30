@@ -20,6 +20,7 @@ locally as protocol dust. If a routed trade fails, the updated state is saved
 and the normal failed-trade repair flow takes over.
 """
 
+import copy
 import datetime
 import logging
 from dataclasses import dataclass, replace
@@ -33,6 +34,7 @@ from tradeexecutor.ethereum.vault.hypercore_routing import (
 )
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.repair import close_position_with_empty_trade
+from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.strategy.dust import (
     HYPERCORE_SMALL_POSITION_CLEANUP_CLOSE_EPSILON,
@@ -75,11 +77,17 @@ class HypercoreSmallPositionCandidate:
 
 @dataclass(slots=True)
 class HypercoreSmallPositionCleanupReport:
-    """Outcome of one small-position cleanup pass."""
+    """Outcome of one small-position cleanup pass.
+
+    ``executed_trades`` and ``closed_position_ids`` contain live outcomes only.
+    ``simulated_state`` contains dry-run local closures and expired plans, but
+    not the replacement trade or its signed transaction.
+    """
 
     candidates: list[HypercoreSmallPositionCandidate]
     executed_trades: list[TradeExecution]
     closed_position_ids: list[int]
+    simulated_state: State | None = None
 
 
 def get_hypercore_minimum_allocation(parameters) -> Decimal | None:
@@ -120,7 +128,7 @@ def discover_hypercore_small_positions(
         if position.has_unexecuted_trades():
             logger.warning(
                 "Skipping HyperCore small-position cleanup for position %d: "
-                "it has unfinished trades",
+                "it has a started or broadcast trade",
                 position.position_id,
             )
             continue
@@ -152,11 +160,40 @@ def discover_hypercore_small_positions(
     return candidates
 
 
+def _expire_planned_hypercore_trades(
+    position,
+    timestamp: datetime.datetime,
+) -> None:
+    """Expire stale plans before cleanup evaluates a candidate.
+
+    Started and broadcast trades are filtered out during candidate discovery.
+    A planned trade has not entered execution and cannot execute by itself, but
+    its quantity still affects ``get_quantity(planned=True)``.
+    """
+
+    planned_trades = [
+        trade
+        for trade in position.trades.values()
+        if trade.is_planned()
+    ]
+    for trade in planned_trades:
+        trade.mark_expired(timestamp)
+        trade.add_note(
+            "Expired by correct-accounts before HyperCore small-position cleanup "
+            "evaluated this position."
+        )
+        logger.warning(
+            "Expired planned trade %d before evaluating HyperCore position %d",
+            trade.trade_id,
+            position.position_id,
+        )
+
+
 def plan_hypercore_small_position_cleanup(
     state,
     candidate: HypercoreSmallPositionCandidate,
     timestamp: datetime.datetime,
-) -> list[TradeExecution]:
+) -> TradeExecution:
     """Create a full-close trade for a cleanup candidate with redeemable equity.
 
     ``MINIMUM_VAULT_DEPOSIT`` is deliberately irrelevant here because the
@@ -169,6 +206,12 @@ def plan_hypercore_small_position_cleanup(
     assert position.last_token_price > 0, (
         f"HyperCore cleanup position {position.position_id} has no usable price"
     )
+    assert not position.has_unexecuted_trades(), (
+        f"HyperCore cleanup position {position.position_id} has a trade in execution"
+    )
+    assert not position.has_planned_trades(), (
+        f"HyperCore cleanup position {position.position_id} has a stale planned trade"
+    )
 
     reserve_asset = state.portfolio.get_default_reserve_position().asset
     if candidate.is_pending_cleanup:
@@ -180,7 +223,7 @@ def plan_hypercore_small_position_cleanup(
         )
     note_prefix = f"correct-accounts HyperCore small-position cleanup: {cleanup_reason}."
 
-    close_quantity = -position.get_quantity(planned=True)
+    close_quantity = -position.get_quantity()
     assert close_quantity < 0, (
         f"HyperCore cleanup position {position.position_id} has no positive quantity to close"
     )
@@ -196,12 +239,12 @@ def plan_hypercore_small_position_cleanup(
         position=position,
         closing=True,
         notes=(
-            f"{note_prefix} Redeeming the full planned quantity with the "
+            f"{note_prefix} Redeeming the full position quantity with the "
             "HyperCore small-position retry margin."
         ),
     )
     close_trade.other_data["hypercore_small_position_cleanup"] = True
-    return [close_trade]
+    return close_trade
 
 
 def _close_confirmed_hypercore_residual(
@@ -271,14 +314,22 @@ def run_hypercore_small_position_cleanup(
     without broadcasting.
 
     :param dry_run:
-        Refresh and report eligible positions without creating trades,
-        broadcasting transactions, or saving state.
+        Rehearse local position closure or the complete trade preparation path
+        on an isolated state copy. No transactions are broadcast and neither
+        the supplied state nor its store is changed.
     """
 
+    working_state = copy.deepcopy(state) if dry_run else state
     executed_trades: list[TradeExecution] = []
     closed_position_ids: list[int] = []
 
     for candidate in candidates:
+        working_position = working_state.portfolio.open_positions.get(
+            candidate.position_id
+        )
+        if working_position is None:
+            continue
+
         try:
             live_equity_result = fetch_user_vault_equity(
                 session,
@@ -295,19 +346,19 @@ def run_hypercore_small_position_cleanup(
             )
             continue
 
+        _expire_planned_hypercore_trades(working_position, timestamp)
         live_equity = Decimal(0) if live_equity_result is None else live_equity_result.equity
         if live_equity <= 0:
+            close_position_with_empty_trade(working_state.portfolio, working_position)
             if dry_run:
                 logger.info(
-                    "Dry run: would close zero-equity HyperCore position %d (%s)",
+                    "Dry run: validated local closure of zero-equity HyperCore "
+                    "position %d (%s)",
                     candidate.position_id,
                     candidate.vault_name,
                 )
-                continue
-            position = state.portfolio.open_positions.get(candidate.position_id)
-            if position is not None:
-                close_position_with_empty_trade(state.portfolio, position)
-                store.sync(state)
+            else:
+                store.sync(working_state)
                 closed_position_ids.append(candidate.position_id)
             continue
         if live_equity >= candidate.minimum_allocation and not candidate.is_pending_cleanup:
@@ -331,38 +382,64 @@ def run_hypercore_small_position_cleanup(
         current_candidate = replace(candidate, live_equity=live_equity)
 
         if live_equity <= HYPERCORE_SMALL_POSITION_MINIMUM_REDEEMABLE_EQUITY:
+            close_position_with_empty_trade(working_state.portfolio, working_position)
+            working_position.add_notes_message(
+                "correct-accounts closed the HyperCore position locally because "
+                f"{live_equity:.6f} USDC was not enough to verify all withdrawal phases"
+            )
             if dry_run:
                 logger.info(
-                    "Dry run: would close HyperCore position %d (%s) locally because "
-                    "%.6f USDC is not enough to verify all withdrawal phases",
+                    "Dry run: validated local closure of HyperCore position %d "
+                    "(%s) because %.6f USDC is not enough to verify all "
+                    "withdrawal phases",
                     candidate.position_id,
                     candidate.vault_name,
                     live_equity,
                 )
-                continue
-            position = state.portfolio.open_positions.get(candidate.position_id)
-            if position is not None:
-                close_position_with_empty_trade(state.portfolio, position)
-                position.add_notes_message(
-                    "correct-accounts closed the HyperCore position locally because "
-                    f"{live_equity:.6f} USDC was not enough to verify all withdrawal phases"
-                )
-                store.sync(state)
+            else:
+                store.sync(working_state)
                 closed_position_ids.append(candidate.position_id)
             continue
 
+        preparation_state = copy.deepcopy(working_state) if dry_run else working_state
+
+        trade = plan_hypercore_small_position_cleanup(
+            preparation_state,
+            current_candidate,
+            timestamp,
+        )
+        trades = [trade]
         if dry_run:
+            assert execution_model is not None
+            assert routing_model is not None
+            assert routing_state is not None
+            execution_model.validate_confirmation_configuration()
+            preparation_state.start_execution(
+                timestamp,
+                trade,
+                underflow_check=False,
+            )
+            if execution_model.max_slippage is not None:
+                trade.planned_max_slippage = execution_model.max_slippage
+            routing_model.setup_trades(
+                state=preparation_state,
+                routing_state=routing_state,
+                trades=trades,
+                check_balances=False,
+                rebroadcast=False,
+            )
             logger.info(
-                "Dry run: would redeem HyperCore small position %d (%s), "
-                "live equity %.6f USDC, strategy minimum allocation %.6f USDC",
+                "Dry run: validated HyperCore small-position withdrawal %d (%s), "
+                "live equity %.6f USDC, strategy minimum allocation %.6f USDC, "
+                "prepared %d transaction(s) without broadcasting",
                 current_candidate.position_id,
                 current_candidate.vault_name,
                 current_candidate.live_equity,
                 current_candidate.minimum_allocation,
+                len(trade.blockchain_transactions),
             )
             continue
 
-        trades = plan_hypercore_small_position_cleanup(state, current_candidate, timestamp)
         logger.info(
             "Cleaning HyperCore small position %d (%s): equity %.6f USDC, "
             "minimum allocation %.6f USDC, action=redeem",
@@ -374,17 +451,16 @@ def run_hypercore_small_position_cleanup(
         try:
             execution_model.execute_trades(
                 timestamp,
-                state,
+                working_state,
                 trades,
                 routing_model,
                 routing_state,
                 check_balances=False,
             )
         except (ExecutionHaltableIssue, HypercoreWithdrawalPreflightError) as e:
-            trade = trades[0]
             if isinstance(e, HypercoreWithdrawalPreflightError) and trade.is_started():
-                state.mark_trade_failed(timestamp, trade)
-                freeze_position_on_failed_trade(timestamp, state, [trade])
+                working_state.mark_trade_failed(timestamp, trade)
+                freeze_position_on_failed_trade(timestamp, working_state, [trade])
             elif isinstance(e, HypercoreWithdrawalPreflightError) and trade.is_planned():
                 trade.mark_expired(timestamp)
             logger.error(
@@ -398,19 +474,18 @@ def run_hypercore_small_position_cleanup(
         else:
             executed_trades.extend(trades)
         finally:
-            store.sync(state)
+            store.sync(working_state)
 
-        trade = trades[0]
         if not trade.is_success():
             continue
 
         residual_equity = _close_confirmed_hypercore_residual(
-            state=state,
+            state=working_state,
             candidate=current_candidate,
             session=session,
             safe_address=safe_address,
         )
-        store.sync(state)
+        store.sync(working_state)
         if residual_equity is None:
             closed_position_ids.append(candidate.position_id)
 
@@ -418,4 +493,5 @@ def run_hypercore_small_position_cleanup(
         candidates=candidates,
         executed_trades=executed_trades,
         closed_position_ids=closed_position_ids,
+        simulated_state=working_state if dry_run else None,
     )
