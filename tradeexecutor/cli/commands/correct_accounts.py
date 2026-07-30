@@ -260,11 +260,24 @@ def _sync_hypercore_vault_positions(
     return closed_phantom
 
 
-def _has_closed_hypercore_positions(state) -> bool:
-    """Check whether state has closed Hypercore vault positions."""
+def _has_hypercore_vault_positions(state) -> bool:
+    """Check whether the strategy tracks any HyperCore vault position.
+
+    This deliberately includes open, frozen, and closed positions. Transit USDC
+    belongs to the Safe rather than a position, so only looking at closed
+    positions could skip the default #1486 recovery for a strategy which has
+    started following HyperCore vaults but has not closed one yet. The planner
+    separately reads the live perp account and refuses recovery when it finds
+    an actual active perp position.
+    """
     return any(
         position.pair.is_hyperliquid_vault()
-        for position in state.portfolio.closed_positions.values()
+        for position_collection in (
+            getattr(state.portfolio, "open_positions", {}),
+            getattr(state.portfolio, "frozen_positions", {}),
+            getattr(state.portfolio, "closed_positions", {}),
+        )
+        for position in position_collection.values()
     )
 
 
@@ -277,8 +290,6 @@ def _recover_hypercore_transit_balances(
     state,
     skip_hypercore_transit_recovery: bool,
     dry_run: bool,
-    verified_recovery_amount: Decimal | None = None,
-    confirm_verified_recovery: bool = False,
 ) -> list[str]:
     """Plan or recover Safe-level HyperCore spot/perp USDC before correction.
 
@@ -295,26 +306,26 @@ def _recover_hypercore_transit_balances(
     lower-level planner refuses active perp positions. ``dry_run`` deliberately
     follows the same snapshot and planning path without requiring a signer or
     broadcasting. The normal planner is enabled by default for every eligible
-    HyperCore vault strategy and returns the full excess which it just moved
-    from perp to spot; this prevents the #1486 amount being reduced by an
-    unrelated pre-existing spot dust balance. A ``verified_recovery_amount``
-    is an optional, narrower override that requires a live-run confirmation.
+    HyperCore vault strategy and returns the transferable excess which it just
+    moved from perp to spot; it leaves only HyperCore's mandatory bridge-fee
+    margin when the pre-existing spot balance cannot cover it. This prevents
+    the #1486 amount being reduced by unrelated pre-existing spot dust.
     """
     if not asset_management_mode.is_vault():
         return []
 
-    if not _has_closed_hypercore_positions(state) and verified_recovery_amount is None:
+    if not _has_hypercore_vault_positions(state):
         return []
 
     if skip_hypercore_transit_recovery:
         logger.info(
-            "Skipping HyperCore transit recovery although closed Hypercore positions exist"
+            "Skipping HyperCore transit recovery although HyperCore vault positions exist"
         )
         return []
 
     if not isinstance(sync_model, LagoonVaultSyncModel):
         raise RuntimeError(
-            "Closed Hypercore positions exist, but automatic HyperCore transit recovery "
+            "HyperCore vault positions exist, but automatic HyperCore transit recovery "
             f"is only implemented for Lagoon vaults. Got sync model {type(sync_model)}."
         )
 
@@ -336,7 +347,7 @@ def _recover_hypercore_transit_balances(
     reserve_token = sync_model.vault.underlying_token
 
     logger.info(
-        "Closed Hypercore positions detected; checking Safe-level HyperCore transit balances for %s",
+        "HyperCore vault positions detected; checking Safe-level HyperCore transit balances for %s",
         safe_address,
     )
     snapshot = fetch_hypercore_transit_balances(
@@ -344,10 +355,7 @@ def _recover_hypercore_transit_balances(
         safe_address=safe_address,
         reserve_token=reserve_token,
     )
-    actions = plan_hypercore_transit_recovery_actions(
-        snapshot,
-        verified_recovery_amount=verified_recovery_amount,
-    )
+    actions = plan_hypercore_transit_recovery_actions(snapshot)
     if not actions:
         logger.info("No HyperCore spot/perp transit balances need recovery")
         return []
@@ -372,20 +380,9 @@ def _recover_hypercore_transit_balances(
         )
         return [action.action_kind for action in actions]
 
-    if verified_recovery_amount is not None and not confirm_verified_recovery:
-        # An EVM-success receipt does not prove that every CoreWriter action
-        # settled.  Therefore the exact #1486-style path has an additional
-        # opt-in beyond the value itself before it can alter Safe balances.
-        raise RuntimeError(
-            "Refusing to broadcast an operator-verified HyperCore transit recovery "
-            "without --confirm-hypercore-transit-recovery. First run the same "
-            "command with --dry-run and verify the vault equity did not receive "
-            "the stated amount."
-        )
-
     if hot_wallet is None:
         raise RuntimeError(
-            "Closed Hypercore positions exist and HyperCore transit recovery is needed, "
+            "HyperCore vault positions exist and HyperCore transit recovery is needed, "
             "but no hot wallet/private key is configured for broadcasting Safe transactions."
         )
 
@@ -443,8 +440,6 @@ def correct_accounts(
     transfer_away: bool = Option(False, "--transfer-away", envvar="TRANSFER_AWAY", help="For tokens without assigned position, scoop them to the hot wallet instead of trying to construct a new position"),
     raise_on_unclean: bool = typer.Option(False, is_flag=True, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
     skip_hypercore_transit_recovery: bool = Option(False, "--skip-hypercore-transit-recovery", envvar="SKIP_HYPERCORE_TRANSIT_RECOVERY", help="Skip Safe-level HyperCore spot/perp USDC recovery before account correction."),
-    recover_hypercore_transit_usdc: Decimal | None = Option(None, "--recover-hypercore-transit-usdc", envvar="RECOVER_HYPERCORE_TRANSIT_USDC", help="Optional exact USDC override for an independently verified stranded Safe balance. Normal eligible HyperCore transit recovery is already on by default. Use --dry-run first; this narrower live override also requires --confirm-hypercore-transit-recovery."),
-    confirm_hypercore_transit_recovery: bool = Option(False, "--confirm-hypercore-transit-recovery", envvar="CONFIRM_HYPERCORE_TRANSIT_RECOVERY", help="Confirm the exact --recover-hypercore-transit-usdc amount was checked against live vault equity before a live Safe transfer."),
     cleanup_hypercore_small_positions: bool = Option(True, "--cleanup-hypercore-small-positions/--no-cleanup-hypercore-small-positions", envvar="CLEANUP_HYPERCORE_SMALL_POSITIONS", help="Redeem open HyperCore vault positions below the strategy minimum allocation before correcting accounts."),
     dry_run: bool = Option(False, "--dry-run", envvar="DRY_RUN", help="Read live balances and print any Safe-level HyperCore perp->spot->EVM recovery plan without signing, broadcasting, persisting state, or applying accounting corrections."),
 
@@ -843,8 +838,6 @@ def correct_accounts(
         state=state,
         skip_hypercore_transit_recovery=skip_hypercore_transit_recovery,
         dry_run=dry_run,
-        verified_recovery_amount=recover_hypercore_transit_usdc,
-        confirm_verified_recovery=confirm_hypercore_transit_recovery,
     )
 
     block_number = get_almost_latest_block_number(web3)

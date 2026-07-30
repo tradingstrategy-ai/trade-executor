@@ -253,24 +253,9 @@ For #1486, the default dry run above plans exactly
 option is necessary. The recovery is on by default for every eligible
 HyperCore vault strategy, as are the other HyperCore repair checks.
 
-When the amount and failed vault outcome are independently verified, an
-operator can optionally request a narrower incident amount. Its dry run is:
-
-```shell
-poetry run trade-executor correct-accounts \
-  --dry-run \
-  --recover-hypercore-transit-usdc 48.884068
-```
-
-It plans only the requested amount, preserving the pre-existing 0.50 USDC perp
-dust and 0.217882 USDC spot balance recorded for this Safe. A live invocation must add
-`--confirm-hypercore-transit-recovery`; that confirmation means the operator
-has checked live vault equity and established that the amount was not a late
-deposit. The explicit amount is never inferred from an EVM-success receipt.
-
 This does **not** make generic repair safe. A state file that predates a failed
 deposit can still show the trade as planned and lack its at-risk marker. After
-confirmed recovery, expire/reconcile that stale planned trade before restarting
+recovery, expire/reconcile that stale planned trade before restarting
 the executor, then use the normal account correction to align reserve state.
 
 ## Withdrawal (sell) flow

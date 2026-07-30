@@ -99,85 +99,32 @@ def plan_hypercore_transit_recovery_actions(
     snapshot: HypercoreTransitBalanceSnapshot,
     *,
     leave_dust: Decimal = HYPERCORE_TRANSIT_RECOVERY_DUST_USDC,
-    verified_recovery_amount: Decimal | None = None,
 ) -> list[HypercoreTransitRecoveryAction]:
     """Plan recovery actions for Safe-level HyperCore spot/perp USDC.
 
     By default, leaves ``leave_dust`` in the source perp balance, then returns
-    the exact perp amount which just arrived in spot to HyperEVM. This is the
+    the recovered amount which just arrived in spot to HyperEVM. This is the
     default recovery path for every eligible HyperCore vault strategy, not an
     opt-in incident tool. It preserves any pre-existing spot balance instead
     of accidentally leaving part of a newly stranded deposit behind as spot
-    dust. The executor retains the protocol's 0.01 USDC bridge-fee margin only
-    when there is not enough pre-existing spot headroom. If the original spot
-    balance also exceeds ``leave_dust``, it is planned as a separate later
-    spot-to-EVM action.
+    dust. When that balance is below HyperCore's 0.01 USDC bridge-fee margin,
+    the plan retains only the missing margin from the recovered amount. If the
+    original spot balance also exceeds ``leave_dust``, it is planned as a
+    separate later spot-to-EVM action.
 
-    ``verified_recovery_amount`` is the deliberately narrower incident path.
-    It returns precisely an amount which an operator has independently proved
-    is stranded, instead of treating all non-dust HyperCore cash as stranded.
-    This exists for HyperAI trade #1486 (Citadel, 2026-07-30; PR #1593): the
-    state snapshot predates the failed CoreWriter request, but the live account
-    showed 48.884068 USDC newly present in perp.  In that case, move the exact
-    amount from perp to spot and then from spot to HyperEVM, preserving the
-    pre-incident spot/perp balances.  The caller must never infer this amount
-    from a receipt alone: it is safe only after confirming that the vault
-    equity did not receive the deposit.
+    This behaviour exists for HyperAI trade #1486 (Citadel, 2026-07-30;
+    PR #1593). Its state snapshot predated the failed CoreWriter request, but
+    the live account showed 48.884068 USDC newly present in perp. The default
+    plan therefore uses authoritative live balances, not an incident marker or
+    an operator-supplied amount. The caller must not run it for a Safe with an
+    open perp position, because free perp USDC cannot then be interpreted as
+    recoverable transit capital.
     """
     if snapshot.perp_position_count > 0:
         raise RuntimeError(
             f"Refusing HyperCore transit recovery because Safe {snapshot.safe_address} "
             f"has {snapshot.perp_position_count} active HyperCore perp position(s). "
             "Manual review is required before stranded USDC can be interpreted safely."
-        )
-
-    if verified_recovery_amount is not None:
-        if verified_recovery_amount <= BALANCE_TOLERANCE:
-            raise ValueError(
-                "Verified HyperCore transit recovery amount must exceed the "
-                f"{BALANCE_TOLERANCE} USDC balance tolerance, got {verified_recovery_amount}"
-            )
-
-        # Do not combine partial spot and perp balances here.  An exact amount
-        # must have one unambiguous source, otherwise a transient in-flight
-        # transfer could be mistaken for the #1486-style stranded deposit.
-        if snapshot.perp_withdrawable + BALANCE_TOLERANCE >= verified_recovery_amount:
-            return [
-                HypercoreTransitRecoveryAction(
-                    action_kind="perp_to_spot",
-                    amount=verified_recovery_amount,
-                    reason=(
-                        "Return operator-verified stranded USDC from HyperCore perp to spot "
-                        "without consuming pre-existing perp dust"
-                    ),
-                ),
-                HypercoreTransitRecoveryAction(
-                    action_kind="spot_to_evm",
-                    amount=verified_recovery_amount,
-                    reason=(
-                        "Return the same operator-verified stranded USDC from HyperCore spot "
-                        "to the Safe on HyperEVM"
-                    ),
-                ),
-            ]
-
-        if snapshot.spot_free_usdc + BALANCE_TOLERANCE >= verified_recovery_amount:
-            return [
-                HypercoreTransitRecoveryAction(
-                    action_kind="spot_to_evm",
-                    amount=verified_recovery_amount,
-                    reason=(
-                        "Return operator-verified stranded USDC from HyperCore spot "
-                        "to the Safe on HyperEVM"
-                    ),
-                )
-            ]
-
-        raise RuntimeError(
-            f"Safe {snapshot.safe_address} does not hold the operator-verified "
-            f"{verified_recovery_amount} USDC recovery amount wholly in free spot or "
-            f"withdrawable perp (spot {snapshot.spot_free_usdc}, "
-            f"perp {snapshot.perp_withdrawable}). Manual review is required."
         )
 
     actions: list[HypercoreTransitRecoveryAction] = []
@@ -203,15 +150,27 @@ def plan_hypercore_transit_recovery_actions(
         # perp->spot leg.  Calculating ``projected_spot - leave_dust`` here
         # would preserve a synthetic 0.50 USDC spot dust balance and return
         # less than the stranded amount whenever spot had pre-existing dust.
-        # ``execute_spot_to_evm`` is still allowed to retain the protocol's
-        # 0.01 USDC fee margin when the pre-existing spot headroom is smaller.
+        # HyperCore requires 0.01 USDC fee headroom for spot->EVM. When the
+        # old spot balance cannot provide it, reserve only the missing margin
+        # from this recovered amount. This makes the plan match execution,
+        # avoids silently consuming pre-existing spot USDC, and makes the
+        # unavoidable residual visible to correct-accounts dry runs.
+        bridge_fee_shortfall = max(
+            Decimal(0),
+            HYPERCORE_BRIDGE_FEE_MARGIN - snapshot.spot_free_usdc,
+        )
+        perp_to_evm_amount = perp_recovery_amount - bridge_fee_shortfall
+        assert perp_to_evm_amount > 0, (
+            f"HyperCore perp recovery amount {perp_recovery_amount} for {snapshot.safe_address} "
+            f"is too small to retain the {HYPERCORE_BRIDGE_FEE_MARGIN} USDC bridge fee margin"
+        )
         actions.append(
             HypercoreTransitRecoveryAction(
                 action_kind="spot_to_evm",
-                amount=perp_recovery_amount,
+                amount=perp_to_evm_amount,
                 reason=(
-                    "Return the exact USDC just recovered from HyperCore perp to the Safe "
-                    "on HyperEVM, preserving the pre-existing spot balance"
+                    "Return USDC just recovered from HyperCore perp to the Safe on HyperEVM, "
+                    "retaining only any missing HyperCore bridge-fee margin"
                 ),
             )
         )

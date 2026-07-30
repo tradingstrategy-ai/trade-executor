@@ -281,24 +281,9 @@ the earlier 0.50 USDC perp dust and 0.217882 USDC spot balance. The spot
 balance exceeds HyperCore's 0.01 USDC bridge-fee headroom, so this incident
 does not need any bridge-fee adjustment.
 
-The amount option is only for an operator who has verified a narrower amount
-than the automatic live-balance recovery should handle:
-
-```shell
-poetry run trade-executor correct-accounts \
-  --dry-run \
-  --recover-hypercore-transit-usdc 48.884068
-```
-
-This plans only the explicitly requested amount and leaves the pre-incident
-spot/perp balances alone. It is safe only after
-checking that current vault equity did not receive the deposit. To perform the
-same live recovery, add `--confirm-hypercore-transit-recovery`. The explicit
-confirmation exists because a successful EVM CoreWriter receipt is not proof
-that every HyperCore action settled.
-
-Use this only after checking vault equity has not already received the deposit.
-The transit helper is deliberately Safe-level, because an old state file may
+When resolving an ambiguous deposit, inspect vault equity before recovery: a
+late vault settlement changes which destination should retain the USDC. The
+transit helper is deliberately Safe-level, because an old state file may
 predate the failed trade's metadata; it preserves its configured spot/perp dust
 margin rather than assuming every internal USDC cent belongs to one failed
 trade. After recovery, explicitly expire or reconcile stale planned trades

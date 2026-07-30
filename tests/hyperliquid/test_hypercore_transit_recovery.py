@@ -91,12 +91,12 @@ def test_hypercore_transit_plan_handles_spot_only_balance() -> None:
     assert actions[0].amount == Decimal("9.50")
 
 
-def test_hypercore_transit_plan_handles_perp_only_balance() -> None:
-    """Perp-only recovery requests the complete recovered amount for HyperEVM.
+def test_hypercore_transit_plan_keeps_bridge_fee_margin_for_perp_only_balance() -> None:
+    """Perp-only recovery leaves only HyperCore's bridge-fee margin in spot.
 
     1. Build a snapshot with only Safe-level perp USDC.
     2. Plan HyperCore transit recovery actions.
-    3. Assert the planner retains perp dust and requests all newly recovered USDC.
+    3. Assert the planner retains perp dust and its required bridge-fee margin.
     """
     # Step 1: Build a snapshot with only Safe-level perp USDC.
     snapshot = _snapshot(perp_withdrawable=Decimal("10"))
@@ -104,13 +104,13 @@ def test_hypercore_transit_plan_handles_perp_only_balance() -> None:
     # Step 2: Plan HyperCore transit recovery actions.
     actions = plan_hypercore_transit_recovery_actions(snapshot)
 
-    # Step 3: Assert the planner retains perp dust and requests the recovered USDC.
+    # Step 3: Assert the planner retains perp dust and the required fee margin.
     assert [action.action_kind for action in actions] == [
         "perp_to_spot",
         "spot_to_evm",
     ]
     assert actions[0].amount == Decimal("9.50")
-    assert actions[1].amount == Decimal("9.50")
+    assert actions[1].amount == Decimal("9.49")
 
 
 def test_hypercore_transit_plan_recovers_incident_amount_by_default() -> None:
@@ -264,17 +264,69 @@ def test_hypercore_transit_execution_uses_dust_safe_spot_amount(monkeypatch) -> 
     ]
 
 
-def test_correct_accounts_recovery_helper_executes_for_closed_hypercore_position(monkeypatch) -> None:
-    """Correct-accounts recovery helper executes when a closed Hypercore position exists.
+def test_hypercore_spot_to_evm_execution_keeps_bridge_fee_margin(monkeypatch) -> None:
+    """Spot-to-EVM execution leaves HyperCore's mandatory fee headroom.
 
-    1. Build a fake Lagoon sync model and state with one closed Hypercore position.
+    1. Mock a spot account which contains only newly recovered perp USDC.
+    2. Execute the requested full bridge amount through the real fee calculation.
+    3. Assert the CoreWriter call keeps exactly the 0.01 USDC bridge-fee margin.
+
+    The account reader, transaction builder, broadcaster, and confirmation wait
+    are mocked because this verifies the client-side fee-safety calculation,
+    not a live Safe/module transaction.
+    """
+    # Step 1: Model a 4.50 USDC perp recovery with no pre-existing spot headroom.
+    monkeypatch.setattr(
+        hypercore_transit_recovery,
+        "fetch_hypercore_transit_balances",
+        lambda **kwargs: _snapshot(spot_free_usdc=Decimal("4.50")),
+    )
+    reserve_token = MagicMock()
+    reserve_token.convert_to_raw.side_effect = lambda amount: int(
+        (Decimal(amount) * Decimal(10**6)).to_integral_value()
+    )
+    sent_calls: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        hypercore_transit_recovery,
+        "build_hypercore_send_asset_to_evm_call",
+        lambda lagoon_vault, evm_usdc_amount: ("spot_to_evm", evm_usdc_amount),
+    )
+    monkeypatch.setattr(
+        hypercore_transit_recovery,
+        "broadcast_bound_call",
+        lambda web3, hot_wallet, bound_func, gas_limit=650000: sent_calls.append(bound_func) or "0x1",
+    )
+    monkeypatch.setattr(
+        hypercore_transit_recovery,
+        "wait_for_evm_usdc_balance",
+        lambda token, address, baseline_balance, expected_increase: expected_increase,
+    )
+
+    # Step 2: Request the full recovered amount; execution applies the protocol margin.
+    hypercore_transit_recovery.execute_spot_to_evm(
+        web3=MagicMock(),
+        hot_wallet=MagicMock(),
+        lagoon_vault=SimpleNamespace(safe_address=SAFE_ADDRESS),
+        session=object(),
+        reserve_token=reserve_token,
+        amount=Decimal("4.50"),
+    )
+
+    # Step 3: The builder receives 4.49 USDC, retaining exactly 0.01 USDC in spot.
+    assert sent_calls == [("spot_to_evm", 4_490_000)]
+
+
+def test_correct_accounts_recovery_helper_executes_for_open_hypercore_position(monkeypatch) -> None:
+    """Correct-accounts recovery runs for an open HyperCore position by default.
+
+    1. Build a fake Lagoon sync model and state with one open HyperCore position.
     2. Mock HyperCore snapshot planning and execution.
     3. Assert recovery is broadcast through the shared executor.
 
     The Lagoon sync model is mocked because this is a command hook test, not a
     Lagoon vault deployment test.
     """
-    # Step 1: Build a fake Lagoon sync model and state with one closed Hypercore position.
+    # Step 1: Build a fake Lagoon sync model and state with one open HyperCore position.
     class FakeLagoonVaultSyncModel:
         def __init__(self) -> None:
             self.vault = SimpleNamespace(
@@ -287,11 +339,13 @@ def test_correct_accounts_recovery_helper_executes_for_closed_hypercore_position
 
     state = SimpleNamespace(
         portfolio=SimpleNamespace(
-            closed_positions={
+            open_positions={
                 1: SimpleNamespace(
                     pair=SimpleNamespace(is_hyperliquid_vault=lambda: True)
                 )
-            }
+            },
+            frozen_positions={},
+            closed_positions={},
         )
     )
     sync_model = FakeLagoonVaultSyncModel()
@@ -403,62 +457,6 @@ def test_correct_accounts_dry_run_plans_transit_recovery_without_signer(monkeypa
 
     # Step 3: The operator can inspect the exact incident recovery with no mutation.
     assert planned == ["perp_to_spot", "spot_to_evm"]
-    broadcast.assert_not_called()
-
-
-def test_correct_accounts_requires_confirmation_for_exact_recovery(monkeypatch) -> None:
-    """Exact live recovery refuses to move funds without the second operator confirmation.
-
-    1. Build the stale-state #1486 condition and mock its live HyperCore balances.
-    2. Attempt the exact recovery without the confirmation option.
-    3. Assert no Safe broadcaster is reached and the command requests confirmation.
-
-    The live balance reader and broadcaster are mocked because this safety test
-    verifies the command gate, rather than a live transfer from a real Safe.
-    """
-    # Step 1: Model the stale state and the exact #1486 perp balance.
-    class FakeLagoonVaultSyncModel:
-        def __init__(self) -> None:
-            self.vault = SimpleNamespace(
-                safe_address=SAFE_ADDRESS,
-                underlying_token=MagicMock(),
-            )
-
-        def get_token_storage_address(self) -> str:
-            return SAFE_ADDRESS
-
-    state = SimpleNamespace(portfolio=SimpleNamespace(closed_positions={}))
-    monkeypatch.setattr(
-        correct_accounts_command,
-        "LagoonVaultSyncModel",
-        FakeLagoonVaultSyncModel,
-    )
-    monkeypatch.setattr(
-        hypercore_transit_recovery,
-        "fetch_hypercore_transit_balances",
-        lambda **kwargs: _snapshot(perp_withdrawable=Decimal("49.384068")),
-    )
-    broadcast = MagicMock(side_effect=AssertionError("unconfirmed recovery must not broadcast"))
-    monkeypatch.setattr(
-        hypercore_transit_recovery,
-        "execute_hypercore_transit_recovery_actions",
-        broadcast,
-    )
-
-    # Step 2: Request recovery with the known amount but omit confirmation.
-    with pytest.raises(RuntimeError, match="--confirm-hypercore-transit-recovery"):
-        correct_accounts_command._recover_hypercore_transit_balances(
-            asset_management_mode=AssetManagementMode.lagoon,
-            sync_model=FakeLagoonVaultSyncModel(),
-            web3=SimpleNamespace(eth=SimpleNamespace(chain_id=999)),
-            hot_wallet=MagicMock(),
-            state=state,
-            skip_hypercore_transit_recovery=False,
-            dry_run=False,
-            verified_recovery_amount=Decimal("48.884068"),
-        )
-
-    # Step 3: The command failed before a nonce sync or a Safe transaction.
     broadcast.assert_not_called()
 
 
