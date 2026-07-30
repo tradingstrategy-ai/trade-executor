@@ -1185,12 +1185,12 @@ class VaultTestBatchRunner:
                     )
                     if incorrect_reporting is not None:
                         result = (
-                            "simulated-success-deposit-closed-"
+                            "success-deposit-closed-"
                             "incorrectly-reported-open"
                         )
                         outcome_data = outcome_data | incorrect_reporting
                     else:
-                        result = "simulated-success-deposit-closed"
+                        result = "success-deposit-closed"
                     self._record_terminal_result(
                         attempt,
                         alarm,
