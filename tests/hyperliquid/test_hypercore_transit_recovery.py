@@ -46,12 +46,12 @@ def _snapshot(
     )
 
 
-def test_hypercore_transit_plan_leaves_perp_and_spot_dust() -> None:
-    """Perp and spot recovery leaves fixed dust on both HyperCore balances.
+def test_hypercore_transit_plan_recovers_perp_excess_before_existing_spot() -> None:
+    """Default recovery returns all newly recovered perp USDC before spot cleanup.
 
     1. Build a snapshot with meaningful Safe-level spot and perp USDC.
     2. Plan HyperCore transit recovery actions.
-    3. Assert the planner moves only balances above the fixed dust amount.
+    3. Assert the planner bridges the full perp excess, then cleans old spot USDC.
     """
     # Step 1: Build a snapshot with meaningful Safe-level spot and perp USDC.
     snapshot = _snapshot(
@@ -62,13 +62,15 @@ def test_hypercore_transit_plan_leaves_perp_and_spot_dust() -> None:
     # Step 2: Plan HyperCore transit recovery actions.
     actions = plan_hypercore_transit_recovery_actions(snapshot)
 
-    # Step 3: Assert the planner moves only balances above the fixed dust amount.
+    # Step 3: Assert the full perp excess returns before old spot cleanup.
     assert [action.action_kind for action in actions] == [
         "perp_to_spot",
         "spot_to_evm",
+        "spot_to_evm",
     ]
     assert actions[0].amount == Decimal("768.375892")
-    assert actions[1].amount == Decimal("801.487490")
+    assert actions[1].amount == Decimal("768.375892")
+    assert actions[2].amount == Decimal("33.111598")
 
 
 def test_hypercore_transit_plan_handles_spot_only_balance() -> None:
@@ -90,11 +92,11 @@ def test_hypercore_transit_plan_handles_spot_only_balance() -> None:
 
 
 def test_hypercore_transit_plan_handles_perp_only_balance() -> None:
-    """Perp-only recovery plans perp-to-spot and then bridges the post-transfer spot balance.
+    """Perp-only recovery requests the complete recovered amount for HyperEVM.
 
     1. Build a snapshot with only Safe-level perp USDC.
     2. Plan HyperCore transit recovery actions.
-    3. Assert the planner leaves fixed dust in both perp and spot.
+    3. Assert the planner retains perp dust and requests all newly recovered USDC.
     """
     # Step 1: Build a snapshot with only Safe-level perp USDC.
     snapshot = _snapshot(perp_withdrawable=Decimal("10"))
@@ -102,21 +104,21 @@ def test_hypercore_transit_plan_handles_perp_only_balance() -> None:
     # Step 2: Plan HyperCore transit recovery actions.
     actions = plan_hypercore_transit_recovery_actions(snapshot)
 
-    # Step 3: Assert the planner leaves fixed dust in both perp and spot.
+    # Step 3: Assert the planner retains perp dust and requests the recovered USDC.
     assert [action.action_kind for action in actions] == [
         "perp_to_spot",
         "spot_to_evm",
     ]
     assert actions[0].amount == Decimal("9.50")
-    assert actions[1].amount == Decimal("9.00")
+    assert actions[1].amount == Decimal("9.50")
 
 
-def test_hypercore_transit_plan_recovers_only_verified_incident_amount() -> None:
-    """Verified #1486 recovery preserves pre-existing HyperCore balances.
+def test_hypercore_transit_plan_recovers_incident_amount_by_default() -> None:
+    """Default #1486 recovery preserves pre-existing HyperCore balances.
 
     1. Build the incident snapshot: 48.884068 USDC above 0.50 perp dust and
        0.217882 USDC already in spot.
-    2. Plan the exact operator-verified recovery amount.
+    2. Plan the default HyperCore transit recovery.
     3. Assert both transfer legs use exactly that amount, not a dust sweep.
     """
     # Step 1: Build the #1486 balances recorded after the failed vault deposit.
@@ -125,13 +127,10 @@ def test_hypercore_transit_plan_recovers_only_verified_incident_amount() -> None
         perp_withdrawable=Decimal("49.384068"),
     )
 
-    # Step 2: Plan the amount independently verified as absent from vault equity.
-    actions = plan_hypercore_transit_recovery_actions(
-        snapshot,
-        verified_recovery_amount=Decimal("48.884068"),
-    )
+    # Step 2: Plan default recovery; no incident-specific command option is needed.
+    actions = plan_hypercore_transit_recovery_actions(snapshot)
 
-    # Step 3: The original spot/perp balances remain untouched by the exact plan.
+    # Step 3: The original spot/perp balances remain untouched by the default plan.
     assert [action.action_kind for action in actions] == [
         "perp_to_spot",
         "spot_to_evm",
@@ -400,7 +399,6 @@ def test_correct_accounts_dry_run_plans_transit_recovery_without_signer(monkeypa
         state=state,
         skip_hypercore_transit_recovery=False,
         dry_run=True,
-        verified_recovery_amount=Decimal("48.884068"),
     )
 
     # Step 3: The operator can inspect the exact incident recovery with no mutation.

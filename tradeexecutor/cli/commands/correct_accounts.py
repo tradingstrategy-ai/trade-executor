@@ -294,9 +294,11 @@ def _recover_hypercore_transit_balances(
     Recovery only returns unencumbered spot/perp USDC to HyperEVM, and the
     lower-level planner refuses active perp positions. ``dry_run`` deliberately
     follows the same snapshot and planning path without requiring a signer or
-    broadcasting.  A ``verified_recovery_amount`` is more conservative than
-    the normal dust-preserving sweep: it plans only an amount independently
-    confirmed as stranded and requires an explicit live-run confirmation.
+    broadcasting. The normal planner is enabled by default for every eligible
+    HyperCore vault strategy and returns the full excess which it just moved
+    from perp to spot; this prevents the #1486 amount being reduced by an
+    unrelated pre-existing spot dust balance. A ``verified_recovery_amount``
+    is an optional, narrower override that requires a live-run confirmation.
     """
     if not asset_management_mode.is_vault():
         return []
@@ -441,7 +443,7 @@ def correct_accounts(
     transfer_away: bool = Option(False, "--transfer-away", envvar="TRANSFER_AWAY", help="For tokens without assigned position, scoop them to the hot wallet instead of trying to construct a new position"),
     raise_on_unclean: bool = typer.Option(False, is_flag=True, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
     skip_hypercore_transit_recovery: bool = Option(False, "--skip-hypercore-transit-recovery", envvar="SKIP_HYPERCORE_TRANSIT_RECOVERY", help="Skip Safe-level HyperCore spot/perp USDC recovery before account correction."),
-    recover_hypercore_transit_usdc: Decimal | None = Option(None, "--recover-hypercore-transit-usdc", envvar="RECOVER_HYPERCORE_TRANSIT_USDC", help="Exact USDC independently verified as stranded in this Safe's HyperCore spot or perp balance. Use --dry-run first; live recovery also requires --confirm-hypercore-transit-recovery."),
+    recover_hypercore_transit_usdc: Decimal | None = Option(None, "--recover-hypercore-transit-usdc", envvar="RECOVER_HYPERCORE_TRANSIT_USDC", help="Optional exact USDC override for an independently verified stranded Safe balance. Normal eligible HyperCore transit recovery is already on by default. Use --dry-run first; this narrower live override also requires --confirm-hypercore-transit-recovery."),
     confirm_hypercore_transit_recovery: bool = Option(False, "--confirm-hypercore-transit-recovery", envvar="CONFIRM_HYPERCORE_TRANSIT_RECOVERY", help="Confirm the exact --recover-hypercore-transit-usdc amount was checked against live vault equity before a live Safe transfer."),
     cleanup_hypercore_small_positions: bool = Option(True, "--cleanup-hypercore-small-positions/--no-cleanup-hypercore-small-positions", envvar="CLEANUP_HYPERCORE_SMALL_POSITIONS", help="Redeem open HyperCore vault positions below the strategy minimum allocation before correcting accounts."),
     dry_run: bool = Option(False, "--dry-run", envvar="DRY_RUN", help="Read live balances and print any Safe-level HyperCore perp->spot->EVM recovery plan without signing, broadcasting, persisting state, or applying accounting corrections."),

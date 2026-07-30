@@ -229,8 +229,12 @@ For a Lagoon Safe with closed HyperCore positions, the command snapshots live
 EVM, spot and perp balances. It refuses to act when the Safe has any active
 perp position; otherwise it plans `perp → spot`, waits for that exact movement,
 then plans `spot → EVM` and waits for the Safe's EVM USDC balance to increase.
-The normal recovery planner retains its configured dust margin rather than
-attempting to drain an internal account to zero.
+The normal recovery planner is enabled by default. It retains the configured
+perp dust margin, but requests the entire amount just recovered from perp to
+spot before separately considering pre-existing spot USDC. That distinction
+returns all of the current stranded transfer when the existing spot balance
+has the 0.01 USDC bridge-fee headroom; otherwise the protocol retains only that
+fee margin rather than an arbitrary 0.50 USDC spot dust balance.
 
 Always start with:
 
@@ -244,8 +248,13 @@ sign or broadcast a transaction, alter state, or create a state backup. It is
 therefore the safe way to inspect a normal dust-preserving sweep before running
 the live command.
 
-When the amount and failed vault outcome are independently verified, use the
-narrow incident path instead of the sweep.  For #1486 its dry run is:
+For #1486, the default dry run above plans exactly
+`perp_to_spot 48.884068` followed by `spot_to_evm 48.884068`: no incident
+option is necessary. The recovery is on by default for every eligible
+HyperCore vault strategy, as are the other HyperCore repair checks.
+
+When the amount and failed vault outcome are independently verified, an
+operator can optionally request a narrower incident amount. Its dry run is:
 
 ```shell
 poetry run trade-executor correct-accounts \
@@ -253,9 +262,8 @@ poetry run trade-executor correct-accounts \
   --recover-hypercore-transit-usdc 48.884068
 ```
 
-It plans exactly `perp_to_spot 48.884068` followed by
-`spot_to_evm 48.884068`, preserving the pre-existing 0.50 USDC perp dust and
-0.217882 USDC spot balance recorded for this Safe. A live invocation must add
+It plans only the requested amount, preserving the pre-existing 0.50 USDC perp
+dust and 0.217882 USDC spot balance recorded for this Safe. A live invocation must add
 `--confirm-hypercore-transit-recovery`; that confirmation means the operator
 has checked live vault equity and established that the amount was not a late
 deposit. The explicit amount is never inferred from an EVM-success receipt.

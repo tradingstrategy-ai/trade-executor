@@ -274,8 +274,15 @@ an active HyperCore perp position. It does not sign, broadcast, save or back up
 state. The live command verifies the spot increase after the first action and
 the EVM USDC increase after the second before proceeding to normal accounting.
 
-For the known #1486 amount, use the explicit dry run rather than the generic
-dust-preserving sweep:
+The normal recovery is enabled by default for eligible HyperCore vault
+strategies. For the live #1486 balances, the ordinary dry run plans exactly
+48.884068 USDC from perp to spot and then from spot to EVM, while preserving
+the earlier 0.50 USDC perp dust and 0.217882 USDC spot balance. The spot
+balance exceeds HyperCore's 0.01 USDC bridge-fee headroom, so this incident
+does not need any bridge-fee adjustment.
+
+The amount option is only for an operator who has verified a narrower amount
+than the automatic live-balance recovery should handle:
 
 ```shell
 poetry run trade-executor correct-accounts \
@@ -283,8 +290,8 @@ poetry run trade-executor correct-accounts \
   --recover-hypercore-transit-usdc 48.884068
 ```
 
-This plans exactly 48.884068 USDC from perp to spot and then from spot to EVM;
-it leaves the pre-incident spot/perp balances alone. It is safe only after
+This plans only the explicitly requested amount and leaves the pre-incident
+spot/perp balances alone. It is safe only after
 checking that current vault equity did not receive the deposit. To perform the
 same live recovery, add `--confirm-hypercore-transit-recovery`. The explicit
 confirmation exists because a successful EVM CoreWriter receipt is not proof
