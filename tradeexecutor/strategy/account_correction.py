@@ -1343,7 +1343,10 @@ def _build_hypercore_vault_account_checks(
 
     transit_trades = []
     for position in state.portfolio.get_open_and_frozen_positions():
-        for trade in position.trades.values():
+        # Real TradingPosition instances always have ``trades``. Keep this
+        # audit-only scan tolerant of the lightweight position objects used by
+        # integrations which only need the vault-equity account check.
+        for trade in getattr(position, "trades", {}).values():
             metadata = trade.other_data or {}
             transit = metadata.get("hypercore_stranded_usdc") or metadata.get(
                 "hypercore_deposit_capital_at_risk"
