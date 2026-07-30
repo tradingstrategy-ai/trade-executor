@@ -101,6 +101,85 @@ def test_cleanup_plans_direct_redemption_below_deposit_minimum():
     assert trades[0].other_data["hypercore_small_position_cleanup"] is True
 
 
+def test_cleanup_dry_run_supersedes_planned_close_without_mutating_state():
+    """Dry-run validates cleanup when an old planned close consumes the position quantity.
+
+    1. Create a live undersized position and an unstarted full-close trade.
+    2. Run cleanup in dry-run mode against the otherwise eligible position.
+    3. Verify the isolated rehearsal expires the old trade and prepares a replacement.
+    4. Verify the supplied state and state store remain untouched.
+    """
+
+    # 1. Create a live undersized position and an unstarted full-close trade.
+    state, position = _make_position(Decimal("3.45"))
+    reserve_asset = state.portfolio.get_default_reserve_position().asset
+    _position, old_close_trade, _created = state.portfolio.create_trade(
+        strategy_cycle_at=NOW,
+        pair=position.pair,
+        quantity=-position.get_quantity(),
+        reserve=None,
+        assumed_price=position.last_token_price,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        position=position,
+        closing=True,
+    )
+    candidates = discover_hypercore_small_positions(state, Decimal("5"))
+    assert len(candidates) == 1
+    state_before = state.to_json_safe()
+    execution_model = MagicMock(max_slippage=None)
+    routing_model = MagicMock()
+    routing_state = MagicMock()
+    store = MagicMock()
+
+    # 2. Run cleanup in dry-run mode against the otherwise eligible position.
+    with patch(
+        "tradeexecutor.ethereum.vault.hypercore_small_position_cleanup.fetch_user_vault_equity",
+        return_value=SimpleNamespace(
+            equity=Decimal("3.45"),
+            is_lockup_expired=True,
+            locked_until=NOW,
+        ),
+    ):
+        report = run_hypercore_small_position_cleanup(
+            state=state,
+            timestamp=NOW,
+            candidates=candidates,
+            execution_model=execution_model,
+            routing_model=routing_model,
+            routing_state=routing_state,
+            session=MagicMock(),
+            safe_address="0xSafe",
+            store=store,
+            dry_run=True,
+        )
+
+    # 3. Verify the isolated rehearsal expires the old trade and prepares a replacement.
+    prepared_state = routing_model.setup_trades.call_args.kwargs["state"]
+    prepared_position = prepared_state.portfolio.open_positions[position.position_id]
+    prepared_old_trade = prepared_position.trades[old_close_trade.trade_id]
+    prepared_new_trade = prepared_position.get_last_trade()
+    assert prepared_old_trade.expired_at == NOW
+    assert prepared_new_trade.trade_id != old_close_trade.trade_id
+    assert prepared_new_trade.is_started()
+    assert prepared_new_trade.planned_quantity == -position.get_quantity()
+    rehearsed_position = report.rehearsed_state.portfolio.open_positions[
+        position.position_id
+    ]
+    assert rehearsed_position.trades[old_close_trade.trade_id].expired_at == NOW
+    assert rehearsed_position.get_quantity(planned=True) == position.get_quantity()
+    assert report.executed_trades == []
+    assert report.closed_position_ids == []
+
+    # 4. Verify the supplied state and state store remain untouched.
+    assert old_close_trade.is_planned()
+    assert state.to_json_safe() == state_before
+    store.sync.assert_not_called()
+    execution_model.validate_confirmation_configuration.assert_called_once_with()
+    execution_model.execute_trades.assert_not_called()
+
+
 def test_cleanup_uses_strategy_minimum_allocation_and_pending_marker():
     """A redeemable position is selected from strategy parameters and pending state.
 
@@ -366,69 +445,37 @@ def test_cleanup_directly_redeems_dust_and_defers_locked_position():
     assert store.sync.call_count == 3
 
 
-def test_cleanup_dry_run_does_not_create_trades_or_write_state():
-    """Dry-run reports redeemable and locally closable positions without changing anything.
+def test_cleanup_dry_run_validates_local_closure_without_mutating_state():
+    """Dry-run validates local zero-equity closure on an isolated state copy.
 
-    1. Arrange unlocked redeemable, bridge-threshold, and zero-equity cleanup candidates.
-    2. Run the cleaner in dry-run mode with all live balances mocked.
-    3. Verify no trade is planned or executed and the state store is untouched.
+    1. Arrange a tracked HyperCore position whose live equity has become zero.
+    2. Run the cleaner in dry-run mode with the live balance mocked.
+    3. Verify the supplied state and state store remain untouched.
     """
 
-    # 1. Arrange unlocked redeemable, bridge-threshold, and zero-equity cleanup candidates.
-    positive_candidate = HypercoreSmallPositionCandidate(
-        position_id=57,
-        vault_name="Crypto Plaza",
-        vault_address="0x1111111111111111111111111111111111111111",
-        live_equity=Decimal("3.45"),
-        minimum_allocation=Decimal("5"),
-        is_pending_cleanup=False,
-    )
+    # 1. Arrange a tracked HyperCore position whose live equity has become zero.
+    state, position = _make_position(Decimal("3.45"))
     zero_candidate = HypercoreSmallPositionCandidate(
-        position_id=58,
+        position_id=position.position_id,
         vault_name="Loop Fund",
-        vault_address="0x2222222222222222222222222222222222222222",
+        vault_address=position.pair.pool_address,
         live_equity=Decimal(0),
-        minimum_allocation=Decimal("5"),
-        is_pending_cleanup=False,
-    )
-    bridge_threshold_candidate = HypercoreSmallPositionCandidate(
-        position_id=59,
-        vault_name="Tiny Fund",
-        vault_address="0x3333333333333333333333333333333333333333",
-        live_equity=HYPERCORE_SMALL_POSITION_MINIMUM_REDEEMABLE_EQUITY,
         minimum_allocation=Decimal("5"),
         is_pending_cleanup=False,
     )
     execution_model = MagicMock()
     store = MagicMock()
+    state_before = state.to_json_safe()
 
-    # 2. Run the cleaner in dry-run mode with all live balances mocked.
+    # 2. Run the cleaner in dry-run mode with the live balance mocked.
     with patch(
         "tradeexecutor.ethereum.vault.hypercore_small_position_cleanup.fetch_user_vault_equity",
-        side_effect=[
-            SimpleNamespace(
-                equity=Decimal("3.45"),
-                is_lockup_expired=True,
-                locked_until=NOW,
-            ),
-            None,
-            SimpleNamespace(
-                equity=HYPERCORE_SMALL_POSITION_MINIMUM_REDEEMABLE_EQUITY,
-                is_lockup_expired=True,
-                locked_until=NOW,
-            ),
-        ],
-    ), patch(
-        "tradeexecutor.ethereum.vault.hypercore_small_position_cleanup.plan_hypercore_small_position_cleanup",
-    ) as plan_cleanup:
+        return_value=None,
+    ):
         report = run_hypercore_small_position_cleanup(
-            state=MagicMock(),
+            state=state,
             timestamp=NOW,
-            candidates=[
-                positive_candidate,
-                zero_candidate,
-                bridge_threshold_candidate,
-            ],
+            candidates=[zero_candidate],
             execution_model=execution_model,
             routing_model=MagicMock(),
             routing_state=MagicMock(),
@@ -438,10 +485,10 @@ def test_cleanup_dry_run_does_not_create_trades_or_write_state():
             dry_run=True,
         )
 
-    # 3. Verify no trade is planned or executed and the state store is untouched.
+    # 3. Verify the supplied state and state store remain untouched.
     assert report.executed_trades == []
     assert report.closed_position_ids == []
-    plan_cleanup.assert_not_called()
+    assert state.to_json_safe() == state_before
     execution_model.execute_trades.assert_not_called()
     store.sync.assert_not_called()
 

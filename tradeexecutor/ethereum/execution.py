@@ -47,7 +47,6 @@ from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
-from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -794,9 +793,7 @@ class EthereumExecution(ExecutionModel):
         if self.disable_broadcast:
             return
 
-        if self.web3.eth.chain_id not in (ChainId.ethereum_tester.value, ChainId.anvil.value):
-            if not self.mainnet_fork:
-                assert self.confirmation_block_count > 0, f"confirmation_block_count set to {self.confirmation_block_count} "
+        self.validate_confirmation_configuration()
 
         if routing_model.needs_sequential_trade_execution(trades) and not rebroadcast:
             self._execute_trades_sequentially(
@@ -838,6 +835,18 @@ class EthereumExecution(ExecutionModel):
         freeze_position_on_failed_trade(ts, state, trades)
         for trade in trades:
             self._log_trade_outcome(trade)
+
+    def validate_confirmation_configuration(self) -> None:
+        """Check that live transaction confirmation can run before broadcasting."""
+
+        is_development_chain = self.web3.eth.chain_id in (
+            ChainId.ethereum_tester.value,
+            ChainId.anvil.value,
+        )
+        if not is_development_chain and not self.mainnet_fork:
+            assert self.confirmation_block_count > 0, (
+                f"confirmation_block_count set to {self.confirmation_block_count}"
+            )
 
     def get_routing_state_details(self) -> RoutingStateDetails:
         return {

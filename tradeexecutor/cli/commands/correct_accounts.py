@@ -396,7 +396,7 @@ def correct_accounts(
     raise_on_unclean: bool = typer.Option(False, is_flag=True, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
     skip_hypercore_transit_recovery: bool = Option(False, "--skip-hypercore-transit-recovery", envvar="SKIP_HYPERCORE_TRANSIT_RECOVERY", help="Skip automatic Safe-level HyperCore spot/perp USDC recovery before account correction."),
     cleanup_hypercore_small_positions: bool = Option(True, "--cleanup-hypercore-small-positions/--no-cleanup-hypercore-small-positions", envvar="CLEANUP_HYPERCORE_SMALL_POSITIONS", help="Redeem open HyperCore vault positions below the strategy minimum allocation before correcting accounts."),
-    dry_run: bool = Option(False, "--dry-run", envvar="DRY_RUN", help="Read live balances and report corrections and HyperCore small-position redemptions without persisting trades, broadcasting transactions, backing up, or saving state."),
+    dry_run: bool = Option(False, "--dry-run", envvar="DRY_RUN", help="Read live balances and fully prepare HyperCore small-position redemptions without persisting state or broadcasting transactions, then report accounting corrections."),
 
     # Derive exchange account options
     derive_owner_private_key: Optional[str] = Option(None, envvar="DERIVE_OWNER_PRIVATE_KEY", help="Derive owner wallet private key"),
@@ -422,8 +422,10 @@ def correct_accounts(
     positions cannot carry over with the current event based tracking logic.
 
     This command is interactive and you need to confirm any changes applied to the state.
-    Use ``--dry-run`` for a read-only report. Dry-run never broadcasts
-    transactions and does not write or back up the state file.
+    Use ``--dry-run`` for a read-only rehearsal. HyperCore cleanup performs
+    every pre-broadcast step on isolated state copies, including transaction
+    construction and signing. Dry-run never broadcasts transactions and does
+    not write or back up the state file.
 
     An old state file is automatically backed up.
     """
@@ -527,7 +529,7 @@ def correct_accounts(
         vault_address=vault_address,
         vault_adapter_address=vault_adapter_address,
         routing_hint=mod.trade_routing,
-        confirmation_block_count=0,
+        confirmation_block_count=1,
         max_slippage=slippage_tolerance,
         min_gas_balance=Decimal(0),
         vault_payment_forwarder_address=vault_payment_forwarder,
@@ -746,15 +748,17 @@ def correct_accounts(
                         state=state,
                         timestamp=native_datetime_utc_now(),
                         candidates=cleanup_candidates,
-                        execution_model=None if dry_run else execution_model,
-                        routing_model=None if dry_run else runner.routing_model,
-                        routing_state=None if dry_run else routing_state,
+                        execution_model=execution_model,
+                        routing_model=runner.routing_model,
+                        routing_state=routing_state,
                         session=session,
                         safe_address=sync_model.get_token_storage_address(),
                         store=store,
                         dry_run=dry_run,
                     )
                     if dry_run:
+                        assert cleanup_report.rehearsed_state is not None
+                        state = cleanup_report.rehearsed_state
                         logger.info(
                             "Dry run: HyperCore small-position cleanup found %d candidate(s)",
                             len(cleanup_report.candidates),

@@ -379,11 +379,18 @@ is locally closed with a zero-quantity repair. If a routed cleanup trade
 fails, its state is saved and it is left for the normal failed-trade repair
 flow rather than being silently written off.
 
-Use `correct-accounts --dry-run` to refresh live balances and report eligible
-HyperCore redemptions and accounting corrections without persisting trades,
-broadcasting transactions, backing up, or saving state. `--skip-save` is not a
-dry-run flag: it can still broadcast transactions before skipping the final
-state write.
+An unstarted planned trade has no transaction allocated and cannot execute by
+itself, but it still changes the position's planned quantity. Cleanup expires
+such trades before creating its replacement full close. Started or broadcast
+trades are never superseded and keep the position ineligible for cleanup.
+
+Use `correct-accounts --dry-run` to refresh live balances and rehearse every
+pre-broadcast cleanup step: stale-plan reconciliation, close-trade planning,
+live lock-up and withdrawal preflight, routing, transaction construction, and
+signing. The rehearsal uses isolated state copies and stops before broadcast
+or settlement. It then reports accounting corrections without persisting
+trades, backing up, or saving state. `--skip-save` is not a dry-run flag: it
+can still broadcast transactions before skipping the final state write.
 
 ## Testing
 

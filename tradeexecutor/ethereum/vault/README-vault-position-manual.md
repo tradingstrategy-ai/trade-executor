@@ -215,12 +215,21 @@ instead of the normal 1.50 USDC full-close margin, then falls back to 0.25,
 0.50, and 1.00 USDC verified retry margins if HyperCore silently no-ops.
 Positions at or below 0.30 USDC are closed locally because they cannot produce
 enough balance movement to verify every withdrawal phase safely. Larger
-residuals remain tracked for another direct redemption pass. Preview the live
-actions without changing persisted state or broadcasting transactions:
+residuals remain tracked for another direct redemption pass. An unstarted
+planned trade is expired before cleanup replaces it; started or broadcast
+trades are left alone.
+
+Preview the live actions without changing persisted state or broadcasting
+transactions:
 
 ```shell
 poetry run trade-executor correct-accounts --dry-run
 ```
+
+Dry-run uses isolated state copies to perform live lock-up and withdrawal
+preflight checks, supersede unstarted plans, create the replacement close
+trade, route it, and construct and sign the phase-1 transaction. It stops
+before broadcast and settlement.
 
 Do not use `--skip-save` as a dry-run substitute: it only skips the final state
 write and may still broadcast transactions.
