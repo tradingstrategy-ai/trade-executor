@@ -164,7 +164,7 @@ def _expire_planned_hypercore_trades(
     position,
     timestamp: datetime.datetime,
 ) -> None:
-    """Expire stale plans that cleanup must supersede.
+    """Expire stale plans before cleanup evaluates a candidate.
 
     Started and broadcast trades are filtered out during candidate discovery.
     A planned trade has not entered execution and cannot execute by itself, but
@@ -180,10 +180,10 @@ def _expire_planned_hypercore_trades(
         trade.mark_expired(timestamp)
         trade.add_note(
             "Expired by correct-accounts before HyperCore small-position cleanup "
-            "superseded this planned trade."
+            "evaluated this position."
         )
         logger.warning(
-            "Expired planned trade %d before cleaning HyperCore position %d",
+            "Expired planned trade %d before evaluating HyperCore position %d",
             trade.trade_id,
             position.position_id,
         )
@@ -324,6 +324,12 @@ def run_hypercore_small_position_cleanup(
     closed_position_ids: list[int] = []
 
     for candidate in candidates:
+        working_position = working_state.portfolio.open_positions.get(
+            candidate.position_id
+        )
+        if working_position is None:
+            continue
+
         try:
             live_equity_result = fetch_user_vault_equity(
                 session,
@@ -340,21 +346,20 @@ def run_hypercore_small_position_cleanup(
             )
             continue
 
+        _expire_planned_hypercore_trades(working_position, timestamp)
         live_equity = Decimal(0) if live_equity_result is None else live_equity_result.equity
         if live_equity <= 0:
-            position = working_state.portfolio.open_positions.get(candidate.position_id)
-            if position is not None:
-                close_position_with_empty_trade(working_state.portfolio, position)
-                if dry_run:
-                    logger.info(
-                        "Dry run: validated local closure of zero-equity HyperCore "
-                        "position %d (%s)",
-                        candidate.position_id,
-                        candidate.vault_name,
-                    )
-                else:
-                    store.sync(working_state)
-                    closed_position_ids.append(candidate.position_id)
+            close_position_with_empty_trade(working_state.portfolio, working_position)
+            if dry_run:
+                logger.info(
+                    "Dry run: validated local closure of zero-equity HyperCore "
+                    "position %d (%s)",
+                    candidate.position_id,
+                    candidate.vault_name,
+                )
+            else:
+                store.sync(working_state)
+                closed_position_ids.append(candidate.position_id)
             continue
         if live_equity >= candidate.minimum_allocation and not candidate.is_pending_cleanup:
             logger.info(
@@ -377,31 +382,25 @@ def run_hypercore_small_position_cleanup(
         current_candidate = replace(candidate, live_equity=live_equity)
 
         if live_equity <= HYPERCORE_SMALL_POSITION_MINIMUM_REDEEMABLE_EQUITY:
-            position = working_state.portfolio.open_positions.get(candidate.position_id)
-            if position is not None:
-                close_position_with_empty_trade(working_state.portfolio, position)
-                position.add_notes_message(
-                    "correct-accounts closed the HyperCore position locally because "
-                    f"{live_equity:.6f} USDC was not enough to verify all withdrawal phases"
+            close_position_with_empty_trade(working_state.portfolio, working_position)
+            working_position.add_notes_message(
+                "correct-accounts closed the HyperCore position locally because "
+                f"{live_equity:.6f} USDC was not enough to verify all withdrawal phases"
+            )
+            if dry_run:
+                logger.info(
+                    "Dry run: validated local closure of HyperCore position %d "
+                    "(%s) because %.6f USDC is not enough to verify all "
+                    "withdrawal phases",
+                    candidate.position_id,
+                    candidate.vault_name,
+                    live_equity,
                 )
-                if dry_run:
-                    logger.info(
-                        "Dry run: validated local closure of HyperCore position %d "
-                        "(%s) because %.6f USDC is not enough to verify all "
-                        "withdrawal phases",
-                        candidate.position_id,
-                        candidate.vault_name,
-                        live_equity,
-                    )
-                else:
-                    store.sync(working_state)
-                    closed_position_ids.append(candidate.position_id)
+            else:
+                store.sync(working_state)
+                closed_position_ids.append(candidate.position_id)
             continue
 
-        working_position = working_state.portfolio.open_positions[
-            current_candidate.position_id
-        ]
-        _expire_planned_hypercore_trades(working_position, timestamp)
         preparation_state = copy.deepcopy(working_state) if dry_run else working_state
 
         trade = plan_hypercore_small_position_cleanup(

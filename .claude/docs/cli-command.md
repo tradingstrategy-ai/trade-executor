@@ -100,10 +100,11 @@ Representative code:
 reconciliation. It loads the existing state through `SimulateStore`, reads
 current balances, and rehearses HyperCore small-position cleanup on isolated
 state copies. The rehearsal performs the live lock-up and withdrawal preflight,
-supersedes planned trades that have not entered execution, creates the close
-trade, and constructs and signs the phase-1 transaction. It stops before
-broadcast and settlement. After a successful rehearsal, it reports generic
-accounting corrections. It does not create a backup, broadcast, or persist
+expires planned trades that have not entered execution before it acts on the
+candidate, creates a close trade when eligible, and constructs and signs the
+phase-1 transaction. It stops before broadcast and settlement. After a
+successful rehearsal, it reports generic accounting corrections. It does not
+create a backup, broadcast, or persist
 state. Do not substitute `--skip-save`: that option skips the final state write
 but does not prevent earlier transaction broadcasts.
 

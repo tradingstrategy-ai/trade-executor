@@ -77,6 +77,25 @@ def _make_position(live_equity: Decimal) -> tuple[State, TradingPosition]:
     return state, position
 
 
+def _create_planned_full_close(state: State, position: TradingPosition):
+    """Create the stale planned close that previously caused cleanup to fail."""
+
+    reserve_asset = state.portfolio.get_default_reserve_position().asset
+    _position, trade, _created = state.portfolio.create_trade(
+        strategy_cycle_at=NOW,
+        pair=position.pair,
+        quantity=-position.get_quantity(),
+        reserve=None,
+        assumed_price=position.last_token_price,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        position=position,
+        closing=True,
+    )
+    return trade
+
+
 def test_cleanup_plans_direct_redemption_below_deposit_minimum():
     """A sub-5 USDC HyperCore position is redeemed without a temporary top-up.
 
@@ -114,19 +133,7 @@ def test_cleanup_dry_run_supersedes_planned_close_without_mutating_state():
 
     # 1. Create a live undersized position and a planned full-close trade.
     state, position = _make_position(Decimal("3.45"))
-    reserve_asset = state.portfolio.get_default_reserve_position().asset
-    _position, old_close_trade, _created = state.portfolio.create_trade(
-        strategy_cycle_at=NOW,
-        pair=position.pair,
-        quantity=-position.get_quantity(),
-        reserve=None,
-        assumed_price=position.last_token_price,
-        trade_type=TradeType.rebalance,
-        reserve_currency=reserve_asset,
-        reserve_currency_price=1.0,
-        position=position,
-        closing=True,
-    )
+    old_close_trade = _create_planned_full_close(state, position)
     candidates = discover_hypercore_small_positions(state, Decimal("5"))
     assert len(candidates) == 1
     state_before = state.to_json_safe()
@@ -181,6 +188,61 @@ def test_cleanup_dry_run_supersedes_planned_close_without_mutating_state():
     store.sync.assert_not_called()
     execution_model.validate_confirmation_configuration.assert_called_once_with()
     execution_model.execute_trades.assert_not_called()
+
+
+def test_cleanup_dry_run_expires_planned_close_before_lockup_deferral():
+    """Dry-run clears a stale plan even when the refreshed vault is still locked.
+
+    1. Create an undersized HyperCore position with a planned full close.
+    2. Rehearse cleanup while the live vault reports an active lock-up.
+    3. Verify the isolated state expires the stale plan without preparing or broadcasting a replacement.
+
+    The live equity read is mocked because this unit test covers cleanup state
+    handling rather than HyperCore API behaviour.
+    """
+
+    # 1. Create an undersized HyperCore position with a planned full close.
+    state, position = _make_position(Decimal("3.45"))
+    old_close_trade = _create_planned_full_close(state, position)
+    candidates = discover_hypercore_small_positions(state, Decimal("5"))
+    state_before = state.to_json_safe()
+    routing_model = MagicMock()
+    execution_model = MagicMock()
+    store = MagicMock()
+
+    # 2. Rehearse cleanup while the live vault reports an active lock-up.
+    with patch(
+        "tradeexecutor.ethereum.vault.hypercore_small_position_cleanup.fetch_user_vault_equity",
+        return_value=SimpleNamespace(
+            equity=Decimal("3.45"),
+            is_lockup_expired=False,
+            locked_until=NOW + datetime.timedelta(days=1),
+        ),
+    ):
+        report = run_hypercore_small_position_cleanup(
+            state=state,
+            timestamp=NOW,
+            candidates=candidates,
+            execution_model=execution_model,
+            routing_model=routing_model,
+            routing_state=MagicMock(),
+            session=MagicMock(),
+            safe_address="0xSafe",
+            store=store,
+            dry_run=True,
+        )
+
+    # 3. Verify the isolated state expires the stale plan without preparing or broadcasting a replacement.
+    assert report.simulated_state is not None
+    simulated_position = report.simulated_state.portfolio.open_positions[
+        position.position_id
+    ]
+    assert simulated_position.trades[old_close_trade.trade_id].expired_at == NOW
+    assert old_close_trade.is_planned()
+    assert state.to_json_safe() == state_before
+    routing_model.setup_trades.assert_not_called()
+    execution_model.execute_trades.assert_not_called()
+    store.sync.assert_not_called()
 
 
 def test_cleanup_uses_strategy_minimum_allocation_and_pending_marker():
@@ -460,6 +522,7 @@ def test_cleanup_dry_run_validates_local_closure_without_mutating_state():
 
     # 1. Arrange a tracked HyperCore position whose live equity has become zero.
     state, position = _make_position(Decimal("3.45"))
+    old_close_trade = _create_planned_full_close(state, position)
     zero_candidate = HypercoreSmallPositionCandidate(
         position_id=position.position_id,
         vault_name="Loop Fund",
@@ -490,9 +553,12 @@ def test_cleanup_dry_run_validates_local_closure_without_mutating_state():
             dry_run=True,
         )
 
-    # 3. Verify the supplied state and state store remain untouched.
+    # 3. Verify the rehearsal expires the stale plan and leaves the supplied state and state store untouched.
     assert report.executed_trades == []
     assert report.closed_position_ids == []
+    assert report.simulated_state is not None
+    closed_position = report.simulated_state.portfolio.closed_positions[position.position_id]
+    assert closed_position.trades[old_close_trade.trade_id].expired_at == NOW
     assert state.to_json_safe() == state_before
     execution_model.execute_trades.assert_not_called()
     store.sync.assert_not_called()

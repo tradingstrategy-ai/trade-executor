@@ -381,8 +381,11 @@ flow rather than being silently written off.
 
 A planned trade has not entered execution and cannot execute by itself, but it
 still changes the position's planned quantity. Cleanup expires such trades
-before creating its replacement full close. Started or broadcast trades are
-never superseded and keep the position ineligible for cleanup.
+after it refreshes live equity but before it decides how to handle the
+position, including a lock-up deferral or local dust closure. It creates a
+replacement full close only when the refreshed position is eligible. Started
+or broadcast trades are never superseded and keep the position ineligible for
+cleanup.
 
 Use `correct-accounts --dry-run` to refresh live balances and rehearse every
 pre-broadcast cleanup step: stale-plan reconciliation, close-trade planning,
