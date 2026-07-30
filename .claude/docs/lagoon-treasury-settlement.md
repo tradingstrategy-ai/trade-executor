@@ -63,6 +63,27 @@ same asset-manager module and will be rejected by GuardV0. The Safe owners must
 submit the deliberate direct Safe settlement transaction. Direct governance
 execution intentionally bypasses the asset-manager policy.
 
+## Frontend metadata
+
+For a supported TradingStrategyModuleV0 v0.5 vault, the `/metadata` response
+publishes the live GuardV0 policy under
+`on_chain_data.smart_contracts.lagoon_guard_v0`. It is a display aid, not an
+authorisation mechanism: the executor still simulates the actual wrapped call,
+and GuardV0 remains the on-chain authority.
+
+| Field | Meaning |
+|---|---|
+| `daily_automatic_settlement_limit` | Human-readable maximum gross underlying-token flow for one automatic settlement. It is `null` when GuardV0 is not applying a daily limit. |
+| `daily_automatic_settlement_limit_raw` | The same exact cap in underlying-token raw units. Use this for precise comparisons. |
+| `settlement_cooldown_seconds` | GuardV0's wait after a successful non-empty automatic settlement; normally 86,400 seconds. The cap plus this cooldown are why the frontend calls the field a daily limit. |
+| `next_automatic_settlement_timestamp` | Unix timestamp when the next non-empty automated settlement can run. A value of zero means no cooldown has started. |
+| `daily_automatic_settlement_limit_enabled` | Whether GuardV0 is actively applying the displayed daily limit. A disabled limit means the normal asset-manager settlement path is uncapped, not that automatic settlement is disabled. |
+| `guard_version` | The policy name, currently `GuardV0`. |
+
+The limit is a gross-flow cap. A 9 USDC deposit and a 2 USDC redemption have
+an 11 USDC GuardV0 flow, not a 7 USDC net flow. If this exceeds the displayed
+limit, only direct Safe-governance settlement may process the queue.
+
 ## Troubleshooting
 
 When a queue does not settle, inspect:

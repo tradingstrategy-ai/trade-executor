@@ -6,8 +6,7 @@
 
 - Extend `vault-test-trade` simulations to validate typed closed deposits through GuardV0 without broadcasting, and distinguish vault JSON statuses that incorrectly report deposits open or closed (2026-07-28)
 
-- Add GuardV0-aware Lagoon treasury settlement. Post fresh NAV independently of investor-queue settlement, preflight the configured gross-flow limit and cooldown, defer cooldown-limited queues, and emit an actionable error when an oversized queue requires direct Safe-governance settlement (2026-07-30)
-
+- Add GuardV0-aware Lagoon treasury settlement. Post fresh NAV independently of investor-queue settlement, preflight the configured gross-flow limit and cooldown, defer cooldown-limited queues, and emit an actionable error when an oversized queue requires direct Safe-governance settlement. The frontend metadata now exposes GuardV0's live gross-flow cap, raw cap, cooldown and next automatic-settlement timestamp (2026-07-30)
 
 - Add the standalone `vault-test-trade` TUI and sequential automatic modes for exercising explicitly selected vaults through a deployed or ephemeral Lagoon executor, including CCTP satellite cycles, persisted real/simulated position diagnostics, asynchronous request tracking, and fresh multichain Anvil replacement after infrastructure failures (2026-07-22)
 

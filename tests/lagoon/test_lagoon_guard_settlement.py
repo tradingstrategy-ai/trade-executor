@@ -1,4 +1,5 @@
 """GuardV0 Lagoon settlement coverage on a Base Anvil fork."""
+import json
 import logging
 from decimal import Decimal
 
@@ -15,9 +16,13 @@ from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
 from eth_defi.token import TokenDetails, USDC_NATIVE_TOKEN
 from eth_defi.trace import assert_transaction_success_with_explanation
+from tradingstrategy.chain import ChainId
 
+from tradeexecutor.cli.bootstrap import create_metadata
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
@@ -75,7 +80,8 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
     1. Initialise the executor treasury for a fresh GuardV0-capped Lagoon vault.
     2. Queue a 9 USDC investor deposit below the 10 USDC Guard limit.
     3. Post NAV and automatically settle the deposit through the guarded module.
-    4. Queue another below-cap deposit during the cooldown and verify NAV-only deferral.
+    4. Serialise GuardV0's live cap and cooldown into the frontend metadata.
+    5. Queue another below-cap deposit during the cooldown and verify NAV-only deferral.
     """
     vault = guarded_lagoon_vault.vault
     sync_model = LagoonVaultSyncModel(vault=vault, hot_wallet=asset_manager)
@@ -100,7 +106,29 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
     assert safety_config[7] == safety_config[6] + 86_400
     assert "direct Safe-governance settlement required" not in caplog.text
 
-    # 4. Queue another below-cap deposit during the cooldown and verify NAV-only deferral.
+    # 4. Serialise GuardV0's live gross-flow cap and cooldown into the frontend metadata.
+    metadata = create_metadata(
+        name="Guarded Lagoon",
+        short_description="GuardV0 metadata test",
+        long_description="",
+        icon_url=None,
+        asset_management_mode=AssetManagementMode.lagoon,
+        chain_id=ChainId(web3.eth.chain_id),
+        vault=vault,
+    )
+    patch_dataclasses_json()
+    frontend_metadata = json.loads(metadata.to_json())
+    guard_v0_metadata = frontend_metadata["on_chain_data"]["smart_contracts"]["lagoon_guard_v0"]
+    assert guard_v0_metadata == {
+        "guard_version": "GuardV0",
+        "daily_automatic_settlement_limit_enabled": True,
+        "daily_automatic_settlement_limit": "10",
+        "daily_automatic_settlement_limit_raw": 10_000_000,
+        "settlement_cooldown_seconds": 86_400,
+        "next_automatic_settlement_timestamp": safety_config[7],
+    }
+
+    # 5. Queue another below-cap deposit during the cooldown and verify NAV-only deferral.
     _request_deposit(guarded_lagoon_vault, base_usdc_token, depositor, Decimal(1))
     nonce_before = web3.eth.get_transaction_count(asset_manager.address)
     with caplog.at_level(logging.INFO):
