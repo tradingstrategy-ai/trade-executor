@@ -1341,6 +1341,23 @@ def _build_hypercore_vault_account_checks(
         if p.pair.is_hyperliquid_vault()
     ]
 
+    transit_trades = []
+    for position in state.portfolio.get_open_and_frozen_positions():
+        for trade in position.trades.values():
+            metadata = trade.other_data or {}
+            transit = metadata.get("hypercore_stranded_usdc") or metadata.get(
+                "hypercore_deposit_capital_at_risk"
+            )
+            if transit is not None:
+                transit_trades.append((trade.trade_id, transit))
+    for trade_id, transit in transit_trades:
+        logger.warning(
+            "HyperCore transit capital retained for failed trade #%s: %s. "
+            "Account correction will not release it; reconcile live balances first.",
+            trade_id,
+            transit,
+        )
+
     logger.debug("Hypercore vault account checks discovered %d vault position(s)", len(vault_positions))
 
     if not vault_positions:

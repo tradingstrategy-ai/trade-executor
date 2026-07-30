@@ -1090,12 +1090,18 @@ class State:
             )
 
     def mark_trade_failed(self, failed_at: datetime.datetime, trade: TradeExecution):
-        """Unroll allocated capital unless it is recoverably stranded outside the Safe."""
+        """Unroll allocated capital unless it is recoverably outside the Safe.
+
+        HyperCore deposit phase 1 is marked at risk before broadcast. This
+        deliberately fails closed across a process crash or RPC timeout: the
+        allocation stays committed until a live reconciliation proves that the
+        Safe never lost the USDC.
+        """
         trade.mark_failed(failed_at)
         if trade.is_buy():
-            retain_reserve_allocation = trade.other_data.get(
-                "retain_reserve_allocation_on_failure",
-                False,
+            retain_reserve_allocation = (
+                trade.other_data.get("retain_reserve_allocation_on_failure", False)
+                or trade.other_data.get("hypercore_deposit_capital_at_risk") is not None
             )
             if retain_reserve_allocation:
                 logger.error(

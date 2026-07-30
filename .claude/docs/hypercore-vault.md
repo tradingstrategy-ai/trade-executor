@@ -93,6 +93,7 @@ the contract between `setup_trades()` and `settle_trade()`:
 | `hypercore_phase1_perp_baseline_usdc` | setup, before withdrawal phase 1 | Perp withdrawable baseline; captured *before* broadcast because `vaultTransfer` can settle before receipt handling. |
 | `hypercore_phase1_vault_equity_usdc` | setup / preflight | Pre-withdrawal vault equity, the "before" value for detecting whether a withdrawal already reduced equity. |
 | `hypercore_activation_cost_raw` | setup, first buy | USDC consumed activating the Safe on HyperCore (deducted once per cycle). |
+| `hypercore_deposit_capital_at_risk` | before deposit phase 1 broadcast | Conservative checkpoint for USDC a node may already have accepted from the Safe. It blocks generic failed-buy refunds after a crash or indeterminate broadcast until live reconciliation. |
 | `hypercore_capped_deposit_raw` | deposit preflight | Deposit capped to actual Safe EVM USDC balance. |
 | `hypercore_capped_withdrawal_raw` | withdrawal preflight / retry | Withdrawal capped to live vault equity minus safety margin. |
 | `hypercore_stranded_usdc` | on failure | Records USDC stranded mid-pipeline (perp/spot) for operator recovery and retains its reserve allocation. |
@@ -127,7 +128,8 @@ A deposit walks USDC from the HyperEVM Safe into the HyperCore vault:
    HyperEVM Safe into HyperCore **spot** (built in `setup_trades`).
 2. **Escrow wait**: poll `spotClearinghouseState` until the bridged USDC clears
    the EVM escrow into spot (`wait_for_evm_escrow_clear`).
-3. **Phase 2**: `transferUsdClass(spot→perp)` then poll the perp balance.
+3. **Phase 2**: `transferUsdClass(spot→perp)` then prove both the spot
+   decrease and the perp increase.
 4. **Phase 3**: `vaultTransfer(perp→vault)` after the perp arrival is visible;
    `wait_for_vault_deposit_confirmation` verifies vault equity rose.
 
@@ -185,6 +187,33 @@ the funds were safely in the vault. The relative tolerance was raised to **5%**
 to absorb normal perp-vault volatility over the window while still catching
 genuinely rejected deposits (which show ~0% increase, not a few-percent
 shortfall).
+
+### Deposit failures, recovery and crashes
+
+The three CoreWriter actions are not atomic at the HyperCore boundary. A
+successful EVM receipt proves only EVM inclusion: HyperCore can apply the
+spot→perp action while silently not applying the following perp→vault action.
+The router records a conservative location and stops; it never retries a
+deposit action automatically.
+
+| Failure | Recorded location | Operator rule |
+|---|---|---|
+| Escrow wait times out | `hypercore_evm_escrow_or_spot` | Inspect before acting. |
+| Spot→perp broadcast/poll is indeterminate | `hypercore_spot_or_perp` | Do not send a vault transfer. |
+| Perp→vault broadcast/confirmation is indeterminate | `hypercore_perp_or_vault` | Recheck both perp and vault equity before repeating anything. |
+| Receipt definitely reverts | Previous account (spot or perp) | The attempted action did not move funds. |
+
+`hypercore_deposit_capital_at_risk` is written before phase 1 is broadcast. It
+remains on a trade if the process dies, a receipt is missing, or a broadcast is
+ambiguous. Both automatic unconfirmed-trade repair and state-only `repair`
+refuse to release that allocation: inspect the Safe, EVM escrow, spot, perp
+and vault first with `check-hypercore-user.py`. A confirmed phase-1 revert is
+the only path that clears the marker and allows ordinary failed-buy accounting.
+
+For recovery, USDC in perp must move **perp → spot** before `spotSend` can
+bridge it back to the HyperEVM Safe. Never run a recovery action from a timeout
+message alone; a late HyperCore settlement can otherwise turn a retry into a
+double deposit.
 
 ## Withdrawal (sell) flow
 
@@ -417,7 +446,8 @@ balance readers and `time.time` / `time.sleep`, then call a single verifier
 `_settle_withdrawal`) and assert on tolerances, fee handling, retries and
 failure branches. Files: `test_hypercore_dual_chain.py`,
 `test_hypercore_routing.py`, `test_hypercore_deposit_verification.py`,
-`test_hypercore_stranded_usdc.py`, `test_hypercore_escrow_robust.py`.
+`test_hypercore_deposit_settlement.py`, `test_hypercore_stranded_usdc.py`,
+`test_hypercore_escrow_robust.py`.
 
 When mocking, patch in the module namespace
 (`tradeexecutor.ethereum.vault.hypercore_routing.<name>`), and remember that

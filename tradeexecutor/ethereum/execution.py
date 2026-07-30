@@ -192,6 +192,20 @@ class EthereumExecution(ExecutionModel):
         if not trades_to_be_repaired:
             return []
 
+        at_risk_hypercore_trades = [
+            trade
+            for trade in trades_to_be_repaired
+            if trade.other_data.get("hypercore_deposit_capital_at_risk") is not None
+            or trade.other_data.get("hypercore_stranded_usdc") is not None
+        ]
+        if at_risk_hypercore_trades:
+            trade_ids = ", ".join(str(trade.trade_id) for trade in at_risk_hypercore_trades)
+            raise RuntimeError(
+                f"Cannot automatically repair HyperCore deposit trade(s) {trade_ids}: "
+                "reconcile the Safe, escrow, spot, perp and vault balances with "
+                "check-hypercore-user.py before releasing any allocation."
+            )
+
         print("Found %d trades to be repaired", len(trades_to_be_repaired))
         confirmation = input("Attempt to repair [y/n]").lower()
 

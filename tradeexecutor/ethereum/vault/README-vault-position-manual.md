@@ -234,6 +234,25 @@ phase-1 transaction. It stops before broadcast and settlement.
 Do not use `--skip-save` as a dry-run substitute: it only skips the final state
 write and may still broadcast transactions.
 
+### Recovering an interrupted HyperCore deposit
+
+A HyperCore deposit moves USDC Safe → EVM escrow → spot → perp → vault. An EVM
+receipt does not prove that every HyperCore action applied. If a trade reports
+`hypercore_stranded_usdc` or `hypercore_deposit_capital_at_risk`, do not run
+the generic `repair` command or re-submit the last transfer.
+
+1. Run `check-hypercore-user.py` for the Safe and inspect Safe EVM USDC, EVM
+   escrow, spot USDC, perp withdrawable USDC and vault equity.
+2. If USDC is confirmed in spot, either complete spot → perp → vault or bridge
+   spot → EVM.
+3. If USDC is confirmed in perp, either complete perp → vault or first move
+   **perp → spot**, then use `spotSend` to bridge back to EVM. Perp USDC cannot
+   be sent directly to EVM.
+4. If the recorded location is `*_or_*`, recheck live balances before acting:
+   the queued action may still settle after the original timeout.
+5. Reconcile state only after exactly one destination is confirmed: increased
+   vault equity or USDC returned to the Safe.
+
 ### Close single position (for single-pair strategies)
 
 ```python

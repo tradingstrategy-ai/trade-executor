@@ -599,7 +599,7 @@ def test_settlement_second_buy_no_activation_cost(
         patch.object(routing, "_broadcast_deposit_spot_to_perp", mock_spot_to_perp),
         patch.object(routing, "_broadcast_deposit_perp_to_vault", mock_perp_to_vault),
         patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
-        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("50")),
+        patch.object(routing, "_wait_for_deposit_spot_to_perp_transfer", return_value=(Decimal("0"), Decimal("50"))),
     ):
         routing._settle_deposit(
             routing.web3, state, trade, receipts,
@@ -1000,7 +1000,7 @@ def test_settlement_uses_capped_deposit_and_refunds_reserve(
         patch.object(routing, "_broadcast_deposit_spot_to_perp", mock_spot_to_perp),
         patch.object(routing, "_broadcast_deposit_perp_to_vault", mock_perp_to_vault),
         patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
-        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("80")),
+        patch.object(routing, "_wait_for_deposit_spot_to_perp_transfer", return_value=(Decimal("0"), Decimal("80"))),
     ):
         routing._settle_deposit(
             routing.web3, state, trade, receipts,
@@ -1097,7 +1097,7 @@ def test_settlement_capped_deposit_with_activation_cost(
         patch.object(routing, "_broadcast_deposit_spot_to_perp", mock_spot_to_perp),
         patch.object(routing, "_broadcast_deposit_perp_to_vault", mock_perp_to_vault),
         patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
-        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("95")),
+        patch.object(routing, "_wait_for_deposit_spot_to_perp_transfer", return_value=(Decimal("0"), Decimal("95"))),
     ):
         routing._settle_deposit(
             routing.web3, state, trade, receipts,
@@ -1193,7 +1193,7 @@ def test_settlement_capped_deposit_refunds_bridge_not_reserves(
         patch.object(routing, "_broadcast_deposit_spot_to_perp", mock_spot_to_perp),
         patch.object(routing, "_broadcast_deposit_perp_to_vault", mock_perp_to_vault),
         patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
-        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=Decimal("80")),
+        patch.object(routing, "_wait_for_deposit_spot_to_perp_transfer", return_value=(Decimal("0"), Decimal("80"))),
     ):
         routing._settle_deposit(
             routing.web3, state, trade, receipts,
