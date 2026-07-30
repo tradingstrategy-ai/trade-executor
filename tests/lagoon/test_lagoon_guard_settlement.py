@@ -151,6 +151,7 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
     assert "not posting NAV or settling the investor queue" in caplog.text
 
 
+@pytest.mark.slow_test_group
 def test_lagoon_guard_posts_nav_but_defers_oversized_flow_to_safe(
     web3: Web3,
     guarded_lagoon_vault: LagoonAutomatedDeployment,
