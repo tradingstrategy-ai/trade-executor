@@ -1,0 +1,106 @@
+{
+  "results": [
+    {
+      "attempt": {
+        "attempt_id": "a4cc92c29ad347ad9fb3127a99735cd5",
+        "created_at": "2026-07-31T14:55:53.703918",
+        "detail": "Funding phase closed (opens in 56.3d)",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": null,
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0x75288264FDFEA8ce68e6D852696aB1cE2f3E5004"
+              }
+            ],
+            "closure_reason": "Funding phase closed (opens in 56.3d)",
+            "guard_address": "0x0981135dd1125EeD76B42F81F518e323965030A0",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0x75288264FDFEA8ce68e6D852696aB1cE2f3E5004"
+          },
+          "next_open": "2026-09-18T08:00:00",
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "D2 Finance",
+          "requested_raw_amount": null
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "576f5aeb9c0772ecf7b019e1ce00fe4ca6b55920",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "42161": 487039644
+          },
+          "initial_chain_blocks": {
+            "42161": 487039657
+          },
+          "lagoon_deployment": {
+            "module_address": "0x0981135dd1125EeD76B42F81F518e323965030A0",
+            "primary_chain_id": 42161,
+            "satellite_modules": {},
+            "vault_address": "0xC7cA23b6A372061148e57CfB717e36a6a45AcB3a"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T14:55:51.819843",
+          "schema_version": 2,
+          "trade_executor_commit": "f072f5a06218c3c45fc942fbac2112af5bf1cf71"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "42161-0x75288264fdfea8ce68e6d852696ab1ce2f3e5004"
+      },
+      "position_id": 1,
+      "row": {
+        "attempt": "a4cc92c29ad347ad9fb3127a99735cd5",
+        "chain": "Arbitrum One",
+        "detail": "Funding phase closed (opens in 56.3d)",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 1,
+        "protocol": "D2 Finance",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "HYPE++",
+        "vault id": "42161-0x75288264fdfea8ce68e6d852696ab1ce2f3e5004"
+      },
+      "vault_id": "42161-0x75288264fdfea8ce68e6d852696ab1ce2f3e5004"
+    }
+  ],
+  "run": {
+    "amount": "1001.0",
+    "anvil_generation": 1,
+    "eth_defi_commit": "576f5aeb9c0772ecf7b019e1ce00fe4ca6b55920",
+    "execution_mode": "auto_simulated",
+    "fork_blocks": {
+      "42161": 487039644
+    },
+    "initial_chain_blocks": {
+      "42161": 487039657
+    },
+    "lagoon_deployment": {
+      "module_address": "0x0981135dd1125EeD76B42F81F518e323965030A0",
+      "primary_chain_id": 42161,
+      "satellite_modules": {},
+      "vault_address": "0xC7cA23b6A372061148e57CfB717e36a6a45AcB3a"
+    },
+    "max_slippage": 0.005,
+    "run_started_at": "2026-07-31T14:55:51.819843",
+    "schema_version": 2,
+    "trade_executor_commit": "f072f5a06218c3c45fc942fbac2112af5bf1cf71"
+  },
+  "schema_version": 2
+}
