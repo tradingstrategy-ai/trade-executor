@@ -14,7 +14,7 @@ from eth_defi.erc_4626.classification import create_vault_instance, create_vault
 from eth_defi.erc_4626.deposit_redeem import ERC4626DepositManager
 from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.provider.anvil import is_anvil
-from eth_defi.token import fetch_erc20_details, TokenDiskCache
+from eth_defi.token import fetch_erc20_details, TokenDetails, TokenDiskCache
 from eth_defi.trade import TradeSuccess
 from eth_defi.vault.deposit_redeem import (
     DepositRedeemEventAnalysis,
@@ -92,15 +92,45 @@ def resolve_multi_asset_deposit_asset(
         accepted assets and the asset that was attempted.
     """
 
-    if getattr(type(deposit_manager), "fetch_accepted_assets", None) is None:
+    token = resolve_multi_asset_deposit_token(deposit_manager, chain_id, override)
+    return token.address if token is not None else None
+
+
+def resolve_multi_asset_deposit_token(
+    deposit_manager,
+    chain_id: int,
+    override: str | None = None,
+) -> TokenDetails | None:
+    """Resolve the token details needed for amount conversion and routing.
+
+    :return:
+        Selected accepted token, or ``None`` for a single-asset vault.
+    :raise IncompatibleDepositAsset:
+        When the selected token is not accepted by the vault.
+    """
+    fetch_accepted = getattr(type(deposit_manager), "fetch_accepted_assets", None)
+    if fetch_accepted is None:
+        # A manager may bind an adapter method on the instance. Avoid treating
+        # dynamic test-double attributes as a production capability.
+        fetch_accepted = vars(deposit_manager).get("fetch_accepted_assets")
+    else:
+        fetch_accepted = deposit_manager.fetch_accepted_assets
+    if fetch_accepted is None:
         # Single-asset ERC-4626 vault: the reserve asset is deposited directly.
         return None
-    fetch_accepted = deposit_manager.fetch_accepted_assets
 
     selected = override or USDC_NATIVE_TOKEN.get(chain_id)
-    accepted_pairs = [(token.symbol, token.address) for token in fetch_accepted()]
-    accepted_addresses = {address.lower() for _symbol, address in accepted_pairs}
-    if selected is None or selected.lower() not in accepted_addresses:
+    accepted_tokens = fetch_accepted()
+    accepted_pairs = [(token.symbol, token.address) for token in accepted_tokens]
+    selected_token = next(
+        (
+            token
+            for token in accepted_tokens
+            if selected is not None and token.address.lower() == selected.lower()
+        ),
+        None,
+    )
+    if selected_token is None:
         supported = ", ".join(
             f"{symbol} ({address})" for symbol, address in accepted_pairs
         )
@@ -112,7 +142,7 @@ def resolve_multi_asset_deposit_asset(
             selected_asset=selected,
             accepted_assets=accepted_pairs,
         )
-    return selected
+    return selected_token
 
 
 def reconcile_vault_redemption_amount(
@@ -440,9 +470,7 @@ class VaultRouting(RoutingModel):
             # require an explicit selection; their manager exposes an
             # ``accepted_asset`` parameter.  Default to native USDC on the vault's
             # own chain, overridable per run via ``deposit_asset_override``.  An
-            # asset not on the vault whitelist raises IncompatibleDepositAsset.
-            # TODO: exercise the override end-to-end (see the vault-test-trade
-            # --deposit-asset TODO); only the USDC default is covered today.
+            # asset not on the accepted asset set raises IncompatibleDepositAsset.
             accepted_asset = resolve_multi_asset_deposit_asset(
                 deposit_manager,
                 target_vault.chain_id,
@@ -800,7 +828,7 @@ class VaultRouting(RoutingModel):
                         vault_address=vault.address,
                         direction="redeem",
                         phase="receipt",
-                        preflight_result="redemption_liquidity_unavailable",
+                        preflight_result="redemption_zero_payout",
                         requested_raw_amount=result.amount_in,
                         available_raw_amount=0,
                     )

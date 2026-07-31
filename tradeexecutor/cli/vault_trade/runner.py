@@ -18,7 +18,7 @@ from typing import Any
 
 from eth_typing import HexAddress
 from eth_defi.compat import native_datetime_utc_now
-from eth_defi.provider.anvil import fund_erc20_on_anvil
+from eth_defi.provider.anvil import fund_erc20_on_anvil, is_anvil
 from eth_defi.vault.base import VaultSpec
 from eth_defi.vault.deposit_redeem import (
     UnsupportedVaultSimulation,
@@ -64,7 +64,7 @@ from tradeexecutor.ethereum.routing_state import OutOfBalance
 from tradeexecutor.ethereum.vault.vault_routing import (
     IncompatibleDepositAsset,
     VaultReceiptAnalysisError,
-    resolve_multi_asset_deposit_asset,
+    resolve_multi_asset_deposit_token,
 )
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
@@ -142,6 +142,7 @@ class VaultAttempt:
     previous: TradingPosition | None
     open_trade_position: TradingPosition | None
     bridge_position: TradingPosition | None
+    interventions: list[dict] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -273,16 +274,6 @@ def get_redemption_unavailable_detail(vault: Any) -> str:
         "Vault metadata reports no redemption path and the adapter published no "
         "reason; the redemption leg was not attempted"
     )
-
-
-def get_redemption_unavailable_outcome(vault: Any) -> tuple[str, str]:
-    """Distinguish an unimplemented adapter flow from generic unavailability."""
-    detail = get_redemption_unavailable_detail(vault)
-    capability = get_vault_manager_capability(vault)
-    reason = getattr(capability, "redemption_unsupported_reason", None) if capability is not None else None
-    if reason and ("not_implemented" in reason.lower() or "not implemented" in reason.lower()):
-        return "redemption_not_implemented", detail
-    return "redemption_unavailable", detail
 
 
 def get_whitelisting_needed_detail(attempt: "VaultAttempt") -> str | None:
@@ -476,15 +467,15 @@ def fund_simulated_public_eligibility(
     owner: HexAddress,
     raw_amount: int,
     error: VaultFlowUnavailable,
-) -> bool:
-    """Fund a public D2 balance predicate before its simulated deposit probe."""
+) -> dict | None:
+    """Fund and disclose a public D2 predicate on an Anvil simulation."""
     if (
         error.protocol != "D2 Finance"
         or error.decoded_error != "InsufficientEligibilityBalance"
         or error.asset_address is None
         or error.minimum_raw_amount is None
     ):
-        return False
+        return None
 
     denomination_token = attempt.executable_vault.denomination_token
     funding_raw = error.minimum_raw_amount
@@ -494,13 +485,22 @@ def fund_simulated_public_eligibility(
         # probing it; this is test-wallet setup, not KYC allow-list mutation.
         funding_raw = max(funding_raw, raw_amount)
     chain_web3 = runtime.web3config.get_connection(ChainId(attempt.spec.chain_id))
+    if not is_anvil(chain_web3):
+        return None
     fund_erc20_on_anvil(
         chain_web3,
         error.asset_address,
         owner,
         funding_raw,
     )
-    return True
+    return {
+        "kind": "eligibility_asset_funded",
+        "token": error.asset_address,
+        "target": owner,
+        "raw_amount": str(funding_raw),
+        "original_reason": str(error),
+        "original_preflight_result": error.preflight_result,
+    }
 
 
 def validate_simulated_closed_deposit(
@@ -526,15 +526,15 @@ def validate_simulated_closed_deposit(
 
     manager = attempt.executable_vault.get_deposit_manager()
     denomination_token = attempt.executable_vault.denomination_token
-    raw_amount = denomination_token.convert_to_raw(amount)
-    accepted_asset = resolve_multi_asset_deposit_asset(
+    accepted_token = resolve_multi_asset_deposit_token(
         manager,
         attempt.spec.chain_id,
         deposit_asset,
     )
     deposit_kwargs = {}
-    if accepted_asset is not None:
-        deposit_kwargs["accepted_asset"] = HexAddress(accepted_asset)
+    if accepted_token is not None:
+        deposit_kwargs["accepted_asset"] = HexAddress(accepted_token.address)
+    raw_amount = (accepted_token or denomination_token).convert_to_raw(amount)
     is_primary_chain = (
         attempt.spec.chain_id == runtime.deployment.primary_chain_id.value
     )
@@ -549,13 +549,15 @@ def validate_simulated_closed_deposit(
             **deposit_kwargs,
         )
     except VaultFlowUnavailable as error:
-        if fund_simulated_public_eligibility(
+        intervention = fund_simulated_public_eligibility(
             attempt,
             runtime,
             owner,
             raw_amount,
             error,
-        ):
+        )
+        if intervention is not None:
+            attempt.interventions.append(intervention)
             try:
                 manager.create_deposit_request(
                     owner=owner,
@@ -603,14 +605,16 @@ def validate_simulated_closed_deposit(
             raw_amount,
         )
     except VaultFlowUnavailable as error:
-        if not fund_simulated_public_eligibility(
+        intervention = fund_simulated_public_eligibility(
             attempt,
             runtime,
             owner,
             raw_amount,
             error,
-        ):
+        )
+        if intervention is None:
             raise
+        attempt.interventions.append(intervention)
         validation_request = manager.create_deposit_request_for_guard_validation(
             owner,
             raw_amount,
@@ -647,6 +651,8 @@ def validate_simulated_closed_deposit(
             ],
         },
     }
+    if interventions := getattr(attempt, "interventions", None):
+        outcome_data["interventions"] = interventions
     return detail, outcome_data
 
 
@@ -663,6 +669,7 @@ ALLOWED_PREFLIGHT_RESULTS: frozenset[str] = frozenset(
         "redemption_paused",
         "redemption_unavailable",
         "redemption_liquidity_unavailable",
+        "redemption_zero_payout",
         "redemption_not_yet_matured",
         "redemption_closed",
         "deposit_closed",
@@ -1310,7 +1317,7 @@ class VaultTestBatchRunner:
                     attempt,
                     self.runtime,
                     self.amount,
-                    getattr(self, "deposit_asset", None),
+                    self.deposit_asset,
                 )
                 if closed_validation is not None:
                     detail, outcome_data = closed_validation
@@ -1714,7 +1721,7 @@ class VaultTestBatchRunner:
         result = None
         detail = None
         outcome_data = None
-        interventions = [
+        interventions = attempt.interventions + [
             intervention
             for trade in fork_state.portfolio.get_all_trades()
             if trade.trade_id not in original_trade_ids
@@ -1722,7 +1729,7 @@ class VaultTestBatchRunner:
         ]
         if interventions:
             result = "success_simulated_with_intervention"
-            detail = "Redemption succeeded on Anvil after a disclosed liquidity intervention"
+            detail = "Vault lifecycle succeeded on Anvil after a disclosed simulation intervention"
             outcome_data = {"interventions": interventions}
         elif simulated_success is not None:
             result = simulated_success.result
@@ -1733,9 +1740,8 @@ class VaultTestBatchRunner:
             detail = "Async deposit request completed; full lifecycle was not requested"
         elif not redemption_available:
             # A refusal must never be reasonless: use the adapter's published reason.
-            result, detail = get_redemption_unavailable_outcome(
-                attempt.executable_vault
-            )
+            result = "redemption_unavailable"
+            detail = get_redemption_unavailable_detail(attempt.executable_vault)
         close_simulated_positions(
             fork_state,
             vault_spec=attempt.spec,

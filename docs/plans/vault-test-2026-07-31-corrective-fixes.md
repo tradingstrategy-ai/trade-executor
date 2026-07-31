@@ -165,10 +165,10 @@ Permission, availability and capacity are separate machine dimensions:
 - retain `below_minimum` for compatibility, but attach
   `minimum_leg=deposit|redemption`, the requested amount and the required
   amount; and
-- replace generic `redemption_unavailable` with
-  `redemption_not_implemented`, `redemption_closed`,
-  `redemption_liquidity_unavailable` or
-  `redemption_not_yet_matured`.
+- use typed live-state outcomes such as `redemption_closed`,
+  `redemption_liquidity_unavailable` or `redemption_not_yet_matured` when the
+  adapter establishes the cause. A mined zero payout is
+  `redemption_zero_payout` until its cause is independently proven.
 
 The scanner may publish `deposit_permission=unknown` independently of a
 research simulation which happened to succeed for one caller at one block.
@@ -538,8 +538,8 @@ Treat the YieldNest and Apyx rows as eth-defi implementation work, not accepted
 2. Reproduce Apyx's Morpho Vault V2 transfer failure, decode it, and implement
    the correct request or immediate redemption route.
 3. Separate three states in the capability contract:
-   - the adapter does not implement the protocol, producing
-     `redemption_not_implemented`;
+   - the adapter does not implement the protocol, producing the existing
+     `adapter_unsupported` result with its structured unsupported reason;
    - the adapter implements redemption but the current live state has closed
      redemptions, insufficient liquidity or unmet maturity, producing
      `redemption_closed`, `redemption_liquidity_unavailable` or

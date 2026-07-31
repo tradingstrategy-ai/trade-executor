@@ -29,12 +29,21 @@ this amendment.
 | Genuine account whitelisting needed | 14 | 14 | 0 |
 | Deposit permission unknown | 0 | 0 | 0 |
 | Incompatible deposit asset | 1 | 1 | 0 |
-| Redemption liquidity unavailable | 1 | 0 | +1 |
+| Zero-payout redemption receipt | 1 | 0 | +1 |
 | Redemption not yet matured | 1 | 0 | +1 |
 | Async simulation unsupported | 1 | 5 | -4 |
 | Below minimum | 1 | 2 | -1 |
-| Redemption capacity limited | 1 | 0 | +1 |
+| Redemption capacity limited | 1 | 2 | -1 |
 | Raw transaction/execution/receipt failures | 1 | 2 | -1 |
+| Deposit closed before Guard validation | 0 | 45 | -45 |
+| Redemption window closed | 0 | 2 | -2 |
+| Redemption unavailable without a typed cause | 0 | 1 | -1 |
+| **Total** | **129** | **129** | **0** |
+
+The PR #1588 column includes all 45 `deposit_closed`, two
+`redemption_window_closed` and one `redemption_unavailable` rows from that run.
+They were previously omitted from this comparison, which made its column sum
+to only 79 and overstated the success deltas.
 
 The intermediate `deposit_permission_unknown` result was deliberate fail-closed
 reporting. The follow-up establishes explicit permissionless defaults for the
@@ -59,7 +68,8 @@ while preserving deployment-specific gates that the adapters can inspect.
 - Sentora USD Earn is correctly `incompatible_deposit_asset`: it accepts RLUSD,
   not the matrix's native-USDC deposit asset.
 - Arche USD no longer fails receipt analysis. Its redemption mined but returned
-  zero USDC, now reported as `redemption_liquidity_unavailable`.
+  zero USDC. The historical run labelled this as liquidity unavailable; current
+  code reports the cause-neutral `redemption_zero_payout` receipt outcome.
 - YieldNest RWA MAX is correctly `redemption_not_yet_matured` until
   2026-10-15.
 
@@ -73,7 +83,7 @@ while preserving deployment-specific gates that the adapters can inspect.
 | IPOR Fusion | Six USDC vaults | `whitelisting-needed` | Add the simulated Safe to each IPOR AccessManager selector role, or use an authorised test identity. No code classification fix is needed. |
 | Lagoon Finance | AltaETF; Block4Block; Der USDC; Der base USDC; Muchacho USDC; Noon STS USDC; Strada USDC; pyUSDC | `whitelisting-needed` | Add the simulated Safe to each vault's investor allow-list. Expanding only the outer Lagoon Guard whitelist is insufficient. |
 | Upshift | Sentora USD Earn | `incompatible_deposit_asset` | Run a dedicated lifecycle with RLUSD, one of the vault's accepted assets. Keep native USDC classified as incompatible. |
-| Yearn | Arche USD | `redemption_liquidity_unavailable` | Add safe Yearn withdrawal-queue/liquidity preparation for simulation, or wait for immediate underlying liquidity. Preserve the typed zero-output outcome in production. |
+| Yearn | Arche USD | `redemption_zero_payout` | Diagnose the zero payout before assigning a cause. Add source-proven Yearn queue/liquidity preparation only if the vault state confirms a liquidity shortfall. |
 | YieldNest | YieldNest RWA MAX | `redemption_not_yet_matured` | Re-run at or after 2026-10-15 and prove the post-maturity redemption path. |
 | Lagoon Finance | For Yield v2 | `simulation_unsupported_async` | Implement and test the exact satellite operator/asset-manager settlement path so forced Anvil settlement reaches `claimable`. |
 
