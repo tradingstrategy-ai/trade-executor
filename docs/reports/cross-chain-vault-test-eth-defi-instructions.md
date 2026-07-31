@@ -48,7 +48,7 @@ ASSET_MANAGEMENT_MODE=lagoon \
 PYTHONPATH="$PWD:$PWD/deps/web3-ethereum-defi" \
 poetry run trade-executor vault-test-trade \
   --id acceptance --state-file /tmp/acceptance/state.json \
-  --auto-simulated --settle-async-on-anvil --amount 1.0 \
+  --auto-simulated --settle-async-on-anvil \
   --vault-id "<comma-separated ids from section 4>" \
   --report-json /tmp/acceptance/report.json
 ```

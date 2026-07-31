@@ -13,11 +13,14 @@ from eth_defi.erc_4626.analysis import analyse_4626_flow_transaction
 from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
 from eth_defi.erc_4626.deposit_redeem import ERC4626DepositManager
 from eth_defi.erc_4626.vault import ERC4626Vault
-from eth_defi.token import fetch_erc20_details, TokenDiskCache
+from eth_defi.provider.anvil import is_anvil
+from eth_defi.token import fetch_erc20_details, TokenDetails, TokenDiskCache
 from eth_defi.trade import TradeSuccess
 from eth_defi.vault.deposit_redeem import (
     DepositRedeemEventAnalysis,
     DepositRedeemEventFailure,
+    UnsupportedVaultSimulation,
+    VaultFlowUnavailable,
 )
 
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
@@ -51,10 +54,10 @@ class VaultReceiptAnalysisError(RuntimeError):
 class IncompatibleDepositAsset(Exception):
     """The selected deposit asset is not accepted by a multi-asset vault.
 
-    Multi-asset vaults (e.g. Upshift) whitelist a specific set of input assets
+    Multi-asset vaults (e.g. Upshift) accept a specific set of input assets
     that can differ from the ERC-4626 accounting asset.  This is raised when the
     selected asset (the ``--deposit-asset`` override, or the native USDC default)
-    is not on that whitelist, so the operator sees both the vault's accepted
+    is not in that set, so the operator sees both the vault's accepted
     assets and the asset that was attempted.
     """
 
@@ -89,15 +92,45 @@ def resolve_multi_asset_deposit_asset(
         accepted assets and the asset that was attempted.
     """
 
-    fetch_accepted = getattr(deposit_manager, "fetch_accepted_assets", None)
+    token = resolve_multi_asset_deposit_token(deposit_manager, chain_id, override)
+    return token.address if token is not None else None
+
+
+def resolve_multi_asset_deposit_token(
+    deposit_manager,
+    chain_id: int,
+    override: str | None = None,
+) -> TokenDetails | None:
+    """Resolve the token details needed for amount conversion and routing.
+
+    :return:
+        Selected accepted token, or ``None`` for a single-asset vault.
+    :raise IncompatibleDepositAsset:
+        When the selected token is not accepted by the vault.
+    """
+    fetch_accepted = getattr(type(deposit_manager), "fetch_accepted_assets", None)
+    if fetch_accepted is None:
+        # A manager may deliberately bind an adapter method on the instance.
+        # Read only an explicit instance attribute, not MagicMock auto-children.
+        fetch_accepted = vars(deposit_manager).get("fetch_accepted_assets")
+    else:
+        fetch_accepted = deposit_manager.fetch_accepted_assets
     if fetch_accepted is None:
         # Single-asset ERC-4626 vault: the reserve asset is deposited directly.
         return None
 
     selected = override or USDC_NATIVE_TOKEN.get(chain_id)
-    accepted_pairs = [(token.symbol, token.address) for token in fetch_accepted()]
-    accepted_addresses = {address.lower() for _symbol, address in accepted_pairs}
-    if selected is None or selected.lower() not in accepted_addresses:
+    accepted_tokens = fetch_accepted()
+    accepted_pairs = [(token.symbol, token.address) for token in accepted_tokens]
+    selected_token = next(
+        (
+            token
+            for token in accepted_tokens
+            if selected is not None and token.address.lower() == selected.lower()
+        ),
+        None,
+    )
+    if selected_token is None:
         supported = ", ".join(
             f"{symbol} ({address})" for symbol, address in accepted_pairs
         )
@@ -109,7 +142,7 @@ def resolve_multi_asset_deposit_asset(
             selected_asset=selected,
             accepted_assets=accepted_pairs,
         )
-    return selected
+    return selected_token
 
 
 def reconcile_vault_redemption_amount(
@@ -273,6 +306,7 @@ class VaultRouting(RoutingModel):
         epsilon=Decimal(1e-6),
         redeem_epsilon=0.025,
         deposit_asset_override: JSONHexAddress | None = None,
+        simulate_redemption_with_liquidity: bool = False,
     ):
         super().__init__(
             allowed_intermediary_pairs={},
@@ -286,6 +320,12 @@ class VaultRouting(RoutingModel):
         # default", which :meth:`deposit_or_redeem` resolves to native USDC on
         # the vault's own chain. Set this to override the default per run.
         self.deposit_asset_override = deposit_asset_override
+
+        # Research-only Anvil mode may ask a protocol adapter to provision a
+        # proven redemption-liquidity shortfall. The adapter must disclose the
+        # intervention and the unchanged redemption still has to succeed and
+        # pass normal receipt analysis.
+        self.simulate_redemption_with_liquidity = simulate_redemption_with_liquidity
 
         # Vault redemptions can be very gas heavy when the vault pulls liquidity
         # back from its underlying markets on withdraw. Measured worst case so
@@ -430,9 +470,7 @@ class VaultRouting(RoutingModel):
             # require an explicit selection; their manager exposes an
             # ``accepted_asset`` parameter.  Default to native USDC on the vault's
             # own chain, overridable per run via ``deposit_asset_override``.  An
-            # asset not on the vault whitelist raises IncompatibleDepositAsset.
-            # TODO: exercise the override end-to-end (see the vault-test-trade
-            # --deposit-asset TODO); only the USDC default is covered today.
+            # asset not on the accepted asset set raises IncompatibleDepositAsset.
             accepted_asset = resolve_multi_asset_deposit_asset(
                 deposit_manager,
                 target_vault.chain_id,
@@ -453,10 +491,30 @@ class VaultRouting(RoutingModel):
             # TODO: model partial fills for cSigma-style reserve-limited pools —
             # redeem the reserve-covered portion and track the queued remainder
             # instead of treating the redemption as all-or-nothing.
-            request = deposit_manager.create_redemption_request(
-                owner=address,
-                shares=swap_amount,
-            )
+            try:
+                request = deposit_manager.create_redemption_request(
+                    owner=address,
+                    shares=swap_amount,
+                )
+            except VaultFlowUnavailable as error:
+                if not self.simulate_redemption_with_liquidity or not is_anvil(target_vault.web3):
+                    raise
+                raw_shares = target_vault.share_token.convert_to_raw(swap_amount)
+                try:
+                    intervention = deposit_manager.force_redemption_liquidity(
+                        address,
+                        raw_shares,
+                        error,
+                    )
+                except UnsupportedVaultSimulation:
+                    raise error
+                request = deposit_manager.create_redemption_request(
+                    owner=address,
+                    raw_shares=raw_shares,
+                )
+                trade.other_data.setdefault("vault_interventions", []).append(
+                    intervention.as_dict()
+                )
             is_async = not deposit_manager.has_synchronous_redemption()
             direction = "redeem"
 
@@ -762,6 +820,18 @@ class VaultRouting(RoutingModel):
                 executed_amount = -result.amount_in / Decimal(10 ** base_token_details.decimals)
                 executed_reserve = result.amount_out / Decimal(10 ** reserve.decimals)
                 price = -executed_reserve / executed_amount
+
+                if executed_reserve == 0:
+                    raise VaultFlowUnavailable(
+                        f"Vault redemption transaction {swap_tx.tx_hash} mined successfully but returned zero {reserve.token_symbol}",
+                        protocol=vault.get_protocol_name(),
+                        vault_address=vault.address,
+                        direction="redeem",
+                        phase="receipt",
+                        preflight_result="redemption_zero_payout",
+                        requested_raw_amount=result.amount_in,
+                        available_raw_amount=0,
+                    )
 
             assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}"
 

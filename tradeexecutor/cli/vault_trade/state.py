@@ -54,7 +54,12 @@ VAULT_TEST_RESULTS = {
     "simulated-success-deposit-open-incorrectly-reported-closed",
     "whitelisting-needed",
     "whitelisted-incorrectly",
+    "deposit_permission_unknown",
     "redemption_unavailable",
+    "redemption_closed",
+    "redemption_liquidity_unavailable",
+    "redemption_zero_payout",
+    "redemption_not_yet_matured",
     "redemption_capacity_limited",
     "redemption_window_closed",
     "redemption_paused",
@@ -70,6 +75,7 @@ VAULT_TEST_RESULTS = {
     "failed",
     "success",
     "success_simulated",
+    "success_simulated_with_intervention",
 }
 
 

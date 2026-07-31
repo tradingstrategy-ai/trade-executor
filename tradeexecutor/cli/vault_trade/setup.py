@@ -194,7 +194,7 @@ def _create_vault_test_provenance(
 ) -> dict:
     """Capture source revisions and initial chain heights for a tester run."""
 
-    repository_root = Path(__file__).resolve().parents[2]
+    repository_root = Path(__file__).resolve().parents[3]
     eth_defi_root = repository_root / "deps" / "web3-ethereum-defi"
     initial_chain_blocks = {}
     for chain_id, web3 in web3config.connections.items():

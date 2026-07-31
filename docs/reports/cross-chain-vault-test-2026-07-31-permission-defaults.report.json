@@ -1,0 +1,2202 @@
+{
+  "results": [
+    {
+      "attempt": {
+        "attempt_id": "bf791e76da6a40c5aea871038ac23e02",
+        "created_at": "2026-07-31T16:49:57.860034",
+        "detail": "cSigma deposits paused during daily window",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": "0",
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0xD5D097F278a735d0a3c609DEEE71234CAc14B47e"
+              }
+            ],
+            "closure_reason": "cSigma deposits paused during daily window",
+            "guard_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0xD5D097F278a735d0a3c609DEEE71234CAc14B47e"
+          },
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "cSigma Finance",
+          "requested_raw_amount": "1001000000"
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "1-0xd5d097f278a735d0a3c609deee71234cac14b47e"
+      },
+      "position_id": 1,
+      "row": {
+        "attempt": "bf791e76da6a40c5aea871038ac23e02",
+        "chain": "Ethereum",
+        "detail": "cSigma deposits paused during daily window",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 1,
+        "protocol": "cSigma Finance",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "cSigma USD",
+        "vault id": "1-0xd5d097f278a735d0a3c609deee71234cac14b47e"
+      },
+      "vault_id": "1-0xd5d097f278a735d0a3c609deee71234cac14b47e"
+    },
+    {
+      "attempt": {
+        "attempt_id": "4c7b89eb7bd4486481b976f3b89534f0",
+        "created_at": "2026-07-31T16:49:58.638021",
+        "detail": "cSigma deposits paused during daily window",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": "0",
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0x438982Ea288763370946625fd76c2508eE1fB229"
+              }
+            ],
+            "closure_reason": "cSigma deposits paused during daily window",
+            "guard_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0x438982Ea288763370946625fd76c2508eE1fB229"
+          },
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "cSigma Finance",
+          "requested_raw_amount": "1001000000"
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "1-0x438982ea288763370946625fd76c2508ee1fb229"
+      },
+      "position_id": 2,
+      "row": {
+        "attempt": "4c7b89eb7bd4486481b976f3b89534f0",
+        "chain": "Ethereum",
+        "detail": "cSigma deposits paused during daily window",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 2,
+        "protocol": "cSigma Finance",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "cSuperior Quality Private Credit USDC",
+        "vault id": "1-0x438982ea288763370946625fd76c2508ee1fb229"
+      },
+      "vault_id": "1-0x438982ea288763370946625fd76c2508ee1fb229"
+    },
+    {
+      "attempt": {
+        "attempt_id": "730c29894af4458bbe1e57c1e867cbca",
+        "detail": "Ember redemption shares 905390 are below minimum 9170000",
+        "error": {
+          "call_context": [],
+          "captured_at": "2026-07-31T16:50:03.622722",
+          "chain_blocks": {
+            "1": {
+              "block_number": 25598895
+            },
+            "143": {
+              "block_number": 91967894
+            },
+            "42161": {
+              "block_number": 487039655
+            },
+            "43114": {
+              "block_number": 91076605
+            },
+            "8453": {
+              "block_number": 49363618
+            }
+          },
+          "exception": {
+            "arguments": [
+              "Ember redemption shares 905390 are below minimum 9170000"
+            ],
+            "message": "Ember redemption shares 905390 are below minimum 9170000 (protocol=Ember, vault=0x2B13311fD553E74b421d4cCc96e348F71e179DcF, caller=0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629, direction=redeem, phase=preflight, decoded_error=InsufficientAmount, preflight_result=below_minimum, requested_raw_amount=905390, minimum_raw_amount=9170000)",
+            "type": "eth_defi.vault.deposit_redeem.VaultFlowUnavailable"
+          },
+          "exception_chain": [
+            {
+              "arguments": [
+                "Ember redemption shares 905390 are below minimum 9170000"
+              ],
+              "message": "Ember redemption shares 905390 are below minimum 9170000 (protocol=Ember, vault=0x2B13311fD553E74b421d4cCc96e348F71e179DcF, caller=0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629, direction=redeem, phase=preflight, decoded_error=InsufficientAmount, preflight_result=below_minimum, requested_raw_amount=905390, minimum_raw_amount=9170000)",
+              "type": "eth_defi.vault.deposit_redeem.VaultFlowUnavailable"
+            },
+            {
+              "arguments": [
+                "EmberDepositManager has no Anvil redemption-liquidity driver"
+              ],
+              "message": "EmberDepositManager has no Anvil redemption-liquidity driver",
+              "type": "eth_defi.vault.deposit_redeem.UnsupportedVaultSimulation"
+            }
+          ],
+          "phase": "execute",
+          "traceback": "Traceback (most recent call last):\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/ethereum/vault/vault_routing.py\", line 476, in deposit_or_redeem\n    intervention = deposit_manager.force_redemption_liquidity(\n        address,\n        raw_shares,\n        error,\n    )\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/deps/web3-ethereum-defi/eth_defi/vault/deposit_redeem.py\", line 1292, in force_redemption_liquidity\n    raise UnsupportedVaultSimulation(\n    ...<5 lines>...\n    )\neth_defi.vault.deposit_redeem.UnsupportedVaultSimulation: EmberDepositManager has no Anvil redemption-liquidity driver\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/cli/vault_trade/runner.py\", line 1051, in _run_vault\n    stop_batch = self._process_attempt(attempt, alarm)\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/cli/vault_trade/runner.py\", line 1422, in _process_attempt\n    self._execute_simulated(\n    ~~~~~~~~~~~~~~~~~~~~~~~^\n        attempt,\n        ^^^^^^^^\n    ...<3 lines>...\n        simulated_success=simulated_success,\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/cli/vault_trade/runner.py\", line 1673, in _execute_simulated\n    perform_test_trade(\n    ~~~~~~~~~~~~~~~~~~^\n        web3=self.runtime.web3config.get_default(),\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<21 lines>...\n        update_statistics_after_trade=False,\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/cli/testtrade.py\", line 1380, in make_test_trade\n    execution_model.execute_trades(\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^\n            ts,\n            ^^^\n    ...<3 lines>...\n            routing_state,\n            ^^^^^^^^^^^^^^\n        )\n        ^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/ethereum/lagoon/execution.py\", line 92, in execute_trades\n    return super().execute_trades(\n           ~~~~~~~~~~~~~~~~~~~~~~^\n        ts=ts,\n        ^^^^^^\n    ...<6 lines>...\n        triggered=triggered,\n        ^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/ethereum/execution.py\", line 844, in execute_trades\n    routing_model.setup_trades(\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~^\n        state=state,\n        ^^^^^^^^^^^^\n    ...<3 lines>...\n        rebroadcast=rebroadcast,\n        ^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/strategy/generic/generic_router.py\", line 219, in setup_trades\n    router.setup_trades(\n    ~~~~~~~~~~~~~~~~~~~^\n        state=state,\n        ^^^^^^^^^^^^\n    ...<3 lines>...\n        rebroadcast=rebroadcast,\n        ^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/ethereum/vault/vault_routing.py\", line 598, in setup_trades\n    trade.blockchain_transactions = self.deposit_or_redeem(state, routing_state, trade)\n                                    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/ethereum/vault/vault_routing.py\", line 482, in deposit_or_redeem\n    raise error\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/ethereum/vault/vault_routing.py\", line 467, in deposit_or_redeem\n    request = deposit_manager.create_redemption_request(\n        owner=address,\n        shares=swap_amount,\n    )\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/deps/web3-ethereum-defi/eth_defi/erc_4626/vault_protocol/ember/deposit_redeem.py\", line 335, in create_redemption_request\n    raise VaultFlowUnavailable(\n    ...<10 lines>...\n    )\neth_defi.vault.deposit_redeem.VaultFlowUnavailable: Ember redemption shares 905390 are below minimum 9170000 (protocol=Ember, vault=0x2B13311fD553E74b421d4cCc96e348F71e179DcF, caller=0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629, direction=redeem, phase=preflight, decoded_error=InsufficientAmount, preflight_result=below_minimum, requested_raw_amount=905390, minimum_raw_amount=9170000)\n",
+          "transactions": [
+            {
+              "block_hash": "07b0146a20ee3beda152ff117ed16f13f7a92d15383a4c75cd88475dd96cc6d5",
+              "block_number": 25598889,
+              "chain_id": 1,
+              "contract_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+              "function_selector": "performCall",
+              "nonce": 7530,
+              "position_id": 3,
+              "revert_reason": null,
+              "stack_trace": null,
+              "status": true,
+              "trade_id": 1,
+              "tx_hash": "0xfe6db4d06d9e42e8d7870755d2a8edca836dc20010665ce61bd155f81dc118ca",
+              "wrapped_function_selector": "approve",
+              "wrapped_target": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+            },
+            {
+              "block_hash": "7f030c83e200c0bf292d2ccaf6118599ca3912fe4bb0b75234d641aecfc6f020",
+              "block_number": 25598891,
+              "chain_id": 1,
+              "contract_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+              "function_selector": "performCall",
+              "nonce": 7531,
+              "position_id": 3,
+              "revert_reason": null,
+              "stack_trace": null,
+              "status": true,
+              "trade_id": 1,
+              "tx_hash": "0x5318b401d74ed46c02119391f06e8d4582c153a043b03d94f7eb4d49baadef6b",
+              "wrapped_function_selector": "deposit",
+              "wrapped_target": "0x2B13311fD553E74b421d4cCc96e348F71e179DcF"
+            }
+          ]
+        },
+        "operation": "redeem",
+        "outcome_data": {
+          "available_raw_amount": null,
+          "decoded_error": "InsufficientAmount",
+          "direction": "redeem",
+          "minimum_raw_amount": "9170000",
+          "phase": "preflight",
+          "preflight_result": "below_minimum",
+          "protocol": "Ember",
+          "requested_raw_amount": "905390"
+        },
+        "phase": "execute",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "below_minimum",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "1-0x2b13311fd553e74b421d4ccc96e348f71e179dcf"
+      },
+      "position_id": 3,
+      "row": {
+        "attempt": "730c29894af4458bbe1e57c1e867cbca",
+        "chain": "Ethereum",
+        "detail": "Ember redemption shares 905390 are below minimum 9170000",
+        "mode": "simulated",
+        "operation": "redeem",
+        "phase": "execute",
+        "position": 3,
+        "protocol": "Ember",
+        "result": "below_minimum",
+        "status": "below minimum",
+        "vault": "Ember Apollo ACRED",
+        "vault id": "1-0x2b13311fd553e74b421d4ccc96e348f71e179dcf"
+      },
+      "vault_id": "1-0x2b13311fd553e74b421d4ccc96e348f71e179dcf"
+    },
+    {
+      "attempt": {
+        "attempt_id": "50bb31b60049434d9697e1aedce8ac69",
+        "operation": "deposit",
+        "phase": "complete",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "1-0x9be9294722f8aad37b11a9792be2c782182cafa2"
+      },
+      "position_id": 4,
+      "row": {
+        "attempt": "50bb31b60049434d9697e1aedce8ac69",
+        "chain": "Ethereum",
+        "detail": null,
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "complete",
+        "position": 4,
+        "protocol": "Ember",
+        "result": null,
+        "status": "success (simulated)",
+        "vault": "Ember Earn",
+        "vault id": "1-0x9be9294722f8aad37b11a9792be2c782182cafa2"
+      },
+      "vault_id": "1-0x9be9294722f8aad37b11a9792be2c782182cafa2"
+    },
+    {
+      "attempt": {
+        "attempt_id": "afcc23a4e4514b549f0b981df4808a02",
+        "operation": "deposit",
+        "phase": "complete",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "1-0x0b9342c15143e8f54a83f887c280a922f4c48771"
+      },
+      "position_id": 5,
+      "row": {
+        "attempt": "afcc23a4e4514b549f0b981df4808a02",
+        "chain": "Ethereum",
+        "detail": null,
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "complete",
+        "position": 5,
+        "protocol": "Ember",
+        "result": null,
+        "status": "success (simulated)",
+        "vault": "Ember Polymarket",
+        "vault id": "1-0x0b9342c15143e8f54a83f887c280a922f4c48771"
+      },
+      "vault_id": "1-0x0b9342c15143e8f54a83f887c280a922f4c48771"
+    },
+    {
+      "attempt": {
+        "attempt_id": "7105353707f7494bb15c51449ac98188",
+        "operation": "deposit",
+        "phase": "complete",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "1-0xf3190a3ecc109f88e7947b849b281918c798a0c4"
+      },
+      "position_id": 6,
+      "row": {
+        "attempt": "7105353707f7494bb15c51449ac98188",
+        "chain": "Ethereum",
+        "detail": null,
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "complete",
+        "position": 6,
+        "protocol": "Ember",
+        "result": null,
+        "status": "success (simulated)",
+        "vault": "Ember Third Eye",
+        "vault id": "1-0xf3190a3ecc109f88e7947b849b281918c798a0c4"
+      },
+      "vault_id": "1-0xf3190a3ecc109f88e7947b849b281918c798a0c4"
+    },
+    {
+      "attempt": {
+        "attempt_id": "aa183f2e7c5b4aa2b8ba6fe4e66938a9",
+        "operation": "deposit",
+        "phase": "complete",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "1-0x373152feef81cc59502da2c8de877b3d5ae2e342"
+      },
+      "position_id": 7,
+      "row": {
+        "attempt": "aa183f2e7c5b4aa2b8ba6fe4e66938a9",
+        "chain": "Ethereum",
+        "detail": null,
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "complete",
+        "position": 7,
+        "protocol": "Ember",
+        "result": null,
+        "status": "success (simulated)",
+        "vault": "Ember UDL",
+        "vault id": "1-0x373152feef81cc59502da2c8de877b3d5ae2e342"
+      },
+      "vault_id": "1-0x373152feef81cc59502da2c8de877b3d5ae2e342"
+    },
+    {
+      "attempt": {
+        "attempt_id": "24c053db45074f73a339e187fa6375bc",
+        "created_at": "2026-07-31T16:50:34.493316",
+        "detail": "Yearn vault is shut down",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": "0",
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0xf6E2d36c489e5B361CdC962D4568ceA663AD5ddC"
+              }
+            ],
+            "closure_reason": "Yearn vault is shut down",
+            "guard_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0xf6E2d36c489e5B361CdC962D4568ceA663AD5ddC"
+          },
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "Yearn",
+          "requested_raw_amount": "1001000000"
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "1-0xf6e2d36c489e5b361cdc962d4568cea663ad5ddc"
+      },
+      "position_id": 8,
+      "row": {
+        "attempt": "24c053db45074f73a339e187fa6375bc",
+        "chain": "Ethereum",
+        "detail": "Yearn vault is shut down",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 8,
+        "protocol": "Yearn",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "StrategyGearboxLenderUSDC",
+        "vault id": "1-0xf6e2d36c489e5b361cdc962d4568cea663ad5ddc"
+      },
+      "vault_id": "1-0xf6e2d36c489e5b361cdc962d4568cea663ad5ddc"
+    },
+    {
+      "attempt": {
+        "attempt_id": "4fa4863441014879b305a4fcb0c47cd6",
+        "created_at": "2026-07-31T16:50:35.222891",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": "0",
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0x4C0e4d3cB62B91afBbf1Fe8e830f98A513c7234b"
+              }
+            ],
+            "closure_reason": "Max deposit cap reached (maxDeposit=0)",
+            "guard_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0x4C0e4d3cB62B91afBbf1Fe8e830f98A513c7234b"
+          },
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "Yearn",
+          "requested_raw_amount": "1001000000"
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "1-0x4c0e4d3cb62b91afbbf1fe8e830f98a513c7234b"
+      },
+      "position_id": 9,
+      "row": {
+        "attempt": "4fa4863441014879b305a4fcb0c47cd6",
+        "chain": "Ethereum",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 9,
+        "protocol": "Yearn",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "USD3 Pendle PT Maxi",
+        "vault id": "1-0x4c0e4d3cb62b91afbbf1fe8e830f98a513c7234b"
+      },
+      "vault_id": "1-0x4c0e4d3cb62b91afbbf1fe8e830f98a513c7234b"
+    },
+    {
+      "attempt": {
+        "attempt_id": "3ce7571a65c4402682ceba5dbf150f91",
+        "created_at": "2026-07-31T16:50:35.999416",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": "0",
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0x62ebE2ca290DB3B649c390847f8204196771B438"
+              }
+            ],
+            "closure_reason": "Max deposit cap reached (maxDeposit=0)",
+            "guard_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0x62ebE2ca290DB3B649c390847f8204196771B438"
+          },
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "Yearn",
+          "requested_raw_amount": "1001000000"
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "1-0x62ebe2ca290db3b649c390847f8204196771b438"
+      },
+      "position_id": 10,
+      "row": {
+        "attempt": "3ce7571a65c4402682ceba5dbf150f91",
+        "chain": "Ethereum",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 10,
+        "protocol": "Yearn",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "USD3 Pendle PT Maxi",
+        "vault id": "1-0x62ebe2ca290db3b649c390847f8204196771b438"
+      },
+      "vault_id": "1-0x62ebe2ca290db3b649c390847f8204196771b438"
+    },
+    {
+      "attempt": {
+        "attempt_id": "222fda32fea64b4cbc91fd2788b96eb5",
+        "created_at": "2026-07-31T16:50:36.758105",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": "0",
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0x2dF6c1602528dE8B8A5C72Baf6E70295b3A64142"
+              }
+            ],
+            "closure_reason": "Max deposit cap reached (maxDeposit=0)",
+            "guard_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0x2dF6c1602528dE8B8A5C72Baf6E70295b3A64142"
+          },
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "Yearn",
+          "requested_raw_amount": "1001000000"
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "1-0x2df6c1602528de8b8a5c72baf6e70295b3a64142"
+      },
+      "position_id": 11,
+      "row": {
+        "attempt": "222fda32fea64b4cbc91fd2788b96eb5",
+        "chain": "Ethereum",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 11,
+        "protocol": "Yearn",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "sUSDS Pendle PT Maxi",
+        "vault id": "1-0x2df6c1602528de8b8a5c72baf6e70295b3a64142"
+      },
+      "vault_id": "1-0x2df6c1602528de8b8a5c72baf6e70295b3a64142"
+    },
+    {
+      "attempt": {
+        "attempt_id": "3e1ced19624046f5988a3e7dfbe156ff",
+        "created_at": "2026-07-31T16:50:45.434089",
+        "detail": "Satellite close failed: execution reverted: ERC20: transfer amount exceeds balance",
+        "error": {
+          "call_context": [],
+          "captured_at": "2026-07-31T16:50:45.425087",
+          "chain_blocks": {
+            "1": {
+              "block_number": 25598894
+            },
+            "143": {
+              "block_number": 91967894
+            },
+            "42161": {
+              "block_number": 487039655
+            },
+            "43114": {
+              "block_number": 91076605
+            },
+            "8453": {
+              "block_number": 49363628
+            }
+          },
+          "exception": {
+            "arguments": [
+              "Satellite close failed: execution reverted: ERC20: transfer amount exceeds balance"
+            ],
+            "message": "Satellite close failed: execution reverted: ERC20: transfer amount exceeds balance",
+            "type": "builtins.AssertionError"
+          },
+          "exception_chain": [
+            {
+              "arguments": [
+                "Satellite close failed: execution reverted: ERC20: transfer amount exceeds balance"
+              ],
+              "message": "Satellite close failed: execution reverted: ERC20: transfer amount exceeds balance",
+              "type": "builtins.AssertionError"
+            }
+          ],
+          "phase": "execute",
+          "traceback": "Traceback (most recent call last):\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/cli/vault_trade/runner.py\", line 1051, in _run_vault\n    stop_batch = self._process_attempt(attempt, alarm)\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/cli/vault_trade/runner.py\", line 1422, in _process_attempt\n    self._execute_simulated(\n    ~~~~~~~~~~~~~~~~~~~~~~~^\n        attempt,\n        ^^^^^^^^\n    ...<3 lines>...\n        simulated_success=simulated_success,\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/cli/vault_trade/runner.py\", line 1673, in _execute_simulated\n    perform_test_trade(\n    ~~~~~~~~~~~~~~~~~~^\n        web3=self.runtime.web3config.get_default(),\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<21 lines>...\n        update_statistics_after_trade=False,\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/cli/testtrade.py\", line 1216, in make_test_trade\n    return _make_cross_chain_test_trade(\n        web3=web3,\n    ...<23 lines>...\n        sync_state_callback=sync_state_callback,\n    )\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/cli/testtrade.py\", line 672, in _make_cross_chain_test_trade\n    assert close_trades[0].is_success(), \\\n           ~~~~~~~~~~~~~~~~~~~~~~~~~~^^\nAssertionError: Satellite close failed: execution reverted: ERC20: transfer amount exceeds balance\n",
+          "transactions": [
+            {
+              "block_hash": "ddb1b74c72b0ae9229ea2a1ea017ad16e995f9722fa52902f7ff6a97fc8825e3",
+              "block_number": 25598889,
+              "chain_id": 1,
+              "contract_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+              "function_selector": "performCall",
+              "nonce": 7530,
+              "position_id": 12,
+              "revert_reason": null,
+              "stack_trace": null,
+              "status": true,
+              "trade_id": 11,
+              "tx_hash": "0xa116296324e80016720038e73516c9f17232dab21009a8cc1049b0f46c06b4ca",
+              "wrapped_function_selector": "approve",
+              "wrapped_target": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+            },
+            {
+              "block_hash": "8af8d321d6fab6c2b7c2ca3ed0ff3ee4f0a2ebebb3ba78c1930eebc555983421",
+              "block_number": 25598891,
+              "chain_id": 1,
+              "contract_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+              "function_selector": "performCall",
+              "nonce": 7531,
+              "position_id": 12,
+              "revert_reason": null,
+              "stack_trace": null,
+              "status": true,
+              "trade_id": 11,
+              "tx_hash": "0x8c3cba1f8d4d23ab9dcda3a08eff23d896643ed3505163751a6ed1b9c936b9cb",
+              "wrapped_function_selector": "depositForBurn",
+              "wrapped_target": "0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d"
+            },
+            {
+              "block_hash": "2937317d92ddd940dac9edfc69e0fd6e981899a41e554717d88401abacdda5d2",
+              "block_number": 49363619,
+              "chain_id": 8453,
+              "contract_address": "0xA86BB211B2D828DbD410F4Ea595113824942c84f",
+              "function_selector": "performCall",
+              "nonce": 3394295,
+              "position_id": 13,
+              "revert_reason": null,
+              "stack_trace": null,
+              "status": true,
+              "trade_id": 12,
+              "tx_hash": "0x2a8e8f82c9ed001c38104fd54852737d343b80ef60ef9bdbfdc80a63224dc85d",
+              "wrapped_function_selector": "approve",
+              "wrapped_target": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+            },
+            {
+              "block_hash": "6685e874fb73d4542b14a2bfdbf29d96fd2745a99b189cd5d9666857b481928e",
+              "block_number": 49363621,
+              "chain_id": 8453,
+              "contract_address": "0xA86BB211B2D828DbD410F4Ea595113824942c84f",
+              "function_selector": "performCall",
+              "nonce": 3394296,
+              "position_id": 13,
+              "revert_reason": null,
+              "stack_trace": null,
+              "status": true,
+              "trade_id": 12,
+              "tx_hash": "0xe5fd074794f211638e4b83088b0ed2c8d7c96dc078c3350b8f1d011802d79b6e",
+              "wrapped_function_selector": "deposit",
+              "wrapped_target": "0xB99B6dF96d4d5448cC0a5B3e0ef7896df9507Cf5"
+            },
+            {
+              "block_hash": "32e38ffdde6ea2449e4749c0b95c0fc42105cfe1efaef53198653c210347f6a6",
+              "block_number": 49363626,
+              "chain_id": 8453,
+              "contract_address": "0xA86BB211B2D828DbD410F4Ea595113824942c84f",
+              "function_selector": "performCall",
+              "nonce": 3394297,
+              "position_id": 13,
+              "revert_reason": "execution reverted: ERC20: transfer amount exceeds balance",
+              "stack_trace": null,
+              "status": false,
+              "trade_id": 13,
+              "tx_hash": "0x4c03a35046217dbb7b2387188431c84d6ac2504b366bd94d81f74e4dfc213310",
+              "wrapped_function_selector": "redeem",
+              "wrapped_target": "0xB99B6dF96d4d5448cC0a5B3e0ef7896df9507Cf5"
+            }
+          ]
+        },
+        "operation": "redeem",
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "transaction_reverted",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "8453-0xb99b6df96d4d5448cc0a5b3e0ef7896df9507cf5"
+      },
+      "position_id": 13,
+      "row": {
+        "attempt": "3e1ced19624046f5988a3e7dfbe156ff",
+        "chain": "Base",
+        "detail": "Satellite close failed: execution reverted: ERC20: transfer amount exceeds balance",
+        "mode": "simulated",
+        "operation": "redeem",
+        "phase": "created",
+        "position": 13,
+        "protocol": "40acres",
+        "result": "transaction_reverted",
+        "status": "transaction reverted",
+        "vault": "Aerodrome USDC",
+        "vault id": "8453-0xb99b6df96d4d5448cc0a5b3e0ef7896df9507cf5"
+      },
+      "vault_id": "8453-0xb99b6df96d4d5448cc0a5b3e0ef7896df9507cf5"
+    },
+    {
+      "attempt": {
+        "attempt_id": "802d95e0492c4b42b0df860eb223f960",
+        "created_at": "2026-07-31T16:50:48.959106",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": "0",
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0xfdB431E661372fA1146efB70bf120ECDed944a78"
+              }
+            ],
+            "closure_reason": "Max deposit cap reached (maxDeposit=0)",
+            "guard_address": "0xA86BB211B2D828DbD410F4Ea595113824942c84f",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0xfdB431E661372fA1146efB70bf120ECDed944a78"
+          },
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "Yearn",
+          "requested_raw_amount": "1001000000"
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "8453-0xfdb431e661372fa1146efb70bf120ecded944a78"
+      },
+      "position_id": 14,
+      "row": {
+        "attempt": "802d95e0492c4b42b0df860eb223f960",
+        "chain": "Base",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 14,
+        "protocol": "Yearn",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "Moonwell USDC Lender WETH Borrower",
+        "vault id": "8453-0xfdb431e661372fa1146efb70bf120ecded944a78"
+      },
+      "vault_id": "8453-0xfdb431e661372fa1146efb70bf120ecded944a78"
+    },
+    {
+      "attempt": {
+        "attempt_id": "37eac0bea1fc4a34840e3d1e6537c5ae",
+        "created_at": "2026-07-31T16:50:52.614214",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": "0",
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0x945Df73d55557Ea23c0c35CD350d8DE3b745287E"
+              }
+            ],
+            "closure_reason": "Max deposit cap reached (maxDeposit=0)",
+            "guard_address": "0xA86BB211B2D828DbD410F4Ea595113824942c84f",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0x945Df73d55557Ea23c0c35CD350d8DE3b745287E"
+          },
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "Yearn",
+          "requested_raw_amount": "1001000000"
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "8453-0x945df73d55557ea23c0c35cd350d8de3b745287e"
+      },
+      "position_id": 15,
+      "row": {
+        "attempt": "37eac0bea1fc4a34840e3d1e6537c5ae",
+        "chain": "Base",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 15,
+        "protocol": "Yearn",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "Moonwell USDC Lender cbBTC Borrower",
+        "vault id": "8453-0x945df73d55557ea23c0c35cd350d8de3b745287e"
+      },
+      "vault_id": "8453-0x945df73d55557ea23c0c35cd350d8de3b745287e"
+    },
+    {
+      "attempt": {
+        "attempt_id": "3aab4a62f9954fa49c9b1b2913f2f56d",
+        "created_at": "2026-07-31T16:50:53.506010",
+        "detail": "Deposits closed by vault admin (maxDeposit=0)",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": "0",
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0xf84eaA0685626f84fE17bc6C3c9eb2Ac8a90d3C1"
+              }
+            ],
+            "closure_reason": "Deposits closed by vault admin (maxDeposit=0)",
+            "guard_address": "0x2306215D972eD39683e47C539644DA0a66059175",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0xf84eaA0685626f84fE17bc6C3c9eb2Ac8a90d3C1"
+          },
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "Plutus",
+          "requested_raw_amount": "1001000000"
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "42161-0xf84eaa0685626f84fe17bc6c3c9eb2ac8a90d3c1"
+      },
+      "position_id": 16,
+      "row": {
+        "attempt": "3aab4a62f9954fa49c9b1b2913f2f56d",
+        "chain": "Arbitrum One",
+        "detail": "Deposits closed by vault admin (maxDeposit=0)",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 16,
+        "protocol": "Plutus",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "Plutus Dolomite vault",
+        "vault id": "42161-0xf84eaa0685626f84fe17bc6c3c9eb2ac8a90d3c1"
+      },
+      "vault_id": "42161-0xf84eaa0685626f84fe17bc6c3c9eb2ac8a90d3c1"
+    },
+    {
+      "attempt": {
+        "attempt_id": "9fedda5ce3774eeaa9f7663c057e704e",
+        "operation": "deposit",
+        "phase": "complete",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "42161-0x58bfc95a864e18e8f3041d2fcd3418f48393fe6a"
+      },
+      "position_id": 18,
+      "row": {
+        "attempt": "9fedda5ce3774eeaa9f7663c057e704e",
+        "chain": "Arbitrum One",
+        "detail": null,
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "complete",
+        "position": 18,
+        "protocol": "Plutus",
+        "result": null,
+        "status": "success (simulated)",
+        "vault": "Plutus Hedge Token",
+        "vault id": "42161-0x58bfc95a864e18e8f3041d2fcd3418f48393fe6a"
+      },
+      "vault_id": "42161-0x58bfc95a864e18e8f3041d2fcd3418f48393fe6a"
+    },
+    {
+      "attempt": {
+        "attempt_id": "6bc213885719424b81bc866f57c20ca6",
+        "created_at": "2026-07-31T16:51:07.235535",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": "0",
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0xDF9640332bcfd3b16Cb80C1287Ed04B875D9A384"
+              }
+            ],
+            "closure_reason": "Max deposit cap reached (maxDeposit=0)",
+            "guard_address": "0x2306215D972eD39683e47C539644DA0a66059175",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0xDF9640332bcfd3b16Cb80C1287Ed04B875D9A384"
+          },
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "Yearn",
+          "requested_raw_amount": "1001000000"
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "42161-0xdf9640332bcfd3b16cb80c1287ed04b875d9a384"
+      },
+      "position_id": 19,
+      "row": {
+        "attempt": "6bc213885719424b81bc866f57c20ca6",
+        "chain": "Arbitrum One",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 19,
+        "protocol": "Yearn",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "yPT-aUSDC (auto-rolling Pendle PT)",
+        "vault id": "42161-0xdf9640332bcfd3b16cb80c1287ed04b875d9a384"
+      },
+      "vault_id": "42161-0xdf9640332bcfd3b16cb80c1287ed04b875d9a384"
+    },
+    {
+      "attempt": {
+        "attempt_id": "07fa45757bf744b2af443b0f443cb477",
+        "created_at": "2026-07-31T16:51:07.949278",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": "0",
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0xC0485C4bafB594Ae1457820fb6e5B67e8A04BCFD"
+              }
+            ],
+            "closure_reason": "Max deposit cap reached (maxDeposit=0)",
+            "guard_address": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0xC0485C4bafB594Ae1457820fb6e5B67e8A04BCFD"
+          },
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "40acres",
+          "requested_raw_amount": "1001000000"
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "43114-0xc0485c4bafb594ae1457820fb6e5b67e8a04bcfd"
+      },
+      "position_id": 20,
+      "row": {
+        "attempt": "07fa45757bf744b2af443b0f443cb477",
+        "chain": "Avalanche C-chain",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 20,
+        "protocol": "40acres",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "Blackhole USDC",
+        "vault id": "43114-0xc0485c4bafb594ae1457820fb6e5b67e8a04bcfd"
+      },
+      "vault_id": "43114-0xc0485c4bafb594ae1457820fb6e5b67e8a04bcfd"
+    },
+    {
+      "attempt": {
+        "attempt_id": "23092ecc8fd24f05a99779ab0369d930",
+        "detail": "40acres vault lacks immediate underlying liquidity for redemption",
+        "error": {
+          "call_context": [],
+          "captured_at": "2026-07-31T16:51:15.332198",
+          "chain_blocks": {
+            "1": {
+              "block_number": 25598894
+            },
+            "143": {
+              "block_number": 91967894
+            },
+            "42161": {
+              "block_number": 487039655
+            },
+            "43114": {
+              "block_number": 91076612
+            },
+            "8453": {
+              "block_number": 49363618
+            }
+          },
+          "exception": {
+            "arguments": [
+              "40acres vault lacks immediate underlying liquidity for redemption"
+            ],
+            "message": "40acres vault lacks immediate underlying liquidity for redemption (protocol=40acres, vault=0x124D00b1ce4453Ffc5a5F65cE83aF13A7709baC7, caller=0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629, direction=redeem, phase=preflight, decoded_error=ERC20: transfer amount exceeds balance, preflight_result=redemption_capacity_limited, requested_raw_amount=917926954, available_raw_amount=917740578)",
+            "type": "eth_defi.vault.deposit_redeem.VaultFlowUnavailable"
+          },
+          "exception_chain": [
+            {
+              "arguments": [
+                "40acres vault lacks immediate underlying liquidity for redemption"
+              ],
+              "message": "40acres vault lacks immediate underlying liquidity for redemption (protocol=40acres, vault=0x124D00b1ce4453Ffc5a5F65cE83aF13A7709baC7, caller=0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629, direction=redeem, phase=preflight, decoded_error=ERC20: transfer amount exceeds balance, preflight_result=redemption_capacity_limited, requested_raw_amount=917926954, available_raw_amount=917740578)",
+              "type": "eth_defi.vault.deposit_redeem.VaultFlowUnavailable"
+            },
+            {
+              "arguments": [
+                "FortyAcresDepositManager has no Anvil redemption-liquidity driver"
+              ],
+              "message": "FortyAcresDepositManager has no Anvil redemption-liquidity driver",
+              "type": "eth_defi.vault.deposit_redeem.UnsupportedVaultSimulation"
+            }
+          ],
+          "phase": "execute",
+          "traceback": "Traceback (most recent call last):\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/ethereum/vault/vault_routing.py\", line 476, in deposit_or_redeem\n    intervention = deposit_manager.force_redemption_liquidity(\n        address,\n        raw_shares,\n        error,\n    )\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/deps/web3-ethereum-defi/eth_defi/vault/deposit_redeem.py\", line 1292, in force_redemption_liquidity\n    raise UnsupportedVaultSimulation(\n    ...<5 lines>...\n    )\neth_defi.vault.deposit_redeem.UnsupportedVaultSimulation: FortyAcresDepositManager has no Anvil redemption-liquidity driver\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/cli/vault_trade/runner.py\", line 1051, in _run_vault\n    stop_batch = self._process_attempt(attempt, alarm)\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/cli/vault_trade/runner.py\", line 1422, in _process_attempt\n    self._execute_simulated(\n    ~~~~~~~~~~~~~~~~~~~~~~~^\n        attempt,\n        ^^^^^^^^\n    ...<3 lines>...\n        simulated_success=simulated_success,\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/cli/vault_trade/runner.py\", line 1673, in _execute_simulated\n    perform_test_trade(\n    ~~~~~~~~~~~~~~~~~~^\n        web3=self.runtime.web3config.get_default(),\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<21 lines>...\n        update_statistics_after_trade=False,\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/cli/testtrade.py\", line 1216, in make_test_trade\n    return _make_cross_chain_test_trade(\n        web3=web3,\n    ...<23 lines>...\n        sync_state_callback=sync_state_callback,\n    )\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/cli/testtrade.py\", line 669, in _make_cross_chain_test_trade\n    execution_model.execute_trades(ts, state, close_trades, routing_model, routing_state)\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/ethereum/lagoon/execution.py\", line 92, in execute_trades\n    return super().execute_trades(\n           ~~~~~~~~~~~~~~~~~~~~~~^\n        ts=ts,\n        ^^^^^^\n    ...<6 lines>...\n        triggered=triggered,\n        ^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/ethereum/execution.py\", line 844, in execute_trades\n    routing_model.setup_trades(\n    ~~~~~~~~~~~~~~~~~~~~~~~~~~^\n        state=state,\n        ^^^^^^^^^^^^\n    ...<3 lines>...\n        rebroadcast=rebroadcast,\n        ^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/strategy/generic/generic_router.py\", line 219, in setup_trades\n    router.setup_trades(\n    ~~~~~~~~~~~~~~~~~~~^\n        state=state,\n        ^^^^^^^^^^^^\n    ...<3 lines>...\n        rebroadcast=rebroadcast,\n        ^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/ethereum/vault/vault_routing.py\", line 598, in setup_trades\n    trade.blockchain_transactions = self.deposit_or_redeem(state, routing_state, trade)\n                                    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/ethereum/vault/vault_routing.py\", line 482, in deposit_or_redeem\n    raise error\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/tradeexecutor/ethereum/vault/vault_routing.py\", line 467, in deposit_or_redeem\n    request = deposit_manager.create_redemption_request(\n        owner=address,\n        shares=swap_amount,\n    )\n  File \"/home/mikko/code/trade-executor-vault-whitelist-follow-up/deps/web3-ethereum-defi/eth_defi/erc_4626/vault_protocol/forty_acres/deposit_redeem.py\", line 146, in create_redemption_request\n    raise VaultFlowUnavailable(\n    ...<10 lines>...\n    )\neth_defi.vault.deposit_redeem.VaultFlowUnavailable: 40acres vault lacks immediate underlying liquidity for redemption (protocol=40acres, vault=0x124D00b1ce4453Ffc5a5F65cE83aF13A7709baC7, caller=0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629, direction=redeem, phase=preflight, decoded_error=ERC20: transfer amount exceeds balance, preflight_result=redemption_capacity_limited, requested_raw_amount=917926954, available_raw_amount=917740578)\n",
+          "transactions": [
+            {
+              "block_hash": "e20dcf47c3f6846b5b91b1407ef83c574d274aec3bb57b9c5ee271787a2a6edd",
+              "block_number": 25598889,
+              "chain_id": 1,
+              "contract_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+              "function_selector": "performCall",
+              "nonce": 7530,
+              "position_id": 21,
+              "revert_reason": null,
+              "stack_trace": null,
+              "status": true,
+              "trade_id": 16,
+              "tx_hash": "0x3a11972af14b83044fc2dcd535f67523eee63eafab475e9231429b693ced9880",
+              "wrapped_function_selector": "approve",
+              "wrapped_target": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+            },
+            {
+              "block_hash": "5d8a0dd98543412eb001b07ee385bec41d256dad622e138afcfaaf9c26d132da",
+              "block_number": 25598891,
+              "chain_id": 1,
+              "contract_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+              "function_selector": "performCall",
+              "nonce": 7531,
+              "position_id": 21,
+              "revert_reason": null,
+              "stack_trace": null,
+              "status": true,
+              "trade_id": 16,
+              "tx_hash": "0x4b2bbd720be090997b371ae98a817d6c64d7388ecc103a90f5edc04462cd31a3",
+              "wrapped_function_selector": "depositForBurn",
+              "wrapped_target": "0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d"
+            },
+            {
+              "block_hash": "0d9ed2fcb94739ff5a4c51ae669d174d7a11b3531fb835ed5980083664e65ddc",
+              "block_number": 91076606,
+              "chain_id": 43114,
+              "contract_address": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "function_selector": "performCall",
+              "nonce": 1598,
+              "position_id": 22,
+              "revert_reason": null,
+              "stack_trace": null,
+              "status": true,
+              "trade_id": 17,
+              "tx_hash": "0xbe8af3cb09ce5eaace515920b25edc3bdb6f1d27b174175997b9e2bc25ed220a",
+              "wrapped_function_selector": "approve",
+              "wrapped_target": "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E"
+            },
+            {
+              "block_hash": "500d1b305205da38a33b2e55a8987a608d4de3ae878aa69df3175991a7a37666",
+              "block_number": 91076608,
+              "chain_id": 43114,
+              "contract_address": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "function_selector": "performCall",
+              "nonce": 1599,
+              "position_id": 22,
+              "revert_reason": null,
+              "stack_trace": null,
+              "status": true,
+              "trade_id": 17,
+              "tx_hash": "0x2b4c495d428173e0c8106699326c32fdf510bcdc867b3871a64da6842bbbfa92",
+              "wrapped_function_selector": "deposit",
+              "wrapped_target": "0x124D00b1ce4453Ffc5a5F65cE83aF13A7709baC7"
+            }
+          ]
+        },
+        "operation": "redeem",
+        "outcome_data": {
+          "available_raw_amount": "917740578",
+          "decoded_error": "ERC20: transfer amount exceeds balance",
+          "direction": "redeem",
+          "phase": "preflight",
+          "preflight_result": "redemption_capacity_limited",
+          "protocol": "40acres",
+          "requested_raw_amount": "917926954"
+        },
+        "phase": "execute",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "redemption_capacity_limited",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "43114-0x124d00b1ce4453ffc5a5f65ce83af13a7709bac7"
+      },
+      "position_id": 22,
+      "row": {
+        "attempt": "23092ecc8fd24f05a99779ab0369d930",
+        "chain": "Avalanche C-chain",
+        "detail": "40acres vault lacks immediate underlying liquidity for redemption",
+        "mode": "simulated",
+        "operation": "redeem",
+        "phase": "execute",
+        "position": 22,
+        "protocol": "40acres",
+        "result": "redemption_capacity_limited",
+        "status": "redemption capacity limited",
+        "vault": "Pharaoh USDC",
+        "vault id": "43114-0x124d00b1ce4453ffc5a5f65ce83af13a7709bac7"
+      },
+      "vault_id": "43114-0x124d00b1ce4453ffc5a5f65ce83af13a7709bac7"
+    },
+    {
+      "attempt": {
+        "attempt_id": "6bda0ed091064609a14a80febb9057e0",
+        "operation": "deposit",
+        "phase": "complete",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "1-0xba8704c18b55f60f5d84b53c3f39a0189a0965b3"
+      },
+      "position_id": 23,
+      "row": {
+        "attempt": "6bda0ed091064609a14a80febb9057e0",
+        "chain": "Ethereum",
+        "detail": null,
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "complete",
+        "position": 23,
+        "protocol": "Yearn",
+        "result": null,
+        "status": "success (simulated)",
+        "vault": "Morpho Hyperithm USDC Strategy",
+        "vault id": "1-0xba8704c18b55f60f5d84b53c3f39a0189a0965b3"
+      },
+      "vault_id": "1-0xba8704c18b55f60f5d84b53c3f39a0189a0965b3"
+    },
+    {
+      "attempt": {
+        "attempt_id": "d63b7295216a444490223b196a631559",
+        "created_at": "2026-07-31T16:51:29.428385",
+        "detail": "Accountable deposit exceeds current admission capacity",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": "0",
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0x7Cd231120a60F500887444a9bAF5e1BD753A5e59"
+              }
+            ],
+            "closure_reason": "Accountable deposit exceeds current admission capacity",
+            "guard_address": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0x7Cd231120a60F500887444a9bAF5e1BD753A5e59"
+          },
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "Accountable",
+          "requested_raw_amount": "1001000000"
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "143-0x7cd231120a60f500887444a9baf5e1bd753a5e59"
+      },
+      "position_id": 24,
+      "row": {
+        "attempt": "d63b7295216a444490223b196a631559",
+        "chain": "Monad",
+        "detail": "Accountable deposit exceeds current admission capacity",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 24,
+        "protocol": "Accountable",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "Hyperithm Delta Neutral Vault",
+        "vault id": "143-0x7cd231120a60f500887444a9baf5e1bd753a5e59"
+      },
+      "vault_id": "143-0x7cd231120a60f500887444a9baf5e1bd753a5e59"
+    },
+    {
+      "attempt": {
+        "attempt_id": "db42441424c34d65be0fdfa20381e5b3",
+        "created_at": "2026-07-31T16:51:30.142430",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": "0",
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0x7130570BCEfCedBe9d15B5b11A33006156460f8f"
+              }
+            ],
+            "closure_reason": "Max deposit cap reached (maxDeposit=0)",
+            "guard_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0x7130570BCEfCedBe9d15B5b11A33006156460f8f"
+          },
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "Yearn",
+          "requested_raw_amount": "1001000000"
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "1-0x7130570bcefcedbe9d15b5b11a33006156460f8f"
+      },
+      "position_id": 25,
+      "row": {
+        "attempt": "db42441424c34d65be0fdfa20381e5b3",
+        "chain": "Ethereum",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 25,
+        "protocol": "Yearn",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "USDC To SKY USDS Depositor",
+        "vault id": "1-0x7130570bcefcedbe9d15b5b11a33006156460f8f"
+      },
+      "vault_id": "1-0x7130570bcefcedbe9d15b5b11a33006156460f8f"
+    },
+    {
+      "attempt": {
+        "attempt_id": "4961ddb566034843ac11b76fb0e60055",
+        "created_at": "2026-07-31T16:51:30.860638",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "operation": "deposit",
+        "outcome_data": {
+          "available_raw_amount": "0",
+          "decoded_error": null,
+          "deposit_executed": false,
+          "direction": "deposit",
+          "guard_validation": {
+            "asset_manager": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+            "calls": [
+              {
+                "calldata": "0x6e553f65000000000000000000000000000000000000000000000000000000003baa0c40000000000000000000000000a2b04c6a053ab2efbc699f5dd0f0957742a41629",
+                "selector": "6e553f65",
+                "target": "0x3D2467Cbf82332dbFb38997cBc4D2192694D9490"
+              }
+            ],
+            "closure_reason": "Max deposit cap reached (maxDeposit=0)",
+            "guard_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "mode": "closed_deposit_guard_v0",
+            "owner": "0xa2b04c6a053AB2EFBC699f5DD0F0957742A41629",
+            "preflight_result": "deposit_closed",
+            "raw_amount": "1001000000",
+            "vault_address": "0x3D2467Cbf82332dbFb38997cBc4D2192694D9490"
+          },
+          "phase": "preflight",
+          "preflight_result": "deposit_closed",
+          "protocol": "Yearn",
+          "requested_raw_amount": "1001000000"
+        },
+        "phase": "created",
+        "provenance": {
+          "amount": "1001.0",
+          "anvil_generation": 1,
+          "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+          "execution_mode": "auto_simulated",
+          "fork_blocks": {
+            "1": 25598869,
+            "143": 91967883,
+            "42161": 487039644,
+            "43114": 91076594,
+            "8453": 49363607
+          },
+          "initial_chain_blocks": {
+            "1": 25598887,
+            "143": 91967894,
+            "42161": 487039655,
+            "43114": 91076605,
+            "8453": 49363618
+          },
+          "lagoon_deployment": {
+            "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+            "primary_chain_id": 1,
+            "satellite_modules": {
+              "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+              "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+              "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+              "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+            },
+            "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+          },
+          "max_slippage": 0.005,
+          "run_started_at": "2026-07-31T16:49:56.135351",
+          "schema_version": 2,
+          "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+        },
+        "result": "success-deposit-closed",
+        "schema_version": 2,
+        "simulated": true,
+        "vault_id": "1-0x3d2467cbf82332dbfb38997cbc4d2192694d9490"
+      },
+      "position_id": 26,
+      "row": {
+        "attempt": "4961ddb566034843ac11b76fb0e60055",
+        "chain": "Ethereum",
+        "detail": "Max deposit cap reached (maxDeposit=0)",
+        "mode": "simulated",
+        "operation": "deposit",
+        "phase": "created",
+        "position": 26,
+        "protocol": "Yearn",
+        "result": "success-deposit-closed",
+        "status": "success-deposit-closed",
+        "vault": "Morpho V2 Sentora PYUSD Convertor",
+        "vault id": "1-0x3d2467cbf82332dbfb38997cbc4d2192694d9490"
+      },
+      "vault_id": "1-0x3d2467cbf82332dbfb38997cbc4d2192694d9490"
+    }
+  ],
+  "run": {
+    "amount": "1001.0",
+    "anvil_generation": 1,
+    "eth_defi_commit": "9a50a0dcaa6e6b2f4f6cd0f4300df0cb695777ae",
+    "execution_mode": "auto_simulated",
+    "fork_blocks": {
+      "1": 25598869,
+      "143": 91967883,
+      "42161": 487039644,
+      "43114": 91076594,
+      "8453": 49363607
+    },
+    "initial_chain_blocks": {
+      "1": 25598887,
+      "143": 91967894,
+      "42161": 487039655,
+      "43114": 91076605,
+      "8453": 49363618
+    },
+    "lagoon_deployment": {
+      "module_address": "0x7412146614E0A583849378d7D9B08476aFb4Aa8B",
+      "primary_chain_id": 1,
+      "satellite_modules": {
+        "143": "0x084815D1330eCC3eF94193a19Ec222C0C73dFf2d",
+        "42161": "0x2306215D972eD39683e47C539644DA0a66059175",
+        "43114": "0x867e1Ccb964654A1074627b0C6557b0ccEb869C4",
+        "8453": "0xA86BB211B2D828DbD410F4Ea595113824942c84f"
+      },
+      "vault_address": "0x88398678d1F10f9474F4F7BC58175f2d754a6bC9"
+    },
+    "max_slippage": 0.005,
+    "run_started_at": "2026-07-31T16:49:56.135351",
+    "schema_version": 2,
+    "trade_executor_commit": "51d8395f85653a68a989c608f6124a0583f0de6f"
+  },
+  "schema_version": 2
+}

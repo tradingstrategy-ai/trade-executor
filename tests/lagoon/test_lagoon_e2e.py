@@ -902,6 +902,13 @@ def test_cli_vault_test_trade_simulated_deploys_lagoon_on_fork(
     # 2. Invoke vault-test-trade --auto-simulated for a synchronous vault.
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
+    # This test covers ephemeral Lagoon deployment, not scanner metadata drift.
+    # Ignore the independently tested stale-JSON diagnostic until production
+    # Morpho metadata is regenerated as permissionless.
+    mocker.patch(
+        "tradeexecutor.cli.vault_trade.runner.get_incorrect_whitelisting_detail",
+        return_value=None,
+    )
     cli.main(
         args=[
             "vault-test-trade",
