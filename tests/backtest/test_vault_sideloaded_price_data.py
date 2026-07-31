@@ -158,7 +158,6 @@ def test_visualise_vault_analysis_chart(
 
 
 @pytest.mark.skipif(not JSON_RPC_BASE, reason="Skip if JSON_RPC_BASE is not set")
-@pytest.mark.slow_test_group
 def test_reverse_translate_vault(
     web3,
     strategy_universe,

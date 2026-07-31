@@ -104,7 +104,6 @@ def deployer() -> Account:
 
 
 @pytest.mark.timeout(600)
-@pytest.mark.slow_test_group
 def test_cli_lagoon_deploy_multichain_vault(
     web3_arbitrum,
     web3_base,
@@ -232,7 +231,6 @@ def test_cli_lagoon_deploy_multichain_vault(
 
 
 @pytest.mark.timeout(600)
-@pytest.mark.slow_test_group
 def test_cli_lagoon_deploy_multichain_simulate(
     strategy_file,
     mocker,
