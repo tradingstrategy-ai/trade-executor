@@ -1758,14 +1758,22 @@ def test_simulated_closed_deposit_defers_typed_minimum_until_after_funding() -> 
     refusal = VaultFlowUnavailable(
         "Public USDC eligibility minimum not met",
         protocol="D2 Finance",
+        asset_address="0x0000000000000000000000000000000000000002",
         direction="deposit",
         phase="preflight",
+        decoded_error="InsufficientEligibilityBalance",
         preflight_result="below_minimum",
+        available_raw_amount=0,
+        minimum_raw_amount=1_000_001,
     )
     manager = MagicMock()
-    manager.create_deposit_request.side_effect = refusal
+    manager.create_deposit_request.side_effect = [refusal, MagicMock()]
+    denomination_token = MagicMock(
+        address="0x0000000000000000000000000000000000000002",
+        convert_to_raw=MagicMock(return_value=1_001_000_000),
+    )
     executable_vault = MagicMock(
-        denomination_token=MagicMock(convert_to_raw=MagicMock(return_value=1_001_000_000)),
+        denomination_token=denomination_token,
     )
     executable_vault.get_deposit_manager.return_value = manager
     route = MagicMock()
@@ -1778,16 +1786,27 @@ def test_simulated_closed_deposit_defers_typed_minimum_until_after_funding() -> 
         spec=SimpleNamespace(chain_id=ChainId.ethereum.value),
         executable_vault=executable_vault,
     )
+    runtime = MagicMock()
+    chain_web3 = MagicMock()
+    runtime.web3config.get_connection.return_value = chain_web3
 
     # 2. Run the early closed-deposit probe with the production 1,001 USDC amount.
-    result = validate_simulated_closed_deposit(
-        attempt,
-        MagicMock(),
-        Decimal("1001"),
-    )
+    with patch.object(runner_module, "fund_erc20_on_anvil") as fund_eligibility:
+        result = validate_simulated_closed_deposit(
+            attempt,
+            runtime,
+            Decimal("1001"),
+        )
 
     # 3. Verify the probe defers classification to the normal funded lifecycle.
     assert result is None
+    fund_eligibility.assert_called_once_with(
+        chain_web3,
+        refusal.asset_address,
+        route.get_owner_address.return_value,
+        1_001_000_000,
+    )
+    assert manager.create_deposit_request.call_count == 2
     manager.create_deposit_request_for_guard_validation.assert_not_called()
 
 

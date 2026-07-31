@@ -18,6 +18,7 @@ from typing import Any
 
 from eth_typing import HexAddress
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.provider.anvil import fund_erc20_on_anvil
 from eth_defi.vault.base import VaultSpec
 from eth_defi.vault.deposit_redeem import (
     UnsupportedVaultSimulation,
@@ -480,6 +481,39 @@ def get_deposit_closed_detail(attempt: "VaultAttempt") -> str | None:
         return None
 
 
+def fund_simulated_public_eligibility(
+    attempt: "VaultAttempt",
+    runtime: VaultTestRuntime,
+    owner: HexAddress,
+    raw_amount: int,
+    error: VaultFlowUnavailable,
+) -> bool:
+    """Fund a public D2 balance predicate before its simulated deposit probe."""
+    if (
+        error.protocol != "D2 Finance"
+        or error.decoded_error != "InsufficientEligibilityBalance"
+        or error.asset_address is None
+        or error.minimum_raw_amount is None
+    ):
+        return False
+
+    denomination_token = attempt.executable_vault.denomination_token
+    funding_raw = error.minimum_raw_amount
+    if error.asset_address.lower() == denomination_token.address.lower():
+        # HYPE++ uses its USDC deposit token as a public economic eligibility
+        # predicate. Fund the advertised 1,001 USDC experiment amount before
+        # probing it; this is test-wallet setup, not KYC allow-list mutation.
+        funding_raw = max(funding_raw, raw_amount)
+    chain_web3 = runtime.web3config.get_connection(ChainId(attempt.spec.chain_id))
+    fund_erc20_on_anvil(
+        chain_web3,
+        error.asset_address,
+        owner,
+        funding_raw,
+    )
+    return True
+
+
 def validate_simulated_closed_deposit(
     attempt: "VaultAttempt",
     runtime: VaultTestRuntime,
@@ -526,6 +560,24 @@ def validate_simulated_closed_deposit(
             **deposit_kwargs,
         )
     except VaultFlowUnavailable as error:
+        if fund_simulated_public_eligibility(
+            attempt,
+            runtime,
+            owner,
+            raw_amount,
+            error,
+        ):
+            try:
+                manager.create_deposit_request(
+                    owner=owner,
+                    raw_amount=raw_amount,
+                    check_enough_token=is_primary_chain,
+                    **deposit_kwargs,
+                )
+            except VaultFlowUnavailable as funded_error:
+                error = funded_error
+            else:
+                return None
         if error.direction != "deposit":
             raise
         if error.preflight_result not in {"deposit_closed", "deposit_paused"}:
@@ -556,10 +608,24 @@ def validate_simulated_closed_deposit(
             f"{execution_vault.safe_address} on chain {attempt.spec.chain_id}"
         )
 
-    validation_request = manager.create_deposit_request_for_guard_validation(
-        owner,
-        raw_amount,
-    )
+    try:
+        validation_request = manager.create_deposit_request_for_guard_validation(
+            owner,
+            raw_amount,
+        )
+    except VaultFlowUnavailable as error:
+        if not fund_simulated_public_eligibility(
+            attempt,
+            runtime,
+            owner,
+            raw_amount,
+            error,
+        ):
+            raise
+        validation_request = manager.create_deposit_request_for_guard_validation(
+            owner,
+            raw_amount,
+        )
     guard = execution_vault.trading_strategy_module
     asset_manager = execution_model.tx_builder.get_gas_wallet_address()
     evidence = validate_closed_deposit_request_with_guard(
