@@ -201,6 +201,8 @@ filterwarnings = [
   "ignore::DeprecationWarning:eth_abi.*:",
   "ignore::DeprecationWarning:eth_tester.*:",
   "ignore::DeprecationWarning:pandas.*:",
+  # NumPy warns repeatedly when Pandas operates on legacy generic timedeltas.
+  "ignore:The 'generic' unit for NumPy timedelta is deprecated:DeprecationWarning",
   "ignore::DeprecationWarning:quantstats.*:",
   "ignore::DeprecationWarning:pkg_resources.*:",
   "ignore:websockets\\.legacy is deprecated.*:DeprecationWarning",

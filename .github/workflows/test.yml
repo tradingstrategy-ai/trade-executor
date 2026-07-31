@@ -102,7 +102,7 @@ jobs:
         run: |
             poetry run pytest --tb=native --dist loadscope -n 5 --durations=10 -m "not slow_test_group and not warm_rpc_test_group and not warm_rpc_high_value_group" --timeout=390
             poetry run pytest --tb=native --dist loadgroup -n 5 --durations=20 -m "not slow_test_group and warm_rpc_test_group" --timeout=390
-            poetry run pytest --tb=native --dist loadgroup -n 5 --durations=20 -m "not slow_test_group and warm_rpc_high_value_group" --timeout=390
+            poetry run pytest --tb=native --dist loadgroup -n 6 --durations=20 -m "not slow_test_group and warm_rpc_high_value_group" --timeout=390
         env:
           TRADING_STRATEGY_API_KEY: ${{ secrets.TRADING_STRATEGY_API_KEY }}
           JSON_RPC_BINANCE: ${{ secrets.JSON_RPC_BINANCE }}
