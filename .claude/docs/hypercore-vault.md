@@ -92,12 +92,38 @@ the contract between `setup_trades()` and `settle_trade()`:
 | `hypercore_phase1_spot_baseline_usdc` | setup, before deposit phase 1 | Spot balance baseline so the escrow increase can be measured. |
 | `hypercore_phase1_perp_baseline_usdc` | setup, before withdrawal phase 1 | Perp withdrawable baseline; captured *before* broadcast because `vaultTransfer` can settle before receipt handling. |
 | `hypercore_phase1_vault_equity_usdc` | setup / preflight | Pre-withdrawal vault equity, the "before" value for detecting whether a withdrawal already reduced equity. |
-| `hypercore_activation_cost_raw` | setup, first buy | USDC consumed activating the Safe on HyperCore (deducted once per cycle). |
+| `hypercore_activation_cost_raw` | setup, first buy | The 2 USDC activation provision deducted from the first deposit allocation. It is not the measured fee. |
 | `hypercore_deposit_capital_at_risk` | during phase-1 preparation, persisted immediately before broadcast | Conservative checkpoint for USDC a node may already have accepted from the Safe. It blocks generic failed-buy refunds after a crash or indeterminate broadcast until live reconciliation. |
 | `hypercore_capped_deposit_raw` | deposit preflight | Deposit capped to actual Safe EVM USDC balance. |
 | `hypercore_capped_withdrawal_raw` | withdrawal preflight / retry | Withdrawal capped to live vault equity minus safety margin. |
 | `hypercore_stranded_usdc` | on failure | Records USDC stranded mid-pipeline (perp/spot) for operator recovery and retains its reserve allocation. |
 | `hypercore_failure_diagnosis` | on failure | Full diagnostic snapshot string. |
+
+### Persisted cost measurements
+
+Successful live settlement stores cost measurements directly on
+`TradeExecution`:
+
+| Field | Meaning |
+|---|---|
+| `cost_of_gas` | Confirmed HyperEVM transaction gas in HYPE. |
+| `native_token_price` | Settlement-time HYPE/USD price used for gas valuation. |
+| `bridge_input_amount` / `bridge_output_amount` | Principal observed on the two sides of the bridge leg. |
+| `bridge_fee_amount` / `bridge_fee_asset` / `bridge_fee_usd` | Measured protocol bridge fee and its USD value. |
+| `account_activation_fee_usd` | Activation provision minus the USDC observed in HyperCore spot. |
+| `hypercore_close_value_loss_usd` | Signed vault-equity decrease less the USDC received and phase-3 headroom retained in spot for a full close. |
+| `hypercore_close_other_loss_usd` | Full-close loss with any included USDC bridge fee removed. |
+| `hypercore_close_residual_value_usd` | Vault equity remaining after a full close. |
+| `hypercore_cost_data_complete` | Whether all applicable measurements were captured. |
+
+HyperEVM-to-HyperCore deposits have no protocol bridge fee and record an
+explicit zero after successful verification. Their observed spot increase is
+kept as telemetry, not used as a fee: the escrow wait is tolerant and existing
+vault holdings can also change NAV during settlement.
+
+The account-activation helper does not yet return its two transaction receipts,
+so activation gas cannot be attached to the first trade. Such trades remain
+explicitly incomplete even when their USDC activation fee is measured.
 
 ## How execution is wired
 
@@ -392,8 +418,16 @@ Safe's `TradingStrategyModuleV0`:
   mempool instead of ~1 s.
 - **Multi-node broadcast.** Settlement transactions broadcast through
   `wait_and_broadcast_multiple_nodes` for reliability on HyperEVM.
-- **Bridge fee.** Core→HyperEVM `sendAsset` is not fee-free; phase 3 reserves
-  headroom so the bridged amount does not exceed available spot.
+- **Bridge fee.** Core→HyperEVM `sendAsset` is not fee-free. Settlement measures
+  a protocol-sized HYPE spot debit, or the USDC debit beyond principal when
+  HYPE is unavailable. Larger, ambiguous balance changes remain unknown. The
+  0.01 USDC phase-3 headroom is residual spot capital, not a fee. Protocol fee
+  mechanics and source links are documented in
+  `eth_defi.hyperliquid.constants.HYPERCORE_BRIDGE_FEE_MARGIN`.
+- **Cost report.** `show-hypercore-rebalance-costs` groups normal successful
+  trades by decision-cycle timestamp. Repaired, repair, test, unsuccessful and
+  transactionless trades are excluded. Historic receipt gas is shown as a
+  lower bound; missing bridge and close measurements remain `N/A`.
 
 ## Top-level modules and functions
 

@@ -17,6 +17,7 @@ from eth_defi.hyperliquid.api import UserVaultEquity
 
 from tradeexecutor.ethereum.vault.hypercore_routing import (
     HypercoreWithdrawalPreflightError,
+    calculate_hypercore_bridge_fee,
     compute_spot_to_evm_withdrawal_amount,
     usdc_to_raw,
 )
@@ -51,6 +52,11 @@ def _make_trade(planned_reserve=Decimal("100.0"), is_buy=True):
     trade.flags = set()
     trade.blockchain_transactions = []
     trade.other_data = {}
+    trade.bridge_fee_asset = None
+    trade.bridge_fee_amount = None
+    trade.bridge_fee_usd = None
+    trade.account_activation_fee_usd = None
+    trade.hypercore_cost_data_complete = False
     trade.slippage_tolerance = None
     trade.pair = MagicMock()
     trade.pair.pool_address = "0xVAULT"
@@ -65,12 +71,41 @@ def _make_routing_state():
     return rs
 
 
+def test_calculate_hypercore_bridge_fee():
+    """Identify protocol-sized HYPE and USDC fees without attributing unrelated movement.
+
+    1. Measure a small HYPE balance decrease as the bridge fee.
+    2. Fall back to the USDC debit beyond principal when HYPE is unchanged.
+    3. Reject a large HYPE balance movement as ambiguous account activity.
+    """
+    # 1. Measure a small HYPE balance decrease as the bridge fee.
+    assert calculate_hypercore_bridge_fee(
+        {"HYPE": Decimal("1"), "USDC": Decimal("10.01")},
+        {"HYPE": Decimal("0.9999"), "USDC": Decimal("0.01")},
+        Decimal("10"),
+    ) == (Decimal("0.0001"), "HYPE")
+
+    # 2. Fall back to the USDC debit beyond principal when HYPE is unchanged.
+    assert calculate_hypercore_bridge_fee(
+        {"HYPE": Decimal("0"), "USDC": Decimal("10.01")},
+        {"HYPE": Decimal("0"), "USDC": Decimal("0.009")},
+        Decimal("10"),
+    ) == (Decimal("0.001"), "USDC")
+
+    # 3. Reject a large HYPE balance movement as ambiguous account activity.
+    assert calculate_hypercore_bridge_fee(
+        {"HYPE": Decimal("1"), "USDC": Decimal("10.01")},
+        {"HYPE": Decimal("0.5"), "USDC": Decimal("0.01")},
+        Decimal("10"),
+    ) is None
+
+
 def test_activation_cost_only_deducted_from_first_buy():
     """Two buy trades in the same cycle: only the first bears activation cost.
 
     1. Create two buy trades in the same cycle.
-    2. Mock activation, pre-phase-1 spot baseline reads, and transaction creation.
-    3. Verify only the first trade bears the activation cost while both trades persist a spot baseline.
+    2. Mock activation, its spot-balance fee measurement, and transaction creation.
+    3. Verify only the first trade bears the measured fee while both trades persist a spot baseline.
     """
     routing = _make_routing(simulate=False)
     state = MagicMock()
@@ -84,10 +119,14 @@ def test_activation_cost_only_deducted_from_first_buy():
         return [MagicMock()]
 
     # 1. Create two buy trades in the same cycle.
-    # 2. Mock activation, pre-phase-1 spot baseline reads, and transaction creation.
-    # 3. Verify only the first trade carries the activation cost while both trades persist a spot baseline.
+    # 2. Mock activation, its spot-balance fee measurement, and transaction creation.
+    # 3. Verify only the first trade carries the measured fee while both trades persist a spot baseline.
     with patch.object(routing, "_create_deposit_or_withdraw_txs", side_effect=capture_cost):
-        with patch.object(routing, "_fetch_safe_spot_free_usdc_balance", side_effect=[Decimal("0"), Decimal("0")]):
+        with patch.object(
+            routing,
+            "_fetch_safe_spot_free_usdc_balance",
+            side_effect=[Decimal("0"), Decimal("1"), Decimal("1"), Decimal("1")],
+        ):
             with patch("tradeexecutor.ethereum.vault.hypercore_routing.is_account_activated", return_value=False):
                 with patch("tradeexecutor.ethereum.vault.hypercore_routing.activate_account"):
                     with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_abstraction_mode", return_value="standard"):
@@ -100,8 +139,10 @@ def test_activation_cost_only_deducted_from_first_buy():
     # Only the first trade has activation cost persisted
     assert trade1.other_data.get("hypercore_activation_cost_raw") == 2_000_000
     assert "hypercore_activation_cost_raw" not in trade2.other_data
-    assert trade1.other_data.get("hypercore_phase1_spot_baseline_usdc") == "0"
-    assert trade2.other_data.get("hypercore_phase1_spot_baseline_usdc") == "0"
+    assert trade1.account_activation_fee_usd == pytest.approx(1)
+    assert trade2.account_activation_fee_usd is None
+    assert trade1.other_data.get("hypercore_phase1_spot_baseline_usdc") == "1"
+    assert trade2.other_data.get("hypercore_phase1_spot_baseline_usdc") == "1"
 
 
 def test_activation_cost_not_applied_to_sell():
