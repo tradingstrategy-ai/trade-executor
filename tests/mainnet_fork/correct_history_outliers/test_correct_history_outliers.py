@@ -14,7 +14,11 @@ from unittest import mock
 import pytest
 
 from tradeexecutor.cli.main import app
-from tradeexecutor.state.correct_history import detect_nav_sync_outliers, detect_share_price_outliers
+from tradeexecutor.state.correct_history import (
+    detect_duplicate_portfolio_stat_timestamps,
+    detect_nav_sync_outliers,
+    detect_share_price_outliers,
+)
 from tradeexecutor.state.state import State
 from tradeexecutor.state.statistics import PortfolioStatistics
 from tradeexecutor.state.store import JSONFileStore
@@ -277,6 +281,42 @@ def test_share_price_outlier_default_threshold_is_twenty_percent():
 
     # 3. Verify the 25% outlier is detected
     assert outliers == {2}
+
+
+def test_remove_duplicate_timestamp_stats_cli(tmp_path: Path, strategy_file: Path):
+    """Retain the final statistics snapshot when a live refresh records a duplicate timestamp.
+
+    1. Create a portfolio-statistics sequence where an intermediate snapshot and
+       its post-settlement correction share a timestamp.
+    2. Run correct-history with duplicate-timestamp cleanup enabled.
+    3. Verify the intermediate snapshot was removed and the final correction remains.
+    """
+
+    # 1. Create a portfolio-statistics sequence where an intermediate snapshot and
+    # its post-settlement correction share a timestamp.
+    state = _create_state_with_share_prices([1.0, 0.5, 1.0, 1.0])
+    state.stats.portfolio[2].calculated_at = state.stats.portfolio[1].calculated_at
+    assert detect_duplicate_portfolio_stat_timestamps(state) == {1}
+    state_file = tmp_path / "duplicate-timestamp-state.json"
+    state.write_json_file(state_file)
+
+    environment = {
+        "STRATEGY_FILE": strategy_file.as_posix(),
+        "STATE_FILE": state_file.as_posix(),
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+        "REMOVE_DUPLICATE_TIMESTAMP_STATS": "true",
+    }
+
+    # 2. Run correct-history with duplicate-timestamp cleanup enabled.
+    with mock.patch.dict("os.environ", environment, clear=True):
+        app(["correct-history"], standalone_mode=False)
+
+    # 3. Verify the intermediate snapshot was removed and the final correction remains.
+    corrected_state = JSONFileStore(state_file).load()
+    assert len(corrected_state.stats.portfolio) == 3
+    assert [ps.share_price_usd for ps in corrected_state.stats.portfolio] == [1.0, 1.0, 1.0]
+    assert detect_duplicate_portfolio_stat_timestamps(corrected_state) == set()
 
 
 def test_remove_nav_sync_outliers_cli_flag(tmp_path: Path, strategy_file: Path):
