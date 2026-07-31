@@ -20,6 +20,7 @@ from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse, ExchangeType
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.generic.pair_configurator import PairConfigurator, ProtocolRoutingId, ProtocolRoutingConfig
 from tradeexecutor.strategy.generic.default_protocols import default_match_router, default_supported_routers
@@ -415,7 +416,7 @@ def create_vault_adapter(
     routing_id: ProtocolRoutingId,
     web3config=None,
     execution_model=None,
-    deposit_asset_override=None,
+    deposit_asset_override: JSONHexAddress | None = None,
     simulate_redemption_with_liquidity: bool = False,
 ) -> ProtocolRoutingConfig:
 

@@ -37,9 +37,9 @@ this amendment.
 | Raw transaction/execution/receipt failures | 1 | 2 | -1 |
 
 The intermediate `deposit_permission_unknown` result was deliberate fail-closed
-reporting. The follow-up establishes public defaults for adapters whose
-contracts expose no account-admission mechanism, while preserving explicit
-contract-backed gates.
+reporting. The follow-up establishes explicit permissionless defaults for the
+supported 40acres, Ember, Plutus, cSigma and Yearn Compounder adapter families,
+while preserving deployment-specific gates that the adapters can inspect.
 
 ## Headline protocol checks
 

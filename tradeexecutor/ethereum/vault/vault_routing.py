@@ -54,10 +54,10 @@ class VaultReceiptAnalysisError(RuntimeError):
 class IncompatibleDepositAsset(Exception):
     """The selected deposit asset is not accepted by a multi-asset vault.
 
-    Multi-asset vaults (e.g. Upshift) whitelist a specific set of input assets
+    Multi-asset vaults (e.g. Upshift) accept a specific set of input assets
     that can differ from the ERC-4626 accounting asset.  This is raised when the
     selected asset (the ``--deposit-asset`` override, or the native USDC default)
-    is not on that whitelist, so the operator sees both the vault's accepted
+    is not in that set, so the operator sees both the vault's accepted
     assets and the asset that was attempted.
     """
 

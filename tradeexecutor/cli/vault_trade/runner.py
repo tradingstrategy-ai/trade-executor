@@ -276,23 +276,12 @@ def get_redemption_unavailable_detail(vault: Any) -> str:
 
 
 def get_redemption_unavailable_outcome(vault: Any) -> tuple[str, str]:
-    """Map a static adapter limitation to a specific redemption result."""
+    """Distinguish an unimplemented adapter flow from generic unavailability."""
     detail = get_redemption_unavailable_detail(vault)
     capability = get_vault_manager_capability(vault)
-    reason = (
-        getattr(capability, "redemption_unsupported_reason", None)
-        if capability is not None
-        else None
-    )
-    reason_lower = (reason or "").lower()
-    if "not_implemented" in reason_lower or "not implemented" in reason_lower:
+    reason = getattr(capability, "redemption_unsupported_reason", None) if capability is not None else None
+    if reason and ("not_implemented" in reason.lower() or "not implemented" in reason.lower()):
         return "redemption_not_implemented", detail
-    if "matur" in reason_lower:
-        return "redemption_not_yet_matured", detail
-    if "liquidity" in reason_lower or "buffer" in reason_lower:
-        return "redemption_liquidity_unavailable", detail
-    if "closed" in reason_lower or "window" in reason_lower:
-        return "redemption_closed", detail
     return "redemption_unavailable", detail
 
 

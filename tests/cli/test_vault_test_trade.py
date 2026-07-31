@@ -2209,15 +2209,13 @@ def test_redemption_unavailable_always_has_a_reason() -> None:
 def test_redemption_unavailable_uses_specific_adapter_reason() -> None:
     """A missing redemption implementation receives a specific result.
 
-    1. Create a capability carrying YieldNest's maturity-aware adapter reason.
+    1. Create a capability carrying an explicit not-implemented reason.
     2. Classify the unavailable redemption through the reporting helper.
     3. Verify it is not collapsed into the generic legacy result.
     """
-    # 1. Create a capability carrying YieldNest's maturity-aware adapter reason.
+    # 1. Create a capability carrying an explicit not-implemented reason.
     capability = SimpleNamespace(
-        redemption_unsupported_reason=(
-            "maturity_aware_redemption_flow_not_implemented"
-        )
+        redemption_unsupported_reason="redemption_flow_not_implemented"
     )
     vault = SimpleNamespace(get_deposit_manager_capability=lambda: capability)
 
@@ -2226,7 +2224,7 @@ def test_redemption_unavailable_uses_specific_adapter_reason() -> None:
 
     # 3. Verify it is not collapsed into the generic legacy result.
     assert result == "redemption_not_implemented"
-    assert "maturity_aware_redemption_flow_not_implemented" in detail
+    assert "redemption_flow_not_implemented" in detail
 
 
 def test_unknown_deposit_hook_fails_closed() -> None:
@@ -2357,18 +2355,18 @@ def test_vault_simulation_options_reach_lazy_configurator() -> None:
     2. Apply an accepted-asset override and Anvil intervention mode.
     3. Verify the lazy configurator retains both defaults for route creation.
     """
-    # 1. Model the state before PairConfigurator.get_config() creates a route.
+    # 1. Create a generic routing shell whose configurator cache is empty.
     configurator = SimpleNamespace(configs={})
     routing_model = SimpleNamespace(pair_configurator=configurator)
 
-    # 2. Apply both vault-test options before any route exists.
+    # 2. Apply an accepted-asset override and Anvil intervention mode.
     apply_vault_simulation_options(
         routing_model,
         deposit_asset="0xdAC17F958D2ee523a2206206994597C13D831ec7",
         simulate_redemption_with_liquidity=True,
     )
 
-    # 3. Lazy create_vault_adapter() will read these configurator defaults.
+    # 3. Verify the lazy configurator retains both defaults for route creation.
     assert configurator.vault_deposit_asset_override == "0xdAC17F958D2ee523a2206206994597C13D831ec7"
     assert configurator.vault_simulate_redemption_with_liquidity is True
 
