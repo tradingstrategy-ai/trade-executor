@@ -105,7 +105,10 @@ from eth_defi.hyperliquid.session import (
     create_hyperliquid_session,
 )
 from eth_defi.hyperliquid.vault import HyperliquidVault, estimate_max_withdrawal_commission
-from eth_defi.hyperliquid.constants import HYPERLIQUID_VAULT_PERFORMANCE_FEE
+from eth_defi.hyperliquid.constants import (
+    HYPERCORE_BRIDGE_FEE_MARGIN,
+    HYPERLIQUID_VAULT_PERFORMANCE_FEE,
+)
 
 from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.state.blockhain_transaction import (
@@ -285,6 +288,14 @@ HYPERCORE_FIXED_MAX_FEE_PER_GAS = 4_000_000_000  # 4 gwei
 #: A small tip helps with inclusion without overpaying.
 HYPERCORE_FIXED_MAX_PRIORITY_FEE_PER_GAS = 100_000_000  # 0.1 gwei
 
+#: Sanity ceiling for attributing a spot HYPE balance change to one bridge.
+#:
+#: The protocol fee is 200k HyperEVM gas and is normally far below this.
+#: A larger change is more likely unrelated account activity and is left
+#: unknown instead of being reported as an exact rebalance cost.
+HYPERCORE_MAX_PLAUSIBLE_BRIDGE_FEE_HYPE = Decimal("0.01")
+
+
 def usdc_to_raw(amount: Decimal) -> int:
     """Convert a human-readable USDC amount to raw 6-decimal integer."""
     return int(amount * 10**USDC_DECIMALS)
@@ -293,6 +304,36 @@ def usdc_to_raw(amount: Decimal) -> int:
 def raw_to_usdc(raw: int) -> Decimal:
     """Convert a raw 6-decimal USDC integer to human-readable Decimal."""
     return Decimal(raw) / Decimal(10**USDC_DECIMALS)
+
+
+def calculate_hypercore_bridge_fee(
+    spot_before: dict[str, Decimal],
+    spot_after: dict[str, Decimal],
+    usdc_principal: Decimal,
+) -> tuple[Decimal, str] | None:
+    """Calculate a plausible observed HyperCore-to-HyperEVM bridge fee.
+
+    HyperCore pays the fee in HYPE when available and otherwise in USDC.
+    Balance changes outside protocol-sized bounds are ambiguous and remain
+    unknown.
+    """
+    hype_decrease = (
+        spot_before.get("HYPE", Decimal(0))
+        - spot_after.get("HYPE", Decimal(0))
+    )
+    if Decimal(0) < hype_decrease <= HYPERCORE_MAX_PLAUSIBLE_BRIDGE_FEE_HYPE:
+        return hype_decrease, "HYPE"
+    if hype_decrease != 0:
+        return None
+
+    usdc_fee = (
+        spot_before.get("USDC", Decimal(0))
+        - spot_after.get("USDC", Decimal(0))
+        - usdc_principal
+    )
+    if Decimal(0) <= usdc_fee <= HYPERCORE_BRIDGE_FEE_MARGIN:
+        return usdc_fee, "USDC"
+    return None
 
 
 class HypercoreWithdrawalVerificationError(Exception):
@@ -994,14 +1035,49 @@ class HypercoreVaultRouting(RoutingModel):
 
     def _fetch_safe_spot_free_usdc_balance(self) -> Decimal:
         """Read the Safe's free HyperCore spot USDC balance."""
+        return self._fetch_safe_spot_free_balances().get("USDC", Decimal(0))
+
+    def _fetch_safe_spot_free_balances(self) -> dict[str, Decimal]:
+        """Read the Safe's free HyperCore spot balances."""
         state = fetch_spot_clearinghouse_state(
             self._get_session(),
             user=self.safe_address,
         )
-        for balance in state.balances:
-            if balance.coin == "USDC":
-                return balance.total - balance.hold
-        return Decimal(0)
+        return {
+            balance.coin: balance.total - balance.hold
+            for balance in state.balances
+        }
+
+    def _fetch_hype_usd_price(self) -> float | None:
+        """Fetch the current HYPE/USD mid price for cost accounting.
+
+        Settlement must not fail merely because the price telemetry endpoint is
+        unavailable, so callers record the native gas amount regardless.
+        """
+        try:
+            response = self._get_session().post_info({"type": "allMids"})
+            price = response.json().get("HYPE")
+            return float(price) if price is not None else None
+        except Exception as e:
+            logger.warning("Could not fetch HYPE/USD price for cost accounting: %s", e)
+            return None
+
+    def _get_trade_gas_cost(self, trade: TradeExecution) -> Decimal | None:
+        """Sum confirmed HyperEVM transaction gas for a fully observed trade."""
+        if not trade.blockchain_transactions:
+            return None
+
+        total_wei = 0
+        for tx in trade.blockchain_transactions:
+            if (
+                type(tx.realised_gas_units_consumed) is not int
+                or type(tx.realised_gas_price) is not int
+                or tx.realised_gas_price <= 0
+            ):
+                return None
+            total_wei += tx.realised_gas_units_consumed * tx.realised_gas_price
+
+        return Decimal(total_wei) / Decimal(10**18)
 
     def _fetch_safe_perp_withdrawable_balance(self) -> Decimal:
         """Read the Safe's HyperCore perp withdrawable USDC balance."""
@@ -2094,6 +2170,7 @@ class HypercoreVaultRouting(RoutingModel):
         self.deployer.sync_nonce(self.web3)
 
         activation_cost_raw = 0
+        activation_fee_usd: float | None = None
 
         if self.simulate:
             logger.info("Simulate mode — skipping activation check")
@@ -2110,6 +2187,11 @@ class HypercoreVaultRouting(RoutingModel):
             if not activated and has_buys:
                 logger.info("Activating Safe %s on HyperCore before deposit...", self.safe_address)
                 session = self._get_session()
+                activation_spot_before: Decimal | None = None
+                try:
+                    activation_spot_before = self._fetch_safe_spot_free_usdc_balance()
+                except Exception as e:
+                    logger.warning("Could not snapshot HyperCore USDC before activation: %s", e)
                 activate_account(
                     web3=self.web3,
                     lagoon_vault=self.lagoon_vault,
@@ -2119,10 +2201,20 @@ class HypercoreVaultRouting(RoutingModel):
                 self.deployer.sync_nonce(self.web3)
                 activated = True
                 activation_cost_raw = DEFAULT_ACTIVATION_AMOUNT
+                try:
+                    activation_spot_after = self._fetch_safe_spot_free_usdc_balance()
+                    if activation_spot_before is not None:
+                        activation_spot_increase = activation_spot_after - activation_spot_before
+                        activation_amount = raw_to_usdc(DEFAULT_ACTIVATION_AMOUNT)
+                        if Decimal(0) < activation_spot_increase <= activation_amount:
+                            activation_fee_usd = float(activation_amount - activation_spot_increase)
+                except Exception as e:
+                    logger.warning("Could not snapshot HyperCore USDC after activation: %s", e)
                 logger.info(
-                    "Safe %s activated on HyperCore (cost %d raw USDC from Safe)",
+                    "Safe %s activated on HyperCore (provision %d raw USDC from Safe, measured fee %s USD)",
                     self.safe_address,
                     activation_cost_raw,
+                    activation_fee_usd,
                 )
 
             if activated:
@@ -2181,6 +2273,9 @@ class HypercoreVaultRouting(RoutingModel):
                 if not hasattr(trade, "other_data") or trade.other_data is None:
                     trade.other_data = {}
                 trade.other_data["hypercore_activation_cost_raw"] = cost_for_this_trade
+                # The activation provision is not automatically its fee: the
+                # portion observed in HyperCore spot remains strategy capital.
+                trade.account_activation_fee_usd = activation_fee_usd
 
     # ------------------------------------------------------------------
     # Settlement helpers
@@ -2517,6 +2612,22 @@ class HypercoreVaultRouting(RoutingModel):
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
 
+        deposit_bridge_output: Decimal | None = None
+        if baseline_spot_usdc is not None:
+            current_spot_usdc = self._fetch_safe_spot_free_usdc_balance()
+            observed_spot_increase = current_spot_usdc - baseline_spot_usdc
+            if Decimal(0) <= observed_spot_increase <= expected_usdc_human:
+                deposit_bridge_output = observed_spot_increase
+            else:
+                logger.warning(
+                    "Cannot reliably measure HyperEVM-to-HyperCore bridge output for trade %s: "
+                    "baseline %s USDC, current %s USDC, expected input %s USDC",
+                    trade.trade_id,
+                    baseline_spot_usdc,
+                    current_spot_usdc,
+                    expected_usdc_human,
+                )
+
         logger.info("Escrow cleared. Building and broadcasting deposit settlement legs...")
 
         # Snapshot existing vault equity before phase 2 so we can detect
@@ -2713,6 +2824,24 @@ class HypercoreVaultRouting(RoutingModel):
 
         price = float(executed_reserve / executed_amount) if executed_amount else 1.0
 
+        # HyperEVM-to-HyperCore deposits have no protocol bridge fee. Keep the
+        # observed spot increase as telemetry, but do not interpret a short
+        # tolerant poll as a fee.
+        trade.bridge_input_amount = actual_deposit_human
+        trade.bridge_output_amount = deposit_bridge_output
+        trade.bridge_fee_amount = Decimal(0)
+        trade.bridge_fee_asset = "USDC"
+        trade.bridge_fee_usd = 0.0
+
+        gas_cost = self._get_trade_gas_cost(trade)
+        hype_usd_price = self._fetch_hype_usd_price()
+        trade.hypercore_cost_data_complete = (
+            gas_cost is not None
+            and hype_usd_price is not None
+            and trade.bridge_fee_usd is not None
+            and activation_cost == 0
+        )
+
         state.mark_trade_success(
             ts,
             trade,
@@ -2720,7 +2849,8 @@ class HypercoreVaultRouting(RoutingModel):
             executed_amount=executed_amount,
             executed_reserve=executed_reserve,
             lp_fees=0,
-            native_token_price=0,
+            native_token_price=hype_usd_price,
+            cost_of_gas=gas_cost,
         )
 
         # The final vault-equity proof makes phase-1 uncertainty obsolete.
@@ -3342,6 +3472,12 @@ class HypercoreVaultRouting(RoutingModel):
                     phase3_withdraw_amount,
                 )
 
+            bridge_spot_before: dict[str, Decimal] | None = None
+            try:
+                bridge_spot_before = self._fetch_safe_spot_free_balances()
+            except Exception as e:
+                logger.warning("Could not snapshot HyperCore spot balances before bridge: %s", e)
+
             self.deployer.sync_nonce(web3)
 
             try:
@@ -3422,6 +3558,11 @@ class HypercoreVaultRouting(RoutingModel):
                 return
 
             executed_reserve = raw_to_usdc(actual_increase_raw)
+            bridge_spot_after: dict[str, Decimal] | None = None
+            try:
+                bridge_spot_after = self._fetch_safe_spot_free_balances()
+            except Exception as e:
+                logger.warning("Could not snapshot HyperCore spot balances after bridge: %s", e)
             # Compare against the effective withdrawal target (live equity if
             # capped, else planned) to avoid spurious "partial" warnings on
             # normal capped-close trades where live equity < planned_reserve.
@@ -3436,6 +3577,7 @@ class HypercoreVaultRouting(RoutingModel):
             # Dual-chain check: verify vault equity decreased on HyperCore
             # to match the USDC that arrived on EVM.  Non-fatal — EVM
             # verification already passed; this is an extra consistency check.
+            remaining_equity: Decimal | None = None
             try:
                 eq_after = fetch_user_vault_equity(
                     session,
@@ -3538,6 +3680,65 @@ class HypercoreVaultRouting(RoutingModel):
 
         executed_price = float(executed_reserve / abs(executed_amount)) if executed_amount else 1.0
 
+        if not self.simulate:
+            # The phase-3 bridge fee is paid from HyperCore spot HYPE when the
+            # account has HYPE available. Measure the balance delta instead of
+            # treating the safety headroom as a fee.
+            trade.bridge_input_amount = phase3_withdraw_amount
+            trade.bridge_output_amount = executed_reserve
+            trade.bridge_fee_amount = None
+            trade.bridge_fee_asset = None
+            trade.bridge_fee_usd = None
+            if bridge_spot_before is not None and bridge_spot_after is not None:
+                observed_bridge_fee = calculate_hypercore_bridge_fee(
+                    bridge_spot_before,
+                    bridge_spot_after,
+                    phase3_withdraw_amount,
+                )
+                if observed_bridge_fee is not None:
+                    trade.bridge_fee_amount, trade.bridge_fee_asset = observed_bridge_fee
+                    if trade.bridge_fee_asset == "USDC":
+                        trade.bridge_fee_usd = float(trade.bridge_fee_amount)
+
+            gas_cost = self._get_trade_gas_cost(trade)
+            hype_usd_price = self._fetch_hype_usd_price()
+            if trade.bridge_fee_asset == "HYPE" and hype_usd_price is not None:
+                trade.bridge_fee_usd = float(trade.bridge_fee_amount * Decimal(str(hype_usd_price)))
+
+            if (
+                should_close_full_quantity
+                and vault_equity_before_phase1_snapshot is not None
+                and remaining_equity is not None
+            ):
+                close_value_loss = (
+                    vault_equity_before_phase1_snapshot
+                    - remaining_equity
+                    - executed_reserve
+                    - raw_to_usdc(reserved_fee_headroom_raw)
+                )
+                trade.hypercore_close_value_loss_usd = float(close_value_loss)
+                trade.hypercore_close_residual_value_usd = float(remaining_equity)
+                # A USDC bridge fee is part of the redeemed-vault shortfall.
+                # A HYPE fee is paid from the separate spot HYPE balance and
+                # must remain separate so the report includes it once.
+                if trade.bridge_fee_asset == "USDC" and trade.bridge_fee_usd is not None:
+                    trade.hypercore_close_other_loss_usd = float(close_value_loss) - trade.bridge_fee_usd
+                elif trade.bridge_fee_asset == "HYPE":
+                    trade.hypercore_close_other_loss_usd = float(close_value_loss)
+
+            trade.hypercore_cost_data_complete = (
+                gas_cost is not None
+                and hype_usd_price is not None
+                and trade.bridge_fee_usd is not None
+                and (
+                    not should_close_full_quantity
+                    or trade.hypercore_close_other_loss_usd is not None
+                )
+            )
+        else:
+            gas_cost = None
+            hype_usd_price = None
+
         state.mark_trade_success(
             ts,
             trade,
@@ -3545,7 +3746,8 @@ class HypercoreVaultRouting(RoutingModel):
             executed_amount=executed_amount,
             executed_reserve=executed_reserve,
             lp_fees=0,
-            native_token_price=0,
+            native_token_price=hype_usd_price,
+            cost_of_gas=gas_cost,
         )
 
         logger.info(

@@ -21,6 +21,7 @@ from .commands.reclaim_satellites import lagoon_reclaim_satellites
 from .commands.reset import reset
 from .commands.reset_deposits import reset_deposits
 from .commands.show_positions import show_positions
+from .commands.show_hypercore_rebalance_costs import show_hypercore_rebalance_costs
 from .commands.start import start
 from .commands.perform_test_trade import perform_test_trade
 from .commands.prepare_report import prepare_report
@@ -52,7 +53,7 @@ __all__ = [
     check_universe, check_wallet, close_all, close_position, console,
     correct_accounts, correct_history, deploy_guard, distribute_gas_funds, enzyme_asset_list, enzyme_deploy_vault,
     export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_reclaim_satellites, lagoon_redeem, lagoon_settle, perform_test_trade, prepare_report, prune_state,
-    repair, repair_hypercore_dust, reset, reset_deposits, retry, send_log_message, show_positions,
+    repair, repair_hypercore_dust, reset, reset_deposits, retry, send_log_message, show_hypercore_rebalance_costs, show_positions,
     show_valuation, start, token_cache, trade_ui, trading_pair, vault_test_trade,
     version, visualise, webapi,
 ]
