@@ -298,6 +298,29 @@ def remove_portfolio_stat_indices(
     return len(indices)
 
 
+def detect_duplicate_portfolio_stat_timestamps(state: State) -> set[int]:
+    """Find superseded portfolio statistics snapshots with the same timestamp.
+
+    A live valuation refresh can record an intermediate snapshot before treasury
+    settlement has reconciled reserve cash. The post-settlement snapshot is then
+    appended with the same timestamp. The final entry is the complete snapshot,
+    so retain it and remove all earlier entries for that timestamp.
+
+    :return:
+        Indices of earlier duplicate-timestamp statistics entries to remove.
+    """
+    last_index_by_timestamp: dict[datetime.datetime, int] = {}
+    duplicates: set[int] = set()
+
+    for index, portfolio_stat in enumerate(state.stats.portfolio):
+        previous_index = last_index_by_timestamp.get(portfolio_stat.calculated_at)
+        if previous_index is not None:
+            duplicates.add(previous_index)
+        last_index_by_timestamp[portfolio_stat.calculated_at] = index
+
+    return duplicates
+
+
 def remove_share_price_outliers(
     state: State,
     outlier_indices: set[int],

@@ -25,6 +25,7 @@ from tradeexecutor.state.correct_history import (
     DEFAULT_NAV_SYNC_OUTLIER_THRESHOLD,
     DEFAULT_NAV_SYNC_OUTLIER_WINDOW_SIZE,
     DEFAULT_SHARE_PRICE_OUTLIER_THRESHOLD,
+    detect_duplicate_portfolio_stat_timestamps,
     detect_nav_sync_outliers,
     detect_share_price_outliers,
     prune_history,
@@ -68,6 +69,12 @@ def correct_history(
         envvar="REMOVE_NAV_SYNC_OUTLIERS",
         help="Detect and remove clustered NAV/share price discontinuities caused by reserve cash and exchange account equity syncing out of phase.",
     ),
+    remove_duplicate_timestamp_stats: bool = Option(
+        False,
+        "--remove-duplicate-timestamp-stats",
+        envvar="REMOVE_DUPLICATE_TIMESTAMP_STATS",
+        help="Keep only the final portfolio statistics snapshot for each timestamp, removing intermediate pre-settlement snapshots.",
+    ),
     nav_sync_window_size: int = Option(
         DEFAULT_NAV_SYNC_OUTLIER_WINDOW_SIZE,
         "--nav-sync-window-size",
@@ -102,13 +109,23 @@ def correct_history(
     2. Load the state
     3. Optionally remove share price outlier entries (--remove-share-price-outliers)
     4. Optionally remove NAV sync outlier entries (--remove-nav-sync-outliers)
-    5. Optionally remove statistics before a cutoff date (--cutoff-date)
-    6. Save the modified state
-    7. Report statistics
+    5. Optionally remove superseded duplicate-timestamp snapshots (--remove-duplicate-timestamp-stats)
+    6. Optionally remove statistics before a cutoff date (--cutoff-date)
+    7. Save the modified state
+    8. Report statistics
     """
 
-    if cutoff_date is None and not remove_share_price_outliers and not remove_nav_sync_outliers:
-        print("Error: At least one of --cutoff-date, --remove-share-price-outliers or --remove-nav-sync-outliers must be specified.")
+    if (
+        cutoff_date is None
+        and not remove_share_price_outliers
+        and not remove_nav_sync_outliers
+        and not remove_duplicate_timestamp_stats
+    ):
+        print(
+            "Error: At least one of --cutoff-date, --remove-share-price-outliers, "
+            "--remove-nav-sync-outliers or --remove-duplicate-timestamp-stats "
+            "must be specified."
+        )
         raise SystemExit(1)
 
     parsed_cutoff = None
@@ -137,9 +154,9 @@ def correct_history(
     # Get original file size
     original_size = state_file.stat().st_size if state_file.exists() else 0
 
-    # Outlier removal runs first so the detectors see full neighbourhood
+    # Statistics cleanup runs first so the detectors see full neighbourhood
     # context before cutoff pruning truncates the series
-    if remove_share_price_outliers or remove_nav_sync_outliers:
+    if remove_share_price_outliers or remove_nav_sync_outliers or remove_duplicate_timestamp_stats:
         outlier_sources: dict[int, list[str]] = {}
 
         def _add_outlier_source(indices: set[int], source: str):
@@ -165,7 +182,12 @@ def correct_history(
         )
         _add_outlier_source(nav_sync_outlier_indices, "nav_sync")
 
-    if remove_share_price_outliers or remove_nav_sync_outliers:
+    if remove_duplicate_timestamp_stats:
+        print("Detecting duplicate-timestamp portfolio statistics snapshots...")
+        duplicate_timestamp_indices = detect_duplicate_portfolio_stat_timestamps(state)
+        _add_outlier_source(duplicate_timestamp_indices, "duplicate_timestamp")
+
+    if remove_share_price_outliers or remove_nav_sync_outliers or remove_duplicate_timestamp_stats:
         outlier_indices = set(outlier_sources.keys())
 
         if outlier_indices:
