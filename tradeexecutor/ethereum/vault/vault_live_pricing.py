@@ -13,6 +13,7 @@ from tradeexecutor.ethereum.vault.vault_routing import (
     resolve_multi_asset_deposit_asset,
 )
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.redemption import RedemptionBlockReason, RedemptionCheckResult, RedemptionCheckStage
@@ -40,10 +41,12 @@ class VaultPricing(PricingModel):
         web3: Web3,
         web3config=None,
         owner_address_resolver: Callable[[TradingPairIdentifier], str | None] | None = None,
+        deposit_asset_override: JSONHexAddress | None = None,
     ):
         self.web3 = web3
         self.web3config = web3config
         self.owner_address_resolver = owner_address_resolver
+        self.deposit_asset_override = deposit_asset_override
 
     def get_web3_for_pair(self, pair: TradingPairIdentifier) -> Web3:
         """Resolve the correct web3 connection for a pair.
@@ -130,9 +133,11 @@ class VaultPricing(PricingModel):
         # estimator. Resolve the accepted asset (native USDC default on the
         # vault's own chain) and raise IncompatibleDepositAsset — listing the
         # vault's accepted assets and our asset — when it is not on the whitelist.
-        # TODO: honour the vault-test-trade --deposit-asset override here too;
-        # it currently lives on the routing model, not the pricing model (task #10).
-        accepted_asset = resolve_multi_asset_deposit_asset(deposit_manager, vault.chain_id)
+        accepted_asset = resolve_multi_asset_deposit_asset(
+            deposit_manager,
+            vault.chain_id,
+            self.deposit_asset_override,
+        )
         estimate_for_asset = getattr(deposit_manager, "estimate_deposit_for_asset", None)
         if accepted_asset is not None and estimate_for_asset is not None:
             estimated_shares = estimate_for_asset(

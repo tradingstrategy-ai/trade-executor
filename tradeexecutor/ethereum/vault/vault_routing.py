@@ -13,11 +13,14 @@ from eth_defi.erc_4626.analysis import analyse_4626_flow_transaction
 from eth_defi.erc_4626.classification import create_vault_instance, create_vault_instance_autodetect
 from eth_defi.erc_4626.deposit_redeem import ERC4626DepositManager
 from eth_defi.erc_4626.vault import ERC4626Vault
+from eth_defi.provider.anvil import is_anvil
 from eth_defi.token import fetch_erc20_details, TokenDiskCache
 from eth_defi.trade import TradeSuccess
 from eth_defi.vault.deposit_redeem import (
     DepositRedeemEventAnalysis,
     DepositRedeemEventFailure,
+    UnsupportedVaultSimulation,
+    VaultFlowUnavailable,
 )
 
 from tradeexecutor.ethereum.swap import get_swap_transactions, report_failure
@@ -273,6 +276,7 @@ class VaultRouting(RoutingModel):
         epsilon=Decimal(1e-6),
         redeem_epsilon=0.025,
         deposit_asset_override: JSONHexAddress | None = None,
+        simulate_redemption_with_liquidity: bool = False,
     ):
         super().__init__(
             allowed_intermediary_pairs={},
@@ -286,6 +290,12 @@ class VaultRouting(RoutingModel):
         # default", which :meth:`deposit_or_redeem` resolves to native USDC on
         # the vault's own chain. Set this to override the default per run.
         self.deposit_asset_override = deposit_asset_override
+
+        # Research-only Anvil mode may ask a protocol adapter to provision a
+        # proven redemption-liquidity shortfall. The adapter must disclose the
+        # intervention and the unchanged redemption still has to succeed and
+        # pass normal receipt analysis.
+        self.simulate_redemption_with_liquidity = simulate_redemption_with_liquidity
 
         # Vault redemptions can be very gas heavy when the vault pulls liquidity
         # back from its underlying markets on withdraw. Measured worst case so
@@ -453,10 +463,30 @@ class VaultRouting(RoutingModel):
             # TODO: model partial fills for cSigma-style reserve-limited pools —
             # redeem the reserve-covered portion and track the queued remainder
             # instead of treating the redemption as all-or-nothing.
-            request = deposit_manager.create_redemption_request(
-                owner=address,
-                shares=swap_amount,
-            )
+            try:
+                request = deposit_manager.create_redemption_request(
+                    owner=address,
+                    shares=swap_amount,
+                )
+            except VaultFlowUnavailable as error:
+                if not self.simulate_redemption_with_liquidity or not is_anvil(target_vault.web3):
+                    raise
+                raw_shares = target_vault.share_token.convert_to_raw(swap_amount)
+                try:
+                    intervention = deposit_manager.force_redemption_liquidity(
+                        address,
+                        raw_shares,
+                        error,
+                    )
+                except UnsupportedVaultSimulation:
+                    raise error
+                request = deposit_manager.create_redemption_request(
+                    owner=address,
+                    raw_shares=raw_shares,
+                )
+                trade.other_data.setdefault("vault_interventions", []).append(
+                    intervention.as_dict()
+                )
             is_async = not deposit_manager.has_synchronous_redemption()
             direction = "redeem"
 

@@ -415,6 +415,8 @@ def create_vault_adapter(
     routing_id: ProtocolRoutingId,
     web3config=None,
     execution_model=None,
+    deposit_asset_override=None,
+    simulate_redemption_with_liquidity: bool = False,
 ) -> ProtocolRoutingConfig:
 
     # TODO: Avoid circular imports for now
@@ -432,11 +434,16 @@ def create_vault_adapter(
 
     owner_address_resolver = _make_token_delivery_address_resolver(execution_model)
 
-    routing_model = VaultRouting(reserve.address)
+    routing_model = VaultRouting(
+        reserve.address,
+        deposit_asset_override=deposit_asset_override,
+        simulate_redemption_with_liquidity=simulate_redemption_with_liquidity,
+    )
     pricing_model = VaultPricing(
         web3,
         web3config=web3config,
         owner_address_resolver=owner_address_resolver,
+        deposit_asset_override=deposit_asset_override,
     )
     valuation_model = VaultValuator(pricing_model)
 
@@ -864,6 +871,8 @@ class EthereumPairConfigurator(PairConfigurator):
         self.satellite_vaults = satellite_vaults or getattr(execution_model, "satellite_vaults", None) or {}
         self.hypercore_market_data_source = hypercore_market_data_source or getattr(execution_model, "hypercore_market_data_source", None)
         self.vault_valuation_func = None
+        self.vault_deposit_asset_override = None
+        self.vault_simulate_redemption_with_liquidity = False
 
         # Auto-discover GMX exchange account pairs in the universe
         # and wire up the GMX value func if not already provided
@@ -1007,6 +1016,8 @@ class EthereumPairConfigurator(PairConfigurator):
                 routing_id,
                 web3config=self.web3config,
                 execution_model=self.execution_model,
+                deposit_asset_override=self.vault_deposit_asset_override,
+                simulate_redemption_with_liquidity=self.vault_simulate_redemption_with_liquidity,
             )
         elif routing_id.router_name == "freqtrade":
             return create_freqtrade_adapter(self.web3, self.strategy_universe, routing_id)

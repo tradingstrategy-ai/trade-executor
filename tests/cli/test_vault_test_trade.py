@@ -70,12 +70,15 @@ from tradeexecutor.cli.vault_trade.simulation import (
 from tradeexecutor.cli.vault_trade.runner import (
     VaultAttemptContext,
     VaultTestBatchRunner,
+    apply_vault_simulation_options,
     get_adapter_unsupported_detail,
     get_bridge_conflict,
     get_deposit_closed_detail,
     get_incorrect_deposit_status_reporting,
     get_incorrect_whitelisting_detail,
     get_redemption_unavailable_detail,
+    get_redemption_unavailable_outcome,
+    get_unknown_deposit_permission_detail,
     has_async_vault_lifecycle,
     get_latest_attempt_vault_operation,
     get_whitelisting_needed_detail,
@@ -2026,6 +2029,21 @@ def test_decoded_vault_errors_map_to_typed_results() -> None:
     assert result == "below_minimum"
     assert outcome_data["minimum_raw_amount"] == "1000"
 
+    for preflight_result in (
+        "redemption_closed",
+        "redemption_liquidity_unavailable",
+        "redemption_not_yet_matured",
+    ):
+        error = VaultFlowUnavailable(
+            "typed live redemption state",
+            protocol="test",
+            direction="redeem",
+            phase="preflight",
+            preflight_result=preflight_result,
+        )
+        result, _detail, _outcome_data = normalise_vault_flow_failure(error)
+        assert result == preflight_result
+
 
 def test_preflight_result_is_copied_verbatim() -> None:
     """The authoritative eth-defi preflight_result maps regardless of decoded_error.
@@ -2125,6 +2143,52 @@ def test_redemption_unavailable_always_has_a_reason() -> None:
     assert "no reason" in fallback
 
 
+def test_redemption_unavailable_uses_specific_adapter_reason() -> None:
+    """A missing redemption implementation receives a specific result.
+
+    1. Create a capability carrying YieldNest's maturity-aware adapter reason.
+    2. Classify the unavailable redemption through the reporting helper.
+    3. Verify it is not collapsed into the generic legacy result.
+    """
+    # 1. Create a capability carrying YieldNest's maturity-aware adapter reason.
+    capability = SimpleNamespace(
+        redemption_unsupported_reason=(
+            "maturity_aware_redemption_flow_not_implemented"
+        )
+    )
+    vault = SimpleNamespace(get_deposit_manager_capability=lambda: capability)
+
+    # 2. Classify the unavailable redemption through the reporting helper.
+    result, detail = get_redemption_unavailable_outcome(vault)
+
+    # 3. Verify it is not collapsed into the generic legacy result.
+    assert result == "redemption_not_implemented"
+    assert "maturity_aware_redemption_flow_not_implemented" in detail
+
+
+def test_unknown_deposit_hook_fails_closed() -> None:
+    """An unrecognised gate is not treated as permissionless.
+
+    1. Create an adapter whose policy inspection is explicitly unknown.
+    2. Classify it through the vault-test permission preflight.
+    3. Confirm the result explains why simulation must fail closed.
+    """
+    # 1. Create an adapter whose policy inspection is explicitly unknown.
+    vault = SimpleNamespace(
+        is_whitelisted_deposit=MagicMock(
+            side_effect=NotImplementedError("custom EVK hook")
+        )
+    )
+    attempt = SimpleNamespace(executable_vault=vault)
+
+    # 2. Classify it through the vault-test permission preflight.
+    detail = get_unknown_deposit_permission_detail(attempt)
+
+    # 3. Confirm the result explains why simulation must fail closed.
+    assert detail is not None
+    assert "custom EVK hook" in detail
+
+
 def test_incompatible_deposit_asset_lists_supported_and_selected() -> None:
     """A multi-asset vault whitelist mismatch reports its own failure mode.
 
@@ -2169,6 +2233,29 @@ def test_incompatible_deposit_asset_lists_supported_and_selected() -> None:
         "symbol": "USDT",
         "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
     } in (outcome_data["accepted_assets"])
+
+
+def test_vault_simulation_options_reach_lazy_configurator() -> None:
+    """Vault-test options are retained before the vault route is materialised.
+
+    1. Create a generic routing shell whose configurator cache is empty.
+    2. Apply an accepted-asset override and Anvil intervention mode.
+    3. Verify the lazy configurator retains both defaults for route creation.
+    """
+    # 1. Model the state before PairConfigurator.get_config() creates a route.
+    configurator = SimpleNamespace(configs={})
+    routing_model = SimpleNamespace(pair_configurator=configurator)
+
+    # 2. Apply both vault-test options before any route exists.
+    apply_vault_simulation_options(
+        routing_model,
+        deposit_asset="0xdAC17F958D2ee523a2206206994597C13D831ec7",
+        simulate_redemption_with_liquidity=True,
+    )
+
+    # 3. Lazy create_vault_adapter() will read these configurator defaults.
+    assert configurator.vault_deposit_asset_override == "0xdAC17F958D2ee523a2206206994597C13D831ec7"
+    assert configurator.vault_simulate_redemption_with_liquidity is True
 
 
 def test_unsupported_vault_simulation_has_typed_report_outcome() -> None:

@@ -272,6 +272,27 @@ def get_redemption_unavailable_detail(vault: Any) -> str:
     )
 
 
+def get_redemption_unavailable_outcome(vault: Any) -> tuple[str, str]:
+    """Map a static adapter limitation to a specific redemption result."""
+    detail = get_redemption_unavailable_detail(vault)
+    capability = get_vault_manager_capability(vault)
+    reason = (
+        getattr(capability, "redemption_unsupported_reason", None)
+        if capability is not None
+        else None
+    )
+    reason_lower = (reason or "").lower()
+    if "not_implemented" in reason_lower or "not implemented" in reason_lower:
+        return "redemption_not_implemented", detail
+    if "matur" in reason_lower:
+        return "redemption_not_yet_matured", detail
+    if "liquidity" in reason_lower or "buffer" in reason_lower:
+        return "redemption_liquidity_unavailable", detail
+    if "closed" in reason_lower or "window" in reason_lower:
+        return "redemption_closed", detail
+    return "redemption_unavailable", detail
+
+
 def get_whitelisting_needed_detail(attempt: "VaultAttempt") -> str | None:
     """Return a terminal report detail when the executor Safe lacks vault admission.
 
@@ -307,6 +328,20 @@ def get_whitelisting_needed_detail(attempt: "VaultAttempt") -> str | None:
         return None
 
     return f"Vault requires whitelisting for executor Safe {owner_address}"
+
+
+def get_unknown_deposit_permission_detail(attempt: "VaultAttempt") -> str | None:
+    """Return a fail-closed result for an unrecognised deposit gate or hook."""
+    try:
+        attempt.executable_vault.is_whitelisted_deposit()
+    except NotImplementedError as error:
+        return (
+            "Vault deposit permission cannot be determined safely: "
+            f"{redact_vault_test_error_text(error)}"
+        )
+    except AttributeError:
+        return None
+    return None
 
 
 def get_incorrect_whitelisting_detail(
@@ -552,6 +587,9 @@ ALLOWED_PREFLIGHT_RESULTS: frozenset[str] = frozenset(
         "redemption_window_closed",
         "redemption_paused",
         "redemption_unavailable",
+        "redemption_liquidity_unavailable",
+        "redemption_not_yet_matured",
+        "redemption_closed",
         "deposit_closed",
         "deposit_paused",
     }
@@ -739,17 +777,27 @@ def get_latest_attempt_vault_operation(
     return "deposit" if latest_vault_trade.is_buy() else "redeem"
 
 
-def apply_deposit_asset_override(routing_model: Any, deposit_asset: str) -> None:
-    """Set the multi-asset deposit-asset override on materialised vault routers.
+def apply_vault_simulation_options(
+    routing_model: Any,
+    *,
+    deposit_asset: str | None,
+    simulate_redemption_with_liquidity: bool,
+) -> None:
+    """Configure materialised vault routing and pricing models for this run.
 
     The vault-test-trade ``--deposit-asset`` value overrides the default accepted
     input asset (native USDC on the vault's own chain) for multi-asset vaults.
-    Only routers already created in the generic pair configurator are patched;
-    lazily-created ones fall back to the USDC default until this is threaded
-    through the configurator factory (see task #10 TODO).
+    The Anvil-only liquidity flag allows only manager-owned, disclosed
+    redemption interventions. Both the transaction builder and pricing route
+    receive the asset override so preflight and execution select the same token.
     """
 
     configurator = getattr(routing_model, "pair_configurator", None)
+    if configurator is not None:
+        configurator.vault_deposit_asset_override = deposit_asset
+        configurator.vault_simulate_redemption_with_liquidity = (
+            simulate_redemption_with_liquidity
+        )
     configs = getattr(configurator, "configs", None)
     if not configs:
         return
@@ -757,6 +805,13 @@ def apply_deposit_asset_override(routing_model: Any, deposit_asset: str) -> None
         vault_router = getattr(config, "routing_model", None)
         if hasattr(vault_router, "deposit_asset_override"):
             vault_router.deposit_asset_override = deposit_asset
+        if hasattr(vault_router, "simulate_redemption_with_liquidity"):
+            vault_router.simulate_redemption_with_liquidity = (
+                simulate_redemption_with_liquidity
+            )
+        vault_pricing = getattr(config, "pricing_model", None)
+        if hasattr(vault_pricing, "deposit_asset_override"):
+            vault_pricing.deposit_asset_override = deposit_asset
 
 
 def get_bridge_conflict(
@@ -1039,16 +1094,11 @@ class VaultTestBatchRunner:
         routing_model = self.runtime.execution_model.create_default_routing_model(
             universe
         )
-        # Propagate the multi-asset deposit-asset override to the vault routers
-        # so multi-asset vaults (e.g. Upshift) use the requested input asset.
-        # The USDC-on-chain default lives in VaultRouting.deposit_or_redeem and
-        # needs no propagation; only an explicit override travels here.
-        # TODO: only vault routers already materialised in the pair configurator
-        # receive the override; lazily-created ones fall back to the USDC
-        # default. Thread it through the configurator factory and add a fork
-        # test before relying on the override (see task #10).
-        if self.deposit_asset:
-            apply_deposit_asset_override(routing_model, self.deposit_asset)
+        apply_vault_simulation_options(
+            routing_model,
+            deposit_asset=self.deposit_asset,
+            simulate_redemption_with_liquidity=self.auto_simulated,
+        )
         pricing_model = GenericPricing(routing_model.pair_configurator)
         valuation_model = GenericValuation(routing_model.pair_configurator)
         routing_state = routing_model.create_routing_state(
@@ -1150,6 +1200,15 @@ class VaultTestBatchRunner:
         # Deposit/redemption window checks are diagnostic outcomes, not command
         # failures, and automatic mode continues with the next explicit id.
         if operation == "deposit":
+            permission_unknown = get_unknown_deposit_permission_detail(attempt)
+            if permission_unknown is not None:
+                self._record_terminal_result(
+                    attempt,
+                    alarm,
+                    result="deposit_permission_unknown",
+                    detail=permission_unknown,
+                )
+                return False
             if self.auto_simulated:
                 incorrectly_whitelisted = get_incorrect_whitelisting_detail(attempt)
                 if incorrectly_whitelisted is not None:
@@ -1579,7 +1638,17 @@ class VaultTestBatchRunner:
         result = None
         detail = None
         outcome_data = None
-        if simulated_success is not None:
+        interventions = [
+            intervention
+            for trade in fork_state.portfolio.get_all_trades()
+            if trade.trade_id not in original_trade_ids
+            for intervention in (trade.other_data or {}).get("vault_interventions", [])
+        ]
+        if interventions:
+            result = "success_simulated_with_intervention"
+            detail = "Redemption succeeded on Anvil after a disclosed liquidity intervention"
+            outcome_data = {"interventions": interventions}
+        elif simulated_success is not None:
             result = simulated_success.result
             detail = simulated_success.detail
             outcome_data = simulated_success.outcome_data
@@ -1588,8 +1657,9 @@ class VaultTestBatchRunner:
             detail = "Async deposit request completed; full lifecycle was not requested"
         elif not redemption_available:
             # A refusal must never be reasonless: use the adapter's published reason.
-            result = "redemption_unavailable"
-            detail = get_redemption_unavailable_detail(attempt.executable_vault)
+            result, detail = get_redemption_unavailable_outcome(
+                attempt.executable_vault
+            )
         close_simulated_positions(
             fork_state,
             vault_spec=attempt.spec,
