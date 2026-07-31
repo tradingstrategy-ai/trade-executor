@@ -1721,16 +1721,16 @@ class VaultTestBatchRunner:
         result = None
         detail = None
         outcome_data = None
-        interventions = attempt.interventions + [
+        trade_interventions = [
             intervention
             for trade in fork_state.portfolio.get_all_trades()
             if trade.trade_id not in original_trade_ids
             for intervention in (trade.other_data or {}).get("vault_interventions", [])
         ]
-        if interventions:
+        if trade_interventions:
             result = "success_simulated_with_intervention"
             detail = "Vault lifecycle succeeded on Anvil after a disclosed simulation intervention"
-            outcome_data = {"interventions": interventions}
+            outcome_data = dict(simulated_success.outcome_data) if simulated_success is not None else {}
         elif simulated_success is not None:
             result = simulated_success.result
             detail = simulated_success.detail
@@ -1742,6 +1742,10 @@ class VaultTestBatchRunner:
             # A refusal must never be reasonless: use the adapter's published reason.
             result = "redemption_unavailable"
             detail = get_redemption_unavailable_detail(attempt.executable_vault)
+        interventions = attempt.interventions + trade_interventions
+        if interventions:
+            outcome_data = dict(outcome_data or {})
+            outcome_data["interventions"] = interventions
         close_simulated_positions(
             fork_state,
             vault_spec=attempt.spec,

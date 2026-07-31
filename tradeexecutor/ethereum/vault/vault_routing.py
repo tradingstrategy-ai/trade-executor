@@ -110,8 +110,8 @@ def resolve_multi_asset_deposit_token(
     """
     fetch_accepted = getattr(type(deposit_manager), "fetch_accepted_assets", None)
     if fetch_accepted is None:
-        # A manager may bind an adapter method on the instance. Avoid treating
-        # dynamic test-double attributes as a production capability.
+        # A manager may deliberately bind an adapter method on the instance.
+        # Read only an explicit instance attribute, not MagicMock auto-children.
         fetch_accepted = vars(deposit_manager).get("fetch_accepted_assets")
     else:
         fetch_accepted = deposit_manager.fetch_accepted_assets
