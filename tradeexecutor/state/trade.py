@@ -615,6 +615,54 @@ class TradeExecution:
     #: E.g. on Ethereum, this is the amount of ETH spent on gas
     cost_of_gas: Optional[Decimal] = None
 
+    #: Amount sent into a HyperCore/HyperEVM bridge leg.
+    #:
+    #: Stored in the bridge asset's human units.  ``None`` means that this
+    #: trade did not use a bridge leg, or that the live execution did not
+    #: observe the amount reliably.
+    bridge_input_amount: Decimal | None = None
+
+    #: Amount received from a HyperCore/HyperEVM bridge leg.
+    #:
+    #: Stored in the bridge asset's human units. Deposit output is best-effort
+    #: telemetry because the escrow confirmation poll has a tolerance.
+    bridge_output_amount: Decimal | None = None
+
+    #: Observed bridge fee, in :py:attr:`bridge_fee_asset` units.
+    bridge_fee_amount: Decimal | None = None
+
+    #: Asset in which :py:attr:`bridge_fee_amount` was paid, such as
+    #: ``"USDC"`` or ``"HYPE"``.
+    bridge_fee_asset: str | None = None
+
+    #: Observed bridge fee converted to USD at execution time.
+    bridge_fee_usd: float | None = None
+
+    #: Measured HyperCore account activation fee charged to this trade, in USD.
+    #: ``None`` when the post-activation spot balance has not caught up.
+    account_activation_fee_usd: float | None = None
+
+    #: Economic value lost while fully closing a HyperCore vault position.
+    #:
+    #: This is the signed value ``equity before - equity after - USDC received
+    #: on HyperEVM - USDC bridge headroom left in spot``. A USDC bridge fee is
+    #: included in this amount, while a HYPE bridge fee is separate because it
+    #: leaves the Safe's HYPE balance. It is recorded only for a full close.
+    hypercore_close_value_loss_usd: float | None = None
+
+    #: Full-close value loss excluding any bridge fee already included in it.
+    #:
+    #: Reporting adds this field and ``bridge_fee_usd`` exactly once.
+    hypercore_close_other_loss_usd: float | None = None
+
+    #: HyperCore vault equity left after a full close, in USD/USDC.
+    hypercore_close_residual_value_usd: float | None = None
+
+    #: ``True`` when the applicable HyperCore cost observations for this
+    #: trade were captured during live settlement.  Historic trades keep the
+    #: default ``False`` and reports treat their costs as lower bounds.
+    hypercore_cost_data_complete: bool = False
+
     #: The total porfolio value when this position was opened
     #:
     #: Used for risk metrics and other statistics.
@@ -1539,9 +1587,9 @@ class TradeExecution:
         executed_quantity: Decimal,
         executed_reserve: Decimal,
         lp_fees: USDollarAmount,
-        native_token_price: USDollarAmount,
+        native_token_price: USDollarAmount | None,
         force=False,
-        cost_of_gas: USDollarAmount | None = None,
+        cost_of_gas: Decimal | float | None = None,
         executed_collateral_consumption: Decimal | None = None,
         executed_collateral_allocation: Decimal | None = None,
     ):
@@ -1676,13 +1724,16 @@ class TradeExecution:
             AssetDelta(output_asset.address, output_asset.convert_to_raw_amount(output_amount * Decimal(1 - self.slippage_tolerance))),
         ]
     
-    def get_cost_of_gas_usd(self):
-        """Get the cost of gas for this trade in USD"""
-        raise NotImplementedError("This method is not implemented yet since we do not store native token prices yet")
-        
-        # assert self.cost_of_gas, "Cost of gas must be set to work out cost of gas in USD"
-        # assert self.native_token_price, "Native token price must be set to work out cost of gas in USD"
-        # return self.cost_of_gas * self.native_token_price
+    def get_cost_of_gas_usd(self) -> float | None:
+        """Get the recorded execution gas cost in USD, if it is known."""
+        if self.cost_of_gas is None or self.native_token_price is None:
+            return None
+
+        native_token_price = Decimal(str(self.native_token_price))
+        if native_token_price <= 0:
+            return None
+
+        return float(Decimal(str(self.cost_of_gas)) * native_token_price)
 
     def get_credit_supply_reserve_change(self) -> Decimal | None:
         """How many tokens this trade takes/adds to the reserves.
