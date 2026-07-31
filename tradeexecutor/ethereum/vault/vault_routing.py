@@ -92,10 +92,10 @@ def resolve_multi_asset_deposit_asset(
         accepted assets and the asset that was attempted.
     """
 
-    fetch_accepted = getattr(deposit_manager, "fetch_accepted_assets", None)
-    if fetch_accepted is None:
+    if getattr(type(deposit_manager), "fetch_accepted_assets", None) is None:
         # Single-asset ERC-4626 vault: the reserve asset is deposited directly.
         return None
+    fetch_accepted = deposit_manager.fetch_accepted_assets
 
     selected = override or USDC_NATIVE_TOKEN.get(chain_id)
     accepted_pairs = [(token.symbol, token.address) for token in fetch_accepted()]
@@ -792,6 +792,18 @@ class VaultRouting(RoutingModel):
                 executed_amount = -result.amount_in / Decimal(10 ** base_token_details.decimals)
                 executed_reserve = result.amount_out / Decimal(10 ** reserve.decimals)
                 price = -executed_reserve / executed_amount
+
+                if executed_reserve == 0:
+                    raise VaultFlowUnavailable(
+                        f"Vault redemption transaction {swap_tx.tx_hash} mined successfully but returned zero {reserve.token_symbol}",
+                        protocol=vault.get_protocol_name(),
+                        vault_address=vault.address,
+                        direction="redeem",
+                        phase="receipt",
+                        preflight_result="redemption_liquidity_unavailable",
+                        requested_raw_amount=result.amount_in,
+                        available_raw_amount=0,
+                    )
 
             assert (executed_reserve > 0) and (executed_amount != 0) and (price > 0), f"Executed amount {executed_amount}, executed_reserve: {executed_reserve}, price: {price}"
 

@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any
 
+from eth_typing import HexAddress
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.vault.base import VaultSpec
 from eth_defi.vault.deposit_redeem import (
@@ -62,6 +63,7 @@ from tradeexecutor.ethereum.routing_state import OutOfBalance
 from tradeexecutor.ethereum.vault.vault_routing import (
     IncompatibleDepositAsset,
     VaultReceiptAnalysisError,
+    resolve_multi_asset_deposit_asset,
 )
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
@@ -335,9 +337,13 @@ def get_unknown_deposit_permission_detail(attempt: "VaultAttempt") -> str | None
     try:
         attempt.executable_vault.is_whitelisted_deposit()
     except NotImplementedError as error:
+        reason = redact_vault_test_error_text(error).strip()
+        if not reason:
+            vault_type = type(attempt.executable_vault)
+            reason = f"{vault_type.__module__}.{vault_type.__qualname__} does not implement permission inspection"
         return (
             "Vault deposit permission cannot be determined safely: "
-            f"{redact_vault_test_error_text(error)}"
+            f"{reason}"
         )
     except AttributeError:
         return None
@@ -478,6 +484,7 @@ def validate_simulated_closed_deposit(
     attempt: "VaultAttempt",
     runtime: VaultTestRuntime,
     amount: Decimal,
+    deposit_asset: str | None = None,
 ) -> tuple[str, dict] | None:
     """Validate a typed closed deposit through the active simulated Guard.
 
@@ -497,6 +504,14 @@ def validate_simulated_closed_deposit(
     manager = attempt.executable_vault.get_deposit_manager()
     denomination_token = attempt.executable_vault.denomination_token
     raw_amount = denomination_token.convert_to_raw(amount)
+    accepted_asset = resolve_multi_asset_deposit_asset(
+        manager,
+        attempt.spec.chain_id,
+        deposit_asset,
+    )
+    deposit_kwargs = {}
+    if accepted_asset is not None:
+        deposit_kwargs["accepted_asset"] = HexAddress(accepted_asset)
     is_primary_chain = (
         attempt.spec.chain_id == runtime.deployment.primary_chain_id.value
     )
@@ -508,12 +523,17 @@ def validate_simulated_closed_deposit(
             # A satellite Safe receives its assets from CCTP later in the normal
             # trade lifecycle. Keep every other production preflight enabled.
             check_enough_token=is_primary_chain,
+            **deposit_kwargs,
         )
     except VaultFlowUnavailable as error:
-        if (
-            error.direction != "deposit"
-            or error.preflight_result not in {"deposit_closed", "deposit_paused"}
-        ):
+        if error.direction != "deposit":
+            raise
+        if error.preflight_result not in {"deposit_closed", "deposit_paused"}:
+            # This helper runs before the automatic simulation funds its Safe.
+            # Typed availability outcomes such as ``below_minimum`` therefore
+            # belong to the normal funded lifecycle, not this closure probe.
+            if error.preflight_result is not None:
+                return None
             raise
         closure_error = error
     else:
@@ -1235,6 +1255,7 @@ class VaultTestBatchRunner:
                     attempt,
                     self.runtime,
                     self.amount,
+                    getattr(self, "deposit_asset", None),
                 )
                 if closed_validation is not None:
                     detail, outcome_data = closed_validation

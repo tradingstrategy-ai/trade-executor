@@ -1747,6 +1747,50 @@ def test_simulated_closed_deposit_requires_typed_closure() -> None:
     manager.create_deposit_request_for_guard_validation.assert_not_called()
 
 
+def test_simulated_closed_deposit_defers_typed_minimum_until_after_funding() -> None:
+    """The closure probe must not classify an unfunded Safe as below minimum.
+
+    1. Raise the D2-style typed minimum result seen before simulated Safe funding.
+    2. Run the early closed-deposit probe with the production 1,001 USDC amount.
+    3. Verify the probe defers classification to the normal funded lifecycle.
+    """
+    # 1. Raise the D2-style typed minimum result seen before simulated Safe funding.
+    refusal = VaultFlowUnavailable(
+        "Public USDC eligibility minimum not met",
+        protocol="D2 Finance",
+        direction="deposit",
+        phase="preflight",
+        preflight_result="below_minimum",
+    )
+    manager = MagicMock()
+    manager.create_deposit_request.side_effect = refusal
+    executable_vault = MagicMock(
+        denomination_token=MagicMock(convert_to_raw=MagicMock(return_value=1_001_000_000)),
+    )
+    executable_vault.get_deposit_manager.return_value = manager
+    route = MagicMock()
+    route.get_owner_address.return_value = (
+        "0x0000000000000000000000000000000000000001"
+    )
+    attempt = SimpleNamespace(
+        pricing_model=MagicMock(route=MagicMock(return_value=route)),
+        pair=MagicMock(),
+        spec=SimpleNamespace(chain_id=ChainId.ethereum.value),
+        executable_vault=executable_vault,
+    )
+
+    # 2. Run the early closed-deposit probe with the production 1,001 USDC amount.
+    result = validate_simulated_closed_deposit(
+        attempt,
+        MagicMock(),
+        Decimal("1001"),
+    )
+
+    # 3. Verify the probe defers classification to the normal funded lifecycle.
+    assert result is None
+    manager.create_deposit_request_for_guard_validation.assert_not_called()
+
+
 def test_simulated_closed_deposit_is_persisted_as_terminal_success() -> None:
     """The automatic runner records the combined closed-vault outcome.
 
@@ -2233,6 +2277,58 @@ def test_incompatible_deposit_asset_lists_supported_and_selected() -> None:
         "symbol": "USDT",
         "address": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
     } in (outcome_data["accepted_assets"])
+
+
+def test_closed_deposit_probe_resolves_multi_asset_before_manager_preflight() -> None:
+    """The early closure probe must preserve an unsupported deposit-asset result.
+
+    1. Prepare a multi-asset manager which accepts USDT but not default USDC.
+    2. Run the simulated closed-deposit probe for an Ethereum vault.
+    3. Confirm asset incompatibility is raised before request construction.
+    """
+    # 1. Prepare a multi-asset manager which accepts USDT but not default USDC.
+    accepted_token = SimpleNamespace(
+        symbol="USDT",
+        address="0xdAC17F958D2ee523a2206206994597C13D831ec7",
+    )
+
+    class _MultiAssetManager:
+        def __init__(self) -> None:
+            self.create_deposit_request = MagicMock()
+
+        def fetch_accepted_assets(self) -> tuple[SimpleNamespace, ...]:
+            return (accepted_token,)
+
+    manager = _MultiAssetManager()
+    executable_vault = MagicMock(
+        denomination_token=MagicMock(convert_to_raw=MagicMock(return_value=1_001_000_000)),
+    )
+    executable_vault.get_deposit_manager.return_value = manager
+    route = MagicMock()
+    route.get_owner_address.return_value = (
+        "0x0000000000000000000000000000000000000001"
+    )
+    attempt = SimpleNamespace(
+        pricing_model=MagicMock(route=MagicMock(return_value=route)),
+        pair=MagicMock(),
+        spec=SimpleNamespace(chain_id=ChainId.ethereum.value),
+        executable_vault=executable_vault,
+    )
+
+    # 2. Run the simulated closed-deposit probe for an Ethereum vault.
+    with pytest.raises(IncompatibleDepositAsset) as exc_info:
+        validate_simulated_closed_deposit(
+            attempt,
+            MagicMock(),
+            Decimal("1001"),
+        )
+
+    # 3. Confirm asset incompatibility is raised before request construction.
+    assert exc_info.value.selected_asset.lower() == (
+        "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48".lower()
+    )
+    assert exc_info.value.accepted_assets == [("USDT", accepted_token.address)]
+    manager.create_deposit_request.assert_not_called()
 
 
 def test_vault_simulation_options_reach_lazy_configurator() -> None:
