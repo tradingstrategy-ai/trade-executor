@@ -321,10 +321,10 @@ class VaultRouting(RoutingModel):
         # the vault's own chain. Set this to override the default per run.
         self.deposit_asset_override = deposit_asset_override
 
-        # Research-only Anvil mode may ask a protocol adapter to provision a
-        # proven redemption-liquidity shortfall. The adapter must disclose the
-        # intervention and the unchanged redemption still has to succeed and
-        # pass normal receipt analysis.
+        # Kept under its legacy name for configuration compatibility. On Anvil,
+        # it permits manager-specific preparation after a typed redemption
+        # refusal, such as liquidity or a request window. The adapter must
+        # disclose it and the unchanged redemption must pass receipt analysis.
         self.simulate_redemption_with_liquidity = simulate_redemption_with_liquidity
 
         # Vault redemptions can be very gas heavy when the vault pulls liquidity
