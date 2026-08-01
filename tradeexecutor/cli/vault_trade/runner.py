@@ -839,6 +839,17 @@ def normalise_vault_flow_failure(
     return None
 
 
+def get_observed_redemption_result(
+    interventions: list[dict],
+) -> tuple[str | None, str | None]:
+    """Extract the natural typed result retained by a successful retry."""
+    for intervention in interventions:
+        result = intervention.get("original_preflight_result")
+        if result is not None:
+            return result, intervention.get("original_reason")
+    return None, None
+
+
 def get_latest_attempt_vault_operation(
     state: State,
     original_trade_ids: set[int],
@@ -1731,6 +1742,13 @@ class VaultTestBatchRunner:
             result = "success_simulated_with_intervention"
             detail = "Vault lifecycle succeeded on Anvil after a disclosed simulation intervention"
             outcome_data = dict(simulated_success.outcome_data) if simulated_success is not None else {}
+            observed_result, observed_detail = get_observed_redemption_result(
+                trade_interventions,
+            )
+            if observed_result is not None:
+                outcome_data["observed_result"] = observed_result
+            if observed_detail is not None:
+                outcome_data["observed_detail"] = observed_detail
         elif simulated_success is not None:
             result = simulated_success.result
             detail = simulated_success.detail

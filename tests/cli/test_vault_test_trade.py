@@ -76,6 +76,7 @@ from tradeexecutor.cli.vault_trade.runner import (
     get_deposit_closed_detail,
     get_incorrect_deposit_status_reporting,
     get_incorrect_whitelisting_detail,
+    get_observed_redemption_result,
     get_redemption_unavailable_detail,
     get_unknown_deposit_permission_detail,
     has_async_vault_lifecycle,
@@ -2171,6 +2172,30 @@ def test_decoded_vault_errors_map_to_typed_results() -> None:
         )
         result, _detail, _outcome_data = normalise_vault_flow_failure(error)
         assert result == preflight_result
+
+
+def test_successful_redemption_intervention_retains_observed_result() -> None:
+    """A completed intervention keeps the original redemption constraint visible.
+
+    1. Prepare a successful liquidity intervention with its typed refusal.
+    2. Extract the observed result for the final report row.
+    3. Verify the original result and detail are retained exactly.
+    """
+    # 1. Prepare a successful liquidity intervention with its typed refusal.
+    interventions = [
+        {
+            "kind": "liquidity_injected",
+            "original_preflight_result": "redemption_capacity_limited",
+            "original_reason": "Vault has no immediate liquidity",
+        }
+    ]
+
+    # 2. Extract the observed result for the final report row.
+    result, detail = get_observed_redemption_result(interventions)
+
+    # 3. Verify the original result and detail are retained exactly.
+    assert result == "redemption_capacity_limited"
+    assert detail == "Vault has no immediate liquidity"
 
 
 def test_preflight_result_is_copied_verbatim() -> None:

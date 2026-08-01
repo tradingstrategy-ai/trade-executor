@@ -501,7 +501,7 @@ class VaultRouting(RoutingModel):
                     raise
                 raw_shares = target_vault.share_token.convert_to_raw(swap_amount)
                 try:
-                    intervention = deposit_manager.force_redemption_liquidity(
+                    intervention = deposit_manager.prepare_redemption_simulation(
                         address,
                         raw_shares,
                         error,
