@@ -76,6 +76,7 @@ VAULT_TEST_RESULTS = {
     "success",
     "success_simulated",
     "success_simulated_with_intervention",
+    "simulated_success_redemption_capacity_limited",
 }
 
 

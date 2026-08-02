@@ -83,6 +83,8 @@ from tradeexecutor.cli.vault_trade.runner import (
     get_whitelisting_needed_detail,
     normalise_vault_flow_failure,
     resolve_redemption_available,
+    resolve_simulated_success_result,
+    resolve_vault_test_deposit_amount,
     SimulatedSuccessOutcome,
     should_leave_deposit_open,
     validate_simulated_closed_deposit,
@@ -2467,6 +2469,97 @@ def test_vault_simulation_options_reach_lazy_configurator() -> None:
     # 3. Verify the lazy configurator retains both defaults for route creation.
     assert configurator.vault_deposit_asset_override == "0xdAC17F958D2ee523a2206206994597C13D831ec7"
     assert configurator.vault_simulate_redemption_with_liquidity is True
+
+
+def test_minimum_aware_simulated_amount_preserves_unknowns_and_scales_redemption() -> None:
+    """Scale a fork-only test deposit using shared minimum accessors.
+
+    1. Resolve a vault with no known minimums and retain null provenance.
+    2. Resolve a vault whose deposit and redemption minimums exceed the input.
+    3. Verify integer scaling reaches the share minimum without token-decimal constants.
+    """
+    token = SimpleNamespace(
+        convert_to_raw=lambda value: int(value),
+        convert_to_decimals=lambda value: Decimal(value),
+    )
+    unknown_vault = SimpleNamespace(
+        denomination_token=token,
+        share_token=token,
+        fetch_minimum_raw_deposit=lambda: None,
+        fetch_minimum_raw_redemption=lambda: None,
+    )
+    unknown_manager = SimpleNamespace(estimate_deposit=MagicMock())
+
+    # 1. Resolve a vault with no known minimums and retain null provenance.
+    unknown = resolve_vault_test_deposit_amount(
+        unknown_vault,
+        unknown_manager,
+        "0x0000000000000000000000000000000000000001",
+        Decimal(10),
+    )
+    assert unknown.as_provenance() == {
+        "requested_deposit_raw": 10,
+        "effective_deposit_raw": 10,
+        "minimum_deposit_raw": None,
+        "minimum_redemption_raw": None,
+        "estimated_shares_raw": None,
+    }
+    unknown_manager.estimate_deposit.assert_not_called()
+
+    # 2. Resolve a vault whose deposit and redemption minimums exceed the input.
+    constrained_vault = SimpleNamespace(
+        denomination_token=token,
+        share_token=token,
+        fetch_minimum_raw_deposit=lambda: 20,
+        fetch_minimum_raw_redemption=lambda: 100,
+    )
+    constrained_manager = SimpleNamespace(
+        estimate_deposit=lambda _owner, amount: amount / 2,
+    )
+
+    # 3. Verify integer scaling reaches the share minimum without token-decimal constants.
+    constrained = resolve_vault_test_deposit_amount(
+        constrained_vault,
+        constrained_manager,
+        "0x0000000000000000000000000000000000000001",
+        Decimal(10),
+    )
+    assert constrained.requested_raw == 10
+    assert constrained.effective_raw == 200
+    assert constrained.minimum_deposit_raw == 20
+    assert constrained.minimum_redemption_raw == 100
+    assert constrained.estimated_shares_raw == 100
+
+
+def test_capacity_intervention_gets_its_dedicated_simulated_success_result() -> None:
+    """Render only a completed capacity intervention with its dedicated result.
+
+    1. Supply a completed 40acres capacity intervention.
+    2. Resolve the successful simulated lifecycle outcome.
+    3. Verify generic liquidity interventions keep their existing result.
+    """
+    capacity_intervention = {
+        "kind": "redemption_capacity_increased",
+        "original_preflight_result": "redemption_capacity_limited",
+    }
+
+    # 1. Supply a completed 40acres capacity intervention.
+    result, detail, outcome_data = resolve_simulated_success_result(
+        [capacity_intervention],
+        None,
+    )
+
+    # 2. Resolve the successful simulated lifecycle outcome.
+    assert result == "simulated_success_redemption_capacity_limited"
+    assert detail is not None and "40acres" in detail
+    assert outcome_data == {}
+
+    # 3. Verify generic liquidity interventions keep their existing result.
+    generic_result, _generic_detail, _generic_data = resolve_simulated_success_result(
+        [{"kind": "liquidity_injected"}],
+        None,
+    )
+    assert generic_result == "success_simulated_with_intervention"
 
 
 def test_unsupported_vault_simulation_has_typed_report_outcome() -> None:

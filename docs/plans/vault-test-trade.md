@@ -24,6 +24,17 @@ module or invoke `create_trading_universe()` / `decide_trades()`.
 - `--auto-simulated` performs sequential fork attempts. Instant vaults are
   deposited and redeemed; async vaults are deposited only and persisted as
   `simulation_unsupported_async` diagnostics.
+- In `--auto-simulated` only, a source-proven vault minimum may raise the
+  effective deposit amount. The report preserves the requested and effective
+  raw amounts, the raw deposit and redemption minimums (or JSON `null` when
+  unknown), and the estimated minted shares. `--auto-real` and manual actions
+  never increase the operator's requested capital.
+- A Pharaoh 40acres `redemption_capacity_limited` preflight can be diagnosed on
+  Anvil by recording and temporarily increasing the vault's direct
+  denomination-token capacity. The unchanged redemption must subsequently
+  complete; only then is the row labelled
+  `simulated_success_redemption_capacity_limited` with the intervention
+  evidence.
 - `--rerun` permits a fresh attempt after a terminal result. Automatic modes
   never retry a pending request.
 - A failed local Anvil is infrastructure, not a vault result. Simulation tears
