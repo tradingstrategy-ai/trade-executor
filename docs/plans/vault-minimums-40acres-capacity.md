@@ -68,12 +68,6 @@ def fetch_minimum_deposit(
 ) -> Decimal | None:
     ...
 
-def fetch_minimum_raw_redemption(
-    self,
-    block_identifier: BlockIdentifier = "latest",
-) -> int | None:
-    ...
-
 def fetch_minimum_redemption(
     self,
     block_identifier: BlockIdentifier = "latest",
@@ -84,10 +78,10 @@ def fetch_minimum_redemption(
 The two concepts deliberately expose exact and display forms:
 
 - deposit values use denomination-token units;
-- redemption values use vault-share-token units;
-- raw methods return ERC-20 base units for exact comparisons and transaction
-  construction;
-- decimal methods convert with `denomination_token` or `share_token`; and
+- redemption values use vault-share-token units and are returned as decimals;
+- deposit raw methods return ERC-20 base units for exact transaction input;
+- managers convert a known decimal redemption minimum with `share_token` for
+  exact comparisons and transaction construction; and
 - the default returns `None`, meaning that the adapter does not expose a known
   minimum. Callers must not interpret `None` as proof that the protocol has no
   minimum. `vault-test-trade` may continue with the requested amount when a
@@ -117,8 +111,7 @@ Change eth-defi first.
    deposit minimum remains the maximum of vault `MIN_AMOUNT_WEI()` and strategy
    `loan().minDeposit` only after both are proven to be direct raw-asset
    thresholds.
-3. Add `fetch_minimum_raw_redemption()` and
-   `fetch_minimum_redemption()`. Use the vault-level `MIN_AMOUNT_WEI()` only
+3. Add `fetch_minimum_redemption()`. Use the vault-level `MIN_AMOUNT_WEI()` only
    after the source check above proves that the redemption path compares this
    scalar directly with raw shares.
 4. Investigate the strategy tuple's `loan().minRedeem` against verified source
@@ -146,9 +139,8 @@ Tests in `tests/erc_4626/vault_protocol/test_accountable.py` must cover:
 
 ## Work item 2: expose Ember redemption minimums
 
-1. Implement `EmberVault.fetch_minimum_raw_redemption()` using
-   `minWithdrawableShares()` and decimalise it with the share token in
-   `fetch_minimum_redemption()`.
+1. Implement `EmberVault.fetch_minimum_redemption()` using
+   `minWithdrawableShares()` and decimalise it with the share token.
 2. Leave Ember's deposit minimum as `None` unless a separate contract-enforced
    deposit threshold is found. `maxDeposit()` is a capacity getter, not a
    minimum.
