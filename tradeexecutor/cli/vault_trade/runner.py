@@ -206,7 +206,8 @@ def resolve_vault_test_deposit_amount(
     """
     denomination_token = vault.denomination_token
     requested_raw = denomination_token.convert_to_raw(requested_amount)
-    minimum_deposit_raw = vault.fetch_minimum_raw_deposit()
+    minimum_deposit = vault.fetch_minimum_deposit()
+    minimum_deposit_raw = denomination_token.convert_to_raw(minimum_deposit) if minimum_deposit is not None else None
     minimum_redemption = vault.fetch_minimum_redemption()
     minimum_redemption_raw = vault.share_token.convert_to_raw(minimum_redemption) if minimum_redemption is not None else None
     effective_raw = max(requested_raw, minimum_deposit_raw or 0)

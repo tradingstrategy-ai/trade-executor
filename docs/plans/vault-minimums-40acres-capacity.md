@@ -56,12 +56,6 @@ solely because it is small.
 Add the following methods to `eth_defi.vault.base.VaultBase`:
 
 ```python
-def fetch_minimum_raw_deposit(
-    self,
-    block_identifier: BlockIdentifier = "latest",
-) -> int | None:
-    ...
-
 def fetch_minimum_deposit(
     self,
     block_identifier: BlockIdentifier = "latest",
@@ -77,11 +71,11 @@ def fetch_minimum_redemption(
 
 The two concepts deliberately expose exact and display forms:
 
-- deposit values use denomination-token units;
-- redemption values use vault-share-token units and are returned as decimals;
-- deposit raw methods return ERC-20 base units for exact transaction input;
-- managers convert a known decimal redemption minimum with `share_token` for
-  exact comparisons and transaction construction; and
+- deposit values use denomination-token units and redemption values use
+  vault-share-token units;
+- both values are returned as decimals; and
+- managers convert a known value with `denomination_token` or `share_token`
+  for exact comparisons and transaction construction; and
 - the default returns `None`, meaning that the adapter does not expose a known
   minimum. Callers must not interpret `None` as proof that the protocol has no
   minimum. `vault-test-trade` may continue with the requested amount when a
@@ -106,11 +100,10 @@ Change eth-defi first.
    guessing, but retain the manager's existing direct preflight guard as legacy
    behaviour until the source question is resolved. Do not remove an existing
    guard merely because it cannot yet be promoted to the shared API.
-2. Keep `AccountableVault.fetch_minimum_raw_deposit()` and
-   `fetch_minimum_deposit()` as overrides of the new base methods. The binding
-   deposit minimum remains the maximum of vault `MIN_AMOUNT_WEI()` and strategy
-   `loan().minDeposit` only after both are proven to be direct raw-asset
-   thresholds.
+2. Keep `AccountableVault.fetch_minimum_deposit()` as an override of the new
+   base method. The binding deposit minimum remains the maximum of vault
+   `MIN_AMOUNT_WEI()` and strategy `loan().minDeposit` only after both are
+   proven to be direct raw-asset thresholds.
 3. Add `fetch_minimum_redemption()`. Use the vault-level `MIN_AMOUNT_WEI()` only
    after the source check above proves that the redemption path compares this
    scalar directly with raw shares.

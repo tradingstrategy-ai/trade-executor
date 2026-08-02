@@ -2501,7 +2501,7 @@ def test_minimum_aware_simulated_amount_preserves_unknowns_and_scales_redemption
     unknown_vault = SimpleNamespace(
         denomination_token=token,
         share_token=token,
-        fetch_minimum_raw_deposit=lambda: None,
+        fetch_minimum_deposit=lambda: None,
         fetch_minimum_redemption=lambda: None,
     )
     unknown_manager = SimpleNamespace(estimate_deposit=MagicMock())
@@ -2526,7 +2526,7 @@ def test_minimum_aware_simulated_amount_preserves_unknowns_and_scales_redemption
     constrained_vault = SimpleNamespace(
         denomination_token=token,
         share_token=token,
-        fetch_minimum_raw_deposit=lambda: 20,
+        fetch_minimum_deposit=lambda: Decimal(20),
         fetch_minimum_redemption=lambda: Decimal(100),
     )
     constrained_manager = SimpleNamespace(
