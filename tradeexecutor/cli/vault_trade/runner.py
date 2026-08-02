@@ -79,6 +79,10 @@ from tradeexecutor.strategy.valuation import revalue_state
 logger = logging.getLogger(__name__)
 
 
+#: Initial estimate plus four proportional raw-unit corrections bound fork work.
+VAULT_TEST_MINIMUM_SIZING_MAX_ADJUSTMENTS = 4
+
+
 class SimulatedAttemptAlarm:
     """Own the SIGALRM lifecycle for one simulated vault attempt.
 
@@ -208,7 +212,7 @@ def resolve_vault_test_deposit_amount(
     estimated_shares_raw = None
 
     if minimum_redemption_raw:
-        for _attempt in range(4):
+        for adjustment in range(VAULT_TEST_MINIMUM_SIZING_MAX_ADJUSTMENTS + 1):
             effective_amount = denomination_token.convert_to_decimals(effective_raw)
             estimated_shares = deposit_manager.estimate_deposit(owner, effective_amount)
             estimated_shares_raw = vault.share_token.convert_to_raw(estimated_shares)
@@ -216,9 +220,9 @@ def resolve_vault_test_deposit_amount(
                 break
             if estimated_shares_raw <= 0:
                 raise ValueError("Vault deposit estimator returned zero shares for a positive amount")
+            if adjustment == VAULT_TEST_MINIMUM_SIZING_MAX_ADJUSTMENTS:
+                raise ValueError("Vault deposit estimator did not reach the redemption minimum")
             effective_raw = (effective_raw * minimum_redemption_raw + estimated_shares_raw - 1) // estimated_shares_raw
-        else:
-            raise ValueError("Vault deposit estimator did not reach the redemption minimum")
 
     return VaultTestDepositAmount(
         requested_raw=requested_raw,
@@ -232,8 +236,12 @@ def resolve_vault_test_deposit_amount(
 def resolve_simulated_success_result(
     interventions: list[dict],
     simulated_success: SimulatedSuccessOutcome | None,
+    *,
+    lifecycle_complete: bool = True,
 ) -> tuple[str | None, str | None, dict | None]:
     """Choose a report status only after the simulated lifecycle succeeded."""
+    if not lifecycle_complete:
+        return None, None, None
     outcome_data = dict(simulated_success.outcome_data) if simulated_success is not None else {}
     if any(
         intervention.get("kind") == "redemption_capacity_increased"
@@ -1838,6 +1846,10 @@ class VaultTestBatchRunner:
         result, detail, outcome_data = resolve_simulated_success_result(
             trade_interventions,
             simulated_success,
+            lifecycle_complete=not (
+                (is_async and not complete_async_lifecycle)
+                or not redemption_available
+            ),
         )
         if result is None and is_async and not complete_async_lifecycle:
             result = "async_request_only"
