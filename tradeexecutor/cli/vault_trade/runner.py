@@ -79,6 +79,10 @@ from tradeexecutor.strategy.valuation import revalue_state
 logger = logging.getLogger(__name__)
 
 
+#: Initial estimate plus four proportional raw-unit corrections bound fork work.
+VAULT_TEST_MINIMUM_SIZING_MAX_ADJUSTMENTS = 4
+
+
 class SimulatedAttemptAlarm:
     """Own the SIGALRM lifecycle for one simulated vault attempt.
 
@@ -165,6 +169,105 @@ class SimulatedSuccessOutcome:
     result: str
     detail: str
     outcome_data: dict
+
+
+@dataclass(frozen=True, slots=True)
+class VaultTestDepositAmount:
+    """Resolved fork-only deposit amount and its source-proven constraints."""
+
+    requested_raw: int
+    effective_raw: int
+    minimum_deposit_raw: int | None
+    minimum_redemption_raw: int | None
+    estimated_shares_raw: int | None
+
+    def as_provenance(self) -> dict[str, int | None]:
+        """Return JSON-native amount evidence without conflating unknown and zero."""
+        return {
+            "requested_deposit_raw": self.requested_raw,
+            "effective_deposit_raw": self.effective_raw,
+            "minimum_deposit_raw": self.minimum_deposit_raw,
+            "minimum_redemption_raw": self.minimum_redemption_raw,
+            "estimated_shares_raw": self.estimated_shares_raw,
+        }
+
+
+def resolve_vault_test_deposit_amount(
+    vault: Any,
+    deposit_manager: Any,
+    owner: HexAddress,
+    requested_amount: Decimal,
+) -> VaultTestDepositAmount:
+    """Increase a simulated deposit only when known minimums require it.
+
+    The adapter is the sole authority for protocol minimums. ``None`` is
+    retained in the returned provenance as an unknown value, not converted to
+    zero or a claim that no protocol limit exists.
+    """
+    denomination_token = vault.denomination_token
+    requested_raw = denomination_token.convert_to_raw(requested_amount)
+    minimum_deposit = vault.fetch_minimum_deposit()
+    minimum_deposit_raw = denomination_token.convert_to_raw(minimum_deposit) if minimum_deposit is not None else None
+    minimum_redemption = vault.fetch_minimum_redemption()
+    minimum_redemption_raw = vault.share_token.convert_to_raw(minimum_redemption) if minimum_redemption is not None else None
+    effective_raw = max(requested_raw, minimum_deposit_raw or 0)
+    estimated_shares_raw = None
+
+    if minimum_redemption_raw:
+        for adjustment in range(VAULT_TEST_MINIMUM_SIZING_MAX_ADJUSTMENTS + 1):
+            effective_amount = denomination_token.convert_to_decimals(effective_raw)
+            estimated_shares = deposit_manager.estimate_deposit(owner, effective_amount)
+            estimated_shares_raw = vault.share_token.convert_to_raw(estimated_shares)
+            if estimated_shares_raw >= minimum_redemption_raw:
+                break
+            if estimated_shares_raw <= 0:
+                raise ValueError("Vault deposit estimator returned zero shares for a positive amount")
+            if adjustment == VAULT_TEST_MINIMUM_SIZING_MAX_ADJUSTMENTS:
+                raise ValueError("Vault deposit estimator did not reach the redemption minimum")
+            effective_raw = (effective_raw * minimum_redemption_raw + estimated_shares_raw - 1) // estimated_shares_raw
+
+    return VaultTestDepositAmount(
+        requested_raw=requested_raw,
+        effective_raw=effective_raw,
+        minimum_deposit_raw=minimum_deposit_raw,
+        minimum_redemption_raw=minimum_redemption_raw,
+        estimated_shares_raw=estimated_shares_raw,
+    )
+
+
+def resolve_simulated_success_result(
+    interventions: list[dict],
+    simulated_success: SimulatedSuccessOutcome | None,
+    *,
+    lifecycle_complete: bool = True,
+) -> tuple[str | None, str | None, dict | None]:
+    """Choose a report status only after the simulated lifecycle succeeded."""
+    if not lifecycle_complete:
+        return None, None, None
+    outcome_data = dict(simulated_success.outcome_data) if simulated_success is not None else {}
+    if any(
+        intervention.get("kind") == "redemption_capacity_increased"
+        and intervention.get("original_preflight_result") == "redemption_capacity_limited"
+        for intervention in interventions
+    ):
+        return (
+            "simulated_success_redemption_capacity_limited",
+            "Simulated redemption succeeded after a disclosed 40acres capacity increase",
+            outcome_data,
+        )
+    if interventions:
+        return (
+            "success_simulated_with_intervention",
+            "Vault lifecycle succeeded on Anvil after a disclosed simulation intervention",
+            outcome_data,
+        )
+    if simulated_success is not None:
+        return (
+            simulated_success.result,
+            simulated_success.detail,
+            simulated_success.outcome_data,
+        )
+    return None, None, None
 
 
 def should_leave_deposit_open(
@@ -406,13 +509,13 @@ def get_incorrect_deposit_status_reporting(
         ),
         "onchain_deposit_status": onchain_deposit_status,
     }
-    for field in (
+    for provenance_field in (
         "deposit_status_source",
         "deposit_status_observed_block",
     ):
-        value = getattr(metadata, field, None)
+        value = getattr(metadata, provenance_field, None)
         if value is not None:
-            outcome_data[f"vault_json_{field}"] = value
+            outcome_data[f"vault_json_{provenance_field}"] = value
     observed_at = getattr(metadata, "deposit_status_observed_at", None)
     if observed_at is not None:
         outcome_data["vault_json_deposit_status_observed_at"] = observed_at.isoformat()
@@ -1415,11 +1518,28 @@ class VaultTestBatchRunner:
             )
 
         if self.auto_simulated:
+            amount = self.amount
+            if operation == "deposit":
+                route = attempt.pricing_model.route(pair)
+                get_owner_address = getattr(route, "get_owner_address", None)
+                owner = get_owner_address(pair) if get_owner_address is not None else None
+                if owner is not None:
+                    resolution = resolve_vault_test_deposit_amount(
+                        attempt.executable_vault,
+                        attempt.executable_vault.get_deposit_manager(),
+                        owner,
+                        self.amount,
+                    )
+                    amount = attempt.executable_vault.denomination_token.convert_to_decimals(
+                        resolution.effective_raw,
+                    )
+                    self.current_attempt.provenance["deposit_amount"] = resolution.as_provenance()
             self._execute_simulated(
                 attempt,
                 operation,
                 redemption_available,
                 alarm,
+                amount=amount,
                 simulated_success=simulated_success,
             )
         else:
@@ -1645,6 +1765,7 @@ class VaultTestBatchRunner:
         redemption_available: bool,
         alarm: SimulatedAttemptAlarm,
         *,
+        amount: Decimal,
         simulated_success: SimulatedSuccessOutcome | None = None,
     ) -> None:
         """Execute on a state copy and merge only closed diagnostic positions."""
@@ -1676,7 +1797,7 @@ class VaultTestBatchRunner:
                 routing_model=attempt.routing_model,
                 routing_state=attempt.routing_state,
                 max_slippage=self.max_slippage,
-                amount=self.amount,
+                amount=amount,
                 pair=attempt.pair,
                 buy_only=should_leave_deposit_open(
                     operation=operation,
@@ -1718,27 +1839,24 @@ class VaultTestBatchRunner:
             if position.position_id in created_position_ids
             and position.pair.pool_address.lower() == attempt.spec.vault_address.lower()
         }
-        result = None
-        detail = None
-        outcome_data = None
         trade_interventions = [
             intervention
             for trade in fork_state.portfolio.get_all_trades()
             if trade.trade_id not in original_trade_ids
             for intervention in (trade.other_data or {}).get("vault_interventions", [])
         ]
-        if trade_interventions:
-            result = "success_simulated_with_intervention"
-            detail = "Vault lifecycle succeeded on Anvil after a disclosed simulation intervention"
-            outcome_data = dict(simulated_success.outcome_data) if simulated_success is not None else {}
-        elif simulated_success is not None:
-            result = simulated_success.result
-            detail = simulated_success.detail
-            outcome_data = simulated_success.outcome_data
-        elif is_async and not complete_async_lifecycle:
+        result, detail, outcome_data = resolve_simulated_success_result(
+            trade_interventions,
+            simulated_success,
+            lifecycle_complete=not (
+                (is_async and not complete_async_lifecycle)
+                or not redemption_available
+            ),
+        )
+        if result is None and is_async and not complete_async_lifecycle:
             result = "async_request_only"
             detail = "Async deposit request completed; full lifecycle was not requested"
-        elif not redemption_available:
+        elif result is None and not redemption_available:
             # A refusal must never be reasonless: use the adapter's published reason.
             result = "redemption_unavailable"
             detail = get_redemption_unavailable_detail(attempt.executable_vault)

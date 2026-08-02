@@ -83,7 +83,10 @@ from tradeexecutor.cli.vault_trade.runner import (
     get_whitelisting_needed_detail,
     normalise_vault_flow_failure,
     resolve_redemption_available,
+    resolve_simulated_success_result,
+    resolve_vault_test_deposit_amount,
     SimulatedSuccessOutcome,
+    VaultTestDepositAmount,
     should_leave_deposit_open,
     validate_simulated_closed_deposit,
 )
@@ -2019,7 +2022,7 @@ def test_simulated_open_deposit_closed_json_is_executed_and_persisted() -> None:
     runner = object.__new__(VaultTestBatchRunner)
     runner.auto_simulated = True
     runner.deposit_asset = None
-    runner.current_attempt = SimpleNamespace()
+    runner.current_attempt = SimpleNamespace(provenance={})
     runner.runtime = MagicMock()
     runner.amount = Decimal("1")
     runner.state = SimpleNamespace(
@@ -2032,6 +2035,8 @@ def test_simulated_open_deposit_closed_json_is_executed_and_persisted() -> None:
     pair.is_async_vault.return_value = False
     pricing_model = MagicMock()
     pricing_model.can_deposit.return_value = False
+    executable_vault = MagicMock()
+    executable_vault.denomination_token.convert_to_decimals.side_effect = Decimal
     attempt = SimpleNamespace(
         vault=SimpleNamespace(
             metadata=SimpleNamespace(
@@ -2039,7 +2044,7 @@ def test_simulated_open_deposit_closed_json_is_executed_and_persisted() -> None:
                 deposit_closed_reason="Scanner reported deposits closed",
             ),
         ),
-        executable_vault=MagicMock(),
+        executable_vault=executable_vault,
         pair=pair,
         pricing_model=pricing_model,
         spec=MagicMock(),
@@ -2077,6 +2082,17 @@ def test_simulated_open_deposit_closed_json_is_executed_and_persisted() -> None:
             "resolve_redemption_available",
             return_value=True,
         ),
+        patch.object(
+            runner_module,
+            "resolve_vault_test_deposit_amount",
+            return_value=VaultTestDepositAmount(
+                requested_raw=1,
+                effective_raw=1,
+                minimum_deposit_raw=None,
+                minimum_redemption_raw=None,
+                estimated_shares_raw=None,
+            ),
+        ),
     ):
         stop_batch = runner._process_attempt(attempt, MagicMock())
 
@@ -2088,6 +2104,7 @@ def test_simulated_open_deposit_closed_json_is_executed_and_persisted() -> None:
         "deposit",
         True,
         ANY,
+        amount=Decimal("1"),
         simulated_success=ANY,
     )
     simulated_success = execute_simulated.call_args.kwargs["simulated_success"]
@@ -2467,6 +2484,146 @@ def test_vault_simulation_options_reach_lazy_configurator() -> None:
     # 3. Verify the lazy configurator retains both defaults for route creation.
     assert configurator.vault_deposit_asset_override == "0xdAC17F958D2ee523a2206206994597C13D831ec7"
     assert configurator.vault_simulate_redemption_with_liquidity is True
+
+
+def test_minimum_aware_simulated_amount_preserves_unknowns_and_scales_redemption() -> None:
+    """Scale a fork-only test deposit using shared minimum accessors.
+
+    1. Resolve a vault with no known minimums and retain null provenance.
+    2. Resolve a vault whose deposit and redemption minimums exceed the input.
+    3. Verify integer scaling reaches the share minimum without token-decimal constants.
+    4. Verify each permitted adjustment receives a final estimate.
+    """
+    token = SimpleNamespace(
+        convert_to_raw=lambda value: int(value),
+        convert_to_decimals=lambda value: Decimal(value),
+    )
+    unknown_vault = SimpleNamespace(
+        denomination_token=token,
+        share_token=token,
+        fetch_minimum_deposit=lambda: None,
+        fetch_minimum_redemption=lambda: None,
+    )
+    unknown_manager = SimpleNamespace(estimate_deposit=MagicMock())
+
+    # 1. Resolve a vault with no known minimums and retain null provenance.
+    unknown = resolve_vault_test_deposit_amount(
+        unknown_vault,
+        unknown_manager,
+        "0x0000000000000000000000000000000000000001",
+        Decimal(10),
+    )
+    assert unknown.as_provenance() == {
+        "requested_deposit_raw": 10,
+        "effective_deposit_raw": 10,
+        "minimum_deposit_raw": None,
+        "minimum_redemption_raw": None,
+        "estimated_shares_raw": None,
+    }
+    unknown_manager.estimate_deposit.assert_not_called()
+
+    # 2. Resolve a vault whose deposit and redemption minimums exceed the input.
+    constrained_vault = SimpleNamespace(
+        denomination_token=token,
+        share_token=token,
+        fetch_minimum_deposit=lambda: Decimal(20),
+        fetch_minimum_redemption=lambda: Decimal(100),
+    )
+    constrained_manager = SimpleNamespace(
+        estimate_deposit=lambda _owner, amount: amount / 2,
+    )
+
+    # 3. Verify integer scaling reaches the share minimum without token-decimal constants.
+    constrained = resolve_vault_test_deposit_amount(
+        constrained_vault,
+        constrained_manager,
+        "0x0000000000000000000000000000000000000001",
+        Decimal(10),
+    )
+    assert constrained.requested_raw == 10
+    assert constrained.effective_raw == 200
+    assert constrained.minimum_deposit_raw == 20
+    assert constrained.minimum_redemption_raw == 100
+    assert constrained.estimated_shares_raw == 100
+
+    # 4. Verify the fourth permitted adjustment is estimated before failing.
+    delayed_manager = SimpleNamespace(
+        estimate_deposit=MagicMock(
+            side_effect=[
+                Decimal(10),
+                Decimal(20),
+                Decimal(30),
+                Decimal(40),
+                Decimal(100),
+            ],
+        ),
+    )
+    delayed = resolve_vault_test_deposit_amount(
+        constrained_vault,
+        delayed_manager,
+        "0x0000000000000000000000000000000000000001",
+        Decimal(10),
+    )
+    assert delayed.estimated_shares_raw == 100
+    assert delayed_manager.estimate_deposit.call_count == 5
+
+
+def test_capacity_intervention_gets_its_dedicated_simulated_success_result() -> None:
+    """Render only a completed capacity intervention with its dedicated result.
+
+    1. Supply a completed 40acres capacity intervention.
+    2. Resolve the successful simulated lifecycle outcome.
+    3. Verify generic liquidity interventions keep their existing result.
+    """
+    capacity_intervention = {
+        "kind": "redemption_capacity_increased",
+        "original_preflight_result": "redemption_capacity_limited",
+    }
+
+    # 1. Supply a completed 40acres capacity intervention.
+    result, detail, outcome_data = resolve_simulated_success_result(
+        [capacity_intervention],
+        None,
+    )
+
+    # 2. Resolve the successful simulated lifecycle outcome.
+    assert result == "simulated_success_redemption_capacity_limited"
+    assert detail is not None and "40acres" in detail
+    assert outcome_data == {}
+
+    # 3. Verify generic liquidity interventions keep their existing result.
+    generic_result, _generic_detail, _generic_data = resolve_simulated_success_result(
+        [{"kind": "liquidity_injected"}],
+        None,
+    )
+    assert generic_result == "success_simulated_with_intervention"
+
+
+def test_incomplete_lifecycle_never_gets_an_intervention_success_result() -> None:
+    """Keep disclosed interventions on incomplete simulated lifecycles diagnostic.
+
+    1. Supply a real capacity intervention from an incomplete lifecycle.
+    2. Resolve the terminal result with lifecycle completion disabled.
+    3. Verify the caller can choose its partial-lifecycle status instead.
+    """
+    capacity_intervention = {
+        "kind": "redemption_capacity_increased",
+        "original_preflight_result": "redemption_capacity_limited",
+    }
+
+    # 1. Supply a real capacity intervention from an incomplete lifecycle.
+    result, detail, outcome_data = resolve_simulated_success_result(
+        [capacity_intervention],
+        None,
+        lifecycle_complete=False,
+    )
+
+    # 2. Resolve the terminal result with lifecycle completion disabled.
+    assert result is None
+    assert detail is None
+
+    # 3. Verify the caller can choose its partial-lifecycle status instead.
+    assert outcome_data is None
 
 
 def test_unsupported_vault_simulation_has_typed_report_outcome() -> None:
