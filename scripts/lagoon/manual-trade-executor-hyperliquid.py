@@ -4,7 +4,7 @@ Exercises the full lifecycle of a Lagoon vault on HyperEVM with a
 Hypercore native vault deposit (e.g. HLP):
 
 1. Deploy vault via ``lagoon-deploy-vault --strategy-file=minimal_hyperliquid_strategy.py``
-   with Hypercore vault whitelisting
+   with the restrictive known-Hyperliquid-vault whitelist
 2. Initialise state via ``init``
 3. Deposit USDC into the Lagoon vault
 4. Settle vault
@@ -133,7 +133,6 @@ from decimal import Decimal
 from pathlib import Path
 from unittest import mock
 
-from eth_typing import HexAddress, HexStr
 from tabulate import tabulate
 from web3 import Web3
 
@@ -415,8 +414,6 @@ def _do_hypercore_withdraw(
     If the previous close already left the requested USDC in HyperCore spot, the
     script skips directly to step 3.
     """
-    from eth_defi.trace import TransactionAssertionError
-
     api_url = HYPERLIQUID_TESTNET_API_URL if network == "testnet" else HYPERLIQUID_API_URL
     session = create_hyperliquid_session(api_url=api_url)
     safe_address = lagoon_vault.safe_address
@@ -615,7 +612,7 @@ def _run_test_lifecycle(
             "VAULT_RECORD_FILE": vault_record_file,
             "FUND_NAME": "Test Hypercore Vault",
             "FUND_SYMBOL": "TEST",
-            "ANY_ASSET": "true",
+            "WHITELIST_KNOWN_HYPERLIQUID_VAULTS": "true",
             "PERFORMANCE_FEE": "0",
             "MANAGEMENT_FEE": "0",
             "UNIT_TESTING": "true",
@@ -938,7 +935,7 @@ def main():
     if safe_salt_nonce is not None:
         print(f"  Safe salt nonce: {safe_salt_nonce}")
     else:
-        print(f"  Safe salt nonce: (random)")
+        print("  Safe salt nonce: (random)")
     print()
 
     _run_test_lifecycle(
