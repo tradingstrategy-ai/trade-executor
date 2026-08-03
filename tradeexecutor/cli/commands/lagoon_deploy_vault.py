@@ -412,7 +412,7 @@ def _serialise_lagoon_config(config: Any) -> dict[str, Any]:
         "any_asset": config.any_asset,
         "any_hypercore_vault": config.any_hypercore_vault,
         "max_settlement_amount": str(config.max_settlement_amount) if config.max_settlement_amount is not None else None,
-        "settlement_cooldown": config.settlement_cooldown,
+        "settlement_cooldown": config.settlement_cooldown if config.max_settlement_amount is not None else None,
         "etherscan_api_key": "<redacted>" if config.etherscan_api_key else None,
         "verifier": config.verifier,
         "verifier_url": config.verifier_url,
@@ -770,6 +770,8 @@ def lagoon_deploy_vault(
             raise ValueError(f"Invalid --lagoon-max-settlement-amount: {lagoon_max_settlement_amount}") from error
         if not max_settlement_amount.is_finite():
             raise ValueError("--lagoon-max-settlement-amount must be finite")
+        if max_settlement_amount < 0:
+            raise ValueError("--lagoon-max-settlement-amount cannot be negative")
     assert not (strategy_file and denomination_asset), \
         "Cannot use both --strategy-file and --denomination-asset. " \
         "When --strategy-file is provided, the reserve asset is read from the strategy's create_trading_universe(). " \
@@ -1115,6 +1117,11 @@ def _deploy_multichain(
         client=client,
         universe_options=mod.get_universe_options(),
         execution_context=one_off_execution_context,
+    )
+    has_hypercore_vaults = any(pair.is_hyperliquid_vault() for pair in universe.iterate_pairs())
+    assert whitelist_known_hyperliquid_vaults or not has_hypercore_vaults, (
+        "Strategy universe contains Hyperliquid vaults. "
+        "Pass --whitelist-known-hyperliquid-vaults to configure their restrictive guard policy."
     )
 
     # Build chain_web3 mapping: {chain_slug: web3}

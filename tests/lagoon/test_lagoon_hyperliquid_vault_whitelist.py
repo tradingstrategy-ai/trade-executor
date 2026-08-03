@@ -201,7 +201,7 @@ def test_cli_whitelists_known_hyperliquid_vaults(
     """Deploy a restrictive Hyperliquid guard from a strategy universe.
 
     1. Construct the strategy universe and collect its native vault addresses.
-    2. Reject invalid settlement-safety option combinations and values.
+    2. Reject missing Hypercore permission and invalid settlement-safety options.
     3. Deploy through ``lagoon-deploy-vault`` with the explicit whitelist option.
     4. Check both broad guard flags remain disabled, every universe vault has a
        dedicated Hypercore whitelist entry, and the Lagoon settlement safety
@@ -243,6 +243,11 @@ def test_cli_whitelists_known_hyperliquid_vaults(
     mocker.patch.dict("os.environ", environment, clear=True)
     with pytest.raises(
         AssertionError,
+        match="Strategy universe contains Hyperliquid vaults",
+    ):
+        cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
+    with pytest.raises(
+        AssertionError,
         match="--lagoon-settlement-cooldown requires --lagoon-max-settlement-amount",
     ):
         cli.main(
@@ -258,12 +263,21 @@ def test_cli_whitelists_known_hyperliquid_vaults(
             standalone_mode=False,
         )
     with pytest.raises(
+        ValueError,
+        match="--lagoon-max-settlement-amount cannot be negative",
+    ):
+        cli.main(
+            args=["lagoon-deploy-vault", "--lagoon-max-settlement-amount", "-1"],
+            standalone_mode=False,
+        )
+    with pytest.raises(
         AssertionError,
         match="settlement_cooldown must be positive",
     ):
         cli.main(
             args=[
                 "lagoon-deploy-vault",
+                "--whitelist-known-hyperliquid-vaults",
                 "--lagoon-max-settlement-amount",
                 "250",
                 "--lagoon-settlement-cooldown",
@@ -303,13 +317,13 @@ def test_cli_whitelists_known_hyperliquid_vaults(
     } == {address.lower() for address in known_vaults}
     assert module.functions.anyAsset().call() is False
     assert module.functions.anyHypercoreVault().call() is False
-    settlement_config = module.functions.getLagoonSettlementSafetyConfig(
+    allowed, limit_enabled, _, _, max_settlement_amount, settlement_cooldown, *_ = module.functions.getLagoonSettlementSafetyConfig(
         hyperliquid_deployment["vault_address"]
     ).call()
-    assert settlement_config[0] is True
-    assert settlement_config[1] is True
-    assert settlement_config[4] == 250 * 10**6
-    assert settlement_config[5] == 24 * 60 * 60
+    assert allowed is True
+    assert limit_enabled is True
+    assert max_settlement_amount == 250 * 10**6
+    assert settlement_cooldown == 24 * 60 * 60
 
     whitelisted_vaults = {
         Web3.to_checksum_address(entry["address"])
@@ -424,5 +438,10 @@ def test_cli_whitelists_large_simulated_hyper_ai_universe(
     assert all(
         web3.eth.get_transaction_receipt(tx_hash)["gasUsed"]
         < HYPEREVM_FAST_BLOCK_GAS_LIMIT
+        for tx_hash in whitelist_transactions
+    )
+    assert all(
+        web3.eth.get_transaction(tx_hash)["gas"]
+        <= HYPEREVM_FAST_BLOCK_GAS_LIMIT
         for tx_hash in whitelist_transactions
     )

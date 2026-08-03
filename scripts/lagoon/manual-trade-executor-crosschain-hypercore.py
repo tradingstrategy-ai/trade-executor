@@ -118,7 +118,6 @@ from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault_protocol.lagoon.testing import (
     fund_lagoon_vault,
-    redeem_vault_shares,
 )
 from eth_defi.hotwallet import HotWallet
 from eth_defi.hyperliquid.testing import setup_anvil_hypercore_mocks
@@ -402,7 +401,7 @@ def _run_test_lifecycle(
             "VAULT_RECORD_FILE": vault_record_file,
             "FUND_NAME": "Test Crosschain Hypercore",
             "FUND_SYMBOL": "TXCH",
-            "ANY_ASSET": "true",
+            "WHITELIST_KNOWN_HYPERLIQUID_VAULTS": "true",
             "PERFORMANCE_FEE": "0",
             "MANAGEMENT_FEE": "0",
             "UNIT_TESTING": "true",
@@ -663,7 +662,6 @@ def _run_test_lifecycle(
 
             if reverse_bridge_positions:
                 reverse_trade = list(reverse_bridge_positions[0].trades.values())[0]
-                reverse_burn_tx = reverse_trade.blockchain_transactions[-1].tx_hash
                 reverse_amount_raw = arb_usdc.convert_to_raw(reverse_trade.planned_reserve)
                 print(f"  Reverse bridge: {reverse_trade.get_status()}")
 
