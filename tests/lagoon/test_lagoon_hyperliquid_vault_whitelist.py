@@ -19,6 +19,9 @@ from typer.main import get_command
 from web3 import Web3
 
 from eth_defi.abi import encode_function_call, get_deployed_contract
+from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
+    HYPERCORE_MULTICALL_CHUNK_SIZE,
+)
 from eth_defi.hyperliquid.core_writer import CORE_WRITER_ADDRESS, encode_vault_deposit
 from eth_defi.hyperliquid.testing import deploy_mock_core_writer
 from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
@@ -113,6 +116,37 @@ def _create_simulated_hyper_ai_universe(vault_count: int) -> TradingStrategyUniv
     )
 
 
+def _create_cli_environment(
+    *,
+    anvil_hyperliquid: AnvilLaunch,
+    deployer: LocalAccount,
+    executor_id: str,
+    fund_name: str,
+    fund_symbol: str,
+    safe_salt_nonce: int,
+    strategy_file: Path,
+    vault_record_file: Path,
+) -> dict[str, str]:
+    """Create the isolated environment used by one Lagoon CLI invocation."""
+    return {
+        "PATH": os.environ["PATH"],
+        "EXECUTOR_ID": executor_id,
+        "STRATEGY_FILE": strategy_file.as_posix(),
+        "JSON_RPC_HYPERLIQUID": anvil_hyperliquid.json_rpc_url,
+        "CHAIN_NAME": "hyperliquid",
+        "ASSET_MANAGEMENT_MODE": "lagoon",
+        "UNIT_TESTING": "true",
+        "LOG_LEVEL": "disabled",
+        "PRIVATE_KEY": DEPLOYER_PRIVATE_KEY,
+        "VAULT_RECORD_FILE": str(vault_record_file),
+        "FUND_NAME": fund_name,
+        "FUND_SYMBOL": fund_symbol,
+        "MULTISIG_OWNERS": deployer.address,
+        "ASSET_MANAGER": deployer.address,
+        "SAFE_SALT_NONCE": str(safe_salt_nonce),
+    }
+
+
 @pytest.fixture()
 def deployer() -> LocalAccount:
     """Return the deterministic Anvil deployment account."""
@@ -167,7 +201,7 @@ def test_cli_whitelists_known_hyperliquid_vaults(
     """Deploy a restrictive Hyperliquid guard from a strategy universe.
 
     1. Construct the strategy universe and collect its native vault addresses.
-    2. Reject a settlement cooldown without its required settlement cap.
+    2. Reject invalid settlement-safety option combinations and values.
     3. Deploy through ``lagoon-deploy-vault`` with the explicit whitelist option.
     4. Check both broad guard flags remain disabled, every universe vault has a
        dedicated Hypercore whitelist entry, and the Lagoon settlement safety
@@ -193,25 +227,18 @@ def test_cli_whitelists_known_hyperliquid_vaults(
         "anvil_setBalance", [deployer.address, hex(100 * 10**18)]
     )
     vault_record_file = tmp_path / "hyperliquid-vault.txt"
-    environment = {
-        "PATH": os.environ["PATH"],
-        "EXECUTOR_ID": "test_known_hyperliquid_vaults",
-        "STRATEGY_FILE": strategy_file.as_posix(),
-        "JSON_RPC_HYPERLIQUID": anvil_hyperliquid.json_rpc_url,
-        "CHAIN_NAME": "hyperliquid",
-        "ASSET_MANAGEMENT_MODE": "lagoon",
-        "UNIT_TESTING": "true",
-        "LOG_LEVEL": "disabled",
-        "PRIVATE_KEY": DEPLOYER_PRIVATE_KEY,
-        "VAULT_RECORD_FILE": str(vault_record_file),
-        "FUND_NAME": "Known Hyperliquid vaults",
-        "FUND_SYMBOL": "KHV",
-        "MULTISIG_OWNERS": deployer.address,
-        "ASSET_MANAGER": deployer.address,
-        "SAFE_SALT_NONCE": "4242",
-    }
+    environment = _create_cli_environment(
+        anvil_hyperliquid=anvil_hyperliquid,
+        deployer=deployer,
+        executor_id="test_known_hyperliquid_vaults",
+        fund_name="Known Hyperliquid vaults",
+        fund_symbol="KHV",
+        safe_salt_nonce=4242,
+        strategy_file=strategy_file,
+        vault_record_file=vault_record_file,
+    )
 
-    # 2. Reject a cooldown without the required settlement amount through Typer.
+    # 2. Reject invalid settlement-safety options through Typer.
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
     with pytest.raises(
@@ -220,6 +247,28 @@ def test_cli_whitelists_known_hyperliquid_vaults(
     ):
         cli.main(
             args=["lagoon-deploy-vault", "--lagoon-settlement-cooldown", "3600"],
+            standalone_mode=False,
+        )
+    with pytest.raises(
+        ValueError,
+        match="--lagoon-max-settlement-amount must be finite",
+    ):
+        cli.main(
+            args=["lagoon-deploy-vault", "--lagoon-max-settlement-amount", "NaN"],
+            standalone_mode=False,
+        )
+    with pytest.raises(
+        AssertionError,
+        match="settlement_cooldown must be positive",
+    ):
+        cli.main(
+            args=[
+                "lagoon-deploy-vault",
+                "--lagoon-max-settlement-amount",
+                "250",
+                "--lagoon-settlement-cooldown",
+                "0",
+            ],
             standalone_mode=False,
         )
 
@@ -316,23 +365,16 @@ def test_cli_whitelists_large_simulated_hyper_ai_universe(
         "anvil_setBalance", [deployer.address, hex(100 * 10**18)]
     )
     vault_record_file = tmp_path / "large-hyper-ai-vault.txt"
-    environment = {
-        "PATH": os.environ["PATH"],
-        "EXECUTOR_ID": "test_large_simulated_hyper_ai_universe",
-        "STRATEGY_FILE": strategy_file.as_posix(),
-        "JSON_RPC_HYPERLIQUID": anvil_hyperliquid.json_rpc_url,
-        "CHAIN_NAME": "hyperliquid",
-        "ASSET_MANAGEMENT_MODE": "lagoon",
-        "UNIT_TESTING": "true",
-        "LOG_LEVEL": "disabled",
-        "PRIVATE_KEY": DEPLOYER_PRIVATE_KEY,
-        "VAULT_RECORD_FILE": str(vault_record_file),
-        "FUND_NAME": "Large simulated Hyper-AI vault universe",
-        "FUND_SYMBOL": "SHAI",
-        "MULTISIG_OWNERS": deployer.address,
-        "ASSET_MANAGER": deployer.address,
-        "SAFE_SALT_NONCE": "4343",
-    }
+    environment = _create_cli_environment(
+        anvil_hyperliquid=anvil_hyperliquid,
+        deployer=deployer,
+        executor_id="test_large_simulated_hyper_ai_universe",
+        fund_name="Large simulated Hyper-AI vault universe",
+        fund_symbol="SHAI",
+        safe_salt_nonce=4343,
+        strategy_file=strategy_file,
+        vault_record_file=vault_record_file,
+    )
 
     # 2. Deploy the Lagoon vault and module through the production CLI pipeline.
     cli = get_command(app)
@@ -365,14 +407,20 @@ def test_cli_whitelists_large_simulated_hyper_ai_universe(
             "fromBlock": 0,
             "toBlock": "latest",
             "address": module.address,
-            "topics": [Web3.keccak(text="HypercoreVaultApproved(address,string)").hex()],
+            "topics": [
+                Web3.keccak(text="HypercoreVaultApproved(address,string)").hex()
+            ],
         }
     )
     assert len(approval_logs) == SIMULATED_HYPER_AI_VAULT_COUNT
 
-    # 4. 321 vaults require nine 40-vault guard multicalls, each fast-block safe.
+    # 4. Each guard multicall stays inside the HyperEVM fast-block gas limit.
     whitelist_transactions = {log["transactionHash"] for log in approval_logs}
-    assert len(whitelist_transactions) == 9
+    assert (
+        len(whitelist_transactions)
+        == (SIMULATED_HYPER_AI_VAULT_COUNT + HYPERCORE_MULTICALL_CHUNK_SIZE - 1)
+        // HYPERCORE_MULTICALL_CHUNK_SIZE
+    )
     assert all(
         web3.eth.get_transaction_receipt(tx_hash)["gasUsed"]
         < HYPEREVM_FAST_BLOCK_GAS_LIMIT

@@ -768,6 +768,8 @@ def lagoon_deploy_vault(
             max_settlement_amount = Decimal(lagoon_max_settlement_amount)
         except InvalidOperation as error:
             raise ValueError(f"Invalid --lagoon-max-settlement-amount: {lagoon_max_settlement_amount}") from error
+        if not max_settlement_amount.is_finite():
+            raise ValueError("--lagoon-max-settlement-amount must be finite")
     assert not (strategy_file and denomination_asset), \
         "Cannot use both --strategy-file and --denomination-asset. " \
         "When --strategy-file is provided, the reserve asset is read from the strategy's create_trading_universe(). " \
