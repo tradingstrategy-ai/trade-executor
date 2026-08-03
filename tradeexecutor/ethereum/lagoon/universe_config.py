@@ -20,12 +20,13 @@ Example::
 
 import logging
 from copy import deepcopy
+from decimal import Decimal
 
 from eth_defi.cctp.constants import TESTNET_CHAIN_IDS
 from eth_defi.cctp.whitelist import CCTPDeployment
 from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
-    LagoonConfig, LagoonDeploymentParameters)
+    DEFAULT_LAGOON_SETTLEMENT_COOLDOWN, LagoonConfig, LagoonDeploymentParameters)
 from eth_defi.gmx.whitelist import GMXDeployment, fetch_all_gmx_markets
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from eth_defi.uniswap_v3.deployment import \
@@ -99,7 +100,9 @@ def _collect_universe_metadata(universe: TradingStrategyUniverse, all_chain_ids:
             if vault_addr:
                 chain_id = normalise_deployment_chain_id(pair.base.chain_id)
                 if chain_id is not None:
-                    hypercore_vaults_per_chain.setdefault(chain_id, []).append(vault_addr)
+                    vaults = hypercore_vaults_per_chain.setdefault(chain_id, [])
+                    if vault_addr not in vaults:
+                        vaults.append(vault_addr)
 
     uniswap_v3_chain_ids = {
         exchange.chain_id.value
@@ -135,6 +138,13 @@ def _collect_chain_token_addresses(universe: TradingStrategyUniverse, all_chain_
         return chain_token_addresses
 
     for pair in universe.iterate_pairs():
+        # Hypercore vault pairs use synthetic native-chain asset addresses
+        # (chain 9999). They are not ERC-20 contracts on HyperEVM and would
+        # make the generic token whitelist probe revert. The Hypercore guard
+        # setup whitelists the actual EVM USDC underlying before approving the
+        # CoreDepositWallet instead.
+        if pair.is_hyperliquid_vault():
+            continue
         for asset in (pair.base, pair.quote):
             chain_id = normalise_deployment_chain_id(asset.chain_id)
             if chain_id is not None:
@@ -151,7 +161,6 @@ def _apply_protocol_configs(
     cctp_destinations: dict[int, set[int]],
     uniswap_v3_chain_ids: set[int],
     gmx_chain_ids: set[int],
-    hypercore_vaults_per_chain: dict[int, list[str]],
     any_asset: bool,
 ) -> None:
     """Apply protocol-specific whitelist/deployment settings to one chain config."""
@@ -198,12 +207,6 @@ def _apply_protocol_configs(
             config.gmx_deployment = GMXDeployment.create_arbitrum(markets=market_addresses)
         logger.info("GMX deployment configured for %s: %d market(s)%s", slug, len(market_addresses), " (skipped per-market whitelisting — any_asset=True)" if any_asset else " (all markets)")
 
-    vault_addrs = hypercore_vaults_per_chain.get(chain_id, [])
-    if vault_addrs:
-        config.hypercore_vaults = vault_addrs
-        logger.info("Hypercore vaults configured for %s: %s", slug, vault_addrs)
-
-
 def translate_trading_universe_to_lagoon_config(
     universe: TradingStrategyUniverse,
     chain_web3: dict[str, Web3],
@@ -213,6 +216,9 @@ def translate_trading_universe_to_lagoon_config(
     fund_name: str = "Crosschain Strategy Vault",
     fund_symbol: str = "CSV",
     any_asset: bool = False,
+    whitelist_known_hyperliquid_vaults: bool = False,
+    max_settlement_amount: Decimal | None = None,
+    settlement_cooldown: int = DEFAULT_LAGOON_SETTLEMENT_COOLDOWN,
     asset_managers: list[HexAddress | str] | None = None,
     asset_manager: HexAddress | str | None = None,
     guard_only: bool = False,
@@ -280,6 +286,21 @@ def translate_trading_universe_to_lagoon_config(
         When ``True``, the vault guard allows any ERC-20 token.
         When ``False`` (default), only tokens from the trading universe
         are whitelisted.
+
+    :param whitelist_known_hyperliquid_vaults:
+        When ``True``, whitelist each Hyperliquid native vault in the strategy
+        universe. This keeps both ``any_asset`` and ``any_hypercore_vault``
+        disabled, so future vaults remain unavailable until the guard is
+        redeployed with an updated universe.
+
+    :param max_settlement_amount:
+        Maximum gross underlying-token amount permitted in one asset-manager
+        Lagoon settlement. The source-chain guard also enforces
+        ``settlement_cooldown`` between non-zero settlements.
+
+    :param settlement_cooldown:
+        Minimum seconds between non-zero automated source-chain Lagoon
+        settlements when ``max_settlement_amount`` is set. Defaults to one day.
 
     :param guard_only:
         When ``True``, build configs for redeploying only the guard/module
@@ -379,6 +400,8 @@ def translate_trading_universe_to_lagoon_config(
             guard_only=guard_only,
             existing_safe_address=existing_safe_address if guard_only else None,
             existing_vault_address=existing_vault_address if guard_only and is_source else None,
+            max_settlement_amount=max_settlement_amount if is_source else None,
+            settlement_cooldown=settlement_cooldown,
         )
 
         # Source chain needs from_the_scratch on testnets (no factory)
@@ -394,9 +417,14 @@ def translate_trading_universe_to_lagoon_config(
             cctp_destinations=cctp_destinations,
             uniswap_v3_chain_ids=uniswap_v3_chain_ids,
             gmx_chain_ids=gmx_chain_ids,
-            hypercore_vaults_per_chain=hypercore_vaults_per_chain,
             any_asset=any_asset,
         )
+
+        if whitelist_known_hyperliquid_vaults:
+            vault_addrs = hypercore_vaults_per_chain.get(chain_id, [])
+            if vault_addrs:
+                config.hypercore_vaults = vault_addrs
+                logger.info("Hypercore vaults configured for %s: %s", slug, vault_addrs)
 
         # Resolve ERC-4626 vault pairs into vault instances for guard whitelisting.
         # This must happen regardless of any_asset because anyAsset only bypasses

@@ -21,9 +21,13 @@ Example: deploy a Lagoon vault for this strategy
     VAULT_RECORD_FILE=/tmp/vault-record.json \\
     FUND_NAME="Hypercore HLP Vault" \\
     FUND_SYMBOL="HLP-V" \\
-    ANY_ASSET=true \\
+    WHITELIST_KNOWN_HYPERLIQUID_VAULTS=true \\
     LOG_LEVEL=info \\
         trade-executor lagoon-deploy-vault
+
+This deployment uses the restrictive Hypercore policy: the guard whitelists
+the Hyperliquid vault from this strategy universe, while leaving both
+``anyAsset`` and ``anyHypercoreVault`` disabled.
 """
 
 import datetime
@@ -72,6 +76,7 @@ USDC_ADDRESS = USDC_NATIVE_TOKEN[CHAIN_ID.value]
 
 class Parameters:
     """Strategy parameters."""
+
     chain_id = CHAIN_ID
     initial_cash = 100_000
     cycle_duration = CycleDuration.cycle_1d
