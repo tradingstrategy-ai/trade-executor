@@ -62,6 +62,7 @@ import os.path
 import random
 import sys
 from dataclasses import fields, is_dataclass
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, cast
 
@@ -75,7 +76,7 @@ from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.erc_4626.vault_protocol.lagoon.config import \
     get_lagoon_chain_config
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
-    DEFAULT_MANAGEMENT_RATE, DEFAULT_PERFORMANCE_RATE,
+    DEFAULT_LAGOON_SETTLEMENT_COOLDOWN, DEFAULT_MANAGEMENT_RATE, DEFAULT_PERFORMANCE_RATE,
     LagoonDeploymentParameters, deploy_automated_lagoon_vault,
     deploy_multichain_lagoon_vault)
 from eth_defi.hotwallet import HotWallet
@@ -410,6 +411,8 @@ def _serialise_lagoon_config(config: Any) -> dict[str, Any]:
         "cctp_deployment": _serialise_simple_dataclass(config.cctp_deployment) if config.cctp_deployment else None,
         "any_asset": config.any_asset,
         "any_hypercore_vault": config.any_hypercore_vault,
+        "max_settlement_amount": str(config.max_settlement_amount) if config.max_settlement_amount is not None else None,
+        "settlement_cooldown": config.settlement_cooldown,
         "etherscan_api_key": "<redacted>" if config.etherscan_api_key else None,
         "verifier": config.verifier,
         "verifier_url": config.verifier_url,
@@ -676,6 +679,8 @@ def lagoon_deploy_vault(
     whitelisted_assets: str | None = Option(None, envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
     any_asset: bool = Option(False, envvar="ANY_ASSET", help="Allow trading of any ERC-20 on Uniswap (unsecure)."),
     whitelist_known_hyperliquid_vaults: bool = Option(False, envvar="WHITELIST_KNOWN_HYPERLIQUID_VAULTS", help="Whitelist all Hyperliquid native vaults in the strategy universe. Requires --strategy-file; cannot be combined with --any-asset."),
+    lagoon_max_settlement_amount: str | None = Option(None, envvar="LAGOON_MAX_SETTLEMENT_AMOUNT", help="Maximum gross underlying-token amount an asset manager may settle in one Lagoon transaction. Enables the settlement cooldown."),
+    lagoon_settlement_cooldown: int = Option(DEFAULT_LAGOON_SETTLEMENT_COOLDOWN, envvar="LAGOON_SETTLEMENT_COOLDOWN", help="Minimum seconds between non-zero automated Lagoon settlements when --lagoon-max-settlement-amount is set. Default: 86400."),
 
     unit_testing: bool = shared_options.unit_testing,
     # production: bool = Option(False, envvar="PRODUCTION", help="Set production metadata flag true for the deployment."),
@@ -757,12 +762,20 @@ def lagoon_deploy_vault(
         len(asset_managers),
         ", ".join(asset_managers),
     )
+    max_settlement_amount = None
+    if lagoon_max_settlement_amount is not None:
+        try:
+            max_settlement_amount = Decimal(lagoon_max_settlement_amount)
+        except InvalidOperation as error:
+            raise ValueError(f"Invalid --lagoon-max-settlement-amount: {lagoon_max_settlement_amount}") from error
     assert not (strategy_file and denomination_asset), \
         "Cannot use both --strategy-file and --denomination-asset. " \
         "When --strategy-file is provided, the reserve asset is read from the strategy's create_trading_universe(). " \
         "Remove --denomination-asset to use the strategy-file deployment path."
     assert not whitelist_known_hyperliquid_vaults or strategy_file, "--whitelist-known-hyperliquid-vaults requires --strategy-file to construct the vault universe."
     assert not (whitelist_known_hyperliquid_vaults and any_asset), "--whitelist-known-hyperliquid-vaults cannot be combined with --any-asset."
+    assert max_settlement_amount is None or strategy_file, "--lagoon-max-settlement-amount requires --strategy-file."
+    assert max_settlement_amount is not None or lagoon_settlement_cooldown == DEFAULT_LAGOON_SETTLEMENT_COOLDOWN, "--lagoon-settlement-cooldown requires --lagoon-max-settlement-amount."
 
     # Strategy-file deployment path: use strategy file to generate per-chain configs
     # via translate_trading_universe_to_lagoon_config(). Handles both multichain
@@ -784,6 +797,8 @@ def lagoon_deploy_vault(
             logger=logger,
             any_asset=any_asset,
             whitelist_known_hyperliquid_vaults=whitelist_known_hyperliquid_vaults,
+            max_settlement_amount=max_settlement_amount,
+            settlement_cooldown=lagoon_settlement_cooldown,
             trading_strategy_api_key=trading_strategy_api_key,
             hypersync_api_key=hypersync_api_key,
             etherscan_api_key=etherscan_api_key,
@@ -1057,6 +1072,8 @@ def _deploy_multichain(
     logger,
     any_asset: bool = False,
     whitelist_known_hyperliquid_vaults: bool = False,
+    max_settlement_amount: Decimal | None = None,
+    settlement_cooldown: int = DEFAULT_LAGOON_SETTLEMENT_COOLDOWN,
     trading_strategy_api_key: str | None = None,
     hypersync_api_key: str | None = None,
     etherscan_api_key: str | None = None,
@@ -1150,6 +1167,8 @@ def _deploy_multichain(
         fund_symbol=resolved_fund_symbol,
         any_asset=any_asset,
         whitelist_known_hyperliquid_vaults=whitelist_known_hyperliquid_vaults,
+        max_settlement_amount=max_settlement_amount,
+        settlement_cooldown=settlement_cooldown,
         guard_only=guard_only,
         existing_vault_address=existing_vault_address,
         existing_safe_address=existing_safe_address,

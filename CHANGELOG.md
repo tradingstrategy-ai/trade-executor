@@ -12,7 +12,7 @@
 
 - Add HyperCore vault rebalance cost tracking and the `show-hypercore-rebalance-costs` command. New live trades persist HyperEVM gas, bridge fees, measured account activation fees, and observed full-close value loss without counting bridge fees or retained phase-3 headroom twice. The read-only report groups normal trades by decision cycle, gives complete-rebalance USD/BPS totals and averages, reconstructs legacy gas from complete receipts and hourly HYPE prices as an explicit lower bound, and semantically excludes repaired, repair, test, unsuccessful, and transactionless history (2026-07-31)
 
-- Add `lagoon-deploy-vault --whitelist-known-hyperliquid-vaults` to deploy a restrictive guard with every Hyperliquid vault in the strategy universe explicitly whitelisted, while both broad asset and dynamic-Hypercore-vault permissions remain disabled (2026-08-03)
+- Add `lagoon-deploy-vault --whitelist-known-hyperliquid-vaults` to deploy a restrictive guard with every Hyperliquid vault in the strategy universe explicitly whitelisted, while both broad asset and dynamic-Hypercore-vault permissions remain disabled. `--lagoon-max-settlement-amount` optionally caps gross asset-manager settlement movement and enables the configurable (default one-day) cooldown (2026-08-03)
 
 - Add the standalone `vault-test-trade` TUI and sequential automatic modes for exercising explicitly selected vaults through a deployed or ephemeral Lagoon executor, including CCTP satellite cycles, persisted real/simulated position diagnostics, asynchronous request tracking, and fresh multichain Anvil replacement after infrastructure failures (2026-07-22)
 

@@ -102,8 +102,9 @@ def test_cli_whitelists_known_hyperliquid_vaults(
 
     1. Construct the strategy universe and collect its native vault addresses.
     2. Deploy through ``lagoon-deploy-vault`` with the explicit whitelist option.
-    3. Check both broad guard flags remain disabled and every universe vault has
-       a dedicated Hypercore whitelist entry.
+    3. Check both broad guard flags remain disabled, every universe vault has a
+       dedicated Hypercore whitelist entry, and the Lagoon settlement safety
+       policy is applied.
     4. Validate a CoreWriter vault-transfer call for every whitelisted vault.
     """
     # 1. Construct the exact strategy universe used by the CLI deployment path.
@@ -147,7 +148,12 @@ def test_cli_whitelists_known_hyperliquid_vaults(
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
     cli.main(
-        args=["lagoon-deploy-vault", "--whitelist-known-hyperliquid-vaults"],
+        args=[
+            "lagoon-deploy-vault",
+            "--whitelist-known-hyperliquid-vaults",
+            "--lagoon-max-settlement-amount",
+            "250",
+        ],
         standalone_mode=False,
     )
 
@@ -163,12 +169,21 @@ def test_cli_whitelists_known_hyperliquid_vaults(
     # 3. The option takes the restrictive, per-vault policy path.
     assert hyperliquid_deployment["config"]["any_asset"] is False
     assert hyperliquid_deployment["config"]["any_hypercore_vault"] is False
+    assert hyperliquid_deployment["config"]["max_settlement_amount"] == "250"
+    assert hyperliquid_deployment["config"]["settlement_cooldown"] == 24 * 60 * 60
     assert {
         address.lower()
         for address in hyperliquid_deployment["config"]["hypercore_vaults"]
     } == {address.lower() for address in known_vaults}
     assert module.functions.anyAsset().call() is False
     assert module.functions.anyHypercoreVault().call() is False
+    settlement_config = module.functions.getLagoonSettlementSafetyConfig(
+        hyperliquid_deployment["vault_address"]
+    ).call()
+    assert settlement_config[0] is True
+    assert settlement_config[1] is True
+    assert settlement_config[4] == 250 * 10**6
+    assert settlement_config[5] == 24 * 60 * 60
 
     whitelisted_vaults = {
         Web3.to_checksum_address(entry["address"])
