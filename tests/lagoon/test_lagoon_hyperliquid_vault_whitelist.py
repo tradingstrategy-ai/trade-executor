@@ -101,11 +101,12 @@ def test_cli_whitelists_known_hyperliquid_vaults(
     """Deploy a restrictive Hyperliquid guard from a strategy universe.
 
     1. Construct the strategy universe and collect its native vault addresses.
-    2. Deploy through ``lagoon-deploy-vault`` with the explicit whitelist option.
-    3. Check both broad guard flags remain disabled, every universe vault has a
+    2. Reject a settlement cooldown without its required settlement cap.
+    3. Deploy through ``lagoon-deploy-vault`` with the explicit whitelist option.
+    4. Check both broad guard flags remain disabled, every universe vault has a
        dedicated Hypercore whitelist entry, and the Lagoon settlement safety
        policy is applied.
-    4. Validate a CoreWriter vault-transfer call for every whitelisted vault.
+    5. Validate a CoreWriter vault-transfer call for every whitelisted vault.
     """
     # 1. Construct the exact strategy universe used by the CLI deployment path.
     strategy_module = read_strategy_module(strategy_file)
@@ -144,9 +145,19 @@ def test_cli_whitelists_known_hyperliquid_vaults(
         "SAFE_SALT_NONCE": "4242",
     }
 
-    # 2. Deploy the Lagoon vault and TradingStrategyModuleV0 through the CLI.
+    # 2. Reject a cooldown without the required settlement amount through Typer.
     cli = get_command(app)
     mocker.patch.dict("os.environ", environment, clear=True)
+    with pytest.raises(
+        AssertionError,
+        match="--lagoon-settlement-cooldown requires --lagoon-max-settlement-amount",
+    ):
+        cli.main(
+            args=["lagoon-deploy-vault", "--lagoon-settlement-cooldown", "3600"],
+            standalone_mode=False,
+        )
+
+    # 3. Deploy the Lagoon vault and TradingStrategyModuleV0 through the CLI.
     cli.main(
         args=[
             "lagoon-deploy-vault",
@@ -166,7 +177,7 @@ def test_cli_whitelists_known_hyperliquid_vaults(
         hyperliquid_deployment["module_address"],
     )
 
-    # 3. The option takes the restrictive, per-vault policy path.
+    # 4. The options take the restrictive, per-vault and settlement-safety paths.
     assert hyperliquid_deployment["config"]["any_asset"] is False
     assert hyperliquid_deployment["config"]["any_hypercore_vault"] is False
     assert hyperliquid_deployment["config"]["max_settlement_amount"] == "250"
@@ -192,7 +203,7 @@ def test_cli_whitelists_known_hyperliquid_vaults(
     }
     assert whitelisted_vaults == known_vaults
 
-    # 4. Every universe vault passes the module's CoreWriter action-2 validation.
+    # 5. Every universe vault passes the module's CoreWriter action-2 validation.
     core_writer = deploy_mock_core_writer(web3)
     for vault_address in known_vaults:
         function_call = core_writer.functions.sendRawAction(
