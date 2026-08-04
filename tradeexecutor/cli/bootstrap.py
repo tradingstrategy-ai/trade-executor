@@ -407,7 +407,7 @@ def _log_multichain_deployment_section(
         for key, value in values.items():
             label = f"{section}.{prefix}{key}"
             if key == "ABI":
-                logger.info("Multichain deployment %s %s: <omitted>", chain_slug, label)
+                logger.debug("Multichain deployment %s %s: <omitted>", chain_slug, label)
                 continue
 
             next_prefix = f"{prefix}{key}."
@@ -416,11 +416,11 @@ def _log_multichain_deployment_section(
                     chain_slug, section, value, next_prefix
                 )
             else:
-                logger.info("Multichain deployment %s %s: %s", chain_slug, label, value)
+                logger.debug("Multichain deployment %s %s: %s", chain_slug, label, value)
     elif isinstance(values, list):
         if not values:
             label = f"{section}.{prefix[:-1]}" if prefix else section
-            logger.info("Multichain deployment %s %s: []", chain_slug, label)
+            logger.debug("Multichain deployment %s %s: []", chain_slug, label)
         for idx, value in enumerate(values, start=1):
             next_prefix = f"{prefix}{idx}."
             label = f"{section}.{prefix}{idx}"
@@ -429,9 +429,9 @@ def _log_multichain_deployment_section(
                     chain_slug, section, value, next_prefix
                 )
             else:
-                logger.info("Multichain deployment %s %s: %s", chain_slug, label, value)
+                logger.debug("Multichain deployment %s %s: %s", chain_slug, label, value)
     else:
-        logger.info("Multichain deployment %s %s: %s", chain_slug, section, values)
+        logger.debug("Multichain deployment %s %s: %s", chain_slug, section, values)
 
 
 def strip_deployment_state_abi(data: object) -> object:
