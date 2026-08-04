@@ -150,9 +150,12 @@ class Treasury:
     #: Wall clock time, at the beginning on the sync cycle.
     last_cycle_at: Optional[datetime.datetime] = None
 
-    #: What is the last processed block for deposit
+    #: What is the last block at which treasury state was observed.
     #:
-    #: 0 = not scanned yet
+    #: For Lagoon, queue amounts are an as-of-block snapshot. This advances
+    #: after a NAV-only sync even when no deposit or redemption was settled.
+    #:
+    #: ``None`` = not scanned yet.
     last_block_scanned: Optional[int] = None
 
     #: List of refences to all balance update events.
@@ -160,15 +163,24 @@ class Treasury:
     #: The actual balance update content is stored on the position itself.
     balance_update_refs: List[BalanceEventRef] = field(default_factory=list)
 
-    #: How much pending redemptions we have?
+    #: How much underlying is required to settle pending redemptions.
     #:
     #: For Lagoon based vaults, we need to sell assets to satisfy redemptions on the next cycle.
     #:
     pending_redemptions: Optional[USDollarAmount] = None
 
+    #: How much underlying-token deposits are waiting in the investor queue.
+    #:
+    #: For Lagoon based vaults, this is the pending Silo balance observed during
+    #: the most recent successful post-valuation treasury sync. It is outside
+    #: the Safe and therefore does not belong to portfolio cash or NAV. It stays
+    #: ``None`` after an upgrade until the first such sync records a snapshot.
+    #:
+    pending_deposits: USDollarAmount | None = None
+
     #: Number of issued shares.
     #:
-    #: For Lagoon based vaults, needed to calcualte share price.
+    #: For Lagoon based vaults, needed to calculate share price.
     #:
     share_count: Optional[Decimal] = None
 
@@ -247,4 +259,3 @@ class Sync:
     def is_initialised(self) -> bool:
         """Have we scanned the initial deployment event for the sync model."""
         return self.deployment.block_number is not None
-

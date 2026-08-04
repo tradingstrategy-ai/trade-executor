@@ -15,8 +15,10 @@ map the relevant code and tests.
 **Scope note.** This is about the strategy acting as a *depositor into an
 external vault*. It is not about the strategy's own treasury being a Lagoon
 vault (external investors depositing into *us* — `has_async_deposits()`,
-`pending_redemptions`). The two systems share vocabulary but are separate code
-paths, and confusing them is the most common mistake in this area. See
+`state.sync.treasury.pending_deposits`,
+`state.sync.treasury.pending_redemptions`). The two systems share vocabulary
+but are separate code paths, and confusing them is the most common mistake in
+this area. See
 [`lagoon-treasury-settlement.md`](lagoon-treasury-settlement.md) for the
 strategy-owned Lagoon treasury flow.
 

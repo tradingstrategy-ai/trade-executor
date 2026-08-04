@@ -77,20 +77,25 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
 ) -> None:
     """Settle a below-cap investor queue automatically and post NAV without an empty settlement.
 
-    1. Initialise the executor treasury for a fresh GuardV0-capped Lagoon vault.
+    1. Initialise the executor treasury for a fresh GuardV0-capped Lagoon vault
+       and verify its unobserved queue state.
     2. Queue a 9 USDC investor deposit below the 10 USDC Guard limit.
     3. Post NAV and automatically settle the deposit through the guarded module.
     4. Serialise GuardV0's live cap and cooldown into the frontend metadata.
-    5. Queue another below-cap deposit during the cooldown and verify NAV-only deferral.
-    6. Disable broadcasts and verify it suppresses both the mandatory NAV post and settlement.
+    5. Post NAV with an empty queue and verify its observed zero state persists.
+    6. Queue another below-cap deposit during cooldown and verify its queue state persists.
+    7. Disable broadcasts and verify it suppresses both the mandatory NAV post and settlement.
     """
     vault = guarded_lagoon_vault.vault
     sync_model = LagoonVaultSyncModel(vault=vault, hot_wallet=asset_manager)
     state = State()
     sync_model.sync_initial(state, reserve_asset=vault_strategy_universe.get_reserve_asset(), reserve_token_price=1.0)
 
-    # 1. Initialise the executor treasury for a fresh GuardV0-capped Lagoon vault.
+    # 1. Initialise the executor treasury for a fresh GuardV0-capped Lagoon vault
+    #    and verify its unobserved queue state.
     assert state.portfolio.get_cash() == 0
+    assert state.sync.treasury.pending_deposits is None
+    assert json.loads(state.to_json_safe())["sync"]["treasury"]["pending_deposits"] is None
 
     # 2. Queue a 9 USDC investor deposit below the 10 USDC Guard limit.
     _request_deposit(guarded_lagoon_vault, base_usdc_token, depositor, Decimal(9))
@@ -102,6 +107,8 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
     assert base_usdc_token.fetch_balance_of(vault.silo_address) == Decimal(0)
     assert state.portfolio.get_cash() == pytest.approx(9)
     assert vault.get_flow_manager().fetch_pending_deposit(web3.eth.block_number) == Decimal(0)
+    assert state.sync.treasury.pending_deposits == pytest.approx(0)
+    assert state.sync.treasury.pending_redemptions == pytest.approx(0)
     safety_config = vault.trading_strategy_module.functions.getLagoonSettlementSafetyConfig(vault.address).call()
     assert safety_config[6] > 0
     assert safety_config[7] == safety_config[6] + 86_400
@@ -129,7 +136,15 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
         "next_automatic_settlement_timestamp": safety_config[7],
     }
 
-    # 5. Queue another below-cap deposit during the cooldown and verify NAV-only deferral.
+    # 5. Post NAV with an empty queue and verify its observed zero state persists.
+    nonce_before = web3.eth.get_transaction_count(asset_manager.address)
+    events = sync_model.sync_treasury(native_datetime_utc_now(), state, post_valuation=True)
+    assert events == []
+    assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 1
+    assert state.sync.treasury.pending_deposits == pytest.approx(0)
+    assert state.sync.treasury.pending_redemptions == pytest.approx(0)
+
+    # 6. Queue another below-cap deposit during cooldown and verify its queue state persists.
     _request_deposit(guarded_lagoon_vault, base_usdc_token, depositor, Decimal(1))
     nonce_before = web3.eth.get_transaction_count(asset_manager.address)
     with caplog.at_level(logging.INFO):
@@ -138,9 +153,19 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
     assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 1
     assert base_usdc_token.fetch_balance_of(vault.silo_address) == Decimal(1)
     assert vault.trading_strategy_module.functions.getLagoonSettlementSafetyConfig(vault.address).call()[6:] == safety_config[6:]
+    assert state.sync.treasury.pending_deposits == pytest.approx(1)
+    assert state.sync.treasury.pending_redemptions == pytest.approx(0)
+    state_json = state.to_json_safe()
+    state_data = json.loads(state_json)
+    assert state_data["sync"]["treasury"]["pending_deposits"] == pytest.approx(1)
+    restored_state = State.read_json_blob(state_json)
+    assert restored_state.sync.treasury.pending_deposits == pytest.approx(1)
+    del state_data["sync"]["treasury"]["pending_deposits"]
+    legacy_state = State.read_json_blob(json.dumps(state_data))
+    assert legacy_state.sync.treasury.pending_deposits is None
     assert "The queue will be retried automatically" in caplog.text
 
-    # 6. Disable broadcasts and verify it suppresses both the mandatory NAV post and settlement.
+    # 7. Disable broadcasts and verify it suppresses both the mandatory NAV post and settlement.
     sync_model.disable_broadcast = True
     nonce_before = web3.eth.get_transaction_count(asset_manager.address)
     with caplog.at_level(logging.INFO):
@@ -148,6 +173,8 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
     assert events == []
     assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before
     assert base_usdc_token.fetch_balance_of(vault.silo_address) == Decimal(1)
+    assert state.sync.treasury.pending_deposits == pytest.approx(1)
+    assert state.sync.treasury.pending_redemptions == pytest.approx(0)
     assert "not posting NAV or settling the investor queue" in caplog.text
 
 
@@ -165,7 +192,7 @@ def test_lagoon_guard_posts_nav_but_defers_oversized_flow_to_safe(
     1. Bootstrap and finalise a below-cap deposit so the investor has redeemable shares.
     2. Queue opposing deposit and redemption flows whose gross amount exceeds the Guard cap.
     3. Run the post-valuation treasury sync once more.
-    4. Verify it broadcasts NAV only, preserves both queues and emits the Safe-governance error.
+    4. Verify it broadcasts NAV only, persists both queues and emits the Safe-governance error.
     """
     vault = guarded_lagoon_vault.vault
     sync_model = LagoonVaultSyncModel(vault=vault, hot_wallet=asset_manager)
@@ -194,7 +221,7 @@ def test_lagoon_guard_posts_nav_but_defers_oversized_flow_to_safe(
     with caplog.at_level(logging.ERROR):
         events = sync_model.sync_treasury(cycle, state, post_valuation=True)
 
-    # 4. Verify it broadcasts NAV only, preserves both queues and emits the Safe-governance error.
+    # 4. Verify it broadcasts NAV only, persists both queues and emits the Safe-governance error.
     assert events == []
     assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 1
     assert state.sync.treasury.last_cycle_at == cycle
@@ -203,7 +230,9 @@ def test_lagoon_guard_posts_nav_but_defers_oversized_flow_to_safe(
     assert base_usdc_token.fetch_balance_of(vault.safe_address) == safe_balance_before
     assert base_usdc_token.fetch_balance_of(vault.address) == vault_balance_before
     assert vault.trading_strategy_module.functions.getLagoonSettlementSafetyConfig(vault.address).call()[6:] == safety_before[6:]
+    assert state.sync.treasury.pending_deposits == pytest.approx(9)
     assert state.sync.treasury.pending_redemptions == pytest.approx(2)
+    assert state.sync.treasury.last_block_scanned == web3.eth.block_number
     assert "direct Safe-governance settlement required" in caplog.text
     assert "gross_flow=" in caplog.text
     assert "(10999999 raw)" in caplog.text

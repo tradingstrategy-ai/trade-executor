@@ -16,6 +16,35 @@ the TradingStrategyModuleV0. Stock Lagoon v0.5 can settle both queued deposits
 and redemptions through this call. A successful NAV post therefore does not
 mean that an investor queue was settled.
 
+## Persisted queue state
+
+The executor exposes the latest observed aggregate investor queue in the state
+API, not in `/metadata`:
+
+| State field | Meaning |
+|---|---|
+| `sync.treasury.pending_deposits` | Underlying-token assets still held in the pending Silo. |
+| `sync.treasury.pending_redemptions` | Underlying-token estimate needed for redemption shares still held in the Silo. |
+
+Both values are human-readable underlying-token amounts. For Lagoon's required
+stablecoin reserve, the executor also treats them as US dollar amounts.
+`None` means that the queue has not been observed by this executor version in a
+completed post-valuation treasury sync; an observed empty queue is stored as
+`0.0`. After upgrading an existing executor state, `pending_deposits` remains
+`None` until its first completed post-valuation treasury sync even if the older
+pending-redemption snapshot is populated.
+
+After the NAV transaction is confirmed, a deferred, manually-required or empty
+queue is read at one queue snapshot block. The executor stores that exact block
+in `sync.treasury.last_block_scanned`, even though no settlement transaction or
+balance update occurred. A successful settlement refreshes the remaining
+deposit and redemption queues at the settlement analysis block.
+
+Queue observations do not create `BalanceUpdate` events and do not enter
+portfolio cash or NAV: pending deposits remain outside the Safe, while pending
+redemptions are a liquidity requirement until settlement. GuardV0 cap and
+cooldown policy remains separate live `/metadata` display data.
+
 ## GuardV0 policy
 
 TradingStrategyModuleV0 v0.5 may enable GuardV0 settlement safety. The Guard
