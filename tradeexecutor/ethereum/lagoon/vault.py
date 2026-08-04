@@ -580,7 +580,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         pending_redemptions: Decimal | None = None,
         share_count: Decimal | None = None,
     ) -> None:
-        """Mark Lagoon treasury as synced even when no settlement was needed."""
+        """Mark a Lagoon treasury queue snapshot as complete."""
         treasury_sync.last_updated_at = native_datetime_utc_now()
         treasury_sync.last_cycle_at = strategy_cycle_ts
         treasury_sync.last_block_scanned = block_number
@@ -1011,7 +1011,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
             # observed at a later block than the NAV receipt, so persist this
             # block rather than incorrectly attributing these values to the
             # NAV receipt block.
-            queue_snapshot_block = self.get_safe_latest_block()
+            queue_snapshot_block = web3.eth.block_number
             pending_deposits, pending_redemptions = self._fetch_lagoon_queue_amounts(queue_snapshot_block)
             share_count = vault.fetch_total_supply(queue_snapshot_block)
 
@@ -1113,6 +1113,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         share_count = vault.fetch_total_supply(analysis.block_number)
         other_data["share_count"] = share_count
+        pending_deposits, pending_redemptions = self._fetch_lagoon_queue_amounts(analysis.block_number)
 
         evt = BalanceUpdate(
             balance_update_id=event_id,
@@ -1144,7 +1145,6 @@ class LagoonVaultSyncModel(AddressSyncModel):
         # Add in the event cross reference list
         ref = BalanceEventRef.from_balance_update_event(evt)
         treasury_sync.balance_update_refs.append(ref)
-        pending_deposits, pending_redemptions = self._fetch_lagoon_queue_amounts(analysis.block_number)
         self._mark_treasury_sync_completed(
             treasury_sync=treasury_sync,
             strategy_cycle_ts=strategy_cycle_ts,

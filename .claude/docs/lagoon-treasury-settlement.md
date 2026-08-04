@@ -28,8 +28,11 @@ API, not in `/metadata`:
 
 Both values are human-readable underlying-token amounts. For Lagoon's required
 stablecoin reserve, the executor also treats them as US dollar amounts.
-`None` means that the queue has not been observed by a completed post-valuation
-treasury sync; an observed empty queue is stored as `0.0`.
+`None` means that the queue has not been observed by this executor version in a
+completed post-valuation treasury sync; an observed empty queue is stored as
+`0.0`. After upgrading an existing executor state, `pending_deposits` remains
+`None` until its first completed post-valuation treasury sync even if the older
+pending-redemption snapshot is populated.
 
 After the NAV transaction is confirmed, a deferred, manually-required or empty
 queue is read at one queue snapshot block. The executor stores that exact block

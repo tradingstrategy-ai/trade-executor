@@ -164,6 +164,8 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
     assert events == []
     assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before
     assert base_usdc_token.fetch_balance_of(vault.silo_address) == Decimal(1)
+    assert state.sync.treasury.pending_deposits == pytest.approx(1)
+    assert state.sync.treasury.pending_redemptions == pytest.approx(0)
     assert "not posting NAV or settling the investor queue" in caplog.text
 
 

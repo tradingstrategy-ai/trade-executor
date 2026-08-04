@@ -173,7 +173,8 @@ class Treasury:
     #:
     #: For Lagoon based vaults, this is the pending Silo balance observed during
     #: the most recent successful post-valuation treasury sync. It is outside
-    #: the Safe and therefore does not belong to portfolio cash or NAV.
+    #: the Safe and therefore does not belong to portfolio cash or NAV. It stays
+    #: ``None`` after an upgrade until the first such sync records a snapshot.
     #:
     pending_deposits: USDollarAmount | None = None
 
