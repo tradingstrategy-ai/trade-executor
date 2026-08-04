@@ -576,6 +576,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         treasury_sync,
         strategy_cycle_ts: datetime.datetime,
         block_number: int,
+        pending_deposits: Decimal | None = None,
         pending_redemptions: Decimal | None = None,
         share_count: Decimal | None = None,
     ) -> None:
@@ -583,10 +584,23 @@ class LagoonVaultSyncModel(AddressSyncModel):
         treasury_sync.last_updated_at = native_datetime_utc_now()
         treasury_sync.last_cycle_at = strategy_cycle_ts
         treasury_sync.last_block_scanned = block_number
+        if pending_deposits is not None:
+            treasury_sync.pending_deposits = float(pending_deposits)
         if pending_redemptions is not None:
             treasury_sync.pending_redemptions = float(pending_redemptions)
         if share_count is not None:
             treasury_sync.share_count = share_count
+
+    def _fetch_lagoon_queue_amounts(
+        self,
+        block_number: int,
+    ) -> tuple[Decimal, Decimal]:
+        """Read aggregate investor queue amounts at one specific block."""
+        flow_manager = self.vault.get_flow_manager()
+        return (
+            flow_manager.fetch_pending_deposit(block_number),
+            flow_manager.calculate_underlying_needed_for_redemptions(block_number),
+        )
 
     def _has_lagoon_settlement_safety(self) -> bool:
         """Check whether the supported module enables GuardV0 settlement safety."""
@@ -941,8 +955,6 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         # Do not pre-sign settlement: GuardV0 is evaluated against the state
         # after this confirmed NAV transaction.
-        nav_block_number = nav_receipt["blockNumber"]
-
         logger.info("Preparing to settle Lagoon")
 
         # This is an operator liquidity warning only. GuardV0 preflight below
@@ -995,10 +1007,13 @@ class LagoonVaultSyncModel(AddressSyncModel):
         # particular, pending redemptions must remain reserved so yield logic
         # cannot allocate cash needed for a deferred or manual settlement.
         if not preflight.should_settle:
-            metadata_block_number = web3.eth.block_number
-            flow_manager = vault.get_flow_manager()
-            pending_redemptions = flow_manager.calculate_underlying_needed_for_redemptions(metadata_block_number)
-            share_count = vault.fetch_total_supply(metadata_block_number)
+            # Persist one self-consistent queue snapshot. The queue can be
+            # observed at a later block than the NAV receipt, so persist this
+            # block rather than incorrectly attributing these values to the
+            # NAV receipt block.
+            queue_snapshot_block = self.get_safe_latest_block()
+            pending_deposits, pending_redemptions = self._fetch_lagoon_queue_amounts(queue_snapshot_block)
+            share_count = vault.fetch_total_supply(queue_snapshot_block)
 
             if preflight.manual_settlement_required:
                 # Gross flow is above the GuardV0 cap. The Safe, rather than
@@ -1023,7 +1038,8 @@ class LagoonVaultSyncModel(AddressSyncModel):
             self._mark_treasury_sync_completed(
                 treasury_sync=treasury_sync,
                 strategy_cycle_ts=strategy_cycle_ts,
-                block_number=nav_block_number,
+                block_number=queue_snapshot_block,
+                pending_deposits=pending_deposits,
                 pending_redemptions=pending_redemptions,
                 share_count=share_count,
             )
@@ -1128,18 +1144,22 @@ class LagoonVaultSyncModel(AddressSyncModel):
         # Add in the event cross reference list
         ref = BalanceEventRef.from_balance_update_event(evt)
         treasury_sync.balance_update_refs.append(ref)
-        treasury_sync.last_block_scanned = analysis.block_number
-        treasury_sync.last_updated_at = native_datetime_utc_now()
-        treasury_sync.last_cycle_at = strategy_cycle_ts
-        treasury_sync.pending_redemptions = float(analysis.pending_redemptions_underlying)
-        treasury_sync.share_count = share_count
+        pending_deposits, pending_redemptions = self._fetch_lagoon_queue_amounts(analysis.block_number)
+        self._mark_treasury_sync_completed(
+            treasury_sync=treasury_sync,
+            strategy_cycle_ts=strategy_cycle_ts,
+            block_number=analysis.block_number,
+            pending_deposits=pending_deposits,
+            pending_redemptions=pending_redemptions,
+            share_count=share_count,
+        )
 
         logger.info(
             f"Lagoon settlements done, the last block is now {treasury_sync.last_block_scanned:,}\n"
             f"Safe address: {vault.safe_address}, vault address: {vault.vault_address}, silo address: {vault.silo_address}\n"
             f"Settled {analysis.get_underlying_diff()} USD\n"
             f"Non-deposit valuation is {valuation:,.2f} USD, with-deposit valuation is {valuation_with_deposits:,.2f} USD\n"
-            f"Pending redemptions {analysis.pending_redemptions_underlying} USD\n"
+            f"Pending redemptions {pending_redemptions} USD\n"
             f"Share count {share_count} {vault.share_token.symbol}"
         )
         return [evt]

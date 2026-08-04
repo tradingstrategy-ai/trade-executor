@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Expose current unsettled Lagoon investor deposit and redemption queues in persistent treasury state, so state consumers can distinguish live queue amounts from GuardV0 settlement-policy metadata (2026-08-04)
+
 - Fix default-on `correct-accounts` cleanup for undersized HyperCore vault positions to redeem directly without deposits or new lock-ups, keep verifiable residuals tracked, and provide a read-only `--dry-run` preview (2026-07-30)
 
 - Extend `vault-test-trade` simulations to validate typed closed deposits through GuardV0 without broadcasting, and distinguish vault JSON statuses that incorrectly report deposits open or closed (2026-07-28)
