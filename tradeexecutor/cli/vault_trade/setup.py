@@ -18,6 +18,7 @@ from typing import Any
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.vault.base import VaultSpec
 from tradingstrategy.client import Client
+from tradingstrategy.chain import ChainId
 
 from tradeexecutor.cli.bootstrap import (
     create_execution_and_sync_model,
@@ -34,8 +35,12 @@ from tradeexecutor.cli.vault_trade.core import (
 )
 from tradeexecutor.cli.vault_trade.simulation import (
     SimulatedVaultRuntime,
+    get_last_midnight_utc,
+    get_shared_simulation_fork_blocks,
+    parse_simulation_fork_blocks,
     rotate_simulated_rpc_upstreams,
     start_simulated_vault_runtime_with_replacement,
+    validate_simulation_fork_blocks,
 )
 from tradeexecutor.cli.vault_trade.tui import (
     VaultChoice,
@@ -54,6 +59,21 @@ from tradeexecutor.strategy.trading_strategy_universe import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+SIMULATED_VAULT_TEST_PRIMARY_CHAIN = ChainId.ethereum
+
+
+def select_simulated_vault_test_primary_chain(
+    rpc_kwargs: dict,
+    vault_specs: list[VaultSpec],
+) -> ChainId:
+    """Choose a stable simulated Lagoon hub for a vault-test batch."""
+
+    assert vault_specs, "A simulated vault test needs at least one vault"
+    if rpc_kwargs.get("json_rpc_ethereum"):
+        return SIMULATED_VAULT_TEST_PRIMARY_CHAIN
+    return ChainId(vault_specs[0].chain_id)
 
 
 @dataclass(slots=True)
@@ -191,6 +211,10 @@ def _create_vault_test_provenance(
     web3config: Web3Config,
     amount: Decimal,
     max_slippage: float,
+    fork_block_source: str | None = None,
+    pinned_fork_blocks: dict[ChainId, int] | None = None,
+    fork_block_target_at: datetime.datetime | None = None,
+    fork_block_reference: str | None = None,
 ) -> dict:
     """Capture source revisions and initial chain heights for a tester run."""
 
@@ -204,7 +228,7 @@ def _create_vault_test_provenance(
             initial_chain_blocks[str(chain_id.value)] = {
                 "error": "Could not capture initial chain block",
             }
-    return {
+    provenance = {
         "schema_version": 2,
         "execution_mode": mode,
         "amount": str(amount),
@@ -214,6 +238,18 @@ def _create_vault_test_provenance(
         "eth_defi_commit": _read_git_commit(eth_defi_root),
         "initial_chain_blocks": initial_chain_blocks,
     }
+    if fork_block_source is not None:
+        provenance["fork_block_source"] = fork_block_source
+    if pinned_fork_blocks is not None:
+        provenance["pinned_fork_blocks"] = {
+            str(chain_id.value): block_number
+            for chain_id, block_number in pinned_fork_blocks.items()
+        }
+    if fork_block_target_at is not None:
+        provenance["fork_block_target_at"] = fork_block_target_at.isoformat()
+    if fork_block_reference:
+        provenance["fork_block_reference"] = fork_block_reference
+    return provenance
 
 
 def load_vault_test_data(
@@ -267,6 +303,8 @@ def create_vault_test_runtime(
     vault_specs: list[VaultSpec],
     data: VaultTestData,
     auto_simulated: bool,
+    simulation_fork_blocks: list[str] | None = None,
+    simulation_fork_block_reference: str | None = None,
 ) -> VaultTestRuntime:
     """Dispatch runtime construction based on the requested execution mode."""
 
@@ -284,6 +322,8 @@ def create_vault_test_runtime(
             amount=amount,
             vault_specs=vault_specs,
             data=data,
+            simulation_fork_blocks=simulation_fork_blocks,
+            simulation_fork_block_reference=simulation_fork_block_reference,
         )
     return _create_real_vault_test_runtime(
         executor_id=executor_id,
@@ -315,17 +355,48 @@ def _create_simulated_vault_test_runtime(
     amount: Decimal,
     vault_specs: list[VaultSpec],
     data: VaultTestData,
+    simulation_fork_blocks: list[str] | None,
+    simulation_fork_block_reference: str | None,
 ) -> VaultTestRuntime:
     """Create the first disposable multichain Anvil generation."""
 
+    primary_chain_id = select_simulated_vault_test_primary_chain(
+        rpc_kwargs,
+        vault_specs,
+    )
+
     # Fork only explicitly requested chains.  This shortens startup and avoids
     # unrelated RPC failures aborting a diagnostic batch.
-    filtered_rpc_kwargs = filter_rpc_kwargs_for_vault_specs(rpc_kwargs, vault_specs)
+    filtered_rpc_kwargs = filter_rpc_kwargs_for_vault_specs(
+        rpc_kwargs,
+        vault_specs,
+        primary_chain_id=primary_chain_id,
+    )
+    explicit_fork_blocks = parse_simulation_fork_blocks(simulation_fork_blocks)
+    selected_at = None
+    if explicit_fork_blocks:
+        validate_simulation_fork_blocks(
+            explicit_fork_blocks,
+            vault_specs,
+            primary_chain_id=primary_chain_id,
+        )
+        pinned_fork_blocks = explicit_fork_blocks
+        fork_block_source = "explicit"
+    else:
+        selected_at = get_last_midnight_utc()
+        pinned_fork_blocks = get_shared_simulation_fork_blocks(
+            vault_specs,
+            rpc_kwargs=filtered_rpc_kwargs,
+            target_at=selected_at,
+            primary_chain_id=primary_chain_id,
+        )
+        fork_block_source = "automatic_midnight"
     simulated_runtime_kwargs = {
         "executor_id": executor_id,
         "rpc_kwargs": filtered_rpc_kwargs,
         "unit_testing": unit_testing,
         "vault_specs": vault_specs,
+        "primary_chain_id": primary_chain_id,
         "vault_universe": data.vault_universe,
         "private_key": private_key or SIMULATED_LAGOON_PRIVATE_KEY,
         "amount": amount,
@@ -335,6 +406,7 @@ def _create_simulated_vault_test_runtime(
         "min_gas_balance": min_gas_balance,
         "max_slippage": max_slippage,
         "token_cache": data.token_cache,
+        "pinned_fork_blocks": pinned_fork_blocks,
     }
     simulated_runtime = start_simulated_vault_runtime_with_replacement(
         generation=1,
@@ -353,6 +425,10 @@ def _create_simulated_vault_test_runtime(
             web3config=simulated_runtime.web3config,
             amount=amount,
             max_slippage=max_slippage,
+            fork_block_source=fork_block_source,
+            pinned_fork_blocks=pinned_fork_blocks,
+            fork_block_target_at=selected_at,
+            fork_block_reference=simulation_fork_block_reference,
         ),
     )
 

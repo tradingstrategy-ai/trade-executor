@@ -75,13 +75,18 @@ class _SimulatedWhitelistVault(ERC4626Vault):
 
 
 def filter_rpc_kwargs_for_vault_specs(
-    rpc_kwargs: dict, vault_specs: list[VaultSpec]
+    rpc_kwargs: dict,
+    vault_specs: list[VaultSpec],
+    *,
+    primary_chain_id: ChainId | None = None,
 ) -> dict:
     """Keep only JSON-RPC connections needed by an explicit simulated batch."""
 
     selected_keys = {
         get_rpc_env_var_name(ChainId(spec.chain_id)).lower() for spec in vault_specs
     }
+    if primary_chain_id is not None:
+        selected_keys.add(get_rpc_env_var_name(primary_chain_id).lower())
     return {
         key: value if key in selected_keys else None
         for key, value in rpc_kwargs.items()
@@ -206,23 +211,25 @@ def deploy_simulated_lagoon_multichain(
     vault_universe,
     private_key: str,
     amount: Decimal,
+    primary_chain_id: ChainId | None = None,
 ) -> tuple["LagoonDeployment", dict]:
     """Deploy a temporary Lagoon topology on the selected Anvil forks.
 
     Follows the multichain Lagoon integration-test setup: one source vault on
-    the first explicitly supplied chain, deterministic satellite Safes on the
+    the explicit primary chain, deterministic satellite Safes on the
     remaining chains, per-chain transaction sequences and CCTP permissions for
     every supported source/destination route.
     """
 
-    # The first explicit id defines the hub chain.  Preserving caller order is
-    # important because all cross-chain vaults bridge through this deployment.
     assert vault_specs, "A simulated deployment needs at least one vault"
     account = Account.from_key(private_key)
-    primary_chain_id = ChainId(vault_specs[0].chain_id)
     selected_chain_ids = list(
-        dict.fromkeys(ChainId(spec.chain_id) for spec in vault_specs)
+        dict.fromkeys(
+            [primary_chain_id or ChainId(vault_specs[0].chain_id)]
+            + [ChainId(spec.chain_id) for spec in vault_specs]
+        )
     )
+    primary_chain_id = selected_chain_ids[0]
 
     # Fail before deploying any contracts if one requested chain could not be
     # forked.  Partial topologies are never useful for the sequential batch.
@@ -260,7 +267,7 @@ def deploy_simulated_lagoon_multichain(
             primary_chain_id=primary_chain_id,
             selected_chain_ids=selected_chain_ids,
             web3=chain_web3[get_chain_slug(chain_id)],
-            vault_specs=specs_by_chain[chain_id],
+            vault_specs=specs_by_chain.get(chain_id, []),
             vault_universe=vault_universe,
             account_address=account.address,
             safe_salt_nonce=safe_salt_nonce,
