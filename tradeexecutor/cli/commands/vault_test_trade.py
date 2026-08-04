@@ -1,7 +1,9 @@
 """Typer entry point for testing external vault deposits and redemptions."""
 
+import logging
 from decimal import Decimal
 from pathlib import Path
+import uuid
 
 from tabulate import tabulate
 from typer import Option
@@ -12,7 +14,10 @@ from tradeexecutor.cli.commands.app import app
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.cli.vault_trade.core import parse_vault_ids
 from tradeexecutor.cli.vault_trade.runner import VaultTestBatchRunner
-from tradeexecutor.cli.vault_trade.state import write_vault_test_report
+from tradeexecutor.cli.vault_trade.state import (
+    redact_vault_test_error_text,
+    write_vault_test_report,
+)
 from tradeexecutor.cli.vault_trade.setup import (
     choose_manual_vault_action,
     create_vault_test_runtime,
@@ -29,6 +34,9 @@ from tradeexecutor.strategy.execution_model import AssetManagementMode
 DEFAULT_VAULT_TEST_TRADE_AMOUNT = 1_001.0
 
 
+logger = logging.getLogger(__name__)
+
+
 def _validate_vault_test_options(
     *,
     auto_simulated: bool,
@@ -36,6 +44,8 @@ def _validate_vault_test_options(
     rerun: bool,
     settle_async_on_anvil: bool,
     asset_management_mode: AssetManagementMode | None,
+    simulation_fork_blocks: list[str] | None = None,
+    simulation_fork_block_reference: str | None = None,
 ) -> None:
     """Reject option combinations before downloading data or opening RPCs."""
 
@@ -45,8 +55,60 @@ def _validate_vault_test_options(
         raise RuntimeError("--rerun requires --auto-simulated or --auto-real")
     if settle_async_on_anvil and not auto_simulated:
         raise RuntimeError("--settle-async-on-anvil requires --auto-simulated")
+    if (simulation_fork_blocks or simulation_fork_block_reference) and not auto_simulated:
+        raise RuntimeError("--simulation-fork-block options require --auto-simulated")
+    if simulation_fork_block_reference and not simulation_fork_blocks:
+        raise RuntimeError(
+            "--simulation-fork-block-reference requires --simulation-fork-block"
+        )
     if asset_management_mode != AssetManagementMode.lagoon:
         raise RuntimeError("vault-test-trade requires ASSET_MANAGEMENT_MODE=lagoon")
+
+
+def _complete_vault_test_report_rows(
+    vault_specs,
+    rows: list[dict],
+    *,
+    auto_simulated: bool,
+    error: BaseException | None = None,
+) -> list[dict]:
+    """Return exactly one ordered report row for every requested vault id.
+
+    The runner normally fulfils this contract. Command-boundary failures can
+    interrupt it before that happens, so the report keeps the requested list
+    authoritative and marks missing or duplicate outcomes explicitly.
+    """
+
+    rows_by_vault_id: dict[str, list[dict]] = {}
+    for row in rows:
+        vault_id = row.get("vault id")
+        if vault_id is not None:
+            rows_by_vault_id.setdefault(vault_id, []).append(row)
+
+    incomplete_detail = (
+        f"Command interrupted: {redact_vault_test_error_text(error)}"
+        if error is not None
+        else "Command returned duplicate or missing vault result rows"
+    )
+    completed_rows = []
+    for spec in vault_specs:
+        vault_id = spec.as_string_id()
+        matching_rows = rows_by_vault_id.get(vault_id, [])
+        if len(matching_rows) == 1:
+            completed_rows.append(matching_rows[0])
+            continue
+        completed_rows.append(
+            {
+                "vault id": vault_id,
+                "chain": spec.chain_id,
+                "mode": "simulated" if auto_simulated else "real",
+                "status": "command_incomplete",
+                "result": "command_incomplete",
+                "attempt": None,
+                "detail": incomplete_detail,
+            }
+        )
+    return completed_rows
 
 
 @app.command()
@@ -118,6 +180,16 @@ def vault_test_trade(
         "--report-json",
         help="Write a machine-readable report containing the selected vault results.",
     ),
+    simulation_fork_block: list[str] | None = Option(
+        None,
+        "--simulation-fork-block",
+        help="Repeatable fixed simulated fork block as CHAIN_ID:BLOCK_NUMBER.",
+    ),
+    simulation_fork_block_reference: str | None = Option(
+        None,
+        "--simulation-fork-block-reference",
+        help="Issue, PR comment or document recording fixed fork block choices.",
+    ),
 ) -> None:
     """Test selected external vaults using one Lagoon executor.
 
@@ -136,6 +208,8 @@ def vault_test_trade(
         auto_real=auto_real,
         rerun=rerun,
         settle_async_on_anvil=settle_async_on_anvil,
+        simulation_fork_blocks=simulation_fork_block,
+        simulation_fork_block_reference=simulation_fork_block_reference,
         asset_management_mode=asset_management_mode,
     )
     assert asset_management_mode == AssetManagementMode.lagoon
@@ -172,8 +246,14 @@ def vault_test_trade(
         vault_specs=vault_specs,
         data=data,
         auto_simulated=auto_simulated,
+        simulation_fork_blocks=simulation_fork_block,
+        simulation_fork_block_reference=simulation_fork_block_reference,
     )
+    runtime.provenance["run_id"] = uuid.uuid4().hex
 
+    state = None
+    rows: list[dict] = []
+    runner = None
     try:
         state, store = load_vault_test_state(
             state_file=resolved_state_file,
@@ -213,9 +293,26 @@ def vault_test_trade(
             manual_action=manual_action,
             deposit_asset=deposit_asset,
         )
-        rows = runner.run()
+        rows = _complete_vault_test_report_rows(
+            vault_specs,
+            runner.run(),
+            auto_simulated=auto_simulated,
+        )
         print(tabulate(rows, headers="keys", tablefmt="rounded_outline"))
         if report_json:
             write_vault_test_report(report_json, state, rows)
+    except BaseException as error:
+        if report_json and state is not None:
+            try:
+                partial_rows = _complete_vault_test_report_rows(
+                    vault_specs,
+                    rows or (runner.rows if runner is not None else []),
+                    auto_simulated=auto_simulated,
+                    error=error,
+                )
+                write_vault_test_report(report_json, state, partial_rows)
+            except Exception:
+                logger.exception("Could not write incomplete vault-test report")
+        raise
     finally:
         runtime.close()

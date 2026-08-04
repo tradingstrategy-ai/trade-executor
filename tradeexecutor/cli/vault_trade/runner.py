@@ -39,6 +39,7 @@ from tradeexecutor.cli.vault_trade.state import (
     VAULT_TEST_RESULTS,
     close_simulated_positions,
     capture_vault_test_error,
+    capture_rpc_proxy_failures,
     classify_vault_test_failure,
     create_vault_test_diagnostic_pair,
     get_latest_vault_position,
@@ -1066,6 +1067,14 @@ class VaultTestBatchRunner:
     )
     restart_requested: BaseException | None = field(default=None, init=False)
     current_attempt: VaultAttemptContext | None = field(default=None, init=False)
+    infrastructure_failure_rpc_provider_domains: dict[str, dict[str, list[str]]] = field(
+        default_factory=dict,
+        init=False,
+    )
+    infrastructure_failure_rpc_proxy_failures: dict[str, list[dict]] = field(
+        default_factory=dict,
+        init=False,
+    )
 
     def __post_init__(self) -> None:
         """Preserve the caller's vault order in a mutable work queue."""
@@ -1224,6 +1233,7 @@ class VaultTestBatchRunner:
             alarm.close()
             if fork_snapshots and infrastructure_failure is None:
                 self._restore_simulated_attempt(spec, fork_snapshots)
+                self._clear_infrastructure_rpc_proxy_failures(spec)
             self.current_attempt = None
 
         return stop_batch
@@ -2057,6 +2067,7 @@ class VaultTestBatchRunner:
     ) -> None:
         """Queue one clean rerun or record a repeated Anvil failure."""
 
+        self._remember_infrastructure_rpc_proxy_failures(spec)
         if queue_simulated_infrastructure_retry(
             spec,
             self.pending_specs,
@@ -2086,9 +2097,17 @@ class VaultTestBatchRunner:
             error,
             state=getattr(error, "vault_test_failure_state", self.state),
             original_trade_ids=original_trade_ids,
-            web3config=self.runtime.web3config,
+            web3config=None,
             phase=phase,
             capture_chain_blocks=False,
+            extra_failing_upstream_rpc_providers=self.infrastructure_failure_rpc_provider_domains.pop(
+                spec.as_string_id(),
+                {},
+            ),
+            extra_rpc_proxy_failures=self.infrastructure_failure_rpc_proxy_failures.pop(
+                spec.as_string_id(),
+                [],
+            ),
         )
         record_attempt_result(
             self.state,
@@ -2109,6 +2128,55 @@ class VaultTestBatchRunner:
         )
         self.store.sync(self.state)
         self._append_result(vault, spec, detail)
+
+    def _remember_infrastructure_rpc_proxy_failures(self, spec: VaultSpec) -> None:
+        """Keep proxy observations before a failed Anvil generation is closed."""
+
+        failed_chain_ids = {str(spec.chain_id)}
+        if self.runtime.simulated_runtime is not None:
+            failed_chain_ids.add(
+                str(self.runtime.simulated_runtime.deployment.primary_chain_id.value)
+            )
+        domains, failures = capture_rpc_proxy_failures(
+            self.runtime.web3config,
+            failed_chain_ids=failed_chain_ids,
+        )
+        if not domains and not failures:
+            return
+
+        vault_id = spec.as_string_id()
+        remembered_domains = self.infrastructure_failure_rpc_provider_domains.setdefault(
+            vault_id,
+            {},
+        )
+        for chain_id, chain_domains in domains.items():
+            remembered_chain_domains = remembered_domains.setdefault(chain_id, [])
+            for domain in chain_domains:
+                if domain not in remembered_chain_domains:
+                    remembered_chain_domains.append(domain)
+
+        generation = (
+            self.runtime.simulated_runtime.generation
+            if self.runtime.simulated_runtime is not None
+            else None
+        )
+        remembered_failures = self.infrastructure_failure_rpc_proxy_failures.setdefault(
+            vault_id,
+            [],
+        )
+        for failure in failures:
+            entry = {key: value for key, value in failure.items() if key != "providers"}
+            if generation is not None:
+                entry["simulation_generation"] = generation
+            entry["providers"] = [dict(provider) for provider in failure["providers"]]
+            remembered_failures.append(entry)
+
+    def _clear_infrastructure_rpc_proxy_failures(self, spec: VaultSpec) -> None:
+        """Forget transient provider observations after a successful rerun."""
+
+        vault_id = spec.as_string_id()
+        self.infrastructure_failure_rpc_provider_domains.pop(vault_id, None)
+        self.infrastructure_failure_rpc_proxy_failures.pop(vault_id, None)
 
     def _record_failure(
         self,

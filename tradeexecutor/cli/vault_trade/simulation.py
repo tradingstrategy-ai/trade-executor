@@ -1,5 +1,6 @@
 """Disposable Anvil infrastructure for ``vault-test-trade --auto-simulated``."""
 
+import calendar
 import datetime
 import json
 import logging
@@ -10,7 +11,9 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
+from eth_defi.compat import native_datetime_utc_now
 from eth_defi.middleware import ProbablyNodeHasNoBlock
+from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.provider.anvil import (
     ArchiveNodeRequired,
     RPCRequestError,
@@ -37,6 +40,7 @@ from tradeexecutor.cli.bootstrap import (
     create_web3_config,
 )
 from tradeexecutor.cli.vault_trade.core import deploy_simulated_lagoon_multichain
+from tradeexecutor.ethereum.web3config import get_chain_slug
 from tradeexecutor.ethereum.token import translate_token_details
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 
@@ -49,6 +53,14 @@ SIMULATED_VAULT_INFRASTRUCTURE_RESTARTS = 1
 
 #: Project cache seeds supplement eth-defi's generic test seeds.
 PROJECT_RPC_CACHE_SEED_DIR = Path(__file__).parents[3] / "tests" / "rpc_cache_seed"
+
+#: Persistent Foundry fork cache for production vault-test-trade experiments.
+VAULT_TEST_RPC_CACHE_DIR = Path("~/.tradingstrategy/vaults/rpc-cache").expanduser()
+
+#: Anvil 1.7.x stores fork ``storage.json`` here regardless of
+#: ``FOUNDRY_RPC_CACHE_DIR``. Keep this explicit until Foundry exposes a
+#: working fork-RPC-cache override.
+DEFAULT_FOUNDRY_RPC_CACHE_DIR = Path.home() / ".foundry" / "cache" / "rpc"
 
 #: These providers cannot supply the historic state required by the simulated
 #: Lagoon balance path. Capture their live tip once per command and retain that
@@ -118,7 +130,15 @@ class SimulatedVaultRuntime:
                     self.generation,
                 )
         finally:
-            self.temporary_deployment_dir.cleanup()
+            try:
+                sync_foundry_rpc_cache_to_vault_cache()
+            except Exception:
+                logger.exception(
+                    "Could not copy Foundry RPC cache after simulation generation %d",
+                    self.generation,
+                )
+            finally:
+                self.temporary_deployment_dir.cleanup()
 
 
 def is_simulated_infrastructure_failure(error: BaseException) -> bool:
@@ -197,26 +217,183 @@ def raise_simulated_vault_attempt_timeout(signum, frame) -> None:
     )
 
 
+def get_simulation_chain_ids(
+    vault_specs: list[VaultSpec],
+    *,
+    primary_chain_id: ChainId,
+) -> set[ChainId]:
+    """Return every chain a simulated batch needs to fork."""
+
+    assert vault_specs, "A simulated vault test needs at least one vault"
+    return {primary_chain_id, *(ChainId(spec.chain_id) for spec in vault_specs)}
+
+
+def parse_simulation_fork_blocks(
+    values: list[str] | None,
+) -> dict[ChainId, int]:
+    """Parse repeatable ``CHAIN_ID:BLOCK_NUMBER`` command-line values."""
+
+    blocks: dict[ChainId, int] = {}
+    for value in values or []:
+        chain_id_text, separator, block_number_text = value.partition(":")
+        if not separator or not chain_id_text or not block_number_text:
+            raise ValueError(
+                "--simulation-fork-block must use CHAIN_ID:BLOCK_NUMBER, "
+                f"got {value!r}"
+            )
+        try:
+            chain_id = ChainId(int(chain_id_text))
+        except ValueError as error:
+            raise ValueError(
+                f"Unknown chain id in --simulation-fork-block: {chain_id_text!r}"
+            ) from error
+        try:
+            block_number = int(block_number_text)
+        except ValueError as error:
+            raise ValueError(
+                f"Invalid block number in --simulation-fork-block: {block_number_text!r}"
+            ) from error
+        if block_number <= 0:
+            raise ValueError(
+                f"--simulation-fork-block must be positive, got {value!r}"
+            )
+        if chain_id in blocks:
+            raise ValueError(
+                f"Duplicate --simulation-fork-block for chain id {chain_id.value}"
+            )
+        blocks[chain_id] = block_number
+    return blocks
+
+
+def validate_simulation_fork_blocks(
+    blocks: dict[ChainId, int],
+    vault_specs: list[VaultSpec],
+    *,
+    primary_chain_id: ChainId,
+) -> None:
+    """Ensure fixed mode defines exactly every chain needed by the batch."""
+
+    selected_chain_ids = get_simulation_chain_ids(
+        vault_specs,
+        primary_chain_id=primary_chain_id,
+    )
+    missing = sorted(selected_chain_ids - blocks.keys(), key=lambda chain_id: chain_id.value)
+    unrelated = sorted(blocks.keys() - selected_chain_ids, key=lambda chain_id: chain_id.value)
+    if missing or unrelated:
+        details = []
+        if missing:
+            details.append(
+                "missing " + ", ".join(str(chain_id.value) for chain_id in missing)
+            )
+        if unrelated:
+            details.append(
+                "unrelated " + ", ".join(str(chain_id.value) for chain_id in unrelated)
+            )
+        raise ValueError(
+            "--simulation-fork-block values must cover exactly the simulated chains: "
+            + "; ".join(details)
+        )
+
+
+def seed_vault_foundry_rpc_cache(cache_dir: Path = VAULT_TEST_RPC_CACHE_DIR) -> None:
+    """Seed both the requested vault cache and Anvil's actual fork cache."""
+
+    seed_default_foundry_rpc_cache(cache_dir)
+    seed_foundry_rpc_cache(PROJECT_RPC_CACHE_SEED_DIR, cache_dir)
+    seed_foundry_rpc_cache(cache_dir, DEFAULT_FOUNDRY_RPC_CACHE_DIR)
+    seed_default_foundry_rpc_cache(DEFAULT_FOUNDRY_RPC_CACHE_DIR)
+    seed_foundry_rpc_cache(PROJECT_RPC_CACHE_SEED_DIR, DEFAULT_FOUNDRY_RPC_CACHE_DIR)
+
+
+def sync_foundry_rpc_cache_to_vault_cache(
+    cache_dir: Path = VAULT_TEST_RPC_CACHE_DIR,
+) -> int:
+    """Persist Anvil's actual fork RPC cache into the vault cache directory."""
+
+    if not DEFAULT_FOUNDRY_RPC_CACHE_DIR.exists():
+        return 0
+    return seed_foundry_rpc_cache(
+        DEFAULT_FOUNDRY_RPC_CACHE_DIR,
+        cache_dir,
+        overwrite=True,
+    )
+
+
+def get_last_midnight_utc(now: datetime.datetime | None = None) -> datetime.datetime:
+    """Return the most recent midnight as a naive UTC datetime."""
+
+    now = now or native_datetime_utc_now()
+    return datetime.datetime.combine(now.date(), datetime.time())
+
+
+def resolve_block_number_at_or_before_timestamp(web3, target_at: datetime.datetime) -> int:
+    """Resolve the latest block whose timestamp is not after ``target_at``."""
+
+    target_timestamp = calendar.timegm(target_at.timetuple())
+    latest = int(web3.eth.block_number)
+    latest_timestamp = int(web3.eth.get_block(latest)["timestamp"])
+    if latest_timestamp <= target_timestamp:
+        return latest
+
+    low = 0
+    high = latest
+    while low < high:
+        middle = (low + high + 1) // 2
+        block_timestamp = int(web3.eth.get_block(middle)["timestamp"])
+        if block_timestamp <= target_timestamp:
+            low = middle
+        else:
+            high = middle - 1
+    return low
+
+
 def get_shared_simulation_fork_blocks(
     vault_specs: list[VaultSpec],
+    rpc_kwargs: dict | None = None,
+    target_at: datetime.datetime | None = None,
+    primary_chain_id: ChainId | None = None,
 ) -> dict[ChainId, int]:
-    """Choose eth-defi's canonical cached fork block where archive history permits.
+    """Choose one fork block per vault chain at the last UTC midnight.
 
-    Monad intentionally has no fixed historical block because its archive state
-    is incomplete. Such chains are captured from the first live generation and
-    still remain pinned for any replacement within that command invocation.
+    Unit tests may omit RPC configuration and use eth-defi's static cached
+    blocks. Command execution always resolves every selected chain dynamically.
     """
 
-    selected_chain_ids = {
-        ChainId(spec.chain_id)
-        for spec in vault_specs
-        if ChainId(spec.chain_id) not in LIVE_TIP_VAULT_TEST_CHAINS
-    }
-    return {
-        chain_id: MIDNIGHT_BLOCKS[chain_id.value]
-        for chain_id in selected_chain_ids
-        if chain_id.value in MIDNIGHT_BLOCKS
-    }
+    fallback_primary_chain_id = primary_chain_id or ChainId(vault_specs[0].chain_id)
+    selected_chain_ids = get_simulation_chain_ids(
+        vault_specs,
+        primary_chain_id=fallback_primary_chain_id,
+    )
+    if rpc_kwargs is None:
+        return {
+            chain_id: MIDNIGHT_BLOCKS[chain_id.value]
+            for chain_id in selected_chain_ids
+            if (
+                chain_id not in LIVE_TIP_VAULT_TEST_CHAINS
+                and chain_id.value in MIDNIGHT_BLOCKS
+            )
+        }
+
+    target_at = target_at or get_last_midnight_utc()
+    selected_fork_blocks: dict[ChainId, int] = {}
+    for chain_id in sorted(selected_chain_ids, key=lambda candidate: candidate.value):
+        rpc_key = f"json_rpc_{get_chain_slug(chain_id)}"
+        configuration_line = rpc_kwargs.get(rpc_key)
+        if not configuration_line:
+            raise RuntimeError(
+                f"Cannot resolve simulated {chain_id.name} fork block for "
+                f"{target_at.isoformat()}: {rpc_key} is not configured"
+            )
+        web3 = create_multi_provider_web3(
+            configuration_line,
+            default_http_timeout=(3.0, 30.0),
+            retries=2,
+        )
+        selected_fork_blocks[chain_id] = resolve_block_number_at_or_before_timestamp(
+            web3,
+            target_at,
+        )
+    return selected_fork_blocks
 
 
 def rotate_simulated_rpc_upstreams(rpc_kwargs: dict) -> None:
@@ -244,6 +421,7 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
     rpc_kwargs: dict,
     unit_testing: bool,
     vault_specs: list[VaultSpec],
+    primary_chain_id: ChainId,
     vault_universe,
     private_key: str,
     amount: Decimal,
@@ -265,20 +443,21 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
     web3config = None
     temporary_deployment_dir = None
     try:
-        # Seed eth-defi's non-destructive Foundry cache before starting the
-        # forks. Replacements share this on-disk cache because they use the
-        # same fixed blocks captured by the first generation.
-        seed_default_foundry_rpc_cache()
-        seed_foundry_rpc_cache(PROJECT_RPC_CACHE_SEED_DIR)
+        # Replacements use the same fixed blocks and share this persistent cache.
+        seed_vault_foundry_rpc_cache()
 
         initial_pinned_fork_blocks = (
-            pinned_fork_blocks or get_shared_simulation_fork_blocks(vault_specs)
+            pinned_fork_blocks
+            or get_shared_simulation_fork_blocks(
+                vault_specs,
+                rpc_kwargs=rpc_kwargs,
+                primary_chain_id=primary_chain_id,
+            )
         )
 
         # Web3Config launches one local Anvil proxy for every selected upstream
         # RPC.  Local RPC retries are disabled; a dead process is replaced by the
         # generation-level retry outside this function.
-        primary_chain_id = ChainId(vault_specs[0].chain_id)
         web3config = create_web3_config(
             **rpc_kwargs,
             unit_testing=unit_testing,
@@ -309,6 +488,7 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
             vault_universe=vault_universe,
             private_key=private_key,
             amount=amount,
+            primary_chain_id=primary_chain_id,
         )
         # Normal bootstrap consumes a deployment file, so write the ephemeral
         # topology in its standard JSON shape rather than adding a special path.
@@ -368,6 +548,10 @@ def start_simulated_vault_runtime(  # noqa: PLR0917
                 logger.exception(
                     "Could not fully clean up a failed simulated vault runtime"
                 )
+        try:
+            sync_foundry_rpc_cache_to_vault_cache()
+        except Exception:
+            logger.exception("Could not copy Foundry RPC cache after setup failure")
         if temporary_deployment_dir is not None:
             temporary_deployment_dir.cleanup()
         raise

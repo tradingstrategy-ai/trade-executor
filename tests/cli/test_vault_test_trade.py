@@ -30,7 +30,10 @@ from web3.exceptions import BadFunctionCallOutput
 from tradeexecutor.cli.commands.lagoon_deploy_vault import (
     _write_state_sibling_deployment_artifact,
 )
-from tradeexecutor.cli.commands.vault_test_trade import _validate_vault_test_options
+from tradeexecutor.cli.commands.vault_test_trade import (
+    _complete_vault_test_report_rows,
+    _validate_vault_test_options,
+)
 from tradeexecutor.cli.vault_trade import tui as tui_module
 from tradeexecutor.cli.vault_trade import (
     runner as runner_module,
@@ -42,6 +45,7 @@ from tradeexecutor.cli.vault_trade.core import (
     parse_vault_ids,
 )
 from tradeexecutor.cli.vault_trade.state import (
+    capture_rpc_proxy_failures,
     capture_vault_test_error,
     classify_vault_test_failure,
     create_vault_test_diagnostic_pair,
@@ -56,16 +60,23 @@ from tradeexecutor.cli.vault_trade.tui import (
     VaultSearchScreen,
     VaultTestTradeApp,
 )
-from tradeexecutor.cli.vault_trade.setup import VaultTestRuntime, load_vault_test_state
+from tradeexecutor.cli.vault_trade.setup import (
+    VaultTestRuntime,
+    load_vault_test_state,
+    select_simulated_vault_test_primary_chain,
+)
 from tradeexecutor.cli.vault_trade.simulation import (
     SimulatedVaultAttemptTimeout,
     SimulatedVaultRuntime,
     get_shared_simulation_fork_blocks,
     is_simulated_infrastructure_failure,
+    parse_simulation_fork_blocks,
     queue_simulated_infrastructure_retry,
     raise_simulated_vault_attempt_timeout,
+    resolve_block_number_at_or_before_timestamp,
     rotate_simulated_rpc_upstreams,
     take_simulated_snapshots,
+    validate_simulation_fork_blocks,
 )
 from tradeexecutor.cli.vault_trade.runner import (
     VaultAttemptContext,
@@ -176,6 +187,216 @@ def test_simulated_vault_rpc_filter_keeps_only_selected_chains() -> None:
         "json_rpc_arbitrum": "arbitrum-rpc",
         "json_rpc_hyperliquid": "hyperliquid-rpc",
     }
+
+
+def test_simulated_vault_primary_keeps_ethereum_for_base_only_batch() -> None:
+    """A Base-only batch retains Ethereum as its stable simulated primary.
+
+    1. Configure Ethereum and Base RPC values for one Base vault.
+    2. Select the primary and filter the simulated RPC configuration.
+    3. Verify Ethereum remains first-class even without an Ethereum vault id.
+    """
+    # 1. Configure Ethereum and Base RPC values for one Base vault.
+    rpc_kwargs = {
+        "json_rpc_ethereum": "ethereum-rpc",
+        "json_rpc_base": "base-rpc",
+        "json_rpc_arbitrum": "arbitrum-rpc",
+    }
+    specs = [
+        VaultSpec(
+            ChainId.base.value,
+            "0x0000000000000000000000000000000000000001",
+        )
+    ]
+
+    # 2. Select the primary and filter the simulated RPC configuration.
+    primary_chain_id = select_simulated_vault_test_primary_chain(rpc_kwargs, specs)
+    filtered = filter_rpc_kwargs_for_vault_specs(
+        rpc_kwargs,
+        specs,
+        primary_chain_id=primary_chain_id,
+    )
+
+    # 3. Verify Ethereum remains first-class even without an Ethereum vault id.
+    assert primary_chain_id == ChainId.ethereum
+    assert filtered == {
+        "json_rpc_ethereum": "ethereum-rpc",
+        "json_rpc_base": "base-rpc",
+        "json_rpc_arbitrum": None,
+    }
+
+
+def test_fixed_simulation_fork_blocks_require_the_complete_selected_map() -> None:
+    """Explicit fork mode neither omits a needed chain nor accepts unrelated input.
+
+    1. Parse a valid Ethereum/Base fixed map for a Base vault.
+    2. Verify the complete map passes validation.
+    3. Verify missing, duplicate and unrelated values are rejected.
+    """
+    # 1. Parse a valid Ethereum/Base fixed map for a Base vault.
+    specs = [
+        VaultSpec(
+            ChainId.base.value,
+            "0x0000000000000000000000000000000000000001",
+        )
+    ]
+    blocks = parse_simulation_fork_blocks(["1:25670641", "8453:49462926"])
+
+    # 2. Verify the complete map passes validation.
+    validate_simulation_fork_blocks(
+        blocks,
+        specs,
+        primary_chain_id=ChainId.ethereum,
+    )
+
+    # 3. Verify missing, duplicate and unrelated values are rejected.
+    with pytest.raises(ValueError, match="missing 1"):
+        validate_simulation_fork_blocks(
+            parse_simulation_fork_blocks(["8453:49462926"]),
+            specs,
+            primary_chain_id=ChainId.ethereum,
+        )
+    with pytest.raises(ValueError, match="Duplicate"):
+        parse_simulation_fork_blocks(["1:1", "1:2"])
+    with pytest.raises(ValueError, match="unrelated 42161"):
+        validate_simulation_fork_blocks(
+            parse_simulation_fork_blocks(
+                ["1:25670641", "8453:49462926", "42161:490490945"]
+            ),
+            specs,
+            primary_chain_id=ChainId.ethereum,
+        )
+
+
+def test_simulation_block_resolution_selects_the_latest_block_before_midnight() -> None:
+    """Automatic mode resolves the latest block whose timestamp is not after midnight.
+
+    1. Provide a sparse monotonic chain of block timestamps around midnight.
+    2. Resolve the block at or before the target timestamp.
+    3. Verify the binary search selects the final eligible block.
+    """
+    # 1. Provide a sparse monotonic chain of block timestamps around midnight.
+    timestamps = {0: 10, 1: 20, 2: 30, 3: 40, 4: 50}
+    web3 = MagicMock()
+    web3.eth.block_number = 4
+    web3.eth.get_block.side_effect = lambda number: {"timestamp": timestamps[number]}
+
+    # 2. Resolve the block at or before the target timestamp.
+    selected = resolve_block_number_at_or_before_timestamp(
+        web3,
+        datetime.datetime.fromtimestamp(35),
+    )
+
+    # 3. Verify the binary search selects the final eligible block.
+    assert selected == 2
+
+
+def test_vault_rpc_cache_syncs_foundry_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Simulation cleanup persists Foundry storage in the durable vault cache.
+
+    1. Point Foundry's actual cache path at a temporary storage tree.
+    2. Copy a generated storage file back to the durable cache.
+    3. Verify the copied cache entry is retained.
+    """
+    # 1. Point Foundry's actual cache path at a temporary storage tree.
+    durable_cache = tmp_path / "vault-cache"
+    foundry_cache = tmp_path / "foundry-cache"
+    storage_file = foundry_cache / "base" / "49462926" / "storage.json"
+    storage_file.parent.mkdir(parents=True)
+    storage_file.write_text('{"cached": true}')
+    monkeypatch.setattr(
+        simulation_module,
+        "DEFAULT_FOUNDRY_RPC_CACHE_DIR",
+        foundry_cache,
+    )
+    # 2. Copy a generated storage file back to the durable cache.
+    copied = simulation_module.sync_foundry_rpc_cache_to_vault_cache(durable_cache)
+
+    # 3. Verify the copied cache entry is retained.
+    assert copied == 1
+    assert (durable_cache / "base" / "49462926" / "storage.json").read_text() == (
+        '{"cached": true}'
+    )
+
+
+def test_rpc_proxy_failure_diagnostics_only_export_provider_domains() -> None:
+    """Infrastructure diagnostics retain failed providers without retaining provider URLs.
+
+    1. Construct one failed proxy provider with an API key in its URL and error.
+    2. Capture Anvil proxy diagnostics.
+    3. Verify the report retains only its domain and redacts the error URL.
+    """
+    # 1. Construct one failed proxy provider with an API key in its URL and error.
+    timestamp = datetime.datetime(2026, 8, 4)
+    stats = SimpleNamespace(
+        failure_count=1,
+        request_count=2,
+        method_failure_counts={"eth_call": 1},
+        error_replies=[
+            {
+                "timestamp": timestamp,
+                "method": "eth_call",
+                "http_status": 429,
+                "error": "https://rpc.example/path?api_key=secret timed out",
+            }
+        ],
+    )
+    anvil = SimpleNamespace(
+        proxy=SimpleNamespace(
+            get_stats=lambda: {"https://rpc.example/path?api_key=secret": stats}
+        ),
+        upstream_rpc_urls=("https://rpc.example/path?api_key=secret",),
+        fork_block_number=123,
+    )
+    web3config = SimpleNamespace(anvils={ChainId.base: anvil})
+
+    # 2. Capture Anvil proxy diagnostics.
+    domains, failures = capture_rpc_proxy_failures(web3config)
+
+    # 3. Verify the report retains only its domain and redacts the error URL.
+    assert domains == {"8453": ["rpc.example"]}
+    assert failures[0]["providers"][0]["domain"] == "rpc.example"
+    assert "secret" not in json.dumps(failures)
+
+
+def test_incomplete_command_report_preserves_requested_vault_order() -> None:
+    """A command interruption writes explicit rows for vaults it did not reach.
+
+    1. Request two vault ids and provide one completed runner row.
+    2. Complete the rows at a simulated command failure boundary.
+    3. Verify membership, order and the explicit incomplete presentation result.
+    """
+    # 1. Request two vault ids and provide one completed runner row.
+    first = VaultSpec(
+        ChainId.ethereum.value,
+        "0x0000000000000000000000000000000000000001",
+    )
+    second = VaultSpec(
+        ChainId.base.value,
+        "0x0000000000000000000000000000000000000002",
+    )
+    rows = [{"vault id": first.as_string_id(), "status": "success", "attempt": "a"}]
+
+    # 2. Complete the rows at a simulated command failure boundary.
+    completed = _complete_vault_test_report_rows(
+        [first, second],
+        rows,
+        auto_simulated=True,
+        error=RuntimeError("RPC https://rpc.example/?api_key=secret failed"),
+    )
+
+    # 3. Verify membership, order and the explicit incomplete presentation result.
+    assert [row["vault id"] for row in completed] == [
+        first.as_string_id(),
+        second.as_string_id(),
+    ]
+    assert completed[1]["result"] == "command_incomplete"
+    assert "secret" not in completed[1]["detail"]
+    report = export_vault_test_report(State(), completed)
+    assert report["results"][1]["result"] == "command_incomplete"
 
 
 def test_load_lagoon_deployment_reads_source_and_satellite_modules(tmp_path: Path):
@@ -2853,6 +3074,45 @@ def test_vault_redemption_amount_reconciles_only_small_share_shortfalls() -> Non
             Decimal("0.9"),
             epsilon=0.025,
         )
+
+
+def test_vault_redemption_preflight_replays_the_wrapped_lagoon_call() -> None:
+    """Redemption diagnostics call the exact wrapped transaction from its sender.
+
+    1. Construct a prepared Lagoon wrapper transaction with unsigned calldata.
+    2. Capture its pre-broadcast ``eth_call`` against a known fork block.
+    3. Verify the wrapper target, sender and calldata are replayed unchanged.
+    """
+    # 1. Construct a prepared Lagoon wrapper transaction with unsigned calldata.
+    transaction = BlockchainTransaction(
+        chain_id=ChainId.base.value,
+        from_address="0x0000000000000000000000000000000000000001",
+        contract_address="0x0000000000000000000000000000000000000002",
+        function_selector="prepareCall",
+        wrapped_target="0x0000000000000000000000000000000000000003",
+        wrapped_function_selector="redeem",
+        details={"data": "0x1234", "value": 0, "gas": 500_000},
+    )
+    web3 = MagicMock()
+    web3.eth.block_number = 123_456
+    web3.eth.call.return_value = b"\x01"
+
+    # 2. Capture its pre-broadcast ``eth_call`` against a known fork block.
+    result = vault_routing._capture_wrapped_redemption_preflight(transaction, web3)
+
+    # 3. Verify the wrapper target, sender and calldata are replayed unchanged.
+    assert result["pre_broadcast_block_number"] == 123_456
+    assert result["eth_call_result"] == "01"
+    web3.eth.call.assert_called_once_with(
+        {
+            "from": transaction.from_address,
+            "to": transaction.contract_address,
+            "data": "0x1234",
+            "value": 0,
+            "gas": 500_000,
+        },
+        block_identifier=123_456,
+    )
 
 
 def test_async_vault_request_transaction_roles_ignore_selectors() -> None:

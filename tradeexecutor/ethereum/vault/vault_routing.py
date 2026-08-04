@@ -170,6 +170,47 @@ def reconcile_vault_redemption_amount(
     return onchain_balance
 
 
+def _capture_wrapped_redemption_preflight(
+    transaction: BlockchainTransaction,
+    web3: Web3,
+) -> dict:
+    """Execute the signed Lagoon wrapper as an ``eth_call`` for diagnostics.
+
+    The normal execution path remains authoritative. This call records whether
+    the exact wrapper was already rejected at the pre-broadcast block, without
+    deciding whether the prepared transaction may be broadcast.
+    """
+
+    details = transaction.details or {}
+    call = {
+        "from": transaction.from_address,
+        "to": transaction.contract_address,
+        "data": details.get("data"),
+        "value": details.get("value", 0),
+        "gas": details.get("gas"),
+    }
+    call = {key: value for key, value in call.items() if value is not None}
+    result = {
+        "sender": transaction.from_address,
+        "target": transaction.contract_address,
+        "function_selector": transaction.function_selector,
+        "wrapped_target": transaction.wrapped_target,
+        "wrapped_function_selector": transaction.wrapped_function_selector,
+        "calldata": str(details.get("data")) if details.get("data") else None,
+    }
+    try:
+        pre_broadcast_block_number = int(web3.eth.block_number)
+        result["pre_broadcast_block_number"] = pre_broadcast_block_number
+        output = web3.eth.call(call, block_identifier=pre_broadcast_block_number)
+        result["eth_call_result"] = HexBytes(output).hex()
+    except Exception as error:
+        result["eth_call_error_type"] = (
+            f"{error.__class__.__module__}.{error.__class__.__qualname__}"
+        )
+        result["eth_call_error"] = str(error)
+    return result
+
+
 def convert_vault_flow_analysis(
     analysis: DepositRedeemEventAnalysis,
     *,
@@ -407,8 +448,8 @@ class VaultRouting(RoutingModel):
             # take a positive share amount.
             swap_amount = -trade.planned_quantity
 
-            share_token = target_vault.share_token
-            onchain_balance = share_token.fetch_balance_of(address)
+            onchain_share_token = target_vault.share_token
+            onchain_balance = onchain_share_token.fetch_balance_of(address)
 
             portfolio: Portfolio = state.portfolio
             position = portfolio.get_position_by_id(trade.position_id)
@@ -421,11 +462,39 @@ class VaultRouting(RoutingModel):
                 onchain_balance,
                 position.get_quantity(planned=True),
             )
-            reconciled_amount = reconcile_vault_redemption_amount(
-                swap_amount,
-                onchain_balance,
-                epsilon=self.redeem_epsilon,
+            redemption_preflight = {
+                "position_quantity": str(position.get_quantity()),
+                "position_planned_quantity": str(position.get_quantity(planned=True)),
+                "planned_share_amount": str(swap_amount),
+                "planned_raw_shares": str(
+                    onchain_share_token.convert_to_raw(swap_amount)
+                ),
+                "custody_address": address,
+                "share_token_address": target_vault.share_token.address,
+                "custody_share_balance": str(onchain_balance),
+                "custody_raw_share_balance": str(
+                    onchain_share_token.convert_to_raw(onchain_balance)
+                ),
+                "reconciliation_epsilon": self.redeem_epsilon,
+            }
+            try:
+                reconciled_amount = reconcile_vault_redemption_amount(
+                    swap_amount,
+                    onchain_balance,
+                    epsilon=self.redeem_epsilon,
+                )
+            except Exception as error:
+                redemption_preflight["reconciliation_error_type"] = (
+                    f"{error.__class__.__module__}.{error.__class__.__qualname__}"
+                )
+                redemption_preflight["reconciliation_error"] = str(error)
+                trade.other_data["vault_redemption_preflight"] = redemption_preflight
+                raise
+            redemption_preflight["reconciled_share_amount"] = str(reconciled_amount)
+            redemption_preflight["reconciled_raw_shares"] = str(
+                onchain_share_token.convert_to_raw(reconciled_amount)
             )
+            trade.other_data["vault_redemption_preflight"] = redemption_preflight
             if reconciled_amount < swap_amount:
                 relative_shortfall = (swap_amount - onchain_balance) / swap_amount
                 logger.warning(
@@ -515,6 +584,11 @@ class VaultRouting(RoutingModel):
                 trade.other_data.setdefault("vault_interventions", []).append(
                     intervention.as_dict()
                 )
+            redemption_preflight = trade.other_data.get("vault_redemption_preflight")
+            if redemption_preflight is not None:
+                redemption_preflight["manager_request_raw_shares"] = str(
+                    request.raw_shares
+                )
             is_async = not deposit_manager.has_synchronous_redemption()
             direction = "redeem"
 
@@ -562,6 +636,12 @@ class VaultRouting(RoutingModel):
                 role="vault_request",
                 request_ordinal=ordinal,
             )
+            if direction == "redeem":
+                redemption_preflight = trade.other_data["vault_redemption_preflight"]
+                manager_calls = redemption_preflight.setdefault("manager_calls", [])
+                manager_calls.append(
+                    _capture_wrapped_redemption_preflight(request_tx, tx_builder.web3)
+                )
             txs.append(request_tx)
 
         if not is_async:

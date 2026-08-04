@@ -16,6 +16,7 @@ from typing import Any
 
 from eth_defi.abi import ZERO_ADDRESS_STR
 from eth_defi.compat import native_datetime_utc_now
+from eth_defi.utils import get_url_domain
 from eth_defi.vault.base import VaultSpec
 
 from tradeexecutor.state.identifier import (
@@ -90,6 +91,25 @@ def redact_vault_test_error_text(value: object) -> str:
     return _URL_PATTERN.sub("<redacted-url>", str(value))
 
 
+def _redact_vault_test_value(value: Any) -> Any:
+    """Recursively redact text embedded in structured call diagnostics."""
+
+    if isinstance(value, str):
+        return redact_vault_test_error_text(value)
+    if isinstance(value, list):
+        return [_redact_vault_test_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _redact_vault_test_value(item) for key, item in value.items()}
+    return value
+
+
+def _get_vault_redemption_preflight(trade) -> dict | None:
+    """Read optional routing diagnostics without serialising mock attributes."""
+
+    value = trade.other_data.get("vault_redemption_preflight")
+    return _redact_vault_test_value(value) if isinstance(value, dict) else None
+
+
 def _serialise_exception_chain(error: BaseException) -> list[dict]:
     """Return the causal exception chain without retaining exception objects."""
 
@@ -124,8 +144,7 @@ def _serialise_vault_test_transactions(
             if trade.trade_id in original_trade_ids:
                 continue
             for transaction in trade.blockchain_transactions:
-                transactions.append(
-                    {
+                transaction_data = {
                         "position_id": position.position_id,
                         "trade_id": trade.trade_id,
                         "chain_id": transaction.chain_id,
@@ -153,7 +172,10 @@ def _serialise_vault_test_transactions(
                         if transaction.stack_trace
                         else None,
                     }
-                )
+                redemption_preflight = _get_vault_redemption_preflight(trade)
+                if redemption_preflight is not None:
+                    transaction_data["vault_redemption_preflight"] = redemption_preflight
+                transactions.append(transaction_data)
     return transactions
 
 
@@ -179,8 +201,7 @@ def _serialise_vault_test_call_context(
                     continue
                 details = transaction.details or {}
                 calldata = details.get("data")
-                calls.append(
-                    {
+                call_data = {
                         "position_id": position.position_id,
                         "trade_id": trade.trade_id,
                         "chain_id": transaction.chain_id,
@@ -205,7 +226,10 @@ def _serialise_vault_test_call_context(
                         if calldata
                         else None,
                     }
-                )
+                redemption_preflight = _get_vault_redemption_preflight(trade)
+                if redemption_preflight is not None:
+                    call_data["vault_redemption_preflight"] = redemption_preflight
+                calls.append(call_data)
     return calls
 
 
@@ -225,6 +249,104 @@ def _capture_chain_blocks(web3config: Any | None) -> dict[str, dict]:
     return blocks
 
 
+def capture_rpc_proxy_failures(
+    web3config: Any | None,
+    *,
+    failed_chain_ids: set[str] | None = None,
+) -> tuple[dict[str, list[str]], list[dict]]:
+    """Capture failed and configured upstream domains from Anvil proxy state."""
+
+    if web3config is None:
+        return {}, []
+
+    failing_domains: dict[str, list[str]] = {}
+    proxy_failures: list[dict] = []
+    failed_chain_ids = failed_chain_ids or set()
+    for chain_id, anvil in getattr(web3config, "anvils", {}).items():
+        chain_key = str(getattr(chain_id, "value", chain_id))
+        provider_failures: list[dict] = []
+        proxy = getattr(anvil, "proxy", None)
+        if proxy is not None:
+            for provider_url, stats in sorted(proxy.get_stats().items()):
+                failure_count = int(getattr(stats, "failure_count", 0) or 0)
+                if failure_count <= 0:
+                    continue
+                provider_domain = get_url_domain(provider_url)
+                recent_errors = []
+                for reply in getattr(stats, "error_replies", [])[-10:]:
+                    timestamp = reply.get("timestamp")
+                    recent_errors.append(
+                        {
+                            "timestamp": timestamp.isoformat()
+                            if hasattr(timestamp, "isoformat")
+                            else redact_vault_test_error_text(timestamp),
+                            "method": reply.get("method"),
+                            "http_status": reply.get("http_status"),
+                            "error": redact_vault_test_error_text(reply.get("error")),
+                        }
+                    )
+                provider_failures.append(
+                    {
+                        "domain": provider_domain,
+                        "request_count": int(getattr(stats, "request_count", 0) or 0),
+                        "observed_failure_count": failure_count,
+                        "method_failure_counts": dict(
+                            getattr(stats, "method_failure_counts", {}) or {}
+                        ),
+                        "recent_errors": recent_errors,
+                    }
+                )
+
+        if not provider_failures and chain_key in failed_chain_ids:
+            seen_domains = set()
+            for upstream_url in getattr(anvil, "upstream_rpc_urls", ()) or ():
+                provider_domain = get_url_domain(upstream_url)
+                if provider_domain in seen_domains:
+                    continue
+                seen_domains.add(provider_domain)
+                provider_failures.append(
+                    {
+                        "domain": provider_domain,
+                        "request_count": 0,
+                        "observed_failure_count": 0,
+                        "method_failure_counts": {},
+                        "recent_errors": [],
+                        "diagnostic": (
+                            "Configured upstream for failed Anvil generation; "
+                            "the RPC proxy recorded no retryable upstream error"
+                        ),
+                    }
+                )
+
+        if provider_failures:
+            failing_domains[chain_key] = [
+                provider["domain"] for provider in provider_failures
+            ]
+            proxy_failures.append(
+                {
+                    "chain_id": chain_key,
+                    "fork_block_number": getattr(anvil, "fork_block_number", None),
+                    "providers": provider_failures,
+                }
+            )
+    return failing_domains, proxy_failures
+
+
+def _merge_failing_upstream_rpc_providers(
+    base: dict[str, list[str]],
+    extra: dict[str, list[str]] | None,
+) -> dict[str, list[str]]:
+    """Merge per-chain provider domains without duplicating entries."""
+
+    merged = {chain_id: list(domains) for chain_id, domains in base.items()}
+    for chain_id, domains in (extra or {}).items():
+        chain_domains = merged.setdefault(chain_id, [])
+        for domain in domains:
+            if domain not in chain_domains:
+                chain_domains.append(domain)
+    return merged
+
+
 def capture_vault_test_error(
     error: BaseException,
     *,
@@ -233,6 +355,8 @@ def capture_vault_test_error(
     web3config: Any | None,
     phase: str,
     capture_chain_blocks: bool = True,
+    extra_failing_upstream_rpc_providers: dict[str, list[str]] | None = None,
+    extra_rpc_proxy_failures: list[dict] | None = None,
 ) -> dict:
     """Create complete, JSON-safe diagnostics for a failed vault-test attempt.
 
@@ -251,7 +375,16 @@ def capture_vault_test_error(
         state,
         original_trade_ids=original_trade_ids,
     )
-    return {
+    failing_upstream_rpc_providers, rpc_proxy_failures = capture_rpc_proxy_failures(
+        web3config
+    )
+    failing_upstream_rpc_providers = _merge_failing_upstream_rpc_providers(
+        failing_upstream_rpc_providers,
+        extra_failing_upstream_rpc_providers,
+    )
+    if extra_rpc_proxy_failures:
+        rpc_proxy_failures = list(extra_rpc_proxy_failures) + rpc_proxy_failures
+    diagnostics = {
         "captured_at": native_datetime_utc_now().isoformat(),
         "phase": phase,
         "exception": exception_chain[0],
@@ -265,6 +398,10 @@ def capture_vault_test_error(
         "transactions": transactions,
         "call_context": call_context,
     }
+    if failing_upstream_rpc_providers:
+        diagnostics["failing_upstream_rpc_providers"] = failing_upstream_rpc_providers
+        diagnostics["rpc_proxy_failures"] = rpc_proxy_failures
+    return diagnostics
 
 
 def classify_vault_test_failure(
@@ -601,30 +738,61 @@ def export_vault_test_report(
 ) -> dict:
     """Build a compact external report without copying unrelated state history."""
 
+    run = _get_latest_vault_test_run(state)
+    run_id = run.get("run_id")
     results = []
     for row in rows:
         vault_id = row["vault id"]
+        row_attempt_id = row.get("attempt")
         matches = [
             candidate
             for candidate in state.portfolio.get_all_positions()
             if candidate.other_data.get("vault_test_attempt", {}).get("vault_id")
             == vault_id
         ]
+        if row_attempt_id:
+            matches = [
+                candidate
+                for candidate in matches
+                if candidate.other_data.get("vault_test_attempt", {}).get("attempt_id")
+                == row_attempt_id
+            ]
+        if run_id:
+            matches = [
+                candidate
+                for candidate in matches
+                if candidate.other_data.get("vault_test_attempt", {})
+                .get("provenance", {})
+                .get("run_id")
+                == run_id
+            ]
         position = max(
             matches, key=lambda candidate: candidate.position_id, default=None
         )
         attempt = position.other_data.get("vault_test_attempt", {}) if position else {}
+        raw_result = attempt.get("result")
+        if raw_result is None and row.get("result") is not None:
+            presentation_result = row["result"]
+        elif raw_result is None:
+            presentation_result = (
+                "success_simulated"
+                if attempt.get("simulated", row.get("mode") == "simulated")
+                else "success_real"
+            )
+        else:
+            presentation_result = raw_result
         results.append(
             {
                 "vault_id": vault_id,
                 "position_id": position.position_id if position else None,
                 "row": row,
                 "attempt": attempt,
+                "result": presentation_result,
             }
         )
     return {
         "schema_version": VAULT_TEST_ATTEMPT_SCHEMA_VERSION,
-        "run": _get_latest_vault_test_run(state),
+        "run": run,
         "results": results,
     }
 
