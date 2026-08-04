@@ -82,8 +82,9 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
     2. Queue a 9 USDC investor deposit below the 10 USDC Guard limit.
     3. Post NAV and automatically settle the deposit through the guarded module.
     4. Serialise GuardV0's live cap and cooldown into the frontend metadata.
-    5. Queue another below-cap deposit during cooldown and verify its queue state persists.
-    6. Disable broadcasts and verify it suppresses both the mandatory NAV post and settlement.
+    5. Post NAV with an empty queue and verify its observed zero state persists.
+    6. Queue another below-cap deposit during cooldown and verify its queue state persists.
+    7. Disable broadcasts and verify it suppresses both the mandatory NAV post and settlement.
     """
     vault = guarded_lagoon_vault.vault
     sync_model = LagoonVaultSyncModel(vault=vault, hot_wallet=asset_manager)
@@ -135,7 +136,15 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
         "next_automatic_settlement_timestamp": safety_config[7],
     }
 
-    # 5. Queue another below-cap deposit during cooldown and verify its queue state persists.
+    # 5. Post NAV with an empty queue and verify its observed zero state persists.
+    nonce_before = web3.eth.get_transaction_count(asset_manager.address)
+    events = sync_model.sync_treasury(native_datetime_utc_now(), state, post_valuation=True)
+    assert events == []
+    assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 1
+    assert state.sync.treasury.pending_deposits == pytest.approx(0)
+    assert state.sync.treasury.pending_redemptions == pytest.approx(0)
+
+    # 6. Queue another below-cap deposit during cooldown and verify its queue state persists.
     _request_deposit(guarded_lagoon_vault, base_usdc_token, depositor, Decimal(1))
     nonce_before = web3.eth.get_transaction_count(asset_manager.address)
     with caplog.at_level(logging.INFO):
@@ -156,7 +165,7 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
     assert legacy_state.sync.treasury.pending_deposits is None
     assert "The queue will be retried automatically" in caplog.text
 
-    # 6. Disable broadcasts and verify it suppresses both the mandatory NAV post and settlement.
+    # 7. Disable broadcasts and verify it suppresses both the mandatory NAV post and settlement.
     sync_model.disable_broadcast = True
     nonce_before = web3.eth.get_transaction_count(asset_manager.address)
     with caplog.at_level(logging.INFO):
