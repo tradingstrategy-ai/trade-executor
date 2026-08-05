@@ -166,6 +166,19 @@ class Treasury:
     #:
     pending_redemptions: Optional[USDollarAmount] = None
 
+    #: How much underlying-token deposits are waiting in the investor queue.
+    #:
+    #: For Lagoon based vaults this is the pending Silo balance observed at
+    #: ``last_block_scanned``. It is outside the Safe and never forms part of
+    #: portfolio cash or NAV.
+    pending_deposits: USDollarAmount | None = None
+
+    #: Highest block whose Lagoon settlement logs were completely processed.
+    #:
+    #: This is independent from ``last_block_scanned`` because a queue snapshot
+    #: may advance on a NAV-only cycle.
+    last_lagoon_settlement_block_scanned: BlockNumber | None = None
+
     #: Number of issued shares.
     #:
     #: For Lagoon based vaults, needed to calcualte share price.
@@ -247,4 +260,3 @@ class Sync:
     def is_initialised(self) -> bool:
         """Have we scanned the initial deployment event for the sync model."""
         return self.deployment.block_number is not None
-

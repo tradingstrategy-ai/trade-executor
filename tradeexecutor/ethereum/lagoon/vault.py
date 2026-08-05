@@ -18,6 +18,8 @@ from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_u
 from eth_defi.confirmation import wait_and_broadcast_multiple_nodes_mev_blocker
 from eth_defi.erc_4626.vault_protocol.lagoon.analysis import \
     analyse_vault_flow_in_settlement
+from eth_defi.erc_4626.vault_protocol.lagoon.settlement import \
+    fetch_lagoon_settlements
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import (
     DEFAULT_LAGOON_POST_VALUATION_GAS, DEFAULT_LAGOON_SETTLE_GAS, LagoonVault)
 from eth_defi.hotwallet import HotWallet
@@ -29,6 +31,7 @@ from eth_defi.revert_reason import extract_revert_data
 from eth_defi.token import fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_typing import BlockIdentifier, HexAddress
+from hexbytes import HexBytes
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.ethereum.address_sync_model import AddressSyncModel
@@ -43,11 +46,20 @@ from tradeexecutor.state.types import (BlockNumber, JSONHexAddress, Percent,
                                        USDollarPrice)
 from tradeexecutor.strategy.interest import sync_interests
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.sync_model import OnChainBalance
+from tradeexecutor.strategy.sync_model import OnChainBalance, UnconfirmedTreasurySync
 from tradeexecutor.strategy.trading_strategy_universe import \
     TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
+
+
+class LagoonUnconfirmedSettlement(UnconfirmedTreasurySync):
+    """Lagoon settlement state cannot be synchronised safely."""
+
+
+def _normalise_tx_hash(tx_hash: str | HexBytes) -> str:
+    """Return a stable lower-case transaction hash for state deduplication."""
+    return HexBytes(tx_hash).hex().lower()
 
 
 def _load_lagoon_guard_v0_error_selectors() -> dict[str, bytes]:
@@ -571,18 +583,226 @@ class LagoonVaultSyncModel(AddressSyncModel):
         else:
             return state.portfolio.get_net_asset_value(include_interest=True)
 
+    def _fetch_lagoon_queue_amounts(
+        self,
+        block_number: int,
+    ) -> tuple[Decimal, Decimal]:
+        """Read aggregate investor queue amounts at one explicit block."""
+        flow_manager = self.vault.get_flow_manager()
+        return (
+            flow_manager.fetch_pending_deposit(block_number),
+            flow_manager.calculate_underlying_needed_for_redemptions(block_number),
+        )
+
+    def _get_recorded_lagoon_settlement_hashes(self, reserve_position) -> set[str]:
+        """Return settlement transaction hashes already represented in state."""
+        hashes = set()
+        for event in reserve_position.get_balance_update_events():
+            if event.cause != BalanceUpdateCause.deposit_and_redemption:
+                continue
+            if event.tx_hash is None:
+                raise RuntimeError(
+                    "Cannot initialise Lagoon settlement recovery because reserve "
+                    f"balance update #{event.balance_update_id} at block "
+                    f"{event.block_number} has no transaction hash"
+                )
+            hashes.add(_normalise_tx_hash(event.tx_hash))
+        return hashes
+
+    def _fetch_lagoon_settlements(
+        self,
+        start_block: int,
+        end_block: int,
+    ) -> list:
+        """Read Lagoon settlement logs without using Hypersync against Anvil."""
+        return fetch_lagoon_settlements(
+            vault=self.vault,
+            start_block=start_block,
+            end_block=end_block,
+            use_hypersync=False if self.anvil else None,
+        )
+
+    def _probe_unconfirmed_lagoon_settlements(
+        self,
+        *,
+        safe_sync_block: int,
+        recorded_hashes: set[str],
+    ) -> None:
+        """Defer a cycle when a newer external Lagoon settlement exists."""
+        tip = self.web3.eth.block_number
+        if tip < safe_sync_block:
+            raise LagoonUnconfirmedSettlement(
+                f"Lagoon RPC tip {tip:,} is behind safe sync block {safe_sync_block:,}"
+            )
+        if tip == safe_sync_block:
+            return
+
+        try:
+            unsettled = self._fetch_lagoon_settlements(safe_sync_block + 1, tip)
+        except Exception as e:
+            raise LagoonUnconfirmedSettlement(
+                "Cannot prove Lagoon's unconfirmed block range has no settlement"
+            ) from e
+
+        unknown_hashes = {
+            _normalise_tx_hash(row.tx_hash)
+            for row in unsettled
+            if _normalise_tx_hash(row.tx_hash) not in recorded_hashes
+        }
+        if unknown_hashes:
+            raise LagoonUnconfirmedSettlement(
+                "Lagoon settlement(s) are inside the confirmation buffer: "
+                + ", ".join(sorted(unknown_hashes))
+            )
+
+    def _discover_lagoon_settlements(
+        self,
+        *,
+        state: State,
+        reserve_position,
+        safe_sync_block: int,
+    ) -> list:
+        """Analyse confirmed, unrecorded Lagoon settlements without state mutation."""
+        treasury = state.sync.treasury
+        deployment_block = state.sync.deployment.block_number
+        assert deployment_block is not None, "Lagoon deployment block missing; run trade-executor init"
+
+        recorded_hashes = self._get_recorded_lagoon_settlement_hashes(reserve_position)
+        previous_cursor = treasury.last_lagoon_settlement_block_scanned
+        if previous_cursor is not None and safe_sync_block < previous_cursor:
+            raise LagoonUnconfirmedSettlement(
+                f"Lagoon safe sync block {safe_sync_block:,} is behind settlement cursor {previous_cursor:,}"
+            )
+
+        self._probe_unconfirmed_lagoon_settlements(
+            safe_sync_block=safe_sync_block,
+            recorded_hashes=recorded_hashes,
+        )
+
+        start_block = deployment_block if previous_cursor is None else previous_cursor + 1
+        if start_block > safe_sync_block:
+            return []
+
+        rows = self._fetch_lagoon_settlements(start_block, safe_sync_block)
+        tx_hashes = {
+            _normalise_tx_hash(row.tx_hash)
+            for row in rows
+            if _normalise_tx_hash(row.tx_hash) not in recorded_hashes
+        }
+        tx_receipts = [
+            (tx_hash, self.web3.eth.get_transaction_receipt(HexBytes(tx_hash)))
+            for tx_hash in tx_hashes
+        ]
+        tx_receipts.sort(
+            key=lambda item: (item[1]["blockNumber"], item[1]["transactionIndex"])
+        )
+        return [
+            analyse_vault_flow_in_settlement(self.vault, HexBytes(tx_hash))
+            for tx_hash, _receipt in tx_receipts
+        ]
+
+    def _create_lagoon_settlement_event(
+        self,
+        *,
+        event_id: int,
+        reserve_position,
+        reserve_asset: AssetIdentifier,
+        analysis,
+        old_balance: Decimal,
+        origin: str,
+    ) -> BalanceUpdate:
+        """Build one persistent reserve event from a verified Lagoon receipt."""
+        delta = analysis.get_underlying_diff()
+        other_data = analysis.get_serialiable_diagnostics_data()
+        other_data["settlement_origin"] = origin
+
+        return BalanceUpdate(
+            balance_update_id=event_id,
+            position_type=BalanceUpdatePositionType.reserve,
+            cause=BalanceUpdateCause.deposit_and_redemption,
+            asset=reserve_position.asset,
+            block_mined_at=analysis.timestamp,
+            strategy_cycle_included_at=analysis.timestamp,
+            chain_id=reserve_asset.chain_id,
+            old_balance=old_balance,
+            quantity=delta,
+            owner_address=None,
+            tx_hash=_normalise_tx_hash(analysis.tx_hash),
+            log_index=None,
+            position_id=None,
+            usd_value=float(delta),
+            notes=f"Lagoon reserve update at tx {analysis.tx_hash.hex()}, block {analysis.block_number:,}",
+            block_number=analysis.block_number,
+            other_data=other_data,
+        )
+
+    def _commit_confirmed_lagoon_settlements(
+        self,
+        *,
+        state: State,
+        reserve_position,
+        reserve_asset: AssetIdentifier,
+        analyses: list,
+        safe_sync_block: int,
+        reserve_balance: Decimal,
+        pending_deposits: Decimal,
+        pending_redemptions: Decimal,
+        share_count: Decimal,
+        strategy_cycle_ts: datetime.datetime,
+    ) -> list[BalanceUpdate]:
+        """Apply analysed settlement flows and one Safe/queue snapshot."""
+        treasury = state.sync.treasury
+        next_event_id = state.portfolio.next_balance_update_id
+        old_balance = reserve_position.quantity
+        events = []
+        for analysis in analyses:
+            event = self._create_lagoon_settlement_event(
+                event_id=next_event_id,
+                reserve_position=reserve_position,
+                reserve_asset=reserve_asset,
+                analysis=analysis,
+                old_balance=old_balance,
+                origin="discovered_by_scan",
+            )
+            events.append(event)
+            next_event_id += 1
+            old_balance += event.quantity
+
+        for event in events:
+            reserve_position.add_balance_update_event(event)
+            treasury.balance_update_refs.append(BalanceEventRef.from_balance_update_event(event))
+        state.portfolio.next_balance_update_id = next_event_id
+        reserve_position.quantity = reserve_balance
+        reserve_position.reserve_token_price = 1.0
+        reserve_position.last_pricing_at = native_datetime_utc_now()
+        reserve_position.last_sync_at = native_datetime_utc_now()
+        treasury.last_lagoon_settlement_block_scanned = safe_sync_block
+        treasury.last_block_scanned = safe_sync_block
+        treasury.last_updated_at = native_datetime_utc_now()
+        treasury.last_cycle_at = strategy_cycle_ts
+        treasury.pending_deposits = float(pending_deposits)
+        treasury.pending_redemptions = float(pending_redemptions)
+        treasury.share_count = share_count
+        treasury.balance_update_refs.sort(
+            key=lambda ref: (ref.strategy_cycle_included_at or datetime.datetime.min, ref.balance_event_id)
+        )
+        return events
+
     def _mark_treasury_sync_completed(
         self,
         treasury_sync,
         strategy_cycle_ts: datetime.datetime,
         block_number: int,
+        pending_deposits: Decimal | None = None,
         pending_redemptions: Decimal | None = None,
         share_count: Decimal | None = None,
     ) -> None:
-        """Mark Lagoon treasury as synced even when no settlement was needed."""
+        """Mark one consistent Lagoon treasury/queue snapshot as complete."""
         treasury_sync.last_updated_at = native_datetime_utc_now()
         treasury_sync.last_cycle_at = strategy_cycle_ts
         treasury_sync.last_block_scanned = block_number
+        if pending_deposits is not None:
+            treasury_sync.pending_deposits = float(pending_deposits)
         if pending_redemptions is not None:
             treasury_sync.pending_redemptions = float(pending_redemptions)
         if share_count is not None:
@@ -847,47 +1067,53 @@ class LagoonVaultSyncModel(AddressSyncModel):
             chain_id=reserve_asset.chain_id,
         )
 
+        # Freeze all accounting reads at one reorganisation-buffered block.
+        # Discover investor flows before Safe-balance reconciliation so a direct
+        # Safe settlement cannot be silently treated as strategy PnL.
+        safe_sync_block = self.get_safe_latest_block()
+        if end_block is not None:
+            safe_sync_block = min(safe_sync_block, end_block)
+
+        analyses = self._discover_lagoon_settlements(
+            state=state,
+            reserve_position=reserve_position,
+            safe_sync_block=safe_sync_block,
+        )
+        pending_deposits, pending_redemptions = self._fetch_lagoon_queue_amounts(safe_sync_block)
+        share_count = vault.fetch_total_supply(safe_sync_block)
+        onchain_balance = reserve_token.fetch_balance_of(
+            self.get_token_storage_address(),
+            block_identifier=safe_sync_block,
+        )
+        recovered_events = self._commit_confirmed_lagoon_settlements(
+            state=state,
+            reserve_position=reserve_position,
+            reserve_asset=reserve_asset,
+            analyses=analyses,
+            safe_sync_block=safe_sync_block,
+            reserve_balance=onchain_balance,
+            pending_deposits=pending_deposits,
+            pending_redemptions=pending_redemptions,
+            share_count=share_count,
+            strategy_cycle_ts=strategy_cycle_ts,
+        )
+        if analyses:
+            logger.info(
+                "Recovered %d Lagoon settlement transaction(s) through block %d",
+                len(analyses),
+                safe_sync_block,
+            )
+
         self._check_frozen_positions_for_settlement(
             state,
             post_valuation=post_valuation,
         )
 
-        # Reconcile reserves from on-chain before calculating NAV.
-        #
-        # Exchange account positions (e.g. GMX) transfer USDC from the Safe
-        # via sendTokens() in multicall — outside the trade engine.
-        # This means reserve_position.quantity can be stale: it still
-        # reflects the pre-transfer balance while the USDC has already
-        # left the Safe.
-        #
-        # The exchange account value function (e.g. create_gmx_account_value_func)
-        # only returns capital locked in exchange positions, NOT free USDC
-        # in the Safe — so the Safe's actual USDC balance is the correct
-        # reserve component for NAV.  Without this reconciliation,
-        # calculate_valuation() double-counts the transferred USDC
-        # (once in stale reserves, once in the exchange account position),
-        # inflating the NAV and mispricing deposits.
-        #
-        # See README-GMX-Lagoon.md for the full token flow.
-        block_number = self.get_safe_latest_block()
-        onchain_balance = reserve_token.fetch_balance_of(
-            self.get_token_storage_address(),
-            block_identifier=block_number,
-        )
-        if reserve_position.quantity != onchain_balance:
-            logger.warning(
-                "Reserve balance mismatch: portfolio=%s, on-chain=%s. "
-                "Updating to on-chain value before NAV calculation.",
-                reserve_position.quantity,
-                onchain_balance,
-            )
-            reserve_position.quantity = onchain_balance
-
-        valuation = self.calculate_valuation(state, block_number=block_number)
+        valuation = self.calculate_valuation(state, block_number=safe_sync_block)
 
         if not post_valuation:
             logger.warning("LagoonVaultSyncModel.sync_treasury() called with post_valuation=False")
-            return []
+            return recovered_events
 
         if self.disable_broadcast:
             # GuardV0 requires a current NAV before settlement. Consequently,
@@ -897,11 +1123,11 @@ class LagoonVaultSyncModel(AddressSyncModel):
             logger.info(
                 "Lagoon treasury broadcasting disabled: not posting NAV or settling the investor queue"
             )
-            return []
+            return recovered_events
 
         assert self.hot_wallet, "asset_manager HotWallet needed in order to sync Lagoon vault"
 
-        old_balance = reserve_token.fetch_balance_of(self.get_token_storage_address())
+        old_balance = reserve_position.quantity
 
         # NAV must be fresh on every requested post-valuation cycle. GuardV0
         # decides investor settlement separately and never suppresses this tx.
@@ -1024,10 +1250,11 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 treasury_sync=treasury_sync,
                 strategy_cycle_ts=strategy_cycle_ts,
                 block_number=nav_block_number,
+                pending_deposits=flow_manager.fetch_pending_deposit(metadata_block_number),
                 pending_redemptions=pending_redemptions,
                 share_count=share_count,
             )
-            return []
+            return recovered_events
 
         # Only the successful guarded or unlimited preflight path reaches this
         # point; all cap and cooldown reverts were handled without gas spend.
@@ -1089,34 +1316,21 @@ class LagoonVaultSyncModel(AddressSyncModel):
         event_id = portfolio.next_balance_update_id
         portfolio.next_balance_update_id += 1
 
-        # Include our valuation in the other_data diangnostics
-        other_data = analysis.get_serialiable_diagnostics_data()
-        other_data["valuation"] = valuation
         valuation_with_deposits = valuation + float(delta)
-        other_data["valuation_with_deposits"] = valuation_with_deposits
-
         share_count = vault.fetch_total_supply(analysis.block_number)
-        other_data["share_count"] = share_count
-
-        evt = BalanceUpdate(
-            balance_update_id=event_id,
-            position_type=BalanceUpdatePositionType.reserve,
-            cause=BalanceUpdateCause.deposit_and_redemption,
-            asset=reserve_position.asset,
-            block_mined_at=analysis.timestamp,
-            strategy_cycle_included_at=strategy_cycle_ts,
-            chain_id=reserve_asset.chain_id,
+        pending_deposits, pending_redemptions = self._fetch_lagoon_queue_amounts(analysis.block_number)
+        evt = self._create_lagoon_settlement_event(
+            event_id=event_id,
+            reserve_position=reserve_position,
+            reserve_asset=reserve_asset,
+            analysis=analysis,
             old_balance=old_balance,
-            quantity=delta,
-            owner_address=None,
-            tx_hash=analysis.tx_hash.hex(),
-            log_index=None,
-            position_id=None,
-            usd_value=float(delta),  # Assume stablecoin
-            notes=f"Lagoon reserve update at tx {analysis.tx_hash.hex()}, block {analysis.block_number:,}",
-            block_number=analysis.block_number,
-            other_data=other_data,
+            origin="executor_broadcast",
         )
+        assert evt.other_data is not None
+        evt.other_data["valuation"] = valuation
+        evt.other_data["valuation_with_deposits"] = valuation_with_deposits
+        evt.other_data["share_count"] = share_count
 
         # Update reserve position mutable value
         reserve_position.reserve_token_price = float(1)
@@ -1128,18 +1342,27 @@ class LagoonVaultSyncModel(AddressSyncModel):
         # Add in the event cross reference list
         ref = BalanceEventRef.from_balance_update_event(evt)
         treasury_sync.balance_update_refs.append(ref)
+        treasury_sync.balance_update_refs.sort(
+            key=lambda item: (item.strategy_cycle_included_at or datetime.datetime.min, item.balance_event_id)
+        )
         treasury_sync.last_block_scanned = analysis.block_number
         treasury_sync.last_updated_at = native_datetime_utc_now()
         treasury_sync.last_cycle_at = strategy_cycle_ts
-        treasury_sync.pending_redemptions = float(analysis.pending_redemptions_underlying)
+        treasury_sync.pending_deposits = float(pending_deposits)
+        treasury_sync.pending_redemptions = float(pending_redemptions)
         treasury_sync.share_count = share_count
+        treasury_sync.last_lagoon_settlement_block_scanned = max(
+            treasury_sync.last_lagoon_settlement_block_scanned or analysis.block_number,
+            analysis.block_number,
+        )
 
         logger.info(
             f"Lagoon settlements done, the last block is now {treasury_sync.last_block_scanned:,}\n"
             f"Safe address: {vault.safe_address}, vault address: {vault.vault_address}, silo address: {vault.silo_address}\n"
             f"Settled {analysis.get_underlying_diff()} USD\n"
             f"Non-deposit valuation is {valuation:,.2f} USD, with-deposit valuation is {valuation_with_deposits:,.2f} USD\n"
-            f"Pending redemptions {analysis.pending_redemptions_underlying} USD\n"
+            f"Pending deposits {pending_deposits} USD\n"
+            f"Pending redemptions {pending_redemptions} USD\n"
             f"Share count {share_count} {vault.share_token.symbol}"
         )
-        return [evt]
+        return recovered_events + [evt]

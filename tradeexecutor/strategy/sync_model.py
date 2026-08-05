@@ -29,6 +29,10 @@ from eth_defi.compat import native_datetime_utc_now
 SyncMethodV0 = Callable[[Portfolio, datetime.datetime, List[AssetIdentifier]], List[ReserveUpdateEvent]]
 
 
+class UnconfirmedTreasurySync(Exception):
+    """Treasury data is not final enough to make a trading decision this cycle."""
+
+
 @dataclass
 class OnChainBalance:
     """Describe on-chain token position.

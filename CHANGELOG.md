@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Add Lagoon external-settlement recovery: the executor discovers confirmed Safe-governance settlements from Lagoon receipt events before reconciling Safe USDC, records normal investor-flow balance updates idempotently, exports pending queue amounts and defers a trading cycle while a settlement remains inside the confirmation buffer (2026-08-05)
+
 - Fix HyperCore vault deposits whose spot-to-perp CoreWriter action succeeded while the batched perp-to-vault action silently no-op'd: execute and verify the two legs separately, retain recoverable stranded capital in state rather than restoring it to Safe reserve accounting, fail closed across phase-1 broadcast crashes or ambiguous CoreWriter settlement until live Safe/escrow/spot/perp/vault reconciliation proves the destination, and enable default `correct-accounts` recovery of the full perp-to-spot transit amount before any separate spot cleanup (2026-07-30)
 
 - Fix default-on `correct-accounts` cleanup for undersized HyperCore vault positions to redeem directly without deposits or new lock-ups, keep verifiable residuals tracked, supersede stale planned close trades, use a valid live confirmation count, and make `--dry-run` rehearse live preflight, routing, and transaction construction without state writes or broadcasts (2026-07-30)
