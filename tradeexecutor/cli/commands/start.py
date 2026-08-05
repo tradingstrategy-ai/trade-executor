@@ -647,13 +647,15 @@ def start(
         state = loop.init_state()
         deployment_info_updated = update_strategy_file_deployment_info(state, deployment_file)
         if isinstance(sync_model, LagoonVaultSyncModel):
-            deployment_info_updated |= refresh_lagoon_guard_migration_state(state, sync_model.vault)
+            vault = getattr(sync_model, "vault", None)
+            if vault is not None:
+                deployment_info_updated |= refresh_lagoon_guard_migration_state(state, vault)
 
         if deployment_info_updated:
             logger.info("Updated strategy-file deployment information in the state")
             store.sync(state)
 
-        state = loop.setup(state=state)
+        state = loop.setup()
     except Exception as e:
         logger.error("trade-executor crashed on initialisation: %s", e)
         raise e
