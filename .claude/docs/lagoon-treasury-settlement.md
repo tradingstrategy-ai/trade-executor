@@ -97,3 +97,45 @@ When a queue does not settle, inspect:
 Do not post a NAV if frozen positions or stale valuation data make it
 untrustworthy. The frozen-position safety check deliberately precedes the NAV
 transaction.
+
+## External settlement accounting
+
+When Safe owners execute a successful, already-valued `settleDeposit()` call
+outside the executor, the next treasury sync discovers and records the investor
+flow before it reconciles the Safe USDC balance. This is the manual recovery
+procedure after GuardV0 blocks automatic settlement.
+
+The executor creates one reserve `BalanceUpdate` per settlement transaction:
+
+- `cause=deposit_and_redemption`;
+- `quantity = deposited - redeemed` in the reserve stablecoin; and
+- the settlement transaction hash is the idempotency key.
+
+The Safe balance alone is not evidence of an investor flow: trading, bridges
+and external account integrations can change it too. Do not run
+`correct-accounts` to absorb a manual settlement, because that loses the
+investor-flow history used for profitability and equity calculations.
+
+### Confirmation safety
+
+The model scans only through its reorganisation-buffered safe block. Before it
+reconciles Safe USDC, it checks newer blocks for unrecorded Lagoon settlement
+logs. Such a log raises `LagoonUnconfirmedSettlement`; the strategy runner then
+ends the cycle before account checks or `decide_trades()`.
+
+Only mined receipt events are considered, so a dropped or replaced transaction
+does not defer a cycle. The settlement cursor never advances beyond the safe
+block.
+
+### State export
+
+`state.sync.treasury` exposes:
+
+| Field | Meaning |
+|---|---|
+| `pending_deposits` | Underlying waiting in the Lagoon Silo; not portfolio cash. |
+| `pending_redemptions` | Current underlying estimate required for queued redemption shares. |
+| `last_lagoon_settlement_block_scanned` | Highest block with fully processed Lagoon settlement logs. |
+
+`None` means the queue has not been observed. `0.0` means it was observed
+empty. These are snapshots only; receipt events remain the investor-flow source.

@@ -36,7 +36,7 @@ from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.strategy.sync_model import SyncModel
+from tradeexecutor.strategy.sync_model import SyncModel, UnconfirmedTreasurySync
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -852,16 +852,21 @@ class StrategyRunner(abc.ABC):
                 self.revalue_state(strategy_cycle_timestamp, state, valuation_model)
 
             # Watch incoming deposits
-            with self.timed_task_context_manager("sync_portfolio"):
-                self.sync_portfolio(
-                    strategy_cycle_timestamp,
-                    universe,
-                    state,
-                    debug_details,
-                    end_block,
-                    long_short_metrics_latest=long_short_metrics_latest,
-                    post_valuation=True,
-                )
+            try:
+                with self.timed_task_context_manager("sync_portfolio"):
+                    self.sync_portfolio(
+                        strategy_cycle_timestamp,
+                        universe,
+                        state,
+                        debug_details,
+                        end_block,
+                        long_short_metrics_latest=long_short_metrics_latest,
+                        post_valuation=True,
+                    )
+            except UnconfirmedTreasurySync as e:
+                logger.warning("Deferring strategy cycle because treasury sync is unconfirmed: %s", e)
+                debug_details["treasury_sync_deferred"] = str(e)
+                return debug_details
 
             # Resolve any pending async vault settlements (Ostium V1.5, ERC-7540 Lagoon).
             # Polymorphic: live execution models poll the on-chain deposit manager,

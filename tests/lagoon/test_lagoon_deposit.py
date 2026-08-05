@@ -1,5 +1,6 @@
 """Test Lagoon vault deposits/redemptions are correctly performed."""
 import datetime
+import json
 import os
 from decimal import Decimal
 from unittest.mock import Mock
@@ -9,6 +10,7 @@ from eth_typing import HexAddress
 from web3 import Web3
 
 from eth_defi.hotwallet import HotWallet
+from eth_defi.safe.simulate import simulate_safe_execution_anvil
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonAutomatedDeployment
 from eth_defi.token import TokenDetails, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
@@ -18,6 +20,7 @@ from tradeexecutor.ethereum.lagoon.vault import (
     LagoonVaultSyncModel,
 )
 from tradeexecutor.state.portfolio import ReserveMissing
+from tradeexecutor.state.balance_update import BalanceUpdateCause
 from tradeexecutor.state.state import State
 from tradeexecutor.statistics.core import calculate_statistics
 from tradeexecutor.strategy.execution_context import ExecutionMode
@@ -72,9 +75,12 @@ def test_lagoon_treasury_initialise(
     cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(cycle, state)
     assert len(events) == 0
-    assert treasury.last_block_scanned is None
-    assert treasury.last_updated_at is None
-    assert treasury.last_cycle_at is None
+    assert treasury.last_block_scanned is not None
+    assert treasury.last_updated_at is not None
+    assert treasury.last_cycle_at == cycle
+    assert treasury.last_lagoon_settlement_block_scanned == treasury.last_block_scanned
+    assert treasury.pending_deposits == pytest.approx(0)
+    assert treasury.pending_redemptions == pytest.approx(0)
     assert len(treasury.balance_update_refs) == 0
     assert len(reserve_position.balance_updates) == 0
 
@@ -162,6 +168,74 @@ def test_lagoon_sync_deposit(
     )
     assert statistics.portfolio.share_price_usd == pytest.approx(1.0)
     assert statistics.portfolio.share_count == Decimal(9)
+
+
+def test_lagoon_recovers_external_safe_settlement(
+    web3: Web3,
+    automated_lagoon_vault: LagoonAutomatedDeployment,
+    base_usdc_token: TokenDetails,
+    vault_strategy_universe: TradingStrategyUniverse,
+    depositor: HexAddress,
+    asset_manager: HotWallet,
+) -> None:
+    """Recover a Lagoon settlement sent directly by the Safe on an Anvil fork.
+
+    1. Initialise treasury state and establish an empty confirmed settlement cursor.
+    2. Queue an investor deposit, post its NAV, then settle it directly as the Safe.
+    3. Run the executor's next treasury sync and verify it creates one investor-flow event.
+    4. Rewind the cursor and verify transaction-hash recovery is idempotent.
+    """
+    vault = automated_lagoon_vault.vault
+    state = State()
+    sync_model = LagoonVaultSyncModel(vault=vault, hot_wallet=asset_manager)
+    sync_model.sync_initial(
+        state,
+        reserve_asset=vault_strategy_universe.get_reserve_asset(),
+        reserve_token_price=1.0,
+    )
+
+    # 1. Establish the confirmed scan cursor before the external settlement.
+    assert sync_model.sync_treasury(native_datetime_utc_now(), state, post_valuation=False) == []
+    cursor_before = state.sync.treasury.last_lagoon_settlement_block_scanned
+    assert cursor_before is not None
+
+    # 2. Queue and externally settle 9 USDC without the executor broadcast path.
+    amount = Decimal(9)
+    tx_hash = base_usdc_token.approve(vault.address, amount).transact({"from": depositor})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    tx_hash = vault.request_deposit(depositor, base_usdc_token.convert_to_raw(amount)).transact({"from": depositor})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    tx_hash = vault.post_new_valuation(Decimal(0)).transact({"from": asset_manager.address})
+    assert_transaction_success_with_explanation(web3, tx_hash)
+    external_settlement = simulate_safe_execution_anvil(
+        web3,
+        vault.safe_address,
+        vault.vault_contract.functions.settleDeposit(0),
+    )
+    assert_transaction_success_with_explanation(web3, external_settlement)
+
+    # 3. The executor discovers the Safe transaction and records its flow.
+    events = sync_model.sync_treasury(native_datetime_utc_now(), state, post_valuation=False)
+    assert len(events) == 1
+    event = events[0]
+    assert event.tx_hash == external_settlement.hex()
+    assert event.cause == BalanceUpdateCause.deposit_and_redemption
+    assert event.quantity == amount
+    assert event.strategy_cycle_included_at == event.block_mined_at
+    assert state.portfolio.get_cash() == amount
+    assert len(state.sync.treasury.balance_update_refs) == 1
+    assert state.sync.treasury.pending_deposits == pytest.approx(0)
+    assert state.sync.treasury.last_lagoon_settlement_block_scanned >= event.block_number
+    assert state.sync.treasury.last_lagoon_settlement_block_scanned > cursor_before
+    exported_treasury = json.loads(state.to_json_safe())["sync"]["treasury"]
+    assert exported_treasury["pending_deposits"] == pytest.approx(0)
+    assert exported_treasury["pending_redemptions"] == pytest.approx(0)
+    assert exported_treasury["last_lagoon_settlement_block_scanned"] >= event.block_number
+
+    # 4. An unset legacy cursor rescans from deployment without duplication.
+    state.sync.treasury.last_lagoon_settlement_block_scanned = None
+    assert sync_model.sync_treasury(native_datetime_utc_now(), state, post_valuation=False) == []
+    assert len(state.portfolio.get_default_reserve_position().balance_updates) == 1
 
 
 def test_lagoon_sync_treasury_marks_noop_startup_sync(
