@@ -511,7 +511,6 @@ def _build_multichain_artifact_payload(
         if chain_configs[slug].guard_only:
             guard_migration = _build_guard_migration_instructions(
                 dep,
-                chain_configs[slug].existing_vault_address or dep.safe_address,
             )
         deployment_data["deployments"][slug] = {
             "vault_address": dep.vault.address if hasattr(dep.vault, "address") else None,
@@ -539,9 +538,9 @@ def _build_multichain_artifact_payload(
             lines.append(f"    New guard address: {guard_migration['new_guard_address']}")
             lines.append(f"    Safe address: {guard_migration['safe_address']}")
             lines.append(f"    Vault address: {guard_migration['vault_address']}")
-            lines.append(f"    Currently enabled Safe modules: {guard_migration['currently_enabled_modules']}")
-            lines.append("    Safe transactions needed:")
-            for tx in guard_migration["safe_transactions"]:
+            lines.append(f"    Enabled Safe modules at deployment: {guard_migration['enabled_modules_at_deployment']}")
+            lines.append("    Proposed Safe transactions:")
+            for tx in guard_migration["proposed_safe_transactions"]:
                 lines.append(f"    {tx['step']}. {tx['call']}")
             lines.append("    Safe ABI needed:")
             lines.extend(f"    {line}" for line in guard_migration["safe_abi"].strip().splitlines())
@@ -552,12 +551,12 @@ def _build_multichain_artifact_payload(
     return "\n".join(lines), deployment_data
 
 
-def _build_guard_migration_instructions(deploy_info, vault_adapter_address: str) -> dict[str, Any]:
+def _build_guard_migration_instructions(deploy_info) -> dict[str, Any]:
     """Build manual Safe migration instructions for guard-only redeploys."""
     mods = deploy_info.safe.retrieve_modules()
     assert len(mods) == 1, f"Expected only one module enabled, got: {mods}"
 
-    old_guard_address = deploy_info.old_trading_strategy_module.address if deploy_info.old_trading_strategy_module else vault_adapter_address
+    old_guard_address = deploy_info.old_trading_strategy_module.address if deploy_info.old_trading_strategy_module else mods[0]
     safe_address = deploy_info.safe.address
 
     transactions = [
@@ -582,8 +581,8 @@ def _build_guard_migration_instructions(deploy_info, vault_adapter_address: str)
         "new_guard_address": deploy_info.trading_strategy_module.address,
         "safe_address": safe_address,
         "vault_address": getattr(deploy_info.vault, "address", None),
-        "currently_enabled_modules": list(mods),
-        "safe_transactions": transactions,
+        "enabled_modules_at_deployment": list(mods),
+        "proposed_safe_transactions": transactions,
         "safe_abi": SAFE_ABI_STR,
     }
 
@@ -596,11 +595,11 @@ def _format_guard_migration_instructions(instructions: dict[str, Any]) -> str:
         f"  New guard address: {instructions['new_guard_address']}",
         f"  Safe address: {instructions['safe_address']}",
         f"  Vault address: {instructions['vault_address']}",
-        f"  Currently enabled Safe modules: {instructions['currently_enabled_modules']}",
-        "  Safe transactions needed:",
+        f"  Enabled Safe modules at deployment: {instructions['enabled_modules_at_deployment']}",
+        "  Proposed Safe transactions:",
     ]
 
-    for tx in instructions["safe_transactions"]:
+    for tx in instructions["proposed_safe_transactions"]:
         lines.append(f"  {tx['step']}. {tx['call']}")
 
     lines.append("  Safe ABI needed:")
@@ -610,13 +609,12 @@ def _format_guard_migration_instructions(instructions: dict[str, Any]) -> str:
 
 def _augment_guard_only_artifacts(
     deploy_info,
-    vault_adapter_address: str,
     *,
     text_payload: str,
     json_payload: dict[str, Any],
 ) -> tuple[str, dict[str, Any]]:
     """Attach Safe migration instructions to guard-only deploy artefacts."""
-    instructions = _build_guard_migration_instructions(deploy_info, vault_adapter_address)
+    instructions = _build_guard_migration_instructions(deploy_info)
     augmented_json = dict(json_payload)
     augmented_json["Guard migration"] = instructions
     augmented_text = text_payload.rstrip() + "\n\n" + _format_guard_migration_instructions(instructions) + "\n"
@@ -632,16 +630,16 @@ def _annotate_single_chain_artifacts(*, text_payload: str, json_payload: dict[st
     return annotated_text, annotated_json
 
 
-def _log_guard_only_details(deploy_info, vault_adapter_address: str, logger) -> None:
+def _log_guard_only_details(deploy_info, logger) -> None:
     """Log manual guard replacement steps for guard-only mode."""
-    instructions = _build_guard_migration_instructions(deploy_info, vault_adapter_address)
+    instructions = _build_guard_migration_instructions(deploy_info)
     logger.info("New guard deployed: %s", instructions["new_guard_address"])
     logger.info("Old guard address: %s", instructions["old_guard_address"])
     logger.info("Safe address: %s", instructions["safe_address"])
     logger.info("Vault address: %s", instructions["vault_address"])
-    logger.info("Currently enabled Safe modules: %s", instructions["currently_enabled_modules"])
-    logger.info("Safe transactions needed:")
-    for tx in instructions["safe_transactions"]:
+    logger.info("Enabled Safe modules at deployment: %s", instructions["enabled_modules_at_deployment"])
+    logger.info("Proposed Safe transactions:")
+    for tx in instructions["proposed_safe_transactions"]:
         logger.info("%d. %s", tx["step"], tx["call"])
     logger.info("Safe ABI needed: %s", instructions["safe_abi"])
 
@@ -1007,7 +1005,6 @@ def lagoon_deploy_vault(
     if guard_only:
         text_payload, json_payload = _augment_guard_only_artifacts(
             deploy_info,
-            vault_adapter_address,
             text_payload=text_payload,
             json_payload=json_payload,
         )
@@ -1041,7 +1038,7 @@ def lagoon_deploy_vault(
     if not guard_only:
         logger.info("Lagoon deployed:\n%s", deploy_info.pformat())
     else:
-        _log_guard_only_details(deploy_info, vault_adapter_address, logger)
+        _log_guard_only_details(deploy_info, logger)
 
 
     # Print deployment guard configuration report
@@ -1235,7 +1232,6 @@ def _deploy_multichain(
             logger.info("Guard migration steps for %s:", slug)
             _log_guard_only_details(
                 dep,
-                configs[slug].existing_vault_address or dep.safe_address,
                 logger,
             )
 

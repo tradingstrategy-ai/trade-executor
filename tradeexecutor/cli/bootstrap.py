@@ -71,7 +71,7 @@ from tradeexecutor.ethereum.velvet.vault import VelvetVaultSyncModel
 from tradeexecutor.ethereum.web3config import Web3Config, get_rpc_env_var_name
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.metadata import Metadata, OnChainData
-from tradeexecutor.state.deployment_info import DeploymentInfo
+from tradeexecutor.state.deployment_info import DeploymentInfo, DeploymentInfoChange
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore, SimulateStore
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -476,13 +476,159 @@ def update_strategy_file_deployment_info(
         "safe_salt_nonce": data.get("safe_salt_nonce"),
         "deployments": strip_deployment_state_abi(data.get("deployments") or {}),
     }
+    _normalise_guard_migration_artifact(deployment_data)
     if state.deployment_info is None:
         state.deployment_info = DeploymentInfo()
+    else:
+        _preserve_live_guard_migration_status(
+            state.deployment_info.data,
+            deployment_data,
+        )
 
     return state.deployment_info.update_strategy_file_deployment_data(
         str(deployment_file),
         deployment_data,
     )
+
+
+def _normalise_guard_migration_artifact(deployment_data: dict) -> None:
+    """Mark guard migration data from the deployment artefact as historical.
+
+    The Safe module list and transaction plan are generated before the Safe
+    owners perform the migration.  Older artefacts called these values
+    ``currently_enabled_modules`` and ``safe_transactions``, which falsely
+    suggested that they reflected current chain state.
+    """
+    for deployment in (deployment_data.get("deployments") or {}).values():
+        migration = deployment.get("guard_migration")
+        if not migration:
+            continue
+
+        if "currently_enabled_modules" in migration:
+            migration["enabled_modules_at_deployment"] = migration.pop("currently_enabled_modules")
+        if "safe_transactions" in migration:
+            migration["proposed_safe_transactions"] = migration.pop("safe_transactions")
+
+
+def _normalise_address(address: object) -> str | None:
+    """Return a case-insensitive address comparison key, if valid."""
+    if isinstance(address, str):
+        return address.lower()
+    return None
+
+
+def _preserve_live_guard_migration_status(
+    current_data: dict,
+    deployment_data: dict,
+) -> None:
+    """Keep live Safe observations when refreshing the static deployment artefact.
+
+    The deployment artefact is immutable. Do not overwrite a later chain
+    observation whenever the executor starts.
+    """
+    current_deployments = current_data.get("deployments") or {}
+    deployment_deployments = deployment_data.get("deployments") or {}
+
+    for slug, deployment in deployment_deployments.items():
+        current_deployment = current_deployments.get(slug) or {}
+        current_migration = current_deployment.get("guard_migration") or {}
+        migration = deployment.get("guard_migration") or {}
+
+        # Older state files used this key for a deployment-time snapshot. Only
+        # retain values that this process previously read from the live Safe.
+        if "observed_at" not in current_migration:
+            continue
+
+        current_safe = _normalise_address(current_migration.get("safe_address"))
+        current_new_guard = _normalise_address(current_migration.get("new_guard_address"))
+        safe = _normalise_address(migration.get("safe_address"))
+        new_guard = _normalise_address(migration.get("new_guard_address"))
+        if current_safe != safe or current_new_guard != new_guard:
+            continue
+
+        for key in (
+            "currently_enabled_modules",
+            "status",
+            "manual_intervention_required",
+            "observed_at",
+        ):
+            if key in current_migration:
+                migration[key] = current_migration[key]
+
+
+def refresh_lagoon_guard_migration_state(state: State, vault: LagoonVault) -> bool:
+    """Refresh the primary Lagoon guard migration with the Safe's live modules.
+
+    The deployment artefact records the modules that were enabled while the
+    replacement guard was deployed.  Safe owners execute the module migration
+    separately, so its result needs an on-chain read at executor start-up.
+
+    :return:
+        ``True`` when the persisted state changed.
+    """
+    if state.deployment_info is None:
+        return False
+
+    deployments = state.deployment_info.data.get("deployments") or {}
+    matching_migrations: list[tuple[str, dict]] = []
+    safe_address = _normalise_address(vault.safe_address)
+
+    for slug, deployment in deployments.items():
+        migration = deployment.get("guard_migration")
+        if not migration or deployment.get("is_satellite"):
+            continue
+        if _normalise_address(migration.get("safe_address")) == safe_address:
+            matching_migrations.append((slug, migration))
+
+    if not matching_migrations:
+        return False
+
+    try:
+        modules = list(vault.safe.retrieve_modules())
+    except Exception as e:
+        logger.warning("Could not refresh Lagoon guard migration status for Safe %s: %s", vault.safe_address, e)
+        return False
+
+    normalised_modules = {_normalise_address(module) for module in modules}
+    changed = False
+
+    for slug, migration in matching_migrations:
+        old_guard_address = _normalise_address(migration.get("old_guard_address"))
+        new_guard_address = _normalise_address(migration.get("new_guard_address"))
+        if old_guard_address is None or new_guard_address is None:
+            logger.warning("Skipping incomplete Lagoon guard migration state for %s", slug)
+            continue
+
+        if new_guard_address in normalised_modules and old_guard_address not in normalised_modules:
+            status = "completed"
+        elif old_guard_address in normalised_modules and new_guard_address not in normalised_modules:
+            status = "pending"
+        elif old_guard_address in normalised_modules and new_guard_address in normalised_modules:
+            status = "both_enabled"
+        else:
+            status = "no_expected_guard_enabled"
+
+        manual_intervention_required = status != "completed"
+        updates = {
+            "currently_enabled_modules": modules,
+            "status": status,
+            "manual_intervention_required": manual_intervention_required,
+        }
+        if all(migration.get(key) == value for key, value in updates.items()):
+            continue
+
+        migration.update(updates)
+        migration["observed_at"] = native_datetime_utc_now().isoformat()
+        state.deployment_info.modified.append(
+            DeploymentInfoChange(
+                change_summary_message=(
+                    f"Updated Lagoon guard migration status for {slug} from the live Safe"
+                ),
+            )
+        )
+        changed = True
+
+    return changed
 
 
 def resolve_deployment_file(id: str, state_file: "str | Path | None" = None) -> Path:

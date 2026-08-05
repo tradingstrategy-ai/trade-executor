@@ -4,7 +4,7 @@ import datetime
 import logging
 from typing import TYPE_CHECKING
 
-from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
+from eth_defi.erc_4626.vault_protocol.lagoon.vault import AutomatedSafe, LagoonVault
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
 from tradeexecutor.ethereum.execution import EthereumExecution
@@ -21,6 +21,13 @@ if TYPE_CHECKING:
     from tradeexecutor.testing.hypercore_replay import HypercoreVaultMarketDataSource
 
 logger = logging.getLogger(__name__)
+
+
+def assert_trading_strategy_module_enabled(safe: AutomatedSafe, description: str):
+    """Assert that the configured TradingStrategyModuleV0 is enabled on a Safe."""
+    module_address = safe.trading_strategy_module_address
+    assert module_address, f"Trading strategy module is not configured for {description}"
+    assert safe.safe.contract.functions.isModuleEnabled(module_address).call(), f"Trading strategy module {module_address} is not enabled on {description}"
 
 
 class LagoonExecution(EthereumExecution):
@@ -53,8 +60,15 @@ class LagoonExecution(EthereumExecution):
         :raise ASsertionError:
             Smart contracts not properly configured or not enabled.
         """
-        # Check that the Safe module is enabled
-        assert self.vault.is_trading_strategy_module_enabled(), f"Trading strategy module {self.vault.trading_strategy_module_address} is not enabled on the Lagoon vault {self.vault}"
+        # Check that every Safe has its configured module enabled.
+        assert_trading_strategy_module_enabled(self.vault, f"the Lagoon vault {self.vault}")
+        for chain_id, satellite_vault in self.satellite_vaults.items():
+            assert_trading_strategy_module_enabled(satellite_vault, f"the Lagoon satellite Safe for chain {chain_id}")
+
+    def preflight_check(self):
+        """Check the RPC, gas wallet and configured Safe module at start-up."""
+        super().preflight_check()
+        self.check_valid()
 
     def get_routing_state_details(self) -> RoutingStateDetails:
         details = super().get_routing_state_details()

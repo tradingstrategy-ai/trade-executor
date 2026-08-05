@@ -1889,7 +1889,7 @@ class ExecutionLoop:
 
         return self.debug_dump_state
 
-    def setup(self) -> State:
+    def setup(self, state: State | None = None) -> State:
         """Set up the main loop of trade executor.
 
         Main entry point to the loop.
@@ -1904,7 +1904,8 @@ class ExecutionLoop:
             Loaded execution state
         """
 
-        state = self.init_state()
+        if state is None:
+            state = self.init_state()
 
         if not self.is_backtest():
             if not self.sync_model.is_ready_for_live_trading(state):

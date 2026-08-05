@@ -12,7 +12,9 @@ production, without needing forks or RPC:
 
 import datetime
 import json
+from decimal import Decimal
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from tradingstrategy.chain import ChainId
@@ -20,9 +22,11 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.cli.bootstrap import (
     resolve_satellite_modules,
     resolve_deployment_file,
+    refresh_lagoon_guard_migration_state,
     update_strategy_file_deployment_info,
     check_universe_contracts_resolve,
 )
+from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
 from tradeexecutor.state.state import State
 
 
@@ -227,6 +231,145 @@ def test_update_strategy_file_deployment_info_detects_changes(tmp_path: Path):
     assert restored_state.deployment_info.source == "strategy_file"
     assert restored_state.deployment_info.data["deployments"]["base"]["module_address"] == "0xBaseModule"
     assert len(restored_state.deployment_info.modified) == 2
+
+
+def test_refresh_lagoon_guard_migration_state_preserves_live_safe_status(tmp_path: Path):
+    """Lagoon guard migration state tracks an independently executed Safe upgrade.
+
+    1. Load a deployment artefact whose guard migration still shows the old module.
+    2. Read the old module from a mocked live Safe and persist pending status.
+    3. Read the replacement module and persist completed status.
+    4. Reload the unchanged static artefact without reverting the live observation.
+    5. Repeat the refresh without creating a redundant audit entry.
+    """
+    old_module = "0x0000000000000000000000000000000000000001"
+    new_module = "0x0000000000000000000000000000000000000002"
+    safe_address = "0x0000000000000000000000000000000000000003"
+    artifact = tmp_path / "strategy.deployment.json"
+    artifact.write_text(json.dumps({
+        "multichain": True,
+        "deployments": {
+            "hyperliquid": {
+                "safe_address": safe_address,
+                "is_satellite": False,
+                "guard_migration": {
+                    "old_guard_address": old_module,
+                    "new_guard_address": new_module,
+                    "safe_address": safe_address,
+                    "currently_enabled_modules": [old_module],
+                },
+            },
+        },
+    }))
+    state = State()
+
+    # 1. Load the old artefact naming and normalise its historical snapshot.
+    assert update_strategy_file_deployment_info(state, artifact) is True
+    migration = state.deployment_info.data["deployments"]["hyperliquid"]["guard_migration"]
+    assert migration["enabled_modules_at_deployment"] == [old_module]
+
+    # Mock the live Safe because this fast test must not require an RPC connection.
+    vault = MagicMock()
+    vault.safe_address = safe_address
+    vault.safe.retrieve_modules.return_value = [old_module]
+
+    # 2. Persist the pending Safe migration.
+    assert refresh_lagoon_guard_migration_state(state, vault) is True
+    migration = state.deployment_info.data["deployments"]["hyperliquid"]["guard_migration"]
+    assert migration["status"] == "pending"
+    assert migration["manual_intervention_required"] is True
+
+    # 3. Persist the completed Safe migration.
+    vault.safe.retrieve_modules.return_value = [new_module]
+    assert refresh_lagoon_guard_migration_state(state, vault) is True
+    migration = state.deployment_info.data["deployments"]["hyperliquid"]["guard_migration"]
+    assert migration["currently_enabled_modules"] == [new_module]
+    assert migration["status"] == "completed"
+    assert migration["manual_intervention_required"] is False
+    assert len(state.deployment_info.modified) == 3
+
+    # 4. Static instructions must not overwrite the live Safe state.
+    assert update_strategy_file_deployment_info(state, artifact) is False
+    migration = state.deployment_info.data["deployments"]["hyperliquid"]["guard_migration"]
+    assert migration["currently_enabled_modules"] == [new_module]
+
+    # 5. Unchanged on-chain state does not produce duplicate audit entries.
+    assert refresh_lagoon_guard_migration_state(state, vault) is False
+    assert len(state.deployment_info.modified) == 3
+
+
+class _ModuleEnabledCall:
+    """Minimal contract call stub returning the configured Safe module status."""
+
+    def __init__(self, enabled: bool):
+        self.enabled = enabled
+
+    def call(self) -> bool:
+        return self.enabled
+
+
+class _SafeFunctions:
+    """Minimal Safe contract-functions stub."""
+
+    def __init__(self, enabled: bool):
+        self.enabled = enabled
+
+    def isModuleEnabled(self, module_address: str) -> _ModuleEnabledCall:
+        return _ModuleEnabledCall(self.enabled)
+
+
+class _SafeContract:
+    """Minimal Safe contract stub."""
+
+    def __init__(self, enabled: bool):
+        self.functions = _SafeFunctions(enabled)
+
+
+class _Safe:
+    """Minimal Safe API stub."""
+
+    def __init__(self, enabled: bool):
+        self.contract = _SafeContract(enabled)
+
+
+class _ConfiguredSafe:
+    """Safe-only vault stub with the attributes read by Lagoon preflight."""
+
+    def __init__(self, module_address: str, enabled: bool):
+        self.trading_strategy_module_address = module_address
+        self.safe = _Safe(enabled)
+
+
+def test_lagoon_execution_preflight_checks_configured_safe_module():
+    """Lagoon start-up refuses to proceed with disabled primary or satellite modules.
+
+    1. Create a minimal Lagoon execution model with a reachable RPC and no gas threshold.
+    2. Verify start-up preflight accepts enabled configured modules on both Safes.
+    3. Verify it fails clearly when the primary module is disabled.
+    4. Verify it fails clearly when a satellite module is disabled.
+    """
+    # 1. Create a minimal Lagoon execution model with a reachable RPC and no gas threshold.
+    execution_model = object.__new__(LagoonExecution)
+    execution_model.tx_builder = MagicMock()
+    execution_model.tx_builder.web3.eth.block_number = 2
+    execution_model.min_balance_threshold = Decimal(0)
+    module_address = "0x0000000000000000000000000000000000000002"
+    execution_model.vault = _ConfiguredSafe(module_address, enabled=True)
+    execution_model.satellite_vaults = {ChainId.base: _ConfiguredSafe(module_address, enabled=True)}
+
+    # 2. Enabled primary and satellite modules pass the start-up preflight.
+    execution_model.preflight_check()
+
+    # 3. A disabled primary module stops start-up before trading.
+    execution_model.vault = _ConfiguredSafe(module_address, enabled=False)
+    with pytest.raises(AssertionError, match="is not enabled"):
+        execution_model.preflight_check()
+
+    # 4. A disabled satellite module also stops start-up before trading.
+    execution_model.vault = _ConfiguredSafe(module_address, enabled=True)
+    execution_model.satellite_vaults = {ChainId.base: _ConfiguredSafe(module_address, enabled=False)}
+    with pytest.raises(AssertionError, match="satellite Safe"):
+        execution_model.preflight_check()
 
 
 class _FakePair:
