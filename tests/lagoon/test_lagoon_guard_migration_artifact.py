@@ -25,7 +25,6 @@ def test_guard_only_artifacts_include_safe_migration_instructions():
 
     text_payload, json_payload = _augment_guard_only_artifacts(
         deploy_info,
-        vault_adapter_address=old_guard_address,
         text_payload="Deployment summary",
         json_payload={"Trading strategy module": new_guard_address},
     )
@@ -39,5 +38,6 @@ def test_guard_only_artifacts_include_safe_migration_instructions():
     assert instructions["new_guard_address"] == new_guard_address
     assert instructions["safe_address"] == safe_address
     assert instructions["vault_address"] == vault_address
-    assert instructions["safe_transactions"][0]["function"] == "disableModule"
-    assert instructions["safe_transactions"][1]["function"] == "enableModule"
+    assert instructions["enabled_modules_at_deployment"] == [old_guard_address]
+    assert instructions["proposed_safe_transactions"][0]["function"] == "disableModule"
+    assert instructions["proposed_safe_transactions"][1]["function"] == "enableModule"

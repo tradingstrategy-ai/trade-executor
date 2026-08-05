@@ -23,7 +23,7 @@ from tradingstrategy.timebucket import TimeBucket
 from . import shared_options
 from .app import app
 from ..bootstrap import prepare_executor_id, prepare_cache_and_token_cache, create_web3_config, create_state_store, \
-    create_execution_and_sync_model, resolve_deployment_file, log_multichain_deployment_information, update_strategy_file_deployment_info, create_metadata, create_approval_model, create_client, configure_default_chain
+    create_execution_and_sync_model, resolve_deployment_file, log_multichain_deployment_information, update_strategy_file_deployment_info, refresh_lagoon_guard_migration_state, create_metadata, create_approval_model, create_client, configure_default_chain
 from ...exchange_account.derive import DeriveNetwork
 from ..log import setup_logging, setup_discord_logging, setup_logstash_logging, setup_file_logging, setup_telegram_logging, setup_sentry_logging
 from ..loop import ExecutionLoop
@@ -642,16 +642,23 @@ def start(
         create_charts=mod.create_charts,
     )
 
-    # Crash gracefully at the start up if our main loop cannot set itself up
+    # Crash gracefully at startup if our main loop cannot set itself up
     try:
+        state = loop.init_state()
+        deployment_info_updated = update_strategy_file_deployment_info(state, deployment_file)
+        if isinstance(sync_model, LagoonVaultSyncModel):
+            vault = getattr(sync_model, "vault", None)
+            if vault is not None:
+                deployment_info_updated |= refresh_lagoon_guard_migration_state(state, vault)
+
+        if deployment_info_updated:
+            logger.info("Updated strategy-file deployment information in the state")
+            store.sync(state)
+
         state = loop.setup()
     except Exception as e:
         logger.error("trade-executor crashed on initialisation: %s", e)
         raise e
-
-    if update_strategy_file_deployment_info(state, deployment_file):
-        logger.info("Updated strategy-file deployment information in the state")
-        store.sync(state)
 
     if preload_webhook_data:
         if not http_enabled:
