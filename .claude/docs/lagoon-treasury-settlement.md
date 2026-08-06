@@ -58,6 +58,11 @@ module addresses, the pending queue sizes, exact gross flow and configured cap.
 The NAV update has succeeded, but the queues and Guard cooldown timestamp are
 unchanged.
 
+The alert also gives a Gnosis Safe Transaction Builder-ready `settleDeposit`
+ABI, specifies the Safe, vault target, zero value and call operation, and logs
+the raw `_newTotalAssets` value. Safe owners must use that exact raw value for
+the just-posted NAV when calling the vault directly.
+
 `lagoon-settle` is not the recovery mechanism for this case because it uses the
 same asset-manager module and will be rejected by GuardV0. The Safe owners must
 submit the deliberate direct Safe settlement transaction. Direct governance

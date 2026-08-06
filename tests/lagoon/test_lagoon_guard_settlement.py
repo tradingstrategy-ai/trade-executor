@@ -19,7 +19,10 @@ from eth_defi.trace import assert_transaction_success_with_explanation
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.cli.bootstrap import create_metadata
-from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from tradeexecutor.ethereum.lagoon.vault import (
+    LAGOON_SETTLE_DEPOSIT_SAFE_TRANSACTION_BUILDER_ABI,
+    LagoonVaultSyncModel,
+)
 from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.execution_model import AssetManagementMode
@@ -210,3 +213,6 @@ def test_lagoon_guard_posts_nav_but_defers_oversized_flow_to_safe(
     assert "cap=10" in caplog.text
     assert vault.address in caplog.text
     assert vault.safe_address in caplog.text
+    assert f"safe_address={vault.safe_address}" in caplog.text
+    assert LAGOON_SETTLE_DEPOSIT_SAFE_TRANSACTION_BUILDER_ABI in caplog.text
+    assert f"_newTotalAssets={base_usdc_token.convert_to_raw(Decimal(5))}" in caplog.text

@@ -92,6 +92,14 @@ LAGOON_SETTLEMENT_COOLDOWN_ACTIVE_SELECTOR = LAGOON_GUARD_V0_ERROR_SELECTORS[
     "LagoonSettlementCooldownActive"
 ]
 
+# Paste this into Gnosis Safe Transaction Builder for a direct v0.5 Lagoon
+# settlement. The Safe must call the vault directly, rather than the guarded
+# TradingStrategyModuleV0.
+LAGOON_SETTLE_DEPOSIT_SAFE_TRANSACTION_BUILDER_ABI = (
+    '[{"inputs":[{"internalType":"uint256","name":"_newTotalAssets","type":"uint256"}],'
+    '"name":"settleDeposit","outputs":[],"stateMutability":"nonpayable","type":"function"}]'
+)
+
 # TradingStrategyModuleV0 releases predating the GuardV0 safety configuration getter.
 LAGOON_UNLIMITED_LEGACY_MODULE_VERSIONS = frozenset({
     "v0.1.0",
@@ -988,6 +996,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
     def _log_manual_lagoon_settlement_required(
         self,
         preflight: LagoonSettlementPreflight,
+        new_total_assets_raw: int,
     ) -> None:
         """Tell the operator to settle an oversized GuardV0 queue through Safe governance."""
         assert preflight.actual_amount_raw is not None
@@ -995,9 +1004,10 @@ class LagoonVaultSyncModel(AddressSyncModel):
         underlying_token = self.vault.underlying_token
         logger.error(
             "Lagoon automated settlement skipped: direct Safe-governance settlement required. "
-            "chain=%d vault=%s safe=%s module=%s pending_deposit=%s %s "
+            "chain=%d vault=%s safe_address=%s module=%s pending_deposit=%s %s "
             "pending_redemption_shares_raw=%d gross_flow=%s %s (%d raw) cap=%s %s (%d raw). "
-            "NAV update succeeded and both queues remain pending.",
+            "NAV update succeeded and both queues remain pending. Gnosis Safe Transaction Builder: "
+            "Safe=%s, to=%s, value=0, operation=0, ABI=%s, _newTotalAssets=%d.",
             self.chain_id.value,
             self.vault.address,
             self.vault.safe_address,
@@ -1011,6 +1021,10 @@ class LagoonVaultSyncModel(AddressSyncModel):
             underlying_token.convert_to_decimals(preflight.max_amount_raw),
             underlying_token.symbol,
             preflight.max_amount_raw,
+            self.vault.safe_address,
+            self.vault.address,
+            LAGOON_SETTLE_DEPOSIT_SAFE_TRANSACTION_BUILDER_ABI,
+            new_total_assets_raw,
         )
 
     def sync_treasury(
@@ -1229,7 +1243,10 @@ class LagoonVaultSyncModel(AddressSyncModel):
             if preflight.manual_settlement_required:
                 # Gross flow is above the GuardV0 cap. The Safe, rather than
                 # the guarded asset manager, must deliberately settle it.
-                self._log_manual_lagoon_settlement_required(preflight)
+                self._log_manual_lagoon_settlement_required(
+                    preflight,
+                    reserve_token.convert_to_raw(valuation_decimal),
+                )
             elif preflight.next_settlement_timestamp is not None:
                 # Gross flow is within the cap, but a previous non-zero
                 # settlement started GuardV0's cooldown.
