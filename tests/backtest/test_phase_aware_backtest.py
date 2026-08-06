@@ -237,7 +237,12 @@ def _phase_aware_decide_trades(
     venue_value_before = queue_venue_redeemable(state.portfolio, venue_pair_ids)
     raw_cash_before = state.portfolio.get_cash()
 
-    alpha_model = PhaseAwareAlphaModel(timestamp, cycle=input.cycle, venue_pair_ids=venue_pair_ids)
+    alpha_model = PhaseAwareAlphaModel(
+        timestamp,
+        cycle=input.cycle,
+        venue_pair_ids=venue_pair_ids,
+        window_gated_pair_ids={TARGET_INTERNAL_ID},
+    )
     # Default: only the window-gated target. The venue is never signalled -> excluded from candidates.
     if signal_fn is not None:
         scores = signal_fn(input.cycle)

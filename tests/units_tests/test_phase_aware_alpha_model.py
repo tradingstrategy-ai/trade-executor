@@ -194,7 +194,12 @@ def test_apply_parks_closed_window_and_zeros_adjust():
     other_data = OtherData()
     signal = _make_signal(_make_pair(101), 1000.0)
     pm = _make_pm(other_data, open_pairs=set())  # 101 closed
-    alpha = PhaseAwareAlphaModel(datetime.datetime(2024, 1, 1), cycle=5, venue_pair_ids={999})
+    alpha = PhaseAwareAlphaModel(
+        datetime.datetime(2024, 1, 1),
+        cycle=5,
+        venue_pair_ids={999},
+        window_gated_pair_ids={101},
+    )
     alpha.signals = {101: signal}
 
     # 1-2. Park before generation - the deferred buy is zeroed out.
@@ -210,6 +215,47 @@ def test_apply_parks_closed_window_and_zeros_adjust():
     assert open_events[101].cycle == 5
 
 
+def test_apply_does_not_park_closed_vault_without_explicit_window_gate():
+    """A closed synchronous vault is skipped normally, not held in the queue.
+
+    A zero-capacity ERC-4626 vault may report ``can_deposit=False`` permanently.
+    It is not safe to assume that it has a future deposit window unless the
+    strategy explicitly configured it as one.
+    """
+    other_data = OtherData()
+    signal = _make_signal(_make_pair(101), 1000.0)
+    pm = _make_pm(other_data, open_pairs=set())
+    alpha = PhaseAwareAlphaModel(
+        datetime.datetime(2024, 1, 1),
+        cycle=5,
+        venue_pair_ids={999},
+    )
+    alpha.signals = {101: signal}
+
+    alpha.apply_phase_aware_intent(pm)
+
+    assert signal.position_adjust_usd == pytest.approx(1000.0)
+    assert TradingPairSignalFlags.parked_in_queue_vault not in signal.flags
+    assert read_open_park_events(other_data) == {}
+
+
+def test_apply_closes_legacy_park_for_vault_without_window_gate():
+    """Release a legacy queue reservation when its window-gate permission is removed."""
+    other_data = OtherData()
+    append_queue_event(other_data, QueueVaultEvent(EVENT_PARK, 101, 1000.0, 1))
+    pm = _make_pm(other_data, open_pairs=set())
+    alpha = PhaseAwareAlphaModel(
+        datetime.datetime(2024, 1, 2),
+        cycle=2,
+        venue_pair_ids={999},
+    )
+    alpha.signals = {101: _make_signal(_make_pair(101), 1000.0)}
+
+    alpha.apply_phase_aware_intent(pm)
+
+    assert read_open_park_events(other_data) == {}
+
+
 def test_promote_finalised_only_when_buy_emits():
     """A promotion is logged/flagged only once the deposit trade actually emits.
 
@@ -222,7 +268,12 @@ def test_promote_finalised_only_when_buy_emits():
     pair = _make_pair(101)
     signal = _make_signal(pair, 1200.0)
     pm = _make_pm(other_data, open_pairs={101})  # A open
-    alpha = PhaseAwareAlphaModel(datetime.datetime(2024, 1, 2), cycle=2, venue_pair_ids={999})
+    alpha = PhaseAwareAlphaModel(
+        datetime.datetime(2024, 1, 2),
+        cycle=2,
+        venue_pair_ids={999},
+        window_gated_pair_ids={101},
+    )
     alpha.signals = {101: signal}
 
     # 1-2. apply marks the candidate but does not promote yet.
@@ -248,7 +299,12 @@ def test_promote_candidate_stays_open_when_buy_suppressed():
     append_queue_event(other_data, QueueVaultEvent(EVENT_PARK, 101, 1000.0, 1))
     signal = _make_signal(_make_pair(101), 1200.0)
     pm = _make_pm(other_data, open_pairs={101})
-    alpha = PhaseAwareAlphaModel(datetime.datetime(2024, 1, 2), cycle=2, venue_pair_ids={999})
+    alpha = PhaseAwareAlphaModel(
+        datetime.datetime(2024, 1, 2),
+        cycle=2,
+        venue_pair_ids={999},
+        window_gated_pair_ids={101},
+    )
     alpha.signals = {101: signal}
     alpha.apply_phase_aware_intent(pm)
 
@@ -267,7 +323,12 @@ def test_stale_close_when_no_longer_targeted():
     other_data = OtherData()
     append_queue_event(other_data, QueueVaultEvent(EVENT_PARK, 202, 2000.0, 1))
     pm = _make_pm(other_data, open_pairs=set())
-    alpha = PhaseAwareAlphaModel(datetime.datetime(2024, 1, 2), cycle=2, venue_pair_ids={999})
+    alpha = PhaseAwareAlphaModel(
+        datetime.datetime(2024, 1, 2),
+        cycle=2,
+        venue_pair_ids={999},
+        window_gated_pair_ids={202},
+    )
     alpha.signals = {}  # B no longer targeted
 
     alpha.apply_phase_aware_intent(pm)
@@ -284,7 +345,12 @@ def test_settlement_pending_park_stays_open():
     append_queue_event(other_data, QueueVaultEvent(EVENT_PARK, 101, 1000.0, 1))
     signal = _make_signal(_make_pair(101), 0.0, carry_forward=True)
     pm = _make_pm(other_data, open_pairs=set())
-    alpha = PhaseAwareAlphaModel(datetime.datetime(2024, 1, 2), cycle=2, venue_pair_ids={999})
+    alpha = PhaseAwareAlphaModel(
+        datetime.datetime(2024, 1, 2),
+        cycle=2,
+        venue_pair_ids={999},
+        window_gated_pair_ids={101},
+    )
     alpha.signals = {101: signal}
 
     alpha.apply_phase_aware_intent(pm)
@@ -301,7 +367,12 @@ def test_still_closed_reparks_and_stays_open():
     append_queue_event(other_data, QueueVaultEvent(EVENT_PARK, 101, 1000.0, 1))
     signal = _make_signal(_make_pair(101), 1100.0)
     pm = _make_pm(other_data, open_pairs=set())  # still closed
-    alpha = PhaseAwareAlphaModel(datetime.datetime(2024, 1, 2), cycle=2, venue_pair_ids={999})
+    alpha = PhaseAwareAlphaModel(
+        datetime.datetime(2024, 1, 2),
+        cycle=2,
+        venue_pair_ids={999},
+        window_gated_pair_ids={101},
+    )
     alpha.signals = {101: signal}
 
     alpha.apply_phase_aware_intent(pm)
@@ -347,7 +418,12 @@ def test_repark_same_amount_does_not_duplicate_event():
     append_queue_event(other_data, QueueVaultEvent(EVENT_PARK, 101, 1000.0, 1))
     signal = _make_signal(_make_pair(101), 1000.0)
     pm = _make_pm(other_data, open_pairs=set())  # still closed
-    alpha = PhaseAwareAlphaModel(datetime.datetime(2024, 1, 2), cycle=2, venue_pair_ids={999})
+    alpha = PhaseAwareAlphaModel(
+        datetime.datetime(2024, 1, 2),
+        cycle=2,
+        venue_pair_ids={999},
+        window_gated_pair_ids={101},
+    )
     alpha.signals = {101: signal}
 
     # 1-2. Re-parked (still parked) but no duplicate event appended.
@@ -429,7 +505,12 @@ def test_park_dominant_cancels_cycle_via_min_trade_gate():
     dominant = _make_signal(_make_pair(101), 1000.0)  # closed-window deposit, will be parked
     tiny = _make_signal(_make_pair(202), 5.0)  # open, below the gate threshold
     pm = _make_pm(other_data, open_pairs={202})  # 101 closed, 202 open
-    alpha = PhaseAwareAlphaModel(datetime.datetime(2024, 1, 1), cycle=1, venue_pair_ids={999})
+    alpha = PhaseAwareAlphaModel(
+        datetime.datetime(2024, 1, 1),
+        cycle=1,
+        venue_pair_ids={999},
+        window_gated_pair_ids={101},
+    )
     alpha.signals = {101: dominant, 202: tiny}
 
     # 2. Park the dominant deposit (window closed) -> its adjustment is zeroed before generation.
