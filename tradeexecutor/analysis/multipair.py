@@ -80,10 +80,11 @@ def calculate_pair_annualised_average_yield(
 ) -> float:
     """Calculate the capital- and time-weighted annualised yield for a pair.
 
-    This uses total PnL divided by the sum of each position's opening USD value
-    multiplied by its holding period. It is a simple annualised rate, avoiding
-    the unrealistic compounding caused by annualising individual short-lived
-    positions.
+    This uses total PnL divided by the capital-time exposure of every position.
+    Position adjustments are included as cash flows: a later buy increases the
+    denominator from its execution time and a sell reduces it. This avoids
+    inflating the displayed yield for rebalanced positions whose final PnL
+    reflects capital added after the first opening trade.
 
     :return:
         Annualised average yield as a decimal fraction, where ``0.05`` is 5%.
@@ -95,19 +96,61 @@ def calculate_pair_annualised_average_yield(
     total_capital_days = 0.0
     for position in (position for position in portfolio.get_all_positions() if position.pair == pair):
         profit_data = calculate_pnl_generic(position, end_at=end_at)
-        duration = profit_data.duration
-        capital_at_open = float(position.get_value_at_open())
-        duration_days = duration.total_seconds() / datetime.timedelta(days=1).total_seconds()
-        if capital_at_open <= 0 or duration_days <= 0:
+        capital_days = _calculate_position_capital_days(position, end_at)
+        if capital_days <= 0:
             continue
 
         total_profit_usd += float(profit_data.profit_usd)
-        total_capital_days += capital_at_open * duration_days
+        total_capital_days += capital_days
 
     if total_capital_days == 0:
         return 0.0
 
     return total_profit_usd / total_capital_days * 365
+
+
+def _calculate_position_capital_days(
+    position,
+    end_at: datetime.datetime,
+) -> float:
+    """Calculate capital-time exposure for a position with cash flows.
+
+    Cost basis is increased for every successful buy and reduced
+    proportionally for every successful sell. Integrating that basis between
+    trade executions gives the capital-days used to annualise aggregate PnL.
+    """
+    position_end_at = position.closed_at if position.is_closed() else end_at
+    current_cost_basis = 0.0
+    current_quantity = 0.0
+    capital_days = 0.0
+    last_timestamp = position.opened_at
+
+    for trade in sorted(position.trades.values(), key=lambda trade: trade.executed_at or trade.opened_at):
+        if not trade.is_success():
+            continue
+
+        timestamp = trade.executed_at or trade.opened_at
+        assert timestamp is not None, f"Successful trade missing execution timestamp: {trade}"
+        assert timestamp >= last_timestamp, f"Trade timestamps out of order for {position}: {trade}"
+
+        duration_days = (timestamp - last_timestamp).total_seconds() / datetime.timedelta(days=1).total_seconds()
+        capital_days += current_cost_basis * duration_days
+
+        quantity_change = float(trade.get_position_quantity())
+        trade_value = float(trade.get_value())
+        if quantity_change > 0:
+            current_cost_basis += trade_value
+            current_quantity += quantity_change
+        elif quantity_change < 0 and current_quantity > 0:
+            sold_fraction = min(abs(quantity_change) / current_quantity, 1.0)
+            current_cost_basis *= 1 - sold_fraction
+            current_quantity += quantity_change
+
+        last_timestamp = timestamp
+
+    duration_days = (position_end_at - last_timestamp).total_seconds() / datetime.timedelta(days=1).total_seconds()
+    capital_days += current_cost_basis * duration_days
+    return capital_days
 
 
 def analyse_multipair(

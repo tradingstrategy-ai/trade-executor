@@ -407,6 +407,27 @@ def calculate_capital_time_allocation_percentages(figure: Figure) -> dict[str, f
     }
 
 
+def calculate_end_allocation_percentages(figure: Figure) -> dict[str, float]:
+    """Calculate each trace's allocation at the final chart timestamp.
+
+    This complements :py:func:`calculate_capital_time_allocation_percentages`:
+    the former describes the end-of-backtest portfolio while the latter
+    describes the average capital committed over the entire chart.
+    """
+    end_values = {
+        trace.name: float(np.nan_to_num(np.asarray(trace.y, dtype=float), nan=0.0, posinf=0.0, neginf=0.0)[-1])
+        for trace in figure.data
+        if trace.name and trace.y is not None and len(trace.y) > 0
+    }
+    total_end_value = sum(end_values.values())
+    if total_end_value <= 0:
+        return {}
+    return {
+        name: value / total_end_value * 100
+        for name, value in end_values.items()
+    }
+
+
 def add_asset_weight_legend(
     figure: Figure,
     entries: Iterable[AssetWeightLegendEntry],
@@ -442,6 +463,7 @@ def add_asset_weight_legend(
 
     merged_entries = merge_asset_weight_legend_entries(entries)
     capital_time_allocations = calculate_capital_time_allocation_percentages(figure)
+    end_allocations = calculate_end_allocation_percentages(figure)
     entries_by_label: dict[str, list[AssetWeightLegendEntry]] = {}
     for entry in merged_entries:
         entries_by_label.setdefault(entry.label, []).append(entry)
@@ -619,8 +641,9 @@ def add_asset_weight_legend(
             text=(
                 (
                     f'{trace.name}: <span style="color:#aaa">'
-                    f'allocated <span style="color:#ffd700">{capital_time_allocations[trace.name]:.1f}%</span>, '
-                    f'yield <span style="color:#00ff66">{entry.annualised_yield_percent if entry else 0.0:.1f}%</span></span>'
+                    f'avg. allc: <span style="color:#ffd700">{capital_time_allocations[trace.name]:.1f}%</span>, '
+                    f'end allc: <span style="color:#ffd700">{end_allocations.get(trace.name, 0.0):.1f}%</span>, '
+                    f'avg. yield: <span style="color:#00ff66">{entry.annualised_yield_percent if entry else 0.0:.1f}%</span></span>'
                 )
                 if legend_layout == "vertical" and trace.name in capital_time_allocations
                 else (

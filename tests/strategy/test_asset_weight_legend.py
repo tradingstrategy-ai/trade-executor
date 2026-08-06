@@ -42,6 +42,7 @@ from tradeexecutor.strategy.chart.asset_weight_legend import (
     add_asset_weight_legend,
     allocation_swatch_data_url,
     calculate_capital_time_allocation_percentages,
+    calculate_end_allocation_percentages,
     merge_asset_weight_legend_entries,
 )
 from tradeexecutor.strategy.chart.vault_legend import get_vault_logo_coverage
@@ -201,6 +202,20 @@ def test_capital_time_allocation_is_weighted_by_time_between_samples() -> None:
     assert allocations == pytest.approx({"Intermittent vault": 100 / 3, "Constant vault": 200 / 3})
 
 
+def test_end_allocation_uses_the_last_chart_sample() -> None:
+    """End allocation is distinct from capital-time allocation."""
+    figure = go.Figure(
+        [
+            go.Scatter(name="Intermittent vault", x=[0, 1, 3], y=[100, 0, 100]),
+            go.Scatter(name="Constant vault", x=[0, 1, 3], y=[100, 100, 100]),
+        ],
+    )
+
+    allocations = calculate_end_allocation_percentages(figure)
+
+    assert allocations == pytest.approx({"Intermittent vault": 50.0, "Constant vault": 50.0})
+
+
 def test_legend_sort_does_not_reorder_chart_traces() -> None:
     """Keep reserve-like entries first while retaining the chart stacking order.
 
@@ -340,8 +355,8 @@ def test_vertical_legend_is_below_the_chart_with_doubled_rows(tmp_path) -> None:
     assert all(annotation.y < 0 for annotation in figure.layout.annotations)
     assert all(annotation.font.size == VERTICAL_HEADER_FONT_SIZE for annotation in figure.layout.annotations[:5])
     assert all(annotation.font.size == VERTICAL_ROW_FONT_SIZE for annotation in figure.layout.annotations[5:])
-    assert figure.layout.annotations[5].text == 'Vault A: <span style="color:#aaa">allocated <span style="color:#ffd700">66.7%</span>, yield <span style="color:#00ff66">12.5%</span></span>'
-    assert figure.layout.annotations[6].text == 'Vault B: <span style="color:#aaa">allocated <span style="color:#ffd700">33.3%</span>, yield <span style="color:#00ff66">-2.5%</span></span>'
+    assert figure.layout.annotations[5].text == 'Vault A: <span style="color:#aaa">avg. allc: <span style="color:#ffd700">66.7%</span>, end allc: <span style="color:#ffd700">66.7%</span>, avg. yield: <span style="color:#00ff66">12.5%</span></span>'
+    assert figure.layout.annotations[6].text == 'Vault B: <span style="color:#aaa">avg. allc: <span style="color:#ffd700">33.3%</span>, end allc: <span style="color:#ffd700">33.3%</span>, avg. yield: <span style="color:#00ff66">-2.5%</span></span>'
     assert all(image.sizex == VERTICAL_ALLOCATION_ICON_WIDTH for image in figure.layout.images if image.x == VERTICAL_ALLOCATION_X)
     assert all(image.sizex == VERTICAL_IDENTITY_ICON_WIDTH for image in figure.layout.images if image.x != VERTICAL_ALLOCATION_X)
     assert {image.x for image in figure.layout.images}.issubset({
