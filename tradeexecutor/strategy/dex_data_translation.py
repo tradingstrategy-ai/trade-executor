@@ -236,6 +236,8 @@ def translate_trading_pair(dex_pair: DEXPair, cache: dict | None = None) -> Trad
                 pair.other_data["redemption_closed_reason"] = metadata.redemption_closed_reason
                 pair.other_data["deposit_next_open"] = metadata.deposit_next_open
                 pair.other_data["redemption_next_open"] = metadata.redemption_next_open
+                # Retain the producer's access metadata for universe diagnostics.
+                pair.other_data["deposit_permission"] = metadata.deposit_permission
                 # Risk and status
                 pair.other_data["risk_level"] = metadata.risk_level
                 pair.other_data["flags"] = metadata.flags

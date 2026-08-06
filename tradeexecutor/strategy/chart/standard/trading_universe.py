@@ -18,6 +18,7 @@ def available_trading_pairs(
     tvl_included_pair_count="tvl_included_pair_count",
     age_included_pair_count="age_included_pair_count",
     trading_pair_count="trading_pair_count",
+    whitelisted_vault_pair_count="whitelisted_vault_pair_count",
     with_dataframe: bool = False,
 ) -> Figure | tuple[Figure, pd.DataFrame]:
     """Render a chart showing the number of trading pairs available for the strategy to trade over history.
@@ -28,6 +29,8 @@ def available_trading_pairs(
     :param tvl_included_pair_count: Indicator name for pairs meeting TVL criteria.
     :param age_included_pair_count: Indicator name for pairs meeting age criteria.
     :param trading_pair_count: Indicator name for total trading pairs available.
+    :param whitelisted_vault_pair_count: Optional indicator counting visible
+        vaults that require depositor allow-list approval and cannot be allocated.
     :param with_dataframe: If True, return both DataFrame and Figure.
     """
 
@@ -50,6 +53,14 @@ def available_trading_pairs(
     except IndicatorNotFound:
         age_criteria = None
 
+    try:
+        whitelisted_vaults = indicator_data.resolve_indicator_data(
+            whitelisted_vault_pair_count,
+            unlimited=True,
+        )
+    except IndicatorNotFound:
+        whitelisted_vaults = None
+
     data = {}
 
     data["Inclusion criteria met (all)"] = indicator_data.get_indicator_series(all_criteria_included_pair_count)
@@ -62,6 +73,9 @@ def available_trading_pairs(
         data["Inclusion criteria met (age)"] = indicator_data.get_indicator_series(age_included_pair_count)
 
     data["Visible pairs"] = indicator_data.get_indicator_series(trading_pair_count)
+
+    if whitelisted_vaults is not None:
+        data["Whitelisted vaults (cannot allocate)"] = indicator_data.get_indicator_series(whitelisted_vault_pair_count)
 
     # df = pd.DataFrame({
     #    : indicator_data.get_indicator_series(all_criteria_included_pair_count),

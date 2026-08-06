@@ -3,6 +3,7 @@ import logging
 from typing import Callable, cast, Iterable
 
 import pandas as pd
+from pandas.io.formats.style import Styler
 
 from plotly.graph_objs import Figure
 from plotly.subplots import make_subplots
@@ -12,14 +13,109 @@ import plotly.io as pio
 from IPython.display import display
 
 
-from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.identifier import IGNORE_REASON_REQUIRES_WHITELIST, TradingPairIdentifier
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradingstrategy.chain import ChainId
-from tradingstrategy.vault import VaultUniverse
+from tradingstrategy.vault import VaultDepositPermission, VaultUniverse, get_vault_page
 
 logger = logging.getLogger(__name__)
+
+
+#: Pair ``other_data`` flag marking a vault that needs depositor allow-list approval.
+#:
+#: This is retained independently of ``ignore_reason`` so the universe can
+#: report the whitelist diagnostic even when another constraint, such as
+#: incomplete fee data, has already made the pair non-tradeable.
+WHITELISTED_VAULT_DIAGNOSTIC_FLAG = "requires_deposit_whitelist"
+
+#: Columns of the table returned by :py:func:`build_whitelisted_vault_dataframe`.
+WHITELISTED_VAULT_COLUMNS = ["Name", "Protocol", "Chain", "Address"]
+
+
+def is_whitelisted_vault(pair: TradingPairIdentifier) -> bool:
+    """Check whether a vault requires depositor allow-list approval.
+
+    :param pair:
+        Vault pair whose producer metadata has been loaded.
+    :return:
+        ``True`` when the vault requires whitelisting to deposit.
+    """
+    if not pair.is_vault():
+        return False
+
+    metadata = pair.get_vault_metadata()
+    return getattr(metadata, "deposit_permission", None) == VaultDepositPermission.whitelisted
+
+
+def mark_whitelisted_vaults_ignored(
+    strategy_universe: TradingStrategyUniverse,
+) -> list[TradingPairIdentifier]:
+    """Retain whitelist-gated vaults for diagnostics but exclude them from allocation.
+
+    - Call after constructing the strategy universe and loading vault metadata
+    - The diagnostics flag is always set, including when another ignore reason
+      already applies to the pair
+    - The existing ignore reason is preserved so independent diagnostics, such
+      as missing fee data, remain visible
+    """
+    flagged = []
+    for pair in strategy_universe.iterate_pairs():
+        if not is_whitelisted_vault(pair):
+            continue
+
+        #: Keep an explicit support flag for diagnostics and availability charts.
+        pair.other_data[WHITELISTED_VAULT_DIAGNOSTIC_FLAG] = True
+        if pair.get_ignore_reason() is None:
+            pair.set_ignore_reason(IGNORE_REASON_REQUIRES_WHITELIST)
+        flagged.append(pair)
+
+    return flagged
+
+
+def build_whitelisted_vault_dataframe(
+    strategy_universe: TradingStrategyUniverse,
+) -> pd.DataFrame:
+    """Create a table of universe vaults the strategy cannot allocate to.
+
+    Identifies vaults directly from their published permission metadata, so the
+    widget can also inspect a universe before it is marked as data-only. The
+    address is used to construct a Trading Strategy vault-page link.
+    """
+    rows = []
+    for pair in strategy_universe.iterate_pairs():
+        if not is_whitelisted_vault(pair):
+            continue
+
+        metadata = pair.get_vault_metadata()
+        rows.append({
+            "Name": pair.get_vault_name() or pair.base.token_symbol,
+            "Protocol": pair.get_vault_protocol() or getattr(metadata, "protocol_slug", None) or "",
+            "Chain": ChainId(pair.chain_id).get_name(),
+            "Address": pair.pool_address,
+        })
+
+    df = pd.DataFrame(rows, columns=WHITELISTED_VAULT_COLUMNS)
+    return df.sort_values(["Chain", "Name"]).reset_index(drop=True)
+
+
+def style_whitelisted_vault_table(df: pd.DataFrame) -> Styler:
+    """Render whitelist-gated vaults with Trading Strategy vault-page links."""
+
+    def _linkify_address(address: str) -> str:
+        if not address:
+            return ""
+        return f'<a href="{get_vault_page(address)}" target="_blank">{address}</a>'
+
+    return df.style.format({"Address": _linkify_address}, escape="html").hide(axis="index")
+
+
+def render_whitelisted_vaults(
+    strategy_universe: TradingStrategyUniverse,
+) -> Styler:
+    """Render the whitelist-gated vault diagnostics widget for notebooks."""
+    return style_whitelisted_vault_table(build_whitelisted_vault_dataframe(strategy_universe))
 
 
 def plot_vault(

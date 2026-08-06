@@ -59,6 +59,13 @@ class AssetType(enum.Enum):
 IGNORE_REASON_LACKS_FEE_DATA = "lacks_fee_data"
 
 
+#: Ignore reason for vaults that require a depositor allow-list entry.
+#:
+#: The pair remains in the strategy universe so its history can be used for
+#: diagnostics, but a strategy must not allocate capital to it.
+IGNORE_REASON_REQUIRES_WHITELIST = "requires_whitelist"
+
+
 #: Vault feature flags that mark a two-stage (request/claim) deposit and
 #: redemption flow. Capital sent to such a vault is queued until the vault
 #: operator or epoch settles the request - see
@@ -958,7 +965,8 @@ class TradingPairIdentifier:
         - :py:meth:`AlphaModel.set_signal` forces the signal of an ignored pair to zero,
           so no new position is entered, while any existing position can still be exited
 
-        - Known values: :py:data:`IGNORE_REASON_LACKS_FEE_DATA`
+        - Known values: :py:data:`IGNORE_REASON_LACKS_FEE_DATA`,
+          :py:data:`IGNORE_REASON_REQUIRES_WHITELIST`
 
         - See :py:meth:`set_ignore_reason`
 
