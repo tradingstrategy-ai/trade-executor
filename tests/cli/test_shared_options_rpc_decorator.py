@@ -75,6 +75,7 @@ def test_registered_commands_expose_expected_rpc_option_order() -> None:
         "check_universe",
         "start",
         "lagoon_first_deposit",
+        "lagoon_manual_settle",
         "lagoon_deploy_vault",
     ]
 
