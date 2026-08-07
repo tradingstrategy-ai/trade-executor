@@ -21,10 +21,12 @@ import pandas as pd
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_MAX_INSTANCES, EVENT_JOB_MISSED
 
 from tradingstrategy.candle import GroupedCandleUniverse
+from tradingstrategy.chain import ChainId
 from tradingstrategy.client import BaseClient
 from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.analysis.pair import display_strategy_universe
+from tradeexecutor.ethereum.nonce import refresh_hot_wallet_nonces
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
 from tradeexecutor.state.metadata import Metadata
@@ -722,6 +724,53 @@ class ExecutionLoop:
         # Assume universe stays static between cycles
         # for hourly revaluations
         return universe
+
+    def refresh_nonces(self, context: str):
+        """Re-read hot wallet nonces from the chain before a scheduled task signs anything.
+
+        The in-memory nonce counter desynchronises whenever the same private key
+        is used outside this process, for example a manual Safe transaction or an
+        operator running a CLI command against a live strategy. Refreshing at the
+        start of every scheduled task means the counter is corrected before any
+        transaction is signed, instead of the executor signing with a spent nonce
+        and getting a permanent ``nonce too low`` rejection.
+
+        Does nothing for execution models without a hot wallet, such as
+        backtesting and dummy execution.
+
+        See :py:func:`tradeexecutor.ethereum.nonce.refresh_hot_wallet_nonces`.
+
+        :param context:
+            Name of the scheduled task, included in the log messages.
+        """
+
+        web3config = getattr(self.execution_model, "web3config", None)
+        if web3config is None:
+            return
+
+        hot_wallet = self.sync_model.get_hot_wallet()
+        if hot_wallet is None:
+            return
+
+        # The wallet's nonce counter belongs to the chain its transaction builder
+        # signs for. Satellite chain wallets are created and synced per trade in
+        # GenericRouting.setup_trades() and are not tracked here.
+        tx_builder = getattr(self.execution_model, "tx_builder", None)
+        tx_builder_chain_id = getattr(tx_builder, "chain_id", None)
+        if isinstance(tx_builder_chain_id, int):
+            chain_id = ChainId(tx_builder_chain_id)
+        else:
+            chain_id = web3config.default_chain_id
+
+        if chain_id is None:
+            logger.warning("Cannot refresh hot wallet %s nonce (%s): chain id unknown", hot_wallet.address, context)
+            return
+
+        refresh_hot_wallet_nonces(
+            web3config,
+            {chain_id: hot_wallet},
+            context=context,
+        )
 
     def update_position_valuations(
             self,
@@ -1502,6 +1551,10 @@ class ExecutionLoop:
             nonlocal universe
             try:
 
+                # Correct the hot wallet nonce counter before we sign any trade,
+                # in case the private key was used outside this process
+                self.refresh_nonces("live_cycle")
+
                 extra_debug_data = {}
 
                 # Wall clock time
@@ -1640,6 +1693,10 @@ class ExecutionLoop:
             try:
                 ts = native_datetime_utc_now()
 
+                # Post-valuation settlement below broadcasts an on-chain NAV update,
+                # so correct the nonce counter before anything is signed
+                self.refresh_nonces("live_positions")
+
                 # Post-valuation settlement runs automatically for all Lagoon-style
                 # vaults (async deposits) — no environment variable to misconfigure
                 # between deployments. It reconciles reserve cash from on-chain before
@@ -1716,6 +1773,10 @@ class ExecutionLoop:
 
             try:
                 ts = native_datetime_utc_now()
+
+                # Stop loss and take profit triggers may execute trades
+                self.refresh_nonces("live_trigger_checks")
+
                 self.check_position_triggers(ts, state, universe)
             except Exception as e:
                 die(e)
