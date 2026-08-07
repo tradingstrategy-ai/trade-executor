@@ -68,6 +68,44 @@ same asset-manager module and will be rejected by GuardV0. The Safe owners must
 submit the deliberate direct Safe settlement transaction. Direct governance
 execution intentionally bypasses the asset-manager policy.
 
+### Manual Safe preflight
+
+Use `lagoon-manual-settle` before proposing the direct Safe transaction:
+
+```shell
+trade-executor lagoon-manual-settle \
+    --vault-address "$VAULT_ADDRESS" \
+    --chain-name hyperliquid \
+    --json-rpc-hyperliquid "$JSON_RPC_HYPERLIQUID"
+```
+
+For Lagoon versions that expose `newTotalAssets()`, the command reads the
+submitted, not-yet-settled raw NAV on-chain and refuses a conflicting
+`--new-total-assets` value. If the deployed ABI lacks this getter, provide the
+exact raw `_newTotalAssets` from the GuardV0 manual-settlement alert:
+
+```shell
+trade-executor lagoon-manual-settle \
+    --vault-address "$VAULT_ADDRESS" \
+    --chain-name hyperliquid \
+    --new-total-assets 32602857313 \
+    --json-rpc-hyperliquid "$JSON_RPC_HYPERLIQUID"
+```
+
+Lagoon uses its maximum `uint256` value to mark that no NAV is pending; the
+command treats this sentinel as unavailable and requires the alert value.
+
+Do not substitute the current `totalAssets()` value. The command reads the
+current deposit and redemption queues and the Safe balance on-chain, then
+selects `settleDeposit` for a deposit queue (which may also settle redemptions)
+or `settleRedeem` for a redemption-only queue. It prints the version-specific
+ABI and fields to enter manually in Safe Transaction Builder. They are not an
+importable Builder batch file. It uses `eth_estimateGas` with the Safe as the
+sender to check the direct vault target call. A successful estimate only shows
+that call did not revert at the reported block; it does not validate the NAV or
+Safe signatures, owner policy or guards. It does not sign, post NAV, create a
+Safe proposal or broadcast any transaction.
+
 ## Frontend metadata
 
 For a supported TradingStrategyModuleV0 v0.5 vault, the `/metadata` response
