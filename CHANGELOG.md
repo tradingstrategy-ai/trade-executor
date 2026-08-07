@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Fix the live executor dying with a permanent `nonce too low` after the asset manager private key is used outside the process, for example a manual Safe multisig settlement. The new `tradeexecutor.ethereum.nonce.refresh_hot_wallet_nonces()` re-reads the onchain nonce for every hot wallet against its own chain at the start of the `live_cycle`, `live_positions` and `live_trigger_checks` scheduled tasks: it adopts an advanced onchain nonce and warns that the key was used elsewhere, and never lowers a counter that is ahead of the chain, which is the normal state while our own transaction is unmined (2026-08-07)
+
 - Add Lagoon external-settlement recovery: the executor discovers confirmed Safe-governance settlements from Lagoon receipt events before reconciling Safe USDC, records normal investor-flow balance updates idempotently, exports pending queue amounts and defers a trading cycle while a settlement remains inside the confirmation buffer (2026-08-05)
 
 - Fix HyperCore vault deposits whose spot-to-perp CoreWriter action succeeded while the batched perp-to-vault action silently no-op'd: execute and verify the two legs separately, retain recoverable stranded capital in state rather than restoring it to Safe reserve accounting, fail closed across phase-1 broadcast crashes or ambiguous CoreWriter settlement until live Safe/escrow/spot/perp/vault reconciliation proves the destination, and enable default `correct-accounts` recovery of the full perp-to-spot transit amount before any separate spot cleanup (2026-07-30)
