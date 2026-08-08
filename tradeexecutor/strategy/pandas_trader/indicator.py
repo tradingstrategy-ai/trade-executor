@@ -16,6 +16,7 @@ To get started with indicators see examples in :py:mod:`tradeexecutor.strategy.p
 """
 import datetime
 import hashlib
+import re
 import threading
 import warnings
 from abc import ABC, abstractmethod
@@ -530,7 +531,21 @@ class IndicatorKey:
         return f"<IndicatorKey {self.get_cache_key()}>"
 
     def get_pair_cache_id(self) -> str:
-        """Get unique value for this trading pair or 'universe' if there isn't one."""
+        """Get unique value for this trading pair or 'universe' if there isn't one.
+
+        The result is a filename component, so it must be
+
+        - unique per trading pair, or distinct pairs silently share one cached
+          indicator series, see :py:func:`get_pair_cache_identity`
+
+        - stable across processes, notebook restarts and dataset revisions, or the
+          cache never hits
+
+        - safe to put in a path, see :py:func:`_sanitise_cache_filename_part`
+
+        The human-readable ticker is kept as a prefix so cache directories remain
+        greppable, but uniqueness comes from the identity hash suffix alone.
+        """
         pair = self.pair
         if pair is not None:
             # TODO: Include 3 letter exchange id to discriminate between uni v2 and uni v3
@@ -538,7 +553,9 @@ class IndicatorKey:
                 fee_slug = f"-{int(pair.fee * 10_000)}"
             else:
                 fee_slug = ""
-            return f"{pair.base.token_symbol}-{pair.quote.token_symbol}{fee_slug}"
+            ticker = f"{pair.base.token_symbol}-{pair.quote.token_symbol}{fee_slug}"
+            identity = _deterministic_hash(get_pair_cache_identity(pair))[:PAIR_IDENTITY_HASH_LENGTH]
+            return f"{_sanitise_cache_filename_part(ticker)}-{identity}"
         else:
             # Indicator calculated over the universe
             assert not self.definition.source.is_per_pair()
@@ -2591,3 +2608,74 @@ def _deterministic_hash(input_str: str) -> str:
     - This includes notebook reboots
     """
     return hashlib.sha256(input_str.encode()).hexdigest()
+
+
+def get_pair_cache_identity(pair: TradingPairIdentifier) -> str:
+    """Build the stable identity string used to disambiguate a pair's cache entries.
+
+    Token symbols do not identify a trading pair:
+
+    - Hypercore vault share tokens carry the vault name truncated to ten characters,
+      so several unrelated vaults present the same symbol - on one 326-vault
+      Hyperliquid universe, 24 pairs shared a symbol and five distinct vaults all
+      appeared as ``Hyperliqui``
+
+    - The same token symbol trades on several chains, and the same pair trades on
+      several exchanges
+
+    Identity therefore uses the chain and the on-chain addresses. Internal ids are
+    deliberately not used: they are dataset-local and change between data releases,
+    which would silently invalidate every cached indicator on every data refresh.
+
+    :param pair:
+        Trading pair to identify.
+
+    :return:
+        Canonical, stable identity string. Not intended to be human-readable - it is
+        hashed into :py:meth:`IndicatorKey.get_pair_cache_id`.
+    """
+    assert isinstance(pair, TradingPairIdentifier), f"Expected TradingPairIdentifier, got {type(pair)}"
+
+    kind = getattr(pair, "kind", None)
+    parts = (
+        str(pair.chain_id),
+        (pair.pool_address or "").lower(),
+        (pair.base.address or "").lower(),
+        (pair.quote.address or "").lower(),
+        kind.value if kind is not None else "",
+        str(pair.fee),
+    )
+    return "|".join(parts)
+
+
+#: How many hex characters of the pair identity hash go into a cache filename.
+#:
+#: Eight hex characters is 32 bits. Universes here run to a few thousand pairs, where
+#: the birthday-collision probability stays below one in a million.
+PAIR_IDENTITY_HASH_LENGTH = 8
+
+#: Characters that must never reach a cache filename.
+#:
+#: Vault share tokens are named by their operator and contain arbitrary text - path
+#: separators would silently write the cache outside its universe directory, and the
+#: remaining characters are reserved on Windows.
+_UNSAFE_FILENAME_CHARS = re.compile(r'[/\\:*?"<>|\x00-\x1f]')
+
+#: Cap on the human-readable part of a cache filename.
+#:
+#: Uniqueness comes from the identity hash, so the ticker is only a debugging aid and
+#: can be truncated freely. Keeps paths clear of filesystem name limits.
+_MAX_TICKER_SLUG_LENGTH = 48
+
+
+def _sanitise_cache_filename_part(value: str) -> str:
+    """Make a token symbol safe to embed in a cache filename.
+
+    :param value:
+        Raw ticker, e.g. ``wmm.club |-USDC``.
+
+    :return:
+        Filename-safe, length-bounded version of ``value``.
+    """
+    cleaned = _UNSAFE_FILENAME_CHARS.sub("_", value).strip()
+    return cleaned[:_MAX_TICKER_SLUG_LENGTH]
