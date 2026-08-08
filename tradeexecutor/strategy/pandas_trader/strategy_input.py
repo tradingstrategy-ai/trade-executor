@@ -1029,14 +1029,24 @@ def _calculate_and_cache_candle_width(index: pd.DatetimeIndex | pd.MultiIndex) -
 
     assert isinstance(index, pd.DatetimeIndex), f"Got index: {index}"
 
-    key = id(index)
+    if len(index) <= 2:
+        return None
+
+    # Key on the two samples that determine the answer, not on ``id(index)``.
+    #
+    # ``id()`` is only unique among *live* objects. Indicator lookups run against short-lived
+    # series, so an index is garbage collected as soon as the lookup returns and CPython hands
+    # its address straight to the next one. An id-keyed cache therefore serves a freshly built
+    # index the candle width of an unrelated, already-dead index. It goes unnoticed while every
+    # series in a strategy shares one frequency, and silently corrupts the answer as soon as they
+    # do not - e.g. an hourly TVL series mixed with daily indicators, where a daily indicator
+    # inherits a 1h width, its exact-timestamp lookup for the previous bar misses, and the
+    # forward-fill fallback returns the value at the *current* timestamp instead: lookahead bias.
+    key = (len(index), index[-2], index[-1])
 
     value = _time_frame_cache.get(key)
     if value is None:
-        if len(index) > 2:
-            value = index[-1] - index[-2]
-        else:
-            value = None
+        value = index[-1] - index[-2]
         _time_frame_cache[key] = value
 
     return value
