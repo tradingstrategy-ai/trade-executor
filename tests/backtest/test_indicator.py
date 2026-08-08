@@ -1162,3 +1162,30 @@ def test_indicator_storage_separates_same_symbol_pairs(tmp_path):
     assert storage.get_indicator_path(first_key) != storage.get_indicator_path(second_key)
     assert storage.load(first_key).data.iloc[0] == 1.0
     assert storage.load(second_key).data.iloc[0] == 10.0
+
+
+def test_candle_width_cache_does_not_alias_freed_indexes():
+    """Candle width must not be inherited from an unrelated, garbage collected index.
+
+    Regression test: the cache was keyed on ``id(index)``. Indicator lookups build
+    short-lived series, so CPython reuses the address of an index as soon as it is
+    collected, and a daily indicator could be handed the 1h width of a dead TVL series.
+    The direct previous-bar lookup then misses and the forward-fill fallback returns the
+    value at the *current* timestamp - lookahead bias - or raises
+    `IndicatorDataNotFoundWithinDataTolerance` on an off-grid decision cycle.
+    """
+    import pandas as pd
+
+    from tradeexecutor.strategy.pandas_trader.strategy_input import _calculate_and_cache_candle_width
+
+    # Churn through short-lived hourly indexes so their addresses are freed for reuse
+    for _ in range(500):
+        hourly = pd.date_range("2026-01-01", periods=100, freq="1h")
+        assert _calculate_and_cache_candle_width(hourly) == pd.Timedelta(1, unit="h")
+        del hourly
+
+    # Freshly built daily indexes must report a daily width, whatever address they land on
+    for _ in range(500):
+        daily = pd.date_range("2026-01-01", periods=100, freq="1D")
+        assert _calculate_and_cache_candle_width(daily) == pd.Timedelta(1, unit="D")
+        del daily

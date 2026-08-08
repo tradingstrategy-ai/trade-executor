@@ -300,3 +300,51 @@ def test_extended_target_metric_mapping():
     assert _SEARCH_FUNC_TO_METRIC["optimise_cvar"] == "cVaR"
     assert _SEARCH_FUNC_TO_METRIC["optimise_recovery_factor"] == "Recovery"
     assert _SEARCH_FUNC_TO_METRIC["optimise_ulcer_performance"] == "UPI"
+
+
+def _decide_trades_no_op(input: StrategyInput) -> List[TradeExecution]:
+    """Do nothing, we only care about the decision clock here."""
+    return []
+
+
+def test_perform_optimisation_honours_cycle_duration(
+    strategy_universe,
+    indicator_storage,
+    tmp_path,
+):
+    """The optimiser must run the strategy at its own cycle, not the candle bucket.
+
+    Regression test: `ObjectiveWrapper` used to drop `cycle_duration`, so
+    `run_grid_search_backtest()` fell back to
+    `CycleDuration.from_timebucket(candles.time_bucket)`. A 12h strategy on daily
+    candles was then silently backtested daily.
+    """
+
+    class Parameters:
+        cycle_duration = CycleDuration.cycle_12h
+        initial_cash = 10_000
+        backtest_start = datetime.datetime(2021, 6, 1)
+        backtest_end = datetime.datetime(2021, 6, 11)
+        slow_ema_candle_count = space.Integer(5, 7)
+
+    def create_indicators(parameters: StrategyParameters, indicators: IndicatorSet, strategy_universe: TradingStrategyUniverse, execution_context: ExecutionContext):
+        indicators.add("slow_ema", pandas_ta.ema, {"length": parameters.slow_ema_candle_count})
+
+    result = perform_optimisation(
+        iterations=2,
+        search_func=optimise_profit,
+        decide_trades=_decide_trades_no_op,
+        strategy_universe=strategy_universe,
+        parameters=prepare_optimiser_parameters(Parameters),
+        max_workers=1,
+        indicator_storage=indicator_storage,
+        result_path=tmp_path,
+        create_indicators=create_indicators,
+    )
+
+    state = result.results[0].result.hydrate_state()
+    timestamps = sorted(s.calculated_at for s in state.stats.portfolio)
+    assert len(timestamps) > 0, "No portfolio statistics recorded"
+    # 10 days at a 12h cycle gives twice as many samples as a daily cycle would
+    deltas = {b - a for a, b in zip(timestamps, timestamps[1:])}
+    assert deltas == {datetime.timedelta(hours=12)}, f"Strategy did not run at a 12h cycle, got {deltas}"
