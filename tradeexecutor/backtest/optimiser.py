@@ -400,6 +400,11 @@ class ObjectiveWrapper:
                 execution_context=execution_context,
                 max_workers=1,  # Don't allow this child process to create its own worker pool for indicator calculations
                 initial_deposit=merged_parameters["initial_cash"],
+                # Honour the strategy's own decision clock. Without this the backtest silently
+                # falls back to `CycleDuration.from_timebucket(candles.time_bucket)`, so any
+                # strategy whose cycle differs from its candle bucket - e.g. a 12h cycle on
+                # daily candles - is run at the wrong cadence with no warning.
+                cycle_duration=merged_parameters.get("cycle_duration"),
                 ignore_wallet_errors=self.ignore_wallet_errors,
             )
             
