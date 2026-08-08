@@ -2,13 +2,14 @@
 
 import datetime
 import random
+import re
 from pathlib import Path
 
 import pandas as pd
 import pandas_ta
 import pytest
 
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.strategy.execution_context import ExecutionContext, unit_test_execution_context, unit_test_trading_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import (
     IndicatorSet, DiskIndicatorStorage, IndicatorDefinition, IndicatorFunctionSignatureMismatch,
@@ -125,9 +126,11 @@ def test_setup_up_indicator_storage_per_pair(tmp_path, strategy_universe):
 
     ind_path = storage.get_indicator_path(key)
 
-    # pandas_ta function signature changes in every releease
+    # pandas_ta function signature changes in every releease.
+    # The trailing 8 hex characters disambiguate pairs that share a ticker,
+    # see IndicatorKey.get_pair_cache_id().
     assert str(ind_path).startswith(str(Path(tmp_path) / storage.universe_key))
-    assert str(ind_path).endswith("(length=21)-WETH-USDC-30.parquet"), f"Got: {ind_path}"
+    assert re.fullmatch(r".*\(length=21\)-WETH-USDC-30-[0-9a-f]{8}\.parquet", str(ind_path)), f"Got: {ind_path}"
     # / "sma_dfc27ff4"
 
 
@@ -171,7 +174,7 @@ def test_setup_up_indicator_storage_two_parameters(tmp_path, strategy_universe):
     # Signature changes in every pandas_ta release
     ind_path = storage.get_indicator_path(key)
     # assert ind_path == Path(tmp_path) / storage.universe_key / "sma_dfc27ff4(length=21,offset=1)-WETH-USDC.parquet"
-    assert str(ind_path).endswith("-WETH-USDC-30.parquet"), f"Got: {ind_path}"
+    assert re.fullmatch(r".*-WETH-USDC-30-[0-9a-f]{8}\.parquet", str(ind_path)), f"Got: {ind_path}"
 
 
 
@@ -1047,3 +1050,115 @@ def test_calculate_indicators_tvl(strategy_universe):
 
     assert len(tvl) == 5905  # We have series data for 214 days
     assert tvl.index[-1] == pd.Timestamp("2022-02-02")
+
+
+#
+# Indicator cache key uniqueness
+#
+# Regression coverage for distinct trading pairs sharing one on-disk indicator cache
+# file. Hypercore vault share tokens carry the vault name truncated to ten characters,
+# so unrelated vaults present the same symbol; keying the cache on the symbol alone made
+# them read each other's series, and which vault won the file varied between runs.
+#
+
+
+#: Fixed denomination token, so only the share token varies between test pairs.
+_TEST_USDC_ADDRESS = "0x" + "1" * 40
+
+
+def _make_vault_pair(token_symbol: str, vault_address: str) -> TradingPairIdentifier:
+    """Build a Hypercore-style vault pair with a caller-chosen share token symbol."""
+    usdc = AssetIdentifier(ChainId.ethereum.value, _TEST_USDC_ADDRESS, "USDC", 6)
+    share_token = AssetIdentifier(ChainId.ethereum.value, vault_address, token_symbol, 18)
+    return TradingPairIdentifier(
+        base=share_token,
+        quote=usdc,
+        pool_address=vault_address,
+        exchange_address=generate_random_ethereum_address(),
+        internal_id=1,
+        fee=0,
+        kind=TradingPairKind.vault,
+    )
+
+
+def _indicator_definition() -> IndicatorDefinition:
+    def cagr_score(close: pd.Series, cagr_lookback_days: int = 360) -> pd.Series:
+        return close
+
+    return IndicatorDefinition(
+        name="cagr_score",
+        func=cagr_score,
+        parameters={"cagr_lookback_days": 360},
+        source=IndicatorSource.close_price,
+    )
+
+
+def test_indicator_cache_key_unique_for_same_symbol():
+    """Two vaults sharing a truncated share token symbol must not share a cache file."""
+
+    definition = _indicator_definition()
+
+    # Real case: five Hyperliquid vaults all present as "Hyperliqui"
+    first = _make_vault_pair("Hyperliqui", generate_random_ethereum_address())
+    second = _make_vault_pair("Hyperliqui", generate_random_ethereum_address())
+
+    assert first.get_ticker() == second.get_ticker()
+    assert IndicatorKey(first, definition).get_cache_key() != IndicatorKey(second, definition).get_cache_key()
+
+
+def test_indicator_cache_key_stable_across_instances():
+    """The same pair must produce the same cache key, or the cache never hits.
+
+    The key must not depend on object identity, ``hash()`` (randomised per process) or
+    the dataset-local internal id.
+    """
+
+    definition = _indicator_definition()
+    address = generate_random_ethereum_address()
+
+    original = _make_vault_pair("Growi HF", address)
+    rebuilt = _make_vault_pair("Growi HF", address)
+    rebuilt.internal_id = original.internal_id + 1000  # Internal ids move between data releases
+
+    assert IndicatorKey(original, definition).get_cache_key() == IndicatorKey(rebuilt, definition).get_cache_key()
+
+
+def test_indicator_cache_key_filename_safe():
+    """Vault operators name their vaults freely, so symbols reach the filesystem unfiltered."""
+
+    definition = _indicator_definition()
+    hostile = _make_vault_pair("a/b\\c:d*e?f", generate_random_ethereum_address())
+
+    cache_key = IndicatorKey(hostile, definition).get_cache_key()
+
+    for character in '/\\:*?"<>|':
+        assert character not in cache_key, f"Cache key {cache_key} still contains {character}"
+
+
+def test_indicator_cache_key_keeps_ticker_readable():
+    """The ticker stays in the filename so cache directories remain greppable."""
+
+    definition = _indicator_definition()
+    pair = _make_vault_pair("Growi HF", generate_random_ethereum_address())
+
+    assert "Growi HF-USDC" in IndicatorKey(pair, definition).get_cache_key()
+
+
+def test_indicator_storage_separates_same_symbol_pairs(tmp_path):
+    """Two same-symbol vaults must round-trip through disk storage without overwriting."""
+
+    definition = _indicator_definition()
+    first = _make_vault_pair("Hyperliqui", generate_random_ethereum_address())
+    second = _make_vault_pair("Hyperliqui", generate_random_ethereum_address())
+
+    storage = DiskIndicatorStorage(tmp_path, universe_key="test-universe")
+    first_key = IndicatorKey(first, definition)
+    second_key = IndicatorKey(second, definition)
+
+    index = pd.date_range("2025-08-01", periods=3, freq="D")
+    storage.save(first_key, pd.Series([1.0, 2.0, 3.0], index=index))
+    storage.save(second_key, pd.Series([10.0, 20.0, 30.0], index=index))
+
+    assert storage.get_indicator_path(first_key) != storage.get_indicator_path(second_key)
+    assert storage.load(first_key).data.iloc[0] == 1.0
+    assert storage.load(second_key).data.iloc[0] == 10.0
