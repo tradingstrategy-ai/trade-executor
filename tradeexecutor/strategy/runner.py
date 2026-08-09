@@ -28,6 +28,7 @@ from tradeexecutor.statistics.statistics_table import StatisticsTable
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.dust import configure_hyperliquid_vault_close_epsilon
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
@@ -679,6 +680,8 @@ class StrategyRunner(abc.ABC):
         - Call after we have stored the execution state in the database
         """
 
+        self.configure_hyperliquid_vault_close_epsilon(state)
+
         # We cannot call account check right after the trades,
         # as meny low quality nodes might still report old token balances
         # from eth_call
@@ -713,6 +716,14 @@ class StrategyRunner(abc.ABC):
                 end_block=end_block,
                 cycle=cycle,
             )
+
+    def configure_hyperliquid_vault_close_epsilon(self, state: State):
+        """Apply this strategy module's Hypercore dust threshold to its positions."""
+        initial_cash = self.parameters.get("initial_cash") if self.parameters else None
+        configure_hyperliquid_vault_close_epsilon(
+            state.portfolio.get_open_and_frozen_positions(),
+            initial_cash,
+        )
 
     def _has_open_hypercore_vault_positions(self, state: State) -> bool:
         """Check if the portfolio currently has any live Hypercore vault positions.
@@ -821,6 +832,8 @@ class StrategyRunner(abc.ABC):
         assert isinstance(universe, StrategyExecutionUniverse)
 
         assert isinstance(strategy_cycle_timestamp, datetime.datetime)
+
+        self.configure_hyperliquid_vault_close_epsilon(state)
 
         if cycle_duration not in (CycleDuration.cycle_unknown, CycleDuration.cycle_1s, None) and not allow_unaligned_strategy_cycle_timestamp:
             assert strategy_cycle_timestamp.second == 0, f"Cycle duration {cycle_duration}: Does not look like a cycle timestamp: {strategy_cycle_timestamp}, should be even minutes"
@@ -943,6 +956,8 @@ class StrategyRunner(abc.ABC):
                         trade_set.add(t)
 
                     # logger.info("decide_trades() returned %d trades", len(rebalance_trades))
+
+                self.configure_hyperliquid_vault_close_epsilon(state)
 
                 new_position_ids = set(state.portfolio.open_positions.keys())
                 if old_position_ids != new_position_ids and len(trade_set) == 0:

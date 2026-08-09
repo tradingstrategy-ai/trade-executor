@@ -5,6 +5,7 @@ a lot of trades may end up having rounding artifacts.
 We need to deal with these rounding artifacts by checking for "dust".
 
 """
+from collections.abc import Iterable
 from _decimal import Decimal
 from decimal import Decimal
 
@@ -64,6 +65,8 @@ HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM = (
     "hypercore_small_position_cleanup_pending_redeem"
 )
 
+HYPERLIQUID_VAULT_CLOSE_EPSILON_CAPITAL_PCT = Decimal("0.005")
+
 #: Hypercore vault equities fluctuate every block due to active trading
 #: inside the vault, and live cycles can spend a long time in sequential
 #: settlement before the final accounting read happens.
@@ -100,7 +103,33 @@ def get_dust_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
     return get_dust_epsilon_for_asset(pair.base)
 
 
-def get_close_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
+def get_hyperliquid_vault_close_epsilon(initial_cash: float | None = None) -> Decimal:
+    """Get a Hypercore vault close epsilon from a strategy module's initial cash.
+
+    A strategy with initial cash uses 0.5% of that value. Strategies without
+    configured initial cash retain the default close epsilon.
+    """
+    if initial_cash is None or initial_cash <= 0:
+        return HYPERLIQUID_VAULT_CLOSE_EPSILON
+    return Decimal(str(initial_cash)) * HYPERLIQUID_VAULT_CLOSE_EPSILON_CAPITAL_PCT
+
+
+def configure_hyperliquid_vault_close_epsilon(
+    positions: Iterable,
+    initial_cash: float | None = None,
+) -> Decimal:
+    """Apply the strategy-specific close epsilon to Hypercore positions."""
+    epsilon = get_hyperliquid_vault_close_epsilon(initial_cash)
+    for position in positions:
+        if position.pair.is_hyperliquid_vault():
+            position.hyperliquid_vault_close_epsilon = epsilon
+    return epsilon
+
+
+def get_close_epsilon_for_pair(
+    pair: TradingPairIdentifier,
+    hyperliquid_vault_close_epsilon: Decimal | None = None,
+) -> Decimal:
     """Get the close threshold for a trading pair.
 
     - Currently same as dust epsilon
@@ -128,7 +157,7 @@ def get_close_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
     if pair.is_credit_supply():
         return COLLATERAL_EPSILON
     elif pair.is_hyperliquid_vault():
-        return HYPERLIQUID_VAULT_CLOSE_EPSILON
+        return hyperliquid_vault_close_epsilon or HYPERLIQUID_VAULT_CLOSE_EPSILON
     elif pair.is_vault():
         return DEFAULT_VAULT_EPSILON
 
