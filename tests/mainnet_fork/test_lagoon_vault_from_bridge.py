@@ -1039,6 +1039,8 @@ def test_multiple_base_vault_positions_share_one_bridge(
     assert bridge_position.bridge_capital_allocated > 0
 
     # 6. Close IPOR Fusion USDC (Z).
+    # IPOR Fusion locks a new deposit for one hour before redemption.
+    mine(base_web3, increase_timestamp=3600)
     allocation_before_z_close = bridge_position.bridge_capital_allocated
     _execute_vault_sell(
         base_web3=base_web3,

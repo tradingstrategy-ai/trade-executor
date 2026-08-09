@@ -34,6 +34,7 @@ from tradeexecutor.statistics.core import calculate_statistics, update_statistic
 from tradeexecutor.statistics.statistics_table import \
     serialise_live_long_short_stats, serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.execution_context import ExecutionMode
+from tradeexecutor.strategy.pnl import calculate_pnl
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.valuation import revalue_state
 from tradeexecutor.testing.unit_test_trader import UnitTestTrader
@@ -1753,8 +1754,6 @@ def test_share_price_profit_partial_sell(usdc, weth_usdc, start_ts: datetime.dat
 
 def test_share_price_profit_matches_traditional(usdc, weth_usdc, start_ts: datetime.datetime):
     """Verify share price profit matches traditional calculation for simple case."""
-    from tradeexecutor.strategy.pnl import calculate_pnl
-
     state = State()
     state.update_reserves([ReservePosition(usdc, Decimal(10000), start_ts, 1.0, start_ts)])
     trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
@@ -1770,6 +1769,41 @@ def test_share_price_profit_matches_traditional(usdc, weth_usdc, start_ts: datet
     # Both should show same profit percentage
     assert share_data.profit_pct == pytest.approx(traditional_data.profit_pct, rel=0.01)
     assert share_data.profit_usd == pytest.approx(traditional_data.profit_usd, rel=0.01)
+
+
+def test_profit_calculation_allows_zero_duration_closed_position(usdc, weth_usdc, start_ts: datetime.datetime):
+    """Same-candle backtest closures have PnL but no meaningful annualised return.
+
+    1. Create and close a spot position using the unit-test trader.
+    2. Set the close timestamp equal to its opening timestamp, as daily backtests can do.
+    3. Calculate traditional, annualised, and share-price PnL values.
+    4. Verify the zero duration is retained and annualised PnL is not fabricated.
+    """
+
+    # 1. Create and close a spot position using the unit-test trader.
+    state = State()
+    state.update_reserves([ReservePosition(usdc, Decimal(10_000), start_ts, 1.0, start_ts)])
+    trader = UnitTestTrader(state, lp_fees=0, price_impact=1)
+    position, _ = trader.buy(weth_usdc, Decimal("1"), 1_000.0)
+    position, _ = trader.sell(weth_usdc, Decimal("1"), 1_000.0)
+
+    # 2. Set the close timestamp equal to its opening timestamp, as daily backtests can do.
+    position.closed_at = position.opened_at
+
+    # 3. Calculate traditional, annualised, and share-price PnL values.
+    traditional_pnl = calculate_pnl(position)
+    annualised_pnl = position.calculate_total_profit_percent_annualised(
+        end_at=position.closed_at,
+        calculation_method="cumulative",
+    )
+    share_price_pnl = position.get_share_price_profit()
+
+    # 4. Verify the zero duration is retained and annualised PnL is not fabricated.
+    assert traditional_pnl.duration == datetime.timedelta(0)
+    assert traditional_pnl.profit_pct == pytest.approx(0)
+    assert traditional_pnl.profit_pct_annualised == pytest.approx(0)
+    assert annualised_pnl == pytest.approx(0)
+    assert share_price_pnl.duration == datetime.timedelta(0)
 
 
 def test_position_statistics_includes_share_price(usdc, weth_usdc, start_ts: datetime.datetime):
