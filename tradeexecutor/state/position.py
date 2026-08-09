@@ -2664,7 +2664,9 @@ class TradingPosition(GenericPosition):
             Return 0 if the position does not have a duration, or its still open.
         """
         assert isinstance(duration, datetime.timedelta), f"Got: {duration.__class__}"
-        assert duration != ZERO_TIMEDELTA, f"Got: {duration}"
+        assert duration >= ZERO_TIMEDELTA, f"Got: {duration}"
+        if duration == ZERO_TIMEDELTA:
+            return 0.0
         return self.get_unrealised_and_realised_profit_percent() * datetime.timedelta(days=365) / duration
 
     def mark_down(self):

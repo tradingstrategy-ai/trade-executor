@@ -1789,11 +1789,12 @@ def test_cumulative_pnl_handles_same_timestamp_close(usdc, weth_usdc, start_ts: 
     # 2. Set its close timestamp to the opening timestamp, as a daily backtest can record it.
     position.closed_at = position.opened_at
 
-    # 3. Verify the realised PnL is preserved and annualisation uses the configured cap.
+    # 3. Verify the realised PnL is preserved and annualisation uses the configured cap or zero.
     profit_data = calculate_pnl(position)
     assert profit_data.duration == datetime.timedelta(0)
     assert profit_data.profit_usd == pytest.approx(150.0)
     assert profit_data.profit_pct_annualised == 100
+    assert position.calculate_annualised_profit(profit_data.duration) == 0
 
 
 def test_position_statistics_includes_share_price(usdc, weth_usdc, start_ts: datetime.datetime):
