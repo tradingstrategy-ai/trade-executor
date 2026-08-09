@@ -315,6 +315,15 @@ class TradingPosition(GenericPosition):
     #: Misc bag of data, not often needed
     other_data: PositionOtherData = field(default_factory=dict)
 
+    #: Strategy-specific dust threshold for a Hypercore vault position.
+    #:
+    #: Stored on the position so state-level settlement can use the same
+    #: threshold without access to the active strategy module.
+    #:
+    #: TODO: Migrate account correction and close-planning paths that still use
+    #: pair-only thresholds to this persisted value.
+    hyperliquid_vault_close_epsilon: Decimal | None = None
+
     #: Position was produced by a fork-only vault-test-trade simulation.
     #:
     #: Such positions are retained as closed diagnostics but are not live assets.
@@ -444,6 +453,13 @@ class TradingPosition(GenericPosition):
         See :py:meth:`mark_down`.
         """
         return self.other_data.get("marked_down_at") is not None
+
+    def get_close_epsilon(self) -> Decimal:
+        """Get the quantity threshold below which this position is closed."""
+        return get_close_epsilon_for_pair(
+            self.pair,
+            hyperliquid_vault_close_epsilon=self.hyperliquid_vault_close_epsilon,
+        )
 
     def has_automatic_close(self) -> bool:
         """This position has stop loss/take profit set."""
@@ -1365,7 +1381,7 @@ class TradingPosition(GenericPosition):
 
         - It has planned trades taking the position to zero
         """
-        epsilon = get_close_epsilon_for_pair(self.pair)
+        epsilon = self.get_close_epsilon()
         # A small live residual alone is not enough here. Hypercore vaults in
         # particular can keep dust in the position because the protocol refuses
         # exact full withdrawals when NAV moves between planning and execution.
@@ -1389,15 +1405,7 @@ class TradingPosition(GenericPosition):
             # Already closed
             return False
 
-        if self.is_vault():
-            # Morpho Spark USDC workaround.
-            # The vault maxRedeem() returns an amount of shares that has a rounding error.
-            # Thus we are left we one share token that cannot be redeemed.
-            # See estimate_4626_deposit() for details.
-            epsilon = get_close_epsilon_for_pair(self.pair)
-        else:
-            # Try to get sane default epsilon
-            epsilon = get_close_epsilon_for_pair(self.pair)
+        epsilon = self.get_close_epsilon()
 
         quantity = self.get_quantity()
 

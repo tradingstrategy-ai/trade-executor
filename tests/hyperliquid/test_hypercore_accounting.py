@@ -9,6 +9,8 @@ Verifies that:
 
 import datetime
 from decimal import Decimal
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,6 +19,7 @@ from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.cli.commands.correct_accounts import _sync_hypercore_vault_positions
+from tradeexecutor.cli.commands.repair_hypercore_dust import _apply_strategy_hypercore_close_epsilon
 from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultPricing, HypercoreVaultValuator
 from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_pair
 from tradeexecutor.cli.double_position import check_double_position
@@ -39,6 +42,7 @@ from tradeexecutor.strategy.account_correction import (
 from tradeexecutor.strategy.dust import (
     get_close_epsilon_for_pair,
     get_dust_epsilon_for_pair,
+    get_hyperliquid_vault_close_epsilon,
     HYPERLIQUID_VAULT_CLOSE_EPSILON,
     HYPERLIQUID_VAULT_RELATIVE_EPSILON,
     DEFAULT_VAULT_EPSILON,
@@ -466,6 +470,66 @@ def test_hypercore_vault_dust_epsilon_covers_safety_margin():
     )
     assert not non_hypercore_pair.is_hyperliquid_vault()
     assert get_close_epsilon_for_pair(non_hypercore_pair) == DEFAULT_VAULT_EPSILON
+
+
+def test_repair_hypercore_dust_uses_strategy_close_epsilon():
+    """Repair command applies the strategy capital-derived threshold before checking dust.
+
+    1. Create a Hypercore vault position with a residual above the default threshold.
+    2. Mock loading a strategy module configured with $1,000 initial capital.
+    3. Apply the repair command's strategy configuration helper.
+    4. Verify the position is closeable at the derived $5 threshold.
+    5. Verify no initial cash retains the default threshold.
+    """
+
+    # 1. Create a Hypercore vault position with a residual above the default threshold.
+    quote = AssetIdentifier(
+        chain_id=ChainId.hypercore.value,
+        address="0x0000000000000000000000000000000000000002",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    pair = create_hypercore_vault_pair(
+        quote=quote,
+        vault_address="0x1111111111111111111111111111111111111111",
+    )
+    ts = native_datetime_utc_now()
+    position = TradingPosition(
+        position_id=1,
+        pair=pair,
+        opened_at=ts,
+        last_pricing_at=ts,
+        last_token_price=1.0,
+        last_reserve_price=1.0,
+        reserve_currency=quote,
+    )
+    dummy_trade = MagicMock()
+    dummy_trade.is_spot.return_value = False
+    position.trades[1] = dummy_trade
+    state = MagicMock()
+    state.portfolio.get_open_and_frozen_positions.return_value = [position]
+
+    # 2. Mock strategy loading because only the module's initial cash affects this local repair.
+    strategy_module = SimpleNamespace(initial_cash=1_000)
+
+    # 3. Apply the repair command's strategy configuration helper.
+    with patch(
+        "tradeexecutor.cli.commands.repair_hypercore_dust.read_strategy_module",
+        return_value=strategy_module,
+    ):
+        epsilon = _apply_strategy_hypercore_close_epsilon(
+            state,
+            Path("strategies/hyper-ai.py"),
+            MagicMock(),
+        )
+
+    # 4. Verify the position is closeable at the derived $5 threshold.
+    assert epsilon == Decimal("5.000")
+    with patch.object(position, "get_quantity", return_value=Decimal("3.927094")):
+        assert position.can_be_closed() is True
+
+    # 5. Verify no initial cash retains the default threshold.
+    assert get_hyperliquid_vault_close_epsilon() == HYPERLIQUID_VAULT_CLOSE_EPSILON
 
 
 def test_hypercore_account_check_compares_equity_not_quantity() -> None:
