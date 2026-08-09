@@ -1763,7 +1763,10 @@ class TradingPosition(GenericPosition):
         if self.is_closed():
             assert end_at, "Position is still open, but no end date given"
 
-        duration = (end_at - self.opened_at)
+        duration = end_at - self.opened_at
+        assert duration >= datetime.timedelta(0), f"Position {self} has a negative duration: {duration}"
+        if duration == datetime.timedelta(0):
+            return 0.0
         annual_periods = datetime.timedelta(days=365) / duration
         profit = self.get_total_profit_percent(calculation_method=calculation_method, end_at=end_at)
 

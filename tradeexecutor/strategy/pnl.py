@@ -139,20 +139,25 @@ def calculate_pnl(
 
     unrealised_pnl = (mark_price * float(position.get_quantity())) - cumulative_cost
 
-    duration = (end_at - position.opened_at)
-    assert duration > datetime.timedelta(0), f"Position {position} has a negative duration: {duration}, opened at {position.opened_at}, closed at {end_at}"
-    annualised_periods = datetime.timedelta(days=365) / duration
+    duration = end_at - position.opened_at
+    assert duration >= datetime.timedelta(0), f"Position {position} has a negative duration: {duration}, opened at {position.opened_at}, closed at {end_at}"
     profit_usd = realised_pnl_total + unrealised_pnl
     profit_pct = (profit_usd / cumulative_value) if cumulative_value else 0
 
-    try:
-        profit_pct_annualised = (1 + profit_pct) ** annualised_periods - 1
-    except OverflowError as e:
-        # If we make a very short position (few hours) and make gains like 4%,
-        # Python floating point will overflow when calculating annualised profit.
-        profit_pct_annualised = math.copysign(max_annualised_profit, profit_pct)
-    except Exception as e:
-        raise RuntimeError(f"Failed to annualise profit_pct {profit_pct} for position {position} with duration {duration}, periods {annualised_periods}") from e
+    if duration == datetime.timedelta(0):
+        # Daily backtests can open and close a position on the same candle.
+        # Annualised return is undefined in that case, so do not fabricate one.
+        profit_pct_annualised = 0.0
+    else:
+        annualised_periods = datetime.timedelta(days=365) / duration
+        try:
+            profit_pct_annualised = (1 + profit_pct) ** annualised_periods - 1
+        except OverflowError as e:
+            # If we make a very short position (few hours) and make gains like 4%,
+            # Python floating point will overflow when calculating annualised profit.
+            profit_pct_annualised = math.copysign(max_annualised_profit, profit_pct)
+        except Exception as e:
+            raise RuntimeError(f"Failed to annualise profit_pct {profit_pct} for position {position} with duration {duration}, periods {annualised_periods}") from e
 
     return ProfitData(
         profit_pct=profit_pct,
@@ -286,8 +291,8 @@ def calculate_share_price_pnl(
         profit_usd = total_sold - total_invested
 
     duration = end_at - position.opened_at
-    assert duration > datetime.timedelta(0), \
-        f"Position {position} has non-positive duration: {duration}"
+    assert duration >= datetime.timedelta(0), \
+        f"Position {position} has a negative duration: {duration}"
 
     return PositionInternalSharePriceData(
         initial_share_price=initial_share_price,
