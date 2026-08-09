@@ -1,4 +1,4 @@
-# Lagoon GuardV0 settlement integration
+# Lagoon GuardV0 daily settlement integration
 
 ## Objective
 
@@ -8,7 +8,7 @@ trade-executor treasury sync.
 Every successful Lagoon post-valuation treasury sync must post the freshly
 calculated NAV. A non-zero deposit/redemption queue is settled automatically
 only when its gross underlying flow is within the Guard-configured maximum and
-the cooldown permits another automated settlement. An oversized queue is
+the daily cooldown permits another automated settlement. An oversized queue is
 left untouched for direct Safe-governance settlement and reported at `ERROR`
 level.
 
@@ -25,7 +25,7 @@ The implementation must preserve these distinctions:
 The amount comparison follows GuardV0's inclusive rule: an automated
 settlement is permitted when `grossSettlementAmount <= maxSettlementAmount`.
 
-## Pre-change behaviour
+## Existing behaviour
 
 `LagoonVaultSyncModel.sync_treasury()` currently uses
 `check_nav_update_and_settle_needed()` as one combined gate. If the gate opens,
@@ -95,14 +95,14 @@ errors; it must not recreate or weaken their policy.
 
 ## Guard capability and state model
 
-Read the returned safety tuple as raw integer values. The executor uses the
-enabled flag and validates the configured asset and Silo before simulating a
-non-empty queue; GuardV0 remains the source of truth for the exact gross amount.
+Add a small immutable Python representation for the returned safety tuple. It
+must keep raw integer amounts for all policy decisions and expose
+human-readable `Decimal` values only for diagnostics.
 
 Capability detection must be backward compatible:
 
-- read the advertised module version through the version getter's typed ABI
-  call, with the established pre-version-getter fallback for older modules;
+- use the existing `LagoonVault.fetch_trading_strategy_module_version()` /
+  `trading_strategy_module_version` contract-versioning path;
 - modules whose known version predates the settlement-safety getter retain
   unlimited legacy behaviour and must not be probed for the getter;
 - the current settlement-safety implementation is enabled for the explicitly
@@ -118,7 +118,8 @@ Capability detection must be backward compatible:
   explicitly update the trade-executor version dispatch and tests for that new
   version.
 
-The preflight result distinguishes:
+The executor should expose one internal decision result with explicit states,
+for example:
 
 - `no_pending_flow`;
 - `automatic_settlement_available`;
@@ -126,10 +127,10 @@ The preflight result distinguishes:
 - `manual_settlement_required`; and
 - `unlimited_legacy_settlement`.
 
-It carries the pending raw queue sizes and, for GuardV0 rejections, the
-contract-reported cap, gross amount or next eligible timestamp. Keeping this
-decision explicit avoids spreading policy branches through transaction signing
-and balance-update analysis.
+The result should carry the raw cap, pending deposit amount, estimated
+redemption amount, gross amount, cooldown timestamps and a human-readable
+reason. Keeping this decision explicit avoids spreading policy branches through
+transaction signing and balance-update analysis.
 
 ## NAV and settlement transaction separation
 
@@ -170,11 +171,14 @@ After the NAV receipt is confirmed:
 1. read pending deposits from the Silo in raw underlying-token units;
 2. read pending redemption shares in raw share-token units;
 3. read the complete Guard settlement safety tuple when supported;
-4. for every non-empty guarded queue, simulate the exact wrapped module
+4. calculate a diagnostic redemption-underlying estimate from the post-NAV
+   vault state;
+5. add deposits and estimated redemptions to produce a gross diagnostic flow;
+6. for every non-empty guarded queue, simulate the exact wrapped module
    settlement using `eth_call` from the configured asset-manager hot wallet;
-5. classify the returned Guard result, checking the amount-limit error before
+7. classify the returned Guard result, checking the amount-limit error before
    treating the queue as cooldown-only; and
-6. broadcast settlement only when the simulation succeeds.
+8. broadcast settlement only when the simulation succeeds.
 
 The simulation is the final authority because share conversion, Lagoon fee
 accrual and raw-unit rounding can make a local redemption estimate differ from
@@ -192,7 +196,7 @@ Decode at least:
 An amount-limit result takes precedence over cooldown. Other simulation errors,
 including insufficient redemption liquidity or an unexpected Guard/configuration
 failure, retain the existing fail-fast behaviour and must not be mislabelled as
-a cooldown deferral.
+a daily-limit deferral.
 
 ### Settlement phase
 
@@ -227,7 +231,7 @@ condition is observed. The message must be directly actionable and contain:
 - Safe address;
 - TradingStrategyModuleV0 address;
 - pending deposit assets;
-- pending redemption shares;
+- pending redemption shares and estimated underlying assets;
 - exact Guard-reported gross amount;
 - maximum permitted gross amount;
 - underlying token symbol and raw decimals-aware values; and
@@ -301,13 +305,10 @@ Exercise a real non-zero automated settlement:
    `nextSettlementTimestamp` 24 hours later; and
 10. assert no manual-settlement error was logged.
 
-Queue a second below-cap deposit during the first settlement's cooldown and run
-another post-valuation sync. Verify it is NAV-only: no additional balance
-update, no new cooldown timestamp, no settlement transaction, and an
-informational automatic-retry message. Use receipt/nonce or event evidence,
-rather than only comparing an unchanged NAV value, to prove the NAV transaction
-occurred. The updated existing no-op test separately proves that an empty queue
-also receives a NAV-only transaction.
+Run a second post-valuation sync with no new queue and verify it is NAV-only:
+no additional balance update, no new cooldown timestamp and no empty
+settlement transaction. Use receipt/nonce or event evidence, rather than only
+comparing an unchanged NAV value, to prove the NAV transaction occurred.
 
 ### Bad path: NAV posted but gross flow requires Safe governance
 
@@ -316,26 +317,44 @@ redemptions were incorrectly offset:
 
 1. bootstrap the vault with a below-cap deposit and finalise the depositor's
    shares;
-2. queue a 9 USDC deposit and a redemption worth more than 1 USDC, making the
+2. add a small amount of simulated yield directly to the Safe so the next
+   calculated NAV differs from the last posted NAV;
+3. queue a 9 USDC deposit and a redemption worth more than 1 USDC, making the
    gross flow exceed the 10 USDC cap even though the net Safe movement is below
    it;
-3. run `sync_treasury(post_valuation=True)` while the bootstrap settlement's
+4. run `sync_treasury(post_valuation=True)` while the bootstrap settlement's
    cooldown is still active;
-4. assert the new NAV was posted successfully;
-5. assert amount-limit handling takes precedence over cooldown handling;
-6. assert no settlement transaction was broadcast;
-7. assert the deposit assets and redemption shares remain in their queues;
-8. assert Safe, Silo and Lagoon vault underlying balances show no settlement
+5. assert the new NAV was posted successfully;
+6. assert amount-limit handling takes precedence over cooldown handling;
+7. assert no settlement transaction was broadcast;
+8. assert the deposit assets and redemption shares remain in their queues;
+9. assert Safe, Silo and Lagoon vault underlying balances show no settlement
    movement;
-9. assert no reserve `BalanceUpdate` was created for the rejected queue;
-10. assert GuardV0's previous and next settlement timestamps did not change;
-11. assert the asset-manager nonce advanced only for the NAV transaction; and
-12. capture logs with `caplog` and assert an `ERROR` contains the manual Safe
+10. assert no reserve `BalanceUpdate` was created for the rejected queue;
+11. assert GuardV0's previous and next settlement timestamps did not change;
+12. assert the asset-manager nonce advanced only for the NAV transaction; and
+13. capture logs with `caplog` and assert an `ERROR` contains the manual Safe
    instruction, actual gross amount, cap, vault and Safe addresses.
 
 The test must not broadcast an intentionally reverting settlement and merely
 accept a failed receipt. Its purpose is to prove the executor recognises the
 condition before broadcast while still completing the independent NAV phase.
+
+## Focused compatibility tests
+
+Add one parametrised non-fork test for decision-only branches that would
+otherwise require several expensive deployments:
+
+- a known legacy module version, including the existing pre-version-getter
+  fallback, means unlimited compatibility behaviour;
+- v0.5 with `limitEnabled == false` means unlimited behaviour;
+- an unknown future module version fails as unsupported until its explicit
+  version dispatch and compatibility tests are added;
+- enabled policy with mismatched asset or Silo fails closed;
+- exact-cap flow is eligible, matching GuardV0's inclusive boundary;
+- cooldown-only flow is deferred without an error-level manual instruction;
+- unexpected simulation reverts propagate instead of being converted into a
+  limit result.
 
 Update existing Lagoon treasury tests whose assumption was that a no-op
 post-valuation sync broadcasts nothing. They should continue to expect no
@@ -353,12 +372,13 @@ source .local-test.env
 Run focused tests one at a time with the required extended timeout:
 
 ```shell
-source .local-test.env && poetry run pytest tests/lagoon/test_lagoon_guard_settlement.py::test_lagoon_guard_automatically_settles_flow_below_settlement_limit
+source .local-test.env && poetry run pytest tests/lagoon/test_lagoon_guard_settlement.py::test_lagoon_guard_automatically_settles_flow_below_daily_limit
 source .local-test.env && poetry run pytest tests/lagoon/test_lagoon_guard_settlement.py::test_lagoon_guard_posts_nav_but_defers_oversized_flow_to_safe
 ```
 
-Run the existing Lagoon deposit tests affected by the transaction split. Do not
-run the complete test suite for this change.
+Run the focused compatibility test separately if introduced, followed by the
+existing Lagoon deposit tests affected by the transaction split. Do not run
+the complete test suite for this change.
 
 ## Acceptance criteria
 
