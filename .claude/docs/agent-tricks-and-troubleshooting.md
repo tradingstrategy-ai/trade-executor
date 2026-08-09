@@ -201,6 +201,77 @@ Claude CLI and Codex CLI (for example, `timeout 900 claude -p ...`). This gives
 a legitimate review enough time to inspect the worktree; it does not override
 the separate one-minute no-output rule for a grounded Claude review.
 
+### Do not mistake an incomplete stream poll for an Opus 5 failure
+
+For `claude -p --output-format stream-json`, an assistant/tool event is not a
+review result. Opus 5 can spend several minutes gathering repository context
+and emit many tool events before it writes the final `result` event. In some
+agent-runner shells, the foreground command wrapper can also return before its
+redirected child has finished writing the JSONL file. Therefore, do **not**
+conclude that Claude "stopped mid-inspection" merely because a short poll has
+no final text, a shell cell reports completion, or the last JSONL line is a
+`thinking`/`tool_use` event.
+
+A Claude review is complete only when its JSONL has a final event with all of:
+
+- `type == "result"`
+- `is_error == false`
+- `stop_reason == "end_turn"`
+- `terminal_reason == "completed"`
+- a non-empty `result`
+
+`rate_limit_event` is telemetry, not necessarily a failure. In particular,
+`status == "allowed"` can appear before a successful final result. Check the
+final `result` event before reporting a rate-limit failure.
+
+Start a long Opus review detached, retain its PID and raw files, then poll the
+process and JSONL rather than repeatedly launching new reviews. `--model opus`
+selects the current Opus alias (currently reported as `claude-opus-5` in the
+result metadata).
+
+```shell
+review_file="/tmp/claude-review-$RANDOM.jsonl"
+review_err="/tmp/claude-review-$RANDOM.err"
+
+nohup timeout 900 claude -p "Review the current uncommitted diff read-only. Do not edit files or run tests. Return findings with file:line references." \
+  --model opus \
+  --output-format stream-json --verbose \
+  --permission-mode dontAsk \
+  --allowedTools "Bash(git status:*),Bash(git diff:*),Bash(sed:*),Bash(rg:*),Bash(grep:*),Bash(ls:*),Read,Grep,Glob" \
+  --no-session-persistence \
+  < /dev/null > "$review_file" 2> "$review_err" &
+review_pid=$!
+echo "Claude review PID: $review_pid"
+```
+
+Poll it from a later command. Do not start another review while the process is
+alive or the JSONL has no terminal `result` event:
+
+```shell
+ps -p "$review_pid" -o pid=,stat=,etime=,cmd=
+wc -c "$review_file" "$review_err"
+tail -n 20 "$review_file"
+
+python3 -c '
+import json
+from pathlib import Path
+
+events = [json.loads(line) for line in Path("'$review_file'").read_text().splitlines()]
+result = next((event for event in reversed(events) if event.get("type") == "result"), None)
+assert result, "Review is still incomplete: no final result event"
+assert not result["is_error"]
+assert result["stop_reason"] == "end_turn"
+assert result["terminal_reason"] == "completed"
+print(result["result"])
+'
+```
+
+If the process has exited and there is no valid final `result`, inspect the raw
+stderr and any `permission_denials` included in a partial result before retrying.
+Only then use a narrower prompt or an inline no-tools review. Re-running an
+unfinished-looking Opus review without this check wastes quota and can create a
+real rate-limit failure.
+
 If a broad review stalls, first verify that basic non-interactive mode and
 read-only Bash tools work before assuming auth is broken:
 
