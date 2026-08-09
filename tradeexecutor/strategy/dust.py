@@ -109,6 +109,9 @@ def get_hyperliquid_vault_close_epsilon(initial_cash: float | None = None) -> De
     A strategy with initial cash uses 0.5% of that value. Strategies without
     configured initial cash retain the default close epsilon.
     """
+    # TODO: Clamp the percentage-derived threshold between the default safety
+    # margin floor and a safe absolute maximum. initial_cash is a backtest input
+    # and can differ materially from live strategy equity.
     if initial_cash is None or initial_cash <= 0:
         return HYPERLIQUID_VAULT_CLOSE_EPSILON
     return Decimal(str(initial_cash)) * HYPERLIQUID_VAULT_CLOSE_EPSILON_CAPITAL_PCT

@@ -317,8 +317,11 @@ class TradingPosition(GenericPosition):
 
     #: Strategy-specific dust threshold for a Hypercore vault position.
     #:
-    #: Stored on the position because state-level settlement and account checks
-    #: need the same threshold without access to the active strategy module.
+    #: Stored on the position so state-level settlement can use the same
+    #: threshold without access to the active strategy module.
+    #:
+    #: TODO: Migrate account correction and close-planning paths that still use
+    #: pair-only thresholds to this persisted value.
     hyperliquid_vault_close_epsilon: Decimal | None = None
 
     #: Position was produced by a fork-only vault-test-trade simulation.
