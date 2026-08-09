@@ -30,6 +30,7 @@ from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percen
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.dust import (
     HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM,
+    convert_usd_close_epsilon_to_quantity,
     get_close_epsilon_for_pair,
     get_dust_epsilon_for_pair,
 )
@@ -455,11 +456,31 @@ class TradingPosition(GenericPosition):
         return self.other_data.get("marked_down_at") is not None
 
     def get_close_epsilon(self) -> Decimal:
-        """Get the quantity threshold below which this position is closed."""
-        return get_close_epsilon_for_pair(
+        """Get the quantity threshold below which this position is closed.
+
+        Always returned in **base token units**, because every caller compares it against
+        :py:meth:`get_quantity`.
+
+        The Hypercore vault threshold is configured in US dollars (it models an absolute
+        withdrawal safety margin), so it is converted to share units at the position's mark
+        price. Without that conversion the threshold is silently multiplied by the share
+        price, and any position smaller than that is closed as dust the moment it opens -
+        destroying the shares, because
+        :py:meth:`tradeexecutor.state.portfolio.Portfolio.close_position` is bookkeeping only.
+        """
+        epsilon = get_close_epsilon_for_pair(
             self.pair,
             hyperliquid_vault_close_epsilon=self.hyperliquid_vault_close_epsilon,
         )
+
+        if self.pair.is_hyperliquid_vault():
+            price = self.last_token_price
+            if not price and self.has_executed_trades():
+                # Not revalued yet - the opening price is the best mark available.
+                price = self.get_opening_price()
+            epsilon = convert_usd_close_epsilon_to_quantity(epsilon, price)
+
+        return epsilon
 
     def has_automatic_close(self) -> bool:
         """This position has stop loss/take profit set."""

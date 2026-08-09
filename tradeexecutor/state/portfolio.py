@@ -28,6 +28,36 @@ from eth_defi.compat import native_datetime_utc_now
 logger = logging.getLogger(__name__)
 
 
+#: How much value, in US dollars, a position may still hold when it is book-closed.
+#:
+#: :py:meth:`Portfolio.close_position` only moves a position between dictionaries; it does
+#: not sell anything. Closing a position that still holds value therefore removes the
+#: holding from the portfolio with no offsetting cash and no realised loss - equity simply
+#: drops and the position reports a profit of zero.
+#:
+#: Every legitimate automatic close happens either after a sell has taken the quantity to
+#: (near) zero, or on a position the dust rules consider negligible. This limit must
+#: therefore sit **above the largest legitimate dust threshold** - otherwise it blocks the
+#: very closes :py:meth:`TradingPosition.can_be_closed` is designed to allow - and far below
+#: any real position, so a mis-scaled threshold cannot quietly delete one.
+#:
+#: The binding constraint is
+#: :py:data:`tradeexecutor.strategy.dust.HYPERLIQUID_VAULT_CLOSE_EPSILON_MAX_USD` (50 USD),
+#: the most a Hypercore residual can be worth and still count as dust. 100 USD leaves a
+#: clear margin above it while still catching the failure this guard exists for: a 8,963 USD
+#: position closed as "dust" because a USD threshold was compared against a share count.
+CLOSE_POSITION_VALUE_DESTRUCTION_LIMIT_USD = 100.0
+
+
+class PositionValueDestroyedError(Exception):
+    """A bookkeeping close would have made a funded position disappear.
+
+    Raised by :py:meth:`Portfolio.close_position` when the position still holds more than
+    :py:data:`CLOSE_POSITION_VALUE_DESTRUCTION_LIMIT_USD` and the caller has not opted in
+    to value destruction.
+    """
+
+
 class NotEnoughMoney(Exception):
     """We try to allocate reserve for a buy trade, but do not have cash."""
 
@@ -944,6 +974,7 @@ class Portfolio:
         self,
         position: TradingPosition,
         executed_at: datetime.datetime,
+        allow_value_destruction: bool = False,
     ):
         """Move a position from open positions to closed ones.
 
@@ -954,7 +985,8 @@ class Portfolio:
         .. code-block:: python
 
             p = state.portfolio.open_positions[11]
-            state.portfolio.close_position(p, native_datetime_utc_now())
+            # A manual console close is deliberate, so opt in to value destruction
+            state.portfolio.close_position(p, native_datetime_utc_now(), allow_value_destruction=True)
             print("Left open")
             for p in state.portfolio.open_positions.values():
                 print(p)
@@ -966,9 +998,26 @@ class Portfolio:
         :param executed_at:
             Wall clock time
 
+        :param allow_value_destruction:
+            Permit closing a position that still holds material value.
+
+            This method is bookkeeping only - it moves the position between dictionaries and
+            sells nothing - so closing a funded position makes its holdings disappear from
+            the portfolio without any offsetting cash or realised loss. Deliberate callers
+            (accounting corrections, manual console operations, repair tooling) pass ``True``.
+            Automatic paths leave it ``False`` so a mis-scaled dust threshold cannot quietly
+            delete a live position.
+
+        :raise PositionValueDestroyedError:
+            If the position still holds more than
+            :py:data:`CLOSE_POSITION_VALUE_DESTRUCTION_LIMIT_USD` and
+            ``allow_value_destruction`` is not set.
         """
 
         assert position.position_id in self.open_positions, f"Not in open positions: {position}"
+
+        if not allow_value_destruction:
+            self._check_close_does_not_destroy_value(position)
 
         # Move position to closed
         logger.info("Marking position to closed: %s at %s", position, executed_at)
@@ -977,6 +1026,43 @@ class Portfolio:
         self.closed_positions[position.position_id] = position
 
         assert position.is_closed()
+
+    def _check_close_does_not_destroy_value(self, position: TradingPosition):
+        """Refuse to book-close a position that still holds material value.
+
+        Position types whose close semantics legitimately leave a non-zero valuation are
+        exempt:
+
+        - CCTP bridge positions close on *available* bridge capital while raw quantity can
+          stay positive (see :py:meth:`TradingPosition.can_be_closed`).
+        - Credit supply and leveraged positions are valued through their loans, where a
+          residual accrued-interest valuation at close time is normal.
+        """
+        if position.is_credit_supply() or position.pair.is_cctp_bridge():
+            return
+
+        try:
+            remaining_value = position.get_value()
+        except Exception:
+            # Valuation is best-effort here: a position we cannot value is not evidence of
+            # value destruction, and this check must never mask the original failure.
+            return
+
+        if remaining_value is None or remaining_value <= CLOSE_POSITION_VALUE_DESTRUCTION_LIMIT_USD:
+            return
+
+        raise PositionValueDestroyedError(
+            f"Refusing to close position {position} as it still holds "
+            f"{remaining_value:,.2f} USD ({position.get_quantity()} units at "
+            f"{position.last_token_price}), above the "
+            f"{CLOSE_POSITION_VALUE_DESTRUCTION_LIMIT_USD} USD limit.\n"
+            f"close_position() is bookkeeping only and does not sell anything, so this would "
+            f"remove the holding from the portfolio without any offsetting cash or realised "
+            f"loss.\n"
+            f"If the position was meant to be closed by trading, the sell did not execute. "
+            f"If the close is deliberate (accounting correction, manual operation, repair), "
+            f"pass allow_value_destruction=True."
+        )
 
     def adjust_reserves(
         self,
