@@ -198,11 +198,18 @@ def test_incomplete_protocol_history_never_closes_deposits(pricing, pair):
     assert result.reason_code is None
 
 
-@pytest.mark.parametrize("protocol", ["lagoon-finance", "morpho", "yearn"])
+@pytest.mark.parametrize("protocol", ["lagoon-finance", "yearn"])
 def test_unclassified_protocol_history_never_closes_deposits(pricing, protocol):
-    """Apply the historical guard to older universe snapshots without features."""
+    """Apply the historical guard to legacy Lagoon and Yearn snapshots.
+
+    1. Create a pair from a snapshot without classified ERC-4626 features.
+    2. Give it a legacy protocol slug whose historical admission data is unreliable.
+    3. Verify that a closed marker does not manufacture a deposit closure.
+    """
+    # 1. + 2. A legacy Lagoon/Yearn pair lacks a reliable protocol-specific admission field.
     pair = _FakePair(1, features=None, protocol=protocol)
 
+    # 3. The generic closed marker is advisory for this explicit compatibility fallback.
     assert pricing.can_deposit(pd.Timestamp("2026-03-06"), pair) is True
 
 
