@@ -14,6 +14,7 @@ from decimal import Decimal
 
 import pandas as pd
 import pytest
+from eth_defi.erc_4626.core import ERC4626Feature
 
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.strategy.redemption import DepositBlockReason, DepositCheckStage
@@ -21,12 +22,20 @@ from tradingstrategy.candle import GroupedCandleUniverse
 
 
 class _FakePair:
-    def __init__(self, internal_id: int):
+    def __init__(self, internal_id: int, features=None, async_vault=False):
         self.internal_id = internal_id
         self.pool_address = f"0x{internal_id:040x}"
+        self._features = features
+        self._async_vault = async_vault
 
     def get_ticker(self) -> str:
         return f"VAULT{self.internal_id}-USDC"
+
+    def get_vault_features(self):
+        return self._features
+
+    def is_async_vault(self) -> bool:
+        return self._async_vault
 
 
 def _candle_universe() -> GroupedCandleUniverse:
@@ -120,6 +129,23 @@ def test_check_deposit_records_zero_hard_cap(pricing):
     assert result.can_deposit is False
     assert result.reason_code == DepositBlockReason.vault_max_deposit_zero
     assert result.max_deposit == 0.0
+
+
+@pytest.mark.parametrize(
+    ("pair", "description"),
+    [
+        (_FakePair(1, features={ERC4626Feature.morpho_v2_like}), "Morpho V2"),
+        (_FakePair(1, async_vault=True), "ERC-7540"),
+    ],
+)
+def test_zero_max_deposit_does_not_close_protocols_where_it_is_not_capacity(pricing, pair, description):
+    """Treat advisory maximum-function zeros as unknown capacity, not a closure."""
+    result = pricing.check_deposit(pd.Timestamp("2026-03-11"), pair)
+
+    assert pricing.can_deposit(pd.Timestamp("2026-03-11"), pair) is True, description
+    assert result.can_deposit is True
+    assert result.reason_code is None
+    assert result.max_deposit is None
 
 
 def test_can_deposit_pre_history_allowed(pricing):
