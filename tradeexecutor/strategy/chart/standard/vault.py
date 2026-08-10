@@ -10,7 +10,10 @@ from eth_defi.erc_4626.core import ERC4626Feature
 from tradeexecutor.analysis.credit import display_vault_position_table, display_vault_daily_pnl_table
 from tradeexecutor.analysis.vault_position_helpers import find_latest_position_for_pair
 from tradeexecutor.analysis.vault import visualise_vaults
-from tradeexecutor.backtest.backtest_execution import DEFAULT_VAULT_SETTLEMENT_DELAY
+from tradeexecutor.backtest.backtest_execution import (
+    DEFAULT_VAULT_SETTLEMENT_DELAY,
+    NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD,
+)
 from tradeexecutor.strategy.chart.definition import ChartInput
 from tradeexecutor.strategy.phase_aware import (
     EVENT_CLOSE,
@@ -74,6 +77,19 @@ def _get_settlement_estimate_used(pair, trades) -> datetime.timedelta:
     return DEFAULT_VAULT_SETTLEMENT_DELAY
 
 
+def _get_no_data_settlement_delay(pair, trades) -> datetime.timedelta:
+    """Get the simulated settlement delay when the historical feed is empty."""
+    delay = _get_settlement_estimate_used(pair, trades)
+    features = pair.get_vault_features() or set()
+    if features & {
+        ERC4626Feature.lagoon_like,
+        ERC4626Feature.d2_like,
+        ERC4626Feature.plutus_like,
+    }:
+        return delay + NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD
+    return delay
+
+
 def vault_settlement_observations(input: ChartInput) -> pd.DataFrame:
     """List the historical settlement evidence and delay used per async vault.
 
@@ -90,6 +106,8 @@ def vault_settlement_observations(input: ChartInput) -> pd.DataFrame:
             "Last settle",
             "Settlements observed",
             "Average estimation used",
+            "No-data settlement delay",
+            "Simulated no-data settlements",
         ])
 
     async_trades_by_pair_id: dict[int, list] = {}
@@ -120,6 +138,13 @@ def vault_settlement_observations(input: ChartInput) -> pd.DataFrame:
             "Average estimation used": _format_settlement_estimate(
                 _get_settlement_estimate_used(pair, async_trades_by_pair_id.get(pair.internal_id, []))
             ),
+            "No-data settlement delay": _format_settlement_estimate(
+                _get_no_data_settlement_delay(pair, async_trades_by_pair_id.get(pair.internal_id, []))
+            ),
+            "Simulated no-data settlements": sum(
+                trade.other_data.get("vault_settlement_fallback_used", False)
+                for trade in async_trades_by_pair_id.get(pair.internal_id, [])
+            ),
         })
 
     return pd.DataFrame(rows, columns=[
@@ -128,6 +153,8 @@ def vault_settlement_observations(input: ChartInput) -> pd.DataFrame:
         "Last settle",
         "Settlements observed",
         "Average estimation used",
+        "No-data settlement delay",
+        "Simulated no-data settlements",
     ]).sort_values(["Settlements observed", "Vault name"], ascending=[False, True])
 
 

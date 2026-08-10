@@ -974,6 +974,19 @@ def test_backtest_protocol_deposit_without_observations_uses_grace_period(featur
     assert trade.other_data["vault_settlement_fallback_used"] is True
     assert trade.other_data["vault_settlement_fallback_reason"] == "no_historical_settlement_observations"
 
+    table = vault_settlement_observations(ChartInput(
+        execution_context=unit_test_execution_context,
+        state=state,
+        strategy_input_indicators=StrategyInputIndicators(
+            strategy_universe=strategy_universe,
+            available_indicators=IndicatorSet(),
+            indicator_results={},
+        ),
+    ))
+    row = table.iloc[0]
+    assert row["No-data settlement delay"] == "4 days"
+    assert row["Simulated no-data settlements"] == 1
+
 
 def test_vault_settlement_observations_chart():
     """The chart table exposes raw observation coverage and backtest delay."""
@@ -1012,12 +1025,16 @@ def test_vault_settlement_observations_chart():
         "Last settle",
         "Settlements observed",
         "Average estimation used",
+        "No-data settlement delay",
+        "Simulated no-data settlements",
     ]
     row = table.iloc[0]
     assert row["First settle"] == first_settlement
     assert row["Last settle"] == last_settlement
     assert row["Settlements observed"] == 2
     assert row["Average estimation used"] == "2 days"
+    assert row["No-data settlement delay"] == "2 days"
+    assert row["Simulated no-data settlements"] == 0
 
 
 def _get_pending_windows(state: State) -> dict[int, list[tuple[datetime.datetime, datetime.datetime | None]]]:
