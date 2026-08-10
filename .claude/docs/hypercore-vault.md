@@ -475,6 +475,47 @@ the phase-1 performance-fee shortfall. The constants and inline comments in
 references); the `CHANGELOG.md` and git history record each fix. Read those
 comments before changing settlement logic.
 
+## Profit accounting
+
+HyperCore vault positions report profit from their **cash flows** — sell proceeds, plus the value
+still held, minus what was paid — via `TradingPosition.get_cash_flow_profit_usd()`. Every dollar in
+such a position enters and leaves through a trade, so this is exact and model-independent.
+
+This matters because `is_using_internal_share_price_profit()` is also true for **exchange account**
+positions, which share the same code path but must *not* use cash flows: they establish their
+capital through a valuation sync rather than a trade — their opening trade is a near-zero
+placeholder — and profit arrives as balance updates at a fixed price of 1.0. The branch keys on
+`pair.is_hyperliquid_vault()` for exactly this reason, and `tests/exchange_account/` fails if the
+distinction is dropped.
+
+The invariant callers rely on:
+
+```
+get_realised_profit_usd() + get_unrealised_profit_usd() == get_total_profit_usd()
+                                                        == cash-flow profit
+```
+
+A closed position reports **zero** unrealised profit, because it holds nothing.
+
+The identity is exact for vault positions, which carry no interest, and holds for open, partially
+sold, rebought and cleanly closed positions alike. It does *not* hold for a position closed by
+`mark_down()` with residual quantity left behind, where realised profit covers only the quantity
+actually sold — a pre-existing write-off path rather than something this accounting introduced.
+
+Both halves were previously wrong (fixed 2026-08-10). `get_unrealised_profit_usd()` returned the
+share-price model's whole-position profit even for closed positions, so summing realised +
+unrealised double-counted them. For open positions realised came from lifetime average cost while
+unrealised came from the share-price model, which measures profit on the *currently outstanding
+internal supply* — the two bases stop complementing each other as soon as a position is partially
+sold and rebought at another price, and the error grows with every trade. A position traded 59
+times reported 13,028 USD against 6,185 USD of actual cash-flow profit.
+
+Note that equity was never affected: `get_total_equity()` is computed from position values, not
+from these accessors, which is why the defect showed up as an attribution error while equity still
+reconciled exactly against cash plus holdings. Any audit comparing equity against reconstructed
+P&L should also **not** subtract a redemption-fee estimate — proceeds are already booked net of
+fee, so cash-flow profit carries it and subtracting again double-counts.
+
 ## Small-position cleanup
 
 `correct-accounts` cleans tracked **HyperCore-native** vault positions below
