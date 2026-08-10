@@ -83,6 +83,17 @@ ASYNC_VAULT_FEATURES = {
 }
 
 
+#: Vault feature flags whose redemption cash must not fund a same-cycle buy.
+#:
+#: D2 redemptions are bounded by epoch windows and Plutus Hedge redemptions
+#: may require operator fulfilment. Their deposits remain synchronous, so they
+#: intentionally do not belong to :py:data:`ASYNC_VAULT_FEATURES`.
+DELAYED_VAULT_REDEMPTION_FEATURES = ASYNC_VAULT_FEATURES | {
+    ERC4626Feature.d2_like,
+    ERC4626Feature.plutus_like,
+}
+
+
 def _normalise_erc_4626_features(features) -> set[ERC4626Feature] | None:
     """Normalise persisted vault feature metadata to enum values."""
     if features is None:
@@ -960,6 +971,43 @@ class TradingPairIdentifier:
         if not features:
             return not is_generic_erc4626_protocol_slug(self.get_vault_protocol())
         return bool(features & ASYNC_VAULT_FEATURES)
+
+    def has_delayed_vault_redemption(self) -> bool:
+        """Does this vault's redemption cash settle after the decision cycle?
+
+        Unlike :py:meth:`is_async_vault`, this also covers protocols with
+        synchronous deposits but delayed or window-gated redemptions. It is
+        used for allocation cash accounting, not to choose the live protocol
+        adapter.
+        """
+        if not self.is_vault():
+            return False
+        features = self.get_vault_features()
+        if features is None:
+            return False
+        if not features:
+            return not is_generic_erc4626_protocol_slug(self.get_vault_protocol())
+        return bool(features & DELAYED_VAULT_REDEMPTION_FEATURES)
+
+    def get_vault_estimated_settlement(self) -> datetime.timedelta | None:
+        """Get the non-binding vault settlement estimate used by backtests.
+
+        The public metadata serialises this as seconds. Accept a timedelta as
+        well to keep manually constructed test and strategy universes useful.
+        """
+        if not self.is_vault():
+            return None
+
+        raw_value = self.other_data.get("vault_estimated_settlement")
+        if raw_value is None:
+            metadata = self.get_vault_metadata()
+            raw_value = getattr(metadata, "estimated_settlement", None)
+
+        if isinstance(raw_value, datetime.timedelta):
+            return raw_value if raw_value > datetime.timedelta(0) else None
+        if isinstance(raw_value, (int, float)) and raw_value > 0:
+            return datetime.timedelta(seconds=raw_value)
+        return None
 
     def get_ignore_reason(self) -> str | None:
         """Why this pair is retained in the universe, but cannot be traded or backtested.

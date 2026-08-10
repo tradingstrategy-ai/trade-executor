@@ -788,10 +788,13 @@ def test_backtest_async_vault_settlement_due_defaults():
     1. The global default delay is non-zero (two days, so the pending window
        spans a full one-day decision cycle).
     2. An ERC-7540 vault with no override settles two days after the request.
-    3. An Ostium vault with no override settles the next day at the epoch
+    3. Lagoon's reported settlement estimate overrides the general default.
+    4. D2 and Plutus use a conservative 14-day fallback when historical
+       metadata has no reported settlement estimate.
+    5. An Ostium vault with no override settles the next day at the epoch
        settlement hour, regardless of the global delay.
-    4. A per-vault override beats both the global default and the Ostium schedule.
-    5. Override-only vaults (no features) are detected as async; plain vaults are not.
+    6. A per-vault override beats both the global default and the Ostium schedule.
+    7. Override-only vaults (no features) are detected as async; plain vaults are not.
     """
     from tradeexecutor.backtest.backtest_execution import (
         BacktestExecution,
@@ -822,6 +825,10 @@ def test_backtest_async_vault_settlement_due_defaults():
 
     erc_7540_pair = _make_pair("V7540", VAULT_A_ADDRESS, {ERC4626Feature.erc_7540_like}, 700)
     ostium_pair = _make_pair("VOST", VAULT_B_ADDRESS, {ERC4626Feature.ostium_like}, 701)
+    lagoon_pair = _make_pair("VLAG", "0x" + "ee" * 20, {ERC4626Feature.lagoon_like}, 704)
+    lagoon_pair.other_data["vault_estimated_settlement"] = datetime.timedelta(days=5)
+    d2_pair = _make_pair("VD2", "0x" + "ff" * 20, {ERC4626Feature.d2_like}, 705)
+    plutus_pair = _make_pair("VPLU", "0x" + "ab" * 20, {ERC4626Feature.plutus_like}, 706)
     override_only_pair = _make_pair("VOVR", VAULT_C_ADDRESS, None, 702)
     plain_pair = _make_pair("VPLAIN", "0x" + "dd" * 20, None, 703)
 
@@ -839,10 +846,21 @@ def test_backtest_async_vault_settlement_due_defaults():
     # 2. ERC-7540 vault: two days after the request.
     assert execution._get_settlement_due(erc_7540_pair, ts) == datetime.datetime(2024, 1, 3, 9, 30)
 
-    # 3. Ostium vault: next day at the epoch settlement hour.
+    # 3. Lagoon's reported average settlement overrides the general default.
+    assert execution._get_settlement_due(lagoon_pair, ts) == datetime.datetime(2024, 1, 6, 9, 30)
+
+    # 4. D2 and Plutus fall back to the documented average waiting estimate.
+    assert execution._get_settlement_due(d2_pair, ts) == datetime.datetime(2024, 1, 15, 9, 30)
+    assert execution._get_settlement_due(plutus_pair, ts) == datetime.datetime(2024, 1, 15, 9, 30)
+    assert not execution._is_async_vault(d2_pair, is_buy=True)
+    assert execution._is_async_vault(d2_pair, is_buy=False)
+    assert not execution._is_async_vault(plutus_pair, is_buy=True)
+    assert execution._is_async_vault(plutus_pair, is_buy=False)
+
+    # 5. Ostium vault: next day at the epoch settlement hour.
     assert execution._get_settlement_due(ostium_pair, ts) == datetime.datetime(2024, 1, 2, OSTIUM_BACKTEST_SETTLEMENT_HOUR, 0)
 
-    # 4. A per-vault override beats both the global default and the Ostium schedule.
+    # 6. A per-vault override beats both the global default and the Ostium schedule.
     assert execution._get_settlement_due(override_only_pair, ts) == ts + datetime.timedelta(hours=2)
     execution_ostium_override = BacktestExecution(
         SimulatedWallet(),
@@ -850,7 +868,7 @@ def test_backtest_async_vault_settlement_due_defaults():
     )
     assert execution_ostium_override._get_settlement_due(ostium_pair, ts) == ts + datetime.timedelta(hours=6)
 
-    # 5. Override-only vaults are async; plain vaults without features are not.
+    # 7. Override-only vaults are async; plain vaults without features are not.
     assert execution._is_async_vault(erc_7540_pair)
     assert execution._is_async_vault(ostium_pair)
     assert execution._is_async_vault(override_only_pair)

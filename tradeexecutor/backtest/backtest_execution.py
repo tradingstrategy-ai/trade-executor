@@ -393,17 +393,27 @@ class BacktestExecution(ExecutionModel):
     # Async (two-stage ERC-7540 / Ostium) vault deposit/redeem simulation
     #
 
-    def _is_async_vault(self, pair) -> bool:
-        """Does this vault pair use a two-stage (async) deposit/redeem flow in backtest?
+    def _is_async_vault(self, pair, *, is_buy: bool | None = None) -> bool:
+        """Does this vault trade use a delayed settlement flow in backtest?
 
         True if the pair has an explicit settlement-delay override, or its vault
-        features mark it as ERC-7540 / Lagoon / Ostium style.
+        features mark it as ERC-7540 / Lagoon / Ostium style. D2 and Plutus
+        deposits stay synchronous, but their redemption proceeds are delayed
+        for conservative allocation modelling.
+
+        :param is_buy:
+            Trade direction. ``None`` answers whether either vault flow may be
+            delayed and preserves the existing diagnostic helper behaviour.
         """
         if not pair.is_vault():
             return False
         if pair.pool_address and pair.pool_address.lower() in self.vault_settlement_delay_overrides:
             return True
-        return pair.is_async_vault()
+        if is_buy is True:
+            return pair.is_async_vault()
+        if is_buy is False:
+            return pair.has_delayed_vault_redemption()
+        return pair.is_async_vault() or pair.has_delayed_vault_redemption()
 
     def _get_settlement_due(self, pair, ts: datetime.datetime) -> datetime.datetime:
         """When does an async vault request made at ``ts`` become claimable?
@@ -412,10 +422,14 @@ class BacktestExecution(ExecutionModel):
 
         1. Per-vault override (``vault_settlement_delay_overrides``) — a fixed
            delay from the request time.
-        2. Ostium-style vaults (``ostium_like`` feature) — the next day at
+        2. The vault's reported ``estimated_settlement`` metadata for Lagoon,
+           D2 and Plutus.
+        3. D2 and Plutus' conservative 14-day fallback where the historical
+           data does not report that metadata.
+        4. Ostium-style vaults (``ostium_like`` feature) — the next day at
            :py:data:`OSTIUM_BACKTEST_SETTLEMENT_HOUR`, preserving the
            historical backtest approximation.
-        3. The global default delay (``vault_settlement_delay``).
+        5. The global default delay (``vault_settlement_delay``).
         """
         if pair.pool_address:
             override = self.vault_settlement_delay_overrides.get(pair.pool_address.lower())
@@ -423,6 +437,19 @@ class BacktestExecution(ExecutionModel):
                 return ts + override
 
         features = pair.get_vault_features() or set()
+        uses_protocol_settlement_estimate = bool(features & {
+            ERC4626Feature.lagoon_like,
+            ERC4626Feature.d2_like,
+            ERC4626Feature.plutus_like,
+        })
+        if uses_protocol_settlement_estimate:
+            estimated_settlement = pair.get_vault_estimated_settlement()
+            if estimated_settlement is not None:
+                return ts + estimated_settlement
+            if features & {ERC4626Feature.d2_like, ERC4626Feature.plutus_like}:
+                # TODO pending real data: 14 days average delay estimated from 30 days cycle.
+                return ts + datetime.timedelta(days=14)
+
         if ERC4626Feature.ostium_like in features:
             # Preserve the original Ostium backtest approximation instead of
             # changing historical simulations when live vault intervals move.
@@ -655,7 +682,7 @@ class BacktestExecution(ExecutionModel):
         executed_collateral_allocation = executed_collateral_consumption = None
 
         try:
-            if trade.is_vault() and self._is_async_vault(trade.pair):
+            if trade.is_vault() and self._is_async_vault(trade.pair, is_buy=trade.is_buy()):
                 # Two-stage async vault: record the request as pending settlement
                 # and return zeros. The trade is not marked successful here — the
                 # resolver settles it on a later cycle once the delay elapses.

@@ -535,7 +535,7 @@ class PositionManager:
             The pair to look the current position up under, when it differs from ``pair``
             (the alpha model's ``synthetic_pair`` nuance). Defaults to ``pair``.
         """
-        if pair.is_async_vault():
+        if pair.has_delayed_vault_redemption():
             return True
         position = self.get_current_position_for_pair(position_pair or pair, pending=True)
         return position is not None and position.has_async_vault_flow()

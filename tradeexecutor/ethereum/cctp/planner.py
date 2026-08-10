@@ -209,7 +209,7 @@ def _is_async_vault_sell_waiting_for_settlement(state: State, trade: TradeExecut
         return False
     if trade.other_data.get("vault_async_flow"):
         return True
-    if trade.pair.is_async_vault():
+    if trade.pair.has_delayed_vault_redemption():
         return True
 
     position = state.portfolio.get_position_by_id(trade.position_id)
