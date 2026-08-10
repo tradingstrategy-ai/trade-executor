@@ -25,7 +25,15 @@ from tradeexecutor.state.statistics import PortfolioStatistics, PositionStatisti
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignal, format_signals
 from tradeexecutor.strategy.chart.definition import ChartInput
-from tradeexecutor.strategy.chart.standard.weight import equity_curve_by_asset
+from tradeexecutor.strategy.chart.standard.weight import (
+    ALLOCATED_CAPITAL_BAND,
+    CASH_BAND,
+    PENDING_DEPOSITS_BAND,
+    PENDING_SETTLEMENTS_BAND,
+    QUEUE_BAND,
+    equity_curve_by_asset,
+    equity_curve_by_liquidity_state,
+)
 from tradeexecutor.strategy.chart.standard.vault import (
     pending_trigger_queue,
     phase_aware_queue_duration,
@@ -294,3 +302,65 @@ def test_equity_curve_by_asset_relabels_queue_venues_by_position_id():
     assert trace_values["Steakhouse USDC [queue]"] == pytest.approx([120.0])
     assert trace_values["VLT-USDC [queue]"] == pytest.approx([50.0])
     assert trace_values["USDC"] == pytest.approx([30.0])
+
+
+def test_equity_curve_by_liquidity_state_splits_queue_and_pending_capital():
+    """Liquidity-state map separates cash, queue, parked and in-flight capital.
+
+    A $300 portfolio has $70 invested, $170 in the queue venue, a $50 pending
+    deposit inside that venue, and a $20 async settlement that is not yet a
+    position. The resulting bands must sum to total equity without counting the
+    parked amount twice as free queue capital or the async request as cash.
+    """
+    timestamp = datetime.datetime(2024, 1, 1)
+    state = State()
+    usdc = AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "USDC", 6, 999999)
+    state.portfolio.reserves[usdc.get_identifier()] = ReservePosition(
+        asset=usdc,
+        quantity=Decimal(60),
+        last_sync_at=timestamp,
+        reserve_token_price=1.0,
+        last_pricing_at=timestamp,
+    )
+    invested_pair = _make_pair(101, kind=TradingPairKind.vault)
+    queue_pair = _make_pair(202, kind=TradingPairKind.vault)
+    pending_pair = _make_pair(303, kind=TradingPairKind.vault)
+    pending_position = _make_position(3, pending_pair, usdc, timestamp)
+    pending_trade = TradeExecution(
+        trade_id=3,
+        position_id=3,
+        trade_type=TradeType.rebalance,
+        pair=pending_pair,
+        opened_at=timestamp,
+        planned_quantity=Decimal(20),
+        planned_reserve=Decimal(20),
+        planned_price=1.0,
+        reserve_currency=usdc,
+    )
+    pending_trade.other_data["vault_async_flow"] = True
+    pending_trade.other_data["vault_settlement_requested_at"] = timestamp.isoformat()
+    pending_position.trades[pending_trade.trade_id] = pending_trade
+    state.portfolio.open_positions = {
+        1: _make_position(1, invested_pair, usdc, timestamp),
+        2: _make_position(2, queue_pair, usdc, timestamp, queue_venue=True),
+        3: pending_position,
+    }
+    state.stats.positions = {
+        1: [PositionStatistics(timestamp, timestamp, 0.0, 0.0, 70.0, 70.0)],
+        2: [PositionStatistics(timestamp, timestamp, 0.0, 0.0, 170.0, 170.0)],
+    }
+    state.stats.portfolio.append(
+        PortfolioStatistics(calculated_at=timestamp, total_equity=300.0, open_position_equity=240.0),
+    )
+    append_queue_event(state.other_data, QueueVaultEvent(EVENT_PARK, 601, 50.0, 1, timestamp=timestamp.isoformat()))
+
+    fig, df = equity_curve_by_liquidity_state(ChartInput(execution_context=unit_test_execution_context, state=state))
+
+    row = df.loc[pd.Timestamp(timestamp)]
+    assert row[CASH_BAND] == pytest.approx(40.0)
+    assert row[QUEUE_BAND] == pytest.approx(120.0)
+    assert row[PENDING_DEPOSITS_BAND] == pytest.approx(50.0)
+    assert row[PENDING_SETTLEMENTS_BAND] == pytest.approx(20.0)
+    assert row[ALLOCATED_CAPITAL_BAND] == pytest.approx(70.0)
+    assert row.sum() == pytest.approx(300.0)
+    assert {trace.name for trace in fig.data} == set(df.columns)

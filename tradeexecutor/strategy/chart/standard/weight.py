@@ -27,7 +27,13 @@ from tradeexecutor.strategy.chart.asset_weight_legend import (
     merge_asset_weight_legend_entries,
 )
 from tradeexecutor.strategy.chart.definition import ChartInput
-from tradeexecutor.strategy.phase_aware import is_queue_vault_position
+from tradeexecutor.strategy.phase_aware import (
+    EVENT_CLOSE,
+    EVENT_PARK,
+    EVENT_PROMOTE,
+    is_queue_vault_position,
+    iter_all_events,
+)
 
 #: Band label for the yield-bearing queue venue, split out from directional chain bands and idle cash.
 QUEUE_VENUE_BAND = "Queue venue"
@@ -37,6 +43,31 @@ YIELD_MANAGER_RESERVE_COLOUR = "#666"
 
 #: Neutral swatch colour used for asset-weight legend rows.
 ASSET_WEIGHT_LEGEND_SWATCH_COLOUR = "#a8b1c1"
+
+
+#: Full allocation already represented by ordinary vault/spot position value.
+ALLOCATED_CAPITAL_BAND = "Allocated capital"
+
+#: Raw reserve capital that is neither invested nor earmarked for a settlement.
+CASH_BAND = "Cash"
+
+#: Yield-bearing queue-venue capital with no pending target vault deposit.
+QUEUE_BAND = "Queue"
+
+#: Queue-venue capital earmarked for a vault whose deposit window is closed.
+PENDING_DEPOSITS_BAND = "Pending deposits"
+
+#: Capital sent to an async vault but not yet represented by vault shares.
+PENDING_SETTLEMENTS_BAND = "Pending settlements"
+
+
+LIQUIDITY_STATE_COLOURS = {
+    ALLOCATED_CAPITAL_BAND: "#4c78a8",
+    CASH_BAND: "#a8b1c1",
+    QUEUE_BAND: YIELD_MANAGER_RESERVE_COLOUR,
+    PENDING_DEPOSITS_BAND: "#f2a900",
+    PENDING_SETTLEMENTS_BAND: "#9c6ade",
+}
 
 
 def _get_queue_asset_label(pair) -> str:
@@ -183,6 +214,141 @@ def equity_curve_by_chain(input: ChartInput) -> tuple[Figure, pd.DataFrame]:
         template="plotly_dark",
     )
     fig.update_traces(line_width=0)
+    return fig, df
+
+
+def _calculate_pending_settlements_by_timestamp(state: State) -> dict[object, float]:
+    """Calculate unsettled asynchronous vault deposits at each statistics timestamp."""
+    timestamps = [ps.calculated_at for ps in state.stats.portfolio]
+    last_timestamp = max(timestamps, default=None)
+    if last_timestamp is None:
+        return {}
+
+    values: dict[object, float] = {timestamp: 0.0 for timestamp in timestamps}
+    for position in state.portfolio.get_all_positions(pending=True):
+        for trade in position.trades.values():
+            if not (trade.is_buy() and trade.other_data.get("vault_async_flow")):
+                continue
+
+            requested_at_raw = trade.other_data.get("vault_settlement_requested_at")
+            if requested_at_raw:
+                requested_at = pd.Timestamp(requested_at_raw).to_pydatetime()
+            else:
+                requested_at = trade.vault_settlement_pending_at or trade.started_at or trade.opened_at
+            if requested_at is None:
+                continue
+
+            if trade.is_success():
+                settled_at = trade.executed_at
+            elif trade.failed_at is not None:
+                settled_at = trade.failed_at
+            else:
+                settled_at = last_timestamp + pd.Timedelta(seconds=1)
+
+            value = float(trade.get_vault_settlement_request_reserve())
+            for timestamp in timestamps:
+                if requested_at <= timestamp < settled_at:
+                    values[timestamp] += value
+
+    return values
+
+
+def _calculate_waiting_deposits_by_timestamp(state: State) -> dict[object, float]:
+    """Reconstruct phase-aware queue deposits which wait for a deposit window."""
+    timestamps = sorted(state.stats.portfolio, key=lambda stats: stats.calculated_at)
+    values: dict[object, float] = {stats.calculated_at: 0.0 for stats in timestamps}
+    event_timestamps = [
+        (pd.Timestamp(event.timestamp), event)
+        for event in iter_all_events(state.other_data)
+        if event.timestamp is not None
+    ]
+    event_timestamps.sort(key=lambda item: item[0])
+
+    event_index = 0
+    open_deposits: dict[int, float] = {}
+    for portfolio_stats in timestamps:
+        timestamp = portfolio_stats.calculated_at
+        while event_index < len(event_timestamps) and event_timestamps[event_index][0] <= timestamp:
+            event = event_timestamps[event_index][1]
+            if event.kind == EVENT_PARK:
+                open_deposits[event.vault_internal_id] = event.usd
+            elif event.kind in (EVENT_PROMOTE, EVENT_CLOSE):
+                open_deposits.pop(event.vault_internal_id, None)
+            event_index += 1
+        values[timestamp] = sum(open_deposits.values())
+
+    return values
+
+
+def equity_curve_by_liquidity_state(input: ChartInput) -> tuple[Figure, pd.DataFrame]:
+    """Show the complete portfolio split by liquid-capital state.
+
+    This complements the per-vault asset-weight map. It separates free cash,
+    unassigned queue-venue capital, deposits parked for a closed target window,
+    and deposits already in flight to asynchronous vaults. The remaining band is
+    capital represented by ordinary open positions, so every timestamp sums to
+    total portfolio equity.
+    """
+    state = input.state
+    queue_position_ids = {
+        position.position_id
+        for position in state.portfolio.get_all_positions()
+        if is_queue_vault_position(position)
+    }
+    queue_values_by_timestamp: dict[object, float] = {}
+    for position_id in queue_position_ids:
+        for position_stats in state.stats.positions.get(position_id, []):
+            queue_values_by_timestamp[position_stats.calculated_at] = (
+                queue_values_by_timestamp.get(position_stats.calculated_at, 0.0)
+                + position_stats.value
+            )
+
+    pending_settlements = _calculate_pending_settlements_by_timestamp(state)
+    waiting_deposits = _calculate_waiting_deposits_by_timestamp(state)
+    rows = []
+    for portfolio_stats in state.stats.portfolio:
+        timestamp = portfolio_stats.calculated_at
+        total_equity = float(portfolio_stats.total_equity)
+        open_position_equity = float(portfolio_stats.open_position_equity or 0.0)
+        queue_value = queue_values_by_timestamp.get(timestamp, 0.0)
+        pending_deposits = min(waiting_deposits.get(timestamp, 0.0), queue_value)
+        pending_settlement_value = pending_settlements.get(timestamp, 0.0)
+        rows.append({
+            "timestamp": timestamp,
+            ALLOCATED_CAPITAL_BAND: open_position_equity - queue_value,
+            CASH_BAND: total_equity - open_position_equity - pending_settlement_value,
+            QUEUE_BAND: queue_value - pending_deposits,
+            PENDING_DEPOSITS_BAND: pending_deposits,
+            PENDING_SETTLEMENTS_BAND: pending_settlement_value,
+        })
+
+    columns = [
+        CASH_BAND,
+        QUEUE_BAND,
+        PENDING_DEPOSITS_BAND,
+        PENDING_SETTLEMENTS_BAND,
+        ALLOCATED_CAPITAL_BAND,
+    ]
+    df = pd.DataFrame(rows, columns=["timestamp", *columns])
+    if not df.empty:
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df = df.set_index("timestamp").fillna(0.0)
+    else:
+        df = pd.DataFrame(columns=columns)
+
+    fig = px.area(
+        df,
+        title="Asset weights by liquidity state (USD)",
+        labels={"index": "Time", "value": "US dollar size"},
+        color_discrete_map=LIQUIDITY_STATE_COLOURS,
+        template="plotly_dark",
+    )
+    fig.update_traces(line_width=0)
+    for trace in fig.data:
+        if trace.name == PENDING_DEPOSITS_BAND:
+            trace.update(fillpattern={"shape": "/"})
+        elif trace.name == PENDING_SETTLEMENTS_BAND:
+            trace.update(fillpattern={"shape": "x"})
     return fig, df
 
 
