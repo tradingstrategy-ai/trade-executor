@@ -622,8 +622,9 @@ class BacktestPricing(PricingModel):
         ERC-7540 request vaults use their ERC-4626 maximum functions to report
         claimable requests, not new-request capacity. Morpho V2 deliberately
         returns zero from the ERC-4626 maximum functions regardless of the
-        caller. Both values are useful source observations, but neither can
-        close a backtest deposit gate.
+        caller. Yearn V3 uses owner-specific limits and deliberately returns
+        zero for the zero-address scanner sentinel. These values are useful
+        source observations, but none can close a backtest deposit gate.
         """
         is_async_vault = getattr(pair, "is_async_vault", None)
         if callable(is_async_vault) and is_async_vault():
@@ -631,7 +632,12 @@ class BacktestPricing(PricingModel):
 
         get_vault_features = getattr(pair, "get_vault_features", None)
         features = get_vault_features() if callable(get_vault_features) else None
-        return features is None or ERC4626Feature.morpho_v2_like not in features
+        if features is None:
+            return True
+        return not bool(features & {
+            ERC4626Feature.morpho_v2_like,
+            ERC4626Feature.yearn_v3_like,
+        })
 
     def get_max_deposit(
         self,

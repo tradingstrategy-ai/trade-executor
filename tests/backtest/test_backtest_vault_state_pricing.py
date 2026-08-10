@@ -136,6 +136,7 @@ def test_check_deposit_records_zero_hard_cap(pricing):
     [
         (_FakePair(1, features={ERC4626Feature.morpho_v2_like}), "Morpho V2"),
         (_FakePair(1, async_vault=True), "ERC-7540"),
+        (_FakePair(1, features={ERC4626Feature.yearn_v3_like}), "Yearn V3"),
     ],
 )
 def test_zero_max_deposit_does_not_close_protocols_where_it_is_not_capacity(pricing, pair, description):
