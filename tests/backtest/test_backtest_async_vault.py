@@ -32,11 +32,12 @@ from tradeexecutor.state.trade import TradeExecution, TradeStatus, TradeType
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignalFlags, format_signals
 from tradeexecutor.strategy.asset import get_asset_amounts
 from tradeexecutor.strategy.chart.definition import ChartInput
-from tradeexecutor.strategy.chart.standard.vault import pending_vault_settlements
+from tradeexecutor.strategy.chart.standard.vault import pending_vault_settlements, vault_settlement_observations
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionMode, unit_test_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -931,6 +932,92 @@ def test_backtest_protocol_deposit_requires_historical_settlement_event(feature)
     assert trade.is_success()
     assert trade.executed_at >= actual_event
     assert trade.other_data["vault_settlement_historical_event_at"] == actual_event.isoformat()
+
+
+@pytest.mark.timeout(300)
+@pytest.mark.parametrize("feature", [
+    ERC4626Feature.lagoon_like,
+    ERC4626Feature.d2_like,
+    ERC4626Feature.plutus_like,
+])
+def test_backtest_protocol_deposit_without_observations_uses_grace_period(feature):
+    """No observed settlement history falls back to estimate plus two days.
+
+    A vault with *some* historical observations remains evidence-gated. This
+    fallback only covers the absence of any settlement observations, which
+    otherwise leaves a diagnostic-only protocol permanently pending.
+    """
+    from tradeexecutor.backtest.backtest_execution import (
+        NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD,
+    )
+
+    strategy_universe, pairs = _make_multi_vault_universe([
+        ("VQUEUE", "0x" + "f2" * 20, {feature}),
+    ])
+    pair = pairs["VQUEUE"]
+
+    def deposit_once(input: StrategyInput) -> list[TradeExecution]:
+        if not list(input.state.portfolio.get_all_trades()):
+            return input.get_position_manager().open_spot(pair, value=INITIAL_DEPOSIT * 0.5)
+        return []
+
+    state, _, _ = _run(
+        strategy_universe,
+        decide=deposit_once,
+        delay_overrides={pair.pool_address: SETTLEMENT_DELAY},
+    )
+    trade = next(iter(state.portfolio.get_all_trades()))
+    expected_settlement = START_AT + SETTLEMENT_DELAY + NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD
+
+    assert trade.is_success()
+    assert trade.executed_at >= expected_settlement
+    assert trade.other_data["vault_settlement_fallback_used"] is True
+    assert trade.other_data["vault_settlement_fallback_reason"] == "no_historical_settlement_observations"
+
+
+def test_vault_settlement_observations_chart():
+    """The chart table exposes raw observation coverage and backtest delay."""
+    strategy_universe, vault_pair = _make_universe(rising_price=False)
+    first_settlement = START_AT + datetime.timedelta(days=2)
+    last_settlement = START_AT + datetime.timedelta(days=7)
+    strategy_universe.vault_state = pd.DataFrame([
+        {
+            "timestamp": first_settlement,
+            "pair_id": vault_pair.internal_id,
+            "address": vault_pair.pool_address,
+            "vault_settlement_at": first_settlement,
+        },
+        {
+            "timestamp": last_settlement,
+            "pair_id": vault_pair.internal_id,
+            "address": vault_pair.pool_address,
+            "vault_settlement_at": last_settlement,
+        },
+    ])
+    state, _, _ = _run(strategy_universe)
+
+    table = vault_settlement_observations(ChartInput(
+        execution_context=unit_test_execution_context,
+        state=state,
+        strategy_input_indicators=StrategyInputIndicators(
+            strategy_universe=strategy_universe,
+            available_indicators=IndicatorSet(),
+            indicator_results={},
+        ),
+    ))
+
+    assert list(table.columns) == [
+        "Vault name",
+        "First settle",
+        "Last settle",
+        "Settlements observed",
+        "Average estimation used",
+    ]
+    row = table.iloc[0]
+    assert row["First settle"] == first_settlement
+    assert row["Last settle"] == last_settlement
+    assert row["Settlements observed"] == 2
+    assert row["Average estimation used"] == "2 days"
 
 
 def _get_pending_windows(state: State) -> dict[int, list[tuple[datetime.datetime, datetime.datetime | None]]]:

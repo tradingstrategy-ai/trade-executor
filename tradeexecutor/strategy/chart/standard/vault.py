@@ -6,9 +6,11 @@ import pandas as pd
 import plotly.colors as colors
 import plotly.express as px
 from plotly.graph_objects import Figure
+from eth_defi.erc_4626.core import ERC4626Feature
 from tradeexecutor.analysis.credit import display_vault_position_table, display_vault_daily_pnl_table
 from tradeexecutor.analysis.vault_position_helpers import find_latest_position_for_pair
 from tradeexecutor.analysis.vault import visualise_vaults
+from tradeexecutor.backtest.backtest_execution import DEFAULT_VAULT_SETTLEMENT_DELAY
 from tradeexecutor.strategy.chart.definition import ChartInput
 from tradeexecutor.strategy.phase_aware import (
     EVENT_CLOSE,
@@ -20,6 +22,113 @@ from tradeexecutor.strategy.phase_aware import (
 )
 from tradeexecutor.visual.position import (calculate_position_timeline,
                                            visualise_position)
+
+
+def _has_backtest_settlement_logic(pair) -> bool:
+    """Does a vault use a multi-stage settlement flow in a backtest?"""
+    if not pair.is_vault():
+        return False
+    features = pair.get_vault_features() or set()
+    return pair.is_async_vault() or pair.has_delayed_vault_redemption() or bool(features & {
+        ERC4626Feature.lagoon_like,
+        ERC4626Feature.d2_like,
+        ERC4626Feature.plutus_like,
+    })
+
+
+def _format_settlement_estimate(delay: datetime.timedelta) -> str:
+    """Format a backtest settlement estimate for a diagnostics table."""
+    seconds = delay.total_seconds()
+    if seconds % 86_400 == 0:
+        days = int(seconds // 86_400)
+        return f"{days} day" if days == 1 else f"{days} days"
+    if seconds % 3_600 == 0:
+        hours = int(seconds // 3_600)
+        return f"{hours} hours"
+    return str(delay)
+
+
+def _get_settlement_estimate_used(pair, trades) -> datetime.timedelta:
+    """Read the actual backtest estimate, with the documented default fallback."""
+    estimates = []
+    for trade in trades:
+        requested_at_raw = trade.other_data.get("vault_settlement_requested_at")
+        estimated_at_raw = trade.other_data.get("vault_settlement_estimated_at")
+        if not requested_at_raw or not estimated_at_raw:
+            continue
+        estimates.append(
+            datetime.datetime.fromisoformat(estimated_at_raw)
+            - datetime.datetime.fromisoformat(requested_at_raw)
+        )
+    if estimates:
+        return sum(estimates, datetime.timedelta()) / len(estimates)
+
+    metadata_estimate = pair.get_vault_estimated_settlement()
+    if metadata_estimate is not None:
+        return metadata_estimate
+
+    features = pair.get_vault_features() or set()
+    if features & {ERC4626Feature.d2_like, ERC4626Feature.plutus_like}:
+        # TODO pending real data: 14 days average delay estimated from 30 days cycle.
+        return datetime.timedelta(days=14)
+    return DEFAULT_VAULT_SETTLEMENT_DELAY
+
+
+def vault_settlement_observations(input: ChartInput) -> pd.DataFrame:
+    """List the historical settlement evidence and delay used per async vault.
+
+    The observation dates are drawn directly from the universe's historical
+    ``vault_settlement_at`` feed. The delay is taken from the recorded
+    backtest requests where available, so per-vault backtest overrides are
+    represented faithfully.
+    """
+    strategy_universe = input.strategy_universe
+    if strategy_universe is None:
+        return pd.DataFrame(columns=[
+            "Vault name",
+            "First settle",
+            "Last settle",
+            "Settlements observed",
+            "Average estimation used",
+        ])
+
+    async_trades_by_pair_id: dict[int, list] = {}
+    if input.state is not None:
+        for position in input.state.portfolio.get_all_positions(pending=True):
+            for trade in position.trades.values():
+                if trade.other_data.get("vault_async_flow"):
+                    async_trades_by_pair_id.setdefault(position.pair.internal_id, []).append(trade)
+
+    observed_by_pair_id: dict[int, pd.Series] = {}
+    vault_state = strategy_universe.vault_state
+    if vault_state is not None and "vault_settlement_at" in vault_state.columns:
+        for pair_id, group in vault_state.groupby("pair_id", sort=False):
+            observed = pd.to_datetime(group["vault_settlement_at"], errors="coerce").dropna().drop_duplicates().sort_values()
+            if len(observed) > 0:
+                observed_by_pair_id[int(pair_id)] = observed
+
+    rows = []
+    for pair in strategy_universe.iterate_pairs():
+        if not _has_backtest_settlement_logic(pair):
+            continue
+        observed = observed_by_pair_id.get(pair.internal_id, pd.Series(dtype="datetime64[ns]"))
+        rows.append({
+            "Vault name": pair.get_vault_name() or pair.get_ticker(),
+            "First settle": observed.iloc[0] if len(observed) else pd.NaT,
+            "Last settle": observed.iloc[-1] if len(observed) else pd.NaT,
+            "Settlements observed": len(observed),
+            "Average estimation used": _format_settlement_estimate(
+                _get_settlement_estimate_used(pair, async_trades_by_pair_id.get(pair.internal_id, []))
+            ),
+        })
+
+    return pd.DataFrame(rows, columns=[
+        "Vault name",
+        "First settle",
+        "Last settle",
+        "Settlements observed",
+        "Average estimation used",
+    ]).sort_values(["Settlements observed", "Vault name"], ascending=[False, True])
 
 
 def all_vaults_share_price_and_tvl(
