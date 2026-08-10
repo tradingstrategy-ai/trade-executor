@@ -506,13 +506,21 @@ class GridSearchResult:
                 multiprocess=True,
             )
 
-            print("Sharpe of the first result", grid_search_results[0].get_metric("Sharpe")
+            print("Sharpe of the first result", grid_search_results[0].get_metric("Sharpe"))
 
         :param name:
             See quantstats for examples
 
         :return:
             Performance metrics value
+
+        :raise AssertionError:
+            If this result does not carry the metric.
+
+            The metric set is not fixed - see
+            :py:func:`~tradeexecutor.analysis.advanced_metrics.calculate_advanced_metrics`.
+            Asking for one metric by name should fail loudly, which is why this
+            asserts; code sweeping many metrics for a table wants NaN instead.
         """
 
         series = self.metrics["Strategy"]
@@ -1548,8 +1556,8 @@ def pick_best_grid_search_result(
 
         sample = pick_best_grid_search_result(
             results,
-            key=lambda r: r.metrics.loc["Max Drawdown"][0])
-            assert sample is not None
+            key=lambda r: r.metrics.loc["Max Drawdown"].iloc[0])
+        assert sample is not None
 
     :param result:
         Output from :py:func:`perform_grid_search`
@@ -1564,10 +1572,6 @@ def pick_best_grid_search_result(
 
     :return:
         The grid search result with the matching parameters or None if not found
-
-    :return:
-        The grid search result with the matching parameters or None if not found
-
     """
 
     current_best = -10**27 if highest else 10**27

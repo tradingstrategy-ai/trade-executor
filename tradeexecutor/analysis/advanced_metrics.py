@@ -88,7 +88,7 @@ def calculate_advanced_metrics(
 
         # Each metric as a series. Index 0 is our performance,
         # index 1 is the benchmark.
-        sharpe = metrics.loc["Sharpe"][0]
+        sharpe = metrics.loc["Sharpe"].iloc[0]
         assert sharpe == pytest.approx(-1.73)
 
     See also :py:func:`visualise_advanced_metrics`.
@@ -117,6 +117,16 @@ def calculate_advanced_metrics(
 
         You can directly display this in your notebook,
         or extract individual metrics.
+
+        **The row set is not fixed.** QuantStats emits 65 metrics in ``full``
+        mode and 36 in ``basic``, and this function silently downgrades to
+        ``basic`` when the returns series is empty or constant - QuantStats
+        cannot regress a series with no variance. A crashed backtest is exactly
+        that series, because
+        :py:func:`~tradeexecutor.backtest.grid_search.create_grid_search_failed_result`
+        represents one with all-zero returns, and so is a backtest that never
+        opened a position. Callers reading a metric by name must tolerate its
+        absence; ``Expected Shortfall (cVaR)`` is the first one they will hit.
     """
 
     # Run-in the monkey patch

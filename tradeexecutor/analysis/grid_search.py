@@ -136,20 +136,29 @@ def _calculate_capital_utilisation_metrics(r: GridSearchResult) -> tuple[float, 
     return np.nan, np.nan
 
 
-def read_metric(r: GridSearchResult, metric_name: str) -> float:
+def clean_metric(x):
+    """Normalise display metric values for analysis tables."""
+    if x == "-":
+        return np.nan
+    elif x == "":
+        return np.nan
+
+    if type(x) == int:
+        return float(x)
+
+    return x
+
+
+def _read_metric(r: GridSearchResult, metric_name: str) -> float:
     """Read a single QuantStats metric out of a grid search result.
 
-    QuantStats does not always emit the same set of metrics.
+    A result does not necessarily carry every metric in
+    :py:data:`METRIC_REGISTRY`. See
     :py:func:`~tradeexecutor.analysis.advanced_metrics.calculate_advanced_metrics`
-    falls back to ``basic`` mode when the returns series is empty or constant,
-    which drops 29 of the 65 metrics - including ``Expected Shortfall (cVaR)``,
-    the only :py:data:`METRIC_REGISTRY` entry affected.
-
-    Two ordinary outcomes produce such a series: a backtest that crashed, which
-    :py:func:`~tradeexecutor.backtest.grid_search.create_grid_search_failed_result`
-    represents with all-zero returns, and a backtest whose parameters never
-    opened a position. Both belong in the result table with their parameters
-    intact, so a missing metric reads as NaN instead of raising.
+    for when the metric set shrinks; a crashed backtest and a backtest that never
+    opened a position both land there. Such a result still belongs in the table
+    with its parameters intact, so a missing metric reads as NaN rather than
+    raising.
 
     :param r:
         Grid search result to read from.
@@ -164,19 +173,6 @@ def read_metric(r: GridSearchResult, metric_name: str) -> float:
         return np.nan
 
     return clean_metric(r.metrics.loc[metric_name].iloc[0])
-
-
-def clean_metric(x):
-    """Normalise display metric values for analysis tables."""
-    if x == "-":
-        return np.nan
-    elif x == "":
-        return np.nan
-
-    if type(x) == int:
-        return float(x)
-
-    return x
 
 
 def analyse_combination(
@@ -219,7 +215,7 @@ def analyse_combination(
         })
 
     for column, metric_name in METRIC_REGISTRY.items():
-        row[column] = read_metric(r, metric_name)
+        row[column] = _read_metric(r, metric_name)
 
     row.update({
         "Win rate": clean_metric(r.get_win_rate()),
