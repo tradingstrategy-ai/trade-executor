@@ -30,14 +30,14 @@ BACKTEST_ALWAYS_OPEN_DEPOSIT_FEATURES = {
 #: a dependable protocol-specific deposit-admission field.
 BACKTEST_ALWAYS_OPEN_DEPOSIT_PROTOCOLS = {
     "lagoon-finance",
-    "morpho",
     "yearn",
 }
 
 
 def _is_backtesting_always_open_protocol(pair: TradingPairIdentifier) -> bool:
     """Does incomplete historical availability make this vault open by default?"""
-    features = pair.get_vault_features()
+    get_vault_features = getattr(pair, "get_vault_features", None)
+    features = get_vault_features() if callable(get_vault_features) else None
     if features and features & BACKTEST_ALWAYS_OPEN_DEPOSIT_FEATURES:
         return True
     get_vault_protocol = getattr(pair, "get_vault_protocol", None)
@@ -172,7 +172,7 @@ def check_live_deposit(
         result.message = str(error)
         return result
 
-    if closed_reason is not None:
+    if isinstance(closed_reason, str) and closed_reason:
         result.can_deposit = False
         result.reason_code = DepositBlockReason.vault_deposits_closed
         result.message = closed_reason
