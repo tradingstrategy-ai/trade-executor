@@ -251,6 +251,11 @@ and that delay. If the feed has no observations at all, the backtest settles
 after the estimate plus a conservative two-day grace period and records that
 fallback on the trade.
 
+The released vault-history reader does not yet load the optional
+`vault_settlement_at` marker. The executor consumes it whenever a caller
+supplies it in `vault_state`; ordinary downloaded histories therefore use the
+explicit no-observation fallback until upstream marker loading is released.
+
 The simulation mirrors the live lifecycle:
 
 - On the request cycle the trade is marked `vault_settlement_pending` with a
