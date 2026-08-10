@@ -19,6 +19,11 @@ import pytest
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.other_data import OtherData
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignalFlags
+from tradeexecutor.strategy.redemption import (
+    DepositBlockReason,
+    DepositCheckResult,
+    DepositCheckStage,
+)
 from tradeexecutor.strategy.phase_aware import (
     EVENT_CLOSE,
     EVENT_PARK,
@@ -98,6 +103,10 @@ class _StubSignal:
     position_adjust_ignored: bool = False
     flags: set = dataclasses.field(default_factory=set)
     other_data: dict = dataclasses.field(default_factory=dict)
+    deposit_check_results: list = dataclasses.field(default_factory=list)
+
+    def set_deposit_check_result(self, result) -> None:
+        self.deposit_check_results.append(result)
 
 
 @dataclasses.dataclass
@@ -106,6 +115,15 @@ class _StubPricingModel:
 
     def can_deposit(self, timestamp, pair) -> bool:
         return self.can_deposit_result
+
+    def check_deposit(self, timestamp, pair, *, stage) -> DepositCheckResult:
+        return DepositCheckResult(
+            timestamp=timestamp,
+            stage=stage,
+            can_deposit=self.can_deposit_result,
+            reason_code=DepositBlockReason.vault_deposits_closed if not self.can_deposit_result else None,
+            message="Stub deposits closed" if not self.can_deposit_result else None,
+        )
 
 
 @dataclasses.dataclass
@@ -199,11 +217,20 @@ def test_alpha_model_extracted_hooks():
 
     # 3. A closed deposit window skips the buy and records the missed deposit.
     signal = _StubSignal(pair="vault-A", position_adjust_usd=1000.0)
-    result = alpha_model._on_deposit_window_closed(signal, _StubPositionManager(cash=0.0))
+    deposit_check = DepositCheckResult(
+        timestamp=datetime.datetime(2024, 1, 1),
+        stage=DepositCheckStage.buy_rebalance,
+        can_deposit=False,
+        reason_code=DepositBlockReason.vault_deposits_closed,
+        message="Stub deposits closed",
+    )
+    result = alpha_model._on_deposit_window_closed(signal, _StubPositionManager(cash=0.0), deposit_check)
     assert result is True
     assert signal.position_adjust_ignored is True
     assert TradingPairSignalFlags.cannot_deposit in signal.flags
     assert signal.other_data["missed_deposit_usd"] == pytest.approx(1000.0)
+    assert signal.deposit_check_results == [deposit_check]
+    assert signal.other_data["deposit_check"]["reason_code"] == "vault_deposits_closed"
 
 
 def test_queue_event_log_survives_state_serialisation():
@@ -254,6 +281,8 @@ def test_should_skip_calls_deposit_window_closed_hook():
     assert signal.position_adjust_ignored is True
     assert TradingPairSignalFlags.cannot_deposit in signal.flags
     assert signal.other_data["missed_deposit_usd"] == pytest.approx(1000.0)
+    assert signal.deposit_check_results[0].stage == DepositCheckStage.buy_rebalance
+    assert signal.deposit_check_results[0].reason_code == DepositBlockReason.vault_deposits_closed
 
 
 def test_queue_vault_signal_flags_exist():

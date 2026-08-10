@@ -19,6 +19,8 @@ from tradeexecutor.ethereum.vault.hypercore_vault import (
 )
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.strategy.redemption import (
+    DepositBlockReason,
+    DepositCheckStage,
     RedemptionBlockReason,
     RedemptionCheckResult,
     RedemptionCheckStage,
@@ -83,6 +85,9 @@ def test_hypercore_deposit_closed_when_vault_closed(
 
     assert pricing.get_max_deposit(None, pair) == 0
     assert pricing.can_deposit(None, pair) is False
+    check = pricing.check_deposit(None, pair, stage=DepositCheckStage.buy_rebalance)
+    assert check.reason_code == DepositBlockReason.vault_deposits_closed
+    assert check.message == "Vault is permanently closed"
 
 
 def test_hypercore_deposit_closed_when_leader_disables_deposits(

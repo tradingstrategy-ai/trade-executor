@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
+from tradeexecutor.strategy.redemption import DepositBlockReason, DepositCheckStage
 from tradingstrategy.candle import GroupedCandleUniverse
 
 
@@ -100,6 +101,25 @@ def test_can_deposit_reopened(pricing):
 def test_can_deposit_zero_hard_cap_blocks(pricing):
     # deposits_open unknown but max_deposit == 0 -> blocked.
     assert pricing.can_deposit(pd.Timestamp("2026-03-11"), _FakePair(1)) is False
+
+
+def test_check_deposit_records_historical_closed_reason(pricing):
+    result = pricing.check_deposit(
+        pd.Timestamp("2026-03-06"),
+        _FakePair(1),
+        stage=DepositCheckStage.buy_rebalance,
+    )
+    assert result.can_deposit is False
+    assert result.reason_code == DepositBlockReason.vault_deposits_closed
+    assert result.message == "Vault deposits disabled by leader"
+    assert result.max_deposit is None
+
+
+def test_check_deposit_records_zero_hard_cap(pricing):
+    result = pricing.check_deposit(pd.Timestamp("2026-03-11"), _FakePair(1))
+    assert result.can_deposit is False
+    assert result.reason_code == DepositBlockReason.vault_max_deposit_zero
+    assert result.max_deposit == 0.0
 
 
 def test_can_deposit_pre_history_allowed(pricing):

@@ -2,6 +2,7 @@
 import datetime
 import enum
 import heapq
+import json
 import logging
 from collections import Counter
 from dataclasses import dataclass, field
@@ -25,6 +26,8 @@ from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.position_manager import \
     HypercorePositionReductionPlan, PositionManager
 from tradeexecutor.strategy.redemption import (
+    DepositCheckResult,
+    DepositCheckStage,
     RedemptionCheckResult,
     RedemptionCheckStage,
 )
@@ -352,6 +355,9 @@ class TradingPairSignal:
     #: Structured redemption diagnostics collected for this cycle.
     redemption_check_results: list[RedemptionCheckResult] = field(default_factory=list)
 
+    #: Structured deposit diagnostics collected for this cycle.
+    deposit_check_results: list[DepositCheckResult] = field(default_factory=list)
+
     def __post_init__(self):
         assert isinstance(self.pair, TradingPairIdentifier)
         if type(self.signal) != float:
@@ -375,6 +381,15 @@ class TradingPairSignal:
                 return
 
         self.redemption_check_results.append(result)
+
+    def set_deposit_check_result(self, result: DepositCheckResult) -> None:
+        """Store the latest deposit check result for a stage."""
+        for idx, existing in enumerate(self.deposit_check_results):
+            if existing.stage == result.stage:
+                self.deposit_check_results[idx] = result
+                return
+
+        self.deposit_check_results.append(result)
 
     def has_trades(self) -> bool:
         """Did/should this signal cause any trades to be executed.
@@ -2255,11 +2270,14 @@ class AlphaModel:
             signal.position_adjust_ignored = True
             return True
 
-        if (
-            signal.position_adjust_usd > 0
-            and not position_manager.pricing_model.can_deposit(self.timestamp, signal.pair)
-        ):
-            return self._on_deposit_window_closed(signal, position_manager)
+        if signal.position_adjust_usd > 0:
+            deposit_check = position_manager.pricing_model.check_deposit(
+                self.timestamp,
+                signal.pair,
+                stage=DepositCheckStage.buy_rebalance,
+            )
+            if not deposit_check.can_deposit:
+                return self._on_deposit_window_closed(signal, position_manager, deposit_check)
 
         if individual_rebalance_min_threshold:
             trade_size = abs(signal.position_adjust_usd)
@@ -2291,6 +2309,7 @@ class AlphaModel:
         self,
         signal: TradingPairSignal,
         position_manager: PositionManager,
+        deposit_check: DepositCheckResult,
     ) -> bool:
         """Handle a buy whose vault deposit window is closed this cycle.
 
@@ -2308,12 +2327,17 @@ class AlphaModel:
             ``True`` to skip this signal's rebalance for the cycle.
         """
         logger.info(
-            "Skipping buy-side rebalance for %s because deposits are not open",
+            "Skipping buy-side rebalance for %s because deposits are not open: %s",
             signal.pair,
+            deposit_check.message,
         )
         signal.position_adjust_ignored = True
         signal.flags.add(TradingPairSignalFlags.cannot_deposit)
         signal.other_data["missed_deposit_usd"] = signal.position_adjust_usd
+        # ``to_dict()`` retains enum instances. Store JSON primitives in
+        # ``other_data`` because it is persisted as part of the signal state.
+        signal.other_data["deposit_check"] = json.loads(deposit_check.to_json())
+        signal.set_deposit_check_result(deposit_check)
         return True
 
     def _prepare_hypercore_sell_signals(
@@ -2796,10 +2820,17 @@ class AlphaModel:
 
             missed_deposit_usd = signal.other_data.get("missed_deposit_usd")
             if missed_deposit_usd:
+                deposit_check = next(
+                    (result for result in reversed(signal.deposit_check_results) if not result.can_deposit),
+                    None,
+                )
                 rows.append({
                     **base_row,
                     "event_type": "deposit",
                     "missed_usd": float(missed_deposit_usd),
+                    "reason_code": deposit_check.reason_code.value if deposit_check and deposit_check.reason_code else None,
+                    "reason_message": deposit_check.message if deposit_check else None,
+                    "max_deposit": deposit_check.max_deposit if deposit_check else None,
                 })
 
             missed_redemption_usd = signal.other_data.get("missed_redemption_usd")
@@ -2926,6 +2957,13 @@ def format_signals(
         parked_usd = s.other_data.get("parked_usd", "-")
         waiting_deposit_usd = s.other_data.get("missed_deposit_usd", "-")
         waiting_redemption_usd = s.other_data.get("missed_redemption_usd", "-")
+        blocked_deposit_check = next(
+            (result for result in reversed(s.deposit_check_results) if not result.can_deposit),
+            None,
+        )
+        deposit_block_reason = blocked_deposit_check.reason_code.value if blocked_deposit_check and blocked_deposit_check.reason_code else "-"
+        deposit_block_message = blocked_deposit_check.message if blocked_deposit_check else "-"
+        max_deposit = blocked_deposit_check.max_deposit if blocked_deposit_check else "-"
 
         match column_mode:
             case "leveraged":
@@ -2960,6 +2998,9 @@ def format_signals(
                     "Pending redemption USD": pending_redemption_usd,
                     "Parked USD": parked_usd,
                     "Waiting deposit USD": waiting_deposit_usd,
+                    "Deposit block reason": deposit_block_reason,
+                    "Deposit block message": deposit_block_message,
+                    "Max deposit": max_deposit,
                     "Waiting redemption USD": waiting_redemption_usd,
                     "Flags": flags
                 })

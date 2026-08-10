@@ -1530,7 +1530,7 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
             vault_specs=dataset.vault_specs,
         )
 
-        return TradingStrategyUniverse(
+        strategy_universe = TradingStrategyUniverse(
             data_universe=universe,
             reserve_assets=[reserve_asset],
             backtest_stop_loss_time_bucket=dataset.backtest_stop_loss_time_bucket,
@@ -1542,6 +1542,19 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
                 "indicator_cache_fingerprint": dataset.indicator_cache_fingerprint,
             } if dataset.indicator_cache_fingerprint else {},
         )
+
+        # Retain producer-blacklisted vaults for availability diagnostics, but
+        # make them non-investable even if a source list included them by mistake.
+        from tradeexecutor.strategy.vault_risk import mark_blacklisted_vaults_ignored
+
+        blacklisted_vaults = mark_blacklisted_vaults_ignored(strategy_universe)
+        if blacklisted_vaults:
+            logger.warning(
+                "Marked %d producer-blacklisted vaults as data-only pairs",
+                len(blacklisted_vaults),
+            )
+
+        return strategy_universe
 
     @staticmethod
     def create_multichain_universe_by_pair_descriptions(

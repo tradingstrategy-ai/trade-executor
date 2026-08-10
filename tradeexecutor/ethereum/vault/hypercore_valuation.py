@@ -40,6 +40,9 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.redemption import (
+    DepositBlockReason,
+    DepositCheckResult,
+    DepositCheckStage,
     RedemptionApiSnapshot,
     RedemptionBlockReason,
     RedemptionCheckResult,
@@ -523,20 +526,42 @@ class HypercoreVaultPricing(PricingModel):
         ts: datetime.datetime | None,
         pair: TradingPairIdentifier,
     ) -> bool:
+        return self.check_deposit(ts, pair).can_deposit
+
+    def check_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+        *,
+        stage: DepositCheckStage = DepositCheckStage.unknown,
+    ) -> DepositCheckResult:
+        """Explain the Hypercore deposit gate using the replay or live API data."""
+        result = DepositCheckResult(
+            timestamp=ts,
+            stage=stage,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+        )
         if self.market_data_source is not None:
             snapshot = self._get_market_snapshot(ts, pair)
-            return _get_hypercore_deposit_closed_reason_from_flags(
+            reason = _get_hypercore_deposit_closed_reason_from_flags(
                 is_closed=snapshot.is_closed,
                 allow_deposits=snapshot.allow_deposits,
                 relationship_type=snapshot.relationship_type,
                 leader_fraction=snapshot.leader_fraction,
-            ) is None
+            )
+        elif self.simulate:
+            return result
+        else:
+            info = self._get_vault_info(pair)
+            reason = get_hypercore_deposit_closed_reason(info)
 
-        if self.simulate:
-            return True
+        if reason is not None:
+            result.can_deposit = False
+            result.reason_code = DepositBlockReason.vault_deposits_closed
+            result.message = reason
 
-        info = self._get_vault_info(pair)
-        return get_hypercore_deposit_closed_reason(info) is None
+        return result
 
 
 class HypercoreVaultValuator(ValuationModel):

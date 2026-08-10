@@ -115,7 +115,8 @@ def mark_missing_fee_vaults_ignored(
         missing = get_missing_vault_fee_data(pair.get_vault_metadata())
         if not missing:
             continue
-        pair.set_ignore_reason(IGNORE_REASON_LACKS_FEE_DATA)
+        if pair.get_ignore_reason() is None:
+            pair.set_ignore_reason(IGNORE_REASON_LACKS_FEE_DATA)
         pair.other_data[MISSING_VAULT_FEE_DATA_KEY] = missing
         flagged.append(pair)
     return flagged

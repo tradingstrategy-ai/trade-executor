@@ -19,6 +19,9 @@ from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.redemption import (
+    DepositBlockReason,
+    DepositCheckResult,
+    DepositCheckStage,
     RedemptionBlockReason,
     RedemptionCheckResult,
     RedemptionCheckStage,
@@ -654,6 +657,47 @@ class BacktestPricing(PricingModel):
             return False
         return True
 
+    def check_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+        *,
+        stage: DepositCheckStage = DepositCheckStage.unknown,
+    ) -> DepositCheckResult:
+        """Return the historical deposit gate and its captured reason data."""
+        result = DepositCheckResult(
+            timestamp=ts,
+            stage=stage,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+        )
+
+        override = self._vault_window_overrides.get(pair.internal_id)
+        if override is not None:
+            result.can_deposit = ts is None or override.is_deposit_open(ts)
+            if not result.can_deposit:
+                result.reason_code = DepositBlockReason.deposit_window_closed
+                result.message = "Vault deposits closed by backtest window override"
+            return result
+
+        state = self._lookup_vault_state(ts, pair)
+        if state is None:
+            return result
+
+        cap = self._state_cap(state, "max_deposit")
+        result.max_deposit = float(cap) if cap is not None else None
+        closed_reason = state.get("deposit_closed_reason")
+        if state.get("deposits_open", -1) == 0:
+            result.can_deposit = False
+            result.reason_code = DepositBlockReason.vault_deposits_closed
+            result.message = closed_reason if isinstance(closed_reason, str) and closed_reason else "Vault deposits closed in historical data"
+        elif cap is not None and cap == 0:
+            result.can_deposit = False
+            result.reason_code = DepositBlockReason.vault_max_deposit_zero
+            result.message = closed_reason if isinstance(closed_reason, str) and closed_reason else "Vault max deposit was zero in historical data"
+
+        return result
+
     def check_redemption(
         self,
         ts: datetime.datetime | None,
@@ -721,4 +765,3 @@ def backtest_pricing_factory(
         vault_state=universe.vault_state,
         vault_window_overrides=getattr(universe, "vault_window_overrides", None),
     )
-

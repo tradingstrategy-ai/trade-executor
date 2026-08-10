@@ -44,6 +44,9 @@ from tradeexecutor.strategy.pandas_trader.position_manager import NotEnoughCasFo
 from tradeexecutor.strategy.pandas_trader.rebalance import get_existing_portfolio_weights, rebalance_portfolio_old, \
     get_weight_diffs
 from tradeexecutor.strategy.redemption import (
+    DepositBlockReason,
+    DepositCheckResult,
+    DepositCheckStage,
     RedemptionBlockReason,
     RedemptionCheckResult,
     RedemptionCheckStage,
@@ -1962,8 +1965,16 @@ def test_alpha_model_skips_buy_when_vault_deposits_closed(
     # PricingModel is the shared live/backtest gate for venue-specific deposit availability.
     monkeypatch.setattr(
         pricing_model,
-        "can_deposit",
-        lambda ts, pair: pair != hypercore_vault_pair,
+        "check_deposit",
+        lambda ts, pair, *, stage: DepositCheckResult(
+            timestamp=ts,
+            stage=stage,
+            can_deposit=pair != hypercore_vault_pair,
+            reason_code=DepositBlockReason.vault_deposits_closed if pair == hypercore_vault_pair else None,
+            message="Vault deposits closed for test" if pair == hypercore_vault_pair else None,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+        ),
     )
 
     alpha_model = AlphaModel(timestamp=position_manager.timestamp)
@@ -1990,6 +2001,12 @@ def test_alpha_model_skips_buy_when_vault_deposits_closed(
     assert TradingPairSignalFlags.cannot_deposit in signal.flags
     assert TradingPairSignalFlags.cannot_redeem not in signal.flags
     assert signal.other_data["missed_deposit_usd"] == pytest.approx(2500.0)
+    assert signal.deposit_check_results[0].reason_code == DepositBlockReason.vault_deposits_closed
+    assert signal.other_data["deposit_check"]["message"] == "Vault deposits closed for test"
+    restored_signal = signal.__class__.from_json(signal.to_json())
+    assert len(restored_signal.deposit_check_results) == 1
+    assert restored_signal.deposit_check_results[0].stage == DepositCheckStage.buy_rebalance
+    assert restored_signal.deposit_check_results[0].reason_code == DepositBlockReason.vault_deposits_closed
     missed_events = alpha_model.get_missed_vault_events()
     assert missed_events == [
         {
@@ -1998,6 +2015,9 @@ def test_alpha_model_skips_buy_when_vault_deposits_closed(
             "vault_address": signal.pair.pool_address,
             "event_type": "deposit",
             "missed_usd": 2500.0,
+            "reason_code": "vault_deposits_closed",
+            "reason_message": "Vault deposits closed for test",
+            "max_deposit": None,
         }
     ]
     assert alpha_model.get_unallocatable_signals() == [

@@ -35,6 +35,10 @@ MORPHO_VAULT_FLAG_FILTER_SEVERITIES: dict[MorphoVaultFlagFilter, set[str]] = {
 }
 
 
+#: Risk labels that no inclusion override may admit to a generated universe.
+NON_SELECTABLE_RISKS = frozenset({"Blacklisted", "Dangerous"})
+
+
 @dataclass
 class VaultInfo:
     name: str
@@ -229,6 +233,12 @@ def filter_vault(
     # Never let the inclusion overrides admit a non-depositable sub-vault.
     if is_subvault(v):
         return False, f"subvault={v.name}"
+
+    # Never let a manual inclusion override reintroduce a blacklisted vault.
+    # ``excluded_risks`` is still configurable for more restrictive strategies,
+    # but these data-quality and safety labels are absolute exclusions.
+    if v.risk in NON_SELECTABLE_RISKS:
+        return False, f"risk={v.risk}"
 
     if v.must_include:
         return True, "must_include"

@@ -16,7 +16,14 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.redemption import RedemptionBlockReason, RedemptionCheckResult, RedemptionCheckStage
+from tradeexecutor.strategy.redemption import (
+    DepositBlockReason,
+    DepositCheckResult,
+    DepositCheckStage,
+    RedemptionBlockReason,
+    RedemptionCheckResult,
+    RedemptionCheckStage,
+)
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
 logger = logging.getLogger(__name__)
@@ -336,14 +343,37 @@ class VaultPricing(PricingModel):
         ts: datetime.datetime | None,
         pair: TradingPairIdentifier,
     ) -> bool:
+        return self.check_deposit(ts, pair).can_deposit
+
+    def check_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+        *,
+        stage: DepositCheckStage = DepositCheckStage.unknown,
+    ) -> DepositCheckResult:
+        """Explain whether a vault currently accepts a deposit request."""
+        result = DepositCheckResult(
+            timestamp=ts,
+            stage=stage,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+        )
         can_create_request = self._can_create_deposit_request(pair)
         if can_create_request is False:
-            return False
+            result.can_deposit = False
+            result.reason_code = DepositBlockReason.deposit_request_unavailable
+            result.message = "Vault deposit manager does not currently accept a deposit request"
+            return result
 
         max_deposit = self.get_max_deposit(ts, pair)
-        if max_deposit is None:
-            return True
-        return max_deposit > 0
+        result.max_deposit = float(max_deposit) if max_deposit is not None else None
+        if max_deposit is not None and max_deposit <= 0:
+            result.can_deposit = False
+            result.reason_code = DepositBlockReason.vault_max_deposit_zero
+            result.message = "Vault reports zero maxDeposit capacity for this owner"
+
+        return result
 
     def check_redemption(
         self,

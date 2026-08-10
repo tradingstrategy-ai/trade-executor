@@ -66,6 +66,12 @@ IGNORE_REASON_LACKS_FEE_DATA = "lacks_fee_data"
 IGNORE_REASON_REQUIRES_WHITELIST = "requires_whitelist"
 
 
+#: Ignore reason for a vault that the data pipeline classifies as blacklisted.
+#:
+#: The pair remains visible for diagnostics, but no strategy may allocate to it.
+IGNORE_REASON_BLACKLISTED_VAULT = "blacklisted_vault"
+
+
 #: Vault feature flags that mark a two-stage (request/claim) deposit and
 #: redemption flow. Capital sent to such a vault is queued until the vault
 #: operator or epoch settles the request - see
@@ -966,7 +972,8 @@ class TradingPairIdentifier:
           so no new position is entered, while any existing position can still be exited
 
         - Known values: :py:data:`IGNORE_REASON_LACKS_FEE_DATA`,
-          :py:data:`IGNORE_REASON_REQUIRES_WHITELIST`
+          :py:data:`IGNORE_REASON_REQUIRES_WHITELIST`,
+          :py:data:`IGNORE_REASON_BLACKLISTED_VAULT`
 
         - See :py:meth:`set_ignore_reason`
 

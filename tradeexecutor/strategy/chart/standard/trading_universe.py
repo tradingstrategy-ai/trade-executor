@@ -19,6 +19,7 @@ def available_trading_pairs(
     age_included_pair_count="age_included_pair_count",
     trading_pair_count="trading_pair_count",
     whitelisted_vault_pair_count="whitelisted_vault_pair_count",
+    blacklisted_vault_pair_count="blacklisted_vault_pair_count",
     with_dataframe: bool = False,
 ) -> Figure | tuple[Figure, pd.DataFrame]:
     """Render a chart showing the number of trading pairs available for the strategy to trade over history.
@@ -31,6 +32,8 @@ def available_trading_pairs(
     :param trading_pair_count: Indicator name for total trading pairs available.
     :param whitelisted_vault_pair_count: Optional indicator counting visible
         vaults that require depositor allow-list approval and cannot be allocated.
+    :param blacklisted_vault_pair_count: Optional indicator counting visible
+        vaults accidentally included despite a producer Blacklisted risk label.
     :param with_dataframe: If True, return both DataFrame and Figure.
     """
 
@@ -61,6 +64,26 @@ def available_trading_pairs(
     except IndicatorNotFound:
         whitelisted_vaults = None
 
+    try:
+        indicator_data.resolve_indicator_data(
+            blacklisted_vault_pair_count,
+            unlimited=True,
+        )
+        blacklisted_vaults = indicator_data.get_indicator_series(blacklisted_vault_pair_count)
+    except IndicatorNotFound:
+        blacklisted_pair_ids = {
+            pair.internal_id
+            for pair in input.strategy_universe.iterate_pairs()
+            if pair.other_data.get("blacklisted_vault")
+        }
+        if blacklisted_pair_ids:
+            candle_series = input.strategy_universe.data_universe.candles.df["open"]
+            blacklisted_vaults = candle_series.groupby(level="timestamp").apply(
+                lambda x: len(set(x.index.get_level_values("pair_id")) & blacklisted_pair_ids)
+            )
+        else:
+            blacklisted_vaults = None
+
     data = {}
 
     data["Inclusion criteria met (all)"] = indicator_data.get_indicator_series(all_criteria_included_pair_count)
@@ -76,6 +99,9 @@ def available_trading_pairs(
 
     if whitelisted_vaults is not None:
         data["Whitelisted vaults (cannot allocate)"] = indicator_data.get_indicator_series(whitelisted_vault_pair_count)
+
+    if blacklisted_vaults is not None:
+        data["Blacklisted vaults (cannot allocate)"] = blacklisted_vaults
 
     # df = pd.DataFrame({
     #    : indicator_data.get_indicator_series(all_criteria_included_pair_count),
