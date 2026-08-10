@@ -201,7 +201,9 @@ def _sync_hypercore_vault_positions(
                 native_token_price=0.0,
                 force=True,
             )
-            state.portfolio.close_position(position, valued_at)
+            # Accounting correction: the onchain balance is gone, so the book-close is the
+            # intended outcome and the offsetting correction is recorded separately.
+            state.portfolio.close_position(position, valued_at, allow_value_destruction=True)
 
             logger.info(
                 "Closed phantom vault position %d with repair trade %d",
