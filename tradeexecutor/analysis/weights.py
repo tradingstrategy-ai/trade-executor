@@ -243,23 +243,26 @@ def visualise_weights(
 
     if not include_reserves:
         # Filter out reserve/credit position
+        excluded_symbols = set(non_volatile_symbols) | set(vault_symbols) | set(pending_settlement_symbols)
         weights_series = weights_series[
-            ~(weights_series.index.get_level_values(1).isin(non_volatile_symbols) | weights_series.index.get_level_values(1).isin(vault_symbols))
+            ~weights_series.index.get_level_values(1).isin(excluded_symbols)
         ]
 
     def sort_key_reserve_first(col_name):
         if col_name in extra_sort_order:
-            return extra_sort_order[col_name], col_name
+            return extra_sort_order[col_name], col_name, 0
         if col_name == reserve_asset_symbol:
-            return -1000, col_name
+            return -1000, col_name, 0
         elif col_name in non_volatile_symbols:
-            return -500, col_name
-        elif col_name in vault_symbols:
-            return -200, col_name
+            return -500, col_name, 0
         elif col_name in pending_settlement_symbols:
-            return -199, col_name
+            # Keep an unsettled claim directly above its matching settled vault
+            # allocation in the stacked area chart.
+            return -200, col_name.removesuffix(PENDING_SETTLEMENT_LABEL_SUFFIX), 1
+        elif col_name in vault_symbols:
+            return -200, col_name, 0
 
-        return 0, col_name
+        return 0, col_name, 0
 
     # Unstack to create DataFrame with asset symbols as columns
     df = weights_series.unstack(level=1)

@@ -13,6 +13,7 @@ from tradingstrategy.vault import VaultMetadata
 
 from tradeexecutor.analysis.multipair import calculate_pair_annualised_average_yield
 from tradeexecutor.analysis.weights import (
+    PENDING_SETTLEMENT_LABEL_SUFFIX,
     calculate_asset_weights,
     calculate_weights_statistics,
     get_pending_settlement_asset_label,
@@ -247,8 +248,9 @@ def build_asset_weight_legend_entries(state: State) -> list[AssetWeightLegendEnt
 def make_asset_weight_legend_sort_key(state: State) -> Callable[[str, float], tuple]:
     """Build the default asset-weight legend row order.
 
-    Keeps the reserve asset first and queue venues second,
-    then sorts directional holdings by descending allocation.
+    Keeps the reserve asset first and queue venues second. Directional vaults
+    are grouped by label, with each pending-settlement claim immediately after
+    its settled vault allocation.
     """
     reserve_symbol = state.portfolio.get_default_reserve_asset()[0].token_symbol
     queue_labels = {
@@ -264,7 +266,14 @@ def make_asset_weight_legend_sort_key(state: State) -> Callable[[str, float], tu
             priority = 1
         else:
             priority = 2
-        return priority, -allocation_pct, label
+
+        is_pending_settlement = label.endswith(PENDING_SETTLEMENT_LABEL_SUFFIX)
+        vault_label = label.removesuffix(PENDING_SETTLEMENT_LABEL_SUFFIX)
+
+        # Group the claim immediately after its settled allocation. We use the
+        # base vault label for group ordering because the pending claim's own
+        # allocation can otherwise separate it from the vault it belongs to.
+        return priority, vault_label, is_pending_settlement
 
     return sort_key
 

@@ -280,3 +280,36 @@ def test_visualise_weights_pending_settlement_is_solid_vault_segment():
     assert traces[vault_label].fillpattern.shape == "x"
     assert traces[pending_label].fillpattern.shape == ""
     assert traces[pending_label].fillcolor == traces[vault_label].fillcolor
+
+
+def test_visualise_weights_groups_pending_settlement_after_its_vault():
+    """A pending claim follows its settled vault instead of all other vaults."""
+    timestamp = pd.Timestamp("2024-01-01")
+    alpha_label = "Alpha vault"
+    beta_label = "Beta vault"
+    alpha_pending_label = get_pending_settlement_asset_label(alpha_label)
+    weights_series = pd.Series(
+        [5.0, 40.0, 30.0, 25.0],
+        index=pd.MultiIndex.from_tuples(
+            [
+                (timestamp, "USDC"),
+                (timestamp, alpha_label),
+                (timestamp, beta_label),
+                (timestamp, alpha_pending_label),
+            ],
+            names=["timestamp", "asset"],
+        ),
+    )
+    weights_series.attrs["reserve_asset_symbol"] = "USDC"
+    weights_series.attrs["credit_supply_symbols"] = []
+    weights_series.attrs["vault_symbols"] = [alpha_label, beta_label]
+    weights_series.attrs["pending_settlement_symbols"] = [alpha_pending_label]
+
+    fig = visualise_weights(weights_series, normalised=False)
+
+    assert [trace.name for trace in fig.data] == [
+        "USDC",
+        alpha_label,
+        alpha_pending_label,
+        beta_label,
+    ]
