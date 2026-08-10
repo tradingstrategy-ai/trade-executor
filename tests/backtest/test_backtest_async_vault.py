@@ -828,7 +828,7 @@ def test_backtest_async_vault_settlement_due_defaults():
     lagoon_pair = _make_pair("VLAG", "0x" + "ee" * 20, {ERC4626Feature.lagoon_like}, 704)
     lagoon_pair.other_data["vault_estimated_settlement"] = datetime.timedelta(days=5)
     d2_pair = _make_pair("VD2", "0x" + "ff" * 20, {ERC4626Feature.d2_like}, 705)
-    plutus_pair = _make_pair("VPLU", "0x" + "ab" * 20, {ERC4626Feature.plutus_like}, 706)
+    plutus_pair = _make_pair("VPLU", "0x" + "ab" * 20, {ERC4626Feature.erc_7540_like, ERC4626Feature.plutus_like}, 706)
     override_only_pair = _make_pair("VOVR", VAULT_C_ADDRESS, None, 702)
     plain_pair = _make_pair("VPLAIN", "0x" + "dd" * 20, None, 703)
 

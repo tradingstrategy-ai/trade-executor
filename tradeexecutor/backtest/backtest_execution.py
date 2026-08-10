@@ -409,6 +409,11 @@ class BacktestExecution(ExecutionModel):
             return False
         if pair.pool_address and pair.pool_address.lower() in self.vault_settlement_delay_overrides:
             return True
+        features = pair.get_vault_features() or set()
+        if ERC4626Feature.plutus_like in features:
+            # Plutus Hedge advertises ERC-7540 because redemptions are
+            # request/claim based. Deposits still mint shares synchronously.
+            return is_buy is not True
         if is_buy is True:
             return pair.is_async_vault()
         if is_buy is False:
