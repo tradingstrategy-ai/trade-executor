@@ -82,6 +82,17 @@ HOVER_KEY_METRICS = (
     "Longest DD Days",
 )
 
+#: :py:data:`METRIC_REGISTRY` entries a result may legitimately not carry.
+#:
+#: QuantStats reports these only in ``full`` mode, so they are absent whenever
+#: :py:func:`~tradeexecutor.analysis.advanced_metrics.calculate_advanced_metrics`
+#: falls back to ``basic`` - a crashed backtest, or one that never opened a
+#: position. Every other registered metric appears in both modes, so its absence
+#: means the result itself is broken and should not be quietly tabulated.
+OPTIONAL_METRICS = frozenset({
+    "Expected Shortfall (cVaR)",
+})
+
 HOVER_PERCENT_METRICS = (
     "CAGR﹪",
     "Max Drawdown",
@@ -157,8 +168,12 @@ def _read_metric(r: GridSearchResult, metric_name: str) -> float:
     :py:func:`~tradeexecutor.analysis.advanced_metrics.calculate_advanced_metrics`
     for when the metric set shrinks; a crashed backtest and a backtest that never
     opened a position both land there. Such a result still belongs in the table
-    with its parameters intact, so a missing metric reads as NaN rather than
-    raising.
+    with its parameters intact, so a metric in :py:data:`OPTIONAL_METRICS` reads
+    as NaN rather than raising.
+
+    Absence of any other registered metric is not an expected outcome - it means
+    the result is corrupt or QuantStats has changed - and blanking that cell
+    would hide it behind a table that still looks complete.
 
     :param r:
         Grid search result to read from.
@@ -167,9 +182,16 @@ def _read_metric(r: GridSearchResult, metric_name: str) -> float:
         QuantStats metric row label, e.g. ``Sharpe``.
 
     :return:
-        Metric value, or NaN when this result does not carry that metric.
+        Metric value, or NaN when this result does not carry that optional metric.
+
+    :raise AssertionError:
+        If a metric outside :py:data:`OPTIONAL_METRICS` is missing.
     """
     if metric_name not in r.metrics.index:
+        assert metric_name in OPTIONAL_METRICS, (
+            f"Metric {metric_name} missing from a result expected to carry it. "
+            f"Result has: {list(r.metrics.index)}"
+        )
         return np.nan
 
     return clean_metric(r.metrics.loc[metric_name].iloc[0])
@@ -772,9 +794,23 @@ def visualise_grid_search_equity_curves(*args, **kwags):
 
 def order_grid_search_results_by_metric(results: List[GridSearchResult], metric: str = 'Cumulative Return') -> List[GridSearchResult]:
     """Order grid search results by a metric. Default is Cumulative Return.
-    
+
+    Results that do not carry the metric sort last. A crashed backtest is the
+    usual case - it has no `full` mode metrics at all, see
+    :py:func:`~tradeexecutor.analysis.advanced_metrics.calculate_advanced_metrics` -
+    and ranking a whole result set should not abort because one member of it
+    failed.
+
     :param results: List of GridSearchResult
     :param metric: Metric to order by. Default is 'Cumulative Return'
-    :return: List of GridSearchResult ordered by the metric
+    :return: List of GridSearchResult ordered by the metric, best first
     """
-    return sorted(results, key=lambda x: x.get_metric(metric), reverse=True)
+
+    def sort_key(r: GridSearchResult) -> float:
+        value = r.get_metric_or_nan(metric)
+        # NaN compares False against everything, which would leave results
+        # missing the metric scattered through the ordering rather than at
+        # the end of it.
+        return -np.inf if pd.isna(value) else value
+
+    return sorted(results, key=sort_key, reverse=True)

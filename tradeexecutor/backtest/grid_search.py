@@ -520,12 +520,37 @@ class GridSearchResult:
             The metric set is not fixed - see
             :py:func:`~tradeexecutor.analysis.advanced_metrics.calculate_advanced_metrics`.
             Asking for one metric by name should fail loudly, which is why this
-            asserts; code sweeping many metrics for a table wants NaN instead.
+            asserts. Use :py:meth:`get_metric_or_nan` when reading a metric that
+            may legitimately be absent, such as anything QuantStats only reports
+            in ``full`` mode.
         """
 
         series = self.metrics["Strategy"]
         assert name in self.metrics.index, f"Metric {name} not available. We have: {series.index}"
         return series[name]
+
+    def get_metric_or_nan(self, name: str) -> float:
+        """Get a performance metric, or NaN when this result does not carry it.
+
+        The tolerant counterpart of :py:meth:`get_metric`. Use it when the caller
+        already handles a missing value and would rather skip the result than
+        abort - reading an optional metric across a whole result set, where one
+        crashed backtest should not take down the other 239.
+
+        See :py:func:`~tradeexecutor.analysis.advanced_metrics.calculate_advanced_metrics`
+        for why the metric set varies.
+
+        :param name:
+            See quantstats for examples
+
+        :return:
+            Performance metrics value, or NaN if this result does not have it
+        """
+
+        if name not in self.metrics.index:
+            return np.nan
+
+        return self.metrics["Strategy"][name]
 
     def get_trade_summary_metric(self, name: str) -> float:
         """Return one of the trade summart metrics.

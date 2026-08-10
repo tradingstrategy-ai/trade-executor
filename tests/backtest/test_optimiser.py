@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List
 from unittest.mock import Mock
 
+import numpy as np
 import pandas as pd
 import pandas_ta
 import pytest
@@ -259,13 +260,31 @@ def _mock_grid_search_result(
     metrics: dict[str, float],
     cagr: float = 0.25,
 ) -> Mock:
+    """Stand in for a GridSearchResult carrying a chosen metric set.
+
+    Mocked rather than backtested because the search functions are pure metric
+    arithmetic: running a real backtest to produce a Sharpe of 0.84 would test
+    the backtester, not the objective.
+
+    `get_metric()` raises on an absent metric and `get_metric_or_nan()` returns
+    NaN, matching the real accessors - the difference is what a crashed backtest
+    exercises.
+    """
     result = Mock()
     result.get_metric.side_effect = lambda name: metrics[name]
+    result.get_metric_or_nan.side_effect = lambda name: metrics.get(name, np.nan)
     result.get_cagr.return_value = cagr
     return result
 
 
 def test_extended_optimiser_search_functions():
+    """The extended search functions score a result from its metrics.
+
+    1. Score a healthy result with every extended objective
+    2. Score a crashed result, which carries none of the `full` mode metrics
+    """
+
+    # 1. Score a healthy result with every extended objective
     result = _mock_grid_search_result({
         "Prob. Sharpe Ratio": 0.84,
         "Ulcer Index": 0.125,
@@ -292,6 +311,14 @@ def test_extended_optimiser_search_functions():
     upi = optimise_ulcer_performance(result)
     assert upi.negative is True
     assert upi.get_original_value() == pytest.approx(2.0)
+
+    # 2. Score a crashed result, which carries none of the `full` mode metrics
+    # cVaR is the objective that reads one. It reaches the search function before any
+    # result filter runs, so it must skip the result rather than abort the optimisation.
+    crashed = _mock_grid_search_result({})
+    cvar = optimise_cvar(crashed)
+    assert cvar.negative is False
+    assert cvar.get_original_value() == pytest.approx(0)
 
 
 def test_extended_target_metric_mapping():

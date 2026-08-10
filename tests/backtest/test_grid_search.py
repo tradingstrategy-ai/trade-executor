@@ -874,8 +874,11 @@ def test_analyse_grid_search_result_with_crashed_result(
     assert healthy_row["Positions"] > 0
 
     # 6. Check the table still renders
+    # `to_html()` is what actually applies the formatters and gradients - constructing the
+    # Styler alone would not catch a formatter that chokes on the NaN cell.
     styler = render_grid_search_result_table(table, extended_metrics=True)
     assert isinstance(styler, Styler)
+    assert "cVaR" in styler.to_html()
 
 
 def test_grid_out_of_balance(
