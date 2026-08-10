@@ -140,19 +140,25 @@ def calculate_pnl(
     unrealised_pnl = (mark_price * float(position.get_quantity())) - cumulative_cost
 
     duration = (end_at - position.opened_at)
-    assert duration > datetime.timedelta(0), f"Position {position} has a negative duration: {duration}, opened at {position.opened_at}, closed at {end_at}"
-    annualised_periods = datetime.timedelta(days=365) / duration
+    assert duration >= datetime.timedelta(0), f"Position {position} has a negative duration: {duration}, opened at {position.opened_at}, closed at {end_at}"
     profit_usd = realised_pnl_total + unrealised_pnl
     profit_pct = (profit_usd / cumulative_value) if cumulative_value else 0
 
-    try:
-        profit_pct_annualised = (1 + profit_pct) ** annualised_periods - 1
-    except OverflowError as e:
-        # If we make a very short position (few hours) and make gains like 4%,
-        # Python floating point will overflow when calculating annualised profit.
-        profit_pct_annualised = math.copysign(max_annualised_profit, profit_pct)
-    except Exception as e:
-        raise RuntimeError(f"Failed to annualise profit_pct {profit_pct} for position {position} with duration {duration}, periods {annualised_periods}") from e
+    if duration == datetime.timedelta(0):
+        # Backtests recorded at daily precision can open and close a position in
+        # one candle. The annualised return is unbounded, so use the same cap
+        # as an overflowing very-short holding period.
+        profit_pct_annualised = math.copysign(max_annualised_profit, profit_pct) if profit_pct else 0
+    else:
+        annualised_periods = datetime.timedelta(days=365) / duration
+        try:
+            profit_pct_annualised = (1 + profit_pct) ** annualised_periods - 1
+        except OverflowError as e:
+            # If we make a very short position (few hours) and make gains like 4%,
+            # Python floating point will overflow when calculating annualised profit.
+            profit_pct_annualised = math.copysign(max_annualised_profit, profit_pct)
+        except Exception as e:
+            raise RuntimeError(f"Failed to annualise profit_pct {profit_pct} for position {position} with duration {duration}, periods {annualised_periods}") from e
 
     return ProfitData(
         profit_pct=profit_pct,

@@ -10,7 +10,7 @@ from _decimal import Decimal
 from decimal import Decimal
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
-from tradeexecutor.state.types import Percent
+from tradeexecutor.state.types import Percent, USDollarPrice
 from tradeexecutor.utils.accuracy import COLLATERAL_EPSILON
 
 #: The absolute number of tokens we consider the value to be zero
@@ -53,6 +53,15 @@ DEFAULT_VAULT_EPSILON = Decimal(10 ** -6)
 #: Keep this above HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 1_500_000 raw
 #: ($1.50 in 6-decimal USDC) so can_be_closed() recognises the intentional
 #: residual as dust and the runner can auto-close it before account checks.
+#:
+#: .. warning::
+#:
+#:     This threshold is denominated in **US dollars**, not in vault share units.
+#:     Callers comparing it against a position quantity must convert it first with
+#:     :py:func:`convert_usd_close_epsilon_to_quantity`. For vaults whose share price is
+#:     near 1 USD the two happen to coincide, which is why the distinction went unnoticed;
+#:     for a share priced at 12.78 USD, treating "2.00" as share units makes the dust
+#:     threshold 25.56 USD instead of 2.00 USD.
 HYPERLIQUID_VAULT_CLOSE_EPSILON = Decimal("2.00")
 
 #: A HyperCore small-position cleanup residual above this amount can still
@@ -66,6 +75,20 @@ HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM = (
 )
 
 HYPERLIQUID_VAULT_CLOSE_EPSILON_CAPITAL_PCT = Decimal("0.005")
+
+#: Absolute ceiling, in US dollars, for the capital-scaled Hypercore close epsilon.
+#:
+#: Hypercore withdrawal dust is caused by an *absolute* safety margin of ~1.50 USDC
+#: subtracted from live equity, so it does not grow with the strategy. Scaling the
+#: threshold by ``initial_cash`` was intended to give larger strategies a little more
+#: slack, but without a ceiling a 150,000 USD strategy gets a 750 USD "dust" threshold -
+#: five hundred times the residual it is supposed to absorb, and comfortably large enough
+#: to swallow a real position.
+#:
+#: 50 USD is ~33x the observed withdrawal margin and far below any position this strategy
+#: family opens, so it keeps the intended slack without letting the threshold reach
+#: economically meaningful sizes.
+HYPERLIQUID_VAULT_CLOSE_EPSILON_MAX_USD = Decimal("50.00")
 
 #: Hypercore vault equities fluctuate every block due to active trading
 #: inside the vault, and live cycles can spend a long time in sequential
@@ -104,17 +127,56 @@ def get_dust_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
 
 
 def get_hyperliquid_vault_close_epsilon(initial_cash: float | None = None) -> Decimal:
-    """Get a Hypercore vault close epsilon from a strategy module's initial cash.
+    """Get a Hypercore vault close epsilon, in **US dollars**, from a strategy's initial cash.
 
-    A strategy with initial cash uses 0.5% of that value. Strategies without
-    configured initial cash retain the default close epsilon.
+    A strategy with initial cash uses 0.5% of that value, clamped between the default
+    safety-margin floor and :py:data:`HYPERLIQUID_VAULT_CLOSE_EPSILON_MAX_USD`. Strategies
+    without configured initial cash retain the default close epsilon.
+
+    ``initial_cash`` is a strategy-module input and can differ materially from live
+    strategy equity, so the clamp is what stops a large configured bankroll turning the
+    dust threshold into a real position size.
+
+    :return:
+        Dust threshold in US dollars. Convert with
+        :py:func:`convert_usd_close_epsilon_to_quantity` before comparing to a quantity.
     """
-    # TODO: Clamp the percentage-derived threshold between the default safety
-    # margin floor and a safe absolute maximum. initial_cash is a backtest input
-    # and can differ materially from live strategy equity.
     if initial_cash is None or initial_cash <= 0:
         return HYPERLIQUID_VAULT_CLOSE_EPSILON
-    return Decimal(str(initial_cash)) * HYPERLIQUID_VAULT_CLOSE_EPSILON_CAPITAL_PCT
+
+    scaled = Decimal(str(initial_cash)) * HYPERLIQUID_VAULT_CLOSE_EPSILON_CAPITAL_PCT
+    return min(max(scaled, HYPERLIQUID_VAULT_CLOSE_EPSILON), HYPERLIQUID_VAULT_CLOSE_EPSILON_MAX_USD)
+
+
+def convert_usd_close_epsilon_to_quantity(
+    epsilon_usd: Decimal,
+    price: USDollarPrice | None,
+) -> Decimal:
+    """Convert a USD-denominated close epsilon into base token units.
+
+    :py:meth:`TradingPosition.can_be_closed` compares the close epsilon against a position
+    *quantity*, so a USD threshold has to be divided by the share price first. Skipping the
+    conversion silently scales the threshold by the share price: at a 12.78 USD share price
+    a 750 USD threshold becomes 750 *shares* worth 9,585 USD, and any position below that
+    is written off as dust the moment it is opened.
+
+    :param epsilon_usd:
+        Dust threshold in US dollars.
+
+    :param price:
+        Current mark price of one base token, in US dollars.
+
+    :return:
+        Dust threshold in base token units.
+
+        When the price is unknown or non-positive the conversion is impossible, and this
+        falls back to :py:data:`DEFAULT_VAULT_EPSILON` rather than to the unconverted USD
+        figure. Leaving a dust position open is recoverable on a later cycle; closing a
+        funded position is not.
+    """
+    if not price or price <= 0:
+        return DEFAULT_VAULT_EPSILON
+    return epsilon_usd / Decimal(str(price))
 
 
 def configure_hyperliquid_vault_close_epsilon(

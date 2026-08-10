@@ -342,7 +342,8 @@ def close_hypercore_duplicate_clone(
     )
     clone_position.other_data["closed_duplicate_survivor_position_id"] = survivor_position.position_id
     clone_position.other_data["hypercore_duplicate_close_reason"] = candidate.close_reason
-    portfolio.close_position(clone_position, now)
+    # Repair tooling: the duplicate position is being removed on purpose.
+    portfolio.close_position(clone_position, now, allow_value_destruction=True)
     logger.info(
         "Closed Hypercore duplicate clone position #%d with repair trade #%d and kept survivor #%d for vault %s at %s",
         clone_position.position_id,
@@ -522,7 +523,9 @@ def close_position_with_empty_trade(portfolio: Portfolio, p: TradingPosition) ->
     opening_trade.add_note(f"Repaired at {now.strftime('%Y-%m-%d %H:%M')}, by #{c.trade_id}")
     c.add_note(f"Repairing to close the position, full position size gone missing")
 
-    portfolio.close_position(position, native_datetime_utc_now())
+    # Repair tooling: the whole position size has gone missing onchain, and the repair
+    # trade above books the loss.
+    portfolio.close_position(position, native_datetime_utc_now(), allow_value_destruction=True)
 
     # The position is now cleared
     assert p.is_closed()

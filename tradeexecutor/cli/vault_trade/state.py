@@ -727,8 +727,9 @@ def record_attempt_result(
     position.other_data["vault_test_attempt"] = attempt
 
     # Diagnostic positions never represent live holdings, so close them at the
-    # same timestamp at which they were created.
-    state.portfolio.close_position(position, now)
+    # same timestamp at which they were created. Deliberate book-close: a test-trade
+    # position may still carry a nominal valuation and holds nothing real.
+    state.portfolio.close_position(position, now, allow_value_destruction=True)
     return position
 
 
@@ -870,7 +871,8 @@ def close_simulated_positions(
             if outcome_data:
                 attempt["outcome_data"] = outcome_data
         if position.is_open():
-            state.portfolio.close_position(position, now)
+            # Deliberate book-close of a diagnostic test-trade position.
+            state.portfolio.close_position(position, now, allow_value_destruction=True)
 
 
 def merge_simulated_attempt(
