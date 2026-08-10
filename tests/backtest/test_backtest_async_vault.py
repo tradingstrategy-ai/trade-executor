@@ -852,9 +852,9 @@ def test_backtest_async_vault_settlement_due_defaults():
     # 4. D2 and Plutus fall back to the documented average waiting estimate.
     assert execution._get_settlement_due(d2_pair, ts) == datetime.datetime(2024, 1, 15, 9, 30)
     assert execution._get_settlement_due(plutus_pair, ts) == datetime.datetime(2024, 1, 15, 9, 30)
-    assert not execution._is_async_vault(d2_pair, is_buy=True)
+    assert execution._is_async_vault(d2_pair, is_buy=True)
     assert execution._is_async_vault(d2_pair, is_buy=False)
-    assert not execution._is_async_vault(plutus_pair, is_buy=True)
+    assert execution._is_async_vault(plutus_pair, is_buy=True)
     assert execution._is_async_vault(plutus_pair, is_buy=False)
 
     # 5. Ostium vault: next day at the epoch settlement hour.
@@ -873,6 +873,56 @@ def test_backtest_async_vault_settlement_due_defaults():
     assert execution._is_async_vault(ostium_pair)
     assert execution._is_async_vault(override_only_pair)
     assert not execution._is_async_vault(plain_pair)
+
+
+@pytest.mark.timeout(300)
+@pytest.mark.parametrize("feature", [
+    ERC4626Feature.lagoon_like,
+    ERC4626Feature.d2_like,
+    ERC4626Feature.plutus_like,
+])
+def test_backtest_protocol_deposit_requires_historical_settlement_event(feature):
+    """D2, Plutus and Lagoon deposits need both delay and event evidence.
+
+    The request on 1 January has passed its two-day delay before the historical
+    event on 4 January. It must remain in the queue until that event is visible;
+    an old event from before the request must not release it.
+    """
+    strategy_universe, pairs = _make_multi_vault_universe([
+        ("VQUEUE", "0x" + "f1" * 20, {feature}),
+    ])
+    pair = pairs["VQUEUE"]
+    old_event = START_AT - datetime.timedelta(days=1)
+    actual_event = START_AT + datetime.timedelta(days=3)
+    strategy_universe.vault_state = pd.DataFrame([
+        {
+            "timestamp": START_AT,
+            "pair_id": pair.internal_id,
+            "address": pair.pool_address,
+            "vault_settlement_at": old_event,
+        },
+        {
+            "timestamp": actual_event,
+            "pair_id": pair.internal_id,
+            "address": pair.pool_address,
+            "vault_settlement_at": actual_event,
+        },
+    ])
+
+    def deposit_once(input: StrategyInput) -> list[TradeExecution]:
+        if not list(input.state.portfolio.get_all_trades()):
+            return input.get_position_manager().open_spot(pair, value=INITIAL_DEPOSIT * 0.5)
+        return []
+
+    state, _, _ = _run(
+        strategy_universe,
+        decide=deposit_once,
+        delay_overrides={pair.pool_address: datetime.timedelta(days=2)},
+    )
+    trade = next(iter(state.portfolio.get_all_trades()))
+    assert trade.is_success()
+    assert trade.executed_at >= actual_event
+    assert trade.other_data["vault_settlement_historical_event_at"] == actual_event.isoformat()
 
 
 def _get_pending_windows(state: State) -> dict[int, list[tuple[datetime.datetime, datetime.datetime | None]]]:

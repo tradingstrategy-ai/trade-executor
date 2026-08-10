@@ -397,9 +397,9 @@ class BacktestExecution(ExecutionModel):
         """Does this vault trade use a delayed settlement flow in backtest?
 
         True if the pair has an explicit settlement-delay override, or its vault
-        features mark it as ERC-7540 / Lagoon / Ostium style. D2 and Plutus
-        deposits stay synchronous, but their redemption proceeds are delayed
-        for conservative allocation modelling.
+        features mark it as ERC-7540 / Lagoon / Ostium style. D2, Plutus and
+        Lagoon deposits additionally require a recorded historical settlement
+        event after their minimum average-delay floor.
 
         :param is_buy:
             Trade direction. ``None`` answers whether either vault flow may be
@@ -410,15 +410,33 @@ class BacktestExecution(ExecutionModel):
         if pair.pool_address and pair.pool_address.lower() in self.vault_settlement_delay_overrides:
             return True
         features = pair.get_vault_features() or set()
-        if ERC4626Feature.plutus_like in features:
-            # Plutus Hedge advertises ERC-7540 because redemptions are
-            # request/claim based. Deposits still mint shares synchronously.
-            return is_buy is not True
+        requires_historical_deposit_settlement = bool(features & {
+            ERC4626Feature.lagoon_like,
+            ERC4626Feature.d2_like,
+            ERC4626Feature.plutus_like,
+        })
         if is_buy is True:
-            return pair.is_async_vault()
+            return pair.is_async_vault() or requires_historical_deposit_settlement
         if is_buy is False:
             return pair.has_delayed_vault_redemption()
-        return pair.is_async_vault() or pair.has_delayed_vault_redemption()
+        return pair.is_async_vault() or pair.has_delayed_vault_redemption() or requires_historical_deposit_settlement
+
+    @staticmethod
+    def _requires_historical_deposit_settlement(pair) -> bool:
+        """Does a backtest deposit need a real historical settlement marker?
+
+        A clock-only approximation would make a queued D2, Plutus or Lagoon
+        deposit investable when the protocol did not settle it. Keep the
+        request pending until the historical feed records an actual event.
+        """
+        if not pair.is_vault():
+            return False
+        features = pair.get_vault_features() or set()
+        return bool(features & {
+            ERC4626Feature.lagoon_like,
+            ERC4626Feature.d2_like,
+            ERC4626Feature.plutus_like,
+        })
 
     def _get_settlement_due(self, pair, ts: datetime.datetime) -> datetime.datetime:
         """When does an async vault request made at ``ts`` become claimable?
@@ -505,6 +523,8 @@ class BacktestExecution(ExecutionModel):
 
         settles_at = self._get_settlement_due(trade.pair, ts)
         trade.other_data["vault_settlement_estimated_at"] = settles_at.isoformat()
+        if trade.is_buy() and self._requires_historical_deposit_settlement(trade.pair):
+            trade.other_data["vault_settlement_historical_event_required"] = True
         # mark_vault_settlement_pending() sets vault_settlement_pending_at,
         # vault_async_flow, vault_chain_id and vault_direction. No protocol
         # ticket data exists in backtest.
@@ -559,6 +579,19 @@ class BacktestExecution(ExecutionModel):
             if settles_at > ts:
                 # Settlement delay has not elapsed yet — leave it pending.
                 continue
+            if trade.other_data.get("vault_settlement_historical_event_required"):
+                event_at = None
+                if pricing_model is not None and hasattr(pricing_model, "get_vault_settlement_event_at"):
+                    event_at = pricing_model.get_vault_settlement_event_at(ts, trade.pair)
+                if event_at is not None:
+                    trade.other_data["vault_settlement_last_historical_event_at"] = event_at.isoformat()
+                requested_at = trade.vault_settlement_pending_at
+                if event_at is None or event_at <= requested_at or event_at < settles_at:
+                    # A D2, Plutus or Lagoon deposit is not allocated merely
+                    # because its average delay elapsed. It needs an actual
+                    # historical settlement event after this request's delay.
+                    continue
+                trade.other_data["vault_settlement_historical_event_at"] = event_at.isoformat()
             self._settle_async_vault_trade(state, trade, ts, pricing_model)
             resolved.append(trade)
 

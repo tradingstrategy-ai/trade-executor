@@ -158,6 +158,16 @@ class GenericPricing(PricingModel):
         route = self.route(pair)
         return route.get_max_redemption(ts, pair)
 
+    def get_vault_settlement_event_at(
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier,
+    ) -> datetime.datetime | None:
+        """Route historical vault-settlement evidence to a backtest model."""
+        route = self.route(pair)
+        getter = getattr(route, "get_vault_settlement_event_at", None)
+        return getter(ts, pair) if getter is not None else None
+
     def can_deposit(
         self,
         ts: datetime.datetime | None,

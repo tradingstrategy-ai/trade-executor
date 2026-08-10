@@ -1,3 +1,4 @@
+import datetime
 from decimal import Decimal
 
 from tradeexecutor.ethereum.vault.vault_live_pricing import VaultPricing
@@ -71,6 +72,22 @@ def test_generic_pricing_delegates_can_deposit():
     assert can_deposit is False
     assert check.reason_code == DepositBlockReason.vault_deposits_closed
     assert check.message == "Child pricing model has closed deposits"
+
+
+def test_generic_pricing_delegates_historical_vault_settlement_event():
+    """The generic backtest route must preserve settlement evidence."""
+    event_at = datetime.datetime(2026, 1, 3, 12)
+
+    class SettlementPricingModel(DummyPricingModel):
+        def get_vault_settlement_event_at(self, ts, pair):
+            return event_at
+
+    class FakePairConfigurator:
+        def get_pricing(self, pair):
+            return SettlementPricingModel()
+
+    pricing_model = GenericPricing(FakePairConfigurator())
+    assert pricing_model.get_vault_settlement_event_at(datetime.datetime(2026, 1, 4), object()) == event_at
 
 
 def test_vault_pricing_check_deposit_records_request_and_cap_blocks(monkeypatch):

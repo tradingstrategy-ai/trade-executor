@@ -237,6 +237,7 @@ class BacktestPricing(PricingModel):
         # Each entry: pair_id → {"ts": int64 seconds, "deposits_open": int8, ...}
         self.vault_state = vault_state
         self._vault_state_arrays: dict[int, dict[str, np.ndarray]] = {}
+        self._vault_settlement_events: dict[int, np.ndarray] = {}
         if vault_state is not None and len(vault_state) > 0:
             for pair_id, group in vault_state.groupby("pair_id", sort=False):
                 group = group.sort_values("timestamp")
@@ -252,6 +253,11 @@ class BacktestPricing(PricingModel):
                 for col in ("deposit_closed_reason", "redemption_closed_reason"):
                     if col in group.columns:
                         entry[col] = group[col].to_numpy(dtype=object)
+                if "vault_settlement_at" in group.columns:
+                    settlement_column = pd.to_datetime(group["vault_settlement_at"])
+                    settlement_events = settlement_column.dropna().to_numpy(dtype="datetime64[s]")
+                    if len(settlement_events) > 0:
+                        self._vault_settlement_events[int(pair_id)] = np.unique(settlement_events)
                 self._vault_state_arrays[int(pair_id)] = entry
 
         # assert not three_leg_resolution
@@ -617,6 +623,27 @@ class BacktestPricing(PricingModel):
     def _lookup_cap(self, ts, pair: TradingPairIdentifier, key: str) -> Decimal | None:
         state = self._lookup_vault_state(ts, pair)
         return None if state is None else self._state_cap(state, key)
+
+    def get_vault_settlement_event_at(
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier,
+    ) -> datetime.datetime | None:
+        """Get the latest historical vault-settlement event visible at ``ts``.
+
+        The value is evidence only. Callers must ensure that it is after the
+        request and its minimum settlement delay, because a backfilled state
+        sample may carry an older event marker.
+        """
+        events = self._vault_settlement_events.get(pair.internal_id)
+        if events is None:
+            return None
+        event_seconds = events.astype("datetime64[s]").astype("int64")
+        query_seconds = int(pd.Timestamp(ts).timestamp())
+        idx = np.searchsorted(event_seconds, query_seconds, side="right") - 1
+        if idx < 0:
+            return None
+        return pd.Timestamp(events[idx]).to_pydatetime().replace(tzinfo=None)
 
     def get_max_deposit(
         self,
