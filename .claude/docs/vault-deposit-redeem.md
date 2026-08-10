@@ -130,6 +130,11 @@ settlement-aware:
   `pending_redemption_usd` diagnostics, shown as columns in the
   `format_signals()` table and the `alpha_model_diagnostics` chart, and the
   `pending_vault_settlements` chart plots the queued buffers over time.
+- A blocked buy also carries a serialisable `DepositCheckResult`: the stable
+  reason code, explanatory message, vault address, check stage and reported
+  capacity. This is retained on the signal and in missed-vault events, so a
+  later notebook can distinguish a closed window from a zero cap or an
+  unavailable request adapter.
 - Same-cycle financing is settlement-aware, via two complementary buy caps on
   `AlphaModel.generate_rebalance_trades_and_triggers()`. Rebalance buys are
   normally funded by the cycle's sells executing first, but some "sells" free no
@@ -233,6 +238,19 @@ test universes: the pairs DataFrame round-trip preserves the `VaultMetadata`
 object but drops a bare `vault_features` key, so synthetic pairs should carry
 their features in `VaultMetadata`.
 
+**Historical admission and settlement evidence.** Historical ERC-4626 state
+does not reliably express a new deposit request for Lagoon, Morpho V2 or
+Yearn. Backtests therefore keep those protocols open by default until their
+readers expose a protocol-specific admission signal; other vaults still honour
+an explicit closed marker or a zero hard cap. D2, Plutus and Lagoon deposits
+use the two-stage flow in backtests. Their reported `estimated_settlement`
+metadata is the minimum delay (D2 and Plutus use a documented 14-day fallback
+when it is absent). If the historical feed contains settlement observations,
+the deposit settles only after a qualifying observation after both the request
+and that delay. If the feed has no observations at all, the backtest settles
+after the estimate plus a conservative two-day grace period and records that
+fallback on the trade.
+
 The simulation mirrors the live lifecycle:
 
 - On the request cycle the trade is marked `vault_settlement_pending` with a
@@ -242,9 +260,11 @@ The simulation mirrors the live lifecycle:
   the redeem queue. The exact request amount is recorded on the trade and is
   the input for later settlement.
 - On each later cycle the backtest's settlement resolver (the same hook the
-  live runner calls) settles every trade whose due time has arrived. The
-  earliest a trade can settle is the *next* cycle, even with a zero delay,
-  because requests are created after the resolver step within a cycle.
+  live runner calls) settles every ordinary async trade whose due time has
+  arrived. D2, Plutus and Lagoon deposits additionally follow the historical
+  settlement-evidence rule above. The earliest a trade can settle is the *next*
+  cycle, even with a zero delay, because requests are created after the resolver
+  step within a cycle.
 - Settlement executes at the price valid *at settlement time*, not at request
   time, so a long queue delay realises whatever the share price did in
   between — exactly the economics the delay exists to model. After settling,
@@ -406,10 +426,12 @@ The execution layer, in trade-executor:
 | [tradeexecutor/ethereum/vault/settlement_retry.py](../../tradeexecutor/ethereum/vault/settlement_retry.py) | Live settlement resolver: poll, claim/reclaim, robust receipt wait and idempotent retry |
 | [tradeexecutor/strategy/execution_model.py](../../tradeexecutor/strategy/execution_model.py) | The polymorphic settlement hook called by the runner each cycle |
 | [tradeexecutor/backtest/backtest_execution.py](../../tradeexecutor/backtest/backtest_execution.py) | Simulated requests and delayed settlement; delay configuration |
+| [tradeexecutor/strategy/deposit_check.py](../../tradeexecutor/strategy/deposit_check.py) | Protocol-aware live and backtest deposit admission checks and reason capture |
 | [tradeexecutor/state/trade.py](../../tradeexecutor/state/trade.py), [state.py](../../tradeexecutor/state/state.py) | The `vault_settlement_pending` status and its bookkeeping |
 | [tradeexecutor/state/portfolio.py](../../tradeexecutor/state/portfolio.py), [position.py](../../tradeexecutor/state/position.py) | `get_vault_settlement_pending_value()` in equity; `has_pending_vault_settlement()` and the per-position pending value; available-quantity guard against double redemption |
 | [tradeexecutor/strategy/alpha_model.py](../../tradeexecutor/strategy/alpha_model.py) | Settlement-aware carry-forward pinning, pending-inclusive old weights, the `settlement_pending` rebalance skip, and the pending columns in `format_signals()` |
-| [tradeexecutor/strategy/chart/standard/vault.py](../../tradeexecutor/strategy/chart/standard/vault.py) | `pending_vault_settlements` chart: queued deposit/redemption buffers per cycle |
+| [tradeexecutor/strategy/chart/standard/vault.py](../../tradeexecutor/strategy/chart/standard/vault.py) | Pending settlement buffers and per-vault historical settlement observation table |
+| [tradeexecutor/strategy/chart/standard/weight.py](../../tradeexecutor/strategy/chart/standard/weight.py) | Asset bands and allocation-by-liquidity-state chart |
 | [tradeexecutor/strategy/asset.py](../../tradeexecutor/strategy/asset.py) | Escrow-aware expected balances for account reconciliation |
 | [tradeexecutor/ethereum/vault/vault_utils.py](../../tradeexecutor/ethereum/vault/vault_utils.py) | Turning a vault into a tradeable pair identifier |
 | [tradeexecutor/cli/loop.py](../../tradeexecutor/cli/loop.py) | Startup-time settlement retry (non-halting, unlike CCTP) |

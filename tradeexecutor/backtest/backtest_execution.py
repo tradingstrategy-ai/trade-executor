@@ -482,7 +482,6 @@ class BacktestExecution(ExecutionModel):
             # Preserve the original Ostium backtest approximation instead of
             # changing historical simulations when live vault intervals move.
             next_day = ts + datetime.timedelta(days=1)
-            next_day = ts + datetime.timedelta(days=1)
             return next_day.replace(hour=OSTIUM_BACKTEST_SETTLEMENT_HOUR, minute=0, second=0, microsecond=0)
 
         return ts + self.vault_settlement_delay

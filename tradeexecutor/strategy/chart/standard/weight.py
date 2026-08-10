@@ -217,40 +217,14 @@ def equity_curve_by_chain(input: ChartInput) -> tuple[Figure, pd.DataFrame]:
     return fig, df
 
 
-def _calculate_pending_settlements_by_timestamp(state: State) -> dict[object, float]:
-    """Calculate unsettled asynchronous vault deposits at each statistics timestamp."""
-    timestamps = [ps.calculated_at for ps in state.stats.portfolio]
-    last_timestamp = max(timestamps, default=None)
-    if last_timestamp is None:
+def _calculate_pending_settlements_by_timestamp(input: ChartInput) -> dict[object, float]:
+    """Reuse the asset-weight accounting for unsettled asynchronous deposits."""
+    weights = calculate_asset_weights(input.state)
+    pending_symbols = weights.attrs.get("pending_settlement_symbols", [])
+    if not pending_symbols:
         return {}
-
-    values: dict[object, float] = {timestamp: 0.0 for timestamp in timestamps}
-    for position in state.portfolio.get_all_positions(pending=True):
-        for trade in position.trades.values():
-            if not (trade.is_buy() and trade.other_data.get("vault_async_flow")):
-                continue
-
-            requested_at_raw = trade.other_data.get("vault_settlement_requested_at")
-            if requested_at_raw:
-                requested_at = pd.Timestamp(requested_at_raw).to_pydatetime()
-            else:
-                requested_at = trade.vault_settlement_pending_at or trade.started_at or trade.opened_at
-            if requested_at is None:
-                continue
-
-            if trade.is_success():
-                settled_at = trade.executed_at
-            elif trade.failed_at is not None:
-                settled_at = trade.failed_at
-            else:
-                settled_at = last_timestamp + pd.Timedelta(seconds=1)
-
-            value = float(trade.get_vault_settlement_request_reserve())
-            for timestamp in timestamps:
-                if requested_at <= timestamp < settled_at:
-                    values[timestamp] += value
-
-    return values
+    pending_weights = weights[weights.index.get_level_values(1).isin(pending_symbols)]
+    return pending_weights.groupby(level=0).sum().to_dict()
 
 
 def _calculate_waiting_deposits_by_timestamp(state: State) -> dict[object, float]:
@@ -303,7 +277,7 @@ def equity_curve_by_liquidity_state(input: ChartInput) -> tuple[Figure, pd.DataF
                 + position_stats.value
             )
 
-    pending_settlements = _calculate_pending_settlements_by_timestamp(state)
+    pending_settlements = _calculate_pending_settlements_by_timestamp(input)
     waiting_deposits = _calculate_waiting_deposits_by_timestamp(state)
     rows = []
     for portfolio_stats in state.stats.portfolio:

@@ -51,6 +51,7 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse, Uni
 from tradeexecutor.state.types import JSONHexAddress, Percent
 from tradeexecutor.strategy.pandas_trader.create_universe_wrapper import call_create_trading_universe
 from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.vault_risk import mark_blacklisted_vaults_ignored
 
 from tradeexecutor.strategy.dex_data_translation import translate_trading_pair, translate_credit_reserve, translate_token
 logger = logging.getLogger(__name__)
@@ -1545,8 +1546,6 @@ class TradingStrategyUniverse(StrategyExecutionUniverse):
 
         # Retain producer-blacklisted vaults for availability diagnostics, but
         # make them non-investable even if a source list included them by mistake.
-        from tradeexecutor.strategy.vault_risk import mark_blacklisted_vaults_ignored
-
         blacklisted_vaults = mark_blacklisted_vaults_ignored(strategy_universe)
         if blacklisted_vaults:
             logger.warning(

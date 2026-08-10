@@ -20,6 +20,7 @@ import pytest
 from eth_defi.erc_4626.core import ERC4626Feature
 
 from tradeexecutor.analysis.weights import calculate_asset_weights, get_pending_settlement_asset_label
+from tradeexecutor.backtest.backtest_execution import NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.loop import ExecutionTestHook
@@ -947,10 +948,6 @@ def test_backtest_protocol_deposit_without_observations_uses_grace_period(featur
     fallback only covers the absence of any settlement observations, which
     otherwise leaves a diagnostic-only protocol permanently pending.
     """
-    from tradeexecutor.backtest.backtest_execution import (
-        NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD,
-    )
-
     strategy_universe, pairs = _make_multi_vault_universe([
         ("VQUEUE", "0x" + "f2" * 20, {feature}),
     ])

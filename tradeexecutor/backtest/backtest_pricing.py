@@ -639,7 +639,10 @@ class BacktestPricing(PricingModel):
         if events is None:
             return None
         event_seconds = events.astype("datetime64[s]").astype("int64")
-        query_seconds = int(pd.Timestamp(ts).timestamp())
+        # ``Timestamp.timestamp()`` treats a naive datetime as local time.
+        # Vault-state timestamps are naive UTC, so convert directly from the
+        # datetime64 epoch representation instead.
+        query_seconds = pd.Timestamp(ts).value // 1_000_000_000
         idx = np.searchsorted(event_seconds, query_seconds, side="right") - 1
         if idx < 0:
             return None

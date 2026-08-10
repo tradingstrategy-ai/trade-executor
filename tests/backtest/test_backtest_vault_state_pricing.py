@@ -10,6 +10,7 @@ Critical semantics under test:
 - unknown / NA / pre-history / out-of-tolerance / missing pair / no state frame -> allowed
 - no look-ahead: a sample stamped strictly after the decision timestamp is never used
 """
+import datetime
 from decimal import Decimal
 
 import pandas as pd
@@ -133,6 +134,34 @@ def test_check_deposit_records_zero_hard_cap(pricing):
     assert result.can_deposit is False
     assert result.reason_code == DepositBlockReason.vault_max_deposit_zero
     assert result.max_deposit == 0.0
+
+
+def test_historical_settlement_event_uses_naive_utc_timestamp():
+    """Settlement evidence must be found from a naive UTC decision timestamp.
+
+    1. Create one settlement observation at a non-midnight timestamp.
+    2. Query just before the observation and confirm that no future event leaks.
+    3. Query at the observation and confirm that it is returned without applying
+       the machine's local timezone offset.
+    """
+    event_at = datetime.datetime(2026, 3, 6, 0, 30)
+    pricing_with_event = BacktestPricing(
+        _candle_universe(),
+        routing_model=None,
+        vault_state=pd.DataFrame([{
+            "timestamp": event_at,
+            "pair_id": 1,
+            "address": "0x0000000000000000000000000000000000000001",
+            "vault_settlement_at": event_at,
+        }]),
+    )
+
+    # 1-2. The historical lookup must not see a later same-day event.
+    pair = _FakePair(1)
+    assert pricing_with_event.get_vault_settlement_event_at(event_at - pd.Timedelta(seconds=1), pair) is None
+
+    # 3. The event is visible exactly at its naive UTC timestamp.
+    assert pricing_with_event.get_vault_settlement_event_at(event_at, pair) == event_at
 
 
 @pytest.mark.parametrize(
