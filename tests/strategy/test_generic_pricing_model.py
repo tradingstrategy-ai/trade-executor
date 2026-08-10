@@ -74,7 +74,7 @@ def test_generic_pricing_delegates_can_deposit():
 
 
 def test_vault_pricing_check_deposit_records_request_and_cap_blocks(monkeypatch):
-    """Check live vault pricing retains the concrete deposit gate."""
+    """Check live vault pricing delegates admission to DepositManager."""
 
     class FakePair:
         pool_address = "0x0000000000000000000000000000000000000001"
@@ -86,15 +86,54 @@ def test_vault_pricing_check_deposit_records_request_and_cap_blocks(monkeypatch)
     pricing_model = VaultPricing(web3=object())
     pair = FakePair()
 
-    monkeypatch.setattr(pricing_model, "_can_create_deposit_request", lambda pair: False)
+    class FakeToken:
+        @staticmethod
+        def convert_to_decimals(value):
+            return Decimal(value)
+
+    class FakeManager:
+        def __init__(self, can_create_request, max_deposit):
+            self.can_create_request = can_create_request
+            self.max_deposit = max_deposit
+
+        @staticmethod
+        def has_synchronous_deposit():
+            return True
+
+        def can_create_deposit_request(self, owner):
+            return self.can_create_request
+
+        def fetch_depositable_raw_assets(self, owner):
+            return self.max_deposit
+
+    class FakeVault:
+        denomination_token = FakeToken()
+
+        def __init__(self, manager, closed_reason=None):
+            self.manager = manager
+            self.closed_reason = closed_reason
+
+        def get_deposit_manager(self):
+            return self.manager
+
+        def fetch_deposit_closed_reason(self):
+            return self.closed_reason
+
+    monkeypatch.setattr(pricing_model, "get_owner_address", lambda pair: "0xowner")
+
+    monkeypatch.setattr(pricing_model, "get_vault", lambda pair: FakeVault(FakeManager(False, None)))
     request_check = pricing_model.check_deposit(None, pair, stage=DepositCheckStage.buy_rebalance)
     assert request_check.reason_code == DepositBlockReason.deposit_request_unavailable
 
-    monkeypatch.setattr(pricing_model, "_can_create_deposit_request", lambda pair: None)
-    monkeypatch.setattr(pricing_model, "get_max_deposit", lambda ts, pair: Decimal(0))
+    monkeypatch.setattr(pricing_model, "get_vault", lambda pair: FakeVault(FakeManager(True, 0)))
     cap_check = pricing_model.check_deposit(None, pair, stage=DepositCheckStage.buy_rebalance)
     assert cap_check.reason_code == DepositBlockReason.vault_max_deposit_zero
     assert cap_check.max_deposit == 0.0
+
+    monkeypatch.setattr(pricing_model, "get_vault", lambda pair: FakeVault(FakeManager(True, None), "Vault deposits are closed"))
+    closed_check = pricing_model.check_deposit(None, pair, stage=DepositCheckStage.buy_rebalance)
+    assert closed_check.reason_code == DepositBlockReason.vault_deposits_closed
+    assert closed_check.message == "Vault deposits are closed"
 
 
 def test_ethereum_generic_pricing_factory_passes_execution_model(monkeypatch):

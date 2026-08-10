@@ -22,11 +22,12 @@ from tradingstrategy.candle import GroupedCandleUniverse
 
 
 class _FakePair:
-    def __init__(self, internal_id: int, features=None, async_vault=False):
+    def __init__(self, internal_id: int, features=None, async_vault=False, protocol=None):
         self.internal_id = internal_id
         self.pool_address = f"0x{internal_id:040x}"
         self._features = features
         self._async_vault = async_vault
+        self._protocol = protocol
 
     def get_ticker(self) -> str:
         return f"VAULT{self.internal_id}-USDC"
@@ -36,6 +37,9 @@ class _FakePair:
 
     def is_async_vault(self) -> bool:
         return self._async_vault
+
+    def get_vault_protocol(self) -> str | None:
+        return self._protocol
 
 
 def _candle_universe() -> GroupedCandleUniverse:
@@ -134,8 +138,8 @@ def test_check_deposit_records_zero_hard_cap(pricing):
 @pytest.mark.parametrize(
     ("pair", "description"),
     [
+        (_FakePair(1, features={ERC4626Feature.lagoon_like}), "Lagoon"),
         (_FakePair(1, features={ERC4626Feature.morpho_v2_like}), "Morpho V2"),
-        (_FakePair(1, async_vault=True), "ERC-7540"),
         (_FakePair(1, features={ERC4626Feature.yearn_v3_like}), "Yearn V3"),
     ],
 )
@@ -147,6 +151,30 @@ def test_zero_max_deposit_does_not_close_protocols_where_it_is_not_capacity(pric
     assert result.can_deposit is True
     assert result.reason_code is None
     assert result.max_deposit is None
+
+
+@pytest.mark.parametrize(
+    "pair",
+    [
+        _FakePair(1, features={ERC4626Feature.lagoon_like}),
+        _FakePair(1, features={ERC4626Feature.morpho_v2_like}),
+        _FakePair(1, features={ERC4626Feature.yearn_v3_like}),
+    ],
+)
+def test_incomplete_protocol_history_never_closes_deposits(pricing, pair):
+    """Keep designated protocols open even when historical flags say closed."""
+    result = pricing.check_deposit(pd.Timestamp("2026-03-06"), pair)
+
+    assert result.can_deposit is True
+    assert result.reason_code is None
+
+
+@pytest.mark.parametrize("protocol", ["lagoon-finance", "morpho", "yearn"])
+def test_unclassified_protocol_history_never_closes_deposits(pricing, protocol):
+    """Apply the historical guard to older universe snapshots without features."""
+    pair = _FakePair(1, features=None, protocol=protocol)
+
+    assert pricing.can_deposit(pd.Timestamp("2026-03-06"), pair) is True
 
 
 def test_can_deposit_pre_history_allowed(pricing):

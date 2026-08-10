@@ -7,7 +7,6 @@ from typing import Literal, Optional
 
 import numpy as np
 import pandas as pd
-from eth_defi.erc_4626.core import ERC4626Feature
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingModel
 from tradeexecutor.backtest.vault_windows import VaultWindowSchedule
@@ -17,6 +16,10 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import (AnyTimestamp, Percent, USDollarAmount,
                                        USDollarPrice)
 from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.deposit_check import (
+    check_backtesting_deposit,
+    is_backtesting_deposit_open,
+)
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.redemption import (
@@ -615,30 +618,6 @@ class BacktestPricing(PricingModel):
         state = self._lookup_vault_state(ts, pair)
         return None if state is None else self._state_cap(state, key)
 
-    @staticmethod
-    def _has_meaningful_max_deposit_cap(pair: TradingPairIdentifier) -> bool:
-        """Return whether a zero historical ``maxDeposit`` means deposits are closed.
-
-        ERC-7540 request vaults use their ERC-4626 maximum functions to report
-        claimable requests, not new-request capacity. Morpho V2 deliberately
-        returns zero from the ERC-4626 maximum functions regardless of the
-        caller. Yearn V3 uses owner-specific limits and deliberately returns
-        zero for the zero-address scanner sentinel. These values are useful
-        source observations, but none can close a backtest deposit gate.
-        """
-        is_async_vault = getattr(pair, "is_async_vault", None)
-        if callable(is_async_vault) and is_async_vault():
-            return False
-
-        get_vault_features = getattr(pair, "get_vault_features", None)
-        features = get_vault_features() if callable(get_vault_features) else None
-        if features is None:
-            return True
-        return not bool(features & {
-            ERC4626Feature.morpho_v2_like,
-            ERC4626Feature.yearn_v3_like,
-        })
-
     def get_max_deposit(
         self,
         ts: datetime.datetime | None,
@@ -675,12 +654,11 @@ class BacktestPricing(PricingModel):
         state = self._lookup_vault_state(ts, pair)
         if state is None:
             return True
-        if state.get("deposits_open", -1) == 0:
-            return False
-        cap = self._state_cap(state, "max_deposit")
-        if cap is not None and cap == 0 and self._has_meaningful_max_deposit_cap(pair):
-            return False
-        return True
+        return is_backtesting_deposit_open(
+            pair,
+            state.get("deposits_open", -1),
+            self._state_cap(state, "max_deposit"),
+        )
 
     def check_deposit(
         self,
@@ -709,20 +687,14 @@ class BacktestPricing(PricingModel):
         if state is None:
             return result
 
-        cap = self._state_cap(state, "max_deposit")
-        meaningful_cap = self._has_meaningful_max_deposit_cap(pair)
-        result.max_deposit = float(cap) if cap is not None and meaningful_cap else None
-        closed_reason = state.get("deposit_closed_reason")
-        if state.get("deposits_open", -1) == 0:
-            result.can_deposit = False
-            result.reason_code = DepositBlockReason.vault_deposits_closed
-            result.message = closed_reason if isinstance(closed_reason, str) and closed_reason else "Vault deposits closed in historical data"
-        elif cap is not None and cap == 0 and meaningful_cap:
-            result.can_deposit = False
-            result.reason_code = DepositBlockReason.vault_max_deposit_zero
-            result.message = closed_reason if isinstance(closed_reason, str) and closed_reason else "Vault max deposit was zero in historical data"
-
-        return result
+        return check_backtesting_deposit(
+            timestamp=ts,
+            pair=pair,
+            deposits_open=state.get("deposits_open", -1),
+            max_deposit=self._state_cap(state, "max_deposit"),
+            closed_reason=state.get("deposit_closed_reason"),
+            stage=stage,
+        )
 
     def check_redemption(
         self,
