@@ -1583,6 +1583,48 @@ class TradingPosition(GenericPosition):
         buys = any([t.is_buy() for t in self.trades.values()])
         return sells and buys
 
+    def get_cash_flow_profit_usd(self) -> USDollarAmount:
+        """Profit measured from this position's own cash flows.
+
+        What came back, plus what is still held, minus what was paid:
+
+        .. code-block:: text
+
+            profit = sum(sell proceeds) + current value of holdings - sum(buy costs)
+
+        This is definitional rather than model-dependent, so Hypercore vault positions use it as
+        the anchor for both :py:meth:`get_total_profit_usd` and :py:meth:`get_unrealised_profit_usd`.
+        Every dollar in such a position enters and leaves through a trade, which makes cash flows
+        exact for them. Exchange account positions look similar but are not - they establish their
+        capital through a valuation sync rather than a trade - so they keep the share-price model.
+
+        Only successful trades count; failed and pending trades move no cash.
+
+        Two edges where this does not equal ``realised + unrealised``, both pre-existing:
+
+        - A position closed by :py:meth:`mark_down` keeps residual quantity while ``closed_at`` is
+          set, so its realised figure covers only the quantity actually sold while this method
+          treats the write-off as final.
+        - Interest. :py:meth:`get_unrealised_profit_usd` subtracts realised profit *excluding*
+          interest, so the two agree only while claimed and repaid interest are zero, which is the
+          case for vault positions.
+
+        :return:
+            Profit in dollars.
+        """
+        bought = sum(
+            abs(float(t.executed_reserve or 0))
+            for t in self.trades.values()
+            if t.is_buy() and t.is_success()
+        )
+        sold = sum(
+            abs(float(t.executed_reserve or 0))
+            for t in self.trades.values()
+            if t.is_sell() and t.is_success()
+        )
+        held = float(self.get_value() or 0.0) if self.is_open() else 0.0
+        return sold + held - bought
+
     def get_realised_profit_usd(
             self,
             include_interest=True) -> Optional[USDollarAmount]:
@@ -1673,9 +1715,27 @@ class TradingPosition(GenericPosition):
             # (balance updates), not price changes — price is always 1.0.
             # Share price state is initialised on the first valuation sync,
             # not from the placeholder trade. Until then, profit is unknown.
+            if self.pair.is_hyperliquid_vault():
+                # A closed position holds nothing, so nothing about it is unrealised. Returning
+                # the share-price model's whole-position profit here made every caller that sums
+                # realised + unrealised double-count a closed position.
+                if self.is_closed():
+                    return 0.0
+                # The share-price model reports profit on the *currently outstanding* internal
+                # supply, which is neither the total profit nor the unrealised remainder once a
+                # position has been partially sold and rebought at other prices, and which does
+                # not complement the average-cost figure from get_realised_profit_usd(). Derive
+                # the unrealised part so the two sum to the position's cash-flow profit.
+                #
+                # This relies on get_realised_profit_usd() taking its *spot* branch, which
+                # multiplies by sell quantity rather than buy quantity. Vault trades report
+                # is_spot() as true, so they do. A vault pair that stopped doing so would make
+                # realised over-count and this subtraction under-count by the same amount.
+                return self.get_cash_flow_profit_usd() - (
+                    self.get_realised_profit_usd(include_interest=False) or 0.0
+                )
             if self.share_price_state is not None:
-                data = self.get_share_price_profit()
-                return data.profit_usd
+                return self.get_share_price_profit().profit_usd
             return 0
 
         avg_price = self.get_average_price()
@@ -1707,9 +1767,13 @@ class TradingPosition(GenericPosition):
             # weight-allocation tables do not attribute phantom profit to the bridge pair.
             return 0.0
         if self.is_using_internal_share_price_profit():
+            if self.pair.is_hyperliquid_vault():
+                # The share-price model measures profit on the outstanding internal supply and
+                # therefore omits profit already withdrawn through partial sells. Anchor to the
+                # position's cash flows, which is definitional.
+                return self.get_cash_flow_profit_usd()
             if self.share_price_state is not None:
-                data = self.get_share_price_profit()
-                return data.profit_usd
+                return self.get_share_price_profit().profit_usd
             return 0
 
         realised_profit = self.get_realised_profit_usd() or 0
