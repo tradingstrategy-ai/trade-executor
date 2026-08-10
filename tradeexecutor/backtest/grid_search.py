@@ -506,18 +506,51 @@ class GridSearchResult:
                 multiprocess=True,
             )
 
-            print("Sharpe of the first result", grid_search_results[0].get_metric("Sharpe")
+            print("Sharpe of the first result", grid_search_results[0].get_metric("Sharpe"))
 
         :param name:
             See quantstats for examples
 
         :return:
             Performance metrics value
+
+        :raise AssertionError:
+            If this result does not carry the metric.
+
+            The metric set is not fixed - see
+            :py:func:`~tradeexecutor.analysis.advanced_metrics.calculate_advanced_metrics`.
+            Asking for one metric by name should fail loudly, which is why this
+            asserts. Use :py:meth:`get_metric_or_nan` when reading a metric that
+            may legitimately be absent, such as anything QuantStats only reports
+            in ``full`` mode.
         """
 
         series = self.metrics["Strategy"]
         assert name in self.metrics.index, f"Metric {name} not available. We have: {series.index}"
         return series[name]
+
+    def get_metric_or_nan(self, name: str) -> float:
+        """Get a performance metric, or NaN when this result does not carry it.
+
+        The tolerant counterpart of :py:meth:`get_metric`. Use it when the caller
+        already handles a missing value and would rather skip the result than
+        abort - reading an optional metric across a whole result set, where one
+        crashed backtest should not take down the other 239.
+
+        See :py:func:`~tradeexecutor.analysis.advanced_metrics.calculate_advanced_metrics`
+        for why the metric set varies.
+
+        :param name:
+            See quantstats for examples
+
+        :return:
+            Performance metrics value, or NaN if this result does not have it
+        """
+
+        if name not in self.metrics.index:
+            return np.nan
+
+        return self.metrics["Strategy"][name]
 
     def get_trade_summary_metric(self, name: str) -> float:
         """Return one of the trade summart metrics.
@@ -1548,8 +1581,8 @@ def pick_best_grid_search_result(
 
         sample = pick_best_grid_search_result(
             results,
-            key=lambda r: r.metrics.loc["Max Drawdown"][0])
-            assert sample is not None
+            key=lambda r: r.metrics.loc["Max Drawdown"].iloc[0])
+        assert sample is not None
 
     :param result:
         Output from :py:func:`perform_grid_search`
@@ -1564,10 +1597,6 @@ def pick_best_grid_search_result(
 
     :return:
         The grid search result with the matching parameters or None if not found
-
-    :return:
-        The grid search result with the matching parameters or None if not found
-
     """
 
     current_best = -10**27 if highest else 10**27

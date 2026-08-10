@@ -416,7 +416,11 @@ def optimise_cvar(result: GridSearchResult) -> OptimiserSearchResult:
     For glossary definitions of cVaR and tail-risk metrics, see
     https://tradingstrategy.ai/glossary.
     """
-    cvar = result.get_metric("Expected Shortfall (cVaR)")
+    # cVaR is one of the metrics QuantStats only reports in `full` mode, so a crashed
+    # backtest or one that never opened a position simply does not have it. Those reach
+    # the search function before any result filter runs, and the strict accessor would
+    # abort the whole optimisation on the first one.
+    cvar = result.get_metric_or_nan("Expected Shortfall (cVaR)")
     if pd.isna(cvar):
         return OptimiserSearchResult(0, negative=False)
     return OptimiserSearchResult(abs(float(cvar)), negative=False)
