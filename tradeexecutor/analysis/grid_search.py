@@ -69,6 +69,17 @@ METRIC_REGISTRY = {
     "Longest DD": "Longest DD Days",
 }
 
+#: :py:data:`METRIC_REGISTRY` entries a result may legitimately not carry.
+#:
+#: QuantStats reports these only in ``full`` mode, so they are absent whenever
+#: :py:func:`~tradeexecutor.analysis.advanced_metrics.calculate_advanced_metrics`
+#: falls back to ``basic`` - a crashed backtest, or one that never opened a
+#: position. Every other registered metric appears in both modes, so its absence
+#: means the result itself is broken and should not be quietly tabulated.
+OPTIONAL_METRICS = frozenset({
+    "Expected Shortfall (cVaR)",
+})
+
 HOVER_KEY_METRICS = (
     "CAGR﹪",
     "Max Drawdown",
@@ -81,17 +92,6 @@ HOVER_KEY_METRICS = (
     "Recovery Factor",
     "Longest DD Days",
 )
-
-#: :py:data:`METRIC_REGISTRY` entries a result may legitimately not carry.
-#:
-#: QuantStats reports these only in ``full`` mode, so they are absent whenever
-#: :py:func:`~tradeexecutor.analysis.advanced_metrics.calculate_advanced_metrics`
-#: falls back to ``basic`` - a crashed backtest, or one that never opened a
-#: position. Every other registered metric appears in both modes, so its absence
-#: means the result itself is broken and should not be quietly tabulated.
-OPTIONAL_METRICS = frozenset({
-    "Expected Shortfall (cVaR)",
-})
 
 HOVER_PERCENT_METRICS = (
     "CAGR﹪",
