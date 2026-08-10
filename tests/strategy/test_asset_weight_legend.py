@@ -2,6 +2,7 @@
 
 from base64 import b64decode, b64encode
 from collections import Counter
+from types import SimpleNamespace
 
 import plotly.graph_objects as go
 import pytest
@@ -45,6 +46,8 @@ from tradeexecutor.strategy.chart.asset_weight_legend import (
     calculate_end_allocation_percentages,
     merge_asset_weight_legend_entries,
 )
+from tradeexecutor.analysis.weights import get_pending_settlement_asset_label
+from tradeexecutor.strategy.chart.standard.weight import make_asset_weight_legend_sort_key
 from tradeexecutor.strategy.chart.vault_legend import get_vault_logo_coverage
 
 
@@ -214,6 +217,34 @@ def test_end_allocation_uses_the_last_chart_sample() -> None:
     allocations = calculate_end_allocation_percentages(figure)
 
     assert allocations == pytest.approx({"Intermittent vault": 50.0, "Constant vault": 50.0})
+
+
+def test_vault_pending_settlement_legend_row_follows_its_vault() -> None:
+    """Group the solid pending row immediately after its hatched vault row."""
+    reserve_asset = SimpleNamespace(token_symbol="USDC")
+    state = SimpleNamespace(
+        portfolio=SimpleNamespace(
+            get_default_reserve_asset=lambda: (reserve_asset, None),
+            get_all_positions=lambda: [],
+        ),
+    )
+    sort_key = make_asset_weight_legend_sort_key(state)
+    alpha_vault = "Alpha vault"
+    alpha_pending = get_pending_settlement_asset_label(alpha_vault)
+    labels = ["USDC", alpha_vault, "Beta vault", alpha_pending]
+    allocations = {
+        "USDC": 5.0,
+        alpha_vault: 1.0,
+        "Beta vault": 50.0,
+        alpha_pending: 44.0,
+    }
+
+    assert sorted(labels, key=lambda label: sort_key(label, allocations[label])) == [
+        "USDC",
+        alpha_vault,
+        alpha_pending,
+        "Beta vault",
+    ]
 
 
 def test_legend_sort_does_not_reorder_chart_traces() -> None:

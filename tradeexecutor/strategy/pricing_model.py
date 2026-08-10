@@ -9,6 +9,9 @@ from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, TokenAmount
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.redemption import (
+    DepositBlockReason,
+    DepositCheckResult,
+    DepositCheckStage,
     RedemptionCheckResult,
     RedemptionCheckStage,
 )
@@ -228,6 +231,42 @@ class PricingModel(abc.ABC):
         :py:meth:`~tradeexecutor.state.identifier.TradingPairIdentifier.can_deposit`.
         """
         return True
+
+    def check_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+        *,
+        stage: DepositCheckStage = DepositCheckStage.unknown,
+    ) -> DepositCheckResult:
+        """Return a structured deposit-availability check result.
+
+        Pricing models which can identify a more specific block reason should
+        override this method. The default preserves the legacy boolean gate and
+        records the maximum deposit and static metadata when available.
+        """
+        can_deposit = self.can_deposit(ts, pair)
+        max_deposit = self.get_max_deposit(ts, pair)
+        reason_code = None
+        message = None
+        if not can_deposit:
+            if max_deposit is not None and max_deposit == 0:
+                reason_code = DepositBlockReason.vault_max_deposit_zero
+                message = "Vault max deposit is zero"
+            else:
+                reason_code = DepositBlockReason.unknown
+                message = pair.other_data.get("deposit_closed_reason") or "Vault deposits are not available"
+
+        return DepositCheckResult(
+            timestamp=ts,
+            stage=stage,
+            can_deposit=can_deposit,
+            reason_code=reason_code,
+            message=message,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+            max_deposit=float(max_deposit) if max_deposit is not None else None,
+        )
 
     def can_redeem(
         self,

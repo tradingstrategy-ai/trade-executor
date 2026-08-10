@@ -191,8 +191,9 @@ snapshot is stored in state, so post-hoc "why did it trade like that?" is
 answerable without re-running the strategy:
 
 - **`format_signals(alpha_model)`** — one DataFrame row per signal: raw signal,
-  old/new weight, target value, adjust, flags, pending settlement columns. This
-  is the primary debugging table.
+  old/new weight, target value, adjust, flags, pending settlement columns and
+  the latest blocked-deposit reason/message/capacity. This is the primary
+  debugging table.
 - **`alpha_model_diagnostics`** chart
   ([chart/standard/alpha_model.py](../../tradeexecutor/strategy/chart/standard/alpha_model.py))
   — renders that table for the last cycle in the web/notebook UI. Related:
@@ -200,7 +201,9 @@ answerable without re-running the strategy:
   `missed_vault_deposit_redemption_events` / `_timeline`.
 - **Weight charts** ([chart/standard/weight.py](../../tradeexecutor/strategy/chart/standard/weight.py))
   — `equity_curve_by_asset` (stacked equity bands per asset, curator/chain
-  symbols in the legend), `equity_curve_by_chain`, and
+  symbols in the legend), `equity_curve_by_chain`,
+  `equity_curve_by_liquidity_state` (cash, free queue capital, window-waiting
+  deposits, in-flight deposits and deployed capital), and
   `weight_allocation_statistics`.
 - **Strategy thinking** — hyper-ai composes a per-cycle text report (cash,
   redeemable capital, investable equity, allocated value, discarded-by-liquidity

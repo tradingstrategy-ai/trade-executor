@@ -32,6 +32,23 @@ class RedemptionBlockReason(enum.Enum):
     redemption_window_closed = "redemption_window_closed"
 
 
+class DepositCheckStage(enum.Enum):
+    """Where the strategy asked whether a vault accepts a deposit."""
+
+    unknown = "unknown"
+    buy_rebalance = "buy_rebalance"
+
+
+class DepositBlockReason(enum.Enum):
+    """Stable reason codes for deposit-availability diagnostics."""
+
+    vault_deposits_closed = "vault_deposits_closed"
+    vault_max_deposit_zero = "vault_max_deposit_zero"
+    deposit_request_unavailable = "deposit_request_unavailable"
+    deposit_window_closed = "deposit_window_closed"
+    unknown = "unknown"
+
+
 @dataclass_json
 @dataclass(slots=True)
 class VaultUserEquitySnapshot:
@@ -143,6 +160,29 @@ class RedemptionCheckResult:
     raw_api_data: RedemptionApiSnapshot | None = None
     #: Pair and position metadata used for the decision.
     used_vault_metadata: VaultMetadataSnapshot | None = None
+
+
+@dataclass_json
+@dataclass(slots=True)
+class DepositCheckResult:
+    """Serialisable result of a deposit-availability check."""
+
+    #: Strategy-cycle timestamp when the check ran.
+    timestamp: datetime.datetime | None = None
+    #: Where in the alpha-model flow the check was requested.
+    stage: DepositCheckStage = DepositCheckStage.unknown
+    #: Final boolean decision used by the caller.
+    can_deposit: bool = True
+    #: Stable reason code for a blocked deposit, when available.
+    reason_code: DepositBlockReason | None = None
+    #: Human-readable explanation of the decision.
+    message: str | None = None
+    #: Pair ticker shown in logs and diagnostics.
+    pair_ticker: str | None = None
+    #: Vault address for the checked pair.
+    vault_address: JSONHexAddress | None = None
+    #: Maximum currently depositable amount, if the venue reports one.
+    max_deposit: USDollarAmount | None = None
 
 
 @dataclass_json

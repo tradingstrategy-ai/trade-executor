@@ -286,6 +286,11 @@ Proving idle→productive is the point, so the undeployed slice has structure:
   buffers reconstructed from the event log — waiting deposits positive,
   redemption-locked value negative. The sibling of `pending_vault_settlements`,
   which shows *in-flight* async settlements; the two do not overlap.
+- **`equity_curve_by_liquidity_state`** (`chart/standard/weight.py`): one
+  reconciled allocation stack that separates raw cash, free queue-venue capital,
+  waiting deposits parked for a closed window, deposits in asynchronous
+  settlement, and deployed positions. Waiting and in-flight capital are
+  therefore visible without counting either as freely allocatable cash.
 - **`format_signals()`** (`alpha_model.py`): per-signal Parked USD / Waiting
   deposit USD / Waiting redemption USD columns from `parked_usd` /
   `missed_deposit_usd` / `missed_redemption_usd`.

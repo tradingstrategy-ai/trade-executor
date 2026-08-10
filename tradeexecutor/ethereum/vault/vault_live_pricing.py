@@ -15,8 +15,15 @@ from tradeexecutor.ethereum.vault.vault_routing import (
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.state.types import USDollarAmount
+from tradeexecutor.strategy.deposit_check import check_live_deposit, get_live_max_deposit
 from tradeexecutor.strategy.pricing_model import PricingModel
-from tradeexecutor.strategy.redemption import RedemptionBlockReason, RedemptionCheckResult, RedemptionCheckStage
+from tradeexecutor.strategy.redemption import (
+    DepositCheckResult,
+    DepositCheckStage,
+    RedemptionBlockReason,
+    RedemptionCheckResult,
+    RedemptionCheckStage,
+)
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
 logger = logging.getLogger(__name__)
@@ -214,35 +221,7 @@ class VaultPricing(PricingModel):
         if owner is None:
             logger.warning("Cannot resolve owner address for vault max deposit check: %s", pair)
             return None
-
-        vault = self.get_vault(pair)
-        deposit_manager = vault.get_deposit_manager()
-
-        if not deposit_manager.has_synchronous_deposit():
-            # On asynchronous vaults (ERC-7540) maxDeposit() returns the claimable
-            # amount of settled deposit requests, not the deposit capacity.
-            # Request-based deposits have no on-chain capacity limit.
-            return None
-
-        # Prefer the manager's deposit-limit hook so non-standard vaults (e.g.
-        # Upshift multi-asset, which has no ERC-4626 maxDeposit()) resolve their
-        # capacity through the adapter instead of a raw contract call that would
-        # raise "maxDeposit not found in abi". The base manager reads maxDeposit()
-        # itself, so standard vaults are unaffected.
-        fetch_depositable = getattr(
-            deposit_manager, "fetch_depositable_raw_assets", None
-        )
-        if fetch_depositable is not None:
-            raw_amount = fetch_depositable(owner)
-        else:
-            web3 = self.get_web3_for_pair(pair)
-            block_number = web3.eth.block_number
-            raw_amount = vault.vault_contract.functions.maxDeposit(owner).call(
-                block_identifier=block_number
-            )
-        if raw_amount is None:
-            return None
-        return vault.denomination_token.convert_to_decimals(raw_amount)
+        return get_live_max_deposit(self.get_vault(pair), owner)
 
     def get_max_redemption(
         self,
@@ -266,26 +245,6 @@ class VaultPricing(PricingModel):
         block_number = web3.eth.block_number
         raw_amount = vault.vault_contract.functions.maxRedeem(owner).call(block_identifier=block_number)
         return vault.share_token.convert_to_decimals(raw_amount)
-
-    def _can_create_deposit_request(
-        self,
-        pair: TradingPairIdentifier,
-    ) -> bool | None:
-        """Check protocol-specific deposit request availability."""
-        vault = self.get_vault(pair)
-        deposit_manager = vault.get_deposit_manager()
-
-        owner = self.get_owner_address(pair)
-        if owner is None:
-            if not deposit_manager.has_synchronous_deposit():
-                logger.warning("Cannot resolve owner address for async vault deposit request check: %s", pair)
-                return False
-            return None
-
-        try:
-            return deposit_manager.can_create_deposit_request(owner)
-        except NotImplementedError:
-            return None
 
     def _check_redemption_request_availability(
         self,
@@ -336,14 +295,23 @@ class VaultPricing(PricingModel):
         ts: datetime.datetime | None,
         pair: TradingPairIdentifier,
     ) -> bool:
-        can_create_request = self._can_create_deposit_request(pair)
-        if can_create_request is False:
-            return False
+        return self.check_deposit(ts, pair).can_deposit
 
-        max_deposit = self.get_max_deposit(ts, pair)
-        if max_deposit is None:
-            return True
-        return max_deposit > 0
+    def check_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+        *,
+        stage: DepositCheckStage = DepositCheckStage.unknown,
+    ) -> DepositCheckResult:
+        """Explain whether a vault currently accepts a deposit request."""
+        return check_live_deposit(
+            timestamp=ts,
+            pair=pair,
+            vault=self.get_vault(pair),
+            owner=self.get_owner_address(pair),
+            stage=stage,
+        )
 
     def check_redemption(
         self,

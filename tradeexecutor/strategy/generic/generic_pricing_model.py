@@ -14,7 +14,12 @@ from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifie
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.types import USDollarPrice, Percent, USDollarAmount, TokenAmount
 from tradeexecutor.strategy.pricing_model import PricingModel, PricingModelFactory
-from tradeexecutor.strategy.redemption import RedemptionCheckResult, RedemptionCheckStage
+from tradeexecutor.strategy.redemption import (
+    DepositCheckResult,
+    DepositCheckStage,
+    RedemptionCheckResult,
+    RedemptionCheckStage,
+)
 from tradeexecutor.strategy.trade_pricing import TradePricing
 
 
@@ -153,6 +158,16 @@ class GenericPricing(PricingModel):
         route = self.route(pair)
         return route.get_max_redemption(ts, pair)
 
+    def get_vault_settlement_event_at(
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier,
+    ) -> datetime.datetime | None:
+        """Route historical vault-settlement evidence to a backtest model."""
+        route = self.route(pair)
+        getter = getattr(route, "get_vault_settlement_event_at", None)
+        return getter(ts, pair) if getter is not None else None
+
     def can_deposit(
         self,
         ts: datetime.datetime | None,
@@ -160,6 +175,17 @@ class GenericPricing(PricingModel):
     ) -> bool:
         route = self.route(pair)
         return route.can_deposit(ts, pair)
+
+    def check_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+        *,
+        stage: DepositCheckStage = DepositCheckStage.unknown,
+    ) -> DepositCheckResult:
+        """Route structured deposit diagnostics to the protocol pricing model."""
+        route = self.route(pair)
+        return route.check_deposit(ts, pair, stage=stage)
 
     def check_redemption(
         self,

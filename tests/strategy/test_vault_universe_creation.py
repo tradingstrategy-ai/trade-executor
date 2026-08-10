@@ -54,3 +54,41 @@ def test_filter_vault_excludes_subvaults_before_inclusion_overrides():
     # 3. Assert the sub-vault guard takes priority over must-include.
     assert flagged_result == (False, "subvault=Internal strategy vault")
     assert legacy_result == (False, "subvault=Morpho Yearn USDC Compounder")
+
+
+def test_filter_vault_excludes_blacklisted_vault_before_inclusion_override():
+    """Do not allow a manually included blacklisted vault into a universe."""
+    vault = VaultInfo(
+        name="Blacklisted USDC vault",
+        address="0x0000000000000000000000000000000000000001",
+        chain_id=1,
+        chain_name="Ethereum",
+        denomination="USDC",
+        age_years=1.0,
+        cagr_periods={"1Y": 0.1},
+        cagr_all=0.1,
+        tvl=1_000_000.0,
+        peak_tvl=1_000_000.0,
+        risk="Blacklisted",
+        flags=[],
+        vault_display_flags=[],
+        protocol_slug="yearn",
+        deposit_closed_reason=None,
+        must_include=True,
+        excluded=False,
+        excluded_protocol_reason=None,
+    )
+
+    result = filter_vault(
+        vault,
+        min_tvl=100_000.0,
+        min_age=0.5,
+        chain_config={1: {"name": "Ethereum"}},
+        allowed_denominations={"USDC"},
+        excluded_risks=set(),
+        excluded_flags=set(),
+        require_known_protocol=True,
+        hypercore_min_tvl=100_000.0,
+    )
+
+    assert result == (False, "risk=Blacklisted")

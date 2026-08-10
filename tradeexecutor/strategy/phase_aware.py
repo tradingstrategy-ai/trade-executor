@@ -287,15 +287,16 @@ def read_open_redeem_block_events(other_data: OtherData) -> dict[int, QueueVault
 
 
 class PhaseAwareAlphaModel(AlphaModel):
-    """AlphaModel that defers window-closed vault deposits into a yield-bearing queue venue.
+    """AlphaModel that defers explicitly window-gated deposits into a queue venue.
 
-    Instead of *skipping* a vault whose deposit window is closed, it **defers** the
-    buy and logs a durable park event, so the capital waits in the queue venue and
-    is deposited on a later cycle once the window opens. It reuses the overridable
-    hooks extracted from :py:class:`AlphaModel` in PR-0 and the queue-venue helpers
-    in this module. It is orthogonal to the allocation method (works with any
-    ``normalise_weights`` variant): the phase-aware pass operates on ``self.signals``
-    after targets are computed, whatever produced them.
+    Instead of *skipping* an explicitly configured window-gated vault whose deposit
+    window is closed, it **defers** the buy and logs a durable park event, so the
+    capital waits in the queue venue and is deposited on a later cycle once the
+    window opens. Other closed vaults retain the base model's skip behaviour. It
+    reuses the overridable hooks extracted from :py:class:`AlphaModel` in PR-0 and
+    the queue-venue helpers in this module. It is orthogonal to the allocation
+    method (works with any ``normalise_weights`` variant): the phase-aware pass
+    operates on ``self.signals`` after targets are computed, whatever produced them.
 
     Cross-chain deposits compose with no phase-aware-specific code: a promoted buy into a
     satellite-chain vault is funded through the existing CCTP planner, provided the queue venue
@@ -339,6 +340,7 @@ class PhaseAwareAlphaModel(AlphaModel):
         *,
         cycle: int | None = None,
         venue_pair_ids: set | None = None,
+        window_gated_pair_ids: set | None = None,
         **kwargs,
     ):
         """
@@ -355,12 +357,19 @@ class PhaseAwareAlphaModel(AlphaModel):
             :py:func:`queue_vault_pair_ids`). Used to (a) add their redeemable value
             to the same-cycle cash budget and (b) exclude them from old-weight
             accounting.
+
+        :param window_gated_pair_ids:
+            Internal ids of vaults whose closed deposit windows are expected to reopen.
+            Only these pairs may use the park -> deposit-on-open flow. A synchronous
+            vault that reports deposits closed or zero capacity must fall through to
+            the normal skipped-buy path instead of reserving queue capital indefinitely.
         """
         super().__init__(timestamp=timestamp, **kwargs)
         # This subclass is intentionally not slotted, so instances get a __dict__
         # for these transient per-cycle attributes (not part of the serialised state).
         self.phase_aware_cycle = cycle
         self.venue_pair_ids: set = set(venue_pair_ids) if venue_pair_ids else set()
+        self.window_gated_pair_ids: set = set(window_gated_pair_ids) if window_gated_pair_ids else set()
         #: Vaults with an open park event whose window opened and stayed targeted this
         #: cycle. The promote event is finalised in
         #: :py:meth:`reconcile_phase_aware_events`, only once the deposit trade has
@@ -430,9 +439,16 @@ class PhaseAwareAlphaModel(AlphaModel):
         open_events = read_open_park_events(other_data)
         self._promote_candidates = set()
 
-        # 1. Park every fresh positive deposit whose window is closed.
+        # 1. Park only explicitly window-gated vaults whose window is closed.
+        #
+        # ``can_deposit()`` may be false for permanent or capacity-related reasons
+        # (e.g. an ERC-4626 vault reporting ``maxDeposit == 0``). Such a vault does
+        # not have a known future opening and must use AlphaModel's ordinary
+        # skipped-buy path, not reserve capital in the queue venue.
         for vault_id, signal in self.signals.items():
             if signal.carry_forward_position or signal.position_adjust_usd <= 0:
+                continue
+            if vault_id not in self.window_gated_pair_ids:
                 continue
             if pricing_model.can_deposit(self.timestamp, signal.pair):
                 if vault_id in open_events:
@@ -442,6 +458,11 @@ class PhaseAwareAlphaModel(AlphaModel):
 
         # 2. Stale-close open park events whose vault is no longer a live parked deposit.
         for vault_id in open_events:
+            if vault_id not in self.window_gated_pair_ids:
+                # Release a legacy park for a vault that is no longer explicitly
+                # eligible for deferred deposit handling.
+                self._log_phase_aware_event(other_data, EVENT_CLOSE, vault_id, 0.0)
+                continue
             if vault_id in self._promote_candidates:
                 continue
             signal = self.signals.get(vault_id)

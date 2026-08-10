@@ -16,9 +16,16 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.types import (AnyTimestamp, Percent, USDollarAmount,
                                        USDollarPrice)
 from tradeexecutor.strategy.execution_model import ExecutionModel
+from tradeexecutor.strategy.deposit_check import (
+    check_backtesting_deposit,
+    is_backtesting_deposit_open,
+)
 from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.redemption import (
+    DepositBlockReason,
+    DepositCheckResult,
+    DepositCheckStage,
     RedemptionBlockReason,
     RedemptionCheckResult,
     RedemptionCheckStage,
@@ -230,6 +237,7 @@ class BacktestPricing(PricingModel):
         # Each entry: pair_id → {"ts": int64 seconds, "deposits_open": int8, ...}
         self.vault_state = vault_state
         self._vault_state_arrays: dict[int, dict[str, np.ndarray]] = {}
+        self._vault_settlement_events: dict[int, np.ndarray] = {}
         if vault_state is not None and len(vault_state) > 0:
             for pair_id, group in vault_state.groupby("pair_id", sort=False):
                 group = group.sort_values("timestamp")
@@ -245,6 +253,11 @@ class BacktestPricing(PricingModel):
                 for col in ("deposit_closed_reason", "redemption_closed_reason"):
                     if col in group.columns:
                         entry[col] = group[col].to_numpy(dtype=object)
+                if "vault_settlement_at" in group.columns:
+                    settlement_column = pd.to_datetime(group["vault_settlement_at"])
+                    settlement_events = settlement_column.dropna().to_numpy(dtype="datetime64[s]")
+                    if len(settlement_events) > 0:
+                        self._vault_settlement_events[int(pair_id)] = np.unique(settlement_events)
                 self._vault_state_arrays[int(pair_id)] = entry
 
         # assert not three_leg_resolution
@@ -611,6 +624,30 @@ class BacktestPricing(PricingModel):
         state = self._lookup_vault_state(ts, pair)
         return None if state is None else self._state_cap(state, key)
 
+    def get_vault_settlement_event_at(
+        self,
+        ts: datetime.datetime,
+        pair: TradingPairIdentifier,
+    ) -> datetime.datetime | None:
+        """Get the latest historical vault-settlement event visible at ``ts``.
+
+        The value is evidence only. Callers must ensure that it is after the
+        request and its minimum settlement delay, because a backfilled state
+        sample may carry an older event marker.
+        """
+        events = self._vault_settlement_events.get(pair.internal_id)
+        if events is None:
+            return None
+        event_seconds = events.astype("datetime64[s]").astype("int64")
+        # ``Timestamp.timestamp()`` treats a naive datetime as local time.
+        # Vault-state timestamps are naive UTC, so convert directly from the
+        # datetime64 epoch representation instead.
+        query_seconds = pd.Timestamp(ts).value // 1_000_000_000
+        idx = np.searchsorted(event_seconds, query_seconds, side="right") - 1
+        if idx < 0:
+            return None
+        return pd.Timestamp(events[idx]).to_pydatetime().replace(tzinfo=None)
+
     def get_max_deposit(
         self,
         ts: datetime.datetime | None,
@@ -647,12 +684,47 @@ class BacktestPricing(PricingModel):
         state = self._lookup_vault_state(ts, pair)
         if state is None:
             return True
-        if state.get("deposits_open", -1) == 0:
-            return False
-        cap = self._state_cap(state, "max_deposit")
-        if cap is not None and cap == 0:
-            return False
-        return True
+        return is_backtesting_deposit_open(
+            pair,
+            state.get("deposits_open", -1),
+            self._state_cap(state, "max_deposit"),
+        )
+
+    def check_deposit(
+        self,
+        ts: datetime.datetime | None,
+        pair: TradingPairIdentifier,
+        *,
+        stage: DepositCheckStage = DepositCheckStage.unknown,
+    ) -> DepositCheckResult:
+        """Return the historical deposit gate and its captured reason data."""
+        result = DepositCheckResult(
+            timestamp=ts,
+            stage=stage,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+        )
+
+        override = self._vault_window_overrides.get(pair.internal_id)
+        if override is not None:
+            result.can_deposit = ts is None or override.is_deposit_open(ts)
+            if not result.can_deposit:
+                result.reason_code = DepositBlockReason.deposit_window_closed
+                result.message = "Vault deposits closed by backtest window override"
+            return result
+
+        state = self._lookup_vault_state(ts, pair)
+        if state is None:
+            return result
+
+        return check_backtesting_deposit(
+            timestamp=ts,
+            pair=pair,
+            deposits_open=state.get("deposits_open", -1),
+            max_deposit=self._state_cap(state, "max_deposit"),
+            closed_reason=state.get("deposit_closed_reason"),
+            stage=stage,
+        )
 
     def check_redemption(
         self,
@@ -721,4 +793,3 @@ def backtest_pricing_factory(
         vault_state=universe.vault_state,
         vault_window_overrides=getattr(universe, "vault_window_overrides", None),
     )
-

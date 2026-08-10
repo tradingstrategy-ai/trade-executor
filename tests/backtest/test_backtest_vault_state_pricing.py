@@ -10,22 +10,37 @@ Critical semantics under test:
 - unknown / NA / pre-history / out-of-tolerance / missing pair / no state frame -> allowed
 - no look-ahead: a sample stamped strictly after the decision timestamp is never used
 """
+import datetime
 from decimal import Decimal
 
 import pandas as pd
 import pytest
+from eth_defi.erc_4626.core import ERC4626Feature
 
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
+from tradeexecutor.strategy.redemption import DepositBlockReason, DepositCheckStage
 from tradingstrategy.candle import GroupedCandleUniverse
 
 
 class _FakePair:
-    def __init__(self, internal_id: int):
+    def __init__(self, internal_id: int, features=None, async_vault=False, protocol=None):
         self.internal_id = internal_id
         self.pool_address = f"0x{internal_id:040x}"
+        self._features = features
+        self._async_vault = async_vault
+        self._protocol = protocol
 
     def get_ticker(self) -> str:
         return f"VAULT{self.internal_id}-USDC"
+
+    def get_vault_features(self):
+        return self._features
+
+    def is_async_vault(self) -> bool:
+        return self._async_vault
+
+    def get_vault_protocol(self) -> str | None:
+        return self._protocol
 
 
 def _candle_universe() -> GroupedCandleUniverse:
@@ -100,6 +115,102 @@ def test_can_deposit_reopened(pricing):
 def test_can_deposit_zero_hard_cap_blocks(pricing):
     # deposits_open unknown but max_deposit == 0 -> blocked.
     assert pricing.can_deposit(pd.Timestamp("2026-03-11"), _FakePair(1)) is False
+
+
+def test_check_deposit_records_historical_closed_reason(pricing):
+    result = pricing.check_deposit(
+        pd.Timestamp("2026-03-06"),
+        _FakePair(1),
+        stage=DepositCheckStage.buy_rebalance,
+    )
+    assert result.can_deposit is False
+    assert result.reason_code == DepositBlockReason.vault_deposits_closed
+    assert result.message == "Vault deposits disabled by leader"
+    assert result.max_deposit is None
+
+
+def test_check_deposit_records_zero_hard_cap(pricing):
+    result = pricing.check_deposit(pd.Timestamp("2026-03-11"), _FakePair(1))
+    assert result.can_deposit is False
+    assert result.reason_code == DepositBlockReason.vault_max_deposit_zero
+    assert result.max_deposit == 0.0
+
+
+def test_historical_settlement_event_uses_naive_utc_timestamp():
+    """Settlement evidence must be found from a naive UTC decision timestamp.
+
+    1. Create one settlement observation at a non-midnight timestamp.
+    2. Query just before the observation and confirm that no future event leaks.
+    3. Query at the observation and confirm that it is returned without applying
+       the machine's local timezone offset.
+    """
+    event_at = datetime.datetime(2026, 3, 6, 0, 30)
+    pricing_with_event = BacktestPricing(
+        _candle_universe(),
+        routing_model=None,
+        vault_state=pd.DataFrame([{
+            "timestamp": event_at,
+            "pair_id": 1,
+            "address": "0x0000000000000000000000000000000000000001",
+            "vault_settlement_at": event_at,
+        }]),
+    )
+
+    # 1-2. The historical lookup must not see a later same-day event.
+    pair = _FakePair(1)
+    assert pricing_with_event.get_vault_settlement_event_at(event_at - pd.Timedelta(seconds=1), pair) is None
+
+    # 3. The event is visible exactly at its naive UTC timestamp.
+    assert pricing_with_event.get_vault_settlement_event_at(event_at, pair) == event_at
+
+
+@pytest.mark.parametrize(
+    ("pair", "description"),
+    [
+        (_FakePair(1, features={ERC4626Feature.lagoon_like}), "Lagoon"),
+        (_FakePair(1, features={ERC4626Feature.morpho_v2_like}), "Morpho V2"),
+        (_FakePair(1, features={ERC4626Feature.yearn_v3_like}), "Yearn V3"),
+    ],
+)
+def test_zero_max_deposit_does_not_close_protocols_where_it_is_not_capacity(pricing, pair, description):
+    """Treat advisory maximum-function zeros as unknown capacity, not a closure."""
+    result = pricing.check_deposit(pd.Timestamp("2026-03-11"), pair)
+
+    assert pricing.can_deposit(pd.Timestamp("2026-03-11"), pair) is True, description
+    assert result.can_deposit is True
+    assert result.reason_code is None
+    assert result.max_deposit is None
+
+
+@pytest.mark.parametrize(
+    "pair",
+    [
+        _FakePair(1, features={ERC4626Feature.lagoon_like}),
+        _FakePair(1, features={ERC4626Feature.morpho_v2_like}),
+        _FakePair(1, features={ERC4626Feature.yearn_v3_like}),
+    ],
+)
+def test_incomplete_protocol_history_never_closes_deposits(pricing, pair):
+    """Keep designated protocols open even when historical flags say closed."""
+    result = pricing.check_deposit(pd.Timestamp("2026-03-06"), pair)
+
+    assert result.can_deposit is True
+    assert result.reason_code is None
+
+
+@pytest.mark.parametrize("protocol", ["lagoon-finance", "yearn"])
+def test_unclassified_protocol_history_never_closes_deposits(pricing, protocol):
+    """Apply the historical guard to legacy Lagoon and Yearn snapshots.
+
+    1. Create a pair from a snapshot without classified ERC-4626 features.
+    2. Give it a legacy protocol slug whose historical admission data is unreliable.
+    3. Verify that a closed marker does not manufacture a deposit closure.
+    """
+    # 1. + 2. A legacy Lagoon/Yearn pair lacks a reliable protocol-specific admission field.
+    pair = _FakePair(1, features=None, protocol=protocol)
+
+    # 3. The generic closed marker is advisory for this explicit compatibility fallback.
+    assert pricing.can_deposit(pd.Timestamp("2026-03-06"), pair) is True
 
 
 def test_can_deposit_pre_history_allowed(pricing):

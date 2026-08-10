@@ -14,6 +14,11 @@ from IPython.display import display
 
 
 from tradeexecutor.state.identifier import IGNORE_REASON_REQUIRES_WHITELIST, TradingPairIdentifier
+from tradeexecutor.strategy.vault_risk import (
+    BLACKLISTED_VAULT_DIAGNOSTIC_FLAG,
+    is_blacklisted_vault,
+    mark_blacklisted_vaults_ignored,
+)
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.execution_context import ExecutionMode
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -32,6 +37,9 @@ WHITELISTED_VAULT_DIAGNOSTIC_FLAG = "requires_deposit_whitelist"
 
 #: Columns of the table returned by :py:func:`build_whitelisted_vault_dataframe`.
 WHITELISTED_VAULT_COLUMNS = ["Name", "Protocol", "Chain", "Address"]
+
+#: Columns of the table returned by :py:func:`build_blacklisted_vault_dataframe`.
+BLACKLISTED_VAULT_COLUMNS = ["Name", "Protocol", "Chain", "Address", "Risk"]
 
 
 def is_whitelisted_vault(pair: TradingPairIdentifier) -> bool:
@@ -116,6 +124,46 @@ def render_whitelisted_vaults(
 ) -> Styler:
     """Render the whitelist-gated vault diagnostics widget for notebooks."""
     return style_whitelisted_vault_table(build_whitelisted_vault_dataframe(strategy_universe))
+
+
+def build_blacklisted_vault_dataframe(
+    strategy_universe: TradingStrategyUniverse,
+) -> pd.DataFrame:
+    """Create a table of accidentally selected producer-blacklisted vaults."""
+    rows = []
+    for pair in strategy_universe.iterate_pairs():
+        if not is_blacklisted_vault(pair):
+            continue
+
+        metadata = pair.get_vault_metadata()
+        rows.append({
+            "Name": pair.get_vault_name() or pair.base.token_symbol,
+            "Protocol": pair.get_vault_protocol() or getattr(metadata, "protocol_slug", None) or "",
+            "Chain": ChainId(pair.chain_id).get_name(),
+            "Address": pair.pool_address,
+            "Risk": pair.get_vault_risk_level(),
+        })
+
+    df = pd.DataFrame(rows, columns=BLACKLISTED_VAULT_COLUMNS)
+    return df.sort_values(["Chain", "Name"]).reset_index(drop=True)
+
+
+def style_blacklisted_vault_table(df: pd.DataFrame) -> Styler:
+    """Render producer-blacklisted vault diagnostics with vault-page links."""
+
+    def _linkify_address(address: str) -> str:
+        if not address:
+            return ""
+        return f'<a href="{get_vault_page(address)}" target="_blank">{address}</a>'
+
+    return df.style.format({"Address": _linkify_address}, escape="html").hide(axis="index")
+
+
+def render_blacklisted_vaults(
+    strategy_universe: TradingStrategyUniverse,
+) -> Styler:
+    """Render the producer-blacklisted vault diagnostics widget for notebooks."""
+    return style_blacklisted_vault_table(build_blacklisted_vault_dataframe(strategy_universe))
 
 
 def plot_vault(

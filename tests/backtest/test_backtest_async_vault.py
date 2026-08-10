@@ -19,6 +19,8 @@ import pytest
 
 from eth_defi.erc_4626.core import ERC4626Feature
 
+from tradeexecutor.analysis.weights import calculate_asset_weights, get_pending_settlement_asset_label
+from tradeexecutor.backtest.backtest_execution import NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.loop import ExecutionTestHook
@@ -31,11 +33,12 @@ from tradeexecutor.state.trade import TradeExecution, TradeStatus, TradeType
 from tradeexecutor.strategy.alpha_model import AlphaModel, TradingPairSignalFlags, format_signals
 from tradeexecutor.strategy.asset import get_asset_amounts
 from tradeexecutor.strategy.chart.definition import ChartInput
-from tradeexecutor.strategy.chart.standard.vault import pending_vault_settlements
+from tradeexecutor.strategy.chart.standard.vault import pending_vault_settlements, vault_settlement_observations
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionMode, unit_test_execution_context
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
@@ -776,6 +779,13 @@ def test_backtest_async_vault_ends_with_pending():
     assert state.portfolio.get_vault_settlement_pending_value() == pytest.approx(deposit_amount, abs=1e-6)
     assert state.portfolio.calculate_total_equity() == pytest.approx(INITIAL_DEPOSIT, abs=1.0)
 
+    weights = calculate_asset_weights(state)
+    pending_label = get_pending_settlement_asset_label("Test async vault")
+    final_timestamp = weights.index.get_level_values("timestamp").max()
+    assert weights.loc[(final_timestamp, pending_label)] == pytest.approx(deposit_amount, abs=1e-6)
+    assert weights.loc[(final_timestamp, "USDC")] == pytest.approx(deposit_amount, abs=1e-6)
+    assert weights.xs(final_timestamp).sum() == pytest.approx(INITIAL_DEPOSIT, abs=1.0)
+
 
 @pytest.mark.timeout(300)
 def test_backtest_async_vault_settlement_due_defaults():
@@ -788,10 +798,13 @@ def test_backtest_async_vault_settlement_due_defaults():
     1. The global default delay is non-zero (two days, so the pending window
        spans a full one-day decision cycle).
     2. An ERC-7540 vault with no override settles two days after the request.
-    3. An Ostium vault with no override settles the next day at the epoch
+    3. Lagoon's reported settlement estimate overrides the general default.
+    4. D2 and Plutus use a conservative 14-day fallback when historical
+       metadata has no reported settlement estimate.
+    5. An Ostium vault with no override settles the next day at the epoch
        settlement hour, regardless of the global delay.
-    4. A per-vault override beats both the global default and the Ostium schedule.
-    5. Override-only vaults (no features) are detected as async; plain vaults are not.
+    6. A per-vault override beats both the global default and the Ostium schedule.
+    7. Override-only vaults (no features) are detected as async; plain vaults are not.
     """
     from tradeexecutor.backtest.backtest_execution import (
         BacktestExecution,
@@ -822,6 +835,10 @@ def test_backtest_async_vault_settlement_due_defaults():
 
     erc_7540_pair = _make_pair("V7540", VAULT_A_ADDRESS, {ERC4626Feature.erc_7540_like}, 700)
     ostium_pair = _make_pair("VOST", VAULT_B_ADDRESS, {ERC4626Feature.ostium_like}, 701)
+    lagoon_pair = _make_pair("VLAG", "0x" + "ee" * 20, {ERC4626Feature.lagoon_like}, 704)
+    lagoon_pair.other_data["vault_estimated_settlement"] = datetime.timedelta(days=5)
+    d2_pair = _make_pair("VD2", "0x" + "ff" * 20, {ERC4626Feature.d2_like}, 705)
+    plutus_pair = _make_pair("VPLU", "0x" + "ab" * 20, {ERC4626Feature.erc_7540_like, ERC4626Feature.plutus_like}, 706)
     override_only_pair = _make_pair("VOVR", VAULT_C_ADDRESS, None, 702)
     plain_pair = _make_pair("VPLAIN", "0x" + "dd" * 20, None, 703)
 
@@ -839,10 +856,21 @@ def test_backtest_async_vault_settlement_due_defaults():
     # 2. ERC-7540 vault: two days after the request.
     assert execution._get_settlement_due(erc_7540_pair, ts) == datetime.datetime(2024, 1, 3, 9, 30)
 
-    # 3. Ostium vault: next day at the epoch settlement hour.
+    # 3. Lagoon's reported average settlement overrides the general default.
+    assert execution._get_settlement_due(lagoon_pair, ts) == datetime.datetime(2024, 1, 6, 9, 30)
+
+    # 4. D2 and Plutus fall back to the documented average waiting estimate.
+    assert execution._get_settlement_due(d2_pair, ts) == datetime.datetime(2024, 1, 15, 9, 30)
+    assert execution._get_settlement_due(plutus_pair, ts) == datetime.datetime(2024, 1, 15, 9, 30)
+    assert execution._is_async_vault(d2_pair, is_buy=True)
+    assert execution._is_async_vault(d2_pair, is_buy=False)
+    assert execution._is_async_vault(plutus_pair, is_buy=True)
+    assert execution._is_async_vault(plutus_pair, is_buy=False)
+
+    # 5. Ostium vault: next day at the epoch settlement hour.
     assert execution._get_settlement_due(ostium_pair, ts) == datetime.datetime(2024, 1, 2, OSTIUM_BACKTEST_SETTLEMENT_HOUR, 0)
 
-    # 4. A per-vault override beats both the global default and the Ostium schedule.
+    # 6. A per-vault override beats both the global default and the Ostium schedule.
     assert execution._get_settlement_due(override_only_pair, ts) == ts + datetime.timedelta(hours=2)
     execution_ostium_override = BacktestExecution(
         SimulatedWallet(),
@@ -850,11 +878,160 @@ def test_backtest_async_vault_settlement_due_defaults():
     )
     assert execution_ostium_override._get_settlement_due(ostium_pair, ts) == ts + datetime.timedelta(hours=6)
 
-    # 5. Override-only vaults are async; plain vaults without features are not.
+    # 7. Override-only vaults are async; plain vaults without features are not.
     assert execution._is_async_vault(erc_7540_pair)
     assert execution._is_async_vault(ostium_pair)
     assert execution._is_async_vault(override_only_pair)
     assert not execution._is_async_vault(plain_pair)
+
+
+@pytest.mark.timeout(300)
+@pytest.mark.parametrize("feature", [
+    ERC4626Feature.lagoon_like,
+    ERC4626Feature.d2_like,
+    ERC4626Feature.plutus_like,
+])
+def test_backtest_protocol_deposit_requires_historical_settlement_event(feature):
+    """D2, Plutus and Lagoon deposits need both delay and event evidence.
+
+    The request on 1 January has passed its two-day delay before the historical
+    event on 4 January. It must remain in the queue until that event is visible;
+    an old event from before the request must not release it.
+    """
+    strategy_universe, pairs = _make_multi_vault_universe([
+        ("VQUEUE", "0x" + "f1" * 20, {feature}),
+    ])
+    pair = pairs["VQUEUE"]
+    old_event = START_AT - datetime.timedelta(days=1)
+    actual_event = START_AT + datetime.timedelta(days=3)
+    strategy_universe.vault_state = pd.DataFrame([
+        {
+            "timestamp": START_AT,
+            "pair_id": pair.internal_id,
+            "address": pair.pool_address,
+            "vault_settlement_at": old_event,
+        },
+        {
+            "timestamp": actual_event,
+            "pair_id": pair.internal_id,
+            "address": pair.pool_address,
+            "vault_settlement_at": actual_event,
+        },
+    ])
+
+    def deposit_once(input: StrategyInput) -> list[TradeExecution]:
+        if not list(input.state.portfolio.get_all_trades()):
+            return input.get_position_manager().open_spot(pair, value=INITIAL_DEPOSIT * 0.5)
+        return []
+
+    state, _, _ = _run(
+        strategy_universe,
+        decide=deposit_once,
+        delay_overrides={pair.pool_address: datetime.timedelta(days=2)},
+    )
+    trade = next(iter(state.portfolio.get_all_trades()))
+    assert trade.is_success()
+    assert trade.executed_at >= actual_event
+    assert trade.other_data["vault_settlement_historical_event_at"] == actual_event.isoformat()
+
+
+@pytest.mark.timeout(300)
+@pytest.mark.parametrize("feature", [
+    ERC4626Feature.lagoon_like,
+    ERC4626Feature.d2_like,
+    ERC4626Feature.plutus_like,
+])
+def test_backtest_protocol_deposit_without_observations_uses_grace_period(feature):
+    """No observed settlement history falls back to estimate plus two days.
+
+    A vault with *some* historical observations remains evidence-gated. This
+    fallback only covers the absence of any settlement observations, which
+    otherwise leaves a diagnostic-only protocol permanently pending.
+    """
+    strategy_universe, pairs = _make_multi_vault_universe([
+        ("VQUEUE", "0x" + "f2" * 20, {feature}),
+    ])
+    pair = pairs["VQUEUE"]
+
+    def deposit_once(input: StrategyInput) -> list[TradeExecution]:
+        if not list(input.state.portfolio.get_all_trades()):
+            return input.get_position_manager().open_spot(pair, value=INITIAL_DEPOSIT * 0.5)
+        return []
+
+    state, _, _ = _run(
+        strategy_universe,
+        decide=deposit_once,
+        delay_overrides={pair.pool_address: SETTLEMENT_DELAY},
+    )
+    trade = next(iter(state.portfolio.get_all_trades()))
+    expected_settlement = START_AT + SETTLEMENT_DELAY + NO_HISTORICAL_SETTLEMENT_OBSERVATION_GRACE_PERIOD
+
+    assert trade.is_success()
+    assert trade.executed_at >= expected_settlement
+    assert trade.other_data["vault_settlement_fallback_used"] is True
+    assert trade.other_data["vault_settlement_fallback_reason"] == "no_historical_settlement_observations"
+
+    table = vault_settlement_observations(ChartInput(
+        execution_context=unit_test_execution_context,
+        state=state,
+        strategy_input_indicators=StrategyInputIndicators(
+            strategy_universe=strategy_universe,
+            available_indicators=IndicatorSet(),
+            indicator_results={},
+        ),
+    ))
+    row = table.iloc[0]
+    assert row["No-data settlement delay"] == "4 days"
+    assert row["Simulated no-data settlements"] == 1
+
+
+def test_vault_settlement_observations_chart():
+    """The chart table exposes raw observation coverage and backtest delay."""
+    strategy_universe, vault_pair = _make_universe(rising_price=False)
+    first_settlement = START_AT + datetime.timedelta(days=2)
+    last_settlement = START_AT + datetime.timedelta(days=7)
+    strategy_universe.vault_state = pd.DataFrame([
+        {
+            "timestamp": first_settlement,
+            "pair_id": vault_pair.internal_id,
+            "address": vault_pair.pool_address,
+            "vault_settlement_at": first_settlement,
+        },
+        {
+            "timestamp": last_settlement,
+            "pair_id": vault_pair.internal_id,
+            "address": vault_pair.pool_address,
+            "vault_settlement_at": last_settlement,
+        },
+    ])
+    state, _, _ = _run(strategy_universe)
+
+    table = vault_settlement_observations(ChartInput(
+        execution_context=unit_test_execution_context,
+        state=state,
+        strategy_input_indicators=StrategyInputIndicators(
+            strategy_universe=strategy_universe,
+            available_indicators=IndicatorSet(),
+            indicator_results={},
+        ),
+    ))
+
+    assert list(table.columns) == [
+        "Vault name",
+        "First settle",
+        "Last settle",
+        "Settlements observed",
+        "Average estimation used",
+        "No-data settlement delay",
+        "Simulated no-data settlements",
+    ]
+    row = table.iloc[0]
+    assert row["First settle"] == first_settlement
+    assert row["Last settle"] == last_settlement
+    assert row["Settlements observed"] == 2
+    assert row["Average estimation used"] == "2 days"
+    assert row["No-data settlement delay"] == "2 days"
+    assert row["Simulated no-data settlements"] == 0
 
 
 def _get_pending_windows(state: State) -> dict[int, list[tuple[datetime.datetime, datetime.datetime | None]]]:

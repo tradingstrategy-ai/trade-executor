@@ -19,6 +19,16 @@ import plotly.colors as colors
 from tradeexecutor.state.state import State
 from tradeexecutor.state.types import USDollarAmount
 
+
+#: Suffix for capital sent to a vault but not yet represented by vault shares.
+PENDING_SETTLEMENT_LABEL_SUFFIX = " [pending settlement]"
+
+
+def get_pending_settlement_asset_label(asset_label: str) -> str:
+    """Create the allocation-chart label for an in-flight vault deposit."""
+    return f"{asset_label}{PENDING_SETTLEMENT_LABEL_SUFFIX}"
+
+
 class LegendMode(enum.Enum):
     side = "side"
     bottom = "bottom"
@@ -52,22 +62,67 @@ def calculate_asset_weights(
     # same timestamp, so using it directly would inflate the total.
     reserve_asset, price = state.portfolio.get_default_reserve_asset()
     reserve_asset_symbol = reserve_asset.token_symbol
-    reserve_rows = [{
-        "timestamp": ps.calculated_at,
-        "asset": reserve_asset_symbol,
-        "value": ps.total_equity - (ps.open_position_equity or 0),
-        "kind": "reserve"
-    } for ps in state.stats.portfolio]
-
     def get_position_asset_label(position) -> str:
         if position_asset_label_overrides and position.position_id in position_asset_label_overrides:
             return position_asset_label_overrides[position.position_id]
         return position.pair.get_chart_label() or position.pair.get_ticker()
 
-    # Need to look up assets for every position
-    all_positions = list(state.portfolio.get_all_positions())
+    # Need to look up assets for every position.
+    all_positions = list(state.portfolio.get_all_positions(pending=True))
     position_asset_map = {p.position_id: get_position_asset_label(p) for p in all_positions}
     position_kind_map = {p.position_id: p.pair.kind.value for p in all_positions}
+
+    timestamps = [ps.calculated_at for ps in state.stats.portfolio]
+    last_timestamp = max(timestamps, default=None)
+    pending_rows = []
+    for position in all_positions:
+        asset_label = position_asset_map[position.position_id]
+        for trade in position.trades.values():
+            if not (trade.is_buy() and trade.other_data.get("vault_async_flow")):
+                continue
+
+            requested_at_raw = trade.other_data.get("vault_settlement_requested_at")
+            if requested_at_raw:
+                requested_at = pd.Timestamp(requested_at_raw).to_pydatetime()
+            else:
+                requested_at = trade.vault_settlement_pending_at or trade.started_at or trade.opened_at
+            if requested_at is None:
+                continue
+
+            if trade.is_success():
+                settled_at = trade.executed_at
+            elif trade.failed_at is not None:
+                settled_at = trade.failed_at
+            else:
+                settled_at = None
+
+            end_at = settled_at
+            if end_at is None and last_timestamp is not None:
+                end_at = last_timestamp + pd.Timedelta(seconds=1)
+            if end_at is None:
+                continue
+
+            value = float(trade.get_vault_settlement_request_reserve())
+            for timestamp in timestamps:
+                if requested_at <= timestamp < end_at:
+                    pending_rows.append({
+                        "timestamp": timestamp,
+                        "asset": get_pending_settlement_asset_label(asset_label),
+                        "value": value,
+                        "kind": "vault_settlement_pending",
+                    })
+
+    pending_by_timestamp = pd.DataFrame(pending_rows).groupby("timestamp")["value"].sum() if pending_rows else pd.Series(dtype=float)
+
+    reserve_rows = [{
+        "timestamp": ps.calculated_at,
+        "asset": reserve_asset_symbol,
+        # Pending async deposits are part of total equity but have no vault
+        # shares yet. Move them out of the reserve residual and onto the vault
+        # that owns the pending settlement below.
+        "value": ps.total_equity - (ps.open_position_equity or 0) - pending_by_timestamp.get(ps.calculated_at, 0.0),
+        "kind": "reserve"
+    } for ps in state.stats.portfolio]
 
     # Add position values
     position_rows = [{
@@ -77,7 +132,7 @@ def calculate_asset_weights(
         "kind": position_kind_map[position_id]
     } for position_id, position_stats in state.stats.positions.items() for ps in position_stats]
 
-    df = pd.DataFrame(reserve_rows + position_rows)
+    df = pd.DataFrame(reserve_rows + position_rows + pending_rows)
 
     # For credit positions, we might have close and poen new position in the same
     # timestamp and need to handle this specially.
@@ -128,11 +183,17 @@ def calculate_asset_weights(
 
     # Get vaults
     vault_symbols = [position_asset_map[p.position_id] for p in all_positions if p.is_vault()]
+    pending_settlement_symbols = [
+        get_pending_settlement_asset_label(position_asset_map[p.position_id])
+        for p in all_positions
+        if p.is_vault() and any(t.is_buy() and t.other_data.get("vault_async_flow") for t in p.trades.values())
+    ]
 
     # Pass to visualisation
     series_deduped.attrs["reserve_asset_symbol"] = reserve_asset_symbol
     series_deduped.attrs["credit_supply_symbols"] = credit_supply_symbols
     series_deduped.attrs["vault_symbols"] = vault_symbols
+    series_deduped.attrs["pending_settlement_symbols"] = pending_settlement_symbols
 
     return series_deduped
 
@@ -175,27 +236,33 @@ def visualise_weights(
 
     reserve_asset_symbol = weights_series.attrs["reserve_asset_symbol"]
     vault_symbols = weights_series.attrs["vault_symbols"]
+    pending_settlement_symbols = weights_series.attrs.get("pending_settlement_symbols", [])
     non_volatile_symbols = [weights_series.attrs["reserve_asset_symbol"]] + weights_series.attrs["credit_supply_symbols"]
     extra_colours = extra_colours or {}
     extra_sort_order = extra_sort_order or {}
 
     if not include_reserves:
         # Filter out reserve/credit position
+        excluded_symbols = set(non_volatile_symbols) | set(vault_symbols) | set(pending_settlement_symbols)
         weights_series = weights_series[
-            ~(weights_series.index.get_level_values(1).isin(non_volatile_symbols) | weights_series.index.get_level_values(1).isin(vault_symbols))
+            ~weights_series.index.get_level_values(1).isin(excluded_symbols)
         ]
 
     def sort_key_reserve_first(col_name):
         if col_name in extra_sort_order:
-            return extra_sort_order[col_name], col_name
+            return extra_sort_order[col_name], col_name, 0
         if col_name == reserve_asset_symbol:
-            return -1000, col_name
+            return -1000, col_name, 0
         elif col_name in non_volatile_symbols:
-            return -500, col_name
+            return -500, col_name, 0
+        elif col_name in pending_settlement_symbols:
+            # Keep an unsettled claim directly above its matching settled vault
+            # allocation in the stacked area chart.
+            return -200, col_name.removesuffix(PENDING_SETTLEMENT_LABEL_SUFFIX), 1
         elif col_name in vault_symbols:
-            return -200, col_name
+            return -200, col_name, 0
 
-        return 0, col_name
+        return 0, col_name, 0
 
     # Unstack to create DataFrame with asset symbols as columns
     df = weights_series.unstack(level=1)
@@ -236,8 +303,8 @@ def visualise_weights(
         )
 
     for symbol in vault_symbols:
-        # Aave colour
-        # https://aave.com/brand
+        # Vault positions use a hatch so the solid same-colour pending segment
+        # below remains distinguishable in the stacked allocation chart.
         fig.update_traces(
             selector=dict(name=symbol),
             fillpattern=dict(
@@ -246,6 +313,19 @@ def visualise_weights(
                 solidity=0.8
             ),
         )
+
+    traces_by_name = {trace.name: trace for trace in fig.data}
+    for pending_symbol in pending_settlement_symbols:
+        pending_trace = traces_by_name.get(pending_symbol)
+        if pending_trace is None:
+            continue
+        vault_symbol = pending_symbol.removesuffix(PENDING_SETTLEMENT_LABEL_SUFFIX)
+        vault_trace = traces_by_name.get(vault_symbol)
+        if vault_trace is not None:
+            colour = vault_trace.fillcolor or vault_trace.line.color
+            vault_trace.update(fillcolor=colour)
+            pending_trace.update(fillcolor=colour, line={"color": colour})
+        pending_trace.update(fillpattern={"shape": ""})
 
     fig.update_traces(fillcolor=reserve_asset_colour, selector=dict(name=reserve_asset_symbol))
     for symbol, colour in extra_colours.items():
