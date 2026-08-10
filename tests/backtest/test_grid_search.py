@@ -808,6 +808,75 @@ def test_create_failed_result(tmp_path):
     assert r.exception is not None
 
 
+def test_analyse_grid_search_result_with_crashed_result(
+    strategy_universe: TradingStrategyUniverse,
+    tmp_path: Path,
+):
+    """A crashed backtest does not break the extended result table.
+
+    QuantStats emits a reduced metric set for a degenerate returns series, and a
+    crashed backtest is represented with all-zero returns. ``Expected Shortfall
+    (cVaR)`` is missing there, which used to raise ``KeyError`` and take down the
+    whole table - including every healthy row in it.
+
+    1. Run a grid search that produces healthy results
+    2. Replace one result with a crashed one for the same combination
+    3. Check the crashed result really is missing the cVaR metric
+    4. Build the extended table over the mixed result set
+    5. Check the crashed row reads NaN while the healthy rows keep their metrics
+    6. Check the table still renders
+    """
+
+    parameters = {
+        "stop_loss_pct": [0.9],
+        "slow_ema_candle_count": [7],
+        "fast_ema_candle_count": [2, 3, 4],
+    }
+
+    # 1. Run a grid search that produces healthy results
+    combinations = prepare_grid_combinations(parameters, tmp_path)
+    results = perform_grid_search(
+        grid_search_worker,
+        strategy_universe,
+        combinations,
+        max_workers=1,
+    )
+    assert len(results) == 3
+
+    # 2. Replace one result with a crashed one for the same combination
+    crashed = create_grid_search_failed_result(
+        combination=results[0].combination,
+        state=State(),
+        exception=RuntimeError("Backtest blew up"),
+    )
+    mixed = [crashed] + results[1:]
+
+    # 3. Check the crashed result really is missing the cVaR metric
+    assert "Expected Shortfall (cVaR)" not in crashed.metrics.index
+    assert "Expected Shortfall (cVaR)" in results[1].metrics.index
+
+    # 4. Build the extended table over the mixed result set
+    table = analyse_grid_search_result(
+        mixed,
+        min_positions_threshold=0,
+        drop_duplicates=False,
+        extended_metrics=True,
+    )
+    assert len(table) == 3
+
+    # 5. Check the crashed row reads NaN while the healthy rows keep their metrics
+    crashed_row = table.xs(crashed.combination.get_parameter("fast_ema_candle_count"))
+    assert pd.isna(crashed_row["cVaR"])
+    assert crashed_row["Positions"] == 0
+
+    healthy_row = table.xs(results[1].combination.get_parameter("fast_ema_candle_count"))
+    assert healthy_row["cVaR"] == pytest.approx(results[1].get_metric("Expected Shortfall (cVaR)"))
+    assert healthy_row["Positions"] > 0
+
+    # 6. Check the table still renders
+    styler = render_grid_search_result_table(table, extended_metrics=True)
+    assert isinstance(styler, Styler)
+
 
 def test_grid_out_of_balance(
     strategy_universe,

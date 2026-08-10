@@ -136,6 +136,36 @@ def _calculate_capital_utilisation_metrics(r: GridSearchResult) -> tuple[float, 
     return np.nan, np.nan
 
 
+def read_metric(r: GridSearchResult, metric_name: str) -> float:
+    """Read a single QuantStats metric out of a grid search result.
+
+    QuantStats does not always emit the same set of metrics.
+    :py:func:`~tradeexecutor.analysis.advanced_metrics.calculate_advanced_metrics`
+    falls back to ``basic`` mode when the returns series is empty or constant,
+    which drops 29 of the 65 metrics - including ``Expected Shortfall (cVaR)``,
+    the only :py:data:`METRIC_REGISTRY` entry affected.
+
+    Two ordinary outcomes produce such a series: a backtest that crashed, which
+    :py:func:`~tradeexecutor.backtest.grid_search.create_grid_search_failed_result`
+    represents with all-zero returns, and a backtest whose parameters never
+    opened a position. Both belong in the result table with their parameters
+    intact, so a missing metric reads as NaN instead of raising.
+
+    :param r:
+        Grid search result to read from.
+
+    :param metric_name:
+        QuantStats metric row label, e.g. ``Sharpe``.
+
+    :return:
+        Metric value, or NaN when this result does not carry that metric.
+    """
+    if metric_name not in r.metrics.index:
+        return np.nan
+
+    return clean_metric(r.metrics.loc[metric_name].iloc[0])
+
+
 def clean_metric(x):
     """Normalise display metric values for analysis tables."""
     if x == "-":
@@ -189,7 +219,7 @@ def analyse_combination(
         })
 
     for column, metric_name in METRIC_REGISTRY.items():
-        row[column] = clean_metric(r.metrics.loc[metric_name].iloc[0])
+        row[column] = read_metric(r, metric_name)
 
     row.update({
         "Win rate": clean_metric(r.get_win_rate()),
