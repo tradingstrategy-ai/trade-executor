@@ -12,7 +12,12 @@ from tradingstrategy.chain import _chain_data
 from tradingstrategy.vault import VaultMetadata
 
 from tradeexecutor.analysis.multipair import calculate_pair_annualised_average_yield
-from tradeexecutor.analysis.weights import calculate_asset_weights, visualise_weights, calculate_weights_statistics
+from tradeexecutor.analysis.weights import (
+    calculate_asset_weights,
+    calculate_weights_statistics,
+    get_pending_settlement_asset_label,
+    visualise_weights,
+)
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.chart.asset_weight_legend import (
@@ -214,7 +219,7 @@ def build_asset_weight_legend_entries(state: State) -> list[AssetWeightLegendEnt
         ),
     ]
 
-    for position in state.portfolio.get_all_positions():
+    for position in state.portfolio.get_all_positions(pending=True):
         metadata = position.pair.get_token_metadata()
         if not isinstance(metadata, VaultMetadata):
             metadata = None
@@ -226,6 +231,15 @@ def build_asset_weight_legend_entries(state: State) -> list[AssetWeightLegendEnt
             metadata=metadata,
             annualised_yield_percent=annualised_yield_percent_by_pair_id.get(position.pair.internal_id, 0.0),
         ))
+        if any(trade.is_buy() and trade.other_data.get("vault_async_flow") for trade in position.trades.values()):
+            entries.append(AssetWeightLegendEntry(
+                label=get_pending_settlement_asset_label(get_asset_weight_label(position)),
+                colour=ASSET_WEIGHT_LEGEND_SWATCH_COLOUR,
+                chain_id=position.pair.chain_id,
+                chain_ids=(position.pair.chain_id,),
+                metadata=metadata,
+                annualised_yield_percent=0.0,
+            ))
 
     return merge_asset_weight_legend_entries(entries)
 

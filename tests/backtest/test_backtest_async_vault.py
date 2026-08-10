@@ -19,6 +19,7 @@ import pytest
 
 from eth_defi.erc_4626.core import ERC4626Feature
 
+from tradeexecutor.analysis.weights import calculate_asset_weights, get_pending_settlement_asset_label
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.backtest_runner import run_backtest_inline
 from tradeexecutor.cli.loop import ExecutionTestHook
@@ -775,6 +776,13 @@ def test_backtest_async_vault_ends_with_pending():
     assert state.portfolio.get_cash() == pytest.approx(deposit_amount, abs=1e-6)
     assert state.portfolio.get_vault_settlement_pending_value() == pytest.approx(deposit_amount, abs=1e-6)
     assert state.portfolio.calculate_total_equity() == pytest.approx(INITIAL_DEPOSIT, abs=1.0)
+
+    weights = calculate_asset_weights(state)
+    pending_label = get_pending_settlement_asset_label("Test async vault")
+    final_timestamp = weights.index.get_level_values("timestamp").max()
+    assert weights.loc[(final_timestamp, pending_label)] == pytest.approx(deposit_amount, abs=1e-6)
+    assert weights.loc[(final_timestamp, "USDC")] == pytest.approx(deposit_amount, abs=1e-6)
+    assert weights.xs(final_timestamp).sum() == pytest.approx(INITIAL_DEPOSIT, abs=1.0)
 
 
 @pytest.mark.timeout(300)

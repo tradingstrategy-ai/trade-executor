@@ -6,7 +6,12 @@ import pandas as pd
 import pytest
 from plotly.graph_objs import Figure
 
-from tradeexecutor.analysis.weights import calculate_asset_weights, visualise_weights, calculate_weights_statistics
+from tradeexecutor.analysis.weights import (
+    calculate_asset_weights,
+    calculate_weights_statistics,
+    get_pending_settlement_asset_label,
+    visualise_weights,
+)
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.chain import ChainId
 from tradingstrategy.timebucket import TimeBucket
@@ -247,3 +252,31 @@ def test_visualise_weights_extra_reserve_band_order_and_colour():
 
     assert [trace.name for trace in fig.data[:2]] == ["USDC", "Steakhouse USDC queue"]
     assert fig.data[1].fillcolor == "#666"
+
+
+def test_visualise_weights_pending_settlement_is_solid_vault_segment():
+    """A pending vault deposit shares its vault colour but not its hatch."""
+    timestamp = pd.Timestamp("2024-01-01")
+    vault_label = "Test vault"
+    pending_label = get_pending_settlement_asset_label(vault_label)
+    weights_series = pd.Series(
+        [100.0, 60.0, 40.0],
+        index=pd.MultiIndex.from_tuples(
+            [
+                (timestamp, "USDC"),
+                (timestamp, vault_label),
+                (timestamp, pending_label),
+            ],
+            names=["timestamp", "asset"],
+        ),
+    )
+    weights_series.attrs["reserve_asset_symbol"] = "USDC"
+    weights_series.attrs["credit_supply_symbols"] = []
+    weights_series.attrs["vault_symbols"] = [vault_label]
+    weights_series.attrs["pending_settlement_symbols"] = [pending_label]
+
+    fig = visualise_weights(weights_series, normalised=False)
+    traces = {trace.name: trace for trace in fig.data}
+    assert traces[vault_label].fillpattern.shape == "x"
+    assert traces[pending_label].fillpattern.shape == ""
+    assert traces[pending_label].fillcolor == traces[vault_label].fillcolor
