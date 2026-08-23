@@ -76,14 +76,9 @@ def vault(web3) -> IPORVault:
 def anvil_base_fork(anvil_fork_pool: AnvilForkPool, usdc_holder: HexAddress, test_block_number: int) -> AnvilLaunch:
     """Reuse and reset the cached fixed-block Base fork for each IPOR test.
 
-    The test group shares one Anvil process, which lets Foundry replay repeated
-    historical state reads from its storage cache instead of repeatedly loading
-    them from the archive provider.  Each test still receives a clean EVM
-    snapshot because these fixtures fund wallets and submit transactions.
-
-    1. Obtain the single fixed-block fork for this exact unlocked-account set.
-    2. Snapshot it before dependent fixtures can mutate state.
-    3. Revert it after the test while retaining Anvil's warmed storage cache.
+    Foundry replays repeated historical reads from its storage cache while an
+    EVM snapshot/revert keeps each test's wallet funding and transactions
+    isolated.
 
     :return:
         Shared Anvil fork at the IPOR integration-test block.
@@ -96,7 +91,6 @@ def anvil_base_fork(anvil_fork_pool: AnvilForkPool, usdc_holder: HexAddress, tes
         launch_wait_seconds=60.0,
         test_request_timeout=30.0,
     )
-    # 1-3. Isolate mutable test state without discarding the shared fork.
     snapshot = evm_snapshot_revert(launch)
     next(snapshot)
     try:

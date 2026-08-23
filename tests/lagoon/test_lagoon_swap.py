@@ -28,7 +28,7 @@ JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 pytestmark = [
     pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable"),
     pytest.mark.warm_rpc_high_value_group,
-    pytest.mark.xdist_group("fork:base:49030926:lagoon"),
+    pytest.mark.xdist_group("fork:base:49030926:isolated:lagoon-swap"),
 ]
 
 

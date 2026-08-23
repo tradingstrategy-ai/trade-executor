@@ -53,6 +53,7 @@ CI = os.environ.get("CI", None) is not None
 
 pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable")
 
+
 @pytest.fixture()
 def usdc_holder() -> HexAddress:
     # https://basescan.org/token/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913#balances
@@ -63,15 +64,8 @@ def usdc_holder() -> HexAddress:
 def anvil_base_fork(anvil_fork_pool: AnvilForkPool, usdc_holder: HexAddress) -> AnvilLaunch:
     """Reuse and reset the cached canonical Base fork for Lagoon tests.
 
-    The previous per-test launch retried only ``AssertionError`` and made a
-    direct archive preflight against the first provider before Foundry could
-    use its cache.  The shared pool now owns a single failover-capable fork;
-    snapshot/revert preserves test isolation while its gracefully closed Anvil
-    process flushes newly read historical state into the storage cache.
-
-    1. Obtain the canonical fixed-block fork with the Lagoon USDC holder.
-    2. Take an EVM snapshot before dependent fixtures deploy or transact.
-    3. Revert after the test and retain the warm fork for the next test.
+    The per-test EVM snapshot/revert preserves deployment and transaction
+    isolation while the pooled Anvil process retains its warmed storage cache.
 
     :return:
         Shared Anvil fork at :data:`BASE_MIDNIGHT_BLOCK`.
@@ -83,7 +77,6 @@ def anvil_base_fork(anvil_fork_pool: AnvilForkPool, usdc_holder: HexAddress) -> 
         BASE_MIDNIGHT_BLOCK,
         unlocked_addresses=[usdc_holder],
     )
-    # 1-3. Isolate mutable test state without discarding the shared fork.
     snapshot = evm_snapshot_revert(launch)
     next(snapshot)
     try:
