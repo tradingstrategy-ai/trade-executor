@@ -18,6 +18,12 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.strategy.redemption import RedemptionBlockReason, RedemptionCheckStage
 
 
+pytestmark = [
+    pytest.mark.warm_rpc_test_group,
+    pytest.mark.xdist_group("fork:base:27975506:ipor"),
+]
+
+
 class _FixedCall:
     def __init__(self, value: int):
         self.value = value

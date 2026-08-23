@@ -29,6 +29,12 @@ from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
+pytestmark = [
+    pytest.mark.warm_rpc_test_group,
+    pytest.mark.xdist_group("fork:base:49030926:isolated:lagoon-guard-settlement"),
+]
+
+
 def _request_deposit(
     vault: LagoonAutomatedDeployment,
     token: TokenDetails,
