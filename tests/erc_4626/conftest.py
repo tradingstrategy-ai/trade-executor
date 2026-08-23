@@ -15,8 +15,10 @@ from eth_defi.hotwallet import HotWallet
 from eth_defi.erc_4626.vault_protocol.ipor.vault import IPORVault
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import deploy_automated_lagoon_vault, LagoonDeploymentParameters, LagoonAutomatedDeployment
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
-from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
+from eth_defi.provider.anvil import AnvilLaunch
 from eth_defi.provider.multi_provider import create_multi_provider_web3
+from eth_defi.testing.anvil_fork_pool import AnvilForkPool
+from eth_defi.testing.evm_snapshot_fixture import evm_snapshot_revert
 from eth_defi.token import TokenDetails, fetch_erc20_details, USDC_NATIVE_TOKEN
 from eth_defi.trace import assert_transaction_success_with_explanation
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
@@ -71,24 +73,36 @@ def vault(web3) -> IPORVault:
 
 
 @pytest.fixture()
-def anvil_base_fork(request, usdc_holder, test_block_number) -> AnvilLaunch:
-    """Create a testable fork of live BNB chain.
+def anvil_base_fork(anvil_fork_pool: AnvilForkPool, usdc_holder: HexAddress, test_block_number: int) -> AnvilLaunch:
+    """Reuse and reset the cached fixed-block Base fork for each IPOR test.
 
-    :return: JSON-RPC URL for Web3
+    The test group shares one Anvil process, which lets Foundry replay repeated
+    historical state reads from its storage cache instead of repeatedly loading
+    them from the archive provider.  Each test still receives a clean EVM
+    snapshot because these fixtures fund wallets and submit transactions.
+
+    1. Obtain the single fixed-block fork for this exact unlocked-account set.
+    2. Snapshot it before dependent fixtures can mutate state.
+    3. Revert it after the test while retaining Anvil's warmed storage cache.
+
+    :return:
+        Shared Anvil fork at the IPOR integration-test block.
     """
     assert JSON_RPC_BASE, "JSON_RPC_BASE not set"
-    launch = fork_network_anvil(
+    launch = anvil_fork_pool.get_launch(
         JSON_RPC_BASE,
+        test_block_number,
         unlocked_addresses=[usdc_holder],
-        fork_block_number=test_block_number,
         launch_wait_seconds=60.0,
         test_request_timeout=30.0,
     )
+    # 1-3. Isolate mutable test state without discarding the shared fork.
+    snapshot = evm_snapshot_revert(launch)
+    next(snapshot)
     try:
         yield launch
     finally:
-        # Wind down Anvil process after the test is complete
-        launch.close()
+        next(snapshot, None)
 
 
 @pytest.fixture()

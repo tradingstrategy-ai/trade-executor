@@ -24,7 +24,11 @@ from eth_defi.compat import native_datetime_utc_now
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 CI = os.environ.get("CI") == "true"
-pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable")
+pytestmark = [
+    pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable"),
+    pytest.mark.warm_rpc_test_group,
+    pytest.mark.xdist_group("fork:base:27975506:ipor"),
+]
 
 
 def test_vault_routing(

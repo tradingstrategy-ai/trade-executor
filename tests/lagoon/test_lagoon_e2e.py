@@ -31,7 +31,7 @@ pytestmark = [
         reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY needed to run this test",
     ),
     pytest.mark.warm_rpc_high_value_group,
-    pytest.mark.xdist_group("fork:base:49030926:isolated:lagoon-e2e"),
+    pytest.mark.xdist_group("fork:base:49030926:lagoon"),
 ]
 from tradeexecutor.utils.hex import hexbytes_to_hex_str
 
