@@ -23,3 +23,8 @@ so it is intentionally not seeded until that credential is available.
 Regenerate an entry by setting `FOUNDRY_RPC_CACHE_DIR` to an empty external
 directory, running the focused test module, and copying its generated
 `storage.json` here after Anvil exits cleanly.
+
+The seed serves repeatable historical reads after Anvil has started. Its initial
+chain-identity and archive preflight are remote by design and, when configured
+with multiple providers, must use their bounded failover proxy rather than one
+selected endpoint.
