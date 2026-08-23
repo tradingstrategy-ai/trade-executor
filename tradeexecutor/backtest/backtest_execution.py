@@ -661,9 +661,18 @@ class BacktestExecution(ExecutionModel):
             # Redeem: realise reserve at the current (settlement-time) price.
             executed_quantity = trade.get_vault_settlement_request_quantity()
             if pricing_model is not None:
-                settlement_price = pricing_model.get_sell_price(ts, pair, abs(executed_quantity)).price
+                pricing = pricing_model.get_sell_price(ts, pair, abs(executed_quantity))
+                redemption_fee = trade.other_data.get("backtest_vault_redemption_fee")
+                if redemption_fee is None:
+                    settlement_price = pricing.price
+                else:
+                    settlement_price = pricing.mid_price * (1.0 - float(redemption_fee))
             else:
-                settlement_price = float(trade.planned_price)
+                redemption_fee = trade.other_data.get("backtest_vault_redemption_fee")
+                if redemption_fee is None:
+                    settlement_price = float(trade.planned_price)
+                else:
+                    settlement_price = float(trade.planned_mid_price) * (1.0 - float(redemption_fee))
             executed_reserve = abs(executed_quantity) * Decimal(str(settlement_price))
             # Wallet: receive reserve. The shares already left the wallet at
             # request time and must not be debited a second time.
