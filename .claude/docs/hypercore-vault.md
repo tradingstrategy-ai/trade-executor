@@ -543,9 +543,65 @@ depositing would unnecessarily create a new lock-up. No backend redemption
 minimum has been confirmed; every attempted redemption is verified for actual
 balance movement.
 
+Normal strategy withdrawals reserve `max(0.5% of the available amount, 1.50
+USDC)` for NAV drift between the live read and HyperCore processing. The same
+relative/floor equation is used when a partial reduction is genuinely limited
+by `max_withdrawable`, when constructing a full close from fresh live equity,
+and in normal phase-1 no-op retries. Planning first compares the requested
+amount with the raw live cap; it does not let the safety reserve turn an
+otherwise unconstrained full close into a partial close.
+
+Planning-to-preflight cap drift is a separate decision from the amount left
+below the fresh cap. A normal withdrawal accepts drift up to the same
+relative/floor equation evaluated against the requested amount; larger changes
+still fail rather than silently invalidating same-cycle cash planning. Once
+accepted, execution independently leaves the relative/floor margin below the
+fresh cap. Specialised 3–5 USDC cleanup retains the fixed 1.50 USDC cap-drift
+tolerance while using only 0.10 USDC initial execution headroom, so its small
+headroom cannot accidentally narrow preflight acceptance.
+
+**Production incident (trades #1599–#1605, pmalt and Octavious Maximus,
+2026-08-22/23).** Hyper AI planned pmalt sell #1605 for 6,389.537474 USDC.
+Roughly 15 seconds later, immediately before transaction construction, the
+fresh HyperCore `max_withdrawable` was 6,387.042495 USDC, a 2.494979 USDC
+decrease. The old 1.50 USDC fixed cap-drift tolerance rejected the withdrawal
+before broadcast. The whole batch stopped at its first sequential trade,
+leaving #1605 started without a transaction and the six following trades
+planned.
+
+On restart, new Octavious position #510 still contained planned opening trade
+#1602 but had zero executed quantity. Generic HyperCore dust cleanup used that
+zero as evidence of a completed redemption, then asserted that the opening
+trade was successful while constructing its local repair close. This caused a
+second scheduler crash. There were therefore two independent defects: the
+fixed withdrawal margin did not scale with the amount, and dust cleanup did
+not distinguish an unfinished position from genuine post-redemption dust.
+
+The withdrawal equation now selects the greater of 0.5% of the amount and the
+existing 1.50 USDC floor, then rounds upwards to six-decimal USDC precision.
+For the fresh pmalt cap this yields 31.935213 USDC headroom and a
+6,355.107282 USDC safe request. The accepted cap drift and the headroom below
+the fresh cap are additive: in the percentage regime, realised sell proceeds
+can therefore be roughly 1% below the planned request in the worst case (or up
+to 3.00 USDC below it while both fixed floors apply). That bounded shortfall is
+preferable to aborting the complete sequential batch, while cap drift above its
+configured 0.5%/1.50 USDC tolerance still fails loudly.
+
+Separately, automatic dust cleanup first identifies a dust-sized position and
+then skips it if it has no successful trade or has a planned, started, or
+broadcast trade. The percentage-derived full-close residual is accounted for
+by verified settlement and may exceed the independently capped 50 USDC dust
+threshold; increasing that bookkeeping-only threshold would risk discarding a
+real live position. Settlement stores the observed residual on the closed
+trade, and a later `correct-accounts` run recreates an on-chain residual above
+its default 2 USDC reconciliation threshold as a tracked small position. The
+specialised cleanup ladder can then recover it. These guards are intentionally
+independent: changing the margin cannot make incomplete trade state safe to
+repair, and the state guard cannot prevent stale live withdrawal caps.
+
 Cleanup uses an adaptive initial margin of at most 0.10 USDC instead of the
-normal 1.50 USDC full-close margin, because withholding 1.50 USDC would strand
-a material share of a 3–5 USDC position. The redeem path retries a phase-1
+normal relative/floor full-close margin, because withholding 1.50 USDC would
+strand a material share of a 3–5 USDC position. The redeem path retries a phase-1
 silent no-op with progressively larger 0.25, 0.50, and 1.00 USDC safety
 margins, but only while the resulting redemption remains above the 0.20 USDC
 follow-up phase verification tolerance. The deposit constant is deliberately

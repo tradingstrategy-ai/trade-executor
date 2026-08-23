@@ -1180,12 +1180,11 @@ def create_missing_vault_positions(
         # Dust-level equity with no open position: write it off, the same way
         # leftover spot dust is ignored once a position has been closed.
         #
-        # Hypercore vault withdrawals cannot fully exit. The protocol refuses
-        # exact full withdrawals when NAV moves between planning and execution,
-        # so a small residual (the withdrawal safety margin, ~1.5 USDC) is left
-        # behind on-chain. The original position is already marked closed at
-        # exit, because the close epsilon (HYPERLIQUID_VAULT_CLOSE_EPSILON)
-        # tolerates this residual in can_be_closed().
+        # Hypercore vault withdrawals cannot safely request exact live equity.
+        # Normal full closes leave max(0.5% of live equity, 1.50 USDC) on-chain
+        # because NAV can move before HyperCore processes the queued action.
+        # Verified settlement records that residual and closes the original
+        # state position independently of this reconciliation threshold.
         #
         # We must NOT manufacture a closed "dust" position for the residual
         # here. This function runs on every correct-accounts cycle and the
@@ -1194,6 +1193,10 @@ def create_missing_vault_positions(
         # the hyper-ai closed-positions list with hundreds of zero-quantity
         # positions. Other trading pairs simply leave such sub-dust balances
         # written off; do the same for Hypercore vaults and just skip it.
+        # A percentage-derived residual above the default 2 USDC threshold is
+        # deliberately recreated as a tracked position below, allowing the
+        # specialised small-position cleanup path to recover it instead of
+        # silently discarding economically meaningful vault shares.
         # Use <= so the threshold matches can_be_closed(), which treats a
         # residual of exactly the close epsilon as closeable dust.
         dust_epsilon = get_close_epsilon_for_pair(pair)

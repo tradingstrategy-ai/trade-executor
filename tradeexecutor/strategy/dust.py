@@ -6,8 +6,7 @@ We need to deal with these rounding artifacts by checking for "dust".
 
 """
 from collections.abc import Iterable
-from _decimal import Decimal
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.types import Percent, USDollarPrice
@@ -46,13 +45,15 @@ DEFAULT_VAULT_EPSILON = Decimal(10 ** -6)
 #: Incident reference:
 #:
 #: - HyperAI trade #326, Super Moon, on 2026-04-15 withdrew successfully.
-#: - Routing used the live full-close safety margin of 1.5 USDC.
+#: - Routing used the live full-close safety-margin floor of 1.5 USDC.
 #: - The position then remained open with 1.500000 quantity because this close
 #:   epsilon was still 0.20 USDC from an older safety-margin setting.
 #:
-#: Keep this above HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW = 1_500_000 raw
-#: ($1.50 in 6-decimal USDC) so can_be_closed() recognises the intentional
-#: residual as dust and the runner can auto-close it before account checks.
+#: Keep this above the fixed 1.50 USDC withdrawal-margin floor so
+#: can_be_closed() recognises small intentional residuals as dust and the
+#: runner can auto-close them before account checks. Percentage-derived
+#: headroom above this threshold is handled by verified full-close settlement,
+#: not by widening this bookkeeping-only dust threshold.
 #:
 #: .. warning::
 #:
@@ -78,17 +79,93 @@ HYPERLIQUID_VAULT_CLOSE_EPSILON_CAPITAL_PCT = Decimal("0.005")
 
 #: Absolute ceiling, in US dollars, for the capital-scaled Hypercore close epsilon.
 #:
-#: Hypercore withdrawal dust is caused by an *absolute* safety margin of ~1.50 USDC
-#: subtracted from live equity, so it does not grow with the strategy. Scaling the
-#: threshold by ``initial_cash`` was intended to give larger strategies a little more
-#: slack, but without a ceiling a 150,000 USD strategy gets a 750 USD "dust" threshold -
-#: five hundred times the residual it is supposed to absorb, and comfortably large enough
-#: to swallow a real position.
+#: This threshold was originally scaled with ``initial_cash`` to cover withdrawal
+#: headroom, but without a ceiling a 150,000 USD strategy gets a 750 USD "dust"
+#: threshold, comfortably large enough to swallow a real position. Normal withdrawals
+#: now use a separate relative/floor margin; any residual above this close-epsilon cap
+#: must remain tracked for another redemption instead of being written off as dust.
 #:
-#: 50 USD is ~33x the observed withdrawal margin and far below any position this strategy
-#: family opens, so it keeps the intended slack without letting the threshold reach
-#: economically meaningful sizes.
+#: 50 USD covers the 31.94 USDC margin from the 2026-08-22 pmalt incident. It
+#: is not intended to cover every percentage-derived margin: full-close
+#: settlement records a verified larger residual while closing the state
+#: position, whereas writing off an arbitrary live position as dust would lose
+#: its shares from bookkeeping.
 HYPERLIQUID_VAULT_CLOSE_EPSILON_MAX_USD = Decimal("50.00")
+
+#: Minimum NAV-drift headroom left when withdrawing from a HyperCore vault.
+HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_FLOOR = Decimal("1.50")
+
+#: Relative NAV-drift headroom left when withdrawing from a HyperCore vault.
+#:
+#: HyperCore processes ``vaultTransfer`` asynchronously after the equity read,
+#: so larger withdrawals need more headroom than the fixed floor provides.
+HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_PCT = Decimal("0.005")
+
+#: HyperCore USDC precision used when rounding a safety margin upwards.
+HYPERCORE_USDC_QUANTUM = Decimal("0.000001")
+
+
+def get_hypercore_withdrawal_safety_margin(amount: Decimal) -> Decimal:
+    """Calculate HyperCore withdrawal headroom as ``max(0.5% × amount, 1.50 USDC)``.
+
+    The relative term was introduced after the 2026-08-22 Hyper AI incident.
+    Rebalance trade #1605 planned a 6,389.537474 USDC pmalt redemption using a
+    live ``max_withdrawable`` snapshot. Roughly 15 seconds later, immediately
+    before transaction construction, HyperCore reported only 6,387.042495
+    USDC withdrawable. The 2.494979 USDC movement exceeded the old fixed 1.50
+    USDC tolerance, so preflight aborted before broadcasting anything.
+
+    The 1.50 USDC floor is retained from earlier 2026-04-15 Hyper AI
+    incidents: trade #336 established that a tiny fixed preflight tolerance
+    was insufficient, while trade #326 showed that the intentional residual
+    must remain within the default close epsilon for small withdrawals.
+
+    Because the seven-trade rebalance had already been persisted, trade #1605
+    remained started without transactions and trades #1599–#1604 remained
+    planned. On the next start, the planned-only Octavious opening trade #1602
+    had zero executed quantity. Automatic dust cleanup mistook that unfinished
+    position for a redeemed residual and crashed while asserting that its
+    opening trade had succeeded. Dust cleanup now independently guards against
+    unfinished positions; this margin prevents the original stale-cap failure.
+
+    A fixed margin does not scale with a vault position: 1.50 USDC is generous
+    for a small withdrawal but only 0.023% of the failed pmalt request. The
+    0.5% term gives larger, actively traded vaults proportionate protection
+    against fees, PnL and mark-to-market changes between the API read and
+    asynchronous ``vaultTransfer`` processing. The fixed floor retains the
+    proven minimum protection for withdrawals below 300 USDC, where 0.5%
+    would otherwise be less than 1.50 USDC.
+
+    The result is rounded upwards to the next raw USDC unit. Rounding down
+    would make the actual headroom smaller than the configured equation and
+    could reintroduce a one-unit over-withdrawal no-op at the boundary.
+
+    :param amount:
+        Withdrawal amount or live withdrawable cap in human-readable USDC.
+    :return:
+        Safety margin in human-readable USDC with six-decimal precision.
+    """
+    assert isinstance(amount, Decimal), (
+        f"HyperCore withdrawal amount must be Decimal, got {type(amount)}"
+    )
+    assert amount >= 0, f"HyperCore withdrawal amount cannot be negative: {amount}"
+
+    # Relative side of the equation: the failed pmalt withdrawal would reserve
+    # 31.947688 USDC instead of the old, insufficient 1.50 USDC fixed amount.
+    relative_margin = amount * HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_PCT
+
+    # Fixed-floor side of the equation: for amounts below 300 USDC, 0.5% is
+    # smaller than 1.50 USDC, so retain the safety level proven by earlier
+    # small-withdrawal incidents.
+    safety_margin = max(
+        relative_margin,
+        HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_FLOOR,
+    )
+
+    # HyperCore USDC has six decimals. Always round the chosen margin upwards
+    # so integer conversion cannot weaken the threshold by one raw unit.
+    return safety_margin.quantize(HYPERCORE_USDC_QUANTUM, rounding=ROUND_CEILING)
+
 
 #: Hypercore vault equities fluctuate every block due to active trading
 #: inside the vault, and live cycles can spend a long time in sequential

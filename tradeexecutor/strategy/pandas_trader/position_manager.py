@@ -27,7 +27,10 @@ from tradeexecutor.state.position import TradingPosition, TriggerPriceUpdate
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType, TradeExecution, TradeFlag, TradeStatus
 from tradeexecutor.state.types import USDollarAmount, Percent, LeverageMultiplier, USDollarPrice
-from tradeexecutor.strategy.dust import get_close_epsilon_for_pair
+from tradeexecutor.strategy.dust import (
+    get_close_epsilon_for_pair,
+    get_hypercore_withdrawal_safety_margin,
+)
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
@@ -1681,9 +1684,17 @@ class PositionManager:
         redemption_cap_bound = False
 
         if max_redemption is not None:
-            max_redeemable_quantity = Decimal(str(max_redemption)) / current_price
+            max_redemption_decimal = Decimal(str(max_redemption))
+            max_redeemable_quantity = max_redemption_decimal / current_price
             if effective_quantity > max_redeemable_quantity:
-                effective_quantity = max_redeemable_quantity
+                safety_margin = get_hypercore_withdrawal_safety_margin(
+                    max_redemption_decimal
+                )
+                safe_max_redemption = max(
+                    Decimal(0),
+                    max_redemption_decimal - safety_margin,
+                )
+                effective_quantity = safe_max_redemption / current_price
                 redemption_cap_bound = True
 
         remaining_quantity = max(Decimal(0), available_quantity - effective_quantity)
