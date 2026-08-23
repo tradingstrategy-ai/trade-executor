@@ -33,8 +33,8 @@ from eth_defi.cctp.constants import CCTP_DOMAIN_ARBITRUM, CCTP_DOMAIN_BASE
 from eth_defi.cctp.receive import prepare_receive_message
 from eth_defi.cctp.testing import craft_cctp_message, forge_attestation, replace_attester_on_fork
 from eth_defi.hotwallet import HotWallet
-from eth_defi.provider.anvil import AnvilLaunch, launch_anvil
-from eth_defi.token import USDC_NATIVE_TOKEN, USDC_WHALE, fetch_erc20_details
+from eth_defi.provider.anvil import AnvilLaunch, fund_erc20_on_anvil, launch_anvil
+from eth_defi.token import USDC_NATIVE_TOKEN, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
 
 from tradeexecutor.cli.main import app
@@ -51,7 +51,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 #: How much USDC to fund the hot wallet with on Arbitrum
-FUND_AMOUNT = 10_000 * 10**6  # 10,000 USDC
+FUND_AMOUNT = Decimal(10_000)
 
 
 @pytest.fixture()
@@ -71,11 +71,7 @@ def hot_wallet_address(hot_wallet_private_key) -> str:
 def anvil_arbitrum(hot_wallet_address) -> AnvilLaunch:
     """Fork Arbitrum mainnet via Anvil."""
     mainnet_rpc = os.environ["JSON_RPC_ARBITRUM"]
-    arb_usdc_whale = USDC_WHALE[42161]
-    anvil = launch_anvil(
-        mainnet_rpc,
-        unlocked_addresses=[arb_usdc_whale],
-    )
+    anvil = launch_anvil(mainnet_rpc)
     try:
         # Fund hot wallet with ETH and USDC on Arbitrum
         web3 = Web3(HTTPProvider(anvil.json_rpc_url))
@@ -90,10 +86,12 @@ def anvil_arbitrum(hot_wallet_address) -> AnvilLaunch:
         # USDC
         usdc_address = USDC_NATIVE_TOKEN[42161]
         usdc = fetch_erc20_details(web3, usdc_address, chain_id=42161)
-        tx_hash = usdc.contract.functions.transfer(
-            hot_wallet_address, FUND_AMOUNT,
-        ).transact({"from": arb_usdc_whale, "gas": 100_000})
-        assert_transaction_success_with_explanation(web3, tx_hash)
+        fund_erc20_on_anvil(
+            web3,
+            usdc.address,
+            hot_wallet_address,
+            usdc.convert_to_raw(FUND_AMOUNT),
+        )
 
         yield anvil
     finally:

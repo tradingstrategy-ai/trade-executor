@@ -8,7 +8,9 @@ Explore the static deployment which we fork from the Base mainnet:
 - Safe contract: https://basescan.org/address/0x20415f3Ec0FEA974548184bdD6e67575D128953F#readProxyContract
 - Roles: https://app.safe.global/apps/open?safe=base:0x20415f3Ec0FEA974548184bdD6e67575D128953F&appUrl=https%3A%2F%2Fzodiac.gnosisguild.org%2F
 """
+import logging
 import os
+import time
 from decimal import Decimal
 
 import pytest
@@ -19,10 +21,8 @@ from web3 import Web3
 from eth_defi.hotwallet import HotWallet
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import deploy_automated_lagoon_vault, LagoonDeploymentParameters, LagoonAutomatedDeployment
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
-from eth_defi.provider.anvil import AnvilLaunch
+from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
 from eth_defi.provider.multi_provider import create_multi_provider_web3
-from eth_defi.testing.anvil_fork_pool import AnvilForkPool
-from eth_defi.testing.evm_snapshot_fixture import evm_snapshot_revert
 from eth_defi.testing.fork_blocks import BASE_MIDNIGHT_BLOCK
 from eth_defi.token import TokenDetails, fetch_erc20_details, USDC_NATIVE_TOKEN
 from eth_defi.trace import assert_transaction_success_with_explanation
@@ -53,6 +53,8 @@ CI = os.environ.get("CI", None) is not None
 
 pytestmark = pytest.mark.skipif(not JSON_RPC_BASE, reason="No JSON_RPC_BASE environment variable")
 
+logger = logging.getLogger(__name__)
+
 
 @pytest.fixture()
 def usdc_holder() -> HexAddress:
@@ -61,28 +63,38 @@ def usdc_holder() -> HexAddress:
 
 
 @pytest.fixture()
-def anvil_base_fork(anvil_fork_pool: AnvilForkPool, usdc_holder: HexAddress) -> AnvilLaunch:
-    """Reuse and reset the cached canonical Base fork for Lagoon tests.
+def anvil_base_fork(usdc_holder: HexAddress) -> AnvilLaunch:
+    """Create an isolated fork of Base at the cached canonical block.
 
-    The per-test EVM snapshot/revert preserves deployment and transaction
-    isolation while the pooled Anvil process retains its warmed storage cache.
-
-    :return:
-        Shared Anvil fork at :data:`BASE_MIDNIGHT_BLOCK`.
+    :return: JSON-RPC URL for Web3
     """
     rpc_url = os.environ.get("JSON_RPC_BASE") or JSON_RPC_BASE
     assert rpc_url, "JSON_RPC_BASE not set"
-    launch = anvil_fork_pool.get_launch(
-        rpc_url,
-        BASE_MIDNIGHT_BLOCK,
-        unlocked_addresses=[usdc_holder],
-    )
-    snapshot = evm_snapshot_revert(launch)
-    next(snapshot)
+
+    launch = None
+    for attempt in range(3):
+        try:
+            launch = fork_network_anvil(
+                rpc_url,
+                unlocked_addresses=[usdc_holder],
+                fork_block_number=BASE_MIDNIGHT_BLOCK,
+            )
+            break
+        except AssertionError:
+            if attempt == 2:
+                raise
+            logger.warning(
+                "Retrying Lagoon Base fork startup after failed Anvil launch, attempt %d/3",
+                attempt + 2,
+            )
+            time.sleep(2 * (attempt + 1))
+
+    assert launch is not None
     try:
         yield launch
     finally:
-        next(snapshot, None)
+        # Wind down Anvil process after the test is complete
+        launch.close()
 
 
 @pytest.fixture()
