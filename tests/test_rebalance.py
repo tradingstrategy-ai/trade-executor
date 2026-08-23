@@ -2118,8 +2118,8 @@ def test_alpha_model_caps_profitable_hypercore_sell_before_trade_generation(
     """Check Hypercore sell sizing uses live position price and capped quantity before trade creation.
 
     1. Create a profitable Hypercore position whose marked value is above its stored quantity.
-    2. Cap redemption below the requested sell so the alpha model must recompute the effective sell.
-    3. Verify the signal stores the capped marked-value delta, while the sell trade stores the smaller released cash amount.
+    2. Cap redemption below the requested sell so the alpha model must reserve safety headroom and recompute the effective sell.
+    3. Verify the signal and sell trade use the safety-adjusted cap rather than the raw live cap.
     """
     state = State()
     hypercore_vault_pair = _create_hypercore_position_for_rebalance_test(state, start_ts, usdc)
@@ -2156,7 +2156,7 @@ def test_alpha_model_caps_profitable_hypercore_sell_before_trade_generation(
     alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
     alpha_model.calculate_target_positions(position_manager, investable_equity=20.0)
 
-    # 2. Cap redemption below the requested sell so the alpha model must recompute the effective sell.
+    # 2. Cap redemption below the requested sell so the alpha model must reserve safety headroom and recompute the effective sell.
     trades = alpha_model.generate_rebalance_trades_and_triggers(
         position_manager,
         min_trade_threshold=0.01,
@@ -2167,13 +2167,13 @@ def test_alpha_model_caps_profitable_hypercore_sell_before_trade_generation(
     signal = alpha_model.get_signal_by_pair(hypercore_vault_pair)
     assert signal is not None
 
-    # 3. Verify the signal stores the capped marked-value delta, while the sell trade stores the smaller released cash amount.
-    assert signal.position_adjust_usd == pytest.approx(-10.0)
-    assert signal.position_adjust_quantity == pytest.approx(-5.0)
+    # 3. Verify the signal and sell trade use the safety-adjusted cap rather than the raw live cap.
+    assert signal.position_adjust_usd == pytest.approx(-8.5)
+    assert signal.position_adjust_quantity == pytest.approx(-4.25)
     assert len(trades) == 1
     assert trades[0].is_sell()
-    assert trades[0].planned_quantity == Decimal("-5")
-    assert trades[0].planned_reserve == Decimal("10")
+    assert trades[0].planned_quantity == Decimal("-4.25")
+    assert trades[0].planned_reserve == Decimal("8.50")
     assert trades[0].planned_price == pytest.approx(2.0)
 
 
@@ -2270,8 +2270,8 @@ def test_alpha_model_converts_loss_making_hypercore_usd_cap_to_quantity(
     """Check Hypercore USD redemption cap is converted to vault units when share price is below 1.
 
     1. Create a loss-making Hypercore position with share price below 1.
-    2. Cap the redemption in USD below the requested sell.
-    3. Verify capped USD is converted to a larger vault-unit quantity.
+    2. Cap the redemption in USD below the requested sell and reserve safety headroom.
+    3. Verify safety-adjusted USD is converted to the corresponding vault-unit quantity.
     """
     state = State()
     hypercore_vault_pair = _create_hypercore_position_for_rebalance_test(
@@ -2313,7 +2313,7 @@ def test_alpha_model_converts_loss_making_hypercore_usd_cap_to_quantity(
     alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
     alpha_model.calculate_target_positions(position_manager, investable_equity=20.0)
 
-    # 2. Cap the redemption in USD below the requested sell.
+    # 2. Cap the redemption in USD below the requested sell and reserve safety headroom.
     trades = alpha_model.generate_rebalance_trades_and_triggers(
         position_manager,
         min_trade_threshold=0.01,
@@ -2324,13 +2324,13 @@ def test_alpha_model_converts_loss_making_hypercore_usd_cap_to_quantity(
     signal = alpha_model.get_signal_by_pair(hypercore_vault_pair)
     assert signal is not None
 
-    # 3. Verify capped USD is converted to a larger vault-unit quantity.
-    assert signal.position_adjust_usd == pytest.approx(-10.0)
-    assert signal.position_adjust_quantity == pytest.approx(-20.0)
+    # 3. Verify safety-adjusted USD is converted to the corresponding vault-unit quantity.
+    assert signal.position_adjust_usd == pytest.approx(-8.5)
+    assert signal.position_adjust_quantity == pytest.approx(-17.0)
     assert len(trades) == 1
     assert trades[0].is_sell()
-    assert trades[0].planned_quantity == Decimal("-20")
-    assert trades[0].planned_reserve == Decimal("10.0")
+    assert trades[0].planned_quantity == Decimal("-17")
+    assert trades[0].planned_reserve == Decimal("8.50")
     assert trades[0].planned_price == pytest.approx(0.5)
 
 
@@ -2344,7 +2344,7 @@ def test_alpha_model_skips_hypercore_sell_below_threshold_after_capping(
     """Check Hypercore sell thresholds are evaluated after the live redemption cap is applied.
 
     1. Create a profitable Hypercore position whose requested marked-value reduction is large.
-    2. Cap the redeemable quantity so the effective sell becomes smaller than the sell threshold.
+    2. Apply safety headroom to the redeemable cap so the effective sell becomes smaller than the sell threshold.
     3. Verify the alpha model skips the trade instead of emitting a dust Hypercore withdrawal.
     """
     state = State()
@@ -2382,7 +2382,7 @@ def test_alpha_model_skips_hypercore_sell_below_threshold_after_capping(
     alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
     alpha_model.calculate_target_positions(position_manager, investable_equity=20.0)
 
-    # 2. Cap the redeemable quantity so the effective sell becomes smaller than the sell threshold.
+    # 2. Apply safety headroom to the redeemable cap so the effective sell becomes smaller than the sell threshold.
     trades = alpha_model.generate_rebalance_trades_and_triggers(
         position_manager,
         min_trade_threshold=0.01,
@@ -2395,8 +2395,8 @@ def test_alpha_model_skips_hypercore_sell_below_threshold_after_capping(
 
     # 3. Verify the alpha model skips the trade instead of emitting a dust Hypercore withdrawal.
     assert trades == []
-    assert signal.position_adjust_usd == pytest.approx(-2.0)
-    assert signal.position_adjust_quantity == pytest.approx(-1.0)
+    assert signal.position_adjust_usd == pytest.approx(-0.5)
+    assert signal.position_adjust_quantity == pytest.approx(-0.25)
     assert TradingPairSignalFlags.individual_trade_size_too_small in signal.flags
 
 
@@ -2482,8 +2482,8 @@ def test_alpha_model_uses_capped_hypercore_cash_release_for_buy_checks(
     """Check same-cycle cash planning uses capped Hypercore cash release, not marked value reduction.
 
     1. Create a profitable Hypercore position and a second buy signal competing for the released cash.
-    2. Cap the Hypercore sell so its released cash is smaller than the buy that follows in the same cycle.
-    3. Verify check_enough_cash() fails against the capped planned reserve instead of the larger marked-value reduction.
+    2. Apply safety headroom to the Hypercore cap so its released cash is smaller than the buy that follows in the same cycle.
+    3. Verify check_enough_cash() fails against the safety-adjusted reserve instead of the larger marked-value reduction.
     """
     state = State()
     hypercore_vault_pair = _create_hypercore_position_for_rebalance_test(state, start_ts, usdc)
@@ -2521,7 +2521,7 @@ def test_alpha_model_uses_capped_hypercore_cash_release_for_buy_checks(
     alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
     alpha_model.calculate_target_positions(position_manager, investable_equity=45.0)
 
-    # 2. Cap the Hypercore sell so its released cash is smaller than the buy that follows in the same cycle.
+    # 2. Apply safety headroom to the Hypercore cap so its released cash is smaller than the buy that follows in the same cycle.
     trades = alpha_model.generate_rebalance_trades_and_triggers(
         position_manager,
         min_trade_threshold=0.01,
@@ -2532,8 +2532,8 @@ def test_alpha_model_uses_capped_hypercore_cash_release_for_buy_checks(
     hypercore_sell = next(t for t in trades if t.pair == hypercore_vault_pair)
     aave_buy = next(t for t in trades if t.pair == aave_usdc)
 
-    # 3. Verify check_enough_cash() fails against the capped planned reserve instead of the larger marked-value reduction.
-    assert hypercore_sell.planned_reserve == Decimal("10")
+    # 3. Verify check_enough_cash() fails against the safety-adjusted reserve instead of the larger marked-value reduction.
+    assert hypercore_sell.planned_reserve == Decimal("8.50")
     assert aave_buy.planned_reserve == Decimal("15")
     with pytest.raises(NotEnoughCasForBuys):
         position_manager.check_enough_cash(trades)
