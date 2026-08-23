@@ -14,7 +14,7 @@ no-ops. ``MINIMUM_VAULT_DEPOSIT`` is enforced by the deposit encoder; the
 withdrawal encoder has no equivalent client-side check. The cleaner therefore
 never tops up a position it is trying to close. Settlement checks detect a
 backend no-op. Cleanup uses an adaptive 0.10 USDC initial margin instead of the
-normal 1.50 USDC close margin, so almost all of a small position is recovered.
+normal relative/floor close margin, so almost all of a small position is recovered.
 If too little remains to verify all withdrawal phases, the position is closed
 locally as protocol dust. If a routed trade fails, the updated state is saved
 and the normal failed-trade repair flow takes over.

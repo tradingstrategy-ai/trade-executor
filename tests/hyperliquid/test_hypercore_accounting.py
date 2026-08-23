@@ -40,6 +40,7 @@ from tradeexecutor.strategy.account_correction import (
     _build_hypercore_vault_account_checks,
 )
 from tradeexecutor.strategy.dust import (
+    get_hypercore_withdrawal_safety_margin,
     get_close_epsilon_for_pair,
     get_dust_epsilon_for_pair,
     get_hyperliquid_vault_close_epsilon,
@@ -49,6 +50,7 @@ from tradeexecutor.strategy.dust import (
 )
 from tradeexecutor.strategy.execution_model import AssetManagementMode
 from tradeexecutor.strategy.execution_context import unit_test_execution_context
+from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.sync_model import OnChainBalance
 from tradeexecutor.visual.equity_curve import calculate_compounding_unrealised_trading_profitability
@@ -309,15 +311,13 @@ def test_lockup_func_populates_expires_at():
     2. Run the valuator
     3. Verify other_data contains the ISO string
     """
-    import datetime as dt
-
     position = MagicMock()
     position.is_vault.return_value = True
     position.get_quantity.return_value = Decimal("100.0")
     position.last_token_price = 1.0
     position.other_data = {}
 
-    expires = dt.datetime(2026, 3, 27, 14, 30, 0)
+    expires = datetime.datetime(2026, 3, 27, 14, 30, 0)
 
     def value_func(pair):
         return Decimal("105.0")
@@ -391,10 +391,11 @@ def test_old_bug_equity_squared():
 def test_hypercore_vault_dust_epsilon_covers_safety_margin():
     """Hypercore vault close epsilon is large enough to cover withdrawal safety margin dust.
 
-    HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW (1_500_000 raw = $1.50) is subtracted
-    from live vault equity during full-close withdrawals, leaving ~$1.50 residual
-    in the position.  The close epsilon must exceed this so can_be_closed()
-    recognises the position as effectively closed.
+    The 1.50 USDC fixed safety-margin floor is subtracted from small live vault
+    equities during full-close withdrawals. The default close epsilon must
+    exceed this floor so can_be_closed() recognises the position as effectively
+    closed. Larger percentage-derived headroom is accounted for by verified
+    full-close settlement and must not widen this bookkeeping-only threshold.
 
     1. Build a Hypercore vault pair using create_hypercore_vault_pair().
     2. Verify get_close_epsilon_for_pair() returns the Hypercore-specific epsilon
@@ -470,6 +471,87 @@ def test_hypercore_vault_dust_epsilon_covers_safety_margin():
     )
     assert not non_hypercore_pair.is_hyperliquid_vault()
     assert get_close_epsilon_for_pair(non_hypercore_pair) == DEFAULT_VAULT_EPSILON
+
+
+def test_hypercore_reduction_planning_reserves_relative_margin_with_fixed_floor() -> None:
+    """HyperCore reduction planning keeps relative headroom without weakening small withdrawals.
+
+    1. Build a real state position with enough executed quantity for both reduction scenarios.
+    2. Plan a large cap-bound redemption and verify it retains 0.5% of the live cap.
+    3. Plan a small cap-bound redemption and verify it retains the 1.50 USDC floor.
+    4. Plan an unconstrained full close and verify safety headroom does not make it partial.
+    """
+
+    # 1. Build a real state position with enough executed quantity for both reduction scenarios.
+    reserve_asset = AssetIdentifier(
+        chain_id=ChainId.hypercore.value,
+        address="0xb88339cb7199b77e23db6e890353e22632ba630f",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    pair = create_hypercore_vault_pair(
+        quote=reserve_asset,
+        vault_address="0x1111111111111111111111111111111111111111",
+    )
+    state = State()
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    state.portfolio.adjust_reserves(reserve_asset, Decimal("10000"), "Initial reserve")
+    position, opening_trade, _created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 8, 22),
+        pair=pair,
+        quantity=None,
+        reserve=Decimal("7000"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+    )
+    opening_trade.mark_success(
+        executed_at=datetime.datetime(2026, 8, 22, 0, 1),
+        executed_price=1.0,
+        executed_quantity=Decimal("7000"),
+        executed_reserve=Decimal("7000"),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+    position.last_token_price = 1.0
+    position_manager = object.__new__(PositionManager)
+
+    # 2. Plan a large cap-bound redemption and verify it retains 0.5% of the live cap.
+    large_cap = Decimal("6389.537474")
+    large_plan = position_manager.prepare_hypercore_position_reduction(
+        position,
+        dollar_delta=-7000,
+        max_redemption=float(large_cap),
+    )
+    large_margin = get_hypercore_withdrawal_safety_margin(large_cap)
+    assert large_margin == Decimal("31.947688")
+    assert large_plan.effective_quantity_delta == pytest.approx(-float(large_cap - large_margin))
+    assert large_plan.redemption_cap_bound is True
+    assert large_plan.treat_as_full_close is False
+
+    # 3. Plan a small cap-bound redemption and verify it retains the 1.50 USDC floor.
+    small_cap = Decimal("100")
+    small_plan = position_manager.prepare_hypercore_position_reduction(
+        position,
+        dollar_delta=-7000,
+        max_redemption=float(small_cap),
+    )
+    assert get_hypercore_withdrawal_safety_margin(small_cap) == Decimal("1.500000")
+    assert small_plan.effective_quantity_delta == pytest.approx(-98.5)
+    assert small_plan.redemption_cap_bound is True
+    assert small_plan.treat_as_full_close is False
+
+    # 4. Plan an unconstrained full close and verify safety headroom does not make it partial.
+    full_close_plan = position_manager.prepare_hypercore_position_reduction(
+        position,
+        dollar_delta=-7000,
+        max_redemption=7000,
+    )
+    assert full_close_plan.effective_quantity_delta == pytest.approx(-7000)
+    assert full_close_plan.redemption_cap_bound is False
+    assert full_close_plan.treat_as_full_close is True
 
 
 def test_repair_hypercore_dust_uses_strategy_close_epsilon():
@@ -1137,6 +1219,101 @@ def test_close_hypercore_dust_positions_closes_duplicate_residual_state() -> Non
     assert live_position.position_id in state.portfolio.open_positions
     assert live_position.position_id not in state.portfolio.closed_positions
     assert created_trades[0].trade_type == TradeType.repair
+
+
+def test_close_hypercore_dust_positions_skips_unexecuted_and_planned_positions() -> None:
+    """Dust cleanup must not treat unfinished HyperCore trades as redeemed positions.
+
+    1. Create the Hyper AI crash shape: a new position whose opening trade is still planned.
+    2. Create an executed dust position that also has a started follow-up trade.
+    3. Run dust cleanup and verify neither unfinished position is repaired or closed.
+    """
+
+    # 1. Create the Hyper AI crash shape: a new position whose opening trade is still planned.
+    reserve_asset = AssetIdentifier(
+        chain_id=ChainId.hypercore.value,
+        address="0xb88339cb7199b77e23db6e890353e22632ba630f",
+        token_symbol="USDC",
+        decimals=6,
+    )
+    state = State()
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    state.portfolio.adjust_reserves(reserve_asset, Decimal("10000"), "Initial reserve")
+    planned_pair = create_hypercore_vault_pair(
+        quote=reserve_asset,
+        vault_address="0x1111111111111111111111111111111111111111",
+        internal_id=1,
+    )
+    planned_position, planned_opening_trade, _created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 8, 22),
+        pair=planned_pair,
+        quantity=None,
+        reserve=Decimal("3248.872789"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+    )
+    assert planned_opening_trade.is_planned()
+    assert planned_position.get_quantity() == 0
+
+    # 2. Create an executed dust position that also has a started follow-up trade.
+    follow_up_pair = create_hypercore_vault_pair(
+        quote=reserve_asset,
+        vault_address="0x2222222222222222222222222222222222222222",
+        internal_id=2,
+    )
+    follow_up_position, successful_opening_trade, _created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 8, 21),
+        pair=follow_up_pair,
+        quantity=None,
+        reserve=Decimal("1.00"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        flags={TradeFlag.ignore_open},
+    )
+    successful_opening_trade.mark_success(
+        executed_at=datetime.datetime(2026, 8, 21, 0, 1),
+        executed_price=1.0,
+        executed_quantity=Decimal("1.00"),
+        executed_reserve=Decimal("1.00"),
+        lp_fees=0,
+        native_token_price=0,
+        force=True,
+    )
+    _, planned_follow_up_trade, created = state.create_trade(
+        strategy_cycle_at=datetime.datetime(2026, 8, 22),
+        pair=follow_up_pair,
+        quantity=None,
+        reserve=Decimal("25.00"),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_asset,
+        reserve_currency_price=1.0,
+        position=follow_up_position,
+    )
+    assert created is False
+    state.start_execution(
+        datetime.datetime(2026, 8, 22, 0, 1),
+        planned_follow_up_trade,
+    )
+    assert planned_follow_up_trade.is_started()
+    assert follow_up_position.can_be_closed()
+
+    # 3. Run dust cleanup and verify neither unfinished position is repaired or closed.
+    created_trades = close_hypercore_dust_positions(
+        state.portfolio,
+        now=datetime.datetime(2026, 8, 23),
+    )
+
+    assert created_trades == []
+    assert planned_position.position_id in state.portfolio.open_positions
+    assert follow_up_position.position_id in state.portfolio.open_positions
+    assert state.portfolio.closed_positions == {}
+    assert len(planned_position.trades) == 1
+    assert len(follow_up_position.trades) == 2
 
 
 def test_correct_accounts_closes_phantom_position_from_untracked_withdrawal() -> None:

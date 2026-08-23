@@ -461,11 +461,11 @@ class TradingPosition(GenericPosition):
         Always returned in **base token units**, because every caller compares it against
         :py:meth:`get_quantity`.
 
-        The Hypercore vault threshold is configured in US dollars (it models an absolute
-        withdrawal safety margin), so it is converted to share units at the position's mark
-        price. Without that conversion the threshold is silently multiplied by the share
-        price, and any position smaller than that is closed as dust the moment it opens -
-        destroying the shares, because
+        The Hypercore vault threshold is configured in US dollars. It covers small residuals
+        while remaining capped independently of the relative withdrawal safety margin, so it
+        is converted to share units at the position's mark price. Without that conversion the
+        threshold is silently multiplied by the share price, and any position smaller than
+        that is closed as dust the moment it opens - destroying the shares, because
         :py:meth:`tradeexecutor.state.portfolio.Portfolio.close_position` is bookkeeping only.
         """
         epsilon = get_close_epsilon_for_pair(

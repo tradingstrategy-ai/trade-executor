@@ -11,9 +11,11 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.ethereum.vault.hypercore_routing import (
     HYPERCORE_SMALL_POSITION_CLEANUP_INITIAL_SAFETY_MARGIN_RAW,
     HYPERCORE_SMALL_POSITION_CLEANUP_RETRY_SAFETY_MARGINS_RAW,
+    HYPERCORE_WITHDRAWAL_PREFLIGHT_CAP_TOLERANCE_FLOOR_RAW,
     HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,
     HypercoreWithdrawalPreflightError,
     HypercoreVaultRouting,
+    usdc_to_raw,
 )
 from tradeexecutor.ethereum.vault.hypercore_small_position_cleanup import (
     HYPERCORE_SMALL_POSITION_MINIMUM_REDEEMABLE_EQUITY,
@@ -31,6 +33,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.strategy.dust import (
     HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM,
+    get_hypercore_withdrawal_safety_margin,
 )
 
 
@@ -280,13 +283,13 @@ def test_cleanup_uses_strategy_minimum_allocation_and_pending_marker():
     assert pending_candidates[0].is_pending_cleanup is True
 
 
-def test_cleanup_uses_progressively_larger_silent_noop_retry_margins():
+def test_cleanup_uses_progressively_larger_silent_noop_retry_margins() -> None:
     """A cleanup close receives an adaptive retry ladder without a deposit floor.
 
     1. Create the normal and cleanup trade markers used by the HyperCore router.
     2. Ask the routing helper for their silent-no-op retry margins.
-    3. Verify cleanup starts with a small adaptive margin and accepts a positive sub-5 retry.
-    4. Verify only cleanup closes receive the progressively larger retry ladder.
+    3. Verify cleanup separates its cap-drift tolerance from its small execution margin.
+    4. Verify normal retries derive the configured margin and cleanup uses its retry ladder.
     """
 
     # 1. Create the normal and cleanup trade markers used by the HyperCore router.
@@ -295,14 +298,18 @@ def test_cleanup_uses_progressively_larger_silent_noop_retry_margins():
     cleanup_trade = SimpleNamespace(other_data={"hypercore_small_position_cleanup": True})
 
     # 2. Ask the routing helper for their silent-no-op retry margins.
-    normal_margins = routing._get_phase1_noop_retry_safety_margins(normal_trade)
-    cleanup_margins = routing._get_phase1_noop_retry_safety_margins(cleanup_trade)
+    normal_margins = routing._get_phase1_noop_retry_safety_margins(normal_trade, 1_000_000_000)
+    cleanup_margins = routing._get_phase1_noop_retry_safety_margins(cleanup_trade, 1_000_000_000)
 
-    # 3. Verify cleanup starts with a small adaptive margin and accepts a positive sub-5 retry.
+    # 3. Verify cleanup separates its cap-drift tolerance from its small execution margin.
     assert routing._get_full_close_safety_margin_raw(
         cleanup_trade,
         3_450_000,
     ) == HYPERCORE_SMALL_POSITION_CLEANUP_INITIAL_SAFETY_MARGIN_RAW
+    assert routing._get_withdrawal_cap_drift_tolerance_raw(
+        cleanup_trade,
+        3_450_000,
+    ) == HYPERCORE_WITHDRAWAL_PREFLIGHT_CAP_TOLERANCE_FLOOR_RAW
     with pytest.raises(
         HypercoreWithdrawalPreflightError,
         match="required to verify every withdrawal phase",
@@ -332,8 +339,11 @@ def test_cleanup_uses_progressively_larger_silent_noop_retry_margins():
         safety_margin_raw=1_000_000,
     ) is None
 
-    # 4. Verify only cleanup closes receive the progressively larger retry ladder.
-    assert normal_margins == (HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,)
+    # 4. Verify normal retries derive the configured margin and cleanup uses its retry ladder.
+    expected_normal_margin = usdc_to_raw(
+        get_hypercore_withdrawal_safety_margin(Decimal("1000"))
+    )
+    assert normal_margins == (expected_normal_margin,)
     assert cleanup_margins == HYPERCORE_SMALL_POSITION_CLEANUP_RETRY_SAFETY_MARGINS_RAW
 
 

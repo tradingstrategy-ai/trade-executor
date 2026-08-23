@@ -7,6 +7,7 @@ Verifies that:
 """
 
 import datetime
+import logging
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -14,18 +15,21 @@ from unittest.mock import MagicMock, patch
 import pytest
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hyperliquid.api import UserVaultEquity
+from hexbytes import HexBytes
 
 from tradeexecutor.ethereum.vault.hypercore_routing import (
+    HypercoreVaultRouting,
     HypercoreWithdrawalPreflightError,
     calculate_hypercore_bridge_fee,
     compute_spot_to_evm_withdrawal_amount,
     usdc_to_raw,
 )
+from tradeexecutor.state.trade import TradeFlag
+from tradeexecutor.strategy.dust import get_hypercore_withdrawal_safety_margin
+
 
 def _make_routing(simulate=True):
     """Create a HypercoreVaultRouting with mocked dependencies."""
-    from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreVaultRouting
-
     routing = object.__new__(HypercoreVaultRouting)
     routing.web3 = MagicMock()
     routing.lagoon_vault = MagicMock()
@@ -177,8 +181,6 @@ def test_setup_trades_logs_account_mode_without_blocking(caplog):
     2. Simulate an already activated Safe whose Hyperliquid API mode is unified.
     3. Verify setup still builds the trade and logs the observed mode.
     """
-    import logging
-
     routing = _make_routing(simulate=False)
     state = MagicMock()
     trade = _make_trade(planned_reserve=Decimal("25.0"))
@@ -344,7 +346,7 @@ def test_withdrawal_uses_live_equity_on_close():
 
     HyperCore's vaultTransfer silently rejects withdrawals exceeding actual
     equity.  When TradeFlag.close is set, the routing queries live equity via
-    ``userVaultEquities``, subtracts HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+    ``userVaultEquities``, subtracts max(0.5% of live equity, 1.50 USDC)
     to avoid NAV drift rejections, and uses that as the withdrawal amount.
 
     1. Create a sell trade with TradeFlag.close and planned_reserve slightly
@@ -353,9 +355,6 @@ def test_withdrawal_uses_live_equity_on_close():
     3. Verify the withdrawal tx is built with live equity minus safety margin.
     4. Verify the safe amount is stored in ``trade.other_data`` for settlement.
     """
-    from tradeexecutor.state.trade import TradeFlag
-    from tradeexecutor.ethereum.vault.hypercore_routing import HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
-
     routing = _make_routing(simulate=False)
     trade = _make_trade(planned_reserve=Decimal("7.129505"), is_buy=False)
     trade.pair.pool_address = "0x4dec0a851849056e259128464ef28ce78afa27f6"
@@ -370,7 +369,7 @@ def test_withdrawal_uses_live_equity_on_close():
         locked_until=datetime.datetime(2020, 1, 1),
     )
     live_raw = 7_128_756
-    expected_withdrawal_raw = live_raw - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+    expected_withdrawal_raw = live_raw - usdc_to_raw(get_hypercore_withdrawal_safety_margin(live_equity.equity))
 
     # 2. Mock the equity fetch and tx building.
     with patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity", return_value=live_equity):
@@ -406,9 +405,6 @@ def test_withdrawal_logs_large_equity_mismatch_but_uses_live_amount(caplog):
     3. Verify the withdrawal still uses live equity minus safety margin.
     4. Verify the warning is logged so the operator can inspect the drift.
     """
-    from tradeexecutor.state.trade import TradeFlag
-    from tradeexecutor.ethereum.vault.hypercore_routing import HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
-
     routing = _make_routing(simulate=False)
     trade = _make_trade(planned_reserve=Decimal("100.0"), is_buy=False)
     trade.pair.pool_address = "0x1111111111111111111111111111111111111111"
@@ -422,7 +418,7 @@ def test_withdrawal_logs_large_equity_mismatch_but_uses_live_amount(caplog):
         equity=Decimal("90.0"),
         locked_until=datetime.datetime(2020, 1, 1),
     )
-    expected_withdrawal_raw = 90_000_000 - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+    expected_withdrawal_raw = 90_000_000 - usdc_to_raw(get_hypercore_withdrawal_safety_margin(live_equity.equity))
 
     # Step 2: Mock the live equity so the drift warning path is exercised.
     with caplog.at_level("WARNING"):
@@ -490,8 +486,6 @@ def test_live_withdrawal_preflight_blocks_requests_above_max_withdrawable():
     2. Mock Hyperliquid to report an expired lock-up and a smaller ``max_withdrawable``.
     3. Verify the preflight raises before any withdrawal can be broadcast.
     """
-    from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreWithdrawalPreflightError
-
     routing = _make_routing(simulate=False)
     trade = _make_trade(planned_reserve=Decimal("25.0"), is_buy=False)
 
@@ -545,8 +539,53 @@ def test_live_withdrawal_preflight_caps_normal_max_withdrawable_drift_with_safet
                     vault_address="0xVAULT",
                 )
 
-    assert effective_raw == 3_471_605_878
-    assert trade.other_data["hypercore_capped_withdrawal_raw"] == 3_471_605_878
+    assert effective_raw == 3_455_740_348
+    assert trade.other_data["hypercore_capped_withdrawal_raw"] == 3_455_740_348
+
+
+def test_live_withdrawal_preflight_caps_hyper_ai_relative_drift_incident():
+    """The Hyper AI pmalt drift is accepted by relative headroom and capped safely.
+
+    HyperCore native vault state is unavailable to EVM integration fixtures,
+    so only its equity and vault-info API responses are mocked; the real
+    routing preflight and margin calculation are exercised.
+
+    1. Recreate trade #1605 whose requested redemption exceeded the fresh cap by 2.494979 USDC.
+    2. Mock the unlocked HyperCore equity and execution-time max-withdrawable response.
+    3. Verify the 0.5% margin accepts the drift and caps below the fresh amount.
+    """
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("6389.537474"), is_buy=False)
+    unlocked_equity = UserVaultEquity(
+        vault_address="0xVAULT",
+        equity=Decimal("6398.397264"),
+        locked_until=native_datetime_utc_now() - datetime.timedelta(days=1),
+    )
+
+    # 1. Recreate trade #1605 whose request exceeded the fresh cap by 2.494979 USDC.
+    requested_raw = 6_389_537_474
+
+    # 2. Mock the unlocked HyperCore equity and execution-time max-withdrawable response.
+    with (
+        patch(
+            "tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault.fetch_info",
+            return_value=SimpleNamespace(max_withdrawable=Decimal("6387.042495")),
+        ),
+        patch(
+            "tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity",
+            return_value=unlocked_equity,
+        ),
+        patch.object(routing, "_get_session", return_value=routing._session),
+    ):
+        effective_raw = routing._check_live_withdrawal_preconditions(
+            trade=trade,
+            requested_raw=requested_raw,
+            vault_address="0xVAULT",
+        )
+
+    # 3. Verify the 0.5% margin accepts the drift and caps below the fresh amount.
+    assert effective_raw == 6_355_107_282
+    assert trade.other_data["hypercore_capped_withdrawal_raw"] == 6_355_107_282
 
 
 def test_live_withdrawal_preflight_blocks_cap_below_safety_margin():
@@ -595,10 +634,6 @@ def test_settlement_second_buy_no_activation_cost(
     "hypercore_activation_cost_raw" in other_data.  Settlement must
     treat activation_cost as 0 and deposit the full planned amount.
     """
-    import datetime
-    from eth_defi.hyperliquid.api import UserVaultEquity
-    from hexbytes import HexBytes
-
     routing = _make_routing(simulate=False)
 
     # Second buy: no activation cost in other_data
@@ -694,12 +729,6 @@ def test_settlement_uses_capped_withdrawal_amount(
     4. Verify phases 2-3 receive the capped raw amount.
     5. Verify no ``report_failure`` call (trade succeeds).
     """
-    import datetime
-    import logging
-    from decimal import Decimal
-    from eth_defi.hyperliquid.api import UserVaultEquity
-    from hexbytes import HexBytes
-
     routing = _make_routing(simulate=False)
     capped_raw = 7_128_756  # Live equity at phase 1 build time
     planned_raw = 7_129_505  # Original planned_reserve (slightly higher)
@@ -994,8 +1023,6 @@ def test_settlement_uses_capped_deposit_and_refunds_reserve(
     3. Verify phase 2 uses capped amount, mark_trade_success uses correct values.
     4. Verify reserve refund of 20 USDC.
     """
-    from hexbytes import HexBytes
-
     routing = _make_routing(simulate=False)
 
     trade = _make_trade(planned_reserve=Decimal("100.0"))
@@ -1090,8 +1117,6 @@ def test_settlement_capped_deposit_with_activation_cost(
     3. Verify phase 2 uses capped amount, executed_reserve includes activation.
     4. Verify reserve refund of 3 USDC.
     """
-    from hexbytes import HexBytes
-
     routing = _make_routing(simulate=False)
 
     trade = _make_trade(planned_reserve=Decimal("100.0"))
@@ -1188,8 +1213,6 @@ def test_settlement_capped_deposit_refunds_bridge_not_reserves(
     3. Verify refund goes to bridge_position.adjust_bridge_capital_allocated,
        NOT to state.portfolio.adjust_reserves.
     """
-    from hexbytes import HexBytes
-
     routing = _make_routing(simulate=False)
 
     trade = _make_trade(planned_reserve=Decimal("100.0"))

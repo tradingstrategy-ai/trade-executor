@@ -38,7 +38,6 @@ from tradeexecutor.ethereum.vault.hypercore_routing import (
     HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW,
     HYPERCORE_MULTICALL_GAS,
     HYPERCORE_WITHDRAWAL_PHASE1_RETRY_ATTEMPTS,
-    HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW,
     raw_to_usdc,
     usdc_to_raw,
 )
@@ -58,6 +57,7 @@ from tradeexecutor.state.balance_update import (
     BalanceUpdatePositionType,
 )
 from tradeexecutor.state.sync import BalanceEventRef
+from tradeexecutor.strategy.dust import get_hypercore_withdrawal_safety_margin
 from tradeexecutor.utils.blockchain import get_block_timestamp
 
 logger = logging.getLogger(__name__)
@@ -291,9 +291,10 @@ def _classify_candidate(
         )
 
     requested_amount = min(equity.equity, max_withdrawable)
+    safety_margin = get_hypercore_withdrawal_safety_margin(requested_amount)
     safe_raw_claim_amount = (
         context.reserve_token.convert_to_raw(requested_amount)
-        - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
+        - context.reserve_token.convert_to_raw(safety_margin)
     )
     if safe_raw_claim_amount <= 0:
         return HypercoreDustCandidate(
@@ -527,9 +528,8 @@ def _get_phase1_noop_retry_raw(
     ``MINIMUM_VAULT_DEPOSIT`` is deliberately irrelevant because the
     withdrawal encoder does not apply it.
     """
-    retry_raw = (
-        usdc_to_raw(current_vault_equity) - HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_RAW
-    )
+    safety_margin = get_hypercore_withdrawal_safety_margin(current_vault_equity)
+    retry_raw = usdc_to_raw(current_vault_equity - safety_margin)
     if retry_raw <= HYPERCORE_FOLLOW_UP_PHASE_TOLERANCE_RAW:
         return None
     if retry_raw >= previous_raw:

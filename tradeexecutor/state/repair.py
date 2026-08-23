@@ -24,15 +24,12 @@ import logging
 from dataclasses import dataclass
 from decimal import Decimal
 from itertools import chain
-from typing import List, TypedDict
-
 from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeType, TradeStatus, TradeFlag
-from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -53,18 +50,18 @@ class RepairResult:
     """
 
     #: How many frozen positions we encountered
-    frozen_positions: List[TradingPosition]
+    frozen_positions: list[TradingPosition]
 
     #: What positions we managed to unfreeze
-    unfrozen_positions: List[TradingPosition]
+    unfrozen_positions: list[TradingPosition]
 
     #: Individual trades that needed repair or were deliberately deferred for
     #: live reconciliation. Deferred HyperCore deposits must not be mistaken
     #: for completed accounting repairs.
-    trades_needing_repair: List[TradeExecution]
+    trades_needing_repair: list[TradeExecution]
 
     #: New trades we made to fix the accounting
-    new_trades: List[TradeExecution]
+    new_trades: list[TradeExecution]
 
 
 @dataclass(slots=True)
@@ -538,7 +535,7 @@ def close_position_with_empty_trade(portfolio: Portfolio, p: TradingPosition) ->
 def close_hypercore_dust_positions(
     portfolio: Portfolio,
     now: datetime.datetime | None = None,
-) -> List[TradeExecution]:
+) -> list[TradeExecution]:
     """Close Hypercore vault dust positions with repair trades.
 
     Hypercore full withdrawals intentionally leave a small residual balance
@@ -548,15 +545,16 @@ def close_hypercore_dust_positions(
     still meaningful live positions.
 
     1. Scan open and frozen positions for Hypercore vault entries.
-    2. Identify positions that are already within the close epsilon.
-    3. Close each dust position locally with a zero-quantity repair trade.
+    2. Skip positions with no successful trade or any unfinished trade.
+    3. Identify positions that are already within the close epsilon.
+    4. Close each dust position locally with a zero-quantity repair trade.
 
     :return:
         Repair trades created for the auto-closed dust positions.
     """
 
     now = now or native_datetime_utc_now()
-    created_trades: List[TradeExecution] = []
+    created_trades: list[TradeExecution] = []
 
     positions = list(chain(
         portfolio.open_positions.values(),
@@ -568,6 +566,25 @@ def close_hypercore_dust_positions(
             continue
 
         if not position.can_be_closed():
+            continue
+
+        # Hyper AI position #510 had only planned opening trade #1602 after a
+        # previous sequential batch aborted. Its zero quantity was unfinished
+        # state, not post-withdrawal dust, and repairing it caused the 2026-08-23
+        # scheduler crash. Check this only after identifying a dust-sized
+        # position so healthy positions with queued trades do not emit warnings.
+        has_successful_trade = position.has_executed_trades()
+        has_unfinished_trade = (
+            position.has_planned_trades() or position.has_unexecuted_trades()
+        )
+        if not has_successful_trade or has_unfinished_trade:
+            logger.warning(
+                "Skipping Hypercore dust cleanup for unfinished position %s: "
+                "successful trade=%s, unfinished trade=%s",
+                position,
+                has_successful_trade,
+                has_unfinished_trade,
+            )
             continue
 
         if position.is_frozen():
@@ -590,7 +607,7 @@ def close_hypercore_dust_positions(
     return created_trades
 
 
-def find_trades_to_be_repaired(state: State) -> List[TradeExecution]:
+def find_trades_to_be_repaired(state: State) -> list[TradeExecution]:
     trades_to_be_repaired = []
     # Closed trades do not need attention
     for p in chain(state.portfolio.open_positions.values(), state.portfolio.frozen_positions.values()):
@@ -606,7 +623,7 @@ def find_trades_to_be_repaired(state: State) -> List[TradeExecution]:
     return trades_to_be_repaired
 
 
-def reconfirm_trade(reconfirming_needed_trades: List[TradeExecution]):
+def reconfirm_trade(reconfirming_needed_trades: list[TradeExecution]):
 
     raise NotImplementedError("Unfinished")
 
