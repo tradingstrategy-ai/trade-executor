@@ -75,7 +75,7 @@ The driver lives in `tradeexecutor/ethereum/vault/hypercore_routing.py`.
 | `HypercoreVaultRoutingState(RoutingState)` | Per-cycle routing state. |
 | `HypercoreWithdrawalVerificationError` | A phase did not reach the expected HyperCore balance within the timeout. |
 | `HypercoreWithdrawalPreflightError` | Live preconditions (lock-up, positive amount, equity or liquidity) failed before broadcasting. |
-| `SettlementBroadcastError` | A settlement transaction failed to broadcast/confirm; carries the partial `BlockchainTransaction`. |
+| `SettlementBroadcastError` | A settlement transaction failed during pricing, signing, broadcast or confirmation; carries the partial `BlockchainTransaction`. |
 
 From eth_defi (`eth_defi.hyperliquid`): `HyperliquidSession` (Info API client),
 `HyperliquidVault` + `VaultInfo` + `VaultFollower` (vault metadata, including
@@ -410,9 +410,30 @@ Safe's `TradingStrategyModuleV0`:
   helpers return `ContractFunction` objects already wrapped for the Safe, so
   the routing signs them directly with the deployer `HotWallet` rather than via
   `LagoonTransactionBuilder` (which would double-wrap them).
-- **Fixed gas pricing.** HyperEVM has no meaningful priority-fee market, so the
-  routing uses fixed `maxFeePerGas` / `maxPriorityFeePerGas` constants instead
-  of per-phase estimation, which previously caused phase failures.
+- **Buffered dynamic gas pricing.** HyperEVM's
+  [JSON-RPC documentation](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/hyperevm/json-rpc)
+  defines `eth_gasPrice` as the next small block's base fee. The routing uses
+  four times that live value as
+  `maxFeePerGas`, retaining 4 gwei only as a quiet-period floor. HyperEVM
+  mainnet and testnet are configured as London/EIP-1559 chains in
+  `Web3Config`, preventing Web3's legacy gas-price strategy from adding a
+  conflicting `gasPrice` field while building transactions. HyperEVM
+  currently recommends a zero priority fee and
+  [burns any priority fee paid](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/hyperevm),
+  so the routing also uses zero. Assuming the standard EIP-1559 maximum 12.5%
+  per-block increase, four times the base fee covers eleven consecutive maximum
+  increases, or about eleven seconds of HyperEVM small blocks; it does not
+  protect a signed transaction from an indefinitely sustained fee rise.
+  EIP-1559 charges the actual base fee rather than the unused fee cap, although
+  the signing wallet must be able to cover the maximum gas cost. At the
+  incident's 81.88 gwei base fee, a 650k-gas transaction therefore needs
+  capacity for a 0.213 HYPE fee cap. An approval and deposit signed together
+  need about 0.426 HYPE of available balance until the first transaction lands;
+  the routing does not yet preflight this HYPE balance. Never turn the floor
+  back into a ceiling:
+  on 2026-08-23 HyperAI signed at 4 gwei while the observed base fee was
+  81.88 gwei. The transaction could not land at that price and was no longer
+  visible through any configured RPC node when confirmation timed out.
 - **Big blocks guard.** `__init__` asserts the deployer is *not* in big-blocks
   mode (`fetch_using_big_blocks`), which would push txs to the ~1-minute
   mempool instead of ~1 s.

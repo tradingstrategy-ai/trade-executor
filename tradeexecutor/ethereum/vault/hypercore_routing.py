@@ -278,23 +278,32 @@ RETAIN_RESERVE_ALLOCATION_ON_FAILURE_KEY = "retain_reserve_allocation_on_failure
 #: Background and the 2026-06-13 IKAGI #1022 incident: ``.claude/docs/hypercore-vault.md``.
 HYPERCORE_DEFAULT_PERFORMANCE_FEE = Decimal(str(HYPERLIQUID_VAULT_PERFORMANCE_FEE))
 
-#: Fixed ``maxFeePerGas`` for HyperEVM transactions (in wei).
+#: Minimum ``maxFeePerGas`` for HyperEVM transactions (in wei).
 #:
-#: HyperEVM base fees are typically 0.1–0.5 gwei. Using dynamic
-#: ``estimate_gas_price()`` per phase caused phase 3 of trade #842
-#: (2026-06-04) to get a ``maxFeePerGas`` of 0.66 gwei while the chain
-#: needed ~0.65 gwei effective — the tx eventually landed 18 minutes
-#: later but exceeded the 2-minute confirmation timeout, stranding USDC.
-#:
-#: A fixed 4 gwei is ~20× typical base fee and costs <0.003 HYPE per
-#: 650k-gas transaction — negligible.  Overpayment is refunded by EIP-1559.
-HYPERCORE_FIXED_MAX_FEE_PER_GAS = 4_000_000_000  # 4 gwei
+#: Keep the historical 4 gwei value as a floor for quiet periods. It must not
+#: be used as a ceiling: during the 2026-08-23 HyperAI incident the observed
+#: base fee was already 81.88 gwei, so a transaction capped at 4 gwei could
+#: not enter a block and was no longer visible through any configured RPC node
+#: at timeout.
+HYPERCORE_MIN_MAX_FEE_PER_GAS = 4_000_000_000  # 4 gwei
 
-#: Fixed ``maxPriorityFeePerGas`` for HyperEVM transactions (in wei).
+#: Multiplier applied to HyperEVM's next-small-block base fee.
 #:
-#: HyperEVM does not have a meaningful priority fee market.
-#: A small tip helps with inclusion without overpaying.
-HYPERCORE_FIXED_MAX_PRIORITY_FEE_PER_GAS = 100_000_000  # 0.1 gwei
+#: HyperEVM's ``eth_gasPrice`` reports the base fee for the next small block.
+#: A module transaction can spend several seconds being persisted and handed
+#: to the execution model before broadcast. Four times the observed base fee
+#: absorbs eleven consecutive maximum base-fee increases when HyperEVM follows
+#: the standard EIP-1559 12.5% per-block limit. The unused part of
+#: ``maxFeePerGas`` is not paid.
+HYPERCORE_MAX_FEE_BASE_FEE_MULTIPLIER = 4
+
+#: ``maxPriorityFeePerGas`` for HyperEVM transactions (in wei).
+#:
+#: HyperEVM currently reports zero for ``eth_maxPriorityFeePerGas`` and burns
+#: priority fees. Follow the chain's zero-tip recommendation instead of using
+#: a hard-coded tip.
+#: https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/hyperevm/json-rpc
+HYPERCORE_MAX_PRIORITY_FEE_PER_GAS = 0
 
 #: Sanity ceiling for attributing a spot HYPE balance change to one bridge.
 #:
@@ -303,6 +312,34 @@ HYPERCORE_FIXED_MAX_PRIORITY_FEE_PER_GAS = 100_000_000  # 0.1 gwei
 #: account activity and is left unknown. USDC fees use this economic ceiling
 #: converted at the observed HYPE/USD price.
 HYPERCORE_MAX_PLAUSIBLE_BRIDGE_FEE_HYPE = Decimal("0.05")
+
+
+def calculate_hypercore_gas_price_suggestion(
+    next_block_base_fee: int,
+) -> GasPriceSuggestion:
+    """Calculate buffered EIP-1559 pricing for a HyperEVM transaction.
+
+    ``eth_gasPrice`` on HyperEVM returns the next small block's base fee. The
+    max fee is deliberately buffered because signing and broadcasting are not
+    adjacent operations in the multi-phase vault execution flow.
+    """
+    assert type(next_block_base_fee) is int, (
+        f"Expected integer base fee, got {type(next_block_base_fee)}"
+    )
+    assert next_block_base_fee >= 0, (
+        f"Base fee cannot be negative: {next_block_base_fee}"
+    )
+
+    max_fee_per_gas = max(
+        HYPERCORE_MIN_MAX_FEE_PER_GAS,
+        next_block_base_fee * HYPERCORE_MAX_FEE_BASE_FEE_MULTIPLIER,
+    )
+    return GasPriceSuggestion(
+        method=GasPriceMethod.london,
+        base_fee=next_block_base_fee,
+        max_priority_fee_per_gas=HYPERCORE_MAX_PRIORITY_FEE_PER_GAS,
+        max_fee_per_gas=max_fee_per_gas,
+    )
 
 
 def usdc_to_raw(amount: Decimal) -> int:
@@ -376,16 +413,16 @@ class HypercoreWithdrawalPreflightError(Exception):
 
 
 class SettlementBroadcastError(Exception):
-    """Raised when a settlement phase transaction fails to broadcast or confirm.
+    """Raised when a settlement transaction fails to price, sign, broadcast or confirm.
 
     Carries the :py:class:`~tradeexecutor.state.blockhain_transaction.BlockchainTransaction`
-    so callers can always append it to the trade for diagnostics, even when the
-    broadcast itself failed.
+    so callers can always append it to the trade for diagnostics. The
+    transaction may be unsigned when preparation failed before broadcast.
     """
 
     def __init__(self, tx: "BlockchainTransaction", cause: Exception):
         super().__init__(str(cause))
-        #: The signed transaction with error info already set.
+        #: The partial or signed transaction with error information already set.
         self.tx = tx
 
 
@@ -574,8 +611,9 @@ class HypercoreVaultRouting(RoutingModel):
         objects already addressed to the module contract. We sign them directly
         with the deployer hot wallet.
 
-        Uses fixed gas pricing to avoid underpricing during multi-phase
-        settlement.  See :py:data:`HYPERCORE_FIXED_MAX_FEE_PER_GAS`.
+        Uses dynamically buffered gas pricing to avoid underpricing during
+        multi-phase settlement. See
+        :py:func:`calculate_hypercore_gas_price_suggestion`.
 
         :param fn:
             Bound ``ContractFunction`` already wrapped through the trading strategy module.
@@ -589,74 +627,64 @@ class HypercoreVaultRouting(RoutingModel):
         :return:
             Signed :py:class:`BlockchainTransaction`.
         """
-        tx_data = fn.build_transaction({
+        function_name = logical_function_name or fn.fn_name
+        tx_params = {
             "chainId": self.chain_id,
             "from": self.deployer.address,
             "gas": gas_limit,
-        })
+        }
 
-        # Use fixed gas pricing to guarantee inclusion during multi-phase
-        # settlement.  Dynamic estimation caused phase 3 tx drops when the
-        # base fee crept above the per-phase estimate between signing and mining.
-        gas_price_suggestion = GasPriceSuggestion(
-            method=GasPriceMethod.london,
-            base_fee=0,
-            max_priority_fee_per_gas=HYPERCORE_FIXED_MAX_PRIORITY_FEE_PER_GAS,
-            max_fee_per_gas=HYPERCORE_FIXED_MAX_FEE_PER_GAS,
-        )
-        apply_gas(tx_data, gas_price_suggestion)
-
-        # Sanity-check: warn if the current base fee exceeds our fixed cap.
-        try:
-            latest_block = self.web3.eth.get_block("latest")
-            current_base_fee = latest_block.get("baseFeePerGas", 0)
-            logger.info(
-                "HyperEVM gas for %s: fixed maxFeePerGas=%d (%.2f gwei), "
-                "fixed maxPriorityFeePerGas=%d (%.2f gwei), "
-                "current baseFee=%d (%.2f gwei)",
-                notes or fn.fn_name,
-                HYPERCORE_FIXED_MAX_FEE_PER_GAS,
-                HYPERCORE_FIXED_MAX_FEE_PER_GAS / 1e9,
-                HYPERCORE_FIXED_MAX_PRIORITY_FEE_PER_GAS,
-                HYPERCORE_FIXED_MAX_PRIORITY_FEE_PER_GAS / 1e9,
-                current_base_fee,
-                current_base_fee / 1e9,
-            )
-            if current_base_fee > HYPERCORE_FIXED_MAX_FEE_PER_GAS:
-                logger.warning(
-                    "HyperEVM base fee %d (%.2f gwei) exceeds fixed maxFeePerGas %d (%.2f gwei). "
-                    "Transaction may not be included. Consider raising HYPERCORE_FIXED_MAX_FEE_PER_GAS.",
-                    current_base_fee,
-                    current_base_fee / 1e9,
-                    HYPERCORE_FIXED_MAX_FEE_PER_GAS,
-                    HYPERCORE_FIXED_MAX_FEE_PER_GAS / 1e9,
-                )
-        except Exception as e:
-            logger.warning("Could not fetch HyperEVM base fee for sanity check: %s", e)
-
-        signed_tx = self.deployer.sign_transaction_with_new_nonce(tx_data)
-        signed_bytes = hexbytes_to_hex_str(signed_tx.rawTransaction)
-
-        # Needed for get_swap_transactions() compatibility.
-        tx_data["function"] = logical_function_name or fn.fn_name
-
-        return BlockchainTransaction(
+        blockchain_tx = BlockchainTransaction(
             type=BlockchainTransactionType.lagoon_vault,
             chain_id=self.chain_id,
             from_address=self.deployer.address,
             contract_address=fn.address,
             function_selector=fn.fn_name,
-            transaction_args=None,
-            args=None,
-            wrapped_args=None,
-            signed_bytes=signed_bytes,
-            signed_tx_object=encode_pickle_over_json(signed_tx),
-            tx_hash=hexbytes_to_hex_str(signed_tx.hash),
-            nonce=signed_tx.nonce,
-            details=tx_data,
+            details={**tx_params, "function": function_name},
             asset_deltas=[],
             notes=notes,
         )
+
+        # HyperEVM defines eth_gasPrice as the next small block's base fee.
+        # Do not fall back to a stale fixed value if this RPC call fails: signing
+        # without a trustworthy current price recreates the dropped transaction
+        # failure this pricing path is meant to prevent.
+        try:
+            next_block_base_fee = self.web3.eth.gas_price
+            gas_price_suggestion = calculate_hypercore_gas_price_suggestion(
+                next_block_base_fee,
+            )
+            tx_data = fn.build_transaction(tx_params)
+            # HyperEVM was historically configured with Web3's legacy gas-price
+            # strategy, which may add gasPrice while filling defaults. Apply our
+            # London fields last so the signer never receives mixed fee styles.
+            apply_gas(tx_data, gas_price_suggestion)
+            blockchain_tx.details = {**tx_data, "function": function_name}
+            signed_tx = self.deployer.sign_transaction_with_new_nonce(tx_data)
+        except Exception as e:
+            # Preserve gas-pricing and signing failures as trade diagnostics so
+            # settlement callers can mark any already-moved USDC as stranded.
+            blockchain_tx.revert_reason = f"Transaction preparation failed: {e}"
+            blockchain_tx.status = False
+            raise SettlementBroadcastError(blockchain_tx, e) from e
+
+        logger.info(
+            "HyperEVM gas for %s: next-block baseFee=%d (%.2f gwei), "
+            "maxFeePerGas=%d (%.2f gwei), maxPriorityFeePerGas=%d (%.2f gwei)",
+            notes or fn.fn_name,
+            next_block_base_fee,
+            next_block_base_fee / 1e9,
+            gas_price_suggestion.max_fee_per_gas,
+            gas_price_suggestion.max_fee_per_gas / 1e9,
+            gas_price_suggestion.max_priority_fee_per_gas,
+            gas_price_suggestion.max_priority_fee_per_gas / 1e9,
+        )
+
+        blockchain_tx.signed_bytes = hexbytes_to_hex_str(signed_tx.rawTransaction)
+        blockchain_tx.signed_tx_object = encode_pickle_over_json(signed_tx)
+        blockchain_tx.tx_hash = hexbytes_to_hex_str(signed_tx.hash)
+        blockchain_tx.nonce = signed_tx.nonce
+        return blockchain_tx
 
     def _get_vault_address(self, trade: TradeExecution) -> str:
         """Extract the Hypercore vault address from the trade pair."""
@@ -2345,8 +2373,8 @@ class HypercoreVaultRouting(RoutingModel):
         :return:
             Tuple of (BlockchainTransaction, receipt dict).
         :raises SettlementBroadcastError:
-            If the broadcast or confirmation fails.  The exception carries
-            the signed ``BlockchainTransaction`` with error info.
+            If transaction preparation, broadcast or confirmation fails. The
+            exception carries the diagnostic ``BlockchainTransaction``.
         """
         fn = build_hypercore_transfer_usd_class_call(
             self.lagoon_vault,
@@ -2396,7 +2424,7 @@ class HypercoreVaultRouting(RoutingModel):
         """Build, sign, and broadcast withdrawal phase 2 (perp -> spot).
 
         :raises SettlementBroadcastError:
-            If the broadcast or confirmation fails.
+            If transaction preparation, broadcast or confirmation fails.
         """
         fn = build_hypercore_transfer_usd_class_call(
             self.lagoon_vault,
@@ -2423,7 +2451,7 @@ class HypercoreVaultRouting(RoutingModel):
         """Build, sign, and broadcast a retry of withdrawal phase 1.
 
         :raises SettlementBroadcastError:
-            If the broadcast or confirmation fails.
+            If transaction preparation, broadcast or confirmation fails.
         """
         fn = build_hypercore_withdraw_from_vault_call(
             self.lagoon_vault,
@@ -2449,7 +2477,7 @@ class HypercoreVaultRouting(RoutingModel):
         """Build, sign, and broadcast withdrawal phase 3 (spot -> EVM).
 
         :raises SettlementBroadcastError:
-            If the broadcast or confirmation fails.
+            If transaction preparation, broadcast or confirmation fails.
         """
         fn = build_hypercore_send_asset_to_evm_call(
             self.lagoon_vault,
