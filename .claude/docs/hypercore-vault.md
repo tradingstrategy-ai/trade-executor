@@ -112,7 +112,7 @@ Successful live settlement stores cost measurements directly on
 | `bridge_fee_amount` / `bridge_fee_asset` / `bridge_fee_usd` | Measured protocol bridge fee and its USD value. |
 | `account_activation_fee_usd` | Activation provision minus the USDC observed in HyperCore spot. |
 | `hypercore_close_value_loss_usd` | Signed vault-equity decrease less the USDC received and phase-3 headroom retained in spot for a full close. |
-| `hypercore_close_other_loss_usd` | Full-close loss with any included USDC bridge fee removed. |
+| `hypercore_close_other_loss_usd` | State-schema compatibility alias for the full-close loss used by the cost report; the bridge fee is added separately. |
 | `hypercore_close_residual_value_usd` | Vault equity remaining after a full close. |
 | `hypercore_cost_data_complete` | Whether all applicable measurements were captured. |
 
@@ -344,7 +344,7 @@ sequenceDiagram
     Note over R,HC: net arrival reduced by leader performance fee
     R->>Safe: phase 2 — transferUsdClass(perp→spot)
     R->>HC: spot wait — free USDC appeared?
-    R->>Safe: phase 3 — sendAsset(spot→HyperEVM) (minus bridge fee)
+    R->>Safe: phase 3 — sendAsset(spot→HyperEVM) (minus reserved headroom)
     R->>Safe: verify Safe EVM USDC balance increased
     alt all phases verified
         R->>EX: mark_trade_success (executed = net USDC, fee = price slippage)
@@ -419,10 +419,14 @@ Safe's `TradingStrategyModuleV0`:
 - **Multi-node broadcast.** Settlement transactions broadcast through
   `wait_and_broadcast_multiple_nodes` for reliability on HyperEVM.
 - **Bridge fee.** Core→HyperEVM `sendAsset` is not fee-free. Settlement measures
-  a protocol-sized HYPE spot debit, or the USDC debit beyond principal when
-  HYPE is unavailable. Larger, ambiguous balance changes remain unknown. The
-  0.01 USDC phase-3 headroom is residual spot capital, not a fee. Protocol fee
-  mechanics and source links are documented in
+  a protocol-sized HYPE spot debit, or the USDC debit beyond principal when no
+  HYPE debit is observed. The USDC plausibility ceiling is the HYPE-denominated
+  0.05 HYPE ceiling converted at the settlement-time HYPE/USD price. If price
+  telemetry is unavailable, attribution falls back conservatively to the 0.01
+  USDC operational headroom. This headroom is reserved spot capital intended
+  to cover the fee, but it is not itself recorded as the fee and an unusually
+  high base fee can consume or exceed it. Larger, ambiguous balance changes
+  remain unknown. Protocol fee mechanics and source links are documented in
   `eth_defi.hyperliquid.constants.HYPERCORE_BRIDGE_FEE_MARGIN`.
 - **Cost report.** `show-hypercore-rebalance-costs` groups normal successful
   trades by decision-cycle timestamp. Repaired, repair, test, unsuccessful and

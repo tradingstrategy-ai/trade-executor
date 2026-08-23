@@ -75,18 +75,23 @@ def _make_routing_state():
     return rs
 
 
-def test_calculate_hypercore_bridge_fee():
-    """Identify protocol-sized HYPE and USDC fees without attributing unrelated movement.
+def test_calculate_hypercore_bridge_fee() -> None:
+    """Identify protocol-sized HYPE and gas-priced USDC fees without attributing unrelated movement.
 
     1. Measure a small HYPE balance decrease as the bridge fee.
     2. Fall back to the USDC debit beyond principal when HYPE is unchanged.
-    3. Reject a large HYPE balance movement as ambiguous account activity.
+    3. Accept HYPE bridge fees up to the 0.05 HYPE ceiling and reject larger movements.
+    4. Record the high-base-fee debit from live trade #1598 only with price telemetry.
+    5. Reject a larger unrelated USDC debit.
     """
+    hype_usd_price = 72.3535
+
     # 1. Measure a small HYPE balance decrease as the bridge fee.
     assert calculate_hypercore_bridge_fee(
         {"HYPE": Decimal("1"), "USDC": Decimal("10.01")},
         {"HYPE": Decimal("0.9999"), "USDC": Decimal("0.01")},
         Decimal("10"),
+        hype_usd_price,
     ) == (Decimal("0.0001"), "HYPE")
 
     # 2. Fall back to the USDC debit beyond principal when HYPE is unchanged.
@@ -94,13 +99,43 @@ def test_calculate_hypercore_bridge_fee():
         {"HYPE": Decimal("0"), "USDC": Decimal("10.01")},
         {"HYPE": Decimal("0"), "USDC": Decimal("0.009")},
         Decimal("10"),
+        None,
     ) == (Decimal("0.001"), "USDC")
 
-    # 3. Reject a large HYPE balance movement as ambiguous account activity.
+    # 3. Accept HYPE bridge fees up to the 0.05 HYPE ceiling and reject larger movements.
     assert calculate_hypercore_bridge_fee(
         {"HYPE": Decimal("1"), "USDC": Decimal("10.01")},
-        {"HYPE": Decimal("0.5"), "USDC": Decimal("0.01")},
+        {"HYPE": Decimal("0.95"), "USDC": Decimal("0.01")},
         Decimal("10"),
+        hype_usd_price,
+    ) == (Decimal("0.05"), "HYPE")
+    assert calculate_hypercore_bridge_fee(
+        {"HYPE": Decimal("1"), "USDC": Decimal("10.01")},
+        {"HYPE": Decimal("0.9499"), "USDC": Decimal("0.01")},
+        Decimal("10"),
+        hype_usd_price,
+    ) is None
+
+    # 4. Record the high-base-fee debit from live trade #1598 only with price telemetry.
+    assert calculate_hypercore_bridge_fee(
+        {"USDC": Decimal("4452.945985")},
+        {"USDC": Decimal("0.1552")},
+        Decimal("4452.773475"),
+        hype_usd_price,
+    ) == (Decimal("0.017310"), "USDC")
+    assert calculate_hypercore_bridge_fee(
+        {"USDC": Decimal("4452.945985")},
+        {"USDC": Decimal("0.1552")},
+        Decimal("4452.773475"),
+        None,
+    ) is None
+
+    # 5. Reject a larger unrelated USDC debit.
+    assert calculate_hypercore_bridge_fee(
+        {"USDC": Decimal("4456.945985")},
+        {"USDC": Decimal("0.1552")},
+        Decimal("4452.773475"),
+        hype_usd_price,
     ) is None
 
 
@@ -712,8 +747,10 @@ def test_settlement_second_buy_no_activation_cost(
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
 def test_settlement_uses_capped_withdrawal_amount(
-    mock_fetch_equity, mock_block_ts, mock_report_failure,
-):
+    mock_fetch_equity: MagicMock,
+    mock_block_ts: MagicMock,
+    mock_report_failure: MagicMock,
+) -> None:
     """Withdrawal settlement uses the capped live-equity amount from phase 1.
 
     When phase 1 stored a ``hypercore_capped_withdrawal_raw`` in
@@ -727,22 +764,26 @@ def test_settlement_uses_capped_withdrawal_amount(
     2. Set ``hypercore_capped_withdrawal_raw`` in ``trade.other_data``.
     3. Mock all settlement phases to succeed with the capped amount.
     4. Verify phases 2-3 receive the capped raw amount.
-    5. Verify no ``report_failure`` call (trade succeeds).
+    5. Verify the observed USDC bridge fee remains separate from full-close loss.
+    6. Verify no ``report_failure`` call (trade succeeds).
     """
+    # 1. Create a closing sell whose planned reserve exceeds live equity.
     routing = _make_routing(simulate=False)
     capped_raw = 7_128_756  # Live equity at phase 1 build time
-    planned_raw = 7_129_505  # Original planned_reserve (slightly higher)
 
     trade = _make_trade(planned_reserve=Decimal("7.129505"), is_buy=False)
+    trade.closing = True
     trade.pair.pool_address = "0x4dec0a851849056e259128464ef28ce78afa27f6"
-    # Phase 1 stored the capped amount
+
+    # 2. Store the amount capped by phase 1.
     trade.other_data = {"hypercore_capped_withdrawal_raw": capped_raw}
     trade.blockchain_transactions = [MagicMock(tx_hash="0xaa")]
 
     state = MagicMock()
     mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
 
-    # Phase 1 receipt: success
+    # 3. Mock each settlement phase and balance observation. The spot snapshots
+    # model the reserved 0.01 USDC being consumed entirely as the bridge fee.
     receipts = {HexBytes("0xaa"): {"status": 1, "blockNumber": 100}}
 
     # Equity snapshots (before / after withdrawal)
@@ -765,36 +806,21 @@ def test_settlement_uses_capped_withdrawal_amount(
     phase3_tx = MagicMock(tx_hash="0xcc")
     phase3_receipt = {"status": 1, "blockNumber": 102}
 
-    captured_phase2_raw = []
-    captured_phase3_raw = []
+    captured_phase2_raw: list[int] = []
+    captured_phase3_raw: list[int] = []
 
-    def mock_phase2(raw):
+    def mock_phase2(raw: int) -> tuple[MagicMock, dict[str, int]]:
         captured_phase2_raw.append(raw)
         return (phase2_tx, phase2_receipt)
 
-    def mock_phase3(raw):
+    def mock_phase3(raw: int) -> tuple[MagicMock, dict[str, int]]:
         captured_phase3_raw.append(raw)
         return (phase3_tx, phase3_receipt)
 
-    # Mock the polling functions to return the capped amount
+    # HyperCore polling returns the capped amount; EVM receives the
+    # headroom-adjusted bridge principal.
     perp_balance = Decimal("7.128756")
     spot_balance = Decimal("7.128756")
-
-    with (
-        patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=19_000_000),
-        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
-        patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0")),
-        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=perp_balance),
-        patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=spot_balance),
-        patch.object(routing, "_wait_for_usdc_arrival", return_value=capped_raw),
-        patch.object(routing, "_broadcast_withdrawal_phase2", side_effect=mock_phase2),
-        patch.object(routing, "_broadcast_withdrawal_phase3", side_effect=mock_phase3),
-    ):
-        routing._settle_withdrawal(
-            routing.web3, state, trade, receipts,
-            stop_on_execution_failure=False,
-        )
-
     phase3_expected_raw = usdc_to_raw(
         compute_spot_to_evm_withdrawal_amount(
             spot_balance=spot_balance,
@@ -802,15 +828,50 @@ def test_settlement_uses_capped_withdrawal_amount(
         )
     )
 
+    with (
+        patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=19_000_000),
+        patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),
+        patch.object(routing, "_fetch_safe_spot_free_usdc_balance", return_value=Decimal("0")),
+        patch.object(routing, "_wait_for_perp_withdrawable_balance", return_value=perp_balance),
+        patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=spot_balance),
+        patch.object(routing, "_wait_for_usdc_arrival", return_value=phase3_expected_raw),
+        patch.object(routing, "_broadcast_withdrawal_phase2", side_effect=mock_phase2),
+        patch.object(routing, "_broadcast_withdrawal_phase3", side_effect=mock_phase3),
+        patch.object(
+            routing,
+            "_fetch_safe_spot_free_balances",
+            side_effect=[
+                {"USDC": spot_balance},
+                {"USDC": Decimal(0)},
+            ],
+        ),
+        # Fix the conversion rate so the observed USDC debit is classified
+        # against the deterministic 0.05 HYPE economic ceiling.
+        patch.object(routing, "_fetch_hype_usd_price", return_value=72.3535),
+    ):
+        routing._settle_withdrawal(
+            routing.web3, state, trade, receipts,
+            stop_on_execution_failure=False,
+        )
+
     # 4. Verify phase 2 used the capped amount and phase 3 reserved bridge-fee headroom.
     assert captured_phase2_raw == [capped_raw], (
         f"Phase 2 should use capped amount {capped_raw}, got {captured_phase2_raw}"
     )
     assert captured_phase3_raw == [phase3_expected_raw], (
-        f"Phase 3 should use fee-adjusted amount {phase3_expected_raw}, got {captured_phase3_raw}"
+        f"Phase 3 should use headroom-adjusted amount {phase3_expected_raw}, got {captured_phase3_raw}"
     )
 
-    # 5. Trade succeeded — no failure reported.
+    # 5. Persist the USDC debit beyond principal as a fee separate from close loss.
+    assert trade.bridge_input_amount == Decimal("7.118756")
+    assert trade.bridge_output_amount == Decimal("7.118756")
+    assert trade.bridge_fee_amount == Decimal("0.01")
+    assert trade.bridge_fee_asset == "USDC"
+    assert trade.bridge_fee_usd == pytest.approx(0.01)
+    assert trade.hypercore_close_value_loss_usd == pytest.approx(0)
+    assert trade.hypercore_close_other_loss_usd == pytest.approx(0)
+
+    # 6. Trade succeeded — no failure reported.
     state.mark_trade_success.assert_called_once()
     mock_report_failure.assert_not_called()
 
