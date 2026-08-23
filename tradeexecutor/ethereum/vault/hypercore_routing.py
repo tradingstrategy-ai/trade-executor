@@ -298,10 +298,11 @@ HYPERCORE_FIXED_MAX_PRIORITY_FEE_PER_GAS = 100_000_000  # 0.1 gwei
 
 #: Sanity ceiling for attributing a spot HYPE balance change to one bridge.
 #:
-#: The protocol fee is 200k HyperEVM gas and is normally far below this.
-#: A larger change is more likely unrelated account activity and is left
-#: unknown instead of being reported as an exact rebalance cost.
-HYPERCORE_MAX_PLAUSIBLE_BRIDGE_FEE_HYPE = Decimal("0.01")
+#: The protocol fee is 200k HyperEVM gas. At that gas amount, this ceiling
+#: corresponds to a 250 gwei base fee. A larger change is more likely unrelated
+#: account activity and is left unknown. USDC fees use this economic ceiling
+#: converted at the observed HYPE/USD price.
+HYPERCORE_MAX_PLAUSIBLE_BRIDGE_FEE_HYPE = Decimal("0.05")
 
 
 def usdc_to_raw(amount: Decimal) -> int:
@@ -318,12 +319,20 @@ def calculate_hypercore_bridge_fee(
     spot_before: dict[str, Decimal],
     spot_after: dict[str, Decimal],
     usdc_principal: Decimal,
+    hype_usd_price: float | None,
 ) -> tuple[Decimal, str] | None:
     """Calculate a plausible observed HyperCore-to-HyperEVM bridge fee.
 
-    HyperCore pays the fee in HYPE when available and otherwise in USDC.
+    Prefer an observed HYPE debit. If HYPE is unchanged, attribute the USDC
+    debit beyond the bridge principal instead. A USDC fee has the same economic
+    value as the HYPE-denominated gas charge, so its plausibility ceiling must
+    scale with HYPE/USD. The fixed 0.01 USDC operational headroom is not a fee
+    ceiling: trade #1598 paid 0.01731 USDC when the next HyperEVM block base fee
+    rose to 1.196 gwei.
+
     Balance changes outside protocol-sized bounds are ambiguous and remain
-    unknown.
+    unknown. If HYPE/USD telemetry is unavailable, retain the legacy 0.01 USDC
+    ceiling so ordinary fees are still captured conservatively.
     """
     hype_decrease = (
         spot_before.get("HYPE", Decimal(0))
@@ -339,7 +348,14 @@ def calculate_hypercore_bridge_fee(
         - spot_after.get("USDC", Decimal(0))
         - usdc_principal
     )
-    if Decimal(0) <= usdc_fee <= HYPERCORE_BRIDGE_FEE_MARGIN:
+    max_plausible_usdc_fee = HYPERCORE_BRIDGE_FEE_MARGIN
+    if hype_usd_price is not None:
+        max_plausible_usdc_fee = max(
+            max_plausible_usdc_fee,
+            HYPERCORE_MAX_PLAUSIBLE_BRIDGE_FEE_HYPE
+            * Decimal(str(hype_usd_price)),
+        )
+    if Decimal(0) <= usdc_fee <= max_plausible_usdc_fee:
         return usdc_fee, "USDC"
     return None
 
@@ -3722,9 +3738,13 @@ class HypercoreVaultRouting(RoutingModel):
         executed_price = float(executed_reserve / abs(executed_amount)) if executed_amount else 1.0
 
         if not self.simulate:
-            # The phase-3 bridge fee is paid from HyperCore spot HYPE when the
-            # account has HYPE available. Measure the balance delta instead of
-            # treating the safety headroom as a fee.
+            gas_cost = self._get_trade_gas_cost(trade)
+            hype_usd_price = self._fetch_hype_usd_price()
+
+            # Measure the phase-3 fee from the spot balance delta instead of
+            # treating the reserved safety headroom as a fee. Prefer a HYPE
+            # debit; when HYPE is unchanged, use the USDC debit beyond the
+            # requested bridge principal.
             trade.bridge_input_amount = phase3_withdraw_amount
             trade.bridge_output_amount = executed_reserve
             trade.bridge_fee_amount = None
@@ -3735,14 +3755,13 @@ class HypercoreVaultRouting(RoutingModel):
                     bridge_spot_before,
                     bridge_spot_after,
                     phase3_withdraw_amount,
+                    hype_usd_price,
                 )
                 if observed_bridge_fee is not None:
                     trade.bridge_fee_amount, trade.bridge_fee_asset = observed_bridge_fee
                     if trade.bridge_fee_asset == "USDC":
                         trade.bridge_fee_usd = float(trade.bridge_fee_amount)
 
-            gas_cost = self._get_trade_gas_cost(trade)
-            hype_usd_price = self._fetch_hype_usd_price()
             if trade.bridge_fee_asset == "HYPE" and hype_usd_price is not None:
                 trade.bridge_fee_usd = float(trade.bridge_fee_amount * Decimal(str(hype_usd_price)))
 
@@ -3751,6 +3770,9 @@ class HypercoreVaultRouting(RoutingModel):
                 and vault_equity_before_phase1_snapshot is not None
                 and remaining_equity is not None
             ):
+                # expected_raw was re-anchored to the actual perp arrival before
+                # phase 2. Principal plus reserved headroom therefore reconstructs
+                # the vault withdrawal independently of the phase-3 bridge fee.
                 close_value_loss = (
                     vault_equity_before_phase1_snapshot
                     - remaining_equity
@@ -3759,13 +3781,11 @@ class HypercoreVaultRouting(RoutingModel):
                 )
                 trade.hypercore_close_value_loss_usd = float(close_value_loss)
                 trade.hypercore_close_residual_value_usd = float(remaining_equity)
-                # A USDC bridge fee is part of the redeemed-vault shortfall.
-                # A HYPE fee is paid from the separate spot HYPE balance and
-                # must remain separate so the report includes it once.
-                if trade.bridge_fee_asset == "USDC" and trade.bridge_fee_usd is not None:
-                    trade.hypercore_close_other_loss_usd = float(close_value_loss) - trade.bridge_fee_usd
-                elif trade.bridge_fee_asset == "HYPE":
-                    trade.hypercore_close_other_loss_usd = float(close_value_loss)
+                # The bridge fee is measured from the separate spot balance
+                # delta. The close-loss formula already removes reserved USDC
+                # headroom, so it does not contain either USDC or HYPE bridge
+                # fees. Keep the full loss as the report's other-loss component.
+                trade.hypercore_close_other_loss_usd = float(close_value_loss)
 
             trade.hypercore_cost_data_complete = (
                 gas_cost is not None

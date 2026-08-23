@@ -645,14 +645,14 @@ class TradeExecution:
     #: Economic value lost while fully closing a HyperCore vault position.
     #:
     #: This is the signed value ``equity before - equity after - USDC received
-    #: on HyperEVM - USDC bridge headroom left in spot``. A USDC bridge fee is
-    #: included in this amount, while a HYPE bridge fee is separate because it
-    #: leaves the Safe's HYPE balance. It is recorded only for a full close.
+    #: on HyperEVM - USDC bridge headroom left in spot``. Bridge fees are
+    #: measured separately from the HyperCore spot balance delta and are not
+    #: included in this amount. It is recorded only for a full close.
     hypercore_close_value_loss_usd: float | None = None
 
-    #: Full-close value loss excluding any bridge fee already included in it.
+    #: State-schema compatibility alias for ``hypercore_close_value_loss_usd``.
     #:
-    #: Reporting adds this field and ``bridge_fee_usd`` exactly once.
+    #: The cost report adds this field and ``bridge_fee_usd`` exactly once.
     hypercore_close_other_loss_usd: float | None = None
 
     #: HyperCore vault equity left after a full close, in USD/USDC.
