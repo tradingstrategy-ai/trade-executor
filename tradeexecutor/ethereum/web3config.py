@@ -36,6 +36,24 @@ SUPPORTED_CHAINS = [
     ChainId.monad,
 ]
 
+#: Chains configured for EIP-1559 transaction defaults when no explicit gas
+#: pricing method is supplied.
+DEFAULT_LONDON_CHAIN_IDS = frozenset(
+    {
+        ChainId.ethereum.value,
+        ChainId.ganache.value,
+        ChainId.avalanche.value,
+        ChainId.polygon.value,
+        ChainId.anvil.value,
+        ChainId.arbitrum.value,
+        ChainId.base.value,
+        ChainId.arbitrum_sepolia.value,
+        ChainId.base_sepolia.value,
+        ChainId.hyperliquid.value,
+        ChainId.hyperliquid_testnet.value,
+    }
+)
+
 #: Override broken slugs in the tradingstrategy library.
 #: ChainId.hyperliquid (999) reports "wanchain testnet" instead of "hyperliquid".
 _CHAIN_SLUG_OVERRIDES: dict[ChainId, str] = {
@@ -307,17 +325,7 @@ class Web3Config:
         chain_id = web3.eth.chain_id
 
         if gas_price_method is None:
-            if chain_id in (
-                ChainId.ethereum.value,
-                ChainId.ganache.value,
-                ChainId.avalanche.value,
-                ChainId.polygon.value,
-                ChainId.anvil.value,
-                ChainId.arbitrum.value,
-                ChainId.base.value,
-                ChainId.arbitrum_sepolia.value,
-                ChainId.base_sepolia.value,
-            ):
+            if chain_id in DEFAULT_LONDON_CHAIN_IDS:
                 # Ethereum supports maxBaseFee method (London hard fork)
                 # Same for Avalanche C-chain https://twitter.com/avalancheavax/status/1389763933448323073
 
