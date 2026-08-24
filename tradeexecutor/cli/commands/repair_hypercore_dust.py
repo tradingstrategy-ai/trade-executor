@@ -17,8 +17,6 @@ from ...state.repair import (
     find_hypercore_duplicate_close_candidates,
 )
 from ...state.store import JSONFileStore
-from ...strategy.dust import configure_hyperliquid_vault_close_epsilon
-from ...strategy.strategy_module import read_strategy_module
 
 
 def _count_duplicate_hypercore_groups(state) -> int:
@@ -44,32 +42,6 @@ def _format_candidate_position(position) -> str:
         f"balance_updates={len(position.balance_updates)}, "
         f"trades={len(position.trades)}"
     )
-
-
-def _apply_strategy_hypercore_close_epsilon(
-    state,
-    strategy_file: Path | None,
-    logger,
-):
-    """Apply a strategy module's Hypercore dust threshold before repairing state."""
-
-    if strategy_file is None:
-        logger.info(
-            "No strategy file supplied; using persisted Hypercore close thresholds or the 2.00 default"
-        )
-        return None
-
-    strategy_module = read_strategy_module(strategy_file)
-    epsilon = configure_hyperliquid_vault_close_epsilon(
-        state.portfolio.get_open_and_frozen_positions(),
-        strategy_module.initial_cash,
-    )
-    logger.info(
-        "Applied Hypercore vault close epsilon %s from strategy module %s",
-        epsilon,
-        strategy_file,
-    )
-    return epsilon
 
 
 @app.command()
@@ -98,8 +70,9 @@ def repair_hypercore_dust(
 
     This command is intentionally local-state only. It does not attempt any
     on-chain execution; instead it creates repair trades for Hypercore vault
-    positions that are already within the configured close epsilon. When a
-    strategy file is supplied, its initial cash determines the threshold.
+    positions with ordinary transaction dust or a verified accepted residual.
+    The accepted-residual boundary is fixed at 5 USD and does not depend on
+    the strategy module.
 
     Duplicate Hypercore positions are diagnosed before and after cleanup so
     operators can see whether stale dust residuals were removed or whether a
@@ -124,8 +97,6 @@ def repair_hypercore_dust(
         backup_suffix="repair-hypercore-dust-backup",
         unit_testing=unit_testing,
     )
-
-    _apply_strategy_hypercore_close_epsilon(state, strategy_file, logger)
 
     duplicate_group_count_before = _count_duplicate_hypercore_groups(state)
     if duplicate_group_count_before:

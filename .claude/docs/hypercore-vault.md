@@ -96,6 +96,9 @@ the contract between `setup_trades()` and `settle_trade()`:
 | `hypercore_deposit_capital_at_risk` | during phase-1 preparation, persisted immediately before broadcast | Conservative checkpoint for USDC a node may already have accepted from the Safe. It blocks generic failed-buy refunds after a crash or indeterminate broadcast until live reconciliation. |
 | `hypercore_capped_deposit_raw` | deposit preflight | Deposit capped to actual Safe EVM USDC balance. |
 | `hypercore_capped_withdrawal_raw` | withdrawal preflight / retry | Withdrawal capped to live vault equity minus safety margin. |
+| `hypercore_accepted_residual_writeoff_usd` / `_at` / `_reason` | verified close or local dust cleanup | Audit record for equity intentionally removed from local tracking. |
+| `hypercore_close_residual_status` / `_value_usd` / `_observed_at` | verified full-close settlement | Whether the live residual was accepted or needs another close attempt. |
+| `hypercore_close_residual_first_seen_at` / `_retry_count` | residual above 5 USDC | Retry diagnostics; log an escalation after three verified incomplete closes. |
 | `hypercore_stranded_usdc` | on failure | Records USDC stranded mid-pipeline (perp/spot) for operator recovery and retains its reserve allocation. |
 | `hypercore_failure_diagnosis` | on failure | Full diagnostic snapshot string. |
 
@@ -115,6 +118,9 @@ Successful live settlement stores cost measurements directly on
 | `hypercore_close_other_loss_usd` | State-schema compatibility alias for the full-close loss used by the cost report; the bridge fee is added separately. |
 | `hypercore_close_residual_value_usd` | Vault equity remaining after a full close. |
 | `hypercore_cost_data_complete` | Whether all applicable measurements were captured. |
+
+For a verified full close, `trade.other_data["hypercore_accepted_residual_writeoff_usd"]`
+duplicates the accepted residual amount for the settlement audit trail.
 
 HyperEVM-to-HyperCore deposits have no protocol bridge fee and record an
 explicit zero after successful verification. Their observed spot increase is
@@ -614,15 +620,15 @@ configured 0.5%/1.50 USDC tolerance still fails loudly.
 
 Separately, automatic dust cleanup first identifies a dust-sized position and
 then skips it if it has no successful trade or has a planned, started, or
-broadcast trade. The percentage-derived full-close residual is accounted for
-by verified settlement and may exceed the independently capped 50 USDC dust
-threshold; increasing that bookkeeping-only threshold would risk discarding a
-real live position. Settlement stores the observed residual on the closed
-trade, and a later `correct-accounts` run recreates an on-chain residual above
-its default 2 USDC reconciliation threshold as a tracked small position. The
-specialised cleanup ladder can then recover it. These guards are intentionally
-independent: changing the margin cannot make incomplete trade state safe to
-repair, and the state guard cannot prevent stale live withdrawal caps.
+broadcast trade. Verified settlement may accept a residual of up to 5 USDC
+after a full close; this is distinct from the 2 USDC transaction-dust rule and
+never widens the close threshold for a fresh position. `correct-accounts`
+ignores untracked HyperCore equity at or below 5 USDC, since it cannot safely
+distinguish a retained account-scoped residual from an external micro-deposit.
+Larger residuals remain tracked for another normal close attempt. These guards
+are intentionally independent: changing the margin cannot make incomplete
+trade state safe to repair, and the state guard cannot prevent stale live
+withdrawal caps.
 
 Cleanup uses an adaptive initial margin of at most 0.10 USDC instead of the
 normal relative/floor full-close margin, because withholding 1.50 USDC would

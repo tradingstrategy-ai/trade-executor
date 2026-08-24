@@ -28,6 +28,7 @@ from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType, TradeExecution, TradeFlag, TradeStatus
 from tradeexecutor.state.types import USDollarAmount, Percent, LeverageMultiplier, USDollarPrice
 from tradeexecutor.strategy.dust import (
+    convert_usd_close_epsilon_to_quantity,
     get_close_epsilon_for_pair,
     get_hypercore_withdrawal_safety_margin,
 )
@@ -1699,6 +1700,11 @@ class PositionManager:
 
         remaining_quantity = max(Decimal(0), available_quantity - effective_quantity)
         close_epsilon = get_close_epsilon_for_pair(position.pair)
+        if position.pair.is_hyperliquid_vault():
+            close_epsilon = convert_usd_close_epsilon_to_quantity(
+                close_epsilon,
+                float(current_price),
+            )
         treat_as_full_close = not redemption_cap_bound and remaining_quantity <= close_epsilon
 
         return HypercorePositionReductionPlan(

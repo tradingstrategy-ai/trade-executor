@@ -33,7 +33,7 @@ from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
 from tradeexecutor.state.trade import TradeFlag, TradeExecution, TradeStatus, TradeType
-from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, get_close_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON, \
+from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, HYPERCORE_ACCEPTED_RESIDUAL_USD, get_close_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON, \
     get_relative_epsilon_for_asset, get_relative_epsilon_for_pair, DEFAULT_USD_LOW_VALUE_THRESHOLD
 from tradeexecutor.strategy.lending_protocol_leverage import reset_credit_supply_loan
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
@@ -1181,10 +1181,9 @@ def create_missing_vault_positions(
         # leftover spot dust is ignored once a position has been closed.
         #
         # Hypercore vault withdrawals cannot safely request exact live equity.
-        # Normal full closes leave max(0.5% of live equity, 1.50 USDC) on-chain
-        # because NAV can move before HyperCore processes the queued action.
-        # Verified settlement records that residual and closes the original
-        # state position independently of this reconciliation threshold.
+        # A verified full close may leave up to five USD on-chain because NAV
+        # can move before HyperCore processes the queued action. This is the
+        # same global accounting boundary used by state settlement.
         #
         # We must NOT manufacture a closed "dust" position for the residual
         # here. This function runs on every correct-accounts cycle and the
@@ -1193,13 +1192,10 @@ def create_missing_vault_positions(
         # the hyper-ai closed-positions list with hundreds of zero-quantity
         # positions. Other trading pairs simply leave such sub-dust balances
         # written off; do the same for Hypercore vaults and just skip it.
-        # A percentage-derived residual above the default 2 USDC threshold is
-        # deliberately recreated as a tracked position below, allowing the
-        # specialised small-position cleanup path to recover it instead of
-        # silently discarding economically meaningful vault shares.
-        # Use <= so the threshold matches can_be_closed(), which treats a
-        # residual of exactly the close epsilon as closeable dust.
-        dust_epsilon = get_close_epsilon_for_pair(pair)
+        # We intentionally also ignore external deposits at or below this
+        # operational minimum: tracking them creates positions that cannot be
+        # distinguished safely from a retained close residual.
+        dust_epsilon = HYPERCORE_ACCEPTED_RESIDUAL_USD
         if equity <= float(dust_epsilon):
             logger.info(
                 "Vault equity $%.4f for %s is at or below dust epsilon %.2f, ignoring as written-off dust",

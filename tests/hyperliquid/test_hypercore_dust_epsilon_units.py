@@ -3,8 +3,8 @@
 Regression tests for a defect where a funded Hypercore vault position was silently
 destroyed the moment it was opened.
 
-``get_hyperliquid_vault_close_epsilon()`` returns ``initial_cash * 0.005``, which is a US
-dollar amount, and ``TradingPosition.can_be_closed()`` compared it against
+The HyperCore accepted-residual boundary is a US dollar amount, and an earlier
+``TradingPosition.can_be_closed()`` implementation compared it against
 ``get_quantity()``, which is a count of vault *shares*. For vaults whose share price is
 near 1 USD the two coincide and nothing is noticed. For a share priced at 12.78 USD the
 threshold is multiplied by 12.78, and at a 150,000 USD bankroll it becomes 750 shares =
@@ -31,14 +31,14 @@ from tradeexecutor.state.portfolio import (
     CLOSE_POSITION_VALUE_DESTRUCTION_LIMIT_USD,
     PositionValueDestroyedError,
 )
+from tradeexecutor.state.repair import close_hypercore_dust_positions
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
 from tradeexecutor.strategy.dust import (
     HYPERLIQUID_VAULT_CLOSE_EPSILON,
-    HYPERLIQUID_VAULT_CLOSE_EPSILON_MAX_USD,
-    configure_hyperliquid_vault_close_epsilon,
+    HYPERCORE_ACCEPTED_RESIDUAL_USD,
+    HYPERCORE_CLOSE_RESIDUAL_STATUS_ACCEPTED,
     convert_usd_close_epsilon_to_quantity,
-    get_hyperliquid_vault_close_epsilon,
 )
 
 
@@ -110,9 +110,6 @@ def buy_vault_position(
         reserve_currency_price=1.0,
     )
 
-    # The runner stamps the strategy's dust threshold onto open positions every cycle.
-    configure_hyperliquid_vault_close_epsilon([position], initial_cash)
-
     state.start_execution(opened_at, trade)
     trade.mark_broadcasted(opened_at)
     state.mark_trade_success(
@@ -128,33 +125,26 @@ def buy_vault_position(
     return state, position
 
 
-def test_epsilon_is_clamped_to_a_usd_ceiling():
-    """A large configured bankroll must not scale the dust threshold into position sizes."""
-    # Unconfigured strategies keep the default safety margin
-    assert get_hyperliquid_vault_close_epsilon(None) == HYPERLIQUID_VAULT_CLOSE_EPSILON
-    assert get_hyperliquid_vault_close_epsilon(0) == HYPERLIQUID_VAULT_CLOSE_EPSILON
+def test_hypercore_residual_boundaries_are_fixed():
+    """HyperCore policy must keep transaction dust and accepted residuals distinct.
 
-    # Small bankrolls scale but never below the floor
-    assert get_hyperliquid_vault_close_epsilon(100) == HYPERLIQUID_VAULT_CLOSE_EPSILON
-
-    # 5,000 * 0.5% = 25 USD, under the ceiling, so the percentage rule still applies
-    assert get_hyperliquid_vault_close_epsilon(5_000) == Decimal("25.000")
-
-    # 150,000 would be 750 USD unclamped - the value that destroyed real positions
-    assert get_hyperliquid_vault_close_epsilon(150_000) == HYPERLIQUID_VAULT_CLOSE_EPSILON_MAX_USD
-    assert get_hyperliquid_vault_close_epsilon(10_000_000) == HYPERLIQUID_VAULT_CLOSE_EPSILON_MAX_USD
+    1. Read the two constants used for the two accounting decisions.
+    2. Verify transaction dust remains below the accepted residual boundary.
+    """
+    # 1-2. Neither boundary depends on strategy capital.
+    assert HYPERLIQUID_VAULT_CLOSE_EPSILON == Decimal("2.00")
+    assert HYPERCORE_ACCEPTED_RESIDUAL_USD == Decimal("5.00")
 
 
 def test_destruction_limit_sits_above_the_largest_legitimate_dust():
     """The two thresholds must not contradict each other.
 
-    ``can_be_closed()`` permits closing anything the dust rules call negligible - up to
-    :py:data:`HYPERLIQUID_VAULT_CLOSE_EPSILON_MAX_USD` of value. If the value-destruction
-    guard sat below that, it would raise on closes the engine is supposed to perform, which
-    is exactly what happened in a 150,000 USD backtest: a 31.36 USD residual was dust by the
-    50 USD ceiling but blocked by a 25 USD guard.
+    A freshly verified accepted residual can be worth up to
+    :py:data:`HYPERCORE_ACCEPTED_RESIDUAL_USD`. If the value-destruction
+    guard sat below that, it would raise on a local close the engine is supposed to
+    perform.
     """
-    assert CLOSE_POSITION_VALUE_DESTRUCTION_LIMIT_USD > float(HYPERLIQUID_VAULT_CLOSE_EPSILON_MAX_USD)
+    assert CLOSE_POSITION_VALUE_DESTRUCTION_LIMIT_USD > float(HYPERCORE_ACCEPTED_RESIDUAL_USD)
 
 
 def test_usd_epsilon_converts_to_share_units():
@@ -213,16 +203,45 @@ def test_genuine_dust_still_closes():
     assert position.is_closed(), "Genuine sub-margin dust should still be closed automatically"
 
 
+def test_verified_five_usd_residual_closes_but_new_deposit_does_not():
+    """The accepted-residual boundary must not close a fresh small deposit.
+
+    1. Open a three USD Hypercore position, which is above transaction dust but below five USD.
+    2. Verify it remains open until a fresh residual observation records it as accepted.
+    3. Run local dust repair and verify it closes only with that verified marker.
+    """
+    state, position = buy_vault_position(Decimal("0.235"), initial_cash=150_000)
+
+    # 1-2. A new 3 USD deposit is live equity, not an accepted withdrawal residual.
+    assert position.get_value() == pytest.approx(3.0, abs=0.05)
+    assert not position.can_be_closed()
+    assert not position.is_closed()
+
+    # 3. The routing/runner fresh observation authorises the five USD write-off boundary.
+    position.other_data["hypercore_close_residual_status"] = HYPERCORE_CLOSE_RESIDUAL_STATUS_ACCEPTED
+    residual_value = position.get_value(include_interest=False)
+    trades = close_hypercore_dust_positions(
+        state.portfolio,
+        now=datetime.datetime(2026, 8, 24),
+    )
+    assert len(trades) == 1
+    assert position.is_closed()
+    assert position.other_data["hypercore_accepted_residual_writeoff_usd"] == str(residual_value)
+
+
 def test_close_epsilon_is_expressed_in_share_units():
     """``get_close_epsilon()`` feeds a quantity comparison, so it must return units."""
     _state, position = buy_vault_position(PMALT_QUANTITY, initial_cash=150_000)
 
     epsilon = position.get_close_epsilon()
 
-    # 50 USD ceiling / 12.78 USD per share
-    assert epsilon == pytest.approx(Decimal("3.912"), abs=Decimal("0.001"))
-    # Before the fix this was 750: the raw USD figure used as a share count
-    assert epsilon < Decimal("10")
+    # 2 USD transaction dust / 12.78 USD per share
+    assert epsilon == pytest.approx(Decimal("0.156"), abs=Decimal("0.001"))
+    # This must stay a small share quantity, never a raw USD amount.
+    assert epsilon < Decimal("1")
+
+    position.other_data["hypercore_close_residual_status"] = HYPERCORE_CLOSE_RESIDUAL_STATUS_ACCEPTED
+    assert position.get_close_epsilon() == pytest.approx(Decimal("0.391"), abs=Decimal("0.001"))
 
 
 def test_close_position_refuses_to_destroy_value():

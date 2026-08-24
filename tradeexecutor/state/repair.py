@@ -592,10 +592,19 @@ def close_hypercore_dust_positions(
             portfolio.open_positions[position.position_id] = position
             position.unfrozen_at = now
 
+        residual_value = position.get_value(include_interest=False)
+        position.other_data["hypercore_accepted_residual_writeoff_usd"] = str(
+            residual_value
+        )
+        position.other_data["hypercore_accepted_residual_writeoff_at"] = now.isoformat()
+        position.other_data["hypercore_accepted_residual_writeoff_reason"] = (
+            "local_hypercore_dust_cleanup"
+        )
         trade = close_position_with_empty_trade(portfolio, position)
         position.add_notes_message(
-            "Auto-closed Hypercore dust position after the safety-margin "
-            f"redemption left a final residual balance ({now.isoformat()})"
+            "Auto-closed locally marked Hypercore dust position after the safety-margin "
+            f"redemption left a {residual_value:.6f} USD residual "
+            f"({now.isoformat()})"
         )
         logger.info(
             "Auto-closed Hypercore dust position %s with repair trade %s",
