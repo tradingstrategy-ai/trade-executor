@@ -130,10 +130,12 @@ from eth_defi.compat import native_datetime_utc_now
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.strategy.dust import (
+    HYPERCORE_ACCEPTED_RESIDUAL_USD,
+    HYPERCORE_CLOSE_RESIDUAL_STATUS_ACCEPTED,
+    HYPERCORE_CLOSE_RESIDUAL_STATUS_PENDING_RETRY,
     HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_FLOOR,
     HYPERCORE_SMALL_POSITION_CLEANUP_CLOSE_EPSILON,
     HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM,
-    get_close_epsilon_for_pair,
     get_hypercore_withdrawal_safety_margin,
 )
 from tradingstrategy.pair import PandasPairUniverse
@@ -3165,9 +3167,7 @@ class HypercoreVaultRouting(RoutingModel):
             Decimal(str(trade.slippage_tolerance or 0)),
         )
         phase1_requested_reserve = raw_to_usdc(expected_raw)
-        remaining_equity_after_withdrawal: Decimal | None = (
-            Decimal(0) if self.simulate else None
-        )
+        remaining_equity_after_withdrawal: Decimal | None = None
 
         if self.simulate:
             # Simulate mode: mock CoreWriter does not bridge USDC,
@@ -3711,9 +3711,12 @@ class HypercoreVaultRouting(RoutingModel):
 
         position = state.portfolio.find_position_for_trade(trade, pending=True)
         position_quantity = position.get_quantity() if position else None
+        close_epsilon = position.get_close_epsilon() if position else None
         closes_position_quantity = (
             isinstance(position_quantity, Decimal)
-            and abs(position_quantity + trade.planned_quantity) <= get_close_epsilon_for_pair(trade.pair)
+            and position is not None
+            and isinstance(close_epsilon, Decimal)
+            and abs(position_quantity + trade.planned_quantity) <= close_epsilon
         )
 
         planned_price = Decimal(str(trade.planned_price))
@@ -3736,6 +3739,68 @@ class HypercoreVaultRouting(RoutingModel):
             (trade.closing or TradeFlag.close in trade.flags or closes_position_quantity)
             and not close_materially_short
         )
+
+        is_closing_trade = (
+            trade.closing
+            or TradeFlag.close in trade.flags
+            or closes_position_quantity
+        )
+        if (
+            is_closing_trade
+            and position is not None
+            and remaining_equity_after_withdrawal is not None
+            and not trade.other_data.get("hypercore_small_position_cleanup")
+        ):
+            if close_materially_short or remaining_equity_after_withdrawal > HYPERCORE_ACCEPTED_RESIDUAL_USD:
+                position.other_data["hypercore_close_residual_status"] = HYPERCORE_CLOSE_RESIDUAL_STATUS_PENDING_RETRY
+                position.other_data["hypercore_close_residual_value_usd"] = str(
+                    remaining_equity_after_withdrawal
+                )
+                position.other_data["hypercore_close_residual_observed_at"] = ts.isoformat()
+                position.other_data.setdefault(
+                    "hypercore_close_residual_first_seen_at",
+                    ts.isoformat(),
+                )
+                retry_count = position.other_data.get("hypercore_close_residual_retry_count", 0)
+                if not isinstance(retry_count, int):
+                    retry_count = 0
+                retry_count += 1
+                position.other_data["hypercore_close_residual_retry_count"] = retry_count
+                position.other_data.pop(
+                    HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM,
+                    None,
+                )
+                should_close_full_quantity = False
+                if retry_count >= 3:
+                    logger.error(
+                        "HyperCore close remains incomplete after %d attempts: "
+                        "position %d has %s USD remaining",
+                        retry_count,
+                        position.position_id,
+                        remaining_equity_after_withdrawal,
+                    )
+            else:
+                position.other_data["hypercore_close_residual_status"] = HYPERCORE_CLOSE_RESIDUAL_STATUS_ACCEPTED
+                position.other_data["hypercore_close_residual_value_usd"] = str(
+                    remaining_equity_after_withdrawal
+                )
+                position.other_data["hypercore_close_residual_observed_at"] = ts.isoformat()
+                position.other_data["hypercore_accepted_residual_writeoff_usd"] = str(
+                    remaining_equity_after_withdrawal
+                )
+                position.other_data["hypercore_accepted_residual_writeoff_at"] = ts.isoformat()
+                position.other_data["hypercore_accepted_residual_writeoff_reason"] = (
+                    "verified_hypercore_close"
+                )
+                position.other_data.pop(
+                    HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM,
+                    None,
+                )
+                # The normal shortfall guard above has already succeeded.
+                should_close_full_quantity = True
+                trade.other_data["hypercore_accepted_residual_writeoff_usd"] = str(
+                    remaining_equity_after_withdrawal
+                )
 
         if trade.other_data.get("hypercore_small_position_cleanup") and position is not None:
             retain_cleanup_residual = (
@@ -3794,7 +3859,7 @@ class HypercoreVaultRouting(RoutingModel):
                 trade.bridge_fee_usd = float(trade.bridge_fee_amount * Decimal(str(hype_usd_price)))
 
             if (
-                should_close_full_quantity
+                is_closing_trade
                 and vault_equity_before_phase1_snapshot is not None
                 and remaining_equity is not None
             ):
@@ -3820,7 +3885,7 @@ class HypercoreVaultRouting(RoutingModel):
                 and hype_usd_price is not None
                 and trade.bridge_fee_usd is not None
                 and (
-                    not should_close_full_quantity
+                    not is_closing_trade
                     or trade.hypercore_close_other_loss_usd is not None
                 )
             )

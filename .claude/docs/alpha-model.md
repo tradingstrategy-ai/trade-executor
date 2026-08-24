@@ -157,22 +157,24 @@ pinned) are documented in `vault-deposit-redeem.md`.
 against the portfolio and emits trades, applying gates in this order:
 
 1. **Whole-portfolio gate** — if the largest single adjustment is below
-   `min_trade_threshold`, the entire rebalance is skipped (flag
-   `max_adjust_too_small`). All-or-nothing, because dropping only some legs
-   would break the sells-fund-buys pairing.
+   `min_trade_threshold`, the rebalance is skipped (flag
+   `max_adjust_too_small`) except for full-close intents. In that exception
+   only full closes are emitted; every unrelated adjustment is cleared.
 2. **Same-cycle cash caps** — the always-on **async cap** (queued ERC-7540 /
    Ostium redemptions pay out later, so buys are scaled to the cash that
    actually arrives; flag `capped_by_pending_settlement_cash`) and the
    **opt-in sync cap** (`cap_buys_to_sync_cash=True`: sells dropped by the
    min-trade gate free no cash either, so buys are scaled to the sells that
-   actually execute; flag `capped_by_sync_cash`). Opt-in rules and the worked
+   actually execute; flag `capped_by_sync_cash`). A softband-bypassed full
+   close is excluded from that opt-in cap's assumed funding. Opt-in rules and the worked
    hyper-ai example live in `vault-deposit-redeem.md`.
 3. **Per-signal gates** — problematic/frozen pairs, buys whose vault deposit
-   window is closed (`cannot_deposit`), sells below
-   `sell_rebalance_min_threshold` or below the pair dust epsilon
+   window is closed (`cannot_deposit`), partial sells below
+   `sell_rebalance_min_threshold` or sells below the pair dust epsilon
    (`individual_trade_size_too_small` / `individual_trade_quantity_too_small`),
    positions with a pending vault settlement (`settlement_pending`), and
-   positions not yet redeemable (`cannot_redeem`).
+   positions not yet redeemable (`cannot_redeem`). A full-close intent bypasses
+   only the individual sell softband; all other gates still apply.
 4. **Emission** — position closes for signals under
    `close_position_weight_epsilon`, adjust trades for the rest, plus optional
    stop-loss/take-profit triggers. Trades are returned sorted by

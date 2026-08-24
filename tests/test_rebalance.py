@@ -2400,18 +2400,95 @@ def test_alpha_model_skips_hypercore_sell_below_threshold_after_capping(
     assert TradingPairSignalFlags.individual_trade_size_too_small in signal.flags
 
 
-def test_alpha_model_skips_hypercore_sell_below_quantity_dust(
+def test_alpha_model_full_close_bypasses_hypercore_rebalance_softbands(
+    start_ts: datetime.datetime,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model: BacktestPricing,
+    usdc: AssetIdentifier,
+    weth_usdc: TradingPairIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Check a small zero-target Hypercore position closes despite rebalance softbands.
+
+    1. Create a 4 USD Hypercore position, give it a zero target, and add a 4 USD buy.
+    2. Use 75 USD portfolio and individual sell softbands that would suppress both adjustments.
+    3. Verify only the full close is generated and records the explicit bypass diagnostic.
+    """
+    state = State()
+    hypercore_vault_pair = _create_hypercore_position_for_rebalance_test(
+        state,
+        start_ts,
+        usdc,
+        last_token_price=2.0,
+        reserve_amount=Decimal(2),
+    )
+
+    # 1. A zero signal produces full-close intent for the existing position.
+    position_manager = PositionManager(
+        start_ts + datetime.timedelta(days=1),
+        strategy_universe.data_universe,
+        state,
+        pricing_model,
+    )
+    _patch_hypercore_pricing(monkeypatch, pricing_model, hypercore_vault_pair)
+    monkeypatch.setattr(
+        pricing_model,
+        "check_redemption",
+        lambda ts, pair, **kwargs: RedemptionCheckResult(
+            timestamp=ts,
+            stage=kwargs["stage"],
+            can_redeem=True,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+            safe_address="0x0000000000000000000000000000000000000abc",
+            max_withdrawable=None,
+            max_redemption=None,
+            message="Hypercore sell is redeemable",
+        ),
+    )
+    alpha_model = AlphaModel(timestamp=position_manager.timestamp)
+    alpha_model.set_signal(hypercore_vault_pair, 0.0)
+    alpha_model.set_signal(weth_usdc, 1.0)
+    alpha_model.select_top_signals(count=5)
+    alpha_model.assign_weights(method=weight_passthrouh)
+    alpha_model.normalise_weights(max_weight=1.0)
+    alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
+    alpha_model.calculate_target_positions(position_manager, investable_equity=4.0)
+
+    # 2. The close is smaller than both softbands and the portfolio-wide threshold.
+    trades = alpha_model.generate_rebalance_trades_and_triggers(
+        position_manager,
+        min_trade_threshold=75.0,
+        individual_rebalance_min_threshold=75.0,
+        sell_rebalance_min_threshold=75.0,
+    )
+    signal = alpha_model.get_signal_by_pair(hypercore_vault_pair)
+    buy_signal = alpha_model.get_signal_by_pair(weth_usdc)
+    assert signal is not None
+    assert buy_signal is not None
+
+    # 3. Full-close intent bypasses the softbands; the unrelated buy stays suppressed.
+    assert len(trades) == 1
+    assert trades[0].is_sell()
+    assert TradingPairSignalFlags.full_close_softband_bypassed in signal.flags
+    assert signal.other_data["full_close_softband_bypassed"] is True
+    assert buy_signal.position_adjust_ignored is True
+    assert buy_signal.position_adjust_usd == 0.0
+    assert buy_signal.position_adjust_quantity == 0.0
+
+
+def test_alpha_model_compares_hypercore_sell_dust_in_share_units(
     start_ts: datetime.datetime,
     strategy_universe: TradingStrategyUniverse,
     pricing_model: BacktestPricing,
     usdc: AssetIdentifier,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Check Hypercore sell quantity dust is skipped even when its USD value passes trade thresholds.
+    """Check Hypercore sell dust converts its USD boundary to vault share units.
 
     1. Create a high-share-price Hypercore position that needs a small rebalance sell.
-    2. Keep the USD sell above the configured sell threshold but the vault quantity below dust epsilon.
-    3. Verify the alpha model skips the trade before low-level trade creation rejects it.
+    2. Keep the USD sell above the configured sell threshold and above the converted share dust boundary.
+    3. Verify the alpha model creates the reduction instead of treating USD as a share quantity.
     """
     state = State()
     hypercore_vault_pair = _create_hypercore_position_for_rebalance_test(
@@ -2453,7 +2530,7 @@ def test_alpha_model_skips_hypercore_sell_below_quantity_dust(
     alpha_model.update_old_weights(state.portfolio, ignore_credit=False)
     alpha_model.calculate_target_positions(position_manager, investable_equity=2958.0)
 
-    # 2. Keep the USD sell above the configured sell threshold but the vault quantity below dust epsilon.
+    # 2. At 60 USD/share, a 2 USD dust boundary is only 0.033 shares, not 2 shares.
     trades = alpha_model.generate_rebalance_trades_and_triggers(
         position_manager,
         min_trade_threshold=0.01,
@@ -2464,11 +2541,12 @@ def test_alpha_model_skips_hypercore_sell_below_quantity_dust(
     signal = alpha_model.get_signal_by_pair(hypercore_vault_pair)
     assert signal is not None
 
-    # 3. Verify the alpha model skips the trade before low-level trade creation rejects it.
-    assert trades == []
+    # 3. Verify the valid 0.7-share reduction is not skipped as dust.
+    assert len(trades) == 1
+    assert trades[0].is_sell()
     assert signal.position_adjust_usd == pytest.approx(-42.0)
     assert signal.position_adjust_quantity == pytest.approx(-0.7)
-    assert TradingPairSignalFlags.individual_trade_quantity_too_small in signal.flags
+    assert TradingPairSignalFlags.individual_trade_quantity_too_small not in signal.flags
 
 
 def test_alpha_model_uses_capped_hypercore_cash_release_for_buy_checks(

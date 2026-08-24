@@ -29,6 +29,9 @@ from tradeexecutor.state.trigger import Trigger
 from tradeexecutor.state.types import USDollarAmount, BPS, USDollarPrice, Percent, LeverageMultiplier, LegacyDataException
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.dust import (
+    HYPERCORE_ACCEPTED_RESIDUAL_USD,
+    HYPERCORE_CLOSE_RESIDUAL_STATUS_ACCEPTED,
+    HYPERLIQUID_VAULT_CLOSE_EPSILON,
     HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM,
     convert_usd_close_epsilon_to_quantity,
     get_close_epsilon_for_pair,
@@ -316,13 +319,8 @@ class TradingPosition(GenericPosition):
     #: Misc bag of data, not often needed
     other_data: PositionOtherData = field(default_factory=dict)
 
-    #: Strategy-specific dust threshold for a Hypercore vault position.
-    #:
-    #: Stored on the position so state-level settlement can use the same
-    #: threshold without access to the active strategy module.
-    #:
-    #: TODO: Migrate account correction and close-planning paths that still use
-    #: pair-only thresholds to this persisted value.
+    #: Deprecated Hypercore vault close threshold retained for state
+    #: deserialisation compatibility. Hypercore uses fixed policy constants.
     hyperliquid_vault_close_epsilon: Decimal | None = None
 
     #: Position was produced by a fork-only vault-test-trade simulation.
@@ -461,16 +459,27 @@ class TradingPosition(GenericPosition):
         Always returned in **base token units**, because every caller compares it against
         :py:meth:`get_quantity`.
 
-        The Hypercore vault threshold is configured in US dollars. It covers small residuals
-        while remaining capped independently of the relative withdrawal safety margin, so it
-        is converted to share units at the position's mark price. Without that conversion the
-        threshold is silently multiplied by the share price, and any position smaller than
-        that is closed as dust the moment it opens - destroying the shares, because
+        A verified HyperCore close residual uses the fixed five USD accounting
+        boundary. All other HyperCore positions use the two USD transaction
+        dust threshold. Either value is converted to share units at the
+        position's mark price.
+        Without that conversion the threshold is silently multiplied by the share
+        price, and any position smaller than that is closed as dust the moment it
+        opens - destroying the shares, because
         :py:meth:`tradeexecutor.state.portfolio.Portfolio.close_position` is bookkeeping only.
         """
+        is_accepted_hypercore_residual = (
+            self.pair.is_hyperliquid_vault()
+            and self.other_data.get("hypercore_close_residual_status") == HYPERCORE_CLOSE_RESIDUAL_STATUS_ACCEPTED
+        )
+        hyperliquid_epsilon = (
+            HYPERCORE_ACCEPTED_RESIDUAL_USD
+            if is_accepted_hypercore_residual
+            else HYPERLIQUID_VAULT_CLOSE_EPSILON
+        )
         epsilon = get_close_epsilon_for_pair(
             self.pair,
-            hyperliquid_vault_close_epsilon=self.hyperliquid_vault_close_epsilon,
+            hyperliquid_vault_close_epsilon=hyperliquid_epsilon,
         )
 
         if self.pair.is_hyperliquid_vault():

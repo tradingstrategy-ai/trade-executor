@@ -289,6 +289,57 @@ def test_sync_cash_cap_threshold_semantics_match_generator():
     assert buy2.position_adjust_usd == pytest.approx(16.0)  # 10 cash + 6 sell; the 4 trim excluded
 
 
+def test_sync_cash_cap_does_not_spend_softband_bypassed_full_close_proceeds():
+    """A softband-bypassed full close executes but does not fund a same-cycle buy.
+
+    1. Create a 25 USD zero-target sell below a 50 USD sell softband and a 60 USD buy.
+    2. Classify the sell as a full close and run the synchronous cash cap with 10 USD cash.
+    3. Verify the buy is limited to the known cash, while a similarly sized partial trim remains skipped.
+    """
+    # 1. A zero target is full-close intent; the same notional with a positive target is a trim.
+    full_close = _make_signal(_make_pair(1), -25.0)
+    full_close.old_value = 25.0
+    full_close.normalised_weight = 0.0
+    partial_trim = _make_signal(_make_pair(2), -25.0)
+    buy = _make_signal(_make_pair(10), 60.0)
+    alpha = _make_alpha([full_close, partial_trim, buy])
+    pm = _StubPositionManager(
+        pricing_model=_StubPricing(open_pairs={10}, redeemable={}),
+        cash=10.0,
+    )
+
+    # 2. The close may execute, but its marked value is not safe same-cycle funding.
+    _run_cap(
+        alpha,
+        pm,
+        individual_threshold=50.0,
+        sell_threshold=50.0,
+        headroom=0.0,
+    )
+
+    # 3. Only verified cash funds the buy; the partial trim remains below the softband.
+    assert buy.position_adjust_usd == pytest.approx(10.0)
+    assert TradingPairSignalFlags.capped_by_sync_cash in buy.flags
+    assert alpha._will_sell_execute(
+        full_close,
+        pm,
+        {},
+        {},
+        set(),
+        50.0,
+        50.0,
+    )
+    assert not alpha._will_sell_execute(
+        partial_trim,
+        pm,
+        {},
+        {},
+        set(),
+        50.0,
+        50.0,
+    )
+
+
 def test_sync_cash_cap_buy_predicate_scope():
     """Only unleveraged, non-flip spot/vault buys are counted and scaled.
 

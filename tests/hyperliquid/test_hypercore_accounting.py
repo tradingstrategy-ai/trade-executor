@@ -9,8 +9,6 @@ Verifies that:
 
 import datetime
 from decimal import Decimal
-from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -19,7 +17,6 @@ from eth_defi.compat import native_datetime_utc_now
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.cli.commands.correct_accounts import _sync_hypercore_vault_positions
-from tradeexecutor.cli.commands.repair_hypercore_dust import _apply_strategy_hypercore_close_epsilon
 from tradeexecutor.ethereum.vault.hypercore_valuation import HypercoreVaultPricing, HypercoreVaultValuator
 from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_pair
 from tradeexecutor.cli.double_position import check_double_position
@@ -43,15 +40,12 @@ from tradeexecutor.strategy.dust import (
     get_hypercore_withdrawal_safety_margin,
     get_close_epsilon_for_pair,
     get_dust_epsilon_for_pair,
-    get_hyperliquid_vault_close_epsilon,
     HYPERLIQUID_VAULT_CLOSE_EPSILON,
     HYPERLIQUID_VAULT_RELATIVE_EPSILON,
     DEFAULT_VAULT_EPSILON,
 )
 from tradeexecutor.strategy.execution_model import AssetManagementMode
-from tradeexecutor.strategy.execution_context import unit_test_execution_context
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
-from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.sync_model import OnChainBalance
 from tradeexecutor.visual.equity_curve import calculate_compounding_unrealised_trading_profitability
 
@@ -554,66 +548,6 @@ def test_hypercore_reduction_planning_reserves_relative_margin_with_fixed_floor(
     assert full_close_plan.treat_as_full_close is True
 
 
-def test_repair_hypercore_dust_uses_strategy_close_epsilon():
-    """Repair command applies the strategy capital-derived threshold before checking dust.
-
-    1. Create a Hypercore vault position with a residual above the default threshold.
-    2. Mock loading a strategy module configured with $1,000 initial capital.
-    3. Apply the repair command's strategy configuration helper.
-    4. Verify the position is closeable at the derived $5 threshold.
-    5. Verify no initial cash retains the default threshold.
-    """
-
-    # 1. Create a Hypercore vault position with a residual above the default threshold.
-    quote = AssetIdentifier(
-        chain_id=ChainId.hypercore.value,
-        address="0x0000000000000000000000000000000000000002",
-        token_symbol="USDC",
-        decimals=6,
-    )
-    pair = create_hypercore_vault_pair(
-        quote=quote,
-        vault_address="0x1111111111111111111111111111111111111111",
-    )
-    ts = native_datetime_utc_now()
-    position = TradingPosition(
-        position_id=1,
-        pair=pair,
-        opened_at=ts,
-        last_pricing_at=ts,
-        last_token_price=1.0,
-        last_reserve_price=1.0,
-        reserve_currency=quote,
-    )
-    dummy_trade = MagicMock()
-    dummy_trade.is_spot.return_value = False
-    position.trades[1] = dummy_trade
-    state = MagicMock()
-    state.portfolio.get_open_and_frozen_positions.return_value = [position]
-
-    # 2. Mock strategy loading because only the module's initial cash affects this local repair.
-    strategy_module = SimpleNamespace(initial_cash=1_000)
-
-    # 3. Apply the repair command's strategy configuration helper.
-    with patch(
-        "tradeexecutor.cli.commands.repair_hypercore_dust.read_strategy_module",
-        return_value=strategy_module,
-    ):
-        epsilon = _apply_strategy_hypercore_close_epsilon(
-            state,
-            Path("strategies/hyper-ai.py"),
-            MagicMock(),
-        )
-
-    # 4. Verify the position is closeable at the derived $5 threshold.
-    assert epsilon == Decimal("5.000")
-    with patch.object(position, "get_quantity", return_value=Decimal("3.927094")):
-        assert position.can_be_closed() is True
-
-    # 5. Verify no initial cash retains the default threshold.
-    assert get_hyperliquid_vault_close_epsilon() == HYPERLIQUID_VAULT_CLOSE_EPSILON
-
-
 def test_hypercore_account_check_compares_equity_not_quantity() -> None:
     """Test Hypercore account checks compare expected equity against live equity.
 
@@ -690,125 +624,6 @@ def test_hypercore_account_check_compares_equity_not_quantity() -> None:
     assert correction.relative_epsilon == HYPERLIQUID_VAULT_RELATIVE_EPSILON
     assert correction.usd_value == 0.0
     assert correction.mismatch is False
-
-
-def test_post_trade_hypercore_revaluation_runs_only_for_open_hypercore_positions() -> None:
-    """Revalue Hypercore positions immediately before post-trade account checks.
-
-    1. Build a minimal runner with one open Hypercore vault position and one non-Hypercore position.
-    2. Run the post-trade Hypercore refresh helper and verify only the Hypercore position is revalued.
-    3. Leave only a frozen Hypercore vault position and verify the helper still performs the refresh.
-    4. Remove all Hypercore positions and verify the helper skips the extra valuation pass entirely.
-    """
-
-    class DummyRunner(StrategyRunner):
-        """Minimal runner used to exercise post-trade Hypercore revaluation."""
-
-        def pretick_check(self, ts: datetime.datetime, universe) -> None:
-            return None
-
-    # 1. Build a minimal runner with one open Hypercore vault position and one non-Hypercore position.
-    runner = DummyRunner(
-        timed_task_context_manager=MagicMock(),
-        execution_model=MagicMock(),
-        approval_model=MagicMock(),
-        valuation_model_factory=MagicMock(),
-        sync_model=None,
-        pricing_model_factory=MagicMock(),
-        execution_context=unit_test_execution_context,
-    )
-
-    reserve_asset = AssetIdentifier(
-        chain_id=999,
-        address="0xb88339cb7199b77e23db6e890353e22632ba630f",
-        token_symbol="USDC",
-        decimals=6,
-    )
-    hypercore_pair = create_hypercore_vault_pair(
-        quote=reserve_asset,
-        vault_address="0x1111111111111111111111111111111111111111",
-    )
-    spot_pair = TradingPairIdentifier(
-        base=AssetIdentifier(
-            chain_id=1,
-            address="0x0000000000000000000000000000000000000001",
-            token_symbol="WETH",
-            decimals=18,
-        ),
-        quote=AssetIdentifier(
-            chain_id=1,
-            address="0x0000000000000000000000000000000000000002",
-            token_symbol="USDC",
-            decimals=6,
-        ),
-        pool_address="0x0000000000000000000000000000000000000003",
-        exchange_address="0x0000000000000000000000000000000000000004",
-        internal_id=2,
-        internal_exchange_id=2,
-        fee=0.003,
-    )
-
-    hypercore_position = MagicMock()
-    hypercore_position.pair = hypercore_pair
-    frozen_hypercore_position = MagicMock()
-    frozen_hypercore_position.pair = hypercore_pair
-    spot_position = MagicMock()
-    spot_position.pair = spot_pair
-
-    state = MagicMock()
-    state.portfolio.open_positions = {
-        1: hypercore_position,
-        2: spot_position,
-    }
-    state.portfolio.get_open_and_frozen_positions.return_value = [
-        hypercore_position,
-        spot_position,
-    ]
-
-    valuation_model = MagicMock()
-    universe = MagicMock()
-    runner.setup_routing_context = MagicMock(
-        return_value=MagicMock(valuation_model=valuation_model),
-    )
-
-    # 2. Run the post-trade Hypercore refresh helper and verify only the Hypercore position is revalued.
-    runner._revalue_open_hypercore_positions_before_post_trade_account_check(
-        universe,
-        state,
-    )
-
-    assert valuation_model.call_count == 1
-    assert valuation_model.call_args[0][1] is hypercore_position
-
-    # 3. Leave only a frozen Hypercore position and verify the helper still refreshes it.
-    valuation_model.reset_mock()
-    runner.setup_routing_context.reset_mock()
-    state.portfolio.open_positions = {2: spot_position}
-    state.portfolio.get_open_and_frozen_positions.return_value = [
-        spot_position,
-        frozen_hypercore_position,
-    ]
-
-    runner._revalue_open_hypercore_positions_before_post_trade_account_check(
-        universe,
-        state,
-    )
-
-    assert valuation_model.call_count == 1
-    assert valuation_model.call_args[0][1] is frozen_hypercore_position
-
-    # 4. Remove all Hypercore positions and verify the helper skips the extra valuation pass entirely.
-    valuation_model.reset_mock()
-    runner.setup_routing_context.reset_mock()
-    state.portfolio.get_open_and_frozen_positions.return_value = [spot_position]
-
-    runner._revalue_open_hypercore_positions_before_post_trade_account_check(
-        universe,
-        state,
-    )
-
-    valuation_model.assert_not_called()
-    runner.setup_routing_context.assert_not_called()
 
 
 def test_hypercore_dust_position_is_reused_without_planned_close() -> None:

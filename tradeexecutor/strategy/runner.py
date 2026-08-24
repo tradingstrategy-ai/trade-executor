@@ -28,7 +28,6 @@ from tradeexecutor.statistics.statistics_table import StatisticsTable
 from tradeexecutor.strategy.account_correction import check_accounts, UnexpectedAccountingCorrectionIssue
 from tradeexecutor.strategy.approval import ApprovalModel
 from tradeexecutor.strategy.cycle import CycleDuration
-from tradeexecutor.strategy.dust import configure_hyperliquid_vault_close_epsilon
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
@@ -680,8 +679,6 @@ class StrategyRunner(abc.ABC):
         - Call after we have stored the execution state in the database
         """
 
-        self.configure_hyperliquid_vault_close_epsilon(state)
-
         # We cannot call account check right after the trades,
         # as meny low quality nodes might still report old token balances
         # from eth_call
@@ -700,16 +697,16 @@ class StrategyRunner(abc.ABC):
             else:
                 end_block = self.execution_model.get_safe_latest_block()
             logger.info("Post-trade accounts balance check for block %s, cycle %d", end_block, cycle)
+            self._revalue_open_hypercore_positions_before_post_trade_account_check(
+                universe,
+                state,
+            )
             closed_dust_trades = close_hypercore_dust_positions(state.portfolio)
             if closed_dust_trades:
                 logger.info(
                     "Auto-closed %d Hypercore dust position(s) before post-trade account checks",
                     len(closed_dust_trades),
                 )
-            self._revalue_open_hypercore_positions_before_post_trade_account_check(
-                universe,
-                state,
-            )
             self.check_accounts(
                 universe,
                 state,
@@ -717,23 +714,8 @@ class StrategyRunner(abc.ABC):
                 cycle=cycle,
             )
 
-    def configure_hyperliquid_vault_close_epsilon(self, state: State):
-        """Apply this strategy module's Hypercore dust threshold to its positions."""
-        initial_cash = self.parameters.get("initial_cash") if self.parameters else None
-        configure_hyperliquid_vault_close_epsilon(
-            state.portfolio.get_open_and_frozen_positions(),
-            initial_cash,
-        )
-
     def _has_open_hypercore_vault_positions(self, state: State) -> bool:
-        """Check if the portfolio currently has any live Hypercore vault positions.
-
-        Hypercore account checks cover both open and frozen positions, so the
-        post-trade revaluation guard must mirror that same scope. Otherwise a
-        portfolio that currently has only frozen Hypercore vault positions would
-        skip the refresh and still compare stale state marks against fresh live
-        API equity during account checks.
-        """
+        """Check whether account checks need a fresh HyperCore position mark."""
         return any(
             position.pair.is_hyperliquid_vault()
             for position in state.portfolio.get_open_and_frozen_positions()
@@ -744,42 +726,21 @@ class StrategyRunner(abc.ABC):
         universe: StrategyExecutionUniverse,
         state: State,
     ) -> None:
-        """Refresh Hypercore vault marks right before post-trade accounting checks.
+        """Refresh HyperCore marks immediately before the live post-trade check.
 
-        Hypercore account checks compare a fresh live Hyperliquid API equity
-        reading against the state-side marked value ``quantity * last_token_price``.
-        A long live cycle can execute sequential Hypercore trades for many minutes,
-        so the earlier cycle-start valuation can be stale enough to trip the
-        post-trade accounting guard even when settlement itself succeeded.
-
-        Only run this extra pass when we still have an open Hypercore vault
-        position. This keeps the normal non-Hypercore path untouched and avoids
-        an extra live valuation round on cycles that cannot benefit from it.
+        A sequential HyperCore batch can run long enough for a cycle-start mark
+        to differ materially from the fresh live equity used by account checks.
+        This hook is only called from the live post-execution path.
         """
-
         if not self._has_open_hypercore_vault_positions(state):
             return
-
-        hypercore_positions = [
-            position
-            for position in state.portfolio.get_open_and_frozen_positions()
-            if position.pair.is_hyperliquid_vault()
-        ]
-
-        if not hypercore_positions:
-            return
-
-        logger.info(
-            "Refreshing %d Hypercore vault position(s) immediately before post-trade account checks",
-            len(hypercore_positions),
-        )
 
         routing_setup = self.setup_routing_context(universe)
         valuation_model = routing_setup.valuation_model
         valuation_timestamp = native_datetime_utc_now()
-
-        for position in hypercore_positions:
-            valuation_model(valuation_timestamp, position)
+        for position in state.portfolio.get_open_and_frozen_positions():
+            if position.pair.is_hyperliquid_vault():
+                valuation_model(valuation_timestamp, position)
 
     def tick(
         self,
@@ -832,8 +793,6 @@ class StrategyRunner(abc.ABC):
         assert isinstance(universe, StrategyExecutionUniverse)
 
         assert isinstance(strategy_cycle_timestamp, datetime.datetime)
-
-        self.configure_hyperliquid_vault_close_epsilon(state)
 
         if cycle_duration not in (CycleDuration.cycle_unknown, CycleDuration.cycle_1s, None) and not allow_unaligned_strategy_cycle_timestamp:
             assert strategy_cycle_timestamp.second == 0, f"Cycle duration {cycle_duration}: Does not look like a cycle timestamp: {strategy_cycle_timestamp}, should be even minutes"
@@ -956,8 +915,6 @@ class StrategyRunner(abc.ABC):
                         trade_set.add(t)
 
                     # logger.info("decide_trades() returned %d trades", len(rebalance_trades))
-
-                self.configure_hyperliquid_vault_close_epsilon(state)
 
                 new_position_ids = set(state.portfolio.open_positions.keys())
                 if old_position_ids != new_position_ids and len(trade_set) == 0:

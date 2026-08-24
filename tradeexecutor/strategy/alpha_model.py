@@ -21,7 +21,10 @@ from tradeexecutor.state.size_risk import SizeRisk
 from tradeexecutor.state.trade import TradeExecution, TradeType
 from tradeexecutor.state.types import (LeverageMultiplier, PairInternalId,
                                        Percent, USDollarAmount)
-from tradeexecutor.strategy.dust import get_close_epsilon_for_pair
+from tradeexecutor.strategy.dust import (
+    convert_usd_close_epsilon_to_quantity,
+    get_close_epsilon_for_pair,
+)
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.position_manager import \
     HypercorePositionReductionPlan, PositionManager
@@ -125,6 +128,18 @@ class TradingPairSignalFlags(enum.Enum):
     #: This buy re-emitted previously parked capital into a vault whose deposit
     #: window has now opened (PhaseAwareAlphaModel promote step).
     promoted_from_queue_vault = "promoted_from_queue_vault"
+
+    #: A full-close intent executed despite falling below the normal sell
+    #: softband. Its proceeds are not used to fund same-cycle buys.
+    full_close_softband_bypassed = "full_close_softband_bypassed"
+
+
+class SellExecutionClassification(enum.Enum):
+    """Whether a sell executes and may fund same-cycle reserve spending."""
+
+    skipped = "skipped"
+    executes_and_funds = "executes_and_funds"
+    executes_without_same_cycle_funding = "executes_without_same_cycle_funding"
 
 
 @dataclass_json
@@ -1077,6 +1092,105 @@ class AlphaModel:
             )
         return settlement_position
 
+    def _is_full_close_intent(self, signal: TradingPairSignal) -> bool:
+        """Does this signal intend to close an existing position completely?
+
+        A close target can be a small non-zero weight because the concrete trade
+        generator already treats every target below
+        ``close_position_weight_epsilon`` as a full close.
+        """
+        return (
+            signal.position_adjust_usd < 0
+            and (signal.old_value or 0) > 0
+            and signal.normalised_weight < self.close_position_weight_epsilon
+        )
+
+    def _get_sell_quantity_dust_epsilon(
+        self,
+        signal: TradingPairSignal,
+        current_position: TradingPosition | None = None,
+    ) -> Decimal:
+        """Get the sell dust threshold in the same units as signal quantity."""
+        pair = signal.synthetic_pair or signal.pair
+        epsilon = get_close_epsilon_for_pair(pair)
+        if not pair.is_hyperliquid_vault():
+            return epsilon
+
+        price = None
+        if current_position is not None:
+            price = current_position.get_current_price()
+        elif signal.position_adjust_quantity:
+            price = abs(signal.position_adjust_usd / signal.position_adjust_quantity)
+
+        return convert_usd_close_epsilon_to_quantity(epsilon, price)
+
+    def _classify_sell_execution(
+        self,
+        signal: TradingPairSignal,
+        position_manager: PositionManager,
+        current_positions: dict,
+        redemption_results: dict,
+        frozen_pairs: set,
+        individual_rebalance_min_threshold: USDollarAmount,
+        sell_rebalance_min_threshold: USDollarAmount | None,
+    ) -> SellExecutionClassification:
+        """Classify a sell once for both generation and cash funding.
+
+        Softband-bypassed full closes execute, but their marked value is not
+        spendable funding for same-cycle buys because HyperCore deliberately
+        retains withdrawal safety margin and live equity can move.
+        """
+        if signal.position_adjust_usd >= 0:
+            return SellExecutionClassification.skipped
+
+        if position_manager.is_problematic_pair(signal.pair):
+            return SellExecutionClassification.skipped
+
+        if signal.pair in frozen_pairs:
+            return SellExecutionClassification.skipped
+
+        softband_bypassed = False
+        if individual_rebalance_min_threshold:
+            threshold = sell_rebalance_min_threshold or individual_rebalance_min_threshold
+            if abs(signal.position_adjust_usd) < threshold:
+                if not self._is_full_close_intent(signal):
+                    return SellExecutionClassification.skipped
+                softband_bypassed = True
+
+        current_position = current_positions.get(signal.pair.internal_id)
+        if signal.leverage is None:
+            trade_quantity = abs(Decimal(str(signal.position_adjust_quantity)))
+            dust_epsilon = self._get_sell_quantity_dust_epsilon(
+                signal,
+                current_position,
+            )
+            if trade_quantity <= dust_epsilon:
+                return SellExecutionClassification.skipped
+
+        settlement_position = self._resolve_pending_settlement_position(
+            signal,
+            position_manager,
+            current_positions,
+        )
+        if settlement_position is not None and settlement_position.has_pending_vault_settlement():
+            return SellExecutionClassification.skipped
+
+        if current_position is not None:
+            redemption_result = redemption_results.get(signal.pair.internal_id)
+            if redemption_result is None:
+                redemption_result = self._check_redemption_for_position(
+                    position_manager,
+                    current_position,
+                    stage=RedemptionCheckStage.sell_rebalance,
+                )
+                redemption_results[signal.pair.internal_id] = redemption_result
+            if not redemption_result.can_redeem:
+                return SellExecutionClassification.skipped
+
+        if softband_bypassed:
+            return SellExecutionClassification.executes_without_same_cycle_funding
+        return SellExecutionClassification.executes_and_funds
+
     def _will_sell_execute(
         self,
         signal: TradingPairSignal,
@@ -1087,67 +1201,17 @@ class AlphaModel:
         individual_rebalance_min_threshold: USDollarAmount,
         sell_rebalance_min_threshold: USDollarAmount | None,
     ) -> bool:
-        """Will this sell signal actually emit a trade and free cash this cycle?
-
-        Read-only mirror of the sell-side drop reasons applied later in
-        :py:meth:`generate_rebalance_trades_and_triggers` /
-        :py:meth:`_generate_signal_rebalance_trades`, in the same order and with the
-        same semantics, so :py:meth:`_cap_buys_by_realisable_sync_cash` and the
-        generation loop cannot disagree about which sells fund this cycle's buys:
-
-        - problematic / blacklisted pair (:py:meth:`_should_skip_signal_rebalance`)
-        - frozen position pair (ditto)
-        - sell size below the sell threshold (ditto — note the loop only *flags*
-          such a sell and leaves ``position_adjust_usd`` untouched, which is
-          exactly why the cash cap must not trust raw adjusts)
-        - sell quantity below the pair dust epsilon (ditto)
-        - pending async vault settlement on the position
-          (:py:meth:`_generate_signal_rebalance_trades`)
-        - position not redeemable yet (ditto)
-
-        A redemption check computed here is stored into ``redemption_results`` so
-        the generation loop reuses it — each pair is checked at most once.
-
-        Mutates nothing on the signal.
-        """
-        if position_manager.is_problematic_pair(signal.pair):
-            return False
-
-        if signal.pair in frozen_pairs:
-            return False
-
-        # Same gate semantics as _should_skip_signal_rebalance: a falsy
-        # individual threshold disables sell-size suppression entirely.
-        if individual_rebalance_min_threshold:
-            threshold = sell_rebalance_min_threshold or individual_rebalance_min_threshold
-            if abs(signal.position_adjust_usd) < threshold:
-                return False
-
-        if signal.leverage is None:
-            trade_quantity = abs(Decimal(str(signal.position_adjust_quantity)))
-            dust_epsilon = get_close_epsilon_for_pair(signal.synthetic_pair or signal.pair)
-            if trade_quantity <= dust_epsilon:
-                return False
-
-        settlement_position = self._resolve_pending_settlement_position(signal, position_manager, current_positions)
-        if settlement_position is not None and settlement_position.has_pending_vault_settlement():
-            return False
-
-        current_position = current_positions.get(signal.pair.internal_id)
-        if current_position is not None:
-            redemption_result = redemption_results.get(signal.pair.internal_id)
-            if redemption_result is None:
-                redemption_result = self._check_redemption_for_position(
-                    position_manager,
-                    current_position,
-                    stage=RedemptionCheckStage.sell_rebalance,
-                )
-                # Share with the generation loop so the check runs once per pair.
-                redemption_results[signal.pair.internal_id] = redemption_result
-            if not redemption_result.can_redeem:
-                return False
-
-        return True
+        """Return whether the shared read-only sell classification executes."""
+        classification = self._classify_sell_execution(
+            signal,
+            position_manager,
+            current_positions,
+            redemption_results,
+            frozen_pairs,
+            individual_rebalance_min_threshold,
+            sell_rebalance_min_threshold,
+        )
+        return classification is not SellExecutionClassification.skipped
 
     def _is_executable_cash_spending_buy(
         self,
@@ -1157,25 +1221,7 @@ class AlphaModel:
         frozen_pairs: set,
         individual_rebalance_min_threshold: USDollarAmount,
     ) -> bool:
-        """Will this buy signal actually emit a reserve-spending spot/vault trade this cycle?
-
-        Used by :py:meth:`_cap_buys_by_realisable_sync_cash` both to build the buy
-        demand (denominator) and to select which buys get scaled. A buy that the
-        generation loop will drop anyway (problematic/frozen pair, deposit window
-        closed, below the buy threshold, pending settlement) must not inflate the
-        demand, or the surviving real buys would be scaled down more than needed.
-
-        Cash-spending means unleveraged, non-flip, spot *or* vault: a Hyperliquid
-        vault pair is ``kind=vault`` and NOT ``is_spot()``
-        (see :py:meth:`tradeexecutor.state.identifier.TradingPairKind.is_spot`),
-        so both kinds must be included or vault deposits — the very trades that
-        overshoot in the Hyper AI strategies — would be exempt from the cap.
-        Leveraged, short and flip signals size from ``position_target`` in their
-        own generation branches and their cash flow is not reserve-linear, so the
-        cap never touches them.
-
-        Mutates nothing on the signal.
-        """
+        """Return whether a buy is an executable reserve-spending spot/vault trade."""
         if signal.position_adjust_usd <= 0:
             return False
 
@@ -1219,63 +1265,11 @@ class AlphaModel:
         sell_rebalance_min_threshold: USDollarAmount | None,
         sync_cash_headroom_usd: USDollarAmount,
     ) -> None:
-        """Scale spot/vault buys down to the synchronous cash that actually arrives this cycle.
+        """Scale buys to cash plus sells that execute and release cash this cycle.
 
-        Opt-in via ``generate_rebalance_trades_and_triggers(cap_buys_to_sync_cash=True)``;
-        with the default opt-out this method never runs and the generator behaves
-        byte-for-byte as before.
-
-        Rebalance buys are financed by the same cycle's sells executing first
-        (sells sort ahead of buys in
-        :py:meth:`tradeexecutor.state.trade.TradeExecution.get_execution_sort_position`).
-        But the per-signal generation loop drops some sells *after* buy sizing has
-        already assumed their proceeds — most importantly sub-threshold trims,
-        which are only flagged (``individual_trade_size_too_small``) and never
-        zeroed — so the buys can overspend the reserve and crash the backtest
-        wallet (``OutOfSimulatedBalance``) or, live, bounce a vault deposit.
-
-        Worked example — the exact cycle this cap was written for (hyper-ai.py,
-        cycle #19, 2025-08-20, sell threshold $5.00, headroom $0.50). Nine
-        ~equal-weight Hyperliquid vault positions want trims of −13.69, −8.61,
-        −4.99, −4.97, −4.39, −4.39, −3.81, −1.13 USD and one underweight buy of
-        +46.72 USD (Scared Money). Only the first two trims clear the $5 sell
-        threshold; the other six ($23.68 total) are dropped by the loop and free
-        no cash, yet the old cash math counted them::
-
-            cash                    = 21.80
-            realisable sync sells   = 13.69 + 8.61 = 22.30
-            budget                  = 21.80 + 22.30 - 0.50 = 43.60
-            buy demand              = 46.72  > budget   (would overshoot by 2.62 + headroom)
-            scale                   = 43.60 / 46.72 = 0.9332
-            scaled buy              = 43.60
-            reserve after cycle     = 0.50  (the headroom — safe)
-
-        Classification is **read-only**: nothing is mutated except the
-        ``position_adjust_usd`` of the buys that get scaled (plus their
-        :py:attr:`TradingPairSignalFlags.capped_by_sync_cash` flag). Signals the
-        loop will drop are excluded from the budget via the same predicates the
-        loop itself uses (:py:meth:`_will_sell_execute`,
-        :py:meth:`_is_executable_cash_spending_buy`), so the cap and the loop
-        cannot disagree; diagnostics of unscaled signals are untouched.
-
-        Composition with :py:meth:`_cap_buys_by_async_sell_proceeds` (which runs
-        first, unchanged): this cap re-derives its budget from the post-async
-        adjusts and re-scales, so the final buys always fit ``cash + executing
-        sync sells − headroom`` regardless of what the async cap did. (When
-        ``sync_cash_headroom_usd >= same_cycle_cash_buffer_usd`` — the hyper-ai
-        case, 0.50 vs 0.0 — this budget is also numerically ≤ the async budget,
-        so the sync cap is simply the tighter of the two.) Async-cycle behaviour
-        is otherwise unaffected.
-
-        The withheld capital stays in reserve and is redeployed by a later
-        rebalance once a trim grows past the sell threshold. If scaling pushes a
-        buy below the buy threshold the loop drops it entirely: the full scaled
-        amount stays in cash — under-invested for a cycle, never overspent.
-
-        :param sync_cash_headroom_usd:
-            Margin subtracted from the buy budget because sell proceeds here are
-            mark-to-market while execution realises slightly less (fees, price
-            impact, raw-unit rounding).
+        This optional guard is deliberately read-only for excluded signals. A
+        softband-bypassed full close can execute, but its marked proceeds do not
+        fund a buy until settlement confirms the returned USDC.
         """
         sync_sell_usd = 0.0
         executable_buys = []
@@ -1297,7 +1291,7 @@ class AlphaModel:
                 # (a live RPC) on a sell we are about to exclude anyway.
                 if position_manager.is_async_vault_sell_pair(s.pair, position_pair=pair):
                     continue
-                if not self._will_sell_execute(
+                classification = self._classify_sell_execution(
                     s,
                     position_manager,
                     current_positions,
@@ -1305,7 +1299,8 @@ class AlphaModel:
                     frozen_pairs,
                     individual_rebalance_min_threshold,
                     sell_rebalance_min_threshold,
-                ):
+                )
+                if classification is not SellExecutionClassification.executes_and_funds:
                     continue
                 sync_sell_usd += -adjust
             elif adjust > 0:
@@ -2256,6 +2251,7 @@ class AlphaModel:
         frozen_pairs: set,
         individual_rebalance_min_threshold: USDollarAmount,
         sell_rebalance_min_threshold: USDollarAmount | None,
+        current_position: TradingPosition | None = None,
     ) -> bool:
         """Handle early skip conditions before any rebalance trades are built."""
         if position_manager.is_problematic_pair(signal.pair):
@@ -2279,6 +2275,7 @@ class AlphaModel:
             if not deposit_check.can_deposit:
                 return self._on_deposit_window_closed(signal, position_manager, deposit_check)
 
+        softband_bypassed = False
         if individual_rebalance_min_threshold:
             trade_size = abs(signal.position_adjust_usd)
             if signal.position_adjust_usd < 0:
@@ -2287,13 +2284,18 @@ class AlphaModel:
                 threshold = individual_rebalance_min_threshold
 
             if trade_size < threshold:
-                logger.info("Individual trade size too small, trade size is %s, our threshold %s", trade_size, individual_rebalance_min_threshold)
-                signal.flags.add(TradingPairSignalFlags.individual_trade_size_too_small)
-                return True
+                if not self._is_full_close_intent(signal):
+                    logger.info("Individual trade size too small, trade size is %s, our threshold %s", trade_size, individual_rebalance_min_threshold)
+                    signal.flags.add(TradingPairSignalFlags.individual_trade_size_too_small)
+                    return True
+                softband_bypassed = True
 
         if signal.leverage is None and signal.position_adjust_usd < 0:
             trade_quantity = abs(Decimal(str(signal.position_adjust_quantity)))
-            dust_epsilon = get_close_epsilon_for_pair(signal.synthetic_pair or signal.pair)
+            dust_epsilon = self._get_sell_quantity_dust_epsilon(
+                signal,
+                current_position,
+            )
             if trade_quantity <= dust_epsilon:
                 logger.info(
                     "Individual trade quantity too small, trade quantity is %s, dust epsilon is %s",
@@ -2302,6 +2304,10 @@ class AlphaModel:
                 )
                 signal.flags.add(TradingPairSignalFlags.individual_trade_quantity_too_small)
                 return True
+
+        if softband_bypassed:
+            signal.flags.add(TradingPairSignalFlags.full_close_softband_bypassed)
+            signal.other_data["full_close_softband_bypassed"] = True
 
         return False
 
@@ -2695,16 +2701,42 @@ class AlphaModel:
         max_diff = max((abs(s.position_adjust_usd) for s in self.iterate_signals()), default=0)
         self.max_position_adjust_usd = max_diff
         self.position_adjust_threshold_usd = min_trade_threshold
+        full_close_only = False
         if max_diff < min_trade_threshold:
-            logger.info(
-                "Total adjust difference is %f USD, our threshold is %f USD, ignoring all the trades",
-                max_diff,
-                min_trade_threshold,
-            )
-            for s in self.iterate_signals():
-                s.position_adjust_ignored = True
-                s.flags.add(TradingPairSignalFlags.max_adjust_too_small)
-            return []
+            full_close_signals = [
+                s for s in self.iterate_signals()
+                if self._is_full_close_intent(s)
+            ]
+            if full_close_signals:
+                full_close_only = True
+                logger.info(
+                    "Portfolio rebalance is below %f USD, but generating %d full close intent(s)",
+                    min_trade_threshold,
+                    len(full_close_signals),
+                )
+            else:
+                logger.info(
+                    "Total adjust difference is %f USD, our threshold is %f USD, ignoring all the trades",
+                    max_diff,
+                    min_trade_threshold,
+                )
+                for s in self.iterate_signals():
+                    s.position_adjust_ignored = True
+                    s.flags.add(TradingPairSignalFlags.max_adjust_too_small)
+                return []
+
+        if full_close_only:
+            for signal in self.iterate_signals():
+                if self._is_full_close_intent(signal):
+                    continue
+                signal.position_adjust_ignored = True
+                # The portfolio-wide threshold normally suppresses the entire
+                # cycle. When preserving a full close as its sole exception,
+                # clear every other adjustment: later cash-cap and
+                # trade-generation passes iterate all signals.
+                signal.position_adjust_usd = 0.0
+                signal.position_adjust_quantity = 0.0
+                signal.flags.add(TradingPairSignalFlags.max_adjust_too_small)
 
         frozen_pairs = {p.pair for p in position_manager.state.portfolio.frozen_positions.values()}
 
@@ -2776,6 +2808,7 @@ class AlphaModel:
                 frozen_pairs,
                 individual_rebalance_min_threshold,
                 sell_rebalance_min_threshold,
+                current_position=current_position,
             ):
                 continue
 

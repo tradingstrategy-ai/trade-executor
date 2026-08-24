@@ -5,7 +5,6 @@ a lot of trades may end up having rounding artifacts.
 We need to deal with these rounding artifacts by checking for "dust".
 
 """
-from collections.abc import Iterable
 from decimal import Decimal, ROUND_CEILING
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
@@ -65,6 +64,16 @@ DEFAULT_VAULT_EPSILON = Decimal(10 ** -6)
 #:     threshold 25.56 USD instead of 2.00 USD.
 HYPERLIQUID_VAULT_CLOSE_EPSILON = Decimal("2.00")
 
+#: Maximum verified HyperCore equity we deliberately leave on-chain after a
+#: withdrawal close. This is larger than the transaction dust threshold above:
+#: positions in the interval are locally closed only after routing records a
+#: verified accepted residual.
+HYPERCORE_ACCEPTED_RESIDUAL_USD = Decimal("5.00")
+
+#: Persisted status values for a HyperCore close residual observation.
+HYPERCORE_CLOSE_RESIDUAL_STATUS_PENDING_RETRY = "pending_retry"
+HYPERCORE_CLOSE_RESIDUAL_STATUS_ACCEPTED = "accepted"
+
 #: A HyperCore small-position cleanup residual above this amount can still
 #: produce verifiable movement through every withdrawal phase.
 HYPERCORE_SMALL_POSITION_CLEANUP_CLOSE_EPSILON = Decimal("0.30")
@@ -75,22 +84,7 @@ HYPERCORE_SMALL_POSITION_CLEANUP_PENDING_REDEEM = (
     "hypercore_small_position_cleanup_pending_redeem"
 )
 
-HYPERLIQUID_VAULT_CLOSE_EPSILON_CAPITAL_PCT = Decimal("0.005")
-
-#: Absolute ceiling, in US dollars, for the capital-scaled Hypercore close epsilon.
-#:
-#: This threshold was originally scaled with ``initial_cash`` to cover withdrawal
-#: headroom, but without a ceiling a 150,000 USD strategy gets a 750 USD "dust"
-#: threshold, comfortably large enough to swallow a real position. Normal withdrawals
-#: now use a separate relative/floor margin; any residual above this close-epsilon cap
-#: must remain tracked for another redemption instead of being written off as dust.
-#:
-#: 50 USD covers the 31.94 USDC margin from the 2026-08-22 pmalt incident. It
-#: is not intended to cover every percentage-derived margin: full-close
-#: settlement records a verified larger residual while closing the state
-#: position, whereas writing off an arbitrary live position as dust would lose
-#: its shares from bookkeeping.
-HYPERLIQUID_VAULT_CLOSE_EPSILON_MAX_USD = Decimal("50.00")
+assert HYPERLIQUID_VAULT_CLOSE_EPSILON < HYPERCORE_ACCEPTED_RESIDUAL_USD
 
 #: Minimum NAV-drift headroom left when withdrawing from a HyperCore vault.
 HYPERCORE_WITHDRAWAL_SAFETY_MARGIN_FLOOR = Decimal("1.50")
@@ -203,28 +197,6 @@ def get_dust_epsilon_for_pair(pair: TradingPairIdentifier) -> Decimal:
     return get_dust_epsilon_for_asset(pair.base)
 
 
-def get_hyperliquid_vault_close_epsilon(initial_cash: float | None = None) -> Decimal:
-    """Get a Hypercore vault close epsilon, in **US dollars**, from a strategy's initial cash.
-
-    A strategy with initial cash uses 0.5% of that value, clamped between the default
-    safety-margin floor and :py:data:`HYPERLIQUID_VAULT_CLOSE_EPSILON_MAX_USD`. Strategies
-    without configured initial cash retain the default close epsilon.
-
-    ``initial_cash`` is a strategy-module input and can differ materially from live
-    strategy equity, so the clamp is what stops a large configured bankroll turning the
-    dust threshold into a real position size.
-
-    :return:
-        Dust threshold in US dollars. Convert with
-        :py:func:`convert_usd_close_epsilon_to_quantity` before comparing to a quantity.
-    """
-    if initial_cash is None or initial_cash <= 0:
-        return HYPERLIQUID_VAULT_CLOSE_EPSILON
-
-    scaled = Decimal(str(initial_cash)) * HYPERLIQUID_VAULT_CLOSE_EPSILON_CAPITAL_PCT
-    return min(max(scaled, HYPERLIQUID_VAULT_CLOSE_EPSILON), HYPERLIQUID_VAULT_CLOSE_EPSILON_MAX_USD)
-
-
 def convert_usd_close_epsilon_to_quantity(
     epsilon_usd: Decimal,
     price: USDollarPrice | None,
@@ -254,18 +226,6 @@ def convert_usd_close_epsilon_to_quantity(
     if not price or price <= 0:
         return DEFAULT_VAULT_EPSILON
     return epsilon_usd / Decimal(str(price))
-
-
-def configure_hyperliquid_vault_close_epsilon(
-    positions: Iterable,
-    initial_cash: float | None = None,
-) -> Decimal:
-    """Apply the strategy-specific close epsilon to Hypercore positions."""
-    epsilon = get_hyperliquid_vault_close_epsilon(initial_cash)
-    for position in positions:
-        if position.pair.is_hyperliquid_vault():
-            position.hyperliquid_vault_close_epsilon = epsilon
-    return epsilon
 
 
 def get_close_epsilon_for_pair(

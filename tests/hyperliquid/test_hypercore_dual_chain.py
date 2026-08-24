@@ -14,6 +14,7 @@ import pytest
 
 from eth_defi.hyperliquid.api import UserVaultEquity
 from hexbytes import HexBytes
+from tradeexecutor.strategy.dust import HYPERCORE_CLOSE_RESIDUAL_STATUS_PENDING_RETRY
 
 
 VAULT_ADDR = "0xdfc24b077bc1425ad1dea75bcb6f8158e10df303"
@@ -1021,7 +1022,11 @@ def test_full_close_uses_observed_gross_decrease_when_phase1_under_redeems(
     trade.closing = True
     state = MagicMock()
     state.portfolio.get_position_by_id.return_value.get_quantity.return_value = Decimal("65")
-    state.portfolio.find_position_for_trade.return_value.get_quantity.return_value = Decimal("65")
+    position = state.portfolio.find_position_for_trade.return_value
+    position.get_quantity.return_value = Decimal("65")
+    position.get_close_epsilon.return_value = Decimal("2")
+    position.position_id = 1
+    position.other_data = {}
     mock_block_ts.return_value = datetime.datetime(2025, 1, 1)
     mock_fetch_equity.side_effect = [
         _make_equity(Decimal("1000.0")),
@@ -1069,6 +1074,8 @@ def test_full_close_uses_observed_gross_decrease_when_phase1_under_redeems(
     assert success_kwargs["executed_amount"] == Decimal("-50")
     assert success_kwargs["executed_reserve"] == Decimal("109.99")
     assert success_kwargs["executed_price"] == pytest.approx(109.99 / 50)
+    assert position.other_data["hypercore_close_residual_status"] == HYPERCORE_CLOSE_RESIDUAL_STATUS_PENDING_RETRY
+    assert position.other_data["hypercore_close_residual_retry_count"] == 1
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
