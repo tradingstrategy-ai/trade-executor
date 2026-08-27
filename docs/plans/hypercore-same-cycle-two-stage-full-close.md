@@ -125,6 +125,11 @@ spot, and Safe balances with `correct-accounts` before adjusting accounting.
 Automatic rebroadcast of an unresolved HyperCore action is outside this
 implementation.
 
+If proceeds have verifiably reached the Safe but final residual or quantity
+verification fails, `hypercore_accounting_reconciliation_required` prevents
+generic repair from assuming the withdrawal moved no assets. `correct-accounts`
+must reconcile the live vault equity and observed Safe proceeds.
+
 ## Accounting
 
 Cash and position quantity have different sources of truth:

@@ -377,6 +377,9 @@ def test_full_close_fails_when_final_equity_is_unavailable(
     state.mark_trade_success.assert_not_called()
     mock_report_failure.assert_called_once()
     assert diagnose.call_args.args[2] == "final_residual_verification"
+    reconciliation = trade.other_data["hypercore_accounting_reconciliation_required"]
+    assert reconciliation["phase"] == "final_residual_verification"
+    assert reconciliation["observed_safe_proceeds_usd"] == "50"
 
 
 # --- P2: _wait_for_usdc_arrival tests ---
@@ -1606,6 +1609,7 @@ def test_withdrawal_phase1_retry_handles_silent_noop_from_equity_drift(
     assert captured_phase2_raw == [retry_raw]
     assert captured_phase3_raw == [retry_raw]
     assert trade.other_data["hypercore_capped_withdrawal_raw"] == retry_raw
+    assert trade.other_data["hypercore_first_stage_requested_raw"] == retry_raw
     assert phase1_retry_tx in trade.blockchain_transactions
     state.mark_trade_success.assert_called_once()
     mock_report_failure.assert_not_called()

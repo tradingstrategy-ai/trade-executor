@@ -29,7 +29,13 @@ from eth_defi.compat import native_datetime_utc_now
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeType, TradeStatus, TradeFlag
+from tradeexecutor.state.trade import (
+    TradeExecution,
+    TradeType,
+    TradeStatus,
+    TradeFlag,
+    has_unresolved_hypercore_accounting,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -750,8 +756,7 @@ def repair_trades(
     at_risk_hypercore_trades = [
         trade
         for trade in trades_to_be_repaired
-        if trade.other_data.get("hypercore_deposit_capital_at_risk") is not None
-        or trade.other_data.get("hypercore_stranded_usdc") is not None
+        if has_unresolved_hypercore_accounting(trade)
     ]
     protected_position_ids = {trade.position_id for trade in at_risk_hypercore_trades}
     repairable_trades = [
@@ -810,7 +815,7 @@ def repair_trades(
     for p in frozen_positions:
         if p.position_id in protected_position_ids:
             logger.warning(
-                "Leaving position %s frozen because its HyperCore deposit still needs live reconciliation",
+                "Leaving position %s frozen because its HyperCore trade still needs live reconciliation",
                 p,
             )
             continue

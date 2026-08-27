@@ -101,6 +101,7 @@ the contract between `setup_trades()` and `settle_trade()`:
 | `hypercore_first_stage_residual_usd` | after the first verified vault withdrawal | Fresh residual used to decide whether a second protected withdrawal is eligible. |
 | `hypercore_second_stage_status` / `_requested_raw` / `_requested_usd` / `_expected_residual_usd` / `_tx_hash` / `_residual_usd` / `_error` / `_failure_phase` | optional same-cycle residual withdrawal | Durable planning, broadcast, verification, failure, and final-residual diagnostics. |
 | `hypercore_total_requested_gross_usd` / `hypercore_total_observed_perp_increase_usd` | two-stage close settlement | Aggregate gross requests and verified net perp proceeds before the shared downstream sweep. |
+| `hypercore_accounting_reconciliation_required` | failed withdrawal after proceeds reached the Safe | Prevents generic repair from assuming no assets moved when final quantity or residual verification is unavailable. |
 | `hypercore_accepted_residual_writeoff_usd` / `_at` / `_reason` | verified close or local dust cleanup | Audit record for equity intentionally removed from local tracking. |
 | `hypercore_close_residual_status` / `_value_usd` / `_observed_at` | verified full-close settlement | Whether the live residual was accepted or needs another close attempt. |
 | `hypercore_close_residual_first_seen_at` / `_retry_count` | residual above 5 USDC | Retry diagnostics; log an escalation after three verified incomplete closes. |

@@ -34,7 +34,7 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.state.trade import TradeExecution, TradeStatus, has_unresolved_hypercore_accounting
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -195,20 +195,16 @@ class EthereumExecution(ExecutionModel):
         at_risk_hypercore_trades = [
             trade
             for trade in trades_to_be_repaired
-            if trade.other_data.get("hypercore_deposit_capital_at_risk") is not None
-            or trade.other_data.get("hypercore_stranded_usdc") is not None
+            if has_unresolved_hypercore_accounting(trade)
         ]
         if at_risk_hypercore_trades:
             trade_ids = ", ".join(str(trade.trade_id) for trade in at_risk_hypercore_trades)
-            # Do not use this generic receipt-repair loop for CoreWriter
-            # deposits. A missing receipt or a receipt for a wrapper call does
-            # not say whether HyperCore left USDC in escrow, spot, perp, or the
-            # vault. Treating it as an ordinary failed buy could re-credit the
-            # Safe and repeat the #1486 double-spend accounting failure.
+            # Do not use this generic receipt-repair loop when HyperCore asset
+            # location or withdrawal accounting still needs live evidence.
             raise RuntimeError(
-                f"Cannot automatically repair HyperCore deposit trade(s) {trade_ids}: "
-                "reconcile the Safe, escrow, spot, perp and vault balances with "
-                "check-hypercore-user.py before releasing any allocation."
+                f"Cannot automatically repair HyperCore trade(s) {trade_ids}: "
+                "reconcile the Safe, escrow, spot, perp and vault balances before "
+                "changing their accounting."
             )
 
         print("Found %d trades to be repaired", len(trades_to_be_repaired))

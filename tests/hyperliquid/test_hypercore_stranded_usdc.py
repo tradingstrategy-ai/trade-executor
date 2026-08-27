@@ -146,7 +146,9 @@ def test_state_only_repair_repairs_unrelated_trade_while_deferring_hypercore_wit
     # 1. The protected trade models an ambiguous second-stage withdrawal,
     # while the ordinary trade models an independent accounting failure.
     state = MagicMock()
-    state.portfolio.frozen_positions.values.return_value = []
+    frozen_position = MagicMock()
+    frozen_position.position_id = 489
+    state.portfolio.frozen_positions.values.return_value = [frozen_position]
     hypercore_trade = MagicMock()
     hypercore_trade.trade_id = 1605
     hypercore_trade.position_id = 489
@@ -166,7 +168,9 @@ def test_state_only_repair_repairs_unrelated_trade_while_deferring_hypercore_wit
     with patch("tradeexecutor.state.repair.find_trades_to_be_repaired", return_value=[hypercore_trade, ordinary_trade]), patch(
         "tradeexecutor.state.repair.repair_trade",
         return_value=counter_trade,
-    ) as repair_trade, patch("tradeexecutor.state.repair.logger.error") as logger_error:
+    ) as repair_trade, patch("tradeexecutor.state.repair.logger.error") as logger_error, patch(
+        "tradeexecutor.state.repair.logger.warning"
+    ) as logger_warning:
         result = repair_trades(state, attempt_repair=True, interactive=False)
 
     # 3. The command completes, but never rewrites the withdrawal or calls it a deposit.
@@ -176,3 +180,6 @@ def test_state_only_repair_repairs_unrelated_trade_while_deferring_hypercore_wit
     message = logger_error.call_args.args[0]
     assert "HyperCore trade(s)" in message
     assert "deposit trade" not in message
+    warning = logger_warning.call_args.args[0]
+    assert "HyperCore trade" in warning
+    assert "deposit" not in warning

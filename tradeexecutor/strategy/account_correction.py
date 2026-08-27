@@ -32,7 +32,14 @@ from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
-from tradeexecutor.state.trade import TradeFlag, TradeExecution, TradeStatus, TradeType
+from tradeexecutor.state.trade import (
+    HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY,
+    TradeFlag,
+    TradeExecution,
+    TradeStatus,
+    TradeType,
+    has_unresolved_hypercore_accounting,
+)
 from tradeexecutor.strategy.dust import DEFAULT_DUST_EPSILON, HYPERCORE_ACCEPTED_RESIDUAL_USD, get_close_epsilon_for_pair, get_dust_epsilon_for_asset, DEFAULT_RELATIVE_EPSILON, \
     get_relative_epsilon_for_asset, get_relative_epsilon_for_pair, DEFAULT_USD_LOW_VALUE_THRESHOLD
 from tradeexecutor.strategy.lending_protocol_leverage import reset_credit_supply_loan
@@ -1347,18 +1354,20 @@ def _build_hypercore_vault_account_checks(
         # integrations which only need the vault-equity account check.
         for trade in getattr(position, "trades", {}).values():
             metadata = trade.other_data or {}
-            transit = metadata.get("hypercore_stranded_usdc") or metadata.get(
-                "hypercore_deposit_capital_at_risk"
-            )
-            if transit is not None:
-                transit_trades.append((trade.trade_id, transit))
+            if has_unresolved_hypercore_accounting(trade):
+                reconciliation = (
+                    metadata.get("hypercore_stranded_usdc")
+                    or metadata.get("hypercore_deposit_capital_at_risk")
+                    or metadata.get(HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY)
+                )
+                transit_trades.append((trade.trade_id, reconciliation))
     for trade_id, transit in transit_trades:
         # HyperCore transit USDC is not an ERC-20 Safe balance and must not be
         # manufactured by account correction. Keep the condition visible to the
         # operator while the routing/repair guards retain the allocation.
         logger.warning(
-            "HyperCore transit capital retained for failed trade #%s: %s. "
-            "This HyperCore-specific check will not release it; reconcile live balances first.",
+            "HyperCore live reconciliation required for failed trade #%s: %s. "
+            "This HyperCore-specific check will not infer settlement; reconcile live balances first.",
             trade_id,
             transit,
         )

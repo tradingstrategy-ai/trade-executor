@@ -119,7 +119,13 @@ from tradeexecutor.state.blockhain_transaction import (
 )
 from tradeexecutor.state.pickle_over_json import encode_pickle_over_json
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeFlag
+from tradeexecutor.state.trade import (
+    HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY,
+    HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY,
+    HYPERCORE_STRANDED_USDC_KEY,
+    TradeExecution,
+    TradeFlag,
+)
 from tradeexecutor.state.types import JSONHexAddress
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -264,8 +270,6 @@ HYPERCORE_RELATIVE_BALANCE_TOLERANCE = Decimal("0.01")
 #: failed-buy reserve recovery. Re-crediting a Safe after the deposit was in
 #: fact accepted would make the same USDC both spendable in portfolio state and
 #: present on HyperCore: the accounting half of the #1486 incident.
-HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY = "hypercore_deposit_capital_at_risk"
-HYPERCORE_STRANDED_USDC_KEY = "hypercore_stranded_usdc"
 RETAIN_RESERVE_ALLOCATION_ON_FAILURE_KEY = "retain_reserve_allocation_on_failure"
 
 #: Last-resort HyperCore vault leader performance fee, as a fraction.
@@ -1082,6 +1086,7 @@ class HypercoreVaultRouting(RoutingModel):
                 # full-close live-equity caps so downstream code remains on a
                 # single path.
                 trade.other_data["hypercore_capped_withdrawal_raw"] = effective_requested_raw
+                trade.other_data["hypercore_first_stage_requested_raw"] = effective_requested_raw
             else:
                 # A larger gap is not the 2026-04-15 dust-drift incident.
                 # Preserve the original fail-fast behaviour for material
@@ -1809,6 +1814,26 @@ class HypercoreVaultRouting(RoutingModel):
             "Use check-hypercore-user.py to verify and recover.",
             human_amount, location, self.safe_address, trade.trade_id,
         )
+
+    def _mark_accounting_reconciliation_required(
+        self,
+        trade: TradeExecution,
+        phase: str,
+        reason: str,
+        observed_safe_proceeds: Decimal,
+    ) -> None:
+        """Protect a failed withdrawal whose proceeds already reached the Safe."""
+        trade.other_data[HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY] = {
+            "phase": phase,
+            "reason": reason,
+            "safe_address": self.safe_address,
+            "observed_safe_proceeds_usd": str(observed_safe_proceeds),
+        }
+        trade.add_note(
+            "HyperCore withdrawal needs live accounting reconciliation after "
+            f"{observed_safe_proceeds} USDC reached the Safe"
+        )
+        self.checkpoint_state()
 
     def diagnose_hyperliquid_vault_redemption_failure(
         self,
@@ -3585,6 +3610,7 @@ class HypercoreVaultRouting(RoutingModel):
                             performance_fee_rate,
                         )
                         trade.other_data["hypercore_capped_withdrawal_raw"] = retry_raw
+                        trade.other_data["hypercore_first_stage_requested_raw"] = retry_raw
                         trade.other_data["hypercore_phase1_retry_safety_margin_raw"] = retry_safety_margin_raw
                         vault_equity_before_phase1_snapshot = current_vault_equity
                         has_pre_phase1_vault_equity_snapshot = True
@@ -3709,6 +3735,9 @@ class HypercoreVaultRouting(RoutingModel):
                         )
                     elif first_stage_equity_after is not None:
                         trade.other_data["hypercore_second_stage_status"] = "skipped_first_stage_equity_decrease_unverified"
+                        trade.other_data.pop("hypercore_second_stage_requested_raw", None)
+                        trade.other_data.pop("hypercore_second_stage_requested_usd", None)
+                        trade.other_data.pop("hypercore_second_stage_expected_residual_usd", None)
                         second_stage_raw = None
 
                 if second_stage_raw is not None:
@@ -4109,11 +4138,18 @@ class HypercoreVaultRouting(RoutingModel):
             and not self.simulate
             and remaining_equity_after_withdrawal is None
         ):
+            reason = "Final vault equity was unavailable after an explicit full close"
+            self._mark_accounting_reconciliation_required(
+                trade,
+                "final_residual_verification",
+                reason,
+                executed_reserve,
+            )
             self.diagnose_hyperliquid_vault_redemption_failure(
                 trade,
                 self._get_vault_address(trade),
                 "final_residual_verification",
-                "Final vault equity was unavailable after an explicit full close",
+                reason,
             )
             report_failure(ts, state, trade, stop_on_execution_failure)
             return
@@ -4197,11 +4233,18 @@ class HypercoreVaultRouting(RoutingModel):
         else:
             if is_explicit_full_close:
                 if not isinstance(position_quantity_before, Decimal):
+                    reason = "Position quantity was unavailable for partial full-close settlement"
+                    self._mark_accounting_reconciliation_required(
+                        trade,
+                        "partial_quantity_verification",
+                        reason,
+                        executed_reserve,
+                    )
                     self.diagnose_hyperliquid_vault_redemption_failure(
                         trade,
                         self._get_vault_address(trade),
                         "partial_quantity_verification",
-                        "Position quantity was unavailable for partial full-close settlement",
+                        reason,
                     )
                     report_failure(ts, state, trade, stop_on_execution_failure)
                     return
@@ -4211,6 +4254,12 @@ class HypercoreVaultRouting(RoutingModel):
                         verified_leg_equity_snapshots,
                     )
                 except (AssertionError, HypercoreWithdrawalVerificationError) as e:
+                    self._mark_accounting_reconciliation_required(
+                        trade,
+                        "partial_quantity_verification",
+                        str(e),
+                        executed_reserve,
+                    )
                     self.diagnose_hyperliquid_vault_redemption_failure(
                         trade,
                         self._get_vault_address(trade),
@@ -4231,6 +4280,12 @@ class HypercoreVaultRouting(RoutingModel):
             error = (
                 f"Executed HyperCore quantity {executed_amount} exceeds "
                 f"planned quantity {trade.planned_quantity}"
+            )
+            self._mark_accounting_reconciliation_required(
+                trade,
+                "executed_quantity_verification",
+                error,
+                executed_reserve,
             )
             self.diagnose_hyperliquid_vault_redemption_failure(
                 trade,
