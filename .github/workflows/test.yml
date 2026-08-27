@@ -63,7 +63,7 @@ jobs:
 
       # Needed for Anvil / fork tests
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1.8.0
+        uses: foundry-rs/foundry-toolchain@v1.9.1
         with:
           # pick a nightly release from: https://github.com/foundry-rs/foundry/releases
           # version: 'nightly-de33b6af53005037b463318d2628b5cfcaf39916'

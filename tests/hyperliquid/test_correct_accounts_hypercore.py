@@ -57,6 +57,9 @@ def environment(state_file: Path, strategy_file: Path) -> dict:
         "NETWORK": "mainnet",
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "warning",
+        # This test covers position discovery, not live Safe transit recovery.
+        # The shared Trial 3 Safe may contain unrelated spot or perp USDC.
+        "SKIP_HYPERCORE_TRANSIT_RECOVERY": "true",
         "TRADING_STRATEGY_API_KEY": os.environ.get("TRADING_STRATEGY_API_KEY", ""),
         "PATH": os.environ.get("PATH", ""),
     }
@@ -69,11 +72,11 @@ def test_correct_accounts_picks_up_vault_position(
     """Test that correct-accounts detects an existing HLP vault deposit.
 
     Uses the Trial 3 deployment on HyperEVM mainnet where 5 USDC was
-    deposited into HLP via the Safe. The test:
+    deposited into HLP via the Safe.
 
-    1. Inits empty state with USDC reserve
-    2. Runs correct-accounts which should auto-create a vault position
-    3. Verifies the position has correct attributes and non-zero equity
+    1. Initialise empty state with a USDC reserve.
+    2. Run correct-accounts with unrelated live transit recovery disabled.
+    3. Verify the position has correct attributes and non-zero equity.
     """
     cli = get_command(app)
 
