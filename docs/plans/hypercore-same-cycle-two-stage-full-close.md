@@ -116,6 +116,9 @@ The second transaction is an optimisation after a verified first withdrawal:
 | Final vault equity is unavailable | Fail the explicit close instead of inferring a residual or writing it off. |
 
 Ambiguous outcomes use the existing `hypercore_stranded_usdc` repair guard.
+They record the combined exposure at `hypercore_perp_or_vault`, because the
+verified first leg is in perp while the unresolved second leg may still be in
+the vault or may have reached perp.
 The normal repair command must not create a synthetic counter-trade or unfreeze
 the position. An operator resolves the persisted hash and live vault, perp,
 spot, and Safe balances with `correct-accounts` before adjusting accounting.

@@ -3728,7 +3728,7 @@ class HypercoreVaultRouting(RoutingModel):
                         self._mark_stranded_usdc(
                             trade,
                             usdc_to_raw(perp_balance - baseline_perp_withdrawable) + second_stage_raw,
-                            "hypercore_perp",
+                            "hypercore_perp_or_vault",
                         )
                         self.diagnose_hyperliquid_vault_redemption_failure(
                             trade,

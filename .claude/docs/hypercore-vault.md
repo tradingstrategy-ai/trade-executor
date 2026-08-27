@@ -404,7 +404,9 @@ first request. It is attempted only when fresh capacity can leave at most
 threshold in one more protected leg. A status-1 receipt without both the
 expected perp increase and a matching vault-equity decrease is ambiguous and
 halts sequential execution before shared perp USDC can be swept or attributed
-to another trade.
+to another trade. Its combined first- and second-leg exposure is recorded as
+`hypercore_perp_or_vault`: the first leg is verified in perp, while the second
+leg may still be either in the vault or in perp.
 
 ## Withdrawal settlement state machine
 

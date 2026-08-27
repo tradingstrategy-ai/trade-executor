@@ -1374,7 +1374,9 @@ def test_full_close_fails_closed_when_second_stage_is_ambiguous(
     mock_report_failure.assert_called_once()
     assert trade.other_data["hypercore_second_stage_status"] == "verification_ambiguous"
     assert trade.other_data["hypercore_second_stage_tx_hash"] == "0xsecond"
-    assert trade.other_data["hypercore_stranded_usdc"]["location"] == "hypercore_perp"
+    stranded = trade.other_data["hypercore_stranded_usdc"]
+    assert stranded["location"] == "hypercore_perp_or_vault"
+    assert "final location is ambiguous" in stranded["recovery"]
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
