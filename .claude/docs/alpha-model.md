@@ -182,6 +182,14 @@ against the portfolio and emits trades, applying gates in this order:
    redemptions → sells → bridge legs → buys → vault deposits → credit supply,
    so cash is always released before it is spent.
 
+A zero-target HyperCore signal remains a real full-position close even when
+its live redemption cap only supports a conservative first withdrawal. The
+signal keeps the capped amount for thresholds and same-cycle buy sizing, while
+the emitted trade carries the full position quantity, `TradeFlag.close`,
+`TradeFlag.reduce`, and `closing=True`. The conservative amount is persisted as
+`hypercore_first_stage_conservative_reserve_usd`; cash tripwire checks use it
+instead of assuming the full accounting quantity will settle immediately.
+
 Thresholds exist because tiny rebalances cost more in fees and execution risk
 than they earn: hyper-ai floors both at Hyperliquid's $5 hard minimum
 ([hyper-ai.py:178-220](../../strategies/hyper-ai.py#L178)).

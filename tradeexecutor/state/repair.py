@@ -29,7 +29,13 @@ from eth_defi.compat import native_datetime_utc_now
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeType, TradeStatus, TradeFlag
+from tradeexecutor.state.trade import (
+    TradeExecution,
+    TradeType,
+    TradeStatus,
+    TradeFlag,
+    has_unresolved_hypercore_accounting,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -750,8 +756,7 @@ def repair_trades(
     at_risk_hypercore_trades = [
         trade
         for trade in trades_to_be_repaired
-        if trade.other_data.get("hypercore_deposit_capital_at_risk") is not None
-        or trade.other_data.get("hypercore_stranded_usdc") is not None
+        if has_unresolved_hypercore_accounting(trade)
     ]
     protected_position_ids = {trade.position_id for trade in at_risk_hypercore_trades}
     repairable_trades = [
@@ -761,10 +766,11 @@ def repair_trades(
     ]
     if at_risk_hypercore_trades:
         trade_ids = ", ".join(str(trade.trade_id) for trade in at_risk_hypercore_trades)
-        # ``repair_trade()`` would otherwise make a counter trade and restore
-        # the planned reserve without querying HyperCore.  Never infer a
-        # location from a failed status or a successful EVM wrapper receipt:
-        # trade #1486 proved that either can coexist with USDC in HyperCore.
+        # ``repair_trade()`` would otherwise make a counter trade and assume
+        # the failed action moved no assets without querying HyperCore. Never
+        # infer a location from a failed status or a successful EVM wrapper
+        # receipt: trade #1486 proved that either can coexist with USDC in
+        # HyperCore.
         #
         # Do not abort the entire repair command, however.  Production also had
         # an unrelated planned no-transaction trade which blocked
@@ -773,10 +779,10 @@ def repair_trades(
         # correct-accounts --dry-run can safely inspect and plan the live
         # HyperCore recovery.  The affected position remains frozen below.
         logger.error(
-            "Deferring state repair for HyperCore deposit trade(s) %s: USDC may be in "
-            "HyperCore escrow, spot, perp, or vault. Their positions remain frozen; "
+            "Deferring state repair for HyperCore trade(s) %s: funds may be in "
+            "the Safe, HyperCore escrow, spot, perp, or vault. Their positions remain frozen; "
             "run correct-accounts --dry-run and reconcile the live destination before "
-            "releasing any allocation.",
+            "changing their accounting.",
             trade_ids,
         )
         if not repairable_trades:
@@ -809,7 +815,7 @@ def repair_trades(
     for p in frozen_positions:
         if p.position_id in protected_position_ids:
             logger.warning(
-                "Leaving position %s frozen because its HyperCore deposit still needs live reconciliation",
+                "Leaving position %s frozen because its HyperCore trade still needs live reconciliation",
                 p,
             )
             continue

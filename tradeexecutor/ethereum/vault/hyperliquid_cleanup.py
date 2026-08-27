@@ -75,6 +75,10 @@ from tradeexecutor.ethereum.vault.hypercore_transit_recovery import (
 from tradeexecutor.state.repair import close_hypercore_dust_positions, repair_trades
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
+from tradeexecutor.state.trade import (
+    HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY,
+    has_unresolved_hypercore_accounting,
+)
 from tradeexecutor.strategy.account_correction import (
     UnknownTokenPositionFix, calculate_account_corrections, check_accounts,
     check_state_internal_coherence, correct_accounts)
@@ -275,6 +279,9 @@ def _build_state_snapshot(state: State) -> HyperliquidStateSnapshot:
             data = getattr(trade, "other_data", None) or {}
             if "hypercore_stranded_usdc" in data:
                 stranded_metadata = data["hypercore_stranded_usdc"]
+                break
+            if HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY in data:
+                stranded_metadata = data[HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY]
                 break
 
         positions.append(
@@ -755,18 +762,17 @@ def _repair_and_correct_state(
     deferred_hypercore_trades = [
         trade
         for trade in repair_result.trades_needing_repair
-        if trade.other_data.get("hypercore_deposit_capital_at_risk") is not None
-        or trade.other_data.get("hypercore_stranded_usdc") is not None
+        if has_unresolved_hypercore_accounting(trade)
     ]
     if deferred_hypercore_trades:
         # This legacy cleanup tool has no transaction-level evidence for a
-        # failed deposit and no Safe-level transit-recovery planner. Letting
+        # failed HyperCore trade and no Safe-level transit-recovery planner. Letting
         # generic account correction continue could re-credit Safe reserves
         # while the same USDC still has an unknown HyperCore location. Keep
         # the historical fail-closed behaviour and leave reconciliation to
         # ``correct-accounts --dry-run`` followed by the live command.
         logger.error(
-            "Hyperliquid cleanup stopped: deferred HyperCore deposit trade(s) %s "
+            "Hyperliquid cleanup stopped: deferred HyperCore trade(s) %s "
             "need live reconciliation before account correction",
             ", ".join(str(trade.trade_id) for trade in deferred_hypercore_trades),
         )

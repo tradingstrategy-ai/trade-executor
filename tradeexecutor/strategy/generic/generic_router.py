@@ -140,6 +140,10 @@ class GenericRouting(RoutingModel):
             router_state = routing_state.state_map.get(protocol_config.routing_id.router_name)
             assert router_state, f"No router state for: {protocol_config.routing_id.router_name}, we have {list(routing_state.state_map.keys())}"
 
+            router.set_pre_broadcast_state_sync_callback(
+                getattr(self, "_pre_broadcast_state_sync_callback", None),
+            )
+
             # Multichain: if the trade targets a satellite chain, temporarily
             # swap the tx_builder and web3 so transactions are signed for and
             # contract calls hit the correct chain.

@@ -8,7 +8,7 @@ Here we define the abstract overview of routing.
 import abc
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import List, Optional, Dict
+from typing import Callable, List, Optional, Dict
 import logging
 
 from hexbytes import HexBytes
@@ -135,6 +135,19 @@ class RoutingModel(abc.ABC):
                 )
         else:
             logger.info("No intermediate pairs whitelisted")
+
+    def set_pre_broadcast_state_sync_callback(
+        self,
+        callback: Callable[[], None] | None,
+    ) -> None:
+        """Set a checkpoint callback for transactions created during settlement."""
+        self._pre_broadcast_state_sync_callback = callback
+
+    def checkpoint_state(self) -> None:
+        """Persist routing-created transaction and settlement state."""
+        callback = getattr(self, "_pre_broadcast_state_sync_callback", None)
+        if callback is not None:
+            callback()
 
     @staticmethod
     def convert_address_dict_to_lower(address_dict) -> dict:

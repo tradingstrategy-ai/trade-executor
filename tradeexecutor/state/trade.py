@@ -39,6 +39,22 @@ CCTP_BRIDGE_OUT_ORDER_BUMP = 20_000_000
 
 VAULT_SETTLEMENT_REQUEST_RESERVE_KEY = "vault_settlement_request_reserve"
 VAULT_SETTLEMENT_REQUEST_QUANTITY_KEY = "vault_settlement_request_quantity"
+HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY = "hypercore_deposit_capital_at_risk"
+HYPERCORE_STRANDED_USDC_KEY = "hypercore_stranded_usdc"
+HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY = "hypercore_accounting_reconciliation_required"
+
+
+def has_unresolved_hypercore_accounting(trade: "TradeExecution") -> bool:
+    """Check whether generic repair must defer to live HyperCore reconciliation."""
+    metadata = trade.other_data or {}
+    return any(
+        metadata.get(key) is not None
+        for key in (
+            HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY,
+            HYPERCORE_STRANDED_USDC_KEY,
+            HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY,
+        )
+    )
 
 
 class TradeType(enum.Enum):

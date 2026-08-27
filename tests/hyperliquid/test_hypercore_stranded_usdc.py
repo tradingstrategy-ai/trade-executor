@@ -130,27 +130,34 @@ def test_state_only_repair_defers_unreconciled_hypercore_deposit() -> None:
     unfreeze_position.assert_not_called()
 
 
-def test_state_only_repair_repairs_unrelated_trade_while_deferring_hypercore_deposit() -> None:
-    """Repair must clear independent failures without refunding stranded HyperCore USDC.
+def test_state_only_repair_repairs_unrelated_trade_while_deferring_hypercore_withdrawal() -> None:
+    """Repair must clear independent failures without rewriting an ambiguous withdrawal.
 
     1. Model the production combination of one ordinary failed trade and one
-       failed HyperCore deposit carrying its stranded-USDC marker.
+       failed HyperCore withdrawal carrying its stranded-USDC marker.
     2. Run the state-only repair workflow without interactive confirmation.
     3. Verify only the ordinary trade receives a counter-trade and the
-       HyperCore trade remains explicitly deferred for live reconciliation.
+       HyperCore trade remains explicitly deferred with neutral diagnostics.
 
     Trades are mocked because this test isolates the command's selection rule;
     the real state-bookkeeping path is covered by the no-transaction regression
     in ``test_repair_trade_missing_tx.py``.
     """
-    # 1. The protected trade models #1486, while the ordinary trade models the
-    # independent failure which made correct-accounts' coherence check fail.
+    # 1. The protected trade models an ambiguous second-stage withdrawal,
+    # while the ordinary trade models an independent accounting failure.
     state = MagicMock()
-    state.portfolio.frozen_positions.values.return_value = []
+    frozen_position = MagicMock()
+    frozen_position.position_id = 489
+    state.portfolio.frozen_positions.values.return_value = [frozen_position]
     hypercore_trade = MagicMock()
-    hypercore_trade.trade_id = 1486
+    hypercore_trade.trade_id = 1605
     hypercore_trade.position_id = 489
-    hypercore_trade.other_data = {"hypercore_stranded_usdc": {"amount_raw": 48_884_068}}
+    hypercore_trade.other_data = {
+        "hypercore_stranded_usdc": {
+            "amount_raw": 48_884_068,
+            "location": "hypercore_perp_or_vault",
+        },
+    }
     ordinary_trade = MagicMock()
     ordinary_trade.trade_id = 4700
     ordinary_trade.position_id = 470
@@ -161,10 +168,18 @@ def test_state_only_repair_repairs_unrelated_trade_while_deferring_hypercore_dep
     with patch("tradeexecutor.state.repair.find_trades_to_be_repaired", return_value=[hypercore_trade, ordinary_trade]), patch(
         "tradeexecutor.state.repair.repair_trade",
         return_value=counter_trade,
-    ) as repair_trade:
+    ) as repair_trade, patch("tradeexecutor.state.repair.logger.error") as logger_error, patch(
+        "tradeexecutor.state.repair.logger.warning"
+    ) as logger_warning:
         result = repair_trades(state, attempt_repair=True, interactive=False)
 
-    # 3. The command completes, but never manufactures a refund for #1486.
+    # 3. The command completes, but never rewrites the withdrawal or calls it a deposit.
     repair_trade.assert_called_once_with(state.portfolio, ordinary_trade)
     assert result.trades_needing_repair == [hypercore_trade, ordinary_trade]
     assert result.new_trades == [counter_trade]
+    message = logger_error.call_args.args[0]
+    assert "HyperCore trade(s)" in message
+    assert "deposit trade" not in message
+    warning = logger_warning.call_args.args[0]
+    assert "HyperCore trade" in warning
+    assert "deposit" not in warning

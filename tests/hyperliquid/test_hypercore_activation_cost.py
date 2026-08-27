@@ -432,6 +432,60 @@ def test_withdrawal_uses_live_equity_on_close():
     assert trade.other_data["hypercore_capped_withdrawal_raw"] == expected_withdrawal_raw
 
 
+def test_full_close_first_stage_keeps_conservative_cash_cap() -> None:
+    """Keep the alpha model's cash cap while planning a full accounting close.
+
+    1. Create a flagged full close whose accounting value is 50 USDC but conservative first stage is 8.50 USDC.
+    2. Give routing 20 USDC of live equity, which would otherwise permit an 18.50 USDC first withdrawal.
+    3. Verify phase 1 requests only 8.50 USDC and persists both conservative and actual amounts.
+
+    Live equity, call building, and signing are mocked to isolate withdrawal amount selection.
+    """
+    routing = _make_routing(simulate=False)
+    trade = _make_trade(planned_reserve=Decimal("50"), is_buy=False)
+    trade.flags = {TradeFlag.close, TradeFlag.reduce}
+    trade.other_data = {
+        "hypercore_first_stage_conservative_reserve_usd": "8.5",
+    }
+    withdraw_fn = MagicMock()
+    signed_tx = MagicMock()
+    live_equity = UserVaultEquity(
+        vault_address=trade.pair.pool_address,
+        equity=Decimal("20"),
+        locked_until=datetime.datetime(2020, 1, 1),
+    )
+
+    # 1. Create a flagged full close whose accounting value is 50 USDC but conservative first stage is 8.50 USDC.
+    with (
+        patch(
+            "tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity",
+            return_value=live_equity,
+        ),
+        patch.object(
+            routing,
+            "_check_live_withdrawal_preconditions",
+            return_value=8_500_000,
+        ),
+        patch(
+            "tradeexecutor.ethereum.vault.hypercore_routing.build_hypercore_withdraw_from_vault_call",
+            return_value=withdraw_fn,
+        ) as build_withdraw,
+        patch.object(routing, "_sign_module_call", return_value=signed_tx),
+    ):
+        # 2. Give routing 20 USDC of live equity, which would otherwise permit an 18.50 USDC first withdrawal.
+        txs = routing._create_deposit_or_withdraw_txs(trade)
+
+    # 3. Verify phase 1 requests only 8.50 USDC and persists both conservative and actual amounts.
+    assert txs == [signed_tx]
+    build_withdraw.assert_called_once_with(
+        routing.lagoon_vault,
+        vault_address=trade.pair.pool_address,
+        hypercore_usdc_amount=8_500_000,
+    )
+    assert trade.other_data["hypercore_first_stage_conservative_raw"] == 8_500_000
+    assert trade.other_data["hypercore_first_stage_requested_raw"] == 8_500_000
+
+
 def test_withdrawal_logs_large_equity_mismatch_but_uses_live_amount(caplog):
     """Large planned/live drift should warn loudly but still use live equity.
 
