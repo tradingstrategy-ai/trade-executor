@@ -9,6 +9,7 @@
 import datetime
 import random
 from decimal import Decimal
+from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
@@ -26,7 +27,7 @@ from tradeexecutor.state.size_risk import SizeRisk
 from tradeexecutor.state.state import State, TradeType
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeFlag
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
@@ -2260,18 +2261,21 @@ def test_alpha_model_keeps_hypercore_partial_sell_value_and_quantity_separate(
     assert trade.planned_price == pytest.approx(float(live_share_price))
 
 
-def test_alpha_model_converts_loss_making_hypercore_usd_cap_to_quantity(
+def test_alpha_model_preserves_full_close_flag_with_capped_hypercore_funding(
     start_ts: datetime.datetime,
     strategy_universe: TradingStrategyUniverse,
     pricing_model: BacktestPricing,
     usdc: AssetIdentifier,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Check Hypercore USD redemption cap is converted to vault units when share price is below 1.
+    """Check a capped zero-target HyperCore signal remains a full-close trade.
 
     1. Create a loss-making Hypercore position with share price below 1.
     2. Cap the redemption in USD below the requested sell and reserve safety headroom.
-    3. Verify safety-adjusted USD is converted to the corresponding vault-unit quantity.
+    3. Verify cash planning keeps the conservative amount while the emitted trade closes the full quantity.
+    4. Verify the cash tripwire does not treat the full accounting quantity as guaranteed proceeds.
+
+    Pricing and redemption capacity are mocked to isolate alpha-to-trade propagation.
     """
     state = State()
     hypercore_vault_pair = _create_hypercore_position_for_rebalance_test(
@@ -2306,6 +2310,7 @@ def test_alpha_model_converts_loss_making_hypercore_usd_cap_to_quantity(
     )
 
     alpha_model = AlphaModel(timestamp=position_manager.timestamp)
+    alpha_model.close_position_weight_epsilon = 0.0
     alpha_model.set_signal(hypercore_vault_pair, 0.0)
     alpha_model.select_top_signals(count=5)
     alpha_model.assign_weights(method=weight_passthrouh)
@@ -2324,14 +2329,30 @@ def test_alpha_model_converts_loss_making_hypercore_usd_cap_to_quantity(
     signal = alpha_model.get_signal_by_pair(hypercore_vault_pair)
     assert signal is not None
 
-    # 3. Verify safety-adjusted USD is converted to the corresponding vault-unit quantity.
+    # 3. Verify cash planning keeps the conservative amount while the emitted trade closes the full quantity.
     assert signal.position_adjust_usd == pytest.approx(-8.5)
     assert signal.position_adjust_quantity == pytest.approx(-17.0)
     assert len(trades) == 1
-    assert trades[0].is_sell()
-    assert trades[0].planned_quantity == Decimal("-17")
-    assert trades[0].planned_reserve == Decimal("8.50")
-    assert trades[0].planned_price == pytest.approx(0.5)
+    trade = trades[0]
+    assert trade.is_sell()
+    assert trade.planned_quantity == Decimal("-50")
+    assert trade.planned_reserve == Decimal("25.00")
+    assert trade.planned_price == pytest.approx(0.5)
+    assert trade.closing is True
+    assert TradeFlag.close in trade.flags
+    assert TradeFlag.reduce in trade.flags
+    assert trade.other_data["hypercore_first_stage_conservative_reserve_usd"] == "8.5"
+
+    # 4. Verify the cash tripwire does not treat the full accounting quantity as guaranteed proceeds.
+    buy_trade = MagicMock()
+    buy_trade.is_spot.return_value = True
+    buy_trade.is_credit_supply.return_value = False
+    buy_trade.is_buy.return_value = True
+    buy_trade.is_sell.return_value = False
+    buy_trade.planned_reserve = Decimal("9")
+    monkeypatch.setattr(position_manager, "get_current_cash", lambda: 0.0)
+    with pytest.raises(NotEnoughCasForBuys):
+        position_manager.check_enough_cash([trade, buy_trade])
 
 
 def test_alpha_model_skips_hypercore_sell_below_threshold_after_capping(

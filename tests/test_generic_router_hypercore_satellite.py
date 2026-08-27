@@ -15,6 +15,7 @@ GenericRouting.setup_trades() crashes with:
 """
 
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from eth_defi.compat import native_datetime_utc_now
@@ -55,17 +56,17 @@ class _TestLagoonTransactionBuilder(LagoonTransactionBuilder):
         self.web3 = SimpleNamespace(eth=SimpleNamespace(chain_id=chain_id))
 
 
-def test_hypercore_satellite_vault_lookup_maps_chain_9999_to_999():
+def test_hypercore_satellite_vault_lookup_maps_chain_9999_to_999() -> None:
     """Verify GenericRouting maps synthetic chain 9999 to HyperEVM 999 for satellite lookup.
 
-    1. Build a GenericRouting with satellite_vaults={999: vault} and match_router/get_config
-    2. Build a real GenericRoutingState with a state_map entry for hypercore_vault
-    3. Use _TestLagoonTransactionBuilder so isinstance check at line 199 passes
-    4. Create a Hypercore vault trade (chain_id=9999) via create_hypercore_vault_pair
-    5. Call setup_trades — should NOT crash with 'No satellite vault for chain 9999'
-    6. It will fail later (nonce sync on fake web3) but that proves the satellite lookup passed
+    1. Build the HyperCore pair and a GenericRouting with a HyperEVM satellite vault.
+    2. Install a state-checkpoint callback and a child-router recorder.
+    3. Build a real routing state with a Lagoon transaction builder.
+    4. Create a trade for the synthetic HyperCore chain.
+    5. Call setup_trades and let the fake Web3 fail after satellite lookup.
+    6. Verify callback propagation and that lookup did not use synthetic chain 9999.
     """
-    # 1. Create pair
+    # 1. Build the HyperCore pair and a GenericRouting with a HyperEVM satellite vault.
     usdc = AssetIdentifier(
         chain_id=ChainId.hyperliquid.value,
         address="0xb88339CB7199b77E23DB6E890353E22632Ba630f",
@@ -85,7 +86,10 @@ def test_hypercore_satellite_vault_lookup_maps_chain_9999_to_999():
     # A stub routing model — setup_trades will be called on this after
     # the satellite lookup. It doesn't need to work, just not crash before
     # the satellite lookup code.
-    stub_routing_model = SimpleNamespace()
+    propagated_callbacks = []
+    stub_routing_model = SimpleNamespace(
+        set_pre_broadcast_state_sync_callback=propagated_callbacks.append,
+    )
 
     hypercore_routing_id = ProtocolRoutingId(router_name="hypercore_vault", exchange_slug=None)
     hypercore_config = ProtocolRoutingConfig(
@@ -113,7 +117,11 @@ def test_hypercore_satellite_vault_lookup_maps_chain_9999_to_999():
 
     routing = GenericRouting(pair_configurator)
 
-    # 3. Build real GenericRoutingState with a LagoonTransactionBuilder
+    # 2. Install a state-checkpoint callback and a child-router recorder.
+    checkpoint_callback = MagicMock()
+    routing.set_pre_broadcast_state_sync_callback(checkpoint_callback)
+
+    # 3. Build a real routing state with a Lagoon transaction builder.
     hot_wallet = HotWallet(TEST_ACCOUNT)
     tx_builder = _TestLagoonTransactionBuilder(
         chain_id=ChainId.arbitrum.value,  # Primary chain (not HyperEVM)
@@ -141,7 +149,7 @@ def test_hypercore_satellite_vault_lookup_maps_chain_9999_to_999():
         state_map={"hypercore_vault": router_state},
     )
 
-    # 4. Create trade
+    # 4. Create a trade for the synthetic HyperCore chain.
     trade = TradeExecution(
         trade_id=1,
         position_id=1,
@@ -155,7 +163,7 @@ def test_hypercore_satellite_vault_lookup_maps_chain_9999_to_999():
     )
     state = State()
 
-    # 5. Call setup_trades — the satellite lookup at line 201 should find
+    # 5. Call setup_trades — the satellite lookup should find
     # satellite_vaults[999] (not satellite_vaults[9999]) thanks to the mapping.
     # It will fail AFTER the lookup (nonce sync on fake web3, or
     # LagoonTransactionBuilder construction with the namespace vault).
@@ -166,9 +174,10 @@ def test_hypercore_satellite_vault_lookup_maps_chain_9999_to_999():
             trades=[trade],
         )
 
-    # 6. Verify the error is NOT the satellite vault lookup failure.
+    # 6. Verify callback propagation and that lookup did not use synthetic chain 9999.
     # Any other error means we got past the 9999 → 999 mapping.
     error_msg = str(exc_info.value)
+    assert propagated_callbacks == [checkpoint_callback]
     assert "No satellite vault configured for chain 9999" not in error_msg, (
         f"Chain 9999 → 999 mapping failed. The satellite vault lookup used "
         f"the synthetic chain_id 9999 instead of HyperEVM 999: {error_msg}"

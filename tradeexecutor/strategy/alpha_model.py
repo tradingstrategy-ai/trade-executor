@@ -18,7 +18,7 @@ from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.size_risk import SizeRisk
-from tradeexecutor.state.trade import TradeExecution, TradeType
+from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeType
 from tradeexecutor.state.types import (LeverageMultiplier, PairInternalId,
                                        Percent, USDollarAmount)
 from tradeexecutor.strategy.dust import (
@@ -1102,7 +1102,10 @@ class AlphaModel:
         return (
             signal.position_adjust_usd < 0
             and (signal.old_value or 0) > 0
-            and signal.normalised_weight < self.close_position_weight_epsilon
+            and (
+                signal.normalised_weight == 0
+                or signal.normalised_weight < self.close_position_weight_epsilon
+            )
         )
 
     def _get_sell_quantity_dust_epsilon(
@@ -2472,7 +2475,10 @@ class AlphaModel:
             )
             return position_rebalance_trades
 
-        if signal.normalised_weight < self.close_position_weight_epsilon:
+        if (
+            signal.normalised_weight == 0
+            or signal.normalised_weight < self.close_position_weight_epsilon
+        ):
             if current_position:
                 use_partial_hypercore_close = (
                     current_position.pair.is_hyperliquid_vault()
@@ -2481,9 +2487,28 @@ class AlphaModel:
                 )
                 if use_partial_hypercore_close:
                     logger.info(
-                        "Hypercore close signal capped to a partial reduction because live redemption limits are binding: %s",
+                        "Planning a full Hypercore close with conservative first-stage funding because live redemption limits are binding: %s",
                         current_position,
                     )
+                    conservative_reserve = abs(Decimal(str(hypercore_reduction_plan.effective_marked_value_delta)))
+                    position_rebalance_trades += position_manager.close_position(
+                        current_position,
+                        TradeType.rebalance,
+                        notes=f"Closing position in up to two protected HyperCore withdrawal legs: {signal}",
+                        flags={TradeFlag.reduce},
+                    )
+                    assert len(position_rebalance_trades) == 1
+                    close_trade = position_rebalance_trades[0]
+                    close_trade.other_data["hypercore_first_stage_conservative_reserve_usd"] = str(
+                        conservative_reserve
+                    )
+                    assert close_trade.closing
+                    assert TradeFlag.close in close_trade.flags
+                    assert TradeFlag.reduce in close_trade.flags
+                    signal.position_id = current_position.position_id
+                    signal.flags.add(TradingPairSignalFlags.closed)
+                    signal.flags.add(TradingPairSignalFlags.close_position_weight_limit)
+                    return position_rebalance_trades
                 else:
                     logger.info("Closing the position fully: %s", current_position)
                     position_rebalance_trades += position_manager.close_position(

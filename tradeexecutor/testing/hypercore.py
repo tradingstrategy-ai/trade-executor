@@ -112,6 +112,24 @@ def install_hypercore_live_withdrawal_mocks(
         lambda self, user=None: SimpleNamespace(max_withdrawable=Decimal("1000000")),
     )
     mocked_vault_equity = Decimal("1000000")
+    mocked_phase1_gross = Decimal(0)
+
+    original_get_raw_usdc_amount = router._get_raw_usdc_amount
+
+    def capture_mocked_phase1_gross(trade: TradeExecution) -> int:
+        """Use the current trade's gross request as its synthetic vault equity."""
+        nonlocal mocked_phase1_gross, mocked_vault_equity
+        raw_amount = original_get_raw_usdc_amount(trade)
+        mocked_phase1_gross = raw_to_usdc(raw_amount)
+        if trade.closing:
+            mocked_vault_equity = mocked_phase1_gross
+        return raw_amount
+
+    monkeypatch.setattr(
+        router,
+        "_get_raw_usdc_amount",
+        capture_mocked_phase1_gross,
+    )
 
     def fetch_mocked_vault_equity(session, user, vault_address, **kwargs) -> UserVaultEquity:
         return UserVaultEquity(
@@ -123,6 +141,42 @@ def install_hypercore_live_withdrawal_mocks(
     monkeypatch.setattr(
         "tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity",
         fetch_mocked_vault_equity,
+    )
+
+    def use_planned_close_equity(
+        trade: TradeExecution,
+        planned_raw: int,
+        vault_address: str,
+    ) -> int:
+        """Anchor this settlement harness to the trade value, not its synthetic cap."""
+        nonlocal mocked_vault_equity
+        del vault_address
+        mocked_vault_equity = raw_to_usdc(planned_raw)
+        trade.other_data["hypercore_capped_withdrawal_raw"] = planned_raw
+        trade.other_data["hypercore_phase1_vault_equity_usdc"] = str(mocked_vault_equity)
+        trade.other_data["hypercore_first_stage_requested_raw"] = planned_raw
+        return planned_raw
+
+    monkeypatch.setattr(
+        router,
+        "_get_live_withdrawal_amount_for_close",
+        use_planned_close_equity,
+    )
+
+    def accept_mocked_close_residual(
+        trade: TradeExecution,
+        vault_address: str,
+    ) -> tuple[Decimal, None]:
+        """Model the synthetic phase-1 withdrawal as a complete vault debit."""
+        del vault_address
+        trade.other_data["hypercore_first_stage_residual_usd"] = "0"
+        trade.other_data["hypercore_second_stage_status"] = "skipped_residual_accepted"
+        return Decimal(0), None
+
+    monkeypatch.setattr(
+        router,
+        "_plan_same_cycle_residual_withdrawal",
+        accept_mocked_close_residual,
     )
     monkeypatch.setattr(router, "_fetch_safe_evm_usdc_balance", lambda: 0)
     monkeypatch.setattr(router, "_fetch_safe_perp_withdrawable_balance", lambda: Decimal("0"))
@@ -156,9 +210,12 @@ def install_hypercore_live_withdrawal_mocks(
         poll_interval=2.0,
     ) -> int:
         nonlocal mocked_vault_equity
-        # Apply the equity change only once the mock knows the EVM settlement amount.
-        # This prevents a bridge-fee adjustment from turning a complete close into a partial one.
-        mocked_vault_equity -= raw_to_usdc(expected_increase_raw)
+        # Apply the gross vault debit after the net bridge amount is verified.
+        # Performance fees and bridge headroom reduce proceeds, not sold shares.
+        mocked_vault_equity = max(
+            Decimal(0),
+            mocked_vault_equity - mocked_phase1_gross,
+        )
         return expected_increase_raw
 
     monkeypatch.setattr(router, "_wait_for_usdc_arrival", wait_for_mocked_usdc_arrival)

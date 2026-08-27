@@ -2,7 +2,10 @@
 
 ## Status
 
-Implemented on 2026-08-24.
+Superseded on 2026-08-27 by
+`docs/plans/hypercore-same-cycle-two-stage-full-close.md` for ordinary strategy
+full closes. The next-cycle retry described here remains the fallback when a
+second protected withdrawal cannot safely reach 5 USD.
 
 ## Decision
 
@@ -33,8 +36,8 @@ trade safeguards.
 | Observation after a closing withdrawal | State action |
 | --- | --- |
 | Verified residual `<= 5 USD` | Close the ledger position, credit only received USDC, and record accepted-residual metadata. |
-| Verified residual `> 5 USD` | Book only proven redemption, keep the position open, and retry on the next normal alpha cycle. |
-| Residual unavailable | Preserve the normal successful-close result. The post-withdrawal equity read is diagnostic and must not turn a verified EVM withdrawal into a phantom open position. |
+| Verified residual `> 5 USD` | Attempt one eligible protected residual withdrawal before the shared downstream sweep; if it cannot safely reach 5 USD, book only proven redemption and retry on the next normal alpha cycle. |
+| Residual unavailable | An explicit full close fails closed for live reconciliation; do not infer that the physical residual is within the accepted boundary. |
 
 The 5 USD boundary applies only to a verified close residual in state
 settlement. Ordinary close planning and fresh positions retain the narrower

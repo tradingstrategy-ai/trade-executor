@@ -1202,6 +1202,14 @@ class PositionManager:
         price_structure = self.pricing_model.get_sell_price(self.timestamp, pair, quantity=quantity)
         price = price_structure.price
 
+        if pair.is_hyperliquid_vault():
+            # Live HyperCore execution pricing is intentionally fixed at 1:1
+            # USDC and does not express the latest marked position value.
+            # Position valuation is the authoritative close price in live and
+            # backtest paths; settlement still books the executed price from
+            # USDC actually received.
+            price = position.get_current_price()
+
         # use trigger price as planned_price if available on pending trade
         if trigger_price and pending:
             price = trigger_price
@@ -3049,7 +3057,11 @@ xz
                 if t.is_credit_supply():
                     credit_released += float(t.planned_reserve)
                 else:
-                    cash_released += float(t.planned_reserve)
+                    conservative_release = t.other_data.get(
+                        "hypercore_first_stage_conservative_reserve_usd",
+                        t.planned_reserve,
+                    )
+                    cash_released += float(conservative_release)
             else:
                 raise RuntimeError(f"Unsupported: {t}")
 

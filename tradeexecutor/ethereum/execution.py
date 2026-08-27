@@ -811,6 +811,10 @@ class EthereumExecution(ExecutionModel):
         if not trades:
             return
 
+        routing_model.set_pre_broadcast_state_sync_callback(
+            self.sync_state_before_broadcast,
+        )
+
         for t in trades:
             assert not t.pair.is_exchange_account(), \
                 f"Unsupported: exchange account trades must not reach execute_trades(). Trade: {t}"

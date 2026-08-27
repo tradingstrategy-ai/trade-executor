@@ -17,9 +17,10 @@ If the Safe is already activated, step 0 is skipped.
 
 1. Phase 1: ``vaultTransfer`` — withdraw from vault to HyperCore perp
 2. Perp wait: poll ``clearinghouseState`` until withdrawable USDC appears
-3. Phase 2: ``transferUsdClass`` — move from perp to spot
-4. Spot wait: poll ``spotClearinghouseState`` until free USDC appears
-5. Phase 3: ``sendAsset`` — bridge USDC from HyperCore spot back to HyperEVM
+3. Optional full-close residual: one more verified ``vaultTransfer``
+4. Phase 2: ``transferUsdClass`` — move the combined proceeds from perp to spot
+5. Spot wait: poll ``spotClearinghouseState`` until free USDC appears
+6. Phase 3: ``sendAsset`` — bridge USDC from HyperCore spot back to HyperEVM
 
 **Performance fee on withdrawal**:
 
@@ -891,6 +892,17 @@ class HypercoreVaultRouting(RoutingModel):
         #    retries if the first attempt silently no-ops.
         safety_margin_raw = self._get_full_close_safety_margin_raw(trade, live_raw)
         safe_raw = live_raw - safety_margin_raw
+        conservative_first_stage = trade.other_data.get(
+            "hypercore_first_stage_conservative_reserve_usd"
+        )
+        if conservative_first_stage is not None:
+            conservative_first_stage_raw = usdc_to_raw(
+                Decimal(str(conservative_first_stage))
+            )
+            safe_raw = min(safe_raw, conservative_first_stage_raw)
+            trade.other_data["hypercore_first_stage_conservative_raw"] = (
+                conservative_first_stage_raw
+            )
         assert safe_raw > 0, (
             f"Live vault equity {live_raw} raw ({equity.equity} USDC) is too small to "
             f"withdraw after subtracting safety margin {safety_margin_raw} raw"
@@ -910,6 +922,7 @@ class HypercoreVaultRouting(RoutingModel):
         #    it back.  Phases 2-3 (transferUsdClass, sendAsset) must use the
         #    same amount that phase 1's vaultTransfer was built with.
         trade.other_data["hypercore_capped_withdrawal_raw"] = safe_raw
+        trade.other_data["hypercore_first_stage_requested_raw"] = safe_raw
 
         return safe_raw
 
@@ -2455,15 +2468,10 @@ class HypercoreVaultRouting(RoutingModel):
         :raises SettlementBroadcastError:
             If transaction preparation, broadcast or confirmation fails.
         """
-        fn = build_hypercore_withdraw_from_vault_call(
-            self.lagoon_vault,
+        tx = self._prepare_withdrawal_vault_to_perp_transaction(
             vault_address=vault_address,
-            hypercore_usdc_amount=raw_amount,
-        )
-        tx = self._sign_module_call(
-            fn,
+            raw_amount=raw_amount,
             notes=f"Hypercore withdrawal phase 1 retry: {raw_amount} raw USDC from vault {vault_address}",
-            logical_function_name="sendRawAction",
         )
 
         try:
@@ -2471,6 +2479,256 @@ class HypercoreVaultRouting(RoutingModel):
         except Exception as e:
             raise SettlementBroadcastError(tx, e) from e
         return tx, receipt
+
+    def _prepare_withdrawal_vault_to_perp_transaction(
+        self,
+        vault_address: str,
+        raw_amount: int,
+        notes: str,
+    ) -> BlockchainTransaction:
+        """Build and sign one vault-to-perp withdrawal transaction."""
+        fn = build_hypercore_withdraw_from_vault_call(
+            self.lagoon_vault,
+            vault_address=vault_address,
+            hypercore_usdc_amount=raw_amount,
+        )
+        return self._sign_module_call(
+            fn,
+            notes=notes,
+            logical_function_name="sendRawAction",
+        )
+
+    def _plan_same_cycle_residual_withdrawal(
+        self,
+        trade: TradeExecution,
+        vault_address: str,
+    ) -> tuple[Decimal | None, int | None]:
+        """Read the first-stage residual and plan one protected follow-up withdrawal.
+
+        :return:
+            The fresh post-first-stage equity and an optional raw second-stage
+            request. A missing request means the first-stage proceeds should
+            continue through the normal downstream sweep.
+        """
+        try:
+            user_equity = fetch_user_vault_equity(
+                self._get_session(),
+                user=self.safe_address,
+                vault_address=vault_address,
+                bypass_cache=True,
+            )
+        except Exception as e:
+            trade.other_data["hypercore_second_stage_status"] = "skipped_equity_unavailable"
+            trade.other_data["hypercore_second_stage_error"] = str(e)
+            logger.warning(
+                "Could not read same-cycle HyperCore close residual for trade %s: %s",
+                trade.trade_id,
+                e,
+            )
+            return None, None
+
+        if user_equity is None:
+            trade.other_data["hypercore_second_stage_status"] = "skipped_no_position_data"
+            return None, None
+
+        residual = user_equity.equity
+        trade.other_data["hypercore_first_stage_residual_usd"] = str(residual)
+        if residual <= HYPERCORE_ACCEPTED_RESIDUAL_USD:
+            trade.other_data["hypercore_second_stage_status"] = "skipped_residual_accepted"
+            return residual, None
+
+        if not user_equity.is_lockup_expired:
+            trade.other_data["hypercore_second_stage_status"] = "skipped_lockup_active"
+            return residual, None
+
+        residual_margin = get_hypercore_withdrawal_safety_margin(residual)
+        try:
+            vault_info = HyperliquidVault(
+                session=self._get_session(),
+                vault_address=vault_address,
+            ).fetch_info(user=self.safe_address)
+        except Exception as e:
+            trade.other_data["hypercore_second_stage_status"] = "skipped_capacity_unavailable"
+            trade.other_data["hypercore_second_stage_error"] = str(e)
+            logger.warning(
+                "Could not read same-cycle HyperCore withdrawal capacity for trade %s: %s",
+                trade.trade_id,
+                e,
+            )
+            return residual, None
+
+        capacity = min(residual, vault_info.max_withdrawable)
+        capacity_margin = get_hypercore_withdrawal_safety_margin(capacity)
+        protected_capacity = max(Decimal(0), capacity - capacity_margin)
+        desired_request = max(Decimal(0), residual - residual_margin)
+        request = min(desired_request, protected_capacity)
+        if request <= 0:
+            trade.other_data["hypercore_second_stage_status"] = "skipped_insufficient_capacity"
+            return residual, None
+
+        request_raw = usdc_to_raw(request)
+        if request_raw <= 0:
+            trade.other_data["hypercore_second_stage_status"] = "skipped_zero_raw_amount"
+            return residual, None
+
+        rounded_expected_residual = residual - raw_to_usdc(request_raw)
+        trade.other_data["hypercore_second_stage_expected_residual_usd"] = str(
+            rounded_expected_residual
+        )
+        if rounded_expected_residual > HYPERCORE_ACCEPTED_RESIDUAL_USD:
+            trade.other_data["hypercore_second_stage_status"] = "skipped_insufficient_capacity"
+            return residual, None
+
+        trade.other_data["hypercore_second_stage_status"] = "planned"
+        trade.other_data["hypercore_second_stage_requested_raw"] = request_raw
+        trade.other_data["hypercore_second_stage_requested_usd"] = str(
+            raw_to_usdc(request_raw)
+        )
+        return residual, request_raw
+
+    def _execute_second_stage_withdrawal(
+        self,
+        web3: Web3,
+        trade: TradeExecution,
+        session: HyperliquidSession,
+        vault_address: str,
+        request_raw: int,
+        baseline_perp: Decimal,
+        equity_before: Decimal | None,
+        withdrawal_relative_tolerance: Decimal,
+        performance_fee_rate: Decimal,
+    ) -> tuple[Decimal, Decimal] | None:
+        """Broadcast and verify one optional full-close residual withdrawal.
+
+        A preparation failure or reverted receipt is a definite no-op and
+        returns ``None``. Any outcome that may still arrive on HyperCore raises
+        :class:`HypercoreWithdrawalVerificationError` so the caller can freeze
+        the trade before sweeping the shared perp balance.
+        """
+        try:
+            self.deployer.sync_nonce(web3)
+            tx = self._prepare_withdrawal_vault_to_perp_transaction(
+                vault_address=vault_address,
+                raw_amount=request_raw,
+                notes=(
+                    "Hypercore full-close residual withdrawal: "
+                    f"{request_raw} raw USDC from vault {vault_address}"
+                ),
+            )
+        except Exception as e:
+            trade.other_data["hypercore_second_stage_status"] = "skipped_preparation_failed"
+            trade.other_data["hypercore_second_stage_error"] = str(e)
+            logger.warning(
+                "Could not prepare optional HyperCore residual withdrawal for trade %s: %s",
+                trade.trade_id,
+                e,
+            )
+            return None
+
+        trade.blockchain_transactions.append(tx)
+        trade.other_data["hypercore_second_stage_status"] = "broadcast_pending"
+        trade.other_data["hypercore_second_stage_tx_hash"] = str(tx.tx_hash)
+        self.checkpoint_state()
+
+        try:
+            receipt = self._broadcast_and_confirm_settlement_tx(tx)
+        except Exception as e:
+            trade.other_data["hypercore_second_stage_status"] = "broadcast_ambiguous"
+            trade.other_data["hypercore_second_stage_error"] = str(e)
+            trade.other_data["hypercore_second_stage_failure_phase"] = "second_stage_broadcast"
+            self.checkpoint_state()
+            raise HypercoreWithdrawalVerificationError(
+                f"Second-stage broadcast outcome is ambiguous: {e}"
+            ) from e
+
+        receipt_status = receipt.get("status")
+        if receipt_status == 0:
+            trade.other_data["hypercore_second_stage_status"] = "reverted"
+            self.checkpoint_state()
+            return None
+        if receipt_status != 1:
+            trade.other_data["hypercore_second_stage_status"] = "broadcast_ambiguous"
+            trade.other_data["hypercore_second_stage_error"] = (
+                f"Receipt has invalid status: {receipt_status!r}"
+            )
+            trade.other_data["hypercore_second_stage_failure_phase"] = "second_stage_broadcast"
+            self.checkpoint_state()
+            raise HypercoreWithdrawalVerificationError(
+                f"Second-stage receipt has invalid status: {receipt_status!r}"
+            )
+
+        trade.other_data["hypercore_second_stage_status"] = "receipt_confirmed"
+        self.checkpoint_state()
+        requested_reserve = raw_to_usdc(request_raw)
+        fee_tolerance = estimate_max_withdrawal_commission(
+            requested_reserve,
+            performance_fee_rate,
+        )
+
+        try:
+            perp_after = self._wait_for_perp_withdrawable_balance(
+                baseline_balance=baseline_perp,
+                expected_increase_raw=request_raw,
+                relative_tolerance=withdrawal_relative_tolerance,
+                performance_fee_tolerance=fee_tolerance,
+                timeout=30.0,
+                poll_interval=2.0,
+            )
+            equity = fetch_user_vault_equity(
+                session,
+                user=self.safe_address,
+                vault_address=vault_address,
+                bypass_cache=True,
+            )
+            equity_after = equity.equity if equity is not None else None
+            if (
+                equity_before is None
+                or equity_after is None
+                or equity_after >= equity_before
+            ):
+                raise HypercoreWithdrawalVerificationError(
+                    "Second-stage perp increase did not have a matching vault-equity decrease"
+                )
+        except Exception as e:
+            trade.other_data["hypercore_second_stage_status"] = "verification_ambiguous"
+            trade.other_data["hypercore_second_stage_error"] = str(e)
+            trade.other_data["hypercore_second_stage_failure_phase"] = "second_stage_verification"
+            self.checkpoint_state()
+            if isinstance(e, HypercoreWithdrawalVerificationError):
+                raise
+            raise HypercoreWithdrawalVerificationError(
+                f"Second-stage verification is ambiguous: {e}"
+            ) from e
+
+        trade.other_data["hypercore_second_stage_status"] = "verified"
+        trade.other_data["hypercore_second_stage_residual_usd"] = str(equity_after)
+        self.checkpoint_state()
+        return perp_after, equity_after
+
+    @staticmethod
+    def _calculate_partial_close_quantity(
+        position_quantity: Decimal,
+        equity_snapshots: list[tuple[Decimal, Decimal]],
+    ) -> Decimal:
+        """Compose per-leg equity reductions into an executed share quantity."""
+        assert position_quantity > 0, f"Position quantity must be positive: {position_quantity}"
+        assert equity_snapshots, "At least one verified equity reduction is required"
+
+        retained_fraction = Decimal(1)
+        for equity_before, equity_after in equity_snapshots:
+            if equity_before <= 0:
+                raise HypercoreWithdrawalVerificationError(
+                    f"Withdrawal leg has non-positive starting equity: {equity_before}"
+                )
+            reduction_fraction = (equity_before - equity_after) / equity_before
+            if reduction_fraction < 0 or reduction_fraction > 1:
+                raise HypercoreWithdrawalVerificationError(
+                    "Withdrawal leg equity reduction fraction is outside [0, 1]: "
+                    f"before {equity_before}, after {equity_after}, fraction {reduction_fraction}"
+                )
+            retained_fraction *= Decimal(1) - reduction_fraction
+
+        return position_quantity * (Decimal(1) - retained_fraction)
 
     def _broadcast_withdrawal_phase3(
         self,
@@ -2990,12 +3248,13 @@ class HypercoreVaultRouting(RoutingModel):
 
         1. Verifies the phase 1 EVM receipt.
         2. Waits for the withdrawn USDC to appear in HyperCore perp.
-        3. Broadcasts phase 2 (``transferUsdClass(perp->spot)``).
-        4. Waits for the USDC to appear in HyperCore spot.
-        5. Broadcasts phase 3 (``sendAsset`` / spot -> EVM).
-        6. Polls the Safe's EVM USDC balance until the bridged USDC arrives.
-        7. Compares actual received USDC against planned amount.
-        8. Marks the trade as success or failure.
+        3. Optionally withdraws one protected full-close residual to perp.
+        4. Broadcasts phase 2 (``transferUsdClass(perp->spot)``).
+        5. Waits for the USDC to appear in HyperCore spot.
+        6. Broadcasts phase 3 (``sendAsset`` / spot -> EVM).
+        7. Polls the Safe's EVM USDC balance until the bridged USDC arrives.
+        8. Compares actual received USDC and final vault equity against the plan.
+        9. Marks the trade as success or failure.
 
         In simulate mode, the balance verification is skipped because
         the mock CoreWriter does not actually bridge USDC.
@@ -3028,10 +3287,10 @@ class HypercoreVaultRouting(RoutingModel):
         # Capture baseline EVM USDC balance and vault equity before the
         # bridge delivers the withdrawal.  These are used for dual-chain
         # verification after the USDC arrives on EVM.
+        expected_raw = self._get_raw_usdc_amount(trade)
+        position_quantity_before: Decimal | None = None
         if not self.simulate:
             baseline_balance_raw = self._fetch_safe_evm_usdc_balance()
-            expected_raw = self._get_raw_usdc_amount(trade)
-            position_quantity_before: Decimal | None = None
             try:
                 candidate_position_quantity = state.portfolio.get_position_by_id(
                     trade.position_id
@@ -3167,7 +3426,13 @@ class HypercoreVaultRouting(RoutingModel):
             Decimal(str(trade.slippage_tolerance or 0)),
         )
         phase1_requested_reserve = raw_to_usdc(expected_raw)
+        total_requested_reserve = phase1_requested_reserve
         remaining_equity_after_withdrawal: Decimal | None = None
+        verified_leg_equity_snapshots: list[tuple[Decimal, Decimal]] = []
+        is_explicit_full_close = (
+            TradeFlag.close in trade.flags
+            and not trade.other_data.get("hypercore_small_position_cleanup")
+        )
 
         if self.simulate:
             # Simulate mode: mock CoreWriter does not bridge USDC,
@@ -3314,6 +3579,7 @@ class HypercoreVaultRouting(RoutingModel):
 
                         expected_raw = retry_raw
                         phase1_requested_reserve = raw_to_usdc(expected_raw)
+                        total_requested_reserve = phase1_requested_reserve
                         phase1_performance_fee_tolerance = estimate_max_withdrawal_commission(
                             phase1_requested_reserve,
                             performance_fee_rate,
@@ -3414,12 +3680,91 @@ class HypercoreVaultRouting(RoutingModel):
                 perp_balance,
             )
 
+            if is_explicit_full_close:
+                # A silent-no-op retry has already consumed the second and
+                # final vault transaction allowed for this close cycle.
+                if "hypercore_phase1_retry_safety_margin_raw" in trade.other_data:
+                    trade.other_data["hypercore_second_stage_status"] = "skipped_phase1_retry_budget_used"
+                    first_stage_equity_after = None
+                    second_stage_raw = None
+                elif not has_pre_phase1_vault_equity_snapshot:
+                    trade.other_data["hypercore_second_stage_status"] = "skipped_missing_phase1_equity_snapshot"
+                    first_stage_equity_after = None
+                    second_stage_raw = None
+                else:
+                    first_stage_equity_after, second_stage_raw = self._plan_same_cycle_residual_withdrawal(
+                        trade,
+                        vault_address,
+                    )
+                    if (
+                        vault_equity_before_phase1_snapshot is not None
+                        and first_stage_equity_after is not None
+                        and first_stage_equity_after < vault_equity_before_phase1_snapshot
+                    ):
+                        verified_leg_equity_snapshots.append(
+                            (
+                                vault_equity_before_phase1_snapshot,
+                                first_stage_equity_after,
+                            )
+                        )
+                    elif first_stage_equity_after is not None:
+                        trade.other_data["hypercore_second_stage_status"] = "skipped_first_stage_equity_decrease_unverified"
+                        second_stage_raw = None
+
+                if second_stage_raw is not None:
+                    try:
+                        second_stage_result = self._execute_second_stage_withdrawal(
+                            web3=web3,
+                            trade=trade,
+                            session=session,
+                            vault_address=vault_address,
+                            request_raw=second_stage_raw,
+                            baseline_perp=perp_balance,
+                            equity_before=first_stage_equity_after,
+                            withdrawal_relative_tolerance=withdrawal_relative_tolerance,
+                            performance_fee_rate=performance_fee_rate,
+                        )
+                    except HypercoreWithdrawalVerificationError as e:
+                        self._mark_stranded_usdc(
+                            trade,
+                            usdc_to_raw(perp_balance - baseline_perp_withdrawable) + second_stage_raw,
+                            "hypercore_perp",
+                        )
+                        self.diagnose_hyperliquid_vault_redemption_failure(
+                            trade,
+                            vault_address,
+                            trade.other_data.get(
+                                "hypercore_second_stage_failure_phase",
+                                "second_stage_verification",
+                            ),
+                            str(e),
+                        )
+                        report_failure(ts, state, trade, stop_on_execution_failure)
+                        return
+
+                    if second_stage_result is not None:
+                        second_stage_perp, final_second_stage_equity = second_stage_result
+                        assert first_stage_equity_after is not None
+                        verified_leg_equity_snapshots.append(
+                            (first_stage_equity_after, final_second_stage_equity)
+                        )
+                        perp_balance = second_stage_perp
+                        expected_raw += second_stage_raw
+                        total_requested_reserve += raw_to_usdc(second_stage_raw)
+                        trade.other_data["hypercore_total_requested_gross_usd"] = str(
+                            total_requested_reserve
+                        )
+                        self.checkpoint_state()
+
             # Propagate the observed perp balance into the phase 2 amount.
             # Phase 1 may have delivered slightly less USDC than expected
             # (HyperCore fees/rounding).  If we request more than what the
             # perp account holds, HyperCore silently rejects the
             # transferUsdClass action (EVM tx status=1 but nothing moves).
             actual_perp_increase_raw = usdc_to_raw(perp_balance - baseline_perp_withdrawable)
+            trade.other_data["hypercore_total_observed_perp_increase_usd"] = str(
+                raw_to_usdc(actual_perp_increase_raw)
+            )
             if actual_perp_increase_raw > 0 and actual_perp_increase_raw < expected_raw:
                 logger.info(
                     "Capping phase 2 amount to observed perp increase for trade %s: "
@@ -3652,7 +3997,7 @@ class HypercoreVaultRouting(RoutingModel):
             # capped, else planned) to avoid spurious "partial" warnings on
             # normal capped-close trades where live equity < planned_reserve.
             effective_reserve = raw_to_usdc(phase3_raw)
-            gross_vault_redeemed_reserve = phase1_requested_reserve
+            gross_vault_redeemed_reserve = total_requested_reserve
             if executed_reserve < effective_reserve:
                 logger.warning(
                     "Withdrawal partial: received %s USDC but expected %s USDC (trade %s)",
@@ -3681,6 +4026,20 @@ class HypercoreVaultRouting(RoutingModel):
                         # EVM arrival verifies net proceeds, while HyperCore's observed gross debit
                         # determines the quantity settled when a withdrawal under-redeems.
                         gross_vault_redeemed_reserve = equity_decrease
+                        if (
+                            is_explicit_full_close
+                            and not verified_leg_equity_snapshots
+                            and has_pre_phase1_vault_equity_snapshot
+                        ):
+                            # The optional between-leg equity read may have
+                            # failed. The durable pre-phase-1 snapshot and the
+                            # final uncached read still prove the total debit.
+                            verified_leg_equity_snapshots.append(
+                                (
+                                    vault_equity_before_phase1_snapshot,
+                                    remaining_equity,
+                                )
+                            )
                     expected_decrease = executed_reserve
                     tolerance = expected_decrease * Decimal("0.01")
                     if equity_decrease < expected_decrease - tolerance:
@@ -3723,7 +4082,7 @@ class HypercoreVaultRouting(RoutingModel):
         assert planned_price > 0, f"Planned Hypercore vault sell price must be positive, got {planned_price}"
         planned_gross_reserve = abs(trade.planned_quantity) * planned_price
         expected_gross_redeemed_reserve = min(
-            phase1_requested_reserve,
+            total_requested_reserve,
             planned_gross_reserve,
         )
         close_shortfall = effective_reserve - executed_reserve
@@ -3745,6 +4104,20 @@ class HypercoreVaultRouting(RoutingModel):
             or TradeFlag.close in trade.flags
             or closes_position_quantity
         )
+        if (
+            is_explicit_full_close
+            and not self.simulate
+            and remaining_equity_after_withdrawal is None
+        ):
+            self.diagnose_hyperliquid_vault_redemption_failure(
+                trade,
+                self._get_vault_address(trade),
+                "final_residual_verification",
+                "Final vault equity was unavailable after an explicit full close",
+            )
+            report_failure(ts, state, trade, stop_on_execution_failure)
+            return
+
         if (
             is_closing_trade
             and position is not None
@@ -3822,11 +4195,51 @@ class HypercoreVaultRouting(RoutingModel):
         if should_close_full_quantity:
             executed_amount = trade.planned_quantity
         else:
-            gross_vault_redeemed_reserve = min(
-                gross_vault_redeemed_reserve,
-                planned_gross_reserve,
+            if is_explicit_full_close:
+                if not isinstance(position_quantity_before, Decimal):
+                    self.diagnose_hyperliquid_vault_redemption_failure(
+                        trade,
+                        self._get_vault_address(trade),
+                        "partial_quantity_verification",
+                        "Position quantity was unavailable for partial full-close settlement",
+                    )
+                    report_failure(ts, state, trade, stop_on_execution_failure)
+                    return
+                try:
+                    partial_close_quantity = self._calculate_partial_close_quantity(
+                        position_quantity_before,
+                        verified_leg_equity_snapshots,
+                    )
+                except (AssertionError, HypercoreWithdrawalVerificationError) as e:
+                    self.diagnose_hyperliquid_vault_redemption_failure(
+                        trade,
+                        self._get_vault_address(trade),
+                        "partial_quantity_verification",
+                        str(e),
+                    )
+                    report_failure(ts, state, trade, stop_on_execution_failure)
+                    return
+                executed_amount = -partial_close_quantity
+            else:
+                gross_vault_redeemed_reserve = min(
+                    gross_vault_redeemed_reserve,
+                    planned_gross_reserve,
+                )
+                executed_amount = -(gross_vault_redeemed_reserve / planned_price)
+
+        if abs(executed_amount) > abs(trade.planned_quantity):
+            error = (
+                f"Executed HyperCore quantity {executed_amount} exceeds "
+                f"planned quantity {trade.planned_quantity}"
             )
-            executed_amount = -(gross_vault_redeemed_reserve / planned_price)
+            self.diagnose_hyperliquid_vault_redemption_failure(
+                trade,
+                self._get_vault_address(trade),
+                "executed_quantity_verification",
+                error,
+            )
+            report_failure(ts, state, trade, stop_on_execution_failure)
+            return
 
         executed_price = float(executed_reserve / abs(executed_amount)) if executed_amount else 1.0
 
