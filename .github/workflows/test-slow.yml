@@ -44,7 +44,7 @@ jobs:
           path: .venv
           key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
       - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1.8.0
+        uses: foundry-rs/foundry-toolchain@v1.9.1
         with:
           # pick a nightly release from: https://github.com/foundry-rs/foundry/releases
           version: 'v0.3.0'
