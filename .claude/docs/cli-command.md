@@ -276,6 +276,36 @@ Examples:
 - `repair_hypercore_dust` logs the resolved state path, duplicate diagnostics, save step, and final `All ok`
 - `show_positions` is intentionally print-heavy because it is a pure inspection command
 
+## Running production repair and migration scripts
+
+Production state scripts must run through the deployment's Docker Compose
+service, not a standalone `docker run` container. A standalone container does
+not mount the authoritative state directory or inherit the full service
+environment.
+
+The canonical Hyper AI production shell command is:
+
+```shell
+docker compose run --entrypoint /bin/bash hyper-ai --
+```
+
+Stop the running `hyper-ai` service before starting a state-mutating repair or
+migration because `docker compose run` starts a separate container and does not
+stop concurrent writers. Inside the shell:
+
+1. Confirm the expected state file is present and non-empty.
+2. Use the script shipped in the deployed image and run it with `poetry run
+   python`. Do not download a script into production; a missing script means the
+   deployment image is stale or incorrect.
+3. Preview first when supported, then use only the script's documented mutation
+   option.
+4. Require a recoverable state backup before mutation.
+5. Run the script's validation, or repeat an idempotent preview, before
+   restarting the executor.
+
+The complete operator runbook and the Hyper AI profitability-repair example are
+in `docs/docker.md`.
+
 ## How `All ok` happens
 
 There is no automatic success footer in the CLI framework. `All ok` is always emitted explicitly by the command itself.
