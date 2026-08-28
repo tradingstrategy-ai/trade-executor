@@ -54,6 +54,43 @@ When running a Python script use `poetry run python` command instead of plain `p
 source .local-test.env && poetry run python scripts/logos/post-process-logo.py
 ```
 
+### Running production repair and migration scripts
+
+Run production maintenance from the deployment's Docker Compose project. Never
+use a standalone `docker run` container for a production repair or migration:
+it does not inherit the service's production state and cache mounts or its full
+environment.
+
+The canonical way to open the Hyper AI production shell is:
+
+```shell
+docker compose run --entrypoint /bin/bash hyper-ai --
+```
+
+For any script that can change production state:
+
+1. Confirm that the Compose deployment uses an image containing the script. All
+   repository `scripts/` are copied into current release images. If a script is
+   missing, update the image; do not download or copy a different revision into
+   the container.
+2. Stop the running executor before opening the maintenance shell. `docker
+   compose run` creates a separate one-off container and does not stop the live
+   service, so otherwise both processes could write the same state file.
+3. In the shell, confirm the authoritative state file exists, for example with
+   `test -s state/hyper-ai.json`.
+4. Run scripts with `poetry run python scripts/<path>.py ...`. Do not source
+   `.local-test.env` in production; Docker Compose supplies the service
+   environment.
+5. For repairs that support preview mode, run the preview first, inspect the
+   proposed changes, then rerun with the script's explicit write option. Do not
+   assume that migration scripts use the same options: check `--help` and their
+   runbook before executing them.
+6. Confirm that a backup was created before a state mutation. Run the script's
+   post-migration validation or repeat an idempotent preview, then restart the
+   executor and verify its state endpoint.
+
+See `docs/docker.md` for the production maintenance runbook.
+
 ## Running trade-executor
 
 E.g. to test CLI commands
