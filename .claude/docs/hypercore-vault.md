@@ -544,8 +544,16 @@ comments before changing settlement logic.
 ## Profit accounting
 
 HyperCore vault positions report profit from their **cash flows** — sell proceeds, plus the value
-still held, minus what was paid — via `TradingPosition.get_cash_flow_profit_usd()`. Every dollar in
-such a position enters and leaves through a trade, so this is exact and model-independent.
+still held, minus what was paid — via `TradingPosition.get_cash_flow_profit_usd()`. Percentage
+profitability uses the same basis through `get_cash_flow_profit_percent()`: cash-flow profit divided
+by successful buy cash flow. For the affected historical states, these USDC flows are intact even
+though some vault quantities are not, making them the reliable source for reported P&L.
+
+Before the 2026-06-16 withdrawal settlement fix, a sell could record net USDC proceeds as the
+negative vault quantity. The internal-share calculation treated that value as vault units and
+burned shares in proportion to it. Partial withdrawals could therefore leave a false residual
+supply; when a position closed with zero assets, dividing those assets by the residual produced
+misleading returns such as -100%.
 
 This matters because `is_using_internal_share_price_profit()` is also true for **exchange account**
 positions, which share the same code path but must *not* use cash flows: they establish their
@@ -581,6 +589,13 @@ from these accessors, which is why the defect showed up as an attribution error 
 reconciled exactly against cash plus holdings. Any audit comparing equity against reconstructed
 P&L should also **not** subtract a redemption-fee estimate — proceeds are already booked net of
 fee, so cash-flow profit carries it and subtracting again double-counts.
+
+Historical percentage caches can be repaired with
+`scripts/hyper-ai/repair-closed-position-profitability.py`. The script only changes the derived
+final P&L fields for affected closed positions. It preserves the internal-share diagnostics for
+post-incident analysis and does not rewrite trades, position quantities, cash, equity, or the
+position's original internal-share state. Preview is the default and `--write` creates a state
+backup before atomically saving the repair.
 
 ## Small-position cleanup
 

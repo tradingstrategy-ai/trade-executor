@@ -81,6 +81,104 @@ class HypercoreDuplicateCloseCandidate:
     close_reason: str
 
 
+@dataclass(slots=True)
+class HypercoreProfitabilityRepair:
+    """One closed Hypercore position whose reporting data was repaired."""
+
+    position_id: int
+    symbol: str
+    old_profitability: float
+    new_profitability: float
+    old_profit_usd: float
+    new_profit_usd: float
+
+
+def repair_hypercore_closed_position_profitability(
+    state: State,
+    position_ids: set[int] | None = None,
+) -> list[HypercoreProfitabilityRepair]:
+    """Repair derived profitability data for closed Hypercore vault positions.
+
+    Historical Hypercore partial withdrawals could record the net USDC
+    received as the decrease in vault quantity.  Gross vault units and net
+    proceeds are different accounting dimensions, so replaying these quantities
+    produces a corrupt internal share supply and profitability.
+
+    Successful deposit and withdrawal cash flows remain intact in the affected
+    state.  Repair the final closed-position reporting record from those cash
+    flows without modifying trades, position quantities, cash, portfolio equity,
+    or the original internal-share state.
+
+    Internal-share fields are preserved for post-incident analysis.  They use a
+    different accounting model and are not replaced with cash-flow return.
+
+    :param state:
+        State to modify in memory.
+
+    :param position_ids:
+        Optional explicit subset of closed position ids.
+
+    :return:
+        Changed positions with their old and repaired values.  Calling this
+        function again on an already repaired state returns an empty list.
+    """
+    repairs: list[HypercoreProfitabilityRepair] = []
+    closed_hypercore_ids = {
+        position.position_id
+        for position in state.portfolio.closed_positions.values()
+        if position.pair.is_hyperliquid_vault()
+    }
+    if position_ids is not None:
+        if unknown_ids := position_ids - closed_hypercore_ids:
+            raise ValueError(f"Not closed Hypercore position ids: {sorted(unknown_ids)}")
+
+    for position in state.portfolio.closed_positions.values():
+        if position_ids is not None and position.position_id not in position_ids:
+            continue
+        if not position.pair.is_hyperliquid_vault():
+            continue
+
+        position_stats = state.stats.positions.get(position.position_id, [])
+        if not position_stats:
+            if position_ids is not None:
+                raise ValueError(f"Position {position.position_id} has no position statistics")
+            continue
+
+        new_profit_usd = position.get_cash_flow_profit_usd()
+        new_profitability = position.get_cash_flow_profit_percent()
+        latest_stats = position_stats[-1]
+        if latest_stats.calculated_at < position.closed_at:
+            if position_ids is not None:
+                raise ValueError(
+                    f"Position {position.position_id} has no close-time position statistics"
+                )
+            continue
+        old_profitability = latest_stats.profitability
+        old_profit_usd = latest_stats.profit_usd
+
+        if (
+            abs(old_profitability - new_profitability) <= 1e-12
+            and abs(old_profit_usd - new_profit_usd) <= 1e-9
+        ):
+            continue
+
+        latest_stats.profitability = new_profitability
+        latest_stats.profit_usd = new_profit_usd
+
+        repairs.append(
+            HypercoreProfitabilityRepair(
+                position_id=position.position_id,
+                symbol=position.pair.get_ticker(),
+                old_profitability=old_profitability,
+                new_profitability=new_profitability,
+                old_profit_usd=old_profit_usd,
+                new_profit_usd=new_profit_usd,
+            )
+        )
+
+    return repairs
+
+
 def _get_hypercore_vault_address(position: TradingPosition) -> str:
     """Get the canonical vault address for a Hypercore position."""
 

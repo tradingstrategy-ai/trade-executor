@@ -1601,11 +1601,11 @@ class TradingPosition(GenericPosition):
 
             profit = sum(sell proceeds) + current value of holdings - sum(buy costs)
 
-        This is definitional rather than model-dependent, so Hypercore vault positions use it as
-        the anchor for both :py:meth:`get_total_profit_usd` and :py:meth:`get_unrealised_profit_usd`.
-        Every dollar in such a position enters and leaves through a trade, which makes cash flows
-        exact for them. Exchange account positions look similar but are not - they establish their
-        capital through a valuation sync rather than a trade - so they keep the share-price model.
+        Hypercore vault positions use this as the anchor for both
+        :py:meth:`get_total_profit_usd` and :py:meth:`get_unrealised_profit_usd` because their USDC
+        trade flows remained reliable in the affected historical states. Exchange account
+        positions look similar but are not - they establish their capital through a valuation
+        sync rather than a trade - so they keep the share-price model.
 
         Only successful trades count; failed and pending trades move no cash.
 
@@ -1621,11 +1621,7 @@ class TradingPosition(GenericPosition):
         :return:
             Profit in dollars.
         """
-        bought = sum(
-            abs(float(t.executed_reserve or 0))
-            for t in self.trades.values()
-            if t.is_buy() and t.is_success()
-        )
+        bought = self.get_cash_flow_bought_usd()
         sold = sum(
             abs(float(t.executed_reserve or 0))
             for t in self.trades.values()
@@ -1633,6 +1629,33 @@ class TradingPosition(GenericPosition):
         )
         held = float(self.get_value() or 0.0) if self.is_open() else 0.0
         return sold + held - bought
+
+    def get_cash_flow_bought_usd(self) -> USDollarAmount:
+        """Get capital deposited through successful buy trades."""
+        return sum(
+            abs(float(t.executed_reserve or 0))
+            for t in self.trades.values()
+            if t.is_buy() and t.is_success()
+        )
+
+    def get_cash_flow_profit_percent(self) -> Percent:
+        """Calculate return against the capital deposited through successful buys.
+
+        Hypercore vault quantities have not always been reliable during partial
+        withdrawals.  The affected records retained reliable USDC flows, so use
+        the same cash-flow basis as
+        :py:meth:`get_cash_flow_profit_usd` for its percentage return.
+
+        :return:
+            Profit divided by successful buy cash flow, or zero when the
+            position never received capital.
+        """
+        return self._calculate_cash_flow_return(self.get_cash_flow_profit_usd())
+
+    def _calculate_cash_flow_return(self, profit_usd: USDollarAmount) -> Percent:
+        """Calculate a cash-flow return with a zero-capital guard."""
+        bought = self.get_cash_flow_bought_usd()
+        return profit_usd / bought if bought else 0.0
 
     def get_realised_profit_usd(
             self,
@@ -1779,7 +1802,7 @@ class TradingPosition(GenericPosition):
             if self.pair.is_hyperliquid_vault():
                 # The share-price model measures profit on the outstanding internal supply and
                 # therefore omits profit already withdrawn through partial sells. Anchor to the
-                # position's cash flows, which is definitional.
+                # position's USDC cash flows, which remained reliable in the affected state.
                 return self.get_cash_flow_profit_usd()
             if self.share_price_state is not None:
                 return self.get_share_price_profit().profit_usd
@@ -1814,6 +1837,11 @@ class TradingPosition(GenericPosition):
 
         # Exchange account positions use placeholder trades ($1) that don't represent real capital.
         if self.is_using_internal_share_price_profit():
+            if self.pair.is_hyperliquid_vault():
+                # Hypercore vault cash flows are authoritative.  Historical
+                # partial withdrawals sometimes recorded net USDC as vault
+                # quantity, corrupting the proportional internal-share burn.
+                return self.get_cash_flow_profit_percent()
             if self.share_price_state is not None:
                 data = self.get_share_price_profit()
                 return data.profit_pct
@@ -2074,6 +2102,11 @@ class TradingPosition(GenericPosition):
             Return ``0`` if the position profitability cannot be calculated,
             e.g. due to broken trades.
         """
+        if self.pair.is_hyperliquid_vault() and self.is_closed():
+            # Historical partial withdrawals may have corrupt vault quantities,
+            # but the completed position's USDC cash flows remain reliable. For
+            # an open position, keep reporting only the part already realised.
+            return self.get_cash_flow_profit_percent()
         if self.is_spot():
             # This is the new code path that takes account in-kind redemptions
             # and redefines the meaning of realised profit
@@ -2279,6 +2312,10 @@ class TradingPosition(GenericPosition):
         """
 
         if self.is_using_internal_share_price_profit():
+            if self.pair.is_hyperliquid_vault():
+                if self.is_closed():
+                    return 0.0
+                return self._calculate_cash_flow_return(self.get_unrealised_profit_usd())
             # Share price state is initialised on the first valuation sync.
             # Until then, profit is unknown.
             if self.share_price_state is not None:

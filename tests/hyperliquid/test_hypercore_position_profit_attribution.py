@@ -15,8 +15,8 @@ position traded 59 times reported 13,028 USD of profit against 6,185 USD implied
 flows, which made position-level P&L unusable for exactly the heavily traded positions a
 rebalancing strategy produces.
 
-Ground truth throughout is the position's cash flows - proceeds, plus holdings, minus cost -
-which is definitional and model-independent.
+For the affected historical Hypercore records, the reliable source is the position's USDC cash
+flows - proceeds, plus holdings, minus cost.
 """
 
 import datetime
@@ -26,8 +26,10 @@ import pytest
 
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.repair import repair_hypercore_closed_position_profitability
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
+from tradeexecutor.statistics.core import calculate_position_statistics
 
 
 @pytest.fixture()
@@ -131,6 +133,7 @@ def test_profit_attribution_across_a_position_lifecycle(state: State, pair: Trad
     assert cash_flow_profit(position) == pytest.approx(400.0)
     assert (position.get_realised_profit_usd() or 0.0) == pytest.approx(0.0)
     assert position.get_unrealised_profit_usd() == pytest.approx(400.0)
+    assert position.get_unrealised_profit_pct() == pytest.approx(400.0 / 2000.0)
     assert position.get_total_profit_usd() == pytest.approx(400.0)
 
     # 2. Sell half - realised and unrealised must still sum to the cash-flow profit
@@ -139,6 +142,7 @@ def test_profit_attribution_across_a_position_lifecycle(state: State, pair: Trad
     assert truth == pytest.approx(400.0)
     assert position.get_realised_profit_usd() == pytest.approx(200.0)
     assert position.get_unrealised_profit_usd() == pytest.approx(200.0)
+    assert position.get_unrealised_profit_pct() == pytest.approx(200.0 / 2000.0)
 
     # 3. Rebuy higher and sell again, so average cost and share price diverge
     position = execute(state, pair, 100, 20.0, start + 10 * day)
@@ -150,6 +154,7 @@ def test_profit_attribution_across_a_position_lifecycle(state: State, pair: Trad
     realised = position.get_realised_profit_usd() or 0.0
     unrealised = position.get_unrealised_profit_usd() or 0.0
     assert realised + unrealised == pytest.approx(truth, abs=0.01)
+    assert position.get_unrealised_profit_pct() == pytest.approx(unrealised / 6250.0)
     assert position.get_total_profit_usd() == pytest.approx(truth, abs=0.01)
 
     # 4. Close the position - unrealised must be zero and total profit must equal the truth
@@ -159,6 +164,9 @@ def test_profit_attribution_across_a_position_lifecycle(state: State, pair: Trad
     assert position.get_unrealised_profit_usd() == pytest.approx(0.0)
     assert position.get_realised_profit_usd() == pytest.approx(750.0, abs=0.01)
     assert position.get_total_profit_usd() == pytest.approx(750.0, abs=0.01)
+    assert position.get_total_profit_percent() == pytest.approx(750.0 / 6250.0)
+    assert position.get_realised_profit_percent() == pytest.approx(750.0 / 6250.0)
+    assert position.get_unrealised_profit_pct() == 0.0
 
 
 def test_attribution_error_does_not_grow_with_trade_count(state: State, pair: TradingPairIdentifier):
@@ -190,3 +198,67 @@ def test_attribution_error_does_not_grow_with_trade_count(state: State, pair: Tr
     unrealised = position.get_unrealised_profit_usd() or 0.0
     assert realised + unrealised == pytest.approx(cash_flow_profit(position), abs=0.01)
     assert position.get_total_profit_usd() == pytest.approx(cash_flow_profit(position), abs=0.01)
+
+
+def test_repair_closed_hypercore_profitability(
+    state: State,
+    pair: TradingPairIdentifier,
+):
+    """Repair corrupt closed-position percentage caches without changing trade history.
+
+    1. Close a profitable Hypercore position and corrupt its final statistics record.
+    2. Reject an explicit repair while only a pre-close statistics snapshot exists.
+    3. Repair the close-time profitability data from authoritative executed cash flows.
+    4. Verify only the official final P&L changes and a second repair is a no-op.
+    """
+    start = datetime.datetime(2026, 1, 1)
+
+    # 1. Close a profitable Hypercore position and corrupt its final statistics record.
+    position = execute(state, pair, 100, 10.0, start)
+    position = execute(state, pair, -100, 11.0, start + datetime.timedelta(days=1))
+    position.share_price_state.current_share_price = 0.2
+    position.share_price_state.total_supply = 5.0
+    position.share_price_state.cumulative_quantity = 5.0
+    original_share_state = position.share_price_state.to_dict()
+    final_stats = calculate_position_statistics(position.closed_at, position)
+    final_stats.profitability = -0.8
+    final_stats.profit_usd = -800.0
+    original_internal_stats = (
+        final_stats.internal_share_price,
+        final_stats.internal_total_supply,
+        final_stats.internal_profit_pct,
+        final_stats.internal_profit_usd,
+    )
+    state.stats.positions[position.position_id] = [final_stats]
+
+    # 2. Reject an explicit repair while only a pre-close statistics snapshot exists.
+    final_stats.calculated_at = position.closed_at - datetime.timedelta(seconds=1)
+    with pytest.raises(ValueError, match="no close-time position statistics"):
+        repair_hypercore_closed_position_profitability(
+            state,
+            position_ids={position.position_id},
+        )
+
+    # 3. Repair the close-time profitability data from authoritative executed cash flows.
+    final_stats.calculated_at = position.closed_at
+    repairs = repair_hypercore_closed_position_profitability(
+        state,
+        position_ids={position.position_id},
+    )
+
+    # 4. Verify only the official final P&L changes and a second repair is a no-op.
+    assert len(repairs) == 1
+    assert repairs[0].position_id == position.position_id
+    assert repairs[0].old_profitability == pytest.approx(-0.8)
+    assert repairs[0].new_profitability == pytest.approx(0.1)
+    assert repairs[0].new_profit_usd == pytest.approx(100.0)
+    assert position.share_price_state.to_dict() == original_share_state
+    assert final_stats.profitability == pytest.approx(0.1)
+    assert final_stats.profit_usd == pytest.approx(100.0)
+    assert (
+        final_stats.internal_share_price,
+        final_stats.internal_total_supply,
+        final_stats.internal_profit_pct,
+        final_stats.internal_profit_usd,
+    ) == original_internal_stats
+    assert repair_hypercore_closed_position_profitability(state) == []
