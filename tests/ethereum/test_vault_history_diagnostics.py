@@ -9,6 +9,8 @@ import pandas as pd
 import pytest
 import requests
 
+from tradingstrategy.vault_data_client import VAULT_PRO_API_KEY_ENV_VAR
+
 from tradeexecutor.ethereum.vault.checks import (
     build_vault_history_diagnostics,
     log_stale_vault_candle_data,
@@ -23,8 +25,9 @@ pytestmark = pytest.mark.timeout(300)
 class _MockResponse:
     """Minimal response stub for HEAD metadata tests."""
 
-    def __init__(self, headers: dict[str, str]):
+    def __init__(self, headers: dict[str, str], status_code: int = 200):
         self.headers = headers
+        self.status_code = status_code
 
     def raise_for_status(self) -> None:
         """Pretend the response succeeded."""
@@ -557,3 +560,42 @@ def test_log_stale_vault_candle_data_warns_when_source_history_is_stale(
     assert warning_record.levelname == "WARNING"
     assert "last_source" in warning_record.message
     assert "2026-04-12 02:00:00" in warning_record.message
+
+
+def test_build_vault_history_diagnostics_names_a_rejected_licence_key() -> None:
+    """Check a refused licence key is reported as a configuration problem.
+
+    Diagnostics must not abort startup, so a rejected key can only be reported
+    through the summary. Reporting it as a generic HEAD failure would let an
+    expired licence look like a transient network blip while the executor keeps
+    running on cached vault data.
+
+    1. Answer the freshness HEAD request with the server's rejection.
+    2. Build the diagnostics.
+    3. Verify the error names the rejection and the variable to fix.
+    """
+
+    # 1. Answer the freshness HEAD request with the server's rejection.
+    session = _MockSession(response=_MockResponse({}, status_code=403))
+
+    # 2. Build the diagnostics.
+    diagnostics = build_vault_history_diagnostics(
+        raw_vault_price_df=_build_vault_price_history_df(
+            "0xdead000000000000000000000000000000000000",
+            [datetime.datetime(2026, 4, 8, 12, 0, 0)],
+        ),
+        filtered_vault_price_df=_build_vault_price_history_df(
+            "0xdead000000000000000000000000000000000000",
+            [datetime.datetime(2026, 4, 8, 12, 0, 0)],
+        ),
+        resampled_vault_candle_df=None,
+        cache_path=None,
+        http_session=session,
+        vault_data_client=_make_vault_data_client(),
+        now=datetime.datetime(2026, 4, 8, 13, 0, 0),
+    )
+
+    # 3. Verify the error names the rejection and the variable to fix.
+    assert diagnostics.remote_content_length is None
+    assert "403" in diagnostics.remote_head_error
+    assert VAULT_PRO_API_KEY_ENV_VAR in diagnostics.remote_head_error

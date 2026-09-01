@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from tradingstrategy.vault_data_client import VaultDataAccessDenied
 
 from tradeexecutor.strategy import trading_strategy_universe
 from tradeexecutor.strategy.trading_strategy_universe import (
@@ -153,3 +154,42 @@ def test_refresh_vault_universe_metadata_cache_restores_stale_file_on_failure(
     # 3. Check the stale vault metadata file was restored for fallback startup.
     assert restored_path == vault_universe_file
     assert vault_universe_file.read_text() == "old"
+
+
+def test_refresh_vault_universe_metadata_cache_surfaces_rejected_licence_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Verify a rejected licence key is not mistaken for a data outage.
+
+    Repair restores the stale metadata file when a refresh fails, so that a
+    Trading Strategy outage does not make repair worse. An invalid or expired
+    licence is not an outage: silently repairing against stale metadata would
+    hide the configuration problem.
+
+    1. Create a client-like object with cached vault metadata.
+    2. Refresh the cache with a downloader whose licence key is refused.
+    3. Check the access error is raised instead of being swallowed.
+    """
+
+    # 1. Create a client-like object with cached vault metadata.
+    cache_path = tmp_path / "client-cache"
+    vault_download_root = cache_path / "vaults" / "downloads"
+    vault_download_root.mkdir(parents=True)
+    (vault_download_root / "vault-metadata.json").write_text("old")
+
+    def _fetch_vault_universe() -> None:
+        raise VaultDataAccessDenied("Licence key rejected")
+
+    client = SimpleNamespace(transport=SimpleNamespace(cache_path=cache_path))
+
+    # 2. Refresh the cache with a downloader whose licence key is refused.
+    monkeypatch.setattr(
+        trading_strategy_universe,
+        "create_vault_data_client",
+        lambda client, download_root=None: SimpleNamespace(fetch_vault_universe=_fetch_vault_universe),
+    )
+
+    # 3. Check the access error is raised instead of being swallowed.
+    with pytest.raises(VaultDataAccessDenied):
+        refresh_vault_universe_metadata_cache(client)

@@ -31,7 +31,7 @@ import requests
 from tabulate import tabulate
 
 from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
-from tradingstrategy.vault_data_client import VaultDataClient, VaultDataset
+from tradingstrategy.vault_data_client import VaultDataClient, VaultDataset, VAULT_PRO_API_KEY_ENV_VAR
 
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.execution_context import ExecutionMode
@@ -177,12 +177,26 @@ def _fetch_remote_vault_history_size(
 
     try:
         response = http_session.head(remote_url, params=remote_params, allow_redirects=True, timeout=30)
-        response.raise_for_status()
-        content_length_header = response.headers.get("Content-Length")
-        content_length = int(content_length_header) if content_length_header is not None else None
-        return content_length, None
     except Exception as exc:
         return None, f"{exc.__class__.__name__}: {exc}"
+
+    if response.status_code in (401, 403):
+        # Diagnostics must not abort startup, but a rejected licence key is a
+        # configuration problem an operator has to act on, not a transient
+        # network blip. Say which it is, so it stands out in the warning table.
+        return None, (
+            f"HTTP {response.status_code}: the vault dataset API rejected our licence key. "
+            f"Check {VAULT_PRO_API_KEY_ENV_VAR}. Cached vault data is being used until it expires."
+        )
+
+    try:
+        response.raise_for_status()
+    except Exception as exc:
+        return None, f"{exc.__class__.__name__}: {exc}"
+
+    content_length_header = response.headers.get("Content-Length")
+    content_length = int(content_length_header) if content_length_header is not None else None
+    return content_length, None
 
 
 def build_vault_history_diagnostics(

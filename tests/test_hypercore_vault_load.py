@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
+from tradingstrategy.vault import VaultUniverse
 from tradingstrategy.vault_data_client import VaultDataClient, VAULT_PRO_API_KEY_ENV_VAR
 from tradingstrategy.exchange import ExchangeType
 from tradingstrategy.timebucket import TimeBucket
@@ -38,21 +39,29 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 def client() -> Client:
     api_key = os.environ.get("TRADING_STRATEGY_API_KEY")
     assert api_key, "TRADING_STRATEGY_API_KEY not set"
+    assert os.environ.get(VAULT_PRO_API_KEY_ENV_VAR), f"{VAULT_PRO_API_KEY_ENV_VAR} not set, vault datasets need their own licence key"
     return Client.create_live_client(api_key)
 
 
 @pytest.fixture(scope="module")
-def hypercore_vault_universe(client):
-    """Load vault universe and pick a single Hypercore vault."""
+def hypercore_vault_universe(client: Client) -> VaultUniverse:
+    """Load vault universe and pick a single Hypercore vault.
+
+    1. Download the vault metadata through the vault dataset API.
+    2. Pick the first Hypercore vault found.
+    3. Limit the universe to that single vault.
+    """
+
+    # 1. Download the vault metadata through the vault dataset API.
     vault_universe = VaultDataClient().fetch_vault_universe()
-    # Pick first Hypercore vault
+    # 2. Pick the first Hypercore vault found.
     hypercore_vaults = []
     for v in vault_universe.iterate_vaults():
         if v.chain_id == ChainId.hypercore:
             hypercore_vaults.append(v)
             break
     assert len(hypercore_vaults) > 0, "No Hypercore vaults found in the vault universe"
-    # Limit to just that one vault
+    # 3. Limit the universe to that single vault.
     vault_specs = [(v.chain_id, v.vault_address) for v in hypercore_vaults]
     return vault_universe.limit_to_vaults(vault_specs, check_all_vaults_found=True)
 

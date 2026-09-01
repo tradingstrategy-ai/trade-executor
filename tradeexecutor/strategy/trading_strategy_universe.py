@@ -43,7 +43,7 @@ from tradingstrategy.utils.token_extra_data import load_extra_metadata
 from tradingstrategy.utils.token_filter import add_base_quote_address_columns
 from tradingstrategy.vault import VaultMetadata, VaultUniverse
 from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, convert_vault_prices_to_vault_state, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history, read_vault_price_history_parquet, VAULT_STATE_COLUMNS
-from tradingstrategy.vault_data_client import VaultDataClient, VaultDataset
+from tradingstrategy.vault_data_client import VaultDataAccessDenied, VaultDataClient, VaultDataset
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.ethereum.cctp.bridge_universe import generate_primary_to_satellite_cctp_bridge_universe
@@ -2388,7 +2388,6 @@ def load_all_data(
 def load_vault_universe_with_metadata(
     client: Client,
     vaults: list[tuple[ChainId, JSONHexAddress]] | None = None,
-    url: str | None = None,
     download_root: str | Path | None = None,
     check_all_vaults_found: bool = True,
 ) -> VaultUniverse:
@@ -2430,10 +2429,6 @@ def load_vault_universe_with_metadata(
     :param vaults:
         Optional list of (chain_id, address) tuples to limit the universe to.
         If None, all vaults are loaded.
-
-    :param url:
-        Optional custom URL to fetch vault metadata JSON from.
-        If not provided, uses the default Trading Strategy vault metrics endpoint.
 
     :param download_root:
         Override the root directory used for downloaded vault metadata.
@@ -2565,6 +2560,10 @@ def refresh_vault_universe_metadata_cache(
 
     try:
         create_vault_data_client(client, cache_path.parent).fetch_vault_universe()
+    except VaultDataAccessDenied:
+        # Falling back to stale metadata would hide a licence problem behind a
+        # repair that silently used old data. Surface it instead.
+        raise
     except Exception:
         if backup_path is not None and backup_path.exists():
             if cache_path.exists():
