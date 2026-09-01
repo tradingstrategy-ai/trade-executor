@@ -1,12 +1,18 @@
 """Tests for command line logging setup."""
 
+import json
 import logging
 import os
+import socket
 
 import pytest
 from eth_defi.coloured_logging import EthDefiRichHandler
 
-from tradeexecutor.cli.log import setup_logging
+from tradeexecutor.cli.log import (
+    MAX_LOGSTASH_UDP_PAYLOAD_SIZE,
+    setup_logging,
+    setup_logstash_logging,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -127,3 +133,112 @@ def test_setup_logging_uses_plain_handler_when_colour_is_disabled(
         isinstance(handler, logging.StreamHandler) and not isinstance(handler, EthDefiRichHandler)
         for handler in logger.handlers
     )
+
+
+@pytest.fixture()
+def logstash_udp_socket() -> socket.socket:
+    """Bind a local UDP socket standing in for a Logstash server.
+
+    A real socket is used instead of a mock, because the bug under test is
+    raised by the operating system - a datagram larger than the socket limit
+    fails with ``OSError: [Errno 90] Message too long`` - and a mocked
+    ``sendto()`` would happily accept any payload size.
+    """
+
+    server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server.bind(("127.0.0.1", 0))
+    server.settimeout(5)
+    try:
+        yield server
+    finally:
+        server.close()
+
+
+def test_logstash_logging_truncates_oversized_messages(
+    logstash_udp_socket: socket.socket,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """Check a huge diagnostic table still reaches Logstash as a truncated datagram.
+
+    Diagnostic tables like the stale vault listing are tens of kilobytes and
+    used to fail with ``OSError: [Errno 90] Message too long``, printing
+    ``--- Logging error ---`` and dropping the record entirely.
+
+    1. Point Logstash logging at a local UDP socket.
+    2. Log a small message and an oversized diagnostic table.
+    3. Verify the small message is delivered intact.
+    4. Verify the oversized message is delivered truncated, with its beginning preserved.
+    5. Verify logging did not report an error.
+    """
+
+    # 1. Point Logstash logging at a local UDP socket.
+    port = logstash_udp_socket.getsockname()[1]
+    setup_logstash_logging(
+        "127.0.0.1",
+        application_name="test-executor",
+        port=port,
+    )
+    logger = logging.getLogger(__name__)
+
+    # 2. Log a small message and an oversized diagnostic table.
+    table = "\n".join(
+        f"Vault {i:<40} 0x{'a' * 40} 2026-08-29 00:00:00 2026-08-29 03:48:46.965000 2 days 12:51:14"
+        for i in range(345)
+    )
+    assert len(table) > MAX_LOGSTASH_UDP_PAYLOAD_SIZE
+    logger.warning("Vault candle data is fresh")
+    logger.warning("Vault candle data is stale for %d vault(s):\n%s", 345, table)
+
+    # 3. Verify the small message is delivered intact.
+    small_datagram, _ = logstash_udp_socket.recvfrom(65535)
+    assert json.loads(small_datagram)["message"] == "Vault candle data is fresh"
+
+    # 4. Verify the oversized message is delivered truncated, with its beginning preserved.
+    large_datagram, _ = logstash_udp_socket.recvfrom(65535)
+    assert len(large_datagram) <= MAX_LOGSTASH_UDP_PAYLOAD_SIZE
+    message = json.loads(large_datagram)["message"]
+    assert message.startswith("Vault candle data is stale for 345 vault(s):\nVault 0 ")
+    assert "truncated" in message
+
+    # 5. Verify logging did not report an error.
+    assert "--- Logging error ---" not in capsys.readouterr().err
+
+
+def test_logstash_logging_replaces_records_that_cannot_be_shortened(
+    logstash_udp_socket: socket.socket,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """Check a record bloated outside its message is replaced by a placeholder.
+
+    The Logstash formatter turns every custom record attribute into an extra
+    field, so a short message can still produce an oversized datagram. Cutting
+    the message cannot help there, and the record must not be lost silently.
+
+    1. Point Logstash logging at a local UDP socket.
+    2. Log a short message carrying a megabyte-sized extra field.
+    3. Verify a placeholder datagram is delivered instead.
+    4. Verify logging did not report an error.
+    """
+
+    # 1. Point Logstash logging at a local UDP socket.
+    port = logstash_udp_socket.getsockname()[1]
+    setup_logstash_logging(
+        "127.0.0.1",
+        application_name="test-executor",
+        port=port,
+    )
+    logger = logging.getLogger(__name__)
+
+    # 2. Log a short message carrying a megabyte-sized extra field.
+    logger.warning(
+        "Position dump",
+        extra={"position_dump": "x" * 1_000_000},
+    )
+
+    # 3. Verify a placeholder datagram is delivered instead.
+    datagram, _ = logstash_udp_socket.recvfrom(65535)
+    assert len(datagram) <= MAX_LOGSTASH_UDP_PAYLOAD_SIZE
+    assert "dropped" in json.loads(datagram)["message"]
+
+    # 4. Verify logging did not report an error.
+    assert "--- Logging error ---" not in capsys.readouterr().err
