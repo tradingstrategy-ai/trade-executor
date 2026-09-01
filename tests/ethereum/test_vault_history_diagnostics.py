@@ -33,15 +33,16 @@ class _MockResponse:
         """Pretend the response succeeded."""
 
 
-def _make_vault_data_client() -> SimpleNamespace:
-    """Stand in for the Creem vault dataset client.
+def _make_vault_data_client(session: "_MockSession | None" = None) -> SimpleNamespace:
+    """Stand in for the vault dataset client.
 
-    The diagnostics only need the dataset URL and the API key to perform its
-    freshness HEAD request, not a real authenticated client.
+    The diagnostics only need the dataset URL, a session and the key to perform
+    their freshness HEAD request, not a real authenticated client.
     """
     return SimpleNamespace(
         get_url=lambda dataset: "https://example.com/vault-prices",
-        api_key="test-creem-key",
+        api_key="test-licence-key",
+        session=session if session is not None else _MockSession(response=_MockResponse({})),
     )
 
 
@@ -134,8 +135,7 @@ def test_build_vault_history_diagnostics_includes_cache_and_remote_metadata(
         filtered_vault_price_df=filtered_df,
         resampled_vault_candle_df=resampled_df,
         cache_path=cache_path,
-        http_session=session,
-        vault_data_client=_make_vault_data_client(),
+        vault_data_client=_make_vault_data_client(session),
         now=now,
     )
 
@@ -174,8 +174,7 @@ def test_build_vault_history_diagnostics_detects_daily_resample_floor_gap() -> N
         filtered_vault_price_df=raw_df.copy(),
         resampled_vault_candle_df=resampled_df,
         cache_path=None,
-        http_session=_MockSession(response=_MockResponse({})),
-        vault_data_client=_make_vault_data_client(),
+        vault_data_client=_make_vault_data_client(_MockSession(response=_MockResponse({}))),
         now=now,
     )
 
@@ -209,8 +208,7 @@ def test_log_vault_history_diagnostics_warns_when_source_data_is_stale(caplog: p
             }
         ),
         cache_path=None,
-        http_session=_MockSession(response=_MockResponse({})),
-        vault_data_client=_make_vault_data_client(),
+        vault_data_client=_make_vault_data_client(_MockSession(response=_MockResponse({}))),
         now=datetime.datetime(2026, 4, 11, 13, 59, 0),
     )
 
@@ -248,8 +246,7 @@ def test_log_vault_history_diagnostics_warns_when_remote_head_fails(caplog: pyte
             }
         ),
         cache_path=None,
-        http_session=_MockSession(error=requests.RequestException("boom")),
-        vault_data_client=_make_vault_data_client(),
+        vault_data_client=_make_vault_data_client(_MockSession(error=requests.RequestException("boom"))),
         now=datetime.datetime(2026, 4, 11, 13, 59, 0),
     )
 
@@ -289,10 +286,9 @@ def test_log_vault_history_diagnostics_does_not_warn_for_expected_d1_floor(
             }
         ),
         cache_path=None,
-        http_session=_MockSession(
+        vault_data_client=_make_vault_data_client(_MockSession(
             response=_MockResponse({"Content-Length": "12345"})
-        ),
-        vault_data_client=_make_vault_data_client(),
+        )),
         vault_history_filter_end_at=datetime.datetime(2026, 4, 11, 16, 43, 33),
         now=datetime.datetime(2026, 4, 11, 16, 43, 33),
     )
@@ -334,8 +330,7 @@ def test_log_vault_history_diagnostics_warns_for_unexpected_parquet_to_filtered_
             }
         ),
         cache_path=None,
-        http_session=_MockSession(response=_MockResponse({})),
-        vault_data_client=_make_vault_data_client(),
+        vault_data_client=_make_vault_data_client(_MockSession(response=_MockResponse({}))),
         vault_history_filter_end_at=datetime.datetime(2026, 4, 11, 13, 0, 0),
         now=datetime.datetime(2026, 4, 11, 13, 30, 0),
     )
@@ -377,8 +372,7 @@ def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(
             }
         ),
         cache_path=None,
-        http_session=_MockSession(response=_MockResponse({})),
-        vault_data_client=_make_vault_data_client(),
+        vault_data_client=_make_vault_data_client(_MockSession(response=_MockResponse({}))),
         now=datetime.datetime(2026, 4, 11, 13, 59, 0),
     )
     vault_candle_df = pd.DataFrame(
@@ -590,8 +584,7 @@ def test_build_vault_history_diagnostics_names_a_rejected_licence_key() -> None:
         ),
         resampled_vault_candle_df=None,
         cache_path=None,
-        http_session=session,
-        vault_data_client=_make_vault_data_client(),
+        vault_data_client=_make_vault_data_client(session),
         now=datetime.datetime(2026, 4, 8, 13, 0, 0),
     )
 

@@ -3134,9 +3134,8 @@ def load_partial_data(
                     filtered_vault_price_df=filtered_website_vault_prices_df,
                     resampled_vault_candle_df=vault_candle_df,
                     cache_path=vault_history_cache_path,
-                    http_session=vault_data_client.session,
-                    vault_history_filter_end_at=vault_history_filter_end_at,
                     vault_data_client=vault_data_client,
+                    vault_history_filter_end_at=vault_history_filter_end_at,
                     now=native_datetime_utc_now(),
                 )
                 log_vault_history_diagnostics(vault_history_diagnostics)

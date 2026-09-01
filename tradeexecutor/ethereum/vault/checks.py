@@ -27,7 +27,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pandas as pd
-import requests
 from tabulate import tabulate
 
 from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
@@ -160,23 +159,25 @@ def _calculate_expected_daily_flooring_reason(
 
 
 def _fetch_remote_vault_history_size(
-    http_session: requests.Session | None,
-    remote_url: str | None,
-    remote_params: dict | None = None,
+    vault_data_client: VaultDataClient | None,
 ) -> tuple[int | None, str | None]:
     """Fetch the size of the remote vault dataset with a lightweight HEAD request.
 
     :return:
         Size in bytes and an error description, either of which may be ``None``.
     """
-    if http_session is None:
-        return None, "No HTTP session available for remote vault metadata HEAD request"
-
-    if remote_url is None:
+    if vault_data_client is None:
         return None, "No vault dataset client available for remote vault metadata HEAD request"
 
+    url = vault_data_client.get_url(VaultDataset.vault_prices)
+
     try:
-        response = http_session.head(remote_url, params=remote_params, allow_redirects=True, timeout=30)
+        response = vault_data_client.session.head(
+            url,
+            params={"api-key": vault_data_client.api_key},
+            allow_redirects=True,
+            timeout=30,
+        )
     except Exception as exc:
         return None, f"{exc.__class__.__name__}: {exc}"
 
@@ -204,19 +205,18 @@ def build_vault_history_diagnostics(
     filtered_vault_price_df: pd.DataFrame,
     resampled_vault_candle_df: pd.DataFrame | None,
     cache_path: Path | None,
-    http_session: requests.Session | None,
-    vault_history_filter_end_at: datetime.datetime | None = None,
     vault_data_client: VaultDataClient | None = None,
+    vault_history_filter_end_at: datetime.datetime | None = None,
     now: datetime.datetime | None = None,
 ) -> VaultHistoryDiagnostics:
     """Build startup diagnostics for vault history freshness.
 
     :param vault_data_client:
-        Client used to locate the remote dataset for the freshness HEAD request.
+        Client used for the freshness HEAD request.
 
-        The vault price dataset sits behind the Creem API, so the request needs
-        the client's URL and API key. Diagnostics degrade to local-only
-        information when no client is given.
+        The vault price dataset sits behind a licence gated API, so the request
+        needs the client's URL, session and key. Diagnostics degrade to
+        local-only information when no client is given.
     """
     reference_now = now or native_datetime_utc_now()
 
@@ -226,18 +226,7 @@ def build_vault_history_diagnostics(
         local_cache_mtime = native_datetime_utc_fromtimestamp(cache_path.stat().st_mtime)
         local_cache_age = reference_now - local_cache_mtime
 
-    if vault_data_client is not None:
-        remote_url = vault_data_client.get_url(VaultDataset.vault_prices)
-        remote_params = {"api-key": vault_data_client.api_key}
-    else:
-        remote_url = None
-        remote_params = None
-
-    remote_content_length, remote_head_error = _fetch_remote_vault_history_size(
-        http_session=http_session,
-        remote_url=remote_url,
-        remote_params=remote_params,
-    )
+    remote_content_length, remote_head_error = _fetch_remote_vault_history_size(vault_data_client)
 
     parquet_max_timestamp = _get_max_timestamp(raw_vault_price_df)
     filtered_max_timestamp = _get_max_timestamp(filtered_vault_price_df)
