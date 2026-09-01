@@ -39,7 +39,6 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 def client() -> Client:
     api_key = os.environ.get("TRADING_STRATEGY_API_KEY")
     assert api_key, "TRADING_STRATEGY_API_KEY not set"
-    assert os.environ.get(VAULT_PRO_API_KEY_ENV_VAR), f"{VAULT_PRO_API_KEY_ENV_VAR} not set, vault datasets need their own licence key"
     return Client.create_live_client(api_key)
 
 
@@ -68,8 +67,8 @@ def hypercore_vault_universe(client: Client) -> VaultUniverse:
 
 @pytest.mark.timeout(120)
 @pytest.mark.skipif(
-    os.environ.get("TRADING_STRATEGY_API_KEY") is None,
-    reason="Set TRADING_STRATEGY_API_KEY to run this test",
+    os.environ.get("TRADING_STRATEGY_API_KEY") is None or os.environ.get(VAULT_PRO_API_KEY_ENV_VAR) is None,
+    reason=f"Set TRADING_STRATEGY_API_KEY and {VAULT_PRO_API_KEY_ENV_VAR} to run this test",
 )
 def test_hypercore_vault_export_types(hypercore_vault_universe):
     """Verify Hypercore vault exports use the current exchange type encoding.
@@ -99,8 +98,8 @@ def test_hypercore_vault_export_types(hypercore_vault_universe):
 
 @pytest.mark.timeout(120)
 @pytest.mark.skipif(
-    os.environ.get("TRADING_STRATEGY_API_KEY") is None,
-    reason="Set TRADING_STRATEGY_API_KEY to run this test",
+    os.environ.get("TRADING_STRATEGY_API_KEY") is None or os.environ.get(VAULT_PRO_API_KEY_ENV_VAR) is None,
+    reason=f"Set TRADING_STRATEGY_API_KEY and {VAULT_PRO_API_KEY_ENV_VAR} to run this test",
 )
 def test_hypercore_vault_routing(client, hypercore_vault_universe):
     """Verify default_supported_routers creates hypercore_vault routing.

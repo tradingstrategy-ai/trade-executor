@@ -192,11 +192,15 @@ def _fetch_remote_vault_history_size(
 
     try:
         response.raise_for_status()
+        content_length_header = response.headers.get("Content-Length")
+        content_length = int(content_length_header) if content_length_header is not None else None
     except Exception as exc:
+        # Header parsing is inside the guard on purpose. A proxy answering with
+        # a combined value like "12345, 12345" would otherwise raise ValueError
+        # out of a diagnostic and abort a live strategy that had already loaded
+        # its vault data successfully.
         return None, f"{exc.__class__.__name__}: {exc}"
 
-    content_length_header = response.headers.get("Content-Length")
-    content_length = int(content_length_header) if content_length_header is not None else None
     return content_length, None
 
 
