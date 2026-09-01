@@ -120,8 +120,6 @@ def test_build_vault_history_diagnostics_includes_cache_and_remote_metadata(
     session = _MockSession(
         response=_MockResponse(
             {
-                "Last-Modified": "Fri, 11 Apr 2026 12:30:00 GMT",
-                "ETag": '"abc123"',
                 "Content-Length": "12345",
             }
         )
@@ -142,9 +140,6 @@ def test_build_vault_history_diagnostics_includes_cache_and_remote_metadata(
     assert diagnostics.cache_path == cache_path
     assert diagnostics.local_cache_mtime == cache_mtime
     assert diagnostics.local_cache_age == datetime.timedelta(hours=4)
-    assert diagnostics.remote_last_modified == datetime.datetime(2026, 4, 11, 12, 30, 0)
-    assert diagnostics.remote_last_modified_age == datetime.timedelta(hours=1, minutes=30)
-    assert diagnostics.remote_etag == '"abc123"'
     assert diagnostics.remote_content_length == 12345
     assert diagnostics.parquet_max_timestamp == datetime.datetime(2026, 4, 11, 13, 0, 0)
     assert diagnostics.filtered_max_timestamp == datetime.datetime(2026, 4, 11, 13, 0, 0)
@@ -292,11 +287,7 @@ def test_log_vault_history_diagnostics_does_not_warn_for_expected_d1_floor(
         ),
         cache_path=None,
         http_session=_MockSession(
-            response=_MockResponse(
-                {
-                    "Last-Modified": "Fri, 10 Apr 2026 22:19:05 GMT",
-                }
-            )
+            response=_MockResponse({"Content-Length": "12345"})
         ),
         vault_data_client=_make_vault_data_client(),
         vault_history_filter_end_at=datetime.datetime(2026, 4, 11, 16, 43, 33),
