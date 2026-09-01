@@ -49,6 +49,25 @@ MAX_LOGSTASH_UDP_PAYLOAD_SIZE = 32_000
 #: See :py:class:`TruncatingLogstashHandlerMixin`.
 MAX_LOGSTASH_TRUNCATION_ATTEMPTS = 5
 
+#: Extra headroom taken on every shrink attempt, as a percentage.
+#:
+#: Shrinking strictly in proportion to the overshoot converges slowly when the
+#: payload is only a few bytes too large, and could burn all the attempts moving
+#: one character at a time. Overshooting the shrink guarantees progress.
+LOGSTASH_TRUNCATION_MARGIN_PERCENT = 5
+
+#: Maximum length of the record fields we copy into a placeholder record.
+#:
+#: Keeps the size of the last resort payload bounded even if a caller uses an
+#: unusually long logger name or source path.
+MAX_LOGSTASH_PLACEHOLDER_FIELD_LENGTH = 200
+
+#: Smallest datagram size the handler can work with.
+#:
+#: A placeholder record needs to fit in it, see
+#: :py:meth:`TruncatingLogstashHandlerMixin.create_placeholder_record`.
+MIN_LOGSTASH_UDP_PAYLOAD_SIZE = 2_000
+
 
 def setup_logging(
     log_level: None | str | int=logging.INFO,
@@ -443,6 +462,7 @@ class TruncatingLogstashHandlerMixin:
         :param max_payload_size:
             Maximum size of the serialised record, in bytes.
         """
+        assert max_payload_size >= MIN_LOGSTASH_UDP_PAYLOAD_SIZE, f"Datagram size {max_payload_size} is too small to fit a placeholder record"
         super().__init__(*args, **kwargs)
         self.max_payload_size = max_payload_size
 
@@ -466,8 +486,11 @@ class TruncatingLogstashHandlerMixin:
             # The JSON envelope and extra fields take room as well, and
             # non-ASCII characters expand to \uXXXX escapes when serialised,
             # so a character budget does not map one to one to datagram bytes.
-            # Shrink the budget in proportion to the overshoot and try again.
+            # Shrink the budget in proportion to the overshoot, with extra
+            # headroom so that a payload that is only slightly too large does
+            # not creep down one character per attempt, and try again.
             budget = budget * self.max_payload_size // len(payload)
+            budget = budget * (100 - LOGSTASH_TRUNCATION_MARGIN_PERCENT) // 100
             if budget <= 0:
                 break
 
@@ -523,18 +546,19 @@ class TruncatingLogstashHandlerMixin:
 
         We build a fresh record instead of copying, because the original may
         carry large custom attributes which the Logstash formatter turns into
-        extra fields.
+        extra fields. Every field we do copy over is capped, so that the size of
+        the resulting datagram stays bounded by the handler configuration.
         """
 
         placeholder = logging.LogRecord(
-            name=record.name,
+            name=record.name[:MAX_LOGSTASH_PLACEHOLDER_FIELD_LENGTH],
             level=record.levelno,
-            pathname=record.pathname,
+            pathname=record.pathname[:MAX_LOGSTASH_PLACEHOLDER_FIELD_LENGTH],
             lineno=record.lineno,
             msg="Log message of %d characters dropped: too long for a %d byte Logstash UDP datagram",
             args=(message_length, self.max_payload_size),
             exc_info=None,
-            func=record.funcName,
+            func=(record.funcName or "")[:MAX_LOGSTASH_PLACEHOLDER_FIELD_LENGTH],
         )
         # Report the moment of the original event, not the moment of the fallback
         placeholder.created = record.created

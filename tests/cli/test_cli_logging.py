@@ -4,12 +4,16 @@ import json
 import logging
 import os
 import socket
+import sys
+from collections.abc import Iterator
 
+import logstash
 import pytest
 from eth_defi.coloured_logging import EthDefiRichHandler
 
 from tradeexecutor.cli.log import (
     MAX_LOGSTASH_UDP_PAYLOAD_SIZE,
+    create_logstash_handler,
     setup_logging,
     setup_logstash_logging,
 )
@@ -136,22 +140,41 @@ def test_setup_logging_uses_plain_handler_when_colour_is_disabled(
 
 
 @pytest.fixture()
-def logstash_udp_socket() -> socket.socket:
+def logstash_udp_socket() -> Iterator[socket.socket]:
     """Bind a local UDP socket standing in for a Logstash server.
 
     A real socket is used instead of a mock, because the bug under test is
     raised by the operating system - a datagram larger than the socket limit
     fails with ``OSError: [Errno 90] Message too long`` - and a mocked
     ``sendto()`` would happily accept any payload size.
+
+    1. Bind a datagram socket on an ephemeral loopback port.
+    2. Hand the socket to the test.
+    3. Close the socket afterwards.
     """
 
+    # 1. Bind a datagram socket on an ephemeral loopback port.
     server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server.bind(("127.0.0.1", 0))
     server.settimeout(5)
+
     try:
+        # 2. Hand the socket to the test.
         yield server
     finally:
+        # 3. Close the socket afterwards.
         server.close()
+
+
+def receive_messages(server: socket.socket, count: int) -> dict[str, bytes]:
+    """Read datagrams and index them by their log message.
+
+    UDP does not guarantee ordering, so tests must not assume the datagrams
+    arrive in the order they were logged.
+    """
+
+    datagrams = [server.recvfrom(65535)[0] for _ in range(count)]
+    return {json.loads(datagram)["message"]: datagram for datagram in datagrams}
 
 
 def test_logstash_logging_truncates_oversized_messages(
@@ -163,6 +186,11 @@ def test_logstash_logging_truncates_oversized_messages(
     Diagnostic tables like the stale vault listing are tens of kilobytes and
     used to fail with ``OSError: [Errno 90] Message too long``, printing
     ``--- Logging error ---`` and dropping the record entirely.
+
+    The table is built from CJK and emoji vault names as seen in production,
+    because ``json.dumps()`` escapes those into ``\\uXXXX`` sequences of up to 12
+    bytes per character. A budget counted in characters instead of bytes would
+    therefore still produce an oversized datagram.
 
     1. Point Logstash logging at a local UDP socket.
     2. Log a small message and an oversized diagnostic table.
@@ -182,26 +210,84 @@ def test_logstash_logging_truncates_oversized_messages(
 
     # 2. Log a small message and an oversized diagnostic table.
     table = "\n".join(
-        f"Vault {i:<40} 0x{'a' * 40} 2026-08-29 00:00:00 2026-08-29 03:48:46.965000 2 days 12:51:14"
+        f"● MONO BLACK TOKYO「MORI 森」💩 {i:<20} 0x{'a' * 40} 2026-08-29 00:00:00 2 days 12:51:14"
         for i in range(345)
     )
     assert len(table) > MAX_LOGSTASH_UDP_PAYLOAD_SIZE
     logger.warning("Vault candle data is fresh")
     logger.warning("Vault candle data is stale for %d vault(s):\n%s", 345, table)
+    messages = receive_messages(logstash_udp_socket, 2)
 
     # 3. Verify the small message is delivered intact.
-    small_datagram, _ = logstash_udp_socket.recvfrom(65535)
-    assert json.loads(small_datagram)["message"] == "Vault candle data is fresh"
+    assert len(messages["Vault candle data is fresh"]) <= MAX_LOGSTASH_UDP_PAYLOAD_SIZE
 
     # 4. Verify the oversized message is delivered truncated, with its beginning preserved.
-    large_datagram, _ = logstash_udp_socket.recvfrom(65535)
-    assert len(large_datagram) <= MAX_LOGSTASH_UDP_PAYLOAD_SIZE
-    message = json.loads(large_datagram)["message"]
-    assert message.startswith("Vault candle data is stale for 345 vault(s):\nVault 0 ")
-    assert "truncated" in message
+    truncated_message = next(
+        message for message in messages if message.startswith("Vault candle data is stale")
+    )
+    assert len(messages[truncated_message]) <= MAX_LOGSTASH_UDP_PAYLOAD_SIZE
+    assert truncated_message.startswith(
+        "Vault candle data is stale for 345 vault(s):\n● MONO BLACK TOKYO「MORI 森」💩 0 "
+    )
+    assert "truncated" in truncated_message
 
     # 5. Verify logging did not report an error.
     assert "--- Logging error ---" not in capsys.readouterr().err
+
+
+def test_logstash_handler_leaves_fitting_records_untouched() -> None:
+    """Check the truncating handler is transparent for ordinary log records.
+
+    Truncation must not become a tax on every log line: a record that fits has
+    to serialise exactly as the stock handler serialises it, and an oversized
+    record must not corrupt the shared record that console, file and Sentry
+    handlers read afterwards.
+
+    1. Create a truncating handler and a stock handler with the same settings.
+    2. Serialise a small record with both.
+    3. Verify the two payloads are byte for byte identical.
+    4. Serialise an oversized record with the truncating handler.
+    5. Verify the oversized record itself was not modified.
+    """
+
+    # 1. Create a truncating handler and a stock handler with the same settings.
+    truncating_handler = create_logstash_handler(
+        "127.0.0.1",
+        5959,
+        tags=["python"],
+        extra_fields={"application": "test-executor"},
+    )
+    reference_handler = logstash.UDPLogstashHandler(
+        "127.0.0.1",
+        5959,
+        version=1,
+        tags=["python"],
+        extra_fields={"application": "test-executor"},
+    )
+
+    # 2. Serialise a small record with both.
+    small_record = logging.LogRecord(
+        "test", logging.WARNING, "/tmp/test.py", 10, "Vault %s is fresh", ("Storm",), None
+    )
+
+    # 3. Verify the two payloads are byte for byte identical.
+    assert truncating_handler.makePickle(small_record) == reference_handler.makePickle(small_record)
+
+    # 4. Serialise an oversized record with the truncating handler.
+    table = "森" * MAX_LOGSTASH_UDP_PAYLOAD_SIZE
+    try:
+        raise RuntimeError("Vault price feed is stale")
+    except RuntimeError:
+        large_record = logging.LogRecord(
+            "test", logging.WARNING, "/tmp/test.py", 10, "Stale:\n%s", (table,), sys.exc_info()
+        )
+    payload = truncating_handler.makePickle(large_record)
+    assert len(payload) <= MAX_LOGSTASH_UDP_PAYLOAD_SIZE
+
+    # 5. Verify the oversized record itself was not modified.
+    assert large_record.getMessage() == f"Stale:\n{table}"
+    assert large_record.args == (table,)
+    assert large_record.exc_info is not None
 
 
 def test_logstash_logging_replaces_records_that_cannot_be_shortened(
@@ -236,9 +322,10 @@ def test_logstash_logging_replaces_records_that_cannot_be_shortened(
     )
 
     # 3. Verify a placeholder datagram is delivered instead.
-    datagram, _ = logstash_udp_socket.recvfrom(65535)
+    messages = receive_messages(logstash_udp_socket, 1)
+    message, datagram = next(iter(messages.items()))
     assert len(datagram) <= MAX_LOGSTASH_UDP_PAYLOAD_SIZE
-    assert "dropped" in json.loads(datagram)["message"]
+    assert "dropped" in message
 
     # 4. Verify logging did not report an error.
     assert "--- Logging error ---" not in capsys.readouterr().err
