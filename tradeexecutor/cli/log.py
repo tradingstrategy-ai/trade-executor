@@ -3,6 +3,7 @@
 We have a custom level `logging.TRADE` that we use to log trade execution to Discord and such.
 """
 
+import copy
 import logging
 import os
 import sys
@@ -27,6 +28,45 @@ except ImportError:
 
 #: Stored here as a global so that we can later call RingBufferHandler.export()
 _ring_buffer_handler: Optional[RingBufferHandler] = None
+
+
+#: Maximum size of a single UDP datagram we send to a Logstash server.
+#:
+#: The operating system refuses to send datagrams larger than ~64 kB and raises
+#: ``OSError: [Errno 90] Message too long`` (``EMSGSIZE``). Python's logging
+#: module then prints ``--- Logging error ---`` with a traceback and drops the
+#: record, so the log line never reaches Logstash or Sentry.
+#:
+#: Trade executor emits diagnostic tables (stale vault listings, universe dumps)
+#: and long tracebacks that easily exceed this limit, so we truncate the message
+#: before handing it to the socket. The limit is set well below the theoretical
+#: 65,507 byte maximum, because intermediate network equipment and the Logstash
+#: UDP input buffer may cap the datagram size lower than the local kernel does.
+MAX_LOGSTASH_UDP_PAYLOAD_SIZE = 32_000
+
+#: How many times we shrink an oversized message before giving up on its content.
+#:
+#: See :py:class:`TruncatingLogstashHandlerMixin`.
+MAX_LOGSTASH_TRUNCATION_ATTEMPTS = 5
+
+#: Extra headroom taken on every shrink attempt, as a percentage.
+#:
+#: Shrinking strictly in proportion to the overshoot converges slowly when the
+#: payload is only a few bytes too large, and could burn all the attempts moving
+#: one character at a time. Overshooting the shrink guarantees progress.
+LOGSTASH_TRUNCATION_MARGIN_PERCENT = 5
+
+#: Maximum length of the record fields we copy into a placeholder record.
+#:
+#: Keeps the size of the last resort payload bounded even if a caller uses an
+#: unusually long logger name or source path.
+MAX_LOGSTASH_PLACEHOLDER_FIELD_LENGTH = 200
+
+#: Smallest datagram size the handler can work with.
+#:
+#: A placeholder record needs to fit in it, see
+#: :py:meth:`TruncatingLogstashHandlerMixin.create_placeholder_record`.
+MIN_LOGSTASH_UDP_PAYLOAD_SIZE = 2_000
 
 
 def setup_logging(
@@ -392,6 +432,169 @@ def setup_telegram_logging(
     return telegram_handler
 
 
+class TruncatingLogstashHandlerMixin:
+    """Truncate oversized log records before they are sent over UDP.
+
+    A Logstash UDP handler serialises the whole log record into a single
+    datagram. When the datagram does not fit the operating system limit, the
+    send fails with ``OSError: [Errno 90] Message too long`` (``EMSGSIZE``),
+    Python's logging module prints ``--- Logging error ---`` with a traceback
+    to stderr, and the record is lost.
+
+    Trade executor logs diagnostic tables that can be tens of kilobytes, for
+    example the stale vault listing in
+    :py:func:`tradeexecutor.ethereum.vault.checks.log_stale_vault_candle_data`
+    which tabulates every vault in the trading universe. Those messages are the
+    ones an operator needs most when the executor is misbehaving, so instead of
+    dropping them we shorten the message until the datagram fits.
+
+    Only the copy sent to Logstash is shortened. Console and file handlers keep
+    receiving the full, untouched record.
+    """
+
+    def __init__(
+        self,
+        *args,
+        max_payload_size: int = MAX_LOGSTASH_UDP_PAYLOAD_SIZE,
+        **kwargs,
+    ):
+        """
+        :param max_payload_size:
+            Maximum size of the serialised record, in bytes.
+        """
+        assert max_payload_size >= MIN_LOGSTASH_UDP_PAYLOAD_SIZE, f"Datagram size {max_payload_size} is too small to fit a placeholder record"
+        super().__init__(*args, **kwargs)
+        self.max_payload_size = max_payload_size
+
+    def makePickle(self, record: logging.LogRecord):
+        """Serialise the record, shortening the message if the datagram is too large."""
+
+        payload = super().makePickle(record)
+        if len(payload) <= self.max_payload_size:
+            return payload
+
+        message = record.getMessage()
+        budget = min(len(message), self.max_payload_size)
+
+        for _ in range(MAX_LOGSTASH_TRUNCATION_ATTEMPTS):
+            payload = super().makePickle(
+                self.truncate_record(record, message, budget)
+            )
+            if len(payload) <= self.max_payload_size:
+                return payload
+
+            # The JSON envelope and extra fields take room as well, and
+            # non-ASCII characters expand to \uXXXX escapes when serialised,
+            # so a character budget does not map one to one to datagram bytes.
+            # Shrink the budget in proportion to the overshoot, with extra
+            # headroom so that a payload that is only slightly too large does
+            # not creep down one character per attempt, and try again.
+            budget = budget * self.max_payload_size // len(payload)
+            budget = budget * (100 - LOGSTASH_TRUNCATION_MARGIN_PERCENT) // 100
+            if budget <= 0:
+                break
+
+        # The record carries so much data outside the message - long extra
+        # fields or a huge stack trace - that no message length fits. Send a
+        # fixed size placeholder instead, so that at least the existence of the
+        # log entry reaches Logstash.
+        return super().makePickle(self.create_placeholder_record(record, len(message)))
+
+    def truncate_record(
+        self,
+        record: logging.LogRecord,
+        message: str,
+        budget: int,
+    ) -> logging.LogRecord:
+        """Create a copy of the record with the message cut to ``budget`` characters.
+
+        The original record is never mutated, because it is shared with the
+        other handlers of the logger.
+
+        :param message:
+            The already interpolated message of the original record.
+
+        :param budget:
+            How many characters of the message we can keep.
+        """
+
+        # len(message) is an upper bound for the digits of the omitted counter,
+        # so accounting for the suffix with it can never underestimate its length
+        suffix_length = len(self.format_truncation_suffix(len(message)))
+        kept = max(0, budget - suffix_length)
+
+        truncated = copy.copy(record)
+        truncated.msg = message[:kept] + self.format_truncation_suffix(len(message) - kept)
+        truncated.args = None
+        # A stack trace would be truncated away anyway, and it is available
+        # in the console and file logs
+        truncated.exc_info = None
+        truncated.exc_text = None
+        truncated.stack_info = None
+        return truncated
+
+    def format_truncation_suffix(self, omitted_characters: int) -> str:
+        """Human-readable marker appended to a shortened message."""
+        return f"... [truncated {omitted_characters} characters to fit a {self.max_payload_size} byte Logstash UDP datagram]"
+
+    def create_placeholder_record(
+        self,
+        record: logging.LogRecord,
+        message_length: int,
+    ) -> logging.LogRecord:
+        """Create a minimal stand-in record for a log entry we cannot fit in a datagram.
+
+        We build a fresh record instead of copying, because the original may
+        carry large custom attributes which the Logstash formatter turns into
+        extra fields. Every field we do copy over is capped, so that the size of
+        the resulting datagram stays bounded by the handler configuration.
+        """
+
+        placeholder = logging.LogRecord(
+            name=record.name[:MAX_LOGSTASH_PLACEHOLDER_FIELD_LENGTH],
+            level=record.levelno,
+            pathname=record.pathname[:MAX_LOGSTASH_PLACEHOLDER_FIELD_LENGTH],
+            lineno=record.lineno,
+            msg="Log message of %d characters dropped: too long for a %d byte Logstash UDP datagram",
+            args=(message_length, self.max_payload_size),
+            exc_info=None,
+            func=(record.funcName or "")[:MAX_LOGSTASH_PLACEHOLDER_FIELD_LENGTH],
+        )
+        # Report the moment of the original event, not the moment of the fallback
+        placeholder.created = record.created
+        placeholder.msecs = record.msecs
+        return placeholder
+
+
+def create_logstash_handler(
+    logstash_server: str,
+    port: int,
+    tags: List[str],
+    extra_fields: dict,
+    max_payload_size: int = MAX_LOGSTASH_UDP_PAYLOAD_SIZE,
+):
+    """Create an UDP Logstash handler that survives oversized log messages.
+
+    ``logstash`` is an optional dependency, not available in the Pyodide build,
+    so the handler class is only constructed when this function is called.
+
+    :param max_payload_size:
+        Maximum size of a single datagram, in bytes.
+    """
+
+    class TruncatingUDPLogstashHandler(TruncatingLogstashHandlerMixin, logstash.UDPLogstashHandler):
+        """UDP Logstash handler that shortens oversized messages."""
+
+    return TruncatingUDPLogstashHandler(
+        logstash_server,
+        port,
+        version=1,
+        tags=tags,
+        extra_fields=extra_fields,
+        max_payload_size=max_payload_size,
+    )
+
+
 def setup_logstash_logging(
         logstash_server: str,
         application_name: str,
@@ -438,7 +641,12 @@ def setup_logstash_logging(
     # Include our application name in the logs
     assert application_name, "Cannot use Logstash without application_name set"
     extra_fields = {"application": application_name}
-    handler = logstash.UDPLogstashHandler(logstash_server, port, version=1, tags=tags, extra_fields=extra_fields)
+    handler = create_logstash_handler(
+        logstash_server,
+        port,
+        tags=tags,
+        extra_fields=extra_fields,
+    )
     handler.setLevel(level)
     logger.addHandler(handler)
     return logger
