@@ -122,6 +122,7 @@ def vault_test_trade(
     ),
     name: str | None = shared_options.name,
     trading_strategy_api_key: str | None = shared_options.trading_strategy_api_key,
+    vault_pro_api_key: str | None = shared_options.vault_pro_api_key,
     state_file: Path | None = shared_options.state_file,
     cache_path: Path | None = shared_options.cache_path,
     log_level: str | None = shared_options.log_level,
@@ -226,6 +227,7 @@ def vault_test_trade(
         executor_id=executor_id,
         cache_path=cache_path,
         trading_strategy_api_key=trading_strategy_api_key,
+        vault_pro_api_key=vault_pro_api_key,
         unit_testing=unit_testing,
     )
 
