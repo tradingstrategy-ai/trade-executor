@@ -42,6 +42,7 @@ def backtest(
 
     # Backtest already requires an API key
     trading_strategy_api_key: str = required_option(shared_options.trading_strategy_api_key),
+    vault_pro_api_key: str = shared_options.vault_pro_api_key,
 
     log_level: str = shared_options.log_level,
 
@@ -124,15 +125,18 @@ def backtest(
 
     assert trading_strategy_api_key, "Cannot start the backtest without trading_strategy_api_key - please give command line option or give TRADING_STRATEGY_API_KEY env var"
 
+
     print(f"Starting backtesting for {strategy_file}")
 
     def loop():
         nonlocal trading_strategy_api_key
+        nonlocal vault_pro_api_key
         nonlocal cache_path
 
         result = run_backtest_for_module(
             strategy_file=strategy_file,
             trading_strategy_api_key=trading_strategy_api_key,
+            vault_pro_api_key=vault_pro_api_key,
             execution_context=standalone_backtest_execution_context,
             max_workers=max_workers,
             cache_path=cache_path,

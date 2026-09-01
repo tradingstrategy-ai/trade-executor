@@ -33,6 +33,7 @@ def lagoon_settle(
 
     strategy_file: Path = shared_options.strategy_file,
     trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
+    vault_pro_api_key: str = shared_options.vault_pro_api_key,
     state_file: Optional[Path] = shared_options.state_file,
     cache_path: Optional[Path] = shared_options.cache_path,
 
@@ -104,6 +105,7 @@ def lagoon_settle(
         mod=mod,
         web3config=web3config,
         trading_strategy_api_key=trading_strategy_api_key,
+        vault_pro_api_key=vault_pro_api_key,
         cache_path=cache_path,
         test_evm_uniswap_v2_factory=test_evm_uniswap_v2_factory,
         test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,

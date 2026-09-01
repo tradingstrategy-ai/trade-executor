@@ -71,8 +71,24 @@ def test_resolve_live_end_timestamps_without_rounding() -> None:
     assert vault_history_filter_end_at == explicit_end_at
 
 
+
+def make_vault_data_client_stub(parquet_path: Path) -> SimpleNamespace:
+    """Stand in for the Creem vault dataset client.
+
+    The real client downloads a paid dataset over HTTP, so tests hand the loader
+    a local parquet instead.
+    """
+    return SimpleNamespace(
+        download=lambda dataset: parquet_path,
+        session=None,
+        api_key="test-creem-key",
+        get_url=lambda dataset: "https://example.com/vault-prices",
+    )
+
+
 def test_load_partial_data_uses_unfloored_vault_history_cutoff(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Verify live website vault history filtering receives the unfloored cutoff.
 
@@ -88,7 +104,8 @@ def test_load_partial_data_uses_unfloored_vault_history_cutoff(
     )
     client = Client(None, transport)
     client.fetch_exchange_universe = lambda: ExchangeUniverse({})
-    client.fetch_vault_price_history = lambda download_root=None: pd.DataFrame(
+    parquet_path = tmp_path / "vault-prices.parquet"
+    pd.DataFrame(
         [
             {
                 "timestamp": pd.Timestamp("2026-04-11 04:22:29.962000"),
@@ -105,9 +122,14 @@ def test_load_partial_data_uses_unfloored_vault_history_cutoff(
                 "total_assets": 999.0,
             },
         ]
-    )
+    ).to_parquet(parquet_path)
 
     # 1. Build a stubbed live loader path with a fixed intraday clock and local vault history rows.
+    monkeypatch.setattr(
+        trading_strategy_universe,
+        "create_vault_data_client",
+        lambda client, download_root=None: make_vault_data_client_stub(parquet_path),
+    )
     monkeypatch.setattr(trading_strategy_universe, "native_datetime_utc_now", lambda: fixed_now)
     monkeypatch.setattr(
         trading_strategy_universe,
@@ -126,21 +148,26 @@ def test_load_partial_data_uses_unfloored_vault_history_cutoff(
         ),
     )
 
-    def _capture_filter(
-        vault_prices_df: pd.DataFrame,
-        vault_pairs_df: pd.DataFrame,
+    real_read_vault_price_history_parquet = trading_strategy_universe.read_vault_price_history_parquet
+
+    def _capture_read(
+        path,
+        vault_pairs_df: pd.DataFrame | None = None,
         start_at: datetime.datetime | None = None,
         end_at: datetime.datetime | None = None,
+        columns: list[str] | None = None,
     ) -> pd.DataFrame:
-        captured["end_at"] = end_at
-        del vault_pairs_df
-        if start_at is not None:
-            vault_prices_df = vault_prices_df.loc[vault_prices_df["timestamp"] >= pd.Timestamp(start_at)]
-        if end_at is not None:
-            vault_prices_df = vault_prices_df.loc[vault_prices_df["timestamp"] <= pd.Timestamp(end_at)]
-        return vault_prices_df.copy()
+        if vault_pairs_df is not None:
+            captured["end_at"] = end_at
+        return real_read_vault_price_history_parquet(
+            path,
+            vault_pairs_df=vault_pairs_df,
+            start_at=start_at,
+            end_at=end_at,
+            columns=columns,
+        )
 
-    monkeypatch.setattr(trading_strategy_universe, "filter_vault_price_history", _capture_filter)
+    monkeypatch.setattr(trading_strategy_universe, "read_vault_price_history_parquet", _capture_read)
     monkeypatch.setattr(
         trading_strategy_universe,
         "convert_vault_prices_to_candles",
@@ -222,14 +249,17 @@ def test_load_partial_data_fast_vault_history_path_filters_parquet(
 
     transport = SimpleNamespace(
         requests=None,
-        fetch_vault_price_history=lambda download_root=None: parquet_path,
         get_cached_file_path=lambda filename, cache_path=None: parquet_path,
     )
     client = Client(None, transport)
     client.fetch_exchange_universe = lambda: ExchangeUniverse({})
-    client.fetch_vault_price_history = lambda download_root=None: pytest.fail("client fallback should not be used")
 
     # 1. Create a local vault history parquet with matching, non-matching and after-cutoff rows.
+    monkeypatch.setattr(
+        trading_strategy_universe,
+        "create_vault_data_client",
+        lambda client, download_root=None: make_vault_data_client_stub(parquet_path),
+    )
     monkeypatch.setattr(trading_strategy_universe, "native_datetime_utc_now", lambda: fixed_now)
     monkeypatch.setattr(
         trading_strategy_universe,

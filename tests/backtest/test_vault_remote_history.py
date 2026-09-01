@@ -14,11 +14,15 @@ from tradeexecutor.strategy.trading_strategy_universe import (
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
+from tradingstrategy.vault_data_client import VaultDataset, VAULT_PRO_API_KEY_ENV_VAR
 from tradingstrategy.exchange import ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 
 
-pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
+pytestmark = pytest.mark.skipif(
+    os.environ.get("TRADING_STRATEGY_API_KEY") is None or os.environ.get(VAULT_PRO_API_KEY_ENV_VAR) is None,
+    reason=f"Set TRADING_STRATEGY_API_KEY and {VAULT_PRO_API_KEY_ENV_VAR} environment variables to run this test",
+)
 
 
 REMOTE_VAULTS = [
@@ -81,5 +85,5 @@ def test_load_partial_data_with_remote_vault_history(
     assert len(dataset.candles.loc[dataset.candles["pair_id"].isin(vault_pair_ids)]) > 0
     assert dataset.liquidity is not None
     assert len(dataset.liquidity.loc[dataset.liquidity["pair_id"].isin(vault_pair_ids)]) > 0
-    assert (expected_vault_download_root / "vault-universe.json").exists()
-    assert (expected_vault_download_root / "vault-price-history.parquet").exists()
+    assert (expected_vault_download_root / VaultDataset.vault_metadata.file_name).exists()
+    assert (expected_vault_download_root / VaultDataset.vault_prices.file_name).exists()

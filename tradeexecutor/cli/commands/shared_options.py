@@ -118,6 +118,9 @@ csv_daily_returns_report = Option(None, envvar="CSV_REPORT", help="CSV file of d
 
 trading_strategy_api_key = Option(None, envvar="TRADING_STRATEGY_API_KEY", help="Trading Strategy API key")
 
+#: Vault datasets are a separate paid product from the oracle API and use their own credential.
+vault_pro_api_key = Option(None, envvar="VAULT_PRO_API_KEY", help="Creem licence key for the paid vault datasets, needed by any strategy that loads vault metadata or vault price history. Emailed on purchase from https://tradingstrategy.ai/vaults/datasets and formatted as five dash separated groups. This is not --trading-strategy-api-key: the oracle key is secret-token: prefixed and the vault dataset API rejects it.")
+
 hypersync_api_key = Option(None, envvar="HYPERSYNC_API_KEY", help="HyperSync API key for reading guard config events from on-chain. Not needed for simulated (Anvil) deployments.")
 
 chain_name = Option(None, envvar="CHAIN_NAME", help="Chain slug to select when multiple JSON-RPC endpoints are configured (e.g. 'base', 'arbitrum'). Required for simulate mode with multiple RPCs.")

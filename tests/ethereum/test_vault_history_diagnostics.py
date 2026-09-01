@@ -9,6 +9,8 @@ import pandas as pd
 import pytest
 import requests
 
+from tradingstrategy.vault_data_client import VAULT_PRO_API_KEY_ENV_VAR
+
 from tradeexecutor.ethereum.vault.checks import (
     build_vault_history_diagnostics,
     log_stale_vault_candle_data,
@@ -23,11 +25,25 @@ pytestmark = pytest.mark.timeout(300)
 class _MockResponse:
     """Minimal response stub for HEAD metadata tests."""
 
-    def __init__(self, headers: dict[str, str]):
+    def __init__(self, headers: dict[str, str], status_code: int = 200):
         self.headers = headers
+        self.status_code = status_code
 
     def raise_for_status(self) -> None:
         """Pretend the response succeeded."""
+
+
+def _make_vault_data_client(session: "_MockSession | None" = None) -> SimpleNamespace:
+    """Stand in for the vault dataset client.
+
+    The diagnostics only need the dataset URL, a session and the key to perform
+    their freshness HEAD request, not a real authenticated client.
+    """
+    return SimpleNamespace(
+        get_url=lambda dataset: "https://example.com/vault-prices",
+        api_key="test-licence-key",
+        session=session if session is not None else _MockSession(response=_MockResponse({})),
+    )
 
 
 class _MockSession:
@@ -41,7 +57,7 @@ class _MockSession:
         self.response = response
         self.error = error
 
-    def head(self, url: str, allow_redirects: bool = True, timeout: int = 30) -> _MockResponse:
+    def head(self, url: str, params: dict | None = None, allow_redirects: bool = True, timeout: int = 30) -> _MockResponse:
         """Return the configured response or raise the configured error."""
         del url
         del allow_redirects
@@ -108,8 +124,6 @@ def test_build_vault_history_diagnostics_includes_cache_and_remote_metadata(
     session = _MockSession(
         response=_MockResponse(
             {
-                "Last-Modified": "Fri, 11 Apr 2026 12:30:00 GMT",
-                "ETag": '"abc123"',
                 "Content-Length": "12345",
             }
         )
@@ -121,7 +135,7 @@ def test_build_vault_history_diagnostics_includes_cache_and_remote_metadata(
         filtered_vault_price_df=filtered_df,
         resampled_vault_candle_df=resampled_df,
         cache_path=cache_path,
-        http_session=session,
+        vault_data_client=_make_vault_data_client(session),
         now=now,
     )
 
@@ -129,9 +143,6 @@ def test_build_vault_history_diagnostics_includes_cache_and_remote_metadata(
     assert diagnostics.cache_path == cache_path
     assert diagnostics.local_cache_mtime == cache_mtime
     assert diagnostics.local_cache_age == datetime.timedelta(hours=4)
-    assert diagnostics.remote_last_modified == datetime.datetime(2026, 4, 11, 12, 30, 0)
-    assert diagnostics.remote_last_modified_age == datetime.timedelta(hours=1, minutes=30)
-    assert diagnostics.remote_etag == '"abc123"'
     assert diagnostics.remote_content_length == 12345
     assert diagnostics.parquet_max_timestamp == datetime.datetime(2026, 4, 11, 13, 0, 0)
     assert diagnostics.filtered_max_timestamp == datetime.datetime(2026, 4, 11, 13, 0, 0)
@@ -163,7 +174,7 @@ def test_build_vault_history_diagnostics_detects_daily_resample_floor_gap() -> N
         filtered_vault_price_df=raw_df.copy(),
         resampled_vault_candle_df=resampled_df,
         cache_path=None,
-        http_session=_MockSession(response=_MockResponse({})),
+        vault_data_client=_make_vault_data_client(_MockSession(response=_MockResponse({}))),
         now=now,
     )
 
@@ -197,7 +208,7 @@ def test_log_vault_history_diagnostics_warns_when_source_data_is_stale(caplog: p
             }
         ),
         cache_path=None,
-        http_session=_MockSession(response=_MockResponse({})),
+        vault_data_client=_make_vault_data_client(_MockSession(response=_MockResponse({}))),
         now=datetime.datetime(2026, 4, 11, 13, 59, 0),
     )
 
@@ -235,7 +246,7 @@ def test_log_vault_history_diagnostics_warns_when_remote_head_fails(caplog: pyte
             }
         ),
         cache_path=None,
-        http_session=_MockSession(error=requests.RequestException("boom")),
+        vault_data_client=_make_vault_data_client(_MockSession(error=requests.RequestException("boom"))),
         now=datetime.datetime(2026, 4, 11, 13, 59, 0),
     )
 
@@ -275,13 +286,9 @@ def test_log_vault_history_diagnostics_does_not_warn_for_expected_d1_floor(
             }
         ),
         cache_path=None,
-        http_session=_MockSession(
-            response=_MockResponse(
-                {
-                    "Last-Modified": "Fri, 10 Apr 2026 22:19:05 GMT",
-                }
-            )
-        ),
+        vault_data_client=_make_vault_data_client(_MockSession(
+            response=_MockResponse({"Content-Length": "12345"})
+        )),
         vault_history_filter_end_at=datetime.datetime(2026, 4, 11, 16, 43, 33),
         now=datetime.datetime(2026, 4, 11, 16, 43, 33),
     )
@@ -323,7 +330,7 @@ def test_log_vault_history_diagnostics_warns_for_unexpected_parquet_to_filtered_
             }
         ),
         cache_path=None,
-        http_session=_MockSession(response=_MockResponse({})),
+        vault_data_client=_make_vault_data_client(_MockSession(response=_MockResponse({}))),
         vault_history_filter_end_at=datetime.datetime(2026, 4, 11, 13, 0, 0),
         now=datetime.datetime(2026, 4, 11, 13, 30, 0),
     )
@@ -365,7 +372,7 @@ def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(
             }
         ),
         cache_path=None,
-        http_session=_MockSession(response=_MockResponse({})),
+        vault_data_client=_make_vault_data_client(_MockSession(response=_MockResponse({}))),
         now=datetime.datetime(2026, 4, 11, 13, 59, 0),
     )
     vault_candle_df = pd.DataFrame(
@@ -547,3 +554,41 @@ def test_log_stale_vault_candle_data_warns_when_source_history_is_stale(
     assert warning_record.levelname == "WARNING"
     assert "last_source" in warning_record.message
     assert "2026-04-12 02:00:00" in warning_record.message
+
+
+def test_build_vault_history_diagnostics_names_a_rejected_licence_key() -> None:
+    """Check a refused licence key is reported as a configuration problem.
+
+    Diagnostics must not abort startup, so a rejected key can only be reported
+    through the summary. Reporting it as a generic HEAD failure would let an
+    expired licence look like a transient network blip while the executor keeps
+    running on cached vault data.
+
+    1. Answer the freshness HEAD request with the server's rejection.
+    2. Build the diagnostics.
+    3. Verify the error names the rejection and the variable to fix.
+    """
+
+    # 1. Answer the freshness HEAD request with the server's rejection.
+    session = _MockSession(response=_MockResponse({}, status_code=403))
+
+    # 2. Build the diagnostics.
+    diagnostics = build_vault_history_diagnostics(
+        raw_vault_price_df=_build_vault_price_history_df(
+            "0xdead000000000000000000000000000000000000",
+            [datetime.datetime(2026, 4, 8, 12, 0, 0)],
+        ),
+        filtered_vault_price_df=_build_vault_price_history_df(
+            "0xdead000000000000000000000000000000000000",
+            [datetime.datetime(2026, 4, 8, 12, 0, 0)],
+        ),
+        resampled_vault_candle_df=None,
+        cache_path=None,
+        vault_data_client=_make_vault_data_client(session),
+        now=datetime.datetime(2026, 4, 8, 13, 0, 0),
+    )
+
+    # 3. Verify the error names the rejection and the variable to fix.
+    assert diagnostics.remote_content_length is None
+    assert "403" in diagnostics.remote_head_error
+    assert VAULT_PRO_API_KEY_ENV_VAR in diagnostics.remote_head_error

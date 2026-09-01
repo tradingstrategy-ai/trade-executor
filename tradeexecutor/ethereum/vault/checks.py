@@ -24,15 +24,13 @@ dashboards and strategy chart registries.
 import datetime
 import logging
 from dataclasses import dataclass
-from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 import pandas as pd
-import requests
 from tabulate import tabulate
 
 from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
-from tradingstrategy.alternative_data.vault import CLEANED_VAULT_PRICE_PARQUET_URL
+from tradingstrategy.vault_data_client import VaultDataClient, VaultDataset, VAULT_PRO_API_KEY_ENV_VAR
 
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.execution_context import ExecutionMode
@@ -51,14 +49,18 @@ class StaleVaultData(Exception):
 
 @dataclass(slots=True)
 class VaultHistoryDiagnostics:
-    """Summarise vault history freshness across cache, source, filter and resample stages."""
+    """Summarise vault history freshness across cache, source, filter and resample stages.
+
+    The remote side is only described by its size. The vault dataset API sends
+    no ``ETag`` and no ``Last-Modified``, so "how old is the file on the server"
+    can no longer be asked directly. Staleness is judged from the data itself,
+    through :py:attr:`parquet_data_age`, which is what actually matters to a
+    strategy anyway.
+    """
 
     cache_path: Path | None
     local_cache_mtime: datetime.datetime | None
     local_cache_age: datetime.timedelta | None
-    remote_last_modified: datetime.datetime | None
-    remote_last_modified_age: datetime.timedelta | None
-    remote_etag: str | None
     remote_content_length: int | None
     remote_head_error: str | None
     parquet_max_timestamp: datetime.datetime | None
@@ -123,15 +125,6 @@ def _calculate_delta(
     return older - newer
 
 
-def _parse_last_modified_header(header_value: str | None) -> datetime.datetime | None:
-    """Parse an HTTP Last-Modified header to a naive UTC datetime."""
-    if not header_value:
-        return None
-
-    parsed = parsedate_to_datetime(header_value)
-    return _coerce_naive_utc_datetime(parsed)
-
-
 def _calculate_expected_daily_flooring_reason(
     parquet_data_age: datetime.timedelta | None,
     filtered_data_age: datetime.timedelta | None,
@@ -165,24 +158,50 @@ def _calculate_expected_daily_flooring_reason(
     return "Expected 1d floor artefact: the resampled candle timestamp is floored to 00:00 UTC"
 
 
-def _fetch_remote_vault_history_metadata(
-    http_session: requests.Session | None,
-    remote_url: str,
-) -> tuple[datetime.datetime | None, str | None, int | None, str | None]:
-    """Fetch remote vault parquet metadata with a lightweight HEAD request."""
-    if http_session is None:
-        return None, None, None, "No HTTP session available for remote vault metadata HEAD request"
+def _fetch_remote_vault_history_size(
+    vault_data_client: VaultDataClient | None,
+) -> tuple[int | None, str | None]:
+    """Fetch the size of the remote vault dataset with a lightweight HEAD request.
+
+    :return:
+        Size in bytes and an error description, either of which may be ``None``.
+    """
+    if vault_data_client is None:
+        return None, "No vault dataset client available for remote vault metadata HEAD request"
+
+    url = vault_data_client.get_url(VaultDataset.vault_prices)
 
     try:
-        response = http_session.head(remote_url, allow_redirects=True, timeout=30)
+        response = vault_data_client.session.head(
+            url,
+            params={"api-key": vault_data_client.api_key},
+            allow_redirects=True,
+            timeout=30,
+        )
+    except Exception as exc:
+        return None, f"{exc.__class__.__name__}: {exc}"
+
+    if response.status_code in (401, 403):
+        # Diagnostics must not abort startup, but a rejected licence key is a
+        # configuration problem an operator has to act on, not a transient
+        # network blip. Say which it is, so it stands out in the warning table.
+        return None, (
+            f"HTTP {response.status_code}: the vault dataset API rejected our licence key. "
+            f"Check {VAULT_PRO_API_KEY_ENV_VAR}. Cached vault data is being used until it expires."
+        )
+
+    try:
         response.raise_for_status()
-        last_modified = _parse_last_modified_header(response.headers.get("Last-Modified"))
-        etag = response.headers.get("ETag")
         content_length_header = response.headers.get("Content-Length")
         content_length = int(content_length_header) if content_length_header is not None else None
-        return last_modified, etag, content_length, None
     except Exception as exc:
-        return None, None, None, f"{exc.__class__.__name__}: {exc}"
+        # Header parsing is inside the guard on purpose. A proxy answering with
+        # a combined value like "12345, 12345" would otherwise raise ValueError
+        # out of a diagnostic and abort a live strategy that had already loaded
+        # its vault data successfully.
+        return None, f"{exc.__class__.__name__}: {exc}"
+
+    return content_length, None
 
 
 def build_vault_history_diagnostics(
@@ -190,12 +209,19 @@ def build_vault_history_diagnostics(
     filtered_vault_price_df: pd.DataFrame,
     resampled_vault_candle_df: pd.DataFrame | None,
     cache_path: Path | None,
-    http_session: requests.Session | None,
+    vault_data_client: VaultDataClient | None = None,
     vault_history_filter_end_at: datetime.datetime | None = None,
-    remote_url: str = CLEANED_VAULT_PRICE_PARQUET_URL,
     now: datetime.datetime | None = None,
 ) -> VaultHistoryDiagnostics:
-    """Build startup diagnostics for vault history freshness."""
+    """Build startup diagnostics for vault history freshness.
+
+    :param vault_data_client:
+        Client used for the freshness HEAD request.
+
+        The vault price dataset sits behind a licence gated API, so the request
+        needs the client's URL, session and key. Diagnostics degrade to
+        local-only information when no client is given.
+    """
     reference_now = now or native_datetime_utc_now()
 
     local_cache_mtime = None
@@ -204,10 +230,7 @@ def build_vault_history_diagnostics(
         local_cache_mtime = native_datetime_utc_fromtimestamp(cache_path.stat().st_mtime)
         local_cache_age = reference_now - local_cache_mtime
 
-    remote_last_modified, remote_etag, remote_content_length, remote_head_error = _fetch_remote_vault_history_metadata(
-        http_session=http_session,
-        remote_url=remote_url,
-    )
+    remote_content_length, remote_head_error = _fetch_remote_vault_history_size(vault_data_client)
 
     parquet_max_timestamp = _get_max_timestamp(raw_vault_price_df)
     filtered_max_timestamp = _get_max_timestamp(filtered_vault_price_df)
@@ -219,9 +242,6 @@ def build_vault_history_diagnostics(
         cache_path=cache_path,
         local_cache_mtime=local_cache_mtime,
         local_cache_age=local_cache_age,
-        remote_last_modified=remote_last_modified,
-        remote_last_modified_age=_calculate_age(remote_last_modified, reference_now),
-        remote_etag=remote_etag,
         remote_content_length=remote_content_length,
         remote_head_error=remote_head_error,
         parquet_max_timestamp=parquet_max_timestamp,
@@ -257,7 +277,7 @@ def log_vault_history_diagnostics(
     logger.log(
         level,
         "Vault history freshness summary: cache_path=%s, local_cache_mtime=%s, local_cache_age=%s, "
-        "remote_last_modified=%s, remote_last_modified_age=%s, remote_etag=%s, remote_content_length=%s, "
+        "remote_content_length=%s, "
         "parquet_max_timestamp=%s, parquet_data_age=%s, filtered_max_timestamp=%s, filtered_data_age=%s, "
         "resampled_max_timestamp=%s, resampled_data_age=%s, parquet_to_filtered_delta=%s, "
         "filtered_to_resampled_delta=%s, vault_history_filter_end_at=%s, expected_daily_flooring_reason=%s, "
@@ -266,9 +286,6 @@ def log_vault_history_diagnostics(
         diagnostics.cache_path,
         diagnostics.local_cache_mtime,
         diagnostics.local_cache_age,
-        diagnostics.remote_last_modified,
-        diagnostics.remote_last_modified_age,
-        diagnostics.remote_etag,
         diagnostics.remote_content_length,
         diagnostics.parquet_max_timestamp,
         diagnostics.parquet_data_age,
@@ -322,15 +339,6 @@ def _build_vault_history_warning_rows(
                 "field": "local_cache_age",
                 "value": diagnostics.local_cache_age,
                 "reason": "Local cached parquet is older than the warning tolerance",
-            }
-        )
-
-    if diagnostics.remote_last_modified_age is not None and diagnostics.remote_last_modified_age > stale_tolerance:
-        warning_rows.append(
-            {
-                "field": "remote_last_modified_age",
-                "value": diagnostics.remote_last_modified_age,
-                "reason": "Remote parquet object itself looks old",
             }
         )
 
@@ -798,9 +806,6 @@ def get_vault_data_freshness(
         df["Vault history cache path"] = str(diagnostics.cache_path) if diagnostics.cache_path is not None else None
         df["Vault history cache mtime"] = diagnostics.local_cache_mtime
         df["Vault history cache age"] = diagnostics.local_cache_age
-        df["Vault history remote last modified"] = diagnostics.remote_last_modified
-        df["Vault history remote last modified age"] = diagnostics.remote_last_modified_age
-        df["Vault history remote ETag"] = diagnostics.remote_etag
         df["Vault history remote Content-Length"] = diagnostics.remote_content_length
         df["Vault history remote HEAD error"] = diagnostics.remote_head_error
         df["Vault history parquet max timestamp"] = diagnostics.parquet_max_timestamp

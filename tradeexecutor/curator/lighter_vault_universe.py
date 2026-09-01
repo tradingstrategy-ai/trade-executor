@@ -23,14 +23,14 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.curator import curator as curator_module
 from tradeexecutor.curator import vault_universe_creation as vault_universe_creation_module
 from tradeexecutor.curator.curator import EXCLUDED_PROTOCOLS, EXCLUDED_VAULTS, MUST_INCLUDE
+from tradingstrategy.vault_data_client import VaultDataset
+
 from tradeexecutor.curator.vault_universe_creation import (
     fetch_vaults,
     parse_vault,
     select_top_vaults,
 )
 
-
-DATA_URL = "https://top-defi-vaults.tradingstrategy.ai/top_vaults_by_chain.json"
 
 #: `LIGHTER_CHAIN_ID` (9998) is the canonical synthetic chain id, imported from
 #: :py:mod:`eth_defi.lighter.constants`. `top_n` is a generous non-binding
@@ -113,7 +113,7 @@ def _curator_fingerprint() -> str:
     """
     policy = {
         "policy_version": CURATOR_POLICY_VERSION,
-        "data_url": DATA_URL,
+        "data_source": VaultDataset.vault_metadata.value,
         "chain_config": {str(chain_id): CHAIN_CONFIG[chain_id] for chain_id in sorted(CHAIN_CONFIG)},
         "chain_order": CHAIN_ORDER,
         "tracked_periods": TRACKED_PERIODS,
@@ -212,7 +212,7 @@ def build_lighter_vault_universe(
     if top_n is not None:
         chain_config[LIGHTER_CHAIN_ID] = {**chain_config[LIGHTER_CHAIN_ID], "top_n": top_n}
 
-    raw_vaults = fetch_vaults(DATA_URL)
+    raw_vaults = fetch_vaults()
 
     parsed = []
     for rv in raw_vaults:

@@ -23,12 +23,15 @@ from tradeexecutor.state.state import State
 
 JSON_RPC_BASE = os.environ.get("JSON_RPC_BASE")
 TRADING_STRATEGY_API_KEY = os.environ.get("TRADING_STRATEGY_API_KEY")
+
+#: vault-test-trade downloads the licence gated vault metadata dataset
+VAULT_PRO_API_KEY = os.environ.get("VAULT_PRO_API_KEY")
 CI = os.environ.get("CI") == "true"
 
 pytestmark = [
     pytest.mark.skipif(
-        (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY),
-        reason="Set JSON_RPC_BASE and TRADING_STRATEGY_API_KEY needed to run this test",
+        (not JSON_RPC_BASE or not TRADING_STRATEGY_API_KEY or not VAULT_PRO_API_KEY),
+        reason="Set JSON_RPC_BASE, TRADING_STRATEGY_API_KEY and VAULT_PRO_API_KEY needed to run this test",
     ),
     pytest.mark.warm_rpc_high_value_group,
     pytest.mark.xdist_group("fork:base:49030926:isolated:lagoon-e2e"),
@@ -89,6 +92,7 @@ def deployed_vault_environment(
         "LOG_LEVEL": "disabled",
         "RUN_SINGLE_CYCLE": "true",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "VAULT_PRO_API_KEY": VAULT_PRO_API_KEY,
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.005",
         "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
@@ -125,6 +129,7 @@ def pre_deployment_vault_environment(
         "LOG_LEVEL": "disabled",
         "RUN_SINGLE_CYCLE": "true",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "VAULT_PRO_API_KEY": VAULT_PRO_API_KEY,
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),  # 10 years or "disabled""
         "MIN_GAS_BALANCE": "0.005",
         "RAISE_ON_UNCLEAN": "true",  # For correct-accounts
@@ -163,6 +168,7 @@ def test_cli_lagoon_deploy_vault(
         # "LOG_LEVEL": "info",  # Set to info to get debug data for the test run
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "VAULT_PRO_API_KEY": VAULT_PRO_API_KEY,
         "PRIVATE_KEY": hexbytes_to_hex_str(asset_manager.private_key),
         "VAULT_RECORD_FILE": str(tmp_path / "vault-record.json"),
         "FUND_NAME": "Example",
@@ -209,6 +215,7 @@ def test_cli_lagoon_deploy_vault_multiple_asset_managers(
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "VAULT_PRO_API_KEY": VAULT_PRO_API_KEY,
         "PRIVATE_KEY": hexbytes_to_hex_str(asset_manager.private_key),
         "VAULT_RECORD_FILE": str(vault_record_file),
         "FUND_NAME": "Example",
@@ -337,6 +344,7 @@ def test_cli_lagoon_trade_ui(
         "UNIT_TESTING": "false",
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "VAULT_PRO_API_KEY": VAULT_PRO_API_KEY,
         "MAX_DATA_DELAY_MINUTES": str(10 * 60 * 24 * 365),
         "MIN_GAS_BALANCE": "0.005",
         "PRIVATE_KEY": hexbytes_to_hex_str(asset_manager.private_key),
@@ -654,6 +662,7 @@ def test_cli_lagoon_first_deposit(
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "VAULT_PRO_API_KEY": VAULT_PRO_API_KEY,
         "PRIVATE_KEY": hexbytes_to_hex_str(asset_manager.private_key),
         "CACHE_PATH": cache_path,
         "GENERATE_REPORT": "false",
@@ -795,6 +804,7 @@ def test_cli_vault_test_trade_lagoon_anvil_black_box(
         "UNIT_TESTING": "true",
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "VAULT_PRO_API_KEY": VAULT_PRO_API_KEY,
         "PRIVATE_KEY": hexbytes_to_hex_str(asset_manager.private_key),
         "CACHE_PATH": cache_path,
         "GENERATE_REPORT": "false",
@@ -894,6 +904,7 @@ def test_cli_vault_test_trade_simulated_deploys_lagoon_on_fork(
         "UNIT_TESTING": "false",
         "LOG_LEVEL": "disabled",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
+        "VAULT_PRO_API_KEY": VAULT_PRO_API_KEY,
         "CACHE_PATH": persistent_test_client.transport.cache_path,
         "MIN_GAS_BALANCE": "0.0",
         "CONFIRMATION_BLOCK_COUNT": "0",

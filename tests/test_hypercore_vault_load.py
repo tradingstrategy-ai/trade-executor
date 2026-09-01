@@ -19,6 +19,8 @@ from pathlib import Path
 import pytest
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
+from tradingstrategy.vault import VaultUniverse
+from tradingstrategy.vault_data_client import VaultDataClient, VAULT_PRO_API_KEY_ENV_VAR
 from tradingstrategy.exchange import ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 
@@ -41,25 +43,32 @@ def client() -> Client:
 
 
 @pytest.fixture(scope="module")
-def hypercore_vault_universe(client):
-    """Load vault universe and pick a single Hypercore vault."""
-    vault_universe = client.fetch_vault_universe()
-    # Pick first Hypercore vault
+def hypercore_vault_universe(client: Client) -> VaultUniverse:
+    """Load vault universe and pick a single Hypercore vault.
+
+    1. Download the vault metadata through the vault dataset API.
+    2. Pick the first Hypercore vault found.
+    3. Limit the universe to that single vault.
+    """
+
+    # 1. Download the vault metadata through the vault dataset API.
+    vault_universe = VaultDataClient().fetch_vault_universe()
+    # 2. Pick the first Hypercore vault found.
     hypercore_vaults = []
     for v in vault_universe.iterate_vaults():
         if v.chain_id == ChainId.hypercore:
             hypercore_vaults.append(v)
             break
     assert len(hypercore_vaults) > 0, "No Hypercore vaults found in the vault universe"
-    # Limit to just that one vault
+    # 3. Limit the universe to that single vault.
     vault_specs = [(v.chain_id, v.vault_address) for v in hypercore_vaults]
     return vault_universe.limit_to_vaults(vault_specs, check_all_vaults_found=True)
 
 
 @pytest.mark.timeout(120)
 @pytest.mark.skipif(
-    os.environ.get("TRADING_STRATEGY_API_KEY") is None,
-    reason="Set TRADING_STRATEGY_API_KEY to run this test",
+    os.environ.get("TRADING_STRATEGY_API_KEY") is None or os.environ.get(VAULT_PRO_API_KEY_ENV_VAR) is None,
+    reason=f"Set TRADING_STRATEGY_API_KEY and {VAULT_PRO_API_KEY_ENV_VAR} to run this test",
 )
 def test_hypercore_vault_export_types(hypercore_vault_universe):
     """Verify Hypercore vault exports use the current exchange type encoding.
@@ -89,8 +98,8 @@ def test_hypercore_vault_export_types(hypercore_vault_universe):
 
 @pytest.mark.timeout(120)
 @pytest.mark.skipif(
-    os.environ.get("TRADING_STRATEGY_API_KEY") is None,
-    reason="Set TRADING_STRATEGY_API_KEY to run this test",
+    os.environ.get("TRADING_STRATEGY_API_KEY") is None or os.environ.get(VAULT_PRO_API_KEY_ENV_VAR) is None,
+    reason=f"Set TRADING_STRATEGY_API_KEY and {VAULT_PRO_API_KEY_ENV_VAR} to run this test",
 )
 def test_hypercore_vault_routing(client, hypercore_vault_universe):
     """Verify default_supported_routers creates hypercore_vault routing.

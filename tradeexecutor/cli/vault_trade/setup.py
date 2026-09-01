@@ -258,8 +258,13 @@ def load_vault_test_data(
     cache_path: Path | None,
     trading_strategy_api_key: str | None,
     unit_testing: bool,
+    vault_pro_api_key: str | None = None,
 ) -> VaultTestData:
     """Download the complete vault universe without loading a strategy module.
+
+    :param vault_pro_api_key:
+        Creem licence key for the vault metadata dataset. Falls back to the
+        ``VAULT_PRO_API_KEY`` environment variable.
 
     :raise RuntimeError:
         If no Trading Strategy API key was supplied.  Vault discovery is an
@@ -268,7 +273,8 @@ def load_vault_test_data(
 
     if not trading_strategy_api_key:
         raise RuntimeError(
-            "TRADING_STRATEGY_API_KEY is required to download the vault universe"
+            "TRADING_STRATEGY_API_KEY is required to download the vault universe. "
+            "Vault metadata additionally needs the VAULT_PRO_API_KEY licence key."
         )
 
     # Use the normal executor cache layout so repeated manual invocations do not
@@ -282,6 +288,7 @@ def load_vault_test_data(
         trading_strategy_api_key,
         cache_path=resolved_cache_path,
         settings_path=None,
+        vault_pro_api_key=vault_pro_api_key,
     )
     vault_universe = load_vault_universe_with_metadata(client)
     return VaultTestData(client, vault_universe, token_cache)

@@ -12,9 +12,13 @@ from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTr
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
+from tradingstrategy.vault_data_client import VaultDataset, VAULT_PRO_API_KEY_ENV_VAR
 
 
-pytestmark = pytest.mark.skipif(os.environ.get("TRADING_STRATEGY_API_KEY") is None, reason="Set TRADING_STRATEGY_API_KEY environment variable to run this test")
+pytestmark = pytest.mark.skipif(
+    os.environ.get("TRADING_STRATEGY_API_KEY") is None or os.environ.get(VAULT_PRO_API_KEY_ENV_VAR) is None,
+    reason=f"Set TRADING_STRATEGY_API_KEY and {VAULT_PRO_API_KEY_ENV_VAR} environment variables to run this test",
+)
 
 
 #: HLP vault — the main Hyperliquid Liquidity Provider (HLP) parent vault.
@@ -99,8 +103,8 @@ def test_hyper_ai_strategy_create_trading_universe_uses_remote_vault_data(
 
     liquidity_df = strategy_universe.data_universe.liquidity.df
     assert len(liquidity_df.loc[liquidity_df["pair_id"] == raw_pair.pair_id]) > 0
-    assert (download_root / "vault-universe.json").exists()
-    assert (download_root / "vault-price-history.parquet").exists()
+    assert (download_root / VaultDataset.vault_metadata.file_name).exists()
+    assert (download_root / VaultDataset.vault_prices.file_name).exists()
 
 
 @pytest.mark.timeout(300)

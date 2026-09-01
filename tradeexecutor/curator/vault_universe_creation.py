@@ -3,8 +3,9 @@
 import enum
 import json
 import sys
-import urllib.request
 from dataclasses import dataclass
+
+from tradingstrategy.vault_data_client import VaultDataClient, VaultDataset
 
 from tradeexecutor.curator.curator import EXCLUDED_PROTOCOLS, EXCLUDED_VAULTS, MUST_INCLUDE
 
@@ -61,12 +62,23 @@ class VaultInfo:
     excluded_protocol_reason: str | None
 
 
-def fetch_vaults(data_url: str) -> list[dict]:
-    """Fetch vault data from the API."""
+def fetch_vaults(vault_data_client: VaultDataClient | None = None) -> list[dict]:
+    """Fetch raw vault metadata entries from the vault dataset API.
+
+    Curation works on the raw JSON entries rather than on parsed
+    :py:class:`tradingstrategy.vault.Vault` objects, because it filters on
+    fields the parsed model does not carry.
+
+    :param vault_data_client:
+        Client to download with. A default one, reading its licence key from
+        the environment, is created when not given.
+    """
     print("Fetching vault data...", file=sys.stderr)
-    req = urllib.request.Request(data_url, headers={"User-Agent": "filter-top-vaults/1.0"})
-    with urllib.request.urlopen(req) as resp:
-        data = json.loads(resp.read())
+    if vault_data_client is None:
+        vault_data_client = VaultDataClient()
+
+    path = vault_data_client.download(VaultDataset.vault_metadata)
+    data = json.loads(path.read_bytes())
     print(f"Fetched {len(data['vaults'])} vaults (generated at {data['generated_at']})", file=sys.stderr)
     return data["vaults"]
 

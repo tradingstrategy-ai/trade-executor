@@ -42,7 +42,8 @@ from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvaila
 from tradingstrategy.utils.token_extra_data import load_extra_metadata
 from tradingstrategy.utils.token_filter import add_base_quote_address_columns
 from tradingstrategy.vault import VaultMetadata, VaultUniverse
-from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, convert_vault_prices_to_vault_state, DEFAULT_VAULT_DOWNLOAD_ROOT, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history, read_vault_price_history_parquet, VAULT_STATE_COLUMNS
+from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, convert_vault_prices_to_vault_state, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history, read_vault_price_history_parquet, VAULT_STATE_COLUMNS
+from tradingstrategy.vault_data_client import VaultDataAccessDenied, VaultDataClient, VaultDataset
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
 from tradeexecutor.ethereum.cctp.bridge_universe import generate_primary_to_satellite_cctp_bridge_universe
@@ -2387,7 +2388,6 @@ def load_all_data(
 def load_vault_universe_with_metadata(
     client: Client,
     vaults: list[tuple[ChainId, JSONHexAddress]] | None = None,
-    url: str | None = None,
     download_root: str | Path | None = None,
     check_all_vaults_found: bool = True,
 ) -> VaultUniverse:
@@ -2430,10 +2430,6 @@ def load_vault_universe_with_metadata(
         Optional list of (chain_id, address) tuples to limit the universe to.
         If None, all vaults are loaded.
 
-    :param url:
-        Optional custom URL to fetch vault metadata JSON from.
-        If not provided, uses the default Trading Strategy vault metrics endpoint.
-
     :param download_root:
         Override the root directory used for downloaded vault metadata.
         Useful in tests to redirect downloads under ``tmp_path``.
@@ -2447,8 +2443,7 @@ def load_vault_universe_with_metadata(
     :return:
         VaultUniverse containing Vault instances with full VaultMetadata.
     """
-    download_root = _resolve_vault_download_root(client, download_root)
-    vault_universe = client.fetch_vault_universe(url=url, download_root=download_root)
+    vault_universe = create_vault_data_client(client, download_root).fetch_vault_universe()
 
     if vaults is not None:
         vault_universe = vault_universe.limit_to_vaults(vaults, check_all_vaults_found=check_all_vaults_found)
@@ -2507,6 +2502,30 @@ def _resolve_vault_download_root(
     return Path(cache_path) / "vaults" / "downloads"
 
 
+def create_vault_data_client(
+    client: BaseClient,
+    download_root: str | Path | None = None,
+) -> VaultDataClient:
+    """Get a client for the licence gated vault datasets.
+
+    Vault metadata and vault price history are not served by the oracle API and
+    need their own licence key, see
+    :py:mod:`tradingstrategy.vault_data_client`. The key is carried by the
+    oracle client, which is the object strategy modules receive, so it is asked
+    for the vault client rather than reading credentials here.
+
+    The datasets are still cached next to the strategy's other data, so a
+    strategy specific cache directory stays self-contained.
+
+    :param download_root:
+        Override the dataset cache location. Resolved from the oracle client's
+        cache path when not given.
+    """
+    return client.get_vault_data_client(
+        download_root=_resolve_vault_download_root(client, download_root),
+    )
+
+
 def _get_vault_universe_metadata_cache_path(
     client: BaseClient,
 ) -> Path | None:
@@ -2515,7 +2534,7 @@ def _get_vault_universe_metadata_cache_path(
     if download_root is None:
         return None
 
-    return Path(download_root) / "vault-universe.json"
+    return Path(download_root) / VaultDataset.vault_metadata.file_name
 
 
 def refresh_vault_universe_metadata_cache(
@@ -2531,6 +2550,15 @@ def refresh_vault_universe_metadata_cache(
     :return:
         Refreshed cache file path, or ``None`` if no cache path is available.
     """
+    if not client.has_vault_data_access():
+        # The refresh is an opportunistic cache pre-warm. Deployments that do
+        # not subscribe to the vault datasets, for example a lending strategy,
+        # must be able to repair without a licence key they never needed. A
+        # vault strategy missing its key still fails at universe construction,
+        # where the data is genuinely required, with an actionable error.
+        logger.info("No vault dataset licence key configured, skipping the vault metadata cache refresh")
+        return None
+
     cache_path = _get_vault_universe_metadata_cache_path(client)
     if cache_path is None:
         logger.info("Vault metadata cache path unavailable for client %s", client)
@@ -2545,7 +2573,11 @@ def refresh_vault_universe_metadata_cache(
         cache_path.replace(backup_path)
 
     try:
-        client.fetch_vault_universe(download_root=cache_path.parent)
+        create_vault_data_client(client, cache_path.parent).fetch_vault_universe()
+    except VaultDataAccessDenied:
+        # Falling back to stale metadata would hide a licence problem behind a
+        # repair that silently used old data. Surface it instead.
+        raise
     except Exception:
         if backup_path is not None and backup_path.exists():
             if cache_path.exists():
@@ -3068,46 +3100,25 @@ def load_partial_data(
             assert vaults, "Vaults must be given to load Trading Strategy website vault price history"
             assert vault_pairs_df is not None, "Vault pairs must be materialised before loading Trading Strategy website vault history"
 
-            vault_history_download_root = _resolve_vault_download_root(
-                client,
-                vault_history_download_root,
+            vault_data_client = create_vault_data_client(client, vault_history_download_root)
+            vault_history_parquet_path = vault_data_client.download(VaultDataset.vault_prices)
+            indicator_cache_fingerprint = _file_indicator_cache_fingerprint(vault_history_parquet_path, "vault-history")
+            filtered_website_vault_prices_df = read_vault_price_history_parquet(
+                vault_history_parquet_path,
+                vault_pairs_df=vault_pairs_df,
+                start_at=data_load_start_at,
+                end_at=vault_history_filter_end_at,
+                columns=[
+                    "chain",
+                    "address",
+                    "timestamp",
+                    "share_price",
+                    "total_assets",
+                    # Optional deposit/redemption availability columns; silently dropped by
+                    # read_vault_price_history_parquet for sources that do not carry them.
+                    *VAULT_STATE_COLUMNS,
+                ],
             )
-            if hasattr(client.transport, "fetch_vault_price_history"):
-                vault_history_parquet_path = Path(
-                    client.transport.fetch_vault_price_history(
-                        download_root=vault_history_download_root,
-                    )
-                )
-                indicator_cache_fingerprint = _file_indicator_cache_fingerprint(vault_history_parquet_path, "vault-history")
-                filtered_website_vault_prices_df = read_vault_price_history_parquet(
-                    vault_history_parquet_path,
-                    vault_pairs_df=vault_pairs_df,
-                    start_at=data_load_start_at,
-                    end_at=vault_history_filter_end_at,
-                    columns=[
-                        "chain",
-                        "address",
-                        "timestamp",
-                        "share_price",
-                        "total_assets",
-                        # Optional deposit/redemption availability columns; silently dropped by
-                        # read_vault_price_history_parquet for sources that do not carry them.
-                        *VAULT_STATE_COLUMNS,
-                    ],
-                )
-            else:
-                raw_website_vault_prices_df = client.fetch_vault_price_history(
-                    download_root=vault_history_download_root,
-                )
-                min_ts = raw_website_vault_prices_df["timestamp"].min()
-                max_ts = raw_website_vault_prices_df["timestamp"].max()
-                indicator_cache_fingerprint = f"vault-history-dataframe:{len(raw_website_vault_prices_df)}:{min_ts}:{max_ts}"
-                filtered_website_vault_prices_df = filter_vault_price_history(
-                    raw_website_vault_prices_df,
-                    vault_pairs_df,
-                    data_load_start_at,
-                    vault_history_filter_end_at,
-                )
 
             offset = time_bucket.to_frequency()
             freq_string = f"{offset.n}{offset.name.lower()}"
@@ -3127,24 +3138,17 @@ def load_partial_data(
                     log_vault_history_diagnostics,
                 )
 
-                vault_history_cache_root = vault_history_download_root if vault_history_download_root is not None else DEFAULT_VAULT_DOWNLOAD_ROOT
-                vault_history_cache_path = Path(
-                    client.transport.get_cached_file_path(
-                        "vault-price-history.parquet",
-                        cache_path=vault_history_cache_root,
-                    )
+                vault_history_cache_path = vault_history_parquet_path
+                raw_website_vault_prices_df = read_vault_price_history_parquet(
+                    vault_history_parquet_path,
+                    columns=["timestamp"],
                 )
-                if hasattr(client.transport, "fetch_vault_price_history"):
-                    raw_website_vault_prices_df = read_vault_price_history_parquet(
-                        vault_history_parquet_path,
-                        columns=["timestamp"],
-                    )
                 vault_history_diagnostics = build_vault_history_diagnostics(
                     raw_vault_price_df=raw_website_vault_prices_df,
                     filtered_vault_price_df=filtered_website_vault_prices_df,
                     resampled_vault_candle_df=vault_candle_df,
                     cache_path=vault_history_cache_path,
-                    http_session=client.transport.requests,
+                    vault_data_client=vault_data_client,
                     vault_history_filter_end_at=vault_history_filter_end_at,
                     now=native_datetime_utc_now(),
                 )

@@ -59,6 +59,7 @@ def webapi(
 
     strategy_file: Path = shared_options.strategy_file,
     trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
+    vault_pro_api_key: str = shared_options.vault_pro_api_key,
 
     # Webhook server options
     http_port: int = typer.Option(3456, envvar="HTTP_PORT", help="Which HTTP port to listen. The default is 3456, the default port of Pyramid web server."),
@@ -160,6 +161,7 @@ def webapi(
         mod=mod,
         web3config=web3config,
         trading_strategy_api_key=trading_strategy_api_key,
+        vault_pro_api_key=vault_pro_api_key,
         cache_path=cache_path,
         clear_caches=False,
         asset_management_mode=AssetManagementMode.dummy,

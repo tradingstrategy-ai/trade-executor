@@ -143,7 +143,8 @@ LENDING_RESERVES = None
 
 PREFERRED_STABLECOIN = USDC_NATIVE_TOKEN[PRIMARY_CHAIN_ID].lower()
 
-# Data source: https://top-defi-vaults.tradingstrategy.ai/top_vaults_by_chain.json
+# Data source: vault-metadata dataset from the Trading Strategy vault dataset API,
+# see tradingstrategy.vault_data_client.VaultDataClient
 # Denomination filter: USDC, USDC.e, crvUSD, USDT (and variants USD₮0, USDt, USDT0)
 # Excluded: risk=Blacklisted or risk=Dangerous
 # Min TVL: $100k (except Hypercore $500k)
