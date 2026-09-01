@@ -79,6 +79,7 @@ def start(
     vault_adapter_address: Optional[str] = shared_options.vault_adapter_address,
     vault_payment_forwarder_address: Optional[str] = shared_options.vault_payment_forwarder,
     trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
+    vault_pro_api_key: str = shared_options.vault_pro_api_key,
 
     # Webhook server options
     http_enabled: bool = typer.Option(False, envvar="HTTP_ENABLED", help="Enable Webhook server"),
@@ -473,6 +474,7 @@ def start(
             mod=mod,
             web3config=web3config,
             trading_strategy_api_key=trading_strategy_api_key,
+            vault_pro_api_key=vault_pro_api_key,
             cache_path=cache_path,
             test_evm_uniswap_v2_factory=test_evm_uniswap_v2_factory,
             test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,

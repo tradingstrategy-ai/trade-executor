@@ -31,6 +31,7 @@ def check_position_triggers(
     log_level: str = shared_options.log_level,
 
     trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
+    vault_pro_api_key: str = shared_options.vault_pro_api_key,
     cache_path: Optional[Path] = shared_options.cache_path,
 
     # Get minimum gas balance from the env
@@ -128,6 +129,7 @@ def check_position_triggers(
         mod=mod,
         web3config=web3config,
         trading_strategy_api_key=trading_strategy_api_key,
+        vault_pro_api_key=vault_pro_api_key,
         cache_path=cache_path,
         test_evm_uniswap_v2_factory=test_evm_uniswap_v2_factory,
         test_evm_uniswap_v2_router=test_evm_uniswap_v2_router,

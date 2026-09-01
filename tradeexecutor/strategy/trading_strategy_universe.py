@@ -2506,19 +2506,24 @@ def create_vault_data_client(
     client: BaseClient,
     download_root: str | Path | None = None,
 ) -> VaultDataClient:
-    """Create a client for the Creem vault dataset API.
+    """Get a client for the licence gated vault datasets.
 
     Vault metadata and vault price history are not served by the oracle API and
-    need their own API key, see
-    :py:mod:`tradingstrategy.vault_data_client`. The datasets are still cached
-    next to the strategy's other data, so a strategy specific cache directory
-    stays self-contained.
+    need their own licence key, see
+    :py:mod:`tradingstrategy.vault_data_client`. The key is carried by the
+    oracle client, which is the object strategy modules receive, so it is asked
+    for the vault client rather than reading credentials here.
+
+    The datasets are still cached next to the strategy's other data, so a
+    strategy specific cache directory stays self-contained.
 
     :param download_root:
         Override the dataset cache location. Resolved from the oracle client's
         cache path when not given.
     """
-    return VaultDataClient(download_root=_resolve_vault_download_root(client, download_root))
+    return client.get_vault_data_client(
+        download_root=_resolve_vault_download_root(client, download_root),
+    )
 
 
 def _get_vault_universe_metadata_cache_path(

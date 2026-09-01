@@ -1159,6 +1159,7 @@ def create_client(
     test_evm_uniswap_v2_init_code_hash: Optional[str],
     clear_caches: bool,
     asset_management_mode: AssetManagementMode | None = None,
+    vault_pro_api_key: Optional[str] = None,
 ) -> Tuple[BaseClient | None, RoutingModel | None]:
     """Create a Trading Strategy client instance.
 
@@ -1167,6 +1168,13 @@ def create_client(
     - May create mock client if we run e2e tests
 
     - Otherwise create a real client
+
+    :param vault_pro_api_key:
+        Creem licence key for the paid vault datasets.
+
+        Carried by the returned client, which is the object that reaches every
+        place datasets are loaded, including strategy modules that only receive
+        a client.
 
     :return:
         Client, routing model tuple.
@@ -1209,6 +1217,7 @@ def create_client(
             trading_strategy_api_key,
             cache_path=cache_path,
             settings_path=None,  # No interactive settings file with live execution
+            vault_pro_api_key=vault_pro_api_key,
         )
         if clear_caches:
             client.clear_caches()

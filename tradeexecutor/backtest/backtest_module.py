@@ -29,6 +29,7 @@ def run_backtest_for_module(
     strategy_file: Path,
     cache_path: Path | None = None,
     trading_strategy_api_key: str = None,
+    vault_pro_api_key: str = None,
     execution_context=standalone_backtest_execution_context,
     max_workers: int | None = None,
     verbose=True,
@@ -48,6 +49,12 @@ def run_backtest_for_module(
 
     :param cache_path:
         Path to the indicator cache
+
+    :param vault_pro_api_key:
+        Creem licence key for the paid vault datasets.
+
+        Needed by any strategy that loads vault metadata or vault price
+        history, see :py:mod:`tradingstrategy.vault_data_client`.
 
     :param trading_strategy_api_key:
         If not given, attempt load from a setting file or environment
@@ -85,6 +92,7 @@ def run_backtest_for_module(
         client = Client.create_live_client(
             trading_strategy_api_key,
             cache_path=cache_path,
+            vault_pro_api_key=vault_pro_api_key,
         )
 
     universe_options = mod.get_universe_options()

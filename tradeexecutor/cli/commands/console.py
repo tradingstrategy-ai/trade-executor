@@ -151,6 +151,7 @@ def console(
     strategy_file: Path = shared_options.strategy_file,
     private_key: str = shared_options.private_key,
     trading_strategy_api_key: str = shared_options.trading_strategy_api_key,
+    vault_pro_api_key: str = shared_options.vault_pro_api_key,
     cache_path: Optional[Path] = shared_options.cache_path,
 
     # Web3 connection options
@@ -241,6 +242,7 @@ def console(
         mod=mod,
         web3config=web3config,
         trading_strategy_api_key=trading_strategy_api_key,
+        vault_pro_api_key=vault_pro_api_key,
         cache_path=cache_path,
         clear_caches=False,
         test_evm_uniswap_v2_factory=None,
