@@ -4,6 +4,9 @@ from types import SimpleNamespace
 
 from tradingstrategy.chain import ChainId
 
+import pytest
+
+from tradeexecutor.strategy import trading_strategy_universe
 from tradeexecutor.strategy.trading_strategy_universe import load_vault_universe_with_metadata
 
 
@@ -21,11 +24,13 @@ def _make_client(calls: list[bool]) -> SimpleNamespace:
     vault_universe.limit_to_vaults = _limit_to_vaults
     return SimpleNamespace(
         transport=SimpleNamespace(cache_path=None),
-        fetch_vault_universe=lambda url=None, download_root=None: vault_universe,
+        vault_universe=vault_universe,
     )
 
 
-def test_load_vault_universe_with_metadata_forwards_missing_vault_strictness() -> None:
+def test_load_vault_universe_with_metadata_forwards_missing_vault_strictness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify vault metadata loading can tolerate fresher source vault lists.
 
     1. Create a fake vault universe that records the strictness flag it receives.
@@ -36,6 +41,15 @@ def test_load_vault_universe_with_metadata_forwards_missing_vault_strictness() -
     vaults = [(ChainId.hypercore, "0xc8913adaf1174034c1dc5881a2526ee18e03ccf5")]
     calls: list[bool] = []
     client = _make_client(calls)
+    # The Creem dataset client downloads a paid dataset over HTTP, so hand the
+    # loader a stub returning the fake universe instead.
+    monkeypatch.setattr(
+        trading_strategy_universe,
+        "create_vault_data_client",
+        lambda client, download_root=None: SimpleNamespace(
+            fetch_vault_universe=lambda: client.vault_universe,
+        ),
+    )
 
     # 1. Create a fake vault universe that records the strictness flag it receives.
     # 2. Load metadata with the default arguments.

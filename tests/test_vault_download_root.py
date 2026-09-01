@@ -3,6 +3,9 @@
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
+from tradeexecutor.strategy import trading_strategy_universe
 from tradeexecutor.strategy.trading_strategy_universe import (
     _resolve_vault_download_root,
     refresh_vault_universe_metadata_cache,
@@ -79,7 +82,10 @@ def test_vault_download_root_falls_back_for_mock_clients() -> None:
     assert missing_cache_path_root is None
 
 
-def test_refresh_vault_universe_metadata_cache_replaces_only_metadata_json(tmp_path: Path) -> None:
+def test_refresh_vault_universe_metadata_cache_replaces_only_metadata_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify repair startup can force a fresh vault metadata download.
 
     1. Create a client-like object with cached vault metadata and another unrelated file.
@@ -89,17 +95,19 @@ def test_refresh_vault_universe_metadata_cache_replaces_only_metadata_json(tmp_p
     cache_path = tmp_path / "client-cache"
     vault_download_root = cache_path / "vaults" / "downloads"
     vault_download_root.mkdir(parents=True)
-    vault_universe_file = vault_download_root / "vault-universe.json"
+    vault_universe_file = vault_download_root / "vault-metadata.json"
     unrelated_file = vault_download_root / "vault-price-history.parquet"
     vault_universe_file.write_text("old")
     unrelated_file.write_text("keep")
 
-    def _fetch_vault_universe(download_root: Path) -> None:
-        (Path(download_root) / "vault-universe.json").write_text("fresh")
+    def _fetch_vault_universe() -> None:
+        (vault_download_root / "vault-metadata.json").write_text("fresh")
 
-    client = SimpleNamespace(
-        transport=SimpleNamespace(cache_path=cache_path),
-        fetch_vault_universe=_fetch_vault_universe,
+    client = SimpleNamespace(transport=SimpleNamespace(cache_path=cache_path))
+    monkeypatch.setattr(
+        trading_strategy_universe,
+        "create_vault_data_client",
+        lambda client, download_root=None: SimpleNamespace(fetch_vault_universe=_fetch_vault_universe),
     )
 
     # 1. Create a client-like object with cached vault metadata and another unrelated file.
@@ -112,7 +120,10 @@ def test_refresh_vault_universe_metadata_cache_replaces_only_metadata_json(tmp_p
     assert unrelated_file.exists()
 
 
-def test_refresh_vault_universe_metadata_cache_restores_stale_file_on_failure(tmp_path: Path) -> None:
+def test_refresh_vault_universe_metadata_cache_restores_stale_file_on_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Verify repair startup keeps stale vault metadata if refresh fails.
 
     1. Create a client-like object with cached vault metadata.
@@ -122,15 +133,17 @@ def test_refresh_vault_universe_metadata_cache_restores_stale_file_on_failure(tm
     cache_path = tmp_path / "client-cache"
     vault_download_root = cache_path / "vaults" / "downloads"
     vault_download_root.mkdir(parents=True)
-    vault_universe_file = vault_download_root / "vault-universe.json"
+    vault_universe_file = vault_download_root / "vault-metadata.json"
     vault_universe_file.write_text("old")
 
-    def _fetch_vault_universe(download_root: Path) -> None:
+    def _fetch_vault_universe() -> None:
         raise RuntimeError("Download failed")
 
-    client = SimpleNamespace(
-        transport=SimpleNamespace(cache_path=cache_path),
-        fetch_vault_universe=_fetch_vault_universe,
+    client = SimpleNamespace(transport=SimpleNamespace(cache_path=cache_path))
+    monkeypatch.setattr(
+        trading_strategy_universe,
+        "create_vault_data_client",
+        lambda client, download_root=None: SimpleNamespace(fetch_vault_universe=_fetch_vault_universe),
     )
 
     # 1. Create a client-like object with cached vault metadata.

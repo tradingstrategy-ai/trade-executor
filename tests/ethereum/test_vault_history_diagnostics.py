@@ -30,6 +30,18 @@ class _MockResponse:
         """Pretend the response succeeded."""
 
 
+def _make_vault_data_client() -> SimpleNamespace:
+    """Stand in for the Creem vault dataset client.
+
+    The diagnostics only need the dataset URL and the API key to perform its
+    freshness HEAD request, not a real authenticated client.
+    """
+    return SimpleNamespace(
+        get_url=lambda dataset: "https://example.com/vault-prices",
+        api_key="test-creem-key",
+    )
+
+
 class _MockSession:
     """Minimal session stub with configurable HEAD behaviour."""
 
@@ -41,7 +53,7 @@ class _MockSession:
         self.response = response
         self.error = error
 
-    def head(self, url: str, allow_redirects: bool = True, timeout: int = 30) -> _MockResponse:
+    def head(self, url: str, params: dict | None = None, allow_redirects: bool = True, timeout: int = 30) -> _MockResponse:
         """Return the configured response or raise the configured error."""
         del url
         del allow_redirects
@@ -122,6 +134,7 @@ def test_build_vault_history_diagnostics_includes_cache_and_remote_metadata(
         resampled_vault_candle_df=resampled_df,
         cache_path=cache_path,
         http_session=session,
+        vault_data_client=_make_vault_data_client(),
         now=now,
     )
 
@@ -164,6 +177,7 @@ def test_build_vault_history_diagnostics_detects_daily_resample_floor_gap() -> N
         resampled_vault_candle_df=resampled_df,
         cache_path=None,
         http_session=_MockSession(response=_MockResponse({})),
+        vault_data_client=_make_vault_data_client(),
         now=now,
     )
 
@@ -198,6 +212,7 @@ def test_log_vault_history_diagnostics_warns_when_source_data_is_stale(caplog: p
         ),
         cache_path=None,
         http_session=_MockSession(response=_MockResponse({})),
+        vault_data_client=_make_vault_data_client(),
         now=datetime.datetime(2026, 4, 11, 13, 59, 0),
     )
 
@@ -236,6 +251,7 @@ def test_log_vault_history_diagnostics_warns_when_remote_head_fails(caplog: pyte
         ),
         cache_path=None,
         http_session=_MockSession(error=requests.RequestException("boom")),
+        vault_data_client=_make_vault_data_client(),
         now=datetime.datetime(2026, 4, 11, 13, 59, 0),
     )
 
@@ -282,6 +298,7 @@ def test_log_vault_history_diagnostics_does_not_warn_for_expected_d1_floor(
                 }
             )
         ),
+        vault_data_client=_make_vault_data_client(),
         vault_history_filter_end_at=datetime.datetime(2026, 4, 11, 16, 43, 33),
         now=datetime.datetime(2026, 4, 11, 16, 43, 33),
     )
@@ -324,6 +341,7 @@ def test_log_vault_history_diagnostics_warns_for_unexpected_parquet_to_filtered_
         ),
         cache_path=None,
         http_session=_MockSession(response=_MockResponse({})),
+        vault_data_client=_make_vault_data_client(),
         vault_history_filter_end_at=datetime.datetime(2026, 4, 11, 13, 0, 0),
         now=datetime.datetime(2026, 4, 11, 13, 30, 0),
     )
@@ -366,6 +384,7 @@ def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(
         ),
         cache_path=None,
         http_session=_MockSession(response=_MockResponse({})),
+        vault_data_client=_make_vault_data_client(),
         now=datetime.datetime(2026, 4, 11, 13, 59, 0),
     )
     vault_candle_df = pd.DataFrame(

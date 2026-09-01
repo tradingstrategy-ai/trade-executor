@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 from tradingstrategy.chain import ChainId
 from tradingstrategy.client import Client
+from tradingstrategy.vault_data_client import VaultDataClient, VAULT_PRO_API_KEY_ENV_VAR
 from tradingstrategy.exchange import ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 
@@ -43,7 +44,7 @@ def client() -> Client:
 @pytest.fixture(scope="module")
 def hypercore_vault_universe(client):
     """Load vault universe and pick a single Hypercore vault."""
-    vault_universe = client.fetch_vault_universe()
+    vault_universe = VaultDataClient().fetch_vault_universe()
     # Pick first Hypercore vault
     hypercore_vaults = []
     for v in vault_universe.iterate_vaults():

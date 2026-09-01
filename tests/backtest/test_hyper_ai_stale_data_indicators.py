@@ -12,15 +12,15 @@ When the trade executor loads this data, it can be stale for two reasons:
 
 1. **CDN pipeline lag** — the batch pipeline (``scan-prices.py`` ->
    ``clean-prices.py`` -> ``export-data-files.py``) runs asynchronously.
-2. **Local 24h cache** — ``fetch_vault_price_history()`` in
-   ``tradingstrategy/transport/cache.py:625`` caches the parquet for 24h
+2. **Local 24h cache** — ``VaultDataClient.download()`` in
+   ``tradingstrategy/vault_data_client.py`` caches the parquet for 24h
    in ``~/.tradingstrategy/vaults/downloads/``.  ``client.clear_caches()``
    only purges ``~/.cache/tradingstrategy/``, so vault data is unaffected.
 
 The data goes through several healing stages before indicators see it:
 
 Stage 1 — ``load_partial_data()`` fetches and converts vault data
-    ``client.fetch_vault_price_history()`` downloads the parquet from CDN
+    ``VaultDataClient.download()`` downloads the parquet from the Creem API
     (or serves cached). ``convert_vault_prices_to_candles()`` resamples
     raw share prices and TVL into OHLCV candle format (daily). Vault
     candles are concatenated with any DEX pair candles into a single

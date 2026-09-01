@@ -32,7 +32,7 @@ import requests
 from tabulate import tabulate
 
 from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
-from tradingstrategy.alternative_data.vault import CLEANED_VAULT_PRICE_PARQUET_URL
+from tradingstrategy.vault_data_client import VaultDataClient, VaultDataset
 
 from tradeexecutor.state.types import USDollarAmount
 from tradeexecutor.strategy.execution_context import ExecutionMode
@@ -167,14 +167,18 @@ def _calculate_expected_daily_flooring_reason(
 
 def _fetch_remote_vault_history_metadata(
     http_session: requests.Session | None,
-    remote_url: str,
+    remote_url: str | None,
+    remote_params: dict | None = None,
 ) -> tuple[datetime.datetime | None, str | None, int | None, str | None]:
     """Fetch remote vault parquet metadata with a lightweight HEAD request."""
     if http_session is None:
         return None, None, None, "No HTTP session available for remote vault metadata HEAD request"
 
+    if remote_url is None:
+        return None, None, None, "No vault dataset client available for remote vault metadata HEAD request"
+
     try:
-        response = http_session.head(remote_url, allow_redirects=True, timeout=30)
+        response = http_session.head(remote_url, params=remote_params, allow_redirects=True, timeout=30)
         response.raise_for_status()
         last_modified = _parse_last_modified_header(response.headers.get("Last-Modified"))
         etag = response.headers.get("ETag")
@@ -192,10 +196,18 @@ def build_vault_history_diagnostics(
     cache_path: Path | None,
     http_session: requests.Session | None,
     vault_history_filter_end_at: datetime.datetime | None = None,
-    remote_url: str = CLEANED_VAULT_PRICE_PARQUET_URL,
+    vault_data_client: VaultDataClient | None = None,
     now: datetime.datetime | None = None,
 ) -> VaultHistoryDiagnostics:
-    """Build startup diagnostics for vault history freshness."""
+    """Build startup diagnostics for vault history freshness.
+
+    :param vault_data_client:
+        Client used to locate the remote dataset for the freshness HEAD request.
+
+        The vault price dataset sits behind the Creem API, so the request needs
+        the client's URL and API key. Diagnostics degrade to local-only
+        information when no client is given.
+    """
     reference_now = now or native_datetime_utc_now()
 
     local_cache_mtime = None
@@ -204,9 +216,17 @@ def build_vault_history_diagnostics(
         local_cache_mtime = native_datetime_utc_fromtimestamp(cache_path.stat().st_mtime)
         local_cache_age = reference_now - local_cache_mtime
 
+    if vault_data_client is not None:
+        remote_url = vault_data_client.get_url(VaultDataset.vault_prices)
+        remote_params = {"api-key": vault_data_client.api_key}
+    else:
+        remote_url = None
+        remote_params = None
+
     remote_last_modified, remote_etag, remote_content_length, remote_head_error = _fetch_remote_vault_history_metadata(
         http_session=http_session,
         remote_url=remote_url,
+        remote_params=remote_params,
     )
 
     parquet_max_timestamp = _get_max_timestamp(raw_vault_price_df)
