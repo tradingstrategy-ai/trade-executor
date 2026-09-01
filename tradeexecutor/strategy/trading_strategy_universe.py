@@ -2550,6 +2550,15 @@ def refresh_vault_universe_metadata_cache(
     :return:
         Refreshed cache file path, or ``None`` if no cache path is available.
     """
+    if not client.has_vault_data_access():
+        # The refresh is an opportunistic cache pre-warm. Deployments that do
+        # not subscribe to the vault datasets, for example a lending strategy,
+        # must be able to repair without a licence key they never needed. A
+        # vault strategy missing its key still fails at universe construction,
+        # where the data is genuinely required, with an actionable error.
+        logger.info("No vault dataset licence key configured, skipping the vault metadata cache refresh")
+        return None
+
     cache_path = _get_vault_universe_metadata_cache_path(client)
     if cache_path is None:
         logger.info("Vault metadata cache path unavailable for client %s", client)

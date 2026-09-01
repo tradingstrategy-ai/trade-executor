@@ -104,7 +104,10 @@ def test_refresh_vault_universe_metadata_cache_replaces_only_metadata_json(
     def _fetch_vault_universe() -> None:
         (vault_download_root / "vault-metadata.json").write_text("fresh")
 
-    client = SimpleNamespace(transport=SimpleNamespace(cache_path=cache_path))
+    client = SimpleNamespace(
+        transport=SimpleNamespace(cache_path=cache_path),
+        has_vault_data_access=lambda: True,
+    )
     monkeypatch.setattr(
         trading_strategy_universe,
         "create_vault_data_client",
@@ -140,7 +143,10 @@ def test_refresh_vault_universe_metadata_cache_restores_stale_file_on_failure(
     def _fetch_vault_universe() -> None:
         raise RuntimeError("Download failed")
 
-    client = SimpleNamespace(transport=SimpleNamespace(cache_path=cache_path))
+    client = SimpleNamespace(
+        transport=SimpleNamespace(cache_path=cache_path),
+        has_vault_data_access=lambda: True,
+    )
     monkeypatch.setattr(
         trading_strategy_universe,
         "create_vault_data_client",
@@ -181,7 +187,10 @@ def test_refresh_vault_universe_metadata_cache_surfaces_rejected_licence_key(
     def _fetch_vault_universe() -> None:
         raise VaultDataAccessDenied("Licence key rejected")
 
-    client = SimpleNamespace(transport=SimpleNamespace(cache_path=cache_path))
+    client = SimpleNamespace(
+        transport=SimpleNamespace(cache_path=cache_path),
+        has_vault_data_access=lambda: True,
+    )
 
     # 2. Refresh the cache with a downloader whose licence key is refused.
     monkeypatch.setattr(
@@ -193,3 +202,34 @@ def test_refresh_vault_universe_metadata_cache_surfaces_rejected_licence_key(
     # 3. Check the access error is raised instead of being swallowed.
     with pytest.raises(VaultDataAccessDenied):
         refresh_vault_universe_metadata_cache(client)
+
+
+def test_refresh_vault_universe_metadata_cache_skips_without_a_licence(tmp_path: Path) -> None:
+    """Verify repair works on deployments that do not subscribe to vault datasets.
+
+    The refresh is an opportunistic cache pre-warm. A lending strategy
+    deployment has no vault licence key and must be able to repair anyway;
+    requiring one here broke ``repair`` for every non-vault strategy.
+
+    1. Create a client-like object reporting no vault data access.
+    2. Refresh the vault universe metadata cache.
+    3. Check the refresh skipped without raising and without touching the cache.
+    """
+
+    # 1. Create a client-like object reporting no vault data access.
+    cache_path = tmp_path / "client-cache"
+    vault_download_root = cache_path / "vaults" / "downloads"
+    vault_download_root.mkdir(parents=True)
+    stale_file = vault_download_root / "vault-metadata.json"
+    stale_file.write_text("stale")
+    client = SimpleNamespace(
+        transport=SimpleNamespace(cache_path=cache_path),
+        has_vault_data_access=lambda: False,
+    )
+
+    # 2. Refresh the vault universe metadata cache.
+    refreshed_path = refresh_vault_universe_metadata_cache(client)
+
+    # 3. Check the refresh skipped without raising and without touching the cache.
+    assert refreshed_path is None
+    assert stale_file.read_text() == "stale"
