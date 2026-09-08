@@ -9,6 +9,7 @@ import numpy
 from pandas._libs.missing import NAType
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
 from tradeexecutor.backtest.simulated_wallet import OutOfSimulatedBalance
+from tradeexecutor.state.portfolio import NotEnoughMoney
 # Enable pickle patch that allows multiprocessing in notebooks
 from tradeexecutor.monkeypatch import cloudpickle_patch
 
@@ -1468,7 +1469,18 @@ def run_grid_search_backtest(
             # Does not know how to gracefully handle
             raise
 
-    except Exception as e:        
+        except NotEnoughMoney as nem:
+            # Cross-chain strategies raise a bare NotEnoughMoney from the CCTP bridge
+            # planner when a parameter combination needs a bigger same-cycle satellite
+            # bridge than the primary-chain reserve can fund. Like the OutOfSimulatedBalance
+            # case above, this is a non-working combination rather than a framework bug, so
+            # honour ignore_wallet_errors and mark it down to zero instead of crashing the
+            # whole grid search / optimiser run.
+            if ignore_wallet_errors:
+                return create_grid_search_failed_result(combination, state, nem)
+            raise
+
+    except Exception as e:
         # Report to the notebook which of the grid search combinations is a problematic one
         tb = traceback.format_exc()
         raise RuntimeError(f"Running a grid search combination failed:\n{combination}\nThe original exception was: {e}\n{tb}") from e
