@@ -969,7 +969,7 @@ class EthereumPairConfigurator(PairConfigurator):
 
         logger.info("Auto-discovered GMX exchange account pairs — wired up GMX value func")
 
-    def _auto_discover_lighter(self, strategy_universe: TradingStrategyUniverse):
+    def _auto_discover_lighter(self, strategy_universe: TradingStrategyUniverse) -> None:
         """Auto-discover the single Lighter account and wire account/NAV readers."""
         if not has_lighter_exchange_account_pairs(strategy_universe):
             return
