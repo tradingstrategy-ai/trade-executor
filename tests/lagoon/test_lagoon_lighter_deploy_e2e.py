@@ -208,6 +208,9 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
 
     runtime_payload = json.loads(public_paths[-1].read_text())
     runtime_setup = runtime_payload["deployments"]["ethereum"]["lighter_account_setup"]
+    deployment = operator_payload["deployments"]["ethereum"]
+    assert deployment["vault_address"] == runtime_payload["deployments"]["ethereum"]["vault_address"]
+    assert deployment["module_address"] == runtime_payload["deployments"]["ethereum"]["module_address"]
     assert "private_key" not in runtime_setup
     assert runtime_setup["account_index"] == LIGHTER_ACCOUNT_INDEX
     assert runtime_setup["api_key_index"] == LIGHTER_API_KEY_INDEX

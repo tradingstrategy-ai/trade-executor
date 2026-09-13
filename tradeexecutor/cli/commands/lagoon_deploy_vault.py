@@ -1617,6 +1617,8 @@ def _deploy_multichain(
                 "deployments": {
                     source_chain_slug: {
                         "safe_address": result.deployments[source_chain_slug].safe_address,
+                        "vault_address": result.deployments[source_chain_slug].vault.address,
+                        "module_address": result.deployments[source_chain_slug].trading_strategy_module.address,
                         "lighter_account_setup": lighter_setup,
                     },
                 },
