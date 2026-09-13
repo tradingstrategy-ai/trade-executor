@@ -70,6 +70,7 @@ resume only after the public account response reflects the settlement.
 """
 
 import json
+import logging
 import os
 import random
 import sys
@@ -327,7 +328,7 @@ def _write_private_json_file(
 def _write_lighter_private_record(
     vault_record_file: Path,
     private_json_payload: dict[str, Any],
-    logger,
+    logger: logging.Logger,
 ) -> None:
     """Persist generated Lighter credentials before any report network calls."""
     _text_path, json_path = _resolve_deployment_artifact_paths(vault_record_file)
@@ -348,7 +349,7 @@ def _write_deployment_artifacts(
     public_json_payload: Any,
     private_json_payload: Any | None = None,
     simulate: bool,
-    logger,
+    logger: logging.Logger,
     include_private_key: bool = False,
     write_json: bool = True,
 ) -> None:
@@ -668,7 +669,7 @@ def _get_lighter_private_key(setup: Any) -> str | None:
     return getattr(setup, "private_key", None)
 
 
-def _get_public_lighter_metadata(deploy_info) -> dict[str, Any] | None:
+def _get_public_lighter_metadata(deploy_info: Any) -> dict[str, Any] | None:
     """Extract only redacted Lighter metadata from an upstream deployment."""
     serialised = getattr(deploy_info, "as_json_friendly_dict", None)
     if serialised is None:
@@ -700,7 +701,11 @@ def _format_lighter_metadata_text(metadata: dict[str, Any] | None) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _build_single_chain_artifact_payload(deploy_info, *, include_secrets: bool) -> dict[str, Any]:
+def _build_single_chain_artifact_payload(
+    deploy_info: Any,
+    *,
+    include_secrets: bool,
+) -> dict[str, Any]:
     """Build the legacy summary payload plus explicit Lighter setup metadata."""
     payload = _serialise_artifact_value(deploy_info.get_deployment_data())
     if not include_secrets:

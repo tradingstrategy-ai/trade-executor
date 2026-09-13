@@ -1,9 +1,9 @@
 """Typer black-box coverage for Lagoon Lighter CLI options and safety gates."""
 
 import logging
-import os
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from pytest import MonkeyPatch
@@ -15,7 +15,7 @@ from tradeexecutor.cli.main import app
 def test_lighter_cli_options_reach_strategy_deployment(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
-):
+) -> None:
     """Parse Lighter options through the registered Typer command.
 
     1. Replace network/bootstrap work with a small strategy-path stub.
@@ -28,15 +28,17 @@ def test_lighter_cli_options_reach_strategy_deployment(
     class DummyWeb3Config:
         connections = {"ethereum": object()}
 
-        def has_any_connection(self):
+        def has_any_connection(self) -> bool:
             return True
 
-        def close(self):
+        def close(self) -> None:
             pass
 
-    def fake_deploy_multichain(**kwargs):
+    def fake_deploy_multichain(**kwargs: Any) -> None:
         captured.update(kwargs)
 
+    # Network bootstrap is mocked because this test exercises Typer option
+    # parsing and forwarding, not deployment or provider behaviour.
     monkeypatch.setattr(
         "tradeexecutor.cli.commands.lagoon_deploy_vault.setup_logging",
         lambda _level: logging.getLogger("test-lighter-cli"),
@@ -61,7 +63,6 @@ def test_lighter_cli_options_reach_strategy_deployment(
         "tradeexecutor.cli.commands.lagoon_deploy_vault._deploy_multichain",
         fake_deploy_multichain,
     )
-    monkeypatch.setenv("PATH", os.environ["PATH"])
     monkeypatch.setenv("PRIVATE_KEY", "0x123")
     monkeypatch.setenv("JSON_RPC_ETHEREUM", "http://unused")
     monkeypatch.setenv("STRATEGY_FILE", __file__)
@@ -83,7 +84,7 @@ def test_lighter_cli_options_reach_strategy_deployment(
 def test_lighter_cli_rejects_simulation_before_network_bootstrap(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
-):
+) -> None:
     """Reject an impossible fork activation before creating Web3 config.
 
     1. Set both generation and simulation environment flags.
@@ -95,12 +96,14 @@ def test_lighter_cli_rejects_simulation_before_network_bootstrap(
     monkeypatch.setenv("VAULT_RECORD_FILE", str(tmp_path / "record.txt"))
     monkeypatch.setenv("GENERATE_LIGHTER_API_KEY", "true")
     monkeypatch.setenv("SIMULATE", "true")
+
+    # 2. Patch Web3 bootstrap to fail if it is reached.
+    # This mock proves the safety validation happens before network setup.
     monkeypatch.setattr(
         "tradeexecutor.cli.commands.lagoon_deploy_vault.create_web3_config",
         lambda **kwargs: pytest.fail("Web3 bootstrap must not run for simulated Lighter activation"),
     )
 
-    # 2. Patch Web3 bootstrap to fail if it is reached.
     cli = get_command(app)
 
     # 3. Invoke the real Typer command and verify the early error.

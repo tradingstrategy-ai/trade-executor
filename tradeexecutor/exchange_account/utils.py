@@ -5,6 +5,7 @@ and ``start`` commands can reuse the same logic.
 """
 
 import logging
+from decimal import Decimal
 from typing import Callable
 
 from eth_defi.lighter.session import create_lighter_session
@@ -185,7 +186,10 @@ def _create_gmx_protocol_value_func(*, execution_model, logger):
     return create_gmx_account_value_func(execution_model=execution_model)
 
 
-def _create_lighter_protocol_value_func(*, logger):
+def _create_lighter_protocol_value_func(
+    *,
+    logger: logging.Logger,
+) -> Callable[..., Decimal]:
     """Build the public Lighter account value function.
 
     Lighter account equity is read from its unauthenticated public API, so no
@@ -228,7 +232,6 @@ def create_exchange_account_value_func(
     :param execution_model: Execution model for GMX (provides Web3 + Safe address via tx_builder)
     :return: Account value function or None if credentials not provided
     """
-    from decimal import Decimal
     from tradeexecutor.state.identifier import TradingPairIdentifier
 
     # Check which protocols are needed
@@ -327,7 +330,6 @@ def create_derive_value_func_from_credentials(
     :return:
         Function that takes a TradingPairIdentifier and returns account value in USD.
     """
-    from decimal import Decimal
     from eth_defi.derive.authentication import DeriveApiClient
     from eth_defi.derive.account import fetch_account_summary
     from tradeexecutor.state.identifier import TradingPairIdentifier

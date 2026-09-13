@@ -3,6 +3,7 @@
 import datetime
 from decimal import Decimal
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from pytest_mock import MockerFixture
@@ -19,7 +20,7 @@ from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
 from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
 from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairKind
+from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.state import State
 from eth_defi.compat import native_datetime_utc_now
 
@@ -34,7 +35,7 @@ def usdc() -> AssetIdentifier:
     )
 
 
-def test_lighter_pair_and_universe_detection(usdc: AssetIdentifier):
+def test_lighter_pair_and_universe_detection(usdc: AssetIdentifier) -> None:
     """Create a public Lighter pair and detect it from a strategy universe.
 
     1. Create a synthetic Lighter exchange-account pair.
@@ -60,7 +61,7 @@ def test_lighter_pair_and_universe_detection(usdc: AssetIdentifier):
 def test_lighter_account_value_uses_public_reader(
     usdc: AssetIdentifier,
     mocker: MockerFixture,
-):
+) -> None:
     """Read canonical total asset value without requesting a private key.
 
     1. Patch the public equity reader with a deterministic response.
@@ -68,6 +69,8 @@ def test_lighter_account_value_uses_public_reader(
     3. Verify the session and public account index were forwarded.
     """
     # 1. Patch the public equity reader with a deterministic response.
+    # The HTTP read is mocked because this unit test checks adapter wiring,
+    # while real public API coverage belongs to the manual integration test.
     session = object()
     reader = mocker.patch(
         "tradeexecutor.exchange_account.lighter.fetch_lighter_total_equity",
@@ -79,14 +82,14 @@ def test_lighter_account_value_uses_public_reader(
     value = create_lighter_account_value_func(session)(pair, block_identifier=99)
 
     # 3. Verify the session and public account index were forwarded.
-    assert value == Decimal("12.50")
+    assert value == pytest.approx(Decimal("12.50"))
     reader.assert_called_once_with(session, 456)
 
 
 def test_negative_lighter_equity_does_not_mutate_state(
     usdc: AssetIdentifier,
     mocker: MockerFixture,
-):
+) -> None:
     """Reject negative equity before creating valuation or balance updates.
 
     1. Create an exchange-account position with a non-negative starting value.
@@ -105,9 +108,11 @@ def test_negative_lighter_equity_does_not_mutate_state(
     )
     position = list(state.portfolio.open_positions.values())[0]
     previous_value = position.get_value()
-    reader = mocker.Mock(return_value=Decimal("-1"))
 
     # 2. Return negative Lighter equity from the injected public reader.
+    # The reader is mocked to exercise the impossible negative response
+    # deterministically without relying on external account state.
+    reader = mocker.Mock(return_value=Decimal("-1"))
     valuator = ExchangeAccountValuator(
         ExchangeAccountPricingModel(reader),
     )
@@ -115,12 +120,14 @@ def test_negative_lighter_equity_does_not_mutate_state(
     # 3. Verify valuation fails closed and state remains unchanged.
     with pytest.raises(NegativeLighterEquityError):
         valuator(native_datetime_utc_now(), position)
-    assert position.get_value() == previous_value
+    assert position.get_value() == pytest.approx(previous_value)
     assert not position.balance_updates
     assert not position.valuation_updates
 
 
-def test_negative_lighter_equity_aborts_sync_without_state_mutation(usdc: AssetIdentifier):
+def test_negative_lighter_equity_aborts_sync_without_state_mutation(
+    usdc: AssetIdentifier,
+) -> None:
     """Reject negative equity in the periodic sync path as well.
 
     1. Create an exchange-account position with a non-negative starting value.
@@ -139,9 +146,12 @@ def test_negative_lighter_equity_aborts_sync_without_state_mutation(usdc: AssetI
     )
     position = list(state.portfolio.open_positions.values())[0]
     previous_value = position.get_value()
-    sync_model = ExchangeAccountSyncModel(lambda _pair, **_kwargs: Decimal("-1"))
 
     # 2. Return negative equity from the injected Lighter reader.
+    # The local callback supplies an impossible public response without
+    # depending on mutable external account state.
+    sync_model = ExchangeAccountSyncModel(lambda _pair, **_kwargs: Decimal("-1"))
+
     # 3. Verify sync raises before recording a balance update or advancing accounting.
     with pytest.raises(NegativeLighterEquityError):
         sync_model.sync_positions(
@@ -150,12 +160,14 @@ def test_negative_lighter_equity_aborts_sync_without_state_mutation(usdc: AssetI
             strategy_universe=None,
             pricing_model=None,
         )
-    assert position.get_value() == previous_value
+    assert position.get_value() == pytest.approx(previous_value)
     assert not position.balance_updates
     assert not state.sync.accounting.balance_update_refs
 
 
-def test_lighter_api_error_does_not_create_stale_valuation(usdc: AssetIdentifier):
+def test_lighter_api_error_does_not_create_stale_valuation(
+    usdc: AssetIdentifier,
+) -> None:
     """Propagate Lighter API failures instead of caching the old value.
 
     1. Create an exchange-account position with an existing value.
@@ -173,10 +185,18 @@ def test_lighter_api_error_does_not_create_stale_valuation(usdc: AssetIdentifier
         reserve_amount=Decimal("10"),
     )
     position = list(state.portfolio.open_positions.values())[0]
-    reader = lambda _pair, **_kwargs: (_ for _ in ()).throw(RuntimeError("API unavailable"))
-    valuator = ExchangeAccountValuator(ExchangeAccountPricingModel(reader))
 
     # 2. Inject an account reader that raises an API error.
+    # The local callback makes the upstream failure deterministic without
+    # contacting Lighter from a unit test.
+    def unavailable_reader(
+        _pair: TradingPairIdentifier,
+        **_kwargs: Any,
+    ) -> Decimal:
+        raise RuntimeError("API unavailable")
+
+    valuator = ExchangeAccountValuator(ExchangeAccountPricingModel(unavailable_reader))
+
     # 3. Verify no fallback valuation event is appended.
     with pytest.raises(RuntimeError, match="API unavailable"):
         valuator(native_datetime_utc_now(), position)
@@ -187,7 +207,7 @@ def test_lighter_api_error_does_not_create_stale_valuation(usdc: AssetIdentifier
 def test_lighter_vault_valuation_adds_safe_balance_and_external_equity(
     usdc: AssetIdentifier,
     mocker: MockerFixture,
-):
+) -> None:
     """Return float NAV from Safe reserve plus current public Lighter equity.
 
     1. Mock the ERC-20 Safe balance and public Lighter account response.
@@ -195,6 +215,8 @@ def test_lighter_vault_valuation_adds_safe_balance_and_external_equity(
     3. Verify Decimal components are summed before the float boundary.
     """
     # 1. Mock the ERC-20 Safe balance and public Lighter account response.
+    # Both reads are mocked because this unit test isolates the NAV formula;
+    # the Anvil test covers the real ERC-20 read.
     token = SimpleNamespace(fetch_balance_of=mocker.Mock(return_value=Decimal("3.25")))
     mocker.patch("tradeexecutor.exchange_account.lighter.fetch_erc20_details", return_value=token)
     mocker.patch(
@@ -224,7 +246,7 @@ def test_lighter_vault_valuation_adds_safe_balance_and_external_equity(
 def test_negative_lighter_vault_valuation_aborts_before_nav(
     usdc: AssetIdentifier,
     mocker: MockerFixture,
-):
+) -> None:
     """Reject negative external equity before a Lagoon NAV can be posted.
 
     1. Mock a valid Safe balance and negative public Lighter equity.
@@ -232,12 +254,16 @@ def test_negative_lighter_vault_valuation_aborts_before_nav(
     3. Verify the invariant aborts before returning a value to Lagoon.
     """
     # 1. Mock a valid Safe balance and negative public Lighter equity.
+    # These reads are mocked because the unit test targets the fail-closed NAV
+    # boundary, while the Anvil test covers the real ERC-20 balance read.
     token = SimpleNamespace(fetch_balance_of=mocker.Mock(return_value=Decimal("3")))
     mocker.patch("tradeexecutor.exchange_account.lighter.fetch_erc20_details", return_value=token)
     mocker.patch(
         "tradeexecutor.exchange_account.lighter.fetch_lighter_total_equity",
         return_value=SimpleNamespace(get_total=lambda: Decimal("-0.01")),
     )
+
+    # 2. Evaluate the custom NAV function.
     valuation = create_lighter_vault_valuation_func(
         web3=object(),
         safe_address="0x0000000000000000000000000000000000000002",
@@ -246,13 +272,12 @@ def test_negative_lighter_vault_valuation_aborts_before_nav(
         session=object(),
     )
 
-    # 2. Evaluate the custom NAV function.
     # 3. Verify the invariant aborts before returning a value to Lagoon.
     with pytest.raises(NegativeLighterEquityError):
         valuation(None, block_number=7)
 
 
-def test_lagoon_nav_adds_pending_settlement_float():
+def test_lagoon_nav_adds_pending_settlement_float() -> None:
     """Keep the Lighter NAV return compatible with Lagoon pending settlement.
 
     1. Use a minimal sync-model instance with a custom base valuation.
@@ -260,9 +285,13 @@ def test_lagoon_nav_adds_pending_settlement_float():
     3. Verify the result is the float sum passed to Lagoon.
     """
     # 1. Use a minimal sync-model instance with a custom base valuation.
+    # The minimal model isolates pending-settlement arithmetic without
+    # constructing a real vault or Web3 connection.
     sync_model = object.__new__(LagoonVaultSyncModel)
     sync_model.valuation_data_freshness = datetime.timedelta(hours=1)
     sync_model.calculate_valuation_func = lambda _state, **_kwargs: 12.5
+
+    # 2. Add a non-zero pending settlement value.
     state = SimpleNamespace(
         portfolio=SimpleNamespace(
             get_open_and_frozen_positions=lambda: [],
@@ -270,6 +299,5 @@ def test_lagoon_nav_adds_pending_settlement_float():
         )
     )
 
-    # 2. Add a non-zero pending settlement value.
     # 3. Verify the result is the float sum passed to Lagoon.
     assert sync_model.calculate_valuation(state, block_number=10) == pytest.approx(13.0)

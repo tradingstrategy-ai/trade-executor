@@ -94,7 +94,7 @@ def test_lighter_lagoon_nav_uses_safe_balance_and_total_equity(
     web3_ethereum: Web3,
     deployer: HotWallet,
     mocker: MockerFixture,
-):
+) -> None:
     """Post real Lagoon NAV as Safe USDC plus mocked Lighter total equity.
 
     1. Deploy a real Ethereum Lagoon vault and fund it through the normal
@@ -103,6 +103,7 @@ def test_lighter_lagoon_nav_uses_safe_balance_and_total_equity(
        production public-reader adapter.
     3. Reconcile the Safe and post NAV through the real Lagoon sync model.
     4. Verify the state components, on-chain reserve and posted total assets.
+    5. Reject a negative public-equity response before another NAV transaction.
     """
     # 1. Deploy a real Ethereum Lagoon vault and fund it through the normal
     # subscription, valuation, settlement and claim lifecycle.
@@ -217,10 +218,10 @@ def test_lighter_lagoon_nav_uses_safe_balance_and_total_equity(
 
     # 4. Verify the state components, on-chain reserve and posted total assets.
     reserve_position = state.portfolio.get_default_reserve_position()
-    assert reserve_position.quantity == SAFE_USDC
-    assert position.get_value() == LIGHTER_TOTAL_EQUITY
+    assert reserve_position.quantity == pytest.approx(SAFE_USDC)
+    assert position.get_value() == pytest.approx(LIGHTER_TOTAL_EQUITY)
     assert state.portfolio.get_vault_settlement_pending_value() == pytest.approx(0)
-    assert usdc.fetch_balance_of(deployment.safe_address) == SAFE_USDC
+    assert usdc.fetch_balance_of(deployment.safe_address) == pytest.approx(SAFE_USDC)
 
     # With an empty investor queue the sync model intentionally posts NAV but
     # does not call settleDeposit(); ``totalAssets`` remains the last settled
@@ -237,13 +238,14 @@ def test_lighter_lagoon_nav_uses_safe_balance_and_total_equity(
     assert nav_logs
     posted_raw = int.from_bytes(bytes(nav_logs[-1]["data"]), byteorder="big")
     posted_nav = usdc.convert_to_decimals(posted_raw)
-    assert posted_nav == SAFE_USDC + LIGHTER_TOTAL_EQUITY
+    assert posted_nav == pytest.approx(SAFE_USDC + LIGHTER_TOTAL_EQUITY)
     assert reader.call_count >= 2
     for call in reader.call_args_list:
         assert call.args[1] == LIGHTER_ACCOUNT_INDEX
 
-    # A negative public-equity response must fail before the sync model
-    # constructs or broadcasts a new Lagoon valuation transaction.
+    # 5. Reject a negative public-equity response before another NAV transaction.
+    # The response is mocked because Anvil cannot make Lighter's off-chain
+    # sequencer report impossible account equity for this local vault.
     negative_equity = type(
         "MockNegativeLighterEquity",
         (),

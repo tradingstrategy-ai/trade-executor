@@ -9,7 +9,7 @@ from tradeexecutor.exchange_account.lighter import create_lighter_exchange_accou
 from tradeexecutor.state.identifier import AssetIdentifier
 
 
-def test_exchange_account_guard_whitelists_only_quote_asset():
+def test_exchange_account_guard_whitelists_only_quote_asset() -> None:
     """Do not whitelist a synthetic Lighter account identity as an ERC-20.
 
     1. Create the public Lighter exchange-account pair used by a strategy.

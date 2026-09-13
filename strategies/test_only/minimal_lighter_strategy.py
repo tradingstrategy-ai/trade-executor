@@ -97,7 +97,7 @@ def create_indicators(
     indicators: IndicatorSet,
     strategy_universe: TradingStrategyUniverse,
     execution_context: ExecutionContext,
-):
+) -> None:
     """No indicators are needed for deployment or account monitoring."""
     del parameters, indicators, strategy_universe, execution_context
 

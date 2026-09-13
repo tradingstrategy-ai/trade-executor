@@ -20,6 +20,7 @@ from eth_defi.provider.anvil import is_anvil    , mine
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
 from tradeexecutor.cli.double_position import check_double_position
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
+from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.types import BlockNumber, Percent
@@ -622,7 +623,6 @@ class StrategyRunner(abc.ABC):
             pair_configurator = routing_model.pair_configurator
             vault_valuation_func = getattr(pair_configurator, "vault_valuation_func", None)
             if vault_valuation_func is not None:
-                from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
                 if isinstance(self.sync_model, LagoonVaultSyncModel):
                     self.sync_model.calculate_valuation_func = vault_valuation_func
                     logger.info("Wired up strategy-specific valuation function on sync model")

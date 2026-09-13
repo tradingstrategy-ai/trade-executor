@@ -8,7 +8,9 @@ used for valuation.  No API-key material is needed by the executor.
 import logging
 import math
 from decimal import Decimal, InvalidOperation
-from typing import Callable
+from typing import Any, Callable
+
+from web3 import Web3
 
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
 from eth_defi.lighter.session import LighterSession, create_lighter_session
@@ -38,7 +40,7 @@ LIGHTER_PUBLIC_METADATA_LABELS = {
 }
 
 
-def redact_lighter_metadata(metadata: dict) -> dict:
+def redact_lighter_metadata(metadata: dict[Any, Any]) -> dict[Any, Any]:
     """Remove private key material while preserving public key-slot metadata."""
     def is_secret_field(key: object) -> bool:
         if not isinstance(key, str):
@@ -123,7 +125,7 @@ def create_lighter_exchange_account_pair(
     )
 
 
-def has_lighter_exchange_account_pairs(strategy_universe) -> bool:
+def has_lighter_exchange_account_pairs(strategy_universe: Any) -> bool:
     """Return whether a strategy universe contains a Lighter account pair."""
     iterate_pairs = getattr(strategy_universe, "iterate_pairs", None)
     if iterate_pairs is None:
@@ -190,8 +192,8 @@ def create_lighter_account_value_func(
 
     def get_lighter_account_value(
         pair: TradingPairIdentifier,
-        block_identifier=None,
-        **kwargs,
+        block_identifier: Any = None,
+        **kwargs: Any,
     ) -> Decimal:
         # The public Lighter endpoint cannot be block-pinned.  Keep accepting
         # the shared block keyword so exchange-account callers do not need a
@@ -216,7 +218,7 @@ def create_lighter_account_value_func(
 
 
 def create_lighter_vault_valuation_func(
-    web3,
+    web3: Web3,
     safe_address: str,
     reserve_asset: AssetIdentifier,
     account_index: int,
@@ -233,7 +235,7 @@ def create_lighter_vault_valuation_func(
     lighter_session = session if session is not None else create_lighter_session()
     account_value_func = create_lighter_account_value_func(lighter_session)
 
-    def calculate_nav(state, *, block_number=None) -> float:
+    def calculate_nav(state: Any, *, block_number: int | None = None) -> float:
         del state
         reserve_token = fetch_erc20_details(
             web3,

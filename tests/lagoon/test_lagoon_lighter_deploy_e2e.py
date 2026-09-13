@@ -9,6 +9,7 @@ import logging
 import os
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 import pytest
 from eth_account import Account
@@ -84,7 +85,7 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
     tmp_path: Path,
     capsys: CaptureFixture[str],
     caplog: LogCaptureFixture,
-):
+) -> None:
     """Run the real Typer deployment while mocking only Lighter public state.
 
     1. Fund the deterministic deployer with fork ETH and native Ethereum USDC.
@@ -114,7 +115,7 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
         def close(self) -> None:
             observed["session_closed"] = True
 
-    def fake_wait_for_account(session, owner):
+    def fake_wait_for_account(session: Any, owner: str) -> int:
         del session
         observed["safe_address"] = owner
         register_lighter_account_on_anvil(
@@ -124,13 +125,24 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
         )
         return LIGHTER_ACCOUNT_INDEX
 
-    def fake_wait_for_collateral(session, account_index, expected_collateral, **kwargs):
+    def fake_wait_for_collateral(
+        session: Any,
+        account_index: int,
+        expected_collateral: Decimal,
+        **kwargs: Any,
+    ) -> Decimal:
         del session, kwargs
         observed["collateral_account_index"] = account_index
         observed["expected_collateral"] = expected_collateral
         return Decimal("1")
 
-    def fake_wait_for_api_key(session, account_index, api_key_index, public_key, **kwargs):
+    def fake_wait_for_api_key(
+        session: Any,
+        account_index: int,
+        api_key_index: int,
+        public_key: str,
+        **kwargs: Any,
+    ) -> None:
         del session
         observed["api_key_account_index"] = account_index
         observed["api_key_index"] = api_key_index
@@ -170,9 +182,9 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
     mocker.patch.dict("os.environ", environment, clear=True)
 
     # 3. Invoke the real Typer command and all Lagoon/Safe/Lighter-L1 writers.
-    caplog.set_level(logging.INFO)
     cli = get_command(app)
-    cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
+    with caplog.at_level(logging.INFO):
+        cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
 
     # 4. Verify receipts, public/private artifact boundaries and public metadata.
     operator_json_path = vault_record_file.with_suffix(".json")
@@ -187,7 +199,7 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
 
     assert observed["safe_address"] == operator_payload["deployments"]["ethereum"]["safe_address"]
     assert observed["collateral_account_index"] == LIGHTER_ACCOUNT_INDEX
-    assert observed["expected_collateral"] == LIGHTER_MIN_MAINNET_USDC
+    assert observed["expected_collateral"] == pytest.approx(LIGHTER_MIN_MAINNET_USDC)
     assert observed["api_key_account_index"] == LIGHTER_ACCOUNT_INDEX
     assert observed["api_key_index"] == LIGHTER_API_KEY_INDEX
     assert observed["public_key"] == setup["public_key"]

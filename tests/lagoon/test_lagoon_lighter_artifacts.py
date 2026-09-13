@@ -20,8 +20,8 @@ from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonDeploymentP
 SECRET = "lighter-private-key-DO-NOT-LOG-7f91"
 
 
-def _deployment(secret: str = SECRET):
-    """Build a small deployment double exposing upstream serializers."""
+def _deployment(secret: str = SECRET) -> SimpleNamespace:
+    """Build a deployment double so artifact tests need no on-chain deployment."""
     public_setup = {
         "account_index": 123,
         "api_key_index": 4,
@@ -46,7 +46,7 @@ def _deployment(secret: str = SECRET):
     )
 
 
-def test_single_chain_public_and_private_payloads_are_separate():
+def test_single_chain_public_and_private_payloads_are_separate() -> None:
     """Keep the generated key exclusively in the operator payload.
 
     1. Build public and private payloads through the report boundary.
@@ -68,7 +68,7 @@ def test_single_chain_public_and_private_payloads_are_separate():
     assert public["Lighter API-key index"] == 4
 
 
-def test_operator_json_is_0600_and_exclusive(tmp_path: Path):
+def test_operator_json_is_0600_and_exclusive(tmp_path: Path) -> None:
     """Write a private report safely and refuse a second generated key.
 
     1. Write a generated-key deployment record.
@@ -107,7 +107,7 @@ def test_operator_json_is_0600_and_exclusive(tmp_path: Path):
     assert record.read_text() == "public text"
 
 
-def test_private_writer_redacts_key_from_human_text(tmp_path: Path):
+def test_private_writer_redacts_key_from_human_text(tmp_path: Path) -> None:
     """Keep a caller-supplied human payload public at the writer boundary.
 
     1. Supply a private payload and accidentally include its key in text.
@@ -116,6 +116,8 @@ def test_private_writer_redacts_key_from_human_text(tmp_path: Path):
     """
     # 1. Supply a private payload and accidentally include its key in text.
     record = tmp_path / "vault-record.txt"
+
+    # 2. Write the artifacts through the production helper.
     _write_deployment_artifacts(
         record,
         text_payload=f"accidental key: {SECRET}",
@@ -126,13 +128,12 @@ def test_private_writer_redacts_key_from_human_text(tmp_path: Path):
         include_private_key=True,
     )
 
-    # 2. Write the artifacts through the production helper.
     # 3. Verify only the mode-0600 JSON contains the key.
     assert SECRET not in record.read_text()
     assert SECRET in json.loads(record.with_suffix(".json").read_text())["deployments"]["ethereum"]["lighter_account_setup"]["private_key"]
 
 
-def test_public_operator_json_keeps_replacement_semantics(tmp_path: Path):
+def test_public_operator_json_keeps_replacement_semantics(tmp_path: Path) -> None:
     """Replace a non-secret deployment record without retaining old bytes.
 
     1. Write a deliberately long public JSON payload.
@@ -165,7 +166,7 @@ def test_public_operator_json_keeps_replacement_semantics(tmp_path: Path):
     assert stat.S_IMODE(operator_json.stat().st_mode) == 0o600
 
 
-def test_multichain_private_record_survives_report_generation(tmp_path: Path):
+def test_multichain_private_record_survives_report_generation(tmp_path: Path) -> None:
     """Add key material only to the Ethereum source operator payload.
 
     1. Build a minimal multichain result with a Lighter source deployment.
