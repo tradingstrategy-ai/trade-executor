@@ -52,7 +52,7 @@ def anvil_ethereum() -> AnvilLaunch:
     try:
         yield launch
     finally:
-        launch.close(log_level=logging.ERROR)
+        launch.close()
 
 
 @pytest.fixture()
