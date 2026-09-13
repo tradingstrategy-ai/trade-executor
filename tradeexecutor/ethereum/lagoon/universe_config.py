@@ -145,7 +145,12 @@ def _collect_chain_token_addresses(universe: TradingStrategyUniverse, all_chain_
         # CoreDepositWallet instead.
         if pair.is_hyperliquid_vault():
             continue
-        for asset in (pair.base, pair.quote):
+        # Exchange-account bases are synthetic bookkeeping assets (for
+        # example GMX/Lighter account identities), not ERC-20 contracts that
+        # the Lagoon guard can approve.  Their quote asset is still a real
+        # reserve token and is included below.
+        assets = (pair.quote,) if pair.is_exchange_account() else (pair.base, pair.quote)
+        for asset in assets:
             chain_id = normalise_deployment_chain_id(asset.chain_id)
             if chain_id is not None:
                 chain_token_addresses.setdefault(chain_id, set()).add(Web3.to_checksum_address(asset.address))

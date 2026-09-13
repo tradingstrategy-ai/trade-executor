@@ -1,6 +1,7 @@
 """Guard configuration report after Lagoon vault deployment."""
 
 import logging
+from typing import Any
 
 from eth_typing import HexAddress
 from web3 import Web3
@@ -15,7 +16,22 @@ from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonMultichainD
 from eth_defi.chain import get_chain_name
 from eth_defi.etherscan.config import get_etherscan_url
 
+from tradeexecutor.exchange_account.lighter import (
+    LIGHTER_PUBLIC_METADATA_LABELS,
+    redact_lighter_metadata,
+)
+
 logger = logging.getLogger(__name__)
+
+
+def _redact_lighter_metadata(metadata: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Return public Lighter metadata without accidental key material."""
+    if not metadata:
+        return None
+    if not isinstance(metadata, dict):
+        raise TypeError(f"Expected Lighter metadata dictionary, got {type(metadata)}")
+
+    return redact_lighter_metadata(metadata)
 
 
 def _create_hypersync_client(web3: Web3, hypersync_api_key: str):
@@ -49,6 +65,7 @@ def print_deployment_report(
     hypersync_api_key: str | None = None,
     simulate: bool = False,
     from_block: int = 0,
+    public_lighter_metadata: dict[str, Any] | None = None,
 ) -> tuple[str, str]:
     """Print a guard configuration report after single-chain vault deployment.
 
@@ -66,6 +83,11 @@ def print_deployment_report(
     :return:
         Tuple of ``(unicode_report, markdown_report)``.
     """
+
+    # The CLI deliberately passes the redacted serializer output. Keep this
+    # API boundary defensive because the report helper is also used directly
+    # by integrations.
+    public_lighter_metadata = _redact_lighter_metadata(public_lighter_metadata)
 
     chain_id = web3.eth.chain_id
     chain_web3 = {chain_id: web3}
@@ -110,6 +132,25 @@ def print_deployment_report(
         scan_info=scan_info,
     )
 
+    if public_lighter_metadata:
+        public_lines = ["Lighter account"]
+        for key, label in LIGHTER_PUBLIC_METADATA_LABELS.items():
+            if key in public_lighter_metadata:
+                public_lines.append(f"  {label}: {public_lighter_metadata[key]}")
+        unicode_report = "\n".join(public_lines) + "\n\n" + unicode_report
+
+        metadata_lines = [
+            "# Deployment report",
+            "",
+            "## Lighter account",
+            "",
+        ]
+        for key, label in LIGHTER_PUBLIC_METADATA_LABELS.items():
+            if key in public_lighter_metadata:
+                metadata_lines.append(f"- **{label}**: `{public_lighter_metadata[key]}`")
+        metadata_lines.extend(["", "---", "", markdown_report])
+        markdown_report = "\n".join(metadata_lines)
+
     print(unicode_report)
     return unicode_report, markdown_report
 
@@ -131,6 +172,12 @@ def _format_deployment_metadata_markdown(
 
     for slug, dep in deployment_result.deployments.items():
         data = dep.get_deployment_data()
+        serialised = getattr(dep, "as_json_friendly_dict", None)
+        public_lighter_metadata = None
+        if serialised is not None and not getattr(dep, "is_satellite", False):
+            public_lighter_metadata = _redact_lighter_metadata(
+                serialised(include_secrets=False).get("lighter_account_setup")
+            )
         chain_id = dep.chain_id
 
         kind = "satellite" if dep.is_satellite else "source"
@@ -178,6 +225,11 @@ def _format_deployment_metadata_markdown(
         block = data.get("Block number", "")
         if block:
             lines.append(f"- **Block number**: {block}")
+
+        if public_lighter_metadata:
+            for key, label in LIGHTER_PUBLIC_METADATA_LABELS.items():
+                if key in public_lighter_metadata:
+                    lines.append(f"- **Lighter {label}**: `{public_lighter_metadata[key]}`")
 
         lines.append("")
 
@@ -268,6 +320,26 @@ def generate_multichain_deployment_report(
         token_cache=token_cache,
         scan_info=scan_info,
     )
+
+    lighter_lines: list[str] = []
+    for slug, deployment in deployment_result.deployments.items():
+        if getattr(deployment, "is_satellite", False):
+            continue
+        serialiser = getattr(deployment, "as_json_friendly_dict", None)
+        if serialiser is None:
+            continue
+        lighter_data = _redact_lighter_metadata(
+            serialiser(include_secrets=False).get("lighter_account_setup")
+        )
+        if not lighter_data:
+            continue
+        lighter_lines.append(f"Lighter account ({slug})")
+        for key in LIGHTER_PUBLIC_METADATA_LABELS:
+            if key in lighter_data:
+                lighter_lines.append(f"  {key}: {lighter_data[key]}")
+        lighter_lines.append("")
+    if lighter_lines:
+        unicode_report = "\n".join(lighter_lines) + "\n" + unicode_report
 
     # Build full Markdown: deployment metadata + guard config tree
     metadata_md = _format_deployment_metadata_markdown(deployment_result)

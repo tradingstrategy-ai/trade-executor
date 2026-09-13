@@ -10,4 +10,5 @@ Key components:
 - :py:class:`ExchangeAccountValuator` - Valuation using configurable account value function
 - :py:func:`create_derive_account_value_func` - Derive-specific account value function
 - :py:func:`create_ccxt_account_value_func` - CCXT-specific account value function for CEXes
+- :py:func:`create_lighter_account_value_func` - public Lighter account value function
 """

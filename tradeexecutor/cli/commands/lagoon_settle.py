@@ -112,7 +112,10 @@ def lagoon_settle(
         test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
         clear_caches=False,
     )
-    assert client is not None, "You need to give details for TradingStrategy.ai client"
+    # Static/code-defined universes can settle a Lagoon vault without a
+    # Trading Strategy API client.  This is used by external-account monitors
+    # whose valuation comes from the protocol's public API instead of candle
+    # data.
 
     state_path, store = resolve_state_store(id, state_file)
 

@@ -571,7 +571,11 @@ def correct_accounts(
         clear_caches=False,
         asset_management_mode=asset_management_mode,
     )
-    assert client is not None, "You need to give details for TradingStrategy.ai client"
+    # A code-defined universe, such as the static Lighter external-account
+    # monitor, does not download market data and therefore deliberately has no
+    # Trading Strategy API client.  Keep supporting normal data-backed
+    # strategies when a key is configured, but do not make an unused client a
+    # prerequisite for account reconciliation.
 
     execution_context = ExecutionContext(
         mode=ExecutionMode.one_off,
