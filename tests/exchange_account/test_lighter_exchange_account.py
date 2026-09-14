@@ -1,14 +1,18 @@
 """Lighter exchange-account adapter and NAV safety tests."""
 
 import datetime
+import logging
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from pytest_mock import MockerFixture
+from web3 import Web3
 
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
+from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.exchange_account.lighter import (
     NegativeLighterEquityError,
     create_lighter_account_value_func,
@@ -19,10 +23,12 @@ from tradeexecutor.exchange_account.lighter import (
 from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
 from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
+from tradeexecutor.exchange_account.utils import create_exchange_account_value_func
 from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
 from tradeexecutor.state.state import State
 from eth_defi.compat import native_datetime_utc_now
+from strategies.test_only.minimal_lighter_strategy import create_trading_universe
 
 
 @pytest.fixture()
@@ -84,6 +90,126 @@ def test_lighter_account_value_uses_public_reader(
     # 3. Verify the session and public account index were forwarded.
     assert value == pytest.approx(Decimal("12.50"))
     reader.assert_called_once_with(session, 456)
+
+
+def test_lighter_runtime_auto_discovery_wires_account_and_nav_readers(
+    mocker: MockerFixture,
+) -> None:
+    """Wire both public Lighter readers through the production configurator.
+
+    1. Build the real minimal Lighter strategy universe and an Ethereum execution double.
+    2. Construct the production Ethereum pair configurator.
+    3. Verify one shared public session is used for account and Lagoon NAV readers.
+    """
+    # 1. Build the real minimal Lighter strategy universe and an Ethereum execution double.
+    strategy_universe = create_trading_universe(None)
+    web3 = Web3()
+    mocker.patch.object(web3.eth, "_chain_id", return_value=1)
+    session = object()
+    account_reader = mocker.Mock(name="lighter_account_reader")
+    nav_reader = mocker.Mock(name="lighter_nav_reader")
+    session_factory = mocker.patch(
+        "tradeexecutor.ethereum.ethereum_protocol_adapters.create_lighter_session",
+        return_value=session,
+    )
+    account_factory = mocker.patch(
+        "tradeexecutor.ethereum.ethereum_protocol_adapters.create_lighter_account_value_func",
+        return_value=account_reader,
+    )
+    nav_factory = mocker.patch(
+        "tradeexecutor.ethereum.ethereum_protocol_adapters.create_lighter_vault_valuation_func",
+        return_value=nav_reader,
+    )
+    safe_address = "0x0000000000000000000000000000000000000002"
+    execution_model = SimpleNamespace(
+        web3=web3,
+        tx_builder=SimpleNamespace(
+            get_token_delivery_address=lambda: safe_address,
+        ),
+    )
+
+    # 2. Construct the production Ethereum pair configurator.
+    configurator = EthereumPairConfigurator(
+        web3,
+        strategy_universe,
+        execution_model=execution_model,
+    )
+
+    # 3. Both readers are wired with the same unauthenticated session.
+    assert configurator.account_value_func is account_reader
+    assert configurator.vault_valuation_func is nav_reader
+    session_factory.assert_called_once_with()
+    account_factory.assert_called_once_with(session)
+    nav_factory.assert_called_once_with(
+        web3=web3,
+        safe_address=safe_address,
+        reserve_asset=strategy_universe.get_reserve_asset(),
+        account_index=123,
+        session=session,
+    )
+
+
+def test_lighter_runtime_rejects_mixed_exchange_account_protocols(
+    usdc: AssetIdentifier,
+) -> None:
+    """Reject a universe that could omit part of its external account equity.
+
+    1. Create one Lighter pair and one synthetic GMX protocol pair.
+    2. Validate the mixed universe through the production topology guard.
+    3. Verify configuration fails before either protocol is auto-discovered.
+    """
+    # 1. Create one Lighter pair and one synthetic GMX protocol pair.
+    lighter_pair = create_lighter_exchange_account_pair(usdc, account_index=123)
+    gmx_pair = create_lighter_exchange_account_pair(usdc, account_index=456)
+    gmx_pair.other_data["exchange_protocol"] = "gmx"
+    mixed_universe = SimpleNamespace(
+        iterate_pairs=lambda: [lighter_pair, gmx_pair],
+    )
+
+    # 2. Validate the mixed universe through the production topology guard.
+    # 3. Configuration fails before either protocol is auto-discovered.
+    with pytest.raises(ValueError, match="cannot mix protocols: gmx"):
+        EthereumPairConfigurator._validate_external_account_protocols(mixed_universe)
+
+
+def test_correct_accounts_dispatches_to_public_lighter_reader(
+    usdc: AssetIdentifier,
+    mocker: MockerFixture,
+) -> None:
+    """Dispatch account correction to the unauthenticated Lighter reader.
+
+    1. Create one Lighter external-account position double.
+    2. Build the shared correction reader with no exchange credentials.
+    3. Verify the returned dispatcher calls the public Lighter reader.
+    """
+    # 1. Create one Lighter external-account position double.
+    pair = create_lighter_exchange_account_pair(usdc, account_index=789)
+    position = SimpleNamespace(pair=pair)
+    public_reader = mocker.Mock(return_value=Decimal("17.25"))
+    factory = mocker.patch(
+        "tradeexecutor.exchange_account.utils._create_lighter_protocol_value_func",
+        return_value=public_reader,
+    )
+
+    # 2. Build the shared correction reader with no exchange credentials.
+    test_logger = logging.getLogger("test-lighter-correct-accounts")
+    dispatcher = create_exchange_account_value_func(
+        positions=[position],
+        derive_owner_private_key=None,
+        derive_session_private_key=None,
+        derive_wallet_address=None,
+        derive_network=DeriveNetwork.mainnet,
+        ccxt_exchange_id=None,
+        ccxt_options=None,
+        ccxt_sandbox=False,
+        logger=test_logger,
+    )
+    assert dispatcher is not None
+
+    # 3. The returned dispatcher calls the public Lighter reader.
+    assert dispatcher(pair) == Decimal("17.25")
+    factory.assert_called_once_with(logger=test_logger)
+    public_reader.assert_called_once_with(pair)
 
 
 def test_negative_lighter_equity_does_not_mutate_state(

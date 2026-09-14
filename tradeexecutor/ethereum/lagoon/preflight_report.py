@@ -6,6 +6,8 @@ deployment paths.
 """
 
 import logging
+from decimal import Decimal
+from pathlib import Path
 
 from eth_defi.erc_4626.vault_protocol.lagoon.config import LagoonChainConfig
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonConfig
@@ -50,11 +52,11 @@ def log_deployment_preflight_report(
     lighter_api_key_index: int | None = None,
     lighter_deployment_address: str | None = None,
     lighter_usdc_address: str | None = None,
-    lighter_activation_amount=LIGHTER_MIN_MAINNET_USDC,
-    lighter_private_json_path=None,
+    lighter_activation_amount: Decimal | None = LIGHTER_MIN_MAINNET_USDC,
+    lighter_private_json_path: Path | None = None,
     simulate: bool = False,
-    logger=None,
-):
+    logger: logging.Logger | None = None,
+) -> None:
     """Log a structured pre-flight report before vault deployment.
 
     Outputs a generic section (common to all chains) followed by

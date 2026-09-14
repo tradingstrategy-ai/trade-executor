@@ -40,29 +40,13 @@ LIGHTER_PUBLIC_METADATA_LABELS = {
 }
 
 
-def redact_lighter_metadata(metadata: dict[Any, Any]) -> dict[Any, Any]:
-    """Remove private key material while preserving public key-slot metadata."""
-    def is_secret_field(key: object) -> bool:
-        if not isinstance(key, str):
-            return False
-        normalised = key.lower().replace("-", "_").replace(" ", "_")
-        return (
-            normalised in {"private_key", "privatekey", "api_key", "apikey", "secret", "secret_key", "secretkey"}
-            or ("private" in normalised and "key" in normalised)
-            or ("api_key" in normalised and not normalised.endswith("_index"))
-            or normalised.startswith("secret")
-        )
-
-    def redact(value: object) -> object:
-        if isinstance(value, dict):
-            return {key: redact(item) for key, item in value.items() if not is_secret_field(key)}
-        if isinstance(value, list):
-            return [redact(item) for item in value]
-        if isinstance(value, tuple):
-            return tuple(redact(item) for item in value)
-        return value
-
-    return redact(metadata)
+def get_public_lighter_metadata(metadata: dict[Any, Any]) -> dict[str, Any]:
+    """Copy only fields approved for public Lighter deployment reports."""
+    return {
+        key: metadata[key]
+        for key in LIGHTER_PUBLIC_METADATA_LABELS
+        if key in metadata
+    }
 
 
 class LighterEquityInvariantError(ValueError):
@@ -104,13 +88,11 @@ def create_lighter_exchange_account_pair(
     # Keep pair addresses valid and deployment-stable, as GMX does for its
     # exchange-account pair. The account index belongs in ``other_data`` and
     # must not be encoded as a short, non-address string here.
-    account_address = LIGHTER_L1_CONTRACT
-
     return TradingPairIdentifier(
         base=base,
         quote=quote,
-        pool_address=account_address,
-        exchange_address=account_address,
+        pool_address=LIGHTER_L1_CONTRACT,
+        exchange_address=LIGHTER_L1_CONTRACT,
         internal_id=1,
         internal_exchange_id=1,
         fee=0.0,
@@ -234,22 +216,22 @@ def create_lighter_vault_valuation_func(
     """
     lighter_session = session if session is not None else create_lighter_session()
     account_value_func = create_lighter_account_value_func(lighter_session)
+    reserve_token = fetch_erc20_details(
+        web3,
+        reserve_asset.address,
+        chain_id=reserve_asset.chain_id,
+    )
+    pair = create_lighter_exchange_account_pair(
+        quote=reserve_asset,
+        account_index=account_index,
+    )
 
     def calculate_nav(state: Any, *, block_number: int | None = None) -> float:
         del state
-        reserve_token = fetch_erc20_details(
-            web3,
-            reserve_asset.address,
-            chain_id=reserve_asset.chain_id,
-        )
         safe_usdc = Decimal(str(reserve_token.fetch_balance_of(
             safe_address,
             block_identifier=block_number if block_number is not None else "latest",
         )))
-        pair = create_lighter_exchange_account_pair(
-            quote=reserve_asset,
-            account_index=account_index,
-        )
         lighter_equity = account_value_func(pair)
         nav = safe_usdc + lighter_equity
         if not nav.is_finite() or nav < 0:

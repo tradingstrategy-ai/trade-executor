@@ -11,6 +11,7 @@ import pytest
 from tradeexecutor.cli.commands.lagoon_deploy_vault import (
     _build_multichain_artifact_payload,
     _build_single_chain_artifact_payload,
+    _remove_private_key_fields,
     _write_deployment_artifacts,
     _write_lighter_private_record,
 )
@@ -30,6 +31,7 @@ def _deployment(secret: str = SECRET) -> SimpleNamespace:
         "deposit_tx_hash": "0xdeposit",
         "change_pubkey_tx_hash": "0xpubkey",
         "observed_collateral": "1",
+        "future_sdk_payload": {"credential": secret},
     }
     private_setup = {**public_setup, "private_key": secret}
 
@@ -65,7 +67,28 @@ def test_single_chain_public_and_private_payloads_are_separate() -> None:
     # 3. Verify public metadata remains available for diagnostics.
     assert public["lighter_account_setup"]["account_index"] == 123
     assert public["lighter_account_setup"]["change_pubkey_tx_hash"] == "0xpubkey"
+    assert "future_sdk_payload" not in public["lighter_account_setup"]
     assert public["Lighter API-key index"] == 4
+
+
+def test_public_lighter_generation_flag_is_not_mistaken_for_a_secret() -> None:
+    """Keep the public feature flag while removing actual key material.
+
+    1. Build a configuration payload containing the public flag and a private key.
+    2. Pass it through the runtime artefact secret filter.
+    3. Verify the feature flag remains and the credential is removed.
+    """
+    # 1. Build a configuration payload containing the public flag and a private key.
+    payload = {
+        "generate_lighter_api_key": True,
+        "private_key": SECRET,
+    }
+
+    # 2. Pass it through the runtime artefact secret filter.
+    public = _remove_private_key_fields(payload)
+
+    # 3. The feature flag remains and the credential is removed.
+    assert public == {"generate_lighter_api_key": True}
 
 
 def test_operator_json_is_0600_and_exclusive(tmp_path: Path) -> None:

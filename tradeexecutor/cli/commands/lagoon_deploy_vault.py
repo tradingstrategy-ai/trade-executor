@@ -126,7 +126,10 @@ from tradeexecutor.ethereum.lagoon.universe_config import (
     normalise_deployment_chain_id,
     translate_trading_universe_to_lagoon_config,
 )
-from tradeexecutor.exchange_account.lighter import LIGHTER_PUBLIC_METADATA_LABELS, redact_lighter_metadata
+from tradeexecutor.exchange_account.lighter import (
+    LIGHTER_PUBLIC_METADATA_LABELS,
+    get_public_lighter_metadata,
+)
 from tradeexecutor.monkeypatch.web3 import \
     construct_sign_and_send_raw_middleware
 from tradeexecutor.strategy.execution_context import one_off_execution_context
@@ -312,16 +315,12 @@ def _write_private_json_file(
         flags |= os.O_TRUNC
     fd = os.open(path, flags, 0o600)
     try:
-        with os.fdopen(fd, "w") as out:
-            out.write(payload)
+        out = os.fdopen(fd, "w")
     except Exception:
-        # fdopen owns the descriptor after entering the context.  If it fails
-        # before ownership is transferred, do not leave a descriptor open.
-        try:
-            os.close(fd)
-        except OSError:
-            pass
+        os.close(fd)
         raise
+    with out:
+        out.write(payload)
     os.chmod(path, 0o600)
 
 
@@ -613,6 +612,8 @@ def _remove_private_key_fields(value: Any) -> Any:
             if not isinstance(key, str):
                 return False
             normalised_key = key.lower().replace("-", "_").replace(" ", "_")
+            if normalised_key == "generate_lighter_api_key":
+                return False
             return (
                 normalised_key in secret_field_names
                 or normalised_key == "private"
@@ -670,24 +671,16 @@ def _get_lighter_private_key(setup: Any) -> str | None:
 
 
 def _get_public_lighter_metadata(deploy_info: Any) -> dict[str, Any] | None:
-    """Extract only redacted Lighter metadata from an upstream deployment."""
+    """Extract approved public Lighter metadata from an upstream deployment."""
     serialised = getattr(deploy_info, "as_json_friendly_dict", None)
     if serialised is None:
         return None
     metadata = serialised(include_secrets=False).get("lighter_account_setup")
     if not metadata:
         return None
-    # Keep the report boundary defensive even if an older/custom upstream
-    # serializer accidentally returns a private-key field for a redacted
-    # request.  The operator payload is built separately with
-    # ``include_secrets=True`` below.
-    if isinstance(metadata, dict):
-        metadata = {
-            key: value
-            for key, value in metadata.items()
-            if key != "private_key"
-        }
-    return redact_lighter_metadata(_serialise_artifact_value(metadata))
+    if not isinstance(metadata, dict):
+        raise TypeError(f"Expected Lighter metadata dictionary, got {type(metadata)}")
+    return get_public_lighter_metadata(_serialise_artifact_value(metadata))
 
 
 def _format_lighter_metadata_text(metadata: dict[str, Any] | None) -> str:
@@ -718,12 +711,12 @@ def _build_single_chain_artifact_payload(
     serialised = serialiser(include_secrets=include_secrets)
     lighter_setup = serialised.get("lighter_account_setup")
     if lighter_setup is not None:
-        if not include_secrets and isinstance(lighter_setup, dict):
-            lighter_setup = {
-                key: value
-                for key, value in lighter_setup.items()
-                if key != "private_key"
-            }
+        if not include_secrets:
+            if not isinstance(lighter_setup, dict):
+                raise TypeError(
+                    f"Expected Lighter metadata dictionary, got {type(lighter_setup)}"
+                )
+            lighter_setup = get_public_lighter_metadata(lighter_setup)
         payload["lighter_account_setup"] = _serialise_artifact_value(lighter_setup)
         if not include_secrets:
             payload = _remove_private_key_fields(payload)
@@ -952,12 +945,14 @@ def _confirm_deployment(
     if verifier == "blockscout" and not verifier_url:
         raise RuntimeError("Verifier URL needed for production deployments with blockscout verifier")
 
-    prompt = f"Deploy {label}? [y/n] " if label != "vault" else "Ok [y/n]? "
     if lighter_api_key_generation:
+        action = f"Deploy {label}" if label != "vault" else "Deploy vault"
         prompt = (
-            f"{prompt.rstrip()} This will create a Lighter account and API key; "
+            f"{action}? This will create a Lighter account and API key; "
             f"the private key will be saved to {lighter_private_json_path} [y/n]? "
         )
+    else:
+        prompt = f"Deploy {label}? [y/n] " if label != "vault" else "Ok [y/n]? "
     confirm = input(prompt)
     if not confirm.lower().startswith("y"):
         print("Aborted")
@@ -1334,6 +1329,18 @@ def lagoon_deploy_vault(
         lighter_setup = getattr(deploy_info, "lighter_account_setup", None)
         if lighter_setup is None or not _get_lighter_private_key(lighter_setup):
             raise RuntimeError("Lighter API-key generation completed without private key material")
+        assert vault_record_file is not None
+        _write_lighter_private_record(
+            vault_record_file,
+            {
+                "multichain": False,
+                "safe_address": deploy_info.safe_address,
+                "vault_address": deploy_info.vault.address,
+                "module_address": deploy_info.trading_strategy_module.address,
+                "lighter_account_setup": lighter_setup,
+            },
+            logger,
+        )
 
     text_payload = _redact_private_key_from_text(deploy_info.pformat(), deploy_info)
     text_payload += _format_lighter_metadata_text(_get_public_lighter_metadata(deploy_info))
@@ -1341,13 +1348,6 @@ def lagoon_deploy_vault(
         deploy_info,
         include_secrets=False,
     )
-    private_json_payload = (
-        _build_single_chain_artifact_payload(deploy_info, include_secrets=True)
-        if generate_lighter_api_key
-        else None
-    )
-    if generate_lighter_api_key and "lighter_account_setup" not in private_json_payload:
-        raise RuntimeError("Lighter API-key generation did not produce an operator record")
     text_payload, public_json_payload = _annotate_single_chain_artifacts(
         text_payload=text_payload,
         json_payload=public_json_payload,
@@ -1360,18 +1360,13 @@ def lagoon_deploy_vault(
             json_payload=public_json_payload,
         )
 
-    # Keep the private payload separate from public annotation/migration data.
-    if private_json_payload is not None:
-        private_json_payload["Deployment mode"] = _get_deployment_mode_label(guard_only=guard_only)
-
     _write_deployment_artifacts(
         vault_record_file,
         text_payload=text_payload,
         public_json_payload=public_json_payload,
-        private_json_payload=private_json_payload,
         simulate=simulate,
         logger=logger,
-        include_private_key=generate_lighter_api_key,
+        write_json=not generate_lighter_api_key,
     )
 
     # The operator-facing vault record may live at any --vault-record-file path,

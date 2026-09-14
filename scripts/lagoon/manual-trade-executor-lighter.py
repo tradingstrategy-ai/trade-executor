@@ -14,6 +14,10 @@ Lighter's sequencer, order fills and secure withdrawals cannot be simulated by
 Anvil, so this script deliberately supports Ethereum mainnet only. Use a funded
 test account and small values.
 
+Withdrawal submission happens once. The claimability poll uses
+``eth_defi.lighter.sdk.LighterAuthTokenManager`` so an expired auth token is
+refreshed without replaying the withdrawal request.
+
 The deployment command creates a Lighter API key. The key is read from its
 mode-0600 operator record and is never printed, logged, passed as a command-line
 argument or copied to strategy state and public reports.
@@ -26,6 +30,7 @@ Example
     source .local-test.env
     export LIGHTER_TEST_PRIVATE_KEY="0x..."
     export JSON_RPC_ETHEREUM="https://..."
+    poetry run pip install lighter-sdk==1.1.2
     poetry run python scripts/lagoon/manual-trade-executor-lighter.py
 
 Optional environment variables
@@ -48,10 +53,14 @@ Optional environment variables
 
 ``LIGHTER_DEPOSIT_TIMEOUT`` / ``LIGHTER_WITHDRAW_TIMEOUT``
     Maximum seconds to wait for Lighter state transitions.
+
+``LIGHTER_AUTH_TOKEN_TIMEOUT``
+    Deliberately short authenticated SDK token lifetime used to exercise token
+    rotation. Defaults to 30 seconds in this tutorial; production callers
+    should use :class:`eth_defi.lighter.sdk.LighterAuthTokenManager` defaults.
 """
 
 import asyncio
-import importlib
 import json
 import logging
 import os
@@ -60,10 +69,10 @@ import time
 from dataclasses import dataclass, field
 from decimal import ROUND_CEILING, ROUND_DOWN, Decimal
 from pathlib import Path
-from types import ModuleType
 from typing import Any
 from unittest import mock
 
+import lighter
 from eth_defi.erc_4626.settlement_events import fetch_vault_settlement_logs
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
@@ -77,6 +86,7 @@ from eth_defi.lighter.lagoon import (
     claim_usdc_to_lagoon_safe_from_lighter,
     deposit_usdc_from_lagoon_safe_into_lighter,
 )
+from eth_defi.lighter.sdk import LighterAuthTokenManager
 from eth_defi.lighter.session import LighterSession, create_lighter_session
 from eth_defi.lighter.valuation import (
     LighterEquity,
@@ -99,6 +109,8 @@ logger = logging.getLogger(__name__)
 
 ETH_PERP_MARKET_INDEX = 0
 POLL_SECONDS = 5
+#: Keep this short so withdrawal-history polling exercises token rotation.
+TUTORIAL_LIGHTER_AUTH_TOKEN_TIMEOUT = 30
 USDC_TOLERANCE = Decimal("0.000010")
 NAV_SYNC_TOLERANCE = Decimal("0.01")
 
@@ -120,6 +132,7 @@ class TutorialConfig:
     api_key_index: int
     deposit_timeout: int
     withdraw_timeout: int
+    auth_token_timeout: int = TUTORIAL_LIGHTER_AUTH_TOKEN_TIMEOUT
 
 
 @dataclass(slots=True)
@@ -127,7 +140,6 @@ class TutorialContext:
     """Public objects shared by tutorial phases."""
 
     config: TutorialConfig
-    lighter: ModuleType
     web3: Web3
     deployer: HotWallet
     usdc: TokenDetails
@@ -206,6 +218,15 @@ def load_config() -> TutorialConfig:
             ),
         )
     )
+    auth_token_timeout = int(
+        os.environ.get(
+            "LIGHTER_AUTH_TOKEN_TIMEOUT",
+            str(TUTORIAL_LIGHTER_AUTH_TOKEN_TIMEOUT),
+        )
+    )
+    if auth_token_timeout < 1:
+        raise ValueError("LIGHTER_AUTH_TOKEN_TIMEOUT must be at least one second")
+
     return TutorialConfig(
         rpc_url=require_env("JSON_RPC_ETHEREUM"),
         deployer_private_key=require_env("LIGHTER_TEST_PRIVATE_KEY", "PRIVATE_KEY"),
@@ -216,6 +237,7 @@ def load_config() -> TutorialConfig:
         api_key_index=int(os.environ.get("LIGHTER_API_KEY_INDEX", "4")),
         deposit_timeout=int(os.environ.get("LIGHTER_DEPOSIT_TIMEOUT", "900")),
         withdraw_timeout=int(os.environ.get("LIGHTER_WITHDRAW_TIMEOUT", "3600")),
+        auth_token_timeout=auth_token_timeout,
     )
 
 
@@ -242,10 +264,13 @@ def prepare_context(config: TutorialConfig) -> TutorialContext:
     logger.info("Connected to Ethereum mainnet (chain id %d)", web3.eth.chain_id)
     logger.info("Deployer: %s", deployer.address)
     logger.info("Starting balances: %s USDC, %.6f ETH", usdc_balance, eth_balance)
+    logger.info(
+        "Lighter auth token lifetime for this tutorial: %d seconds",
+        config.auth_token_timeout,
+    )
     logger.info("Run artefacts: %s", config.run_dir)
     return TutorialContext(
         config=config,
-        lighter=importlib.import_module("lighter"),
         web3=web3,
         deployer=deployer,
         usdc=usdc,
@@ -260,6 +285,10 @@ def public_error(error: Exception) -> RuntimeError:
     return RuntimeError(f"Lighter operation failed ({type(error).__name__})")
 
 
+class TutorialError(RuntimeError):
+    """Operator-facing tutorial failure containing no SDK payload."""
+
+
 def run_cli(args: list[str], environment: dict[str, str]) -> None:
     """Invoke a real Typer command without printing its environment."""
     _latest_delayed_block_number_cache.clear()
@@ -268,12 +297,18 @@ def run_cli(args: list[str], environment: dict[str, str]) -> None:
     for key in ("PATH", "HOME", "USER", "TMPDIR", "SHELL"):
         if key not in patched_environment and key in os.environ:
             patched_environment[key] = os.environ[key]
-    with mock.patch.dict(os.environ, patched_environment, clear=True):
-        try:
-            app(args, standalone_mode=False)
-        except SystemExit as error:
-            if error.code not in (None, 0):
-                raise
+    try:
+        with mock.patch.dict(os.environ, patched_environment, clear=True):
+            try:
+                app(args, standalone_mode=False)
+            except SystemExit as error:
+                if error.code not in (None, 0):
+                    raise
+    finally:
+        # Typer commands replace the root logger with their own LOG_LEVEL.
+        # Restore tutorial INFO logging before the next lifecycle phase.
+        configure_logging()
+        logger.setLevel(logging.INFO)
 
 
 def load_secret_record(path: Path) -> dict[str, Any]:
@@ -335,7 +370,7 @@ async def wait_for_position(
 
 
 async def resolve_eth_order(
-    lighter: ModuleType, requested_notional: Decimal | None
+    requested_notional: Decimal | None,
 ) -> tuple[int, Decimal, int, Decimal]:
     """Resolve a valid ETH order size from Lighter's public market metadata."""
     api_client = lighter.ApiClient(
@@ -361,7 +396,6 @@ async def resolve_eth_order(
 
 
 async def submit_market_order(
-    lighter: ModuleType,
     deployment: VaultDeployment,
     base_amount: int,
     max_slippage: Decimal,
@@ -378,7 +412,7 @@ async def submit_market_order(
             api_private_keys={deployment.api_key_index: deployment.api_private_key},
         )
         if client.check_client():
-            raise RuntimeError("Lighter API key was rejected")
+            raise TutorialError("Lighter API key was rejected")
         (
             _transaction,
             _response,
@@ -393,7 +427,9 @@ async def submit_market_order(
             api_key_index=deployment.api_key_index,
         )
         if error:
-            raise RuntimeError("Lighter order was rejected")
+            raise TutorialError("Lighter order was rejected")
+    except TutorialError:
+        raise
     # SDK exceptions may contain signed request details, so normalise every
     # failure at this public tutorial boundary.
     except Exception as error:  # noqa: BLE001
@@ -404,12 +440,17 @@ async def submit_market_order(
 
 
 async def request_secure_withdrawal(
-    lighter: ModuleType,
     deployment: VaultDeployment,
     amount: Decimal,
     timeout: int,
+    auth_token_timeout: int,
 ) -> Decimal:
-    """Request a secure USDC withdrawal and wait for its claimable amount."""
+    """Request a secure USDC withdrawal and wait for its claimable amount.
+
+    Withdrawal submission is performed once. Only the idempotent
+    ``withdraw_history`` follow-up is wrapped in the generic auth-token retry
+    helper, so an expired token can never resubmit the withdrawal.
+    """
     client = None
     api_client = None
     try:
@@ -425,41 +466,64 @@ async def request_secure_withdrawal(
             api_key_index=deployment.api_key_index,
         )
         if error or response is None:
-            raise RuntimeError("Lighter secure withdrawal was rejected")
-        request_hash = response.tx_hash
-        logger.info("Secure withdrawal accepted: %s", request_hash)
+            raise TutorialError("Lighter secure withdrawal was rejected")
+        logger.info("Secure withdrawal accepted: %s", response.tx_hash)
 
         api_client = lighter.ApiClient(
             configuration=lighter.Configuration(host=LIGHTER_API_URL)
         )
-        auth, error = client.create_auth_token_with_expiry(
-            api_key_index=deployment.api_key_index
+        transaction_api = lighter.TransactionApi(api_client)
+
+        auth_token_generations = 0
+
+        def create_auth_token() -> tuple[str | None, object | None]:
+            nonlocal auth_token_generations
+            auth_token_generations += 1
+            action = "Creating" if auth_token_generations == 1 else "Rotating"
+            logger.info(
+                "%s Lighter auth token for withdrawal history (generation %d)",
+                action,
+                auth_token_generations,
+            )
+            return client.create_auth_token_with_expiry(
+                deadline=auth_token_timeout,
+                api_key_index=deployment.api_key_index,
+            )
+
+        auth_manager = LighterAuthTokenManager(
+            token_factory=create_auth_token,
+            token_lifetime=auth_token_timeout,
+            refresh_margin=0.0,
         )
-        if error:
-            raise RuntimeError("Lighter withdrawal-history authentication failed")
 
         deadline = time.monotonic() + timeout
         while True:
-            history = await lighter.TransactionApi(api_client).withdraw_history(
-                auth, deployment.account_index
+            history = await auth_manager.call(
+                lambda auth: transaction_api.withdraw_history(
+                    authorization=auth,
+                    account_index=deployment.account_index,
+                ),
+                operation_name="withdrawal history",
             )
             rows = [
                 row
                 for row in history.withdraws
                 if row.asset_id == client.ASSET_ID_USDC and Decimal(row.amount) > 0
             ]
-            matches = [row for row in rows if row.l1_tx_hash == request_hash]
-            if not matches:
-                matches = [
-                    row
-                    for row in rows
-                    if abs(Decimal(row.amount) - amount) <= USDC_TOLERANCE
-                ]
+            matches = [
+                row
+                for row in rows
+                if abs(Decimal(row.amount) - amount) <= USDC_TOLERANCE
+            ]
+            if len(matches) > 1:
+                raise TutorialError("Ambiguous Lighter withdrawal history")
             if len(matches) == 1 and matches[0].status.lower() == "claimable":
                 return Decimal(matches[0].amount)
             if time.monotonic() >= deadline:
-                raise TimeoutError("Lighter withdrawal did not become claimable")
+                raise TutorialError("Lighter withdrawal did not become claimable in time")
             await asyncio.sleep(POLL_SECONDS)
+    except TutorialError:
+        raise
     # SDK exceptions may contain signed request details, so normalise every
     # failure at this public tutorial boundary.
     except Exception as error:  # noqa: BLE001
@@ -499,7 +563,9 @@ def make_vault(
 def deploy_vault(context: TutorialContext) -> VaultDeployment:
     """Deploy Lagoon, load its protected signer and initialise executor state."""
     deployment_environment = {
+        "EXECUTOR_ID": "lighter-manual",
         "STRATEGY_FILE": str(context.strategy_file),
+        "STATE_FILE": str(context.state_file),
         "PRIVATE_KEY": context.config.deployer_private_key,
         "JSON_RPC_ETHEREUM": context.config.rpc_url,
         "VAULT_RECORD_FILE": str(context.record_file),
@@ -594,14 +660,14 @@ def deposit_to_lighter(
         ),
     )
     run_cli(["lagoon-settle"], deployment.cli_environment)
-    claimable_shares = deployment.vault.vault_contract.functions.maxDeposit(
+    claimable_assets = deployment.vault.vault_contract.functions.maxDeposit(
         context.deployer.address
     ).call()
-    assert claimable_shares > 0, "Lagoon subscription did not produce claimable shares"
+    assert claimable_assets > 0, "Lagoon subscription did not produce claimable assets"
     broadcast_and_wait(
         context,
         deployment.vault.finalise_deposit(
-            context.deployer.address, raw_amount=claimable_shares
+            context.deployer.address, raw_amount=claimable_assets
         ),
     )
 
@@ -719,7 +785,6 @@ async def open_eth_long(
         notional,
     )
     await submit_market_order(
-        context.lighter,
         deployment,
         base_amount,
         context.config.max_slippage,
@@ -749,7 +814,6 @@ async def close_eth_long(
     )
     logger.info("Closing ETH/USD long: %s ETH", opened_size)
     await submit_market_order(
-        context.lighter,
         deployment,
         close_amount,
         context.config.max_slippage,
@@ -778,12 +842,15 @@ async def withdraw_to_safe(
 
     logger.info("Requesting secure withdrawal of %s USDC", withdraw_amount)
     claimable = await request_secure_withdrawal(
-        context.lighter,
         deployment,
         withdraw_amount,
         context.config.withdraw_timeout,
+        context.config.auth_token_timeout,
     )
     logger.info("Claiming %s USDC from Lighter to Safe", claimable)
+    # ``lagoon-settle`` runs through a Typer subprocess and may consume a
+    # deployer nonce unknown to this in-process wallet.
+    context.deployer.sync_nonce(context.web3)
     claim_usdc_to_lagoon_safe_from_lighter(
         context.web3,
         context.deployer,
@@ -799,8 +866,47 @@ async def withdraw_to_safe(
     return claimable
 
 
+def fund_redemption_shortfall(
+    context: TutorialContext,
+    deployment: VaultDeployment,
+    share_balance_raw: int,
+) -> None:
+    """Give the Safe enough temporary liquidity to redeem all shares.
+
+    A NAV-only ``lagoon-settle`` cycle does not update the settled share price.
+    After trading fees, the old ``convertToAssets()`` value may therefore be
+    slightly greater than the USDC claimed from Lighter. The subsequent full
+    redemption returns this small top-up to the deployer.
+    """
+    required_raw = deployment.vault.vault_contract.functions.convertToAssets(
+        share_balance_raw
+    ).call()
+    safe_raw = context.usdc.fetch_raw_balance_of(deployment.vault.safe_address)
+    if required_raw <= safe_raw:
+        return
+
+    deficit_raw = required_raw - safe_raw + 1
+    deficit = context.usdc.convert_to_decimals(deficit_raw)
+    assert context.usdc.fetch_raw_balance_of(context.deployer.address) >= deficit_raw
+    logger.info("Temporarily funding Safe redemption shortfall: %s USDC", deficit)
+    broadcast_and_wait(
+        context,
+        context.usdc.transfer(deployment.vault.safe_address, deficit),
+    )
+    assert (
+        context.usdc.fetch_raw_balance_of(deployment.vault.safe_address)
+        >= required_raw
+    )
+
+
 def redeem_all_shares(context: TutorialContext, deployment: VaultDeployment) -> None:
     """Redeem all shares and verify excess USDC returned to the deployer."""
+    share_balance_raw = deployment.vault.share_token.fetch_raw_balance_of(
+        context.deployer.address
+    )
+    assert share_balance_raw > 0, "Deployer has no vault shares to redeem"
+    fund_redemption_shortfall(context, deployment, share_balance_raw)
+
     usdc_before = context.usdc.fetch_balance_of(context.deployer.address)
     run_cli(["lagoon-redeem"], deployment.cli_environment)
     assert (
@@ -826,8 +932,7 @@ async def main() -> None:
     log_step(1, "Validate configuration and connect to Ethereum")
     context = prepare_context(load_config())
     base_amount, base_size, size_decimals, notional = await resolve_eth_order(
-        context.lighter,
-        context.config.position_notional,
+        context.config.position_notional
     )
     target_equity = max(context.config.target_lighter_equity, notional + 5, Decimal(5))
     assert context.usdc.fetch_balance_of(context.deployer.address) >= target_equity
