@@ -26,9 +26,13 @@ from tradeexecutor.state.identifier import (
 logger = logging.getLogger(__name__)
 
 
+#: Stable synthetic asset symbol persisted in exchange-account state.
 LIGHTER_ACCOUNT_SYMBOL = "LIGHTER-ACCOUNT"
+#: Dispatcher identifier shared by accounting, valuation and runtime discovery.
 LIGHTER_PROTOCOL = "lighter"
+#: Only Lighter deployment supported by the initial integration.
 LIGHTER_DEPLOYMENT = "ethereum"
+#: Explicit allowlist for public deployment artefacts and reports.
 LIGHTER_PUBLIC_METADATA_LABELS = {
     "account_index": "Account index",
     "api_key_index": "API-key index",

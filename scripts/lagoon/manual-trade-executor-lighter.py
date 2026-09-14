@@ -86,6 +86,7 @@ from eth_defi.lighter.lagoon import (
     claim_usdc_to_lagoon_safe_from_lighter,
     deposit_usdc_from_lagoon_safe_into_lighter,
 )
+from eth_defi.lighter.pubkey import MIN_API_KEY_INDEX
 from eth_defi.lighter.sdk import LighterAuthTokenManager
 from eth_defi.lighter.session import LighterSession, create_lighter_session
 from eth_defi.lighter.valuation import (
@@ -107,12 +108,18 @@ from tradeexecutor.state.state import State
 
 logger = logging.getLogger(__name__)
 
+#: Lighter mainnet market index for the ETH/USD perpetual used by the tutorial.
 ETH_PERP_MARKET_INDEX = 0
+#: Interval for public position and withdrawal-history polling.
 POLL_SECONDS = 5
-#: Keep this short so withdrawal-history polling exercises token rotation.
+#: Deliberately short lifetime so a normal withdrawal wait demonstrates rotation.
 TUTORIAL_LIGHTER_AUTH_TOKEN_TIMEOUT = 30
+#: Ten native-USDC base units, allowing only token-quantisation dust.
 USDC_TOLERANCE = Decimal("0.000010")
+#: One cent accommodates float serialisation and live public-equity timing.
 NAV_SYNC_TOLERANCE = Decimal("0.01")
+#: Maximum two-base-unit Safe residue accepted after full redemption.
+MAX_SAFE_USDC_DUST_RAW = 2
 
 # ---------------------------------------------------------------------------
 # Tutorial configuration and state
@@ -234,7 +241,9 @@ def load_config() -> TutorialConfig:
         position_notional=position_notional,
         target_lighter_equity=Decimal(os.environ.get("LIGHTER_DEPOSIT_USDC", "0")),
         max_slippage=Decimal(os.environ.get("LIGHTER_MAX_SLIPPAGE", "0.02")),
-        api_key_index=int(os.environ.get("LIGHTER_API_KEY_INDEX", "4")),
+        api_key_index=int(
+            os.environ.get("LIGHTER_API_KEY_INDEX", str(MIN_API_KEY_INDEX))
+        ),
         deposit_timeout=int(os.environ.get("LIGHTER_DEPOSIT_TIMEOUT", "900")),
         withdraw_timeout=int(os.environ.get("LIGHTER_WITHDRAW_TIMEOUT", "3600")),
         auth_token_timeout=auth_token_timeout,
@@ -914,7 +923,10 @@ def redeem_all_shares(context: TutorialContext, deployment: VaultDeployment) -> 
     )
     usdc_after = context.usdc.fetch_balance_of(context.deployer.address)
     assert usdc_after > usdc_before, "Redemption did not credit deployer USDC"
-    assert context.usdc.fetch_raw_balance_of(deployment.vault.safe_address) <= 2
+    assert (
+        context.usdc.fetch_raw_balance_of(deployment.vault.safe_address)
+        <= MAX_SAFE_USDC_DUST_RAW
+    )
     logger.info(
         "Redeemed all shares; deployer received %s USDC", usdc_after - usdc_before
     )

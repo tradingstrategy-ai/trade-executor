@@ -7,6 +7,7 @@ sequencer-owned account indexing and public API observations are mocked.
 import json
 import logging
 import os
+import stat
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,7 @@ from typing import Any
 import pytest
 from eth_account import Account
 from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
+from eth_defi.lighter.pubkey import MIN_API_KEY_INDEX
 from eth_defi.lighter.testing import register_lighter_account_on_anvil
 from eth_defi.provider.anvil import AnvilLaunch
 from eth_defi.provider.multi_provider import create_multi_provider_web3
@@ -31,6 +33,7 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pair
 from tradeexecutor.state.identifier import AssetIdentifier
 
+#: Optional upstream RPC used to enable the fixed-block Ethereum fork.
 JSON_RPC_ETHEREUM = os.environ.get("JSON_RPC_ETHEREUM")
 
 pytestmark = [
@@ -42,9 +45,14 @@ pytestmark = [
     pytest.mark.xdist_group("fork:ethereum:midnight"),
 ]
 
+#: Public deterministic Anvil account zero key; never a production secret.
 DEPLOYER_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+#: Synthetic account returned by the mocked Lighter sequencer registration.
 LIGHTER_ACCOUNT_INDEX = 123
-LIGHTER_API_KEY_INDEX = 4
+#: First SDK-supported delegated API-key slot used by deployment.
+LIGHTER_API_KEY_INDEX = MIN_API_KEY_INDEX
+#: Required owner-only permissions for the generated operator record.
+PRIVATE_RECORD_MODE = 0o600
 
 
 @pytest.fixture()
@@ -199,7 +207,7 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
     operator_payload = json.loads(operator_json_path.read_text())
     setup = operator_payload["deployments"]["ethereum"]["lighter_account_setup"]
     private_key = setup["private_key"]
-    assert operator_json_path.stat().st_mode & 0o777 == 0o600
+    assert stat.S_IMODE(operator_json_path.stat().st_mode) == PRIVATE_RECORD_MODE
 
     for tx_key in ("deposit_tx_hash", "change_pubkey_tx_hash"):
         receipt = web3_ethereum.eth.get_transaction_receipt(setup[tx_key])

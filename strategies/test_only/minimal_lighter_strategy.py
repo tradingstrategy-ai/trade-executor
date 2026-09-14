@@ -23,7 +23,9 @@ from tradeexecutor.strategy.default_routing_options import TradeRouting
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
-from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
+from tradeexecutor.strategy.pandas_trader.trading_universe_input import (
+    CreateTradingUniverseInput,
+)
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
 from tradeexecutor.strategy.strategy_type import StrategyType
@@ -32,14 +34,15 @@ from tradeexecutor.strategy.trading_strategy_universe import (
     create_pair_universe_from_code,
 )
 
-
 trading_strategy_engine_version = "0.5"
 trading_strategy_type = StrategyType.managed_positions
 trading_strategy_cycle = CycleDuration.cycle_1d
 trade_routing = TradeRouting.default
 reserve_currency = ReserveCurrency.usdc
 
+#: Lighter custody and the Lagoon vault both reside on Ethereum mainnet.
 CHAIN_ID = ChainId.ethereum
+#: Public account index supplied by deployment; 123 is test-only fallback data.
 LIGHTER_ACCOUNT_INDEX = int(os.environ.get("LIGHTER_ACCOUNT_INDEX", "123"))
 
 

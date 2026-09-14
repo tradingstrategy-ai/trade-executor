@@ -7,11 +7,13 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from eth_defi.compat import native_datetime_utc_now
 from pytest_mock import MockerFixture
 from web3 import Web3
 
-from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
+from strategies.test_only.minimal_lighter_strategy import create_trading_universe
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
+from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.exchange_account.lighter import (
     NegativeLighterEquityError,
@@ -25,10 +27,15 @@ from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
 from tradeexecutor.exchange_account.utils import create_exchange_account_value_func
 from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier, TradingPairKind
+from tradeexecutor.state.identifier import (
+    AssetIdentifier,
+    TradingPairIdentifier,
+    TradingPairKind,
+)
 from tradeexecutor.state.state import State
-from eth_defi.compat import native_datetime_utc_now
-from strategies.test_only.minimal_lighter_strategy import create_trading_universe
+
+#: Representative public Lighter account index used across adapter tests.
+EXAMPLE_LIGHTER_ACCOUNT_INDEX = 123
 
 
 @pytest.fixture()
@@ -49,12 +56,15 @@ def test_lighter_pair_and_universe_detection(usdc: AssetIdentifier) -> None:
     3. Verify universe detection ignores an unrelated spot pair.
     """
     # 1. Create a synthetic Lighter exchange-account pair.
-    pair = create_lighter_exchange_account_pair(usdc, account_index=123)
+    pair = create_lighter_exchange_account_pair(
+        usdc,
+        account_index=EXAMPLE_LIGHTER_ACCOUNT_INDEX,
+    )
 
     # 2. Verify public protocol, account and deployment metadata.
     assert pair.kind == TradingPairKind.exchange_account
     assert pair.get_exchange_account_protocol() == "lighter"
-    assert pair.get_exchange_account_id() == 123
+    assert pair.get_exchange_account_id() == EXAMPLE_LIGHTER_ACCOUNT_INDEX
     assert pair.other_data["lighter_deployment"] == "ethereum"
     assert pair.base.token_symbol == "LIGHTER-ACCOUNT"
 
@@ -144,7 +154,7 @@ def test_lighter_runtime_auto_discovery_wires_account_and_nav_readers(
         web3=web3,
         safe_address=safe_address,
         reserve_asset=strategy_universe.get_reserve_asset(),
-        account_index=123,
+        account_index=EXAMPLE_LIGHTER_ACCOUNT_INDEX,
         session=session,
     )
 
@@ -159,7 +169,10 @@ def test_lighter_runtime_rejects_mixed_exchange_account_protocols(
     3. Verify configuration fails before either protocol is auto-discovered.
     """
     # 1. Create one Lighter pair and one synthetic GMX protocol pair.
-    lighter_pair = create_lighter_exchange_account_pair(usdc, account_index=123)
+    lighter_pair = create_lighter_exchange_account_pair(
+        usdc,
+        account_index=EXAMPLE_LIGHTER_ACCOUNT_INDEX,
+    )
     gmx_pair = create_lighter_exchange_account_pair(usdc, account_index=456)
     gmx_pair.other_data["exchange_protocol"] = "gmx"
     mixed_universe = SimpleNamespace(
@@ -356,7 +369,7 @@ def test_lighter_vault_valuation_adds_safe_balance_and_external_equity(
         web3=web3,
         safe_address="0x0000000000000000000000000000000000000002",
         reserve_asset=usdc,
-        account_index=123,
+        account_index=EXAMPLE_LIGHTER_ACCOUNT_INDEX,
         session=object(),
     )
     result = valuation(None, block_number=42)

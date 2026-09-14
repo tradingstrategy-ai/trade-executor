@@ -42,6 +42,7 @@ from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 
+#: Optional upstream RPC used to enable the fixed-block Ethereum fork.
 JSON_RPC_ETHEREUM = os.environ.get("JSON_RPC_ETHEREUM")
 
 pytestmark = [
@@ -53,12 +54,20 @@ pytestmark = [
     pytest.mark.xdist_group("fork:ethereum:midnight"),
 ]
 
+#: Public deterministic Anvil account zero key; never a production secret.
 DEPLOYER_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+#: Synthetic account index isolated from the deployment test fixture.
 LIGHTER_ACCOUNT_INDEX = 124
+#: Native USDC held by the real Safe on the fork.
 SAFE_USDC = Decimal("5")
+#: Mocked Lighter collateral before unrealised trading loss.
 LIGHTER_COLLATERAL = Decimal("8")
+#: Mocked loss proving NAV reads total equity rather than collateral alone.
 LIGHTER_UNREALISED_PNL = Decimal("-0.75")
+#: Expected Lighter equity component: collateral plus unrealised PnL.
 LIGHTER_TOTAL_EQUITY = Decimal("7.25")
+#: Valuation and NAV settlement must each consult current Lighter equity.
+MINIMUM_LIGHTER_EQUITY_READS = 2
 
 
 @pytest.fixture()
@@ -247,7 +256,7 @@ def test_lighter_lagoon_nav_uses_safe_balance_and_total_equity(
     posted_raw = int.from_bytes(bytes(nav_logs[-1]["data"]), byteorder="big")
     posted_nav = usdc.convert_to_decimals(posted_raw)
     assert posted_nav == pytest.approx(SAFE_USDC + LIGHTER_TOTAL_EQUITY)
-    assert reader.call_count >= 2
+    assert reader.call_count >= MINIMUM_LIGHTER_EQUITY_READS
     for call in reader.call_args_list:
         assert call.args[1] == LIGHTER_ACCOUNT_INDEX
 

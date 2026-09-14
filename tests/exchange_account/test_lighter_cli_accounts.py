@@ -26,13 +26,20 @@ from tradeexecutor.state.balance_update import BalanceUpdateCause
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 
+#: Optional upstream RPC used to enable the fixed-block Ethereum fork.
 JSON_RPC_ETHEREUM = os.environ.get("JSON_RPC_ETHEREUM")
+#: Public deterministic Anvil account zero key; never a production secret.
 DEPLOYER_PRIVATE_KEY = (
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 )
+#: Synthetic account index whose public API response is mocked in these tests.
 LIGHTER_ACCOUNT_INDEX = 321
-TRACKED_EQUITY = Decimal(10)
+#: Equity recorded in state before the simulated Lighter loss.
+TRACKED_EQUITY = Decimal("10")
+#: Lower live equity verifies loss-direction mismatches are never hidden.
 CHANGED_EQUITY = Decimal("7.5")
+#: One correction read followed by one verification read.
+EXPECTED_EQUITY_READ_COUNT = 2
 
 pytestmark = [
     pytest.mark.skipif(
@@ -197,7 +204,7 @@ def test_correct_accounts_updates_changed_lighter_equity(
 
     # 4. Run ``check-accounts`` and verify the corrected state now matches.
     _run_cli_command("check-accounts", expected_exit_code=0)
-    assert reader.call_count == 2
+    assert reader.call_count == EXPECTED_EQUITY_READ_COUNT
     assert all(call.args[1] == LIGHTER_ACCOUNT_INDEX for call in reader.call_args_list)
 
 

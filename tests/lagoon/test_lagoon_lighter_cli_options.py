@@ -11,6 +11,9 @@ from typer.main import get_command
 
 from tradeexecutor.cli.main import app
 
+#: Non-default slot proving the Typer option reaches the deployment helper.
+CUSTOM_LIGHTER_API_KEY_INDEX = 7
+
 
 def test_lighter_cli_options_reach_strategy_deployment(
     monkeypatch: MonkeyPatch,
@@ -68,7 +71,10 @@ def test_lighter_cli_options_reach_strategy_deployment(
     monkeypatch.setenv("STRATEGY_FILE", __file__)
     monkeypatch.setenv("VAULT_RECORD_FILE", str(tmp_path / "record.txt"))
     monkeypatch.setenv("GENERATE_LIGHTER_API_KEY", "true")
-    monkeypatch.setenv("LIGHTER_API_KEY_INDEX", "7")
+    monkeypatch.setenv(
+        "LIGHTER_API_KEY_INDEX",
+        str(CUSTOM_LIGHTER_API_KEY_INDEX),
+    )
     monkeypatch.setenv("UNIT_TESTING", "true")
     monkeypatch.setenv("LOG_LEVEL", "disabled")
 
@@ -77,7 +83,7 @@ def test_lighter_cli_options_reach_strategy_deployment(
 
     # 3. Verify the selected key slot and generation flag are forwarded.
     assert captured["generate_lighter_api_key"] is True
-    assert captured["lighter_api_key_index"] == 7
+    assert captured["lighter_api_key_index"] == CUSTOM_LIGHTER_API_KEY_INDEX
     assert captured["private_json_path"] == tmp_path / "record.json"
 
 

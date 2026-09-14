@@ -7,6 +7,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
+    LagoonDeploymentParameters,
+)
+from eth_defi.lighter.pubkey import MIN_API_KEY_INDEX
 
 from tradeexecutor.cli.commands.lagoon_deploy_vault import (
     _build_multichain_artifact_payload,
@@ -15,17 +19,22 @@ from tradeexecutor.cli.commands.lagoon_deploy_vault import (
     _write_deployment_artifacts,
     _write_lighter_private_record,
 )
-from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonDeploymentParameters
 
-
+#: Unique fake credential used to detect accidental disclosure in public artefacts.
 SECRET = "lighter-private-key-DO-NOT-LOG-7f91"
+#: Representative public account metadata used in serialisation fixtures.
+LIGHTER_ACCOUNT_INDEX = 123
+#: First valid Lighter delegated-key slot used in fixture metadata.
+LIGHTER_API_KEY_INDEX = MIN_API_KEY_INDEX
+#: Required owner-only permissions for the private operator record.
+PRIVATE_RECORD_MODE = 0o600
 
 
 def _deployment(secret: str = SECRET) -> SimpleNamespace:
     """Build a deployment double so artifact tests need no on-chain deployment."""
     public_setup = {
-        "account_index": 123,
-        "api_key_index": 4,
+        "account_index": LIGHTER_ACCOUNT_INDEX,
+        "api_key_index": LIGHTER_API_KEY_INDEX,
         "public_key": "0x" + "ab" * 40,
         "activation_amount": "1",
         "deposit_tx_hash": "0xdeposit",
@@ -40,7 +49,7 @@ def _deployment(secret: str = SECRET) -> SimpleNamespace:
             "Safe": "0x0000000000000000000000000000000000000001",
             "Trading strategy module": "0x0000000000000000000000000000000000000002",
             "Lighter collateral": "1",
-            "Lighter API-key index": 4,
+            "Lighter API-key index": LIGHTER_API_KEY_INDEX,
         },
         as_json_friendly_dict=lambda include_secrets=False: {
             "lighter_account_setup": private_setup if include_secrets else public_setup,
@@ -65,10 +74,10 @@ def test_single_chain_public_and_private_payloads_are_separate() -> None:
     assert private["lighter_account_setup"]["private_key"] == SECRET
 
     # 3. Verify public metadata remains available for diagnostics.
-    assert public["lighter_account_setup"]["account_index"] == 123
+    assert public["lighter_account_setup"]["account_index"] == LIGHTER_ACCOUNT_INDEX
     assert public["lighter_account_setup"]["change_pubkey_tx_hash"] == "0xpubkey"
     assert "future_sdk_payload" not in public["lighter_account_setup"]
-    assert public["Lighter API-key index"] == 4
+    assert public["Lighter API-key index"] == LIGHTER_API_KEY_INDEX
 
 
 def test_public_lighter_generation_flag_is_not_mistaken_for_a_secret() -> None:
@@ -113,7 +122,7 @@ def test_operator_json_is_0600_and_exclusive(tmp_path: Path) -> None:
 
     # 2. Verify its JSON mode and secret location.
     operator_json = record.with_suffix(".json")
-    assert stat.S_IMODE(operator_json.stat().st_mode) == 0o600
+    assert stat.S_IMODE(operator_json.stat().st_mode) == PRIVATE_RECORD_MODE
     assert json.loads(operator_json.read_text())["lighter_account_setup"]["private_key"] == SECRET
 
     # 3. Verify a second write fails without overwriting the first record.
@@ -186,7 +195,7 @@ def test_public_operator_json_keeps_replacement_semantics(tmp_path: Path) -> Non
     # 3. Verify the resulting JSON is exactly the second payload and remains private.
     operator_json = record.with_suffix(".json")
     assert json.loads(operator_json.read_text()) == {"short": True}
-    assert stat.S_IMODE(operator_json.stat().st_mode) == 0o600
+    assert stat.S_IMODE(operator_json.stat().st_mode) == PRIVATE_RECORD_MODE
 
 
 def test_multichain_private_record_survives_report_generation(tmp_path: Path) -> None:
@@ -216,7 +225,7 @@ def test_multichain_private_record_survives_report_generation(tmp_path: Path) ->
         gmx_deployment=None,
         lighter_deployment=None,
         generate_lighter_api_key=True,
-        lighter_api_key_index=4,
+        lighter_api_key_index=LIGHTER_API_KEY_INDEX,
         cctp_deployment=None,
         any_asset=False,
         any_hypercore_vault=False,
