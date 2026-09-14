@@ -40,6 +40,21 @@ Lighter API key registered in a numbered key slot.
 
 ## Deploy a Safe-owned Lighter account
 
+### Deployer funds
+
+Before running the command, fund the deployer/initial asset-manager address
+with the following native Ethereum assets:
+
+| Asset | Amount | Why it is needed |
+|-------|--------|------------------|
+| ETH | A non-zero balance sufficient for current mainnet gas | Deploys the Lagoon contracts and Safe, then sends the Lighter activation transactions. Gas prices and the deployment path vary, so there is no safe fixed ETH amount. |
+| Native Ethereum USDC | **1 USDC**, plus the collateral and test-trade amount you intend to use | The command makes an accounted, fixed 1 USDC Lighter activation deposit. Later subscription and Lighter collateral are additional funds. |
+
+Use the canonical Ethereum USDC contract, not bridged USDC:
+`0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`. The Lighter API key does not
+exist before deployment and must not be funded separately: the command creates
+it for the Safe-owned Lighter account.
+
 Set the normal Lagoon deployment variables and enable Lighter API-key creation:
 
 | Variable | Required | Description |
@@ -84,6 +99,104 @@ with mode `0600`. Move it to a secret manager immediately. Do not put it in
 strategy configuration, command-line arguments, logs, support tickets or chat.
 Public outputs use an explicit metadata allowlist, so unknown SDK fields are
 not copied to them.
+
+## Example: deploy and test a Lighter vault
+
+This is the operator flow for a small mainnet test. It assumes that the
+`trade-executor` console command is installed and that the deployer has the
+funds listed above. Use funds that can tolerate execution fees and price
+movement.
+
+### 1. Pair a static exchange-account strategy module
+
+Pair the vault with a strategy that declares one synthetic Lighter
+exchange-account pair. It identifies the public Lighter account for valuation;
+it does not hold an API key and does not submit a perp order. This is the same
+external-account shape used by the [Derive](./README-Derive.md#strategy-setup)
+and [GMX](../../strategies/test_only/minimal_gmx_strategy.py) examples.
+
+```python
+from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pair
+
+lighter_pair = create_lighter_exchange_account_pair(
+    quote=usdc,  # Native Ethereum USDC reserve asset
+    account_index=LIGHTER_ACCOUNT_INDEX,  # Public deployment output
+)
+```
+
+Use [`strategies/test_only/minimal_lighter_strategy.py`](../../strategies/test_only/minimal_lighter_strategy.py)
+as the complete, passive module template. It builds the one-pair universe and
+returns no executor trades. Set `LIGHTER_ACCOUNT_INDEX` to the public index in
+the deployment report. Keep normal strategy logic separate from the external
+execution tool until trade-executor itself supports Lighter order routing.
+
+### 2. Deploy through the Typer CLI
+
+Choose a protected directory for the operator record. Do not use a directory
+that is committed, copied to executor state, or published as deployment
+output.
+
+```shell
+export JSON_RPC_ETHEREUM="https://..."
+export PRIVATE_KEY="0x..."  # Funded deployer and initial asset manager
+export DENOMINATION_ASSET="0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+export VAULT_RECORD_FILE="/secure/lighter/lighter-vault.txt"
+export GENERATE_LIGHTER_API_KEY=true
+export LIGHTER_API_KEY_INDEX=4
+export EXECUTOR_ID="lighter-vault"
+export STATE_FILE="state/lighter-vault.json"
+
+trade-executor lagoon-deploy-vault
+```
+
+Record the vault addresses and `account_index` from the public text/Markdown
+report. The generated Lighter private key is written only to the paired
+`/secure/lighter/lighter-vault.json` operator record, with mode `0600`; it is
+never written to the text record, Markdown report, executor deployment
+artefact, strategy module or logs. Back up that JSON file in the organisation's
+secret manager without printing it to a terminal or chat.
+
+### 3. Perform the supported ETH/USD test trade
+
+The accounting and NAV steps use the Typer CLI, but `trade-executor` does not
+yet route Lighter perpetual orders. The supported end-to-end test is the
+executable tutorial below: it invokes `lagoon-deploy-vault`,
+`correct-accounts`, `lagoon-settle` and the other maintenance commands itself,
+then uses the protected generated key in memory to submit and close a small
+ETH/USD long through Lighter's SDK.
+
+```shell
+source .local-test.env
+export LIGHTER_TEST_PRIVATE_KEY="0x..."  # Funded test deployer; do not echo it
+export JSON_RPC_ETHEREUM="https://..."
+export LIGHTER_DEPOSIT_USDC="..."        # Collateral in addition to activation USDC
+export LIGHTER_POSITION_USDC="..."       # Small ETH/USD long notional
+
+poetry run pip install lighter-sdk==1.1.2
+poetry run python scripts/lagoon/manual-trade-executor-lighter.py
+```
+
+The tutorial creates an isolated temporary vault, deposits collateral, runs
+`correct-accounts` and `lagoon-settle`, opens the long, repeats the NAV sync,
+closes the long, repeats the NAV sync, withdraws collateral to the Safe and
+redeems all shares to the deployer. It asserts the Safe, Lighter, share and
+deployer balances at each material boundary, including that public Lighter
+equity is never negative. The deposit target is at least the requested order
+notional plus a 5 USDC buffer and never below Lighter's current direct-deposit
+minimum.
+
+For a vault already deployed outside the tutorial, use the same static strategy
+and Typer accounting cycle after each completed Lighter movement:
+
+```shell
+trade-executor correct-accounts
+trade-executor check-accounts
+trade-executor lagoon-settle
+```
+
+Do not run a NAV cycle while a deposit, order fill or withdrawal is still in
+flight. Wait for Lighter's public account response and the Safe balance to
+reflect the completed movement first.
 
 ## Strategy setup
 
