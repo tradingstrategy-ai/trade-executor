@@ -1,8 +1,4 @@
-"""repair command.
-
-This command does not have automatic test coverage,
-as it is pretty hard to drive to the test point.
-"""
+"""Repair interrupted trades and inconsistent position state."""
 import datetime
 from pathlib import Path
 from typing import Optional
@@ -30,7 +26,6 @@ from ...strategy.strategy_module import read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel, refresh_vault_universe_metadata_cache
 from ...strategy.universe_model import UniverseOptions
 from ...utils.timer import timed_task
-from eth_defi.compat import native_datetime_utc_now
 
 
 @app.command()
@@ -136,8 +131,11 @@ def repair(
         clear_caches=False,
         asset_management_mode=asset_management_mode,  # Needed for Velvet
     )
-    assert client is not None, "You need to give details for TradingStrategy.ai client"
-    refresh_vault_universe_metadata_cache(client)
+    # Static code-defined universes, including Lighter account monitoring, do
+    # not need a Trading Strategy data client. Vault metadata refresh remains
+    # available for data-backed strategies when a client was configured.
+    if client is not None:
+        refresh_vault_universe_metadata_cache(client)
 
     if not state_file:
         state_file = f"state/{id}.json"

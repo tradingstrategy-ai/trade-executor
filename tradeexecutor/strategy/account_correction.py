@@ -14,6 +14,7 @@ import datetime
 import enum
 from _decimal import Decimal
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import List, Iterable, Collection, Tuple, Dict, Set
 
@@ -1259,6 +1260,7 @@ def check_accounts(
     state: State,
     sync_model: SyncModel,
     block_identifier: BlockIdentifier = None,
+    exchange_account_value_func: Callable[..., Decimal] | None = None,
 ) -> Tuple[bool, pd.DataFrame]:
     """Create a summary accounting corrections needed.
 
@@ -1277,6 +1279,10 @@ def check_accounts(
 
     :param block_identifier:
         Check at certain block height
+
+    :param exchange_account_value_func:
+        Optional public account-value reader for external exchange positions.
+        The check is read-only and does not create balance update events.
 
     :return:
         Tuple (accounts clean, accounting clean Dataframe that can be printed to the console)
@@ -1302,6 +1308,12 @@ def check_accounts(
         block_identifier=block_identifier,
     ))
     corrections.extend(_build_hypercore_vault_account_checks(state, sync_model, block_identifier))
+    if exchange_account_value_func is not None:
+        corrections.extend(_build_exchange_account_checks(
+            state,
+            exchange_account_value_func,
+            block_identifier,
+        ))
 
     idx = []
     items = []
@@ -1317,6 +1329,57 @@ def check_accounts(
     df = df.fillna("")
     df = df.replace({pd.NaT: ""})
     return clean, df
+
+
+def _build_exchange_account_checks(
+    state: State,
+    account_value_func: Callable[..., Decimal],
+    block_identifier: BlockIdentifier,
+) -> list[AccountingBalanceCheck]:
+    """Compare tracked exchange-account equity with a live public reading."""
+    positions = [
+        position
+        for position in state.portfolio.get_open_and_frozen_positions()
+        if position.is_exchange_account()
+    ]
+    checks: list[AccountingBalanceCheck] = []
+    observed_at = native_datetime_utc_now()
+
+    for position in positions:
+        expected_amount = position.get_quantity()
+        protocol = position.pair.get_exchange_account_protocol()
+        account_id = position.pair.get_exchange_account_id()
+        actual_amount = account_value_func(
+            position.pair,
+            block_identifier=block_identifier,
+        )
+        dust_epsilon = get_close_epsilon_for_pair(position.pair)
+        relative_epsilon = get_relative_epsilon_for_pair(position.pair)
+        mismatch = is_relative_mismatch(
+            actual_amount,
+            expected_amount,
+            relative_epsilon,
+            dust_epsilon,
+        )
+        checks.append(AccountingBalanceCheck(
+            type=AccountingCorrectionCause.unknown_cause,
+            holding_address=f"{protocol}:{account_id}",
+            asset=position.pair.base,
+            positions={position},
+            expected_amount=expected_amount,
+            actual_amount=actual_amount,
+            dust_epsilon=dust_epsilon,
+            relative_epsilon=relative_epsilon,
+            block_number=block_identifier,
+            timestamp=observed_at,
+            usd_value=abs(float(actual_amount - expected_amount)),
+            reserve_asset=False,
+            mismatch=mismatch,
+            price=position.last_token_price,
+            price_at=position.last_pricing_at,
+        ))
+
+    return checks
 
 
 def _build_hypercore_vault_account_checks(

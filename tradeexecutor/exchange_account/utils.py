@@ -11,7 +11,11 @@ from typing import Callable
 from eth_defi.lighter.session import create_lighter_session
 
 from tradeexecutor.exchange_account.derive import DeriveNetwork
-from tradeexecutor.exchange_account.lighter import create_lighter_account_value_func
+from tradeexecutor.exchange_account.lighter import (
+    LIGHTER_PROTOCOL,
+    create_lighter_account_value_func,
+    validate_lighter_exchange_account_pairs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -235,39 +239,17 @@ def create_exchange_account_value_func(
     from tradeexecutor.state.identifier import TradingPairIdentifier
 
     # Check which protocols are needed
-    protocols = set()
-    exchange_account_protocols = []
-    for p in positions:
-        protocol = p.pair.get_exchange_account_protocol()
-        if p.pair.is_exchange_account():
-            exchange_account_protocols.append(protocol)
-        if protocol:
-            protocols.add(protocol)
+    exchange_account_pairs = [
+        position.pair for position in positions if position.pair.is_exchange_account()
+    ]
+    protocols = {
+        pair.get_exchange_account_protocol()
+        for pair in exchange_account_pairs
+        if pair.get_exchange_account_protocol()
+    }
 
     logger.info("Exchange account protocols needed: %s", protocols)
-
-    if "lighter" in protocols:
-        lighter_positions = [
-            p for p in positions
-            if p.pair.get_exchange_account_protocol() == "lighter"
-        ]
-        if (
-            len(lighter_positions) != 1
-            or protocols != {"lighter"}
-            or any(protocol is None for protocol in exchange_account_protocols)
-        ):
-            incompatible = sorted(
-                str(protocol)
-                for protocol in protocols
-                if protocol != "lighter"
-            )
-            if any(protocol is None for protocol in exchange_account_protocols):
-                incompatible.append("missing protocol")
-            raise ValueError(
-                "Lighter exchange-account positions must be the only external "
-                "protocol and there must be exactly one position"
-                + (f" (found: {', '.join(incompatible)})" if incompatible else "")
-            )
+    validate_lighter_exchange_account_pairs(exchange_account_pairs)
 
     protocol_factories = {
         "derive": lambda: _create_derive_protocol_value_func(
@@ -289,7 +271,7 @@ def create_exchange_account_value_func(
             execution_model=execution_model,
             logger=logger,
         ),
-        "lighter": lambda: _create_lighter_protocol_value_func(logger=logger),
+        LIGHTER_PROTOCOL: lambda: _create_lighter_protocol_value_func(logger=logger),
     }
     value_funcs = {
         protocol: protocol_factories[protocol]()

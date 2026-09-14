@@ -848,7 +848,7 @@ async def withdraw_to_safe(
         context.config.auth_token_timeout,
     )
     logger.info("Claiming %s USDC from Lighter to Safe", claimable)
-    # ``lagoon-settle`` runs through a Typer subprocess and may consume a
+    # ``lagoon-settle`` runs through Typer and may consume a
     # deployer nonce unknown to this in-process wallet.
     context.deployer.sync_nonce(context.web3)
     claim_usdc_to_lagoon_safe_from_lighter(

@@ -20,7 +20,7 @@ from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 from tradeexecutor.exchange_account.lighter import (
     create_lighter_account_value_func,
     create_lighter_vault_valuation_func,
-    has_lighter_exchange_account_pairs,
+    validate_lighter_exchange_account_pairs,
 )
 
 from tradingstrategy.chain import ChainId
@@ -902,35 +902,7 @@ class EthereumPairConfigurator(PairConfigurator):
     @staticmethod
     def _validate_external_account_protocols(strategy_universe: TradingStrategyUniverse) -> None:
         """Reject unsupported mixtures of external exchange-account protocols."""
-        protocols = {
-            pair.get_exchange_account_protocol()
-            for pair in strategy_universe.iterate_pairs()
-            if pair.is_exchange_account()
-        }
-        protocols.discard(None)
-        if "lighter" not in protocols:
-            return
-
-        lighter_pairs = [
-            pair
-            for pair in strategy_universe.iterate_pairs()
-            if pair.is_exchange_account()
-            and pair.get_exchange_account_protocol() == "lighter"
-        ]
-        if len(lighter_pairs) != 1:
-            raise ValueError(
-                "Lighter strategies must contain exactly one exchange-account pair"
-            )
-        if protocols != {"lighter"}:
-            incompatible = sorted(protocol for protocol in protocols if protocol != "lighter")
-            raise ValueError(
-                "Lighter exchange-account strategies cannot mix protocols: "
-                + ", ".join(incompatible)
-            )
-
-        for pair in strategy_universe.iterate_pairs():
-            if pair.is_exchange_account() and pair.get_exchange_account_protocol() is None:
-                raise ValueError("Lighter exchange-account strategies require an exchange protocol")
+        validate_lighter_exchange_account_pairs(strategy_universe.iterate_pairs())
 
     def _auto_discover_gmx(self, strategy_universe: TradingStrategyUniverse):
         """Auto-discover GMX exchange account pairs and wire up the value func.
@@ -971,7 +943,10 @@ class EthereumPairConfigurator(PairConfigurator):
 
     def _auto_discover_lighter(self, strategy_universe: TradingStrategyUniverse) -> None:
         """Auto-discover the single Lighter account and wire account/NAV readers."""
-        if not has_lighter_exchange_account_pairs(strategy_universe):
+        pairs = validate_lighter_exchange_account_pairs(
+            strategy_universe.iterate_pairs()
+        )
+        if not pairs:
             return
 
         if self.account_value_func is not None:
@@ -988,13 +963,6 @@ class EthereumPairConfigurator(PairConfigurator):
             raise ValueError(
                 "Lighter exchange-account valuation requires the Ethereum deployment"
             )
-        pairs = [
-            pair
-            for pair in strategy_universe.iterate_pairs()
-            if pair.is_exchange_account()
-            and pair.get_exchange_account_protocol() == "lighter"
-        ]
-        assert len(pairs) == 1
         account_index = pairs[0].get_exchange_account_id()
         if account_index is None:
             raise ValueError("Lighter exchange-account pair has no account index")

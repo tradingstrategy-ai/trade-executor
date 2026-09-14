@@ -7,15 +7,15 @@ used for valuation.  No API-key material is needed by the executor.
 
 import logging
 import math
+from collections.abc import Iterable
 from decimal import Decimal, InvalidOperation
 from typing import Any, Callable
-
-from web3 import Web3
 
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
 from eth_defi.lighter.session import LighterSession, create_lighter_session
 from eth_defi.lighter.valuation import fetch_lighter_total_equity
 from eth_defi.token import fetch_erc20_details
+from web3 import Web3
 
 from tradeexecutor.state.identifier import (
     AssetIdentifier,
@@ -117,6 +117,35 @@ def has_lighter_exchange_account_pairs(strategy_universe: Any) -> bool:
         and pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
         for pair in iterate_pairs()
     )
+
+
+def validate_lighter_exchange_account_pairs(
+    pairs: Iterable[TradingPairIdentifier],
+) -> list[TradingPairIdentifier]:
+    """Return Lighter pairs after validating the external-account topology."""
+    exchange_account_pairs = [pair for pair in pairs if pair.is_exchange_account()]
+    lighter_pairs = [
+        pair
+        for pair in exchange_account_pairs
+        if pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
+    ]
+    if not lighter_pairs:
+        return []
+    if len(lighter_pairs) != 1:
+        raise ValueError(
+            "Lighter strategies must contain exactly one exchange-account pair"
+        )
+    if len(exchange_account_pairs) != 1:
+        incompatible = sorted({
+            pair.get_exchange_account_protocol() or "missing protocol"
+            for pair in exchange_account_pairs
+            if pair.get_exchange_account_protocol() != LIGHTER_PROTOCOL
+        })
+        raise ValueError(
+            "Lighter exchange-account strategies cannot mix protocols: "
+            + ", ".join(incompatible)
+        )
+    return lighter_pairs
 
 
 def validate_lighter_account_value(

@@ -9,6 +9,19 @@ NAV.
 The initial integration provides deployment, custody and valuation. Lighter
 orders are submitted by a separate execution tool, not by trade-executor.
 
+## Supported functionality
+
+| Capability | Support |
+|------------|---------|
+| Safe-owned Lighter account activation | `lagoon-deploy-vault` |
+| Delegated API-key generation and registration | `lagoon-deploy-vault` |
+| Public total-equity valuation | Yes, without an API key |
+| Lagoon NAV posting | `lagoon-settle` |
+| Read-only accounting comparison | `check-accounts` |
+| Accounting correction and PnL balance updates | `correct-accounts` |
+| Generic interrupted-trade repair | `repair` |
+| Perpetual order execution inside trade-executor | No; use a separate execution tool |
+
 ## Value and custody model
 
 The strategy universe contains one synthetic Lighter exchange-account pair.
@@ -94,7 +107,24 @@ unauthenticated public API.
 See `strategies/test_only/minimal_lighter_strategy.py` for a complete static
 universe.
 
-## Initialise and synchronise accounting
+Runtime commands need only public Lighter metadata:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `STRATEGY_FILE` | Yes | Strategy containing the synthetic Lighter pair |
+| `LIGHTER_ACCOUNT_INDEX` | Yes for the example strategy | Public account index written by deployment |
+| `STATE_FILE` | Yes | Executor state containing the exchange-account position |
+| `JSON_RPC_ETHEREUM` | Yes | Ethereum RPC used for Safe and reserve reads |
+| `ASSET_MANAGEMENT_MODE` | Yes | Executor custody mode, normally `lagoon` for a deployed vault |
+| `PRIVATE_KEY` | Yes | Asset-manager Ethereum key used for signed maintenance commands; never the Lighter API key |
+| `VAULT_ADDRESS` | Lagoon mode | Lagoon vault address |
+| `VAULT_ADAPTER_ADDRESS` | Lagoon mode | Trading strategy module address |
+
+Do not configure the generated Lighter private key for `init`,
+`check-accounts`, `correct-accounts`, `repair` or `lagoon-settle`. These
+commands either use public account equity or operate only on executor state.
+
+## Accounting command lifecycle
 
 Configure the deployed vault, state file, public Lighter account index and
 strategy file, then initialise the external-account position:
@@ -110,7 +140,36 @@ trade-executor correct-accounts
 
 Run `correct-accounts` after the initial collateral deposit is visible on
 Lighter. It creates or updates the external-account balance from public equity.
-Run Lagoon settlement after later deposits, trading and withdrawals:
+
+Use `check-accounts` for a read-only comparison. It exits successfully when
+the tracked quantity matches public Lighter equity and exits with an accounting
+mismatch when they differ. It does not write a balance update:
+
+```shell
+trade-executor check-accounts
+```
+
+Use `correct-accounts` to accept the observed Lighter equity into state. A
+change is recorded as an exchange-account PnL `BalanceUpdate`, anchored to the
+current Ethereum block for audit even though the Lighter observation itself is
+current rather than historical:
+
+```shell
+trade-executor correct-accounts
+trade-executor check-accounts
+```
+
+`repair` has a different purpose. It repairs interrupted executor trades and
+transactions; it does not query Lighter equity or perform account correction.
+A healthy Lighter exchange-account position and its spoofed successful opening
+trade are left unchanged:
+
+```shell
+trade-executor repair --auto-approve
+```
+
+Run Lagoon settlement after deposits, trading and withdrawals to post the
+combined Safe and Lighter NAV:
 
 ```shell
 trade-executor lagoon-settle
@@ -127,6 +186,23 @@ The integration fails closed:
 - A public API failure does not reuse a stale external-account value for a new
   NAV.
 - Negative equity is never accepted, even temporarily.
+
+## Python API and module structure
+
+The main integration points are deliberately small:
+
+- `lighter.py` creates the synthetic pair, validates public equity and provides
+  account and Lagoon NAV value functions.
+- `sync_model.py` converts a changed external-account value into a
+  `BalanceUpdate` without creating an EVM trade.
+- `utils.py` dispatches `correct-accounts` to the Lighter public reader.
+- `ethereum_protocol_adapters.py` discovers the Lighter pair at runtime and
+  wires both exchange-account and Lagoon NAV valuation.
+
+For direct integration code, create the pair with
+`create_lighter_exchange_account_pair()` and the reader with
+`create_lighter_account_value_func()`. Most strategies should rely on runtime
+auto-discovery rather than constructing the reader themselves.
 
 ## Authenticated SDK calls
 
@@ -180,6 +256,28 @@ The withdrawal request itself is sent exactly once. Only the idempotent history
 poll is retried or repeated. The generated API key stays in the protected
 operator record and memory, and the tutorial verifies it is absent from public
 artefacts.
+
+## Troubleshooting
+
+### `check-accounts` reports a Lighter mismatch
+
+Confirm that `LIGHTER_ACCOUNT_INDEX` points to the Safe-owned account and that
+no deposit, withdrawal or order settlement is still in flight. Run
+`correct-accounts` only after the public account view is stable, then repeat
+`check-accounts`.
+
+### `UnauthorizedException` during an authenticated SDK call
+
+Lighter bearer tokens are short-lived. Use `LighterAuthTokenManager` for safe,
+idempotent polling calls so it refreshes near expiry and retries one HTTP 401.
+Do not blindly retry order or withdrawal submission because a timed-out request
+may already have been accepted.
+
+### Negative or malformed equity
+
+Do not edit state to bypass the invariant. Verify the public account index and
+Lighter API health. NAV posting and account correction intentionally stop
+before mutation when the public value is negative, non-finite or malformed.
 
 ## See also
 

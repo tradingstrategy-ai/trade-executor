@@ -5,25 +5,28 @@ posting real. Only Lighter's external public account observation is mocked,
 because a local Anvil fork cannot expose its account state to the sequencer.
 """
 
-import logging
 import os
 from decimal import Decimal
 
 import pytest
 from eth_account import Account
-from pytest_mock import MockerFixture
+from eth_defi.compat import native_datetime_utc_now
+from eth_defi.erc_4626.settlement_events import fetch_vault_settlement_logs
+from eth_defi.erc_4626.vault_protocol.lagoon.config import get_lagoon_chain_config
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
     LagoonDeploymentParameters,
     deploy_automated_lagoon_vault,
 )
 from eth_defi.erc_4626.vault_protocol.lagoon.funding import fund_lagoon_vault
-from eth_defi.erc_4626.vault_protocol.lagoon.config import get_lagoon_chain_config
-from eth_defi.erc_4626.settlement_events import fetch_vault_settlement_logs
 from eth_defi.hotwallet import HotWallet
-from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
+from eth_defi.provider.anvil import AnvilLaunch
 from eth_defi.provider.multi_provider import create_multi_provider_web3
+from eth_defi.testing.anvil_fork_pool import AnvilForkPool
+from eth_defi.testing.evm_snapshot_fixture import evm_snapshot_revert
+from eth_defi.testing.fork_blocks import ETHEREUM_MIDNIGHT_BLOCK
 from eth_defi.token import USDC_NATIVE_TOKEN, USDC_WHALE, fetch_erc20_details
 from eth_defi.trace import assert_transaction_success_with_explanation
+from pytest_mock import MockerFixture
 from web3 import Web3
 
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
@@ -38,15 +41,17 @@ from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
-from eth_defi.compat import native_datetime_utc_now
-
 
 JSON_RPC_ETHEREUM = os.environ.get("JSON_RPC_ETHEREUM")
 
-pytestmark = pytest.mark.skipif(
-    not JSON_RPC_ETHEREUM,
-    reason="JSON_RPC_ETHEREUM environment variable required",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not JSON_RPC_ETHEREUM,
+        reason="JSON_RPC_ETHEREUM environment variable required",
+    ),
+    pytest.mark.warm_rpc_test_group,
+    pytest.mark.xdist_group("fork:ethereum:midnight"),
+]
 
 DEPLOYER_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 LIGHTER_ACCOUNT_INDEX = 124
@@ -57,16 +62,19 @@ LIGHTER_TOTAL_EQUITY = Decimal("7.25")
 
 
 @pytest.fixture()
-def anvil_ethereum() -> AnvilLaunch:
-    """Fork Ethereum and unlock a native-USDC holder for funding."""
-    launch = fork_network_anvil(
+def anvil_ethereum(anvil_fork_pool: AnvilForkPool) -> AnvilLaunch:
+    """Reset the shared fixed Ethereum fork around the NAV test."""
+    launch = anvil_fork_pool.get_launch(
         JSON_RPC_ETHEREUM,
+        ETHEREUM_MIDNIGHT_BLOCK,
         unlocked_addresses=[USDC_WHALE[1]],
     )
+    snapshot = evm_snapshot_revert(launch)
+    next(snapshot)
     try:
         yield launch
     finally:
-        launch.close(log_level=logging.ERROR)
+        next(snapshot, None)
 
 
 @pytest.fixture()

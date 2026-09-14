@@ -13,29 +13,34 @@ from typing import Any
 
 import pytest
 from eth_account import Account
+from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
+from eth_defi.lighter.testing import register_lighter_account_on_anvil
+from eth_defi.provider.anvil import AnvilLaunch
+from eth_defi.provider.multi_provider import create_multi_provider_web3
+from eth_defi.testing.anvil_fork_pool import AnvilForkPool
+from eth_defi.testing.evm_snapshot_fixture import evm_snapshot_revert
+from eth_defi.testing.fork_blocks import ETHEREUM_MIDNIGHT_BLOCK
+from eth_defi.token import USDC_NATIVE_TOKEN, USDC_WHALE, fetch_erc20_details
+from eth_defi.trace import assert_transaction_success_with_explanation
 from pytest import CaptureFixture, LogCaptureFixture
 from pytest_mock import MockerFixture
 from typer.main import get_command
 from web3 import Web3
 
-from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
-from eth_defi.lighter.testing import register_lighter_account_on_anvil
-from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
-from eth_defi.provider.multi_provider import create_multi_provider_web3
-from eth_defi.token import USDC_NATIVE_TOKEN, USDC_WHALE, fetch_erc20_details
-from eth_defi.trace import assert_transaction_success_with_explanation
-
 from tradeexecutor.cli.main import app
 from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pair
 from tradeexecutor.state.identifier import AssetIdentifier
 
-
 JSON_RPC_ETHEREUM = os.environ.get("JSON_RPC_ETHEREUM")
 
-pytestmark = pytest.mark.skipif(
-    not JSON_RPC_ETHEREUM,
-    reason="JSON_RPC_ETHEREUM environment variable required",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not JSON_RPC_ETHEREUM,
+        reason="JSON_RPC_ETHEREUM environment variable required",
+    ),
+    pytest.mark.warm_rpc_test_group,
+    pytest.mark.xdist_group("fork:ethereum:midnight"),
+]
 
 DEPLOYER_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 LIGHTER_ACCOUNT_INDEX = 123
@@ -43,16 +48,19 @@ LIGHTER_API_KEY_INDEX = 4
 
 
 @pytest.fixture()
-def anvil_ethereum() -> AnvilLaunch:
-    """Fork Ethereum and unlock a native-USDC holder for activation funding."""
-    launch = fork_network_anvil(
+def anvil_ethereum(anvil_fork_pool: AnvilForkPool) -> AnvilLaunch:
+    """Reset the shared fixed Ethereum fork around the deployment test."""
+    launch = anvil_fork_pool.get_launch(
         JSON_RPC_ETHEREUM,
+        ETHEREUM_MIDNIGHT_BLOCK,
         unlocked_addresses=[USDC_WHALE[1]],
     )
+    snapshot = evm_snapshot_revert(launch)
+    next(snapshot)
     try:
         yield launch
     finally:
-        launch.close()
+        next(snapshot, None)
 
 
 @pytest.fixture()
