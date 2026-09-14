@@ -126,32 +126,50 @@ MAX_SAFE_USDC_DUST_RAW = 2
 # ---------------------------------------------------------------------------
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class TutorialConfig:
     """Operator configuration, with secrets excluded from its representation."""
 
+    #: Ethereum RPC endpoint; hidden because a URL may contain credentials.
     rpc_url: str = field(repr=False)
+    #: Funded deployer key used for the temporary vault lifecycle.
     deployer_private_key: str = field(repr=False)
+    #: Fresh directory that receives this tutorial run's public artefacts.
     run_dir: Path
+    #: Optional ETH/USD perpetual notional requested by the operator.
     position_notional: Decimal | None
+    #: Target Lighter collateral after the Safe-to-Lighter deposit.
     target_lighter_equity: Decimal
+    #: Maximum order-price movement accepted during market-order submission.
     max_slippage: Decimal
+    #: Delegated Lighter key slot generated for this one tutorial run.
     api_key_index: int
+    #: Maximum wait for the Lighter collateral deposit to become visible.
     deposit_timeout: int
+    #: Maximum wait for an accepted Lighter withdrawal to become claimable.
     withdraw_timeout: int
+    #: Short-lived SDK bearer-token timeout used to demonstrate key rotation.
     auth_token_timeout: int = TUTORIAL_LIGHTER_AUTH_TOKEN_TIMEOUT
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class TutorialContext:
-    """Public objects shared by tutorial phases."""
+    """Runtime objects shared by tutorial phases, omitting sensitive repr data."""
 
+    #: Immutable operator configuration for the current run.
     config: TutorialConfig
-    web3: Web3
-    deployer: HotWallet
+    #: Connected Ethereum client; excluded from repr because its provider may
+    #: contain sensitive endpoint data.
+    web3: Web3 = field(repr=False)
+    #: Funded local wallet; excluded from repr because it owns private-key material.
+    deployer: HotWallet = field(repr=False)
+    #: Native Ethereum USDC token helper used for all balance assertions.
     usdc: TokenDetails
+    #: Static Lighter strategy passed to Typer lifecycle commands.
     strategy_file: Path
+    #: Executor state file created inside the isolated run directory.
     state_file: Path
+    #: Vault record text file whose paired JSON contains the generated signer.
     record_file: Path
 
 
@@ -159,20 +177,33 @@ class TutorialContext:
 class VaultDeployment:
     """Public vault metadata plus the secret Lighter signer."""
 
+    #: Lagoon vault and Safe wrapper created by the deployment command.
     vault: LagoonVault
+    #: Public Lighter account index owned by the deployed Safe.
     account_index: int
+    #: Public delegated Lighter key slot used for order submission.
     api_key_index: int
+    #: Generated delegated Lighter signer, hidden from repr and cleared after use.
     api_private_key: str = field(repr=False)
+    #: Typer environment including deployer credentials, hidden from repr.
     cli_environment: dict[str, str] = field(repr=False)
 
+    def clear_api_private_key(self) -> None:
+        """Discard the delegated signer after all authenticated work is complete."""
+        self.api_private_key = ""
 
-@dataclass(slots=True)
+
+@dataclass(frozen=True, slots=True)
 class NavCheckpoint:
     """Values verified after one Lagoon NAV synchronisation."""
 
+    #: Current native-USDC balance held by the Safe.
     safe_usdc: Decimal
+    #: Current public total equity reported by Lighter.
     lighter_equity: Decimal
+    #: Signed ETH/USD perpetual base position reported by Lighter.
     eth_position: Decimal
+    #: Newly emitted Lagoon total-assets value after settlement.
     posted_nav: Decimal
 
 
@@ -755,7 +786,12 @@ def assert_nav_checkpoint(
         int.from_bytes(bytes(logs[-1]["data"]), byteorder="big")
     )
     assert abs(posted_nav - (safe_usdc + equity)) <= NAV_SYNC_TOLERANCE
-    return NavCheckpoint(safe_usdc, equity, position, posted_nav)
+    return NavCheckpoint(
+        safe_usdc=safe_usdc,
+        lighter_equity=equity,
+        eth_position=position,
+        posted_nav=posted_nav,
+    )
 
 
 def sync_and_report_nav(
@@ -985,7 +1021,7 @@ async def main() -> None:
     log_step(11, "Redeem all shares to the deployer")
     redeem_all_shares(context, deployment)
 
-    deployment.api_private_key = ""
+    deployment.clear_api_private_key()
     logger.info("Tutorial complete. Public artefacts are in %s", context.config.run_dir)
 
 

@@ -51,10 +51,11 @@ pytestmark = [
 ]
 
 
-@dataclass
+@dataclass(slots=True)
 class StubLighterEquity:
     """Mutable public Lighter equity response."""
 
+    #: Current total equity returned by the sequencer-only response double.
     total: Decimal
 
     def get_total(self) -> Decimal:
