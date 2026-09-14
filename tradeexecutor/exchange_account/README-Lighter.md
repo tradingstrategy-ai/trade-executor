@@ -119,8 +119,8 @@ and [GMX](../../strategies/test_only/minimal_gmx_strategy.py) examples.
 from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pair
 
 lighter_pair = create_lighter_exchange_account_pair(
-    quote=usdc,  # Native Ethereum USDC reserve asset
-    account_index=LIGHTER_ACCOUNT_INDEX,  # Public deployment output
+    quote=usdc,
+    account_index=LIGHTER_ACCOUNT_INDEX,
 )
 ```
 
