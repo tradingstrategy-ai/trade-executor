@@ -5,9 +5,17 @@ and ``start`` commands can reuse the same logic.
 """
 
 import logging
+from decimal import Decimal
 from typing import Callable
 
+from eth_defi.lighter.session import create_lighter_session
+
 from tradeexecutor.exchange_account.derive import DeriveNetwork
+from tradeexecutor.exchange_account.lighter import (
+    LIGHTER_PROTOCOL,
+    create_lighter_account_value_func,
+    validate_lighter_exchange_account_pairs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +190,21 @@ def _create_gmx_protocol_value_func(*, execution_model, logger):
     return create_gmx_account_value_func(execution_model=execution_model)
 
 
+def _create_lighter_protocol_value_func(
+    *,
+    logger: logging.Logger,
+) -> Callable[..., Decimal]:
+    """Build the public Lighter account value function.
+
+    Lighter account equity is read from its unauthenticated public API, so no
+    credential arguments are accepted here.  A single session is shared by
+    all Lighter positions discovered during this correction run.
+    """
+    session = create_lighter_session()
+    logger.info("Created public Lighter account value function")
+    return create_lighter_account_value_func(session)
+
+
 def create_exchange_account_value_func(
     positions,
     derive_owner_private_key: str | None,
@@ -213,17 +236,20 @@ def create_exchange_account_value_func(
     :param execution_model: Execution model for GMX (provides Web3 + Safe address via tx_builder)
     :return: Account value function or None if credentials not provided
     """
-    from decimal import Decimal
     from tradeexecutor.state.identifier import TradingPairIdentifier
 
     # Check which protocols are needed
-    protocols = set()
-    for p in positions:
-        protocol = p.pair.get_exchange_account_protocol()
-        if protocol:
-            protocols.add(protocol)
+    exchange_account_pairs = [
+        position.pair for position in positions if position.pair.is_exchange_account()
+    ]
+    protocols = {
+        pair.get_exchange_account_protocol()
+        for pair in exchange_account_pairs
+        if pair.get_exchange_account_protocol()
+    }
 
     logger.info("Exchange account protocols needed: %s", protocols)
+    validate_lighter_exchange_account_pairs(exchange_account_pairs)
 
     protocol_factories = {
         "derive": lambda: _create_derive_protocol_value_func(
@@ -245,6 +271,7 @@ def create_exchange_account_value_func(
             execution_model=execution_model,
             logger=logger,
         ),
+        LIGHTER_PROTOCOL: lambda: _create_lighter_protocol_value_func(logger=logger),
     }
     value_funcs = {
         protocol: protocol_factories[protocol]()
@@ -285,7 +312,6 @@ def create_derive_value_func_from_credentials(
     :return:
         Function that takes a TradingPairIdentifier and returns account value in USD.
     """
-    from decimal import Decimal
     from eth_defi.derive.authentication import DeriveApiClient
     from eth_defi.derive.account import fetch_account_summary
     from tradeexecutor.state.identifier import TradingPairIdentifier

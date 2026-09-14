@@ -587,7 +587,11 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         if self.calculate_valuation_func is not None:
             valuation = self.calculate_valuation_func(state, block_number=block_number)
-            return valuation + state.portfolio.get_vault_settlement_pending_value()
+            pending_value = state.portfolio.get_vault_settlement_pending_value()
+            total_valuation = valuation + pending_value
+            if total_valuation < 0:
+                raise ValueError("Lagoon NAV cannot be negative")
+            return total_valuation
         else:
             return state.portfolio.get_net_asset_value(include_interest=True)
 

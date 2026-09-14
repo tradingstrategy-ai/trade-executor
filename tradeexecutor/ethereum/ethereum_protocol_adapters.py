@@ -13,8 +13,15 @@ from eth_defi.uniswap_v3.deployment import fetch_deployment as fetch_uniswap_v3_
 from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deployment
 from eth_defi.aave_v3.constants import AAVE_V3_DEPLOYMENTS
 from eth_defi.one_delta.constants import ONE_DELTA_DEPLOYMENTS
+from eth_defi.lighter.constants import LIGHTER_ETHEREUM_DEPLOYMENT_CHAIN_ID, LIGHTER_USDC_ETHEREUM
+from eth_defi.lighter.session import create_lighter_session
 from tradeexecutor.ethereum.routing_data import base_uniswap_v3_address_map
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
+from tradeexecutor.exchange_account.lighter import (
+    create_lighter_account_value_func,
+    create_lighter_vault_valuation_func,
+    validate_lighter_exchange_account_pairs,
+)
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse, ExchangeType
@@ -875,14 +882,27 @@ class EthereumPairConfigurator(PairConfigurator):
         self.vault_deposit_asset_override = None
         self.vault_simulate_redemption_with_liquidity = False
 
+        # Validate external exchange-account topology before any protocol
+        # auto-discovery can return early because an account value function was
+        # supplied by the execution model.
+        self._validate_external_account_protocols(strategy_universe)
+
         # Auto-discover GMX exchange account pairs in the universe
         # and wire up the GMX value func if not already provided
         self._auto_discover_gmx(strategy_universe)
+
+        # Auto-discover Lighter account pairs from public universe metadata.
+        self._auto_discover_lighter(strategy_universe)
 
         # Auto-discover Hypercore vault pairs and wire up value func
         self._auto_discover_hypercore_vault(strategy_universe)
 
         super().__init__(strategy_universe)
+
+    @staticmethod
+    def _validate_external_account_protocols(strategy_universe: TradingStrategyUniverse) -> None:
+        """Reject unsupported mixtures of external exchange-account protocols."""
+        validate_lighter_exchange_account_pairs(strategy_universe.iterate_pairs())
 
     def _auto_discover_gmx(self, strategy_universe: TradingStrategyUniverse):
         """Auto-discover GMX exchange account pairs and wire up the value func.
@@ -920,6 +940,60 @@ class EthereumPairConfigurator(PairConfigurator):
         self.vault_valuation_func = create_gmx_vault_valuation_func(web3, safe_address, reserve_asset)
 
         logger.info("Auto-discovered GMX exchange account pairs — wired up GMX value func")
+
+    def _auto_discover_lighter(self, strategy_universe: TradingStrategyUniverse) -> None:
+        """Auto-discover the single Lighter account and wire account/NAV readers."""
+        pairs = validate_lighter_exchange_account_pairs(
+            strategy_universe.iterate_pairs()
+        )
+        if not pairs:
+            return
+
+        if self.account_value_func is not None:
+            raise ValueError(
+                "Lighter exchange-account pairs require the built-in public "
+                "Lighter account value function; remove the preconfigured account value function"
+            )
+
+        assert self.execution_model is not None, (
+            "Lighter exchange account pairs found but no execution_model provided — "
+            "pass execution_model to EthereumPairConfigurator"
+        )
+        if self.web3.eth.chain_id != LIGHTER_ETHEREUM_DEPLOYMENT_CHAIN_ID:
+            raise ValueError(
+                "Lighter exchange-account valuation requires the Ethereum deployment"
+            )
+        account_index = pairs[0].get_exchange_account_id()
+        if account_index is None:
+            raise ValueError("Lighter exchange-account pair has no account index")
+
+        web3 = self.execution_model.web3
+        safe_address = self.execution_model.tx_builder.get_token_delivery_address()
+        reserve_asset = strategy_universe.get_reserve_asset()
+        if reserve_asset.chain_id != LIGHTER_ETHEREUM_DEPLOYMENT_CHAIN_ID:
+            raise ValueError(
+                "Lighter exchange-account valuation requires an Ethereum reserve asset"
+            )
+        if reserve_asset.address.lower() != LIGHTER_USDC_ETHEREUM.lower():
+            raise ValueError(
+                "Lighter exchange-account valuation requires native Ethereum USDC"
+            )
+
+        # Keep one unauthenticated HTTP session for both account and NAV reads.
+        session = create_lighter_session()
+        self.account_value_func = create_lighter_account_value_func(session)
+
+        self.vault_valuation_func = create_lighter_vault_valuation_func(
+            web3=web3,
+            safe_address=safe_address,
+            reserve_asset=reserve_asset,
+            account_index=int(account_index),
+            session=session,
+        )
+        logger.info(
+            "Auto-discovered Lighter account %d — wired public account and vault valuation functions",
+            account_index,
+        )
 
     def _auto_discover_hypercore_vault(self, strategy_universe: TradingStrategyUniverse):
         """Auto-discover Hypercore vault pairs and wire up the value func.

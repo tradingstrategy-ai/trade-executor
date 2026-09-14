@@ -6,10 +6,13 @@ deployment paths.
 """
 
 import logging
+from decimal import Decimal
+from pathlib import Path
 
 from eth_defi.erc_4626.vault_protocol.lagoon.config import LagoonChainConfig
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonConfig
 from eth_defi.hotwallet import HotWallet
+from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
 from eth_defi.token import TokenDetails
 from web3 import Web3
 
@@ -45,9 +48,15 @@ def log_deployment_preflight_report(
     aave: bool = False,
     erc_4626_vaults: str | None = None,
     lagoon_chain_config: LagoonChainConfig | None = None,
+    lighter_api_key_generation: bool = False,
+    lighter_api_key_index: int | None = None,
+    lighter_deployment_address: str | None = None,
+    lighter_usdc_address: str | None = None,
+    lighter_activation_amount: Decimal | None = LIGHTER_MIN_MAINNET_USDC,
+    lighter_private_json_path: Path | None = None,
     simulate: bool = False,
-    logger=None,
-):
+    logger: logging.Logger | None = None,
+) -> None:
     """Log a structured pre-flight report before vault deployment.
 
     Outputs a generic section (common to all chains) followed by
@@ -98,8 +107,16 @@ def log_deployment_preflight_report(
     logger.info("Management fee: %f %%", management_fee / 100)
     logger.info("Simulate: %s", simulate)
 
+    logger.info("Lighter API-key generation: %s", lighter_api_key_generation)
+    if lighter_api_key_generation:
+        logger.info("Lighter API-key index: %s", lighter_api_key_index)
+        logger.info("Lighter contract: %s", lighter_deployment_address)
+        logger.info("Lighter USDC: %s", lighter_usdc_address)
+        logger.info("Lighter activation amount: %s", lighter_activation_amount)
+        logger.info("Lighter private JSON record: %s", lighter_private_json_path)
+
     if etherscan_api_key:
-        logger.info("Etherscan API key: %s", etherscan_api_key)
+        logger.info("Etherscan API key: <provided>")
     else:
         logger.warning("Etherscan API key: not provided")
 
@@ -171,6 +188,24 @@ def _log_chain_config_section(config: LagoonConfig, logger):
     logger.info("  CowSwap: %s", config.cowswap)
     logger.info("  Velora: %s", config.velora)
     logger.info("  GMX: %s", config.gmx_deployment is not None)
+    lighter_deployment = getattr(config, "lighter_deployment", None)
+    lighter_api_key_generation = getattr(config, "generate_lighter_api_key", False)
+    logger.info("  Lighter: %s", lighter_deployment is not None)
+    logger.info("  Lighter API-key generation: %s", lighter_api_key_generation)
+    if lighter_api_key_generation:
+        logger.info(
+            "  Lighter API-key index: %s",
+            getattr(config, "lighter_api_key_index", None),
+        )
+        logger.info(
+            "  Lighter contract: %s",
+            getattr(lighter_deployment, "zk_lighter", None),
+        )
+        logger.info(
+            "  Lighter USDC: %s",
+            getattr(lighter_deployment, "usdc", None),
+        )
+        logger.info("  Lighter activation amount: %s", LIGHTER_MIN_MAINNET_USDC)
     logger.info("  CCTP: %s", config.cctp_deployment is not None)
 
     if config.erc_4626_vaults:
@@ -178,7 +213,7 @@ def _log_chain_config_section(config: LagoonConfig, logger):
         logger.info("  ERC-4626 vaults: %s", vault_addrs)
 
     if config.etherscan_api_key:
-        logger.info("  Etherscan API key (chain-level): %s", config.etherscan_api_key)
+        logger.info("  Etherscan API key (chain-level): <provided>")
 
 
 def _log_legacy_single_chain_section(

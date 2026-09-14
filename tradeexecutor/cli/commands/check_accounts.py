@@ -3,25 +3,36 @@ from pathlib import Path
 from typing import Optional
 
 import typer
-
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
 from tabulate import tabulate
 
+from tradeexecutor.exchange_account.lighter import (
+    create_lighter_account_value_func,
+    validate_lighter_exchange_account_pairs,
+)
 from tradeexecutor.strategy.account_correction import check_accounts as _check_accounts
-from .app import app
-from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store, create_client
-from ..log import setup_logging
+
 from ...state.state import UncleanState
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
 from ...strategy.execution_context import ExecutionContext, ExecutionMode
 from ...strategy.execution_model import AssetManagementMode
-from . import shared_options
 from ...strategy.run_state import RunState
 from ...strategy.strategy_module import StrategyModuleInformation, read_strategy_module
 from ...strategy.trading_strategy_universe import TradingStrategyUniverseModel
 from ...strategy.universe_model import UniverseOptions
+from ..bootstrap import (
+    create_client,
+    create_state_store,
+    create_sync_model,
+    create_web3_config,
+    prepare_executor_id,
+)
+from ..log import setup_logging
+from . import shared_options
+from .app import app
+
 
 @app.command()
 @shared_options.with_json_rpc_options()
@@ -51,9 +62,9 @@ def check_accounts(
     unit_testing: bool = shared_options.unit_testing,
     raise_on_unclean: bool = typer.Option(False, is_flag=False, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
 ):
-    """Check that state internal ledger matches on chain balances.
+    """Check that the state ledger matches onchain and external balances.
 
-    - Print out differences between actual on-chain balances and expected state balances
+    - Print differences between observed balances and expected state balances
     """
 
     global logger
@@ -127,8 +138,6 @@ def check_accounts(
         test_evm_uniswap_v2_init_code_hash=test_evm_uniswap_v2_init_code_hash,
         clear_caches=False,
     )
-    assert client is not None, "You need to give details for TradingStrategy.ai client"
-
     execution_context = ExecutionContext(mode=ExecutionMode.one_off)
 
     strategy_factory = make_factory_from_strategy_mod(mod)
@@ -165,11 +174,22 @@ def check_accounts(
             logger.info("Initialising reserves for the unit test: %s", universe.reserve_assets[0])
             state.portfolio.initialise_reserves(universe.reserve_assets[0])
 
+    lighter_pairs = validate_lighter_exchange_account_pairs(
+        position.pair
+        for position in state.portfolio.get_open_and_frozen_positions()
+    )
+    exchange_account_value_func = (
+        create_lighter_account_value_func()
+        if lighter_pairs
+        else None
+    )
+
     clean, df = _check_accounts(
         universe.data_universe.pairs,
         universe.reserve_assets,
         state,
         sync_model,
+        exchange_account_value_func=exchange_account_value_func,
     )
 
     output = tabulate(

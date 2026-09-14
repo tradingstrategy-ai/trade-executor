@@ -20,6 +20,7 @@ from eth_defi.provider.anvil import is_anvil    , mine
 from tradeexecutor.backtest.backtest_execution import BacktestExecutionFailed
 from tradeexecutor.cli.double_position import check_double_position
 from tradeexecutor.ethereum.ethereum_protocol_adapters import EthereumPairConfigurator
+from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.state.store import StateStore
 from tradeexecutor.state.types import BlockNumber, Percent
@@ -615,14 +616,16 @@ class StrategyRunner(abc.ABC):
                 )
                 routing_model.initialise(pair_configurator)
 
-                # If the pair configurator auto-discovered a strategy-specific
-                # valuation function (e.g. GMX), wire it into the sync model
-                # so that calculate_valuation() uses it for NAV posting.
-                if pair_configurator.vault_valuation_func is not None:
-                    from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
-                    if isinstance(self.sync_model, LagoonVaultSyncModel):
-                        self.sync_model.calculate_valuation_func = pair_configurator.vault_valuation_func
-                        logger.info("Wired up strategy-specific valuation function on sync model")
+            # ``LagoonExecution.create_default_routing_model()`` may already
+            # provide an initialised GenericRouting instance. Resolve the
+            # configurator in both the eager and lazy paths so strategy-specific
+            # NAV readers (GMX/Lighter) are always installed on the sync model.
+            pair_configurator = routing_model.pair_configurator
+            vault_valuation_func = getattr(pair_configurator, "vault_valuation_func", None)
+            if vault_valuation_func is not None:
+                if isinstance(self.sync_model, LagoonVaultSyncModel):
+                    self.sync_model.calculate_valuation_func = vault_valuation_func
+                    logger.info("Wired up strategy-specific valuation function on sync model")
 
             # Update the pair configuration universe to the latest.
             # This will be referred when creating

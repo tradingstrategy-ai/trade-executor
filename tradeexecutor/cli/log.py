@@ -141,7 +141,10 @@ def setup_file_logging(
         # Allow disable
         return
 
-    file_handler = logging.FileHandler(log_filename)
+    log_path = Path(log_filename)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    file_handler = logging.FileHandler(log_path)
     file_handler.setFormatter(formatter)
     file_handler.setLevel(log_level)
 
@@ -152,7 +155,7 @@ def setup_file_logging(
 
         from tradeexecutor.webhook.http_log import configure_http_request_logging
         # Create a logger for HTTP requests only
-        configure_http_request_logging(Path(log_filename))
+        configure_http_request_logging(log_path)
 
 
 def setup_in_memory_logging(logger):

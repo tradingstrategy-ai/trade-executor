@@ -14,7 +14,16 @@ from decimal import Decimal
 
 from eth_defi.compat import native_datetime_utc_now
 
-from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
+from tradeexecutor.exchange_account.lighter import (
+    LIGHTER_PROTOCOL,
+    validate_lighter_account_value,
+)
+from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
+from tradeexecutor.state.balance_update import (
+    BalanceUpdate,
+    BalanceUpdateCause,
+    BalanceUpdatePositionType,
+)
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.valuation import ValuationUpdate
 from tradeexecutor.strategy.position_internal_share_price import (
@@ -22,7 +31,6 @@ from tradeexecutor.strategy.position_internal_share_price import (
     update_share_price_state_for_balance_update,
 )
 from tradeexecutor.strategy.valuation import ValuationModel
-from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +183,8 @@ class ExchangeAccountValuator(ValuationModel):
             api_value = self.pricing_model.get_account_value(
                 position.pair, block_identifier=block_number,
             )
+            if position.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL:
+                api_value = validate_lighter_account_value(position.pair, api_value)
 
             # Only advance freshness timestamps after a successful fetch.
             # Wall clock time is used (not the cycle timestamp ``ts``)
@@ -242,6 +252,19 @@ class ExchangeAccountValuator(ValuationModel):
             return evt
 
         except Exception as e:
+            # Lighter data is authoritative for Lagoon NAV.  Any failure,
+            # including a negative/malformed response or account-index
+            # mismatch, is a hard fail-closed condition rather than a reason
+            # to create the normal stale-value fallback event.  Log only the
+            # exception type so an upstream response cannot leak into logs.
+            if position.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL:
+                logger.error(
+                    "Failed to revalue Lighter exchange account position %d (%s)",
+                    position.position_id,
+                    type(e).__name__,
+                )
+                raise
+
             # API failure — preserve the previous freshness timestamps
             # so Lagoon's guard still catches stale data after an outage.
             # Do NOT update last_pricing_at here.

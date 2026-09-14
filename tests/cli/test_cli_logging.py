@@ -6,6 +6,7 @@ import os
 import socket
 import sys
 from collections.abc import Iterator
+from pathlib import Path
 
 import logstash
 import pytest
@@ -14,6 +15,7 @@ from eth_defi.coloured_logging import EthDefiRichHandler
 from tradeexecutor.cli.log import (
     MAX_LOGSTASH_UDP_PAYLOAD_SIZE,
     create_logstash_handler,
+    setup_file_logging,
     setup_logging,
     setup_logstash_logging,
 )
@@ -43,6 +45,25 @@ def restore_root_logging() -> None:
                 handler.close()
         root.handlers[:] = original_handlers
         root.setLevel(original_level)
+
+
+def test_setup_file_logging_creates_missing_parent_directory(tmp_path: Path) -> None:
+    """Create the requested log directory before opening its file.
+
+    1. Select a log path below an absent temporary directory.
+    2. Configure the real file logger for that path.
+    3. Verify that both the directory and file now exist.
+    """
+    # 1. Select a log path below an absent temporary directory.
+    log_path = tmp_path / "nested" / "executor.log"
+    assert not log_path.parent.exists()
+
+    # 2. Configure the real file logger for that path.
+    setup_file_logging(log_path)
+
+    # 3. Verify that both the directory and file now exist.
+    assert log_path.parent.is_dir()
+    assert log_path.is_file()
 
 
 def test_setup_logging_uses_eth_defi_rich_handler_when_colour_is_enabled(

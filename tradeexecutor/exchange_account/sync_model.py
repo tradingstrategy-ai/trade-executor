@@ -9,25 +9,31 @@ import logging
 from decimal import Decimal
 from typing import Callable, Collection, Iterable, List
 
-from web3.types import BlockIdentifier
-
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.hotwallet import HotWallet
+from web3.types import BlockIdentifier
 
 from tradeexecutor.ethereum.tx import TransactionBuilder
-from tradeexecutor.state.balance_update import BalanceUpdate, BalanceUpdateCause, BalanceUpdatePositionType
-from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
+from tradeexecutor.exchange_account.lighter import (
+    LIGHTER_PROTOCOL,
+    validate_lighter_account_value,
+)
+from tradeexecutor.state.balance_update import (
+    BalanceUpdate,
+    BalanceUpdateCause,
+    BalanceUpdatePositionType,
+)
+from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.sync import BalanceEventRef
-from tradeexecutor.state.types import JSONHexAddress, BlockNumber
+from tradeexecutor.state.types import BlockNumber, JSONHexAddress
 from tradeexecutor.strategy.position_internal_share_price import (
     create_share_price_state_for_exchange_account,
     update_share_price_state_for_balance_update,
 )
-from tradeexecutor.strategy.sync_model import SyncModel, OnChainBalance
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 from tradeexecutor.strategy.pricing_model import PricingModel
-from eth_defi.compat import native_datetime_utc_now
+from tradeexecutor.strategy.sync_model import OnChainBalance, SyncModel
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +160,21 @@ class ExchangeAccountSyncModel(SyncModel):
                 current_value = self.account_value_func(
                     position.pair, block_identifier=block_number,
                 )
+                if position.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL:
+                    current_value = validate_lighter_account_value(position.pair, current_value)
             except Exception as e:
+                # Lighter equity is part of the authoritative Lagoon NAV
+                # input.  Do not silently keep a stale external-account value
+                # after an API failure, index mismatch or invariant breach.
+                # Log only the exception type so an upstream response cannot
+                # accidentally disclose sensitive request/record data.
+                if position.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL:
+                    logger.error(
+                        "Failed to sync Lighter exchange account position %d (%s)",
+                        position.position_id,
+                        type(e).__name__,
+                    )
+                    raise
                 logger.error(
                     "Failed to get account value for position %d: %s",
                     position.position_id,
