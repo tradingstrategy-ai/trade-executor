@@ -30,7 +30,7 @@ Example
     source .local-test.env
     export LIGHTER_TEST_PRIVATE_KEY="0x..."
     export JSON_RPC_ETHEREUM="https://..."
-    poetry run pip install lighter-sdk==1.1.2
+    poetry install
     poetry run python scripts/lagoon/manual-trade-executor-lighter.py
 
 Optional environment variables

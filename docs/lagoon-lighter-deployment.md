@@ -79,34 +79,56 @@ operator record.
 
 ## Run the ETH/USD test lifecycle
 
-The executable Python tutorial is the supported small real-money test. It uses
-Typer CLI commands whenever possible and Lighter's SDK only for the operations
-that Anvil and the executor cannot simulate: the ETH/USD long and secure
-withdrawal.
+For an already deployed Lighter-enabled vault, the Typer command is the
+supported small real-money test. It uses the deployment's protected operator
+record to deposit from the Safe, open and close ETH/USD, claim the withdrawal,
+and synchronise Lagoon NAV throughout.
 
 ```shell
 source .local-test.env
-export LIGHTER_TEST_PRIVATE_KEY="0x..."  # Funded deployer; never print it
 export JSON_RPC_ETHEREUM="https://..."
-export LIGHTER_DEPOSIT_USDC="..."        # Collateral in addition to 1 USDC activation
-export LIGHTER_POSITION_USDC="..."       # Small ETH/USD long notional
+export PRIVATE_KEY="0x..."  # Funded Safe owner / asset manager; never print it
+export EXECUTOR_ID="lighter-vault"
+export STRATEGY_FILE="strategies/test_only/minimal_lighter_strategy.py"
+export STATE_FILE="state/lighter-vault.json"
+export VAULT_ADDRESS="0x..."
+export VAULT_ADAPTER_ADDRESS="0x..."
+export LIGHTER_ACCOUNT_INDEX="..."  # Public index in deployment report
+export LIGHTER_OPERATOR_RECORD_FILE="/secure/lighter/lighter-vault.json"
+export LIGHTER_TEST_DEPOSIT_USDC="..."
+export LIGHTER_TEST_POSITION_USDC="..."
 
-poetry run pip install lighter-sdk==1.1.2
-poetry run python scripts/lagoon/manual-trade-executor-lighter.py
+trade-executor lagoon-lighter-test-trade
 ```
 
-The tutorial deploys its own isolated vault, then:
+The Lighter AI Yubi deployment convention maps `~/secrets/lighter` to
+`/secure-lighter` inside the manual-command container. Its mode-`0600`
+operator record is conventionally
+`~/secrets/lighter/lighter-ai-vault-info.json`; use
+`LIGHTER_OPERATOR_RECORD_FILE=/secure-lighter/lighter-ai-vault-info.json` for
+the manual command. The path is public configuration, but the JSON contents are
+secret and must never be copied into an environment variable or a report.
 
-1. subscribes and deposits USDC to Lighter;
-2. runs `correct-accounts` and `lagoon-settle` and asserts the first NAV;
-3. opens a small ETH/USD long, repeats the Typer NAV sync and checks balances;
-4. closes the long, repeats the Typer NAV sync and checks balances;
-5. withdraws collateral to the Safe, then redeems all shares to the deployer.
+The command runs the following sequence against the configured vault:
 
-It asserts the Safe, Lighter, share and deployer balances at every material
-boundary, including that Lighter equity is never negative. The selected
-collateral target is at least the requested order notional plus a 5 USDC buffer
-and never below Lighter's direct-deposit minimum.
+1. deposits Safe USDC to Lighter and posts a Lagoon NAV checkpoint;
+2. opens a small ETH/USD long and posts another checkpoint;
+3. closes the long with a reduce-only order and posts another checkpoint;
+4. requests and claims the Lighter withdrawal to the Safe; and
+5. posts the final Lagoon NAV checkpoint.
+
+It verifies public Lighter equity and Lagoon NAV are never negative and writes
+an owner-only recovery journal beside the state file. Re-run the same command
+after a failure only after the operator has reviewed any ambiguous journal
+phase. If a withdrawal request was not accepted, confirm its absence from
+withdrawal history and change `withdrawal_requested` back to `closed` in the
+journal before retrying. Stop the normal strategy executor while this manual
+lifecycle runs.
+
+The standalone
+`scripts/lagoon/manual-trade-executor-lighter.py` tutorial still deploys and
+redeems an isolated vault. The Lighter SDK is already pinned in this project's
+Poetry dependencies, so run `poetry install` rather than a manual SDK install.
 
 For an already deployed vault, run the Typer accounting cycle only after a
 deposit, fill or withdrawal has completed on both Lighter and the Safe:
@@ -119,6 +141,26 @@ trade-executor lagoon-settle
 
 Never perform this cycle while a collateral movement or order settlement is in
 flight.
+
+### Secure withdrawals and Safe custody
+
+Before requesting a secure withdrawal, query Lighter's dynamic
+`withdrawalDelay` value in seconds. `lagoon-lighter-test-trade` does this and
+logs the current delay immediately before submitting its withdrawal request.
+The value is an operator estimate, not a completion guarantee: wait until the
+matching `withdraw_history` row becomes `claimable`, then claim through the
+Lagoon Safe module.
+
+Fast USDC withdrawals are not supported for this vault shape. Lighter requires
+the L1 account's Ethereum EOA private key for a fast withdrawal, but the
+account owner is a Safe contract and has no EOA private key. Do not use the
+deployer or asset-manager key as a substitute: neither owns the Safe's Lighter
+account. Use the secure withdrawal and later Safe-gated L1 claim instead.
+
+During the delay, Lighter can show zero account equity while USDC has not yet
+arrived in the Safe. Pause normal strategy execution, `correct-accounts` and
+Lagoon NAV settlement until the claim has completed; otherwise AlphaModel
+sizing can see a temporarily understated reserve and NAV.
 
 ## Strategy accounting
 
@@ -134,6 +176,7 @@ Safe USDC balance at the treasury-sync block
 
 The Safe balance is reconciled separately and is not included in the external
 account position. Stop the executor while collateral is moving between the
-Safe and Lighter, and resume only after the public account response reflects
-the settlement. A negative or malformed Lighter equity response aborts the
-cycle; it is never cached, written to state or posted as NAV.
+Safe and Lighter, including Lighter's dynamic secure-withdrawal delay, and
+resume only after the public account response and Safe balance reflect the
+settlement. A negative or malformed Lighter equity response aborts the cycle;
+it is never cached, written to state or posted as NAV.
