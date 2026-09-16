@@ -93,13 +93,41 @@ export STRATEGY_FILE="strategies/test_only/minimal_lighter_strategy.py"
 export STATE_FILE="state/lighter-vault.json"
 export VAULT_ADDRESS="0x..."
 export VAULT_ADAPTER_ADDRESS="0x..."
+export ASSET_MANAGEMENT_MODE="lagoon"
 export LIGHTER_ACCOUNT_INDEX="..."  # Public index in deployment report
 export LIGHTER_OPERATOR_RECORD_FILE="/secure/lighter/lighter-vault.json"
-export LIGHTER_TEST_DEPOSIT_USDC="..."
-export LIGHTER_TEST_POSITION_USDC="..."
+# Optional overrides:
+# export LIGHTER_TEST_DEPOSIT_USDC="20"
+# export LIGHTER_TEST_POSITION_USDC="..."
 
 trade-executor lagoon-lighter-test-trade
 ```
+
+The test deposit defaults to 20 USDC. The direct Ethereum Lighter contract has
+a 1 USDC minimum deposit. Live ETH/USD metadata inspected on 2026-09-16 required
+both 0.005 ETH and 10 USDC of notional; 0.005 ETH was about 12 USDC at the time.
+Thus 20 USDC clears the zk deposit minimum and leaves modest collateral
+headroom for the automatically sized ETH perpetual order. Market limits are
+fetched at runtime and may change. The Safe must hold at least the selected
+deposit amount.
+
+To add this capital to an existing vault, stop the executor and run the
+reusable Lagoon subscription script from the repository or release container:
+
+```shell
+poetry run python scripts/lagoon/deposit-and-settle.py 20
+```
+
+The script uses `PRIVATE_KEY` as both depositor and authorised asset manager.
+It requires the same `JSON_RPC_ETHEREUM`, `EXECUTOR_ID`, `STRATEGY_FILE`,
+`STATE_FILE`, `VAULT_ADDRESS`, `VAULT_ADAPTER_ADDRESS` and
+`ASSET_MANAGEMENT_MODE=lagoon` environment as the executor. It never transfers
+USDC directly to the Safe. Instead, it requests a Lagoon deposit, runs the real
+`lagoon-settle` vault sync so the Safe and executor reserve receive the capital,
+and claims the deployer's shares. A rerun only resumes an exact matching pending
+or claimable deposit; it refuses a different amount. `lagoon-settle` settles
+the vault's eligible investor queue, so do not run this operator script while
+another investor's request needs separate handling.
 
 The Lighter AI Yubi deployment convention maps `~/secrets/lighter` to
 `/secure-lighter` inside the manual-command container. Its mode-`0600`

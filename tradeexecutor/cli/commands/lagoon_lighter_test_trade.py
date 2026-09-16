@@ -88,6 +88,8 @@ LIGHTER_WITHDRAWAL_HISTORY_CLOCK_SKEW_SECONDS = 60
 LIGHTER_POSITION_POLL_SECONDS = 5
 #: Default public deposit-observation timeout.
 DEFAULT_LIGHTER_DEPOSIT_TIMEOUT = 900
+#: Default test deposit with headroom over the ETH/USD minimum order size.
+DEFAULT_LIGHTER_TEST_DEPOSIT_USDC = "20"
 #: Default public position-observation timeout.
 DEFAULT_LIGHTER_POSITION_TIMEOUT = 300
 #: Default secure-withdrawal claimability timeout.
@@ -686,9 +688,9 @@ def lagoon_lighter_test_trade(
         help="Optional public account index to cross-check the operator record.",
     ),
     lighter_test_deposit_usdc: str = Option(
-        ...,
+        DEFAULT_LIGHTER_TEST_DEPOSIT_USDC,
         envvar="LIGHTER_TEST_DEPOSIT_USDC",
-        help="Additional Safe USDC to move to Lighter.",
+        help="Additional Safe USDC to move to Lighter; defaults to 20 USDC.",
     ),
     lighter_test_position_usdc: str | None = Option(
         None,
@@ -825,7 +827,10 @@ def lagoon_lighter_test_trade(
                     f"Journal phase {phase} requires a flat ETH position; inspect Lighter before resuming",
                 )
             if safe_balance < config.deposit_usdc and phase == "created":
-                raise LighterTestTradeError("Lagoon Safe has insufficient USDC for the requested Lighter deposit")
+                raise LighterTestTradeError(
+                    f"Lagoon Safe has {safe_balance} USDC, but the requested Lighter deposit requires "
+                    f"{config.deposit_usdc} USDC",
+                )
             logger.info("Step 1: inspected vault %s and Lighter account %d", vault.address, operator.account_index)
             logger.info("Safe USDC=%s, Lighter equity=%s, ETH position=%s", safe_balance, equity.get_total(), public_position)
             if not config.auto_approve and not unit_testing:

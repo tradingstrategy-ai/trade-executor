@@ -174,13 +174,48 @@ export STRATEGY_FILE="strategies/test_only/minimal_lighter_strategy.py"
 export STATE_FILE="state/lighter-vault.json"
 export VAULT_ADDRESS="0x..."
 export VAULT_ADAPTER_ADDRESS="0x..."
+export ASSET_MANAGEMENT_MODE="lagoon"
 export LIGHTER_ACCOUNT_INDEX="..."  # Public index from the deployment report
 export LIGHTER_OPERATOR_RECORD_FILE="/secure/lighter/lighter-vault.json"
-export LIGHTER_TEST_DEPOSIT_USDC="..."
-export LIGHTER_TEST_POSITION_USDC="..."
+# Optional overrides:
+# export LIGHTER_TEST_DEPOSIT_USDC="20"
+# export LIGHTER_TEST_POSITION_USDC="..."
 
 trade-executor lagoon-lighter-test-trade
 ```
+
+`LIGHTER_TEST_DEPOSIT_USDC` defaults to 20 USDC. Lighter's direct Ethereum
+contract deposit has a 1 USDC minimum. The live ETH/USD market metadata
+inspected on 2026-09-16 required both 0.005 ETH and 10 USDC of notional; at the
+then-current price, 0.005 ETH was about 12 USDC. The 20 USDC default therefore
+clears the zk deposit minimum and gives the automatically sized ETH perpetual
+test order modest collateral headroom. The command fetches the market limits
+at runtime because Lighter may change them. Ensure the Safe has at least 20
+USDC available, or override the deposit and position amounts together.
+
+See Lighter's
+[deposit documentation](https://apidocs.lighter.xyz/docs/deposits-transfers-and-withdrawals)
+and live
+[ETH market metadata](https://mainnet.zklighter.elliot.ai/api/v1/orderBookDetails?market_id=0).
+
+If the Safe does not have enough USDC for the test, stop the executor and fund
+the vault through Lagoon's investor deposit lifecycle. Do not transfer USDC
+directly to the Safe, because that bypasses Lagoon share and investor-flow
+accounting. The reusable script inherits the normal executor environment:
+
+```shell
+poetry run python scripts/lagoon/deposit-and-settle.py 20
+```
+
+`PRIVATE_KEY` must identify the funded deployer and authorised Lagoon asset
+manager. It needs the requested native USDC plus ETH for gas. The script
+approves and requests the deposit, invokes the real `lagoon-settle` command to
+post NAV, settle the complete investor queue and update executor state, and
+then claims the deployer's vault shares. A rerun with the same amount resumes
+an exact pending or claimable deposit instead of submitting it twice. After a
+successful run, both the Safe balance and executor reserve include the new
+capital. `lagoon-settle` settles the vault's eligible investor queue, so do not
+run the script while another investor's request needs separate handling.
 
 ### Yubi deployment secret mapping
 
