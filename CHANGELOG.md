@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Add `lighter-move-funds`, an interactive Lagoon operator command for verified USDC deposits to and secure withdrawals from Lighter. Completed custody movements are recorded as flagged synthetic exchange-account trades, pending withdrawals resume without duplicate requests, and account correction now includes the Lagoon Safe reserve for Lighter-only portfolios (2026-09-16).
+
 - Add `lagoon-lighter-test-trade`: a resumable Typer operator command that deposits Safe USDC to Lighter, performs a small ETH/USD long round trip, securely withdraws and claims USDC back to the Safe, and posts Lagoon NAV checkpoints without writing the delegated API key to reports, state or logs (2026-09-16).
 
 - Add optional Ethereum Lighter account activation to `lagoon-deploy-vault` via `--generate-lighter-api-key` (with configurable API-key slot). A fresh deployment performs the accounted 1 USDC activation and Safe `changePubKey` ceremony, writes the generated key only to an exclusive mode-`0600` paired JSON record, and keeps text, Markdown, logs and runtime artefacts public-only. Strategies can represent the reported account index as a Lighter external exchange account; public total-equity polling is wired into exchange-account accounting and Lagoon NAV (`Safe USDC + Lighter equity`). Enabling the option spends real Ethereum gas and USDC and may wait for Lighter public-state propagation (2026-09-14)

@@ -1353,12 +1353,15 @@ class State:
             In the case we detect unclean stuff
         """
 
-        for p in self.portfolio.open_positions.values():
+        for p in self.portfolio.get_open_and_frozen_positions():
             t: TradeExecution
             for t in p.trades.values():
-                if t.is_unfinished():
+                if t.is_unfinished() or t.is_external_account_transfer_pending():
                     tx_hashes = ", ".join([str(tx.tx_hash) for tx in t.blockchain_transactions])
-                    raise UncleanState(f"Position {p}, trade {t} is unfinished\nTransactions are: {tx_hashes}")
+                    raise UncleanState(
+                        f"Position #{p.position_id}, trade #{t.trade_id} "
+                        f"({t.get_status().value}) is unfinished\nTransactions are: {tx_hashes}",
+                    )
 
     def to_json_safe(self) -> str:
         """Serialise to JSON format with helpful validation and error messages.

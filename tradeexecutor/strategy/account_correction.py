@@ -30,6 +30,7 @@ from eth_typing import HexAddress
 
 from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.portfolio import Portfolio
 from tradeexecutor.state.repair import close_position_with_empty_trade
@@ -995,8 +996,6 @@ def create_missing_exchange_account_positions(
     :raise AssertionError:
         If reserve assets aren't configured properly in the universe
     """
-    from tradeexecutor.exchange_account.state import open_exchange_account_position
-
     logger.info("Scanning universe for missing exchange account positions...")
 
     created_trades = []
@@ -1617,6 +1616,14 @@ def preflight_state_for_account_correction(state: State) -> None:
     balance recovery.  Validate the internal state before those effects so a
     caller either receives a complete reconciliation or makes no balance move.
     """
+    has_pending_external_transfer = any(
+        trade.is_external_account_transfer_pending()
+        for position in state.portfolio.get_open_and_frozen_positions()
+        for trade in position.trades.values()
+    )
+    if has_pending_external_transfer:
+        state.check_if_clean()
+
     try:
         check_state_internal_coherence(state)
     except AssertionError as exc:

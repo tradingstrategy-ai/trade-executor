@@ -1,10 +1,11 @@
 """Helpers for managing exchange account positions in state.
 
-Exchange account positions (Derive, Hyperliquid, etc.) are created directly
-on the state object, bypassing PositionManager and the normal execution pipeline.
+Exchange account positions (Derive, Hyperliquid, etc.) are managed directly on
+the state object, bypassing PositionManager and the normal execution pipeline.
 
-Trades are immediately spoofed (marked success) so they never reach routing
-or execution.
+Opening trades are immediately spoofed so they never reach routing or
+execution. Manual custody transfers can remain pending while an external
+withdrawal completes.
 """
 
 import datetime
@@ -13,8 +14,129 @@ from decimal import Decimal
 from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
+from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeType
+from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus, TradeType
+from tradeexecutor.strategy.position_internal_share_price import (
+    create_share_price_state,
+    update_share_price_state,
+)
+
+
+class ExchangeAccountTransferError(RuntimeError):
+    """Raised when a manual exchange-account transfer cannot be recorded."""
+
+
+def create_exchange_account_transfer(
+    *,
+    state: State,
+    position: TradingPosition,
+    strategy_cycle_at: datetime.datetime,
+    reserve_currency: AssetIdentifier,
+    amount: Decimal,
+    deposit: bool,
+    notes: str,
+    metadata: dict[str, str | int],
+) -> TradeExecution:
+    """Create one planned manual reserve/exchange-account transfer trade.
+
+    The physical custody movement is executed outside the normal trade router.
+    This helper only creates its durable state record. For withdrawals callers
+    persist it before requesting the external exchange withdrawal, then use
+    :func:`record_exchange_account_transfer` after final verification.
+    """
+    if not position.is_exchange_account():
+        raise ExchangeAccountTransferError("Expected an exchange-account position")
+    if amount <= 0:
+        raise ExchangeAccountTransferError("Exchange-account transfer amount must be positive")
+
+    quantity = amount if deposit else -amount
+    _position, trade, _created = state.create_trade(
+        strategy_cycle_at=strategy_cycle_at,
+        pair=position.pair,
+        quantity=quantity,
+        reserve=None,
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=reserve_currency,
+        reserve_currency_price=1.0,
+        notes=notes,
+        pair_fee=0.0,
+        lp_fees_estimated=0,
+        position=position,
+        flags={TradeFlag.external_account_transfer},
+    )
+    trade.other_data = metadata
+    return trade
+
+
+def mark_exchange_account_transfer_broadcasted(
+    trade: TradeExecution,
+    timestamp: datetime.datetime,
+) -> None:
+    """Move a manual external-account transfer to the broadcasted state."""
+    if not trade.is_external_account_transfer_pending():
+        raise ExchangeAccountTransferError("Expected an unfinished external-account transfer")
+    if trade.is_planned():
+        trade.started_at = timestamp
+    if trade.get_status() == TradeStatus.started:
+        trade.mark_broadcasted(timestamp)
+    elif trade.get_status() != TradeStatus.broadcasted:
+        raise ExchangeAccountTransferError("External-account transfer has an invalid lifecycle state")
+
+
+def record_exchange_account_transfer(
+    *,
+    state: State,
+    position: TradingPosition,
+    trade: TradeExecution,
+    reserve_currency: AssetIdentifier,
+    amount: Decimal,
+    executed_at: datetime.datetime,
+) -> TradeExecution:
+    """Complete a verified manual reserve/exchange-account transfer.
+
+    Exchange-account trades bypass the routing and execution model. Adjust the
+    Safe reserve and exchange-account share-price state here, then mark the
+    existing broadcasted trade successful without auto-closing a zero account.
+    """
+    if amount <= 0:
+        raise ExchangeAccountTransferError("Exchange-account transfer amount must be positive")
+    if (
+        not trade.is_external_account_transfer_pending()
+        or trade.get_status() != TradeStatus.broadcasted
+    ):
+        raise ExchangeAccountTransferError("Expected a broadcasted external-account transfer")
+    if trade.position_id != position.position_id:
+        raise ExchangeAccountTransferError("Transfer does not belong to the exchange-account position")
+    if abs(trade.planned_quantity) != amount:
+        raise ExchangeAccountTransferError("Verified transfer amount differs from the planned amount")
+
+    reserve_change = -amount if trade.is_buy() else amount
+    reserve = state.portfolio.get_reserve_position(reserve_currency)
+    if reserve.quantity + reserve_change < 0:
+        raise ExchangeAccountTransferError("Transfer would create a negative reserve quantity")
+    if position.get_quantity() + trade.planned_quantity < 0:
+        raise ExchangeAccountTransferError("Transfer would create a negative exchange-account quantity")
+
+    state.portfolio.adjust_reserves(
+        reserve_currency,
+        reserve_change,
+        f"External account transfer for trade #{trade.trade_id}",
+    )
+    trade.mark_success(
+        executed_at=executed_at,
+        executed_price=1.0,
+        executed_quantity=trade.planned_quantity,
+        executed_reserve=amount,
+        lp_fees=0,
+        native_token_price=0,
+    )
+    if position.share_price_state is None:
+        position.share_price_state = create_share_price_state(trade)
+    else:
+        position.share_price_state = update_share_price_state(position.share_price_state, trade)
+    return trade
 
 
 def open_exchange_account_position(
@@ -259,9 +381,6 @@ def open_exchange_account_position(
     # Placeholder trades ($0 or $1 from correct-accounts) are excluded —
     # their share_price_state is created from the first valuation sync instead.
     if reserve_amount > 1:
-        from tradeexecutor.strategy.position_internal_share_price import (
-            create_share_price_state,
-        )
         position.share_price_state = create_share_price_state(trade)
 
     return [trade]

@@ -17,6 +17,7 @@ orders are submitted by a separate execution tool, not by trade-executor.
 | Delegated API-key generation and registration | `lagoon-deploy-vault` |
 | Public total-equity valuation | Yes, without an API key |
 | Lagoon NAV posting | `lagoon-settle` |
+| Manual Safe/Lighter custody diagnostic | `lighter-move-funds` |
 | Read-only accounting comparison | `check-accounts` |
 | Accounting correction and PnL balance updates | `correct-accounts` |
 | Generic interrupted-trade repair | `repair` |
@@ -187,7 +188,7 @@ The Lighter AI Yubi deployment convention maps the protected host directory
 `~/secrets/lighter` to `/secure-lighter` in the manual-command container. Its
 delegated-key record is conventionally
 `~/secrets/lighter/lighter-ai-vault-info.json`. Only
-`lagoon-lighter-test-trade` needs this record:
+`lagoon-lighter-test-trade` and `lighter-move-funds` need this record:
 
 ```shell
 export LIGHTER_OPERATOR_RECORD_FILE="/secure-lighter/lighter-ai-vault-info.json"
@@ -218,9 +219,10 @@ trade-executor check-accounts
 
 `lagoon-settle` synchronises both sides of the custody boundary: it reads the
 current Lighter equity and reconciles the executor reserve to the Safe's actual
-USDC balance before posting NAV. `correct-accounts` alone is not currently a
-substitute for this settlement after a Lighter deposit or withdrawal; see
-[External transfer accounting limitation](#external-transfer-accounting-limitation).
+USDC balance before posting NAV. After a completed `lighter-move-funds`
+operation, `check-accounts` should already be clean. Use
+`correct-accounts` only for residual PnL or an interrupted/out-of-band flow;
+see [External transfer accounting](#external-transfer-accounting).
 
 Do not run a NAV cycle while a deposit, order fill or withdrawal is still in
 flight. Wait for Lighter's public account response and the Safe balance to
@@ -232,7 +234,10 @@ Lighter's `withdrawalDelay` endpoint reports the current secure-withdrawal
 delay in seconds. It is dynamic and only an operator estimate: wait for the
 specific `withdraw_history` item to become `claimable` before the Safe sends
 the L1 claim. `lagoon-lighter-test-trade` logs this value immediately before it
-submits its secure withdrawal.
+submits its secure withdrawal; `lighter-move-funds` does the same. The reported
+delay is not a deadline. In the live manual test, claimability lagged the
+reported value, so configure the timeout with headroom and rely on history
+status rather than elapsed time.
 
 Lighter fast USDC withdrawals require the L1 account's Ethereum EOA private
 key. The Lighter owner in this integration is a Lagoon Safe contract, not an
@@ -244,6 +249,52 @@ While a secure withdrawal is pending, Lighter may show zero account equity
 before the Safe receives the claimed USDC. Pause normal execution,
 `correct-accounts` and Lagoon NAV settlement during this in-transit window so
 AlphaModel sizing cannot act on a temporarily understated reserve or NAV.
+
+### Manual custody diagnostic
+
+`lighter-move-funds` is an operator diagnostic and error-recovery command, not
+an everyday capital-management path. Stop the executor before using it. It
+shows Safe USDC, tracked reserve, Lighter collateral, equity, available balance,
+margin requirements, allocated margin, gross notional, position-record count
+and unrealised PnL. It then asks for a deposit (`d`) or withdrawal (`w`), an
+amount in USDC and a final confirmation which defaults to no.
+
+```shell
+export EXECUTOR_ID="lighter-vault"
+export STRATEGY_FILE="strategies/test_only/minimal_lighter_strategy.py"
+export STATE_FILE="state/lighter-vault.json"
+export JSON_RPC_ETHEREUM="https://..."
+export PRIVATE_KEY="0x..."
+export ASSET_MANAGEMENT_MODE="lagoon"
+export VAULT_ADDRESS="0x..."
+export VAULT_ADAPTER_ADDRESS="0x..."
+export LIGHTER_ACCOUNT_INDEX="..."
+export LIGHTER_OPERATOR_RECORD_FILE="/secure-lighter/lighter-ai-vault-info.json"
+# Optional: defaults are 900 seconds for deposits and 3600 seconds for withdrawals.
+export LIGHTER_DEPOSIT_TIMEOUT="900"
+export LIGHTER_WITHDRAW_TIMEOUT="3600"
+
+trade-executor lighter-move-funds
+```
+
+The command records a successful movement as one flagged synthetic trade on
+the `LIGHTER-ACCOUNT` position and changes the Safe reserve by the same USDC
+amount. `check-accounts` therefore verifies both sides of a completed movement,
+while `correct-accounts` repairs residual PnL or out-of-band drift without
+rewriting this transfer record.
+
+Secure withdrawals save their request before waiting and resume after a
+restart without blindly submitting a second request. The command claims only
+the matching `claimable` history row and requires its Safe USDC credit to match
+exactly. A definitive API rejection is recorded as a failed trade, allowing a
+fresh attempt. An ambiguous transport failure remains pending and is never
+resubmitted automatically. Keep unrelated Safe transfers stopped until the
+withdrawal finishes, because they can obscure the saved pre-withdrawal balance
+used for recovery. If an ambiguous request never appears in withdrawal history,
+keep the executor stopped and investigate the saved transfer instead of using
+`repair` or resubmitting it. A deposit interrupted after its physical movement
+but before state persistence is deliberately recovered with `correct-accounts`;
+it is never replayed automatically.
 
 ## Strategy setup
 
@@ -320,38 +371,24 @@ trade-executor correct-accounts
 trade-executor check-accounts
 ```
 
-### External transfer accounting limitation
+### External transfer accounting
 
-Lighter deposits and withdrawals currently happen outside trade-executor's
-normal `TradeExecution` routing pipeline. The executor maintains one synthetic
-`LIGHTER-ACCOUNT` position, and public account snapshots update its aggregate
-value. There is no durable executor transfer record linking a Safe debit to a
-Lighter credit, or a Lighter debit to the later Safe credit.
+Completed `lighter-move-funds` deposits and withdrawals have a durable
+executor record with direction, amounts and public request or transaction
+identifiers. The delegated key and bearer tokens are never written to state,
+reports or command output. Strategy-driven and out-of-band movements remain
+reconciliation cases.
 
-This has two operational consequences:
+`correct-accounts` corrects the on-chain Lagoon Safe reserve even when the
+sole trading position is a Lighter exchange account. It still reads Lighter
+equity through the public API rather than treating the synthetic
+`LIGHTER-ACCOUNT` asset as an ERC-20 balance. `correct-accounts --dry-run`
+does not persist proposed corrections.
 
-- while a transfer is in flight, the two custody locations may not yet add up
-  to the final NAV, so normal strategy execution and NAV settlement must stay
-  paused; and
-- `correct-accounts` can synchronise Lighter equity, but currently skips Safe
-  reserve correction when the portfolio contains only exchange-account
-  positions. It may therefore report success while a subsequent
-  `check-accounts` still reports the completed transfer as a reserve mismatch.
-
-After a completed deposit or secure withdrawal claim, use `lagoon-settle` to
-reconcile the Safe reserve and Lighter equity together, then verify the result
-with `check-accounts`. A mismatch equal to the completed transfer amount means
-the executor reserve snapshot is stale; it does not mean the assets are lost.
-
-TODO: make reserve correction run for exchange-account-only portfolios, with a
-Lighter Typer black-box regression proving that `correct-accounts` repairs a
-Safe reserve mismatch without changing already-correct Lighter equity. Longer
-term, add a generic external-account transfer lifecycle for Lighter, Derive,
-GMX and later integrations. It should persist transfer direction, requested
-and received amounts, exchange request identifiers, asynchronous status and
-any L1 claim transaction, and create paired reserve and exchange-account
-accounting entries. Reserve reconciliation should remain the recovery path,
-not the normal way to account for a known transfer.
+An unfinished secure withdrawal deliberately makes executor state unclean, so
+normal execution and account correction stop rather than booking its temporary
+Lighter debit as a loss. Resume `lighter-move-funds` and let it claim or detect
+the completed withdrawal first.
 
 `repair` has a different purpose. It repairs interrupted executor trades and
 transactions; it does not query Lighter equity or perform account correction.
@@ -462,9 +499,10 @@ Confirm that `LIGHTER_ACCOUNT_INDEX` points to the Safe-owned account and that
 no deposit, withdrawal or order settlement is still in flight. If Lighter
 equity differs, run `correct-accounts` only after the public account view is
 stable. If the Safe reserve differs by a completed deposit or withdrawal
-amount, run `lagoon-settle` instead; the current `correct-accounts` exchange-only
-shortcut does not repair that reserve mismatch. Repeat `check-accounts` after
-the relevant synchronisation command.
+amount, first establish that no transfer is still pending, then run
+`correct-accounts`; Lagoon Lighter strategies reconcile both the public Lighter
+equity and on-chain Safe reserve. Run `lagoon-settle` separately when the vault
+needs a fresh posted NAV. Repeat `check-accounts` afterwards.
 
 ### `UnauthorizedException` during an authenticated SDK call
 
