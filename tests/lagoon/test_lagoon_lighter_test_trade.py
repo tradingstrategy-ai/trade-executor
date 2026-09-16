@@ -318,6 +318,7 @@ def test_cli_lagoon_lighter_test_trade_resumes_after_lighter_failure(
         "LIGHTER_OPERATOR_RECORD_FILE": operator_record_file.as_posix(),
         "LIGHTER_TEST_DEPOSIT_USDC": str(LIGHTER_DEPOSIT_USDC),
         "LIGHTER_TEST_JOURNAL_FILE": journal_file.as_posix(),
+        "LOG_LEVEL": "disabled",
         "UNIT_TESTING": "true",
     }
     mocker.patch.dict("os.environ", environment, clear=True)
