@@ -206,6 +206,12 @@ class TradeFlag(enum.Enum):
     #: duplicate-clone close from dust closes and other repair flows.
     hypercore_duplicate_close = "hypercore_duplicate_close"
 
+    #: Manual movement of capital between a reserve and an external account.
+    #:
+    #: The trade is managed by an operator command around a physical custody
+    #: movement. It must not enter the normal routing path.
+    external_account_transfer = "external_account_transfer"
+
     #: If there is an existing open position, do not try to match the trade for an open position.
     #:
     #: We trade by pair. If in same cycle we close and open position for the same pair, the trade
@@ -895,7 +901,15 @@ class TradeExecution:
 
         - :py:meth:`get_short_label`
         """
-        if self.pair.is_cctp_bridge():
+        is_external_account_transfer = (
+            self.pair.is_exchange_account()
+            and TradeFlag.external_account_transfer in (self.flags or set())
+        )
+        if is_external_account_transfer:
+            if self.is_buy():
+                return "Deposit to external account"
+            return "Withdraw from external account"
+        elif self.pair.is_cctp_bridge():
             if self.is_buy():
                 return "Bridge out"
             else:
@@ -1074,6 +1088,23 @@ class TradeExecution:
     def is_unfinished(self) -> bool:
         """We could not confirm this trade back from the blockchain after broadcasting."""
         return self.get_status() in (TradeStatus.broadcasted,)
+
+    def is_external_account_transfer_pending(self) -> bool:
+        """Return whether a manual external-account transfer is in flight.
+
+        Unlike routed trades, an external-account withdrawal may wait for an
+        off-chain protocol delay before the Safe receives its USDC. Keep this
+        narrow predicate separate from :py:meth:`is_unfinished` so the legacy
+        lifecycle semantics for all other trades remain unchanged.
+        """
+        return (
+            TradeFlag.external_account_transfer in (self.flags or set())
+            and self.get_status() in (
+                TradeStatus.planned,
+                TradeStatus.started,
+                TradeStatus.broadcasted,
+            )
+        )
 
     def is_repaired(self) -> bool:
         """The automatic execution failed and this was later repaired.

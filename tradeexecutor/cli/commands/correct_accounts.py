@@ -23,8 +23,16 @@ from eth_defi.hyperliquid.session import (
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
 from tradeexecutor.exchange_account.derive import DeriveNetwork
+from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
+from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
 from tradeexecutor.exchange_account.utils import create_exchange_account_value_func
-from tradeexecutor.strategy.account_correction import correct_accounts as _correct_accounts, check_accounts, UnknownTokenPositionFix, preflight_state_for_account_correction
+from tradeexecutor.strategy.account_correction import (
+    check_accounts,
+    correct_accounts as _correct_accounts,
+    create_missing_exchange_account_positions,
+    preflight_state_for_account_correction,
+    UnknownTokenPositionFix,
+)
 from .app import app
 from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_client, backup_state, create_execution_and_sync_model, resolve_deployment_file, configure_default_chain, create_state_store
 from ..double_position import check_double_position
@@ -721,8 +729,6 @@ def correct_accounts(
     # Auto-create missing exchange account positions first
     # (so newly created positions are included in the sync below)
     if universe:
-        from tradeexecutor.strategy.account_correction import create_missing_exchange_account_positions
-
         logger.info("Checking for missing exchange account positions in universe...")
         created_trades = create_missing_exchange_account_positions(
             strategy_universe=universe,
@@ -743,12 +749,12 @@ def correct_accounts(
         if p.is_exchange_account()
     ]
 
+    exchange_account_value_func = None
+
     # Sync all exchange account positions with actual exchange API values
     if exchange_account_positions:
         logger.info("Found %d exchange account position(s)", len(exchange_account_positions))
-        from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
-
-        account_value_func = create_exchange_account_value_func(
+        exchange_account_value_func = create_exchange_account_value_func(
             exchange_account_positions,
             derive_owner_private_key,
             derive_session_private_key,
@@ -762,8 +768,8 @@ def correct_accounts(
             execution_model=execution_model,
         )
 
-        if account_value_func:
-            exchange_sync_model = ExchangeAccountSyncModel(account_value_func, web3=web3)
+        if exchange_account_value_func:
+            exchange_sync_model = ExchangeAccountSyncModel(exchange_account_value_func, web3=web3)
             ensure_routing_setup()
             exchange_events = exchange_sync_model.sync_positions(
                 timestamp=native_datetime_utc_now(),
@@ -869,14 +875,24 @@ def correct_accounts(
 
     # Skip on-chain corrections when all positions are exchange account positions
     # (their balances are synced via exchange API, not on-chain balance checks).
-    # Exception: if we just closed a phantom Hypercore vault position, the Safe
-    # may hold USDC from an untracked withdrawal that needs reserve reconciliation.
+    # A Lagoon Lighter vault is the narrow exception: its Safe reserve remains
+    # on-chain even when its sole trading position is the synthetic account.
+    # A closed phantom Hypercore vault can similarly leave USDC in the Safe.
+    has_lagoon_lighter_position = (
+        asset_management_mode == AssetManagementMode.lagoon
+        and any(
+            position.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
+            for position in state.portfolio.get_open_and_frozen_positions()
+            if position.is_exchange_account()
+        )
+    )
     has_onchain_positions = (
         any(
             not p.pair.is_exchange_account()
             for p in state.portfolio.get_open_and_frozen_positions()
         )
         or closed_phantom_positions
+        or has_lagoon_lighter_position
     )
 
     if not has_onchain_positions:
@@ -989,11 +1005,12 @@ def correct_accounts(
 
     block_number = get_almost_latest_block_number(web3)
 
-    # Skip final on-chain account check for strategies without on-chain positions
+    # Lagoon Lighter needs a final Safe reserve check even though Lighter itself
+    # is represented by a synthetic exchange-account position.
     has_onchain_positions_final = any(
         not p.pair.is_exchange_account()
         for p in state.portfolio.get_open_and_frozen_positions()
-    )
+    ) or has_lagoon_lighter_position
     if not has_onchain_positions_final:
         logger.info("Final account check skipped - no on-chain positions")
         logger.info("All ok")
@@ -1005,6 +1022,7 @@ def correct_accounts(
         state,
         sync_model,
         block_identifier=block_number,
+        exchange_account_value_func=exchange_account_value_func,
     )
 
     output = tabulate(

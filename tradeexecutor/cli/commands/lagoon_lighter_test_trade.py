@@ -104,6 +104,10 @@ class LighterTestTradeError(RuntimeError):
     """Public operator error for the manual Lighter lifecycle."""
 
 
+class LighterWithdrawalRejected(LighterTestTradeError):
+    """Lighter definitively rejected a secure withdrawal before submission."""
+
+
 @dataclass(slots=True)
 class LighterOperatorRecord:
     """Public Lighter deployment metadata plus the delegated API signer."""
@@ -220,11 +224,13 @@ def load_lighter_operator_record(path: Path) -> LighterOperatorRecord:
 
 
 def validate_public_deployment_record(
-    config: LighterTestTradeConfig,
+    *,
+    executor_id: str,
+    state_file: Path,
     operator: LighterOperatorRecord,
 ) -> None:
     """Cross-check public Lighter metadata when deployment produced its artefact."""
-    deployment_file = config.state_file.with_name(f"{config.executor_id}.deployment.json")
+    deployment_file = state_file.with_name(f"{executor_id}.deployment.json")
     if not deployment_file.exists():
         return
     try:
@@ -429,7 +435,7 @@ async def wait_for_eth_position(
 async def request_lighter_withdrawal(
     operator: LighterOperatorRecord,
     amount: Decimal,
-) -> None:
+) -> str:
     """Request one secure Lighter withdrawal without replaying it on recovery.
 
     The caller logs Lighter's current dynamic ``withdrawalDelay`` before this
@@ -452,8 +458,10 @@ async def request_lighter_withdrawal(
             api_key_index=operator.api_key_index,
         )
         if error or response is None:
-            raise LighterTestTradeError("Lighter secure withdrawal was rejected")
-        logger.info("Secure Lighter withdrawal accepted: %s", response.tx_hash)
+            raise LighterWithdrawalRejected("Lighter secure withdrawal was rejected")
+        transaction_id = str(response.tx_hash)
+        logger.info("Secure Lighter withdrawal accepted: %s", transaction_id)
+        return transaction_id
     except LighterTestTradeError:
         raise
     except Exception as error:  # noqa: BLE001 - SDK errors can contain signed content
@@ -737,7 +745,11 @@ def lagoon_lighter_test_trade(
         auto_approve=auto_approve,
     )
     operator = load_lighter_operator_record(config.operator_record_file)
-    validate_public_deployment_record(config, operator)
+    validate_public_deployment_record(
+        executor_id=config.executor_id,
+        state_file=config.state_file,
+        operator=operator,
+    )
     if operator.vault_address.lower() != vault_address.lower() or operator.module_address.lower() != vault_adapter_address.lower():
         raise LighterTestTradeError("Lighter operator record does not match the configured vault")
     if lighter_account_index is not None:
