@@ -217,6 +217,12 @@ successful run, both the Safe balance and executor reserve include the new
 capital. `lagoon-settle` settles the vault's eligible investor queue, so do not
 run the script while another investor's request needs separate handling.
 
+Lighter activation has already subscribed 1 USDC to Lagoon and then moved that
+collateral from the Safe to Lighter. Thus a newly activated vault can have one
+share and no executor reserve or Safe USDC. This is valid for
+`deposit-and-settle.py`; `lagoon-first-deposit` intentionally rejects it
+because that command is only for a vault with no NAV or shares.
+
 ### Yubi deployment secret mapping
 
 The Lighter AI Yubi deployment convention maps the protected host directory

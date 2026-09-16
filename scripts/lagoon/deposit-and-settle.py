@@ -36,6 +36,7 @@ from web3 import Web3
 from web3.contract.contract import ContractFunction
 
 from tradeexecutor.cli.main import app
+from tradeexecutor.cli.commands.lagoon_utils import get_lagoon_reserve_baseline
 from tradeexecutor.state.state import State
 
 
@@ -159,14 +160,19 @@ def deposit_and_settle(amount: Decimal) -> None:
 
     state = State.read_json_file(state_path)
     state.check_if_clean()
-    reserve = state.portfolio.get_default_reserve_position()
-    if reserve.asset.address.lower() != denomination_token.address.lower():
-        raise LagoonDepositError("Executor reserve asset does not match the Lagoon denomination token")
 
     deployer = hot_wallet.address
     deployer_balance_before = denomination_token.fetch_balance_of(deployer)
     safe_balance_before = denomination_token.fetch_balance_of(vault.safe_address)
     share_balance_before = vault.share_token.fetch_balance_of(deployer)
+
+    try:
+        reserve = get_lagoon_reserve_baseline(state, denomination_token, safe_balance_before)
+    except ValueError as error:
+        raise LagoonDepositError(str(error)) from error
+    if reserve is None:
+        logger.info("No executor reserve yet; accepting the zero-Safe activation baseline")
+
     pending_raw = vault.vault_contract.functions.pendingDepositRequest(
         LAGOON_DEPOSIT_REQUEST_ID,
         deployer,
@@ -199,11 +205,6 @@ def deposit_and_settle(amount: Decimal) -> None:
             )
         logger.info("Resuming an existing %s %s deposit request", amount, denomination_token.symbol)
     else:
-        if reserve.quantity != safe_balance_before:
-            raise LagoonDepositError(
-                f"Executor reserve is {reserve.quantity} {denomination_token.symbol}, but the Safe "
-                f"holds {safe_balance_before}; run correct-accounts before depositing",
-            )
         if deployer_balance_before < amount:
             raise LagoonDepositError(
                 f"Deployer has {deployer_balance_before} {denomination_token.symbol}, "

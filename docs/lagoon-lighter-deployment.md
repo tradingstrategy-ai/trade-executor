@@ -129,6 +129,13 @@ or claimable deposit; it refuses a different amount. `lagoon-settle` settles
 the vault's eligible investor queue, so do not run this operator script while
 another investor's request needs separate handling.
 
+A Lighter-enabled deployment has already performed a 1 USDC Lagoon
+subscription to activate the Safe-owned Lighter account. That collateral is
+then moved from the Safe to Lighter, so the executor state can initially have
+no USDC reserve while the Safe also holds zero USDC. This is an expected
+baseline for this script; do not use `lagoon-first-deposit`, which is reserved
+for a vault with no NAV and no shares.
+
 The Lighter AI Yubi deployment convention maps `~/secrets/lighter` to
 `/secure-lighter` inside the manual-command container. Its mode-`0600`
 operator record is conventionally
