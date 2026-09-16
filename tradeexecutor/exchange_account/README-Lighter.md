@@ -156,47 +156,94 @@ never written to the text record, Markdown report, executor deployment
 artefact, strategy module or logs. Back up that JSON file in the organisation's
 secret manager without printing it to a terminal or chat.
 
-### 3. Perform the supported ETH/USD test trade
+### 3. Perform a resumable ETH/USD test trade
 
-The accounting and NAV steps use the Typer CLI, but `trade-executor` does not
-yet route Lighter perpetual orders. The supported end-to-end test is the
-executable tutorial below: it invokes `lagoon-deploy-vault`,
-`correct-accounts`, `lagoon-settle` and the other maintenance commands itself,
-then uses the protected generated key in memory to submit and close a small
-ETH/USD long through Lighter's SDK.
+For an existing Lighter-enabled Lagoon vault, use the dedicated Typer command.
+It reads the delegated key only from the mode-`0600` operator record produced
+by deployment, makes a bounded ETH/USD long round trip, and posts Lagoon NAV
+at each completed phase. It never places the key in executor state, reports or
+command-line arguments.
 
 ```shell
 source .local-test.env
-export LIGHTER_TEST_PRIVATE_KEY="0x..."  # Funded test deployer; do not echo it
 export JSON_RPC_ETHEREUM="https://..."
-export LIGHTER_DEPOSIT_USDC="..."        # Collateral in addition to activation USDC
-export LIGHTER_POSITION_USDC="..."       # Small ETH/USD long notional
+export PRIVATE_KEY="0x..."  # Funded Safe owner / asset manager; do not echo it
+export EXECUTOR_ID="lighter-vault"
+export STRATEGY_FILE="strategies/test_only/minimal_lighter_strategy.py"
+export STATE_FILE="state/lighter-vault.json"
+export VAULT_ADDRESS="0x..."
+export VAULT_ADAPTER_ADDRESS="0x..."
+export LIGHTER_ACCOUNT_INDEX="..."  # Public index from the deployment report
+export LIGHTER_OPERATOR_RECORD_FILE="/secure/lighter/lighter-vault.json"
+export LIGHTER_TEST_DEPOSIT_USDC="..."
+export LIGHTER_TEST_POSITION_USDC="..."
 
-poetry run pip install lighter-sdk==1.1.2
-poetry run python scripts/lagoon/manual-trade-executor-lighter.py
+trade-executor lagoon-lighter-test-trade
 ```
 
-The tutorial creates an isolated temporary vault, deposits collateral, runs
-`correct-accounts` and `lagoon-settle`, opens the long, repeats the NAV sync,
-closes the long, repeats the NAV sync, withdraws collateral to the Safe and
-redeems all shares to the deployer. It asserts the Safe, Lighter, share and
-deployer balances at each material boundary, including that public Lighter
-equity is never negative. The deposit target is at least the requested order
-notional plus a 5 USDC buffer and never below Lighter's current direct-deposit
-minimum.
+### Yubi deployment secret mapping
 
-For a vault already deployed outside the tutorial, use the same static strategy
-and Typer accounting cycle after each completed Lighter movement:
+The Lighter AI Yubi deployment convention maps the protected host directory
+`~/secrets/lighter` to `/secure-lighter` in the manual-command container. Its
+delegated-key record is conventionally
+`~/secrets/lighter/lighter-ai-vault-info.json`. Only
+`lagoon-lighter-test-trade` needs this record:
 
 ```shell
-trade-executor correct-accounts
-trade-executor check-accounts
-trade-executor lagoon-settle
+export LIGHTER_OPERATOR_RECORD_FILE="/secure-lighter/lighter-ai-vault-info.json"
 ```
+
+This path is not a credential, but the JSON file is mode `0600` and contains
+the delegated private key. Do not place the key itself in an environment
+variable, strategy file, state file or Compose configuration.
+
+The command writes an owner-only, non-secret recovery journal beside the state
+file. Re-run the same command after a failed public observation or order call;
+it resumes only completed, proven phases and refuses ambiguous mutations. If a
+withdrawal request failed before Lighter accepted it, confirm no matching
+withdrawal-history row exists, then change the journal phase from
+`withdrawal_requested` to `closed` before retrying. Stop the normal strategy
+executor for the duration of this manual operator test.
+
+`scripts/lagoon/manual-trade-executor-lighter.py` remains a standalone
+end-to-end tutorial which deploys and redeems its own temporary vault.
+
+For a vault already deployed outside the tutorial, use the same static strategy
+and run a Lagoon settlement after each completed Lighter movement:
+
+```shell
+trade-executor lagoon-settle
+trade-executor check-accounts
+```
+
+`lagoon-settle` synchronises both sides of the custody boundary: it reads the
+current Lighter equity and reconciles the executor reserve to the Safe's actual
+USDC balance before posting NAV. `correct-accounts` alone is not currently a
+substitute for this settlement after a Lighter deposit or withdrawal; see
+[External transfer accounting limitation](#external-transfer-accounting-limitation).
 
 Do not run a NAV cycle while a deposit, order fill or withdrawal is still in
 flight. Wait for Lighter's public account response and the Safe balance to
 reflect the completed movement first.
+
+### Secure withdrawals and Safe custody
+
+Lighter's `withdrawalDelay` endpoint reports the current secure-withdrawal
+delay in seconds. It is dynamic and only an operator estimate: wait for the
+specific `withdraw_history` item to become `claimable` before the Safe sends
+the L1 claim. `lagoon-lighter-test-trade` logs this value immediately before it
+submits its secure withdrawal.
+
+Lighter fast USDC withdrawals require the L1 account's Ethereum EOA private
+key. The Lighter owner in this integration is a Lagoon Safe contract, not an
+EOA, so it has no such key. Fast withdrawal is therefore unsupported here;
+use a secure withdrawal followed by the Safe-gated L1 claim. Never substitute
+the deployer or asset-manager key: it does not own the Safe's Lighter account.
+
+While a secure withdrawal is pending, Lighter may show zero account equity
+before the Safe receives the claimed USDC. Pause normal execution,
+`correct-accounts` and Lagoon NAV settlement during this in-transit window so
+AlphaModel sizing cannot act on a temporarily understated reserve or NAV.
 
 ## Strategy setup
 
@@ -263,14 +310,48 @@ trade-executor check-accounts
 ```
 
 Use `correct-accounts` to accept the observed Lighter equity into state. A
-change is recorded as an exchange-account PnL `BalanceUpdate`, anchored to the
+change is recorded as an exchange-account `BalanceUpdate`, anchored to the
 current Ethereum block for audit even though the Lighter observation itself is
-current rather than historical:
+current rather than historical. The synchroniser cannot yet distinguish
+trading PnL from a deposit or withdrawal solely from the account-value change:
 
 ```shell
 trade-executor correct-accounts
 trade-executor check-accounts
 ```
+
+### External transfer accounting limitation
+
+Lighter deposits and withdrawals currently happen outside trade-executor's
+normal `TradeExecution` routing pipeline. The executor maintains one synthetic
+`LIGHTER-ACCOUNT` position, and public account snapshots update its aggregate
+value. There is no durable executor transfer record linking a Safe debit to a
+Lighter credit, or a Lighter debit to the later Safe credit.
+
+This has two operational consequences:
+
+- while a transfer is in flight, the two custody locations may not yet add up
+  to the final NAV, so normal strategy execution and NAV settlement must stay
+  paused; and
+- `correct-accounts` can synchronise Lighter equity, but currently skips Safe
+  reserve correction when the portfolio contains only exchange-account
+  positions. It may therefore report success while a subsequent
+  `check-accounts` still reports the completed transfer as a reserve mismatch.
+
+After a completed deposit or secure withdrawal claim, use `lagoon-settle` to
+reconcile the Safe reserve and Lighter equity together, then verify the result
+with `check-accounts`. A mismatch equal to the completed transfer amount means
+the executor reserve snapshot is stale; it does not mean the assets are lost.
+
+TODO: make reserve correction run for exchange-account-only portfolios, with a
+Lighter Typer black-box regression proving that `correct-accounts` repairs a
+Safe reserve mismatch without changing already-correct Lighter equity. Longer
+term, add a generic external-account transfer lifecycle for Lighter, Derive,
+GMX and later integrations. It should persist transfer direction, requested
+and received amounts, exchange request identifiers, asynchronous status and
+any L1 claim transaction, and create paired reserve and exchange-account
+accounting entries. Reserve reconciliation should remain the recovery path,
+not the normal way to account for a known transfer.
 
 `repair` has a different purpose. It repairs interrupted executor trades and
 transactions; it does not query Lighter equity or perform account correction.
@@ -289,7 +370,9 @@ trade-executor lagoon-settle
 ```
 
 The Lighter endpoint reports current state and cannot be pinned to the Ethereum
-block used for the Safe balance. Pause normal execution while collateral is in
+block used for the Safe balance. A secure withdrawal is asynchronous: its live
+`withdrawalDelay` value is dynamic, and only `withdraw_history=claimable`
+permits the Safe's L1 claim. Pause normal execution while collateral is in
 transit and synchronise only after both sides show the completed movement.
 
 The integration fails closed:
@@ -337,7 +420,8 @@ tutorial for the full mainnet lifecycle. It:
 
 1. deploys and activates a temporary Lagoon vault with `lagoon-deploy-vault`;
 2. subscribes, settles and deposits USDC to Lighter;
-3. checks NAV with `correct-accounts` and `lagoon-settle`;
+3. creates the exchange-account position with `correct-accounts` and checks NAV
+   with `lagoon-settle`;
 4. opens and closes a small ETH/USD perpetual long;
 5. checks NAV before, during and after the position;
 6. submits one secure withdrawal and polls it with rotating auth tokens;
@@ -346,13 +430,13 @@ tutorial for the full mainnet lifecycle. It:
 The script asserts Safe, Lighter, share and deployer balances at every material
 boundary. Its auth-token lifetime defaults to 30 seconds so a normal withdrawal
 wait demonstrates rotation; production code should use the manager defaults.
-The SDK is an optional tutorial dependency and is not installed by
-trade-executor itself. Install the version verified by this tutorial before the
-run:
+The SDK is a locked trade-executor dependency. Its Git commit contains a native
+signer, so any pin update requires the release owner's supply-chain review. Do
+not override the pin with a separate `pip install`:
 
 ```shell
 source .local-test.env
-poetry run pip install lighter-sdk==1.1.2
+poetry install
 poetry run python scripts/lagoon/manual-trade-executor-lighter.py
 ```
 
@@ -375,9 +459,12 @@ artefacts.
 ### `check-accounts` reports a Lighter mismatch
 
 Confirm that `LIGHTER_ACCOUNT_INDEX` points to the Safe-owned account and that
-no deposit, withdrawal or order settlement is still in flight. Run
-`correct-accounts` only after the public account view is stable, then repeat
-`check-accounts`.
+no deposit, withdrawal or order settlement is still in flight. If Lighter
+equity differs, run `correct-accounts` only after the public account view is
+stable. If the Safe reserve differs by a completed deposit or withdrawal
+amount, run `lagoon-settle` instead; the current `correct-accounts` exchange-only
+shortcut does not repair that reserve mismatch. Repeat `check-accounts` after
+the relevant synchronisation command.
 
 ### `UnauthorizedException` during an authenticated SDK call
 

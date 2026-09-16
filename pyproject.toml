@@ -29,6 +29,10 @@ tqdm-loggable = "^0.4"
 
 web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras = ["data", "test", "hypersync", "ccxt"]}
 
+# Lighter order signing and secure withdrawals. Pin this fork revision
+# because the published SDK incorrectly caps urllib3 below 2.1; it ships a native signer.
+lighter-sdk = {git = "https://github.com/sui294801854/lighter-python.git", rev = "253fd8f03615d96e26e16281afce4fa65645d3db"}
+
 # Needed by trading-strategy vault metadata parsing used by HyperCore and vault universe loading.
 duckdb = ">=1.4.2,<2.0.0"
 
