@@ -10,6 +10,11 @@ This operator utility uses the normal Lagoon ERC-7540 subscription lifecycle:
 The script is intended for a stopped executor and inherits the same environment
 as the executor container. It never transfers USDC directly to the Safe.
 
+A Lighter-enabled deployment has already subscribed 1 USDC to activate the
+Safe-owned Lighter account, then moved that collateral out of the Safe. Use
+this script for the first investor deposit after activation; do not use
+``lagoon-first-deposit``, which requires a vault with no NAV or shares.
+
 Example::
 
     poetry run python scripts/lagoon/deposit-and-settle.py 20
@@ -35,8 +40,8 @@ from eth_defi.vault.base import VaultSpec
 from web3 import Web3
 from web3.contract.contract import ContractFunction
 
-from tradeexecutor.cli.main import app
 from tradeexecutor.cli.commands.lagoon_utils import get_lagoon_reserve_baseline
+from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 
 

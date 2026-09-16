@@ -84,6 +84,16 @@ supported small real-money test. It uses the deployment's protected operator
 record to deposit from the Safe, open and close ETH/USD, claim the withdrawal,
 and synchronise Lagoon NAV throughout.
 
+The operational sequence is:
+
+1. Deploy with `GENERATE_LIGHTER_API_KEY=true`. The deployment subscribes 1
+   USDC to Lagoon to activate Lighter, then transfers that 1 USDC from the Safe
+   to Lighter. The vault is no longer eligible for `lagoon-first-deposit`.
+2. Stop the executor and run `deposit-and-settle.py` to subscribe investor
+   USDC, settle Lagoon and create the executor reserve.
+3. Run `lagoon-lighter-test-trade` to make the bounded Lighter deposit, ETH/USD
+   round trip and secure withdrawal back to the Safe.
+
 ```shell
 source .local-test.env
 export JSON_RPC_ETHEREUM="https://..."
