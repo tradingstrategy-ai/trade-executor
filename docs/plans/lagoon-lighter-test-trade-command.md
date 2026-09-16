@@ -38,7 +38,7 @@ Lighter-specific configuration is:
 | --- | --- |
 | `LIGHTER_OPERATOR_RECORD_FILE` | Private delegated-key JSON record. |
 | `LIGHTER_ACCOUNT_INDEX` | Optional public cross-check for the record. |
-| `LIGHTER_TEST_DEPOSIT_USDC` | Additional Safe USDC deposited for this test. |
+| `LIGHTER_TEST_DEPOSIT_USDC` | Additional Safe USDC deposited for this test, default 20 USDC. |
 | `LIGHTER_TEST_POSITION_USDC` | Optional ETH/USD notional. |
 | `LIGHTER_TEST_MAX_SLIPPAGE` | Maximum market-order slippage. |
 | `LIGHTER_TEST_JOURNAL_FILE` | Optional recovery journal path. |
@@ -48,6 +48,11 @@ Lighter-specific configuration is:
 
 The API private key is read only from the record. It is excluded from object
 representations, logs, the state file and the recovery journal.
+
+The 20 USDC default is above Lighter's 1 USDC direct Ethereum contract deposit
+minimum and provides headroom over the observed ETH/USD limits of 0.005 ETH and
+10 USDC notional. The command reads current market metadata before sizing the
+order because these limits and the ETH price can change.
 
 ## Recovery rules
 

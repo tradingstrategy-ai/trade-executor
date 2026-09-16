@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Add `scripts/lagoon/deposit-and-settle.py`, an operator utility that subscribes deployer USDC through the normal Lagoon deposit queue, runs `lagoon-settle` to make the capital available to the executor, and claims the resulting shares. It resumes an exact pending or claimable request without duplicating it, checks Safe/reserve/share accounting and never logs the deployer's private key. `lagoon-lighter-test-trade` now defaults its Safe-to-Lighter deposit to 20 USDC and reports the Safe's actual USDC balance when it is insufficient (2026-09-16).
+
 - Add `lighter-move-funds`, an interactive Lagoon operator command for verified USDC deposits to and secure withdrawals from Lighter. Completed custody movements are recorded as flagged synthetic exchange-account trades, pending withdrawals resume without duplicate requests, and account correction now includes the Lagoon Safe reserve for Lighter-only portfolios (2026-09-16).
 
 - Add `lagoon-lighter-test-trade`: a resumable Typer operator command that deposits Safe USDC to Lighter, performs a small ETH/USD long round trip, securely withdraws and claims USDC back to the Safe, and posts Lagoon NAV checkpoints without writing the delegated API key to reports, state or logs (2026-09-16).

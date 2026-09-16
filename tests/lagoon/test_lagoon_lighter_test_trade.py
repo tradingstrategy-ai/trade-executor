@@ -47,10 +47,10 @@ DEPLOYER_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d
 LIGHTER_ACCOUNT_INDEX = 222
 #: Public delegated API key slot represented by the operator record.
 LIGHTER_API_KEY_INDEX = 4
-#: Safe USDC used to fund the real Lagoon vault before the test trade.
-SAFE_USDC = Decimal("10")
-#: Additional Safe USDC assigned to the simulated Lighter round trip.
-LIGHTER_DEPOSIT_USDC = Decimal("5")
+#: Safe USDC used to fund the real Lagoon vault before the default test deposit.
+SAFE_USDC = Decimal("25")
+#: Default additional Safe USDC assigned to the simulated Lighter round trip.
+LIGHTER_DEPOSIT_USDC = Decimal("20")
 #: Public base size returned by the mocked ETH market metadata lookup.
 ETH_BASE_SIZE = Decimal("0.01")
 
@@ -135,7 +135,7 @@ def test_cli_lagoon_lighter_test_trade_resumes_after_lighter_failure(
     """Resume the complete Typer-managed Lighter test trade after an API failure.
 
     1. Deploy and fund a real Lagoon vault on the fixed Ethereum Anvil block.
-    2. Mock only Lighter sequencer, SDK and proof steps, then interrupt after deposit.
+    2. Omit the deposit option, mock Lighter-only steps and interrupt after deposit.
     3. Re-run the real Typer command and resume the open, close, withdrawal and NAV phases.
     4. Verify persisted external-account accounting, Safe balance, journal and secret redaction.
     """
@@ -210,7 +210,7 @@ def test_cli_lagoon_lighter_test_trade_resumes_after_lighter_failure(
         },
     }))
 
-    # 2. Mock only Lighter sequencer, SDK and proof steps, then interrupt after deposit.
+    # 2. Omit the deposit option, mock Lighter-only steps and interrupt after deposit.
     session = mocker.Mock()
     lighter_state = {"equity": Decimal(0), "position": Decimal(0), "fail_open_once": True}
     observed = {"deposits": 0, "orders": [], "withdrawals": 0, "claims": 0}
@@ -316,7 +316,6 @@ def test_cli_lagoon_lighter_test_trade_resumes_after_lighter_failure(
         "VAULT_ADAPTER_ADDRESS": deployment.trading_strategy_module.address,
         "LIGHTER_ACCOUNT_INDEX": str(LIGHTER_ACCOUNT_INDEX),
         "LIGHTER_OPERATOR_RECORD_FILE": operator_record_file.as_posix(),
-        "LIGHTER_TEST_DEPOSIT_USDC": str(LIGHTER_DEPOSIT_USDC),
         "LIGHTER_TEST_JOURNAL_FILE": journal_file.as_posix(),
         "LOG_LEVEL": "disabled",
         "UNIT_TESTING": "true",
