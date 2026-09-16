@@ -209,13 +209,18 @@ executor for the duration of this manual operator test.
 end-to-end tutorial which deploys and redeems its own temporary vault.
 
 For a vault already deployed outside the tutorial, use the same static strategy
-and Typer accounting cycle after each completed Lighter movement:
+and run a Lagoon settlement after each completed Lighter movement:
 
 ```shell
-trade-executor correct-accounts
-trade-executor check-accounts
 trade-executor lagoon-settle
+trade-executor check-accounts
 ```
+
+`lagoon-settle` synchronises both sides of the custody boundary: it reads the
+current Lighter equity and reconciles the executor reserve to the Safe's actual
+USDC balance before posting NAV. `correct-accounts` alone is not currently a
+substitute for this settlement after a Lighter deposit or withdrawal; see
+[External transfer accounting limitation](#external-transfer-accounting-limitation).
 
 Do not run a NAV cycle while a deposit, order fill or withdrawal is still in
 flight. Wait for Lighter's public account response and the Safe balance to
@@ -305,14 +310,48 @@ trade-executor check-accounts
 ```
 
 Use `correct-accounts` to accept the observed Lighter equity into state. A
-change is recorded as an exchange-account PnL `BalanceUpdate`, anchored to the
+change is recorded as an exchange-account `BalanceUpdate`, anchored to the
 current Ethereum block for audit even though the Lighter observation itself is
-current rather than historical:
+current rather than historical. The synchroniser cannot yet distinguish
+trading PnL from a deposit or withdrawal solely from the account-value change:
 
 ```shell
 trade-executor correct-accounts
 trade-executor check-accounts
 ```
+
+### External transfer accounting limitation
+
+Lighter deposits and withdrawals currently happen outside trade-executor's
+normal `TradeExecution` routing pipeline. The executor maintains one synthetic
+`LIGHTER-ACCOUNT` position, and public account snapshots update its aggregate
+value. There is no durable executor transfer record linking a Safe debit to a
+Lighter credit, or a Lighter debit to the later Safe credit.
+
+This has two operational consequences:
+
+- while a transfer is in flight, the two custody locations may not yet add up
+  to the final NAV, so normal strategy execution and NAV settlement must stay
+  paused; and
+- `correct-accounts` can synchronise Lighter equity, but currently skips Safe
+  reserve correction when the portfolio contains only exchange-account
+  positions. It may therefore report success while a subsequent
+  `check-accounts` still reports the completed transfer as a reserve mismatch.
+
+After a completed deposit or secure withdrawal claim, use `lagoon-settle` to
+reconcile the Safe reserve and Lighter equity together, then verify the result
+with `check-accounts`. A mismatch equal to the completed transfer amount means
+the executor reserve snapshot is stale; it does not mean the assets are lost.
+
+TODO: make reserve correction run for exchange-account-only portfolios, with a
+Lighter Typer black-box regression proving that `correct-accounts` repairs a
+Safe reserve mismatch without changing already-correct Lighter equity. Longer
+term, add a generic external-account transfer lifecycle for Lighter, Derive,
+GMX and later integrations. It should persist transfer direction, requested
+and received amounts, exchange request identifiers, asynchronous status and
+any L1 claim transaction, and create paired reserve and exchange-account
+accounting entries. Reserve reconciliation should remain the recovery path,
+not the normal way to account for a known transfer.
 
 `repair` has a different purpose. It repairs interrupted executor trades and
 transactions; it does not query Lighter equity or perform account correction.
@@ -381,7 +420,8 @@ tutorial for the full mainnet lifecycle. It:
 
 1. deploys and activates a temporary Lagoon vault with `lagoon-deploy-vault`;
 2. subscribes, settles and deposits USDC to Lighter;
-3. checks NAV with `correct-accounts` and `lagoon-settle`;
+3. creates the exchange-account position with `correct-accounts` and checks NAV
+   with `lagoon-settle`;
 4. opens and closes a small ETH/USD perpetual long;
 5. checks NAV before, during and after the position;
 6. submits one secure withdrawal and polls it with rotating auth tokens;
@@ -419,9 +459,12 @@ artefacts.
 ### `check-accounts` reports a Lighter mismatch
 
 Confirm that `LIGHTER_ACCOUNT_INDEX` points to the Safe-owned account and that
-no deposit, withdrawal or order settlement is still in flight. Run
-`correct-accounts` only after the public account view is stable, then repeat
-`check-accounts`.
+no deposit, withdrawal or order settlement is still in flight. If Lighter
+equity differs, run `correct-accounts` only after the public account view is
+stable. If the Safe reserve differs by a completed deposit or withdrawal
+amount, run `lagoon-settle` instead; the current `correct-accounts` exchange-only
+shortcut does not repair that reserve mismatch. Repeat `check-accounts` after
+the relevant synchronisation command.
 
 ### `UnauthorizedException` during an authenticated SDK call
 
