@@ -84,6 +84,16 @@ supported small real-money test. It uses the deployment's protected operator
 record to deposit from the Safe, open and close ETH/USD, claim the withdrawal,
 and synchronise Lagoon NAV throughout.
 
+The operational sequence is:
+
+1. Deploy with `GENERATE_LIGHTER_API_KEY=true`. The deployment subscribes 1
+   USDC to Lagoon to activate Lighter, then transfers that 1 USDC from the Safe
+   to Lighter. The vault is no longer eligible for `lagoon-first-deposit`.
+2. Stop the executor and run `deposit-and-settle.py` to subscribe investor
+   USDC, settle Lagoon and create the executor reserve.
+3. Run `lagoon-lighter-test-trade` to make the bounded Lighter deposit, ETH/USD
+   round trip and secure withdrawal back to the Safe.
+
 ```shell
 source .local-test.env
 export JSON_RPC_ETHEREUM="https://..."
@@ -128,6 +138,13 @@ and claims the deployer's shares. A rerun only resumes an exact matching pending
 or claimable deposit; it refuses a different amount. `lagoon-settle` settles
 the vault's eligible investor queue, so do not run this operator script while
 another investor's request needs separate handling.
+
+A Lighter-enabled deployment has already performed a 1 USDC Lagoon
+subscription to activate the Safe-owned Lighter account. That collateral is
+then moved from the Safe to Lighter, so the executor state can initially have
+no USDC reserve while the Safe also holds zero USDC. This is an expected
+baseline for this script; do not use `lagoon-first-deposit`, which is reserved
+for a vault with no NAV and no shares.
 
 The Lighter AI Yubi deployment convention maps `~/secrets/lighter` to
 `/secure-lighter` inside the manual-command container. Its mode-`0600`

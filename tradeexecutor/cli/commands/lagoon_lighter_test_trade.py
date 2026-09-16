@@ -4,6 +4,10 @@ The command is deliberately an operator test instead of a strategy execution
 path.  It moves a bounded amount of Safe-owned USDC to Lighter, opens and
 closes a small ETH perpetual position, claims the L2 withdrawal to the Safe,
 and posts Lagoon NAV checkpoints throughout the lifecycle.
+
+The Safe must already hold the test collateral. For a newly activated Lighter
+vault, use ``scripts/lagoon/deposit-and-settle.py`` first; the activation's
+accounted 1 USDC deposit leaves no Safe USDC for this command.
 """
 
 import asyncio
@@ -690,7 +694,10 @@ def lagoon_lighter_test_trade(
     lighter_test_deposit_usdc: str = Option(
         DEFAULT_LIGHTER_TEST_DEPOSIT_USDC,
         envvar="LIGHTER_TEST_DEPOSIT_USDC",
-        help="Additional Safe USDC to move to Lighter; defaults to 20 USDC.",
+        help=(
+            "Available Safe USDC to move to Lighter; defaults to 20 USDC. "
+            "Fund Safe first with scripts/lagoon/deposit-and-settle.py."
+        ),
     ),
     lighter_test_position_usdc: str | None = Option(
         None,
@@ -721,7 +728,7 @@ def lagoon_lighter_test_trade(
     ),
     auto_approve: bool = Option(False, envvar="AUTO_APPROVE"),
 ) -> None:
-    """Deposit, trade, withdraw and NAV-sync one existing Lagoon Lighter vault."""
+    """Deposit, trade, withdraw and NAV-sync one funded Lagoon Lighter vault."""
     if simulate:
         raise LighterTestTradeError("lagoon-lighter-test-trade does not support SIMULATE=true")
     if asset_management_mode != AssetManagementMode.lagoon:

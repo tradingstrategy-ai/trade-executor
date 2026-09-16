@@ -165,6 +165,22 @@ by deployment, makes a bounded ETH/USD long round trip, and posts Lagoon NAV
 at each completed phase. It never places the key in executor state, reports or
 command-line arguments.
 
+Run the complete operator flow in this order while the normal executor is
+stopped:
+
+1. `lagoon-deploy-vault --generate-lighter-api-key` creates the Safe-owned
+   Lighter account. Its accounted 1 USDC activation subscription is moved from
+   the Safe to Lighter, so this does not leave trading collateral in the Safe.
+2. `scripts/lagoon/deposit-and-settle.py 20` subscribes investor USDC through
+   Lagoon, settles it and creates the executor's initial Safe reserve.
+3. `trade-executor lagoon-lighter-test-trade` moves the funded Safe collateral
+   to Lighter, opens and closes the ETH/USD perpetual, claims the withdrawal,
+   and posts NAV at each phase.
+
+Never substitute `lagoon-first-deposit` for step 2: that command is only for a
+vault with no NAV and no shares, while Lighter activation has already created
+one share.
+
 ```shell
 source .local-test.env
 export JSON_RPC_ETHEREUM="https://..."
@@ -216,6 +232,12 @@ an exact pending or claimable deposit instead of submitting it twice. After a
 successful run, both the Safe balance and executor reserve include the new
 capital. `lagoon-settle` settles the vault's eligible investor queue, so do not
 run the script while another investor's request needs separate handling.
+
+Lighter activation has already subscribed 1 USDC to Lagoon and then moved that
+collateral from the Safe to Lighter. Thus a newly activated vault can have one
+share and no executor reserve or Safe USDC. This is valid for
+`deposit-and-settle.py`; `lagoon-first-deposit` intentionally rejects it
+because that command is only for a vault with no NAV or shares.
 
 ### Yubi deployment secret mapping
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -11,11 +12,13 @@ from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import ERC4626Feature
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
-from eth_defi.token import TokenDiskCache
+from eth_defi.token import TokenDetails, TokenDiskCache
 from web3 import Web3
 
 from tradeexecutor.cli.bootstrap import configure_default_chain, create_state_store, create_web3_config
 from tradeexecutor.ethereum.token import translate_token_details
+from tradeexecutor.state.reserve import ReservePosition
+from tradeexecutor.state.state import State
 from tradeexecutor.strategy.strategy_module import StrategyModuleInformation
 from tradeexecutor.utils.key import ensure_0x_prefixed_private_key
 
@@ -130,3 +133,37 @@ def sync_reserve_balance_to_state(store, denomination_token, safe_balance):
     reserve_position.last_sync_at = ts
     store.sync(state)
     return state, reserve_position
+
+
+def get_lagoon_reserve_baseline(
+    state: State,
+    denomination_token: TokenDetails,
+    safe_balance: Decimal,
+) -> ReservePosition | None:
+    """Validate the reserve state before a Lagoon operator deposit.
+
+    A Lighter activation subscription can leave the Safe empty before the
+    executor has created its first reserve position.  That zero/zero baseline
+    is safe to settle.  Any other missing or mismatched reserve needs account
+    recovery before an operator adds more capital.
+    """
+    reserve_positions = list(state.portfolio.reserves.values())
+    if len(reserve_positions) > 1:
+        raise ValueError("Executor state has multiple reserve positions")
+    if not reserve_positions:
+        if safe_balance != 0:
+            raise ValueError(
+                f"Executor state has no reserve position, but the Safe holds {safe_balance} "
+                f"{denomination_token.symbol}; run lagoon-settle before depositing",
+            )
+        return None
+
+    reserve = reserve_positions[0]
+    if reserve.asset.address.lower() != denomination_token.address.lower():
+        raise ValueError("Executor reserve asset does not match the Lagoon denomination token")
+    if reserve.quantity != safe_balance:
+        raise ValueError(
+            f"Executor reserve is {reserve.quantity} {denomination_token.symbol}, but the Safe "
+            f"holds {safe_balance}; run correct-accounts before depositing",
+        )
+    return reserve
