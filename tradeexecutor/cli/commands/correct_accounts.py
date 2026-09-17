@@ -868,6 +868,37 @@ def correct_accounts(
         dry_run=dry_run,
     )
 
+    if process_redemption and not dry_run:
+        timestamp = native_datetime_utc_now()
+        reserve_assets = list(universe.reserve_assets)
+
+        if process_redemption_end_block_hint:
+            # Passed by unit tests so we are not going to scan the whole chain until today (wall clock time)
+            end_block = process_redemption_end_block_hint
+        else:
+            end_block = execution_model.get_safe_latest_block()
+
+        logger.info(
+            "Processing deposits/redemptions before correcting accounts, timestamp set to %s, reserves are %s, end block is %d",
+            timestamp,
+            reserve_assets,
+            end_block,
+        )
+
+        # A completed Lagoon settlement changes the Safe balance.  Reconcile it
+        # before deriving corrections so its investor flow is not mistaken for
+        # an unexplained wallet-balance difference.
+        sync_model.sync_treasury(
+            strategy_cycle_ts=timestamp,
+            state=state,
+            end_block=end_block,
+            post_valuation=True,
+        )
+    elif process_redemption:
+        logger.info("Deposit/redemption distribution skipped for dry run")
+    else:
+        logger.info("Deposit/redemption distribution skipped")
+
     block_number = get_almost_latest_block_number(web3)
     logger.info(f"Correcting accounts at block {block_number:,}")
 
@@ -934,32 +965,6 @@ def correct_accounts(
     assert hot_wallet is not None
     hot_wallet.sync_nonce(web3)
     logger.info("Hot wallet nonce is %d", hot_wallet.current_nonce)
-
-    if process_redemption:
-        timestamp = native_datetime_utc_now()
-        reserve_assets = list(universe.reserve_assets)
-
-        if process_redemption_end_block_hint:
-            # Passed by unit tests so we are not going to scan the whole chain until today (wall clock time)
-            end_block = process_redemption_end_block_hint
-        else:
-            end_block = execution_model.get_safe_latest_block()
-
-        logger.info(
-            "Processing deposits/redemptions, timestamp set to %s, reserves are %s, end block is %d",
-            timestamp,
-            reserve_assets,
-            end_block,
-        )
-
-        sync_model.sync_treasury(
-            strategy_cycle_ts=timestamp,
-            state=state,
-            end_block=end_block,
-            post_valuation=True,
-        )
-    else:
-        logger.info("Deposit/redemption distribution skipped")
 
     if asset_management_mode.is_vault():
         tx_builder.hot_wallet.sync_nonce(web3)

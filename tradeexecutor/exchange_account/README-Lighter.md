@@ -49,7 +49,7 @@ with the following native Ethereum assets:
 | Asset | Amount | Why it is needed |
 |-------|--------|------------------|
 | ETH | A non-zero balance sufficient for current mainnet gas | Deploys the Lagoon contracts and Safe, then sends the Lighter activation transactions. Gas prices and the deployment path vary, so there is no safe fixed ETH amount. |
-| Native Ethereum USDC | **1 USDC**, plus the collateral and test-trade amount you intend to use | The command makes an accounted, fixed 1 USDC Lighter activation deposit. Later subscription and Lighter collateral are additional funds. |
+| Native Ethereum USDC | **20 USDC** for initial capital | The command subscribes 20 USDC through Lagoon, deposits 1 USDC to activate Lighter and leaves 19 USDC in the Safe. |
 
 Use the canonical Ethereum USDC contract, not bridged USDC:
 `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`. The Lighter API key does not
@@ -82,8 +82,8 @@ export STATE_FILE="state/lighter-vault.json"
 trade-executor lagoon-deploy-vault
 ```
 
-This is a live Ethereum operation. It spends gas and makes the accounted 1
-USDC activation deposit. It cannot run with `SIMULATE=true`, because an Anvil
+This is a live Ethereum operation. It spends gas, makes the accounted 20 USDC
+Lagoon subscription and deposits 1 USDC of it to Lighter. It cannot run with `SIMULATE=true`, because an Anvil
 fork cannot create an account in Lighter's live sequencer state.
 
 The deployment command writes several outputs with different audiences:
@@ -169,11 +169,12 @@ Run the complete operator flow in this order while the normal executor is
 stopped:
 
 1. `lagoon-deploy-vault --generate-lighter-api-key` creates the Safe-owned
-   Lighter account. Its accounted 1 USDC activation subscription is moved from
-   the Safe to Lighter, so this does not leave trading collateral in the Safe.
-2. `scripts/lagoon/deposit-and-settle.py 20` subscribes investor USDC through
-   Lagoon, settles it and creates the executor's initial Safe reserve.
-3. `trade-executor lagoon-lighter-test-trade` moves the funded Safe collateral
+   Lighter account. Its accounted 20 USDC Lagoon subscription leaves 19 USDC
+   in the Safe after the 1 USDC Lighter activation transfer.
+2. `trade-executor init`, then `trade-executor correct-accounts --process-redemption`,
+   recovers the original Lagoon settlement from the deployment artefact and
+   creates the 1 USDC public Lighter exchange-account position.
+3. `trade-executor lagoon-lighter-test-trade --lighter-test-deposit-usdc 19` moves the remaining 19 USDC
    to Lighter, opens and closes the ETH/USD perpetual, claims the withdrawal,
    and posts NAV at each phase.
 
@@ -193,21 +194,25 @@ export VAULT_ADAPTER_ADDRESS="0x..."
 export ASSET_MANAGEMENT_MODE="lagoon"
 export LIGHTER_ACCOUNT_INDEX="..."  # Public index from the deployment report
 export LIGHTER_OPERATOR_RECORD_FILE="/secure/lighter/lighter-vault.json"
-# Optional overrides:
-# export LIGHTER_TEST_DEPOSIT_USDC="20"
+# Fresh Lighter deployment: 1 USDC is already on Lighter, so add 19 USDC.
+export LIGHTER_TEST_DEPOSIT_USDC="19"
 # export LIGHTER_TEST_POSITION_USDC="..."
 
-trade-executor lagoon-lighter-test-trade
+trade-executor init
+trade-executor correct-accounts --process-redemption
+trade-executor lagoon-lighter-test-trade --lighter-test-deposit-usdc 19
 ```
 
-`LIGHTER_TEST_DEPOSIT_USDC` defaults to 20 USDC. Lighter's direct Ethereum
-contract deposit has a 1 USDC minimum. The live ETH/USD market metadata
+`LIGHTER_TEST_DEPOSIT_USDC` defaults to 20 USDC for an arbitrary existing
+vault. A fresh Lighter deployment should override it to 19 USDC; together with
+the initial 1 USDC Lighter collateral this makes 20 USDC total. Lighter's
+direct Ethereum contract deposit has a 1 USDC minimum. The live ETH/USD market metadata
 inspected on 2026-09-16 required both 0.005 ETH and 10 USDC of notional; at the
-then-current price, 0.005 ETH was about 12 USDC. The 20 USDC default therefore
+then-current price, 0.005 ETH was about 12 USDC. The 20 USDC total therefore
 clears the zk deposit minimum and gives the automatically sized ETH perpetual
 test order modest collateral headroom. The command fetches the market limits
-at runtime because Lighter may change them. Ensure the Safe has at least 20
-USDC available, or override the deposit and position amounts together.
+at runtime because Lighter may change them. Ensure the Safe has the selected
+deposit amount available: 19 USDC for a fresh deployment or 20 USDC by default.
 
 See Lighter's
 [deposit documentation](https://apidocs.lighter.xyz/docs/deposits-transfers-and-withdrawals)
