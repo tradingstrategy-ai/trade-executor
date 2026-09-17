@@ -1090,7 +1090,6 @@ def lagoon_deploy_vault(
         "Remove --denomination-asset to use the strategy-file deployment path."
     assert not whitelist_known_hyperliquid_vaults or strategy_file, "--whitelist-known-hyperliquid-vaults requires --strategy-file to construct the vault universe."
     assert not (whitelist_known_hyperliquid_vaults and any_asset), "--whitelist-known-hyperliquid-vaults cannot be combined with --any-asset."
-    assert max_settlement_amount is None or strategy_file, "--lagoon-max-settlement-amount requires --strategy-file."
     assert max_settlement_amount is not None or lagoon_settlement_cooldown == DEFAULT_LAGOON_SETTLEMENT_COOLDOWN, "--lagoon-settlement-cooldown requires --lagoon-max-settlement-amount."
 
     # Strategy-file deployment path: use strategy file to generate per-chain configs
@@ -1320,6 +1319,8 @@ def lagoon_deploy_vault(
         factory_contract=lagoon_chain_config.factory_contract,
         from_the_scratch=lagoon_chain_config.from_the_scratch,
         cowswap=cowswap,
+        max_settlement_amount=max_settlement_amount,
+        settlement_cooldown=lagoon_settlement_cooldown,
         lighter_deployment=lighter_deployment,
         generate_lighter_api_key=generate_lighter_api_key,
         lighter_api_key_index=effective_lighter_api_key_index,
