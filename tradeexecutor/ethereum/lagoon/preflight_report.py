@@ -10,7 +10,10 @@ from decimal import Decimal
 from pathlib import Path
 
 from eth_defi.erc_4626.vault_protocol.lagoon.config import LagoonChainConfig
-from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LagoonConfig
+from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
+    LIGHTER_INITIAL_LAGOON_DEPOSIT,
+    LagoonConfig,
+)
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
 from eth_defi.token import TokenDetails
@@ -53,6 +56,9 @@ def log_deployment_preflight_report(
     lighter_deployment_address: str | None = None,
     lighter_usdc_address: str | None = None,
     lighter_activation_amount: Decimal | None = LIGHTER_MIN_MAINNET_USDC,
+    lighter_initial_lagoon_subscription: Decimal | None = LIGHTER_INITIAL_LAGOON_DEPOSIT,
+    lighter_expected_safe_reserve: Decimal | None = None,
+    lighter_deployer_usdc_balance: Decimal | None = None,
     lighter_private_json_path: Path | None = None,
     simulate: bool = False,
     logger: logging.Logger | None = None,
@@ -112,7 +118,10 @@ def log_deployment_preflight_report(
         logger.info("Lighter API-key index: %s", lighter_api_key_index)
         logger.info("Lighter contract: %s", lighter_deployment_address)
         logger.info("Lighter USDC: %s", lighter_usdc_address)
-        logger.info("Lighter activation amount: %s", lighter_activation_amount)
+        logger.info("Lighter initial Lagoon subscription: %s USDC", lighter_initial_lagoon_subscription)
+        logger.info("Lighter Safe-to-Lighter activation transfer: %s USDC", lighter_activation_amount)
+        logger.info("Lighter expected initial Safe reserve: %s USDC", lighter_expected_safe_reserve)
+        logger.info("Lighter deployer USDC balance: %s USDC", lighter_deployer_usdc_balance)
         logger.info("Lighter private JSON record: %s", lighter_private_json_path)
 
     if etherscan_api_key:

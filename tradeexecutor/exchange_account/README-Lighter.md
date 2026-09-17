@@ -222,10 +222,21 @@ and live
 If the Safe does not have enough USDC for the test, stop the executor and fund
 the vault through Lagoon's investor deposit lifecycle. Do not transfer USDC
 directly to the Safe, because that bypasses Lagoon share and investor-flow
-accounting. The reusable script inherits the normal executor environment:
+accounting. From a source checkout, the reusable script inherits the normal
+executor environment:
 
 ```shell
 poetry run python scripts/lagoon/deposit-and-settle.py 20
+```
+
+The production Docker image does not include Poetry. From the strategies
+Compose deployment, run:
+
+```shell
+docker compose run --rm \
+  --entrypoint /usr/local/bin/python \
+  lighter-ai \
+  scripts/lagoon/deposit-and-settle.py 20
 ```
 
 `PRIVATE_KEY` must identify the funded deployer and authorised Lagoon asset
@@ -238,11 +249,12 @@ successful run, both the Safe balance and executor reserve include the new
 capital. `lagoon-settle` settles the vault's eligible investor queue, so do not
 run the script while another investor's request needs separate handling.
 
-Lighter activation has already subscribed 1 USDC to Lagoon and then moved that
-collateral from the Safe to Lighter. Thus a newly activated vault can have one
-share and no executor reserve or Safe USDC. This is valid for
-`deposit-and-settle.py`; `lagoon-first-deposit` intentionally rejects it
-because that command is only for a vault with no NAV or shares.
+Lighter activation subscribes 20 USDC to Lagoon, then moves 1 USDC from the
+Safe to Lighter. A correctly deployed vault therefore starts with 19 USDC in
+the Safe and executor reserve. `lagoon-first-deposit` intentionally rejects it
+because that command is only for a vault with no NAV or shares. The
+`deposit-and-settle.py` zero-Safe baseline is retained only to recover legacy
+one-USDC activation deployments.
 
 ### Yubi deployment secret mapping
 

@@ -90,7 +90,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.config import \
     get_lagoon_chain_config
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
     DEFAULT_LAGOON_SETTLEMENT_COOLDOWN, DEFAULT_MANAGEMENT_RATE, DEFAULT_PERFORMANCE_RATE,
-    LagoonDeploymentParameters, deploy_automated_lagoon_vault,
+    LIGHTER_INITIAL_LAGOON_DEPOSIT, LagoonDeploymentParameters, deploy_automated_lagoon_vault,
     deploy_multichain_lagoon_vault)
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
@@ -98,7 +98,7 @@ from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT, LIGHTER_USDC_ETHEREU
 from eth_defi.lighter.deployment import LighterDeployment
 from eth_defi.lighter.pubkey import MIN_API_KEY_INDEX
 from eth_defi.safe.deployment import fetch_safe_deployment
-from eth_defi.token import TokenDiskCache, fetch_erc20_details
+from eth_defi.token import TokenDetails, TokenDiskCache, fetch_erc20_details
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
@@ -141,6 +141,42 @@ from tradeexecutor.strategy.strategy_module import read_strategy_module
 def _calculate_safe_threshold(multisig_owners: list[str]) -> int:
     """Lagoon deployment policy for Safe threshold."""
     return max(1, len(multisig_owners) - 1)
+
+
+def _validate_lighter_initial_capital(
+    denomination_token: TokenDetails,
+    hot_wallet: HotWallet,
+    web3: Web3,
+) -> Decimal:
+    """Verify that the deployer can fund a Lighter-enabled Lagoon vault.
+
+    Lighter activation creates an account with one USDC, but deployment first
+    subscribes the complete initial Lagoon capital so the Safe has a reserve.
+
+    :param denomination_token:
+        Canonical Ethereum USDC used as the Lagoon denomination asset.
+    :param hot_wallet:
+        Deployer and initial asset manager paying the subscription.
+    :param web3:
+        Ethereum connection used to read the deployer's native gas balance.
+    :return:
+        Current deployer native-USDC balance.
+    :raises ValueError:
+        If the deployer cannot fund the required initial subscription.
+    """
+    balance = denomination_token.fetch_balance_of(hot_wallet.address)
+    if balance < LIGHTER_INITIAL_LAGOON_DEPOSIT:
+        raise ValueError(
+            f"Lighter-enabled Lagoon deployment requires at least "
+            f"{LIGHTER_INITIAL_LAGOON_DEPOSIT} {denomination_token.symbol} "
+            f"for the initial subscription, but deployer {hot_wallet.address} has {balance}",
+        )
+    if hot_wallet.get_native_currency_balance(web3) <= 0:
+        raise ValueError(
+            f"Lighter-enabled Lagoon deployment requires native gas tokens, "
+            f"but deployer {hot_wallet.address} has no ETH",
+        )
+    return balance
 
 
 def _normalize_multisig_owners(multisig_owners: list[str] | None, hot_wallet: HotWallet) -> list[str]:
@@ -1170,6 +1206,12 @@ def lagoon_deploy_vault(
             chain_id=web3.eth.chain_id,
         )
 
+    lighter_deployer_usdc_balance = (
+        _validate_lighter_initial_capital(denomination_token, hot_wallet, web3)
+        if generate_lighter_api_key
+        else None
+    )
+
     if simulate:
         logger.info("Simulation deployment")
     else:
@@ -1210,6 +1252,12 @@ def lagoon_deploy_vault(
         lighter_deployment_address=LIGHTER_L1_CONTRACT if generate_lighter_api_key else None,
         lighter_usdc_address=LIGHTER_USDC_ETHEREUM if generate_lighter_api_key else None,
         lighter_activation_amount=LIGHTER_MIN_MAINNET_USDC if generate_lighter_api_key else None,
+        lighter_expected_safe_reserve=(
+            LIGHTER_INITIAL_LAGOON_DEPOSIT - LIGHTER_MIN_MAINNET_USDC
+            if generate_lighter_api_key
+            else None
+        ),
+        lighter_deployer_usdc_balance=lighter_deployer_usdc_balance,
         lighter_private_json_path=private_json_path,
         simulate=simulate,
         logger=logger,
@@ -1559,6 +1607,19 @@ def _deploy_multichain(
         source_config.lighter_deployment = LighterDeployment.create_ethereum()
         source_config.generate_lighter_api_key = True
         source_config.lighter_api_key_index = effective_lighter_api_key_index
+        source_denomination_token = fetch_erc20_details(
+            source_chain_web3,
+            source_config.parameters.underlying,
+            cache=token_cache,
+            chain_id=source_chain_id,
+        )
+        lighter_deployer_usdc_balance = _validate_lighter_initial_capital(
+            source_denomination_token,
+            hot_wallet,
+            source_chain_web3,
+        )
+    else:
+        lighter_deployer_usdc_balance = None
 
     chain_word = "chain" if len(configs) == 1 else "chains"
     logger.info("Generated configs for %d %s:", len(configs), chain_word)
@@ -1582,6 +1643,12 @@ def _deploy_multichain(
         lighter_deployment_address=LIGHTER_L1_CONTRACT if generate_lighter_api_key else None,
         lighter_usdc_address=LIGHTER_USDC_ETHEREUM if generate_lighter_api_key else None,
         lighter_activation_amount=LIGHTER_MIN_MAINNET_USDC if generate_lighter_api_key else None,
+        lighter_expected_safe_reserve=(
+            LIGHTER_INITIAL_LAGOON_DEPOSIT - LIGHTER_MIN_MAINNET_USDC
+            if generate_lighter_api_key
+            else None
+        ),
+        lighter_deployer_usdc_balance=lighter_deployer_usdc_balance,
         lighter_private_json_path=private_json_path,
         simulate=simulate,
         logger=logger,

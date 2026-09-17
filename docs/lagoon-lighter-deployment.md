@@ -129,10 +129,20 @@ fetched at runtime and may change. The Safe must hold at least the selected
 deposit amount.
 
 To add further capital to an existing vault, stop the executor and run the
-reusable Lagoon subscription script from the repository or release container:
+reusable Lagoon subscription script. From a source checkout use:
 
 ```shell
 poetry run python scripts/lagoon/deposit-and-settle.py 20
+```
+
+The production Docker image is intentionally slim and does not include Poetry.
+From the strategies Compose deployment, use its installed Python interpreter:
+
+```shell
+docker compose run --rm \
+  --entrypoint /usr/local/bin/python \
+  lighter-ai \
+  scripts/lagoon/deposit-and-settle.py 20
 ```
 
 The script uses `PRIVATE_KEY` as both depositor and authorised asset manager.
@@ -146,12 +156,12 @@ or claimable deposit; it refuses a different amount. `lagoon-settle` settles
 the vault's eligible investor queue, so do not run this operator script while
 another investor's request needs separate handling.
 
-A Lighter-enabled deployment has already performed a 1 USDC Lagoon
-subscription to activate the Safe-owned Lighter account. That collateral is
-then moved from the Safe to Lighter, so the executor state can initially have
-no USDC reserve while the Safe also holds zero USDC. This is an expected
-baseline for this script; do not use `lagoon-first-deposit`, which is reserved
-for a vault with no NAV and no shares.
+A Lighter-enabled deployment subscribes 20 USDC to Lagoon, transfers 1 USDC
+to activate the Safe-owned Lighter account and leaves 19 USDC in the Safe.
+Thus a correctly deployed vault has an executor reserve before its first
+normal trade. `lagoon-first-deposit` remains reserved for a vault with no NAV
+or shares. The deposit-and-settle script also accepts a zero-Safe baseline only
+to recover a legacy one-USDC Lighter activation deployment.
 
 The Lighter AI Yubi deployment convention maps `~/secrets/lighter` to
 `/secure-lighter` inside the manual-command container. Its mode-`0600`
