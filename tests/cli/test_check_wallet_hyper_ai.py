@@ -62,6 +62,7 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
     2. Run the CLI command and capture its log output.
     3. Confirm the reserve token balance is logged separately for the hot wallet and the vault.
     4. Confirm share token balance and total supply are logged for the default chain.
+    5. Confirm no transaction pre-flight check is run for this read-only command.
     """
     from tradeexecutor.cli.commands import check_wallet as check_wallet_module
 
@@ -105,7 +106,7 @@ def test_cli_check_wallet_logs_hot_wallet_and_vault_reserve_balances(
         satellite_vaults = {}
 
         def preflight_check(self) -> None:
-            return None
+            raise AssertionError("check-wallet must not run transaction pre-flight checks")
 
     class FakeRoutingModel:
         def perform_preflight_checks_and_logging(self, pairs) -> None:

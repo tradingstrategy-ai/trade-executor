@@ -44,7 +44,7 @@ def test_claim_leftover_redemptions() -> None:
     vault.vault_contract.functions.pendingRedeemRequest.return_value.call.return_value = 0
 
     with patch("tradeexecutor.cli.commands.lagoon_redeem._broadcast_and_wait"):
-        _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, None)
+        assert _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, None)
 
     vault.finalise_redeem.assert_called_once_with("0xABCD", raw_amount=settled_raw)
     vault.post_new_valuation.assert_not_called()
@@ -64,7 +64,7 @@ def test_claim_leftover_redemptions() -> None:
         patch("tradeexecutor.cli.commands.lagoon_redeem._broadcast_and_wait"),
         patch("tradeexecutor.cli.commands.lagoon_redeem.time.sleep") as mock_sleep,
     ):
-        _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, None)
+        assert _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, None)
         mock_sleep.assert_called_once_with(5)
 
     vault.post_new_valuation.assert_called_once()
@@ -76,7 +76,7 @@ def test_claim_leftover_redemptions() -> None:
     vault.vault_contract.functions.maxRedeem.return_value.call.return_value = 0
     vault.vault_contract.functions.pendingRedeemRequest.return_value.call.return_value = 0
 
-    _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, None)
+    assert not _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, None)
 
     vault.finalise_redeem.assert_not_called()
     hot_wallet.transact_and_broadcast_with_contract.assert_not_called()

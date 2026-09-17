@@ -490,8 +490,9 @@ def check_wallet(
     if routing_preflight_skipped_reason:
         logger.info("  Routing preflight skipped reason: %s", routing_preflight_skipped_reason)
 
-    # Check we have enough gas
-    execution_model.preflight_check()
+    # This command only reads balances and configuration. It reports the gas
+    # balance above, but must not reject a read-only diagnostic because the
+    # wallet cannot currently submit transactions.
 
     # Check our routes
     if routing_model is not None:

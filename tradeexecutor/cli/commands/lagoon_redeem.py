@@ -150,7 +150,7 @@ def _claim_leftover_deposits(vault, hot_wallet, web3):
         logger.info("  Claimed deposit — share balance is now %s %s", share_balance, vault.share_token.symbol)
 
 
-def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, lighter_account_index: int | None):
+def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, lighter_account_index: int | None) -> bool:
     """Claim any leftover redemptions from a previous interrupted run.
 
     Handles two states:
@@ -159,7 +159,12 @@ def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, lighter_ac
       immediately to claim denomination tokens.
     - **State B** (pending unsettled): ``pendingRedeemRequest() > 0`` — post
       valuation, settle, poll ``maxRedeem``, then finalise.
+
+    :return:
+        ``True`` if this invocation claimed a previous redemption.
     """
+    redemption_claimed = False
+
     # State A: settled but unclaimed
     max_redeemable_raw = vault.vault_contract.functions.maxRedeem(hot_wallet.address).call()
     if max_redeemable_raw > 0:
@@ -175,6 +180,7 @@ def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, lighter_ac
             vault.finalise_redeem(hot_wallet.address, raw_amount=max_redeemable_raw),
         )
         logger.info("  Claimed previous redemption")
+        redemption_claimed = True
 
     # State B: pending unsettled
     pending_redeem_raw = vault.vault_contract.functions.pendingRedeemRequest(
@@ -198,6 +204,9 @@ def _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, lighter_ac
 
         _poll_and_finalise_redeem(vault, hot_wallet, web3, share_token)
         logger.info("  Settled and claimed previous pending redemption")
+        redemption_claimed = True
+
+    return redemption_claimed
 
 
 @app.command()
@@ -275,43 +284,51 @@ def lagoon_redeem(
     logger.info("  ETH balance: %.6f", eth_human)
     assert eth_human >= 0.001, f"Asset manager has {eth_human:.6f} ETH, need at least 0.001 for gas"
 
-    _claim_leftover_deposits(vault, hot_wallet, web3)
-    _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, lighter_account_index)
-
-    share_balance = share_token.fetch_balance_of(hot_wallet.address)
-    logger.info("  Share balance: %s %s", share_balance, share_token.symbol)
-    assert share_balance > 0, f"Asset manager has no vault shares to redeem"
-
     usdc_before = denomination_token.fetch_balance_of(hot_wallet.address)
     logger.info("  %s balance before: %s", denomination_token.symbol, usdc_before)
 
-    # Phase 1: Request redemption (approve shares + requestRedeem)
-    logger.info("Phase 1: Requesting redemption of %s %s shares", share_balance, share_token.symbol)
-    redeem_vault_shares(
-        web3=web3,
-        vault_address=vault_address,
-        redeemer=hot_wallet.address,
-        hot_wallet=hot_wallet,
-        token_cache=token_cache,
+    _claim_leftover_deposits(vault, hot_wallet, web3)
+    resumed_redemption = _claim_leftover_redemptions(
+        vault,
+        hot_wallet,
+        web3,
+        share_token,
+        lighter_account_index,
     )
 
-    # Phase 2: Settle (post valuation + settleDeposit which also settles redeems)
-    logger.info("Phase 2: Settling vault")
-    safe_balance = denomination_token.fetch_balance_of(vault.safe_address)
-    nav = _get_redemption_nav(vault, safe_balance, lighter_account_index)
-    logger.info("  Redemption settlement NAV: %s %s", nav, denomination_token.symbol)
+    share_balance = share_token.fetch_balance_of(hot_wallet.address)
+    logger.info("  Share balance: %s %s", share_balance, share_token.symbol)
+    if share_balance == 0:
+        assert resumed_redemption, "Asset manager has no vault shares to redeem"
+        logger.info("Previous redemption completed; skipping a new redemption request")
+    else:
+        # Phase 1: Request redemption (approve shares + requestRedeem)
+        logger.info("Phase 1: Requesting redemption of %s %s shares", share_balance, share_token.symbol)
+        redeem_vault_shares(
+            web3=web3,
+            vault_address=vault_address,
+            redeemer=hot_wallet.address,
+            hot_wallet=hot_wallet,
+            token_cache=token_cache,
+        )
 
-    hot_wallet.sync_nonce(web3)
-    # Wait for all read RPCs to see valuation before settling
-    _broadcast_and_wait(web3, hot_wallet, vault.post_new_valuation(nav))
+        # Phase 2: Settle (post valuation + settleDeposit which also settles redeems)
+        logger.info("Phase 2: Settling vault")
+        safe_balance = denomination_token.fetch_balance_of(vault.safe_address)
+        nav = _get_redemption_nav(vault, safe_balance, lighter_account_index)
+        logger.info("  Redemption settlement NAV: %s %s", nav, denomination_token.symbol)
 
-    hot_wallet.sync_nonce(web3)
-    # Wait for all read RPCs to see settlement before polling maxRedeem
-    _broadcast_and_wait(web3, hot_wallet, vault.settle_via_trading_strategy_module(nav))
+        hot_wallet.sync_nonce(web3)
+        # Wait for all read RPCs to see valuation before settling
+        _broadcast_and_wait(web3, hot_wallet, vault.post_new_valuation(nav))
 
-    # Phase 3: Claim redeemed denomination tokens
-    logger.info("Phase 3: Finalising redemption")
-    _poll_and_finalise_redeem(vault, hot_wallet, web3, share_token)
+        hot_wallet.sync_nonce(web3)
+        # Wait for all read RPCs to see settlement before polling maxRedeem
+        _broadcast_and_wait(web3, hot_wallet, vault.settle_via_trading_strategy_module(nav))
+
+        # Phase 3: Claim redeemed denomination tokens
+        logger.info("Phase 3: Finalising redemption")
+        _poll_and_finalise_redeem(vault, hot_wallet, web3, share_token)
 
     # Report on-chain balances after redemption
     safe_balance = denomination_token.fetch_balance_of(vault.safe_address)

@@ -13,6 +13,7 @@ from web3 import Web3
 from eth_defi.abi import get_deployed_contract
 from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.core import ERC4626Feature
+from eth_defi.erc_4626.vault_protocol.lagoon.testing import redeem_vault_shares
 from eth_defi.safe.deployment import fetch_safe_deployment, disable_safe_module
 from eth_defi.safe.simulate import simulate_safe_execution_anvil
 from eth_defi.token import fetch_erc20_details
@@ -642,7 +643,9 @@ def test_cli_lagoon_first_deposit(
     4. Run first-deposit command
     5. Verify a second first-deposit attempt is rejected
     6. Verify state has reserves and vault has shares
-    7. Redeem the shares and verify cleanup
+    7. Request redemption directly to simulate an interrupted CLI run
+    8. Resume redemption through the CLI and verify cleanup
+    9. Verify shares, USDC, and state cleanup
     """
 
     cache_path = persistent_test_client.transport.cache_path
@@ -746,11 +749,21 @@ def test_cli_lagoon_first_deposit(
     share_balance = vault.share_token.fetch_balance_of(asset_manager.address)
     assert share_balance > 0, f"Expected depositor to hold shares, got {share_balance}"
 
-    # 7. Run lagoon-redeem to cash out all shares.
+    # 7. Request redemption directly to simulate an interruption after Phase 1.
+    # The first-deposit CLI used its own hot-wallet instance, so refresh the fixture nonce.
+    asset_manager.sync_nonce(web3)
+    redeem_vault_shares(
+        web3=web3,
+        vault_address=vault_address,
+        redeemer=asset_manager.address,
+        hot_wallet=asset_manager,
+    )
+
+    # 8. Run lagoon-redeem to settle, claim, and synchronise the resumed redemption.
     mocker.patch.dict("os.environ", base_env, clear=True)
     cli.main(args=["lagoon-redeem"], standalone_mode=False)
 
-    # 7. Verify redemption: shares gone, USDC returned, state updated.
+    # 9. Verify redemption: shares gone, USDC returned, state updated.
     share_balance_after = vault.share_token.fetch_balance_of(asset_manager.address)
     assert share_balance_after == 0, f"Expected 0 shares after redeem, got {share_balance_after}"
 
