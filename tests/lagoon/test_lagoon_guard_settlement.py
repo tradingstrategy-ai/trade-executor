@@ -56,7 +56,7 @@ def guarded_lagoon_vault(
     asset_manager: HotWallet,
     multisig_owners: list[HexAddress],
 ) -> LagoonAutomatedDeployment:
-    """Deploy a stock Lagoon v0.5 vault with a 10 USDC GuardV0 settlement limit."""
+    """Deploy a stock Lagoon v0.5 vault with a 10 USDC GuardV0 window budget."""
     return deploy_automated_lagoon_vault(
         web3=web3,
         deployer=deployer_hot_wallet,
@@ -75,7 +75,7 @@ def guarded_lagoon_vault(
     )
 
 
-def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
+def test_lagoon_guard_automatically_settles_flow_within_settlement_window_budget(
     web3: Web3,
     guarded_lagoon_vault: LagoonAutomatedDeployment,
     base_usdc_token: TokenDetails,
@@ -84,13 +84,13 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
     asset_manager: HotWallet,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Settle a below-cap investor queue automatically and post NAV without an empty settlement.
+    """Accumulate automated Lagoon settlement flow within the GuardV0 budget.
 
     1. Initialise the executor treasury for a fresh GuardV0-capped Lagoon vault.
     2. Queue a 9 USDC investor deposit below the 10 USDC Guard limit.
     3. Post NAV and automatically settle the deposit through the guarded module.
-    4. Serialise GuardV0's live cap and cooldown into the frontend metadata.
-    5. Queue another below-cap deposit during the cooldown and verify NAV-only deferral.
+    4. Serialise GuardV0's live settlement window and remaining budget into frontend metadata.
+    5. Queue another deposit that consumes the remaining window budget and settles automatically.
     6. Disable broadcasts and verify it suppresses both the mandatory NAV post and settlement.
     """
     vault = guarded_lagoon_vault.vault
@@ -112,11 +112,11 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
     assert state.portfolio.get_cash() == pytest.approx(9)
     assert vault.get_flow_manager().fetch_pending_deposit(web3.eth.block_number) == Decimal(0)
     safety_config = vault.trading_strategy_module.functions.getLagoonSettlementSafetyConfig(vault.address).call()
-    assert safety_config[6] > 0
-    assert safety_config[7] == safety_config[6] + 86_400
-    assert "direct Safe-governance settlement required" not in caplog.text
+    assert safety_config[6] == 9_000_000
+    assert safety_config[7] > 0
+    assert "settlement-window budget" not in caplog.text
 
-    # 4. Serialise GuardV0's live gross-flow cap and cooldown into the frontend metadata.
+    # 4. Serialise GuardV0's live gross-flow budget and window into the frontend metadata.
     metadata = create_metadata(
         name="Guarded Lagoon",
         short_description="GuardV0 metadata test",
@@ -131,23 +131,26 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
     guard_v0_metadata = frontend_metadata["on_chain_data"]["smart_contracts"]["lagoon_guard_v0"]
     assert guard_v0_metadata == {
         "guard_version": "GuardV0",
-        "daily_automatic_settlement_limit_enabled": True,
-        "daily_automatic_settlement_limit": "10",
-        "daily_automatic_settlement_limit_raw": 10_000_000,
-        "settlement_cooldown_seconds": 86_400,
-        "next_automatic_settlement_timestamp": safety_config[7],
+        "automatic_settlement_window_limit_enabled": True,
+        "automatic_settlement_window_limit": "10",
+        "automatic_settlement_window_limit_raw": 10_000_000,
+        "settlement_window_seconds": 86_400,
+        "settled_amount_in_window": "9",
+        "settled_amount_in_window_raw": 9_000_000,
+        "remaining_automatic_settlement_budget": "1",
+        "remaining_automatic_settlement_budget_raw": 1_000_000,
+        "settlement_window_end_timestamp": safety_config[7],
     }
 
-    # 5. Queue another below-cap deposit during the cooldown and verify NAV-only deferral.
+    # 5. Queue another deposit that consumes the remaining budget and settles automatically.
     _request_deposit(guarded_lagoon_vault, base_usdc_token, depositor, Decimal(1))
     nonce_before = web3.eth.get_transaction_count(asset_manager.address)
     with caplog.at_level(logging.INFO):
         events = sync_model.sync_treasury(native_datetime_utc_now(), state, post_valuation=True)
-    assert events == []
-    assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 1
-    assert base_usdc_token.fetch_balance_of(vault.silo_address) == Decimal(1)
-    assert vault.trading_strategy_module.functions.getLagoonSettlementSafetyConfig(vault.address).call()[6:] == safety_config[6:]
-    assert "The queue will be retried automatically" in caplog.text
+    assert len(events) == 1
+    assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 2
+    assert base_usdc_token.fetch_balance_of(vault.silo_address) == Decimal(0)
+    assert vault.trading_strategy_module.functions.getLagoonSettlementSafetyConfig(vault.address).call()[6:] == [10_000_000, safety_config[7]]
 
     # 6. Disable broadcasts and verify it suppresses both the mandatory NAV post and settlement.
     sync_model.disable_broadcast = True
@@ -156,11 +159,11 @@ def test_lagoon_guard_automatically_settles_flow_below_settlement_limit(
         events = sync_model.sync_treasury(native_datetime_utc_now(), state, post_valuation=True)
     assert events == []
     assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before
-    assert base_usdc_token.fetch_balance_of(vault.silo_address) == Decimal(1)
+    assert base_usdc_token.fetch_balance_of(vault.silo_address) == Decimal(0)
     assert "not posting NAV or settling the investor queue" in caplog.text
 
 
-def test_lagoon_guard_posts_nav_but_defers_oversized_flow_to_safe(
+def test_lagoon_guard_posts_nav_but_defers_flow_exceeding_window_budget(
     web3: Web3,
     guarded_lagoon_vault: LagoonAutomatedDeployment,
     base_usdc_token: TokenDetails,
@@ -169,12 +172,12 @@ def test_lagoon_guard_posts_nav_but_defers_oversized_flow_to_safe(
     asset_manager: HotWallet,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Post new NAV but preserve an oversized gross queue for direct Safe settlement.
+    """Post NAV but preserve a queue exceeding the remaining window budget.
 
     1. Bootstrap and finalise a below-cap deposit so the investor has redeemable shares.
-    2. Queue opposing deposit and redemption flows whose gross amount exceeds the Guard cap.
+    2. Queue opposing flows whose gross amount exceeds the remaining Guard budget.
     3. Run the post-valuation treasury sync once more.
-    4. Verify it broadcasts NAV only, preserves both queues and emits the Safe-governance error.
+    4. Verify it broadcasts NAV only, preserves both queues and emits the budget error.
     """
     vault = guarded_lagoon_vault.vault
     sync_model = LagoonVaultSyncModel(vault=vault, hot_wallet=asset_manager)
@@ -188,7 +191,7 @@ def test_lagoon_guard_posts_nav_but_defers_oversized_flow_to_safe(
     assert_transaction_success_with_explanation(web3, tx_hash)
     assert vault.share_token.fetch_balance_of(depositor) == pytest.approx(Decimal(5))
 
-    # 2. Queue opposing deposit and redemption flows whose gross amount exceeds the Guard cap.
+    # 2. Queue opposing flows whose gross amount exceeds the remaining Guard budget.
     _request_deposit(guarded_lagoon_vault, base_usdc_token, depositor, Decimal(9))
     redeem_raw = vault.share_token.convert_to_raw(Decimal(2))
     tx_hash = vault.request_redeem(depositor, redeem_raw).transact({"from": depositor})
@@ -203,7 +206,7 @@ def test_lagoon_guard_posts_nav_but_defers_oversized_flow_to_safe(
     with caplog.at_level(logging.ERROR):
         events = sync_model.sync_treasury(cycle, state, post_valuation=True)
 
-    # 4. Verify it broadcasts NAV only, preserves both queues and emits the Safe-governance error.
+    # 4. Verify it broadcasts NAV only, preserves both queues and emits the budget error.
     assert events == []
     assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 1
     assert state.sync.treasury.last_cycle_at == cycle
@@ -213,9 +216,10 @@ def test_lagoon_guard_posts_nav_but_defers_oversized_flow_to_safe(
     assert base_usdc_token.fetch_balance_of(vault.address) == vault_balance_before
     assert vault.trading_strategy_module.functions.getLagoonSettlementSafetyConfig(vault.address).call()[6:] == safety_before[6:]
     assert state.sync.treasury.pending_redemptions == pytest.approx(2)
-    assert "direct Safe-governance settlement required" in caplog.text
+    assert "remaining GuardV0 settlement-window budget" in caplog.text
     assert "gross_flow=" in caplog.text
     assert "(10999999 raw)" in caplog.text
+    assert "already_used=5" in caplog.text
     assert "cap=10" in caplog.text
     assert vault.address in caplog.text
     assert vault.safe_address in caplog.text

@@ -89,8 +89,8 @@ from eth_defi.erc_4626.vault import ERC4626Vault
 from eth_defi.erc_4626.vault_protocol.lagoon.config import \
     get_lagoon_chain_config
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
-    DEFAULT_LAGOON_SETTLEMENT_COOLDOWN, DEFAULT_MANAGEMENT_RATE, DEFAULT_PERFORMANCE_RATE,
-    LagoonDeploymentParameters, deploy_automated_lagoon_vault,
+    DEFAULT_LAGOON_SETTLEMENT_WINDOW, DEFAULT_MANAGEMENT_RATE, DEFAULT_PERFORMANCE_RATE,
+    LIGHTER_BOOTSTRAP_SUBSCRIPTION, LagoonDeploymentParameters, deploy_automated_lagoon_vault,
     deploy_multichain_lagoon_vault)
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
@@ -98,7 +98,7 @@ from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT, LIGHTER_USDC_ETHEREU
 from eth_defi.lighter.deployment import LighterDeployment
 from eth_defi.lighter.pubkey import MIN_API_KEY_INDEX
 from eth_defi.safe.deployment import fetch_safe_deployment
-from eth_defi.token import TokenDiskCache, fetch_erc20_details
+from eth_defi.token import TokenDetails, TokenDiskCache, fetch_erc20_details
 from eth_defi.uniswap_v2.constants import UNISWAP_V2_DEPLOYMENTS
 from eth_defi.uniswap_v2.deployment import fetch_deployment
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
@@ -141,6 +141,42 @@ from tradeexecutor.strategy.strategy_module import read_strategy_module
 def _calculate_safe_threshold(multisig_owners: list[str]) -> int:
     """Lagoon deployment policy for Safe threshold."""
     return max(1, len(multisig_owners) - 1)
+
+
+def _validate_lighter_initial_capital(
+    denomination_token: TokenDetails,
+    hot_wallet: HotWallet,
+    web3: Web3,
+) -> Decimal:
+    """Verify that the deployer can fund a Lighter-enabled Lagoon vault.
+
+    Lighter activation creates an account with one USDC, but deployment first
+    subscribes the complete initial Lagoon capital so the Safe has a reserve.
+
+    :param denomination_token:
+        Canonical Ethereum USDC used as the Lagoon denomination asset.
+    :param hot_wallet:
+        Deployer and initial asset manager paying the subscription.
+    :param web3:
+        Ethereum connection used to read the deployer's native gas balance.
+    :return:
+        Current deployer native-USDC balance.
+    :raises ValueError:
+        If the deployer cannot fund the required initial subscription.
+    """
+    balance = denomination_token.fetch_balance_of(hot_wallet.address)
+    if balance < LIGHTER_BOOTSTRAP_SUBSCRIPTION:
+        raise ValueError(
+            f"Lighter-enabled Lagoon deployment requires at least "
+            f"{LIGHTER_BOOTSTRAP_SUBSCRIPTION} {denomination_token.symbol} "
+            f"for the initial subscription, but deployer {hot_wallet.address} has {balance}",
+        )
+    if hot_wallet.get_native_currency_balance(web3) <= 0:
+        raise ValueError(
+            f"Lighter-enabled Lagoon deployment requires native gas tokens, "
+            f"but deployer {hot_wallet.address} has no ETH",
+        )
+    return balance
 
 
 def _normalize_multisig_owners(multisig_owners: list[str] | None, hot_wallet: HotWallet) -> list[str]:
@@ -556,7 +592,7 @@ def _serialise_lagoon_config(config: Any) -> dict[str, Any]:
         "any_asset": config.any_asset,
         "any_hypercore_vault": config.any_hypercore_vault,
         "max_settlement_amount": str(config.max_settlement_amount) if config.max_settlement_amount is not None else None,
-        "settlement_cooldown": config.settlement_cooldown if config.max_settlement_amount is not None else None,
+        "settlement_window": config.settlement_window if config.max_settlement_amount is not None else None,
         "etherscan_api_key": "<redacted>" if config.etherscan_api_key else None,
         "verifier": config.verifier,
         "verifier_url": config.verifier_url,
@@ -976,8 +1012,16 @@ def lagoon_deploy_vault(
     whitelisted_assets: str | None = Option(None, envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
     any_asset: bool = Option(False, envvar="ANY_ASSET", help="Allow trading of any ERC-20 on Uniswap (unsecure)."),
     whitelist_known_hyperliquid_vaults: bool = Option(False, envvar="WHITELIST_KNOWN_HYPERLIQUID_VAULTS", help="Whitelist all Hyperliquid native vaults in the strategy universe. Requires --strategy-file; cannot be combined with --any-asset."),
-    lagoon_max_settlement_amount: str | None = Option(None, envvar="LAGOON_MAX_SETTLEMENT_AMOUNT", help="Maximum gross underlying-token amount an asset manager may settle in one Lagoon transaction. Enables the settlement cooldown."),
-    lagoon_settlement_cooldown: int = Option(DEFAULT_LAGOON_SETTLEMENT_COOLDOWN, envvar="LAGOON_SETTLEMENT_COOLDOWN", help="Minimum seconds between non-zero automated Lagoon settlements when --lagoon-max-settlement-amount is set. Default: 86400."),
+    lagoon_max_settlement_amount: str | None = Option(
+        None,
+        envvar="LAGOON_MAX_SETTLEMENT_AMOUNT",
+        help="Maximum cumulative gross underlying-token amount an asset manager may settle in one fixed Lagoon settlement window.",
+    ),
+    lagoon_settlement_window: int = Option(
+        DEFAULT_LAGOON_SETTLEMENT_WINDOW,
+        envvar="LAGOON_SETTLEMENT_WINDOW",
+        help="Fixed duration in seconds for the cumulative gross automated Lagoon settlement budget. Requires --lagoon-max-settlement-amount. Default: 86400.",
+    ),
 
     unit_testing: bool = shared_options.unit_testing,
     # production: bool = Option(False, envvar="PRODUCTION", help="Set production metadata flag true for the deployment."),
@@ -1090,7 +1134,9 @@ def lagoon_deploy_vault(
         "Remove --denomination-asset to use the strategy-file deployment path."
     assert not whitelist_known_hyperliquid_vaults or strategy_file, "--whitelist-known-hyperliquid-vaults requires --strategy-file to construct the vault universe."
     assert not (whitelist_known_hyperliquid_vaults and any_asset), "--whitelist-known-hyperliquid-vaults cannot be combined with --any-asset."
-    assert max_settlement_amount is not None or lagoon_settlement_cooldown == DEFAULT_LAGOON_SETTLEMENT_COOLDOWN, "--lagoon-settlement-cooldown requires --lagoon-max-settlement-amount."
+    assert max_settlement_amount is not None or lagoon_settlement_window == DEFAULT_LAGOON_SETTLEMENT_WINDOW, (
+        "--lagoon-settlement-window requires --lagoon-max-settlement-amount."
+    )
 
     # Strategy-file deployment path: use strategy file to generate per-chain configs
     # via translate_trading_universe_to_lagoon_config(). Handles both multichain
@@ -1113,7 +1159,7 @@ def lagoon_deploy_vault(
             any_asset=any_asset,
             whitelist_known_hyperliquid_vaults=whitelist_known_hyperliquid_vaults,
             max_settlement_amount=max_settlement_amount,
-            settlement_cooldown=lagoon_settlement_cooldown,
+            settlement_window=lagoon_settlement_window,
             trading_strategy_api_key=trading_strategy_api_key,
             hypersync_api_key=hypersync_api_key,
             etherscan_api_key=etherscan_api_key,
@@ -1170,6 +1216,12 @@ def lagoon_deploy_vault(
             chain_id=web3.eth.chain_id,
         )
 
+    lighter_deployer_usdc_balance = (
+        _validate_lighter_initial_capital(denomination_token, hot_wallet, web3)
+        if generate_lighter_api_key
+        else None
+    )
+
     if simulate:
         logger.info("Simulation deployment")
     else:
@@ -1210,6 +1262,12 @@ def lagoon_deploy_vault(
         lighter_deployment_address=LIGHTER_L1_CONTRACT if generate_lighter_api_key else None,
         lighter_usdc_address=LIGHTER_USDC_ETHEREUM if generate_lighter_api_key else None,
         lighter_activation_amount=LIGHTER_MIN_MAINNET_USDC if generate_lighter_api_key else None,
+        lighter_expected_safe_reserve=(
+            LIGHTER_BOOTSTRAP_SUBSCRIPTION - LIGHTER_MIN_MAINNET_USDC
+            if generate_lighter_api_key
+            else None
+        ),
+        lighter_deployer_usdc_balance=lighter_deployer_usdc_balance,
         lighter_private_json_path=private_json_path,
         simulate=simulate,
         logger=logger,
@@ -1320,7 +1378,7 @@ def lagoon_deploy_vault(
         from_the_scratch=lagoon_chain_config.from_the_scratch,
         cowswap=cowswap,
         max_settlement_amount=max_settlement_amount,
-        settlement_cooldown=lagoon_settlement_cooldown,
+        settlement_window=lagoon_settlement_window,
         lighter_deployment=lighter_deployment,
         generate_lighter_api_key=generate_lighter_api_key,
         lighter_api_key_index=effective_lighter_api_key_index,
@@ -1429,7 +1487,7 @@ def _deploy_multichain(
     any_asset: bool = False,
     whitelist_known_hyperliquid_vaults: bool = False,
     max_settlement_amount: Decimal | None = None,
-    settlement_cooldown: int = DEFAULT_LAGOON_SETTLEMENT_COOLDOWN,
+    settlement_window: int = DEFAULT_LAGOON_SETTLEMENT_WINDOW,
     trading_strategy_api_key: str | None = None,
     hypersync_api_key: str | None = None,
     etherscan_api_key: str | None = None,
@@ -1543,7 +1601,7 @@ def _deploy_multichain(
         any_asset=any_asset,
         whitelist_known_hyperliquid_vaults=whitelist_known_hyperliquid_vaults,
         max_settlement_amount=max_settlement_amount,
-        settlement_cooldown=settlement_cooldown,
+        settlement_window=settlement_window,
         guard_only=guard_only,
         existing_vault_address=existing_vault_address,
         existing_safe_address=existing_safe_address,
@@ -1556,9 +1614,26 @@ def _deploy_multichain(
     # disabled.
     if generate_lighter_api_key:
         source_config = configs[source_chain_slug]
+        # Lighter is Ethereum-only and accepts canonical Ethereum USDC. Set
+        # this before the capital preflight; generic multichain deployment
+        # otherwise resolves an unspecified underlying token later.
+        source_config.parameters.underlying = LIGHTER_USDC_ETHEREUM
         source_config.lighter_deployment = LighterDeployment.create_ethereum()
         source_config.generate_lighter_api_key = True
         source_config.lighter_api_key_index = effective_lighter_api_key_index
+        source_denomination_token = fetch_erc20_details(
+            source_chain_web3,
+            source_config.parameters.underlying,
+            cache=token_cache,
+            chain_id=source_chain_id,
+        )
+        lighter_deployer_usdc_balance = _validate_lighter_initial_capital(
+            source_denomination_token,
+            hot_wallet,
+            source_chain_web3,
+        )
+    else:
+        lighter_deployer_usdc_balance = None
 
     chain_word = "chain" if len(configs) == 1 else "chains"
     logger.info("Generated configs for %d %s:", len(configs), chain_word)
@@ -1582,6 +1657,12 @@ def _deploy_multichain(
         lighter_deployment_address=LIGHTER_L1_CONTRACT if generate_lighter_api_key else None,
         lighter_usdc_address=LIGHTER_USDC_ETHEREUM if generate_lighter_api_key else None,
         lighter_activation_amount=LIGHTER_MIN_MAINNET_USDC if generate_lighter_api_key else None,
+        lighter_expected_safe_reserve=(
+            LIGHTER_BOOTSTRAP_SUBSCRIPTION - LIGHTER_MIN_MAINNET_USDC
+            if generate_lighter_api_key
+            else None
+        ),
+        lighter_deployer_usdc_balance=lighter_deployer_usdc_balance,
         lighter_private_json_path=private_json_path,
         simulate=simulate,
         logger=logger,

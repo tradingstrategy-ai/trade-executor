@@ -18,17 +18,23 @@ mean that an investor queue was settled.
 
 ## GuardV0 policy
 
-TradingStrategyModuleV0 v0.5 may enable GuardV0 settlement safety. The Guard
-measures the gross underlying movement, in raw token units:
+TradingStrategyModuleV0 v0.6 may enable GuardV0 settlement safety. The Guard
+measures gross underlying movement, in raw token units:
 
 ```text
 gross flow = assets leaving the pending Silo + assets entering the Lagoon vault
 ```
 
-Deposits and redemptions are added, never netted. A settlement at exactly the
-configured cap is allowed. A successful non-zero asset-manager settlement also
-starts the configured cooldown, normally 24 hours. Empty settlements neither
-start nor wait for cooldown.
+Deposits and redemptions are added, never netted. A successful non-zero
+asset-manager settlement consumes its gross flow from the configured fixed
+window budget, normally 5,000 USDC over 24 hours. Empty settlements do not
+open, extend or consume the window. A settlement at exactly the remaining
+budget is allowed.
+
+Modules deployed before the v0.6 upgrade use the legacy v0.5 per-settlement cap
+and cooldown policy. The executor retains explicit v0.5 handling so those
+vaults can continue to settle, but only v0.6 exposes the current window-budget
+metadata.
 
 The executor reads `getLagoonSettlementSafetyConfig()` only for the explicitly
 supported module version. When a new smart-contract version is deployed, bump
@@ -41,22 +47,22 @@ support from a version string or failed feature probe.
 |---|---|
 | No queue | Post NAV only |
 | Guard policy disabled | Post NAV and automatically settle queued flow |
-| Queue within cap and cooldown expired | Post NAV and automatically settle |
-| Cooldown active | Post NAV, leave queue pending and retry automatically later |
-| Gross flow over cap | Post NAV, leave queue pending and emit an error |
+| Queue within remaining window budget | Post NAV and automatically settle |
+| Queue over remaining window budget | Post NAV, leave queue pending; wait for the window reset or use Safe governance |
+| Legacy v0.5 cooldown active | Post NAV, leave queue pending and retry automatically later |
+| Legacy v0.5 gross flow over cap | Post NAV, leave queue pending and emit an error |
 
 Before a capped non-empty settlement, the executor simulates the wrapped module
 call. This preserves the Guard's exact raw-unit calculation and identifies the
-amount-limit or cooldown custom error without spending gas on an expected
-revert.
+window-budget custom error without spending gas on an expected revert.
 
 ## Manual settlement alert
 
-An `ERROR` that says `direct Safe-governance settlement required` means that
-the queued gross flow exceeded the Guard cap. It includes the vault, Safe and
-module addresses, the pending queue sizes, exact gross flow and configured cap.
-The NAV update has succeeded, but the queues and Guard cooldown timestamp are
-unchanged.
+An `ERROR` that says a queue exceeds the remaining GuardV0 settlement-window
+budget includes the vault, Safe and module addresses, the pending queue sizes,
+exact gross flow, amount already used and configured cap. The NAV update has
+succeeded, but both queues remain pending. Wait for the fixed window to reset
+or submit a deliberate direct Safe settlement.
 
 The alert also gives a Gnosis Safe Transaction Builder-ready `settleDeposit`
 ABI, specifies the Safe, vault target, zero value and call operation, and logs
@@ -97,7 +103,7 @@ broadcast any transaction.
 
 ## Frontend metadata
 
-For a supported TradingStrategyModuleV0 v0.5 vault, the `/metadata` response
+For a supported TradingStrategyModuleV0 v0.6 vault, the `/metadata` response
 publishes the live GuardV0 policy under
 `on_chain_data.smart_contracts.lagoon_guard_v0`. It is a display aid, not an
 authorisation mechanism: the executor still simulates the actual wrapped call,
@@ -105,16 +111,19 @@ and GuardV0 remains the on-chain authority.
 
 | Field | Meaning |
 |---|---|
-| `daily_automatic_settlement_limit` | Human-readable maximum gross underlying-token flow for one automatic settlement. It is `null` when GuardV0 is not applying a daily limit. |
-| `daily_automatic_settlement_limit_raw` | The same exact cap in underlying-token raw units. Use this for precise comparisons. |
-| `settlement_cooldown_seconds` | GuardV0's wait after a successful non-empty automatic settlement; normally 86,400 seconds. The cap plus this cooldown are why the frontend calls the field a daily limit. |
-| `next_automatic_settlement_timestamp` | Unix timestamp when the next non-empty automated settlement can run. A value of zero means no cooldown has started. |
-| `daily_automatic_settlement_limit_enabled` | Whether GuardV0 is actively applying the displayed daily limit. A disabled limit means the normal asset-manager settlement path is uncapped, not that automatic settlement is disabled. |
+| `automatic_settlement_window_limit` | Human-readable cumulative gross underlying-token budget for one fixed settlement window. It is `null` when GuardV0 is not applying a limit. |
+| `automatic_settlement_window_limit_raw` | The same exact cap in underlying-token raw units. Use this for precise comparisons. |
+| `settlement_window_seconds` | Fixed window duration, normally 86,400 seconds. |
+| `settled_amount_in_window` | Gross underlying-token amount already consumed in the active window. |
+| `remaining_automatic_settlement_budget` | Gross underlying-token amount that can still settle automatically before the window ends. |
+| `settlement_window_end_timestamp` | Unix timestamp for the active window end. A value of zero means no non-empty settlement has opened a window. |
+| `automatic_settlement_window_limit_enabled` | Whether GuardV0 is actively applying the displayed budget. A disabled limit means the normal asset-manager settlement path is uncapped, not that automatic settlement is disabled. |
 | `guard_version` | The policy name, currently `GuardV0`. |
 
-The limit is a gross-flow cap. A 9 USDC deposit and a 2 USDC redemption have
-an 11 USDC GuardV0 flow, not a 7 USDC net flow. If this exceeds the displayed
-limit, only direct Safe-governance settlement may process the queue.
+The limit is a cumulative gross-flow budget. A 9 USDC deposit and a 2 USDC
+redemption consume 11 USDC, not 7 USDC, from the same active window. If the
+remaining budget is insufficient, wait for the window reset or use direct
+Safe-governance settlement.
 
 ## Troubleshooting
 
@@ -122,7 +131,7 @@ When a queue does not settle, inspect:
 
 1. the TradingStrategyModuleV0 version and whether it is explicitly supported;
 2. the Guard-configured vault asset and pending Silo;
-3. the raw maximum settlement amount and next eligible timestamp;
+3. the raw maximum settlement amount, amount consumed and window-end timestamp;
 4. pending underlying deposits in the Silo; and
 5. pending redemption shares in the Silo.
 

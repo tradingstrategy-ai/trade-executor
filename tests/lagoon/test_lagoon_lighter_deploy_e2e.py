@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 from eth_account import Account
 from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
-from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LIGHTER_INITIAL_LAGOON_DEPOSIT
+from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LIGHTER_BOOTSTRAP_SUBSCRIPTION
 from eth_defi.lighter.pubkey import MIN_API_KEY_INDEX
 from eth_defi.lighter.testing import register_lighter_account_on_anvil
 from eth_defi.provider.anvil import AnvilLaunch
@@ -125,7 +125,7 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
     )
     funding_tx = usdc.contract.functions.transfer(
         deployer.address,
-        usdc.convert_to_raw(LIGHTER_INITIAL_LAGOON_DEPOSIT),
+        usdc.convert_to_raw(LIGHTER_BOOTSTRAP_SUBSCRIPTION),
     ).transact({"from": USDC_WHALE[1]})
     assert_transaction_success_with_explanation(web3_ethereum, funding_tx)
 
@@ -218,7 +218,7 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
         assert receipt["status"] == 1
 
     safe_address = operator_payload["deployments"]["ethereum"]["safe_address"]
-    assert usdc.fetch_balance_of(safe_address) == LIGHTER_INITIAL_LAGOON_DEPOSIT - LIGHTER_MIN_MAINNET_USDC
+    assert usdc.fetch_balance_of(safe_address) == LIGHTER_BOOTSTRAP_SUBSCRIPTION - LIGHTER_MIN_MAINNET_USDC
 
     assert observed["safe_address"] == operator_payload["deployments"]["ethereum"]["safe_address"]
     assert observed["collateral_account_index"] == LIGHTER_ACCOUNT_INDEX
@@ -294,7 +294,7 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
     activation_receipt = web3_ethereum.eth.get_transaction_receipt(setup["deposit_tx_hash"])
     assert state.sync.deployment.block_number <= activation_receipt["blockNumber"]
     assert settlement.cause == BalanceUpdateCause.deposit_and_redemption
-    assert settlement.quantity == LIGHTER_INITIAL_LAGOON_DEPOSIT
-    assert reserve.quantity == LIGHTER_INITIAL_LAGOON_DEPOSIT - LIGHTER_MIN_MAINNET_USDC
+    assert settlement.quantity == LIGHTER_BOOTSTRAP_SUBSCRIPTION
+    assert reserve.quantity == LIGHTER_BOOTSTRAP_SUBSCRIPTION - LIGHTER_MIN_MAINNET_USDC
     assert lighter_position.get_quantity() == LIGHTER_MIN_MAINNET_USDC
-    assert state.portfolio.get_net_asset_value() == LIGHTER_INITIAL_LAGOON_DEPOSIT
+    assert state.portfolio.get_net_asset_value() == LIGHTER_BOOTSTRAP_SUBSCRIPTION

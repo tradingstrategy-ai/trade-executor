@@ -287,31 +287,76 @@ a concise summary of the proposed fix instead of embedding a large diff.
 
 ### Reviewing a plan or document with Claude CLI
 
-For Markdown plan reviews, default to a no-tools inline text review after the
-relevant code has already been inspected by the primary agent. Do not start
-with a grounded tool-using Claude review for simple plan re-reviews; it can
-sit silently in `-p` mode or wait internally on tool/permission handling, and
-that repeats avoidable delays.
+For Markdown plan reviews, default to a bounded no-tools Fable review after
+the relevant code has already been inspected by the primary agent. Do not
+start with a grounded tool-using Claude review for a simple plan re-review: it
+can spend time on repository inspection that does not improve the review.
 
-Use this for ordinary plan re-review:
-
-```shell
-claude -p "$(sed '1iDo not use tools. Review only the plan text below. Return concise actionable findings, or say no blocking findings.\n' .claude/plans/my-plan.md)" \
-  --tools "" \
-  --permission-mode dontAsk \
-  --no-session-persistence \
-  --max-budget-usd 1
-```
-
-Use this for a final blocking-only pass after applying review feedback:
+In an agent runner, **do not use a foreground text-mode `claude -p` command**
+for this. The runner can detach or buffer its child process, leaving no
+reliable final answer. Always write a streaming JSONL result to a known file,
+retain the PID, and validate the terminal event. The following is the standard
+Fable plan-review recipe:
 
 ```shell
-claude -p "$(sed '1iDo not use tools. Review only the updated plan text below. Return only blocking findings, or say no blocking findings.\n' .claude/plans/my-plan.md)" \
+review_file="/tmp/claude-fable-plan-$RANDOM.jsonl"
+review_err="/tmp/claude-fable-plan-$RANDOM.err"
+plan_file=".claude/plans/my-plan.md"
+
+nohup timeout 900 claude -p "$(sed '1iDo not use tools. Review only the plan text below. Do not overengineer. Return concise actionable findings, or say no blocking findings.\n' "$plan_file")" \
+  --model fable \
   --tools "" \
+  --output-format stream-json --verbose \
   --permission-mode dontAsk \
   --no-session-persistence \
-  --max-budget-usd 1
+  --max-budget-usd 1 \
+  < /dev/null > "$review_file" 2> "$review_err" &
+review_pid=$!
+printf 'Claude Fable review PID: %s\\n' "$review_pid"
 ```
+
+Poll the same run; do not launch another review while it is still alive:
+
+```shell
+ps -p "$review_pid" -o pid=,stat=,etime=,cmd=
+wc -c "$review_file" "$review_err"
+tail -n 20 "$review_file"
+```
+
+When it exits, validate the result before reading or reporting it:
+
+```shell
+python3 -c '
+import json
+import sys
+from pathlib import Path
+
+events = [json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines()]
+result = next((event for event in reversed(events) if event.get("type") == "result"), None)
+assert result, "Incomplete review: no final result event"
+assert result.get("is_error") is False, result
+assert result.get("stop_reason") == "end_turn", result
+assert result.get("terminal_reason") == "completed", result
+assert result.get("result"), "Incomplete review: empty result"
+print(result["result"])
+' "$review_file"
+```
+
+Use the same recipe for a final blocking-only pass, changing only the first
+prompt sentence to `Return only blocking findings, or say no blocking
+findings.` Do not invent a new invocation pattern for the second pass.
+
+Use a 15-minute deadline for a Fable review. A review that is continuously
+writing new JSONL events is making progress and must be allowed to finish;
+do not confuse its elapsed time with a hang. Only stop it early when the JSONL
+file and stderr have shown no growth for roughly one minute, or when it is
+waiting for an unavailable permission prompt.
+
+If the run reaches its 15-minute deadline, or exits without a terminal result,
+inspect `"$review_err"` and report that the Claude review was incomplete.
+Do not call that outcome “no findings”, do not infer a review from partial
+tool/thinking events, and do not automatically retry it. A human or primary
+agent can then choose either a smaller excerpt or a focused grounded review.
 
 Only use a grounded repository review when Claude specifically needs fresh code
 inspection, for example when the primary agent has not checked the relevant

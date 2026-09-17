@@ -77,28 +77,39 @@ class VelvetSmartContracts(VelvetVaultInfo):
 class LagoonGuardV0SettlementMetadata(TypedDict):
     """Live GuardV0 automatic-settlement policy displayed by the frontend.
 
-    GuardV0 caps gross flow for one settlement and then applies a cooldown.
-    The two values together are the displayed daily automatic settlement limit;
-    see ``.claude/docs/lagoon-treasury-settlement.md`` for the full flow.
+    GuardV0 caps cumulative gross flow within a fixed settlement window; see
+    ``.claude/docs/lagoon-treasury-settlement.md`` for the full flow.
     """
 
     #: The on-chain settlement policy that supplied this metadata.
     guard_version: str
 
-    #: Whether GuardV0 currently applies a cap to automated settlement.
-    daily_automatic_settlement_limit_enabled: bool
+    #: Whether GuardV0 currently applies a settlement-window budget.
+    automatic_settlement_window_limit_enabled: bool
 
-    #: Gross underlying-token amount allowed per automated settlement, or None when uncapped.
-    daily_automatic_settlement_limit: Decimal | None
+    #: Gross underlying-token amount allowed in one settlement window, or None when uncapped.
+    automatic_settlement_window_limit: Decimal | None
 
-    #: Exact raw-token equivalent of ``daily_automatic_settlement_limit``.
-    daily_automatic_settlement_limit_raw: int | None
+    #: Exact raw-token equivalent of ``automatic_settlement_window_limit``.
+    automatic_settlement_window_limit_raw: int | None
 
-    #: GuardV0 wait after a successful non-empty automated settlement, in seconds.
-    settlement_cooldown_seconds: int
+    #: Fixed GuardV0 settlement-window duration in seconds.
+    settlement_window_seconds: int
 
-    #: Unix timestamp for the next eligible automated settlement, or zero before the first one.
-    next_automatic_settlement_timestamp: int
+    #: Cumulative gross token flow already settled in the active window.
+    settled_amount_in_window: Decimal | None
+
+    #: Raw-token equivalent of ``settled_amount_in_window``.
+    settled_amount_in_window_raw: int | None
+
+    #: Gross token budget still available for automatic settlement.
+    remaining_automatic_settlement_budget: Decimal | None
+
+    #: Raw-token equivalent of ``remaining_automatic_settlement_budget``.
+    remaining_automatic_settlement_budget_raw: int | None
+
+    #: Unix timestamp for the active window end, or zero before the first non-empty settlement.
+    settlement_window_end_timestamp: int
 
 
 class LagoonSmartContracts(LagoonVaultInfo):

@@ -1,18 +1,112 @@
 """Typer black-box coverage for Lagoon Lighter CLI options and safety gates."""
 
 import logging
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from pytest import MonkeyPatch
+from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LIGHTER_BOOTSTRAP_SUBSCRIPTION
+from pytest import LogCaptureFixture, MonkeyPatch
 from typer.main import get_command
 
+from tradeexecutor.cli.commands.lagoon_deploy_vault import _validate_lighter_initial_capital
 from tradeexecutor.cli.main import app
+from tradeexecutor.ethereum.lagoon.preflight_report import log_deployment_preflight_report
 
 #: Non-default slot proving the Typer option reaches the deployment helper.
 CUSTOM_LIGHTER_API_KEY_INDEX = 7
+
+
+def test_lighter_initial_capital_preflight_rejects_insufficient_usdc() -> None:
+    """Reject a Lighter deployment before confirmation when USDC is insufficient.
+
+    1. Construct a token balance below the full initial Lagoon subscription.
+    2. Run the pre-flight capital validation.
+    3. Verify the error states the complete required subscription.
+    """
+    # 1. Construct a token balance below the full initial Lagoon subscription.
+    token = SimpleNamespace(
+        symbol="USDC",
+        fetch_balance_of=lambda _address: LIGHTER_BOOTSTRAP_SUBSCRIPTION - Decimal("0.01"),
+    )
+    hot_wallet = SimpleNamespace(
+        address="0x0000000000000000000000000000000000000001",
+        get_native_currency_balance=lambda _web3: Decimal(1),
+    )
+    web3 = SimpleNamespace()
+
+    # 2. Run the pre-flight capital validation.
+    # 3. Verify the error states the complete required subscription.
+    with pytest.raises(ValueError, match="at least 20 USDC"):
+        _validate_lighter_initial_capital(token, hot_wallet, web3)
+
+
+def test_lighter_initial_capital_preflight_rejects_missing_native_gas() -> None:
+    """Reject a Lighter deployment before confirmation without native gas.
+
+    1. Construct the complete initial USDC subscription balance.
+    2. Set the deployer's native Ethereum balance to zero.
+    3. Verify pre-flight rejects the missing gas funding.
+    """
+    # 1. Construct the complete initial USDC subscription balance.
+    token = SimpleNamespace(
+        symbol="USDC",
+        fetch_balance_of=lambda _address: LIGHTER_BOOTSTRAP_SUBSCRIPTION,
+    )
+    # 2. Set the deployer's native Ethereum balance to zero.
+    hot_wallet = SimpleNamespace(
+        address="0x0000000000000000000000000000000000000001",
+        get_native_currency_balance=lambda _web3: Decimal(0),
+    )
+    web3 = SimpleNamespace()
+
+    # 3. Verify pre-flight rejects the missing gas funding.
+    with pytest.raises(ValueError, match="native gas tokens"):
+        _validate_lighter_initial_capital(token, hot_wallet, web3)
+
+
+def test_lighter_preflight_report_shows_complete_initial_allocation(caplog: LogCaptureFixture) -> None:
+    """Describe the full Lighter funding split before deployment confirmation.
+
+    1. Construct minimal deployer and chain inputs for the report.
+    2. Log a Lighter-enabled deployment pre-flight report.
+    3. Verify the subscription, activation transfer and Safe reserve are shown.
+    """
+    # 1. Construct minimal deployer and chain inputs for the report.
+    hot_wallet = SimpleNamespace(
+        address="0x0000000000000000000000000000000000000001",
+        current_nonce=1,
+        sync_nonce=lambda _web3: None,
+        get_native_currency_balance=lambda _web3: Decimal("1"),
+    )
+    web3 = SimpleNamespace(eth=SimpleNamespace(chain_id=1, block_number=1))
+
+    # 2. Log a Lighter-enabled deployment pre-flight report.
+    with caplog.at_level(logging.INFO):
+        log_deployment_preflight_report(
+            hot_wallet=hot_wallet,
+            chain_web3={"ethereum": web3},
+            fund_name="Lighter test",
+            fund_symbol="LGT",
+            asset_managers=[hot_wallet.address],
+            multisig_owners=[hot_wallet.address],
+            performance_fee=0,
+            management_fee=0,
+            lighter_api_key_generation=True,
+            lighter_api_key_index=CUSTOM_LIGHTER_API_KEY_INDEX,
+            lighter_deployment_address="0x0000000000000000000000000000000000000002",
+            lighter_usdc_address="0x0000000000000000000000000000000000000003",
+            lighter_activation_amount=Decimal(1),
+            lighter_expected_safe_reserve=Decimal(19),
+            lighter_deployer_usdc_balance=Decimal(20),
+        )
+
+    # 3. Verify the subscription, activation transfer and Safe reserve are shown.
+    assert "Lighter initial Lagoon subscription: 20 USDC" in caplog.text
+    assert "Lighter Safe-to-Lighter activation transfer: 1 USDC" in caplog.text
+    assert "Lighter expected initial Safe reserve: 19 USDC" in caplog.text
 
 
 def test_lighter_cli_options_reach_strategy_deployment(
