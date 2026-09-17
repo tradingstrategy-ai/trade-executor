@@ -82,15 +82,21 @@ def _load_lagoon_guard_v0_error_selectors() -> dict[str, bytes]:
 # GuardV0 custom-error selectors derived from the packaged LagoonLib ABI.
 LAGOON_GUARD_V0_ERROR_SELECTORS = _load_lagoon_guard_v0_error_selectors()
 
-# Selector for a queue whose GuardV0 gross settlement flow exceeds its cap.
-LAGOON_SETTLEMENT_LIMIT_EXCEEDED_SELECTOR = LAGOON_GUARD_V0_ERROR_SELECTORS[
-    "LagoonSettlementLimitExceeded"
+# Selector for a queue whose GuardV0 gross settlement flow exceeds the remaining
+# fixed-window budget.
+LAGOON_SETTLEMENT_WINDOW_LIMIT_EXCEEDED_SELECTOR = LAGOON_GUARD_V0_ERROR_SELECTORS[
+    "LagoonSettlementWindowLimitExceeded"
 ]
 
-# Selector for an otherwise eligible queue during the GuardV0 cooldown.
-LAGOON_SETTLEMENT_COOLDOWN_ACTIVE_SELECTOR = LAGOON_GUARD_V0_ERROR_SELECTORS[
-    "LagoonSettlementCooldownActive"
-]
+# GuardV0 v0.5 selectors are retained for Safe vaults deployed before eth-defi
+# PR #1574. They are not in the v0.6 ABI because the contract no longer emits
+# them, but an existing v0.5 Safe must retain its original settlement policy.
+LAGOON_LEGACY_SETTLEMENT_LIMIT_EXCEEDED_SELECTOR = Web3.keccak(
+    text="LagoonSettlementLimitExceeded(uint256,uint256)",
+)[:4]
+LAGOON_LEGACY_SETTLEMENT_COOLDOWN_ACTIVE_SELECTOR = Web3.keccak(
+    text="LagoonSettlementCooldownActive(uint256,uint256)",
+)[:4]
 
 # Paste this into Gnosis Safe Transaction Builder for a direct v0.5 Lagoon
 # settlement. The Safe must call the vault directly, rather than the guarded
@@ -134,26 +140,28 @@ class LagoonFrozenPositionSettlementError(LagoonSettlementSafetyError):
 class LagoonSettlementPreflight:
     """GuardV0 simulation result used to decide whether to broadcast settlement.
 
-    ``should_settle`` permits the asset-manager transaction. A limit breach is
-    represented by ``manual_settlement_required`` with Guard-reported raw
-    amounts; a cooldown has ``next_settlement_timestamp`` instead. The raw
-    queue balances are retained for diagnostics and state accounting when no
-    settlement is sent.
+    ``should_settle`` permits the asset-manager transaction. A window-budget
+    breach is represented by ``manual_settlement_required`` with Guard-reported
+    raw amounts. The raw queue balances are retained for diagnostics and state
+    accounting when no settlement is sent.
     """
 
     # True only when the asset manager may broadcast settlement automatically.
     should_settle: bool
 
-    # True for an over-cap queue that requires a direct Safe-governance settlement.
+    # True for a queue exceeding the remaining window budget.
     manual_settlement_required: bool = False
 
-    # GuardV0-reported gross settlement amount that exceeded the configured cap.
+    # GuardV0-reported gross settlement amount that would be added to the budget.
     actual_amount_raw: int | None = None
 
-    # GuardV0-reported inclusive maximum gross settlement amount.
+    # GuardV0-reported amount already consumed in the active settlement window.
+    already_used_raw: int | None = None
+
+    # GuardV0-reported inclusive maximum gross amount for the settlement window.
     max_amount_raw: int | None = None
 
-    # Unix timestamp at which a cooldown-deferred settlement may be retried.
+    # Retry timestamp for the legacy v0.5 cooldown policy.
     next_settlement_timestamp: int | None = None
 
     # Current pending underlying deposit balance in the Lagoon Silo, in raw units.
@@ -168,12 +176,10 @@ def fetch_lagoon_guard_v0_settlement_metadata(
 ) -> dict[str, bool | int | Decimal | None] | None:
     """Read the live GuardV0 automatic-settlement policy for frontend metadata.
 
-    The returned ``daily_automatic_settlement_limit`` is GuardV0's maximum
-    gross underlying-token movement for one automatic settlement. GuardV0
-    applies ``settlement_cooldown_seconds`` after each successful non-empty
-    settlement (normally 24 hours), which makes this a practical daily limit.
-    It is *not* a net deposit-minus-redemption limit: see GuardV0's gross-flow
-    calculation in ``.claude/docs/lagoon-treasury-settlement.md``.
+    GuardV0 limits cumulative gross underlying-token movement in a fixed
+    settlement window. It is *not* a net deposit-minus-redemption limit: see
+    GuardV0's gross-flow calculation in
+    ``.claude/docs/lagoon-treasury-settlement.md``.
 
     ``None`` means that this vault has no module, or has an older or unsupported
     module and therefore no GuardV0 policy to display. An enabled policy whose
@@ -199,7 +205,7 @@ def fetch_lagoon_guard_v0_settlement_metadata(
     # GuardV0 settlement metadata has the same explicit compatibility boundary
     # as LagoonVaultSyncModel._has_lagoon_settlement_safety(). Do not infer
     # support for a future GuardV0/module release from a similarly shaped ABI.
-    if module_version != "v0.5":
+    if module_version != "v0.6":
         return None
 
     try:
@@ -209,9 +215,9 @@ def fetch_lagoon_guard_v0_settlement_metadata(
             asset,
             pending_silo,
             max_settlement_amount_raw,
-            settlement_cooldown_seconds,
-            _last_settlement_timestamp,
-            next_settlement_timestamp,
+            settlement_window_seconds,
+            settled_amount_in_window_raw,
+            settlement_window_end_timestamp,
         ) = module.functions.getLagoonSettlementSafetyConfig(vault.address).call()
     except (ContractLogicError, ValueError) as e:
         logger.warning(
@@ -236,24 +242,36 @@ def fetch_lagoon_guard_v0_settlement_metadata(
         )
         return None
 
-    daily_limit_enabled = bool(allowed and limit_enabled)
+    limit_enabled = bool(allowed and limit_enabled)
+    remaining_budget_raw = max(max_settlement_amount_raw - settled_amount_in_window_raw, 0)
     return {
         # GuardV0 lets the frontend identify the policy which produced these values.
         "guard_version": "GuardV0",
         # GuardV0 applies a cap only after both its vault permission and limit are enabled.
-        "daily_automatic_settlement_limit_enabled": daily_limit_enabled,
-        # The cap is meaningful only while GuardV0 actively applies its daily policy.
-        "daily_automatic_settlement_limit": (
+        "automatic_settlement_window_limit_enabled": limit_enabled,
+        # The cap is meaningful only while GuardV0 actively applies its policy.
+        "automatic_settlement_window_limit": (
             vault.underlying_token.convert_to_decimals(max_settlement_amount_raw)
-            if daily_limit_enabled
+            if limit_enabled
             else None
         ),
         # Raw units avoid any loss of precision in frontend integrations.
-        "daily_automatic_settlement_limit_raw": max_settlement_amount_raw if daily_limit_enabled else None,
-        # GuardV0's post-settlement wait; together with the cap this defines the daily capacity.
-        "settlement_cooldown_seconds": settlement_cooldown_seconds,
-        # Unix timestamp. A zero value means that no automatic settlement has started a cooldown.
-        "next_automatic_settlement_timestamp": next_settlement_timestamp,
+        "automatic_settlement_window_limit_raw": max_settlement_amount_raw if limit_enabled else None,
+        "settlement_window_seconds": settlement_window_seconds,
+        "settled_amount_in_window": (
+            vault.underlying_token.convert_to_decimals(settled_amount_in_window_raw)
+            if limit_enabled
+            else None
+        ),
+        "settled_amount_in_window_raw": settled_amount_in_window_raw if limit_enabled else None,
+        "remaining_automatic_settlement_budget": (
+            vault.underlying_token.convert_to_decimals(remaining_budget_raw)
+            if limit_enabled
+            else None
+        ),
+        "remaining_automatic_settlement_budget_raw": remaining_budget_raw if limit_enabled else None,
+        # Unix timestamp. A zero value means no non-empty settlement has opened a window.
+        "settlement_window_end_timestamp": settlement_window_end_timestamp,
     }
 
 
@@ -840,7 +858,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         # A new contract release must opt in here explicitly. Guessing support
         # from a version shape or a failed feature probe could bypass GuardV0.
-        if module_version != "v0.5":
+        if module_version not in {"v0.5", "v0.6"}:
             raise LagoonUnsupportedTradingStrategyModuleVersion(
                 f"Unsupported Lagoon TradingStrategyModuleV0 version {module_version!r}. "
                 "Add an explicit settlement-safety implementation before using this version."
@@ -853,9 +871,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 asset,
                 pending_silo,
                 _max_settlement_amount_raw,
-                _settlement_cooldown,
-                _last_settlement_timestamp,
-                _next_settlement_timestamp,
+                _settlement_window,
+                _settled_amount_in_window,
+                _window_end_timestamp,
             ) = module.functions.getLagoonSettlementSafetyConfig(
                 self.vault.address,
             ).call()
@@ -966,23 +984,42 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 raise
 
             selector = revert_data[:4]
-            if selector == LAGOON_SETTLEMENT_LIMIT_EXCEEDED_SELECTOR:
-                # GuardV0 measures gross movement, not net cash movement. Its
-                # amount check precedes the cooldown check, so this remains a
-                # manual-Safe scenario even during an active cooldown.
-                actual_amount_raw, max_amount_raw = decode(["uint256", "uint256"], revert_data[4:])
+            if selector == LAGOON_SETTLEMENT_WINDOW_LIMIT_EXCEEDED_SELECTOR:
+                # GuardV0 measures gross movement, not net cash movement. A
+                # direct Safe settlement can recover immediately; otherwise
+                # the queue must wait for the fixed window to reset.
+                already_used_raw, actual_amount_raw, max_amount_raw = decode(
+                    ["uint256", "uint256", "uint256"],
+                    revert_data[4:],
+                )
                 return LagoonSettlementPreflight(
                     should_settle=False,
                     manual_settlement_required=True,
                     actual_amount_raw=actual_amount_raw,
+                    already_used_raw=already_used_raw,
                     max_amount_raw=max_amount_raw,
                     pending_deposit_raw=pending_deposit_raw,
                     pending_redemption_shares_raw=pending_redemption_shares_raw,
                 )
-            if selector == LAGOON_SETTLEMENT_COOLDOWN_ACTIVE_SELECTOR:
-                # The queue is otherwise permitted but must remain pending
-                # until GuardV0 allows the next non-zero settlement.
-                _current_timestamp, next_settlement_timestamp = decode(["uint256", "uint256"], revert_data[4:])
+            if selector == LAGOON_LEGACY_SETTLEMENT_LIMIT_EXCEEDED_SELECTOR:
+                actual_amount_raw, max_amount_raw = decode(
+                    ["uint256", "uint256"],
+                    revert_data[4:],
+                )
+                return LagoonSettlementPreflight(
+                    should_settle=False,
+                    manual_settlement_required=True,
+                    actual_amount_raw=actual_amount_raw,
+                    already_used_raw=0,
+                    max_amount_raw=max_amount_raw,
+                    pending_deposit_raw=pending_deposit_raw,
+                    pending_redemption_shares_raw=pending_redemption_shares_raw,
+                )
+            if selector == LAGOON_LEGACY_SETTLEMENT_COOLDOWN_ACTIVE_SELECTOR:
+                _current_timestamp, next_settlement_timestamp = decode(
+                    ["uint256", "uint256"],
+                    revert_data[4:],
+                )
                 return LagoonSettlementPreflight(
                     should_settle=False,
                     next_settlement_timestamp=next_settlement_timestamp,
@@ -1008,13 +1045,16 @@ class LagoonVaultSyncModel(AddressSyncModel):
     ) -> None:
         """Tell the operator to settle an oversized GuardV0 queue through Safe governance."""
         assert preflight.actual_amount_raw is not None
+        assert preflight.already_used_raw is not None
         assert preflight.max_amount_raw is not None
         underlying_token = self.vault.underlying_token
         logger.error(
-            "Lagoon automated settlement skipped: direct Safe-governance settlement required. "
+            "Lagoon automated settlement skipped: queue exceeds the remaining "
+            "GuardV0 settlement-window budget. "
             "chain=%d vault=%s safe_address=%s module=%s pending_deposit=%s %s "
-            "pending_redemption_shares_raw=%d gross_flow=%s %s (%d raw) cap=%s %s (%d raw). "
-            "NAV update succeeded and both queues remain pending. Gnosis Safe Transaction Builder: "
+            "pending_redemption_shares_raw=%d gross_flow=%s %s (%d raw) already_used=%s %s (%d raw) cap=%s %s (%d raw). "
+            "NAV update succeeded and both queues remain pending. Wait for the "
+            "window to reset or use direct Safe governance. Gnosis Safe Transaction Builder: "
             "Safe=%s, to=%s, value=0, operation=0, ABI=%s, _newTotalAssets=%d.",
             self.chain_id.value,
             self.vault.address,
@@ -1026,6 +1066,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
             underlying_token.convert_to_decimals(preflight.actual_amount_raw),
             underlying_token.symbol,
             preflight.actual_amount_raw,
+            underlying_token.convert_to_decimals(preflight.already_used_raw),
+            underlying_token.symbol,
+            preflight.already_used_raw,
             underlying_token.convert_to_decimals(preflight.max_amount_raw),
             underlying_token.symbol,
             preflight.max_amount_raw,
@@ -1256,11 +1299,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
                     reserve_token.convert_to_raw(valuation_decimal),
                 )
             elif preflight.next_settlement_timestamp is not None:
-                # Gross flow is within the cap, but a previous non-zero
-                # settlement started GuardV0's cooldown.
                 next_eligible_at = native_datetime_utc_fromtimestamp(preflight.next_settlement_timestamp)
                 logger.info(
-                    "Lagoon automated settlement deferred by GuardV0 cooldown until %s. "
+                    "Lagoon automated settlement deferred by legacy GuardV0 cooldown until %s. "
                     "The queue will be retried automatically. Pending deposit raw=%d, "
                     "pending redemption shares raw=%d.",
                     next_eligible_at,
@@ -1282,7 +1323,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
             return recovered_events
 
         # Only the successful guarded or unlimited preflight path reaches this
-        # point; all cap and cooldown reverts were handled without gas spend.
+        # point; all settlement-window budget reverts were handled without gas spend.
         if self.anvil or self.unit_testing:
             logger.info("Broadcasting Lagoon settlement on Anvil after GuardV0 preflight")
             settle_tx_hash = _transact_anvil_sequentially(

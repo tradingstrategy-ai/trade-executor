@@ -248,10 +248,10 @@ def test_cli_whitelists_known_hyperliquid_vaults(
         cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
     with pytest.raises(
         AssertionError,
-        match="--lagoon-settlement-cooldown requires --lagoon-max-settlement-amount",
+        match="--lagoon-settlement-window requires --lagoon-max-settlement-amount",
     ):
         cli.main(
-            args=["lagoon-deploy-vault", "--lagoon-settlement-cooldown", "3600"],
+            args=["lagoon-deploy-vault", "--lagoon-settlement-window", "3600"],
             standalone_mode=False,
         )
     with pytest.raises(
@@ -272,7 +272,7 @@ def test_cli_whitelists_known_hyperliquid_vaults(
         )
     with pytest.raises(
         AssertionError,
-        match="settlement_cooldown must be positive",
+        match="settlement_window must be positive",
     ):
         cli.main(
             args=[
@@ -280,7 +280,7 @@ def test_cli_whitelists_known_hyperliquid_vaults(
                 "--whitelist-known-hyperliquid-vaults",
                 "--lagoon-max-settlement-amount",
                 "250",
-                "--lagoon-settlement-cooldown",
+                "--lagoon-settlement-window",
                 "0",
             ],
             standalone_mode=False,
@@ -310,20 +310,20 @@ def test_cli_whitelists_known_hyperliquid_vaults(
     assert hyperliquid_deployment["config"]["any_asset"] is False
     assert hyperliquid_deployment["config"]["any_hypercore_vault"] is False
     assert hyperliquid_deployment["config"]["max_settlement_amount"] == "250"
-    assert hyperliquid_deployment["config"]["settlement_cooldown"] == 24 * 60 * 60
+    assert hyperliquid_deployment["config"]["settlement_window"] == 24 * 60 * 60
     assert {
         address.lower()
         for address in hyperliquid_deployment["config"]["hypercore_vaults"]
     } == {address.lower() for address in known_vaults}
     assert module.functions.anyAsset().call() is False
     assert module.functions.anyHypercoreVault().call() is False
-    allowed, limit_enabled, _, _, max_settlement_amount, settlement_cooldown, *_ = module.functions.getLagoonSettlementSafetyConfig(
+    allowed, limit_enabled, _, _, max_settlement_amount, settlement_window, *_ = module.functions.getLagoonSettlementSafetyConfig(
         hyperliquid_deployment["vault_address"]
     ).call()
     assert allowed is True
     assert limit_enabled is True
     assert max_settlement_amount == 250 * 10**6
-    assert settlement_cooldown == 24 * 60 * 60
+    assert settlement_window == 24 * 60 * 60
 
     whitelisted_vaults = {
         Web3.to_checksum_address(entry["address"])

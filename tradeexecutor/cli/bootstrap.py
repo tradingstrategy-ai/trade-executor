@@ -1020,10 +1020,10 @@ def create_metadata(
             case AssetManagementMode.lagoon:
                 assert isinstance(vault, LagoonVault)
                 on_chain_data.smart_contracts.update(vault.info)
-                # GuardV0 caps gross flow per automatic settlement and normally
-                # imposes a 24-hour cooldown. Publish its live cap separately
-                # from contract addresses so the frontend can explain when a
-                # Lagoon queue needs direct Safe-governance settlement.
+                # GuardV0 caps cumulative gross flow in a fixed settlement
+                # window. Publish the live budget separately from contract
+                # addresses so the frontend can explain when a Lagoon queue
+                # needs direct Safe-governance settlement.
                 guard_v0_metadata = fetch_lagoon_guard_v0_settlement_metadata(vault)
                 if guard_v0_metadata is not None:
                     on_chain_data.smart_contracts["lagoon_guard_v0"] = guard_v0_metadata

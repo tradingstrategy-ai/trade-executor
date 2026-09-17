@@ -26,7 +26,7 @@ from eth_defi.cctp.constants import TESTNET_CHAIN_IDS
 from eth_defi.cctp.whitelist import CCTPDeployment
 from eth_defi.erc_4626.classification import create_vault_instance
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
-    DEFAULT_LAGOON_SETTLEMENT_COOLDOWN, LagoonConfig, LagoonDeploymentParameters)
+    DEFAULT_LAGOON_SETTLEMENT_WINDOW, LagoonConfig, LagoonDeploymentParameters)
 from eth_defi.gmx.whitelist import GMXDeployment, fetch_all_gmx_markets
 from eth_defi.uniswap_v3.constants import UNISWAP_V3_DEPLOYMENTS
 from eth_defi.uniswap_v3.deployment import \
@@ -223,7 +223,7 @@ def translate_trading_universe_to_lagoon_config(
     any_asset: bool = False,
     whitelist_known_hyperliquid_vaults: bool = False,
     max_settlement_amount: Decimal | None = None,
-    settlement_cooldown: int = DEFAULT_LAGOON_SETTLEMENT_COOLDOWN,
+    settlement_window: int = DEFAULT_LAGOON_SETTLEMENT_WINDOW,
     asset_managers: list[HexAddress | str] | None = None,
     asset_manager: HexAddress | str | None = None,
     guard_only: bool = False,
@@ -299,13 +299,12 @@ def translate_trading_universe_to_lagoon_config(
         redeployed with an updated universe.
 
     :param max_settlement_amount:
-        Maximum gross underlying-token amount permitted in one asset-manager
-        Lagoon settlement. The source-chain guard also enforces
-        ``settlement_cooldown`` between non-zero settlements.
+        Maximum cumulative gross underlying-token amount permitted within one
+        fixed source-chain Lagoon settlement window.
 
-    :param settlement_cooldown:
-        Minimum seconds between non-zero automated source-chain Lagoon
-        settlements when ``max_settlement_amount`` is set. Defaults to one day.
+    :param settlement_window:
+        Fixed duration in seconds for the cumulative gross automated
+        source-chain Lagoon settlement budget. Defaults to one day.
 
     :param guard_only:
         When ``True``, build configs for redeploying only the guard/module
@@ -406,7 +405,7 @@ def translate_trading_universe_to_lagoon_config(
             existing_safe_address=existing_safe_address if guard_only else None,
             existing_vault_address=existing_vault_address if guard_only and is_source else None,
             max_settlement_amount=max_settlement_amount if is_source else None,
-            settlement_cooldown=settlement_cooldown,
+            settlement_window=settlement_window,
         )
 
         # Source chain needs from_the_scratch on testnets (no factory)

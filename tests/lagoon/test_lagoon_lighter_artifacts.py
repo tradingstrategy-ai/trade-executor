@@ -230,7 +230,7 @@ def test_multichain_private_record_survives_report_generation(tmp_path: Path) ->
         any_asset=False,
         any_hypercore_vault=False,
         max_settlement_amount=None,
-        settlement_cooldown=86400,
+        settlement_window=86400,
         etherscan_api_key=None,
         verifier="etherscan",
         verifier_url=None,

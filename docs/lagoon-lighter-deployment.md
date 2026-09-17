@@ -36,6 +36,18 @@ export STATE_FILE="state/lighter-vault.json"
 trade-executor lagoon-deploy-vault
 ```
 
+To apply a 5,000 USDC daily automated-settlement budget, also set:
+
+```shell
+export LAGOON_MAX_SETTLEMENT_AMOUNT="5000"
+export LAGOON_SETTLEMENT_WINDOW="86400"
+```
+
+This is a cumulative gross budget across the fixed 24-hour window, not a
+one-settlement-per-day cooldown. The 20 USDC Lighter bootstrap subscription
+therefore consumes 20 USDC of the first window, leaving 4,980 USDC available
+for normal automated settlement.
+
 The activation makes a Lagoon-accounted 20 USDC subscription, transfers its
 fixed 1 USDC Lighter deposit and leaves 19 USDC in the Safe. It waits for
 Lighter public state before executing `changePubKey`. It is Ethereum-only and

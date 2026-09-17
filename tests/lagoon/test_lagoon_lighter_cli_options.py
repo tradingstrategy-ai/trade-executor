@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LIGHTER_INITIAL_LAGOON_DEPOSIT
+from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LIGHTER_BOOTSTRAP_SUBSCRIPTION
 from pytest import LogCaptureFixture, MonkeyPatch
 from typer.main import get_command
 
@@ -29,7 +29,7 @@ def test_lighter_initial_capital_preflight_rejects_insufficient_usdc() -> None:
     # 1. Construct a token balance below the full initial Lagoon subscription.
     token = SimpleNamespace(
         symbol="USDC",
-        fetch_balance_of=lambda _address: LIGHTER_INITIAL_LAGOON_DEPOSIT - Decimal("0.01"),
+        fetch_balance_of=lambda _address: LIGHTER_BOOTSTRAP_SUBSCRIPTION - Decimal("0.01"),
     )
     hot_wallet = SimpleNamespace(
         address="0x0000000000000000000000000000000000000001",
@@ -53,7 +53,7 @@ def test_lighter_initial_capital_preflight_rejects_missing_native_gas() -> None:
     # 1. Construct the complete initial USDC subscription balance.
     token = SimpleNamespace(
         symbol="USDC",
-        fetch_balance_of=lambda _address: LIGHTER_INITIAL_LAGOON_DEPOSIT,
+        fetch_balance_of=lambda _address: LIGHTER_BOOTSTRAP_SUBSCRIPTION,
     )
     # 2. Set the deployer's native Ethereum balance to zero.
     hot_wallet = SimpleNamespace(

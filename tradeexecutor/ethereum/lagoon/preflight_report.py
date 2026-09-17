@@ -11,7 +11,7 @@ from pathlib import Path
 
 from eth_defi.erc_4626.vault_protocol.lagoon.config import LagoonChainConfig
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
-    LIGHTER_INITIAL_LAGOON_DEPOSIT,
+    LIGHTER_BOOTSTRAP_SUBSCRIPTION,
     LagoonConfig,
 )
 from eth_defi.hotwallet import HotWallet
@@ -56,7 +56,7 @@ def log_deployment_preflight_report(
     lighter_deployment_address: str | None = None,
     lighter_usdc_address: str | None = None,
     lighter_activation_amount: Decimal | None = LIGHTER_MIN_MAINNET_USDC,
-    lighter_initial_lagoon_subscription: Decimal | None = LIGHTER_INITIAL_LAGOON_DEPOSIT,
+    lighter_initial_lagoon_subscription: Decimal | None = LIGHTER_BOOTSTRAP_SUBSCRIPTION,
     lighter_expected_safe_reserve: Decimal | None = None,
     lighter_deployer_usdc_balance: Decimal | None = None,
     lighter_private_json_path: Path | None = None,

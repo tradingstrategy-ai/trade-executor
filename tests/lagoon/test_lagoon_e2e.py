@@ -155,7 +155,7 @@ def test_cli_lagoon_deploy_vault(
     """Deploy a direct-denomination Lagoon vault with settlement safety.
 
     1. Configure the direct deployment path without a strategy file.
-    2. Deploy through Typer with a settlement cap and cooldown.
+    2. Deploy through Typer with a fixed settlement-window budget.
     3. Read the deployed GuardV0 settlement-safety policy from chain.
     """
 
@@ -193,13 +193,13 @@ def test_cli_lagoon_deploy_vault(
     # 1. Configure the direct deployment path without a strategy file.
     mocker.patch.dict("os.environ", environment, clear=True)
 
-    # 2. Deploy through Typer with a settlement cap and cooldown.
+    # 2. Deploy through Typer with a settlement-window budget.
     cli.main(
         args=[
             "lagoon-deploy-vault",
             "--lagoon-max-settlement-amount",
             "250",
-            "--lagoon-settlement-cooldown",
+            "--lagoon-settlement-window",
             "3600",
         ],
         standalone_mode=False,
@@ -212,13 +212,13 @@ def test_cli_lagoon_deploy_vault(
         "safe-integration/TradingStrategyModuleV0.json",
         deployment_data["Trading strategy module"],
     )
-    allowed, limit_enabled, _, _, max_settlement_amount, settlement_cooldown, *_ = module.functions.getLagoonSettlementSafetyConfig(
+    allowed, limit_enabled, _, _, max_settlement_amount, settlement_window, *_ = module.functions.getLagoonSettlementSafetyConfig(
         deployment_data["Vault"],
     ).call()
     assert allowed is True
     assert limit_enabled is True
     assert max_settlement_amount == 250 * 10**6
-    assert settlement_cooldown == 3600
+    assert settlement_window == 3600
 
 
 def test_cli_lagoon_deploy_vault_multiple_asset_managers(
