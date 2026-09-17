@@ -479,6 +479,10 @@ class LagoonVaultSyncModel(AddressSyncModel):
             reserve_token_price=reserve_token_price,
         )
 
+        start_block = kwargs.get("start_block")
+        if start_block is not None:
+            state.sync.deployment.block_number = start_block
+
         deployment = state.sync.deployment
         deployment.vault_token_name = self.vault.name
         deployment.vault_token_symbol = self.vault.symbol

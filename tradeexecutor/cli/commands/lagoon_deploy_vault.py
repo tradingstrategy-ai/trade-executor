@@ -58,9 +58,9 @@ native vault known when the guard is deployed.
 
 To activate a Safe-owned Lighter account during a fresh Ethereum deployment,
 use ``--generate-lighter-api-key`` (optionally with
-``--lighter-api-key-index``). This performs the accounted 1 USDC activation
-deposit and registers the public key before the Safe ownership ceremony is
-finished. The human text record, Markdown report and runtime state artefact
+``--lighter-api-key-index``). This subscribes 20 USDC through Lagoon, deposits
+1 USDC to activate Lighter and registers the public key before the Safe
+ownership ceremony is finished. The human text record, Markdown report and runtime state artefact
 contain public account metadata only. The paired JSON record is the sole
 secret-bearing output; back it up in a secret store immediately, never paste
 it into tickets or chat, and use the text/Markdown artefacts for support.
@@ -1348,6 +1348,7 @@ def lagoon_deploy_vault(
         deploy_info,
         include_secrets=False,
     )
+    public_json_payload["Initial Lagoon settlement scan block"] = str(pre_deploy_block)
     text_payload, public_json_payload = _annotate_single_chain_artifacts(
         text_payload=text_payload,
         json_payload=public_json_payload,
@@ -1668,6 +1669,8 @@ def _deploy_multichain(
         configs,
         unicode_report,
     )
+    for slug, start_block in pre_deploy_blocks.items():
+        json_payload["deployments"][slug]["initial_lagoon_settlement_scan_block"] = start_block
     _write_deployment_artifacts(
         vault_record_file,
         text_payload=text_payload,

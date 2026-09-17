@@ -5,7 +5,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tradeexecutor.cli.commands.lagoon_redeem import _claim_leftover_deposits, _claim_leftover_redemptions
+from tradeexecutor.cli.commands.lagoon_redeem import (
+    _claim_leftover_deposits,
+    _claim_leftover_redemptions,
+    _get_redemption_nav,
+)
 
 
 @pytest.mark.timeout(30)
@@ -40,7 +44,7 @@ def test_claim_leftover_redemptions() -> None:
     vault.vault_contract.functions.pendingRedeemRequest.return_value.call.return_value = 0
 
     with patch("tradeexecutor.cli.commands.lagoon_redeem._broadcast_and_wait"):
-        _claim_leftover_redemptions(vault, hot_wallet, web3, share_token)
+        _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, None)
 
     vault.finalise_redeem.assert_called_once_with("0xABCD", raw_amount=settled_raw)
     vault.post_new_valuation.assert_not_called()
@@ -60,7 +64,7 @@ def test_claim_leftover_redemptions() -> None:
         patch("tradeexecutor.cli.commands.lagoon_redeem._broadcast_and_wait"),
         patch("tradeexecutor.cli.commands.lagoon_redeem.time.sleep") as mock_sleep,
     ):
-        _claim_leftover_redemptions(vault, hot_wallet, web3, share_token)
+        _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, None)
         mock_sleep.assert_called_once_with(5)
 
     vault.post_new_valuation.assert_called_once()
@@ -72,10 +76,60 @@ def test_claim_leftover_redemptions() -> None:
     vault.vault_contract.functions.maxRedeem.return_value.call.return_value = 0
     vault.vault_contract.functions.pendingRedeemRequest.return_value.call.return_value = 0
 
-    _claim_leftover_redemptions(vault, hot_wallet, web3, share_token)
+    _claim_leftover_redemptions(vault, hot_wallet, web3, share_token, None)
 
     vault.finalise_redeem.assert_not_called()
     hot_wallet.transact_and_broadcast_with_contract.assert_not_called()
+
+
+@pytest.mark.timeout(30)
+def test_get_redemption_nav_ignores_small_lighter_balance() -> None:
+    """Small Lighter equity does not prevent a full Safe-funded redemption.
+
+    1. Read a normal Lagoon NAV that includes one USDC left in Lighter.
+    2. Read the public Lighter equity for the configured account.
+    3. Verify the Safe balance is posted when the equity is below five USDC.
+    """
+    # 1. Read a normal Lagoon NAV that includes one USDC left in Lighter.
+    vault = MagicMock()
+    vault.fetch_nav.return_value = Decimal("21")
+
+    # 2. Read the public Lighter equity for the configured account.
+    equity = MagicMock()
+    equity.get_total.return_value = Decimal("1")
+
+    with (
+        patch("tradeexecutor.cli.commands.lagoon_redeem.create_lighter_session") as mock_session,
+        patch("tradeexecutor.cli.commands.lagoon_redeem.fetch_lighter_total_equity", return_value=equity) as mock_equity,
+    ):
+        # 3. Verify the Safe balance is posted when the equity is below five USDC.
+        assert _get_redemption_nav(vault, Decimal("20"), 747918) == Decimal("20")
+        mock_session.assert_called_once_with()
+        mock_equity.assert_called_once_with(mock_session.return_value.__enter__.return_value, 747918)
+
+
+@pytest.mark.timeout(30)
+def test_get_redemption_nav_keeps_material_lighter_balance() -> None:
+    """Material Lighter equity remains in the settlement NAV.
+
+    1. Read a normal Lagoon NAV that includes Lighter equity.
+    2. Read public Lighter equity equal to the five-USDC threshold.
+    3. Verify the normal NAV remains unchanged because only lower values are ignored.
+    """
+    # 1. Read a normal Lagoon NAV that includes Lighter equity.
+    vault = MagicMock()
+    vault.fetch_nav.return_value = Decimal("25")
+
+    # 2. Read public Lighter equity equal to the five-USDC threshold.
+    equity = MagicMock()
+    equity.get_total.return_value = Decimal("5")
+
+    with (
+        patch("tradeexecutor.cli.commands.lagoon_redeem.create_lighter_session"),
+        patch("tradeexecutor.cli.commands.lagoon_redeem.fetch_lighter_total_equity", return_value=equity),
+    ):
+        # 3. Verify the normal NAV remains unchanged because only lower values are ignored.
+        assert _get_redemption_nav(vault, Decimal("20"), 747918) == Decimal("25")
 
 
 @pytest.mark.timeout(30)

@@ -17,6 +17,7 @@ Quick local dev example:
 
 """
 
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -25,10 +26,52 @@ from typer import Option
 from eth_defi.hotwallet import HotWallet
 
 from .app import app
-from ..bootstrap import prepare_executor_id, create_web3_config, create_sync_model, create_state_store
+from ..bootstrap import (
+    prepare_executor_id,
+    create_web3_config,
+    create_sync_model,
+    create_state_store,
+    resolve_deployment_file,
+)
 from ..log import setup_logging
 from ...strategy.execution_model import AssetManagementMode
 from . import shared_options
+
+
+def _read_lagoon_deployment_block(
+    deployment_file: Path,
+    vault_address: str | None,
+) -> int | None:
+    """Read the configured Lagoon vault's deployment block from its public artefact."""
+    if vault_address is None or not deployment_file.exists():
+        return None
+
+    payload = json.loads(deployment_file.read_text())
+    deployments = payload.get("deployments")
+    if not isinstance(deployments, dict):
+        return None
+
+    for deployment in deployments.values():
+        if not isinstance(deployment, dict):
+            continue
+        recorded_vault = deployment.get("vault_address")
+        if not isinstance(recorded_vault, str) or recorded_vault.lower() != vault_address.lower():
+            continue
+        block_number = deployment.get("initial_lagoon_settlement_scan_block")
+        deployment_data = deployment.get("deployment_data")
+        if not isinstance(deployment_data, dict):
+            deployment_data = payload.get("deployment_record")
+        if block_number is None and not isinstance(deployment_data, dict):
+            return None
+        if block_number is None:
+            block_number = deployment_data.get("Initial Lagoon settlement scan block")
+        if block_number is None:
+            block_number = deployment_data.get("Block number")
+        if block_number is None:
+            return None
+        return int(str(block_number).replace(",", ""))
+
+    return None
 
 
 @app.command()
@@ -114,6 +157,17 @@ def init(
 
     if not state_file:
         state_file = f"state/{id}.json"
+
+    if asset_management_mode == AssetManagementMode.lagoon and vault_deployment_block_number is None:
+        deployment_file = resolve_deployment_file(id, state_file)
+        vault_deployment_block_number = _read_lagoon_deployment_block(deployment_file, vault_address)
+        if vault_deployment_block_number is not None:
+            start_block = vault_deployment_block_number
+            logger.info(
+                "Using Lagoon deployment block %d from %s to recover initial investor flows",
+                vault_deployment_block_number,
+                deployment_file,
+            )
 
     store = create_state_store(Path(state_file))
     assert store.is_pristine(), f"State file already exists: {state_file}"

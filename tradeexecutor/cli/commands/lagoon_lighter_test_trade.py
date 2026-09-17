@@ -92,7 +92,7 @@ LIGHTER_WITHDRAWAL_HISTORY_CLOCK_SKEW_SECONDS = 60
 LIGHTER_POSITION_POLL_SECONDS = 5
 #: Default public deposit-observation timeout.
 DEFAULT_LIGHTER_DEPOSIT_TIMEOUT = 900
-#: Default test deposit with headroom over the ETH/USD minimum order size.
+#: Default additional test deposit with headroom over the ETH/USD minimum order size.
 DEFAULT_LIGHTER_TEST_DEPOSIT_USDC = "20"
 #: Default public position-observation timeout.
 DEFAULT_LIGHTER_POSITION_TIMEOUT = 300

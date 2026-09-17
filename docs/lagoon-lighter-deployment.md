@@ -12,8 +12,8 @@ deployment:
 
 | Asset | Amount | Purpose |
 |-------|--------|---------|
-| ETH | Non-zero and sufficient for current mainnet gas | Lagoon/Safe deployment and Lighter activation transactions. A fixed ETH amount would be misleading because gas varies. |
-| Native Ethereum USDC | **1 USDC** plus the desired collateral and test-order amount | The fixed, accounted Lighter activation deposit is 1 USDC. All subscription and trading collateral is additional. |
+| ETH | Non-zero and sufficient for current mainnet gas | Lagoon/Safe deployment and Lighter activation transactions; gas varies. |
+| Native Ethereum USDC | **20 USDC** for initial capital | Deployment subscribes 20 USDC, transfers 1 USDC to Lighter and leaves 19 USDC in the Safe. |
 
 Use native Ethereum USDC at
 `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`; bridged USDC is not suitable.
@@ -36,7 +36,8 @@ export STATE_FILE="state/lighter-vault.json"
 trade-executor lagoon-deploy-vault
 ```
 
-The activation spends the fixed, Lagoon-accounted 1 USDC deposit and waits for
+The activation makes a Lagoon-accounted 20 USDC subscription, transfers its
+fixed 1 USDC Lighter deposit and leaves 19 USDC in the Safe. It waits for
 Lighter public state before executing `changePubKey`. It is Ethereum-only and
 cannot be simulated on a private Anvil fork. Enabling it therefore spends real
 gas and USDC.
@@ -86,12 +87,14 @@ and synchronise Lagoon NAV throughout.
 
 The operational sequence is:
 
-1. Deploy with `GENERATE_LIGHTER_API_KEY=true`. The deployment subscribes 1
-   USDC to Lagoon to activate Lighter, then transfers that 1 USDC from the Safe
-   to Lighter. The vault is no longer eligible for `lagoon-first-deposit`.
-2. Stop the executor and run `deposit-and-settle.py` to subscribe investor
-   USDC, settle Lagoon and create the executor reserve.
-3. Run `lagoon-lighter-test-trade` to make the bounded Lighter deposit, ETH/USD
+1. Deploy with `GENERATE_LIGHTER_API_KEY=true`. The deployment subscribes 20
+   USDC to Lagoon, transfers 1 USDC from the Safe to Lighter and leaves 19 USDC
+   in the Safe. The vault is no longer eligible for `lagoon-first-deposit`.
+2. Run `init`, then `correct-accounts --process-redemption`. The runtime
+   deployment artefact supplies the original vault block, so the command records
+   the 20 USDC Lagoon investor flow and the public 1 USDC Lighter exchange
+   account without a repair or transfer script.
+3. Run `lagoon-lighter-test-trade --lighter-test-deposit-usdc 19` to make the bounded Lighter deposit, ETH/USD
    round trip and secure withdrawal back to the Safe.
 
 ```shell
@@ -106,22 +109,26 @@ export VAULT_ADAPTER_ADDRESS="0x..."
 export ASSET_MANAGEMENT_MODE="lagoon"
 export LIGHTER_ACCOUNT_INDEX="..."  # Public index in deployment report
 export LIGHTER_OPERATOR_RECORD_FILE="/secure/lighter/lighter-vault.json"
-# Optional overrides:
-# export LIGHTER_TEST_DEPOSIT_USDC="20"
+# Fresh Lighter deployment: 1 USDC is already on Lighter, so add 19 USDC.
+export LIGHTER_TEST_DEPOSIT_USDC="19"
 # export LIGHTER_TEST_POSITION_USDC="..."
 
-trade-executor lagoon-lighter-test-trade
+trade-executor init
+trade-executor correct-accounts --process-redemption
+trade-executor lagoon-lighter-test-trade --lighter-test-deposit-usdc 19
 ```
 
-The test deposit defaults to 20 USDC. The direct Ethereum Lighter contract has
-a 1 USDC minimum deposit. Live ETH/USD metadata inspected on 2026-09-16 required
+The generic test deposit defaults to 20 USDC. For a fresh Lighter-enabled
+deployment, pass 19 USDC because its initial 1 USDC Lighter collateral brings
+the test to 20 USDC total. The direct Ethereum Lighter contract has a 1 USDC
+minimum deposit. Live ETH/USD metadata inspected on 2026-09-16 required
 both 0.005 ETH and 10 USDC of notional; 0.005 ETH was about 12 USDC at the time.
 Thus 20 USDC clears the zk deposit minimum and leaves modest collateral
 headroom for the automatically sized ETH perpetual order. Market limits are
 fetched at runtime and may change. The Safe must hold at least the selected
 deposit amount.
 
-To add this capital to an existing vault, stop the executor and run the
+To add further capital to an existing vault, stop the executor and run the
 reusable Lagoon subscription script from the repository or release container:
 
 ```shell

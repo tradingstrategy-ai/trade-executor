@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 from eth_account import Account
 from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
+from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LIGHTER_INITIAL_LAGOON_DEPOSIT
 from eth_defi.lighter.pubkey import MIN_API_KEY_INDEX
 from eth_defi.lighter.testing import register_lighter_account_on_anvil
 from eth_defi.provider.anvil import AnvilLaunch
@@ -31,7 +32,9 @@ from web3 import Web3
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pair
+from tradeexecutor.state.balance_update import BalanceUpdateCause
 from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.state import State
 
 #: Optional upstream RPC used to enable the fixed-block Ethereum fork.
 JSON_RPC_ETHEREUM = os.environ.get("JSON_RPC_ETHEREUM")
@@ -104,12 +107,13 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
 ) -> None:
     """Run the real Typer deployment while mocking only Lighter public state.
 
-    1. Fund the deterministic deployer with fork ETH and native Ethereum USDC.
+    1. Fund the deterministic deployer with fork ETH and the complete initial native-USDC subscription.
     2. Forge only the sequencer-owned Lighter account registration and API polls.
     3. Invoke the real Typer command and all Lagoon/Safe/Lighter-L1 writers.
-    4. Verify receipts, public/private artifact boundaries and public metadata.
+    4. Initialise the executor and run its normal Lagoon accounting correction.
+    5. Verify receipts, public/private artifact boundaries and the fully accounted initial capital.
     """
-    # 1. Fund the deterministic deployer with fork ETH and native Ethereum USDC.
+    # 1. Fund the deterministic deployer with fork ETH and the complete initial native-USDC subscription.
     web3_ethereum.provider.make_request(
         "anvil_setBalance",
         [deployer.address, hex(100 * 10**18)],
@@ -121,7 +125,7 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
     )
     funding_tx = usdc.contract.functions.transfer(
         deployer.address,
-        usdc.convert_to_raw(Decimal("2")),
+        usdc.convert_to_raw(LIGHTER_INITIAL_LAGOON_DEPOSIT),
     ).transact({"from": USDC_WHALE[1]})
     assert_transaction_success_with_explanation(web3_ethereum, funding_tx)
 
@@ -202,7 +206,7 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
     with caplog.at_level(logging.INFO):
         cli.main(args=["lagoon-deploy-vault"], standalone_mode=False)
 
-    # 4. Verify receipts, public/private artifact boundaries and public metadata.
+    # 4. Initialise the executor and run its normal Lagoon accounting correction.
     operator_json_path = vault_record_file.with_suffix(".json")
     operator_payload = json.loads(operator_json_path.read_text())
     setup = operator_payload["deployments"]["ethereum"]["lighter_account_setup"]
@@ -212,6 +216,9 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
     for tx_key in ("deposit_tx_hash", "change_pubkey_tx_hash"):
         receipt = web3_ethereum.eth.get_transaction_receipt(setup[tx_key])
         assert receipt["status"] == 1
+
+    safe_address = operator_payload["deployments"]["ethereum"]["safe_address"]
+    assert usdc.fetch_balance_of(safe_address) == LIGHTER_INITIAL_LAGOON_DEPOSIT - LIGHTER_MIN_MAINNET_USDC
 
     assert observed["safe_address"] == operator_payload["deployments"]["ethereum"]["safe_address"]
     assert observed["collateral_account_index"] == LIGHTER_ACCOUNT_INDEX
@@ -256,3 +263,38 @@ def test_cli_lagoon_deploy_lighter_on_external_anvil(
     assert pair.get_exchange_account_id() == setup["account_index"]
     for value in (setup["account_index"], setup["api_key_index"], setup["public_key"], setup["deposit_tx_hash"], setup["change_pubkey_tx_hash"]):
         assert str(value) in public_text
+
+    class FakeLighterEquity:
+        """Provide the sequencer value Anvil cannot create."""
+
+        collateral = LIGHTER_MIN_MAINNET_USDC
+        unrealised_pnl = Decimal(0)
+
+        def get_total(self) -> Decimal:
+            """Return the confirmed activation collateral."""
+            return LIGHTER_MIN_MAINNET_USDC
+
+    os.environ["VAULT_ADDRESS"] = operator_payload["deployments"]["ethereum"]["vault_address"]
+    os.environ["VAULT_ADAPTER_ADDRESS"] = operator_payload["deployments"]["ethereum"]["module_address"]
+    os.environ["LIGHTER_ACCOUNT_INDEX"] = str(LIGHTER_ACCOUNT_INDEX)
+    mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_total_equity",
+        return_value=FakeLighterEquity(),
+    )
+    cli.main(args=["init"], standalone_mode=False)
+    with pytest.raises(SystemExit) as exit_info:
+        cli.main(args=["correct-accounts", "--process-redemption"], standalone_mode=False)
+    assert exit_info.value.code == 0
+
+    # 5. Verify receipts, public/private artifact boundaries and the fully accounted initial capital.
+    state = State.read_json_file(state_file)
+    reserve = state.portfolio.get_default_reserve_position()
+    lighter_position = next(iter(state.portfolio.open_positions.values()))
+    settlement = next(iter(reserve.balance_updates.values()))
+    activation_receipt = web3_ethereum.eth.get_transaction_receipt(setup["deposit_tx_hash"])
+    assert state.sync.deployment.block_number <= activation_receipt["blockNumber"]
+    assert settlement.cause == BalanceUpdateCause.deposit_and_redemption
+    assert settlement.quantity == LIGHTER_INITIAL_LAGOON_DEPOSIT
+    assert reserve.quantity == LIGHTER_INITIAL_LAGOON_DEPOSIT - LIGHTER_MIN_MAINNET_USDC
+    assert lighter_position.get_quantity() == LIGHTER_MIN_MAINNET_USDC
+    assert state.portfolio.get_net_asset_value() == LIGHTER_INITIAL_LAGOON_DEPOSIT
