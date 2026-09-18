@@ -27,6 +27,7 @@ from tradingstrategy.timebucket import TimeBucket
 
 from tradeexecutor.analysis.pair import display_strategy_universe
 from tradeexecutor.ethereum.nonce import refresh_hot_wallet_nonces
+from tradeexecutor.exchange_account.gmx import claim_gmx_funding_fees_if_due
 from tradeexecutor.cli.watchdog import create_watchdog_registry, register_worker, mark_alive, start_background_watchdog, \
     WatchdogMode
 from tradeexecutor.state.metadata import Metadata
@@ -1696,6 +1697,16 @@ class ExecutionLoop:
                 # Post-valuation settlement below broadcasts an on-chain NAV update,
                 # so correct the nonce counter before anything is signed
                 self.refresh_nonces("live_positions")
+
+                # Reuse this hourly task and persist a daily throttle instead
+                # of adding a separate GMX scheduler.
+                claim_gmx_funding_fees_if_due(
+                    ts,
+                    state,
+                    universe,
+                    self.execution_model,
+                    self.store,
+                )
 
                 # Post-valuation settlement runs automatically for all Lagoon-style
                 # vaults (async deposits) — no environment variable to misconfigure

@@ -117,6 +117,7 @@ def create_trading_universe(
 
     gmx_account_pair = create_gmx_exchange_account_pair(
         quote=usdc,
+        claim_funding_fees=True,
     )
 
     pair_universe = create_pair_universe_from_code(CHAIN_ID, [gmx_account_pair])
