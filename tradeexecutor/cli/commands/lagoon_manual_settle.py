@@ -6,6 +6,10 @@ from typing import Any
 
 import typer
 from hexbytes import HexBytes
+from safe_eth.eth.ethereum_network import EthereumNetwork
+from safe_eth.safe.api.transaction_service_api.transaction_service_api import (
+    TransactionServiceApi,
+)
 from web3 import Web3
 
 from eth_defi.abi import encode_function_call
@@ -212,7 +216,7 @@ def inspect_manual_lagoon_settlement(vault, deployment_block: int) -> dict[str, 
 
 def propose_manual_lagoon_settlement(
     vault, report: dict[str, Any], private_key: str | None
-) -> str:
+) -> tuple[str, str]:
     """Propose a preflighted direct Lagoon settlement through the Safe Transaction Service."""
     if not report["settlement_required"]:
         raise ValueError(
@@ -234,7 +238,16 @@ def propose_manual_lagoon_settlement(
         operation=transaction["operation"],
         value=int(transaction["value"]),
     )
-    return Web3.to_hex(safe_transaction.safe_tx_hash)
+    safe_tx_hash = Web3.to_hex(safe_transaction.safe_tx_hash)
+    network = EthereumNetwork(report["chain_id"])
+    network_short_name = TransactionServiceApi.NETWORK_SHORTNAME[network]
+    safe_address = report["safe"]
+    safe_transaction_url = (
+        "https://app.safe.global/transactions/tx?"
+        f"safe={network_short_name}:{safe_address}&"
+        f"id=multisig_{safe_address}_{safe_tx_hash}"
+    )
+    return safe_tx_hash, safe_transaction_url
 
 
 def format_manual_settlement_instructions(report: dict[str, Any]) -> str:
@@ -338,9 +351,12 @@ def lagoon_manual_settle(
         report = inspect_manual_lagoon_settlement(vault, deployment_block)
         typer.echo(format_manual_settlement_instructions(report))
         if propose_in_safe:
-            proposal_hash = propose_manual_lagoon_settlement(vault, report, private_key)
+            proposal_hash, proposal_url = propose_manual_lagoon_settlement(
+                vault, report, private_key
+            )
             typer.echo(
                 f"\nSafe Transaction Service proposal created: {proposal_hash}\n"
+                f"Safe transaction: {proposal_url}\n"
                 "Review the proposed transaction in Safe, collect any additional required signatures, then execute it."
             )
     finally:

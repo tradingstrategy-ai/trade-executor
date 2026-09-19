@@ -114,6 +114,12 @@ def test_lagoon_manual_settle_proposes_preflighted_safe_transaction(
     # 3. Verify the Safe proposal uses the exact preflight target, calldata, Call operation and zero value.
     assert result.exit_code == 0, result.output
     assert "Safe Transaction Service proposal created: 0x" + "ab" * 32 in result.output
+    assert (
+        "Safe transaction: https://app.safe.global/transactions/tx?"
+        "safe=eth:0x0000000000000000000000000000000000000002&"
+        "id=multisig_0x0000000000000000000000000000000000000002_0x"
+        + "ab" * 32
+    ) in result.output
     assert captured["proposal"] == {
         "safe": "safe",
         "address": "0x0000000000000000000000000000000000000001",
