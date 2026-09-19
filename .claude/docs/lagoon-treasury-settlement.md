@@ -82,13 +82,41 @@ Use `lagoon-manual-settle` before proposing the direct Safe transaction:
 trade-executor lagoon-manual-settle
 ```
 
+The default is a read-only preflight that prints Safe Transaction Builder
+inputs. If the configured `PRIVATE_KEY` is an owner of the vault Safe, it can
+instead create a signed Safe Transaction Service proposal:
+
+```shell
+trade-executor lagoon-manual-settle --propose-safe-transaction
+```
+
+The switch refuses an empty queue or a failed direct-call simulation, verifies
+that the proposer key is a Safe owner, and posts no on-chain transaction. The
+Safe owners must review the proposal, collect any additional required signatures
+and execute it in Safe. This is intentionally opt-in: a normal preflight must
+remain safe to run against production configuration.
+
 The command uses the same `STRATEGY_FILE`, `STATE_FILE`, `VAULT_ADDRESS` and
-`JSON_RPC_*` environment configuration as the executor. No command-line
-parameters are needed. It reads the submitted, not-yet-settled raw NAV from
+`JSON_RPC_*` environment configuration as the executor. The proposal switch
+also needs the normal `PRIVATE_KEY` configuration. It reads the submitted,
+not-yet-settled raw NAV from
 `newTotalAssets()` where available. For Lagoon versions without that getter it
 recovers the value from the contract's `NewTotalAssetsUpdated` and
 `TotalAssetsUpdated` events. The event scan starts at the vault deployment
 block and uses the shared chunked JSON-RPC or Hypersync reader.
+
+`SAFE_TRANSACTION_SERVICE_API_KEY` is optional. On 2026-09-19, the deployed
+Lighter tutorial Safe accepted and indexed a signed, zero-value `totalAssets()`
+proposal while the variable was unset. Configure it in production for Safe's
+higher API rate limits and service reliability; the eth-defi Safe client reads
+the variable automatically.
+
+Safe Transaction Service proposals are available only on chains supported by
+Safe's hosted service. On an unsupported chain, the command still prints the
+manual Transaction Builder inputs, then reports that it cannot create a hosted
+proposal. Safe takes the proposal nonce from the chain, so check for an
+existing pending Safe transaction at that nonce before creating another
+proposal.
 
 Do not substitute the current `totalAssets()` value. The command reads the
 current deposit and redemption queues and the Safe balance on-chain, then
@@ -98,8 +126,9 @@ Safe setup instructions, including the Safe, target, operation, ABI, input and
 calldata. It uses `eth_estimateGas` with the Safe as the sender to check the
 direct vault target call. A successful estimate only shows that call did not
 revert at the reported block; it does not validate the NAV or Safe signatures,
-owner policy or guards. It does not sign, post NAV, create a Safe proposal or
-broadcast any transaction.
+owner policy or guards. Without `--propose-safe-transaction`, it does not sign,
+post NAV, create a Safe proposal or broadcast any transaction. With the switch,
+the report is printed before the Transaction Service proposal is created.
 
 ## Frontend metadata
 

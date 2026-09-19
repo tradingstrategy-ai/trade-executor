@@ -11,10 +11,18 @@ from web3 import Web3
 from eth_defi.abi import encode_function_call
 from eth_defi.erc_4626.settlement_events import fetch_vault_settlement_logs
 from eth_defi.provider.anvil import is_anvil
-from tradeexecutor.cli.bootstrap import configure_default_chain, create_web3_config, prepare_executor_id
+from eth_defi.safe.tx import propose_safe_transaction
+from tradeexecutor.cli.bootstrap import (
+    configure_default_chain,
+    create_web3_config,
+    prepare_executor_id,
+)
 from tradeexecutor.cli.commands import shared_options
 from tradeexecutor.cli.commands.app import app
-from tradeexecutor.cli.commands.lagoon_utils import load_lagoon_vault, resolve_state_store
+from tradeexecutor.cli.commands.lagoon_utils import (
+    load_lagoon_vault,
+    resolve_state_store,
+)
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 
@@ -22,11 +30,19 @@ from tradeexecutor.strategy.strategy_module import read_strategy_module
 NO_PENDING_NAV = 2**256 - 1
 
 
-def _build_settlement_call(vault, function_name: str, new_total_assets_raw: int | None) -> tuple[dict[str, Any], Any]:
+def _build_settlement_call(
+    vault, function_name: str, new_total_assets_raw: int | None
+) -> tuple[dict[str, Any], Any]:
     """Build the deployed Lagoon version's direct Safe settlement call."""
-    abis = [item for item in vault.vault_contract.abi if item.get("type") == "function" and item.get("name") == function_name]
+    abis = [
+        item
+        for item in vault.vault_contract.abi
+        if item.get("type") == "function" and item.get("name") == function_name
+    ]
     if len(abis) != 1:
-        raise RuntimeError(f"Expected one {function_name} ABI for {vault.address}, got {abis}")
+        raise RuntimeError(
+            f"Expected one {function_name} ABI for {vault.address}, got {abis}"
+        )
 
     abi = abis[0]
     inputs = abi["inputs"]
@@ -41,17 +57,25 @@ def _build_settlement_call(vault, function_name: str, new_total_assets_raw: int 
     assert len(inputs) == 1 and inputs[0]["type"] == "uint256", (
         f"Unexpected {function_name} ABI for {vault.address}: {abi}"
     )
-    return abi, getattr(vault.vault_contract.functions, function_name)(new_total_assets_raw)
+    return abi, getattr(vault.vault_contract.functions, function_name)(
+        new_total_assets_raw
+    )
 
 
-def _fetch_pending_new_total_assets(vault, deployment_block: int, block_number: int) -> tuple[int | None, str]:
+def _fetch_pending_new_total_assets(
+    vault, deployment_block: int, block_number: int
+) -> tuple[int | None, str]:
     """Read the valuation waiting to be settled from contract state or events."""
     has_getter = any(
-        item.get("type") == "function" and item.get("name") == "newTotalAssets" and not item["inputs"]
+        item.get("type") == "function"
+        and item.get("name") == "newTotalAssets"
+        and not item["inputs"]
         for item in vault.vault_contract.abi
     )
     if has_getter:
-        new_total_assets = vault.vault_contract.functions.newTotalAssets().call(block_identifier=block_number)
+        new_total_assets = vault.vault_contract.functions.newTotalAssets().call(
+            block_identifier=block_number
+        )
         value = None if new_total_assets == NO_PENDING_NAV else new_total_assets
         return value, "newTotalAssets()"
 
@@ -91,9 +115,13 @@ def inspect_manual_lagoon_settlement(vault, deployment_block: int) -> dict[str, 
     pending_redemption_shares = flow_manager.fetch_pending_redemption(block_number)
     onchain_nav = vault.fetch_nav(block_identifier=block_number)
     safe_address = Web3.to_checksum_address(vault.safe_address)
-    safe_balance = denomination_token.fetch_balance_of(safe_address, block_identifier=block_number)
+    safe_balance = denomination_token.fetch_balance_of(
+        safe_address, block_identifier=block_number
+    )
 
-    new_total_assets_raw, new_total_assets_source = _fetch_pending_new_total_assets(vault, deployment_block, block_number)
+    new_total_assets_raw, new_total_assets_source = _fetch_pending_new_total_assets(
+        vault, deployment_block, block_number
+    )
     if pending_deposit > 0:
         function_name = "settleDeposit"
     elif pending_redemption_shares > 0:
@@ -107,12 +135,18 @@ def inspect_manual_lagoon_settlement(vault, deployment_block: int) -> dict[str, 
             "pending_deposit": str(pending_deposit),
             "pending_redemption_shares": str(pending_redemption_shares),
             "settlement_required": False,
-            "warnings": ["There are no pending deposits or redemptions, so no Safe settlement transaction is needed."],
+            "warnings": [
+                "There are no pending deposits or redemptions, so no Safe settlement transaction is needed."
+            ],
         }
 
-    abi, settle_call = _build_settlement_call(vault, function_name, new_total_assets_raw)
+    abi, settle_call = _build_settlement_call(
+        vault, function_name, new_total_assets_raw
+    )
     inputs = abi["inputs"]
-    contract_inputs_values = {inputs[0]["name"]: str(new_total_assets_raw)} if inputs else {}
+    contract_inputs_values = (
+        {inputs[0]["name"]: str(new_total_assets_raw)} if inputs else {}
+    )
     calldata = Web3.to_hex(encode_function_call(settle_call))
     safe_transaction_fields: dict[str, Any] = {
         "to": vault.address,
@@ -136,7 +170,9 @@ def inspect_manual_lagoon_settlement(vault, deployment_block: int) -> dict[str, 
     try:
         simulation: dict[str, Any] = {
             "succeeds": True,
-            "estimated_gas": web3.eth.estimate_gas(transaction, block_identifier=block_number),
+            "estimated_gas": web3.eth.estimate_gas(
+                transaction, block_identifier=block_number
+            ),
         }
     except Exception as e:
         simulation = {
@@ -174,6 +210,33 @@ def inspect_manual_lagoon_settlement(vault, deployment_block: int) -> dict[str, 
     }
 
 
+def propose_manual_lagoon_settlement(
+    vault, report: dict[str, Any], private_key: str | None
+) -> str:
+    """Propose a preflighted direct Lagoon settlement through the Safe Transaction Service."""
+    if not report["settlement_required"]:
+        raise ValueError(
+            "Cannot propose a Safe transaction when the Lagoon settlement queue is empty"
+        )
+    if not report["target_call_simulation"]["succeeds"]:
+        raise ValueError(
+            "Refusing to propose a Safe transaction because the direct target-call simulation did not succeed"
+        )
+    if not private_key:
+        raise ValueError("PRIVATE_KEY is required with --propose-safe-transaction")
+
+    transaction = report["gnosis_safe_transaction_fields"]
+    safe_transaction = propose_safe_transaction(
+        safe=vault.safe,
+        address=transaction["to"],
+        private_key=private_key,
+        data=HexBytes(transaction["data"]),
+        operation=transaction["operation"],
+        value=int(transaction["value"]),
+    )
+    return Web3.to_hex(safe_transaction.safe_tx_hash)
+
+
 def format_manual_settlement_instructions(report: dict[str, Any]) -> str:
     """Format operator instructions for a direct Gnosis Safe transaction."""
     if not report["settlement_required"]:
@@ -204,7 +267,7 @@ def format_manual_settlement_instructions(report: dict[str, Any]) -> str:
         f"5. Paste this ABI: {json.dumps([report['settlement_abi']], separators=(',', ':'))}",
         f"6. Select {method} and enter: {json.dumps(inputs, separators=(',', ':'))}.",
         f"7. Confirm the calldata is {transaction['data']}.",
-        "8. Re-simulate in Safe, collect the required signatures, then execute.",
+        "8. Re-simulate in Safe, collect any additional required signatures, then execute.",
         "",
         f"Direct target-call simulation succeeds: {simulation['succeeds']}",
     ]
@@ -212,11 +275,13 @@ def format_manual_settlement_instructions(report: dict[str, Any]) -> str:
         lines.append(f"Estimated target-call gas: {simulation['estimated_gas']}")
     if simulation.get("error"):
         lines.append(f"Simulation error: {simulation['error']}")
-    lines.extend((
-        "",
-        "This preflight does not validate the NAV, Safe signatures, owner policy or Safe guards.",
-        "Do not execute if the Safe simulation differs from these values.",
-    ))
+    lines.extend(
+        (
+            "",
+            "This preflight does not validate the NAV, Safe signatures, owner policy or Safe guards.",
+            "Do not execute if the Safe simulation differs from these values.",
+        )
+    )
     return "\n".join(lines)
 
 
@@ -228,12 +293,22 @@ def lagoon_manual_settle(
     state_file: Path | None = shared_options.state_file,
     vault_address: str | None = shared_options.vault_address,
     log_level: str = shared_options.log_level,
+    private_key: str | None = shared_options.private_key,
+    propose_in_safe: bool = typer.Option(
+        False,
+        "--propose-safe-transaction",
+        envvar="PROPOSE_SAFE_TRANSACTION",
+        help="Propose the inspected direct settlement in the Safe Transaction Service using PRIVATE_KEY. Does not execute it.",
+    ),
     rpc_kwargs: dict | None = None,
 ):
     """Print instructions for the required direct Safe settlement transaction.
 
-    This is a read-only operational tool for a GuardV0-capped Lagoon queue.
-    It does not post a valuation, create a Safe transaction, or broadcast one.
+    This is an operational tool for a GuardV0-capped Lagoon queue.
+    By default it does not post a valuation, create a Safe proposal, or
+    broadcast a transaction. ``--propose-safe-transaction`` creates a signed
+    Transaction Service proposal when ``PRIVATE_KEY`` belongs to a Safe owner;
+    Safe owners must still review, sign and execute it.
     It reads all configuration from the normal executor environment and state.
     """
     id = prepare_executor_id(id, strategy_file)
@@ -246,18 +321,33 @@ def lagoon_manual_settle(
     configure_default_chain(web3config, mod)
     try:
         state_path, store = resolve_state_store(id, state_file)
-        assert not store.is_pristine(), f"Strategy state file does not exist: {state_path}"
+        assert not store.is_pristine(), (
+            f"Strategy state file does not exist: {state_path}"
+        )
         state = store.load()
         deployment = state.sync.deployment
         vault_address = vault_address or deployment.address
-        assert vault_address, "Lagoon vault address is missing from VAULT_ADDRESS and strategy state"
+        assert vault_address, (
+            "Lagoon vault address is missing from VAULT_ADDRESS and strategy state"
+        )
         deployment_block = deployment.block_number
-        assert deployment_block is not None, "Lagoon deployment block is missing from strategy state"
+        assert deployment_block is not None, (
+            "Lagoon deployment block is missing from strategy state"
+        )
         vault = load_lagoon_vault(web3config.get_default(), vault_address)
         report = inspect_manual_lagoon_settlement(vault, deployment_block)
         typer.echo(format_manual_settlement_instructions(report))
+        if propose_in_safe:
+            proposal_hash = propose_manual_lagoon_settlement(vault, report, private_key)
+            typer.echo(
+                f"\nSafe Transaction Service proposal created: {proposal_hash}\n"
+                "Review the proposed transaction in Safe, collect any additional required signatures, then execute it."
+            )
     finally:
         web3config.close()
 
-    if report["settlement_required"] and not report["target_call_simulation"]["succeeds"]:
+    if (
+        report["settlement_required"]
+        and not report["target_call_simulation"]["succeeds"]
+    ):
         raise typer.Exit(code=1)
