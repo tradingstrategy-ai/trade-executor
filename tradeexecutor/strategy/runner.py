@@ -50,7 +50,7 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.trade import TradeExecution, TradeFlag
+from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.repair import close_hypercore_dust_positions
 from tradeexecutor.strategy.valuation import ValuationModelFactory, ValuationModel, revalue_state
@@ -317,6 +317,70 @@ class StrategyRunner(abc.ABC):
         revalue_state(state, ts, valuation_model)
         logger.info("After revaluation at %s our portfolio value is %f USD", ts, state.portfolio.calculate_total_equity())
 
+    def resume_pending_exchange_account_transfers(
+        self,
+        universe: StrategyExecutionUniverse,
+        state: State,
+        store: StateStore,
+    ) -> None:
+        """Resume one automatic custody transfer before normal live trading.
+
+        Only a flagged automatic transfer is eligible for this path. Manual
+        transfers and automatic transfers without their public identifier are
+        still rejected by :meth:`State.check_if_clean`.
+        """
+        pending_trades = [
+            trade
+            for position in state.portfolio.get_open_and_frozen_positions()
+            for trade in position.trades.values()
+            if trade.is_external_account_transfer_pending()
+        ]
+        if not pending_trades:
+            return
+
+        automatic_trades = [
+            trade
+            for trade in pending_trades
+            if TradeFlag.automatic_exchange_account_transfer in (trade.flags or set())
+        ]
+        if len(pending_trades) != 1 or len(automatic_trades) != 1:
+            return
+
+        trade = automatic_trades[0]
+        if trade.pair.get_exchange_account_protocol() != "lighter":
+            return
+
+        request_id = (trade.other_data or {}).get("lighter_withdrawal_request_id")
+        # Resume only a secure withdrawal before its Safe claim has been
+        # broadcast. Any other interrupted transfer needs explicit recovery,
+        # because replaying it could move custody twice.
+        if trade.get_status() != TradeStatus.started or trade.is_buy() or not request_id:
+            return
+
+        logger.warning(
+            "Resuming automatic Lighter custody transfer #%s before normal strategy checks",
+            trade.trade_id,
+        )
+        routing_state, _pricing_model, _valuation_model = self.setup_routing(universe)
+        if not isinstance(self.routing_model, GenericRouting):
+            return
+
+        self.execution_model.set_pre_broadcast_state_sync_callback(
+            lambda: store.sync(state),
+        )
+        self.execution_model.execute_trades(
+            native_datetime_utc_now(),
+            state,
+            [trade],
+            self.routing_model,
+            routing_state,
+            rebroadcast=True,
+        )
+        # A resumed claim may have been signed before the process stopped. Its
+        # nonce is absent from a new transaction builder until we resynchronise.
+        self.execution_model.tx_builder.init()
+        store.sync(state)
+
     def collect_post_execution_data(
             self,
             execution_context: ExecutionContext,
@@ -342,6 +406,12 @@ class StrategyRunner(abc.ABC):
                 ts = t.strategy_cycle_at
 
             logger.info("Fetching post-execution price data for %s at %s", t.get_short_label(), ts)
+
+            if TradeFlag.external_account_transfer in (t.flags or set()):
+                # Custody transfers have a fixed 1 USDC/USD price and no AMM
+                # price structure to collect.
+                t.post_execution_price_structure = None
+                continue
 
             # Credit supply pairs do not have pricing ATM
             if t.pair.is_spot() or t.pair.is_vault():
@@ -1360,6 +1430,9 @@ def post_process_trade_decision(
     if max_price_impact is not None:
         for t in trades:
 
+            if TradeFlag.external_account_transfer in (t.flags or set()):
+                continue
+
             if t.is_credit_supply():
                 # Credit supply positions do not have price structure
                 continue
@@ -1381,6 +1454,13 @@ def post_process_trade_decision(
                         f"Trade pricing: {t.price_structure}\n"
                     )
                 t.price_impact_tolerance = max_price_impact
+
+    for t in trades:
+        if TradeFlag.external_account_transfer in (t.flags or set()):
+            if t.planned_reserve <= 0 or t.planned_price != 1.0:
+                raise ValueError(
+                    f"Exchange-account transfer must be a positive 1:1 transfer: {t}"
+                )
 
 
     return trades

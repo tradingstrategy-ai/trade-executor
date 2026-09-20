@@ -1,11 +1,7 @@
 """Helpers for managing exchange account positions in state.
 
-Exchange account positions (Derive, Hyperliquid, etc.) are managed directly on
-the state object, bypassing PositionManager and the normal execution pipeline.
-
-Opening trades are immediately spoofed so they never reach routing or
-execution. Manual custody transfers can remain pending while an external
-withdrawal completes.
+Exchange account positions are initialised directly on the state object. Their
+custody transfers use the normal routing and execution pipeline.
 """
 
 import datetime
@@ -13,18 +9,55 @@ from decimal import Decimal
 
 from eth_defi.compat import native_datetime_utc_now
 
+from tradeexecutor.exchange_account.cash_manager import (
+    ExchangeCashManagementInput,
+    ExchangeCashManager,
+)
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus, TradeType
 from tradeexecutor.strategy.position_internal_share_price import (
     create_share_price_state,
-    update_share_price_state,
 )
 
 
 class ExchangeAccountTransferError(RuntimeError):
     """Raised when a manual exchange-account transfer cannot be recorded."""
+
+
+def create_exchange_cash_management_transfer(
+    *,
+    state: State,
+    position: TradingPosition,
+    strategy_cycle_at: datetime.datetime,
+    reserve_currency: AssetIdentifier,
+    inputs: ExchangeCashManagementInput,
+    notes: str,
+) -> TradeExecution | None:
+    """Create the one transfer selected by the pure exchange cash policy."""
+    pending = any(
+        trade.is_external_account_transfer_pending()
+        for candidate in state.portfolio.get_open_and_frozen_positions()
+        for trade in candidate.trades.values()
+    )
+    decision = ExchangeCashManager().decide(inputs, transfer_pending=pending)
+    if not decision.should_transfer:
+        return None
+    return create_exchange_account_transfer(
+        state=state,
+        position=position,
+        strategy_cycle_at=strategy_cycle_at,
+        reserve_currency=reserve_currency,
+        amount=decision.amount_usdc,
+        deposit=decision.direction == "deposit",
+        notes=notes,
+        metadata={
+            "direction": decision.direction,
+            "policy": "exchange_cash_manager",
+        },
+        automatic=True,
+    )
 
 
 def create_exchange_account_transfer(
@@ -37,13 +70,13 @@ def create_exchange_account_transfer(
     deposit: bool,
     notes: str,
     metadata: dict[str, str | int],
+    automatic: bool = False,
 ) -> TradeExecution:
-    """Create one planned manual reserve/exchange-account transfer trade.
+    """Create one planned reserve/exchange-account transfer trade.
 
-    The physical custody movement is executed outside the normal trade router.
-    This helper only creates its durable state record. For withdrawals callers
-    persist it before requesting the external exchange withdrawal, then use
-    :func:`record_exchange_account_transfer` after final verification.
+    The physical custody movement is executed by the configured exchange
+    router. Manual callers may omit ``automatic`` for compatibility with the
+    diagnostic command.
     """
     if not position.is_exchange_account():
         raise ExchangeAccountTransferError("Expected an exchange-account position")
@@ -64,7 +97,10 @@ def create_exchange_account_transfer(
         pair_fee=0.0,
         lp_fees_estimated=0,
         position=position,
-        flags={TradeFlag.external_account_transfer},
+        flags={
+            TradeFlag.external_account_transfer,
+            *({TradeFlag.automatic_exchange_account_transfer} if automatic else set()),
+        },
     )
     trade.other_data = metadata
     return trade
@@ -96,9 +132,8 @@ def record_exchange_account_transfer(
 ) -> TradeExecution:
     """Complete a verified manual reserve/exchange-account transfer.
 
-    Exchange-account trades bypass the routing and execution model. Adjust the
-    Safe reserve and exchange-account share-price state here, then mark the
-    existing broadcasted trade successful without auto-closing a zero account.
+    This compatibility helper completes an already broadcasted trade through
+    the same state transition used by routed transfers.
     """
     if amount <= 0:
         raise ExchangeAccountTransferError("Exchange-account transfer amount must be positive")
@@ -119,23 +154,21 @@ def record_exchange_account_transfer(
     if position.get_quantity() + trade.planned_quantity < 0:
         raise ExchangeAccountTransferError("Transfer would create a negative exchange-account quantity")
 
-    state.portfolio.adjust_reserves(
-        reserve_currency,
-        reserve_change,
-        f"External account transfer for trade #{trade.trade_id}",
-    )
-    trade.mark_success(
+    if reserve_change < 0:
+        state.portfolio.adjust_reserves(
+            reserve_currency,
+            reserve_change,
+            f"External account transfer for trade #{trade.trade_id}",
+        )
+    state.mark_trade_success(
         executed_at=executed_at,
+        trade=trade,
         executed_price=1.0,
-        executed_quantity=trade.planned_quantity,
+        executed_amount=trade.planned_quantity,
         executed_reserve=amount,
         lp_fees=0,
         native_token_price=0,
     )
-    if position.share_price_state is None:
-        position.share_price_state = create_share_price_state(trade)
-    else:
-        position.share_price_state = update_share_price_state(position.share_price_state, trade)
     return trade
 
 
@@ -157,8 +190,7 @@ def open_exchange_account_position(
     (Binance, Bybit, etc.). Unlike on-chain DEX positions, they:
 
     - Track value via external exchange APIs (not blockchain)
-    - Bypass routing and execution completely
-    - Use spoofed trades marked success immediately
+    - Use a spoofed opening trade marked successful immediately
     - Generate balance updates when account value changes
 
     How they work
@@ -200,8 +232,8 @@ def open_exchange_account_position(
                 notes="Initial exchange account position",
             )
 
-            # CRITICAL: Always return empty list!
-            # Exchange account trades must never reach execution
+            # The spoofed opening trade is already complete. Do not return it
+            # as a custody operation; return only real transfer trades.
             return []
 
     The position value will be updated when:
@@ -217,20 +249,20 @@ def open_exchange_account_position(
     automatically create them using this function. This makes setup easier by
     ensuring all exchange account pairs have corresponding positions.
 
-    Spoofed trades and execution bypass
+    Position initialisation and custody execution
     ------------------------------------
 
-    Exchange account trades are "spoofed" - they're created directly in state
-    and immediately marked as successfully executed using ``force=True``. This
-    ensures they never reach the routing or execution pipeline:
+    The opening exchange-account trade is "spoofed": it is created directly in
+    state and marked as successfully executed using ``force=True``. Custody
+    transfers are different: they carry
+    ``TradeFlag.external_account_transfer``, are returned from ``decide_trades``
+    and reach the configured protocol router:
 
-    - No on-chain transactions are broadcasted
-    - No router contracts are called
-    - No gas is consumed
-    - Asserts in routing/execution will crash if exchange account trades reach them
+    - The opening trade broadcasts no transaction and consumes no gas.
+    - A custody transfer can broadcast the protocol's transactions.
 
-    This is by design: exchange account operations (deposits, withdrawals, trades)
-    happen externally via the exchange's API, not on-chain.
+    Lighter custody transfers use the Safe-owned Lighter router. Directional
+    Lighter order execution is outside this helper.
 
     Reserve deduction and NAV accounting
     -------------------------------------
@@ -284,9 +316,10 @@ def open_exchange_account_position(
         "Auto-created by correct-accounts").
 
     :return:
-        List containing the single spoofed trade. This is returned for logging
-        purposes only. **Do NOT return this from ``decide_trades()``** - always
-        return ``[]`` instead to prevent the trades from reaching execution.
+        List containing the single spoofed initialisation trade. Return this
+        trade only when the strategy deliberately creates the position; any
+        custody transfer created later must also be returned so it reaches the
+        normal execution pipeline.
 
     :raise AssertionError:
         If the pair is not an exchange account pair.

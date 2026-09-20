@@ -90,6 +90,52 @@ is the complete module template. Set `LIGHTER_ACCOUNT_INDEX` from the public
 deployment report when running it. The API key remains only in the protected
 operator record.
 
+## Automatic exchange cash management
+
+An alpha model can return an automatic Safe/Lighter custody transfer from
+`decide_trades()` by setting `lighter_cash_management=True` and calling
+`create_lighter_cash_management_transfer()`. The returned `TradeExecution`
+uses the normal trade pipeline, including reserve allocation, checkpointing,
+`GenericRouting`, Lagoon Safe transactions and state accounting. Do not call
+the manual `lighter-move-funds` command from a running executor.
+
+Use the small
+[`lighter_cash_management_strategy.py`](../strategies/test_only/lighter_cash_management_strategy.py)
+as a reference. Its policy retains a 20 USDC Safe buffer, keeps the configured
+free Lighter collateral buffer, ignores transfers below 1 USDC and uses a
+30-minute withdrawal timeout:
+
+```python
+class Parameters:
+    lighter_cash_management = True
+    lighter_safe_cash_buffer_usd = Decimal("20")
+    lighter_free_collateral_buffer_usd = Decimal("0")
+    lighter_min_transfer_usd = Decimal("1")
+    lighter_withdrawal_timeout = 1800
+```
+
+Pass `safe_usdc=Decimal(str(input.get_position_manager().get_current_cash()))`
+to `create_lighter_cash_management_transfer()`. This is the latest
+treasury-synchronised Safe reserve; do not make a direct Web3 balance read in
+`decide_trades()`.
+
+Deposits move only idle Safe cash above the buffer. If pending redemptions
+need liquidity, the manager creates a Lighter withdrawal instead. Secure
+withdrawals normally take about 20 minutes, so the live executor waits
+synchronously and starts no later trades while the request is pending. The
+30-minute timeout is a safety limit, not the expected delay. A restart
+continues a checkpointed public request ID. Set
+`LIGHTER_OPERATOR_RECORD_FILE` to the mode-`0600` deployment JSON so the
+executor can sign the authenticated withdrawal request; never put its private
+key in the strategy, environment value, state file or logs.
+
+With automatic management enabled, Lagoon skips same-cycle NAV posting and
+redemption settlement when Safe plus pending Silo deposits cannot cover the
+redemption. The following strategy decision can return the withdrawal through
+the normal pipeline. After the claim succeeds, the next cycle synchronises the
+Safe balance and settles the queue. This conservative behaviour avoids a
+temporary low NAV and avoids trading against money that has not arrived.
+
 ## Run the ETH/USD test lifecycle
 
 For an already deployed Lighter-enabled vault, the Typer command is the
@@ -108,6 +154,14 @@ The operational sequence is:
    account without a repair or transfer script.
 3. Run `lagoon-lighter-test-trade --lighter-test-deposit-usdc 19` to make the bounded Lighter deposit, ETH/USD
    round trip and secure withdrawal back to the Safe.
+
+For automated Safe cash management, a secure withdrawal writes its public
+Lighter request ID to executor state before waiting. A later `start` resumes
+that checkpointed request; a crash before the checkpoint remains unclean so
+the executor does not risk submitting a duplicate withdrawal. A Safe claim
+already broadcast to Ethereum requires normal repair or manual recovery.
+If Lighter cannot release enough free collateral, Lagoon keeps the redemption
+deferred until an operator restores liquidity rather than posting a reduced NAV.
 
 ```shell
 source .local-test.env

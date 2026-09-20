@@ -4,6 +4,7 @@ See :py:mod:`tradeexecutor.strategy.generic.pair_configurator`.
 """
 
 import logging
+import os
 from typing import Callable, Set, TYPE_CHECKING
 
 from web3 import Web3
@@ -16,12 +17,18 @@ from eth_defi.one_delta.constants import ONE_DELTA_DEPLOYMENTS
 from eth_defi.lighter.constants import LIGHTER_ETHEREUM_DEPLOYMENT_CHAIN_ID, LIGHTER_USDC_ETHEREUM
 from eth_defi.lighter.session import create_lighter_session
 from tradeexecutor.ethereum.routing_data import base_uniswap_v3_address_map
+from tradeexecutor.ethereum.lighter.lighter_routing import (
+    DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
+    LighterRouting,
+)
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 from tradeexecutor.exchange_account.lighter import (
     create_lighter_account_value_func,
     create_lighter_vault_valuation_func,
     validate_lighter_exchange_account_pairs,
 )
+from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
+from tradeexecutor.exchange_account.valuation import ExchangeAccountValuator
 
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import ExchangeUniverse, ExchangeType
@@ -766,6 +773,36 @@ def create_exchange_account_adapter(
     )
 
 
+def create_lighter_adapter(
+    routing_id: ProtocolRoutingId,
+    reserve_token_address: str,
+    web3: Web3 | None = None,
+) -> ProtocolRoutingConfig:
+    """Create the Lighter custody-transfer router and public valuator."""
+    assert routing_id.router_name == "lighter"
+    session = create_lighter_session()
+    account_value_func = create_lighter_account_value_func(session)
+    pricing_model = ExchangeAccountPricingModel(account_value_func)
+    valuation_model = ExchangeAccountValuator(pricing_model, web3=web3)
+    timeout = int(
+        os.environ.get(
+            "LIGHTER_WITHDRAWAL_TIMEOUT",
+            str(DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS),
+        )
+    )
+    routing_model = LighterRouting(
+        reserve_token_address,
+        withdrawal_timeout=timeout,
+        session=session,
+    )
+    return ProtocolRoutingConfig(
+        routing_id=routing_id,
+        routing_model=routing_model,
+        pricing_model=pricing_model,
+        valuation_model=valuation_model,
+    )
+
+
 def create_cctp_bridge_adapter(
     web3config: "Web3Config",
     routing_id: ProtocolRoutingId,
@@ -1098,6 +1135,9 @@ class EthereumPairConfigurator(PairConfigurator):
             return create_freqtrade_adapter(self.web3, self.strategy_universe, routing_id)
         elif routing_id.router_name == "exchange_account":
             return create_exchange_account_adapter(routing_id, self.account_value_func, web3=self.web3)
+        elif routing_id.router_name == "lighter":
+            reserve = self.strategy_universe.get_reserve_asset()
+            return create_lighter_adapter(routing_id, reserve.address, web3=self.web3)
         elif routing_id.router_name == "cctp-bridge":
             # Resolve primary custody address from the execution model's
             # vault (Lagoon Safe) or tx_builder (hot wallet).

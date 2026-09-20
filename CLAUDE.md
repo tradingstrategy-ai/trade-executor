@@ -186,7 +186,7 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 - Use `pytest.approx()` to compare values of data and money `assert abs(aave_total_pnl - 96.6087) < 0.01` 
 - Don't use logger.info() or logger.debug() inside test and fixture function bodies unless specifically asked
 - Do not do excessive number of tests. Prefer one test for happy path and one test for bad path. Do several asserts within a single test case to have test coverage, but keeping the number of tests low.
-- Always use pytest timeout and chat timeout when running tests. Use 5 minutes timeout unless you are running the full test suite.
+- Add a pytest timeout marker only to tests known to be long-running or prone to hanging. Always use an appropriate command/chat timeout when running tests; use 5 minutes unless you are running the full test suite.
 - Akk tests must have docstring
 - Docstring must stell what is being tested and why
 - Docstring must have 1, 2, 3, N style ordered list of steps the test is taking, up to the hig level actions in the test. These steps must then repeat as line comments within the test body.

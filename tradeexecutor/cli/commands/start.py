@@ -35,6 +35,9 @@ from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
+from ...exchange_account.cash_manager import DEFAULT_EXCHANGE_WITHDRAWAL_TIMEOUT_SECONDS
+from ...exchange_account.lighter import validate_lighter_cash_management_parameters
+from ...exchange_account.lighter_operator import load_lighter_operator_record
 from ...state.state import State
 from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType
@@ -98,6 +101,11 @@ def start(
     derive_session_private_key: Optional[str] = typer.Option(None, envvar="DERIVE_SESSION_PRIVATE_KEY", help="Derive session key private key"),
     derive_wallet_address: Optional[str] = typer.Option(None, envvar="DERIVE_WALLET_ADDRESS", help="Derive wallet address (auto-derived from owner key if not provided). For Lagoon vault deployments, set this to the Safe multisig address."),
     derive_network: DeriveNetwork = typer.Option(DeriveNetwork.mainnet, envvar="DERIVE_NETWORK", help="Derive network: mainnet or testnet"),
+    lighter_operator_record_file: Optional[Path] = typer.Option(
+        None,
+        envvar="LIGHTER_OPERATOR_RECORD_FILE",
+        help="Owner-only Lighter operator record used for automatic Safe withdrawals",
+    ),
 
     gas_price_method: Optional[GasPriceMethod] = shared_options.gas_price_method,
     confirmation_block_count: int = shared_options.confirmation_block_count,
@@ -197,6 +205,11 @@ def start(
         in_memory_buffer=True,
         enable_trade_high=True,
     )
+
+    if lighter_operator_record_file is not None:
+        # Routing is initialised later, so expose the validated CLI option to
+        # the Lighter router without placing key material in strategy state.
+        os.environ["LIGHTER_OPERATOR_RECORD_FILE"] = str(lighter_operator_record_file)
 
     if backtest_start or backtest_end:
         # Disable legacy backtest method
@@ -585,6 +598,27 @@ def start(
         assert routing_model is None, f"Got: {routing_model}"
 
     if isinstance(sync_model, LagoonVaultSyncModel):
+        lighter_parameters = mod.parameters or {}
+        lighter_cash_management = bool(
+            lighter_parameters.get("lighter_cash_management", False)
+        )
+        if lighter_cash_management:
+            validate_lighter_cash_management_parameters(lighter_parameters)
+            if lighter_operator_record_file is None:
+                raise ValueError(
+                    "LIGHTER_OPERATOR_RECORD_FILE is required when automatic "
+                    "Lighter cash management is enabled"
+                )
+            load_lighter_operator_record(lighter_operator_record_file)
+            os.environ["LIGHTER_WITHDRAWAL_TIMEOUT"] = str(
+                lighter_parameters.get(
+                    "lighter_withdrawal_timeout",
+                    DEFAULT_EXCHANGE_WITHDRAWAL_TIMEOUT_SECONDS,
+                )
+            )
+        sync_model.defer_lighter_redemption_without_liquidity = bool(
+            lighter_cash_management
+        )
         sync_model.abort_lagoon_settlement_on_frozen_positions = abort_lagoon_settlement_on_frozen_positions
     elif abort_lagoon_settlement_on_frozen_positions:
         logger.warning(

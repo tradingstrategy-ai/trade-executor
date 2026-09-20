@@ -34,7 +34,7 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeStatus, has_unresolved_hypercore_accounting
+from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus, has_unresolved_hypercore_accounting
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -812,8 +812,9 @@ class EthereumExecution(ExecutionModel):
         )
 
         for t in trades:
-            assert not t.pair.is_exchange_account(), \
-                f"Unsupported: exchange account trades must not reach execute_trades(). Trade: {t}"
+            if t.pair.is_exchange_account():
+                assert TradeFlag.external_account_transfer in (t.flags or set()), \
+                    f"Unsupported unflagged exchange account trade: {t}"
 
         if self.disable_broadcast:
             return
