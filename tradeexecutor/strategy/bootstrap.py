@@ -33,6 +33,8 @@ from tradeexecutor.strategy.strategy_module import read_strategy_module, Strateg
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import DefaultTradingStrategyUniverseModel
 from tradeexecutor.strategy.valuation import ValuationModelFactory
+from tradeexecutor.strategy.recorder.recorder import DecisionRecorder
+from tradeexecutor.strategy.recorder.storage import validate_recorder_strategy_id
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +113,8 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             parameters: StrategyParameters | None = None,
             visualisation=True,
             max_price_impact: Percent | None = None,
+            state_path: Path | None = None,
+            strategy_id: str | None = None,
             **kwargs) -> StrategyExecutionDescription:
 
         # Migration assert
@@ -149,6 +153,25 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
 
         create_indicators = mod_info.create_indicators or create_indicators
 
+        recorder = None
+        record_strategy_inputs = parameters.get("record_strategy_inputs", False) if parameters is not None else False
+        if not isinstance(record_strategy_inputs, bool):
+            raise TypeError("record_strategy_inputs must be a bool")
+        if execution_context.mode.is_live_trading() and record_strategy_inputs:
+            if state_path is None:
+                raise RuntimeError("record_strategy_inputs requires a persistent state path")
+            recorder_id = strategy_id or mod_info.path.stem
+            recorder_id = validate_recorder_strategy_id(recorder_id)
+            recorder_path = Path(state_path).parent / f"{recorder_id}-record.duckdb"
+            logger.info("Strategy input recorder enabled: %s", recorder_path)
+            recorder = DecisionRecorder(
+                recorder_path,
+                recorder_id,
+                mod_info.source_code,
+                strategy_file=str(mod_info.path),
+                executor_revision=getattr(getattr(run_state, "version", None), "commit_hash", None),
+            )
+
         runner = PandasTraderRunner(
             timed_task_context_manager=timed_task_context_manager,
             execution_model=execution_model,
@@ -166,6 +189,8 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             parameters=parameters,
             visualisation=visualisation,
             max_price_impact=max_price_impact,
+            recorder=recorder,
+            state_path=state_path,
         )
 
         logger.info(
@@ -187,5 +212,3 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
         )
 
     return default_strategy_factory
-
-

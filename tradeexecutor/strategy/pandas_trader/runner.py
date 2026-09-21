@@ -1,6 +1,7 @@
 """A strategy runner that executes Trading Strategy Pandas type strategies."""
 
 import datetime
+from pathlib import Path
 import textwrap
 from io import StringIO
 from typing import List, Optional
@@ -21,6 +22,7 @@ from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, DecideTradesProtocol3, DecideTradesProtocol4
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair, TradingStrategyUniverseModel
+from tradeexecutor.strategy.recorder.recorder import DecisionRecorder
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -42,11 +44,15 @@ class PandasTraderRunner(StrategyRunner):
             *args,
             decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3 | DecideTradesProtocol4,
             max_data_age: datetime.timedelta = None,
+            recorder: DecisionRecorder | None = None,
+            state_path: Path | None = None,
             **kwargs
     ):
         super().__init__(*args, **kwargs)
         self.decide_trades = decide_trades
         self.max_data_age = max_data_age
+        self.recorder = recorder
+        self.state_path = state_path
 
         # Legacy assets
         sync_model = kwargs.get("sync_model")
@@ -55,6 +61,11 @@ class PandasTraderRunner(StrategyRunner):
 
     def on_data_signal(self):
         pass
+
+    def close(self) -> None:
+        """Close optional live decision-recording resources."""
+        if self.recorder is not None:
+            self.recorder.close()
 
     def on_clock(
         self,
@@ -116,6 +127,8 @@ class PandasTraderRunner(StrategyRunner):
                 web3=web3,
                 routing_state=routing_state,
                 routing_model=routing_model,
+                recorder=self.recorder,
+                state_path=self.state_path,
             )
 
             logger.info(

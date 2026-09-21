@@ -5,6 +5,7 @@
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 import cachetools
@@ -21,6 +22,7 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.recorder.recorder import DecisionRecorder
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.liquidity import LiquidityDataUnavailable
 from tradingstrategy.pair import HumanReadableTradingPairDescription
@@ -933,6 +935,12 @@ class StrategyInput:
     #: The routing state for the current cycle
     routing_state: RoutingState | None = None
 
+    #: Live decision recorder. It is absent for backtests and ordinary strategies.
+    recorder: DecisionRecorder | None = None
+
+    #: Authoritative state path used to correlate recorder rows with state.
+    state_path: Path | None = None
+
     def get_position_manager(self) -> PositionManager:
         """Create a position manager instance to open/close trading positions in this decision cycle."""
         return PositionManager(
@@ -1061,6 +1069,5 @@ def _calculate_and_cache_candle_width_df(df: pd.DatetimeIndex | pd.Series) -> pd
         return time_bucket.to_pandas_timedelta()
 
     return _calculate_and_cache_candle_width(df.index)
-
 
 

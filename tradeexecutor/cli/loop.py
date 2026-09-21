@@ -1989,6 +1989,8 @@ class ExecutionLoop:
             visualisation=self.visulisation,
             max_price_impact=self.max_price_impact,
             check_accounts=self.check_accounts,
+            state_path=getattr(self.store, "path", None),
+            strategy_id=self.run_state.executor_id if self.run_state else None,
         )
 
         self.init_live_run_state(run_description)
@@ -2047,11 +2049,18 @@ class ExecutionLoop:
             not a start up error.
         """
         # TODO: Refactor
-        if self.is_backtest():
-            # Walk through backtesting range
-            return self.run_backtest(state)
-        else:
-            return self.run_live(state)
+        try:
+            if self.is_backtest():
+                # Walk through backtesting range
+                return self.run_backtest(state)
+            else:
+                return self.run_live(state)
+        finally:
+            # The recorder owns a DuckDB connection. Close it on normal exit,
+            # unit-test early exit, and strategy failure alike.
+            close = getattr(self.runner, "close", None)
+            if callable(close):
+                close()
 
     def run(self):
         """Start the execution.
