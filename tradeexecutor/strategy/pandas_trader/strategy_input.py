@@ -936,9 +936,16 @@ class StrategyInput:
     routing_state: RoutingState | None = None
 
     #: Live decision recorder. It is absent for backtests and ordinary strategies.
+    #:
+    #: When present, ``decide_trades()`` owns its explicit ``begin()``,
+    #: ``record()``, and ``finish()`` / ``fail()`` lifecycle. The recorder is a
+    #: diagnostic side channel: it must not alter trade selection or state.
     recorder: DecisionRecorder | None = None
 
     #: Authoritative state path used to correlate recorder rows with state.
+    #:
+    #: The recorder stores this path and small position/trade identifiers only;
+    #: executor state remains the sole state serialisation authority.
     state_path: Path | None = None
 
     def get_position_manager(self) -> PositionManager:
@@ -1069,5 +1076,4 @@ def _calculate_and_cache_candle_width_df(df: pd.DatetimeIndex | pd.Series) -> pd
         return time_bucket.to_pandas_timedelta()
 
     return _calculate_and_cache_candle_width(df.index)
-
 

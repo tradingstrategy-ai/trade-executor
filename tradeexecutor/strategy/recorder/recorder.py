@@ -1,4 +1,13 @@
-"""Explicit live decision recording for strategy modules."""
+"""Explicit lifecycle for recording live strategy decisions.
+
+The framework creates :class:`DecisionRecorder` only for live v0.5 pandas
+strategies that enable ``Parameters.record_strategy_inputs``. The strategy owns
+the lifecycle: call :meth:`DecisionRecorder.begin` before calculations, record
+zero or more explicit observations, then call :meth:`DecisionRecorder.finish`
+or :meth:`DecisionRecorder.fail`. The recorder writes decision inputs and
+research diagnostics only; it neither selects trades nor mutates executor
+state.
+"""
 
 from __future__ import annotations
 
@@ -31,7 +40,8 @@ def _model_projection(model: Any) -> dict[str, Any]:
 
     Runtime models commonly expose caches and API responses as dictionaries or
     lists. Deliberately skip all containers before serialising them so a model
-    projection never turns into an accidental API archive.
+    projection never turns into an accidental API archive. The projection
+    schema is ``implementation`` plus public scalar ``values``.
     """
 
     values: dict[str, Any] = {}
@@ -51,7 +61,11 @@ def _model_projection(model: Any) -> dict[str, Any]:
 
 
 def _open_position_references(strategy_input: "StrategyInput") -> list[dict[str, Any]]:
-    """Return state-file references for open positions without copying state."""
+    """Return position, pair, and trade identifiers without copying state.
+
+    These references let a researcher join a decision with the authoritative
+    state file while keeping the recorder independent of state serialisation.
+    """
 
     portfolio = getattr(getattr(strategy_input, "state", None), "portfolio", None)
     if portfolio is None:
@@ -136,7 +150,14 @@ class DecisionRecorder:
         self._sequence = 0
 
     def begin(self, strategy_input: "StrategyInput") -> "DecisionRecorder":
-        """Persist immutable input references before one live decision starts."""
+        """Persist immutable inputs and start one live decision.
+
+        Captures parameters, execution context, constructed universe, indicator
+        fingerprints, selected model projections, limited Web3 identity,
+        ``other_data``, and state references before strategy calculations run.
+        Raises if a decision is already active, recorder use is not live, or an
+        input cannot be serialised.
+        """
 
         if self.invocation_id is not None:
             raise RuntimeError("Cannot begin a decision while another decision is active")
@@ -210,7 +231,21 @@ class DecisionRecorder:
         return self
 
     def record(self, kind: str, name: str, value: Any, **kwargs: Any) -> None:
-        """Append one serialisable, decision-relevant observation."""
+        """Append one serialisable, decision-relevant observation.
+
+        :param kind:
+            Stable observation category, for example ``signal`` or
+            ``allocation``.
+        :param name:
+            Stable observation name within ``kind``.
+        :param value:
+            Decision-relevant value to record.
+        :param kwargs:
+            Optional :func:`observation` fields such as ``pair_key``,
+            ``arguments``, ``source_at``, ``state_refs``, and ``provenance``.
+        :raises RuntimeError:
+            If no decision has been started with :meth:`begin`.
+        """
 
         self._require_active_decision()
         self._observations.append(
@@ -226,7 +261,12 @@ class DecisionRecorder:
         self._sequence += 1
 
     def finish(self, trades: Iterable["TradeExecution"] | None = None) -> None:
-        """Mark the active decision complete and flush it to the recorder file."""
+        """Mark the active decision complete, record trade IDs, and checkpoint.
+
+        :param trades:
+            Trades returned from this decision. Only their existing state trade
+            identifiers are stored; trade data remains in the state file.
+        """
 
         invocation_id = self._require_active_decision()
         trade_ids = [
@@ -239,7 +279,13 @@ class DecisionRecorder:
         self.invocation_id = None
 
     def fail(self, error: Exception) -> None:
-        """Mark the active decision failed, preserve its observations, and flush."""
+        """Mark the active decision failed, preserve observations, and checkpoint.
+
+        :param error:
+            Exception raised by the decision. Its class name and a bounded
+            message are recorded, after which the original exception continues
+            through normal strategy error handling.
+        """
 
         if self.invocation_id is None:
             return

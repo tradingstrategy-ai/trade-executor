@@ -1,4 +1,13 @@
-"""Indicator definitions and result fingerprints."""
+"""Indicator-record schema for a decision-input recorder.
+
+The recorder retains enough information to identify every calculated indicator
+without copying its potentially large result series. Each ``indicator`` object
+contains its definition, parameters, pair key, source, dependency order,
+function hashes where source is available, cache metadata, and a fingerprint of
+the result. The fingerprint stores its hash, length, shape, non-null count,
+schema, first/last index, and temporal range. It intentionally omits raw
+indicator values; constructed-universe frames are captured separately.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +22,12 @@ from tradeexecutor.strategy.recorder.serialisation import canonical_json, encode
 
 
 def _fingerprint(data: pd.DataFrame | pd.Series) -> dict[str, Any]:
-    """Return reproducibility metadata without storing indicator values."""
+    """Return a result fingerprint without storing raw indicator values.
+
+    The returned JSON object has ``sha256``, row ``length``, ``shape``,
+    ``non_null_count``, frame ``schema``, first/last source index, and the
+    earliest/latest datetime index values when the result has one.
+    """
 
     schema, chunks = encode_frame_chunks(data)
     value = {"schema": schema, "chunks": [chunk["payload"] for chunk in chunks]}
@@ -53,7 +67,19 @@ def capture_indicators(
     *,
     inputs: list[dict[str, str]] | None = None,
 ) -> list[dict[str, str]]:
-    """Store definitions and fingerprints for every calculated indicator."""
+    """Store definition and fingerprint objects for all calculated indicators.
+
+    :param indicators:
+        Current :class:`StrategyInputIndicators
+        <tradeexecutor.strategy.pandas_trader.strategy_input.StrategyInputIndicators>`.
+    :param put_object:
+        Content-addressed object writer supplied by :class:`RecorderStorage`.
+    :param inputs:
+        Object references on which each indicator depends, currently the
+        decision's constructed-universe object.
+    :return:
+        ``{"object": <sha256>}`` references in indicator-result-map order.
+    """
 
     refs = []
     for key, result in indicators.indicator_results.items():

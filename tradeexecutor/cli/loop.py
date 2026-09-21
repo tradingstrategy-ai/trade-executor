@@ -2047,6 +2047,10 @@ class ExecutionLoop:
         :raise:
             Any exception thrown from this function should be considered as live execution error,
             not a start up error.
+
+        The runner is always closed before returning or propagating an error.
+        This releases optional resources such as the live decision recorder's
+        DuckDB connection on a normal stop, unit-test early stop, or failure.
         """
         # TODO: Refactor
         try:

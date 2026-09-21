@@ -91,10 +91,10 @@ and state-file copies. It does not reconstruct or replay a decision.
 
 ## Operational constraints
 
-The database is append-only: its size grows as live decisions add new universe
-or indicator content. Monitor it as part of the executor's normal disk-space
-operations. DuckDB has a single writer, so do not run overlapping executors
-with the same `EXECUTOR_ID` and recorder file.
+The database retains decision history and grows as live decisions add new
+universe or indicator content. Monitor it as part of the executor's normal
+disk-space operations. DuckDB has a single writer, so do not run overlapping
+executors with the same `EXECUTOR_ID` and recorder file.
 
 ## Inspect a completed run
 

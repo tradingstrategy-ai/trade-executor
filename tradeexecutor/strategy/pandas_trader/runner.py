@@ -47,7 +47,18 @@ class PandasTraderRunner(StrategyRunner):
             recorder: DecisionRecorder | None = None,
             state_path: Path | None = None,
             **kwargs
-    ):
+    ) -> None:
+        """Create a pandas strategy runner.
+
+        :param recorder:
+            Optional live-only decision recorder shared with each
+            :class:`StrategyInput` passed to ``decide_trades()``. It is closed
+            by :meth:`close` when the execution loop exits.
+        :param state_path:
+            Authoritative executor state path retained in recorder decisions for
+            correlation, without copying state into the recorder database.
+        """
+
         super().__init__(*args, **kwargs)
         self.decide_trades = decide_trades
         self.max_data_age = max_data_age

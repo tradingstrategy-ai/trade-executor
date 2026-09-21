@@ -1,4 +1,16 @@
-"""Capture the constructed strategy universe without mutating it."""
+"""Constructed-universe schema for a decision-input recorder.
+
+The recorder captures the universe that actually reached ``decide_trades()``,
+not the full remote API response that was used to build it. One ``universe``
+object contains strategy and data-universe metadata, reserve assets, normalised
+pair identifiers and metadata, relevant vault specifications, and manifests for
+data frames. Each frame is split into content-addressed ``frame_chunk`` objects
+so unchanged chunks are deduplicated across decisions.
+
+Capture deliberately serialises copies of mutable domain objects. In particular,
+some pair ``to_dict()`` encoders mutate ``other_data``; the serialisation helper
+protects the live universe from that side effect.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +28,12 @@ def _frame_capture(
     frame: pd.DataFrame | pd.Series,
     put_object: ObjectWriter,
 ) -> dict[str, Any]:
-    """Store a dataframe in content-addressed chunks and return its manifest."""
+    """Store a dataframe in content-addressed chunks and return its manifest.
+
+    The manifest stores frame schema, row count, and each chunk reference with
+    its original row positions. Chunks store only data values; schema is held
+    once in the parent manifest.
+    """
 
     schema, chunks = encode_frame_chunks(frame)
     refs = []
@@ -27,7 +44,12 @@ def _frame_capture(
 
 
 def _capture_vault_specs(specs: Any) -> Any:
-    """Capture the serialisable vault specification fields used by the universe."""
+    """Capture serialisable vault fields used by universe selection.
+
+    This is a curated decision-data projection: identity, token, fee, TVL,
+    issuance, protocol, and deposit/redemption availability metadata are kept,
+    while full provider responses and arbitrary client caches are excluded.
+    """
     if specs is None:
         return None
     if hasattr(specs, "iterate_vaults"):
@@ -66,7 +88,15 @@ def _capture_vault_specs(specs: Any) -> Any:
 
 
 def capture_universe(universe: Any, put_object: ObjectWriter) -> dict[str, str]:
-    """Store the constructed universe and its decision-time data frames."""
+    """Store the constructed decision universe and its data-frame manifests.
+
+    :param universe:
+        Universe passed to the active strategy decision.
+    :param put_object:
+        Content-addressed object writer supplied by :class:`RecorderStorage`.
+    :return:
+        ``{"object": <sha256>}`` reference to the parent ``universe`` object.
+    """
 
     data = universe.data_universe
     pairs = []

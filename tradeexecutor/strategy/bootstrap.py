@@ -116,6 +116,15 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             state_path: Path | None = None,
             strategy_id: str | None = None,
             **kwargs) -> StrategyExecutionDescription:
+        """Build the managed-positions runner for one execution loop.
+
+        :param state_path:
+            Persistent executor state path. A live strategy that enables
+            ``record_strategy_inputs`` writes its recorder database beside it.
+        :param strategy_id:
+            Executor identifier used for the recorder filename and run metadata.
+            The strategy file stem is used when the caller has no identifier.
+        """
 
         # Migration assert
         assert run_state, "run_state needs to be passed for new strategies"

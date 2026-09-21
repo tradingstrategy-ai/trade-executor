@@ -1,7 +1,16 @@
-"""Stable JSON values used by the strategy-input recorder.
+"""Stable JSON schema used by the strategy-input recorder.
 
-The state serialiser remains the authority for state files.  This module only
-adds exact representations needed for research inputs and pandas data.
+The state serialiser remains authoritative for executor state files. This module
+only provides exact, deterministic JSON values for recorder inputs and pandas
+data. It never reconstructs domain objects or replaces state serialisation.
+
+Scalar values retain otherwise lossy types with explicit ``$type`` tags:
+``decimal``, ``timestamp_ns``, ``datetime``, ``date``, ``timedelta_ns``,
+``missing``, ``numpy_scalar``, ``tuple``, ``set``, and ``mapping``. The encoder
+sorts values whose native order is unstable, and :func:`canonical_json` sorts
+object keys, so content hashes are repeatable. Data frames and series use a
+separate schema plus row chunks; callers must not pass them to
+:func:`to_json_value` directly.
 """
 
 from __future__ import annotations
@@ -26,7 +35,7 @@ from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 
 
 def _domain_to_dict(value: Any) -> Any:
-    """Use an existing dataclasses-json codec when a domain object supplies one."""
+    """Use an existing dataclasses-json codec without mutating the source object."""
     patch_dataclasses_json()
     candidate = copy.copy(value)
     # TradingPairIdentifier's custom encoder deletes transient keys in-place.
@@ -43,7 +52,11 @@ def _domain_to_dict(value: Any) -> Any:
 
 
 def to_json_value(value: Any) -> Any:
-    """Convert a supported Python value into deterministic, exact JSON data."""
+    """Convert a supported Python value into deterministic, exact JSON data.
+
+    Raises :class:`TypeError` for frames, arrays, and unsupported object types
+    rather than silently recording an incomplete decision input.
+    """
     if isinstance(value, Enum):
         return {"$type": "enum", "class": f"{value.__class__.__module__}.{value.__class__.__qualname__}", "value": to_json_value(value.value)}
     if value is None or isinstance(value, (bool, str, int)):
@@ -110,7 +123,7 @@ def to_json_value(value: Any) -> Any:
 
 
 def canonical_json(value: Any) -> str:
-    """Return canonical JSON suitable for hashing and DuckDB JSON columns."""
+    """Return canonical JSON suitable for hashes and DuckDB ``JSON`` columns."""
     return json.dumps(
         to_json_value(value),
         sort_keys=True,
@@ -128,7 +141,11 @@ def content_hash(kind: str, schema_version: int, payload: Any) -> str:
 
 
 def decode_json_value(value: Any) -> Any:
-    """Decode recorder tags without importing arbitrary classes."""
+    """Decode recorder type tags without importing arbitrary application classes.
+
+    This is an inspection helper only. It cannot recreate domain objects or a
+    strategy decision from a recorder database.
+    """
     if isinstance(value, list):
         return [decode_json_value(v) for v in value]
     if not isinstance(value, dict):
@@ -158,7 +175,11 @@ def decode_json_value(value: Any) -> Any:
 
 
 def frame_schema(frame: pd.DataFrame | pd.Series) -> dict[str, Any]:
-    """Describe frame labels and dtypes without embedding its values."""
+    """Describe a pandas frame's container, labels, index, and dtypes.
+
+    Values are written by :func:`encode_frame_chunks`; this schema is held once
+    in the parent universe or indicator fingerprint object.
+    """
 
     def dtype_schema(dtype: Any) -> dict[str, Any]:
         descriptor = {"name": str(dtype), "kind": getattr(dtype, "kind", None)}
@@ -211,7 +232,16 @@ def encode_frame_chunks(
     frame: pd.DataFrame | pd.Series,
     chunk_size: int = 2_048,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Encode a frame into placement-independent content chunks."""
+    """Encode a frame into a schema and placement-independent row chunks.
+
+    :param frame:
+        Data frame or series to capture.
+    :param chunk_size:
+        Maximum number of rows in each returned chunk.
+    :return:
+        Schema and chunk dictionaries. Each chunk has ``start``, ``count``, and
+        a JSON-ready ``payload`` containing index values and row values.
+    """
     if isinstance(frame, pd.Series):
         frame = frame.to_frame()
     schema = frame_schema(frame)

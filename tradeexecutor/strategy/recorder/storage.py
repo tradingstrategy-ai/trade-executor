@@ -1,6 +1,8 @@
 """DuckDB schema and writer for live strategy-decision records.
 
-The recorder database is append-only and has three version-1 tables:
+The recorder database retains decision history in three version-1 tables. Run
+and object rows are append-only; a decision row is created as ``started`` and
+updated once to its terminal lifecycle state:
 
 ``runs``
     One row per executor process. :meth:`RecorderStorage.start_run` creates it
@@ -46,14 +48,28 @@ from eth_defi.compat import native_datetime_utc_now
 from tradeexecutor.strategy.recorder.serialisation import canonical_json, content_hash
 
 def validate_recorder_strategy_id(strategy_id: str) -> str:
-    """Validate the executor ID before using it in a recorder filename."""
+    """Validate the executor ID before using it in a recorder filename.
+
+    :param strategy_id:
+        Executor identifier selected by live CLI bootstrap.
+    :return:
+        The unchanged validated identifier.
+    :raises ValueError:
+        If the identifier is empty or cannot form a single safe filename.
+    """
     if not strategy_id or strategy_id in {".", ".."} or not re.fullmatch(r"[A-Za-z0-9_.-]+", strategy_id):
         raise ValueError(f"Unsafe recorder strategy ID: {strategy_id!r}")
     return strategy_id
 
 
 class RecorderStorage:
-    """Single-process writer for a strategy input recorder database."""
+    """Single-process writer for the versioned recorder DuckDB schema.
+
+    One instance owns one read-write DuckDB attachment. The higher-level
+    :class:`DecisionRecorder` serialises lifecycle calls; this class provides
+    content-addressed object writes, decision row transitions, checkpoints, and
+    idempotent close behaviour.
+    """
 
     def __init__(self, path: Path) -> None:
         """Open ``path``, create the version-1 schema, and validate it."""
@@ -233,7 +249,11 @@ class RecorderStorage:
         self.connection.execute("CHECKPOINT")
 
     def close(self) -> None:
-        """Checkpoint and close this writer exactly once."""
+        """Checkpoint and close this writer exactly once.
+
+        This method is safe when both the normal decision lifecycle and an
+        execution-loop ``finally`` path attempt to close the recorder.
+        """
 
         if self._closed:
             return
