@@ -69,6 +69,9 @@ def anvil_ethereum(anvil_fork_pool: AnvilForkPool) -> AnvilLaunch:
         JSON_RPC_ETHEREUM,
         ETHEREUM_MIDNIGHT_BLOCK,
         unlocked_addresses=[USDC_WHALE[1]],
+        # This transaction-heavy fork is reused after other Lagoon deployments.
+        # Drain Anvil output so its subprocess pipe cannot fill and block RPC.
+        inherit_stdio=True,
     )
     snapshot = evm_snapshot_revert(launch)
     next(snapshot)

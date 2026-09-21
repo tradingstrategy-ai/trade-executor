@@ -206,10 +206,10 @@ class TradeFlag(enum.Enum):
     #: duplicate-clone close from dust closes and other repair flows.
     hypercore_duplicate_close = "hypercore_duplicate_close"
 
-    #: Manual movement of capital between a reserve and an external account.
+    #: Movement of capital between a reserve and an external account.
     #:
-    #: The trade is managed by an operator command around a physical custody
-    #: movement. It must not enter the normal routing path.
+    #: The trade is either an operator diagnostic or an automatic custody
+    #: movement routed by a protocol-specific execution model.
     external_account_transfer = "external_account_transfer"
 
     #: If there is an existing open position, do not try to match the trade for an open position.
@@ -944,6 +944,8 @@ class TradeExecution:
 
         - :py:meth:`get_action_verb`
         """
+        if self.pair.is_exchange_account():
+            return f"{self.get_action_verb()} #{self.trade_id}"
         pricing_pair = self.pair.get_pricing_pair()
         if pricing_pair:
             token = pricing_pair.base.token_symbol
@@ -1090,19 +1092,25 @@ class TradeExecution:
         return self.get_status() in (TradeStatus.broadcasted,)
 
     def is_external_account_transfer_pending(self) -> bool:
-        """Return whether a manual external-account transfer is in flight.
+        """Return whether an external-account transfer is in flight.
 
         Unlike routed trades, an external-account withdrawal may wait for an
-        off-chain protocol delay before the Safe receives its USDC. Keep this
-        narrow predicate separate from :py:meth:`is_unfinished` so the legacy
-        lifecycle semantics for all other trades remain unchanged.
+        off-chain protocol delay before the Safe receives its USDC. A failed
+        transfer also stays blocked until an operator reconciles its external
+        custody, unless the exchange definitively rejected the request before
+        moving funds. Keep this predicate separate from
+        :py:meth:`is_unfinished` so the legacy lifecycle semantics for all
+        other trades remain unchanged.
         """
+        if self.other_data.get("outcome") == "withdrawal_rejected":
+            return False
         return (
             TradeFlag.external_account_transfer in (self.flags or set())
             and self.get_status() in (
                 TradeStatus.planned,
                 TradeStatus.started,
                 TradeStatus.broadcasted,
+                TradeStatus.failed,
             )
         )
 
@@ -1501,6 +1509,12 @@ class TradeExecution:
         close_order_bump = 100_000_000
         vault_order_bump = 50_000_000
         reduce_order_bump = 40_000_000
+        exchange_withdrawal_order_bump = 60_000_000
+        exchange_deposit_order_bump = 10_000_000
+        if TradeFlag.external_account_transfer in (self.flags or set()):
+            if self.is_sell():
+                return -self.trade_id - exchange_withdrawal_order_bump
+            return self.trade_id + exchange_deposit_order_bump
         if self.pair.is_cctp_bridge():
             if self.is_sell():
                 # Bridge-backs: after spot sells (-40M), before bridge-outs.

@@ -1435,6 +1435,11 @@ class TradingPosition(GenericPosition):
             # Already closed
             return False
 
+        if self.is_exchange_account():
+            # The synthetic account remains available for future deposits after
+            # a full withdrawal. Its zero quantity is not a closed position.
+            return False
+
         epsilon = self.get_close_epsilon()
 
         quantity = self.get_quantity()

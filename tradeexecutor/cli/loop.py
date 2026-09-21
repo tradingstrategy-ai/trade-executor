@@ -1339,9 +1339,6 @@ class ExecutionLoop:
             "live_cycle",
             live_cycle_max_delay)
 
-        # Do not allow starting a strategy that has unclean state
-        state.check_if_clean()
-
         logger.trade("The execution state was last saved %s", state.last_updated_at)
 
         if self.is_live_trading_unit_test():
@@ -1369,6 +1366,11 @@ class ExecutionLoop:
         assert execution_context, "ExecutionContext missing"
 
         universe = self.warm_up_live_trading()
+
+        # Interrupted exchange-account transfers fail closed at start-up.
+        # Use check-accounts, correct-accounts, or repair to reconcile an
+        # already-mined transaction without submitting another transfer.
+        state.check_if_clean()
 
         # Set up web server chart exports
         if self.create_charts:

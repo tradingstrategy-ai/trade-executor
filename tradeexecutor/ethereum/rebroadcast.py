@@ -48,6 +48,10 @@ def rebroadcast_all(
         # Skip CCTP in-transit trades: they have a dedicated retry path
         if t.get_status() == TradeStatus.cctp_in_transit:
             continue
+        # Exchange-account transfers may have an off-chain withdrawal phase.
+        # Recovery commands only reconcile their recorded receipts.
+        if t.is_external_account_transfer_pending():
+            continue
         if t.is_unfinished() and not t.is_failed():
             logger.info("Marking trade %s for rebroadcast", t)
             assert t.blockchain_transactions, f"Trade marked unfinished, did not have any txs: {t}"

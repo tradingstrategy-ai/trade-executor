@@ -175,6 +175,11 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 - Always use global, level imports, unless facing circular import exception. NEVER USE FUNCTION LOCAL IMPORTS UNLESS TOLD SO OR ABSOLUTE NECESSARAY TO AVOID CIRCULAR IMPORTS.
 - Using `assert` is ok, we never run with `python -O` 
 
+### CLI configuration
+
+- Parse command-line options and environment variables only at Typer command entry points such as `start.py`; use `bootstrap.py` patterns as the reference.
+- Pass parsed settings to lower layers explicitly, either as individual parameters or a small typed dataclass. Do not write parsed values back to `os.environ`, read environment variables from loops, routers, execution models, or use module-level mutable configuration.
+
 ### Enum
 
 - For string enums, both members and values must in snake_case
@@ -186,7 +191,7 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 - Use `pytest.approx()` to compare values of data and money `assert abs(aave_total_pnl - 96.6087) < 0.01` 
 - Don't use logger.info() or logger.debug() inside test and fixture function bodies unless specifically asked
 - Do not do excessive number of tests. Prefer one test for happy path and one test for bad path. Do several asserts within a single test case to have test coverage, but keeping the number of tests low.
-- Always use pytest timeout and chat timeout when running tests. Use 5 minutes timeout unless you are running the full test suite.
+- Add a pytest timeout marker only to tests known to be long-running or prone to hanging. Always use an appropriate command/chat timeout when running tests; use 5 minutes unless you are running the full test suite.
 - Akk tests must have docstring
 - Docstring must stell what is being tested and why
 - Docstring must have 1, 2, 3, N style ordered list of steps the test is taking, up to the hig level actions in the test. These steps must then repeat as line comments within the test body.

@@ -781,7 +781,13 @@ class State:
 
         # Allocate reserve capital for this trade.
         # Reserve capital cannot be double spent until the trades are executed.
-        if trade.pair.is_cctp_bridge():
+        if TradeFlag.external_account_transfer in (trade.flags or set()):
+            if trade.is_buy():
+                self.portfolio.move_capital_from_reserves_to_spot_trade(
+                    trade,
+                    underflow_check=underflow_check,
+                )
+        elif trade.pair.is_cctp_bridge():
             # CCTP bridge trades spend from source chain reserves
             if trade.is_buy():
                 self.portfolio.move_capital_from_reserves_to_spot_trade(trade, underflow_check=underflow_check)
@@ -913,7 +919,12 @@ class State:
 
         position = self.portfolio.find_position_for_trade(trade, pending=True)
 
-        if trade.is_spot():
+        is_exchange_transfer = (
+            trade.pair.is_exchange_account()
+            and TradeFlag.external_account_transfer in (trade.flags or set())
+        )
+
+        if trade.is_spot() or is_exchange_transfer:
             if trade.is_buy():
                 assert executed_amount and executed_amount > 0, f"Executed amount was {executed_amount}"
             else:
@@ -978,11 +989,8 @@ class State:
 
             position.loan = trade.executed_loan_update
 
-        # Update share price running state for spot/vault positions.
-        # Exchange account positions are excluded: their placeholder trades
-        # don't represent real capital. Share price state is initialised
-        # from the first valuation balance update instead (see ExchangeAccountValuator).
-        if position.is_spot() or position.is_vault():
+        # Update share price running state for positions representing capital.
+        if position.is_spot() or position.is_vault() or is_exchange_transfer:
             from tradeexecutor.strategy.position_internal_share_price import (
                 create_share_price_state,
                 update_share_price_state,
@@ -996,7 +1004,13 @@ class State:
                     trade,
                 )
 
-        if (trade.is_spot() or trade.is_vault()) and trade.is_sell():
+        if is_exchange_transfer and trade.is_sell():
+            self.portfolio.adjust_reserves(
+                trade.reserve_currency,
+                executed_reserve,
+                reason=f"Returned cash from exchange account transfer #{trade.trade_id}",
+            )
+        elif (trade.is_spot() or trade.is_vault()) and trade.is_sell():
             # For satellite chain trades, return capital to bridge position
             bridge_position = self.portfolio.get_bridge_position_for_chain(trade.pair.chain_id)
             if bridge_position is None and trade.pair.quote != trade.reserve_currency:
@@ -1081,10 +1095,15 @@ class State:
                     trade.paid_interest = position.loan.repay_interest()
 
         else:
+            trade_label = (
+                f"exchange account transfer #{trade.trade_id}"
+                if trade.pair.is_exchange_account()
+                else trade.get_short_label()
+            )
             logger.info(
                 "Position #%d still open after a trade: %s, quantity: %s, quantity w/planning: %s",
                 position.position_id,
-                trade.get_short_label(),
+                trade_label,
                 position.get_quantity(),
                 position.get_quantity(planned=True),
             )
@@ -1106,6 +1125,12 @@ class State:
         caller—including startup repair—preserves the no-double-spend invariant.
         """
         trade.mark_failed(failed_at)
+        if TradeFlag.external_account_transfer in (trade.flags or set()):
+            # A deposit may have left the Safe even if its final receipt was
+            # not observed. Keep the allocation until account reconciliation.
+            if trade.is_buy():
+                trade.other_data["retain_reserve_allocation_on_failure"] = True
+            return
         if trade.is_buy():
             retain_reserve_allocation = (
                 trade.other_data.get("retain_reserve_allocation_on_failure", False)

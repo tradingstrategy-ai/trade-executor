@@ -23,6 +23,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.vault.base import VaultSpec
 from eth_defi.velvet import VelvetVault
 from tradeexecutor.ethereum.lagoon.execution import LagoonExecution
+from tradeexecutor.ethereum.lighter.lighter_routing import LighterRoutingConfig
 from tradeexecutor.ethereum.lagoon.vault import (
     LagoonVaultSyncModel,
     fetch_lagoon_guard_v0_settlement_metadata,
@@ -210,6 +211,7 @@ def create_execution_model(
     sync_model: SyncModel,
     min_gas_balance: Optional[Decimal],
     mainnet_fork=False,
+    lighter_routing_config: LighterRoutingConfig | None = None,
 ):
     """Set up the code transaction building logic.
 
@@ -232,6 +234,7 @@ def create_execution_model(
             max_slippage=max_slippage,
             min_balance_threshold=min_gas_balance,
             mainnet_fork=mainnet_fork,
+            lighter_routing_config=lighter_routing_config,
         )
         valuation_model_factory = GenericValuationModelFactory()
         pricing_model_factory = EthereumGenericPricingFactory(sync_model.web3)
@@ -674,6 +677,7 @@ def create_execution_and_sync_model(
     unit_testing: bool = False,
     token_cache: "TokenDiskCache | None" = None,
     deployment_file: "Path | None" = None,
+    lighter_routing_config: LighterRoutingConfig | None = None,
 ) -> Tuple[ExecutionModel, SyncModel, ValuationModelFactory, PricingModelFactory]:
     """Set up the wallet sync and execution mode for the command line client."""
 
@@ -733,6 +737,7 @@ def create_execution_and_sync_model(
                 min_gas_balance=min_gas_balance,
                 mainnet_fork=web3config.is_mainnet_fork(),
                 sync_model=sync_model,
+                lighter_routing_config=lighter_routing_config,
             )
         )
 

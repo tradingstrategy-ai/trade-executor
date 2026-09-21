@@ -54,6 +54,10 @@ def default_match_router(
             router_name="freqtrade",
         )
     elif pair.is_exchange_account():
+        if pair.get_exchange_account_protocol() == "lighter":
+            return ProtocolRoutingId(
+                router_name="lighter",
+            )
         return ProtocolRoutingId(
             router_name="exchange_account",
         )
@@ -121,6 +125,13 @@ def default_supported_routers(strategy_universe: TradingStrategyUniverse) -> Set
         pair.is_hyperliquid_vault()
         for pair in strategy_universe.iterate_pairs()
     )
+
+    if any(
+        pair.is_exchange_account()
+        and pair.get_exchange_account_protocol() == "lighter"
+        for pair in strategy_universe.iterate_pairs()
+    ):
+        configs.add(ProtocolRoutingId(router_name="lighter"))
 
     vaults_done = False
     hypercore_vault_done = False
