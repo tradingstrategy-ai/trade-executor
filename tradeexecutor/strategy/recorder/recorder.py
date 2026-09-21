@@ -105,6 +105,39 @@ class DecisionRecorder:
     boundary: call :meth:`begin`, zero or more :meth:`record` calls, then
     :meth:`finish` or :meth:`fail`. One instance covers one executor process
     and accepts only one active decision at a time.
+
+    Strategies should not construct a recorder themselves. Enable
+    ``Parameters.record_strategy_inputs`` and wrap the live decision callback::
+
+        def decide_trades(input: StrategyInput) -> list[TradeExecution]:
+            recorder = input.recorder
+            if recorder is None:
+                return _decide_trades(input)
+
+            recorder.begin(input)
+            try:
+                trades = _decide_trades(input)
+                recorder.finish(trades)
+                return trades
+            except Exception as error:
+                recorder.fail(error)
+                raise
+
+        def _decide_trades(input: StrategyInput) -> list[TradeExecution]:
+            candidate_scores = calculate_candidate_scores(input)
+            if input.recorder is not None:
+                input.recorder.record("calculation", "candidate_scores", candidate_scores)
+            return create_trades(input, candidate_scores)
+
+    The ``recorder is None`` branch preserves the ordinary backtest and
+    non-recording call paths. :meth:`fail` persists failure diagnostics but does
+    not consume the exception, so the callback must re-raise it.
+
+    See ``strategy/hyper-ai-v8.py`` in the strategies repository for a real
+    strategy integration. See
+    ``strategies/test_only/strategy_input_recorder.py`` for the minimal test
+    strategy and ``tests/cli/test_cli_strategy_input_recorder.py`` for its
+    end-to-end Typer call site.
     """
 
     def __init__(
