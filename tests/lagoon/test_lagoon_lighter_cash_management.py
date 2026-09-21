@@ -236,7 +236,11 @@ def test_cli_lagoon_lighter_cash_management_uses_normal_pipeline(
         side_effect=fetch_equity,
     )
     mocker.patch(
-        "tradeexecutor.ethereum.lighter.lighter_routing.wait_for_lighter_collateral",
+        "tradeexecutor.ethereum.lighter.transfer_verification.fetch_lighter_total_equity",
+        side_effect=fetch_equity,
+    )
+    mocker.patch(
+        "tradeexecutor.ethereum.lighter.transfer_verification.wait_for_lighter_collateral",
         side_effect=wait_for_collateral,
     )
     environment = {
