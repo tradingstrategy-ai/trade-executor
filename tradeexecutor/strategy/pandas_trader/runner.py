@@ -12,7 +12,6 @@ import datetime
 from pathlib import Path
 import textwrap
 from io import StringIO
-from typing import List, Optional
 import logging
 
 import pandas as pd
@@ -113,7 +112,7 @@ class PandasTraderRunner(StrategyRunner):
         indicators:StrategyInputIndicators | None = None,
         routing_state: RoutingState = None,
         routing_model: RoutingModel = None,
-        ) -> List[TradeExecution]:
+        ) -> list[TradeExecution]:
         """Prepare inputs and invoke the strategy for one executor cycle.
 
         The live or backtest execution loop calls this after treasury sync and
@@ -343,7 +342,7 @@ class PandasTraderRunner(StrategyRunner):
         cycle: int,
         universe: TradingStrategyUniverse,
         state: State,
-        trades: List[TradeExecution],
+        trades: list[TradeExecution],
         debug_details: dict
     ):
         """Strategy admin helpers to understand a live running strategy.

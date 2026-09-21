@@ -9,8 +9,6 @@ them without adding generic framework hooks. The recorder writes research
 diagnostics only; it neither selects trades nor mutates executor state.
 """
 
-from __future__ import annotations
-
 import datetime
 import platform
 from collections.abc import Iterable

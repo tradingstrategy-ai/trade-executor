@@ -40,8 +40,6 @@ table shape when a file is reopened, and checkpoints completed decisions so
 they are inspectable from another DuckDB connection.
 """
 
-from __future__ import annotations
-
 import datetime
 import re
 from pathlib import Path

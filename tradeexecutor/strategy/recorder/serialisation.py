@@ -17,8 +17,6 @@ separate schema plus row chunks; callers must not pass them to
 :func:`to_json_value` directly.
 """
 
-from __future__ import annotations
-
 import copy
 import dataclasses
 import datetime

@@ -18,9 +18,8 @@ calculations so later analysis sees the exact eligible data set rather than a
 newly downloaded approximation.
 """
 
-from __future__ import annotations
-
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import pandas as pd
 

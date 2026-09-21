@@ -10,7 +10,6 @@ See :py:mod:`strategy_module` instead.
 import logging
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Optional
 
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.default_routing_options import TradeRouting

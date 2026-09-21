@@ -16,8 +16,6 @@ indicator implementation and result range informed a decision, even though the
 recorder is not a replay engine.
 """
 
-from __future__ import annotations
-
 import hashlib
 import inspect
 from collections.abc import Callable
