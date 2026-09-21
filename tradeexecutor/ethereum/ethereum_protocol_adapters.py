@@ -18,8 +18,8 @@ from eth_defi.lighter.constants import LIGHTER_ETHEREUM_DEPLOYMENT_CHAIN_ID, LIG
 from eth_defi.lighter.session import create_lighter_session
 from tradeexecutor.ethereum.routing_data import base_uniswap_v3_address_map
 from tradeexecutor.ethereum.lighter.lighter_routing import (
-    DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
     LighterRouting,
+    LighterRoutingConfig,
 )
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 from tradeexecutor.exchange_account.lighter import (
@@ -777,22 +777,29 @@ def create_lighter_adapter(
     routing_id: ProtocolRoutingId,
     reserve_token_address: str,
     web3: Web3 | None = None,
+    routing_config: LighterRoutingConfig | None = None,
 ) -> ProtocolRoutingConfig:
-    """Create the Lighter custody-transfer router and public valuator."""
+    """Create the Lighter custody-transfer router and public valuator.
+
+    :param routing_id:
+        Generic-router identifier for the Lighter exchange account.
+    :param reserve_token_address:
+        USDC reserve token address shared by Safe and Lighter.
+    :param web3:
+        Optional chain reader used to anchor valuations to a block.
+    :param routing_config:
+        Optional private withdrawal settings parsed at the CLI boundary.
+    :return:
+        Lighter routing, pricing, and valuation models.
+    """
     assert routing_id.router_name == "lighter"
     session = create_lighter_session()
     account_value_func = create_lighter_account_value_func(session)
     pricing_model = ExchangeAccountPricingModel(account_value_func)
     valuation_model = ExchangeAccountValuator(pricing_model, web3=web3)
-    timeout = int(
-        os.environ.get(
-            "LIGHTER_WITHDRAWAL_TIMEOUT",
-            str(DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS),
-        )
-    )
     routing_model = LighterRouting(
         reserve_token_address,
-        withdrawal_timeout=timeout,
+        config=routing_config,
         session=session,
     )
     return ProtocolRoutingConfig(
@@ -869,6 +876,7 @@ class EthereumPairConfigurator(PairConfigurator):
         web3config: "Web3Config | None" = None,
         satellite_vaults: dict | None = None,
         execution_model=None,
+        lighter_routing_config: LighterRoutingConfig | None = None,
     ):
         """Initialise pair configuration.
 
@@ -902,6 +910,9 @@ class EthereumPairConfigurator(PairConfigurator):
             ``satellite_vaults`` are extracted from it as fallbacks
             (explicit kwargs still take priority).
             Required when the universe contains GMX exchange account pairs.
+
+        :param lighter_routing_config:
+            Optional private Lighter withdrawal settings parsed at the CLI boundary.
         """
 
         assert isinstance(web3, Web3)
@@ -915,6 +926,7 @@ class EthereumPairConfigurator(PairConfigurator):
         self.account_value_func = account_value_func or getattr(execution_model, "account_value_func", None)
         self.satellite_vaults = satellite_vaults or getattr(execution_model, "satellite_vaults", None) or {}
         self.hypercore_market_data_source = hypercore_market_data_source or getattr(execution_model, "hypercore_market_data_source", None)
+        self.lighter_routing_config = lighter_routing_config or getattr(execution_model, "lighter_routing_config", None)
         self.vault_valuation_func = None
         self.vault_deposit_asset_override = None
         self.vault_simulate_redemption_with_liquidity = False
@@ -1137,7 +1149,12 @@ class EthereumPairConfigurator(PairConfigurator):
             return create_exchange_account_adapter(routing_id, self.account_value_func, web3=self.web3)
         elif routing_id.router_name == "lighter":
             reserve = self.strategy_universe.get_reserve_asset()
-            return create_lighter_adapter(routing_id, reserve.address, web3=self.web3)
+            return create_lighter_adapter(
+                routing_id,
+                reserve.address,
+                web3=self.web3,
+                routing_config=self.lighter_routing_config,
+            )
         elif routing_id.router_name == "cctp-bridge":
             # Resolve primary custody address from the execution model's
             # vault (Lagoon Safe) or tx_builder (hot wallet).

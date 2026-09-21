@@ -5,9 +5,12 @@ custody transfers use the normal routing and execution pipeline.
 """
 
 import datetime
+import logging
 from decimal import Decimal
 
 from eth_defi.compat import native_datetime_utc_now
+from web3 import Web3
+from web3.exceptions import TransactionNotFound
 
 from tradeexecutor.exchange_account.cash_manager import (
     ExchangeCashManagementInput,
@@ -20,6 +23,9 @@ from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus, Tr
 from tradeexecutor.strategy.position_internal_share_price import (
     create_share_price_state,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class ExchangeAccountTransferError(RuntimeError):
@@ -35,7 +41,23 @@ def create_exchange_cash_management_transfer(
     inputs: ExchangeCashManagementInput,
     notes: str,
 ) -> TradeExecution | None:
-    """Create the one transfer selected by the pure exchange cash policy."""
+    """Create the one transfer selected by the pure exchange cash policy.
+
+    :param state:
+        Strategy state containing exchange-account transfer history.
+    :param position:
+        Open external exchange-account position receiving the transfer.
+    :param strategy_cycle_at:
+        UTC timestamp of the decision cycle.
+    :param reserve_currency:
+        Safe reserve asset moved between custody locations.
+    :param inputs:
+        Latest balances and cash-management limits.
+    :param notes:
+        Human-readable trade note.
+    :return:
+        One planned transfer, or ``None`` when movement is unsafe or unnecessary.
+    """
     pending = any(
         trade.is_external_account_transfer_pending()
         for candidate in state.portfolio.get_open_and_frozen_positions()
@@ -170,6 +192,60 @@ def record_exchange_account_transfer(
         native_token_price=0,
     )
     return trade
+
+
+def reconcile_completed_external_account_transfers(
+    state: State,
+    web3: Web3,
+) -> list[TradeExecution]:
+    """Mark already-mined external-account transfers successful.
+
+    This is deliberately a recovery-only state operation. It does not wait for
+    an exchange, request a withdrawal, or broadcast a transaction. Transfers
+    without a complete set of successful transaction receipts remain unclean
+    and require operator investigation.
+
+    :param state:
+        Strategy state to reconcile.
+    :param web3:
+        Connected chain reader used to retrieve transaction receipts.
+    :return:
+        Transfers whose recorded transactions are all mined successfully.
+    """
+    completed_trades = []
+    for position in state.portfolio.get_open_and_frozen_positions():
+        for trade in position.trades.values():
+            if not trade.is_external_account_transfer_pending():
+                continue
+            if not trade.blockchain_transactions:
+                continue
+
+            for transaction in trade.blockchain_transactions:
+                if not transaction.tx_hash:
+                    break
+                try:
+                    receipt = web3.eth.get_transaction_receipt(transaction.tx_hash)
+                except TransactionNotFound:
+                    break
+                if receipt.get("status") != 1:
+                    break
+            else:
+                state.mark_trade_success(
+                    executed_at=native_datetime_utc_now(),
+                    trade=trade,
+                    executed_price=1.0,
+                    executed_amount=trade.planned_quantity,
+                    executed_reserve=trade.planned_reserve,
+                    lp_fees=0,
+                    native_token_price=0,
+                )
+                completed_trades.append(trade)
+                logger.info(
+                    "Reconciled completed external-account transfer #%d",
+                    trade.trade_id,
+                )
+
+    return completed_trades
 
 
 def open_exchange_account_position(

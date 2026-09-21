@@ -175,6 +175,11 @@ source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest test
 - Always use global, level imports, unless facing circular import exception. NEVER USE FUNCTION LOCAL IMPORTS UNLESS TOLD SO OR ABSOLUTE NECESSARAY TO AVOID CIRCULAR IMPORTS.
 - Using `assert` is ok, we never run with `python -O` 
 
+### CLI configuration
+
+- Parse command-line options and environment variables only at Typer command entry points such as `start.py`; use `bootstrap.py` patterns as the reference.
+- Pass parsed settings to lower layers explicitly, either as individual parameters or a small typed dataclass. Do not write parsed values back to `os.environ`, read environment variables from loops, routers, execution models, or use module-level mutable configuration.
+
 ### Enum
 
 - For string enums, both members and values must in snake_case

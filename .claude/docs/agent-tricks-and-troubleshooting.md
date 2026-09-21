@@ -819,6 +819,14 @@ pull requests, issues, workflows, and logs, but never create, comment, label,
 merge, push, or otherwise change GitHub state. Keep credentials and raw
 provider output private.
 
+Local Git inspection and fetching are permitted review tasks. A reviewer may
+run `git status`, `git diff`, `git show`, `git log`, `git blame`, and `git fetch`
+to inspect the current branch, its history, and required remote refs. A fetch
+may update local Git metadata, but must not change tracked worktree files or
+remote state. Do not use `git checkout`, `git switch`, `git reset`, `git merge`,
+`git rebase`, `git commit`, `git push`, or any other command that changes the
+reviewed worktree, branch, or remote repository.
+
 The review scope is existing code and existing results only. Reviewers must
 never initiate test runs or other long-running operations: do not run test
 suites, benchmarks, builds, linters, type checkers, deployments, migrations,
@@ -832,12 +840,15 @@ Use this instruction in every review prompt:
 ```text
 You are a read-only reviewer. You may inspect local code and existing results,
 use web and read-only GitHub access for relevant verification, and use installed
-skills when useful. Do not read secrets or credentials. Do not edit, create,
-delete, upload, install, authenticate, or otherwise mutate local files, Git
-state, GitHub state, credentials, or external systems. Review only existing
+skills when useful. Local Git reads and `git fetch` are allowed; a fetch may
+update local Git metadata only. Do not read secrets or credentials. Do not edit,
+create, delete, upload, install, authenticate, or otherwise change tracked
+worktree files, branches, GitHub state, credentials, or external systems. Do
+not use Git commands that alter the worktree, branch, or remote state, including
+checkout, switch, reset, merge, rebase, commit, or push. Review only existing
 code and results: never start tests, benchmarks, builds, linters, type checks,
-deployments, migrations, downloads, training, servers, or application commands.
-Report any missing evidence instead of running work to obtain it.
+deployments, migrations, data downloads, training, servers, or application
+commands. Report any missing evidence instead of running work to obtain it.
 ```
 
 This is a behavioural instruction, not an OS-level sandbox. The caller must

@@ -977,6 +977,10 @@ def repair_tx_not_generated(state: State, interactive=True):
 
     for t in portfolio.get_all_trades():
 
+        # Exchange-account transfers have dedicated receipt-only recovery.
+        if t.is_external_account_transfer_pending():
+            continue
+
         if t.repaired_trade_id:
             # This is an accounting repair for some other trade
             continue

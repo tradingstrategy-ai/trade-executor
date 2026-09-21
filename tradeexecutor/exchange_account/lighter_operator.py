@@ -32,16 +32,33 @@ USDC_PRECISION = Decimal("0.000001")
 class LighterOperatorRecord:
     """Public Lighter deployment data and a delegated API signer."""
 
+    #: Lagoon vault address associated with the delegated Lighter key.
     vault_address: str
+
+    #: Safe that owns Lighter collateral and receives withdrawals.
     safe_address: str
+
+    #: Safe trading module authorised to claim Lighter withdrawals.
     module_address: str
+
+    #: Public Lighter account identifier.
     account_index: int
+
+    #: Delegated Lighter API-key slot.
     api_key_index: int
+
+    #: Delegated Lighter API private key, excluded from representations.
     api_private_key: str = field(repr=False)
 
 
 def load_lighter_operator_record(path: Path) -> LighterOperatorRecord:
-    """Load an owner-only operator record without logging its private key."""
+    """Load an owner-only operator record without logging its private key.
+
+    :param path:
+        Private JSON record created during Lighter Lagoon deployment.
+    :return:
+        Validated public deployment details and delegated API signer.
+    """
     info = path.stat()
     if not stat.S_ISREG(info.st_mode) or info.st_mode & UNSAFE_FILE_PERMISSION_MASK:
         raise PermissionError(f"Refusing insecure Lighter operator record: {path}")
@@ -75,7 +92,15 @@ async def request_lighter_withdrawal(
     operator: LighterOperatorRecord,
     amount: Decimal,
 ) -> str:
-    """Request one secure withdrawal and return its public request id."""
+    """Request one secure withdrawal and return its public request id.
+
+    :param operator:
+        Delegated signer and Safe deployment details.
+    :param amount:
+        Positive USDC amount to request from Lighter.
+    :return:
+        Public Lighter withdrawal request identifier.
+    """
     client = None
     try:
         client = lighter.SignerClient(
@@ -110,7 +135,21 @@ async def wait_for_lighter_withdrawal_claimable(
     requested_at: int,
     request_id: str,
 ) -> Decimal:
-    """Poll authenticated withdrawal history until one request is claimable."""
+    """Poll authenticated withdrawal history until one request is claimable.
+
+    :param operator:
+        Delegated signer and Lighter account details.
+    :param amount:
+        Requested USDC amount used to verify the returned history entry.
+    :param timeout:
+        Maximum seconds to wait for the withdrawal delay.
+    :param requested_at:
+        UTC Unix timestamp at which the withdrawal was requested.
+    :param request_id:
+        Public identifier returned when the withdrawal was requested.
+    :return:
+        USDC amount that Lighter made claimable.
+    """
     client = None
     api_client = None
     try:

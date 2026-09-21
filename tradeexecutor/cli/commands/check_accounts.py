@@ -11,6 +11,7 @@ from tradeexecutor.exchange_account.lighter import (
     create_lighter_account_value_func,
     validate_lighter_exchange_account_pairs,
 )
+from tradeexecutor.exchange_account.state import reconcile_completed_external_account_transfers
 from tradeexecutor.strategy.account_correction import check_accounts as _check_accounts
 
 from ...state.state import UncleanState
@@ -124,6 +125,13 @@ def check_accounts(
     assert not store.is_pristine(), f"State does not exists yet: {state_file}"
 
     state = store.load()
+    reconciled_transfers = reconcile_completed_external_account_transfers(state, web3)
+    if reconciled_transfers:
+        store.sync(state)
+        logger.info(
+            "Reconciled %d completed external-account transfer(s)",
+            len(reconciled_transfers),
+        )
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)
 
@@ -159,6 +167,7 @@ def check_accounts(
         native_datetime_utc_now(),
         execution_context.mode,
         UniverseOptions(history_period=mod.get_live_trading_history_period()),
+        strategy_parameters=mod.parameters,
     )
 
     logger.info("Universe contains %d pairs", universe.data_universe.pairs.get_count())

@@ -16,11 +16,22 @@ class ExchangeCashManagementError(ValueError):
 class ExchangeCashManagementInput:
     """Balances and limits used to choose an exchange cash transfer."""
 
+    #: USDC held by the Safe after the most recent treasury synchronisation.
     safe_usdc: Decimal
+
+    #: Free USDC collateral that the exchange permits withdrawing.
     exchange_available_usdc: Decimal
+
+    #: USDC required to settle the asynchronous vault redemption queue.
     pending_redemptions_usdc: Decimal
+
+    #: USDC retained in the Safe after automatic cash management.
     safe_cash_buffer_usdc: Decimal
+
+    #: Free collateral retained in the exchange account after a withdrawal.
     free_collateral_buffer_usdc: Decimal
+
+    #: Smallest custody movement worth submitting to the exchange.
     minimum_transfer_usdc: Decimal
 
 
@@ -28,7 +39,10 @@ class ExchangeCashManagementInput:
 class ExchangeCashManagementDecision:
     """The transfer selected by :class:`ExchangeCashManager`."""
 
+    #: ``deposit``, ``withdraw``, or ``None`` when no movement is needed.
     direction: str | None
+
+    #: USDC amount to move in ``direction``.
     amount_usdc: Decimal
 
     @property
@@ -46,7 +60,15 @@ class ExchangeCashManager:
         *,
         transfer_pending: bool = False,
     ) -> ExchangeCashManagementDecision:
-        """Return a deterministic transfer decision without network access."""
+        """Return a deterministic transfer decision without network access.
+
+        :param inputs:
+            Latest Safe, exchange, and redemption balances with policy limits.
+        :param transfer_pending:
+            Whether an earlier exchange custody transfer is still unconfirmed.
+        :return:
+            The single safe transfer to submit, or an empty decision.
+        """
         self._validate(inputs)
         if transfer_pending:
             return ExchangeCashManagementDecision(None, Decimal(0))

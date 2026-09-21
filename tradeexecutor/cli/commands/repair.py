@@ -14,6 +14,7 @@ from ...ethereum.rebroadcast import rebroadcast_all
 from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
 from ...ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
+from ...exchange_account.state import reconcile_completed_external_account_transfers
 from ...state.repair import repair_trades, repair_tx_not_generated, repair_zero_quantity
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -103,6 +104,7 @@ def repair(
         raise RuntimeError("Repair requires that you pass JSON-RPC connection to one of the networks")
 
     configure_default_chain(web3config, mod)
+    web3 = web3config.get_default()
 
     execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
         asset_management_mode=asset_management_mode,
@@ -144,6 +146,16 @@ def repair(
 
     assert not store.is_pristine(), f"Cannot repair prisnite strategy: {state_file}"
     state = store.load()
+    reconciled_transfers = reconcile_completed_external_account_transfers(
+        state,
+        web3,
+    )
+    if reconciled_transfers:
+        store.sync(state)
+        logger.info(
+            "Reconciled %d completed external-account transfer(s)",
+            len(reconciled_transfers),
+        )
 
     # Set up the strategy engine
     factory = make_factory_from_strategy_mod(mod)
@@ -199,7 +211,7 @@ def repair(
     sync_model.resync_nonce()
 
     trades, txs = rebroadcast_all(
-        web3config.get_default(),
+        web3,
         state,
         execution_model,
         runner.routing_model,  # runner. -> Needed for Velvet

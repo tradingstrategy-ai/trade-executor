@@ -145,6 +145,8 @@ for a small complete example.
 The relevant parameters are:
 
 ```python
+LIGHTER_ACCOUNT_INDEX = 123  # Public infrastructure identity
+
 class Parameters:
     lighter_cash_management = True
     lighter_safe_cash_buffer_usd = Decimal("20")
@@ -152,6 +154,10 @@ class Parameters:
     lighter_min_transfer_usd = Decimal("1")
     lighter_withdrawal_timeout = 1800
 ```
+
+Keep the public account identity separate from behavioural strategy parameters,
+as shown above. Runtime secrets and withdrawal settings are parsed by the CLI
+and passed to routing explicitly.
 
 The manager deposits only Safe cash above the configured buffer. When Lagoon
 has pending redemptions and the Safe is short, it withdraws available Lighter

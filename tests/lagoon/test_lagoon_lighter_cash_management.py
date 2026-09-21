@@ -255,7 +255,6 @@ def test_cli_lagoon_lighter_cash_management_uses_normal_pipeline(
         "PRIVATE_KEY": DEPLOYER_PRIVATE_KEY,
         "VAULT_ADDRESS": deployment.vault.address,
         "VAULT_ADAPTER_ADDRESS": deployment.trading_strategy_module.address,
-        "LIGHTER_ACCOUNT_INDEX": str(LIGHTER_ACCOUNT_INDEX),
         "LIGHTER_OPERATOR_RECORD_FILE": operator_record_file.as_posix(),
         "CACHE_PATH": (tmp_path / "cache").as_posix(),
         "MIN_GAS_BALANCE": "0",

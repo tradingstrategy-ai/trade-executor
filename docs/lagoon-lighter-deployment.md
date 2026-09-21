@@ -106,6 +106,8 @@ free Lighter collateral buffer, ignores transfers below 1 USDC and uses a
 30-minute withdrawal timeout:
 
 ```python
+LIGHTER_ACCOUNT_INDEX = 123  # Public infrastructure identity
+
 class Parameters:
     lighter_cash_management = True
     lighter_safe_cash_buffer_usd = Decimal("20")
@@ -113,6 +115,10 @@ class Parameters:
     lighter_min_transfer_usd = Decimal("1")
     lighter_withdrawal_timeout = 1800
 ```
+
+Keep the public account identity separate from behavioural strategy parameters,
+as shown above. Runtime secrets and withdrawal settings are parsed by the CLI
+and passed to routing explicitly.
 
 Pass `safe_usdc=Decimal(str(input.get_position_manager().get_current_cash()))`
 to `create_lighter_cash_management_transfer()`. This is the latest

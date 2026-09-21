@@ -1367,10 +1367,9 @@ class ExecutionLoop:
 
         universe = self.warm_up_live_trading()
 
-        # Automatic Lighter withdrawals may be waiting for a public request to
-        # become claimable. Resume that exact request before cleanliness,
-        # treasury, or account checks; all other unfinished trades fail closed.
-        self.runner.resume_pending_exchange_account_transfers(universe, state, self.store)
+        # Interrupted exchange-account transfers fail closed at start-up.
+        # Use check-accounts, correct-accounts, or repair to reconcile an
+        # already-mined transaction without submitting another transfer.
         state.check_if_clean()
 
         # Set up web server chart exports

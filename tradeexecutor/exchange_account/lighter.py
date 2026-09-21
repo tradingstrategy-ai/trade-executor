@@ -278,7 +278,11 @@ def create_lighter_cash_management_transfer(
 
 
 def validate_lighter_cash_management_parameters(parameters: dict[str, object]) -> None:
-    """Validate strategy parameters for automatic Lighter cash management."""
+    """Validate strategy parameters for automatic Lighter cash management.
+
+    :param parameters:
+        Strategy module parameters containing the Lighter cash policy values.
+    """
     for name in (
         "lighter_safe_cash_buffer_usd",
         "lighter_free_collateral_buffer_usd",

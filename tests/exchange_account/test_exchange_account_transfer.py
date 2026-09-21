@@ -8,22 +8,24 @@ from eth_defi.compat import native_datetime_utc_now
 from eth_defi.token import USDC_NATIVE_TOKEN
 from pytest_mock import MockerFixture
 
-from tradeexecutor.ethereum.lighter.lighter_routing import LighterRouting
+from tradeexecutor.ethereum.rebroadcast import rebroadcast_all
+from tradeexecutor.ethereum.lighter.lighter_routing import LighterRouting, LighterRoutingConfig
 from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pair
+from tradeexecutor.exchange_account.lighter_operator import LighterOperatorRecord
 from tradeexecutor.exchange_account.state import (
     ExchangeAccountTransferError,
     create_exchange_account_transfer,
     mark_exchange_account_transfer_broadcasted,
     open_exchange_account_position,
+    reconcile_completed_external_account_transfers,
     record_exchange_account_transfer,
 )
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
+from tradeexecutor.state.repair import repair_tx_not_generated
 from tradeexecutor.state.state import State, UncleanState
 from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.strategy.account_correction import preflight_state_for_account_correction
-from tradeexecutor.strategy.generic.generic_router import GenericRouting
-from tradeexecutor.strategy.pandas_trader.runner import PandasTraderRunner
 
 
 #: Public test-only Lighter account identifier.
@@ -212,6 +214,72 @@ def test_pending_external_account_transfer_makes_state_unclean() -> None:
         assert trade.is_unfinished() is (phase == "broadcasted")
 
 
+def test_repair_does_not_rebroadcast_pending_external_account_transfer(
+    mocker: MockerFixture,
+) -> None:
+    """Keep external account transfers out of generic transaction rebroadcasting.
+
+    1. Create a broadcasted Lighter withdrawal that has not been reconciled.
+    2. Run the generic transaction-rebroadcast selector used by repair.
+    3. Verify it selects no transfer and does not submit a transaction.
+    """
+    # 1. Create a broadcasted Lighter withdrawal that has not been reconciled.
+    state, reserve_asset, position = _create_state()
+    _create_transfer(
+        state,
+        reserve_asset,
+        position,
+        amount=Decimal("1"),
+        deposit=False,
+    )
+
+    # 2. Run the generic transaction-rebroadcast selector used by repair.
+    execution_model = mocker.Mock()
+    trades, transactions = rebroadcast_all(
+        mocker.Mock(),
+        state,
+        execution_model,
+        mocker.Mock(),
+        mocker.Mock(),
+    )
+
+    # 3. Verify it selects no transfer and does not submit a transaction.
+    assert trades == []
+    assert transactions == []
+    execution_model.execute_trades.assert_not_called()
+
+
+def test_repair_does_not_create_counter_trade_for_pending_external_transfer() -> None:
+    """Leave an unmined external transfer for receipt-only reconciliation.
+
+    1. Create a planned Lighter withdrawal without a transaction receipt.
+    2. Run the missing-transaction repair selector.
+    3. Verify it creates no counter-trade and leaves the transfer unclean.
+    """
+    # 1. Create a planned Lighter withdrawal without a transaction receipt.
+    state, reserve_asset, position = _create_state()
+    transfer = create_exchange_account_transfer(
+        state=state,
+        position=position,
+        strategy_cycle_at=native_datetime_utc_now(),
+        reserve_currency=reserve_asset,
+        amount=Decimal("1"),
+        deposit=False,
+        notes="Interrupted Lighter withdrawal",
+        metadata={"direction": "withdraw"},
+        automatic=True,
+    )
+
+    # 2. Run the missing-transaction repair selector.
+    repair_trades = repair_tx_not_generated(state, interactive=False)
+
+    # 3. Verify it creates no counter-trade and leaves the transfer unclean.
+    assert repair_trades == []
+    assert transfer.is_planned()
+    with pytest.raises(UncleanState):
+        state.check_if_clean()
+
+
 def test_lighter_withdrawal_keeps_trade_started_until_safe_claim(
     mocker: MockerFixture,
 ) -> None:
@@ -268,16 +336,60 @@ def test_lighter_withdrawal_keeps_trade_started_until_safe_claim(
     assert trade.blockchain_transactions == [claim_transaction]
 
 
-def test_runner_resumes_only_checkpointed_lighter_withdrawals(
+def test_lighter_routing_uses_explicit_cli_configuration(
+    monkeypatch: pytest.MonkeyPatch,
     mocker: MockerFixture,
 ) -> None:
-    """Resume a saved Lighter withdrawal but leave unsafe interrupted transfers unclean.
+    """Pass the private Lighter operator record without reading process environment.
 
-    1. Create a started automatic withdrawal with its public Lighter request ID.
-    2. Resume it through the regular rebroadcast execution path.
-    3. Verify a broadcasted automatic transfer is not resubmitted.
+    1. Set a conflicting legacy environment value and create a routing configuration.
+    2. Create the production Lighter router with the explicit configuration.
+    3. Verify the per-cycle routing state uses the supplied record and timeout.
     """
-    # 1. Create a started automatic withdrawal with its public Lighter request ID.
+    # 1. Set a conflicting legacy environment value and create a routing configuration.
+    monkeypatch.setenv("LIGHTER_OPERATOR_RECORD_FILE", "/does/not/exist.json")
+    operator_record = LighterOperatorRecord(
+        vault_address="0x0000000000000000000000000000000000000001",
+        safe_address="0x0000000000000000000000000000000000000002",
+        module_address="0x0000000000000000000000000000000000000003",
+        account_index=LIGHTER_ACCOUNT_INDEX,
+        api_key_index=4,
+        api_private_key="0x" + "11" * 32,
+    )
+    config = LighterRoutingConfig(
+        operator_record=operator_record,
+        withdrawal_timeout=1800,
+    )
+
+    # 2. Create the production Lighter router with the explicit configuration.
+    router = LighterRouting(
+        USDC_NATIVE_TOKEN[1],
+        config=config,
+        session=mocker.Mock(),
+    )
+    routing_state = router.create_routing_state(
+        SimpleNamespace(),
+        {
+            "tx_builder": mocker.Mock(),
+            "vault": mocker.Mock(),
+        },
+    )
+
+    # 3. Verify the per-cycle routing state uses the supplied record and timeout.
+    assert routing_state.operator_record is operator_record
+    assert router.config.withdrawal_timeout == 1800
+
+
+def test_completed_external_account_transfer_is_reconciled_without_rebroadcast(
+    mocker: MockerFixture,
+) -> None:
+    """Reconcile a mined external transfer without submitting another transaction.
+
+    1. Create and broadcast an automatic Lighter withdrawal with one transaction.
+    2. Return a successful receipt for the recorded transaction.
+    3. Reconcile the existing trade and verify the state is clean.
+    """
+    # 1. Create and broadcast an automatic Lighter withdrawal with one transaction.
     state, reserve_asset, position = _create_state()
     withdrawal = create_exchange_account_transfer(
         state=state,
@@ -289,41 +401,34 @@ def test_runner_resumes_only_checkpointed_lighter_withdrawals(
         notes="Checkpointed automatic Lighter withdrawal",
         metadata={
             "direction": "withdraw",
-            "lighter_withdrawal_request_id": "withdrawal-request-1",
         },
         automatic=True,
     )
-    withdrawal.started_at = native_datetime_utc_now()
-    runner = object.__new__(PandasTraderRunner)
-    runner.routing_model = GenericRouting(None)
-    runner.execution_model = mocker.Mock()
-    runner.setup_routing = mocker.Mock(return_value=(mocker.Mock(), None, None))
-    store = mocker.Mock()
-
-    # 2. Resume it through the regular rebroadcast execution path.
-    runner.resume_pending_exchange_account_transfers(mocker.Mock(), state, store)
-    runner.execution_model.execute_trades.assert_called_once()
-    assert runner.execution_model.execute_trades.call_args.kwargs["rebroadcast"] is True
-
-    # 3. Verify a broadcasted automatic transfer is not resubmitted.
-    state, reserve_asset, position = _create_state()
-    interrupted_transfer = create_exchange_account_transfer(
-        state=state,
-        position=position,
-        strategy_cycle_at=native_datetime_utc_now(),
-        reserve_currency=reserve_asset,
-        amount=Decimal("1"),
-        deposit=True,
-        notes="Interrupted automatic Lighter transfer",
-        metadata={"direction": "deposit"},
-        automatic=True,
+    state.start_execution(
+        native_datetime_utc_now(),
+        withdrawal,
+        underflow_check=True,
     )
     mark_exchange_account_transfer_broadcasted(
-        interrupted_transfer,
+        withdrawal,
         native_datetime_utc_now(),
     )
-    runner.execution_model.reset_mock()
-    runner.resume_pending_exchange_account_transfers(mocker.Mock(), state, store)
-    runner.execution_model.execute_trades.assert_not_called()
-    with pytest.raises(UncleanState):
-        state.check_if_clean()
+    withdrawal.blockchain_transactions = [
+        SimpleNamespace(tx_hash="0x" + "12" * 32),
+    ]
+
+    # 2. Return a successful receipt for the recorded transaction.
+    web3 = SimpleNamespace(
+        eth=SimpleNamespace(
+            get_transaction_receipt=mocker.Mock(return_value={"status": 1}),
+        ),
+    )
+
+    # 3. Reconcile the existing trade and verify the state is clean.
+    reconciled = reconcile_completed_external_account_transfers(state, web3)
+    assert reconciled == [withdrawal]
+    web3.eth.get_transaction_receipt.assert_called_once_with("0x" + "12" * 32)
+    assert withdrawal.is_success()
+    assert position.get_quantity() == Decimal("9")
+    assert state.portfolio.get_reserve_position(reserve_asset).quantity == Decimal("11")
+    state.check_if_clean()

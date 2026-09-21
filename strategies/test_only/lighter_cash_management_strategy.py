@@ -1,7 +1,6 @@
 """Fixed-fork strategy used to exercise automatic Lighter cash management."""
 
 import datetime
-import os
 from decimal import Decimal
 
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
@@ -40,10 +39,11 @@ trading_strategy_cycle = CycleDuration.cycle_1d
 trade_routing = TradeRouting.default
 reserve_currency = ReserveCurrency.usdc
 
+#: Synthetic public account index returned by the fixed-fork Lighter mock.
+LIGHTER_ACCOUNT_INDEX = 126
+
 # The fixed-fork test replaces this public Lighter session with a sequencer mock.
 LIGHTER_SESSION = create_lighter_session()
-# The test strategy uses a stable public account index supplied by its environment.
-LIGHTER_ACCOUNT_INDEX = int(os.environ.get("LIGHTER_ACCOUNT_INDEX", "125"))
 
 
 class Parameters:
@@ -64,7 +64,13 @@ class Parameters:
 
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:
-    """Create one synthetic Ethereum Lighter exchange-account pair."""
+    """Create one synthetic Ethereum Lighter exchange-account pair.
+
+    :param input:
+        Unused strategy-universe construction input.
+    :return:
+        Static universe containing the Lighter account and USDC reserve.
+    """
     del input
     usdc = AssetIdentifier(
         chain_id=ChainId.ethereum.value,
@@ -106,12 +112,28 @@ def create_indicators(
     strategy_universe: TradingStrategyUniverse,
     execution_context: ExecutionContext,
 ) -> None:
-    """Declare no market indicators for this custody-only test strategy."""
+    """Declare no market indicators for this custody-only test strategy.
+
+    :param parameters:
+        Unused strategy parameters.
+    :param indicators:
+        Empty indicator collection retained by the engine interface.
+    :param strategy_universe:
+        Static Lighter strategy universe.
+    :param execution_context:
+        Current execution context.
+    """
     del parameters, indicators, strategy_universe, execution_context
 
 
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
-    """Create the synthetic position, then return automatic custody trades."""
+    """Create the synthetic position, then return automatic custody trades.
+
+    :param input:
+        Current strategy state, parameters, and treasury-synchronised reserve.
+    :return:
+        At most one transfer selected by the Lighter cash manager.
+    """
     pair = input.strategy_universe.get_single_pair()
     reserve_asset = input.strategy_universe.get_reserve_asset()
     position = input.state.portfolio.get_open_position_for_pair(pair)
@@ -141,7 +163,17 @@ def _create_cash_management_trades(
     position: TradingPosition,
     safe_usdc: Decimal,
 ) -> list[TradeExecution]:
-    """Return one transfer using the latest treasury-synchronised Safe balance."""
+    """Return one transfer using the latest treasury-synchronised Safe balance.
+
+    :param input:
+        Current strategy state and Lighter cash-management parameters.
+    :param position:
+        Synthetic position representing the Lighter account.
+    :param safe_usdc:
+        Safe USDC balance exposed by ``PositionManager``.
+    :return:
+        One planned custody transfer, or no trades.
+    """
     parameters = input.parameters
     transfer = create_lighter_cash_management_transfer(
         state=input.state,

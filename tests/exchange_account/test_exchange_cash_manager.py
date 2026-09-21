@@ -1,7 +1,10 @@
 """Tests for the pure external exchange cash-management policy."""
 
 from decimal import Decimal
+from pathlib import Path
+from types import SimpleNamespace
 
+import pandas as pd
 import pytest
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.lighter.valuation import LighterEquity
@@ -22,6 +25,8 @@ from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeFlag
+from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.strategy_module import read_strategy_module
 
 
 def _inputs(**overrides: str) -> ExchangeCashManagementInput:
@@ -155,6 +160,85 @@ def test_lighter_cash_management_trade_uses_the_normal_state_pipeline(
     assert state.portfolio.get_reserve_position(reserve_asset).quantity == Decimal("20")
     assert position.get_quantity() == Decimal("80")
     assert state.portfolio.get_net_asset_value() == pytest.approx(Decimal("100"))
+
+
+def test_lighter_decide_trades_partially_redeems_free_collateral(
+    mocker: MockerFixture,
+) -> None:
+    """Withdraw only free Lighter collateral for a larger Lagoon redemption.
+
+    1. Load the reference Lighter strategy and create its exchange-account position.
+    2. Mock an open Lighter position that leaves only part of the needed cash free.
+    3. Call the strategy's real ``decide_trades()`` and verify its partial withdrawal.
+    """
+    # 1. Load the reference Lighter strategy and create its exchange-account position.
+    strategy_file = (
+        Path(__file__).resolve().parents[2]
+        / "strategies"
+        / "test_only"
+        / "lighter_cash_management_strategy.py"
+    )
+    strategy_module = read_strategy_module(strategy_file)
+    reserve_asset = AssetIdentifier(
+        chain_id=1,
+        address=USDC_NATIVE_TOKEN[1],
+        token_symbol="USDC",
+        decimals=6,
+    )
+    pair = create_lighter_exchange_account_pair(reserve_asset, account_index=1)
+    state = State()
+    state.portfolio.initialise_reserves(reserve_asset, reserve_token_price=1.0)
+    state.portfolio.get_reserve_position(reserve_asset).quantity = Decimal("10")
+    state.sync.treasury.pending_redemptions = Decimal("50")
+    open_exchange_account_position(
+        state=state,
+        strategy_cycle_at=native_datetime_utc_now(),
+        pair=pair,
+        reserve_currency=reserve_asset,
+        reserve_amount=Decimal("100"),
+        notes="Lighter account with an open perp position",
+    )
+    position_manager = SimpleNamespace(get_current_cash=lambda: Decimal("10"))
+    strategy_input = SimpleNamespace(
+        strategy_universe=SimpleNamespace(
+            get_single_pair=lambda: pair,
+            get_reserve_asset=lambda: reserve_asset,
+        ),
+        state=state,
+        timestamp=pd.Timestamp(native_datetime_utc_now()),
+        execution_context=ExecutionContext(mode=ExecutionMode.unit_testing_trading),
+        parameters=SimpleNamespace(
+            lighter_safe_cash_buffer_usd=Decimal("20"),
+            lighter_free_collateral_buffer_usd=Decimal("0"),
+            lighter_min_transfer_usd=Decimal("1"),
+        ),
+        get_position_manager=lambda: position_manager,
+    )
+
+    # 2. Mock an open Lighter position that leaves only part of the needed cash free.
+    equity = LighterEquity(
+        account_index=1,
+        collateral=Decimal("100"),
+        unrealised_pnl=Decimal(0),
+        total_asset_value=Decimal("100"),
+        available_balance=Decimal("15"),
+        initial_margin_requirement=Decimal("80"),
+        maintenance_margin_requirement=Decimal("50"),
+        position_count=1,
+    )
+    reader = mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_total_equity",
+        return_value=equity,
+    )
+
+    # 3. Call the strategy's real ``decide_trades()`` and verify its partial withdrawal.
+    trades = strategy_module.decide_trades(strategy_input)
+    assert len(trades) == 1
+    assert trades[0].is_sell()
+    assert trades[0].planned_quantity == Decimal("-15")
+    assert trades[0].planned_reserve == Decimal("15")
+    assert state.sync.treasury.pending_redemptions == Decimal("50")
+    reader.assert_called_once()
 
 
 def test_exchange_cash_management_parameters_are_validated() -> None:
