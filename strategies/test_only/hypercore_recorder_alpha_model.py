@@ -349,6 +349,8 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     # Explicit observations preserve the compact calculation outputs that do
     # not belong in executor state. The much larger universe frames and
     # indicator fingerprints were captured automatically by the decorator.
+    # This example is intentionally live-only: fail if it is run without the
+    # recorder whose output the integration test exists to exercise.
     assert input.recorder is not None
     input.recorder.record(
         "selection",

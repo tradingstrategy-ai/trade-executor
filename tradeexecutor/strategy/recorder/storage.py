@@ -269,16 +269,14 @@ class RecorderStorage:
         """
         if self.connection.execute("SELECT 1 FROM recorder.runs WHERE run_id = ?", [str(run_id)]).fetchone() is None:
             raise ValueError(f"Unknown recorder run ID: {run_id}")
-        object_refs = set()
-        stack = [manifest]
-        while stack:
-            value = stack.pop()
-            if isinstance(value, dict):
-                if isinstance(value.get("object"), str) and len(value["object"]) == 64:
-                    object_refs.add(value["object"])
-                stack.extend(value.values())
-            elif isinstance(value, list):
-                stack.extend(value)
+        # Validate only schema-owned references. Arbitrary strategy other_data
+        # can legitimately contain an "object" key with an unrelated digest.
+        references = [manifest.get(name) for name in (
+            "parameters", "execution_context", "universe", "pricing",
+            "routing_model", "routing_state",
+        )]
+        references.extend(manifest.get("indicators", []))
+        object_refs = {reference["object"] for reference in references if reference is not None}
         if object_refs:
             placeholders = ",".join("?" for _ in object_refs)
             found = {

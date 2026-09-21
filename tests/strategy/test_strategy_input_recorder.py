@@ -132,7 +132,7 @@ def _make_input(
         parameters=StrategyParameters({"decimal": "1.2300"}),
         strategy_universe=universe,
         indicators=SimpleNamespace(indicator_results={}),
-        other_data={"fixture": "ok"},
+        other_data={"fixture": "ok", "object": "f" * 64},
         timestamp=pd.Timestamp("2026-01-01 00:00:00.123456789"),
         cycle=1,
         state_path=state_path,
@@ -222,6 +222,8 @@ def test_strategy_input_recorder_round_trip(tmp_path: Path) -> None:
     kinds = {row[0] for row in connection.execute("SELECT kind FROM objects").fetchall()}
     assert {"source", "parameters", "execution_context", "frame_chunk", "universe"}.issubset(kinds)
     observations = json.loads(connection.execute("SELECT observations FROM decisions").fetchone()[0])
+    manifest = json.loads(connection.execute("SELECT input_manifest FROM decisions").fetchone()[0])
+    assert manifest["other_data"]["object"] == "f" * 64
     assert observations[0]["name"] == "fixture"
     decoded = decode_json_value(observations[0]["value"])
     assert decoded["decimal"] == Decimal("1.2300")

@@ -62,6 +62,7 @@ def test_cli_live_recorder_creates_state_adjacent_duckdb(
     cache_path = tmp_path / "cache"
 
     environment = {
+        "PATH": os.environ["PATH"],
         "EXECUTOR_ID": executor_id,
         "STRATEGY_FILE": strategy_file.as_posix(),
         "STATE_FILE": state_file.as_posix(),

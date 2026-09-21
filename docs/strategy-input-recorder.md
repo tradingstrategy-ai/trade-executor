@@ -22,7 +22,9 @@ EXECUTOR_ID=hyper-ai-v8
 state/hyper-ai-v8-record.duckdb
 ```
 
-The state file's stem does not affect the recorder name. Each executor process
+The state file's stem does not affect the recorder name. When bootstrap is
+called without an executor ID, it uses the strategy file's stem instead.
+Each executor process
 appends one `runs` row to that file. A live run requires a persistent state
 path; backtests and notebooks never create a recorder file.
 Diagnostic commands that construct a runner without the execution loop's
