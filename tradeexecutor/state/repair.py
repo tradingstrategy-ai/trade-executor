@@ -502,6 +502,11 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
 
     - Set the original trade to repaired state (instead of failed state)
     """
+    if TradeFlag.external_account_transfer in (t.flags or set()):
+        raise RepairAborted(
+            "External-account transfers require protocol-specific verification before accounting repair",
+        )
+
     p = portfolio.get_position_by_id(t.position_id)
 
     c = make_counter_trade(portfolio, p, t)

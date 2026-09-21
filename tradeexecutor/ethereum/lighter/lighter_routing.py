@@ -8,7 +8,7 @@ from decimal import Decimal
 
 from eth_defi.abi import get_deployed_contract
 from eth_defi.compat import native_datetime_utc_now
-from eth_defi.lighter.api import wait_for_lighter_collateral
+from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
 from eth_defi.lighter.session import LighterSession, create_lighter_session
 from eth_defi.lighter.valuation import fetch_lighter_total_equity
@@ -21,8 +21,10 @@ from tradeexecutor.exchange_account.lighter_operator import (
     request_lighter_withdrawal,
     wait_for_lighter_withdrawal_claimable,
 )
-from tradeexecutor.exchange_account.cash_manager import (
-    DEFAULT_EXCHANGE_WITHDRAWAL_TIMEOUT_SECONDS,
+from tradeexecutor.exchange_account.state import complete_exchange_account_transfer
+from tradeexecutor.ethereum.lighter.transfer_verification import (
+    LighterTransferVerificationError,
+    verify_lighter_transfer,
 )
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.state import State
@@ -41,7 +43,7 @@ LIGHTER_DEPOSIT_GAS_LIMIT = 1_000_000
 #: Gas limit for a Lighter pending withdrawal claim wrapped by Lagoon.
 LIGHTER_WITHDRAWAL_CLAIM_GAS_LIMIT = 1_000_000
 #: Default maximum wait for a secure Lighter withdrawal.
-DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS = DEFAULT_EXCHANGE_WITHDRAWAL_TIMEOUT_SECONDS
+DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS = 30 * 60
 #: Public Lighter deposit observation timeout.
 DEFAULT_LIGHTER_DEPOSIT_TIMEOUT_SECONDS = 15 * 60
 
@@ -62,6 +64,11 @@ class LighterRoutingConfig:
     #: Maximum wait for Lighter to make a secure withdrawal claimable.
     withdrawal_timeout: int = DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS
 
+    def __post_init__(self) -> None:
+        """Reject an invalid execution timeout at the CLI configuration boundary."""
+        if type(self.withdrawal_timeout) is not int or self.withdrawal_timeout <= 0:
+            raise ValueError("Lighter withdrawal timeout must be a positive number of seconds")
+
 
 class LighterRoutingState(RoutingState):
     """Per-cycle objects needed by Lighter routing."""
@@ -70,8 +77,6 @@ class LighterRoutingState(RoutingState):
         self,
         universe: TradingStrategyUniverse,
         execution_details: dict,
-        lighter_session: LighterSession,
-        operator_record: LighterOperatorRecord | None,
     ):
         """Initialise routing objects for a single execution cycle.
 
@@ -79,10 +84,6 @@ class LighterRoutingState(RoutingState):
             Trading universe containing the synthetic Lighter pair.
         :param execution_details:
             Transaction builder and, during execution, Lagoon vault objects.
-        :param lighter_session:
-            Public Lighter API client shared by routing and valuation.
-        :param operator_record:
-            Optional private signer parsed by the CLI for withdrawals.
         """
         super().__init__(universe)
         self.tx_builder = execution_details["tx_builder"]
@@ -90,8 +91,6 @@ class LighterRoutingState(RoutingState):
         # Account-check and repair commands initialise routing without a vault.
         # Transfer preparation requires it and is only reached during execution.
         self.vault = execution_details.get("vault")
-        self.operator_record = operator_record
-        self.lighter_session = lighter_session
 
 
 class LighterRouting(RoutingModel):
@@ -136,12 +135,7 @@ class LighterRouting(RoutingModel):
             Per-cycle Lighter routing state.
         """
         assert isinstance(execution_details, dict)
-        return LighterRoutingState(
-            universe,
-            execution_details,
-            self.lighter_session,
-            self.config.operator_record,
-        )
+        return LighterRoutingState(universe, execution_details)
 
     def setup_trades(
         self,
@@ -212,61 +206,28 @@ class LighterRouting(RoutingModel):
             )
             return
 
-        if trade.is_buy():
-            account_index = trade.pair.get_exchange_account_id()
-            if account_index is None:
-                raise RuntimeError("Lighter exchange-account pair has no account index")
-            collateral_before = Decimal(
-                str(trade.other_data["lighter_collateral_before_usdc"])
-            )
-            observed_collateral = wait_for_lighter_collateral(
-                self.lighter_session,
-                int(account_index),
-                collateral_before + trade.planned_quantity,
-                timeout=DEFAULT_LIGHTER_DEPOSIT_TIMEOUT_SECONDS,
-            )
-            trade.other_data["lighter_collateral_after_usdc"] = str(observed_collateral)
-            executed_amount = trade.planned_quantity
-            executed_reserve = trade.planned_reserve
-        else:
-            claimable = Decimal(str(trade.other_data["lighter_claimable_usdc"]))
-            safe_before = Decimal(str(trade.other_data["lighter_safe_balance_before_claim"]))
-            usdc = fetch_erc20_details(
+        try:
+            verification = verify_lighter_transfer(
                 web3,
-                trade.reserve_currency.address,
-                chain_id=trade.reserve_currency.chain_id,
+                trade,
+                self.lighter_session,
+                receipts=transaction_receipts,
+                deposit_wait_timeout=DEFAULT_LIGHTER_DEPOSIT_TIMEOUT_SECONDS,
             )
-            # Lagoon's Safe owns the token, not the executor wallet. The
-            # transaction builder carries the exact Safe address in the trade.
-            safe_address = trade.other_data.get("lighter_safe_address")
-            if not safe_address:
-                raise RuntimeError("Lighter withdrawal has no Safe address")
-            claim_receipt = transaction_receipts[-1]
-            safe_after = usdc.fetch_balance_of(
-                safe_address,
-                block_identifier=claim_receipt["blockNumber"],
-            )
-            # Known first-draft limitation (unlikely): unrelated USDC inflows
-            # during the delay can make this conservative delta check fail.
-            safe_credit = Decimal(str(safe_after)) - safe_before
-            if safe_credit <= 0:
-                raise RuntimeError("Lighter withdrawal claim did not credit the Lagoon Safe")
-            if safe_credit > claimable:
-                raise RuntimeError(
-                    "Lighter withdrawal claim credited more USDC than the claimable amount"
-                )
-            trade.other_data["lighter_protocol_fee_usdc"] = str(claimable - safe_credit)
-            executed_amount = -claimable
-            executed_reserve = safe_credit
+        except LighterTransferVerificationError as error:
+            raise RuntimeError(str(error)) from error
+        if verification is None:
+            raise RuntimeError("Lighter transfer receipts are mined but external settlement is incomplete")
+        trade.other_data.update(verification.metadata_updates)
 
-        state.mark_trade_success(
-            executed_at=native_datetime_utc_now(),
+        position = state.portfolio.find_position_for_trade(trade)
+        complete_exchange_account_transfer(
+            state=state,
+            position=position,
             trade=trade,
-            executed_price=1.0,
-            executed_amount=executed_amount,
-            executed_reserve=executed_reserve,
-            lp_fees=0,
-            native_token_price=0,
+            executed_at=native_datetime_utc_now(),
+            executed_amount=verification.executed_amount,
+            executed_reserve=verification.executed_reserve,
         )
 
     def needs_sequential_trade_execution(self, trades: list[TradeExecution]) -> bool:
@@ -308,8 +269,9 @@ class LighterRouting(RoutingModel):
         lighter_account_index = trade.pair.get_exchange_account_id()
         if lighter_account_index is None:
             raise RuntimeError("Lighter exchange-account pair has no account index")
+        vault = self._get_lagoon_vault(routing_state)
         collateral_before = fetch_lighter_total_equity(
-            routing_state.lighter_session,
+            self.lighter_session,
             int(lighter_account_index),
         ).collateral
         trade.other_data["lighter_collateral_before_usdc"] = str(collateral_before)
@@ -323,7 +285,7 @@ class LighterRouting(RoutingModel):
         deposit_tx = routing_state.tx_builder.sign_transaction(
             zk,
             zk.functions.deposit(
-                routing_state.vault.safe_address,
+                vault.safe_address,
                 asset_index,
                 0,
                 amount_raw,
@@ -341,7 +303,8 @@ class LighterRouting(RoutingModel):
         trade: TradeExecution,
     ) -> None:
         """Request, wait for, and prepare a Lighter claim transaction."""
-        operator = routing_state.operator_record
+        vault = self._get_lagoon_vault(routing_state)
+        operator = self.config.operator_record
         if operator is None:
             raise RuntimeError(
                 "Automatic Lighter withdrawals require an operator record passed by the CLI"
@@ -360,7 +323,7 @@ class LighterRouting(RoutingModel):
             trade.other_data["lighter_safe_balance_before_claim"] = str(
                 self._get_safe_balance(routing_state, trade)
             )
-            trade.other_data["lighter_safe_address"] = routing_state.vault.safe_address
+            trade.other_data["lighter_safe_address"] = vault.safe_address
             # Keep the trade started until the Safe claim is ready. The normal
             # transaction broadcaster performs the single state transition to
             # broadcasted after it receives the signed claim transaction.
@@ -395,10 +358,11 @@ class LighterRouting(RoutingModel):
         )
         zk = get_deployed_contract(web3, "lighter/ZkLighter.json", self.lighter_contract)
         amount_raw = usdc.convert_to_raw(claimable)
+        vault = self._get_lagoon_vault(routing_state)
         return routing_state.tx_builder.sign_transaction(
             zk,
             zk.functions.withdrawPendingBalance(
-                routing_state.vault.safe_address,
+                vault.safe_address,
                 zk.functions.USDC_ASSET_INDEX().call(),
                 amount_raw,
             ),
@@ -407,19 +371,44 @@ class LighterRouting(RoutingModel):
             notes=trade.notes,
         )
 
-    @staticmethod
     def _get_safe_balance(
+        self,
         routing_state: LighterRoutingState,
         trade: TradeExecution,
     ) -> Decimal:
-        """Read Safe USDC before a delayed withdrawal claim."""
+        """Read Safe USDC before a delayed withdrawal claim.
+
+        :param routing_state:
+            Per-cycle Lighter routing dependencies.
+        :param trade:
+            Withdrawal trade whose reserve token is read from the Safe.
+        :return:
+            Current Safe reserve balance in human-readable USDC.
+        """
         usdc = fetch_erc20_details(
             routing_state.tx_builder.web3,
             trade.reserve_currency.address,
             cache=routing_state.token_cache,
             chain_id=trade.reserve_currency.chain_id,
         )
-        return Decimal(str(usdc.fetch_balance_of(routing_state.vault.safe_address)))
+        vault = self._get_lagoon_vault(routing_state)
+        return Decimal(str(usdc.fetch_balance_of(vault.safe_address)))
+
+    @staticmethod
+    def _get_lagoon_vault(routing_state: LighterRoutingState) -> LagoonVault:
+        """Return the Lagoon vault required to prepare a custody transfer.
+
+        :param routing_state:
+            Per-cycle routing state containing optional Lagoon execution data.
+        :return:
+            Lagoon vault used as the Safe custody source or destination.
+        """
+        if routing_state.vault is None:
+            raise RuntimeError(
+                "Lighter custody transfers require Lagoon vault execution details; "
+                "run through Lagoon execution rather than account inspection",
+            )
+        return routing_state.vault
 
 
 def _find_receipt(receipts: dict, transaction: BlockchainTransaction) -> dict:

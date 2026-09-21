@@ -344,7 +344,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         min_nav_change_update: Percent=0.005,
         unit_testing=False,
         calculate_valuation_func: Callable[..., USDollarPrice] | None = None,
-        defer_lighter_redemption_without_liquidity: bool = False,
+        defer_redemption_without_reserve_liquidity: bool = False,
         abort_lagoon_settlement_on_frozen_positions: bool = False,
         disable_broadcast: bool = False,
     ):
@@ -390,10 +390,11 @@ class LagoonVaultSyncModel(AddressSyncModel):
             See :py:func:`tradeexecutor.exchange_account.gmx.create_gmx_vault_valuation_func`
             for the GMX-specific implementation.
 
-        :param defer_lighter_redemption_without_liquidity:
+        :param defer_redemption_without_reserve_liquidity:
             When enabled, do not post NAV or settle a redemption queue if the
             Safe and pending Silo deposits do not cover the redemption amount.
-            Lighter cash management can then create a withdrawal trade first.
+            External-account cash management can then create a withdrawal
+            trade first.
 
         :param abort_lagoon_settlement_on_frozen_positions:
             Safety feature for live trading.
@@ -416,7 +417,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         self.unit_testing = unit_testing  #
         self.disable_broadcast = disable_broadcast
         self.calculate_valuation_func = calculate_valuation_func
-        self.defer_lighter_redemption_without_liquidity = defer_lighter_redemption_without_liquidity
+        self.defer_redemption_without_reserve_liquidity = defer_redemption_without_reserve_liquidity
         self.abort_lagoon_settlement_on_frozen_positions = abort_lagoon_settlement_on_frozen_positions
         assert vault.trading_strategy_module, "LagoonVault.trading_strategy_module initialisation param not set - needed to run the sync model properly"
         # assert isinstance(self.web3.provider, MEVBlockerProvider), f"This sync model needs MEVBlockerProvider, got {type(self.web3.provider)}"
@@ -1178,14 +1179,14 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         if (
             post_valuation
-            and self.defer_lighter_redemption_without_liquidity
+            and self.defer_redemption_without_reserve_liquidity
             and pending_redemptions > onchain_balance + pending_deposits
         ):
             shortfall = pending_redemptions - onchain_balance - pending_deposits
             logger.warning(
-                "Deferring Lagoon NAV and redemption settlement until the Lighter "
-                "account can return enough USDC; check free collateral or use "
-                "lighter-move-funds for recovery: required=%s, Safe=%s, "
+                "Deferring Lagoon NAV and redemption settlement until the external "
+                "exchange account can return enough USDC; check free collateral and "
+                "use account-correction commands for recovery: required=%s, Safe=%s, "
                 "pending Silo deposits=%s, shortfall=%s",
                 pending_redemptions,
                 onchain_balance,

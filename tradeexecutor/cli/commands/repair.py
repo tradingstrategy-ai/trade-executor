@@ -14,7 +14,7 @@ from ...ethereum.rebroadcast import rebroadcast_all
 from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
 from ...ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
-from ...exchange_account.state import reconcile_completed_external_account_transfers
+from ...ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
 from ...state.repair import repair_trades, repair_tx_not_generated, repair_zero_quantity
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
@@ -146,9 +146,10 @@ def repair(
 
     assert not store.is_pristine(), f"Cannot repair prisnite strategy: {state_file}"
     state = store.load()
-    reconciled_transfers = reconcile_completed_external_account_transfers(
+    reconciled_transfers = reconcile_verified_lighter_transfers(
         state,
         web3,
+        mutate=True,
     )
     if reconciled_transfers:
         store.sync(state)

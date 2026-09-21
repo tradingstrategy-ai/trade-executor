@@ -24,7 +24,7 @@ from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
 from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
-from tradeexecutor.exchange_account.state import reconcile_completed_external_account_transfers
+from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
 from tradeexecutor.exchange_account.utils import create_exchange_account_value_func
 from tradeexecutor.strategy.account_correction import (
@@ -554,14 +554,17 @@ def correct_accounts(
     else:
         store, state = backup_state(state_file, unit_testing=unit_testing)
 
-    reconciled_transfers = reconcile_completed_external_account_transfers(
+    reconciled_transfers = reconcile_verified_lighter_transfers(
         state,
         web3,
+        mutate=not dry_run,
     )
     if reconciled_transfers:
-        store.sync(state)
+        if not dry_run:
+            store.sync(state)
         logger.info(
-            "Reconciled %d completed external-account transfer(s)",
+            "%s %d verified Lighter transfer(s)",
+            "Found" if dry_run else "Reconciled",
             len(reconciled_transfers),
         )
 

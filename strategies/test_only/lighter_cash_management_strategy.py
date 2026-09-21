@@ -4,7 +4,6 @@ import datetime
 from decimal import Decimal
 
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
-from eth_defi.lighter.session import create_lighter_session
 from eth_defi.token import USDC_NATIVE_TOKEN
 from tradingstrategy.chain import ChainId
 from tradingstrategy.exchange import Exchange, ExchangeType
@@ -12,12 +11,14 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.exchange_account.lighter import (
-    create_lighter_cash_management_transfer,
     create_lighter_exchange_account_pair,
 )
-from tradeexecutor.exchange_account.state import open_exchange_account_position
+from tradeexecutor.exchange_account.cash_manager import ExchangeCashManager, ExchangeCashSnapshot
+from tradeexecutor.exchange_account.state import (
+    create_exchange_account_transfer,
+    open_exchange_account_position,
+)
 from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -42,10 +43,6 @@ reserve_currency = ReserveCurrency.usdc
 #: Synthetic public account index returned by the fixed-fork Lighter mock.
 LIGHTER_ACCOUNT_INDEX = 126
 
-# The fixed-fork test replaces this public Lighter session with a sequencer mock.
-LIGHTER_SESSION = create_lighter_session()
-
-
 class Parameters:
     """Parameters for the automatic cash-management test strategy."""
 
@@ -60,7 +57,6 @@ class Parameters:
     lighter_safe_cash_buffer_usd = Decimal("20")
     lighter_free_collateral_buffer_usd = Decimal("0")
     lighter_min_transfer_usd = Decimal("1")
-    lighter_withdrawal_timeout = 1800
 
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:
@@ -154,38 +150,36 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         return []
 
     position_manager = input.get_position_manager()
-    safe_usdc = Decimal(str(position_manager.get_current_cash()))
-    return _create_cash_management_trades(input, position, safe_usdc)
-
-
-def _create_cash_management_trades(
-    input: StrategyInput,
-    position: TradingPosition,
-    safe_usdc: Decimal,
-) -> list[TradeExecution]:
-    """Return one transfer using the latest treasury-synchronised Safe balance.
-
-    :param input:
-        Current strategy state and Lighter cash-management parameters.
-    :param position:
-        Synthetic position representing the Lighter account.
-    :param safe_usdc:
-        Safe USDC balance exposed by ``PositionManager``.
-    :return:
-        One planned custody transfer, or no trades.
-    """
-    parameters = input.parameters
-    transfer = create_lighter_cash_management_transfer(
+    snapshot = ExchangeCashSnapshot(
+        safe_usdc=Decimal(str(position_manager.get_current_cash())),
+        exchange_available_usdc=Decimal(str(position_manager.get_exchange_account_available_balance(pair))),
+        pending_deposits_usdc=Decimal(str(input.state.sync.treasury.pending_deposits or 0)),
+        pending_redemptions_usdc=Decimal(str(input.state.sync.treasury.pending_redemptions or 0)),
+    )
+    manager = ExchangeCashManager(
+        safe_cash_buffer_usdc=Decimal(str(input.parameters.lighter_safe_cash_buffer_usd)),
+        free_collateral_buffer_usdc=Decimal(str(input.parameters.lighter_free_collateral_buffer_usd)),
+        minimum_transfer_usdc=Decimal(str(input.parameters.lighter_min_transfer_usd)),
+    )
+    transfer_pending = any(
+        trade.is_external_account_transfer_pending()
+        for candidate in input.state.portfolio.get_open_and_frozen_positions()
+        for trade in candidate.trades.values()
+    )
+    decision = manager.decide(snapshot, transfer_pending=transfer_pending)
+    if not decision.should_transfer:
+        return []
+    return [create_exchange_account_transfer(
         state=input.state,
         position=position,
         strategy_cycle_at=input.timestamp.to_pydatetime(),
-        reserve_currency=input.strategy_universe.get_reserve_asset(),
-        # PositionManager exposes the latest treasury sync; do not make a
-        # direct on-chain balance call from the strategy reference code.
-        safe_usdc=safe_usdc,
-        safe_cash_buffer_usdc=Decimal(str(parameters.lighter_safe_cash_buffer_usd)),
-        free_collateral_buffer_usdc=Decimal(str(parameters.lighter_free_collateral_buffer_usd)),
-        minimum_transfer_usdc=Decimal(str(parameters.lighter_min_transfer_usd)),
-        session=LIGHTER_SESSION,
-    )
-    return [transfer] if transfer is not None else []
+        reserve_currency=reserve_asset,
+        amount=decision.amount_usdc,
+        deposit=decision.direction == "deposit",
+        notes="Automatic Lighter cash management",
+        metadata={
+            "direction": decision.direction,
+            "protocol": "lighter",
+            "policy": "exchange_cash_manager",
+        },
+    )]

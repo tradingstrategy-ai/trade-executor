@@ -6,7 +6,6 @@ used for valuation without credentials. Automatic withdrawals use a separate
 owner-only operator record for authenticated requests.
 """
 
-import datetime
 import logging
 import math
 from collections.abc import Iterable
@@ -19,20 +18,11 @@ from eth_defi.lighter.valuation import fetch_lighter_total_equity
 from eth_defi.token import fetch_erc20_details
 from web3 import Web3
 
-from tradeexecutor.exchange_account.cash_manager import (
-    DEFAULT_EXCHANGE_WITHDRAWAL_TIMEOUT_SECONDS,
-    ExchangeCashManagementError,
-    ExchangeCashManagementInput,
-)
-from tradeexecutor.exchange_account.state import create_exchange_cash_management_transfer
 from tradeexecutor.state.identifier import (
     AssetIdentifier,
     TradingPairIdentifier,
     TradingPairKind,
 )
-from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
 
 logger = logging.getLogger(__name__)
 
@@ -204,111 +194,6 @@ def validate_lighter_account_value(
     return value
 
 
-def create_lighter_cash_management_transfer(
-    *,
-    state: State,
-    position: TradingPosition,
-    strategy_cycle_at: datetime.datetime,
-    reserve_currency: AssetIdentifier,
-    safe_usdc: Decimal,
-    safe_cash_buffer_usdc: Decimal,
-    free_collateral_buffer_usdc: Decimal,
-    minimum_transfer_usdc: Decimal,
-    session: LighterSession | None = None,
-    notes: str = "Automatic Lighter cash management",
-) -> TradeExecution | None:
-    """Create one Lighter custody trade from current public balances.
-
-    The caller supplies the Safe balance from the preceding treasury sync.
-    This keeps strategy code free of direct on-chain balance reads.
-
-    :param state: Strategy state containing the Safe reserve and redemptions.
-    :param position: Open synthetic Lighter exchange-account position.
-    :param strategy_cycle_at: Current strategy cycle timestamp.
-    :param reserve_currency: Safe reserve asset.
-    :param safe_usdc: Safe USDC observed by treasury synchronisation.
-    :param safe_cash_buffer_usdc: USDC to retain in the Safe.
-    :param free_collateral_buffer_usdc: Lighter free collateral to retain.
-    :param minimum_transfer_usdc: Smallest transfer to submit.
-    :param session: Optional public Lighter HTTP session.
-    :param notes: Human-readable trade note.
-    :return: One planned transfer, or ``None`` when no movement is needed.
-    """
-    if (
-        not position.is_exchange_account()
-        or position.pair.get_exchange_account_protocol() != LIGHTER_PROTOCOL
-    ):
-        raise ValueError("Expected an open Lighter exchange-account position")
-
-    account_index = position.pair.get_exchange_account_id()
-    if account_index is None:
-        raise ValueError("Lighter exchange-account position has no account index")
-
-    lighter_session = session if session is not None else create_lighter_session()
-    equity = fetch_lighter_total_equity(lighter_session, int(account_index))
-    lighter_equity_usdc = validate_lighter_account_value(
-        position.pair,
-        equity.get_total(),
-    )
-    available_usdc = validate_lighter_account_value(
-        position.pair,
-        equity.available_balance,
-    )
-    if available_usdc > lighter_equity_usdc:
-        raise LighterEquityInvariantError(
-            f"Invalid available balance for Lighter account {account_index}"
-        )
-    pending_redemptions = Decimal(str(state.sync.treasury.pending_redemptions or 0))
-    inputs = ExchangeCashManagementInput(
-        safe_usdc=safe_usdc,
-        exchange_available_usdc=available_usdc,
-        pending_redemptions_usdc=pending_redemptions,
-        safe_cash_buffer_usdc=safe_cash_buffer_usdc,
-        free_collateral_buffer_usdc=free_collateral_buffer_usdc,
-        minimum_transfer_usdc=minimum_transfer_usdc,
-    )
-    return create_exchange_cash_management_transfer(
-        state=state,
-        position=position,
-        strategy_cycle_at=strategy_cycle_at,
-        reserve_currency=reserve_currency,
-        inputs=inputs,
-        notes=notes,
-    )
-
-
-def validate_lighter_cash_management_parameters(parameters: dict[str, object]) -> None:
-    """Validate strategy parameters for automatic Lighter cash management.
-
-    :param parameters:
-        Strategy module parameters containing the Lighter cash policy values.
-    """
-    for name in (
-        "lighter_safe_cash_buffer_usd",
-        "lighter_free_collateral_buffer_usd",
-        "lighter_min_transfer_usd",
-    ):
-        try:
-            value = Decimal(str(parameters.get(name, 0)))
-        except (InvalidOperation, TypeError, ValueError) as error:
-            raise ExchangeCashManagementError(
-                f"{name} must be a finite non-negative number"
-            ) from error
-        if not value.is_finite() or value < 0:
-            raise ExchangeCashManagementError(
-                f"{name} must be a finite non-negative number"
-            )
-
-    timeout = parameters.get(
-        "lighter_withdrawal_timeout",
-        DEFAULT_EXCHANGE_WITHDRAWAL_TIMEOUT_SECONDS,
-    )
-    if type(timeout) is not int or timeout <= 0:
-        raise ExchangeCashManagementError(
-            "lighter_withdrawal_timeout must be a positive integer number of seconds"
-        )
-
-
 def create_lighter_account_value_func(
     session: LighterSession | None = None,
 ) -> Callable[..., Decimal]:
@@ -346,6 +231,42 @@ def create_lighter_account_value_func(
         return total
 
     return get_lighter_account_value
+
+
+def create_lighter_available_balance_func(
+    session: LighterSession | None = None,
+) -> Callable[..., Decimal]:
+    """Create a public reader for collateral currently withdrawable from Lighter.
+
+    :param session:
+        Reusable unauthenticated Lighter HTTP session.
+    :return:
+        Callable accepting an exchange-account pair and returning free USDC.
+    """
+    lighter_session = session if session is not None else create_lighter_session()
+
+    def get_lighter_available_balance(
+        pair: TradingPairIdentifier,
+        block_identifier: Any = None,
+        **kwargs: Any,
+    ) -> Decimal:
+        """Read validated Lighter free collateral for one account pair."""
+        del block_identifier, kwargs
+        if not pair.is_exchange_account() or pair.get_exchange_account_protocol() != LIGHTER_PROTOCOL:
+            raise ValueError("Expected a Lighter exchange-account pair")
+        account_index = pair.get_exchange_account_id()
+        if account_index is None:
+            raise ValueError("Lighter exchange account pair has no account index")
+        equity = fetch_lighter_total_equity(lighter_session, int(account_index))
+        total = validate_lighter_account_value(pair, equity.get_total())
+        available = validate_lighter_account_value(pair, equity.available_balance)
+        if available > total:
+            raise LighterEquityInvariantError(
+                f"Invalid available balance for Lighter account {account_index}"
+            )
+        return available
+
+    return get_lighter_available_balance
 
 
 def create_lighter_vault_valuation_func(

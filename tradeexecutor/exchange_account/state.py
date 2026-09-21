@@ -5,17 +5,9 @@ custody transfers use the normal routing and execution pipeline.
 """
 
 import datetime
-import logging
 from decimal import Decimal
 
 from eth_defi.compat import native_datetime_utc_now
-from web3 import Web3
-from web3.exceptions import TransactionNotFound
-
-from tradeexecutor.exchange_account.cash_manager import (
-    ExchangeCashManagementInput,
-    ExchangeCashManager,
-)
 from tradeexecutor.state.identifier import TradingPairIdentifier, AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
@@ -25,61 +17,8 @@ from tradeexecutor.strategy.position_internal_share_price import (
 )
 
 
-logger = logging.getLogger(__name__)
-
-
 class ExchangeAccountTransferError(RuntimeError):
-    """Raised when a manual exchange-account transfer cannot be recorded."""
-
-
-def create_exchange_cash_management_transfer(
-    *,
-    state: State,
-    position: TradingPosition,
-    strategy_cycle_at: datetime.datetime,
-    reserve_currency: AssetIdentifier,
-    inputs: ExchangeCashManagementInput,
-    notes: str,
-) -> TradeExecution | None:
-    """Create the one transfer selected by the pure exchange cash policy.
-
-    :param state:
-        Strategy state containing exchange-account transfer history.
-    :param position:
-        Open external exchange-account position receiving the transfer.
-    :param strategy_cycle_at:
-        UTC timestamp of the decision cycle.
-    :param reserve_currency:
-        Safe reserve asset moved between custody locations.
-    :param inputs:
-        Latest balances and cash-management limits.
-    :param notes:
-        Human-readable trade note.
-    :return:
-        One planned transfer, or ``None`` when movement is unsafe or unnecessary.
-    """
-    pending = any(
-        trade.is_external_account_transfer_pending()
-        for candidate in state.portfolio.get_open_and_frozen_positions()
-        for trade in candidate.trades.values()
-    )
-    decision = ExchangeCashManager().decide(inputs, transfer_pending=pending)
-    if not decision.should_transfer:
-        return None
-    return create_exchange_account_transfer(
-        state=state,
-        position=position,
-        strategy_cycle_at=strategy_cycle_at,
-        reserve_currency=reserve_currency,
-        amount=decision.amount_usdc,
-        deposit=decision.direction == "deposit",
-        notes=notes,
-        metadata={
-            "direction": decision.direction,
-            "policy": "exchange_cash_manager",
-        },
-        automatic=True,
-    )
+    """Raised when an exchange-account transfer cannot be recorded safely."""
 
 
 def create_exchange_account_transfer(
@@ -92,13 +31,11 @@ def create_exchange_account_transfer(
     deposit: bool,
     notes: str,
     metadata: dict[str, str | int],
-    automatic: bool = False,
 ) -> TradeExecution:
     """Create one planned reserve/exchange-account transfer trade.
 
     The physical custody movement is executed by the configured exchange
-    router. Manual callers may omit ``automatic`` for compatibility with the
-    diagnostic command.
+    router or an operator diagnostic command.
     """
     if not position.is_exchange_account():
         raise ExchangeAccountTransferError("Expected an exchange-account position")
@@ -121,131 +58,76 @@ def create_exchange_account_transfer(
         position=position,
         flags={
             TradeFlag.external_account_transfer,
-            *({TradeFlag.automatic_exchange_account_transfer} if automatic else set()),
         },
     )
     trade.other_data = metadata
     return trade
 
 
-def mark_exchange_account_transfer_broadcasted(
-    trade: TradeExecution,
-    timestamp: datetime.datetime,
-) -> None:
-    """Move a manual external-account transfer to the broadcasted state."""
-    if not trade.is_external_account_transfer_pending():
-        raise ExchangeAccountTransferError("Expected an unfinished external-account transfer")
-    if trade.is_planned():
-        trade.started_at = timestamp
-    if trade.get_status() == TradeStatus.started:
-        trade.mark_broadcasted(timestamp)
-    elif trade.get_status() != TradeStatus.broadcasted:
-        raise ExchangeAccountTransferError("External-account transfer has an invalid lifecycle state")
-
-
-def record_exchange_account_transfer(
+def complete_exchange_account_transfer(
     *,
     state: State,
     position: TradingPosition,
     trade: TradeExecution,
-    reserve_currency: AssetIdentifier,
-    amount: Decimal,
+    executed_amount: Decimal,
+    executed_reserve: Decimal,
     executed_at: datetime.datetime,
+    recovery: bool = False,
 ) -> TradeExecution:
-    """Complete a verified manual reserve/exchange-account transfer.
+    """Complete a verified reserve/exchange-account transfer.
 
-    This compatibility helper completes an already broadcasted trade through
-    the same state transition used by routed transfers.
+    :param state:
+        Strategy state owning the transfer.
+    :param position:
+        Exchange-account position owning the transfer.
+    :param trade:
+        Verified external-account transfer.
+    :param executed_amount:
+        Signed amount applied to the exchange-account position.
+    :param executed_reserve:
+        Positive Safe reserve amount debited or credited by the transfer.
+    :param executed_at:
+        UTC timestamp of the verified completion.
+    :param recovery:
+        Allow a verified ``started`` or ``failed`` transfer to be reconciled.
+    :return:
+        The completed transfer.
     """
-    if amount <= 0:
-        raise ExchangeAccountTransferError("Exchange-account transfer amount must be positive")
-    if (
-        not trade.is_external_account_transfer_pending()
-        or trade.get_status() != TradeStatus.broadcasted
-    ):
-        raise ExchangeAccountTransferError("Expected a broadcasted external-account transfer")
+    if executed_reserve <= 0:
+        raise ExchangeAccountTransferError("Exchange-account reserve amount must be positive")
+    allowed_statuses = {TradeStatus.broadcasted}
+    if recovery:
+        allowed_statuses.update({TradeStatus.started, TradeStatus.failed})
+    if trade.get_status() not in allowed_statuses:
+        raise ExchangeAccountTransferError("External-account transfer has an invalid lifecycle state")
     if trade.position_id != position.position_id:
         raise ExchangeAccountTransferError("Transfer does not belong to the exchange-account position")
-    if abs(trade.planned_quantity) != amount:
-        raise ExchangeAccountTransferError("Verified transfer amount differs from the planned amount")
-
-    reserve_change = -amount if trade.is_buy() else amount
-    reserve = state.portfolio.get_reserve_position(reserve_currency)
-    if reserve.quantity + reserve_change < 0:
-        raise ExchangeAccountTransferError("Transfer would create a negative reserve quantity")
-    if position.get_quantity() + trade.planned_quantity < 0:
+    if trade.is_buy() != (executed_amount > 0):
+        raise ExchangeAccountTransferError("Transfer direction differs from the verified amount")
+    if position.get_quantity() + executed_amount < 0:
         raise ExchangeAccountTransferError("Transfer would create a negative exchange-account quantity")
-
-    if reserve_change < 0:
-        state.portfolio.adjust_reserves(
-            reserve_currency,
-            reserve_change,
-            f"External account transfer for trade #{trade.trade_id}",
-        )
+    if trade.is_buy():
+        if trade.reserve_currency_allocated is None:
+            raise ExchangeAccountTransferError(
+                "Exchange-account deposit needs reserve allocation from State.start_execution()",
+            )
+        if trade.reserve_currency_allocated != executed_reserve:
+            raise ExchangeAccountTransferError("Verified deposit differs from the allocated reserve")
+    if recovery and trade.failed_at is not None:
+        # TradeExecution gives failure precedence over executed_at. Clear it
+        # only after protocol-specific evidence has proven the transfer.
+        trade.failed_at = None
     state.mark_trade_success(
         executed_at=executed_at,
         trade=trade,
         executed_price=1.0,
-        executed_amount=trade.planned_quantity,
-        executed_reserve=amount,
+        executed_amount=executed_amount,
+        executed_reserve=executed_reserve,
         lp_fees=0,
         native_token_price=0,
+        force=recovery,
     )
     return trade
-
-
-def reconcile_completed_external_account_transfers(
-    state: State,
-    web3: Web3,
-) -> list[TradeExecution]:
-    """Mark already-mined external-account transfers successful.
-
-    This is deliberately a recovery-only state operation. It does not wait for
-    an exchange, request a withdrawal, or broadcast a transaction. Transfers
-    without a complete set of successful transaction receipts remain unclean
-    and require operator investigation.
-
-    :param state:
-        Strategy state to reconcile.
-    :param web3:
-        Connected chain reader used to retrieve transaction receipts.
-    :return:
-        Transfers whose recorded transactions are all mined successfully.
-    """
-    completed_trades = []
-    for position in state.portfolio.get_open_and_frozen_positions():
-        for trade in position.trades.values():
-            if not trade.is_external_account_transfer_pending():
-                continue
-            if not trade.blockchain_transactions:
-                continue
-
-            for transaction in trade.blockchain_transactions:
-                if not transaction.tx_hash:
-                    break
-                try:
-                    receipt = web3.eth.get_transaction_receipt(transaction.tx_hash)
-                except TransactionNotFound:
-                    break
-                if receipt.get("status") != 1:
-                    break
-            else:
-                state.mark_trade_success(
-                    executed_at=native_datetime_utc_now(),
-                    trade=trade,
-                    executed_price=1.0,
-                    executed_amount=trade.planned_quantity,
-                    executed_reserve=trade.planned_reserve,
-                    lp_fees=0,
-                    native_token_price=0,
-                )
-                completed_trades.append(trade)
-                logger.info(
-                    "Reconciled completed external-account transfer #%d",
-                    trade.trade_id,
-                )
-
-    return completed_trades
 
 
 def open_exchange_account_position(

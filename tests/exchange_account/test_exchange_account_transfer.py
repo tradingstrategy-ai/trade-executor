@@ -14,11 +14,9 @@ from tradeexecutor.exchange_account.lighter import create_lighter_exchange_accou
 from tradeexecutor.exchange_account.lighter_operator import LighterOperatorRecord
 from tradeexecutor.exchange_account.state import (
     ExchangeAccountTransferError,
+    complete_exchange_account_transfer,
     create_exchange_account_transfer,
-    mark_exchange_account_transfer_broadcasted,
     open_exchange_account_position,
-    reconcile_completed_external_account_transfers,
-    record_exchange_account_transfer,
 )
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
@@ -71,7 +69,7 @@ def _create_transfer(
     amount: Decimal,
     deposit: bool,
 ) -> TradeExecution:
-    """Create and broadcast one test-only manual transfer trade."""
+    """Create and broadcast one test-only external-account transfer trade."""
     trade = create_exchange_account_transfer(
         state=state,
         position=position,
@@ -82,11 +80,12 @@ def _create_transfer(
         notes="Test external account transfer",
         metadata={"direction": "deposit" if deposit else "withdraw"},
     )
-    mark_exchange_account_transfer_broadcasted(trade, native_datetime_utc_now())
+    state.start_execution(native_datetime_utc_now(), trade, underflow_check=True)
+    trade.mark_broadcasted(native_datetime_utc_now())
     return trade
 
 
-def test_record_exchange_account_transfer_preserves_custody_value() -> None:
+def test_complete_exchange_account_transfer_preserves_custody_value() -> None:
     """Record verified Safe/Lighter transfers without changing combined value.
 
     1. Create a funded external-account position and a Safe reserve.
@@ -108,12 +107,12 @@ def test_record_exchange_account_transfer_preserves_custody_value() -> None:
         amount=Decimal("5"),
         deposit=True,
     )
-    record_exchange_account_transfer(
+    complete_exchange_account_transfer(
         state=state,
         position=position,
         trade=deposit,
-        reserve_currency=reserve_asset,
-        amount=Decimal("5"),
+        executed_amount=Decimal("5"),
+        executed_reserve=Decimal("5"),
         executed_at=native_datetime_utc_now(),
     )
     assert deposit.is_success()
@@ -130,12 +129,12 @@ def test_record_exchange_account_transfer_preserves_custody_value() -> None:
         amount=Decimal("5"),
         deposit=False,
     )
-    record_exchange_account_transfer(
+    complete_exchange_account_transfer(
         state=state,
         position=position,
         trade=withdrawal,
-        reserve_currency=reserve_asset,
-        amount=Decimal("5"),
+        executed_amount=Decimal("-5"),
+        executed_reserve=Decimal("5"),
         executed_at=native_datetime_utc_now(),
     )
     full_withdrawal = _create_transfer(
@@ -145,12 +144,12 @@ def test_record_exchange_account_transfer_preserves_custody_value() -> None:
         amount=Decimal("10"),
         deposit=False,
     )
-    record_exchange_account_transfer(
+    complete_exchange_account_transfer(
         state=state,
         position=position,
         trade=full_withdrawal,
-        reserve_currency=reserve_asset,
-        amount=Decimal("10"),
+        executed_amount=Decimal("-10"),
+        executed_reserve=Decimal("10"),
         executed_at=native_datetime_utc_now(),
     )
     assert reserve.quantity == INITIAL_SAFE_USDC
@@ -158,21 +157,26 @@ def test_record_exchange_account_transfer_preserves_custody_value() -> None:
     assert position.position_id in state.portfolio.open_positions
     assert state.portfolio.get_net_asset_value() == pytest.approx(INITIAL_SAFE_USDC)
 
-    # 4. Reject an underfunded accounting mutation.
-    invalid = _create_transfer(
-        state,
-        reserve_asset,
-        position,
-        amount=Decimal("21"),
+    # 4. Reject a deposit that was not allocated before broadcast.
+    invalid = create_exchange_account_transfer(
+        state=state,
+        position=position,
+        strategy_cycle_at=native_datetime_utc_now(),
+        reserve_currency=reserve_asset,
+        amount=Decimal("1"),
         deposit=True,
+        notes="Unallocated external account transfer",
+        metadata={"direction": "deposit"},
     )
-    with pytest.raises(ExchangeAccountTransferError, match="negative reserve quantity"):
-        record_exchange_account_transfer(
+    invalid.started_at = native_datetime_utc_now()
+    invalid.mark_broadcasted(native_datetime_utc_now())
+    with pytest.raises(ExchangeAccountTransferError, match="allocation"):
+        complete_exchange_account_transfer(
             state=state,
             position=position,
             trade=invalid,
-            reserve_currency=reserve_asset,
-            amount=Decimal("21"),
+            executed_amount=Decimal("1"),
+            executed_reserve=Decimal("1"),
             executed_at=native_datetime_utc_now(),
         )
 
@@ -200,7 +204,8 @@ def test_pending_external_account_transfer_makes_state_unclean() -> None:
         if phase == "started":
             trade.started_at = native_datetime_utc_now()
         elif phase == "broadcasted":
-            mark_exchange_account_transfer_broadcasted(trade, native_datetime_utc_now())
+            state.start_execution(native_datetime_utc_now(), trade, underflow_check=True)
+            trade.mark_broadcasted(native_datetime_utc_now())
         elif phase == "failed":
             trade.failed_at = native_datetime_utc_now()
 
@@ -212,6 +217,49 @@ def test_pending_external_account_transfer_makes_state_unclean() -> None:
 
         # 3. Preserve the legacy unfinished predicate for non-broadcasted trades.
         assert trade.is_unfinished() is (phase == "broadcasted")
+
+
+def test_verified_failed_exchange_account_deposit_consumes_existing_allocation() -> None:
+    """Reconcile a verified failed deposit without crediting the Safe twice.
+
+    1. Create and start a Lighter deposit so the Safe reserve is allocated.
+    2. Mark the transfer failed while preserving the uncertain Safe debit.
+    3. Complete it with verified evidence and inspect the final accounting.
+    """
+    # 1. Create and start a Lighter deposit so the Safe reserve is allocated.
+    state, reserve_asset, position = _create_state()
+    trade = create_exchange_account_transfer(
+        state=state,
+        position=position,
+        strategy_cycle_at=native_datetime_utc_now(),
+        reserve_currency=reserve_asset,
+        amount=Decimal("5"),
+        deposit=True,
+        notes="Verified delayed Lighter deposit",
+        metadata={"direction": "deposit"},
+    )
+    state.start_execution(native_datetime_utc_now(), trade, underflow_check=True)
+    state.mark_trade_failed(native_datetime_utc_now(), trade)
+    assert state.portfolio.get_reserve_position(reserve_asset).quantity == Decimal("5")
+
+    # 2. A failed external deposit retains its Safe allocation until verified.
+    assert trade.reserve_currency_allocated == Decimal("5")
+    assert trade.failed_at is not None
+
+    # 3. Complete it with verified evidence and inspect the final accounting.
+    complete_exchange_account_transfer(
+        state=state,
+        position=position,
+        trade=trade,
+        executed_amount=Decimal("5"),
+        executed_reserve=Decimal("5"),
+        executed_at=native_datetime_utc_now(),
+        recovery=True,
+    )
+    assert trade.is_success()
+    assert trade.reserve_currency_allocated == Decimal(0)
+    assert position.get_quantity() == Decimal("15")
+    assert state.portfolio.get_reserve_position(reserve_asset).quantity == Decimal("5")
 
 
 def test_repair_does_not_rebroadcast_pending_external_account_transfer(
@@ -267,7 +315,6 @@ def test_repair_does_not_create_counter_trade_for_pending_external_transfer() ->
         deposit=False,
         notes="Interrupted Lighter withdrawal",
         metadata={"direction": "withdraw"},
-        automatic=True,
     )
 
     # 2. Run the missing-transaction repair selector.
@@ -300,12 +347,14 @@ def test_lighter_withdrawal_keeps_trade_started_until_safe_claim(
         deposit=False,
         notes="Automatic Lighter withdrawal",
         metadata={"direction": "withdraw"},
-        automatic=True,
     )
     trade.started_at = native_datetime_utc_now()
-    router = LighterRouting(reserve_asset.address, session=mocker.Mock())
+    router = LighterRouting(
+        reserve_asset.address,
+        config=LighterRoutingConfig(operator_record=mocker.Mock()),
+        session=mocker.Mock(),
+    )
     routing_state = SimpleNamespace(
-        operator_record=mocker.Mock(),
         vault=SimpleNamespace(safe_address="0x0000000000000000000000000000000000000001"),
     )
 
@@ -375,60 +424,5 @@ def test_lighter_routing_uses_explicit_cli_configuration(
         },
     )
 
-    # 3. Verify the per-cycle routing state uses the supplied record and timeout.
-    assert routing_state.operator_record is operator_record
+    # 3. Verify immutable router configuration retains the supplied timeout.
     assert router.config.withdrawal_timeout == 1800
-
-
-def test_completed_external_account_transfer_is_reconciled_without_rebroadcast(
-    mocker: MockerFixture,
-) -> None:
-    """Reconcile a mined external transfer without submitting another transaction.
-
-    1. Create and broadcast an automatic Lighter withdrawal with one transaction.
-    2. Return a successful receipt for the recorded transaction.
-    3. Reconcile the existing trade and verify the state is clean.
-    """
-    # 1. Create and broadcast an automatic Lighter withdrawal with one transaction.
-    state, reserve_asset, position = _create_state()
-    withdrawal = create_exchange_account_transfer(
-        state=state,
-        position=position,
-        strategy_cycle_at=native_datetime_utc_now(),
-        reserve_currency=reserve_asset,
-        amount=Decimal("1"),
-        deposit=False,
-        notes="Checkpointed automatic Lighter withdrawal",
-        metadata={
-            "direction": "withdraw",
-        },
-        automatic=True,
-    )
-    state.start_execution(
-        native_datetime_utc_now(),
-        withdrawal,
-        underflow_check=True,
-    )
-    mark_exchange_account_transfer_broadcasted(
-        withdrawal,
-        native_datetime_utc_now(),
-    )
-    withdrawal.blockchain_transactions = [
-        SimpleNamespace(tx_hash="0x" + "12" * 32),
-    ]
-
-    # 2. Return a successful receipt for the recorded transaction.
-    web3 = SimpleNamespace(
-        eth=SimpleNamespace(
-            get_transaction_receipt=mocker.Mock(return_value={"status": 1}),
-        ),
-    )
-
-    # 3. Reconcile the existing trade and verify the state is clean.
-    reconciled = reconcile_completed_external_account_transfers(state, web3)
-    assert reconciled == [withdrawal]
-    web3.eth.get_transaction_receipt.assert_called_once_with("0x" + "12" * 32)
-    assert withdrawal.is_success()
-    assert position.get_quantity() == Decimal("9")
-    assert state.portfolio.get_reserve_position(reserve_asset).quantity == Decimal("11")
-    state.check_if_clean()

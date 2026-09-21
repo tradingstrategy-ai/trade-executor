@@ -11,7 +11,7 @@ from tradeexecutor.exchange_account.lighter import (
     create_lighter_account_value_func,
     validate_lighter_exchange_account_pairs,
 )
-from tradeexecutor.exchange_account.state import reconcile_completed_external_account_transfers
+from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
 from tradeexecutor.strategy.account_correction import check_accounts as _check_accounts
 
 from ...state.state import UncleanState
@@ -125,12 +125,11 @@ def check_accounts(
     assert not store.is_pristine(), f"State does not exists yet: {state_file}"
 
     state = store.load()
-    reconciled_transfers = reconcile_completed_external_account_transfers(state, web3)
-    if reconciled_transfers:
-        store.sync(state)
+    verified_transfers = reconcile_verified_lighter_transfers(state, web3, mutate=False)
+    if verified_transfers:
         logger.info(
-            "Reconciled %d completed external-account transfer(s)",
-            len(reconciled_transfers),
+            "Found %d verified but unreconciled Lighter transfer(s); run correct-accounts or repair",
+            len(verified_transfers),
         )
 
     mod: StrategyModuleInformation = read_strategy_module(strategy_file)

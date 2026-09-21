@@ -1,5 +1,11 @@
 # Automated Lighter cash management
 
+> **Superseded implementation notes:** The first draft's generic receipt
+> reconciliation, strategy-owned Lighter session, timeout strategy parameter,
+> and pending-transfer resumption approach were replaced by
+> [the simplification plan](lighter-cash-management-simplification.md). Keep
+> this document as historical context only.
+
 ## Goal
 
 Automatically move idle Lagoon Safe USDC to its Lighter account and return

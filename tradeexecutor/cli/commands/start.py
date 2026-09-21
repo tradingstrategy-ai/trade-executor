@@ -32,12 +32,13 @@ from ..slippage import configure_max_slippage_tolerance
 from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
-from ...ethereum.lighter.lighter_routing import LighterRoutingConfig
+from ...ethereum.lighter.lighter_routing import (
+    DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
+    LighterRoutingConfig,
+)
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
-from ...exchange_account.cash_manager import DEFAULT_EXCHANGE_WITHDRAWAL_TIMEOUT_SECONDS
-from ...exchange_account.lighter import validate_lighter_cash_management_parameters
 from ...exchange_account.lighter_operator import load_lighter_operator_record
 from ...state.state import State
 from ...state.store import NoneStore, JSONFileStore
@@ -67,7 +68,7 @@ def _create_lighter_routing_config(
     asset_management_mode: AssetManagementMode,
     strategy_parameters: dict[str, object],
     operator_record_file: Path | None,
-    withdrawal_timeout: int | None,
+    withdrawal_timeout: int,
 ) -> LighterRoutingConfig | None:
     """Build automatic Lighter transfer settings from parsed CLI inputs.
 
@@ -78,7 +79,7 @@ def _create_lighter_routing_config(
     :param operator_record_file:
         Owner-only operator record parsed by the CLI.
     :param withdrawal_timeout:
-        Optional CLI override for the strategy's withdrawal wait time.
+        CLI timeout for the secure withdrawal wait.
     :return:
         Lighter routing settings, or ``None`` when the strategy does not use them.
     """
@@ -87,25 +88,15 @@ def _create_lighter_routing_config(
     if not strategy_parameters.get("lighter_cash_management", False):
         return None
 
-    validate_lighter_cash_management_parameters(strategy_parameters)
     if operator_record_file is None:
         raise ValueError(
             "--lighter-operator-record-file or LIGHTER_OPERATOR_RECORD_FILE is required "
             "when automatic Lighter cash management is enabled"
         )
 
-    resolved_timeout = withdrawal_timeout
-    if resolved_timeout is None:
-        resolved_timeout = strategy_parameters.get(
-            "lighter_withdrawal_timeout",
-            DEFAULT_EXCHANGE_WITHDRAWAL_TIMEOUT_SECONDS,
-        )
-    if type(resolved_timeout) is not int or resolved_timeout <= 0:
-        raise ValueError("Lighter withdrawal timeout must be a positive number of seconds")
-
     return LighterRoutingConfig(
         operator_record=load_lighter_operator_record(operator_record_file),
-        withdrawal_timeout=resolved_timeout,
+        withdrawal_timeout=withdrawal_timeout,
     )
 
 
@@ -153,8 +144,8 @@ def start(
         envvar="LIGHTER_OPERATOR_RECORD_FILE",
         help="Owner-only Lighter operator record used for automatic Safe withdrawals",
     ),
-    lighter_withdrawal_timeout: Optional[int] = typer.Option(
-        None,
+    lighter_withdrawal_timeout: int = typer.Option(
+        DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
         envvar="LIGHTER_WITHDRAWAL_TIMEOUT",
         help="Maximum seconds to wait for a secure Lighter withdrawal",
     ),
@@ -654,7 +645,7 @@ def start(
 
     if isinstance(sync_model, LagoonVaultSyncModel):
         lighter_cash_management = lighter_routing_config is not None
-        sync_model.defer_lighter_redemption_without_liquidity = bool(
+        sync_model.defer_redemption_without_reserve_liquidity = bool(
             lighter_cash_management
         )
         sync_model.abort_lagoon_settlement_on_frozen_positions = abort_lagoon_settlement_on_frozen_positions

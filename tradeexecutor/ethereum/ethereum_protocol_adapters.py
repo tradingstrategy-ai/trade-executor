@@ -15,7 +15,7 @@ from eth_defi.one_delta.deployment import fetch_deployment as fetch_1delta_deplo
 from eth_defi.aave_v3.constants import AAVE_V3_DEPLOYMENTS
 from eth_defi.one_delta.constants import ONE_DELTA_DEPLOYMENTS
 from eth_defi.lighter.constants import LIGHTER_ETHEREUM_DEPLOYMENT_CHAIN_ID, LIGHTER_USDC_ETHEREUM
-from eth_defi.lighter.session import create_lighter_session
+from eth_defi.lighter.session import LighterSession, create_lighter_session
 from tradeexecutor.ethereum.routing_data import base_uniswap_v3_address_map
 from tradeexecutor.ethereum.lighter.lighter_routing import (
     LighterRouting,
@@ -24,6 +24,7 @@ from tradeexecutor.ethereum.lighter.lighter_routing import (
 from tradeexecutor.ethereum.vault.vault_routing import VaultRouting
 from tradeexecutor.exchange_account.lighter import (
     create_lighter_account_value_func,
+    create_lighter_available_balance_func,
     create_lighter_vault_valuation_func,
     validate_lighter_exchange_account_pairs,
 )
@@ -778,6 +779,7 @@ def create_lighter_adapter(
     reserve_token_address: str,
     web3: Web3 | None = None,
     routing_config: LighterRoutingConfig | None = None,
+    session: LighterSession | None = None,
 ) -> ProtocolRoutingConfig:
     """Create the Lighter custody-transfer router and public valuator.
 
@@ -789,13 +791,16 @@ def create_lighter_adapter(
         Optional chain reader used to anchor valuations to a block.
     :param routing_config:
         Optional private withdrawal settings parsed at the CLI boundary.
+    :param session:
+        Reusable public Lighter session shared with account valuation.
     :return:
         Lighter routing, pricing, and valuation models.
     """
     assert routing_id.router_name == "lighter"
-    session = create_lighter_session()
+    session = session or create_lighter_session()
     account_value_func = create_lighter_account_value_func(session)
-    pricing_model = ExchangeAccountPricingModel(account_value_func)
+    available_balance_func = create_lighter_available_balance_func(session)
+    pricing_model = ExchangeAccountPricingModel(account_value_func, available_balance_func)
     valuation_model = ExchangeAccountValuator(pricing_model, web3=web3)
     routing_model = LighterRouting(
         reserve_token_address,
@@ -927,6 +932,7 @@ class EthereumPairConfigurator(PairConfigurator):
         self.satellite_vaults = satellite_vaults or getattr(execution_model, "satellite_vaults", None) or {}
         self.hypercore_market_data_source = hypercore_market_data_source or getattr(execution_model, "hypercore_market_data_source", None)
         self.lighter_routing_config = lighter_routing_config or getattr(execution_model, "lighter_routing_config", None)
+        self.lighter_session: LighterSession | None = None
         self.vault_valuation_func = None
         self.vault_deposit_asset_override = None
         self.vault_simulate_redemption_with_liquidity = False
@@ -1029,15 +1035,15 @@ class EthereumPairConfigurator(PairConfigurator):
             )
 
         # Keep one unauthenticated HTTP session for both account and NAV reads.
-        session = create_lighter_session()
-        self.account_value_func = create_lighter_account_value_func(session)
+        self.lighter_session = create_lighter_session()
+        self.account_value_func = create_lighter_account_value_func(self.lighter_session)
 
         self.vault_valuation_func = create_lighter_vault_valuation_func(
             web3=web3,
             safe_address=safe_address,
             reserve_asset=reserve_asset,
             account_index=int(account_index),
-            session=session,
+            session=self.lighter_session,
         )
         logger.info(
             "Auto-discovered Lighter account %d — wired public account and vault valuation functions",
@@ -1154,6 +1160,7 @@ class EthereumPairConfigurator(PairConfigurator):
                 reserve.address,
                 web3=self.web3,
                 routing_config=self.lighter_routing_config,
+                session=self.lighter_session,
             )
         elif routing_id.router_name == "cctp-bridge":
             # Resolve primary custody address from the execution model's

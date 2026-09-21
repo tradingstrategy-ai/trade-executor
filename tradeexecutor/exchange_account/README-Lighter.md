@@ -19,8 +19,8 @@ orders are submitted by a separate execution tool, not by trade-executor.
 | Lagoon NAV posting | `lagoon-settle` |
 | Manual Safe/Lighter custody diagnostic | `lighter-move-funds` |
 | Read-only accounting comparison | `check-accounts` |
-| Accounting correction and PnL balance updates | `correct-accounts` |
-| Generic interrupted-trade repair | `repair` |
+| Accounting correction, PnL and verified-transfer reconciliation | `correct-accounts` |
+| Interrupted-transfer reconciliation | `correct-accounts` or `repair` |
 | Perpetual order execution inside trade-executor | No; use a separate execution tool |
 
 ## Value and custody model
@@ -135,10 +135,11 @@ execution tool until trade-executor itself supports Lighter order routing.
 
 For an alpha model that should park idle Safe USDC on Lighter, use the same
 synthetic pair with `lighter_cash_management=True`. The strategy's
-`decide_trades()` calls `create_lighter_cash_management_transfer()` and returns
-the resulting `TradeExecution` when the policy needs to move cash. The custody
-movement therefore follows the ordinary approval, checkpoint, router and
-settlement pipeline; it is not a second transfer subsystem. See
+`decide_trades()` builds an `ExchangeCashSnapshot` from `PositionManager` and
+the Lagoon queue, then returns a `TradeExecution` when `ExchangeCashManager`
+selects a movement. The custody movement therefore follows the ordinary
+approval, checkpoint, router and settlement pipeline; it is not a second
+transfer subsystem. See
 [`strategies/test_only/lighter_cash_management_strategy.py`](../../strategies/test_only/lighter_cash_management_strategy.py)
 for a small complete example.
 
@@ -152,7 +153,6 @@ class Parameters:
     lighter_safe_cash_buffer_usd = Decimal("20")
     lighter_free_collateral_buffer_usd = Decimal("0")
     lighter_min_transfer_usd = Decimal("1")
-    lighter_withdrawal_timeout = 1800
 ```
 
 Keep the public account identity separate from behavioural strategy parameters,
@@ -161,13 +161,16 @@ and passed to routing explicitly.
 
 The manager deposits only Safe cash above the configured buffer. When Lagoon
 has pending redemptions and the Safe is short, it withdraws available Lighter
-collateral. A withdrawal normally waits about 20 minutes, and the executor
+collateral. Pending Lagoon deposits offset matching redemptions, so the Safe
+target is `max(pending redemptions - pending deposits, 0) + buffer`. A
+withdrawal normally waits about 20 minutes, and the executor
 intentionally blocks for it with a 30-minute safety timeout. No later trades or
 NAV/account checks run while the transfer is in flight. If the process stops,
-the next `start` continues a checkpointed public Lighter request ID. A crash
-before that checkpoint is deliberately left unclean rather than risking a
-duplicate request. A claim already broadcast to Ethereum also remains unclean
-and requires normal repair or manual recovery rather than a second broadcast. Keep
+the next `start` aborts before any new trade. Reconcile verified evidence with
+`correct-accounts` or `repair`; it never repeats a Lighter request or Safe
+claim. A claim already broadcast to Ethereum remains unclean until that
+evidence is recorded. Run read-only `check-accounts` first to inspect this
+state before choosing either correcting command. Keep
 `LIGHTER_OPERATOR_RECORD_FILE=/secure/lighter/lighter-vault.json` available to
 `start` for the owner-only delegated key record. The key itself is never
 stored in strategy parameters or executor state.
@@ -414,16 +417,16 @@ rewriting this transfer record.
 
 Secure withdrawals save their request before waiting and resume after a
 restart without blindly submitting a second request. The command claims only
-the matching `claimable` history row and requires its Safe USDC credit to match
-exactly. A definitive API rejection is recorded as a failed trade, allowing a
-fresh attempt. An ambiguous transport failure remains pending and is never
-resubmitted automatically. Keep unrelated Safe transfers stopped until the
-withdrawal finishes, because they can obscure the saved pre-withdrawal balance
-used for recovery. If an ambiguous request never appears in withdrawal history,
-keep the executor stopped and investigate the saved transfer instead of using
-`repair` or resubmitting it. A deposit interrupted after its physical movement
-but before state persistence is deliberately recovered with `correct-accounts`;
-it is never replayed automatically.
+the matching `claimable` history row and records the observed Safe USDC credit;
+the credit can be lower than the requested amount because of protocol fees. A
+definitive API rejection is retained as a failed transfer for operator review.
+An ambiguous transport failure remains pending and is never resubmitted
+automatically. Keep unrelated Safe transfers stopped until the withdrawal
+finishes, because they can obscure the saved pre-withdrawal balance used for
+recovery. If an ambiguous request never appears in withdrawal history, keep
+the executor stopped and investigate the saved transfer instead of resubmitting
+it. A deposit interrupted after its physical movement but before state
+persistence needs operator investigation; it is never replayed automatically.
 
 ## Strategy setup
 
@@ -519,10 +522,12 @@ normal execution and account correction stop rather than booking its temporary
 Lighter debit as a loss. Resume `lighter-move-funds` and let it claim or detect
 the completed withdrawal first.
 
-`repair` has a different purpose. It repairs interrupted executor trades and
-transactions; it does not query Lighter equity or perform account correction.
-A healthy Lighter exchange-account position and its spoofed successful opening
-trade are left unchanged:
+`repair` first reconciles an interrupted Lighter transfer when its public
+Ethereum and Lighter evidence is complete, then repairs other interrupted
+executor trades and transactions. A transfer without complete evidence remains
+unclean rather than being generically refunded. A healthy Lighter
+exchange-account position and its spoofed successful opening trade are left
+unchanged:
 
 ```shell
 trade-executor repair --auto-approve
@@ -553,8 +558,13 @@ The integration fails closed:
 
 The main integration points are deliberately small:
 
+- `cash_manager.py` contains the pure Safe/exchange cash-allocation policy.
 - `lighter.py` creates the synthetic pair, validates public equity and provides
-  account and Lagoon NAV value functions.
+  account, free-collateral and Lagoon NAV readers.
+- `lighter_routing.py` prepares Safe-owned deposits and withdrawal claims in
+  the normal execution pipeline.
+- `transfer_verification.py` checks public Ethereum and Lighter evidence before
+  an interrupted custody transfer is reconciled.
 - `sync_model.py` converts a changed external-account value into a
   `BalanceUpdate` without creating an EVM trade.
 - `utils.py` dispatches `correct-accounts` to the Lighter public reader.

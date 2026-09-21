@@ -212,11 +212,6 @@ class TradeFlag(enum.Enum):
     #: movement routed by a protocol-specific execution model.
     external_account_transfer = "external_account_transfer"
 
-    #: An exchange-account transfer created by the strategy cash-management policy.
-    #:
-    #: Automatic transfers use the normal routing and execution pipeline.
-    automatic_exchange_account_transfer = "automatic_exchange_account_transfer"
-
     #: If there is an existing open position, do not try to match the trade for an open position.
     #:
     #: We trade by pair. If in same cycle we close and open position for the same pair, the trade

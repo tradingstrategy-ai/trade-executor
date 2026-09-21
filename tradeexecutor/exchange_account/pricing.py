@@ -41,14 +41,18 @@ class ExchangeAccountPricingModel(PricingModel):
     def __init__(
         self,
         account_value_func: Callable[..., Decimal],
+        available_balance_func: Callable[..., Decimal] | None = None,
     ):
         """Initialise pricing model.
 
         :param account_value_func:
             Function that takes a pair and returns account value in USD.
             Signature: ``(pair: TradingPairIdentifier, **kwargs) -> Decimal``
+        :param available_balance_func:
+            Optional function returning collateral available for withdrawal.
         """
         self.account_value_func = account_value_func
+        self.available_balance_func = available_balance_func
 
     def get_account_value(self, pair: TradingPairIdentifier, **kwargs) -> Decimal:
         """Get account value from the configured function.
@@ -61,6 +65,20 @@ class ExchangeAccountPricingModel(PricingModel):
             Account value in USD
         """
         return self.account_value_func(pair, **kwargs)
+
+    def get_available_balance(self, pair: TradingPairIdentifier, **kwargs) -> Decimal:
+        """Get collateral currently available for an exchange-account withdrawal.
+
+        :param pair:
+            Exchange account trading pair.
+        :param kwargs:
+            Forwarded to the protocol-specific balance reader.
+        :return:
+            Available account balance in USD.
+        """
+        if self.available_balance_func is None:
+            raise RuntimeError(f"Available-balance reader is not configured for {pair}")
+        return self.available_balance_func(pair, **kwargs)
 
     def get_buy_price(
         self,
