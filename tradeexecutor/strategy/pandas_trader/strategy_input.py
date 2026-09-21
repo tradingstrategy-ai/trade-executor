@@ -5,6 +5,7 @@
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 import cachetools
@@ -21,6 +22,7 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
+from tradeexecutor.strategy.recorder.recorder import DecisionRecorder
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.liquidity import LiquidityDataUnavailable
 from tradingstrategy.pair import HumanReadableTradingPairDescription
@@ -855,15 +857,20 @@ class StrategyInputIndicators:
 
 @dataclass
 class StrategyInput:
-    """Inputs for a trading decision.
+    """Provide one versioned call boundary for a v0.5 strategy decision.
 
-    The data structure used to make trade decisions. Captures
-    all values that need to go to a single trade, under different live and backtesting
-    circumstances.
+    ``PandasTraderRunner.on_clock()`` constructs this dataclass and passes it as
+    the sole argument to ``decide_trades()``. Grouping cycle time, constructed
+    universe, indicators, state, models, and parameters makes the callback
+    consistent between live execution and backtesting while retaining explicit
+    types and discoverable helper methods.
 
-    - Inputs for `decide_trades` function
-
-    - Enabled when `trading_strategy_engine_version = "0.5"` or higher
+    Live strategies that enable input recording also receive ``recorder`` and
+    ``state_path``. Their ``decide_trades()`` callback uses the
+    :func:`tradeexecutor.strategy.recorder.record_decision` decorator and emits
+    explicit observations from its calculations; the fields are absent from
+    ordinary runs and do not change trade selection. This input shape is enabled for
+    ``trading_strategy_engine_version = "0.5"`` or newer.
     """
 
     #: Strategy cycle number
@@ -932,6 +939,20 @@ class StrategyInput:
 
     #: The routing state for the current cycle
     routing_state: RoutingState | None = None
+
+    #: Live decision recorder. It is absent for backtests and ordinary strategies.
+    #:
+    #: Apply :func:`tradeexecutor.strategy.recorder.record_decision` to
+    #: ``decide_trades()`` to own the lifecycle. Strategy calculations call
+    #: ``record()`` only for explicit intermediate observations. The recorder
+    #: is a diagnostic side channel: it must not alter trade selection or state.
+    recorder: DecisionRecorder | None = None
+
+    #: Authoritative state path used to correlate recorder rows with state.
+    #:
+    #: The recorder stores this path and small position/trade identifiers only;
+    #: executor state remains the sole state serialisation authority.
+    state_path: Path | None = None
 
     def get_position_manager(self) -> PositionManager:
         """Create a position manager instance to open/close trading positions in this decision cycle."""
@@ -1061,6 +1082,3 @@ def _calculate_and_cache_candle_width_df(df: pd.DatetimeIndex | pd.Series) -> pd
         return time_bucket.to_pandas_timedelta()
 
     return _calculate_and_cache_candle_width(df.index)
-
-
-

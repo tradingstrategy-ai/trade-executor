@@ -1989,6 +1989,8 @@ class ExecutionLoop:
             visualisation=self.visulisation,
             max_price_impact=self.max_price_impact,
             check_accounts=self.check_accounts,
+            state_path=getattr(self.store, "path", None),
+            strategy_id=self.run_state.executor_id if self.run_state else None,
         )
 
         self.init_live_run_state(run_description)
@@ -2037,7 +2039,13 @@ class ExecutionLoop:
                 logger.info("Automatically using %s - %s for backtest start and end", self.backtest_start, self.backtest_end)
 
     def run_with_state(self, state: State) -> dict:
-        """Start the execution.
+        """Run live or backtest execution with an already prepared state.
+
+        :meth:`run` calls this after setup, while tests may call it directly
+        with fixture state. Centralising dispatch here guarantees runner-owned
+        resources are closed on a normal stop, unit-test early stop, or error;
+        the live decision recorder depends on this to checkpoint and release
+        its DuckDB connection.
 
         :return:
             Debug state where each key is the cycle number
@@ -2045,13 +2053,22 @@ class ExecutionLoop:
         :raise:
             Any exception thrown from this function should be considered as live execution error,
             not a start up error.
+
+        The runner is always closed before returning or propagating an error.
         """
         # TODO: Refactor
-        if self.is_backtest():
-            # Walk through backtesting range
-            return self.run_backtest(state)
-        else:
-            return self.run_live(state)
+        try:
+            if self.is_backtest():
+                # Walk through backtesting range
+                return self.run_backtest(state)
+            else:
+                return self.run_live(state)
+        finally:
+            # The recorder owns a DuckDB connection. Close it on normal exit,
+            # unit-test early exit, and strategy failure alike.
+            close = getattr(self.runner, "close", None)
+            if callable(close):
+                close()
 
     def run(self):
         """Start the execution.

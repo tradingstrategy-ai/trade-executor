@@ -1,9 +1,17 @@
-"""A strategy runner that executes Trading Strategy Pandas type strategies."""
+"""Run pandas strategies against framework-prepared decision inputs.
+
+Executor bootstrap constructs :class:`PandasTraderRunner`, and the execution
+loop calls :meth:`PandasTraderRunner.on_clock` for each live or backtest cycle.
+The runner exists to translate framework services into the versioned strategy
+callback shape; for v0.5 live strategies it also injects the optional decision
+recorder and state path into ``StrategyInput`` without owning the strategy's
+recording boundary.
+"""
 
 import datetime
+from pathlib import Path
 import textwrap
 from io import StringIO
-from typing import List, Optional
 import logging
 
 import pandas as pd
@@ -21,6 +29,7 @@ from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.strategy_module import DecideTradesProtocol, DecideTradesProtocol2, DecideTradesProtocol3, DecideTradesProtocol4
 from tradeexecutor.strategy.sync_model import SyncModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, translate_trading_pair, TradingStrategyUniverseModel
+from tradeexecutor.strategy.recorder.recorder import DecisionRecorder
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
@@ -35,18 +44,45 @@ logger = logging.getLogger(__name__)
 
 
 class PandasTraderRunner(StrategyRunner):
-    """A trading executor for Pandas math based algorithm."""
+    """Adapt executor cycles to pandas-based strategy callbacks.
+
+    Strategy bootstrap creates this runner with the loaded ``decide_trades()``
+    callback. ``ExecutionLoop`` calls :meth:`on_clock`, which prepares live
+    indicators and a ``StrategyInput`` before invoking that callback. When
+    configured, the same live recorder is passed through every input and closed
+    with the runner after the loop exits.
+    """
 
     def __init__(
             self,
             *args,
             decide_trades: DecideTradesProtocol | DecideTradesProtocol2 | DecideTradesProtocol3 | DecideTradesProtocol4,
             max_data_age: datetime.timedelta = None,
+            recorder: DecisionRecorder | None = None,
+            state_path: Path | None = None,
             **kwargs
-    ):
+    ) -> None:
+        """Bind one loaded strategy callback to its executor services.
+
+        The managed-positions strategy factory calls this once during executor
+        setup. Retaining recorder and state-path references here lets
+        :meth:`on_clock` expose them at the strategy call site without adding
+        recorder behaviour to backtests or older engine versions.
+
+        :param recorder:
+            Optional live-only decision recorder shared with each
+            :class:`StrategyInput` passed to ``decide_trades()``. It is closed
+            by :meth:`close` when the execution loop exits.
+        :param state_path:
+            Authoritative executor state path retained in recorder decisions for
+            correlation, without copying state into the recorder database.
+        """
+
         super().__init__(*args, **kwargs)
         self.decide_trades = decide_trades
         self.max_data_age = max_data_age
+        self.recorder = recorder
+        self.state_path = state_path
 
         # Legacy assets
         sync_model = kwargs.get("sync_model")
@@ -55,6 +91,16 @@ class PandasTraderRunner(StrategyRunner):
 
     def on_data_signal(self):
         pass
+
+    def close(self) -> None:
+        """Close optional live resources after the execution loop stops.
+
+        ``ExecutionLoop.run_with_state()`` calls this from its ``finally``
+        block on normal completion and errors. The recorder close is
+        idempotent, which also supports focused tests that close it directly.
+        """
+        if self.recorder is not None:
+            self.recorder.close()
 
     def on_clock(
         self,
@@ -66,11 +112,35 @@ class PandasTraderRunner(StrategyRunner):
         indicators:StrategyInputIndicators | None = None,
         routing_state: RoutingState = None,
         routing_model: RoutingModel = None,
-        ) -> List[TradeExecution]:
-        """Run one strategy tick.
+        ) -> list[TradeExecution]:
+        """Prepare inputs and invoke the strategy for one executor cycle.
+
+        The live or backtest execution loop calls this after treasury sync and
+        universe preparation. For v0.5 live strategies it recalculates current
+        indicators, constructs ``StrategyInput``, and injects the optional
+        recorder and authoritative state path before calling
+        ``decide_trades()``. The strategy then decides whether and what to
+        record at its calculation boundary.
 
         :param clock:
-            Strategy cycle timestamp
+            Strategy cycle timestamp.
+        :param strategy_universe:
+            Constructed universe available to this decision.
+        :param pricing_model:
+            Pricing service used by position management.
+        :param state:
+            Authoritative executor state for this cycle.
+        :param debug_details:
+            Cycle metadata, including the current cycle number.
+        :param indicators:
+            Precalculated indicators for backtests; live indicators are
+            recalculated by this method.
+        :param routing_state:
+            Cycle-specific routing state exposed to the strategy.
+        :param routing_model:
+            Routing model exposed to the strategy.
+        :return:
+            Trades proposed by the loaded strategy callback.
         """
 
         assert isinstance(strategy_universe, TradingStrategyUniverse)
@@ -116,6 +186,8 @@ class PandasTraderRunner(StrategyRunner):
                 web3=web3,
                 routing_state=routing_state,
                 routing_model=routing_model,
+                recorder=self.recorder,
+                state_path=self.state_path,
             )
 
             logger.info(
@@ -270,7 +342,7 @@ class PandasTraderRunner(StrategyRunner):
         cycle: int,
         universe: TradingStrategyUniverse,
         state: State,
-        trades: List[TradeExecution],
+        trades: list[TradeExecution],
         debug_details: dict
     ):
         """Strategy admin helpers to understand a live running strategy.
