@@ -17,9 +17,11 @@ import pandas as pd
 import pytest
 from duckdb import connect
 
+from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
+from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
-from tradeexecutor.strategy.recorder import DecisionRecorder
+from tradeexecutor.strategy.recorder import DecisionRecorder, record_decision
 from tradeexecutor.strategy.recorder.serialisation import (
     canonical_json,
     decode_json_value,
@@ -78,7 +80,10 @@ class _Pairs:
         return iter([self.pair])
 
 
-def _make_input(state_path: Path) -> SimpleNamespace:
+def _make_input(
+    state_path: Path,
+    recorder: DecisionRecorder | None = None,
+) -> SimpleNamespace:
     """Create the smallest realistic input accepted by ``DecisionRecorder.begin``.
 
     Recorder unit tests call this instead of constructing the full live runner.
@@ -126,6 +131,7 @@ def _make_input(state_path: Path) -> SimpleNamespace:
         timestamp=pd.Timestamp("2026-01-01 00:00:00.123456789"),
         cycle=1,
         state_path=state_path,
+        recorder=recorder,
     )
 
 
@@ -137,11 +143,11 @@ def test_strategy_input_recorder_round_trip(tmp_path: Path) -> None:
     inspectable with exact nanosecond timing while capture leaves live inputs
     unchanged.
 
-    1. Build a deterministic live input and record one observation.
+    1. Exercise the decorated callback with recording disabled and enabled.
     2. Close the writer so DuckDB checkpoints the completed decision.
     3. Reopen the file and verify the lifecycle row, input objects, and timestamp.
     """
-    # 1. Build a deterministic live input and record one observation.
+    # 1. Exercise the decorated callback with recording disabled and enabled.
     state_path = tmp_path / "hyper-ai.json"
     recorder = DecisionRecorder(
         tmp_path / "hyper-ai-record.duckdb",
@@ -149,15 +155,20 @@ def test_strategy_input_recorder_round_trip(tmp_path: Path) -> None:
         "fixture strategy",
         strategy_file="fixture.py",
     )
-    strategy_input = _make_input(state_path)
+    strategy_input = _make_input(state_path, recorder)
 
-    recorder.begin(strategy_input)
+    @record_decision
+    def decide_trades(input: StrategyInput) -> list[TradeExecution]:
+        if input.recorder is not None:
+            input.recorder.record("calculation", "fixture", {"decimal": to_json_value("1.2300")})
+        return []
+
+    assert decide_trades(SimpleNamespace(recorder=None)) == []
+    assert decide_trades(strategy_input) == []
     assert strategy_input.strategy_universe.data_universe.pairs.pair.other_data == {
         "decision_value": "kept",
         "token_metadata": {"symbol": "FIX"},
     }
-    recorder.record("calculation", "fixture", {"decimal": to_json_value("1.2300")})
-    recorder.finish([])
 
     # 2. Close the writer so DuckDB checkpoints the completed decision.
     recorder.close()
@@ -222,11 +233,11 @@ def test_strategy_input_recorder_persists_callback_failure(tmp_path: Path) -> No
     Live failures are the decisions most likely to need forensic data; this
     ensures the terminal failure and preceding observations survive shutdown.
 
-    1. Start a live decision and record a calculation before the simulated failure.
-    2. Mark the decision failed with the callback exception.
+    1. Invoke a decorated live decision that records before raising an exception.
+    2. Confirm the decorator re-raises the original callback exception.
     3. Reopen the file and verify the terminal status and error type.
     """
-    # 1. Start a live decision and record a calculation before the simulated failure.
+    # 1. Invoke a decorated live decision that records before raising an exception.
     path = tmp_path / "failed-record.duckdb"
     recorder = DecisionRecorder(
         path,
@@ -234,11 +245,15 @@ def test_strategy_input_recorder_persists_callback_failure(tmp_path: Path) -> No
         "fixture strategy",
         strategy_file="fixture.py",
     )
-    recorder.begin(_make_input(tmp_path / "hyper-ai.json"))
-    recorder.record("calculation", "before_failure", 1)
 
-    # 2. Mark the decision failed with the callback exception.
-    recorder.fail(ValueError("fixture failure"))
+    @record_decision
+    def decide_trades(input: StrategyInput) -> list[TradeExecution]:
+        input.recorder.record("calculation", "before_failure", 1)
+        raise ValueError("fixture failure")
+
+    # 2. Confirm the decorator re-raises the original callback exception.
+    with pytest.raises(ValueError, match="fixture failure"):
+        decide_trades(_make_input(tmp_path / "hyper-ai.json", recorder))
     recorder.close()
 
     # 3. Reopen the file and verify the terminal status and error type.

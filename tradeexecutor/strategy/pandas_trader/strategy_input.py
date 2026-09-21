@@ -866,9 +866,10 @@ class StrategyInput:
     types and discoverable helper methods.
 
     Live strategies that enable input recording also receive ``recorder`` and
-    ``state_path``. Their ``decide_trades()`` implementation calls the recorder
-    around its calculations; the fields are absent from ordinary runs and do
-    not change trade selection. This input shape is enabled for
+    ``state_path``. Their ``decide_trades()`` callback uses the
+    :func:`tradeexecutor.strategy.recorder.record_decision` decorator and emits
+    explicit observations from its calculations; the fields are absent from
+    ordinary runs and do not change trade selection. This input shape is enabled for
     ``trading_strategy_engine_version = "0.5"`` or newer.
     """
 
@@ -941,9 +942,10 @@ class StrategyInput:
 
     #: Live decision recorder. It is absent for backtests and ordinary strategies.
     #:
-    #: When present, ``decide_trades()`` owns its explicit ``begin()``,
-    #: ``record()``, and ``finish()`` / ``fail()`` lifecycle. The recorder is a
-    #: diagnostic side channel: it must not alter trade selection or state.
+    #: Apply :func:`tradeexecutor.strategy.recorder.record_decision` to
+    #: ``decide_trades()`` to own the lifecycle. Strategy calculations call
+    #: ``record()`` only for explicit intermediate observations. The recorder
+    #: is a diagnostic side channel: it must not alter trade selection or state.
     recorder: DecisionRecorder | None = None
 
     #: Authoritative state path used to correlate recorder rows with state.

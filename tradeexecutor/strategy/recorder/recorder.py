@@ -2,18 +2,19 @@
 
 CLI bootstrap creates :class:`DecisionRecorder` for a live v0.5 pandas strategy
 that enables ``Parameters.record_strategy_inputs``. ``PandasTraderRunner`` then
-injects it into ``StrategyInput`` and the strategy calls ``begin()``, optional
-``record()`` calls, and ``finish()`` or ``fail()`` from ``decide_trades()``.
-This explicit call site captures inputs at the instant the strategy consumes
-them without adding generic framework hooks. The recorder writes research
-diagnostics only; it neither selects trades nor mutates executor state.
+injects it into ``StrategyInput``. The strategy decorates ``decide_trades()``
+with :func:`record_decision` and emits optional observations from the callback.
+This boundary captures inputs at the instant the strategy consumes them without
+adding generic framework hooks. The recorder writes research diagnostics only;
+it neither selects trades nor mutates executor state.
 """
 
 import datetime
 import platform
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from decimal import Decimal
 from enum import Enum
+from functools import wraps
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -31,6 +32,9 @@ from tradeexecutor.strategy.recorder.universe import capture_universe
 if TYPE_CHECKING:
     from tradeexecutor.state.trade import TradeExecution
     from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+
+
+_DecisionFunction = Callable[["StrategyInput"], list["TradeExecution"]]
 
 
 def _model_projection(model: Any) -> dict[str, Any]:
@@ -96,42 +100,68 @@ def _open_position_references(strategy_input: "StrategyInput") -> list[dict[str,
     return references
 
 
+def record_decision(func: _DecisionFunction) -> _DecisionFunction:
+    """Wrap a v0.5 ``decide_trades()`` callback in recorder lifecycle handling.
+
+    Strategy modules use this decorator on their public ``decide_trades()``
+    function. The live runner has already attached a :class:`DecisionRecorder`
+    before invoking the callback, so the wrapper can capture inputs immediately,
+    complete successful decisions with their returned trade IDs, and persist
+    callback failures before re-raising them. When recording is disabled or the
+    strategy is backtesting, ``StrategyInput.recorder`` is ``None`` and the
+    callback runs unchanged.
+
+    Recorder startup or completion failures deliberately propagate without a
+    recovery path. Only exceptions raised by the decorated strategy callback
+    are passed to :meth:`DecisionRecorder.fail`.
+
+    :param func:
+        Synchronous v0.5 strategy callback accepting one ``StrategyInput`` and
+        returning its proposed trades.
+    :return:
+        Callback with the same public signature and metadata, wrapped by the
+        optional recorder lifecycle.
+    """
+    @wraps(func)
+    def wrapper(strategy_input: "StrategyInput") -> list["TradeExecution"]:
+        recorder = strategy_input.recorder
+        if recorder is None:
+            return func(strategy_input)
+
+        recorder.begin(strategy_input)
+        try:
+            trades = func(strategy_input)
+        except Exception as error:
+            recorder.fail(error)
+            raise
+        recorder.finish(trades)
+        return trades
+
+    return wrapper
+
+
 class DecisionRecorder:
     """Write one run and its explicitly recorded live decisions to DuckDB.
 
     CLI strategy bootstrap constructs this object only when a live strategy
     enables ``record_strategy_inputs``. ``PandasTraderRunner`` exposes it on
-    each ``StrategyInput`` so ``decide_trades()`` can own the exact recording
-    boundary: call :meth:`begin`, zero or more :meth:`record` calls, then
-    :meth:`finish` or :meth:`fail`. One instance covers one executor process
-    and accepts only one active decision at a time.
+    each ``StrategyInput`` so :func:`record_decision` can own the exact callback
+    boundary. Strategy calculations may call :meth:`record` for explicit
+    observations. One instance covers one executor process and accepts only one
+    active decision at a time.
 
     Strategies should not construct a recorder themselves. Enable
-    ``Parameters.record_strategy_inputs`` and wrap the live decision callback::
+    ``Parameters.record_strategy_inputs`` and decorate the decision callback::
 
+        @record_decision
         def decide_trades(input: StrategyInput) -> list[TradeExecution]:
-            recorder = input.recorder
-            if recorder is None:
-                return _decide_trades(input)
-
-            recorder.begin(input)
-            try:
-                trades = _decide_trades(input)
-                recorder.finish(trades)
-                return trades
-            except Exception as error:
-                recorder.fail(error)
-                raise
-
-        def _decide_trades(input: StrategyInput) -> list[TradeExecution]:
             candidate_scores = calculate_candidate_scores(input)
             if input.recorder is not None:
                 input.recorder.record("calculation", "candidate_scores", candidate_scores)
             return create_trades(input, candidate_scores)
 
-    The ``recorder is None`` branch preserves the ordinary backtest and
-    non-recording call paths. :meth:`fail` persists failure diagnostics but does
-    not consume the exception, so the callback must re-raise it.
+    :func:`record_decision` preserves ordinary backtest and non-recording call
+    paths, and it re-raises callback failures after persisting their diagnostics.
 
     See ``strategy/hyper-ai-v8.py`` in the strategies repository for a real
     strategy integration. See

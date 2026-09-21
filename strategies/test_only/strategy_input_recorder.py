@@ -22,6 +22,7 @@ from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
 from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.recorder import record_decision
 from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import (
@@ -111,24 +112,19 @@ def create_indicators(
     return IndicatorSet()
 
 
+@record_decision
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     """Record one complete live decision without introducing trade execution.
 
     ``PandasTraderRunner.on_clock()`` calls this twice in the CLI test. The
-    explicit begin/record/finish/error pattern demonstrates the intended
-    strategy call site, while returning no trades isolates recorder lifecycle
-    behaviour from routing and settlement.
+    decorator owns recorder lifecycle and this callback supplies only its
+    decision-specific observation. Returning no trades isolates recording from
+    routing and settlement.
     """
-    assert input.recorder is not None
-    input.recorder.begin(input)
-    try:
+    if input.recorder is not None:
         input.recorder.record(
             "calculation",
             "cli_cycle",
             {"cycle": input.cycle, "pair_count": input.strategy_universe.get_pair_count()},
         )
-        input.recorder.finish([])
-        return []
-    except Exception as error:
-        input.recorder.fail(error)
-        raise
+    return []

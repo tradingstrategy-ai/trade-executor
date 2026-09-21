@@ -31,37 +31,31 @@ path; backtests and notebooks never create a recorder file.
 ## Record a decision
 
 The live pandas runner constructs `input.recorder` when enabled. Strategy code
-owns the decision lifecycle and must call `begin()` before calculating signals,
-then finish or fail the same invocation:
+uses `@record_decision` to place the lifecycle around the complete callback:
 
 ```python
-def decide_trades(input: StrategyInput) -> list[TradeExecution]:
-    recorder = input.recorder
-    if recorder is None:
-        return _decide_trades(input)
+from tradeexecutor.strategy.recorder import record_decision
 
-    recorder.begin(input)
-    try:
-        trades = _decide_trades(input)
-        recorder.finish(trades)
-        return trades
-    except Exception as error:
-        recorder.fail(error)
-        raise
+
+@record_decision
+def decide_trades(input: StrategyInput) -> list[TradeExecution]:
+    return _decide_trades(input)
 ```
 
 Record decision-relevant intermediate values inside `_decide_trades()` or its
 helpers:
 
 ```python
-recorder.record("signal", "ranked_vaults", ranked_vaults)
-recorder.record("allocation", "target_weights", target_weights)
+if input.recorder is not None:
+    input.recorder.record("signal", "ranked_vaults", ranked_vaults)
+    input.recorder.record("allocation", "target_weights", target_weights)
 ```
 
-`begin()` writes the manifest before strategy calculations run. `finish()` and
-`fail()` write a terminal status and checkpoint the database. Recorder errors
-are intentionally fatal; the executor also closes the recorder when a strategy
-run exits through an exception.
+The decorator calls `begin()` before strategy calculations, `finish()` with the
+returned trades, and `fail()` before re-raising a callback exception. When
+`input.recorder` is absent, including backtests, it invokes the callback without
+recording. Recorder errors are intentionally fatal; the executor also closes
+the recorder when a strategy run exits through an exception.
 
 ## Stored data
 
