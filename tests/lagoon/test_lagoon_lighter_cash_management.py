@@ -75,6 +75,9 @@ def anvil_ethereum(anvil_fork_pool: AnvilForkPool) -> AnvilLaunch:
         JSON_RPC_ETHEREUM,
         ETHEREUM_MIDNIGHT_BLOCK,
         unlocked_addresses=[USDC_WHALE[1]],
+        # Share the drained transaction-heavy fork with the custody command test.
+        # Otherwise accumulated Anvil output can fill its pipe and block RPC.
+        inherit_stdio=True,
     )
     snapshot = evm_snapshot_revert(launch)
     next(snapshot)
