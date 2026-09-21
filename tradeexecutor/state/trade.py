@@ -1097,9 +1097,13 @@ class TradeExecution:
         Unlike routed trades, an external-account withdrawal may wait for an
         off-chain protocol delay before the Safe receives its USDC. A failed
         transfer also stays blocked until an operator reconciles its external
-        custody. Keep this predicate separate from :py:meth:`is_unfinished`
-        so the legacy lifecycle semantics for all other trades remain unchanged.
+        custody, unless the exchange definitively rejected the request before
+        moving funds. Keep this predicate separate from
+        :py:meth:`is_unfinished` so the legacy lifecycle semantics for all
+        other trades remain unchanged.
         """
+        if self.other_data.get("outcome") == "withdrawal_rejected":
+            return False
         return (
             TradeFlag.external_account_transfer in (self.flags or set())
             and self.get_status() in (
