@@ -39,13 +39,21 @@ RESERVE_CURRENCY = ReserveCurrency.usdc
 class Parameters:
     """Parameters consumed by the real v0.5 runner."""
 
+    #: Use the local Anvil chain provided by the CLI integration test.
     chain_id = ChainId.anvil
+    #: Exercise the recorder on the shortest scheduler cadence supported by the test.
     cycle_duration = CycleDuration.cycle_1s
+    #: The mock strategy does not place trades, but the runner still needs routing.
     routing = TradeRouting.user_supplied_routing_model
+    #: Required strategy-module cash setting for the local live run.
     initial_cash = 10_000
+    #: Required historical range for the strategy-module contract.
     backtest_start = datetime.datetime(2025, 1, 1)
+    #: Required historical range for the strategy-module contract.
     backtest_end = datetime.datetime(2025, 1, 2)
+    #: Request enough local history for normal universe creation.
     required_history_period = datetime.timedelta(minutes=1)
+    #: Enable the framework recorder that this strategy exists to exercise.
     record_strategy_inputs = True
 
 

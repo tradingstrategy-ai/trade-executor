@@ -8,8 +8,10 @@
 from pathlib import Path
 from types import SimpleNamespace
 import json
+from collections.abc import Iterator
 
 import pandas as pd
+import pytest
 from duckdb import connect
 
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
@@ -30,22 +32,25 @@ class _Pair:
     chain_id = 999
     other_data = {"decision_value": "kept", "token_metadata": {"symbol": "FIX"}}
 
-    def to_dict(self, encode_json=False):
+    def to_dict(self, encode_json: bool = False) -> dict[str, int | str]:
         # Mirrors TradingPairIdentifier's in-place custom encoder behaviour.
+        del encode_json
         self.other_data.pop("token_metadata", None)
         return {"internal_id": self.internal_id, "pool_address": self.pool_address}
 
 
 class _Pairs:
-    def __init__(self):
+    def __init__(self) -> None:
         self.df = pd.DataFrame({"pair_id": [1], "name": ["fixture"]})
         self.pair = _Pair()
 
-    def iterate_pairs(self):
+    def iterate_pairs(self) -> Iterator[_Pair]:
         return iter([self.pair])
 
 
-def _make_input(state_path: Path):
+def _make_input(state_path: Path) -> SimpleNamespace:
+    """Create the smallest live decision input that exercises recorder capture."""
+
     data = SimpleNamespace(
         pairs=_Pairs(),
         candles=SimpleNamespace(df=pd.DataFrame({
@@ -90,8 +95,16 @@ def _make_input(state_path: Path):
     )
 
 
-def test_strategy_input_recorder_round_trip(tmp_path: Path):
-    """Record one live decision and inspect its JSON payloads after reopening."""
+@pytest.mark.timeout(300)
+def test_strategy_input_recorder_round_trip(tmp_path: Path) -> None:
+    """Persist and reopen one completed live decision without mutating its universe.
+
+    1. Build a deterministic live input and record one observation.
+    2. Close the writer so DuckDB checkpoints the completed decision.
+    3. Reopen the file and verify the lifecycle row, input objects, and timestamp.
+    """
+
+    # 1. Build a deterministic live input and record one observation.
     state_path = tmp_path / "hyper-ai.json"
     recorder = DecisionRecorder(
         tmp_path / "hyper-ai-record.duckdb",
@@ -99,17 +112,20 @@ def test_strategy_input_recorder_round_trip(tmp_path: Path):
         "fixture strategy",
         strategy_file="fixture.py",
     )
-    input = _make_input(state_path)
+    strategy_input = _make_input(state_path)
 
-    recorder.begin(input)
-    assert input.strategy_universe.data_universe.pairs.pair.other_data == {
+    recorder.begin(strategy_input)
+    assert strategy_input.strategy_universe.data_universe.pairs.pair.other_data == {
         "decision_value": "kept",
         "token_metadata": {"symbol": "FIX"},
     }
     recorder.record("calculation", "fixture", {"decimal": to_json_value("1.2300")})
     recorder.finish([])
+
+    # 2. Close the writer so DuckDB checkpoints the completed decision.
     recorder.close()
 
+    # 3. Reopen the file and verify the lifecycle row, input objects, and timestamp.
     connection = connect(str(tmp_path / "hyper-ai-record.duckdb"))
     assert connection.execute("SELECT count(*) FROM runs").fetchone()[0] == 1
     assert connection.execute("SELECT count(*) FROM decisions WHERE status = 'completed'").fetchone()[0] == 1
@@ -122,8 +138,16 @@ def test_strategy_input_recorder_round_trip(tmp_path: Path):
     connection.close()
 
 
-def test_strategy_input_recorder_uses_zstd_for_persisted_history(tmp_path: Path):
-    """Large, non-constant JSON history is stored in native Zstandard segments."""
+@pytest.mark.timeout(300)
+def test_strategy_input_recorder_uses_zstd_for_persisted_history(tmp_path: Path) -> None:
+    """Persist non-constant history with the requested Zstandard compression.
+
+    1. Write enough unique JSON history to form DuckDB storage segments.
+    2. Checkpoint and reopen the database as a reader.
+    3. Confirm DuckDB used Zstandard for the JSON payload column.
+    """
+
+    # 1. Write enough unique JSON history to form DuckDB storage segments.
     path = tmp_path / "compression-record.duckdb"
     storage = RecorderStorage(path)
     for index in range(1_000):
@@ -131,6 +155,8 @@ def test_strategy_input_recorder_uses_zstd_for_persisted_history(tmp_path: Path)
         # to cross DuckDB's segment compression threshold.  The values are
         # unique so this does not only exercise constant compression.
         storage.put_object("history", {"rows": f"{index}:" + ("x" * 20_000)})
+
+    # 2. Checkpoint and reopen the database as a reader.
     storage.checkpoint()
     storage.close()
 
@@ -142,13 +168,23 @@ def test_strategy_input_recorder_uses_zstd_for_persisted_history(tmp_path: Path)
         ).fetchall()
     }
     connection.close()
+
+    # 3. Confirm DuckDB used Zstandard for the JSON payload column.
     assert "payload" in compressed_columns
     reopened = RecorderStorage(path)
     reopened.close()
 
 
-def test_strategy_input_recorder_persists_callback_failure(tmp_path: Path):
-    """A strategy exception is visible as a failed invocation and re-raises normally."""
+@pytest.mark.timeout(300)
+def test_strategy_input_recorder_persists_callback_failure(tmp_path: Path) -> None:
+    """Persist a strategy exception as a failed decision for later diagnosis.
+
+    1. Start a live decision and record a calculation before the simulated failure.
+    2. Mark the decision failed with the callback exception.
+    3. Reopen the file and verify the terminal status and error type.
+    """
+
+    # 1. Start a live decision and record a calculation before the simulated failure.
     path = tmp_path / "failed-record.duckdb"
     recorder = DecisionRecorder(
         path,
@@ -158,9 +194,12 @@ def test_strategy_input_recorder_persists_callback_failure(tmp_path: Path):
     )
     recorder.begin(_make_input(tmp_path / "hyper-ai.json"))
     recorder.record("calculation", "before_failure", 1)
+
+    # 2. Mark the decision failed with the callback exception.
     recorder.fail(ValueError("fixture failure"))
     recorder.close()
 
+    # 3. Reopen the file and verify the terminal status and error type.
     connection = connect(str(path))
     status, error = connection.execute("SELECT status, error FROM decisions").fetchone()
     connection.close()
@@ -168,8 +207,23 @@ def test_strategy_input_recorder_persists_callback_failure(tmp_path: Path):
     assert json.loads(error)["type"] == "ValueError"
 
 
+@pytest.mark.timeout(300)
 def test_strategy_input_recorder_canonicalises_unordered_values() -> None:
-    """Object hashes stay stable when unordered values change insertion order."""
+    """Keep content hashes stable when unordered values change insertion order.
 
-    assert canonical_json({2: "two", 1: "one"}) == canonical_json({1: "one", 2: "two"})
-    assert canonical_json(frozenset({"a", "b"})) == canonical_json(frozenset({"b", "a"}))
+    1. Canonicalise mappings containing non-string keys in both insertion orders.
+    2. Canonicalise frozensets containing the same values in both insertion orders.
+    3. Compare the canonical JSON used as the content-hash input.
+    """
+
+    # 1. Canonicalise mappings containing non-string keys in both insertion orders.
+    first_mapping = canonical_json({2: "two", 1: "one"})
+    second_mapping = canonical_json({1: "one", 2: "two"})
+
+    # 2. Canonicalise frozensets containing the same values in both insertion orders.
+    first_frozenset = canonical_json(frozenset({"a", "b"}))
+    second_frozenset = canonical_json(frozenset({"b", "a"}))
+
+    # 3. Compare the canonical JSON used as the content-hash input.
+    assert first_mapping == second_mapping
+    assert first_frozenset == second_frozenset

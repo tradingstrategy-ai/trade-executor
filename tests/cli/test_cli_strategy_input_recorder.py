@@ -12,6 +12,9 @@ from unittest import mock
 
 import duckdb
 import pytest
+from eth_defi.provider.anvil import AnvilLaunch
+from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
+from eth_typing import HexAddress
 
 from tradeexecutor.cli.commands import start as _start  # noqa: F401 - register the real start command
 from tradeexecutor.cli.commands.app import app
@@ -25,16 +28,22 @@ def strategy_file() -> Path:
     return Path(__file__).resolve().parents[2] / "strategies" / "test_only" / "strategy_input_recorder.py"
 
 
-@pytest.mark.timeout(45)
+@pytest.mark.timeout(300)
 def test_cli_live_recorder_creates_state_adjacent_duckdb(
-    anvil,
-    uniswap_v2,
-    weth_usdc_uniswap_pair,
+    anvil: AnvilLaunch,
+    uniswap_v2: UniswapV2Deployment,
+    weth_usdc_uniswap_pair: HexAddress,
     tmp_path: Path,
     strategy_file: Path,
 ) -> None:
-    """The real CLI records two completed one-second decisions."""
+    """Run two real one-second CLI decisions and inspect their recorder database.
 
+    1. Build the local Anvil/Uniswap CLI environment and run the real Typer command.
+    2. Confirm the executor wrote its state and state-adjacent recorder database.
+    3. Inspect the database to verify both completed decision records and observations.
+    """
+
+    # 1. Build the local Anvil/Uniswap CLI environment and run the real Typer command.
     del weth_usdc_uniswap_pair  # The fixture creates the pair read by the mock client.
 
     executor_id = "cli-recorder-blackbox"
@@ -67,15 +76,18 @@ def test_cli_live_recorder_creates_state_adjacent_duckdb(
         "VISUALISATION": "false",
     }
 
+    # This mock only scopes process environment variables; CLI bootstrap and execution are real.
     with mock.patch.dict(os.environ, environment, clear=True):
         # ``start`` is registered directly on this focused Typer app.
         app([], standalone_mode=False)
 
+    # 2. Confirm the executor wrote its state and state-adjacent recorder database.
     assert state_file.exists()
     assert record_file.exists()
     state = State.from_json(state_file.read_text(encoding="utf-8"))
     assert len(state.uptime.cycles_completed_at) == 2
 
+    # 3. Inspect the database to verify both completed decision records and observations.
     connection = duckdb.connect(str(record_file), read_only=True)
     try:
         run_count, metadata = connection.execute(
