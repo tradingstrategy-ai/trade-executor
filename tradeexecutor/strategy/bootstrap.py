@@ -125,7 +125,8 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
         universe, and state services. It creates ``DecisionRecorder`` only for
         an opted-in live strategy, then passes that same instance and the
         authoritative state path to ``PandasTraderRunner``. Backtests and
-        strategies without the flag retain the ordinary runner path.
+        undecorated strategies retain the ordinary runner path. Diagnostic
+        callers without a persistent state path do not create a recorder.
 
         :param state_path:
             Persistent executor state path. A live strategy that enables
@@ -172,9 +173,10 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
         create_indicators = mod_info.create_indicators or create_indicators
 
         recorder = None
-        if execution_context.mode.is_live_trading() and getattr(mod_info.decide_trades, "__record_decision__", False):
-            if state_path is None:
-                raise RuntimeError("@record_decision requires a persistent state path for live trading")
+        # The execution loop supplies its persistent state path. Diagnostic
+        # commands also use live-data modes, but do not run decision cycles and
+        # omit this path; they must not open a recorder or require one.
+        if state_path is not None and execution_context.mode.is_live_trading() and getattr(mod_info.decide_trades, "__record_decision__", False):
             recorder_id = strategy_id or mod_info.path.stem
             recorder_id = validate_recorder_strategy_id(recorder_id)
             recorder_path = Path(state_path).parent / f"{recorder_id}-record.duckdb"

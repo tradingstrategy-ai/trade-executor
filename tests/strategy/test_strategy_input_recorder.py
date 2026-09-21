@@ -19,6 +19,9 @@ import pytest
 from duckdb import connect
 
 from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.strategy.bootstrap import import_strategy_file
+from tradeexecutor.strategy.run_state import RunState
+from tradeexecutor.utils.timer import timed_task
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.parameters import StrategyParameters
@@ -135,6 +138,38 @@ def _make_input(
         state_path=state_path,
         recorder=recorder,
     )
+
+
+@pytest.mark.timeout(300)
+def test_recorder_diagnostic_bootstrap_without_state_path() -> None:
+    """Allow diagnostic CLI commands to load a decorated live-data strategy.
+
+    Diagnostics share the live-data execution mode but do not run decisions or
+    supply the execution loop's state path. Loading the strategy must not fail
+    or open a recorder database.
+
+    1. Load the checked-in decorated HyperCore strategy through the normal loader.
+    2. Construct its diagnostic runner without execution services or a state path.
+    3. Verify that the runner has no recorder and closes normally.
+    """
+    # 1. Load the checked-in decorated HyperCore strategy through the normal loader.
+    path = Path(__file__).resolve().parents[2] / "strategies/test_only/hypercore_recorder_alpha_model.py"
+    factory = import_strategy_file(path)
+    # 2. Construct its diagnostic runner without execution services or a state path.
+    description = factory(
+        execution_context=ExecutionContext(ExecutionMode.one_off),
+        execution_model=None,
+        sync_model=None,
+        pricing_model_factory=None,
+        valuation_model_factory=None,
+        client=None,
+        timed_task_context_manager=timed_task,
+        approval_model=None,
+        run_state=RunState(),
+    )
+    # 3. Verify that the runner has no recorder and closes normally.
+    assert description.runner.recorder is None
+    description.runner.close()
 
 
 @pytest.mark.timeout(300)

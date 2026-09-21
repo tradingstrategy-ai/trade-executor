@@ -25,6 +25,8 @@ state/hyper-ai-v8-record.duckdb
 The state file's stem does not affect the recorder name. Each executor process
 appends one `runs` row to that file. A live run requires a persistent state
 path; backtests and notebooks never create a recorder file.
+Diagnostic commands that construct a runner without the execution loop's
+persistent state path also leave recording disabled.
 
 ## Record a decision
 
