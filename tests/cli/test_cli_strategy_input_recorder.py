@@ -1,8 +1,10 @@
-"""Black-box CLI coverage for the live strategy-input recorder.
+"""Verify recorder wiring through the public live Typer command.
 
 The test starts the real Typer command with the normal test-only strategy and
 the local Anvil/Uniswap fixtures. It intentionally does not replace CLI
-bootstrap, scheduler, universe construction, or runner methods.
+bootstrap, scheduler, universe construction, or runner methods because only an
+end-to-end call can validate executor-ID naming, state-adjacent file placement,
+runner lifecycle, and one-second scheduling together.
 """
 
 import json
@@ -23,8 +25,11 @@ from tradeexecutor.state.state import State
 
 @pytest.fixture()
 def strategy_file() -> Path:
-    """Use a checked-in normal strategy module, not an inline test module."""
+    """Provide pytest with the strategy loaded by the black-box CLI test.
 
+    A checked-in module exercises normal strategy discovery and remains
+    inspectable outside this test, unlike dynamically written Python source.
+    """
     return Path(__file__).resolve().parents[2] / "strategies" / "test_only" / "strategy_input_recorder.py"
 
 
@@ -38,11 +43,14 @@ def test_cli_live_recorder_creates_state_adjacent_duckdb(
 ) -> None:
     """Run two real one-second CLI decisions and inspect their recorder database.
 
+    This protects the integration points unit tests cannot cover: bootstrap
+    gating, strategy ID to filename mapping, state path propagation, scheduled
+    runner calls, shutdown checkpointing, and subsequent read-only inspection.
+
     1. Build the local Anvil/Uniswap CLI environment and run the real Typer command.
     2. Confirm the executor wrote its state and state-adjacent recorder database.
     3. Inspect the database to verify both completed decision records and observations.
     """
-
     # 1. Build the local Anvil/Uniswap CLI environment and run the real Typer command.
     del weth_usdc_uniswap_pair  # The fixture creates the pair read by the mock client.
 

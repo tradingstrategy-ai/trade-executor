@@ -7,6 +7,13 @@ function hashes where source is available, cache metadata, and a fingerprint of
 the result. The fingerprint stores its hash, length, shape, non-null count,
 schema, first/last index, and temporal range. It intentionally omits raw
 indicator values; constructed-universe frames are captured separately.
+
+:meth:`DecisionRecorder.begin
+<tradeexecutor.strategy.recorder.recorder.DecisionRecorder.begin>` calls
+:func:`capture_indicators` once per live decision after the runner has calculated
+the current indicator set. Researchers use these records to prove which
+indicator implementation and result range informed a decision, even though the
+recorder is not a replay engine.
 """
 
 from __future__ import annotations
@@ -24,11 +31,20 @@ from tradeexecutor.strategy.recorder.serialisation import canonical_json, encode
 def _fingerprint(data: pd.DataFrame | pd.Series) -> dict[str, Any]:
     """Return a result fingerprint without storing raw indicator values.
 
+    :func:`capture_indicators` calls this for each current ``IndicatorResult``.
+    A fingerprint is needed because recording complete indicator series every
+    cycle would largely duplicate the captured universe data and rapidly grow
+    the recorder file.
+
     The returned JSON object has ``sha256``, row ``length``, ``shape``,
     ``non_null_count``, frame ``schema``, first/last source index, and the
     earliest/latest datetime index values when the result has one.
-    """
 
+    :param data:
+        Calculated indicator result supplied by ``StrategyInputIndicators``.
+    :return:
+        JSON-ready structural and content fingerprint for later comparison.
+    """
     schema, chunks = encode_frame_chunks(data)
     value = {"schema": schema, "chunks": [chunk["payload"] for chunk in chunks]}
     digest = hashlib.sha256(canonical_json(value).encode("utf-8")).hexdigest()
@@ -69,6 +85,12 @@ def capture_indicators(
 ) -> list[dict[str, str]]:
     """Store definition and fingerprint objects for all calculated indicators.
 
+    :meth:`DecisionRecorder.begin
+    <tradeexecutor.strategy.recorder.recorder.DecisionRecorder.begin>` calls
+    this before the strategy performs its decision calculations. The returned
+    references become ``input_manifest.indicators`` for later comparison with
+    an equivalent backtest or another live cycle.
+
     :param indicators:
         Current :class:`StrategyInputIndicators
         <tradeexecutor.strategy.pandas_trader.strategy_input.StrategyInputIndicators>`.
@@ -80,7 +102,6 @@ def capture_indicators(
     :return:
         ``{"object": <sha256>}`` references in indicator-result-map order.
     """
-
     refs = []
     for key, result in indicators.indicator_results.items():
         definition = key.definition

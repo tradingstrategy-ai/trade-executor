@@ -1,9 +1,10 @@
-"""Small real strategy used by the strategy-input recorder CLI test.
+"""Exercise strategy-input recording through the real live CLI call path.
 
-The test deliberately runs this module through the normal CLI bootstrap.  The
-universe is built from the local Uniswap mock client supplied by the test
-fixtures, so the test does not need an inline strategy or patched executor
-methods.
+``tests/cli/test_cli_strategy_input_recorder.py`` loads this checked-in module
+through normal strategy discovery, bootstrap, scheduling, and
+``PandasTraderRunner`` calls. The universe comes from the local Uniswap mock
+client supplied by test fixtures, which makes the use case reproducible without
+an inline strategy or patched executor methods.
 """
 
 import datetime
@@ -37,7 +38,13 @@ RESERVE_CURRENCY = ReserveCurrency.usdc
 
 
 class Parameters:
-    """Parameters consumed by the real v0.5 runner."""
+    """Configure the shortest realistic live run that enables recording.
+
+    Strategy-module loading passes this conventional class to
+    ``StrategyParameters.from_class()``. It intentionally follows the existing
+    v0.5 class-style parameter contract rather than being a dataclass, so the
+    black-box test exercises the same loader used by production strategies.
+    """
 
     #: Use the local Anvil chain provided by the CLI integration test.
     chain_id = ChainId.anvil
@@ -58,8 +65,18 @@ class Parameters:
 
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:
-    """Build a one-pair universe using the real local mock client."""
+    """Build the one-pair universe consumed by each recorded test decision.
 
+    ``DefaultTradingStrategyUniverseModel`` calls this during CLI bootstrap.
+    Using the injected ``UniswapV2MockClient`` proves normal universe creation
+    reaches the recorder and avoids substituting fake runner or universe
+    methods in this black-box test.
+
+    :param input:
+        Standard v0.5 universe-construction inputs created by CLI bootstrap.
+    :return:
+        A single-pair universe backed by local deterministic fixture data.
+    """
     assert isinstance(input.client, UniswapV2MockClient)
     dataset = load_all_data(
         input.client,
@@ -84,15 +101,24 @@ def create_indicators(
     strategy_universe: TradingStrategyUniverse,
     execution_context: ExecutionContext,
 ) -> IndicatorSet:
-    """The recorder test needs the normal indicator lifecycle, with no data."""
+    """Create an intentionally empty indicator set through the normal callback.
 
+    The live runner calls this for each decision cycle. Empty indicators keep
+    the test focused on recorder wiring while still exercising indicator
+    calculation and capture lifecycle instead of bypassing it.
+    """
     del timestamp, parameters, strategy_universe, execution_context
     return IndicatorSet()
 
 
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
-    """Record one ordinary strategy decision without placing a trade."""
+    """Record one complete live decision without introducing trade execution.
 
+    ``PandasTraderRunner.on_clock()`` calls this twice in the CLI test. The
+    explicit begin/record/finish/error pattern demonstrates the intended
+    strategy call site, while returning no trades isolates recorder lifecycle
+    behaviour from routing and settlement.
+    """
     assert input.recorder is not None
     input.recorder.begin(input)
     try:

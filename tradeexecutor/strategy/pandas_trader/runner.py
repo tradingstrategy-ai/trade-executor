@@ -1,4 +1,12 @@
-"""A strategy runner that executes Trading Strategy Pandas type strategies."""
+"""Run pandas strategies against framework-prepared decision inputs.
+
+Executor bootstrap constructs :class:`PandasTraderRunner`, and the execution
+loop calls :meth:`PandasTraderRunner.on_clock` for each live or backtest cycle.
+The runner exists to translate framework services into the versioned strategy
+callback shape; for v0.5 live strategies it also injects the optional decision
+recorder and state path into ``StrategyInput`` without owning the strategy's
+recording boundary.
+"""
 
 import datetime
 from pathlib import Path
@@ -37,7 +45,14 @@ logger = logging.getLogger(__name__)
 
 
 class PandasTraderRunner(StrategyRunner):
-    """A trading executor for Pandas math based algorithm."""
+    """Adapt executor cycles to pandas-based strategy callbacks.
+
+    Strategy bootstrap creates this runner with the loaded ``decide_trades()``
+    callback. ``ExecutionLoop`` calls :meth:`on_clock`, which prepares live
+    indicators and a ``StrategyInput`` before invoking that callback. When
+    configured, the same live recorder is passed through every input and closed
+    with the runner after the loop exits.
+    """
 
     def __init__(
             self,
@@ -48,7 +63,12 @@ class PandasTraderRunner(StrategyRunner):
             state_path: Path | None = None,
             **kwargs
     ) -> None:
-        """Create a pandas strategy runner.
+        """Bind one loaded strategy callback to its executor services.
+
+        The managed-positions strategy factory calls this once during executor
+        setup. Retaining recorder and state-path references here lets
+        :meth:`on_clock` expose them at the strategy call site without adding
+        recorder behaviour to backtests or older engine versions.
 
         :param recorder:
             Optional live-only decision recorder shared with each
@@ -74,7 +94,12 @@ class PandasTraderRunner(StrategyRunner):
         pass
 
     def close(self) -> None:
-        """Close optional live decision-recording resources."""
+        """Close optional live resources after the execution loop stops.
+
+        ``ExecutionLoop.run_with_state()`` calls this from its ``finally``
+        block on normal completion and errors. The recorder close is
+        idempotent, which also supports focused tests that close it directly.
+        """
         if self.recorder is not None:
             self.recorder.close()
 
@@ -89,10 +114,34 @@ class PandasTraderRunner(StrategyRunner):
         routing_state: RoutingState = None,
         routing_model: RoutingModel = None,
         ) -> List[TradeExecution]:
-        """Run one strategy tick.
+        """Prepare inputs and invoke the strategy for one executor cycle.
+
+        The live or backtest execution loop calls this after treasury sync and
+        universe preparation. For v0.5 live strategies it recalculates current
+        indicators, constructs ``StrategyInput``, and injects the optional
+        recorder and authoritative state path before calling
+        ``decide_trades()``. The strategy then decides whether and what to
+        record at its calculation boundary.
 
         :param clock:
-            Strategy cycle timestamp
+            Strategy cycle timestamp.
+        :param strategy_universe:
+            Constructed universe available to this decision.
+        :param pricing_model:
+            Pricing service used by position management.
+        :param state:
+            Authoritative executor state for this cycle.
+        :param debug_details:
+            Cycle metadata, including the current cycle number.
+        :param indicators:
+            Precalculated indicators for backtests; live indicators are
+            recalculated by this method.
+        :param routing_state:
+            Cycle-specific routing state exposed to the strategy.
+        :param routing_model:
+            Routing model exposed to the strategy.
+        :return:
+            Trades proposed by the loaded strategy callback.
         """
 
         assert isinstance(strategy_universe, TradingStrategyUniverse)

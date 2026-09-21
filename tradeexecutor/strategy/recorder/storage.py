@@ -1,4 +1,10 @@
-"""DuckDB schema and writer for live strategy-decision records.
+"""Persist live strategy-decision records in a dedicated DuckDB database.
+
+:class:`~tradeexecutor.strategy.recorder.recorder.DecisionRecorder` is the only
+production writer expected to call this module. Strategy code records through
+``StrategyInput.recorder`` instead. Analysts and tests may query the tables
+directly after checkpoints; this split keeps SQL and lifecycle validation out
+of each strategy's ``decide_trades()`` implementation.
 
 The recorder database retains decision history in three version-1 tables. Run
 and object rows are append-only; a decision row is created as ``started`` and
@@ -47,8 +53,14 @@ from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.strategy.recorder.serialisation import canonical_json, content_hash
 
+
 def validate_recorder_strategy_id(strategy_id: str) -> str:
     """Validate the executor ID before using it in a recorder filename.
+
+    CLI bootstrap and :class:`DecisionRecorder` call this before deriving
+    ``{strategy-id}-record.duckdb`` next to the state file. Rejecting path-like
+    IDs keeps that automatic placement confined to the configured state
+    directory.
 
     :param strategy_id:
         Executor identifier selected by live CLI bootstrap.
@@ -65,15 +77,23 @@ def validate_recorder_strategy_id(strategy_id: str) -> str:
 class RecorderStorage:
     """Single-process writer for the versioned recorder DuckDB schema.
 
-    One instance owns one read-write DuckDB attachment. The higher-level
-    :class:`DecisionRecorder` serialises lifecycle calls; this class provides
-    content-addressed object writes, decision row transitions, checkpoints, and
-    idempotent close behaviour.
+    :class:`DecisionRecorder` constructs one instance per executor process and
+    serialises its lifecycle calls. Keeping the connection here gives the
+    recorder one place to enforce content-addressed writes, decision state
+    transitions, checkpoints, and idempotent close behaviour.
     """
 
     def __init__(self, path: Path) -> None:
-        """Open ``path``, create the version-1 schema, and validate it."""
+        """Open and validate the database used by one live recorder.
 
+        :class:`DecisionRecorder` calls this once during live runner bootstrap.
+        An in-memory connection attaches the target file so Zstandard can be
+        required before schema creation, and validation fails before the first
+        strategy cycle if an incompatible recorder file already exists.
+
+        :param path:
+            State-adjacent ``{strategy-id}-record.duckdb`` file to own.
+        """
         self.path = Path(path)
         if self.path.name in {"", ".", ".."} or not re.fullmatch(r"[A-Za-z0-9_.-]+", self.path.name):
             raise ValueError(f"Unsafe recorder filename: {self.path.name!r}")
@@ -87,6 +107,12 @@ class RecorderStorage:
         self._validate_schema()
 
     def _create_schema(self) -> None:
+        """Ensure a new or compatible database has all version-1 tables.
+
+        ``__init__()`` calls this before validation. ``IF NOT EXISTS`` supports
+        normal executor restarts while leaving schema compatibility decisions
+        to :meth:`_validate_schema` instead of silently migrating old data.
+        """
         self.connection.execute("""
             CREATE TABLE IF NOT EXISTS recorder.runs (
                 run_id UUID PRIMARY KEY,
@@ -124,6 +150,12 @@ class RecorderStorage:
         """)
 
     def _validate_schema(self) -> None:
+        """Reject recorder files that this writer cannot update safely.
+
+        ``__init__()`` calls this before starting a run. Exact column and
+        version checks turn schema drift into an immediate startup error rather
+        than partially recording a live decision into an unknown layout.
+        """
         expected = {
             "runs": {"run_id", "strategy_id", "started_at", "format_version", "metadata"},
             "objects": {"content_hash", "kind", "schema_version", "payload"},
@@ -162,8 +194,22 @@ class RecorderStorage:
         payload: dict[str, Any],
         schema_version: int = 1,
     ) -> dict[str, str]:
-        """Store one content-addressed JSON object and return its reference."""
+        """Store one reusable input object and return its manifest reference.
 
+        Capture modules and :class:`DecisionRecorder` call this for strategy
+        source, parameters, universe chunks, indicators, and model projections.
+        Content addressing avoids rewriting identical large inputs on every
+        cycle while the returned reference keeps decision manifests compact.
+
+        :param kind:
+            Semantic object category used by inspection queries.
+        :param payload:
+            JSON-ready object produced by recorder capture code.
+        :param schema_version:
+            Decoding contract version for this object kind.
+        :return:
+            A manifest dictionary containing the object's SHA-256 identity.
+        """
         digest = content_hash(kind, schema_version, payload)
         self.connection.execute(
             "INSERT OR IGNORE INTO recorder.objects VALUES (?, ?, ?, ?::JSON)",
@@ -172,8 +218,20 @@ class RecorderStorage:
         return {"object": digest}
 
     def start_run(self, strategy_id: str, metadata: dict[str, Any]) -> UUID:
-        """Create metadata for one executor process."""
+        """Create the provenance row for one executor process.
 
+        :class:`DecisionRecorder` calls this once after opening storage. The
+        resulting run ID groups decisions made by the same loaded strategy
+        source and software environment, which is needed when analysing data
+        spanning executor restarts.
+
+        :param strategy_id:
+            Validated executor identifier associated with the process.
+        :param metadata:
+            JSON-ready source and runtime provenance recorded once per process.
+        :return:
+            UUID used as the logical parent of subsequent decision rows.
+        """
         run_id = uuid4()
         now = native_datetime_utc_now()
         self.connection.execute(
@@ -191,8 +249,26 @@ class RecorderStorage:
         state_path: str,
         manifest: dict[str, Any],
     ) -> UUID:
-        """Persist the active decision manifest before strategy code executes."""
+        """Persist a decision's immutable inputs before strategy code executes.
 
+        :meth:`DecisionRecorder.begin` calls this immediately before the
+        strategy's calculation body. Writing ``started`` first preserves the
+        inputs of a process crash, and validating object references prevents a
+        manifest that cannot be inspected later.
+
+        :param run_id:
+            Existing run row that owns this decision.
+        :param cycle:
+            Executor cycle number supplied to ``StrategyInput``.
+        :param decision_at:
+            Nanosecond-capable strategy timestamp for the cycle.
+        :param state_path:
+            Authoritative state-file path used for later correlation.
+        :param manifest:
+            JSON-ready input manifest containing valid object references.
+        :return:
+            UUID identifying the active decision lifecycle.
+        """
         if self.connection.execute("SELECT 1 FROM recorder.runs WHERE run_id = ?", [str(run_id)]).fetchone() is None:
             raise ValueError(f"Unknown recorder run ID: {run_id}")
         object_refs = set()
@@ -234,8 +310,25 @@ class RecorderStorage:
         output_trade_ids: list[int],
         error: dict[str, str] | None = None,
     ) -> None:
-        """Write a terminal status and the strategy's explicit observations."""
+        """Complete one started decision with outputs or failure diagnostics.
 
+        :meth:`DecisionRecorder.finish` and :meth:`DecisionRecorder.fail` call
+        this exactly once for the active invocation. The terminal transition
+        joins explicit strategy observations and trade IDs to the inputs that
+        produced them without duplicating portfolio state already persisted in
+        the executor state file.
+
+        :param invocation_id:
+            UUID returned by :meth:`start_decision`.
+        :param status:
+            Terminal lifecycle state, either ``completed`` or ``failed``.
+        :param observations:
+            Ordered, JSON-ready observations emitted by strategy code.
+        :param output_trade_ids:
+            State trade IDs returned by a successful decision.
+        :param error:
+            Bounded exception summary for a failed decision, otherwise ``None``.
+        """
         now = native_datetime_utc_now()
         self.connection.execute(
             "UPDATE recorder.decisions SET finished_at=?, status=?, observations=?::JSON, output_trade_ids=?::JSON, error=?::JSON WHERE invocation_id=?",
@@ -244,17 +337,20 @@ class RecorderStorage:
         self.connection.commit()
 
     def checkpoint(self) -> None:
-        """Flush committed recorder data to its DuckDB file."""
+        """Make completed recorder work visible and durable in the file.
 
+        Decision completion, failure handling, and shutdown call this so an
+        analyst can inspect recent cycles from another DuckDB connection.
+        """
         self.connection.execute("CHECKPOINT")
 
     def close(self) -> None:
         """Checkpoint and close this writer exactly once.
 
-        This method is safe when both the normal decision lifecycle and an
-        execution-loop ``finally`` path attempt to close the recorder.
+        :meth:`DecisionRecorder.close` calls this from runner or execution-loop
+        shutdown. Idempotence is necessary because both normal lifecycle and a
+        ``finally`` path may release the same live resource.
         """
-
         if self._closed:
             return
         try:

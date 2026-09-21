@@ -1,8 +1,11 @@
-"""Tests for live strategy-input recording.
+"""Protect recorder schemas, serialisation, and lifecycle independently of CLI.
 
 1. Build a small deterministic live decision input.
 2. Record it through the public recorder API.
 3. Reopen DuckDB and verify JSON objects, lifecycle rows and exact values.
+
+These focused tests make storage failures easy to diagnose before the slower
+black-box CLI test checks framework wiring.
 """
 
 from pathlib import Path
@@ -26,6 +29,12 @@ from tradeexecutor.strategy.recorder.storage import RecorderStorage
 
 
 class _Pair:
+    """Mimic the pair fields and mutating codec used by universe capture.
+
+    ``capture_universe()`` serialises this fixture to prove recording cannot
+    mutate decision-relevant ``other_data`` on a live pair object.
+    """
+
     internal_id = 1
     pair_id = 1
     pool_address = "0xabc"
@@ -33,24 +42,49 @@ class _Pair:
     other_data = {"decision_value": "kept", "token_metadata": {"symbol": "FIX"}}
 
     def to_dict(self, encode_json: bool = False) -> dict[str, int | str]:
-        # Mirrors TradingPairIdentifier's in-place custom encoder behaviour.
+        """Simulate the domain codec called by recorder serialisation.
+
+        ``_domain_to_dict()`` invokes this method on a copy. Removing metadata
+        in place mirrors ``TradingPairIdentifier`` and exposes any accidental
+        mutation of the source universe.
+        """
         del encode_json
         self.other_data.pop("token_metadata", None)
         return {"internal_id": self.internal_id, "pool_address": self.pool_address}
 
 
 class _Pairs:
+    """Provide the pair-collection interface consumed by universe capture.
+
+    ``_make_input()`` attaches this to the synthetic data universe so recorder
+    tests exercise both dataframe chunking and domain-object serialisation.
+    """
+
     def __init__(self) -> None:
+        """Create the deterministic frame and pair used by ``_make_input()``.
+
+        One pair is enough to expose mutation and storage-shape regressions
+        without introducing irrelevant universe fixtures.
+        """
         self.df = pd.DataFrame({"pair_id": [1], "name": ["fixture"]})
         self.pair = _Pair()
 
     def iterate_pairs(self) -> Iterator[_Pair]:
+        """Yield the domain object requested by ``capture_universe()``.
+
+        The method mirrors the production pair-universe call site so the test
+        does not depend on recorder-specific branches.
+        """
         return iter([self.pair])
 
 
 def _make_input(state_path: Path) -> SimpleNamespace:
-    """Create the smallest live decision input that exercises recorder capture."""
+    """Create the smallest realistic input accepted by ``DecisionRecorder.begin``.
 
+    Recorder unit tests call this instead of constructing the full live runner.
+    The namespace includes every capture surface needed to test universe,
+    parameters, timestamps, state references, and empty indicators in isolation.
+    """
     data = SimpleNamespace(
         pairs=_Pairs(),
         candles=SimpleNamespace(df=pd.DataFrame({
@@ -99,11 +133,14 @@ def _make_input(state_path: Path) -> SimpleNamespace:
 def test_strategy_input_recorder_round_trip(tmp_path: Path) -> None:
     """Persist and reopen one completed live decision without mutating its universe.
 
+    This guards the core analyst use case: a completed decision must be
+    inspectable with exact nanosecond timing while capture leaves live inputs
+    unchanged.
+
     1. Build a deterministic live input and record one observation.
     2. Close the writer so DuckDB checkpoints the completed decision.
     3. Reopen the file and verify the lifecycle row, input objects, and timestamp.
     """
-
     # 1. Build a deterministic live input and record one observation.
     state_path = tmp_path / "hyper-ai.json"
     recorder = DecisionRecorder(
@@ -142,11 +179,14 @@ def test_strategy_input_recorder_round_trip(tmp_path: Path) -> None:
 def test_strategy_input_recorder_uses_zstd_for_persisted_history(tmp_path: Path) -> None:
     """Persist non-constant history with the requested Zstandard compression.
 
+    Large universe and indicator histories make compression an operational
+    requirement, so this checks DuckDB's physical storage rather than merely a
+    connection setting.
+
     1. Write enough unique JSON history to form DuckDB storage segments.
     2. Checkpoint and reopen the database as a reader.
     3. Confirm DuckDB used Zstandard for the JSON payload column.
     """
-
     # 1. Write enough unique JSON history to form DuckDB storage segments.
     path = tmp_path / "compression-record.duckdb"
     storage = RecorderStorage(path)
@@ -179,11 +219,13 @@ def test_strategy_input_recorder_uses_zstd_for_persisted_history(tmp_path: Path)
 def test_strategy_input_recorder_persists_callback_failure(tmp_path: Path) -> None:
     """Persist a strategy exception as a failed decision for later diagnosis.
 
+    Live failures are the decisions most likely to need forensic data; this
+    ensures the terminal failure and preceding observations survive shutdown.
+
     1. Start a live decision and record a calculation before the simulated failure.
     2. Mark the decision failed with the callback exception.
     3. Reopen the file and verify the terminal status and error type.
     """
-
     # 1. Start a live decision and record a calculation before the simulated failure.
     path = tmp_path / "failed-record.duckdb"
     recorder = DecisionRecorder(
@@ -211,11 +253,13 @@ def test_strategy_input_recorder_persists_callback_failure(tmp_path: Path) -> No
 def test_strategy_input_recorder_canonicalises_unordered_values() -> None:
     """Keep content hashes stable when unordered values change insertion order.
 
+    Content-addressed deduplication depends on logically equal inputs producing
+    identical bytes, regardless of Python mapping or set construction order.
+
     1. Canonicalise mappings containing non-string keys in both insertion orders.
     2. Canonicalise frozensets containing the same values in both insertion orders.
     3. Compare the canonical JSON used as the content-hash input.
     """
-
     # 1. Canonicalise mappings containing non-string keys in both insertion orders.
     first_mapping = canonical_json({2: "two", 1: "one"})
     second_mapping = canonical_json({1: "one", 2: "two"})

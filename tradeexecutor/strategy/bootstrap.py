@@ -80,15 +80,19 @@ def bootstrap_strategy(
 
 
 def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFactory:
-    """Initialises the strategy script file and hooks it to the executor.
+    """Create the executor factory for a loaded managed-positions strategy.
 
-    Assumes the module has two functions
+    :func:`import_strategy_file` calls this after validating a modern strategy
+    module. The returned factory is later invoked by execution-loop setup to
+    connect ``create_trading_universe()``, ``create_indicators()``, and
+    ``decide_trades()`` to their framework models. Keeping this wiring in one
+    factory also ensures optional live recording is created with the same state
+    path and executor ID used by the CLI.
 
-    - `decide_trade`
-
-    - `create_trading_universe`
-
-    Hook this up the strategy execution system.
+    :param mod:
+        Validated strategy-module metadata and callbacks.
+    :return:
+        Keyword-only factory consumed by executor bootstrap.
     """
 
     mod_info = mod
@@ -117,6 +121,12 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             strategy_id: str | None = None,
             **kwargs) -> StrategyExecutionDescription:
         """Build the managed-positions runner for one execution loop.
+
+        ``ExecutionLoop.setup()`` calls this factory with execution, pricing,
+        universe, and state services. It creates ``DecisionRecorder`` only for
+        an opted-in live strategy, then passes that same instance and the
+        authoritative state path to ``PandasTraderRunner``. Backtests and
+        strategies without the flag retain the ordinary runner path.
 
         :param state_path:
             Persistent executor state path. A live strategy that enables

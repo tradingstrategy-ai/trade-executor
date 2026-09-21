@@ -13,6 +13,10 @@ Every observation has a monotonically increasing ``sequence``, a caller-defined
 ``provenance``, and ``error`` add context without duplicating the state file.
 Values are encoded by :func:`to_json_value`, which preserves supported numeric,
 datetime, enum, and domain-object values deterministically.
+
+This module is an internal schema boundary. Strategy authors call
+``StrategyInput.recorder.record()``; :class:`DecisionRecorder` calls
+:func:`observation` to build the stored representation.
 """
 
 from typing import Any
@@ -35,6 +39,12 @@ def observation(
     error: Any = None,
 ) -> dict[str, Any]:
     """Create one JSON-safe observation stored in a decision row.
+
+    Called by :meth:`DecisionRecorder.record
+    <tradeexecutor.strategy.recorder.recorder.DecisionRecorder.record>` after
+    it assigns the per-decision sequence number and observation time. Keeping
+    this conversion separate gives every strategy-authored observation one
+    documented schema before :class:`RecorderStorage` writes the decision row.
 
     :param sequence:
         Zero-based order within the active ``decide_trades()`` invocation.
@@ -64,7 +74,6 @@ def observation(
     :return:
         JSON-ready observation dictionary for ``decisions.observations``.
     """
-
     return {
         "sequence": sequence,
         "kind": kind,

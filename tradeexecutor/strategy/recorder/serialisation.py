@@ -1,8 +1,12 @@
-"""Stable JSON schema used by the strategy-input recorder.
+"""Create stable JSON values for live strategy-input recording.
 
-The state serialiser remains authoritative for executor state files. This module
-only provides exact, deterministic JSON values for recorder inputs and pandas
-data. It never reconstructs domain objects or replaces state serialisation.
+Capture modules call these helpers before handing decision inputs to
+:class:`~tradeexecutor.strategy.recorder.storage.RecorderStorage`. The separate
+encoding is needed because ordinary JSON loses types, pandas metadata, and
+stable ordering, which would make two equivalent live inputs hash differently.
+The state serialiser remains authoritative for executor state files; this
+module records only data that is absent from state and never reconstructs
+application domain objects.
 
 Scalar values retain otherwise lossy types with explicit ``$type`` tags:
 ``decimal``, ``timestamp_ns``, ``datetime``, ``date``, ``timedelta_ns``,
@@ -35,7 +39,18 @@ from tradeexecutor.monkeypatch.dataclasses_json import patch_dataclasses_json
 
 
 def _domain_to_dict(value: Any) -> Any:
-    """Use an existing dataclasses-json codec without mutating the source object."""
+    """Safely reuse a domain object's existing JSON codec.
+
+    :func:`to_json_value` calls this helper for supported domain objects. A
+    shallow copy and isolated ``other_data`` mapping are necessary because
+    some codecs mutate transient fields; recording must never change the live
+    universe that ``decide_trades()`` is reading.
+
+    :param value:
+        Domain object exposing the project's ``to_dict()`` convention.
+    :return:
+        Plain Python data ready for recursive recorder encoding.
+    """
     patch_dataclasses_json()
     candidate = copy.copy(value)
     # TradingPairIdentifier's custom encoder deletes transient keys in-place.
@@ -54,8 +69,21 @@ def _domain_to_dict(value: Any) -> Any:
 def to_json_value(value: Any) -> Any:
     """Convert a supported Python value into deterministic, exact JSON data.
 
+    Universe, indicator, observation, and storage capture paths call this at
+    the boundary between live Python values and the recorder schema. Explicit
+    type tags preserve decision-relevant values that native JSON would coerce
+    or reject, while deterministic container ordering supports content hashes.
+
     Raises :class:`TypeError` for frames, arrays, and unsupported object types
     rather than silently recording an incomplete decision input.
+
+    :param value:
+        Scalar, container, dataclass, enum, or supported domain object to
+        encode.
+    :return:
+        A value accepted by the standard JSON encoder without type loss.
+    :raises TypeError:
+        If the value needs frame chunking or has no explicit recorder codec.
     """
     if isinstance(value, Enum):
         return {"$type": "enum", "class": f"{value.__class__.__module__}.{value.__class__.__qualname__}", "value": to_json_value(value.value)}
@@ -95,7 +123,7 @@ def to_json_value(value: Any) -> Any:
             return to_json_value(pd.Timestamp(value))
         return {"$type": "numpy_scalar", "dtype": str(value.dtype), "value": to_json_value(value.item())}
     if isinstance(value, (pd.DataFrame, pd.Series, np.ndarray)):
-        raise TypeError("Use encode_frame() for pandas and NumPy containers")
+        raise TypeError("Use encode_frame_chunks() for pandas and NumPy containers")
     if isinstance(value, UUID):
         return str(value)
     if isinstance(value, Path):
@@ -123,7 +151,17 @@ def to_json_value(value: Any) -> Any:
 
 
 def canonical_json(value: Any) -> str:
-    """Return canonical JSON suitable for hashes and DuckDB ``JSON`` columns."""
+    """Return byte-stable JSON for hashing and DuckDB ``JSON`` columns.
+
+    :class:`RecorderStorage` uses this for every persisted payload, and the
+    encoder uses it to sort mappings and sets that have no stable native order.
+    Stable output makes content-addressed objects deduplicate across decisions.
+
+    :param value:
+        Supported value or already JSON-ready recorder payload.
+    :return:
+        Compact JSON text with sorted keys and no non-standard numbers.
+    """
     return json.dumps(
         to_json_value(value),
         sort_keys=True,
@@ -134,8 +172,21 @@ def canonical_json(value: Any) -> str:
 
 
 def content_hash(kind: str, schema_version: int, payload: Any) -> str:
-    """Return the content address for one versioned recorder object."""
+    """Return the storage identity of one versioned recorder object.
 
+    :meth:`RecorderStorage.put_object` calls this before insertion. Including
+    the object kind and schema version prevents equal-looking payloads with
+    different meanings or decoding contracts from sharing an identity.
+
+    :param kind:
+        Semantic object category stored alongside the payload.
+    :param schema_version:
+        Version of the payload's decoding contract.
+    :param payload:
+        Recorder value to address.
+    :return:
+        Lowercase SHA-256 hexadecimal digest of the canonical envelope.
+    """
     envelope = {"kind": kind, "schema_version": schema_version, "payload": payload}
     return hashlib.sha256(canonical_json(envelope).encode("utf-8")).hexdigest()
 
@@ -143,8 +194,15 @@ def content_hash(kind: str, schema_version: int, payload: Any) -> str:
 def decode_json_value(value: Any) -> Any:
     """Decode recorder type tags without importing arbitrary application classes.
 
-    This is an inspection helper only. It cannot recreate domain objects or a
-    strategy decision from a recorder database.
+    Tests and analyst inspection tools call this after reading DuckDB ``JSON``
+    values. It intentionally cannot recreate domain objects or a strategy
+    decision: avoiding arbitrary imports keeps offline inspection predictable
+    and separates recording from future reconstruction work.
+
+    :param value:
+        Parsed JSON value read from a recorder column.
+    :return:
+        Nested Python values with built-in recorder type tags decoded.
     """
     if isinstance(value, list):
         return [decode_json_value(v) for v in value]
@@ -177,11 +235,27 @@ def decode_json_value(value: Any) -> Any:
 def frame_schema(frame: pd.DataFrame | pd.Series) -> dict[str, Any]:
     """Describe a pandas frame's container, labels, index, and dtypes.
 
-    Values are written by :func:`encode_frame_chunks`; this schema is held once
-    in the parent universe or indicator fingerprint object.
+    :func:`encode_frame_chunks` calls this once per captured frame. Keeping
+    structural metadata in the parent object lets row chunks deduplicate while
+    retaining enough information for an analyst to interpret their values.
+
+    :param frame:
+        Dataframe or series whose structure will accompany captured row chunks.
+    :return:
+        JSON-ready container, label, index, and dtype description.
     """
 
     def dtype_schema(dtype: Any) -> dict[str, Any]:
+        """Describe one dtype without depending on pandas' Python objects.
+
+        ``frame_schema()`` calls this for every value column so inspection can
+        distinguish categories and ordered categoricals from plain strings.
+
+        :param dtype:
+            Pandas or NumPy dtype to describe.
+        :return:
+            JSON-ready dtype name, kind, and categorical metadata.
+        """
         descriptor = {"name": str(dtype), "kind": getattr(dtype, "kind", None)}
         if isinstance(dtype, pd.CategoricalDtype):
             descriptor["categories"] = [to_json_value(value) for value in dtype.categories.tolist()]
@@ -189,6 +263,17 @@ def frame_schema(frame: pd.DataFrame | pd.Series) -> dict[str, Any]:
         return descriptor
 
     def axis_schema(axis: pd.Index) -> dict[str, Any]:
+        """Describe one pandas axis, including specialised index metadata.
+
+        ``frame_schema()`` calls this for row and column indexes. Recording the
+        index form explains how captured row values were aligned at decision
+        time, which a values-only dump could not establish.
+
+        :param axis:
+            Pandas row or column index to describe.
+        :return:
+            JSON-ready index type, names, dtype, and specialised metadata.
+        """
         descriptor = {
             "class": type(axis).__name__,
             "names": [to_json_value(value) for value in axis.names],
@@ -233,6 +318,10 @@ def encode_frame_chunks(
     chunk_size: int = 2_048,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Encode a frame into a schema and placement-independent row chunks.
+
+    Universe and indicator capture functions call this for their pandas data.
+    Chunking allows unchanged portions to share content hashes across decisions
+    and prevents one large frame from becoming an indivisible DuckDB object.
 
     :param frame:
         Data frame or series to capture.

@@ -857,15 +857,19 @@ class StrategyInputIndicators:
 
 @dataclass
 class StrategyInput:
-    """Inputs for a trading decision.
+    """Provide one versioned call boundary for a v0.5 strategy decision.
 
-    The data structure used to make trade decisions. Captures
-    all values that need to go to a single trade, under different live and backtesting
-    circumstances.
+    ``PandasTraderRunner.on_clock()`` constructs this dataclass and passes it as
+    the sole argument to ``decide_trades()``. Grouping cycle time, constructed
+    universe, indicators, state, models, and parameters makes the callback
+    consistent between live execution and backtesting while retaining explicit
+    types and discoverable helper methods.
 
-    - Inputs for `decide_trades` function
-
-    - Enabled when `trading_strategy_engine_version = "0.5"` or higher
+    Live strategies that enable input recording also receive ``recorder`` and
+    ``state_path``. Their ``decide_trades()`` implementation calls the recorder
+    around its calculations; the fields are absent from ordinary runs and do
+    not change trade selection. This input shape is enabled for
+    ``trading_strategy_engine_version = "0.5"`` or newer.
     """
 
     #: Strategy cycle number
@@ -1076,4 +1080,3 @@ def _calculate_and_cache_candle_width_df(df: pd.DatetimeIndex | pd.Series) -> pd
         return time_bucket.to_pandas_timedelta()
 
     return _calculate_and_cache_candle_width(df.index)
-

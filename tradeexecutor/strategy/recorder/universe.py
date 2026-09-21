@@ -10,6 +10,12 @@ so unchanged chunks are deduplicated across decisions.
 Capture deliberately serialises copies of mutable domain objects. In particular,
 some pair ``to_dict()`` encoders mutate ``other_data``; the serialisation helper
 protects the live universe from that side effect.
+
+:meth:`DecisionRecorder.begin
+<tradeexecutor.strategy.recorder.recorder.DecisionRecorder.begin>` is the only
+production caller. It invokes :func:`capture_universe` before strategy signal
+calculations so later analysis sees the exact eligible data set rather than a
+newly downloaded approximation.
 """
 
 from __future__ import annotations
@@ -30,11 +36,22 @@ def _frame_capture(
 ) -> dict[str, Any]:
     """Store a dataframe in content-addressed chunks and return its manifest.
 
+    :func:`capture_universe` calls this for pair, candle, liquidity, lending,
+    and vault-state frames present in the decision universe. Chunking exists so
+    unchanged history is deduplicated when only the latest rows differ between
+    live cycles.
+
     The manifest stores frame schema, row count, and each chunk reference with
     its original row positions. Chunks store only data values; schema is held
     once in the parent manifest.
-    """
 
+    :param frame:
+        Constructed-universe dataframe or series to persist.
+    :param put_object:
+        Content-addressed writer owned by the active recorder storage.
+    :return:
+        Parent manifest containing schema, row count, and chunk references.
+    """
     schema, chunks = encode_frame_chunks(frame)
     refs = []
     for chunk in chunks:
@@ -46,9 +63,18 @@ def _frame_capture(
 def _capture_vault_specs(specs: Any) -> Any:
     """Capture serialisable vault fields used by universe selection.
 
+    :func:`capture_universe` calls this for ``data_universe.vault_specs``. The
+    projection exists because vault eligibility depends on metadata that is not
+    necessarily present in price frames, especially live deposit availability.
+
     This is a curated decision-data projection: identity, token, fee, TVL,
     issuance, protocol, and deposit/redemption availability metadata are kept,
     while full provider responses and arbitrary client caches are excluded.
+
+    :param specs:
+        Vault universe collection, serialisable value, or ``None``.
+    :return:
+        JSON-ready vault records, a safe type marker, or ``None``.
     """
     if specs is None:
         return None
@@ -90,6 +116,12 @@ def _capture_vault_specs(specs: Any) -> Any:
 def capture_universe(universe: Any, put_object: ObjectWriter) -> dict[str, str]:
     """Store the constructed decision universe and its data-frame manifests.
 
+    Called by :meth:`DecisionRecorder.begin
+    <tradeexecutor.strategy.recorder.recorder.DecisionRecorder.begin>` exactly
+    once for each recorded live cycle. Its object reference becomes
+    ``input_manifest.universe`` and is also listed as an input of each indicator
+    fingerprint.
+
     :param universe:
         Universe passed to the active strategy decision.
     :param put_object:
@@ -97,7 +129,6 @@ def capture_universe(universe: Any, put_object: ObjectWriter) -> dict[str, str]:
     :return:
         ``{"object": <sha256>}`` reference to the parent ``universe`` object.
     """
-
     data = universe.data_universe
     pairs = []
     pair_objects = getattr(data, "pairs", None)

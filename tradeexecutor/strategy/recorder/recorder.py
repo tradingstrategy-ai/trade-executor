@@ -1,12 +1,12 @@
-"""Explicit lifecycle for recording live strategy decisions.
+"""Coordinate recording around one live strategy decision at a time.
 
-The framework creates :class:`DecisionRecorder` only for live v0.5 pandas
-strategies that enable ``Parameters.record_strategy_inputs``. The strategy owns
-the lifecycle: call :meth:`DecisionRecorder.begin` before calculations, record
-zero or more explicit observations, then call :meth:`DecisionRecorder.finish`
-or :meth:`DecisionRecorder.fail`. The recorder writes decision inputs and
-research diagnostics only; it neither selects trades nor mutates executor
-state.
+CLI bootstrap creates :class:`DecisionRecorder` for a live v0.5 pandas strategy
+that enables ``Parameters.record_strategy_inputs``. ``PandasTraderRunner`` then
+injects it into ``StrategyInput`` and the strategy calls ``begin()``, optional
+``record()`` calls, and ``finish()`` or ``fail()`` from ``decide_trades()``.
+This explicit call site captures inputs at the instant the strategy consumes
+them without adding generic framework hooks. The recorder writes research
+diagnostics only; it neither selects trades nor mutates executor state.
 """
 
 from __future__ import annotations
@@ -38,12 +38,21 @@ if TYPE_CHECKING:
 def _model_projection(model: Any) -> dict[str, Any]:
     """Capture type identity and public scalar configuration only.
 
+    :meth:`DecisionRecorder.begin` calls this for pricing, routing model, and
+    routing state objects. Their implementation and scalar settings can explain
+    a decision, while copying caches, clients, or API responses would create a
+    large and misleading archive of data the strategy may not have used.
+
     Runtime models commonly expose caches and API responses as dictionaries or
     lists. Deliberately skip all containers before serialising them so a model
     projection never turns into an accidental API archive. The projection
     schema is ``implementation`` plus public scalar ``values``.
-    """
 
+    :param model:
+        Runtime pricing or routing object exposed to the strategy.
+    :return:
+        JSON-ready implementation identity and public scalar settings.
+    """
     values: dict[str, Any] = {}
     for name, value in vars(model).items() if hasattr(model, "__dict__") else ():
         if name.startswith("_") or isinstance(value, (dict, list, set, tuple, np.ndarray)):
@@ -63,10 +72,16 @@ def _model_projection(model: Any) -> dict[str, Any]:
 def _open_position_references(strategy_input: "StrategyInput") -> list[dict[str, Any]]:
     """Return position, pair, and trade identifiers without copying state.
 
-    These references let a researcher join a decision with the authoritative
-    state file while keeping the recorder independent of state serialisation.
-    """
+    :meth:`DecisionRecorder.begin` calls this while building the input manifest.
+    The identifiers let a researcher join the decision to the authoritative
+    state file while avoiding a second, potentially divergent copy of portfolio
+    state in DuckDB.
 
+    :param strategy_input:
+        Active live decision input containing authoritative executor state.
+    :return:
+        Open position, pair, and trade identifiers suitable for state joins.
+    """
     portfolio = getattr(getattr(strategy_input, "state", None), "portfolio", None)
     if portfolio is None:
         return []
@@ -86,10 +101,12 @@ def _open_position_references(strategy_input: "StrategyInput") -> list[dict[str,
 class DecisionRecorder:
     """Write one run and its explicitly recorded live decisions to DuckDB.
 
-    The framework constructs this object only when a live strategy enables
-    ``record_strategy_inputs``. The strategy owns the decision lifecycle:
-    call :meth:`begin`, zero or more :meth:`record` calls, then :meth:`finish`
-    or :meth:`fail`.
+    CLI strategy bootstrap constructs this object only when a live strategy
+    enables ``record_strategy_inputs``. ``PandasTraderRunner`` exposes it on
+    each ``StrategyInput`` so ``decide_trades()`` can own the exact recording
+    boundary: call :meth:`begin`, zero or more :meth:`record` calls, then
+    :meth:`finish` or :meth:`fail`. One instance covers one executor process
+    and accepts only one active decision at a time.
     """
 
     def __init__(
@@ -103,6 +120,11 @@ class DecisionRecorder:
     ) -> None:
         """Create a recorder for one executor process.
 
+        The strategy factory calls this during live bootstrap, before the
+        runner starts cycling. Recording source and runtime provenance once per
+        process lets analysts distinguish changes across restarts without
+        repeating that metadata in every decision row.
+
         :param path:
             Persistent DuckDB path beside the executor state file.
         :param strategy_id:
@@ -114,7 +136,6 @@ class DecisionRecorder:
         :param executor_revision:
             Executor build revision, when available.
         """
-
         self.path = Path(path)
         self.strategy_id = validate_recorder_strategy_id(strategy_id)
         self.storage = RecorderStorage(self.path)
@@ -152,13 +173,24 @@ class DecisionRecorder:
     def begin(self, strategy_input: "StrategyInput") -> "DecisionRecorder":
         """Persist immutable inputs and start one live decision.
 
+        A recording-enabled ``decide_trades()`` wrapper calls this before any
+        signal or allocation calculations. That placement captures the actual
+        constructed universe, indicators, parameters, models, and state
+        references consumed by this invocation rather than a later snapshot.
+
         Captures parameters, execution context, constructed universe, indicator
         fingerprints, selected model projections, limited Web3 identity,
         ``other_data``, and state references before strategy calculations run.
         Raises if a decision is already active, recorder use is not live, or an
         input cannot be serialised.
-        """
 
+        :param strategy_input:
+            Active live input that the strategy is about to consume.
+        :return:
+            This recorder, allowing an optional context-style local assignment.
+        :raises RuntimeError:
+            If another decision is active or the execution mode is not live.
+        """
         if self.invocation_id is not None:
             raise RuntimeError("Cannot begin a decision while another decision is active")
         if not strategy_input.execution_context.mode.is_live_trading():
@@ -196,6 +228,19 @@ class DecisionRecorder:
         )
 
         def capture_model(kind: str, model: Any) -> dict[str, str] | None:
+            """Store one optional runtime model projection for the manifest.
+
+            ``begin()`` calls this for each model supplied by the runner. The
+            helper keeps optional-value handling and content-addressed storage
+            identical across model kinds.
+
+            :param kind:
+                Object-store category for the runtime model.
+            :param model:
+                Model to project, or ``None`` when the runner has none.
+            :return:
+                Content reference for a present model, otherwise ``None``.
+            """
             return self.storage.put_object(kind, _model_projection(model)) if model is not None else None
 
         manifest = {
@@ -233,6 +278,11 @@ class DecisionRecorder:
     def record(self, kind: str, name: str, value: Any, **kwargs: Any) -> None:
         """Append one serialisable, decision-relevant observation.
 
+        Strategy calculation helpers call this between :meth:`begin` and
+        :meth:`finish` for values that are not already in the state file, such
+        as candidate scores, exclusion reasons, or proposed allocations. The
+        monotonically increasing sequence preserves calculation order.
+
         :param kind:
             Stable observation category, for example ``signal`` or
             ``allocation``.
@@ -246,7 +296,6 @@ class DecisionRecorder:
         :raises RuntimeError:
             If no decision has been started with :meth:`begin`.
         """
-
         self._require_active_decision()
         self._observations.append(
             observation(
@@ -263,11 +312,15 @@ class DecisionRecorder:
     def finish(self, trades: Iterable["TradeExecution"] | None = None) -> None:
         """Mark the active decision complete, record trade IDs, and checkpoint.
 
+        The successful branch of ``decide_trades()`` calls this immediately
+        before returning its trades. IDs link the recorded calculations to
+        authoritative trade data in state, and the checkpoint makes the cycle
+        available to external inspection.
+
         :param trades:
             Trades returned from this decision. Only their existing state trade
             identifiers are stored; trade data remains in the state file.
         """
-
         invocation_id = self._require_active_decision()
         trade_ids = [
             trade.trade_id
@@ -281,12 +334,16 @@ class DecisionRecorder:
     def fail(self, error: Exception) -> None:
         """Mark the active decision failed, preserve observations, and checkpoint.
 
+        The exception branch around a recording-enabled ``decide_trades()``
+        calls this and then re-raises the same exception. Persisting values
+        recorded before the failure makes live-only calculation errors
+        diagnosable even though no trades were returned.
+
         :param error:
             Exception raised by the decision. Its class name and a bounded
-            message are recorded, after which the original exception continues
-            through normal strategy error handling.
+            message are recorded. The caller remains responsible for re-raising
+            the original exception through normal strategy error handling.
         """
-
         if self.invocation_id is None:
             return
         self.storage.finish_decision(
@@ -300,11 +357,21 @@ class DecisionRecorder:
         self.invocation_id = None
 
     def close(self) -> None:
-        """Close the underlying DuckDB connection after the executor stops."""
+        """Release recorder storage when the live runner or loop stops.
 
+        ``PandasTraderRunner.close()`` and the execution loop's ``finally`` path
+        may both reach this method, so the delegated storage close is
+        intentionally idempotent.
+        """
         self.storage.close()
 
     def _require_active_decision(self) -> UUID:
+        """Return the current invocation or reject an orphan lifecycle call.
+
+        :meth:`record` and :meth:`finish` call this before writing anything.
+        Failing immediately prevents observations or outputs from being
+        associated with the wrong live cycle.
+        """
         if self.invocation_id is None:
             raise RuntimeError("Call recorder.begin() before recording a decision")
         return self.invocation_id

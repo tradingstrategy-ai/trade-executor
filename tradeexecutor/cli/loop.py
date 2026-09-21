@@ -2039,7 +2039,13 @@ class ExecutionLoop:
                 logger.info("Automatically using %s - %s for backtest start and end", self.backtest_start, self.backtest_end)
 
     def run_with_state(self, state: State) -> dict:
-        """Start the execution.
+        """Run live or backtest execution with an already prepared state.
+
+        :meth:`run` calls this after setup, while tests may call it directly
+        with fixture state. Centralising dispatch here guarantees runner-owned
+        resources are closed on a normal stop, unit-test early stop, or error;
+        the live decision recorder depends on this to checkpoint and release
+        its DuckDB connection.
 
         :return:
             Debug state where each key is the cycle number
@@ -2049,8 +2055,6 @@ class ExecutionLoop:
             not a start up error.
 
         The runner is always closed before returning or propagating an error.
-        This releases optional resources such as the live decision recorder's
-        DuckDB connection on a normal stop, unit-test early stop, or failure.
         """
         # TODO: Refactor
         try:
