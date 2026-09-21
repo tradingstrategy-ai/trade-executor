@@ -5,12 +5,15 @@ through the real ``start`` command. The example exists to prove that recorder
 output explains both sides of a live vault decision: the constructed universe
 and the smaller set that the strategy selects from it.
 
-The strategy follows the live Hyper-AI data path closely. It asks the curator
+The strategy exercises the live Hyper-AI data-loading functions. It asks the curator
 for real HyperCore vaults, resolves their Trading Strategy metadata, downloads
 their daily price and TVL history, calculates the same TVL and age-ramp inputs
 used by ``hyper-ai-test.py``, and feeds eligible vaults to ``AlphaModel``. It
 stops before position sizing and trade generation because this integration test
-is about decision inputs, not moving assets from the test hot wallet.
+is about decision inputs, not moving assets from the test hot wallet. The
+12-vault subset, 120-day age history and three slots keep this example small;
+they are not production Hyper-AI settings. Deposit availability is captured
+as metadata but is not an admission gate in this selection-only example.
 
 This is intentionally a checked-in strategy instead of Python source generated
 inside a test. Developers can run and inspect it like any other strategy, and
@@ -81,8 +84,6 @@ class Parameters:
     routing = TradeRouting.default
     #: Load enough history to calculate a meaningful vault-age ramp.
     required_history_period = datetime.timedelta(days=120)
-    #: Exercise automatic input capture around every live decision callback.
-    record_strategy_inputs = True
     #: Match Hyper-AI's live vault transaction slippage assumption.
     slippage_tolerance = 0.006
 
@@ -294,8 +295,8 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         current_tvl = input.indicators.get_indicator_value("tvl", pair=pair)
         age_signal = input.indicators.get_indicator_value("age_ramp_weight", pair=pair)
 
-        # Use the same safety gates as Hyper-AI before a signal enters the
-        # AlphaModel. Keep a rejection reason for every excluded vault so the
+        # Apply TVL, signal availability, blacklist and quarantine checks before
+        # a signal enters AlphaModel. Keep a reason for every excluded vault so the
         # recording explains absence as well as presence.
         rejection_reason = None
         if current_tvl is None or current_tvl != current_tvl:

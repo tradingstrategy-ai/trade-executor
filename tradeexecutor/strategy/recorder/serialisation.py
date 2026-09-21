@@ -156,12 +156,14 @@ def canonical_json(value: Any) -> str:
     Stable output makes content-addressed objects deduplicate across decisions.
 
     :param value:
-        Supported value or already JSON-ready recorder payload.
+        Already JSON-ready recorder payload. Call :func:`to_json_value` once
+        before this boundary for Python values. Re-encoding tagged payloads
+        would escape their type tags as user mappings and break read-back.
     :return:
         Compact JSON text with sorted keys and no non-standard numbers.
     """
     return json.dumps(
-        to_json_value(value),
+        value,
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=False,
@@ -197,6 +199,11 @@ def decode_json_value(value: Any) -> Any:
     decision: avoiding arbitrary imports keeps offline inspection predictable
     and separates recording from future reconstruction work.
 
+    Decode scalar values and frame chunks, not whole domain-object graphs:
+    sets of serialised domain objects remain JSON records and cannot be
+    reconstructed as hashable Python objects here. Enums decode to their
+    primitive values rather than importing their original classes.
+
     :param value:
         Parsed JSON value read from a recorder column.
     :return:
@@ -207,6 +214,10 @@ def decode_json_value(value: Any) -> Any:
     if not isinstance(value, dict):
         return value
     tag = value.get("$type")
+    if tag == "enum":
+        # Inspection needs the primitive value, not an imported application
+        # class. This also keeps enum-valued sets and mapping keys hashable.
+        return decode_json_value(value["value"])
     if tag == "decimal":
         return Decimal(value["value"])
     if tag == "timestamp_ns":
@@ -329,9 +340,9 @@ def encode_frame_chunks(
         Schema and chunk dictionaries. Each chunk has ``start``, ``count``, and
         a JSON-ready ``payload`` containing index values and row values.
     """
+    schema = frame_schema(frame)
     if isinstance(frame, pd.Series):
         frame = frame.to_frame()
-    schema = frame_schema(frame)
     chunks = []
     for start in range(0, len(frame), chunk_size):
         part = frame.iloc[start:start + chunk_size]

@@ -14,6 +14,8 @@ from unittest import mock
 
 import duckdb
 import pytest
+from click import Group
+from typer.main import get_command
 from eth_defi.provider.anvil import AnvilLaunch
 from eth_defi.uniswap_v2.deployment import UniswapV2Deployment
 from eth_typing import HexAddress
@@ -86,8 +88,10 @@ def test_cli_live_recorder_creates_state_adjacent_duckdb(
 
     # This mock only scopes process environment variables; CLI bootstrap and execution are real.
     with mock.patch.dict(os.environ, environment, clear=True):
-        # ``start`` is registered directly on this focused Typer app.
-        app([], standalone_mode=False)
+        # Typer flattens a single-command app; other collected CLI tests can
+        # register additional commands on the shared app.
+        cli = get_command(app)
+        cli.main(args=["start"] if isinstance(cli, Group) else [], standalone_mode=False)
 
     # 2. Confirm the executor wrote its state and state-adjacent recorder database.
     assert state_file.exists()
@@ -103,6 +107,13 @@ def test_cli_live_recorder_creates_state_adjacent_duckdb(
         ).fetchone()
         assert run_count == 1
         assert json.loads(metadata)["strategy_file"] == str(strategy_file)
+        # The decorator alone enabled this recorder. Recording configuration
+        # must not become part of the strategy's optimisation parameters.
+        parameter_objects = connection.execute(
+            "SELECT payload FROM objects WHERE kind = 'parameters'"
+        ).fetchall()
+        assert parameter_objects
+        assert all("record_strategy_inputs" not in json.loads(row[0])["values"] for row in parameter_objects)
         decisions = connection.execute(
             "SELECT cycle, status, state_path, observations FROM decisions ORDER BY cycle"
         ).fetchall()

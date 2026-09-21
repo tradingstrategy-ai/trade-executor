@@ -1,7 +1,7 @@
 """Coordinate recording around one live strategy decision at a time.
 
 CLI bootstrap creates :class:`DecisionRecorder` for a live v0.5 pandas strategy
-that enables ``Parameters.record_strategy_inputs``. ``PandasTraderRunner`` then
+whose decision callback uses ``@record_decision``. ``PandasTraderRunner`` then
 injects it into ``StrategyInput``. The strategy decorates ``decide_trades()``
 with :func:`record_decision` and emits optional observations from the callback.
 This boundary captures inputs at the instant the strategy consumes them without
@@ -104,7 +104,9 @@ def record_decision(func: _DecisionFunction) -> _DecisionFunction:
     """Wrap a v0.5 ``decide_trades()`` callback in recorder lifecycle handling.
 
     Strategy modules use this decorator on their public ``decide_trades()``
-    function. The live runner has already attached a :class:`DecisionRecorder`
+    function. The decorator marks the callback for live bootstrap to create a
+    recorder; no strategy parameter or separate flag is needed.
+    The live runner has already attached a :class:`DecisionRecorder`
     before invoking the callback, so the wrapper can capture inputs immediately,
     complete successful decisions with their returned trade IDs, and persist
     callback failures before re-raising them. When recording is disabled or the
@@ -137,6 +139,9 @@ def record_decision(func: _DecisionFunction) -> _DecisionFunction:
         recorder.finish(trades)
         return trades
 
+    # Bootstrap inspects the loaded callback before constructing the runner.
+    # functools.wraps also preserves this marker through other decorators.
+    wrapper.__record_decision__ = True
     return wrapper
 
 
@@ -144,14 +149,14 @@ class DecisionRecorder:
     """Write one run and its explicitly recorded live decisions to DuckDB.
 
     CLI strategy bootstrap constructs this object only when a live strategy
-    enables ``record_strategy_inputs``. ``PandasTraderRunner`` exposes it on
+    decorates its callback with :func:`record_decision`. ``PandasTraderRunner`` exposes it on
     each ``StrategyInput`` so :func:`record_decision` can own the exact callback
     boundary. Strategy calculations may call :meth:`record` for explicit
     observations. One instance covers one executor process and accepts only one
     active decision at a time.
 
-    Strategies should not construct a recorder themselves. Enable
-    ``Parameters.record_strategy_inputs`` and decorate the decision callback::
+    Strategies should not construct a recorder themselves. Decorate the
+    decision callback to enable recording automatically in live trading::
 
         @record_decision
         def decide_trades(input: StrategyInput) -> list[TradeExecution]:
@@ -229,7 +234,6 @@ class DecisionRecorder:
         )
         self.invocation_id: UUID | None = None
         self._observations: list[dict[str, Any]] = []
-        self._sequence = 0
 
     def begin(self, strategy_input: "StrategyInput") -> "DecisionRecorder":
         """Persist immutable inputs and start one live decision.
@@ -333,7 +337,6 @@ class DecisionRecorder:
             manifest,
         )
         self._observations = []
-        self._sequence = 0
         return self
 
     def record(self, kind: str, name: str, value: Any, **kwargs: Any) -> None:
@@ -360,7 +363,7 @@ class DecisionRecorder:
         self._require_active_decision()
         self._observations.append(
             observation(
-                self._sequence,
+                len(self._observations),
                 kind,
                 name,
                 value,
@@ -368,13 +371,12 @@ class DecisionRecorder:
                 **kwargs,
             )
         )
-        self._sequence += 1
 
     def finish(self, trades: Iterable["TradeExecution"] | None = None) -> None:
         """Mark the active decision complete, record trade IDs, and checkpoint.
 
-        The successful branch of ``decide_trades()`` calls this immediately
-        before returning its trades. IDs link the recorded calculations to
+        :func:`record_decision` calls this after the callback returns
+        successfully. IDs link the recorded calculations to
         authoritative trade data in state, and the checkpoint makes the cycle
         available to external inspection.
 

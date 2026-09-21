@@ -61,8 +61,6 @@ class Parameters:
     backtest_end = datetime.datetime(2025, 1, 2)
     #: Request enough local history for normal universe creation.
     required_history_period = datetime.timedelta(minutes=1)
-    #: Enable the framework recorder that this strategy exists to exercise.
-    record_strategy_inputs = True
 
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:

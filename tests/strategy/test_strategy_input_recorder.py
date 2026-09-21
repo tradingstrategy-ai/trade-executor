@@ -9,6 +9,7 @@ black-box CLI test checks framework wiring.
 """
 
 from pathlib import Path
+from decimal import Decimal
 from types import SimpleNamespace
 import json
 from collections.abc import Iterator
@@ -25,6 +26,7 @@ from tradeexecutor.strategy.recorder import DecisionRecorder, record_decision
 from tradeexecutor.strategy.recorder.serialisation import (
     canonical_json,
     decode_json_value,
+    encode_frame_chunks,
     to_json_value,
 )
 from tradeexecutor.strategy.recorder.storage import RecorderStorage
@@ -124,7 +126,7 @@ def _make_input(
     )
     return SimpleNamespace(
         execution_context=ExecutionContext(ExecutionMode.unit_testing_trading),
-        parameters=StrategyParameters({"record_strategy_inputs": True, "decimal": "1.2300"}),
+        parameters=StrategyParameters({"decimal": "1.2300"}),
         strategy_universe=universe,
         indicators=SimpleNamespace(indicator_results={}),
         other_data={"fixture": "ok"},
@@ -160,9 +162,13 @@ def test_strategy_input_recorder_round_trip(tmp_path: Path) -> None:
     @record_decision
     def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         if input.recorder is not None:
-            input.recorder.record("calculation", "fixture", {"decimal": to_json_value("1.2300")})
+            input.recorder.record("calculation", "fixture", {"decimal": Decimal("1.2300"), "timestamp": input.timestamp})
         return []
 
+    # Bootstrap can discover the opt-in on the callback without consulting
+    # strategy parameters; backtests still call through with no recorder.
+    assert decide_trades.__record_decision__ is True
+    assert not getattr(decide_trades.__wrapped__, "__record_decision__", False)
     assert decide_trades(SimpleNamespace(recorder=None)) == []
     assert decide_trades(strategy_input) == []
     assert strategy_input.strategy_universe.data_universe.pairs.pair.other_data == {
@@ -182,6 +188,13 @@ def test_strategy_input_recorder_round_trip(tmp_path: Path) -> None:
     assert {"source", "parameters", "execution_context", "frame_chunk", "universe"}.issubset(kinds)
     observations = json.loads(connection.execute("SELECT observations FROM decisions").fetchone()[0])
     assert observations[0]["name"] == "fixture"
+    decoded = decode_json_value(observations[0]["value"])
+    assert decoded["decimal"] == Decimal("1.2300")
+    assert decoded["timestamp"].value == 1767225600123456789
+    universe = json.loads(connection.execute("SELECT payload FROM objects WHERE kind = 'universe'").fetchone()[0])
+    candle_ref = universe["frames"]["data_universe.candles.df"]["chunks"][0]["object"]
+    candle_chunk = json.loads(connection.execute("SELECT payload FROM objects WHERE content_hash = ?", [candle_ref]).fetchone()[0])
+    assert decode_json_value(candle_chunk["rows"])[0][1] == pd.Timestamp("2026-01-01")
     assert decode_json_value(to_json_value(pd.Timestamp("2026-01-01 00:00:00.123456789"))).value == 1767225600123456789
     connection.close()
 
@@ -274,15 +287,28 @@ def test_strategy_input_recorder_canonicalises_unordered_values() -> None:
     1. Canonicalise mappings containing non-string keys in both insertion orders.
     2. Canonicalise frozensets containing the same values in both insertion orders.
     3. Compare the canonical JSON used as the content-hash input.
+    4. Read back tagged values and preserve the original Series schema.
     """
     # 1. Canonicalise mappings containing non-string keys in both insertion orders.
-    first_mapping = canonical_json({2: "two", 1: "one"})
-    second_mapping = canonical_json({1: "one", 2: "two"})
+    first_mapping = canonical_json(to_json_value({2: "two", 1: "one"}))
+    second_mapping = canonical_json(to_json_value({1: "one", 2: "two"}))
 
     # 2. Canonicalise frozensets containing the same values in both insertion orders.
-    first_frozenset = canonical_json(frozenset({"a", "b"}))
-    second_frozenset = canonical_json(frozenset({"b", "a"}))
+    first_frozenset = canonical_json(to_json_value(frozenset({"a", "b"})))
+    second_frozenset = canonical_json(to_json_value(frozenset({"b", "a"})))
 
     # 3. Compare the canonical JSON used as the content-hash input.
     assert first_mapping == second_mapping
     assert first_frozenset == second_frozenset
+    # 4. Read back tagged values and preserve the original Series schema.
+    # Tagged scalar values remain decodable after canonical storage, while a
+    # user dictionary containing "$type" stays an ordinary dictionary.
+    literal_mapping = {"$type": "timestamp_ns", "value": "123"}
+    assert decode_json_value(json.loads(canonical_json(to_json_value(literal_mapping)))) == literal_mapping
+    enum_set = {ExecutionMode.unit_testing_trading}
+    assert decode_json_value(json.loads(canonical_json(to_json_value(enum_set)))) == {ExecutionMode.unit_testing_trading.value}
+    series = pd.Series([1.0], index=pd.DatetimeIndex(["2026-01-01"]), name="tvl")
+    schema, chunks = encode_frame_chunks(series)
+    assert schema["container"] == "series"
+    assert schema["name"] == "tvl"
+    assert decode_json_value(json.loads(canonical_json(chunks[0]["payload"])))["index_values"][0][0] == series.index[0]

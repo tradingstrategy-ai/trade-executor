@@ -7,12 +7,10 @@ engine.
 
 ## Enable it
 
-Set this boolean strategy parameter:
-
-```python
-class Parameters:
-    record_strategy_inputs = True
-```
+Apply `@record_decision` to the strategy's `decide_trades()` callback, as shown
+below. Live bootstrap detects the decorator and creates the recorder. No
+strategy parameter or separate configuration flag is needed. Undecorated
+strategies do not create a recorder database.
 
 The executor uses one DuckDB file per executor ID. Its directory is the
 configured state file's directory and its name comes from `EXECUTOR_ID`:
@@ -30,7 +28,8 @@ path; backtests and notebooks never create a recorder file.
 
 ## Record a decision
 
-The live pandas runner constructs `input.recorder` when enabled. Strategy code
+Live bootstrap constructs the recorder and the pandas runner supplies
+`input.recorder` to each decision. Strategy code
 uses `@record_decision` to place the lifecycle around the complete callback:
 
 ```python
@@ -118,3 +117,23 @@ ORDER BY d.started_at;
 
 After a checkpoint, `pragma_storage_info('objects')` exposes the persisted
 compression codecs.
+
+## Examples and coverage
+
+`strategies/test_only/strategy_input_recorder.py` is the minimal decorated
+strategy. `tests/cli/test_cli_strategy_input_recorder.py` starts it through
+Typer and checks state-adjacent file placement and completed decisions.
+
+`strategies/test_only/hypercore_recorder_alpha_model.py` loads live HyperCore
+vault metadata, share prices and TVL history, then records candidates and
+AlphaModel selections. Its CLI test runs two decisions with a one-second
+scheduler interval (data loading and recording add wall-clock time), reopens
+DuckDB, and joins observations to the captured universe. It requires
+`TRADING_STRATEGY_API_KEY`, `VAULT_PRO_API_KEY` and `JSON_RPC_HYPERLIQUID`.
+The example uses a bounded universe and age-ramp selection, and returns no
+trades. It does not test production allocation, deposit admission or settlement.
+
+Python values are encoded once with `to_json_value()`; storage writes the
+resulting JSON without encoding it again. Use `decode_json_value()` on parsed
+JSON to read supported scalar tags, such as timestamps and decimals. This is
+value inspection, not reconstruction of a strategy run.

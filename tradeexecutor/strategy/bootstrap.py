@@ -129,7 +129,7 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
 
         :param state_path:
             Persistent executor state path. A live strategy that enables
-            ``record_strategy_inputs`` writes its recorder database beside it.
+            ``@record_decision`` writes its live recorder database beside it.
         :param strategy_id:
             Executor identifier used for the recorder filename and run metadata.
             The strategy file stem is used when the caller has no identifier.
@@ -172,12 +172,9 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
         create_indicators = mod_info.create_indicators or create_indicators
 
         recorder = None
-        record_strategy_inputs = parameters.get("record_strategy_inputs", False) if parameters is not None else False
-        if not isinstance(record_strategy_inputs, bool):
-            raise TypeError("record_strategy_inputs must be a bool")
-        if execution_context.mode.is_live_trading() and record_strategy_inputs:
+        if execution_context.mode.is_live_trading() and getattr(mod_info.decide_trades, "__record_decision__", False):
             if state_path is None:
-                raise RuntimeError("record_strategy_inputs requires a persistent state path")
+                raise RuntimeError("@record_decision requires a persistent state path for live trading")
             recorder_id = strategy_id or mod_info.path.stem
             recorder_id = validate_recorder_strategy_id(recorder_id)
             recorder_path = Path(state_path).parent / f"{recorder_id}-record.duckdb"

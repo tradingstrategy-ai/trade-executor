@@ -15,11 +15,14 @@ from unittest import mock
 
 import duckdb
 import pytest
+from click import Group
+from typer.main import get_command
 from tradingstrategy.vault_data_client import VAULT_PRO_API_KEY_ENV_VAR
 
 from tradeexecutor.cli.commands import start as _start  # noqa: F401 - register the real start command
 from tradeexecutor.cli.commands.app import app
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.recorder.serialisation import decode_json_value
 
 
 REQUIRED_ENVIRONMENT_VARIABLES = (
@@ -47,21 +50,6 @@ def hypercore_recorder_strategy_file() -> Path:
     return Path(__file__).resolve().parents[2] / "strategies" / "test_only" / "hypercore_recorder_alpha_model.py"
 
 
-def _json_value(value: str | dict | list) -> dict | list:
-    """Normalise a DuckDB JSON result for assertions in this module.
-
-    DuckDB versions may return its ``JSON`` logical type as either text or an
-    already-decoded value. Recorder inspection should not depend on that client
-    representation detail.
-
-    :param value:
-        Value returned from a recorder JSON column.
-    :return:
-        Parsed JSON object or list.
-    """
-    return json.loads(value) if isinstance(value, str) else value
-
-
 def _read_object(connection: duckdb.DuckDBPyConnection, reference: dict[str, str]) -> tuple[str, dict]:
     """Resolve one content-addressed recorder object through its manifest ref.
 
@@ -77,7 +65,7 @@ def _read_object(connection: duckdb.DuckDBPyConnection, reference: dict[str, str
         [reference["object"]],
     ).fetchone()
     assert row is not None
-    return row[0], _json_value(row[1])
+    return row[0], json.loads(row[1])
 
 
 @pytest.mark.timeout(600)
@@ -135,11 +123,10 @@ def test_start_records_live_hypercore_universe_and_alpha_model_selection(
     # This patch controls process configuration only. It does not replace any
     # CLI, client, runner, universe, indicator, AlphaModel, or recorder method.
     with mock.patch.dict(os.environ, environment, clear=True):
-        # Importing ``tradeexecutor.cli.commands.start`` above registers the
-        # command directly on this focused Typer app, so it is invoked as the
-        # root command here. This is the same ``start()`` entry point used by
-        # the full CLI without importing unrelated command modules.
-        app([], standalone_mode=False)
+        # Typer flattens a single-command app; other collected CLI tests can
+        # register additional commands on the shared app.
+        cli = get_command(app)
+        cli.main(args=["start"] if isinstance(cli, Group) else [], standalone_mode=False)
 
     # 2. Confirm normal executor state and its adjacent recorder database were produced.
     assert state_file.exists()
@@ -156,8 +143,8 @@ def test_start_records_live_hypercore_universe_and_alpha_model_selection(
         assert all(row[1] == "completed" for row in decisions)
 
         for _cycle, _status, raw_manifest, raw_observations in decisions:
-            manifest = _json_value(raw_manifest)
-            observations = _json_value(raw_observations)
+            manifest = json.loads(raw_manifest)
+            observations = decode_json_value(json.loads(raw_observations))
 
             # 3. Resolve each recorded constructed universe and verify vault
             # identity, metadata, and TVL frames. This is the actual universe
@@ -185,7 +172,7 @@ def test_start_records_live_hypercore_universe_and_alpha_model_selection(
                 chunk_kind, chunk = _read_object(connection, chunk_reference)
                 assert chunk_kind == "frame_chunk"
                 assert chunk["rows"]
-                liquidity_rows.extend(chunk["rows"])
+                liquidity_rows.extend(decode_json_value(chunk["rows"]))
 
             # Rebuild only the columns needed for this assertion. The recorder
             # stores every original TVL row in content-addressed chunks, which
@@ -255,7 +242,10 @@ def test_start_records_live_hypercore_universe_and_alpha_model_selection(
                         candidate["tvl"] == pytest.approx(recorded_tvl)
                         for recorded_tvl in tvl_history_by_pair[candidate["pair_id"]]
                     )
-            assert 0 < len(selected) <= 3
+            eligible = [candidate for candidate in candidates if candidate["eligible"]]
+            assert eligible
+            expected = sorted(eligible, key=lambda candidate: candidate["signal"], reverse=True)[:3]
+            assert [item["vault_address"] for item in selected] == [item["vault_address"] for item in expected]
             assert all(item["vault_address"] in candidate_by_address for item in selected)
             assert all(candidate_by_address[item["vault_address"]]["eligible"] for item in selected)
             assert all(candidate_by_address[item["vault_address"]]["tvl"] >= 7_500 for item in selected)
