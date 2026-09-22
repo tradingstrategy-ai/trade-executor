@@ -36,8 +36,11 @@ def format_trade(portfolio: Portfolio, trade: TradeExecution) -> List[str]:
     if existing_position:
         # Quantity returns the total balance of unexecuted trades
         existing_balance = existing_position.get_quantity()
-        amount = abs(trade.planned_quantity / existing_balance)
-        existing_text = f", {amount*100:,.2f}% of existing position #{existing_position.position_id}"
+        if existing_balance:
+            amount = abs(trade.planned_quantity / existing_balance)
+            existing_text = f", {amount*100:,.2f}% of existing position #{existing_position.position_id}"
+        else:
+            existing_text = f", existing position #{existing_position.position_id} currently has zero balance"
     else:
         existing_text = ""
         existing_balance = 0

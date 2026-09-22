@@ -502,6 +502,11 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
 
     - Set the original trade to repaired state (instead of failed state)
     """
+    if TradeFlag.external_account_transfer in (t.flags or set()):
+        raise RepairAborted(
+            "External-account transfers require protocol-specific verification before accounting repair",
+        )
+
     p = portfolio.get_position_by_id(t.position_id)
 
     c = make_counter_trade(portfolio, p, t)
@@ -976,6 +981,10 @@ def repair_tx_not_generated(state: State, interactive=True):
     portfolio = state.portfolio
 
     for t in portfolio.get_all_trades():
+
+        # Exchange-account transfers have dedicated receipt-only recovery.
+        if t.is_external_account_transfer_pending():
+            continue
 
         if t.repaired_trade_id:
             # This is an accounting repair for some other trade

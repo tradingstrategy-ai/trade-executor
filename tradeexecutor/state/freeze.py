@@ -7,7 +7,7 @@ from typing import List, Tuple
 from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeFlag
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,14 @@ def freeze_position_on_failed_trade(ts: datetime.datetime, state: State, trades:
     for t in trades:
         # TODO: Check if we need special logic for failed buy trades
         if t.is_failed():
+
+            if TradeFlag.external_account_transfer in (t.flags or set()):
+                logger.warning(
+                    "Keeping exchange-account position open after failed custody transfer: %s",
+                    t,
+                )
+                failed.append(t)
+                continue
 
             logger.warning("Freezing position for a failed trade: %s", t)
 
@@ -67,4 +75,3 @@ def freeze_position_on_failed_trade(ts: datetime.datetime, state: State, trades:
             succeeded.append(t)
 
     return succeeded, failed
-

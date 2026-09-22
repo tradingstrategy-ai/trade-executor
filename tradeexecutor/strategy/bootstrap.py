@@ -10,7 +10,6 @@ See :py:mod:`strategy_module` instead.
 import logging
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Optional
 
 from tradeexecutor.state.types import Percent
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -33,6 +32,8 @@ from tradeexecutor.strategy.strategy_module import read_strategy_module, Strateg
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import DefaultTradingStrategyUniverseModel
 from tradeexecutor.strategy.valuation import ValuationModelFactory
+from tradeexecutor.strategy.recorder.recorder import DecisionRecorder
+from tradeexecutor.strategy.recorder.storage import validate_recorder_strategy_id
 
 logger = logging.getLogger(__name__)
 
@@ -78,15 +79,19 @@ def bootstrap_strategy(
 
 
 def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFactory:
-    """Initialises the strategy script file and hooks it to the executor.
+    """Create the executor factory for a loaded managed-positions strategy.
 
-    Assumes the module has two functions
+    :func:`import_strategy_file` calls this after validating a modern strategy
+    module. The returned factory is later invoked by execution-loop setup to
+    connect ``create_trading_universe()``, ``create_indicators()``, and
+    ``decide_trades()`` to their framework models. Keeping this wiring in one
+    factory also ensures optional live recording is created with the same state
+    path and executor ID used by the CLI.
 
-    - `decide_trade`
-
-    - `create_trading_universe`
-
-    Hook this up the strategy execution system.
+    :param mod:
+        Validated strategy-module metadata and callbacks.
+    :return:
+        Keyword-only factory consumed by executor bootstrap.
     """
 
     mod_info = mod
@@ -111,7 +116,25 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             parameters: StrategyParameters | None = None,
             visualisation=True,
             max_price_impact: Percent | None = None,
+            state_path: Path | None = None,
+            strategy_id: str | None = None,
             **kwargs) -> StrategyExecutionDescription:
+        """Build the managed-positions runner for one execution loop.
+
+        ``ExecutionLoop.setup()`` calls this factory with execution, pricing,
+        universe, and state services. It creates ``DecisionRecorder`` only for
+        an opted-in live strategy, then passes that same instance and the
+        authoritative state path to ``PandasTraderRunner``. Backtests and
+        undecorated strategies retain the ordinary runner path. Diagnostic
+        callers without a persistent state path do not create a recorder.
+
+        :param state_path:
+            Persistent executor state path. A live strategy that enables
+            ``@record_decision`` writes its live recorder database beside it.
+        :param strategy_id:
+            Executor identifier used for the recorder filename and run metadata.
+            The strategy file stem is used when the caller has no identifier.
+        """
 
         # Migration assert
         assert run_state, "run_state needs to be passed for new strategies"
@@ -149,6 +172,23 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
 
         create_indicators = mod_info.create_indicators or create_indicators
 
+        recorder = None
+        # The execution loop supplies its persistent state path. Diagnostic
+        # commands also use live-data modes, but do not run decision cycles and
+        # omit this path; they must not open a recorder or require one.
+        if state_path is not None and execution_context.mode.is_live_trading() and getattr(mod_info.decide_trades, "__record_decision__", False):
+            recorder_id = strategy_id or mod_info.path.stem
+            recorder_id = validate_recorder_strategy_id(recorder_id)
+            recorder_path = Path(state_path).parent / f"{recorder_id}-record.duckdb"
+            logger.info("Strategy input recorder enabled: %s", recorder_path)
+            recorder = DecisionRecorder(
+                recorder_path,
+                recorder_id,
+                mod_info.source_code,
+                strategy_file=str(mod_info.path),
+                executor_revision=getattr(getattr(run_state, "version", None), "commit_hash", None),
+            )
+
         runner = PandasTraderRunner(
             timed_task_context_manager=timed_task_context_manager,
             execution_model=execution_model,
@@ -166,6 +206,8 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
             parameters=parameters,
             visualisation=visualisation,
             max_price_impact=max_price_impact,
+            recorder=recorder,
+            state_path=state_path,
         )
 
         logger.info(
@@ -187,5 +229,3 @@ def make_factory_from_strategy_mod(mod: StrategyModuleInformation) -> StrategyFa
         )
 
     return default_strategy_factory
-
-

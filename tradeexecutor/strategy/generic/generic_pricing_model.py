@@ -83,6 +83,23 @@ class GenericPricing(PricingModel):
     def route(self, pair: TradingPairIdentifier) -> PricingModel:
         return self.pair_configurator.get_pricing(pair)
 
+    def get_exchange_account_available_balance(
+        self,
+        pair: TradingPairIdentifier,
+    ) -> Decimal:
+        """Read collateral available for withdrawal from an exchange account.
+
+        :param pair:
+            Exchange-account pair whose protocol reader is selected.
+        :return:
+            Available collateral in the reserve currency.
+        """
+        route = self.route(pair)
+        get_available_balance = getattr(route, "get_available_balance", None)
+        if get_available_balance is None:
+            raise RuntimeError(f"Pricing model has no available-balance reader for {pair}")
+        return get_available_balance(pair)
+
     def get_sell_price(self,
                        ts: datetime.datetime,
                        pair: TradingPairIdentifier,

@@ -32,9 +32,14 @@ from ..slippage import configure_max_slippage_tolerance
 from ..version_info import VersionInfo
 from ..watchdog import stop_watchdog
 from ...ethereum.enzyme.vault import EnzymeVaultSyncModel
+from ...ethereum.lighter.lighter_routing import (
+    DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
+    LighterRoutingConfig,
+)
 from ...ethereum.lagoon.vault import LagoonVaultSyncModel
 from ...ethereum.velvet.execution import VelvetExecution
 from ...ethereum.velvet.vault import VelvetVaultSyncModel
+from ...exchange_account.lighter_operator import load_lighter_operator_record
 from ...state.state import State
 from ...state.store import NoneStore, JSONFileStore
 from ...strategy.approval import ApprovalType
@@ -57,6 +62,42 @@ except ImportError:
 
 
 logger = logging.getLogger(__name__)
+
+
+def _create_lighter_routing_config(
+    asset_management_mode: AssetManagementMode,
+    strategy_parameters: dict[str, object],
+    operator_record_file: Path | None,
+    withdrawal_timeout: int,
+) -> LighterRoutingConfig | None:
+    """Build automatic Lighter transfer settings from parsed CLI inputs.
+
+    :param asset_management_mode:
+        Execution mode selected by the CLI.
+    :param strategy_parameters:
+        Strategy module parameters that enable automatic cash management.
+    :param operator_record_file:
+        Owner-only operator record parsed by the CLI.
+    :param withdrawal_timeout:
+        CLI timeout for the secure withdrawal wait.
+    :return:
+        Lighter routing settings, or ``None`` when the strategy does not use them.
+    """
+    if asset_management_mode != AssetManagementMode.lagoon:
+        return None
+    if not strategy_parameters.get("lighter_cash_management", False):
+        return None
+
+    if operator_record_file is None:
+        raise ValueError(
+            "--lighter-operator-record-file or LIGHTER_OPERATOR_RECORD_FILE is required "
+            "when automatic Lighter cash management is enabled"
+        )
+
+    return LighterRoutingConfig(
+        operator_record=load_lighter_operator_record(operator_record_file),
+        withdrawal_timeout=withdrawal_timeout,
+    )
 
 
 @app.command()
@@ -98,6 +139,16 @@ def start(
     derive_session_private_key: Optional[str] = typer.Option(None, envvar="DERIVE_SESSION_PRIVATE_KEY", help="Derive session key private key"),
     derive_wallet_address: Optional[str] = typer.Option(None, envvar="DERIVE_WALLET_ADDRESS", help="Derive wallet address (auto-derived from owner key if not provided). For Lagoon vault deployments, set this to the Safe multisig address."),
     derive_network: DeriveNetwork = typer.Option(DeriveNetwork.mainnet, envvar="DERIVE_NETWORK", help="Derive network: mainnet or testnet"),
+    lighter_operator_record_file: Optional[Path] = typer.Option(
+        None,
+        envvar="LIGHTER_OPERATOR_RECORD_FILE",
+        help="Owner-only Lighter operator record used for automatic Safe withdrawals",
+    ),
+    lighter_withdrawal_timeout: int = typer.Option(
+        DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
+        envvar="LIGHTER_WITHDRAWAL_TIMEOUT",
+        help="Maximum seconds to wait for a secure Lighter withdrawal",
+    ),
 
     gas_price_method: Optional[GasPriceMethod] = shared_options.gas_price_method,
     confirmation_block_count: int = shared_options.confirmation_block_count,
@@ -319,6 +370,13 @@ def start(
         deployment_file = resolve_deployment_file(id, state_file)
         log_multichain_deployment_information(deployment_file)
 
+        lighter_routing_config = _create_lighter_routing_config(
+            asset_management_mode=asset_management_mode,
+            strategy_parameters=mod.parameters or {},
+            operator_record_file=lighter_operator_record_file,
+            withdrawal_timeout=lighter_withdrawal_timeout,
+        )
+
         execution_model, sync_model, valuation_model_factory, pricing_model_factory = create_execution_and_sync_model(
             asset_management_mode=asset_management_mode,
             private_key=private_key,
@@ -336,6 +394,7 @@ def start(
             # Auto-discover satellite modules from the deployment artifact next to
             # the state file.
             deployment_file=deployment_file,
+            lighter_routing_config=lighter_routing_config,
         )
 
         # TODO: Unit test hack
@@ -585,6 +644,10 @@ def start(
         assert routing_model is None, f"Got: {routing_model}"
 
     if isinstance(sync_model, LagoonVaultSyncModel):
+        lighter_cash_management = lighter_routing_config is not None
+        sync_model.defer_redemption_without_reserve_liquidity = bool(
+            lighter_cash_management
+        )
         sync_model.abort_lagoon_settlement_on_frozen_positions = abort_lagoon_settlement_on_frozen_positions
     elif abort_lagoon_settlement_on_frozen_positions:
         logger.warning(

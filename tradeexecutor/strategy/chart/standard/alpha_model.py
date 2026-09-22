@@ -6,6 +6,10 @@ from pandas.io.formats.style import Styler
 from plotly.graph_objects import Figure
 
 from tradeexecutor.analysis.unallocatable_signals import calculate_unallocatable_signal_weights
+from tradeexecutor.analysis.hypercore_closed_entries import (
+    analyse_hypercore_closed_entry_events,
+    analyse_hypercore_closed_entry_summary,
+)
 from tradeexecutor.analysis.vault_missed_events import (
     analyse_missed_vault_deposit_redemption_event_timeline,
     analyse_missed_vault_deposit_redemption_events,
@@ -98,3 +102,16 @@ def missed_vault_deposit_redemption_timeline(input: ChartInput) -> Figure:
     fig.update_yaxes(tickprefix="$", separatethousands=True)
     fig.update_layout(legend_title_text="Vault", bargap=0.05)
     return fig
+
+
+def hypercore_closed_entry_skips(input: ChartInput) -> pd.DataFrame:
+    """HyperCore entries skipped because historical deposits were explicitly closed."""
+    return analyse_hypercore_closed_entry_events(input.state)
+
+
+def hypercore_closed_entry_summary(input: ChartInput) -> pd.DataFrame:
+    """Summary of HyperCore closed-entry data coverage and missed entries."""
+    strategy_universe = None
+    if input.strategy_input_indicators is not None:
+        strategy_universe = input.strategy_input_indicators.strategy_universe
+    return analyse_hypercore_closed_entry_summary(input.state, strategy_universe)

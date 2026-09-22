@@ -352,6 +352,26 @@ class PositionManager:
         cash = self.state.portfolio.get_current_cash()  # How much cash we have in a hand
         return cash
 
+    def get_exchange_account_available_balance(
+        self,
+        pair: TradingPairIdentifier,
+    ) -> Decimal:
+        """Read collateral currently available for an exchange-account withdrawal.
+
+        :param pair:
+            Exchange-account pair to query through the configured pricing model.
+        :return:
+            Available collateral in the reserve currency.
+        """
+        get_available_balance = getattr(
+            self.pricing_model,
+            "get_exchange_account_available_balance",
+            None,
+        )
+        if get_available_balance is None:
+            raise RuntimeError("PositionManager pricing model has no exchange-account balance reader")
+        return get_available_balance(pair)
+
     def get_current_position(self) -> TradingPosition:
         """Get the current single position.
 

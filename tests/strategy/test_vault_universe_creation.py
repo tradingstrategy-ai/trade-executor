@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 
-from tradeexecutor.curator.vault_universe_creation import VaultInfo, filter_vault
+from tradeexecutor.curator.vault_universe_creation import VaultInfo, filter_vault, select_top_vaults
 
 
 def test_filter_vault_excludes_subvaults_before_inclusion_overrides():
@@ -92,3 +92,54 @@ def test_filter_vault_excludes_blacklisted_vault_before_inclusion_override():
     )
 
     assert result == (False, "risk=Blacklisted")
+
+
+def test_select_top_vaults_can_retain_closed_hypercore_vaults():
+    """Retain a currently closed HyperCore vault when the strategy opts in.
+
+    1. Build a closed HyperCore vault that passes every other curator filter.
+    2. Select it with ``include_closed_vaults=True``.
+    3. Assert that current closure metadata does not remove its historical price series.
+    """
+    vault = VaultInfo(
+        name="Closed HyperCore vault",
+        address="0x0000000000000000000000000000000000000001",
+        chain_id=9999,
+        chain_name="Hypercore",
+        denomination="USDC",
+        age_years=1.0,
+        cagr_periods={"1M": 0.1, "3M": 0.1, "1Y": 0.1},
+        cagr_all=0.1,
+        tvl=1_000_000.0,
+        peak_tvl=1_000_000.0,
+        risk="Minimal",
+        flags=[],
+        vault_display_flags=[],
+        protocol_slug="hypercore",
+        deposit_closed_reason="Vault is permanently closed",
+        must_include=False,
+        excluded=False,
+        excluded_protocol_reason=None,
+    )
+
+    # 1-2. Opt into retaining current-closed HyperCore metadata.
+    selected = select_top_vaults(
+        [vault],
+        min_tvl=100_000.0,
+        min_age=0.0,
+        chain_config={9999: {"name": "Hypercore", "top_n": 120}},
+        chain_order=[9999],
+        sort_period="1Y",
+        allowed_denominations={"USDC"},
+        excluded_risks=set(),
+        excluded_flags=set(),
+        require_known_protocol=True,
+        hypercore_min_tvl=100_000.0,
+        top_n_override=9999,
+        skip_cagr_filter=True,
+        use_peak_tvl=True,
+        include_closed_vaults=True,
+    )
+
+    # 3. The current closure must not remove the vault from the source universe.
+    assert [entry.address for entry in selected[9999]] == [vault.address]

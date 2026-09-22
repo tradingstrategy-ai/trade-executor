@@ -3,12 +3,14 @@
 import datetime
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pandas as pd
 import pytest
 from tradingstrategy.client import Client
 from tradingstrategy.exchange import ExchangeUniverse
 from tradingstrategy.timebucket import TimeBucket
+from tradingstrategy.vault_data_client import VaultDataClient, VaultDataset
 
 import tradeexecutor.ethereum.vault.checks as vault_checks
 import tradeexecutor.strategy.trading_strategy_universe as trading_strategy_universe
@@ -21,6 +23,82 @@ from tradeexecutor.strategy.universe_model import UniverseOptions
 
 
 pytestmark = pytest.mark.timeout(300)
+
+
+def test_verified_snapshot_with_sparse_four_hour_data(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Read the verified receipt's sparse prices and TVL without midnight leakage.
+
+    1. Download a version-checked private parquet with four-hour observations.
+    2. Replace the ordinary shared cache and load through the real vault loader.
+    3. Verify daily OHLC/TVL use only pre-slot data and survive missing samples.
+    """
+    # 1. Only HTTP and metadata discovery are substituted: paid network data
+    # would make an exact midnight/version-race regression nondeterministic.
+    slot = datetime.datetime(2026, 9, 22)
+    address = "0x0000000000000000000000000000000000000001"
+    observations = pd.date_range("2026-09-20 01:30", "2026-09-22 05:30", freq="4h")
+    # A missed scan leaves an eight-hour gap; hourly row counts are not required.
+    observations = observations.delete(8).union(pd.DatetimeIndex([slot]))
+    raw = pd.DataFrame({
+        "timestamp": observations,
+        "chain": 9999,
+        "address": address,
+        "share_price": [float(i + 1) for i in range(len(observations))],
+        "total_assets": [float(1000 + i) for i in range(len(observations))],
+    })
+    source = tmp_path / "source.parquet"
+    raw.to_parquet(source)
+    response = Mock(status_code=200, headers={"ETag": '"receipt-version"'})
+    response.iter_content.return_value = [source.read_bytes()]
+    data_client = VaultDataClient(api_key="test", download_root=tmp_path / "shared", session=Mock())
+    data_client.session.get.return_value = response
+    data_client.session.head.return_value = Mock(status_code=200, headers={})
+    snapshot = data_client.download(
+        VaultDataset.vault_prices, expected_etag="receipt-version", destination=tmp_path / "private" / "prices.parquet",
+    )
+
+    # 2. The normal cache contains completely different prices. Passing an
+    # explicit snapshot must bypass that cache and any additional HTTP request.
+    cached = data_client.get_cached_path(VaultDataset.vault_prices)
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    raw.assign(share_price=999.0, total_assets=999999.0).to_parquet(cached)
+    transport = SimpleNamespace(requests=None, get_cached_file_path=lambda filename, cache_path=None: tmp_path / filename)
+    client = Client(None, transport)
+    client.fetch_exchange_universe = lambda: ExchangeUniverse({})
+    monkeypatch.setattr(trading_strategy_universe, "create_vault_data_client", lambda *args: data_client)
+    monkeypatch.setattr(trading_strategy_universe, "load_multiple_vaults", lambda *args, **kwargs: (
+        [], pd.DataFrame([{"chain_id": 9999, "address": address, "pair_id": 1}]),
+    ))
+    dataset = load_partial_data(
+        client=client,
+        execution_context=ExecutionContext(ExecutionMode.unit_testing_trading),
+        time_bucket=TimeBucket.d1,
+        pairs=pd.DataFrame(columns=["dex_type", "exchange_id", "pair_id"]),
+        universe_options=UniverseOptions(
+            history_period=datetime.timedelta(days=30),
+            end_at=slot - datetime.timedelta(microseconds=1),
+            vault_price_snapshot=snapshot,
+        ),
+        liquidity=True,
+        vaults=object(),
+        vault_history_source="trading-strategy-website",
+    )
+
+    # 3. Aggregate sparse observations directly, without requiring 24 samples
+    # or admitting the midnight/post-midnight rows used to prove readiness.
+    expected = raw[raw.timestamp < slot].set_index("timestamp")
+    prices = dataset.candles.set_index("timestamp")
+    tvl = dataset.liquidity.set_index("timestamp")
+    pd.testing.assert_series_equal(prices.close, expected.share_price.resample("1d").last(), check_names=False, check_freq=False)
+    pd.testing.assert_series_equal(prices.open, expected.share_price.resample("1d").first(), check_names=False, check_freq=False)
+    pd.testing.assert_series_equal(tvl.close, expected.total_assets.resample("1d").last(), check_names=False, check_freq=False)
+    assert prices.index.max() == pd.Timestamp("2026-09-21")
+    assert not prices.forward_filled.any()
+    assert not prices.close.isna().any()
+    data_client.session.get.assert_called_once()
 
 
 def test_resolve_live_end_timestamps_daily_rounding(

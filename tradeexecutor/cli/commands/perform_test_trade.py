@@ -224,7 +224,7 @@ def perform_test_trade(
         run_state=RunState(),
     )
 
-    universe_options = mod.get_universe_options()
+    universe_options = mod.get_universe_options(execution_context.mode)
 
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model

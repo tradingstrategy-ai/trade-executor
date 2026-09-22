@@ -1,8 +1,9 @@
 """Lighter exchange-account support.
 
-Lighter accounts are external to the EVM portfolio.  The account index is
+Lighter accounts are external to the EVM portfolio. The account index is
 stored on a synthetic exchange-account pair and the public Lighter REST API is
-used for valuation.  No API-key material is needed by the executor.
+used for valuation without credentials. Automatic withdrawals use a separate
+owner-only operator record for authenticated requests.
 """
 
 import logging
@@ -230,6 +231,42 @@ def create_lighter_account_value_func(
         return total
 
     return get_lighter_account_value
+
+
+def create_lighter_available_balance_func(
+    session: LighterSession | None = None,
+) -> Callable[..., Decimal]:
+    """Create a public reader for collateral currently withdrawable from Lighter.
+
+    :param session:
+        Reusable unauthenticated Lighter HTTP session.
+    :return:
+        Callable accepting an exchange-account pair and returning free USDC.
+    """
+    lighter_session = session if session is not None else create_lighter_session()
+
+    def get_lighter_available_balance(
+        pair: TradingPairIdentifier,
+        block_identifier: Any = None,
+        **kwargs: Any,
+    ) -> Decimal:
+        """Read validated Lighter free collateral for one account pair."""
+        del block_identifier, kwargs
+        if not pair.is_exchange_account() or pair.get_exchange_account_protocol() != LIGHTER_PROTOCOL:
+            raise ValueError("Expected a Lighter exchange-account pair")
+        account_index = pair.get_exchange_account_id()
+        if account_index is None:
+            raise ValueError("Lighter exchange account pair has no account index")
+        equity = fetch_lighter_total_equity(lighter_session, int(account_index))
+        total = validate_lighter_account_value(pair, equity.get_total())
+        available = validate_lighter_account_value(pair, equity.available_balance)
+        if available > total:
+            raise LighterEquityInvariantError(
+                f"Invalid available balance for Lighter account {account_index}"
+            )
+        return available
+
+    return get_lighter_available_balance
 
 
 def create_lighter_vault_valuation_func(

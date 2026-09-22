@@ -2,6 +2,16 @@
 
 ## 0.2
 
+- Add manifest-gated HyperCore decision slots, private verified price snapshots, point-in-time deposit availability and skipped-entry diagnostics; support sparse four-hour observations and automatic skipping of expired unexecuted decisions on restart (2026-09-22).
+
+- Add an opt-in live strategy-input recorder. Enabled v0.5 pandas strategies write state-adjacent DuckDB records with decision-time universe inputs, indicator fingerprints, explicit calculations and terminal lifecycle status, so live decisions can be compared with a backtest without copying the executor state file (2026-09-21).
+
+- Add opt-in automatic Lagoon Safe/Lighter cash management. Strategies return
+  normal `TradeExecution` custody transfers that park idle Safe USDC on Lighter
+  and synchronously reclaim available collateral before Lagoon redemptions;
+  the owner-only delegated Lighter key remains outside executor state and logs
+  (2026-09-20).
+
 - Add an opt-in `lagoon-manual-settle --propose-safe-transaction` flow that submits the preflighted direct settlement to the Safe Transaction Service for owner review and execution, while retaining the manual Transaction Builder instructions as the default and as a failure fallback (2026-09-19).
 
 - Add `scripts/lagoon/deposit-and-settle.py`, an operator utility that subscribes deployer USDC through the normal Lagoon deposit queue, runs `lagoon-settle` to make the capital available to the executor, and claims the resulting shares. It resumes an exact pending or claimable request without duplicating it, checks Safe/reserve/share accounting and never logs the deployer's private key. `lagoon-lighter-test-trade` now defaults its Safe-to-Lighter deposit to 20 USDC and reports the Safe's actual USDC balance when it is insufficient (2026-09-16).

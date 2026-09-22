@@ -349,6 +349,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         min_nav_change_update: Percent=0.005,
         unit_testing=False,
         calculate_valuation_func: Callable[..., USDollarPrice] | None = None,
+        defer_redemption_without_reserve_liquidity: bool = False,
         abort_lagoon_settlement_on_frozen_positions: bool = False,
         disable_broadcast: bool = False,
     ):
@@ -394,6 +395,12 @@ class LagoonVaultSyncModel(AddressSyncModel):
             See :py:func:`tradeexecutor.exchange_account.gmx.create_gmx_vault_valuation_func`
             for the GMX-specific implementation.
 
+        :param defer_redemption_without_reserve_liquidity:
+            When enabled, do not post NAV or settle a redemption queue if the
+            Safe and pending Silo deposits do not cover the redemption amount.
+            External-account cash management can then create a withdrawal
+            trade first.
+
         :param abort_lagoon_settlement_on_frozen_positions:
             Safety feature for live trading.
 
@@ -415,6 +422,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
         self.unit_testing = unit_testing  #
         self.disable_broadcast = disable_broadcast
         self.calculate_valuation_func = calculate_valuation_func
+        self.defer_redemption_without_reserve_liquidity = defer_redemption_without_reserve_liquidity
         self.abort_lagoon_settlement_on_frozen_positions = abort_lagoon_settlement_on_frozen_positions
         assert vault.trading_strategy_module, "LagoonVault.trading_strategy_module initialisation param not set - needed to run the sync model properly"
         # assert isinstance(self.web3.provider, MEVBlockerProvider), f"This sync model needs MEVBlockerProvider, got {type(self.web3.provider)}"
@@ -1174,6 +1182,32 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 safe_sync_block,
             )
 
+        if (
+            post_valuation
+            and self.defer_redemption_without_reserve_liquidity
+            and pending_redemptions > onchain_balance + pending_deposits
+        ):
+            shortfall = pending_redemptions - onchain_balance - pending_deposits
+            logger.warning(
+                "Deferring Lagoon NAV and redemption settlement until the external "
+                "exchange account can return enough USDC; check free collateral and "
+                "use account-correction commands for recovery: required=%s, Safe=%s, "
+                "pending Silo deposits=%s, shortfall=%s",
+                pending_redemptions,
+                onchain_balance,
+                pending_deposits,
+                shortfall,
+            )
+            self._mark_treasury_sync_completed(
+                treasury_sync=treasury_sync,
+                strategy_cycle_ts=strategy_cycle_ts,
+                block_number=safe_sync_block,
+                pending_deposits=pending_deposits,
+                pending_redemptions=pending_redemptions,
+                share_count=share_count,
+            )
+            return recovered_events
+
         self._check_frozen_positions_for_settlement(
             state,
             post_valuation=post_valuation,
@@ -1240,49 +1274,6 @@ class LagoonVaultSyncModel(AddressSyncModel):
         nav_block_number = nav_receipt["blockNumber"]
 
         logger.info("Preparing to settle Lagoon")
-
-        # This is an operator liquidity warning only. GuardV0 preflight below
-        # remains the authoritative settlement decision.
-        block_number = web3.eth.block_number
-        pending_shares = vault.get_flow_manager().fetch_pending_redemption(block_number)
-
-        if pending_shares > 0:
-            # Calculate how much USDC is needed for redemptions
-            total_assets = vault.fetch_total_assets(block_number)
-            total_supply = vault.fetch_total_supply(block_number)
-
-            if total_supply > 0:
-                share_price = total_assets / total_supply
-                required_usdc = pending_shares * share_price
-
-                # Check actual USDC balance in the Safe
-                safe_usdc_balance = reserve_token.fetch_balance_of(vault.safe_address, block_number)
-
-                logger.info(
-                    "Redemption check: pending shares=%s, share price=%s, required USDC=%s, Safe balance=%s",
-                    pending_shares,
-                    share_price,
-                    required_usdc,
-                    safe_usdc_balance,
-                )
-
-                if required_usdc > safe_usdc_balance:
-                    deficit = required_usdc - safe_usdc_balance
-                    logger.warning(
-                        "⚠️  INSUFFICIENT LIQUID USDC FOR REDEMPTIONS ⚠️\n"
-                        "Pending redemptions: %s shares\n"
-                        "Current share price: %s USDC/share\n"
-                        "Required USDC: %s\n"
-                        "Available in Safe: %s\n"
-                        "Deficit: %s USDC\n"
-                        "Redemptions will NOT be processed in this settlement cycle.\n"
-                        "Consider redeeming from vault positions (IPOR/Morpho) before next settlement.",
-                        pending_shares,
-                        share_price,
-                        required_usdc,
-                        safe_usdc_balance,
-                        deficit,
-                    )
 
         settle_func = vault.settle_via_trading_strategy_module(valuation_decimal)
         preflight = self._preflight_lagoon_settlement(settle_func)

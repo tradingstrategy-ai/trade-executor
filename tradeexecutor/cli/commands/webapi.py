@@ -180,7 +180,7 @@ def webapi(
     universe = universe_model.construct_universe(
         ts,
         ExecutionMode.preflight_check,
-        mod.get_universe_options(),
+        mod.get_universe_options(execution_context.mode),
         strategy_parameters=mod.parameters,
         execution_model=None,
     )

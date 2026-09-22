@@ -25,3 +25,10 @@ class StrategyCycleTrigger(enum.Enum):
     #: Poll trading pair data availability endpoint and
     #: immediately attempt to execute live trading cycle when new data is available.
     trading_pair_data_availability = "trading_pair_data_availability"
+
+    #: HyperCore cleaned vault data availability.
+    #:
+    #: Poll the small HyperCore scan manifest after the midnight-aligned slot
+    #: and run once scan provenance and cleaned observations cross midnight.
+    #: This is a chain-level freshness signal, not per-vault completeness.
+    hypercore_data_available = "hypercore_data_available"

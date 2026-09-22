@@ -50,7 +50,7 @@ from tradeexecutor.strategy.universe_model import StrategyExecutionUniverse
 
 from tradeexecutor.state.state import State
 from tradeexecutor.state.position import TradingPosition
-from tradeexecutor.state.trade import TradeExecution, TradeFlag
+from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus
 from tradeexecutor.state.reserve import ReservePosition
 from tradeexecutor.state.repair import close_hypercore_dust_positions
 from tradeexecutor.strategy.valuation import ValuationModelFactory, ValuationModel, revalue_state
@@ -342,6 +342,12 @@ class StrategyRunner(abc.ABC):
                 ts = t.strategy_cycle_at
 
             logger.info("Fetching post-execution price data for %s at %s", t.get_short_label(), ts)
+
+            if TradeFlag.external_account_transfer in (t.flags or set()):
+                # Custody transfers have a fixed 1 USDC/USD price and no AMM
+                # price structure to collect.
+                t.post_execution_price_structure = None
+                continue
 
             # Credit supply pairs do not have pricing ATM
             if t.pair.is_spot() or t.pair.is_vault():
@@ -1360,6 +1366,9 @@ def post_process_trade_decision(
     if max_price_impact is not None:
         for t in trades:
 
+            if TradeFlag.external_account_transfer in (t.flags or set()):
+                continue
+
             if t.is_credit_supply():
                 # Credit supply positions do not have price structure
                 continue
@@ -1381,6 +1390,13 @@ def post_process_trade_decision(
                         f"Trade pricing: {t.price_structure}\n"
                     )
                 t.price_impact_tolerance = max_price_impact
+
+    for t in trades:
+        if TradeFlag.external_account_transfer in (t.flags or set()):
+            if t.planned_reserve <= 0 or t.planned_price != 1.0:
+                raise ValueError(
+                    f"Exchange-account transfer must be a positive 1:1 transfer: {t}"
+                )
 
 
     return trades

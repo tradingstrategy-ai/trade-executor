@@ -61,16 +61,15 @@ from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
 from tradeexecutor.exchange_account.state import (
     ExchangeAccountTransferError,
+    complete_exchange_account_transfer,
     create_exchange_account_transfer,
-    mark_exchange_account_transfer_broadcasted,
-    record_exchange_account_transfer,
 )
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
 from tradeexecutor.state.identifier import AssetIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.store import JSONFileStore
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
 from tradeexecutor.strategy.account_correction import is_relative_mismatch
 from tradeexecutor.strategy.dust import (
     get_close_epsilon_for_pair,
@@ -261,7 +260,8 @@ def _create_transfer_metadata(
         "requested_amount": str(amount),
         "safe_balance_before": str(safe_before),
         "lighter_equity_before": str(equity_before.get_total()),
-        "lighter_collateral_before": str(equity_before.collateral),
+        "lighter_collateral_before_usdc": str(equity_before.collateral),
+        "lighter_deposit_amount_usdc": str(amount),
         "requested_at": str(int(time.time())),
     }
 
@@ -271,6 +271,31 @@ def _append_transfer_metadata(trade: TradeExecution, **values: str | int) -> Non
     metadata = trade.other_data or {}
     metadata.update(values)
     trade.other_data = metadata
+
+
+def _start_transfer(state: State, store: JSONFileStore, trade: TradeExecution) -> None:
+    """Allocate a deposit reserve and persist the pre-broadcast state checkpoint."""
+    state.start_execution(
+        native_datetime_utc_now(),
+        trade,
+        underflow_check=True,
+    )
+    store.sync(state)
+
+
+def _mark_transfer_broadcasted(
+    state: State,
+    store: JSONFileStore,
+    trade: TradeExecution,
+) -> None:
+    """Persist the submitted transfer before waiting for Lighter evidence."""
+    if trade.get_status() == TradeStatus.broadcasted:
+        store.sync(state)
+        return
+    if trade.get_status() != TradeStatus.started:
+        raise LighterMoveFundsError("Expected a started Lighter custody transfer")
+    trade.mark_broadcasted(native_datetime_utc_now())
+    store.sync(state)
 
 
 def _get_transfer_amount(trade: TradeExecution) -> Decimal:
@@ -306,22 +331,25 @@ def _complete_transfer(
     """Verify and persist one finished custody movement and residual PnL."""
     _assert_non_negative(safe_after, "Safe USDC balance")
     _assert_non_negative(equity_after.get_total(), "Lighter equity")
-    expected_safe_change = -amount if trade.is_buy() else amount
-    if safe_after - safe_before != expected_safe_change:
-        raise LighterMoveFundsError("Safe USDC did not change by the verified Lighter transfer amount")
+    safe_credit = safe_after - safe_before
+    if trade.is_buy() and safe_credit != -amount:
+        raise LighterMoveFundsError("Safe USDC did not change by the verified Lighter deposit amount")
+    if trade.is_sell() and safe_credit <= 0:
+        raise LighterMoveFundsError("Lighter withdrawal did not credit the Lagoon Safe")
     _append_transfer_metadata(
         trade,
         safe_balance_after=str(safe_after),
         lighter_equity_after=str(equity_after.get_total()),
         lighter_collateral_after=str(equity_after.collateral),
-        received_amount=str(amount),
+        lighter_collateral_after_usdc=str(equity_after.collateral),
+        received_amount=str(abs(safe_credit)),
     )
-    record_exchange_account_transfer(
+    complete_exchange_account_transfer(
         state=state,
         position=position,
         trade=trade,
-        reserve_currency=reserve_asset,
-        amount=amount,
+        executed_amount=amount if trade.is_buy() else -amount,
+        executed_reserve=amount if trade.is_buy() else safe_credit,
         executed_at=native_datetime_utc_now(),
     )
     _sync_lighter_position(state=state, equity=equity_after)
@@ -357,7 +385,6 @@ def _resume_withdrawal(
     safe_now = usdc.fetch_balance_of(vault.safe_address)
     if safe_now - safe_before == amount:
         logger.info("Detected an already claimed Lighter withdrawal; completing accounting")
-        mark_exchange_account_transfer_broadcasted(trade, native_datetime_utc_now())
         equity_after = fetch_lighter_total_equity(session, operator.account_index)
         _complete_transfer(
             state=state,
@@ -383,8 +410,7 @@ def _resume_withdrawal(
     )
     if claimable != amount:
         raise LighterMoveFundsError("Lighter claimable withdrawal amount differs from the saved request")
-    mark_exchange_account_transfer_broadcasted(trade, native_datetime_utc_now())
-    store.sync(state)
+    _append_transfer_metadata(trade, lighter_claimable_usdc=str(claimable))
     hot_wallet.sync_nonce(vault.web3)
     claim_tx_hash = claim_usdc_to_lagoon_safe_from_lighter(
         vault.web3,
@@ -394,8 +420,12 @@ def _resume_withdrawal(
         claimable_usdc=claimable,
     )
     safe_after = usdc.fetch_balance_of(vault.safe_address)
-    _append_transfer_metadata(trade, claim_tx_hash=claim_tx_hash, claimed_safe_credit=str(safe_after - safe_now))
-    store.sync(state)
+    _append_transfer_metadata(
+        trade,
+        lighter_claim_tx_hash=claim_tx_hash,
+        claimed_safe_credit=str(safe_after - safe_now),
+    )
+    _mark_transfer_broadcasted(state, store, trade)
     equity_after = fetch_lighter_total_equity(session, operator.account_index)
     _complete_transfer(
         state=state,
@@ -580,21 +610,6 @@ def lighter_move_funds(
             )
             if direction == "d":
                 logger.info("Depositing %s USDC from the Lagoon Safe to Lighter", amount)
-                deposit_tx_hash = deposit_usdc_from_lagoon_safe_into_lighter(
-                    web3,
-                    hot_wallet,
-                    vault=vault,
-                    usdc=usdc,
-                    deposit_usdc=amount,
-                )
-                wait_for_lighter_collateral(
-                    session,
-                    operator.account_index,
-                    equity.collateral + amount,
-                    timeout=lighter_deposit_timeout,
-                )
-                safe_after = usdc.fetch_balance_of(vault.safe_address)
-                equity_after = fetch_lighter_total_equity(session, operator.account_index)
                 trade = create_exchange_account_transfer(
                     state=state,
                     position=position,
@@ -605,8 +620,27 @@ def lighter_move_funds(
                     notes="Manual lighter-move-funds deposit",
                     metadata=metadata,
                 )
-                _append_transfer_metadata(trade, deposit_tx_hash=deposit_tx_hash)
-                mark_exchange_account_transfer_broadcasted(trade, native_datetime_utc_now())
+                _start_transfer(state, store, trade)
+                deposit_tx_hash = deposit_usdc_from_lagoon_safe_into_lighter(
+                    web3,
+                    hot_wallet,
+                    vault=vault,
+                    usdc=usdc,
+                    deposit_usdc=amount,
+                )
+                _append_transfer_metadata(
+                    trade,
+                    lighter_deposit_tx_hash=deposit_tx_hash,
+                )
+                _mark_transfer_broadcasted(state, store, trade)
+                wait_for_lighter_collateral(
+                    session,
+                    operator.account_index,
+                    equity.collateral + amount,
+                    timeout=lighter_deposit_timeout,
+                )
+                safe_after = usdc.fetch_balance_of(vault.safe_address)
+                equity_after = fetch_lighter_total_equity(session, operator.account_index)
                 _complete_transfer(
                     state=state,
                     store=store,
@@ -636,19 +670,25 @@ def lighter_move_funds(
                     notes="Manual lighter-move-funds withdrawal",
                     metadata=metadata,
                 )
-                store.sync(state)
+                _append_transfer_metadata(
+                    trade,
+                    lighter_safe_balance_before_claim=str(safe_balance),
+                    lighter_safe_address=vault.safe_address,
+                )
+                _start_transfer(state, store, trade)
                 try:
-                    request_tx_hash = asyncio.run(request_lighter_withdrawal(operator, amount))
+                    withdrawal_request_id = asyncio.run(request_lighter_withdrawal(operator, amount))
                 except LighterWithdrawalRejected:
                     failed_at = native_datetime_utc_now()
-                    trade.started_at = failed_at
-                    trade.mark_failed(failed_at)
+                    state.mark_trade_failed(failed_at, trade)
                     _append_transfer_metadata(trade, outcome="withdrawal_rejected")
                     store.sync(state)
                     raise
-                _append_transfer_metadata(trade, request_tx_hash=request_tx_hash)
-                mark_exchange_account_transfer_broadcasted(trade, native_datetime_utc_now())
-                store.sync(state)
+                _append_transfer_metadata(
+                    trade,
+                    lighter_withdrawal_request_id=withdrawal_request_id,
+                )
+                _mark_transfer_broadcasted(state, store, trade)
                 _resume_withdrawal(
                     state=state,
                     store=store,

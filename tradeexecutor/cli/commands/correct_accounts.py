@@ -24,6 +24,7 @@ from eth_defi.provider.broken_provider import get_almost_latest_block_number
 
 from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
+from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
 from tradeexecutor.exchange_account.sync_model import ExchangeAccountSyncModel
 from tradeexecutor.exchange_account.utils import create_exchange_account_value_func
 from tradeexecutor.strategy.account_correction import (
@@ -552,6 +553,20 @@ def correct_accounts(
         logger.warning("Dry run enabled: no transactions will be broadcast and no state will be written")
     else:
         store, state = backup_state(state_file, unit_testing=unit_testing)
+
+    reconciled_transfers = reconcile_verified_lighter_transfers(
+        state,
+        web3,
+        mutate=not dry_run,
+    )
+    if reconciled_transfers:
+        if not dry_run:
+            store.sync(state)
+        logger.info(
+            "%s %d verified Lighter transfer(s)",
+            "Found" if dry_run else "Reconciled",
+            len(reconciled_transfers),
+        )
 
     # This must precede universe construction, vault synchronisation, and the
     # HyperCore transit hook below.  The hook can broadcast real Safe actions;
