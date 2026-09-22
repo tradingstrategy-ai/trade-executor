@@ -45,46 +45,42 @@ window joins it; starting after an unclaimed window waits for the next slot.
 Consequently, startup accounting checks, chart setup and background valuation
 jobs do not start until this initial wait finishes. This is intentional in the
 current implementation, not continuous valuation coverage during startup.
-Subsequent readiness waits also occupy the scheduler's single worker, delaying
-valuation, Lagoon NAV/settlement and position-trigger jobs for the wait's
-duration. This differs from keeping background services running normally.
-Resolving it safely needs a separate readiness scheduling design; simply adding
-concurrent workers would permit unsafe concurrent state mutations.
+Subsequent decisions perform one readiness probe per scheduled job. If data is
+not ready, the job schedules the next quarter-hour probe and returns, leaving
+the single worker free for valuation, Lagoon NAV/settlement and position-trigger
+jobs between probes. Existing universe data is retained until a new snapshot
+is ready. HTTP requests and a ready snapshot's download still occupy that
+worker while in flight; this change removes the long sleeps, not network latency.
+No concurrent state-mutating workers are introduced.
 `TRADE_IMMEDIATELY` and `PRELOAD_WEBHOOK_DATA` cannot bypass the gate.
 
 The pending logical slot is saved before polling. Restarting an unexpired slot
-resumes it; an expired pending slot requires operator recovery. A slot that
+resumes it; an expired pending slot with no trades is logged and automatically
+replaced by the next future slot on the strategy's cycle grid. A slot that
 already created trades must be reconciled instead of replayed. Completion and
 clearing the pending slot are persisted together after a successful tick.
 There is still a crash window between trade persistence and that completion
-write. If a pending slot contains completed trades, both restart and the
-abandonment command refuse it, even after ordinary transaction repair. There is
+write. If a pending slot contains completed trades, restart refuses it, even
+after ordinary transaction repair. There is
 currently no supported command to mark such a slot completed. Do not blindly
 clear the flag or automatically infer completion: some intended trades may
 never have executed. A reviewed explicit recovery procedure is needed.
 
-The background-service pause and completed-trade recovery gap are unresolved
+The initial startup pause and completed-trade recovery gap are unresolved
 deployment blockers for this trigger, not guarantees provided by this runbook.
 
 Shutdown interrupts polling waits through an event; an in-flight HTTP request
 still relies on its network timeout. Process-private price files are removed
 when the live loop exits. This is not an archive of historical parquet inputs.
 
-## Recovering an expired slot
+## Restart after a data timeout
 
-Stop the executor and use the deployment's Compose maintenance shell, as
-described in [the Docker runbook](docker.md). Confirm the authoritative state
-path, then run:
-
-```shell
-poetry run trade-executor abandon-hypercore-slot --state-file state/hyper-ai.json
-```
-
-This local-only command backs up the JSON state, writes an audit message and
-sets the next future **two-day** midnight slot. It does not mark a missed cycle
-as executed and does not replay trades. It refuses an open readiness window,
-a slot with trades or outstanding transaction repair. The command is specific
-to Hyper-AI's two-day schedule; do not use it for another cycle duration.
+The eight-hour timeout still fails the process visibly. Restarting requires no
+state-editing command when the missed decision created no trades: startup logs
+the skipped slot and saves the next future slot before waiting. It does not
+mark the missed decision as executed or catch up missed trades. This uses the
+configured cycle duration rather than a hard-coded two-day recovery policy.
+Trade-bearing pending decisions still require reconciliation as described above.
 
 ## Deployment dependencies
 
@@ -95,6 +91,6 @@ valid `VAULT_PRO_API_KEY`. A branch passing unit tests does not demonstrate that
 the production endpoint is deployed or that its receipts are fresh.
 
 Coverage is in `tests/strategy/test_hypercore_data_availability.py` (polling,
-deadlines and publication races), `test_hypercore_manifest_contract.py` (actual
-producer/consumer and sparse data), and
-`tests/cli/test_cli_abandon_hypercore_slot.py` (real Typer recovery entry point).
+deadlines, restart selection, trade replay protection and publication races)
+and `test_hypercore_manifest_contract.py` (actual producer/consumer and sparse
+data). Full manifest-triggered `start` lifecycle coverage is still missing.

@@ -11,10 +11,12 @@ from tradingstrategy.vault_data_client import VaultDataDeploymentError, VaultDat
 from tradeexecutor.strategy.hypercore_data_availability import (
     HYPERCORE_READINESS_WINDOW,
     calculate_hypercore_slot_schedule,
-    wait_for_hypercore_data_availability,
+    poll_hypercore_decision_snapshot,
+    next_hypercore_poll,
     fetch_hypercore_decision_snapshot,
 )
 from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.state.state import State
 
 
 def _manifest(last_scan: str | None, last_candle: str | None) -> dict:
@@ -34,112 +36,136 @@ def _manifest(last_scan: str | None, last_candle: str | None) -> dict:
     }
 
 
-def test_manifest_wait_polls_json_until_ready() -> None:
-    """Check polling stops on a ready receipt without any parquet concern.
+def test_manifest_wait_polls_json_until_ready(tmp_path: Path) -> None:
+    """Return control on incomplete data and wait only during initial warm-up.
 
-    1. Return an incomplete receipt on the first poll and a ready receipt on
-       the second.
-    2. Advance an injected clock by one polling interval between calls.
-    3. Verify the helper returns the ready receipt and poll count.
+    1. Probe incomplete data once without downloading prices or advancing time.
+    2. Use the startup wrapper to wait on the same quarter-hour grid.
+    3. Verify only a ready receipt downloads prices, with accurate request counts.
     """
-
-    # 1. Return an incomplete receipt on the first poll and a ready receipt on the second.
+    # 1. Fake only network/time boundaries; exercise the actual probe and wrapper.
     slot = datetime.datetime(2026, 9, 22)
     current = [slot]
-    responses = iter(
-        [
-            _manifest("2026-09-21T23:55:00Z", "2026-09-21T23:55:00Z"),
-            _manifest("2026-09-22T02:55:00Z", "2026-09-22T00:30:00Z"),
-        ]
-    )
+    client = Mock()
+    client.fetch_vault_scan_manifest.return_value = _manifest(None, None)
+    manifest, count = poll_hypercore_decision_snapshot(client, slot, tmp_path / "prices", now=lambda: current[0])
+    assert manifest is None
+    assert count == 1
+    assert current[0] == slot
+    client.download.assert_not_called()
 
-    def now() -> datetime.datetime:
-        return current[0]
-
-    def fetch() -> dict:
-        result = next(responses)
-        current[0] += datetime.timedelta(minutes=15)
-        return result
+    # 2. Startup waits, while the scheduler can use the single-probe API above.
+    client.reset_mock()
+    client.fetch_vault_scan_manifest.side_effect = [
+        _manifest(None, None),
+        _manifest("2026-09-22T00:15:00Z", "2026-09-22T00:00:00Z"),
+    ]
 
     def sleep(seconds: float) -> None:
+        """Advance the deterministic clock instead of sleeping fifteen minutes."""
         current[0] += datetime.timedelta(seconds=seconds)
 
-    # 2. Advance an injected clock by one polling interval between calls.
-    manifest, poll_count = wait_for_hypercore_data_availability(fetch, slot, now=now, poll_interval=datetime.timedelta(milliseconds=1), sleep=sleep)
+    manifest, count = fetch_hypercore_decision_snapshot(
+        client, slot, tmp_path / "prices", now=lambda: current[0], sleep=sleep,
+    )
 
-    # 3. Verify the helper returns the ready receipt and poll count.
-    assert poll_count == 2
+    # 3. One sleep and one verified download suffice; no indicators are involved.
+    assert current[0] == slot + datetime.timedelta(minutes=15)
     assert manifest["price_file"]["etag"] == "etag"
+    assert count == 2
+    assert client.fetch_vault_scan_manifest.call_count == 2
+    client.download.assert_called_once()
 
 
-def test_manifest_wait_times_out_before_next_slot() -> None:
-    """Reject late readiness and shutdown without a stale-data fallback.
+def test_manifest_wait_times_out_before_next_slot(tmp_path: Path) -> None:
+    """Reject late JSON receipts, preserve the deadline grid, and honour shutdown.
 
-    1. Keep returning a valid but incomplete receipt.
-    2. Advance the injected clock beyond the eight-hour readiness window.
-    3. Verify a timeout is raised even for a ready response; shutdown skips IO.
+    1. Deliver a ready receipt exactly at the deadline.
+    2. Check polling skips elapsed marks but never schedules past the deadline.
+    3. Verify a pre-existing shutdown request prevents all network requests.
     """
-
-    # 1. Keep returning a valid but incomplete receipt.
+    # 1. The network mock changes time while delivering its response.
     slot = datetime.datetime(2026, 9, 22)
     current = [slot]
+    client = Mock()
 
-    def now() -> datetime.datetime:
-        return current[0]
-
-    def fetch() -> dict:
+    def fetch(**kwargs) -> dict:
+        """Model a slow receipt that arrives too late to qualify."""
         current[0] = slot + HYPERCORE_READINESS_WINDOW
         return _manifest("2026-09-22T04:00:00Z", "2026-09-22T03:30:00Z")
 
-    def sleep(seconds: float) -> None:
-        current[0] += datetime.timedelta(seconds=seconds)
-
-    # 2. Advance the injected clock beyond the eight-hour readiness window.
-    # 3. Verify a timeout is raised.
+    client.fetch_vault_scan_manifest.side_effect = fetch
     with pytest.raises(TimeoutError):
-        wait_for_hypercore_data_availability(fetch, slot, now=now, poll_interval=datetime.timedelta(milliseconds=1), sleep=sleep)
+        fetch_hypercore_decision_snapshot(client, slot, tmp_path / "prices", now=lambda: current[0])
+    client.download.assert_not_called()
 
-    current[0] = slot
+    # 2. Both startup and recurring jobs share the same deadline-aware grid.
+    assert next_hypercore_poll(slot, slot + datetime.timedelta(minutes=16)) == slot + datetime.timedelta(minutes=30)
+    assert next_hypercore_poll(slot, slot + datetime.timedelta(hours=7, minutes=59)) == slot + HYPERCORE_READINESS_WINDOW
+    with pytest.raises(TimeoutError):
+        poll_hypercore_decision_snapshot(client, slot, tmp_path / "prices", now=lambda: current[0])
+    assert client.fetch_vault_scan_manifest.call_count == 1
+
+    # 3. Cancellation must not initiate another HTTP request.
     shutdown = threading.Event()
     shutdown.set()
-    fetch_mock = Mock()  # A pre-existing stop request must prevent network IO.
+    client.reset_mock()
     with pytest.raises(RuntimeError, match="shutdown"):
-        wait_for_hypercore_data_availability(fetch_mock, slot, now=now, shutdown_event=shutdown)
-    fetch_mock.assert_not_called()
-
-    # An off-grid deadline must not sleep on to the next quarter-hour mark.
-    incomplete = Mock(return_value=_manifest(None, None))
-    with pytest.raises(TimeoutError):
-        wait_for_hypercore_data_availability(
-            incomplete, slot, now=now, sleep=sleep,
-            readiness_window=datetime.timedelta(minutes=10),
-        )
-    assert current[0] == slot + datetime.timedelta(minutes=10)
-    incomplete.assert_called_once()
+        fetch_hypercore_decision_snapshot(client, slot, tmp_path / "prices", now=lambda: slot, shutdown_event=shutdown)
+    client.fetch_vault_scan_manifest.assert_not_called()
 
 
 def test_hypercore_slot_schedule_joins_open_window() -> None:
     """Check a restart during the window keeps the midnight logical slot.
 
     1. Calculate a schedule from an intraday UTC timestamp.
-    2. Verify the slot is midnight and the wake-up is immediate.
-    3. Verify two-day cycle duration remains the calendar anchor.
+    2. Verify fresh and restarted decisions preserve the two-day midnight grid.
+    3. Skip expired unexecuted decisions without marking them completed.
     """
 
     # 1. Calculate a schedule from an intraday UTC timestamp.
     now = datetime.datetime(2026, 9, 22, 4, 15)
-    slot, wake_up = calculate_hypercore_slot_schedule(now, CycleDuration.cycle_2d)
+    state = State()
+    slot = calculate_hypercore_slot_schedule(now, CycleDuration.cycle_2d, state)
 
-    # 2. Verify the slot is midnight and the wake-up is immediate.
+    # 2. Fresh and restarted decisions preserve the two-day midnight grid.
     assert slot == datetime.datetime(2026, 9, 22)
-    assert wake_up == now
 
-    # 3. Verify two-day cycle duration remains the calendar anchor.
     assert slot + CycleDuration.cycle_2d.to_timedelta() == datetime.datetime(2026, 9, 24)
+    state.pending_data_availability_slot = slot
+    assert calculate_hypercore_slot_schedule(now, CycleDuration.cycle_2d, state) == slot
+
+    # 3. Expiry needs no operator command, including a restart exactly at 08:00.
+    for restart in (slot + datetime.timedelta(hours=8), slot + datetime.timedelta(hours=12)):
+        assert calculate_hypercore_slot_schedule(restart, CycleDuration.cycle_2d, state) == datetime.datetime(2026, 9, 24)
+    assert state.last_cycle_at is None
+    assert state.pending_data_availability_slot == slot  # Caller persists the replacement.
 
     # A process restarted after completing this slot must not trade it again.
-    next_slot, wake_up = calculate_hypercore_slot_schedule(now, CycleDuration.cycle_2d, last_completed_slot=slot)
-    assert next_slot == wake_up == datetime.datetime(2026, 9, 24)
+    state.pending_data_availability_slot = None
+    state.last_cycle_at = slot
+    assert calculate_hypercore_slot_schedule(now, CycleDuration.cycle_2d, state) == datetime.datetime(2026, 9, 24)
+
+
+def test_hypercore_restart_refuses_persisted_trades() -> None:
+    """Keep trade reconciliation separate from harmless missed-data windows.
+
+    1. Load real trade records and identify their decision timestamp.
+    2. Attempt restart both inside and after that decision's readiness window.
+    3. Verify both attempts refuse replay without changing pending state.
+    """
+    # 1. Reuse a serialised portfolio rather than fabricating trade behaviour.
+    state = State.read_json_file(Path(__file__).parents[1] / "cli" / "show-positions-long.json")
+    slot = next(iter(state.portfolio.get_all_trades())).opened_at
+    state.pending_data_availability_slot = slot
+
+    # 2. Trade protection applies regardless of whether the data window expired.
+    for now in (slot, slot + datetime.timedelta(days=4)):
+        with pytest.raises(RuntimeError, match="reconcile"):
+            calculate_hypercore_slot_schedule(now, CycleDuration.cycle_2d, state)
+
+    # 3. No unsafe automatic completion or state clearing occurred.
+    assert state.pending_data_availability_slot == slot
 
 
 def test_sparse_scan_wait_and_version_race(tmp_path: Path) -> None:

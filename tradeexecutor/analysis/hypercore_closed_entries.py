@@ -2,7 +2,8 @@
 
 Hyper-AI v8 saves candidate-entry events in ``state.visualisation.calculations``.
 The chart registry calls these helpers for notebook and web tables, including
-after a state JSON round trip. Accepted entries mean candidates that passed the
+after a state JSON round trip. Events are the dictionaries written by v8, not
+arbitrary objects needing compatibility adapters. Accepted entries mean candidates that passed the
 deposit gate, not filled trades. Explicit closures are counted separately from
 missing or stale availability data so the table does not mislabel data gaps.
 
@@ -30,15 +31,6 @@ HYPERCORE_CLOSED_ENTRY_COLUMNS = [
 HYPERCORE_CLOSED_ENTRY_SUMMARY_COLUMNS = ["Metric", "Value"]
 
 
-def _read_attr_or_key(value: object, key: str, default=None):
-    """Read a field from either a mapping or a dataclass-like object."""
-    if value is None:
-        return default
-    if isinstance(value, dict):
-        return value.get(key, default)
-    return getattr(value, key, default)
-
-
 def _normalise_timestamp(value: object) -> pd.Timestamp | None:
     """Normalise persisted cycle timestamps."""
     if value is None:
@@ -55,20 +47,9 @@ def _iter_entry_events(state: State):
     for cycle_timestamp, calculations in state.visualisation.calculations.items():
         for event in calculations.get("hypercore_closed_entry_events", []):
             timestamp = _normalise_timestamp(
-                _read_attr_or_key(event, "timestamp") or cycle_timestamp
+                event.get("timestamp") or cycle_timestamp
             )
             yield timestamp, event
-
-
-def _event_status(event: object) -> str:
-    """Return the compact event status."""
-    return str(_read_attr_or_key(event, "status", "")).lower()
-
-
-def _is_explicit_closed_event(event: object) -> bool:
-    """Check that an event represents an archived explicit deposit closure."""
-    reason = _read_attr_or_key(event, "reason_code")
-    return _event_status(event) == "skipped" and reason == "vault_deposits_closed"
 
 
 def analyse_hypercore_closed_entry_events(state: State) -> pd.DataFrame:
@@ -83,10 +64,10 @@ def analyse_hypercore_closed_entry_events(state: State) -> pd.DataFrame:
     totals: dict[str, dict[str, object]] = {}
 
     for timestamp, event in _iter_entry_events(state):
-        address = str(_read_attr_or_key(event, "vault_address", ""))
+        address = str(event.get("vault_address", ""))
         name = (
-            _read_attr_or_key(event, "vault_name")
-            or _read_attr_or_key(event, "pair_ticker")
+            event.get("vault_name")
+            or event.get("pair_ticker")
             or address
             or "Unknown vault"
         )
@@ -102,9 +83,9 @@ def analyse_hypercore_closed_entry_events(state: State) -> pd.DataFrame:
             },
         )
 
-        if _event_status(event) == "accepted":
+        if event.get("status") == "accepted":
             row["Accepted entries"] += 1
-        elif _is_explicit_closed_event(event):
+        elif event.get("status") == "skipped" and event.get("reason_code") == "vault_deposits_closed":
             row["Skipped entries"] += 1
             if timestamp is not None:
                 first_skip = row["First skip"]

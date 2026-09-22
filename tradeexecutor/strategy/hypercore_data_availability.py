@@ -1,9 +1,9 @@
 """Readiness helpers for the HyperCore manifest-triggered live cycle.
 
 The executor polls the small vault scan manifest after a calendar-aligned
-midnight slot. This module intentionally does not construct a universe or read
-parquet; those operations happen once the manifest says the required snapshot
-is published.
+midnight slot. Only a ready receipt triggers a private price download; this
+module never constructs a universe or calculates indicators. Recurring jobs
+probe once and return to the scheduler; only initial warm-up waits in a loop.
 """
 
 import datetime
@@ -24,6 +24,7 @@ from tradingstrategy.vault_data_client import (
 )
 
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick
+from tradeexecutor.state.state import State
 
 
 HYPERCORE_CHAIN_ID = "9999"
@@ -35,27 +36,43 @@ logger = logging.getLogger(__name__)
 def calculate_hypercore_slot_schedule(
     now: datetime.datetime,
     cycle_duration: CycleDuration,
-    last_completed_slot: datetime.datetime | None = None,
-) -> tuple[datetime.datetime, datetime.datetime]:
-    """Return the current/future aligned slot and when to wake for it.
+    state: State,
+) -> datetime.datetime:
+    """Choose the live loop's restart slot without replaying persisted trades.
 
-    A process starting during an open eight-hour window joins that slot. Once
-    the window has expired it waits for the next calendar-aligned slot.
+    Resume an unexpired pending decision, or skip an expired one automatically
+    if it created no trades. Fresh starts may join the current open window.
+    The caller saves the returned slot before polling; this helper does not
+    modify state or mark a missed decision as completed.
 
     :param now: Current naive UTC wall clock.
     :param cycle_duration: Calendar grid, normally two days for Hyper-AI.
-    :param last_completed_slot: Persisted successful decision to avoid replay.
-    :return: Logical slot and earliest wall-clock wake-up time.
+    :param state: Persisted pending/completed decisions and trade history.
+    :return: Logical UTC decision slot.
+    :raises RuntimeError: A pending decision created trades and needs reconciliation.
     """
 
+    pending_slot = state.pending_data_availability_slot
+    if pending_slot is not None:
+        if any(trade.opened_at == pending_slot for trade in state.portfolio.get_all_trades()):
+            raise RuntimeError(
+                f"HyperCore slot {pending_slot} already created trades; reconcile the interrupted cycle before resuming"
+            )
+        if now < pending_slot + HYPERCORE_READINESS_WINDOW:
+            return pending_slot
+        next_slot = snap_to_next_tick(now + datetime.timedelta(microseconds=1), cycle_duration)
+        logger.warning("Skipping expired unexecuted HyperCore slot %s; next slot %s", pending_slot, next_slot)
+        return next_slot
+
+    last_completed_slot = state.last_cycle_at
     slot = snap_to_previous_tick(now, cycle_duration)
     if last_completed_slot is not None and slot <= last_completed_slot:
         next_slot = snap_to_next_tick(last_completed_slot + datetime.timedelta(microseconds=1), cycle_duration)
-        return next_slot, max(now, next_slot)
+        return next_slot
     if now < slot + HYPERCORE_READINESS_WINDOW:
-        return slot, now
+        return slot
     next_slot = snap_to_next_tick(now, cycle_duration)
-    return next_slot, next_slot
+    return next_slot
 
 
 def hypercore_manifest_is_ready(manifest: VaultScanManifest, slot: datetime.datetime) -> bool:
@@ -79,109 +96,70 @@ def hypercore_manifest_is_ready(manifest: VaultScanManifest, slot: datetime.date
     )
 
 
-def wait_for_hypercore_data_availability(
-    fetch_manifest: Callable[[], VaultScanManifest],
+def next_hypercore_poll(slot: datetime.datetime, now: datetime.datetime) -> datetime.datetime:
+    """Return the next quarter-hour poll, capped at the original deadline.
+
+    The live scheduler uses this to release its worker between probes. Startup
+    uses the same grid while waiting for its first universe.
+
+    :param slot: Logical decision midnight.
+    :param now: Current UTC time after a probe.
+    :return: Next polling time, or the deadline where polling will raise.
+    """
+    intervals = max(0, (now - slot) // HYPERCORE_POLL_INTERVAL + 1)
+    return min(slot + intervals * HYPERCORE_POLL_INTERVAL, slot + HYPERCORE_READINESS_WINDOW)
+
+
+def poll_hypercore_decision_snapshot(
+    client: VaultDataClient,
     slot: datetime.datetime,
+    destination: Path,
     *,
     now: Callable[[], datetime.datetime] = native_datetime_utc_now,
-    poll_interval: datetime.timedelta = HYPERCORE_POLL_INTERVAL,
-    readiness_window: datetime.timedelta = HYPERCORE_READINESS_WINDOW,
-    shutdown_event: threading.Event | None = None,
-    sleep: Callable[[float], None] = time.sleep,
-    on_ready: Callable[[VaultScanManifest], VaultScanManifest | None] | None = None,
-) -> tuple[VaultScanManifest, int]:
-    """Poll the manifest until HyperCore is ready or the slot expires.
+    request_budget: float = VAULT_SCAN_MANIFEST_BUDGET,
+) -> tuple[VaultScanManifest | None, int]:
+    """Probe readiness once without sleeping or constructing a universe.
 
-    :param fetch_manifest:
-        Uncached JSON-only client operation. It must not download parquet.
-    :param slot:
-        Midnight-aligned logical decision timestamp.
-    :param now:
-        Injectable UTC clock for tests.
-    :param poll_interval:
-        Time between polls.
-    :param readiness_window:
-        Maximum time after ``slot`` in which a ready JSON response must arrive.
-        A response arriving at or after the deadline is rejected.
-    :param shutdown_event:
-        Optional event that interrupts waiting during executor shutdown.
-    :param sleep:
-        Sleep function used when no shutdown event is supplied. The live
-        executor keeps the default; deterministic tests can advance a fake
-        clock instead of waiting in real time.
-    :param on_ready:
-        Optional snapshot verification after JSON readiness. Return the matched
-        receipt, or ``None`` to resume polling following a publication race.
-        A matching transfer may finish after the readiness window.
-    :return:
-        The ready manifest and number of polls made.
-    :raises TimeoutError:
-        If the manifest is not ready before the deadline.
-    :raises RuntimeError:
-        If shutdown interrupts the wait.
+    The live loop schedules another invocation if this returns no receipt,
+    leaving its single worker free for valuation between polls. Only a ready
+    receipt triggers a verified private download. One ETag race gets an
+    immediate JSON recheck; all other retryable failures return to the grid.
+
+    :param client: Authenticated vault dataset client.
+    :param slot: Logical UTC decision midnight.
+    :param destination: Private price file passed directly to universe loading.
+    :param now: UTC clock, injectable for deterministic tests.
+    :param request_budget: JSON request budget, capped by the original deadline.
+    :return: Verified receipt or None, and actual JSON request count.
+    :raises TimeoutError: The original eight-hour readiness window expired.
     """
-
-    deadline = slot + readiness_window
-    assert poll_interval > datetime.timedelta(0), "Polling interval must be positive"
-    assert readiness_window > datetime.timedelta(0), "Readiness window must be positive"
-    poll_count = 0
-    next_poll_at = slot
-    while True:
+    deadline = slot + HYPERCORE_READINESS_WINDOW
+    polls = 0
+    for attempt in range(2):
         current = now()
         if current >= deadline:
             raise TimeoutError(f"HyperCore data was not available for slot {slot} before {deadline}")
-        if current < next_poll_at:
-            remaining_to_slot = (next_poll_at - current).total_seconds()
-            if shutdown_event is not None:
-                if shutdown_event.wait(remaining_to_slot):
-                    raise RuntimeError("HyperCore data availability wait interrupted by shutdown")
-            else:
-                sleep(remaining_to_slot)
-            continue
-        if shutdown_event is not None and shutdown_event.is_set():
-            raise RuntimeError("HyperCore data availability wait interrupted by shutdown")
+        if current < slot:
+            return None, polls
         try:
-            manifest = fetch_manifest()
+            polls += 1
+            manifest = client.fetch_vault_scan_manifest(
+                request_budget=min(request_budget, (deadline - current).total_seconds()),
+            )
         except VaultManifestUnavailable as exc:
             logger.warning("HyperCore manifest unavailable for slot %s: %s", slot, exc)
-            manifest = None
-        poll_count += 1
-        # A request that started before the deadline must not extend the
-        # eight-hour window merely because the network responded late.
+            return None, polls
         if now() >= deadline:
             raise TimeoutError(f"HyperCore data was not available for slot {slot} before {deadline}")
-        if manifest is not None and hypercore_manifest_is_ready(manifest, slot):
-            if on_ready is not None:
-                try:
-                    manifest = on_ready(manifest)
-                except VaultManifestUnavailable as exc:
-                    logger.warning("HyperCore snapshot not yet usable for slot %s: %s", slot, exc)
-                    manifest = None
-            if manifest is not None:
-                if shutdown_event is not None and shutdown_event.is_set():
-                    raise RuntimeError("HyperCore snapshot interrupted by shutdown")
-                return manifest, poll_count
-
-        logger.info("Waiting for HyperCore observations across midnight %s; next poll follows the 15-minute grid", slot)
-
-        # Keep polls aligned to the logical slot instead of adding an interval
-        # after a slow HTTP response. A late response skips missed poll marks;
-        # it never shifts the eight-hour deadline.
-        next_poll_at += poll_interval
-        current = now()
-        if next_poll_at <= current:
-            missed_intervals = (current - next_poll_at) // poll_interval + 1
-            next_poll_at += missed_intervals * poll_interval
-        remaining = min((next_poll_at - current).total_seconds(), (deadline - current).total_seconds())
-        if remaining <= 0:
-            raise TimeoutError(f"HyperCore data was not available for slot {slot} before {deadline}")
-        if shutdown_event is not None:
-            if shutdown_event.wait(remaining):
-                raise RuntimeError("HyperCore data availability wait interrupted by shutdown")
-        else:
-            # The live executor supplies an Event. This fallback keeps the
-            # helper usable by simple callers and unit tests.
-            sleep(remaining)
+        if not hypercore_manifest_is_ready(manifest, slot):
+            return None, polls
+        try:
+            client.download(VaultDataset.vault_prices, expected_etag=manifest["price_file"]["etag"], destination=destination)
+            # Readiness, not the end of the large transfer, must precede deadline.
+            return manifest, polls
+        except VaultDataVersionMismatch:
+            logger.warning("HyperCore price version changed for slot %s (attempt %d)", slot, attempt + 1)
+    return None, polls
 
 
 def fetch_hypercore_decision_snapshot(
@@ -194,55 +172,43 @@ def fetch_hypercore_decision_snapshot(
     sleep: Callable[[float], None] = time.sleep,
     request_budget: float = VAULT_SCAN_MANIFEST_BUDGET,
 ) -> tuple[VaultScanManifest, int]:
-    """Wait for a receipt and download its price file for one live decision.
+    """Wait for the first verified snapshot before live universe warm-up.
 
-    Called by the executor before warm-up and subsequent cycles. Four-hour
-    source observations need only cross midnight; no hourly completeness is
-    inferred. Downloading starts only after readiness. A publication race gets
-    one immediate JSON recheck, then returns to the anchored polling cadence.
-    Mismatching response headers are rejected before streaming parquet bytes.
+    Startup has no universe with which to value positions yet. Subsequent
+    decisions use the non-sleeping probe directly from the scheduler instead.
+    This loop owns just waiting and accounting; it has no callback protocol.
 
-    :param client: Authenticated vault client using the uncached manifest path.
-    :param slot: Logical UTC decision midnight; its deadline survives retries.
+    :param client: Authenticated vault dataset client.
+    :param slot: Logical decision midnight.
     :param destination: Private file consumed directly by the universe loader.
-    :param shutdown_event: Interrupts polling on executor shutdown.
-    :param now: UTC clock; injectable for deterministic scheduling tests.
-    :param sleep: Waiting function for tests without a shutdown event.
-    :param request_budget: Per-JSON-request seconds, capped by the slot deadline.
-    :return: Matching manifest and number of JSON requests, including retries.
-    :raises TimeoutError: Readiness or a version race outlasted the window.
+    :param shutdown_event: Interrupts startup waiting on shutdown.
+    :param now: UTC clock, injectable for tests.
+    :param sleep: Test waiting function when no shutdown event is supplied.
+    :param request_budget: JSON request budget, capped by the slot deadline.
+    :return: Matching receipt and total JSON request count.
+    :raises TimeoutError: The eight-hour readiness window expires.
+    :raises RuntimeError: Shutdown interrupts startup waiting.
     """
-    deadline = slot + HYPERCORE_READINESS_WINDOW
     polls = 0
-
-    def fetch() -> VaultScanManifest:
-        """Cap every JSON request by the original slot's remaining window."""
-        nonlocal polls
-        remaining = (deadline - now()).total_seconds()
-        if remaining <= 0:
-            raise TimeoutError(f"HyperCore slot {slot} expired before receipt verification")
-        polls += 1
-        return client.fetch_vault_scan_manifest(request_budget=min(request_budget, remaining))
-
-    def verify(manifest: VaultScanManifest) -> VaultScanManifest | None:
-        """Verify one ready receipt, allowing one immediate publication-race retry."""
-        for attempt in range(2):
-            if now() >= deadline:
-                raise TimeoutError(f"HyperCore slot {slot} expired before readiness")
-            if not hypercore_manifest_is_ready(manifest, slot):
-                return None
-            try:
-                client.download(VaultDataset.vault_prices, expected_etag=manifest["price_file"]["etag"], destination=destination)
-                return manifest
-            except VaultDataVersionMismatch:
-                if attempt == 1:
-                    raise VaultManifestUnavailable("Price publication changed twice; waiting for next manifest poll") from None
-                manifest = fetch()
-        raise AssertionError("Unreachable receipt verification branch")
-
-    # Polls are JSON-only. Verification runs only on a ready receipt, and a
-    # matching large transfer can finish after the JSON readiness deadline.
-    manifest, _ = wait_for_hypercore_data_availability(
-        fetch, slot, now=now, shutdown_event=shutdown_event, sleep=sleep, on_ready=verify,
-    )
-    return manifest, polls
+    next_poll_at = slot
+    while True:
+        if shutdown_event is not None and shutdown_event.is_set():
+            raise RuntimeError("HyperCore data availability wait interrupted by shutdown")
+        delay = (next_poll_at - now()).total_seconds()
+        if delay > 0:
+            if shutdown_event is not None:
+                if shutdown_event.wait(delay):
+                    raise RuntimeError("HyperCore data availability wait interrupted by shutdown")
+            else:
+                sleep(delay)
+            continue
+        manifest, count = poll_hypercore_decision_snapshot(
+            client, slot, destination, now=now, request_budget=request_budget,
+        )
+        polls += count
+        if manifest is not None:
+            if shutdown_event is not None and shutdown_event.is_set():
+                raise RuntimeError("HyperCore snapshot interrupted by shutdown")
+            return manifest, polls
+        next_poll_at = next_hypercore_poll(slot, now())
+        logger.info("Waiting for HyperCore slot %s; next poll %s", slot, next_poll_at)

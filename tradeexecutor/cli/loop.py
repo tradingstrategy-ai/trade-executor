@@ -48,9 +48,10 @@ from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from tradeexecutor.strategy.hypercore_data_availability import (
     HYPERCORE_CHAIN_ID,
-    HYPERCORE_READINESS_WINDOW,
     calculate_hypercore_slot_schedule,
     fetch_hypercore_decision_snapshot,
+    poll_hypercore_decision_snapshot,
+    next_hypercore_poll,
 )
 from tradeexecutor.strategy.strategy_module import CreateChartsProtocol, StrategyTickHookInput, StrategyTickHookProtocol
 from tradeexecutor.strategy.valuation_update import update_position_valuations
@@ -1388,6 +1389,7 @@ class ExecutionLoop:
         shutdown_event = threading.Event()
         initial_hypercore_slot: datetime.datetime | None = None
         initial_hypercore_manifest = None
+        hypercore_poll_count = 0
 
         # Gate the first universe download on the small JSON receipt. This is
         # deliberately before warm-up: polling must not download parquet or
@@ -1398,20 +1400,7 @@ class ExecutionLoop:
             if self.client is None:
                 raise RuntimeError("hypercore_data_available requires a Trading Strategy client")
             now = native_datetime_utc_now()
-            pending_slot = state.pending_data_availability_slot
-            if pending_slot is not None:
-                if any(t.opened_at == pending_slot for t in state.portfolio.get_all_trades()):
-                    raise RuntimeError(
-                        f"HyperCore slot {pending_slot} already created trades; reconcile the interrupted cycle before resuming"
-                    )
-                if pending_slot + HYPERCORE_READINESS_WINDOW <= now:
-                    raise RuntimeError(
-                        f"HyperCore data-availability slot {pending_slot} expired before restart. "
-                        "Operator recovery is required before another decision can run."
-                    )
-                initial_hypercore_slot = pending_slot
-            else:
-                initial_hypercore_slot, _ = calculate_hypercore_slot_schedule(now, self.cycle_duration, state.last_cycle_at)
+            initial_hypercore_slot = calculate_hypercore_slot_schedule(now, self.cycle_duration, state)
             state.pending_data_availability_slot = initial_hypercore_slot
             self.store.sync(state)
             initial_hypercore_manifest, initial_poll_count = fetch_hypercore_decision_snapshot(
@@ -1631,6 +1620,7 @@ class ExecutionLoop:
             nonlocal universe
             nonlocal initial_hypercore_slot
             nonlocal initial_hypercore_manifest
+            nonlocal hypercore_poll_count
             try:
 
                 # Correct the hot wallet nonce counter before we sign any trade,
@@ -1693,12 +1683,24 @@ class ExecutionLoop:
                     else:
                         state.pending_data_availability_slot = strategy_cycle_timestamp
                         self.store.sync(state)
-                        manifest, poll_count = fetch_hypercore_decision_snapshot(
+                        manifest, poll_count = poll_hypercore_decision_snapshot(
                             create_vault_data_client(self.client),
                             strategy_cycle_timestamp,
                             snapshot_dir / "vault-prices.parquet",
-                            shutdown_event=shutdown_event,
                         )
+                        hypercore_poll_count += poll_count
+                        if shutdown_event.is_set():
+                            return
+                        if manifest is None:
+                            # Release the single state-mutating worker between
+                            # probes so valuation and settlement can still run.
+                            schedule_live_cycle(
+                                next_hypercore_poll(strategy_cycle_timestamp, native_datetime_utc_now()),
+                                strategy_cycle_timestamp,
+                            )
+                            return
+                        poll_count = hypercore_poll_count
+                        hypercore_poll_count = 0
                     self.universe_options = replace(
                         self.universe_options,
                         end_at=strategy_cycle_timestamp - datetime.timedelta(microseconds=1),
