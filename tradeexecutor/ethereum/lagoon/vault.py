@@ -84,9 +84,14 @@ LAGOON_GUARD_V0_ERROR_SELECTORS = _load_lagoon_guard_v0_error_selectors()
 
 # Selector for a queue whose GuardV0 gross settlement flow exceeds the remaining
 # fixed-window budget.
-LAGOON_SETTLEMENT_WINDOW_LIMIT_EXCEEDED_SELECTOR = LAGOON_GUARD_V0_ERROR_SELECTORS[
-    "LagoonSettlementWindowLimitExceeded"
-]
+# Older eth-defi releases package the equivalent error as
+# ``LagoonSettlementLimitExceeded(uint256,uint256)``.  Keep the executor
+# importable with either ABI; the Hyperliquid vault notebooks do not exercise
+# Lagoon settlement, but they import the backtest runner transitively.
+LAGOON_SETTLEMENT_WINDOW_LIMIT_EXCEEDED_SELECTOR = LAGOON_GUARD_V0_ERROR_SELECTORS.get(
+    "LagoonSettlementWindowLimitExceeded",
+    Web3.keccak(text="LagoonSettlementWindowLimitExceeded(uint256,uint256)")[:4],
+)
 
 # GuardV0 v0.5 selectors are retained for Safe vaults deployed before eth-defi
 # PR #1574. They are not in the v0.6 ABI because the contract no longer emits
