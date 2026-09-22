@@ -1,12 +1,22 @@
-"""Analyse HyperCore entries skipped by historical deposit closures."""
+"""Explain historical HyperCore deposit gates in the standard chart registry.
 
-from __future__ import annotations
+Hyper-AI v8 saves candidate-entry events in ``state.visualisation.calculations``.
+The chart registry calls these helpers for notebook and web tables, including
+after a state JSON round trip. Accepted entries mean candidates that passed the
+deposit gate, not filled trades. Explicit closures are counted separately from
+missing or stale availability data so the table does not mislabel data gaps.
+
+The source-universe summary counts observed closed-state runs, not skipped
+decisions. A saved summary supports rendering without downloading the original
+universe; when neither is available, those totals are reported as unavailable.
+"""
 
 import pandas as pd
 
 from tradingstrategy.alternative_data.vault import HYPERCORE_DEPOSIT_STATE_CUTOFF
 
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 
 HYPERCORE_CLOSED_ENTRY_COLUMNS = [
@@ -62,7 +72,14 @@ def _is_explicit_closed_event(event: object) -> bool:
 
 
 def analyse_hypercore_closed_entry_events(state: State) -> pd.DataFrame:
-    """Build the vault table for entries skipped by explicit historical closures."""
+    """Build the chart registry's per-vault explanation of skipped candidates.
+
+    Only vaults with an explicit closure skip appear. Counts describe selection
+    attempts across decisions, not unique positions or execution outcomes.
+
+    :param state: Live or deserialised backtest state containing v8 gate events.
+    :return: One row per skipped vault, or an empty table with stable columns.
+    """
     totals: dict[str, dict[str, object]] = {}
 
     for timestamp, event in _iter_entry_events(state):
@@ -114,8 +131,16 @@ def _is_closed_value(value: object) -> bool:
     return value is False or value == 0
 
 
-def count_hypercore_close_periods(strategy_universe) -> tuple[int, int]:
-    """Count closed HyperCore vaults and distinct false-state periods after the cutoff."""
+def count_hypercore_close_periods(strategy_universe: TradingStrategyUniverse | None) -> tuple[int, int]:
+    """Count observed closure runs for v8's saved source-universe summary.
+
+    Consecutive false samples form one period; an open or unknown sample ends
+    that run. This measures the supplied history, not continuous wall-clock
+    closure duration or the number of rejected strategy entries.
+
+    :param strategy_universe: Universe whose point-in-time vault state is counted.
+    :return: Distinct closed vaults and observed closed-state periods.
+    """
     state = getattr(strategy_universe, "vault_state", None)
     if state is None or state.empty or "deposits_open" not in state.columns:
         return 0, 0
@@ -151,15 +176,22 @@ def count_hypercore_close_periods(strategy_universe) -> tuple[int, int]:
 
 def analyse_hypercore_closed_entry_summary(
     state: State,
-    strategy_universe=None,
+    strategy_universe: TradingStrategyUniverse | None = None,
 ) -> pd.DataFrame:
-    """Build the summary table for HyperCore closed-entry diagnostics."""
+    """Build the chart registry's closure summary without inventing missing data.
+
+    Prefer v8's persisted source totals so a saved backtest renders without its
+    original universe. Candidate skips alone cannot reveal the number of source
+    closure periods and must not be used as a substitute for those totals.
+
+    :param state: State containing gate events and optionally a saved summary.
+    :param strategy_universe: Optional original universe when no summary is saved.
+    :return: Stable metric/value table; unavailable source counts are labelled.
+    """
     events = analyse_hypercore_closed_entry_events(state)
     event_count = int(events["Skipped entries"].sum()) if not events.empty else 0
-    fallback_vaults = len(events)
-    fallback_periods = fallback_vaults
 
-    # Backtest states may be rendered without the original StrategyInputIndicators object.
+    # Backtest states may be rendered without the original universe.
     # v8 persists these source-frame totals with each cycle so the summary remains accurate
     # after serialisation.
     persisted_summary = None
@@ -172,12 +204,10 @@ def analyse_hypercore_closed_entry_summary(
     if persisted_summary:
         closed_vaults = int(persisted_summary.get("total_closed_vaults", 0))
         close_periods = int(persisted_summary.get("total_close_periods", 0))
-    else:
+    elif getattr(strategy_universe, "vault_state", None) is not None:
         closed_vaults, close_periods = count_hypercore_close_periods(strategy_universe)
-    if closed_vaults == 0 and fallback_vaults:
-        closed_vaults = fallback_vaults
-    if close_periods == 0 and fallback_periods:
-        close_periods = fallback_periods
+    else:
+        closed_vaults = close_periods = "Unavailable"
 
     return pd.DataFrame(
         [

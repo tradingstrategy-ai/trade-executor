@@ -101,7 +101,8 @@ def wait_for_hypercore_data_availability(
     :param poll_interval:
         Time between polls.
     :param readiness_window:
-        Maximum time after ``slot`` in which a poll may begin.
+        Maximum time after ``slot`` in which a ready JSON response must arrive.
+        A response arriving at or after the deadline is rejected.
     :param shutdown_event:
         Optional event that interrupts waiting during executor shutdown.
     :param sleep:
@@ -121,10 +122,14 @@ def wait_for_hypercore_data_availability(
     """
 
     deadline = slot + readiness_window
+    assert poll_interval > datetime.timedelta(0), "Polling interval must be positive"
+    assert readiness_window > datetime.timedelta(0), "Readiness window must be positive"
     poll_count = 0
     next_poll_at = slot
     while True:
         current = now()
+        if current >= deadline:
+            raise TimeoutError(f"HyperCore data was not available for slot {slot} before {deadline}")
         if current < next_poll_at:
             remaining_to_slot = (next_poll_at - current).total_seconds()
             if shutdown_event is not None:
@@ -133,8 +138,6 @@ def wait_for_hypercore_data_availability(
             else:
                 sleep(remaining_to_slot)
             continue
-        if current >= deadline:
-            raise TimeoutError(f"HyperCore data was not available for slot {slot} before {deadline}")
         if shutdown_event is not None and shutdown_event.is_set():
             raise RuntimeError("HyperCore data availability wait interrupted by shutdown")
         try:

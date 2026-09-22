@@ -1534,7 +1534,7 @@ def _deploy_multichain(
     universe = call_create_trading_universe(
         mod.create_trading_universe,
         client=client,
-        universe_options=mod.get_universe_options(),
+        universe_options=mod.get_universe_options(one_off_execution_context.mode),
         execution_context=one_off_execution_context,
     )
     has_hypercore_vaults = any(pair.is_hyperliquid_vault() for pair in universe.iterate_pairs())

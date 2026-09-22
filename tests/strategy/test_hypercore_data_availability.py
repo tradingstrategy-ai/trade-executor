@@ -1,11 +1,12 @@
 """Tests for the manifest-only HyperCore readiness helper."""
 
 import datetime
+import threading
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-from tradingstrategy.vault_data_client import VaultDataVersionMismatch, VaultManifestUnavailable
+from tradingstrategy.vault_data_client import VaultDataDeploymentError, VaultDataVersionMismatch, VaultManifestUnavailable
 
 from tradeexecutor.strategy.hypercore_data_availability import (
     HYPERCORE_READINESS_WINDOW,
@@ -72,11 +73,11 @@ def test_manifest_wait_polls_json_until_ready() -> None:
 
 
 def test_manifest_wait_times_out_before_next_slot() -> None:
-    """Check an unavailable manifest fails without a stale-data fallback.
+    """Reject late readiness and shutdown without a stale-data fallback.
 
     1. Keep returning a valid but incomplete receipt.
     2. Advance the injected clock beyond the eight-hour readiness window.
-    3. Verify a timeout is raised.
+    3. Verify a timeout is raised even for a ready response; shutdown skips IO.
     """
 
     # 1. Keep returning a valid but incomplete receipt.
@@ -88,7 +89,7 @@ def test_manifest_wait_times_out_before_next_slot() -> None:
 
     def fetch() -> dict:
         current[0] = slot + HYPERCORE_READINESS_WINDOW
-        return _manifest(None, None)
+        return _manifest("2026-09-22T04:00:00Z", "2026-09-22T03:30:00Z")
 
     def sleep(seconds: float) -> None:
         current[0] += datetime.timedelta(seconds=seconds)
@@ -97,6 +98,24 @@ def test_manifest_wait_times_out_before_next_slot() -> None:
     # 3. Verify a timeout is raised.
     with pytest.raises(TimeoutError):
         wait_for_hypercore_data_availability(fetch, slot, now=now, poll_interval=datetime.timedelta(milliseconds=1), sleep=sleep)
+
+    current[0] = slot
+    shutdown = threading.Event()
+    shutdown.set()
+    fetch_mock = Mock()  # A pre-existing stop request must prevent network IO.
+    with pytest.raises(RuntimeError, match="shutdown"):
+        wait_for_hypercore_data_availability(fetch_mock, slot, now=now, shutdown_event=shutdown)
+    fetch_mock.assert_not_called()
+
+    # An off-grid deadline must not sleep on to the next quarter-hour mark.
+    incomplete = Mock(return_value=_manifest(None, None))
+    with pytest.raises(TimeoutError):
+        wait_for_hypercore_data_availability(
+            incomplete, slot, now=now, sleep=sleep,
+            readiness_window=datetime.timedelta(minutes=10),
+        )
+    assert current[0] == slot + datetime.timedelta(minutes=10)
+    incomplete.assert_called_once()
 
 
 def test_hypercore_slot_schedule_joins_open_window() -> None:
@@ -175,7 +194,7 @@ def test_verified_transfer_may_finish_after_readiness_deadline(tmp_path: Path) -
 
     1. Receive a valid receipt just before the eight-hour cutoff.
     2. Advance the clock past the cutoff while transferring matching data.
-    3. Verify success, while a version race at that time cannot retry.
+    3. Verify success, while expired receipts and deployment errors cannot retry.
     """
     # 1. A deterministic clock avoids an eight-hour integration-test wait.
     slot = datetime.datetime(2026, 9, 22)
@@ -197,3 +216,9 @@ def test_verified_transfer_may_finish_after_readiness_deadline(tmp_path: Path) -
     with pytest.raises(TimeoutError):
         fetch_hypercore_decision_snapshot(client, slot, tmp_path / "snapshot", now=lambda: current[0])
     assert client.fetch_vault_scan_manifest.call_count == 1
+
+    current[0] = slot
+    client.download.side_effect = VaultDataDeploymentError("Missing ETag")
+    with pytest.raises(VaultDataDeploymentError, match="Missing ETag"):
+        fetch_hypercore_decision_snapshot(client, slot, tmp_path / "snapshot", now=lambda: current[0])
+    assert client.fetch_vault_scan_manifest.call_count == 2

@@ -329,7 +329,7 @@ def check_wallet(
     universe = call_create_trading_universe(
         mod.create_trading_universe,
         client=client,
-        universe_options=mod.get_universe_options(),
+        universe_options=mod.get_universe_options(execution_context.mode),
         execution_context=execution_context,
     )
 

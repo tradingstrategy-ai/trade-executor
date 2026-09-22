@@ -6,10 +6,7 @@ from pathlib import Path
 from eth_defi.compat import native_datetime_utc_now
 from typer.testing import CliRunner
 
-from tradeexecutor.cli.commands.abandon_hypercore_slot import app
-# Register the real lightweight companion command to retain Typer's command
-# group behaviour when this test runs alone, without importing unrelated RPC CLIs.
-from tradeexecutor.cli.commands.hello import hello  # noqa: F401
+from tradeexecutor.cli.main import app
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick
 

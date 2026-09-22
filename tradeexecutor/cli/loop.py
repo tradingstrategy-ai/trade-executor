@@ -47,6 +47,8 @@ from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
 from tradeexecutor.strategy.hypercore_data_availability import (
+    HYPERCORE_CHAIN_ID,
+    HYPERCORE_READINESS_WINDOW,
     calculate_hypercore_slot_schedule,
     fetch_hypercore_decision_snapshot,
 )
@@ -658,10 +660,7 @@ class ExecutionLoop:
             store=self.store,
             long_short_metrics_latest=long_short_metrics_latest,
             indicators=indicators,
-            allow_unaligned_strategy_cycle_timestamp=live and self.strategy_cycle_trigger in (
-                StrategyCycleTrigger.since_last_cycle_end,
-                StrategyCycleTrigger.hypercore_data_available,
-            ),
+            allow_unaligned_strategy_cycle_timestamp=live and self.strategy_cycle_trigger == StrategyCycleTrigger.since_last_cycle_end,
         )
 
         if self.after_strategy_tick is not None:
@@ -1405,7 +1404,7 @@ class ExecutionLoop:
                     raise RuntimeError(
                         f"HyperCore slot {pending_slot} already created trades; reconcile the interrupted cycle before resuming"
                     )
-                if pending_slot + datetime.timedelta(hours=8) <= now:
+                if pending_slot + HYPERCORE_READINESS_WINDOW <= now:
                     raise RuntimeError(
                         f"HyperCore data-availability slot {pending_slot} expired before restart. "
                         "Operator recovery is required before another decision can run."
@@ -1708,7 +1707,7 @@ class ExecutionLoop:
                     extra_debug_data["hypercore_manifest_poll_count"] = poll_count
                     extra_debug_data["hypercore_manifest_published_at"] = manifest["published_at"]
                     extra_debug_data["hypercore_manifest_price_file_etag"] = manifest["price_file"]["etag"]
-                    hypercore_chain = manifest["chains"].get("9999")
+                    hypercore_chain = manifest["chains"].get(HYPERCORE_CHAIN_ID)
                     if hypercore_chain is not None:
                         extra_debug_data["hypercore_manifest_scan_ended_at"] = hypercore_chain["last_successful_price_scan_ended_at"]
                         extra_debug_data["hypercore_manifest_last_candle_at"] = hypercore_chain["last_candle_at"]
@@ -1795,6 +1794,7 @@ class ExecutionLoop:
             if self.max_cycles is not None:
                 if cycle >= self.max_cycles:
                     logger.info("Max cycles reached. Cycle %d, max %d", cycle, self.max_cycles)
+                    shutdown_event.set()
                     scheduler.shutdown(wait=False)
 
             run_state.completed_cycle = cycle
@@ -1884,6 +1884,7 @@ class ExecutionLoop:
                 if not stats_refresh_shutdown_requested:
                     logger.info("Stats refresh unit testing hook triggered, shutting down after the first refresh")
                     stats_refresh_shutdown_requested = True
+                    shutdown_event.set()
                     scheduler.shutdown(wait=False)
 
         # Timed task to do the stop loss checks

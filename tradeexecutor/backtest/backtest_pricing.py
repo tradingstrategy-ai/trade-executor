@@ -676,14 +676,6 @@ class BacktestPricing(PricingModel):
         """
         return self._lookup_cap(ts, pair, "max_redeem")
 
-    @staticmethod
-    def _is_hypercore_pair(pair: TradingPairIdentifier | None) -> bool:
-        """Check for a native HyperCore vault without relying on current metadata."""
-        if pair is None:
-            return False
-        checker = getattr(pair, "is_hyperliquid_vault", None)
-        return bool(checker()) if callable(checker) else False
-
     def _check_hypercore_deposit(
         self,
         ts: AnyTimestamp | None,
@@ -691,8 +683,18 @@ class BacktestPricing(PricingModel):
         *,
         stage: DepositCheckStage,
     ) -> DepositCheckResult | None:
-        """Apply point-in-time HyperCore deposit availability, or return None for other pairs."""
-        if not self._is_hypercore_pair(pair):
+        """Share historical HyperCore deposit policy between both deposit APIs.
+
+        Called by :meth:`can_deposit` and :meth:`check_deposit` after explicit
+        backtest-window overrides. Before collection began we assume open;
+        afterwards unavailable state must not create impossible deposits.
+
+        :param ts: Logical decision timestamp used for an as-of lookup.
+        :param pair: Vault identity, identified by its native protocol helper.
+        :param stage: Deposit-check stage retained in diagnostic results.
+        :return: HyperCore gate result, or ``None`` for another protocol.
+        """
+        if pair is None or not pair.is_hyperliquid_vault():
             return None
 
         result = DepositCheckResult(

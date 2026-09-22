@@ -29,5 +29,6 @@ class StrategyCycleTrigger(enum.Enum):
     #: HyperCore cleaned vault data availability.
     #:
     #: Poll the small HyperCore scan manifest after the midnight-aligned slot
-    #: and run once the cleaned daily history is published.
+    #: and run once scan provenance and cleaned observations cross midnight.
+    #: This is a chain-level freshness signal, not per-vault completeness.
     hypercore_data_available = "hypercore_data_available"
