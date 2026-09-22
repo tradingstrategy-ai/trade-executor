@@ -201,6 +201,16 @@ class _FakePair:
     def get_ticker(self) -> str:
         return f"VAULT{self.internal_id}-USDC"
 
+    def is_hyperliquid_vault(self) -> bool:
+        """Keep generic window fixtures outside the HyperCore-specific policy.
+
+        BacktestPricing checks protocol identity before consulting historical
+        deposit state. These fixtures model generic vaults, not HyperCore.
+
+        :return: False so the tests exercise generic window/state precedence.
+        """
+        return False
+
 
 def _candle_universe() -> GroupedCandleUniverse:
     candles = pd.DataFrame(
