@@ -11,6 +11,9 @@ import logging
 import datetime
 import pickle
 import random
+import threading
+from dataclasses import replace
+from tempfile import TemporaryDirectory
 
 from eth_defi.compat import native_datetime_utc_fromtimestamp, native_datetime_utc_now
 from pathlib import Path
@@ -43,6 +46,13 @@ from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.routing import RoutingModel
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
+from tradeexecutor.strategy.hypercore_data_availability import (
+    HYPERCORE_CHAIN_ID,
+    calculate_hypercore_slot_schedule,
+    fetch_hypercore_decision_snapshot,
+    poll_hypercore_decision_snapshot,
+    next_hypercore_poll,
+)
 from tradeexecutor.strategy.strategy_module import CreateChartsProtocol, StrategyTickHookInput, StrategyTickHookProtocol
 from tradeexecutor.strategy.valuation_update import update_position_valuations
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
@@ -61,7 +71,7 @@ from tradeexecutor.strategy.factory import StrategyFactory
 from tradeexecutor.strategy.pricing_model import PricingModelFactory
 from tradeexecutor.strategy.runner import StrategyRunner
 from tradeexecutor.strategy.cycle import CycleDuration, snap_to_next_tick, snap_to_previous_tick, round_datetime_up
-from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel
+from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, TradingStrategyUniverseModel, create_vault_data_client
 from tradeexecutor.strategy.universe_model import UniverseModel, StrategyExecutionUniverse, UniverseOptions
 from tradeexecutor.strategy.valuation import ValuationModelFactory
 from tradeexecutor.strategy.webhook_data import populate_webhook_run_state
@@ -531,6 +541,11 @@ class ExecutionLoop:
             "timestamp": ts,
             "strategy_cycle_trigger": self.strategy_cycle_trigger.value,
         }
+        # DecisionRecorder captures StrategyInput.other_data before the
+        # strategy executes. Include the receipt and ETag at that boundary,
+        # not merely in the debug dump written after execution finishes.
+        if extra_debug_data is not None:
+            debug_details.update(extra_debug_data)
 
         logger.trade(
             "Performing strategy tick #%d for timestamp %s, cycle length is %s, trigger time was %s, live trading is %s, trading univese is %s, version %s, max cycles %s",
@@ -551,7 +566,11 @@ class ExecutionLoop:
             # trade cycles.
 
             # Refresh the trading universe for this cycle
-            if self.strategy_cycle_trigger in (StrategyCycleTrigger.cycle_offset, StrategyCycleTrigger.since_last_cycle_end) or self.trade_immediately:
+            if self.strategy_cycle_trigger in (
+                StrategyCycleTrigger.cycle_offset,
+                StrategyCycleTrigger.since_last_cycle_end,
+                StrategyCycleTrigger.hypercore_data_available,
+            ) or self.trade_immediately:
                 logger.info("Creating new universe from the scratch using create_trading_universe()")
                 universe = self.universe_model.construct_universe(
                     ts=ts,
@@ -709,9 +728,6 @@ class ExecutionLoop:
 
         # Store the current state to disk
         self.store.sync(state)
-
-        if extra_debug_data is not None:
-            debug_details.update(extra_debug_data)
 
         # Store debug trace
         self.debug_dump_state[cycle] = debug_details
@@ -985,6 +1001,11 @@ class ExecutionLoop:
         """Preload webhook-facing data before the first live cycle."""
 
         assert self.execution_context.mode.is_live_trading(), "Webhook preload only applies to live trading modes"
+        if self.strategy_cycle_trigger == StrategyCycleTrigger.hypercore_data_available:
+            raise RuntimeError(
+                "PRELOAD_WEBHOOK_DATA is incompatible with hypercore_data_available; "
+                "wait for the first manifest-gated cycle instead"
+            )
 
         universe = self.warm_up_live_trading()
         self.preloaded_live_universe = universe
@@ -1313,6 +1334,18 @@ class ExecutionLoop:
         return self.debug_dump_state
 
     def run_live(self, state: State):
+        """Run the executor with private vault snapshots removed on shutdown.
+
+        The HyperCore trigger downloads into this process-owned directory so
+        shared cache writers cannot replace a decision's verified price data.
+        Other trigger modes need no temporary price storage.
+        """
+        if self.strategy_cycle_trigger == StrategyCycleTrigger.hypercore_data_available:
+            with TemporaryDirectory(prefix="hypercore-decision-") as snapshot_dir:
+                return self._run_live(state, Path(snapshot_dir))
+        return self._run_live(state)
+
+    def _run_live(self, state: State, snapshot_dir: Path | None = None):
         """Run live trading cycle.
 
         :raise LiveSchedulingTaskFailed:
@@ -1353,6 +1386,39 @@ class ExecutionLoop:
         run_state: RunState = self.run_state
         crash_exception: Optional[Exception] = None
         stats_refresh_shutdown_requested = False
+        shutdown_event = threading.Event()
+        initial_hypercore_slot: datetime.datetime | None = None
+        initial_hypercore_manifest = None
+        hypercore_poll_count = 0
+
+        # Gate the first universe download on the small JSON receipt. This is
+        # deliberately before warm-up: polling must not download parquet or
+        # construct indicators while waiting for HyperCore's daily history.
+        if self.strategy_cycle_trigger == StrategyCycleTrigger.hypercore_data_available:
+            if self.trade_immediately:
+                raise RuntimeError("trade_immediately cannot bypass hypercore_data_available readiness")
+            if self.client is None:
+                raise RuntimeError("hypercore_data_available requires a Trading Strategy client")
+            now = native_datetime_utc_now()
+            initial_hypercore_slot = calculate_hypercore_slot_schedule(now, self.cycle_duration, state)
+            state.pending_data_availability_slot = initial_hypercore_slot
+            self.store.sync(state)
+            initial_hypercore_manifest, initial_poll_count = fetch_hypercore_decision_snapshot(
+                create_vault_data_client(self.client),
+                initial_hypercore_slot,
+                snapshot_dir / "vault-prices.parquet",
+                shutdown_event=shutdown_event,
+            )
+            logger.info(
+                "Initial HyperCore readiness passed for slot %s after %d manifest polls",
+                initial_hypercore_slot,
+                initial_poll_count,
+            )
+            self.universe_options = replace(
+                self.universe_options,
+                end_at=initial_hypercore_slot - datetime.timedelta(microseconds=1),
+                vault_price_snapshot=snapshot_dir / "vault-prices.parquet",
+            )
 
         tick_offset = self.tick_offset
 
@@ -1544,6 +1610,7 @@ class ExecutionLoop:
             # Shutdown the scheduler and mark an clean exit
             nonlocal crash_exception
             logger.exception(exc)
+            shutdown_event.set()
             scheduler.shutdown(wait=False)
             crash_exception = exc
 
@@ -1551,6 +1618,9 @@ class ExecutionLoop:
         def live_cycle(strategy_cycle_timestamp: datetime.datetime | None = None):
             nonlocal cycle
             nonlocal universe
+            nonlocal initial_hypercore_slot
+            nonlocal initial_hypercore_manifest
+            nonlocal hypercore_poll_count
             try:
 
                 # Correct the hot wallet nonce counter before we sign any trade,
@@ -1602,6 +1672,50 @@ class ExecutionLoop:
                             raise RuntimeError(f"Strategy market data lag exceeded.\n"
                                                f"Currently lag to the start of the last candle is {lag}, allowed max lag is {max_allowed_lag}.\n"
                                                f"Last candle is at {last_candle_timestamp}")
+                elif self.strategy_cycle_trigger == StrategyCycleTrigger.hypercore_data_available:
+                    if self.client is None:
+                        raise RuntimeError("hypercore_data_available requires a Trading Strategy client")
+                    if initial_hypercore_slot == strategy_cycle_timestamp and initial_hypercore_manifest is not None:
+                        manifest = initial_hypercore_manifest
+                        poll_count = initial_poll_count
+                        initial_hypercore_slot = None
+                        initial_hypercore_manifest = None
+                    else:
+                        state.pending_data_availability_slot = strategy_cycle_timestamp
+                        self.store.sync(state)
+                        manifest, poll_count = poll_hypercore_decision_snapshot(
+                            create_vault_data_client(self.client),
+                            strategy_cycle_timestamp,
+                            snapshot_dir / "vault-prices.parquet",
+                        )
+                        hypercore_poll_count += poll_count
+                        if shutdown_event.is_set():
+                            return
+                        if manifest is None:
+                            # Release the single state-mutating worker between
+                            # probes so valuation and settlement can still run.
+                            schedule_live_cycle(
+                                next_hypercore_poll(strategy_cycle_timestamp, native_datetime_utc_now()),
+                                strategy_cycle_timestamp,
+                            )
+                            return
+                        poll_count = hypercore_poll_count
+                        hypercore_poll_count = 0
+                    self.universe_options = replace(
+                        self.universe_options,
+                        end_at=strategy_cycle_timestamp - datetime.timedelta(microseconds=1),
+                        vault_price_snapshot=snapshot_dir / "vault-prices.parquet",
+                    )
+                    extra_debug_data["hypercore_manifest_poll_count"] = poll_count
+                    extra_debug_data["hypercore_manifest_published_at"] = manifest["published_at"]
+                    extra_debug_data["hypercore_manifest_price_file_etag"] = manifest["price_file"]["etag"]
+                    hypercore_chain = manifest["chains"].get(HYPERCORE_CHAIN_ID)
+                    if hypercore_chain is not None:
+                        extra_debug_data["hypercore_manifest_scan_ended_at"] = hypercore_chain["last_successful_price_scan_ended_at"]
+                        extra_debug_data["hypercore_manifest_last_candle_at"] = hypercore_chain["last_candle_at"]
+                    # The verified manifest gates the universe download. The
+                    # universe is rebuilt once, after readiness, not per poll.
+                    universe = None
                 else:
                     # Force universe recreation on every cycle
                     universe = None
@@ -1628,6 +1742,14 @@ class ExecutionLoop:
 
                 logger.info("run_live() tick complete, universe is now %s", universe)
 
+                if self.strategy_cycle_trigger == StrategyCycleTrigger.hypercore_data_available:
+                    # Persist completion and clearing the pending slot together,
+                    # so a restart inside this window cannot repeat the decision.
+                    state.last_cycle_at = strategy_cycle_timestamp
+                    state.cycle = cycle + 1
+                    state.pending_data_availability_slot = None
+                    self.store.sync(state)
+
                 if self.strategy_cycle_trigger == StrategyCycleTrigger.since_last_cycle_end:
                     next_strategy_cycle_timestamp, next_run_at = calculate_since_last_cycle_end_schedule(
                         state,
@@ -1641,6 +1763,9 @@ class ExecutionLoop:
                         next_run_at,
                     )
                     schedule_live_cycle(next_run_at, next_strategy_cycle_timestamp)
+                elif self.strategy_cycle_trigger == StrategyCycleTrigger.hypercore_data_available:
+                    next_strategy_cycle_timestamp = strategy_cycle_timestamp + self.cycle_duration.to_timedelta()
+                    schedule_live_cycle(next_strategy_cycle_timestamp, next_strategy_cycle_timestamp)
 
                 # Post execution, update our statistics
                 try:
@@ -1671,6 +1796,7 @@ class ExecutionLoop:
             if self.max_cycles is not None:
                 if cycle >= self.max_cycles:
                     logger.info("Max cycles reached. Cycle %d, max %d", cycle, self.max_cycles)
+                    shutdown_event.set()
                     scheduler.shutdown(wait=False)
 
             run_state.completed_cycle = cycle
@@ -1760,6 +1886,7 @@ class ExecutionLoop:
                 if not stats_refresh_shutdown_requested:
                     logger.info("Stats refresh unit testing hook triggered, shutting down after the first refresh")
                     stats_refresh_shutdown_requested = True
+                    shutdown_event.set()
                     scheduler.shutdown(wait=False)
 
         # Timed task to do the stop loss checks
@@ -1837,6 +1964,17 @@ class ExecutionLoop:
             )
             logger.info(
                 "Live cycle set to trigger from previous cycle end, next logical cycle timestamp is %s and wake-up is at %s",
+                next_strategy_cycle_timestamp,
+                next_run_at,
+            )
+            schedule_live_cycle(next_run_at, next_strategy_cycle_timestamp)
+        elif self.strategy_cycle_trigger == StrategyCycleTrigger.hypercore_data_available:
+            # Warm-up may cross the window boundary. Execute the already
+            # verified slot, rather than recalculating a different slot here.
+            next_strategy_cycle_timestamp = initial_hypercore_slot
+            next_run_at = native_datetime_utc_now()
+            logger.info(
+                "Live cycle set to trigger on HyperCore data availability for slot %s, wake-up at %s",
                 next_strategy_cycle_timestamp,
                 next_run_at,
             )
@@ -1939,9 +2077,11 @@ class ExecutionLoop:
                 scheduler.start()
             except KeyboardInterrupt:
                 # https://github.com/agronholm/apscheduler/issues/338
+                shutdown_event.set()
                 scheduler.shutdown(wait=False)
                 raise
             except Exception as e:
+                shutdown_event.set()
                 logger.error("Scheduler raised an exception %s", e)
                 raise
 

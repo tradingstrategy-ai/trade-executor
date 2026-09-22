@@ -7,6 +7,9 @@ Multiple strategy executors can use the same container image.
 The container is run by a docker-compose.
 Different strategies are configured by their environment variables.
 
+Hyper-AI deployments using the manifest-triggered clock must also follow the
+[HyperCore readiness and recovery runbook](hypercore-data-availability.md).
+
 # Environment
 
 There is a mapping of 1 strategy : 1 container : 1 domain : 1 internal TCP/IP port : 1 domain name. 

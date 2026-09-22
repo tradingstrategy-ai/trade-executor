@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Add manifest-gated HyperCore decision slots, private verified price snapshots, point-in-time deposit availability and skipped-entry diagnostics; support sparse four-hour observations and automatic skipping of expired unexecuted decisions on restart (2026-09-22).
+
 - Add an opt-in live strategy-input recorder. Enabled v0.5 pandas strategies write state-adjacent DuckDB records with decision-time universe inputs, indicator fingerprints, explicit calculations and terminal lifecycle status, so live decisions can be compared with a backtest without copying the executor state file (2026-09-21).
 
 - Add opt-in automatic Lagoon Safe/Lighter cash management. Strategies return

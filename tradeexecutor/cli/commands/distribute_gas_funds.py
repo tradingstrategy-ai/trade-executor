@@ -182,7 +182,7 @@ def distribute_gas_funds(
         run_state=RunState(),
     )
 
-    universe_options = mod.get_universe_options()
+    universe_options = mod.get_universe_options(execution_context.mode)
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
     ts = native_datetime_utc_now()
     universe = universe_model.construct_universe(

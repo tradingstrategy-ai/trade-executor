@@ -175,6 +175,15 @@ class State:
     #: cycles return to the normal anchored rolling behaviour.
     last_cycle_at: Optional[datetime.datetime] = None
 
+    #: Midnight-aligned slot currently waiting for HyperCore data availability.
+    #:
+    #: Persisted before polling so a process restart can resume the same
+    #: eight-hour readiness window instead of silently changing the decision
+    #: timestamp.
+    #: Expired slots without trades advance automatically on restart; slots
+    #: with persisted trades must be reconciled before another decision.
+    pending_data_availability_slot: Optional[datetime.datetime] = None
+
     #: When the last strategy had open positions last time
     last_open_positions_cycle_at: Optional[datetime.datetime] = None
 

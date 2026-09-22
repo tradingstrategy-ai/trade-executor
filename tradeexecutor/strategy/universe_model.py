@@ -2,6 +2,7 @@
 import abc
 import datetime
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional, Collection, Type
 
 from tradeexecutor.strategy.parameters import StrategyParameters
@@ -110,6 +111,11 @@ class UniverseOptions:
     #: Override settings defined in the strategy module in unit testing
     #:
     stop_loss_time_bucket_override: Optional[TimeBucket] = None
+
+    #: Decision-private, ETag-verified vault price file supplied by the live
+    #: HyperCore trigger. The loader must consume this path without consulting
+    #: or repairing the ordinary shared dataset cache. Owned by the live loop.
+    vault_price_snapshot: Path | None = None
 
     def get_range_description(self) -> str:
         """Get the human description of the time range for these universe load options."""

@@ -150,7 +150,9 @@ def check_universe(
         run_state=RunState(),
     )
 
-    universe_options = mod.get_universe_options()
+    # A live preflight must not inherit the strategy's historical backtest end.
+    # The loader honours explicit live cutoffs for manifest-verified decisions.
+    universe_options = mod.get_universe_options(ExecutionMode.preflight_check)
 
     # We construct the trading universe to know what's our reserve asset
     universe_model: TradingStrategyUniverseModel = run_description.universe_model
