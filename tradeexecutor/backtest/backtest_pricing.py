@@ -33,6 +33,7 @@ from tradeexecutor.strategy.redemption import (
 from tradeexecutor.strategy.trade_pricing import TradePricing
 from tradeexecutor.strategy.trading_strategy_universe import (
     TradingStrategyUniverse, translate_trading_pair)
+from tradingstrategy.alternative_data.vault import HYPERCORE_DEPOSIT_STATE_CUTOFF
 from tradingstrategy.candle import GroupedCandleUniverse
 from tradingstrategy.liquidity import (GroupedLiquidityUniverse,
                                        LiquidityDataUnavailable)
@@ -156,7 +157,9 @@ class BacktestPricing(PricingModel):
             :py:meth:`can_deposit` / :py:meth:`check_redemption` answer from this history so
             backtests skip deposits into / sells out of a vault that was closed at that timestamp.
             This models open/closed availability only, not partial size caps. Unknown / missing /
-            out-of-tolerance values are treated as "allowed".
+            out-of-tolerance values retain protocol-specific semantics: non-HyperCore deposits
+            remain allowed for compatibility, while HyperCore deposits after the historical
+            collection cutoff fail closed.
 
         """
 
@@ -594,8 +597,9 @@ class BacktestPricing(PricingModel):
 
         Returns ``None`` when there is no vault-state data, no pair/timestamp, no sample at or
         before the timestamp (pre-history), or the nearest sample is older than
-        ``data_delay_tolerance``. Callers MUST treat ``None`` as "state unknown -> allowed",
-        never as "closed".
+        ``data_delay_tolerance``. Deposit callers decide whether unavailable state is allowed
+        for the protocol and timestamp; redemption and cap accessors retain their existing
+        unknown-state behaviour.
 
         Uses the sample at or before the decision timestamp (``searchsorted`` right - 1), never a
         later same-bucket sample, so it introduces no look-ahead beyond the TVL/price candles.
@@ -672,6 +676,54 @@ class BacktestPricing(PricingModel):
         """
         return self._lookup_cap(ts, pair, "max_redeem")
 
+    @staticmethod
+    def _is_hypercore_pair(pair: TradingPairIdentifier | None) -> bool:
+        """Check for a native HyperCore vault without relying on current metadata."""
+        if pair is None:
+            return False
+        checker = getattr(pair, "is_hyperliquid_vault", None)
+        return bool(checker()) if callable(checker) else False
+
+    def _check_hypercore_deposit(
+        self,
+        ts: AnyTimestamp | None,
+        pair: TradingPairIdentifier,
+        *,
+        stage: DepositCheckStage,
+    ) -> DepositCheckResult | None:
+        """Apply point-in-time HyperCore deposit availability, or return None for other pairs."""
+        if not self._is_hypercore_pair(pair):
+            return None
+
+        result = DepositCheckResult(
+            timestamp=ts,
+            stage=stage,
+            pair_ticker=pair.get_ticker(),
+            vault_address=pair.pool_address,
+        )
+
+        # Historical HyperCore availability was not collected reliably before this boundary.
+        # The explicit product assumption is that deposits were open during that period.
+        if ts is None or ts < HYPERCORE_DEPOSIT_STATE_CUTOFF:
+            return result
+
+        state = self._lookup_vault_state(ts, pair)
+        deposits_open = None if state is None else state.get("deposits_open", -1)
+        if state is None or deposits_open is None or deposits_open == -1 or pd.isna(deposits_open):
+            result.can_deposit = False
+            result.reason_code = DepositBlockReason.unknown
+            result.message = "HyperCore deposit availability is missing, unknown, or stale in historical data"
+            return result
+
+        return check_backtesting_deposit(
+            timestamp=ts,
+            pair=pair,
+            deposits_open=deposits_open,
+            max_deposit=self._state_cap(state, "max_deposit"),
+            closed_reason=state.get("deposit_closed_reason"),
+            stage=stage,
+        )
+
     def can_deposit(
         self,
         ts: datetime.datetime | None,
@@ -681,6 +733,15 @@ class BacktestPricing(PricingModel):
         if override is not None:
             # Explicit backtest window override beats the (possibly stale) vault_state.
             return ts is None or override.is_deposit_open(ts)
+
+        hypercore_result = self._check_hypercore_deposit(
+            ts,
+            pair,
+            stage=DepositCheckStage.unknown,
+        )
+        if hypercore_result is not None:
+            return hypercore_result.can_deposit
+
         state = self._lookup_vault_state(ts, pair)
         if state is None:
             return True
@@ -712,6 +773,10 @@ class BacktestPricing(PricingModel):
                 result.reason_code = DepositBlockReason.deposit_window_closed
                 result.message = "Vault deposits closed by backtest window override"
             return result
+
+        hypercore_result = self._check_hypercore_deposit(ts, pair, stage=stage)
+        if hypercore_result is not None:
+            return hypercore_result
 
         state = self._lookup_vault_state(ts, pair)
         if state is None:

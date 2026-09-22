@@ -2841,6 +2841,8 @@ def load_partial_data(
         assert start_at
         assert end_at
     elif execution_context.mode.is_live_trading():
+        if end_at is None:
+            end_at = universe_options.end_at
         if not required_history_period:
             required_history_period = universe_options.history_period
         assert required_history_period, f"Doing live trading {execution_context.mode}, but universe_options.history_period missing: {universe_options}"
@@ -2857,7 +2859,7 @@ def load_partial_data(
     if start_at and required_history_period:
         data_load_start_at = start_at - required_history_period
     else:
-        data_load_start_at = start_at or (native_datetime_utc_now() - required_history_period)
+        data_load_start_at = start_at or ((end_at or native_datetime_utc_now()) - required_history_period)
 
     vault_history_filter_end_at = end_at
 
@@ -3101,7 +3103,11 @@ def load_partial_data(
             assert vault_pairs_df is not None, "Vault pairs must be materialised before loading Trading Strategy website vault history"
 
             vault_data_client = create_vault_data_client(client, vault_history_download_root)
-            vault_history_parquet_path = vault_data_client.download(VaultDataset.vault_prices)
+            # Read exactly the receipt-verified bytes supplied by the live
+            # trigger, even if the shared cache changes during the decision.
+            vault_history_parquet_path = universe_options.vault_price_snapshot
+            if vault_history_parquet_path is None:
+                vault_history_parquet_path = vault_data_client.download(VaultDataset.vault_prices)
             indicator_cache_fingerprint = _file_indicator_cache_fingerprint(vault_history_parquet_path, "vault-history")
             filtered_website_vault_prices_df = read_vault_price_history_parquet(
                 vault_history_parquet_path,
@@ -3114,9 +3120,10 @@ def load_partial_data(
                     "timestamp",
                     "share_price",
                     "total_assets",
-                    # Optional deposit/redemption availability columns; silently dropped by
-                    # read_vault_price_history_parquet for sources that do not carry them.
+                    # Optional deposit/redemption availability and observation-time columns;
+                    # silently dropped by read_vault_price_history_parquet for older sources.
                     *VAULT_STATE_COLUMNS,
+                    "written_at",
                 ],
             )
 

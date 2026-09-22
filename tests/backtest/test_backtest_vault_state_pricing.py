@@ -7,7 +7,8 @@ Critical semantics under test:
 
 - explicit ``deposits_open=False`` (or ``max_deposit==0``) -> blocked
 - explicit ``deposits_open=True`` -> allowed
-- unknown / NA / pre-history / out-of-tolerance / missing pair / no state frame -> allowed
+- unknown / NA / pre-history / out-of-tolerance / missing pair / no state frame -> allowed for
+  generic vaults, but unavailable post-cutoff HyperCore deposits fail closed
 - no look-ahead: a sample stamped strictly after the decision timestamp is never used
 """
 import datetime
@@ -18,17 +19,19 @@ import pytest
 from eth_defi.erc_4626.core import ERC4626Feature
 
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
+from tradeexecutor.backtest.vault_windows import VaultWindowSchedule
 from tradeexecutor.strategy.redemption import DepositBlockReason, DepositCheckStage
 from tradingstrategy.candle import GroupedCandleUniverse
 
 
 class _FakePair:
-    def __init__(self, internal_id: int, features=None, async_vault=False, protocol=None):
+    def __init__(self, internal_id: int, features=None, async_vault=False, protocol=None, hypercore=False):
         self.internal_id = internal_id
         self.pool_address = f"0x{internal_id:040x}"
         self._features = features
         self._async_vault = async_vault
         self._protocol = protocol
+        self._hypercore = hypercore
 
     def get_ticker(self) -> str:
         return f"VAULT{self.internal_id}-USDC"
@@ -41,6 +44,9 @@ class _FakePair:
 
     def get_vault_protocol(self) -> str | None:
         return self._protocol
+
+    def is_hyperliquid_vault(self) -> bool:
+        return self._hypercore
 
 
 def _candle_universe() -> GroupedCandleUniverse:
@@ -134,6 +140,86 @@ def test_check_deposit_records_zero_hard_cap(pricing):
     assert result.can_deposit is False
     assert result.reason_code == DepositBlockReason.vault_max_deposit_zero
     assert result.max_deposit == 0.0
+
+
+def test_hypercore_cutoff_assumes_open_before_enforcing_archived_state():
+    """Apply the HyperCore cutoff while retaining explicit backtest overrides.
+
+    1. Build HyperCore state spanning the assumption boundary and an explicit window override.
+    2. Check that pre-cutoff closure is ignored, while fresh open and closed state are honoured.
+    3. Assert that the explicit window override still takes precedence.
+    """
+    state = pd.DataFrame([
+        _state_row(3, "2026-04-10", deposits_open=False, deposit_closed_reason="closed before cutoff"),
+        _state_row(3, "2026-04-11", deposits_open=True),
+        _state_row(3, "2026-04-12", deposits_open=False, deposit_closed_reason="closed after cutoff"),
+    ])
+    hypercore_pair = _FakePair(3, hypercore=True)
+    override = VaultWindowSchedule(
+        cadence=datetime.timedelta(days=3),
+        open_duration=datetime.timedelta(days=2),
+        anchor=datetime.datetime(2026, 4, 11),
+    )
+    pricing_with_state = BacktestPricing(
+        _candle_universe(),
+        routing_model=None,
+        data_delay_tolerance=pd.Timedelta("2d"),
+        vault_state=state,
+        vault_window_overrides={3: override},
+    )
+    pricing_without_override = BacktestPricing(
+        _candle_universe(),
+        routing_model=None,
+        data_delay_tolerance=pd.Timedelta("2d"),
+        vault_state=state,
+    )
+
+    # 1-2. The override is tested separately; archived state is tested without it.
+    assert pricing_without_override.can_deposit(pd.Timestamp("2026-04-10"), hypercore_pair) is True
+    assert pricing_without_override.can_deposit(pd.Timestamp("2026-04-11"), hypercore_pair) is True
+    closed = pricing_without_override.check_deposit(pd.Timestamp("2026-04-12"), hypercore_pair)
+    assert closed.can_deposit is False
+    assert closed.reason_code == DepositBlockReason.vault_deposits_closed
+    assert closed.message == "closed after cutoff"
+
+    # 3. The explicit schedule beats archived state, including the cutoff rule.
+    assert pricing_with_state.can_deposit(pd.Timestamp("2026-04-12"), hypercore_pair) is True
+
+
+def test_hypercore_missing_state_fails_closed_after_cutoff_but_other_pairs_do_not():
+    """Fail closed only for unavailable post-cutoff HyperCore deposit state.
+
+    1. Build pricing with no state for a HyperCore pair and an equivalent generic pair.
+    2. Check missing, nullable, and stale HyperCore observations after the cutoff.
+    3. Assert non-HyperCore unknown-state behaviour and redemption behaviour remain unchanged.
+    """
+    nullable_state = pd.DataFrame([
+        _state_row(4, "2026-04-11", deposits_open=None),
+        _state_row(5, "2026-04-08", deposits_open=True),
+    ])
+    pricing_with_state = BacktestPricing(
+        _candle_universe(),
+        routing_model=None,
+        data_delay_tolerance=pd.Timedelta("2d"),
+        vault_state=nullable_state,
+    )
+    hypercore_pair = _FakePair(4, hypercore=True)
+    stale_pair = _FakePair(5, hypercore=True)
+    generic_pair = _FakePair(6)
+
+    # 1-2. Missing, nullable, and stale HyperCore state block new deposits.
+    for pair, timestamp in [
+        (hypercore_pair, "2026-04-11"),
+        (stale_pair, "2026-04-12"),
+    ]:
+        result = pricing_with_state.check_deposit(pd.Timestamp(timestamp), pair)
+        assert result.can_deposit is False
+        assert result.reason_code == DepositBlockReason.unknown
+        assert "missing, unknown, or stale" in (result.message or "")
+
+    # 3. Generic unknown state remains allowed and redemption is unaffected.
+    assert pricing_with_state.can_deposit(pd.Timestamp("2026-04-12"), generic_pair) is True
+    assert pricing_with_state.check_redemption(pd.Timestamp("2026-04-12"), generic_pair).can_redeem is True
 
 
 def test_historical_settlement_event_uses_naive_utc_timestamp():
