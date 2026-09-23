@@ -27,12 +27,11 @@ def preload_data(
     execution_model: ExecutionModel | None = None,
     strategy_parameters: StrategyParameters | None = None,
 ) -> TradingStrategyUniverse:
-    """Show nice progress bar for setting up data fees for backtesting trading universe.
+    """Call the strategy's universe builder before backtesting or live scheduling.
 
-    - We trigger call to `create_trading_universe` before the actual backtesting begins
-
-    - The client is in a mode that it will display dataset download progress bars.
-      We do not display these progress bars by default, as it could a bit noisy.
+    The backtest runner loads historical data here; the live loop uses the same
+    path to expose construction errors and support valuation on start-up.
+    Trading Strategy client downloads display progress bars in this phase.
     """
 
     # Switch to the progress bar downloader
