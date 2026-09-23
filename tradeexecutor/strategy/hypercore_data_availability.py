@@ -1,7 +1,7 @@
 """Readiness helpers for the HyperCore manifest-triggered live cycle.
 
 The executor polls the small vault scan manifest after a calendar-aligned
-midnight slot. Only a ready receipt triggers a private price download; this
+midnight slot. Only a ready decision receipt triggers a decision price download; this
 module never constructs a universe or calculates indicators. Start-up fetches
 one current verified snapshot; decision probes return to the scheduler between
 polls, leaving position valuation free to run.
@@ -32,24 +32,32 @@ HYPERCORE_READINESS_WINDOW = datetime.timedelta(hours=8)
 logger = logging.getLogger(__name__)
 
 
-def fetch_current_hypercore_snapshot(client: VaultDataClient, destination: Path) -> VaultScanManifest:
+def fetch_current_hypercore_snapshot(
+    client: VaultDataClient,
+    destination: Path,
+    *,
+    now: Callable[[], datetime.datetime] = native_datetime_utc_now,
+) -> tuple[VaultScanManifest, datetime.datetime]:
     """Download a verified current price file for live start-up valuation.
 
     Called once before the live universe is built, even when the next decision
     slot is in the future. The receipt need not be ready for that slot: this
-    snapshot is only for start-up checks and position valuation. Decision
-    polling downloads a new verified snapshot before calling the strategy.
+    snapshot supports start-up checks, position valuation and risk triggers,
+    but never an ungated rebalance. Decision polling downloads a new verified
+    snapshot before calling the strategy, unless this one is already slot-ready.
 
     :param client: Authenticated vault dataset client.
     :param destination: Private price file passed to start-up universe loading.
-    :return: Receipt identifying the downloaded price file.
+    :param now: UTC clock used by the caller to judge the receipt deadline.
+    :return: Receipt identifying the downloaded price file and its reception time.
     :raises VaultDataVersionMismatch: The price file changed during both attempts.
     """
     for attempt in range(2):
         manifest = client.fetch_vault_scan_manifest()
+        received_at = now()
         try:
             client.download(VaultDataset.vault_prices, expected_etag=manifest["price_file"]["etag"], destination=destination)
-            return manifest
+            return manifest, received_at
         except VaultDataVersionMismatch:
             logger.warning("HyperCore start-up price version changed (attempt %d)", attempt + 1)
     raise VaultDataVersionMismatch("HyperCore start-up price version changed twice")

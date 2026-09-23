@@ -57,7 +57,11 @@ def test_startup_snapshot_does_not_wait_for_decision_readiness(tmp_path: Path) -
     client.download.side_effect = [VaultDataVersionMismatch("race"), destination]
 
     # 2. One race rechecks the receipt, and both transfers remain ETag-pinned.
-    assert fetch_current_hypercore_snapshot(client, destination) is newer
+    manifest, received_at = fetch_current_hypercore_snapshot(
+        client, destination, now=lambda: datetime.datetime(2026, 9, 21, 20, 15),
+    )
+    assert manifest is newer
+    assert received_at == datetime.datetime(2026, 9, 21, 20, 15)
     assert client.fetch_vault_scan_manifest.call_count == 2
     assert [call.kwargs["expected_etag"] for call in client.download.call_args_list] == ["etag", "new-etag"]
     assert all(call.kwargs["destination"] == destination for call in client.download.call_args_list)
@@ -81,21 +85,24 @@ def test_hypercore_startup_builds_universe_before_future_slot(tmp_path: Path, mo
 
     1. Set up a pending two-day slot and a verified but not slot-ready receipt.
     2. Enter the real live start-up path without starting a scheduler.
-    3. Confirm universe warm-up is reached immediately with the verified file.
+    3. Reject a late unready warm-up but preserve a receipt verified before the deadline.
     """
     # 1. Replace only the external snapshot and watchdog boundaries.
     monkeypatch.setattr(loop_module, "create_watchdog_registry", lambda mode: object())
     monkeypatch.setattr(loop_module, "start_background_watchdog", lambda registry: None)
     monkeypatch.setattr(loop_module, "register_worker", lambda *args: None)
     monkeypatch.setattr(loop_module.logger, "trade", lambda *args: None, raising=False)
-    monkeypatch.setattr(loop_module, "native_datetime_utc_now", lambda: datetime.datetime(2026, 9, 23, 12))
+    current = [datetime.datetime(2026, 9, 23, 12)]
+    monkeypatch.setattr(loop_module, "native_datetime_utc_now", lambda: current[0])
     monkeypatch.setattr(loop_module, "create_vault_data_client", lambda client: object())
     snapshot_calls = []
+    receipt = [_manifest("2026-09-21T20:00:00Z", "2026-09-21T16:00:00Z")]
+    receipt_at = [current[0]]
 
-    def fetch_snapshot(client: object, destination: Path) -> dict:
+    def fetch_snapshot(client: object, destination: Path) -> tuple[dict, datetime.datetime]:
         """Record the start-up download without using an external dataset."""
         snapshot_calls.append(destination)
-        return _manifest("2026-09-21T20:00:00Z", "2026-09-21T16:00:00Z")
+        return receipt[0], receipt_at[0]
 
     monkeypatch.setattr(loop_module, "fetch_current_hypercore_snapshot", fetch_snapshot)
     state = State()
@@ -127,8 +134,32 @@ def test_hypercore_startup_builds_universe_before_future_slot(tmp_path: Path, mo
     with pytest.raises(RuntimeError, match="universe build reached before slot readiness"):
         ExecutionLoop._run_live(loop, state, tmp_path)
 
-    # 3. The pending slot remains gated despite this immediate valuation build.
+    # 3. A slow warm-up cannot silently advance an unready slot. A receipt
+    # accepted before 08:00 remains valid even if the build finishes later.
     assert snapshot_calls == [tmp_path / "vault-prices.parquet"]
+    assert state.pending_data_availability_slot == datetime.datetime(2026, 9, 24)
+
+    def late_warm_up() -> SimpleNamespace:
+        """Model a start-up universe build crossing the eight-hour deadline."""
+        current[0] = datetime.datetime(2026, 9, 24, 8, 5)
+        return SimpleNamespace()
+
+    loop.warm_up_live_trading = late_warm_up
+    with pytest.raises(TimeoutError, match="not available"):
+        ExecutionLoop._run_live(loop, state, tmp_path)
+    assert state.pending_data_availability_slot == datetime.datetime(2026, 9, 24)
+
+    current[0] = datetime.datetime(2026, 9, 24, 7, 50)
+    receipt_at[0] = current[0]
+    receipt[0] = _manifest("2026-09-24T04:10:00Z", "2026-09-24T04:00:00Z")
+
+    def stop_after_warm_up(self: State) -> None:
+        """Prove a timely verified receipt passes the late warm-up check."""
+        raise RuntimeError("ready slot preserved")
+
+    monkeypatch.setattr(State, "check_if_clean", stop_after_warm_up)
+    with pytest.raises(RuntimeError, match="ready slot preserved"):
+        ExecutionLoop._run_live(loop, state, tmp_path)
     assert state.pending_data_availability_slot == datetime.datetime(2026, 9, 24)
 
 
@@ -177,7 +208,6 @@ def test_manifest_wait_times_out_before_next_slot(tmp_path: Path) -> None:
 
     1. Deliver a ready receipt exactly at the deadline.
     2. Check polling skips elapsed marks but never schedules past the deadline.
-    3. Verify an expired slot makes no further network requests.
     """
     # 1. The network mock changes time while delivering its response.
     slot = datetime.datetime(2026, 9, 22)
@@ -199,9 +229,6 @@ def test_manifest_wait_times_out_before_next_slot(tmp_path: Path) -> None:
     assert next_hypercore_poll(slot, slot + datetime.timedelta(hours=7, minutes=59)) == slot + HYPERCORE_READINESS_WINDOW
     with pytest.raises(TimeoutError):
         poll_hypercore_decision_snapshot(client, slot, tmp_path / "prices", now=lambda: current[0])
-    assert client.fetch_vault_scan_manifest.call_count == 1
-
-    # 3. No second request starts once the original deadline has elapsed.
     assert client.fetch_vault_scan_manifest.call_count == 1
 
 

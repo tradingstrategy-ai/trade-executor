@@ -28,8 +28,9 @@ The universe excludes all observations at or after the logical decision slot
 The receipt metadata is included in decision recorder inputs before strategy
 execution, when the strategy enables the recorder decorator.
 
-Each JSON request has a five-minute budget capped by the remaining window.
-Late JSON responses are rejected. Socket inactivity timeouts can delay error
+Each decision JSON request has a five-minute budget capped by the remaining
+window. The start-up request has the same budget without a slot cap. Late
+decision responses are rejected. Socket inactivity timeouts can delay error
 delivery while a read is blocked; this is not a hard process-kill deadline.
 A matching parquet transfer that started before the deadline may finish after
 it. Authentication, missing endpoint and invalid schema errors fail visibly;
@@ -45,9 +46,12 @@ Start-up fetches the latest manifest once, downloads its ETag-verified price
 file, and builds a universe immediately, even when the next decision slot is
 in the future. This surfaces manifest, transfer and universe-construction
 failures on restart. The start-up universe may include partial current-day
-data; it is used for accounting, charts and position valuation, **not** for a
-trade decision. Strategy indicators and decision logic are still calculated
-only after a slot-ready snapshot is downloaded and its universe rebuilt.
+data; it supports accounting, charts, position valuation and protective
+position-trigger trades. It cannot drive the scheduled rebalance. Strategy
+indicators and rebalance logic are calculated only after a slot-ready snapshot
+is available and its universe rebuilt. A receipt obtained before the slot
+deadline can be reused if warm-up finishes after the deadline; otherwise
+start-up fails rather than silently skipping an unexecuted slot.
 
 Starting during an open window joins it; starting after an unclaimed window
 builds the current universe and schedules the next slot. Background valuation
