@@ -1,15 +1,14 @@
 """Readiness helpers for the HyperCore manifest-triggered live cycle.
 
 The executor polls the small vault scan manifest after a calendar-aligned
-midnight slot. Only a ready receipt triggers a private price download; this
-module never constructs a universe or calculates indicators. Recurring jobs
-probe once and return to the scheduler; only initial warm-up waits in a loop.
+midnight slot. Only a ready decision receipt triggers a decision price download; this
+module never constructs a universe or calculates indicators. Start-up fetches
+one current verified snapshot; decision probes return to the scheduler between
+polls, leaving position valuation free to run.
 """
 
 import datetime
 import logging
-import threading
-import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -31,6 +30,37 @@ HYPERCORE_CHAIN_ID = "9999"
 HYPERCORE_POLL_INTERVAL = datetime.timedelta(minutes=15)
 HYPERCORE_READINESS_WINDOW = datetime.timedelta(hours=8)
 logger = logging.getLogger(__name__)
+
+
+def fetch_current_hypercore_snapshot(
+    client: VaultDataClient,
+    destination: Path,
+    *,
+    now: Callable[[], datetime.datetime] = native_datetime_utc_now,
+) -> tuple[VaultScanManifest, datetime.datetime]:
+    """Download a verified current price file for live start-up valuation.
+
+    Called once before the live universe is built, even when the next decision
+    slot is in the future. The receipt need not be ready for that slot: this
+    snapshot supports start-up checks, position valuation and risk triggers,
+    but never an ungated rebalance. Decision polling downloads a new verified
+    snapshot before calling the strategy, unless this one is already slot-ready.
+
+    :param client: Authenticated vault dataset client.
+    :param destination: Private price file passed to start-up universe loading.
+    :param now: UTC clock used by the caller to judge the receipt deadline.
+    :return: Receipt identifying the downloaded price file and its reception time.
+    :raises VaultDataVersionMismatch: The price file changed during both attempts.
+    """
+    for attempt in range(2):
+        manifest = client.fetch_vault_scan_manifest()
+        received_at = now()
+        try:
+            client.download(VaultDataset.vault_prices, expected_etag=manifest["price_file"]["etag"], destination=destination)
+            return manifest, received_at
+        except VaultDataVersionMismatch:
+            logger.warning("HyperCore start-up price version changed (attempt %d)", attempt + 1)
+    raise VaultDataVersionMismatch("HyperCore start-up price version changed twice")
 
 
 def calculate_hypercore_slot_schedule(
@@ -99,8 +129,7 @@ def hypercore_manifest_is_ready(manifest: VaultScanManifest, slot: datetime.date
 def next_hypercore_poll(slot: datetime.datetime, now: datetime.datetime) -> datetime.datetime:
     """Return the next quarter-hour poll, capped at the original deadline.
 
-    The live scheduler uses this to release its worker between probes. Startup
-    uses the same grid while waiting for its first universe.
+    The live scheduler uses this to release its worker between probes.
 
     :param slot: Logical decision midnight.
     :param now: Current UTC time after a probe.
@@ -160,55 +189,3 @@ def poll_hypercore_decision_snapshot(
         except VaultDataVersionMismatch:
             logger.warning("HyperCore price version changed for slot %s (attempt %d)", slot, attempt + 1)
     return None, polls
-
-
-def fetch_hypercore_decision_snapshot(
-    client: VaultDataClient,
-    slot: datetime.datetime,
-    destination: Path,
-    *,
-    shutdown_event: threading.Event | None = None,
-    now: Callable[[], datetime.datetime] = native_datetime_utc_now,
-    sleep: Callable[[float], None] = time.sleep,
-    request_budget: float = VAULT_SCAN_MANIFEST_BUDGET,
-) -> tuple[VaultScanManifest, int]:
-    """Wait for the first verified snapshot before live universe warm-up.
-
-    Startup has no universe with which to value positions yet. Subsequent
-    decisions use the non-sleeping probe directly from the scheduler instead.
-    This loop owns just waiting and accounting; it has no callback protocol.
-
-    :param client: Authenticated vault dataset client.
-    :param slot: Logical decision midnight.
-    :param destination: Private file consumed directly by the universe loader.
-    :param shutdown_event: Interrupts startup waiting on shutdown.
-    :param now: UTC clock, injectable for tests.
-    :param sleep: Test waiting function when no shutdown event is supplied.
-    :param request_budget: JSON request budget, capped by the slot deadline.
-    :return: Matching receipt and total JSON request count.
-    :raises TimeoutError: The eight-hour readiness window expires.
-    :raises RuntimeError: Shutdown interrupts startup waiting.
-    """
-    polls = 0
-    next_poll_at = slot
-    while True:
-        if shutdown_event is not None and shutdown_event.is_set():
-            raise RuntimeError("HyperCore data availability wait interrupted by shutdown")
-        delay = (next_poll_at - now()).total_seconds()
-        if delay > 0:
-            if shutdown_event is not None:
-                if shutdown_event.wait(delay):
-                    raise RuntimeError("HyperCore data availability wait interrupted by shutdown")
-            else:
-                sleep(delay)
-            continue
-        manifest, count = poll_hypercore_decision_snapshot(
-            client, slot, destination, now=now, request_budget=request_budget,
-        )
-        polls += count
-        if manifest is not None:
-            if shutdown_event is not None and shutdown_event.is_set():
-                raise RuntimeError("HyperCore snapshot interrupted by shutdown")
-            return manifest, polls
-        next_poll_at = next_hypercore_poll(slot, now())
-        logger.info("Waiting for HyperCore slot %s; next poll %s", slot, next_poll_at)

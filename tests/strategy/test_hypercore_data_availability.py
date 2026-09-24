@@ -1,21 +1,25 @@
 """Tests for the manifest-only HyperCore readiness helper."""
 
 import datetime
-import threading
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 from tradingstrategy.vault_data_client import VaultDataDeploymentError, VaultDataVersionMismatch, VaultManifestUnavailable
 
+from tradeexecutor.cli import loop as loop_module
+from tradeexecutor.cli.loop import ExecutionLoop
 from tradeexecutor.strategy.hypercore_data_availability import (
     HYPERCORE_READINESS_WINDOW,
     calculate_hypercore_slot_schedule,
+    fetch_current_hypercore_snapshot,
     poll_hypercore_decision_snapshot,
     next_hypercore_poll,
-    fetch_hypercore_decision_snapshot,
 )
 from tradeexecutor.strategy.cycle import CycleDuration
+from tradeexecutor.strategy.strategy_cycle_trigger import StrategyCycleTrigger
+from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradeexecutor.state.state import State
 
 
@@ -36,53 +40,174 @@ def _manifest(last_scan: str | None, last_candle: str | None) -> dict:
     }
 
 
-def test_manifest_wait_polls_json_until_ready(tmp_path: Path) -> None:
-    """Return control on incomplete data and wait only during initial warm-up.
+def test_startup_snapshot_does_not_wait_for_decision_readiness(tmp_path: Path) -> None:
+    """Build the start-up valuation universe from the current verified file.
 
-    1. Probe incomplete data once without downloading prices or advancing time.
-    2. Use the startup wrapper to wait on the same quarter-hour grid.
-    3. Verify only a ready receipt downloads prices, with accurate request counts.
+    1. Return a valid receipt whose HyperCore data is not ready for the next slot.
+    2. Race one price upload and retry with the new receipt and ETag.
+    3. Fail promptly on missing data or repeated races, rather than wait for a slot.
     """
-    # 1. Fake only network/time boundaries; exercise the actual probe and wrapper.
-    slot = datetime.datetime(2026, 9, 22)
-    current = [slot]
+    # 1. The latest published data may still be from before the pending slot.
     client = Mock()
-    client.fetch_vault_scan_manifest.return_value = _manifest(None, None)
+    older = _manifest("2026-09-21T20:00:00Z", "2026-09-21T16:00:00Z")
+    newer = _manifest("2026-09-21T20:00:00Z", "2026-09-21T16:00:00Z")
+    newer["price_file"]["etag"] = "new-etag"
+    client.fetch_vault_scan_manifest.side_effect = [older, newer]
+    destination = tmp_path / "prices.parquet"
+    client.download.side_effect = [VaultDataVersionMismatch("race"), destination]
+
+    # 2. One race rechecks the receipt, and both transfers remain ETag-pinned.
+    manifest, received_at = fetch_current_hypercore_snapshot(
+        client, destination, now=lambda: datetime.datetime(2026, 9, 21, 20, 15),
+    )
+    assert manifest is newer
+    assert received_at == datetime.datetime(2026, 9, 21, 20, 15)
+    assert client.fetch_vault_scan_manifest.call_count == 2
+    assert [call.kwargs["expected_etag"] for call in client.download.call_args_list] == ["etag", "new-etag"]
+    assert all(call.kwargs["destination"] == destination for call in client.download.call_args_list)
+
+    # 3. Missing receipts and a second race fail start-up immediately.
+    client.reset_mock()
+    client.fetch_vault_scan_manifest.side_effect = VaultManifestUnavailable("HTTP 503")
+    with pytest.raises(VaultManifestUnavailable, match="HTTP 503"):
+        fetch_current_hypercore_snapshot(client, destination)
+    client.reset_mock()
+    client.fetch_vault_scan_manifest.side_effect = None
+    client.fetch_vault_scan_manifest.return_value = older
+    client.download.side_effect = VaultDataVersionMismatch("race")
+    with pytest.raises(VaultDataVersionMismatch, match="changed twice"):
+        fetch_current_hypercore_snapshot(client, destination)
+    assert client.fetch_vault_scan_manifest.call_count == 2
+
+
+def test_hypercore_startup_builds_universe_before_future_slot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Expose universe construction errors on restart, not at the next decision.
+
+    1. Set up a pending two-day slot and a verified but not slot-ready receipt.
+    2. Enter the real live start-up path without starting a scheduler.
+    3. Reject a late unready warm-up but preserve a receipt verified before the deadline.
+    """
+    # 1. Replace only the external snapshot and watchdog boundaries.
+    monkeypatch.setattr(loop_module, "create_watchdog_registry", lambda mode: object())
+    monkeypatch.setattr(loop_module, "start_background_watchdog", lambda registry: None)
+    monkeypatch.setattr(loop_module, "register_worker", lambda *args: None)
+    monkeypatch.setattr(loop_module.logger, "trade", lambda *args: None, raising=False)
+    current = [datetime.datetime(2026, 9, 23, 12)]
+    monkeypatch.setattr(loop_module, "native_datetime_utc_now", lambda: current[0])
+    monkeypatch.setattr(loop_module, "create_vault_data_client", lambda client: object())
+    snapshot_calls = []
+    receipt = [_manifest("2026-09-21T20:00:00Z", "2026-09-21T16:00:00Z")]
+    receipt_at = [current[0]]
+
+    def fetch_snapshot(client: object, destination: Path) -> tuple[dict, datetime.datetime]:
+        """Record the start-up download without using an external dataset."""
+        snapshot_calls.append(destination)
+        return receipt[0], receipt_at[0]
+
+    monkeypatch.setattr(loop_module, "fetch_current_hypercore_snapshot", fetch_snapshot)
+    state = State()
+    loop = SimpleNamespace(
+        is_backtest=lambda: False,
+        is_live_trading_unit_test=lambda: False,
+        backtest_start=None,
+        backtest_end=None,
+        cycle_duration=CycleDuration.cycle_2d,
+        execution_context=object(),
+        run_state=object(),
+        strategy_cycle_trigger=StrategyCycleTrigger.hypercore_data_available,
+        trade_immediately=False,
+        client=object(),
+        store=SimpleNamespace(sync=lambda state: None),
+        universe_options=UniverseOptions(),
+        tick_offset=datetime.timedelta(0),
+    )
+
+    def warm_up() -> None:
+        """Stop after the universe build entry point proves start-up reached it."""
+        assert loop.universe_options.vault_price_snapshot == tmp_path / "vault-prices.parquet"
+        assert loop.universe_options.end_at <= loop_module.native_datetime_utc_now()
+        raise RuntimeError("universe build reached before slot readiness")
+
+    loop.warm_up_live_trading = warm_up
+
+    # 2. The old path would wait for the future slot before calling warm-up.
+    with pytest.raises(RuntimeError, match="universe build reached before slot readiness"):
+        ExecutionLoop._run_live(loop, state, tmp_path)
+
+    # 3. A slow warm-up cannot silently advance an unready slot. A receipt
+    # accepted before 08:00 remains valid even if the build finishes later.
+    assert snapshot_calls == [tmp_path / "vault-prices.parquet"]
+    assert state.pending_data_availability_slot == datetime.datetime(2026, 9, 24)
+
+    def late_warm_up() -> SimpleNamespace:
+        """Model a start-up universe build crossing the eight-hour deadline."""
+        current[0] = datetime.datetime(2026, 9, 24, 8, 5)
+        return SimpleNamespace()
+
+    loop.warm_up_live_trading = late_warm_up
+    with pytest.raises(TimeoutError, match="not available"):
+        ExecutionLoop._run_live(loop, state, tmp_path)
+    assert state.pending_data_availability_slot == datetime.datetime(2026, 9, 24)
+
+    current[0] = datetime.datetime(2026, 9, 24, 7, 50)
+    receipt_at[0] = current[0]
+    receipt[0] = _manifest("2026-09-24T04:10:00Z", "2026-09-24T04:00:00Z")
+
+    def stop_after_warm_up(self: State) -> None:
+        """Prove a timely verified receipt passes the late warm-up check."""
+        raise RuntimeError("ready slot preserved")
+
+    monkeypatch.setattr(State, "check_if_clean", stop_after_warm_up)
+    with pytest.raises(RuntimeError, match="ready slot preserved"):
+        ExecutionLoop._run_live(loop, state, tmp_path)
+    assert state.pending_data_availability_slot == datetime.datetime(2026, 9, 24)
+
+
+def test_manifest_wait_polls_json_until_ready(tmp_path: Path) -> None:
+    """Keep the scheduler free until a future slot's data is ready.
+
+    1. Return without requesting data before the slot, then probe incomplete data.
+    2. Advance to the next scheduled quarter-hour and probe a ready receipt.
+    3. Verify only the ready receipt downloads the verified price file.
+    """
+    # 1. The first scheduled callback may run before midnight after warm-up.
+    slot = datetime.datetime(2026, 9, 22)
+    current = [slot - datetime.timedelta(hours=1)]
+    client = Mock()
+    client.fetch_vault_scan_manifest.side_effect = [
+        _manifest(None, None),
+        _manifest("2026-09-22T00:15:00Z", "2026-09-22T00:00:00Z"),
+    ]
+    manifest, count = poll_hypercore_decision_snapshot(client, slot, tmp_path / "prices", now=lambda: current[0])
+    assert manifest is None
+    assert count == 0
+    assert next_hypercore_poll(slot, current[0]) == slot
+    client.fetch_vault_scan_manifest.assert_not_called()
+
+    current[0] = slot
     manifest, count = poll_hypercore_decision_snapshot(client, slot, tmp_path / "prices", now=lambda: current[0])
     assert manifest is None
     assert count == 1
     assert current[0] == slot
     client.download.assert_not_called()
 
-    # 2. Startup waits, while the scheduler can use the single-probe API above.
-    client.reset_mock()
-    client.fetch_vault_scan_manifest.side_effect = [
-        _manifest(None, None),
-        _manifest("2026-09-22T00:15:00Z", "2026-09-22T00:00:00Z"),
-    ]
+    # 2. The scheduler, not this helper, controls the wait between probes.
+    current[0] = next_hypercore_poll(slot, current[0])
+    manifest, count = poll_hypercore_decision_snapshot(client, slot, tmp_path / "prices", now=lambda: current[0])
 
-    def sleep(seconds: float) -> None:
-        """Advance the deterministic clock instead of sleeping fifteen minutes."""
-        current[0] += datetime.timedelta(seconds=seconds)
-
-    manifest, count = fetch_hypercore_decision_snapshot(
-        client, slot, tmp_path / "prices", now=lambda: current[0], sleep=sleep,
-    )
-
-    # 3. One sleep and one verified download suffice; no indicators are involved.
+    # 3. Only the ready probe downloads prices; no indicators are involved.
     assert current[0] == slot + datetime.timedelta(minutes=15)
     assert manifest["price_file"]["etag"] == "etag"
-    assert count == 2
+    assert count == 1
     assert client.fetch_vault_scan_manifest.call_count == 2
     client.download.assert_called_once()
 
 
 def test_manifest_wait_times_out_before_next_slot(tmp_path: Path) -> None:
-    """Reject late JSON receipts, preserve the deadline grid, and honour shutdown.
+    """Reject late JSON receipts and preserve the eight-hour deadline.
 
     1. Deliver a ready receipt exactly at the deadline.
     2. Check polling skips elapsed marks but never schedules past the deadline.
-    3. Verify a pre-existing shutdown request prevents all network requests.
     """
     # 1. The network mock changes time while delivering its response.
     slot = datetime.datetime(2026, 9, 22)
@@ -96,23 +221,15 @@ def test_manifest_wait_times_out_before_next_slot(tmp_path: Path) -> None:
 
     client.fetch_vault_scan_manifest.side_effect = fetch
     with pytest.raises(TimeoutError):
-        fetch_hypercore_decision_snapshot(client, slot, tmp_path / "prices", now=lambda: current[0])
+        poll_hypercore_decision_snapshot(client, slot, tmp_path / "prices", now=lambda: current[0])
     client.download.assert_not_called()
 
-    # 2. Both startup and recurring jobs share the same deadline-aware grid.
+    # 2. Recurring jobs remain on the original deadline-aware grid.
     assert next_hypercore_poll(slot, slot + datetime.timedelta(minutes=16)) == slot + datetime.timedelta(minutes=30)
     assert next_hypercore_poll(slot, slot + datetime.timedelta(hours=7, minutes=59)) == slot + HYPERCORE_READINESS_WINDOW
     with pytest.raises(TimeoutError):
         poll_hypercore_decision_snapshot(client, slot, tmp_path / "prices", now=lambda: current[0])
     assert client.fetch_vault_scan_manifest.call_count == 1
-
-    # 3. Cancellation must not initiate another HTTP request.
-    shutdown = threading.Event()
-    shutdown.set()
-    client.reset_mock()
-    with pytest.raises(RuntimeError, match="shutdown"):
-        fetch_hypercore_decision_snapshot(client, slot, tmp_path / "prices", now=lambda: slot, shutdown_event=shutdown)
-    client.fetch_vault_scan_manifest.assert_not_called()
 
 
 def test_hypercore_slot_schedule_joins_open_window() -> None:
@@ -194,20 +311,22 @@ def test_sparse_scan_wait_and_version_race(tmp_path: Path) -> None:
         manifest["price_file"]["etag"] = "new" if len(calls) == 18 else "old"
         return manifest
 
-    def sleep(seconds: float) -> None:
-        """Advance the injected clock on each poll interval."""
-        current[0] += datetime.timedelta(seconds=seconds)
-
     client.fetch_vault_scan_manifest.side_effect = fetch
     client.download.side_effect = [VaultDataVersionMismatch("race"), tmp_path / "private.parquet"]
 
-    # 2. Exercise the actual polling and version retry orchestration.
-    manifest, count = fetch_hypercore_decision_snapshot(
-        client, slot, tmp_path / "private.parquet", now=lambda: current[0], sleep=sleep,
-    )
+    # 2. The scheduler calls the single-probe API every fifteen minutes.
+    total_polls = 0
+    manifest = None
+    while manifest is None:
+        manifest, count = poll_hypercore_decision_snapshot(
+            client, slot, tmp_path / "private.parquet", now=lambda: current[0],
+        )
+        total_polls += count
+        if manifest is None:
+            current[0] = next_hypercore_poll(slot, current[0])
 
     # 3. Only the ready receipts trigger price requests; both target private data.
-    assert count == 18
+    assert total_polls == 18
     assert client.download.call_count == 2
     assert manifest["price_file"]["etag"] == "new"
     assert calls[-1][0] == calls[-2][0] == slot + datetime.timedelta(hours=4)
@@ -235,16 +354,18 @@ def test_verified_transfer_may_finish_after_readiness_deadline(tmp_path: Path) -
 
     client.download.side_effect = download
     # 2. Data transfer may finish after the readiness deadline.
-    fetch_hypercore_decision_snapshot(client, slot, tmp_path / "snapshot", now=lambda: current[0])
+    manifest, count = poll_hypercore_decision_snapshot(client, slot, tmp_path / "snapshot", now=lambda: current[0])
+    assert manifest is not None
+    assert count == 1
     assert client.fetch_vault_scan_manifest.call_args.kwargs["request_budget"] == 60
 
     # 3. No receipt may start once the original deadline has expired.
     with pytest.raises(TimeoutError):
-        fetch_hypercore_decision_snapshot(client, slot, tmp_path / "snapshot", now=lambda: current[0])
+        poll_hypercore_decision_snapshot(client, slot, tmp_path / "snapshot", now=lambda: current[0])
     assert client.fetch_vault_scan_manifest.call_count == 1
 
     current[0] = slot
     client.download.side_effect = VaultDataDeploymentError("Missing ETag")
     with pytest.raises(VaultDataDeploymentError, match="Missing ETag"):
-        fetch_hypercore_decision_snapshot(client, slot, tmp_path / "snapshot", now=lambda: current[0])
+        poll_hypercore_decision_snapshot(client, slot, tmp_path / "snapshot", now=lambda: current[0])
     assert client.fetch_vault_scan_manifest.call_count == 2

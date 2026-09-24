@@ -175,13 +175,11 @@ class UniverseModel(abc.ABC):
         strategy_parameters: StrategyParameters | None = None,
         execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
     ):
-        """Triggered before backtesting execution.
+        """Build a universe before backtesting or the live scheduler starts.
 
-        - Load all datasets with progress bar display
-
-        - Data is saved in FS cache
-
-        - Not triggered in live trading, as universe changes between cycles
+        Backtests use this to load historical data. Live execution uses it for
+        start-up checks and position valuation; decision cycles may rebuild
+        the universe from newer data. Downloads may use a filesystem cache.
 
         :param universe_options:
             Options to override universe loading parameters from the strategy file

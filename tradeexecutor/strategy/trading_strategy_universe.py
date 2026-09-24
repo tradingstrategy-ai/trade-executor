@@ -2164,11 +2164,10 @@ class DefaultTradingStrategyUniverseModel(TradingStrategyUniverseModel):
         strategy_parameters: StrategyParameters | None = None,
         execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
     ):
-        """Triggered before backtesting execution.
+        """Build the initial backtest or live-trading universe.
 
-        - Load all datasets with progress bar display.
-
-        - Not triggered in live trading, as universe changes between cycles
+        Live start-up uses this before scheduling position valuation. Strategies
+        with changing data construct a fresh universe at decision time.
         """
         # TODO: Circular imports
         from tradeexecutor.backtest.data_preload import preload_data
