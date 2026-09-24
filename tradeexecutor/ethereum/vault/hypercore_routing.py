@@ -604,12 +604,13 @@ class HypercoreVaultRouting(RoutingModel):
     def check_trade_before_execution(self, trade: TradeExecution) -> str | None:
         """Recheck a HyperCore buy before starting its first transaction.
 
-        Sequential execution calls this after earlier trades have settled but
-        before reserving this trade's cash or activating the Safe. A mutable
-        ``vaultDetails`` permission or our temporary low-share no-buy policy
-        may have changed since the strategy decision. Skipping a planned trade
-        here leaves existing positions and physical funds untouched; later
-        deposit phases retain their own equity-confirmation safety checks.
+        Sequential execution calls this through ``GenericRouting`` before
+        reserving the trade's cash or activating the Safe. Fetching new
+        ``vaultDetails`` catches a permission or leader-share change since
+        sizing. A block, missing flags, or an API request/decoding failure
+        returns a reason that causes the executor to expire the planned buy.
+        Sells and simulate mode proceed without this read. The executor skips
+        this check when rebroadcasting an already-started trade.
 
         :param trade: Still-planned HyperCore vault trade.
         :return: No-trade reason for a blocked or unknown buy, else ``None``.

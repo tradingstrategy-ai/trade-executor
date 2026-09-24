@@ -112,7 +112,7 @@ def test_hypercore_low_share_is_capacity_policy_not_closure(
     1. Supply an explicitly open vault with a low observed leader share.
     2. Check the zero policy cap, reason code and source snapshot.
     """
-    # 1. The source flags still permit public deposits.
+    # 1. Fix the response so changing live vault flags cannot affect the test.
     pair = _make_pair()
     monkeypatch.setattr(pricing, "_get_vault_info", lambda pair, user=None: _make_info(leader_fraction=0.04))
 
@@ -155,7 +155,8 @@ def test_hypercore_execution_preflight_rechecks_live_status(monkeypatch: pytest.
     1. Construct a live routing model and planned buy without broadcasting.
     2. Check explicit open, low-share policy, actual closure and API failure.
     """
-    # 1. Only the read-only vault-details call is needed by preflight.
+    # 1. Preflight only reads metadata. Supply each API outcome locally so the
+    # test covers changes and timeouts without a network call or transaction.
     routing = object.__new__(HypercoreVaultRouting)
     routing.simulate = False
     routing._session = MagicMock()

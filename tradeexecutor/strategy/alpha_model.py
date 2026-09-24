@@ -2324,14 +2324,14 @@ class AlphaModel:
         position_manager: PositionManager,
         individual_rebalance_min_threshold: USDollarAmount,
     ) -> None:
-        """Remove unavailable HyperCore buys before portfolio and cash gates.
+        """Exclude blocked HyperCore buys from rebalance and cash calculations.
 
-        The trade-generation loop formerly checked deposit availability only
-        after the whole-portfolio threshold and cash caps. A blocked tradable top-up
-        could therefore trigger a rebalance or consume cash that it could not
-        actually spend. Called once just after target differences and sell
-        reductions are prepared; other vault protocols keep their existing
-        late deposit-window behaviour.
+        ``generate_rebalance_trades_and_triggers()`` calls this after preparing
+        position adjustments. It checks buys large enough to trade, saves the
+        result on the signal, and zeros blocked adjustments. Otherwise an
+        unavailable top-up could trigger the portfolio threshold or reduce
+        the cash allocated to other buys. The per-signal pass reuses this
+        result; other vault protocols are checked in that later pass.
 
         :param position_manager:
             Supplies the live or historical pricing model for the decision.
@@ -2360,15 +2360,20 @@ class AlphaModel:
     ) -> bool:
         """Handle a buy blocked by deposit permission or amount policy.
 
-        Base behaviour: skip the buy and record the miss. Extracted as an overridable hook
-        (behaviour-preserving) so a subclass *could* defer instead of skip.
+        Called by the early HyperCore check and the per-signal deposit check.
+        Save the requested amount and reason before the caller clears the
+        adjustment, so diagnostics can still show the missed allocation.
 
-        Note: :py:class:`~tradeexecutor.strategy.phase_aware.PhaseAwareAlphaModel` intentionally
-        does **not** override this hook. It parks closed-window deposits earlier, in
-        ``apply_phase_aware_intent()`` run *before* trade generation, so the deferred buys are
-        already zeroed and excluded from the whole-portfolio min-trade gate and the same-cycle
-        cash cap by the time this hook would run. This hook therefore stays the base skip path,
-        and is what a phase-aware model constructed without a ``cycle`` (inert) falls back to.
+        :class:`~tradeexecutor.strategy.phase_aware.PhaseAwareAlphaModel` parks
+        eligible deposits earlier in ``apply_phase_aware_intent()``. Any buy
+        that reaches this method follows the normal skip behaviour.
+
+        :param signal:
+            Buy signal whose requested amount is still in ``position_adjust_usd``.
+        :param position_manager:
+            Current decision context, available to subclass implementations.
+        :param deposit_check:
+            Failed check to save with the signal.
 
         :return:
             ``True`` to skip this signal's rebalance for the cycle.
@@ -2957,8 +2962,8 @@ class AlphaModel:
             if TradingPairSignalFlags.cannot_deposit not in signal.flags:
                 continue
 
-            # Early HyperCore admission now zeroes the adjustment before cash
-            # checks; retain the original blocked amount for this chart.
+            # Blocked HyperCore buys have a zero adjustment by this point.
+            # Use the saved request to show how much allocation was rejected.
             unallocatable_usd = float(signal.other_data.get("missed_deposit_usd") or signal.position_adjust_usd)
             if unallocatable_usd <= 0:
                 continue

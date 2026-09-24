@@ -259,10 +259,11 @@ class GenericRouting(RoutingModel):
         return None
 
     def check_trade_before_execution(self, trade: TradeExecution) -> str | None:
-        """Forward a sequential preflight to the pair's actual router.
+        """Run the pair's protocol check before sequential execution starts.
 
-        Live execution uses this composite router, so a HyperCore admission
-        check must reach its protocol router before cash is reserved.
+        The executor calls this composite router, rather than the HyperCore
+        router directly. Forwarding the call ensures the deposit check runs
+        before ``start_execution()`` reserves cash.
 
         :param trade: Planned trade about to start.
         :return: Underlying router's no-trade reason, if any.

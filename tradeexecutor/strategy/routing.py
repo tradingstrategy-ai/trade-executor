@@ -303,10 +303,11 @@ class RoutingModel(abc.ABC):
     def check_trade_before_execution(self, trade: TradeExecution) -> str | None:
         """Return why a planned trade must not start, or ``None`` to proceed.
 
-        Called immediately before ``start_execution()`` in the sequential
-        path, where a router can recheck mutable venue admission before cash
-        is allocated or transactions are built. Ordinary routers need no
-        additional preflight.
+        Sequential execution calls this before ``start_execution()``, cash
+        reservation, and transaction setup. Returning a reason expires the
+        planned trade and saves the reason in its ``other_data``. The default
+        permits execution; protocol routers can override it to check current
+        deposit permission. Batch execution and rebroadcasts skip this check.
 
         :param trade: Still-planned trade about to execute.
         :return: Human-readable no-trade reason, or ``None``.

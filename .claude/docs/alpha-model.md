@@ -153,12 +153,16 @@ pinned) are documented in `vault-deposit-redeem.md`.
 
 ## Trade generation
 
-`generate_rebalance_trades_and_triggers(position_manager, ...)` diffs targets
-against the portfolio and emits trades. HyperCore buy admission first rejects
-a buy whose point-in-time deposit permission is closed or unknown, or whose
-temporary policy capacity is zero. This runs before the portfolio threshold
-and cash caps, so an unexecutable top-up cannot consume cash or trigger
-another rebalance. The remaining gates apply in this order:
+`generate_rebalance_trades_and_triggers(position_manager, ...)` compares target
+positions with current holdings and emits trades. Before calculating the
+portfolio threshold or cash caps, it checks HyperCore buys large enough to
+trade. A failed `check_deposit()` saves the requested amount in
+`missed_deposit_usd` and sets the adjustment to zero.
+
+For example, with $2,500 cash and two proposed $2,500 buys, blocking one vault
+must leave the other buy able to spend $2,500. Checking permission after the
+cash cap would first scale both requests down, leaving money unused when the
+blocked buy was removed. The remaining checks run in this order:
 
 1. **Whole-portfolio gate** — if the largest single adjustment is below
    `min_trade_threshold`, the rebalance is skipped (flag
@@ -211,7 +215,7 @@ answerable without re-running the strategy:
 - **`alpha_model_diagnostics`** chart
   ([chart/standard/alpha_model.py](../../tradeexecutor/strategy/chart/standard/alpha_model.py))
   — renders that table for the last cycle in the web/notebook UI. Related:
-  `skipped_signals` (weights blocked by deposit admission or capacity) and
+  `skipped_signals` (allocations rejected by deposit checks) and
   `missed_vault_deposit_redemption_events` / `_timeline`.
 - **Weight charts** ([chart/standard/weight.py](../../tradeexecutor/strategy/chart/standard/weight.py))
   — `equity_curve_by_asset` (stacked equity bands per asset, curator/chain

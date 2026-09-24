@@ -165,14 +165,16 @@ class RedemptionCheckResult:
 @dataclass_json
 @dataclass(slots=True)
 class DepositCheckResult:
-    """Serialisable result of a deposit-availability check.
+    """Explain why a proposed vault deposit is allowed or blocked.
 
-    Pricing models return this to strategy entry selection and AlphaModel buy
-    gates. The optional compact vault snapshot makes the source flags behind a
-    live decision inspectable without retaining the full API response.
+    Pricing models return this to strategy selection and AlphaModel. The
+    result is saved with the signal and can be included in recorder
+    observations. ``can_deposit`` decides permission; ``max_deposit`` adds an
+    amount limit when known. HyperCore checks include selected API fields in
+    ``used_vault_info`` so the recorded reason can be checked against its inputs.
     """
 
-    #: Strategy-cycle timestamp when the check ran.
+    #: Logical strategy-cycle timestamp; this is not the API read's wall-clock time.
     timestamp: datetime.datetime | None = None
     #: Where in the alpha-model flow the check was requested.
     stage: DepositCheckStage = DepositCheckStage.unknown
@@ -186,7 +188,8 @@ class DepositCheckResult:
     pair_ticker: str | None = None
     #: Vault address for the checked pair.
     vault_address: JSONHexAddress | None = None
-    #: Deposit amount ceiling, including a documented strategy safety policy.
+    #: Maximum new deposit in USD, including any trading-policy limit.
+    #: ``None`` means no limit is known; consult ``can_deposit`` for permission.
     max_deposit: USDollarAmount | None = None
     #: Compact source fields actually used for a HyperCore deposit decision.
     used_vault_info: VaultInfoSnapshot | None = None

@@ -385,7 +385,8 @@ def test_sequential_preflight_expires_buy_without_moving_funds() -> None:
     2. Run the sequential executor and inspect the saved expiry reason.
     3. Verify execution setup and broadcasting were never called.
     """
-    # 1. The new check runs while the trade is still only planned.
+    # 1. Use the real composite router to check forwarding. Mock the protocol
+    # result and transaction methods so a regression cannot broadcast funds.
     execution = MagicMock(spec=EthereumExecution)
     execution.max_slippage = None
     execution._execute_trades_sequentially = EthereumExecution._execute_trades_sequentially.__get__(execution)

@@ -63,14 +63,14 @@ logger = logging.getLogger(__name__)
 
 
 def get_hypercore_deposit_closed_reason(info: VaultInfo) -> str | None:
-    """Return only a confirmed closure reason from one vault-details response.
+    """Return a reason when the API explicitly closes or disables deposits.
 
-    Used by diagnostics which must not call a merely low leader share a closed
-    vault. The separate conservative capacity policy lives in eth-defi's
-    shared classifier and is applied by :meth:`HypercoreVaultPricing.check_deposit`.
+    Diagnostics use this to label source-reported closure. A low leader share
+    and missing permission flags both return ``None``; callers deciding whether
+    to buy must use :meth:`HypercoreVaultPricing.check_deposit` instead.
 
     :param info: Fresh ``vaultDetails`` response.
-    :return: Source-backed closure reason, or ``None``.
+    :return: Closure reason, or ``None`` when closure is not confirmed.
     """
     return classify_hyperliquid_vault_deposit(
         is_closed=info.is_closed,
@@ -310,14 +310,17 @@ class HypercoreVaultPricing(PricingModel):
         ts: datetime.datetime | None,
         pair: TradingPairIdentifier,
     ) -> Decimal | None:
-        """Return the same source-backed or policy capacity used by the gate.
+        """Return the amount limit reported by :meth:`check_deposit`.
 
-        Strategies use this accessor for amount sizing. Keeping it delegated
-        to :meth:`check_deposit` avoids the former duplicate 5.5% classifier.
+        Strategies use this for sizing, but must also check deposit permission.
+        Unknown permission has no known amount limit and therefore returns
+        ``None`` even though :meth:`check_deposit` blocks the buy.
 
         :param ts: Logical strategy timestamp.
         :param pair: HyperCore vault pair.
-        :return: Zero when buying is blocked, or ``None`` when no cap is known.
+        :return:
+            Zero for confirmed closure or the low-share policy; ``None`` when
+            no limit is known, including unknown permission and simulate mode.
         """
         result = self.check_deposit(ts, pair)
         return Decimal(str(result.max_deposit)) if result.max_deposit is not None else None
@@ -504,17 +507,19 @@ class HypercoreVaultPricing(PricingModel):
         *,
         stage: DepositCheckStage = DepositCheckStage.unknown,
     ) -> DepositCheckResult:
-        """Explain source permission separately from low-share capacity policy.
+        """Check whether a HyperCore vault can receive new capital.
 
-        Called by v8 entry selection and AlphaModel before each buy. Live
-        checks use fresh ``vaultDetails`` flags; replay uses the recorded
-        snapshot. A low leader share may block a buy under our temporary 5.5%
-        safety policy, but never means the source reported a closed vault.
+        Strategy selection and AlphaModel call this to accept or reject buys.
+        Live mode fetches ``vaultDetails``; replay mode reads the supplied
+        snapshot; simulate mode permits deposits without an API call. The
+        result distinguishes explicit closure, missing permission flags, and
+        the 5.5% leader-share policy. ``used_vault_info`` preserves the source
+        fields so the recorder can explain the decision later.
 
         :param ts: Logical decision timestamp.
         :param pair: HyperCore vault pair.
         :param stage: Decision stage for persisted diagnostics.
-        :return: Structured permission and amount result.
+        :return: Permission result, any amount limit, reason, and source fields.
         """
         result = DepositCheckResult(
             timestamp=ts,
