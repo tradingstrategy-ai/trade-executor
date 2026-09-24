@@ -153,8 +153,20 @@ pinned) are documented in `vault-deposit-redeem.md`.
 
 ## Trade generation
 
-`generate_rebalance_trades_and_triggers(position_manager, ...)` diffs targets
-against the portfolio and emits trades, applying gates in this order:
+`generate_rebalance_trades_and_triggers(position_manager, ...)` compares target
+positions with current holdings and emits trades. Before calculating the
+portfolio threshold or cash caps, it checks HyperCore buys large enough to
+trade. A failed `check_deposit()` saves the requested amount in
+`missed_deposit_usd` and sets the adjustment to zero.
+
+Cash sizing and trade generation reuse the saved HyperCore result. A second
+API read between these passes could exclude an accepted buy from the cash
+budget while still generating it. The early gate excludes blocked buys from
+the portfolio threshold and both synchronous and asynchronous cash checks.
+A separate fresh
+check runs immediately before execution starts moving funds.
+
+The remaining checks run in this order:
 
 1. **Whole-portfolio gate** — if the largest single adjustment is below
    `min_trade_threshold`, the rebalance is skipped (flag
@@ -168,8 +180,8 @@ against the portfolio and emits trades, applying gates in this order:
    actually execute; flag `capped_by_sync_cash`). A softband-bypassed full
    close is excluded from that opt-in cap's assumed funding. Opt-in rules and the worked
    hyper-ai example live in `vault-deposit-redeem.md`.
-3. **Per-signal gates** — problematic/frozen pairs, buys whose vault deposit
-   window is closed (`cannot_deposit`), partial sells below
+3. **Per-signal gates** — problematic/frozen pairs, remaining buys whose vault
+   deposit window is closed (`cannot_deposit`), partial sells below
    `sell_rebalance_min_threshold` or sells below the pair dust epsilon
    (`individual_trade_size_too_small` / `individual_trade_quantity_too_small`),
    positions with a pending vault settlement (`settlement_pending`), and
@@ -207,7 +219,7 @@ answerable without re-running the strategy:
 - **`alpha_model_diagnostics`** chart
   ([chart/standard/alpha_model.py](../../tradeexecutor/strategy/chart/standard/alpha_model.py))
   — renders that table for the last cycle in the web/notebook UI. Related:
-  `skipped_signals` (weights blocked by closed deposit windows) and
+  `skipped_signals` (allocations rejected by deposit checks) and
   `missed_vault_deposit_redemption_events` / `_timeline`.
 - **Weight charts** ([chart/standard/weight.py](../../tradeexecutor/strategy/chart/standard/weight.py))
   — `equity_curve_by_asset` (stacked equity bands per asset, curator/chain

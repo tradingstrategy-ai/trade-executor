@@ -729,6 +729,31 @@ class EthereumExecution(ExecutionModel):
             )
 
             if not rebroadcast:
+                # A venue can disable deposits after the strategy sizes a buy.
+                # Expire it before start_execution() reserves any cash.
+                preflight_reason = routing_model.check_trade_before_execution(trade)
+                if preflight_reason is not None:
+                    trade.other_data["execution_preflight_reason"] = preflight_reason
+                    trade.mark_expired(native_datetime_utc_now())
+                    position = state.portfolio.open_positions.get(trade.position_id)
+                    # A rejected opening buy may leave an empty placeholder.
+                    # Keep existing holdings and any position with active trades.
+                    if position is not None and position.get_quantity() == 0 and all(
+                        t.get_status() == TradeStatus.expired for t in position.trades.values()
+                    ):
+                        # Keep the rejected opening trade and its reason in
+                        # the existing diagnostics archive, outside live holdings.
+                        state.portfolio.expired_positions[trade.position_id] = position
+                        del state.portfolio.open_positions[trade.position_id]
+                    logger.warning(
+                        "Skipping trade_id=%s before execution: %s",
+                        trade.trade_id,
+                        preflight_reason,
+                    )
+                    self.sync_state_before_broadcast()
+                    continue
+
+            if not rebroadcast:
                 state.start_execution(
                     native_datetime_utc_now(),
                     trade,

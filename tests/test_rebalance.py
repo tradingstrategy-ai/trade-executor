@@ -1903,14 +1903,28 @@ def _patch_hypercore_pricing(
     pricing_model: BacktestPricing,
     hypercore_vault_pair: TradingPairIdentifier,
 ) -> None:
-    """Patch Hypercore pricing calls to stay deterministic in unit tests."""
+    """Price the synthetic HyperCore pair without requiring candles in the spot fixture.
+
+    Rebalance tests use this helper for buys, sells and portfolio valuation;
+    all other pairs retain the fixture's normal backtest pricing.
+    """
     original_get_mid_price = pricing_model.get_mid_price
     original_get_sell_price = pricing_model.get_sell_price
+    original_get_buy_price = pricing_model.get_buy_price
 
     monkeypatch.setattr(
         pricing_model,
         "get_mid_price",
         lambda ts, pair: 1.0 if pair == hypercore_vault_pair else original_get_mid_price(ts, pair),
+    )
+    monkeypatch.setattr(
+        pricing_model,
+        "get_buy_price",
+        lambda ts, pair, reserve: (
+            TradePricing(price=1.0, mid_price=1.0, lp_fee=[0.0], pair_fee=[0.0])
+            if pair == hypercore_vault_pair
+            else original_get_buy_price(ts, pair, reserve)
+        ),
     )
     monkeypatch.setattr(
         pricing_model,
@@ -1999,6 +2013,9 @@ def test_alpha_model_skips_buy_when_vault_deposits_closed(
     # 3. Verify no buy trade is generated and the signal records the deposit block.
     assert trades == []
     assert signal.position_adjust_ignored is True
+    assert signal.position_adjust_usd == pytest.approx(0.0)
+    assert signal.position_adjust_quantity == pytest.approx(0.0)
+    assert alpha_model.max_position_adjust_usd == pytest.approx(0.0)
     assert TradingPairSignalFlags.cannot_deposit in signal.flags
     assert TradingPairSignalFlags.cannot_redeem not in signal.flags
     assert signal.other_data["missed_deposit_usd"] == pytest.approx(2500.0)
@@ -2033,6 +2050,93 @@ def test_alpha_model_skips_buy_when_vault_deposits_closed(
             "unallocatable_usd": 2500.0,
         }
     ]
+
+
+@pytest.mark.parametrize("block_vault", [False, True])
+@pytest.mark.parametrize("buy_threshold", [None, 0.01])
+def test_hypercore_deposit_result_is_shared_with_sync_cash_sizing(
+    start_ts: datetime.datetime,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model: BacktestPricing,
+    usdc: AssetIdentifier,
+    weth_usdc: TradingPairIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+    block_vault: bool,
+    buy_threshold: float | None,
+) -> None:
+    """Cash sizing and emitted buys must use the same deposit observation.
+
+    1. Target two $2,500 buys with only $2,500 of available reserve cash.
+    2. Provide a vault check that would change its answer on a second read.
+    3. Verify one vault read and total buys within the available cash.
+    """
+    # 1. The target book is larger than executable cash this cycle.
+    state = State()
+    state.portfolio.reserves = {
+        usdc: ReservePosition(
+            asset=usdc,
+            quantity=Decimal(2500),
+            last_sync_at=start_ts,
+            reserve_token_price=USDollarAmount(1.0),
+            last_pricing_at=start_ts,
+            initial_deposit=Decimal(2500),
+        )
+    }
+    vault_pair = create_hypercore_vault_pair(
+        quote=usdc,
+        vault_address=HLP_VAULT_ADDRESS["mainnet"],
+        internal_id=102,
+    )
+    manager = PositionManager(start_ts + datetime.timedelta(days=1), strategy_universe.data_universe, state, pricing_model)
+    _patch_hypercore_pricing(monkeypatch, pricing_model, vault_pair)
+
+    # 2. Model a changing API locally. can_deposit delegates to check_deposit
+    # as it does in live pricing, so inconsistent reads reproduce overspending.
+    vault_reads = 0
+
+    def check_deposit(ts: datetime.datetime, pair: TradingPairIdentifier, *, stage: DepositCheckStage = DepositCheckStage.unknown) -> DepositCheckResult:
+        """Return the opposite vault permission if sizing fetches it twice."""
+        nonlocal vault_reads
+        allowed = True
+        if pair == vault_pair:
+            vault_reads += 1
+            allowed = not block_vault if vault_reads == 1 else block_vault
+        return DepositCheckResult(
+            timestamp=ts,
+            stage=stage,
+            can_deposit=allowed,
+            reason_code=DepositBlockReason.vault_deposits_closed if not allowed else None,
+            message="Vault deposits closed for test" if not allowed else None,
+        )
+
+    monkeypatch.setattr(pricing_model, "check_deposit", check_deposit)
+    monkeypatch.setattr(pricing_model, "can_deposit", lambda ts, pair: check_deposit(ts, pair).can_deposit)
+    model = AlphaModel(timestamp=manager.timestamp)
+    model.set_signal(vault_pair, 0.5)
+    model.set_signal(weth_usdc, 0.5)
+    model.select_top_signals(count=2)
+    model.assign_weights(method=weight_passthrouh)
+    model.normalise_weights(max_weight=1.0)
+    model.update_old_weights(state.portfolio, ignore_credit=False)
+    model.calculate_target_positions(manager, investable_equity=5000.0)
+
+    # 3. An allowed vault shares the cash; a blocked vault leaves it to spot.
+    trades = model.generate_rebalance_trades_and_triggers(
+        manager,
+        min_trade_threshold=0.01,
+        individual_rebalance_min_threshold=buy_threshold,
+        sell_rebalance_min_threshold=0.01,
+        cap_buys_to_sync_cash=True,
+    )
+    assert vault_reads == 1
+    assert sum(float(trade.get_planned_reserve()) for trade in trades) == pytest.approx(2500.0, abs=1.0)
+    if block_vault:
+        assert len(trades) == 1
+        assert trades[0].pair == weth_usdc
+        assert model.get_signal_by_pair(vault_pair).other_data["missed_deposit_usd"] == pytest.approx(2500.0)
+    else:
+        assert len(trades) == 2
+        assert all(float(trade.get_planned_reserve()) == pytest.approx(1250.0, abs=1.0) for trade in trades)
 
 
 def test_alpha_model_allows_sell_when_vault_deposits_closed_but_redemptions_open(

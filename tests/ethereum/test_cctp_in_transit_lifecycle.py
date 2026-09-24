@@ -243,6 +243,7 @@ def test_executor_halt_expires_remaining_trades(
     executor._log_trade_outcome = EthereumExecution._log_trade_outcome
 
     mock_routing_model = MagicMock()
+    mock_routing_model.check_trade_before_execution.return_value = None
     mock_routing_state = MagicMock()
 
     # 5. Run _execute_trades_sequentially and catch ExecutionHaltableIssue

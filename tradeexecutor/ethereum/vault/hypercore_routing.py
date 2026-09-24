@@ -65,6 +65,7 @@ from decimal import Decimal
 from typing import Dict, TYPE_CHECKING, cast
 
 from hexbytes import HexBytes
+from requests.exceptions import RequestException
 from web3 import Web3
 from web3.contract.contract import ContractFunction
 
@@ -105,7 +106,7 @@ from eth_defi.hyperliquid.session import (
     HyperliquidSession,
     create_hyperliquid_session,
 )
-from eth_defi.hyperliquid.vault import HyperliquidVault, estimate_max_withdrawal_commission
+from eth_defi.hyperliquid.vault import HyperliquidVault, classify_hyperliquid_vault_deposit, estimate_max_withdrawal_commission
 from eth_defi.hyperliquid.constants import (
     HYPERCORE_BRIDGE_FEE_MARGIN,
     HYPERLIQUID_VAULT_PERFORMANCE_FEE,
@@ -599,6 +600,41 @@ class HypercoreVaultRouting(RoutingModel):
             "Hypercore vault trades release spendable capital only after settlement "
             "and may create follow-up settlement transactions"
         )
+
+    def check_trade_before_execution(self, trade: TradeExecution) -> str | None:
+        """Recheck a HyperCore buy before starting its first transaction.
+
+        Sequential execution calls this through ``GenericRouting`` before
+        reserving the trade's cash or activating the Safe. Fetching new
+        ``vaultDetails`` catches a permission or leader-share change since
+        sizing. A block, missing flags, or an API request/decoding failure
+        returns a reason that causes the executor to expire the planned buy.
+        Sells and simulate mode proceed without this read. The executor skips
+        this check when rebroadcasting an already-started trade.
+
+        :param trade: Still-planned HyperCore vault trade.
+        :return: No-trade reason for a blocked or unknown buy, else ``None``.
+        """
+        if not trade.is_buy() or self.simulate:
+            return None
+        vault = HyperliquidVault(session=self._get_session(), vault_address=self._get_vault_address(trade))
+        try:
+            info = vault.fetch_metadata()
+            status = classify_hyperliquid_vault_deposit(
+                info.is_closed,
+                info.allow_deposits,
+                info.relationship_type,
+                info.leader_fraction,
+            )
+        except (RequestException, ValueError, TimeoutError, KeyError, TypeError, AttributeError) as exc:
+            return f"Hyperliquid vaultDetails unavailable before deposit: {type(exc).__name__}"
+        if status.deposits_open is False:
+            return status.closed_reason
+        if status.deposits_open is None:
+            return "Hyperliquid vault deposit permission flags unavailable before execution"
+        if status.max_deposit == 0:
+            return status.capacity_warning
+        return None
 
     # ------------------------------------------------------------------
     # Transaction building helpers

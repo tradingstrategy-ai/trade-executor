@@ -300,6 +300,20 @@ class RoutingModel(abc.ABC):
         """Return a human-readable reason for sequential execution, if any."""
         return None
 
+    def check_trade_before_execution(self, trade: TradeExecution) -> str | None:
+        """Return why a planned trade must not start, or ``None`` to proceed.
+
+        Sequential execution calls this before ``start_execution()``, cash
+        reservation, and transaction setup. Returning a reason expires the
+        planned trade and saves the reason in its ``other_data``. The default
+        permits execution; protocol routers can override it to check current
+        deposit permission. Batch execution and rebroadcasts skip this check.
+
+        :param trade: Still-planned trade about to execute.
+        :return: Human-readable no-trade reason, or ``None``.
+        """
+        return None
+
     def settle_trade(
         self,
         web3,

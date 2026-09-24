@@ -159,7 +159,27 @@ phases. A failure calls `report_failure()`, which surfaces as
 
 ## Deposit (buy) flow
 
-A deposit walks USDC from the HyperEVM Safe into the HyperCore vault:
+A deposit transfers USDC from the HyperEVM Safe into the HyperCore vault.
+Before starting a new buy, sequential execution calls
+`GenericRouting.check_trade_before_execution()`, which forwards the check to
+`HypercoreVaultRouting`. The router fetches new `vaultDetails` so a permission
+change after strategy sizing is caught before cash reservation or bridging.
+
+Explicit closure, missing permission flags, the low-leader-share policy, and
+an API request or decoding failure all block the buy. The executor marks it
+expired, saves `execution_preflight_reason` in `trade.other_data`, and continues
+with the remaining trades. Sells, simulate mode and rebroadcasts skip this check.
+If all trades in a new, empty position have expired, the position moves to
+`portfolio.expired_positions`. Inspect that mapping for the rejected opening
+trade: `get_all_positions()` and `get_trade_by_id()` do not search it.
+
+The shared eth-defi classifier treats `leaderFraction < 0.055` as our
+conservative zero-deposit policy. The documented 5% requirement restricts
+leader withdrawals; a follower-deposit limit has not been established. Hyper-AI v8
+uses the same policy for new entries and increases to existing holdings.
+Redemptions have separate liquidity and lock-up checks.
+
+Once the buy passes this check, execution proceeds through these phases:
 
 0. **Activation** (once per Safe): `activate_account()` — only if not yet active.
 1. **Phase 1**: `approve` + `CoreDepositWallet.deposit()` — bridge USDC from the

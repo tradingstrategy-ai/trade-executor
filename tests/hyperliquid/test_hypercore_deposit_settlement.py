@@ -17,6 +17,11 @@ from tradeexecutor.ethereum.vault.hypercore_routing import (
     HypercoreWithdrawalVerificationError,
 )
 from tradeexecutor.ethereum.execution import EthereumExecution
+from tradeexecutor.ethereum.vault.hypercore_vault import HLP_VAULT_ADDRESS, create_hypercore_vault_pair
+from tradeexecutor.state.identifier import AssetIdentifier
+from tradeexecutor.state.state import State, TradeType
+from tradeexecutor.state.trade import TradeStatus
+from tradeexecutor.strategy.generic.generic_router import GenericRouting
 
 
 def _make_routing() -> HypercoreVaultRouting:
@@ -345,6 +350,7 @@ def test_execution_persists_at_risk_marker_before_broadcast() -> None:
     trade.other_data = {}
     state = MagicMock()
     routing = MagicMock()
+    routing.check_trade_before_execution.return_value = None
     checkpointed_markers: list[dict] = []
 
     def create_marker(*args, **kwargs) -> None:
@@ -374,6 +380,88 @@ def test_execution_persists_at_risk_marker_before_broadcast() -> None:
 
     # 3. The persisted snapshot supplies the marker after a hard restart.
     assert checkpointed_markers == [{"hypercore_deposit_capital_at_risk": {"phase": "phase1_broadcast_pending"}}]
+
+
+@pytest.mark.parametrize("already_held", [False, True])
+def test_sequential_preflight_expires_buy_without_moving_funds(already_held: bool) -> None:
+    """An execution-time deposit block must not allocate or bridge USDC.
+
+    1. Prepare a real opening buy or top-up and a router that rejects preflight.
+    2. Run the sequential executor and inspect the saved expiry reason.
+    3. Verify cash is unchanged, no broadcast occurs and the reason survives serialisation.
+    """
+    # 1. Use the real composite router to check forwarding. Mock the protocol
+    # result and transaction methods so a regression cannot broadcast funds.
+    execution = MagicMock(spec=EthereumExecution)
+    execution.max_slippage = None
+    execution._execute_trades_sequentially = EthereumExecution._execute_trades_sequentially.__get__(execution)
+    timestamp = datetime.datetime(2026, 9, 24)
+    usdc = AssetIdentifier(999, "0x0000000000000000000000000000000000000002", "USDC", 6)
+    pair = create_hypercore_vault_pair(quote=usdc, vault_address=HLP_VAULT_ADDRESS["mainnet"], internal_id=1)
+    state = State()
+    reserve = state.portfolio.initialise_reserves(usdc, reserve_token_price=1.0)
+    reserve.quantity = Decimal(500)
+    if already_held:
+        position, opening, _ = state.create_trade(
+            strategy_cycle_at=timestamp,
+            pair=pair,
+            quantity=None,
+            reserve=Decimal(10),
+            assumed_price=1.0,
+            trade_type=TradeType.rebalance,
+            reserve_currency=usdc,
+            reserve_currency_price=1.0,
+        )
+        opening.mark_success(timestamp, 1.0, Decimal(10), Decimal(10), 0, 0, force=True)
+    position, trade, _ = state.create_trade(
+        strategy_cycle_at=timestamp,
+        pair=pair,
+        quantity=None,
+        reserve=Decimal(100),
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc,
+        reserve_currency_price=1.0,
+    )
+    protocol_router = MagicMock()
+    protocol_router.check_trade_before_execution.return_value = "Leader share: capacity unverified"
+    pair_configurator = MagicMock()
+    pair_configurator.get_config.return_value.routing_model = protocol_router
+    routing = GenericRouting(pair_configurator)
+
+    # 2. Expiry is checkpointed before any transaction can be prepared.
+    execution._execute_trades_sequentially(
+        timestamp,
+        state,
+        [trade],
+        routing,
+        MagicMock(),
+        check_balances=False,
+        rebroadcast=False,
+        triggered=False,
+    )
+    assert trade.get_status() == TradeStatus.expired
+    assert trade.other_data["execution_preflight_reason"] == "Leader share: capacity unverified"
+    execution.sync_state_before_broadcast.assert_called_once()
+    if already_held:
+        assert state.portfolio.open_positions[trade.position_id] is position
+        assert not state.portfolio.expired_positions
+    else:
+        assert not state.portfolio.open_positions
+        assert state.portfolio.expired_positions[trade.position_id] is position
+
+    # 3. No reserve allocation, Safe activation or broadcast occurred. The
+    # rejection remains inspectable after saving and loading the state file.
+    assert reserve.quantity == Decimal(500)
+    assert trade.started_at is None
+    protocol_router.check_trade_before_execution.assert_called_once_with(trade)
+    protocol_router.setup_trades.assert_not_called()
+    execution._execute_trade_batch.assert_not_called()
+    restored = State.from_json(state.to_json())
+    positions = restored.portfolio.open_positions if already_held else restored.portfolio.expired_positions
+    saved_trade = positions[position.position_id].trades[trade.trade_id]
+    assert saved_trade.get_status() == TradeStatus.expired
+    assert saved_trade.other_data["execution_preflight_reason"] == "Leader share: capacity unverified"
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")

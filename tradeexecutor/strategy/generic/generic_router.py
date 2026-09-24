@@ -258,6 +258,19 @@ class GenericRouting(RoutingModel):
                 return reason
         return None
 
+    def check_trade_before_execution(self, trade: TradeExecution) -> str | None:
+        """Run the pair's protocol check before sequential execution starts.
+
+        The executor calls this composite router, rather than the HyperCore
+        router directly. Forwarding the call ensures the deposit check runs
+        before ``start_execution()`` reserves cash.
+
+        :param trade: Planned trade about to start.
+        :return: Underlying router's no-trade reason, if any.
+        """
+        router, _ = self.get_router(trade.pair)
+        return router.check_trade_before_execution(trade)
+
     def settle_trade(
         self,
         web3: Web3,
