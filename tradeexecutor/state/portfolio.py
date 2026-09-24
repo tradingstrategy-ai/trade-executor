@@ -190,9 +190,10 @@ class Portfolio:
     #:
     pending_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 
-    #: Positions from :py:attr:`pending_positions` that never triggered
+    #: Positions whose opening trades expired before any funds moved.
     #:
-    #: Stored for diagnostics.
+    #: Includes untriggered pending orders and buys rejected by execution
+    #: preflight. Stored for diagnostics, excluded from holdings and valuation.
     #:
     expired_positions: Dict[int, TradingPosition] = field(default_factory=dict)
 

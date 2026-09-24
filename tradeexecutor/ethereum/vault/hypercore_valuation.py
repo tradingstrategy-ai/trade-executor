@@ -62,24 +62,6 @@ from tradeexecutor.testing.hypercore_replay import (
 logger = logging.getLogger(__name__)
 
 
-def get_hypercore_deposit_closed_reason(info: VaultInfo) -> str | None:
-    """Return a reason when the API explicitly closes or disables deposits.
-
-    Diagnostics use this to label source-reported closure. A low leader share
-    and missing permission flags both return ``None``; callers deciding whether
-    to buy must use :meth:`HypercoreVaultPricing.check_deposit` instead.
-
-    :param info: Fresh ``vaultDetails`` response.
-    :return: Closure reason, or ``None`` when closure is not confirmed.
-    """
-    return classify_hyperliquid_vault_deposit(
-        is_closed=info.is_closed,
-        allow_deposits=info.allow_deposits,
-        relationship_type=info.relationship_type,
-        leader_fraction=info.leader_fraction,
-    ).closed_reason
-
-
 class HypercoreVaultPricing(PricingModel):
     """Pricing model for Hypercore vault deposit/withdrawal trades.
 

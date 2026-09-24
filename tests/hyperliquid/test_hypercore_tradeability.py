@@ -12,7 +12,6 @@ from requests.exceptions import Timeout
 
 from tradeexecutor.ethereum.vault.hypercore_valuation import (
     HypercoreVaultPricing,
-    get_hypercore_deposit_closed_reason,
 )
 from tradeexecutor.ethereum.vault.hypercore_routing import HypercoreVaultRouting
 from tradeexecutor.ethereum.vault.hypercore_vault import (
@@ -106,7 +105,7 @@ def test_hypercore_deposit_closed_when_leader_disables_deposits(
 def test_hypercore_low_share_is_capacity_policy_not_closure(
     pricing: HypercoreVaultPricing,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """A low leader share blocks buys without claiming the vault was closed.
 
     1. Supply an explicitly open vault with a low observed leader share.
@@ -122,7 +121,6 @@ def test_hypercore_low_share_is_capacity_policy_not_closure(
     check = pricing.check_deposit(None, pair, stage=DepositCheckStage.buy_rebalance)
     assert check.reason_code == DepositBlockReason.vault_max_deposit_zero
     assert check.message.startswith("Leader share")
-    assert get_hypercore_deposit_closed_reason(_make_info(leader_fraction=0.04)) is None
     assert check.used_vault_info.leader_fraction == pytest.approx(0.04)
     restored = type(check).from_json(check.to_json())
     assert restored.reason_code == DepositBlockReason.vault_max_deposit_zero
@@ -132,7 +130,7 @@ def test_hypercore_low_share_is_capacity_policy_not_closure(
 def test_hypercore_missing_deposit_flags_are_unknown(
     pricing: HypercoreVaultPricing,
     monkeypatch: pytest.MonkeyPatch,
-):
+) -> None:
     """An incomplete API response must not be reported as an open or closed vault.
 
     1. Supply a vault-details result with absent deposit flags.
@@ -149,7 +147,7 @@ def test_hypercore_missing_deposit_flags_are_unknown(
     assert check.max_deposit is None
 
 
-def test_hypercore_execution_preflight_rechecks_live_status(monkeypatch: pytest.MonkeyPatch):
+def test_hypercore_execution_preflight_rechecks_live_status(monkeypatch: pytest.MonkeyPatch) -> None:
     """Block a changed vault before activation or USDC transfer starts.
 
     1. Construct a live routing model and planned buy without broadcasting.
@@ -172,11 +170,16 @@ def test_hypercore_execution_preflight_rechecks_live_status(monkeypatch: pytest.
     monkeypatch.setattr(HyperliquidVault, "fetch_metadata", lambda vault: _make_info(allow_deposits=False))
     assert routing.check_trade_before_execution(trade) == "Vault deposits disabled by leader"
 
-    def timeout(_vault):
+    def timeout(_vault: HyperliquidVault) -> None:
+        """Reproduce a timed-out metadata request without contacting the API."""
         raise Timeout("vaultDetails unavailable")
 
     monkeypatch.setattr(HyperliquidVault, "fetch_metadata", timeout)
     assert routing.check_trade_before_execution(trade) == "Hyperliquid vaultDetails unavailable before deposit: Timeout"
+
+    # A malformed successful response is also unavailable, before funds move.
+    monkeypatch.setattr(HyperliquidVault, "fetch_metadata", lambda vault: None)
+    assert routing.check_trade_before_execution(trade) == "Hyperliquid vaultDetails unavailable before deposit: AttributeError"
 
 
 def test_hypercore_parent_vault_ignores_allow_deposits_flag(
@@ -338,11 +341,3 @@ def test_hypercore_redemption_defaults_to_open_when_safe_unknown(
 
     assert pricing.get_max_redemption(None, pair) is None
     assert pricing.can_redeem(None, pair) is True
-
-
-def test_hypercore_deposit_closed_reason_matches_parent_special_case():
-    parent_info = _make_info(allow_deposits=False, relationship_type="parent")
-    normal_info = _make_info(allow_deposits=False, relationship_type="normal")
-
-    assert get_hypercore_deposit_closed_reason(parent_info) is None
-    assert get_hypercore_deposit_closed_reason(normal_info) == "Vault deposits disabled by leader"

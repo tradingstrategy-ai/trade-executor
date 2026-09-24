@@ -159,10 +159,14 @@ portfolio threshold or cash caps, it checks HyperCore buys large enough to
 trade. A failed `check_deposit()` saves the requested amount in
 `missed_deposit_usd` and sets the adjustment to zero.
 
-For example, with $2,500 cash and two proposed $2,500 buys, blocking one vault
-must leave the other buy able to spend $2,500. Checking permission after the
-cash cap would first scale both requests down, leaving money unused when the
-blocked buy was removed. The remaining checks run in this order:
+Cash sizing and trade generation reuse the saved HyperCore result. A second
+API read between these passes could exclude an accepted buy from the cash
+budget while still generating it. The early gate excludes blocked buys from
+the portfolio threshold and both synchronous and asynchronous cash checks.
+A separate fresh
+check runs immediately before execution starts moving funds.
+
+The remaining checks run in this order:
 
 1. **Whole-portfolio gate** — if the largest single adjustment is below
    `min_trade_threshold`, the rebalance is skipped (flag

@@ -741,6 +741,9 @@ class EthereumExecution(ExecutionModel):
                     if position is not None and position.get_quantity() == 0 and all(
                         t.get_status() == TradeStatus.expired for t in position.trades.values()
                     ):
+                        # Keep the rejected opening trade and its reason in
+                        # the existing diagnostics archive, outside live holdings.
+                        state.portfolio.expired_positions[trade.position_id] = position
                         del state.portfolio.open_positions[trade.position_id]
                     logger.warning(
                         "Skipping trade_id=%s before execution: %s",

@@ -113,6 +113,7 @@ def test_execute_trades_runs_sequential_router_one_trade_at_a_time(
     state = MagicMock()
     routing_model = MagicMock()
     routing_model.needs_sequential_trade_execution.return_value = True
+    routing_model.check_trade_before_execution.return_value = None
     routing_model.get_sequential_trade_execution_reason.return_value = "router needs settlement sequencing"
     routing_state = SimpleNamespace()
     trades = [_make_trade(1), _make_trade(2)]
@@ -212,6 +213,7 @@ def test_execute_trades_stops_sequential_batch_after_failed_trade(
     state = MagicMock()
     routing_model = MagicMock()
     routing_model.needs_sequential_trade_execution.return_value = True
+    routing_model.check_trade_before_execution.return_value = None
     routing_model.get_sequential_trade_execution_reason.return_value = "router needs settlement sequencing"
     routing_state = SimpleNamespace()
     trades = [_make_trade(21), _make_trade(22)]

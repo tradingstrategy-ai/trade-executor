@@ -406,6 +406,18 @@ class TradingPairSignal:
 
         self.deposit_check_results.append(result)
 
+    def get_deposit_check_result(self, stage: DepositCheckStage) -> DepositCheckResult | None:
+        """Read the latest saved deposit check for a decision stage.
+
+        Cash sizing and trade generation must use the same HyperCore result;
+        fetching again between those passes could exclude a buy from the
+        budget but still emit it. Strategies also use this for recorder output.
+
+        :param stage: Stage whose result was saved with :meth:`set_deposit_check_result`.
+        :return: Saved check, or ``None`` if this stage has not run.
+        """
+        return next((result for result in self.deposit_check_results if result.stage == stage), None)
+
     def has_trades(self) -> bool:
         """Did/should this signal cause any trades to be executed.
 
@@ -1244,12 +1256,17 @@ class AlphaModel:
         if signal.pair in frozen_pairs:
             return False
 
-        # Same argument as the loop's deposit-window gate in _should_skip_signal_rebalance.
-        if not position_manager.pricing_model.can_deposit(self.timestamp, signal.pair):
-            return False
-
         # Same gate semantics as _should_skip_signal_rebalance: falsy threshold disables.
         if individual_rebalance_min_threshold and signal.position_adjust_usd < individual_rebalance_min_threshold:
+            return False
+
+        # The early HyperCore gate and trade generation share this observation.
+        # A second API read here could exclude a still-planned buy from its budget.
+        deposit_check = signal.get_deposit_check_result(DepositCheckStage.buy_rebalance) if signal.pair.is_hyperliquid_vault() else None
+        if deposit_check is not None:
+            if not deposit_check.can_deposit:
+                return False
+        elif not position_manager.pricing_model.can_deposit(self.timestamp, signal.pair):
             return False
 
         settlement_position = self._resolve_pending_settlement_position(signal, position_manager, current_positions)
@@ -2269,17 +2286,14 @@ class AlphaModel:
             signal.position_adjust_ignored = True
             return True
 
-        if signal.position_adjust_usd > 0:
-            deposit_check = next(
-                (result for result in signal.deposit_check_results if result.stage == DepositCheckStage.buy_rebalance),
-                None,
-            ) if signal.pair.is_hyperliquid_vault() else None
-            if deposit_check is None:
-                deposit_check = position_manager.pricing_model.check_deposit(
-                    self.timestamp,
-                    signal.pair,
-                    stage=DepositCheckStage.buy_rebalance,
-                )
+        # Tradable HyperCore buys already passed the early gate. Rechecking
+        # after cash sizing could change the budget assumptions for this batch.
+        if signal.position_adjust_usd > 0 and not signal.pair.is_hyperliquid_vault():
+            deposit_check = position_manager.pricing_model.check_deposit(
+                self.timestamp,
+                signal.pair,
+                stage=DepositCheckStage.buy_rebalance,
+            )
             if not deposit_check.can_deposit:
                 return self._on_deposit_window_closed(signal, position_manager, deposit_check)
 
@@ -2322,6 +2336,7 @@ class AlphaModel:
     def _gate_hypercore_buys_before_cash_checks(
         self,
         position_manager: PositionManager,
+        frozen_pairs: set[TradingPairIdentifier],
         individual_rebalance_min_threshold: USDollarAmount,
     ) -> None:
         """Exclude blocked HyperCore buys from rebalance and cash calculations.
@@ -2330,16 +2345,22 @@ class AlphaModel:
         position adjustments. It checks buys large enough to trade, saves the
         result on the signal, and zeros blocked adjustments. Otherwise an
         unavailable top-up could trigger the portfolio threshold or reduce
-        the cash allocated to other buys. The per-signal pass reuses this
-        result; other vault protocols are checked in that later pass.
+        the cash allocated to other buys. Cash sizing reuses this result;
+        the per-signal pass checks only the remaining vault protocols.
 
         :param position_manager:
             Supplies the live or historical pricing model for the decision.
+        :param frozen_pairs:
+            Pairs excluded from trading, whose permission need not be fetched.
         :param individual_rebalance_min_threshold:
             Buys smaller than this cannot become trades and need no API read.
         """
         for signal in self.iterate_signals():
-            if signal.position_adjust_usd <= 0 or signal.position_adjust_usd < individual_rebalance_min_threshold or not signal.pair.is_hyperliquid_vault():
+            if signal.position_adjust_usd <= 0 or not signal.pair.is_hyperliquid_vault():
+                continue
+            if individual_rebalance_min_threshold and signal.position_adjust_usd < individual_rebalance_min_threshold:
+                continue
+            if signal.pair in frozen_pairs or position_manager.is_problematic_pair(signal.pair):
                 continue
             deposit_check = position_manager.pricing_model.check_deposit(
                 self.timestamp,
@@ -2347,10 +2368,9 @@ class AlphaModel:
                 stage=DepositCheckStage.buy_rebalance,
             )
             signal.set_deposit_check_result(deposit_check)
-            if not deposit_check.can_deposit:
-                if self._on_deposit_window_closed(signal, position_manager, deposit_check):
-                    signal.position_adjust_usd = 0.0
-                    signal.position_adjust_quantity = 0.0
+            if not deposit_check.can_deposit and self._on_deposit_window_closed(signal, position_manager, deposit_check):
+                signal.position_adjust_usd = 0.0
+                signal.position_adjust_quantity = 0.0
 
     def _on_deposit_window_closed(
         self,
@@ -2751,8 +2771,8 @@ class AlphaModel:
         )
 
         current_positions, redemption_results, reduction_plans = self._prepare_hypercore_sell_signals(position_manager)
-
-        self._gate_hypercore_buys_before_cash_checks(position_manager, individual_rebalance_min_threshold)
+        frozen_pairs = {p.pair for p in position_manager.state.portfolio.frozen_positions.values()}
+        self._gate_hypercore_buys_before_cash_checks(position_manager, frozen_pairs, individual_rebalance_min_threshold)
 
         #
         # Would the portfolio value change enough to justify the rebalance.
@@ -2807,8 +2827,6 @@ class AlphaModel:
                 signal.position_adjust_usd = 0.0
                 signal.position_adjust_quantity = 0.0
                 signal.flags.add(TradingPairSignalFlags.max_adjust_too_small)
-
-        frozen_pairs = {p.pair for p in position_manager.state.portfolio.frozen_positions.values()}
 
         # Buys are normally financed by this cycle's sells executing first;
         # async vault redemptions only enter the queue and pay out cycles later,

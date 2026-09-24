@@ -186,7 +186,7 @@ def test_hypercore_cutoff_assumes_open_before_enforcing_archived_state():
     assert pricing_with_state.can_deposit(pd.Timestamp("2026-04-12"), hypercore_pair) is True
 
 
-def test_hypercore_open_permission_with_zero_policy_capacity_blocks_buy():
+def test_hypercore_open_permission_with_zero_policy_capacity_blocks_buy() -> None:
     """Backtest admission matches the live low-share safety policy.
 
     1. Supply an explicitly open HyperCore observation with zero policy cap.

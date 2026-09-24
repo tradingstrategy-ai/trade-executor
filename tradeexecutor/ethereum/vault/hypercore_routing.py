@@ -620,14 +620,14 @@ class HypercoreVaultRouting(RoutingModel):
         vault = HyperliquidVault(session=self._get_session(), vault_address=self._get_vault_address(trade))
         try:
             info = vault.fetch_metadata()
-        except (RequestException, ValueError, TimeoutError) as exc:
+            status = classify_hyperliquid_vault_deposit(
+                info.is_closed,
+                info.allow_deposits,
+                info.relationship_type,
+                info.leader_fraction,
+            )
+        except (RequestException, ValueError, TimeoutError, KeyError, TypeError, AttributeError) as exc:
             return f"Hyperliquid vaultDetails unavailable before deposit: {type(exc).__name__}"
-        status = classify_hyperliquid_vault_deposit(
-            info.is_closed,
-            info.allow_deposits,
-            info.relationship_type,
-            info.leader_fraction,
-        )
         if status.deposits_open is False:
             return status.closed_reason
         if status.deposits_open is None:
