@@ -165,7 +165,12 @@ class RedemptionCheckResult:
 @dataclass_json
 @dataclass(slots=True)
 class DepositCheckResult:
-    """Serialisable result of a deposit-availability check."""
+    """Serialisable result of a deposit-availability check.
+
+    Pricing models return this to strategy entry selection and AlphaModel buy
+    gates. The optional compact vault snapshot makes the source flags behind a
+    live decision inspectable without retaining the full API response.
+    """
 
     #: Strategy-cycle timestamp when the check ran.
     timestamp: datetime.datetime | None = None
@@ -181,8 +186,10 @@ class DepositCheckResult:
     pair_ticker: str | None = None
     #: Vault address for the checked pair.
     vault_address: JSONHexAddress | None = None
-    #: Maximum currently depositable amount, if the venue reports one.
+    #: Deposit amount ceiling, including a documented strategy safety policy.
     max_deposit: USDollarAmount | None = None
+    #: Compact source fields actually used for a HyperCore deposit decision.
+    used_vault_info: VaultInfoSnapshot | None = None
 
 
 @dataclass_json

@@ -161,6 +161,16 @@ phases. A failure calls `report_failure()`, which surfaces as
 
 A deposit walks USDC from the HyperEVM Safe into the HyperCore vault:
 
+Before phase 1, sequential execution fetches fresh `vaultDetails` and
+rechecks `isClosed`, `allowDeposits` and the temporary low-leader-share no-buy
+policy. A blocked or unavailable read expires the planned buy before cash is
+reserved, Safe activation or bridging. `leaderFraction < 0.055` is **not**
+reported as a closed vault: Hyperliquid documents a 5% *leader-withdrawal*
+restriction, not an authoritative follower-deposit amount limit. The same
+conservative zero policy cap is used by v8 entry and incumbent-top-up sizing;
+an existing holding can still be redeemed. The later equity-confirmation and
+uncertain-settlement safeguards remain in force.
+
 0. **Activation** (once per Safe): `activate_account()` — only if not yet active.
 1. **Phase 1**: `approve` + `CoreDepositWallet.deposit()` — bridge USDC from the
    HyperEVM Safe into HyperCore **spot** (built in `setup_trades`).

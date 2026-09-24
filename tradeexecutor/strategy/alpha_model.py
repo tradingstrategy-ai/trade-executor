@@ -2270,11 +2270,16 @@ class AlphaModel:
             return True
 
         if signal.position_adjust_usd > 0:
-            deposit_check = position_manager.pricing_model.check_deposit(
-                self.timestamp,
-                signal.pair,
-                stage=DepositCheckStage.buy_rebalance,
-            )
+            deposit_check = next(
+                (result for result in signal.deposit_check_results if result.stage == DepositCheckStage.buy_rebalance),
+                None,
+            ) if signal.pair.is_hyperliquid_vault() else None
+            if deposit_check is None:
+                deposit_check = position_manager.pricing_model.check_deposit(
+                    self.timestamp,
+                    signal.pair,
+                    stage=DepositCheckStage.buy_rebalance,
+                )
             if not deposit_check.can_deposit:
                 return self._on_deposit_window_closed(signal, position_manager, deposit_check)
 
@@ -2314,13 +2319,46 @@ class AlphaModel:
 
         return False
 
+    def _gate_hypercore_buys_before_cash_checks(
+        self,
+        position_manager: PositionManager,
+        individual_rebalance_min_threshold: USDollarAmount,
+    ) -> None:
+        """Remove unavailable HyperCore buys before portfolio and cash gates.
+
+        The trade-generation loop formerly checked deposit availability only
+        after the whole-portfolio threshold and cash caps. A blocked tradable top-up
+        could therefore trigger a rebalance or consume cash that it could not
+        actually spend. Called once just after target differences and sell
+        reductions are prepared; other vault protocols keep their existing
+        late deposit-window behaviour.
+
+        :param position_manager:
+            Supplies the live or historical pricing model for the decision.
+        :param individual_rebalance_min_threshold:
+            Buys smaller than this cannot become trades and need no API read.
+        """
+        for signal in self.iterate_signals():
+            if signal.position_adjust_usd <= 0 or signal.position_adjust_usd < individual_rebalance_min_threshold or not signal.pair.is_hyperliquid_vault():
+                continue
+            deposit_check = position_manager.pricing_model.check_deposit(
+                self.timestamp,
+                signal.pair,
+                stage=DepositCheckStage.buy_rebalance,
+            )
+            signal.set_deposit_check_result(deposit_check)
+            if not deposit_check.can_deposit:
+                if self._on_deposit_window_closed(signal, position_manager, deposit_check):
+                    signal.position_adjust_usd = 0.0
+                    signal.position_adjust_quantity = 0.0
+
     def _on_deposit_window_closed(
         self,
         signal: TradingPairSignal,
         position_manager: PositionManager,
         deposit_check: DepositCheckResult,
     ) -> bool:
-        """Handle a buy whose vault deposit window is closed this cycle.
+        """Handle a buy blocked by deposit permission or amount policy.
 
         Base behaviour: skip the buy and record the miss. Extracted as an overridable hook
         (behaviour-preserving) so a subclass *could* defer instead of skip.
@@ -2336,7 +2374,7 @@ class AlphaModel:
             ``True`` to skip this signal's rebalance for the cycle.
         """
         logger.info(
-            "Skipping buy-side rebalance for %s because deposits are not open: %s",
+            "Skipping buy-side rebalance for %s because deposits are unavailable: %s",
             signal.pair,
             deposit_check.message,
         )
@@ -2709,6 +2747,8 @@ class AlphaModel:
 
         current_positions, redemption_results, reduction_plans = self._prepare_hypercore_sell_signals(position_manager)
 
+        self._gate_hypercore_buys_before_cash_checks(position_manager, individual_rebalance_min_threshold)
+
         #
         # Would the portfolio value change enough to justify the rebalance.
         # We calculate this by taking the highest adjust,
@@ -2917,7 +2957,9 @@ class AlphaModel:
             if TradingPairSignalFlags.cannot_deposit not in signal.flags:
                 continue
 
-            unallocatable_usd = signal.position_adjust_usd
+            # Early HyperCore admission now zeroes the adjustment before cash
+            # checks; retain the original blocked amount for this chart.
+            unallocatable_usd = float(signal.other_data.get("missed_deposit_usd") or signal.position_adjust_usd)
             if unallocatable_usd <= 0:
                 continue
 

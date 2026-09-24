@@ -17,6 +17,7 @@ from tradeexecutor.ethereum.vault.hypercore_routing import (
     HypercoreWithdrawalVerificationError,
 )
 from tradeexecutor.ethereum.execution import EthereumExecution
+from tradeexecutor.strategy.generic.generic_router import GenericRouting
 
 
 def _make_routing() -> HypercoreVaultRouting:
@@ -345,6 +346,7 @@ def test_execution_persists_at_risk_marker_before_broadcast() -> None:
     trade.other_data = {}
     state = MagicMock()
     routing = MagicMock()
+    routing.check_trade_before_execution.return_value = None
     checkpointed_markers: list[dict] = []
 
     def create_marker(*args, **kwargs) -> None:
@@ -374,6 +376,56 @@ def test_execution_persists_at_risk_marker_before_broadcast() -> None:
 
     # 3. The persisted snapshot supplies the marker after a hard restart.
     assert checkpointed_markers == [{"hypercore_deposit_capital_at_risk": {"phase": "phase1_broadcast_pending"}}]
+
+
+def test_sequential_preflight_expires_buy_without_moving_funds() -> None:
+    """An execution-time deposit block must not allocate or bridge USDC.
+
+    1. Prepare a planned trade and a routing model that rejects preflight.
+    2. Run the sequential executor and inspect the saved expiry reason.
+    3. Verify execution setup and broadcasting were never called.
+    """
+    # 1. The new check runs while the trade is still only planned.
+    execution = MagicMock(spec=EthereumExecution)
+    execution.max_slippage = None
+    execution._execute_trades_sequentially = EthereumExecution._execute_trades_sequentially.__get__(execution)
+    trade = MagicMock()
+    trade.trade_id = 1487
+    trade.position_id = 5
+    trade.other_data = {}
+    trade.get_planned_value.return_value = 100.0
+    trade.pair.get_ticker.return_value = "Gucky-USDC"
+    state = MagicMock()
+    held_position = MagicMock()
+    held_position.get_quantity.return_value = Decimal("10")
+    state.portfolio.open_positions = {trade.position_id: held_position}
+    protocol_router = MagicMock()
+    protocol_router.check_trade_before_execution.return_value = "Leader share: capacity unverified"
+    pair_configurator = MagicMock()
+    pair_configurator.get_config.return_value.routing_model = protocol_router
+    routing = GenericRouting(pair_configurator)
+
+    # 2. Expiry is checkpointed before any transaction can be prepared.
+    execution._execute_trades_sequentially(
+        datetime.datetime(2026, 9, 24),
+        state,
+        [trade],
+        routing,
+        MagicMock(),
+        check_balances=False,
+        rebroadcast=False,
+        triggered=False,
+    )
+    trade.mark_expired.assert_called_once()
+    assert trade.other_data["execution_preflight_reason"] == "Leader share: capacity unverified"
+    execution.sync_state_before_broadcast.assert_called_once()
+    assert state.portfolio.open_positions[trade.position_id] is held_position
+
+    # 3. No reserve allocation, Safe activation or broadcast occurred.
+    state.start_execution.assert_not_called()
+    protocol_router.check_trade_before_execution.assert_called_once_with(trade)
+    protocol_router.setup_trades.assert_not_called()
+    execution._execute_trade_batch.assert_not_called()
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")

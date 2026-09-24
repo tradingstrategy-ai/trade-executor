@@ -91,7 +91,7 @@ def check_backtesting_deposit(
         result.message = closed_reason or "Vault deposits closed in historical data"
     else:
         result.reason_code = DepositBlockReason.vault_max_deposit_zero
-        result.message = closed_reason or "Vault max deposit was zero in historical data"
+        result.message = closed_reason or "Historical vault deposit capacity was zero"
     return result
 
 

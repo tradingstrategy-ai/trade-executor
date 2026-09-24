@@ -186,6 +186,30 @@ def test_hypercore_cutoff_assumes_open_before_enforcing_archived_state():
     assert pricing_with_state.can_deposit(pd.Timestamp("2026-04-12"), hypercore_pair) is True
 
 
+def test_hypercore_open_permission_with_zero_policy_capacity_blocks_buy():
+    """Backtest admission matches the live low-share safety policy.
+
+    1. Supply an explicitly open HyperCore observation with zero policy cap.
+    2. Verify the result is a capacity block rather than a false closure.
+    """
+    # 1. Producer records permission and amount policy in separate fields.
+    pair = _FakePair(7, hypercore=True)
+    state = pd.DataFrame([_state_row(7, "2026-09-23", deposits_open=True, max_deposit=0.0)])
+    pricing_with_state = BacktestPricing(
+        _candle_universe(),
+        routing_model=None,
+        data_delay_tolerance=pd.Timedelta("2d"),
+        vault_state=state,
+    )
+
+    # 2. A zero policy cap blocks new capital without claiming source closure.
+    result = pricing_with_state.check_deposit(pd.Timestamp("2026-09-24"), pair)
+    assert result.can_deposit is False
+    assert result.reason_code == DepositBlockReason.vault_max_deposit_zero
+    assert result.max_deposit == pytest.approx(0.0)
+    assert pricing_with_state.get_max_deposit(pd.Timestamp("2026-09-24"), pair) == Decimal(0)
+
+
 def test_hypercore_missing_state_fails_closed_after_cutoff_but_other_pairs_do_not():
     """Fail closed only for unavailable post-cutoff HyperCore deposit state.
 

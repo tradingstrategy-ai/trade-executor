@@ -258,6 +258,18 @@ class GenericRouting(RoutingModel):
                 return reason
         return None
 
+    def check_trade_before_execution(self, trade: TradeExecution) -> str | None:
+        """Forward a sequential preflight to the pair's actual router.
+
+        Live execution uses this composite router, so a HyperCore admission
+        check must reach its protocol router before cash is reserved.
+
+        :param trade: Planned trade about to start.
+        :return: Underlying router's no-trade reason, if any.
+        """
+        router, _ = self.get_router(trade.pair)
+        return router.check_trade_before_execution(trade)
+
     def settle_trade(
         self,
         web3: Web3,

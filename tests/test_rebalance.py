@@ -1843,7 +1843,6 @@ def test_alpha_model_skips_sell_rebalance_for_non_redeemable_position(
 
     signal = alpha_model.get_signal_by_pair(hypercore_vault_pair)
     assert signal is not None
-
     # 3. Verify the sell rebalance is skipped and the signal stores the sell-stage diagnostics.
     assert trades == []
     assert signal.position_adjust_ignored is True
@@ -1999,6 +1998,9 @@ def test_alpha_model_skips_buy_when_vault_deposits_closed(
     # 3. Verify no buy trade is generated and the signal records the deposit block.
     assert trades == []
     assert signal.position_adjust_ignored is True
+    assert signal.position_adjust_usd == pytest.approx(0.0)
+    assert signal.position_adjust_quantity == pytest.approx(0.0)
+    assert alpha_model.max_position_adjust_usd == pytest.approx(0.0)
     assert TradingPairSignalFlags.cannot_deposit in signal.flags
     assert TradingPairSignalFlags.cannot_redeem not in signal.flags
     assert signal.other_data["missed_deposit_usd"] == pytest.approx(2500.0)
@@ -2033,6 +2035,75 @@ def test_alpha_model_skips_buy_when_vault_deposits_closed(
             "unallocatable_usd": 2500.0,
         }
     ]
+
+
+def test_blocked_hypercore_buy_does_not_consume_sync_cash_budget(
+    start_ts: datetime.datetime,
+    strategy_universe: TradingStrategyUniverse,
+    pricing_model: BacktestPricing,
+    usdc: AssetIdentifier,
+    weth_usdc: TradingPairIdentifier,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A closed HyperCore buy must not scale down an executable spot buy.
+
+    1. Target two $2,500 buys with only $2,500 of available reserve cash.
+    2. Block the HyperCore vault at the point-in-time deposit gate.
+    3. Verify the spot buy can use its whole $2,500 cash budget.
+    """
+    # 1. The target book is larger than executable cash this cycle.
+    state = State()
+    state.portfolio.reserves = {
+        usdc: ReservePosition(
+            asset=usdc,
+            quantity=Decimal(2500),
+            last_sync_at=start_ts,
+            reserve_token_price=USDollarAmount(1.0),
+            last_pricing_at=start_ts,
+            initial_deposit=Decimal(2500),
+        )
+    }
+    vault_pair = create_hypercore_vault_pair(
+        quote=usdc,
+        vault_address=HLP_VAULT_ADDRESS["mainnet"],
+        internal_id=102,
+    )
+    manager = PositionManager(start_ts + datetime.timedelta(days=1), strategy_universe.data_universe, state, pricing_model)
+    _patch_hypercore_pricing(monkeypatch, pricing_model, vault_pair)
+
+    # 2. Only the HyperCore admission is unavailable.
+    monkeypatch.setattr(
+        pricing_model,
+        "check_deposit",
+        lambda ts, pair, *, stage: DepositCheckResult(
+            timestamp=ts,
+            stage=stage,
+            can_deposit=pair != vault_pair,
+            reason_code=DepositBlockReason.vault_deposits_closed if pair == vault_pair else None,
+            message="Vault deposits closed for test" if pair == vault_pair else None,
+        ),
+    )
+    model = AlphaModel(timestamp=manager.timestamp)
+    model.set_signal(vault_pair, 0.5)
+    model.set_signal(weth_usdc, 0.5)
+    model.select_top_signals(count=2)
+    model.assign_weights(method=weight_passthrouh)
+    model.normalise_weights(max_weight=1.0)
+    model.update_old_weights(state.portfolio, ignore_credit=False)
+    model.calculate_target_positions(manager, investable_equity=5000.0)
+
+    # 3. The blocked vault cannot reserve half of the spot buy's cash.
+    trades = model.generate_rebalance_trades_and_triggers(
+        manager,
+        min_trade_threshold=0.01,
+        individual_rebalance_min_threshold=0.01,
+        sell_rebalance_min_threshold=0.01,
+        cap_buys_to_sync_cash=True,
+    )
+    assert len(trades) == 1
+    assert trades[0].pair == weth_usdc
+    assert float(trades[0].get_planned_reserve()) == pytest.approx(2500.0, abs=1.0)
+    assert model.get_signal_by_pair(vault_pair).other_data["missed_deposit_usd"] == pytest.approx(2500.0)
 
 
 def test_alpha_model_allows_sell_when_vault_deposits_closed_but_redemptions_open(

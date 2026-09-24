@@ -33,7 +33,7 @@ from eth_defi.hyperliquid.session import (
     HyperliquidSession,
     create_hyperliquid_session,
 )
-from eth_defi.hyperliquid.vault import HyperliquidVault, VaultInfo
+from eth_defi.hyperliquid.vault import HyperliquidVault, VaultInfo, classify_hyperliquid_vault_deposit
 
 from tradeexecutor.state.identifier import TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
@@ -62,42 +62,22 @@ from tradeexecutor.testing.hypercore_replay import (
 logger = logging.getLogger(__name__)
 
 
-# Must match eth_defi.hyperliquid.vault_data_export.LEADER_FRACTION_WARNING_THRESHOLD.
-LEADER_FRACTION_WARNING_THRESHOLD = 0.055
-
-
 def get_hypercore_deposit_closed_reason(info: VaultInfo) -> str | None:
-    """Return a descriptive reason why Hypercore deposits are not allowed."""
-    return _get_hypercore_deposit_closed_reason_from_flags(
+    """Return only a confirmed closure reason from one vault-details response.
+
+    Used by diagnostics which must not call a merely low leader share a closed
+    vault. The separate conservative capacity policy lives in eth-defi's
+    shared classifier and is applied by :meth:`HypercoreVaultPricing.check_deposit`.
+
+    :param info: Fresh ``vaultDetails`` response.
+    :return: Source-backed closure reason, or ``None``.
+    """
+    return classify_hyperliquid_vault_deposit(
         is_closed=info.is_closed,
         allow_deposits=info.allow_deposits,
         relationship_type=info.relationship_type,
         leader_fraction=info.leader_fraction,
-    )
-
-
-def _get_hypercore_deposit_closed_reason_from_flags(
-    *,
-    is_closed: bool,
-    allow_deposits: bool,
-    relationship_type: str,
-    leader_fraction: float | Decimal | None,
-) -> str | None:
-    """Return a descriptive reason why Hypercore deposits are not allowed."""
-    if is_closed:
-        return "Vault is permanently closed"
-
-    # HLP parent deposits remain open even if the API reports allowDeposits=False.
-    if relationship_type == "parent":
-        return None
-
-    if not allow_deposits:
-        return "Vault deposits disabled by leader"
-
-    if leader_fraction is not None and float(leader_fraction) < LEADER_FRACTION_WARNING_THRESHOLD:
-        return "Leader share of the vault capital near allowed Hyperliquid minimum and new capital may not be accepted"
-
-    return None
+    ).closed_reason
 
 
 class HypercoreVaultPricing(PricingModel):
@@ -330,28 +310,17 @@ class HypercoreVaultPricing(PricingModel):
         ts: datetime.datetime | None,
         pair: TradingPairIdentifier,
     ) -> Decimal | None:
-        if self.market_data_source is not None:
-            snapshot = self._get_market_snapshot(ts, pair)
-            reason = _get_hypercore_deposit_closed_reason_from_flags(
-                is_closed=snapshot.is_closed,
-                allow_deposits=snapshot.allow_deposits,
-                relationship_type=snapshot.relationship_type,
-                leader_fraction=snapshot.leader_fraction,
-            )
-            if reason is not None:
-                logger.info("Hypercore replay vault %s deposits closed: %s", pair, reason)
-                return Decimal(0)
-            return None
+        """Return the same source-backed or policy capacity used by the gate.
 
-        if self.simulate:
-            return None
+        Strategies use this accessor for amount sizing. Keeping it delegated
+        to :meth:`check_deposit` avoids the former duplicate 5.5% classifier.
 
-        info = self._get_vault_info(pair)
-        reason = get_hypercore_deposit_closed_reason(info)
-        if reason is not None:
-            logger.info("Hypercore vault %s deposits closed: %s", pair, reason)
-            return Decimal(0)
-        return None
+        :param ts: Logical strategy timestamp.
+        :param pair: HyperCore vault pair.
+        :return: Zero when buying is blocked, or ``None`` when no cap is known.
+        """
+        result = self.check_deposit(ts, pair)
+        return Decimal(str(result.max_deposit)) if result.max_deposit is not None else None
 
     def _build_metadata_snapshot(
         self,
@@ -535,7 +504,18 @@ class HypercoreVaultPricing(PricingModel):
         *,
         stage: DepositCheckStage = DepositCheckStage.unknown,
     ) -> DepositCheckResult:
-        """Explain the Hypercore deposit gate using the replay or live API data."""
+        """Explain source permission separately from low-share capacity policy.
+
+        Called by v8 entry selection and AlphaModel before each buy. Live
+        checks use fresh ``vaultDetails`` flags; replay uses the recorded
+        snapshot. A low leader share may block a buy under our temporary 5.5%
+        safety policy, but never means the source reported a closed vault.
+
+        :param ts: Logical decision timestamp.
+        :param pair: HyperCore vault pair.
+        :param stage: Decision stage for persisted diagnostics.
+        :return: Structured permission and amount result.
+        """
         result = DepositCheckResult(
             timestamp=ts,
             stage=stage,
@@ -544,7 +524,14 @@ class HypercoreVaultPricing(PricingModel):
         )
         if self.market_data_source is not None:
             snapshot = self._get_market_snapshot(ts, pair)
-            reason = _get_hypercore_deposit_closed_reason_from_flags(
+            status = classify_hyperliquid_vault_deposit(
+                is_closed=snapshot.is_closed,
+                allow_deposits=snapshot.allow_deposits,
+                relationship_type=snapshot.relationship_type,
+                leader_fraction=snapshot.leader_fraction,
+            )
+            result.used_vault_info = VaultInfoSnapshot(
+                vault_address=pair.pool_address,
                 is_closed=snapshot.is_closed,
                 allow_deposits=snapshot.allow_deposits,
                 relationship_type=snapshot.relationship_type,
@@ -554,12 +541,28 @@ class HypercoreVaultPricing(PricingModel):
             return result
         else:
             info = self._get_vault_info(pair)
-            reason = get_hypercore_deposit_closed_reason(info)
+            status = classify_hyperliquid_vault_deposit(
+                is_closed=info.is_closed,
+                allow_deposits=info.allow_deposits,
+                relationship_type=info.relationship_type,
+                leader_fraction=info.leader_fraction,
+            )
+            result.used_vault_info = self._build_vault_info_snapshot(info)
 
-        if reason is not None:
+        if status.deposits_open is False:
             result.can_deposit = False
             result.reason_code = DepositBlockReason.vault_deposits_closed
-            result.message = reason
+            result.message = status.closed_reason
+            result.max_deposit = 0.0
+        elif status.deposits_open is None:
+            result.can_deposit = False
+            result.reason_code = DepositBlockReason.unknown
+            result.message = "Hyperliquid vault deposit permission flags are unavailable"
+        elif status.max_deposit == 0:
+            result.can_deposit = False
+            result.reason_code = DepositBlockReason.vault_max_deposit_zero
+            result.message = status.capacity_warning
+            result.max_deposit = 0.0
 
         return result
 
