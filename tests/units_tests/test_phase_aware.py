@@ -265,7 +265,10 @@ def test_should_skip_calls_deposit_window_closed_hook():
     """
     alpha_model = AlphaModel(timestamp=datetime.datetime(2024, 1, 1))
     pm = _StubSkipPositionManager(pricing_model=_StubPricingModel(can_deposit_result=False))
-    signal = _StubSignal(pair="vault-A", position_adjust_usd=1000.0)
+    base = AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "VLT", 18, 1)
+    quote = AssetIdentifier(ChainId.ethereum.value, generate_random_ethereum_address(), "USDC", 6, 2)
+    pair = TradingPairIdentifier(base, quote, generate_random_ethereum_address(), generate_random_ethereum_address(), internal_id=999)
+    signal = _StubSignal(pair=pair, position_adjust_usd=1000.0)
 
     # 1-2. Deposits closed for a positive buy ⇒ skip via the hook.
     skipped = alpha_model._should_skip_signal_rebalance(

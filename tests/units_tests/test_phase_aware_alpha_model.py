@@ -88,6 +88,7 @@ class _StubPosition:
 @dataclasses.dataclass
 class _StubPortfolio:
     open_positions: dict
+    frozen_positions: dict = dataclasses.field(default_factory=dict)
 
 
 @dataclasses.dataclass
