@@ -257,8 +257,12 @@ def test_lighter_lagoon_nav_uses_safe_balance_and_total_equity(
     posted_raw = int.from_bytes(bytes(nav_logs[-1]["data"]), byteorder="big")
     posted_nav = usdc.convert_to_decimals(posted_raw)
     assert posted_nav == pytest.approx(SAFE_USDC + LIGHTER_TOTAL_EQUITY)
-    assert deployment.vault.fetch_total_assets(web3_ethereum.eth.block_number) == pytest.approx(posted_nav)
-    assert state.sync.treasury.share_count == deployment.vault.fetch_total_supply(web3_ethereum.eth.block_number)
+    assert deployment.vault.fetch_total_assets(
+        web3_ethereum.eth.block_number
+    ) == pytest.approx(posted_nav)
+    assert state.sync.treasury.share_count == deployment.vault.fetch_total_supply(
+        web3_ethereum.eth.block_number
+    )
     assert reader.call_count >= MINIMUM_LIGHTER_EQUITY_READS
     for call in reader.call_args_list:
         assert call.args[1] == LIGHTER_ACCOUNT_INDEX

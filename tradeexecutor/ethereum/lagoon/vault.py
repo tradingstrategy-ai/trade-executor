@@ -154,9 +154,6 @@ class LagoonSettlementPreflight:
     # True only when the asset manager may broadcast settlement automatically.
     should_settle: bool
 
-    # An older unlimited module rejected an empty-queue settlement simulation.
-    empty_queue_settlement_failed: bool = False
-
     # True for a queue exceeding the remaining window budget.
     manual_settlement_required: bool = False
 
@@ -374,9 +371,8 @@ class LagoonVaultSyncModel(AddressSyncModel):
 
         :param disable_broadcast:
             Unit-testing switch that suppresses every Lagoon treasury
-            transaction, including the mandatory GuardV0 NAV post. The sync
-            still reads and values the treasury, but does not post NAV or
-            settle the investor queue.
+            transaction. The sync still reads and values the treasury, but
+            does not post NAV or settle the investor queue.
 
         :param min_nav_change_update:
             Minimum change relative to the vault's settled onchain NAV before
@@ -989,7 +985,7 @@ class LagoonVaultSyncModel(AddressSyncModel):
             })
         except Exception as e:
             # Provider envelopes are not uniform. Recover the raw custom-error
-            # payload before classifying only GuardV0's expected deferrals.
+            # payload before classifying expected GuardV0 and legacy deferrals.
             revert_data = extract_revert_data(e)
             if revert_data is None and not (empty_queue and not guarded):
                 raise
@@ -1046,7 +1042,6 @@ class LagoonVaultSyncModel(AddressSyncModel):
                 )
                 return LagoonSettlementPreflight(
                     should_settle=False,
-                    empty_queue_settlement_failed=True,
                     pending_deposit_raw=pending_deposit_raw,
                     pending_redemption_shares_raw=pending_redemption_shares_raw,
                 )
@@ -1118,9 +1113,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
         - Raise if a broadcast valuation or settlement transaction fails
 
         :param post_valuation:
-            Doesn't do anything unless the post valuation is true.
-
-            Investor flows require a fresh valuation before settlement.
+            Broadcast NAV and settlement when the investor queue is nonempty
+            or NAV exceeds the empty-queue tolerance. Treasury reconciliation
+            still runs when this is false.
         """
 
         web3 = self.web3
@@ -1241,14 +1236,12 @@ class LagoonVaultSyncModel(AddressSyncModel):
             )
             return recovered_events
 
-        assert self.hot_wallet, "asset_manager HotWallet needed in order to sync Lagoon vault"
-
-        old_balance = reserve_position.quantity
-
         # An empty queue needs a new onchain valuation only when NAV has moved
         # enough from the last settled totalAssets(). Queued investor flows
         # always require a fresh NAV regardless of this threshold.
-        pending_redemption_shares = vault.get_flow_manager().fetch_pending_redemption(safe_sync_block)
+        pending_redemption_shares = vault.get_flow_manager().fetch_pending_redemption(
+            safe_sync_block
+        )
         if pending_deposits == 0 and pending_redemption_shares == 0:
             settled_nav = vault.fetch_total_assets(safe_sync_block)
             if settled_nav > 0:
@@ -1261,6 +1254,8 @@ class LagoonVaultSyncModel(AddressSyncModel):
                     )
                     return recovered_events
 
+        assert self.hot_wallet, "asset_manager HotWallet needed to post Lagoon NAV"
+        old_balance = reserve_position.quantity
         logger.info("Posting new Lagoon valuation: %f USD", valuation)
         valuation_decimal = Decimal(valuation)
         valuation_func = vault.post_new_valuation(valuation_decimal)
@@ -1330,9 +1325,6 @@ class LagoonVaultSyncModel(AddressSyncModel):
                     preflight.pending_deposit_raw,
                     preflight.pending_redemption_shares_raw,
                 )
-            else:
-                assert preflight.empty_queue_settlement_failed
-
             self._mark_treasury_sync_completed(
                 treasury_sync=treasury_sync,
                 strategy_cycle_ts=strategy_cycle_ts,

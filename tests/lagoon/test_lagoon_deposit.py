@@ -303,7 +303,9 @@ def test_lagoon_sync_treasury_marks_noop_startup_sync(
     # 3. A 0.05 USDC gain crosses the 0.5% threshold.
     sync_model.calculate_valuation_func = lambda _state, *, block_number=None: 9.05
     nonce_before = web3.eth.get_transaction_count(asset_manager.address)
-    events = sync_model.sync_treasury(native_datetime_utc_now(), state, post_valuation=True)
+    events = sync_model.sync_treasury(
+        native_datetime_utc_now(), state, post_valuation=True
+    )
     assert len(events) == 1
     assert events[0].quantity == 0
     assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 2

@@ -92,7 +92,7 @@ def test_lagoon_guard_automatically_settles_flow_within_settlement_window_budget
     4. Serialise GuardV0's live settlement window and remaining budget into frontend metadata.
     5. Queue another deposit that consumes the remaining window budget and settles automatically.
     6. Settle a higher NAV with no queue without consuming Guard budget.
-    7. Disable broadcasts and verify it suppresses both the mandatory NAV post and settlement.
+    7. Disable broadcasts and verify it suppresses a due NAV update.
     """
     vault = guarded_lagoon_vault.vault
     sync_model = LagoonVaultSyncModel(vault=vault, hot_wallet=asset_manager)
@@ -151,28 +151,39 @@ def test_lagoon_guard_automatically_settles_flow_within_settlement_window_budget
     assert len(events) == 1
     assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 2
     assert base_usdc_token.fetch_balance_of(vault.silo_address) == Decimal(0)
-    assert vault.trading_strategy_module.functions.getLagoonSettlementSafetyConfig(vault.address).call()[6:] == [10_000_000, safety_config[7]]
+    assert vault.trading_strategy_module.functions.getLagoonSettlementSafetyConfig(
+        vault.address
+    ).call()[6:] == [10_000_000, safety_config[7]]
 
     # 6. Settle a higher NAV with no queue without consuming Guard budget.
     safe_balance = base_usdc_token.fetch_balance_of(vault.safe_address)
     previous_share_count = state.sync.treasury.share_count
     sync_model.calculate_valuation_func = lambda _state, *, block_number=None: 11.0
     nonce_before = web3.eth.get_transaction_count(asset_manager.address)
-    events = sync_model.sync_treasury(native_datetime_utc_now(), state, post_valuation=True)
+    events = sync_model.sync_treasury(
+        native_datetime_utc_now(), state, post_valuation=True
+    )
     assert len(events) == 1
     assert events[0].quantity == 0
     assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 2
     assert vault.fetch_total_assets(web3.eth.block_number) == Decimal(11)
     assert base_usdc_token.fetch_balance_of(vault.safe_address) == safe_balance
-    assert vault.trading_strategy_module.functions.getLagoonSettlementSafetyConfig(vault.address).call()[6:] == [10_000_000, safety_config[7]]
-    assert state.sync.treasury.share_count == vault.fetch_total_supply(web3.eth.block_number)
+    assert vault.trading_strategy_module.functions.getLagoonSettlementSafetyConfig(
+        vault.address
+    ).call()[6:] == [10_000_000, safety_config[7]]
+    assert state.sync.treasury.share_count == vault.fetch_total_supply(
+        web3.eth.block_number
+    )
     assert state.sync.treasury.share_count > previous_share_count
 
-    # 7. Disable broadcasts and verify it suppresses both the mandatory NAV post and settlement.
+    # 7. A further NAV gain is due, but disabled broadcasting sends no transaction.
+    sync_model.calculate_valuation_func = lambda _state, *, block_number=None: 12.0
     sync_model.disable_broadcast = True
     nonce_before = web3.eth.get_transaction_count(asset_manager.address)
     with caplog.at_level(logging.INFO):
-        events = sync_model.sync_treasury(native_datetime_utc_now(), state, post_valuation=True)
+        events = sync_model.sync_treasury(
+            native_datetime_utc_now(), state, post_valuation=True
+        )
     assert events == []
     assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before
     assert base_usdc_token.fetch_balance_of(vault.silo_address) == Decimal(0)
