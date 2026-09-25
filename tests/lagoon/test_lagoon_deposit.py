@@ -249,8 +249,8 @@ def test_lagoon_sync_treasury_marks_noop_startup_sync(
     """Verify Lagoon marks treasury synced when startup sync has no actions.
 
     1. Create a Lagoon state and settle an initial deposit
-    2. Run ``sync_treasury(post_valuation=True)`` again with no pending flows
-    3. Verify it posts NAV while updating treasury metadata without a balance event
+    2. Change NAV by less than 0.5% and verify no transactions are sent.
+    3. Change NAV by more than 0.5% and verify it is settled.
     """
 
     vault = automated_lagoon_vault.vault
@@ -288,18 +288,26 @@ def test_lagoon_sync_treasury_marks_noop_startup_sync(
     previous_ref_count = len(treasury.balance_update_refs)
     nonce_before = web3.eth.get_transaction_count(asset_manager.address)
 
-    # 2. Run sync_treasury(post_valuation=True) again with no pending flows.
+    # 2. A 0.04 USDC gain is inside the 0.5% tolerance of the settled 9 USDC.
+    sync_model.calculate_valuation_func = lambda _state, *, block_number=None: 9.04
     second_cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(second_cycle, state, post_valuation=True)
-
-    # 3. Verify it posts NAV while updating treasury metadata without a balance event.
     assert events == []
-    assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 1
+    assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before
     assert treasury.last_updated_at is not None
     assert treasury.last_cycle_at == second_cycle
     assert treasury.last_block_scanned is not None
     assert treasury.last_block_scanned >= previous_block
     assert len(treasury.balance_update_refs) == previous_ref_count
+
+    # 3. A 0.05 USDC gain crosses the 0.5% threshold.
+    sync_model.calculate_valuation_func = lambda _state, *, block_number=None: 9.05
+    nonce_before = web3.eth.get_transaction_count(asset_manager.address)
+    events = sync_model.sync_treasury(native_datetime_utc_now(), state, post_valuation=True)
+    assert len(events) == 1
+    assert events[0].quantity == 0
+    assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 2
+    assert vault.fetch_total_assets(web3.eth.block_number) == Decimal("9.05")
 
 
 def test_lagoon_sync_treasury_aborts_when_frozen_positions_exist(

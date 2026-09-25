@@ -227,7 +227,7 @@ def test_lighter_lagoon_nav_uses_safe_balance_and_total_equity(
     )
     sync_model.calculate_valuation_func = nav_func
     nav_start_block = web3_ethereum.eth.block_number
-    sync_model.sync_treasury(
+    events = sync_model.sync_treasury(
         strategy_cycle_ts=cycle,
         state=state,
         post_valuation=True,
@@ -239,11 +239,12 @@ def test_lighter_lagoon_nav_uses_safe_balance_and_total_equity(
     assert position.get_value() == pytest.approx(LIGHTER_TOTAL_EQUITY)
     assert state.portfolio.get_vault_settlement_pending_value() == pytest.approx(0)
     assert usdc.fetch_balance_of(deployment.safe_address) == pytest.approx(SAFE_USDC)
+    assert len(events) == 1
+    assert events[0].quantity == 0
 
-    # With an empty investor queue the sync model intentionally posts NAV but
-    # does not call settleDeposit(); ``totalAssets`` remains the last settled
-    # value. Read the emitted pending ``newTotalAssets`` event instead (the
-    # deployed v0.5 ABI does not expose a getter for that storage slot).
+    # An empty-queue settlement accepts the posted NAV without investor flow.
+    # The deployed v0.5 ABI does not expose a newTotalAssets getter, so read
+    # the posted value from its event and compare it with settled totalAssets.
     nav_logs = fetch_vault_settlement_logs(
         web3=web3_ethereum,
         address=deployment.vault.address,
@@ -256,6 +257,8 @@ def test_lighter_lagoon_nav_uses_safe_balance_and_total_equity(
     posted_raw = int.from_bytes(bytes(nav_logs[-1]["data"]), byteorder="big")
     posted_nav = usdc.convert_to_decimals(posted_raw)
     assert posted_nav == pytest.approx(SAFE_USDC + LIGHTER_TOTAL_EQUITY)
+    assert deployment.vault.fetch_total_assets(web3_ethereum.eth.block_number) == pytest.approx(posted_nav)
+    assert state.sync.treasury.share_count == deployment.vault.fetch_total_supply(web3_ethereum.eth.block_number)
     assert reader.call_count >= MINIMUM_LIGHTER_EQUITY_READS
     for call in reader.call_args_list:
         assert call.args[1] == LIGHTER_ACCOUNT_INDEX

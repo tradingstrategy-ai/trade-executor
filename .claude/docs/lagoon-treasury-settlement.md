@@ -8,13 +8,16 @@ from the external ERC-4626/ERC-7540 vault positions described in
 ## Settlement flow
 
 `LagoonVaultSyncModel.sync_treasury(post_valuation=True)` first reconciles the
-Safe reserve balance and calculates a fresh portfolio NAV. It then always posts
-that NAV with `updateNewTotalAssets()`.
+Safe reserve balance and calculates a fresh portfolio NAV. With no investor
+queue, it posts that NAV with `updateNewTotalAssets()` when it differs from the
+settled onchain `totalAssets()` by at least 0.5%. A nonempty investor queue
+always triggers a fresh NAV post and settlement attempt.
 
-Settlement is a separate, optional `settleDeposit(uint256)` transaction through
+Settlement is a separate `settleDeposit(uint256)` transaction through
 the TradingStrategyModuleV0. Stock Lagoon v0.5 can settle both queued deposits
-and redemptions through this call. A successful NAV post therefore does not
-mean that an investor queue was settled.
+and redemptions through this call. The executor also settles an empty queue to
+accept the new NAV in `totalAssets()`. A successful NAV post alone does not
+update `totalAssets()`.
 
 ## GuardV0 policy
 
@@ -45,16 +48,22 @@ support from a version string or failed feature probe.
 
 | Condition | Action |
 |---|---|
-| No queue | Post NAV only |
+| No queue, positive settled NAV and change below 0.5% | Update treasury metadata without sending transactions |
+| No queue, NAV change at least 0.5% | Post NAV and settle the valuation after a successful simulation |
+| No queue, settled NAV is zero | Post NAV and settle; there is no positive baseline for a percentage comparison |
 | Guard policy disabled | Post NAV and automatically settle queued flow |
 | Queue within remaining window budget | Post NAV and automatically settle |
 | Queue over remaining window budget | Post NAV, leave queue pending; wait for the window reset or use Safe governance |
 | Legacy v0.5 cooldown active | Post NAV, leave queue pending and retry automatically later |
 | Legacy v0.5 gross flow over cap | Post NAV, leave queue pending and emit an error |
 
-Before a capped non-empty settlement, the executor simulates the wrapped module
-call. This preserves the Guard's exact raw-unit calculation and identifies the
-window-budget custom error without spending gas on an expected revert.
+Before a guarded settlement or an empty-queue settlement on an older module,
+the executor simulates the wrapped call. This preserves the Guard's exact
+raw-unit calculation and identifies expected deferrals without spending gas.
+If an older module rejects an empty-queue call, the executor logs that the
+posted NAV has not reached `totalAssets()` and does not broadcast settlement.
+An empty settlement has no investor cash flow, but may mint fee shares; the
+executor refreshes the vault share count from the settled block.
 
 ## Manual settlement alert
 
