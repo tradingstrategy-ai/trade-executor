@@ -8,13 +8,20 @@ from the external ERC-4626/ERC-7540 vault positions described in
 ## Settlement flow
 
 `LagoonVaultSyncModel.sync_treasury(post_valuation=True)` first reconciles the
-Safe reserve balance and calculates a fresh portfolio NAV. It then always posts
-that NAV with `updateNewTotalAssets()`.
+Safe reserve balance and calculates a fresh portfolio NAV. With no investor
+queue, it posts that NAV with `updateNewTotalAssets()` when it differs from the
+settled onchain `totalAssets()` by at least the configured tolerance (0.5% by
+default). A nonempty investor queue bypasses this tolerance. Frozen positions,
+insufficient redemption liquidity and disabled broadcasting can still stop a
+transaction before it is sent.
+The empty-queue check also reads the latest Silo balances so a request newer
+than the reorganisation-buffered accounting block is not skipped.
 
-Settlement is a separate, optional `settleDeposit(uint256)` transaction through
+Settlement is a separate `settleDeposit(uint256)` transaction through
 the TradingStrategyModuleV0. Stock Lagoon v0.5 can settle both queued deposits
-and redemptions through this call. A successful NAV post therefore does not
-mean that an investor queue was settled.
+and redemptions through this call. When an empty-queue NAV update is due, the
+executor also settles it to update `totalAssets()`. A successful NAV post alone
+does not update `totalAssets()`.
 
 ## GuardV0 policy
 
@@ -45,16 +52,28 @@ support from a version string or failed feature probe.
 
 | Condition | Action |
 |---|---|
-| No queue | Post NAV only |
-| Guard policy disabled | Post NAV and automatically settle queued flow |
+| No queue, positive settled NAV and change below the configured tolerance | Update treasury metadata without sending transactions |
+| No queue, NAV change at least the configured tolerance | Post NAV and settle the valuation after a successful simulation |
+| No queue, settled NAV and calculated NAV both zero | Update treasury metadata without sending transactions |
+| No queue, settled NAV zero but calculated NAV positive | Post NAV and settle; there is no positive baseline for a percentage comparison |
+| Guard policy disabled, queue present | Post NAV and automatically settle queued flow |
 | Queue within remaining window budget | Post NAV and automatically settle |
 | Queue over remaining window budget | Post NAV, leave queue pending; wait for the window reset or use Safe governance |
 | Legacy v0.5 cooldown active | Post NAV, leave queue pending and retry automatically later |
 | Legacy v0.5 gross flow over cap | Post NAV, leave queue pending and emit an error |
 
-Before a capped non-empty settlement, the executor simulates the wrapped module
-call. This preserves the Guard's exact raw-unit calculation and identifies the
-window-budget custom error without spending gas on an expected revert.
+Before a guarded settlement or an empty-queue settlement on an older module,
+the executor simulates the wrapped call. This preserves the Guard's exact
+raw-unit calculation and identifies expected deferrals without spending gas.
+If an empty-queue simulation fails on an unlimited module, the executor logs
+that the posted NAV has not reached `totalAssets()` and does not broadcast
+settlement.
+An empty settlement has no investor cash flow, but may mint fee shares; the
+executor refreshes the vault share count from the settled block. It does not
+create a funding `BalanceUpdate` for a settlement with no investor events. The
+executor analyses the receipt immediately; the later investor-flow scanner
+sees only `SettleDeposit` and `SettleRedeem` events, which an empty settlement
+lacks.
 
 ## Manual settlement alert
 
@@ -171,11 +190,11 @@ transaction.
 ## External settlement accounting
 
 When Safe owners execute a successful, already-valued `settleDeposit()` call
-outside the executor, the next treasury sync discovers and records the investor
-flow before it reconciles the Safe USDC balance. This is the manual recovery
-procedure after GuardV0 blocks automatic settlement.
+with investor flow outside the executor, the next treasury sync discovers and
+records that flow before it reconciles the Safe USDC balance. This is the manual
+recovery procedure after GuardV0 blocks automatic settlement.
 
-The executor creates one reserve `BalanceUpdate` per settlement transaction:
+The executor creates one reserve `BalanceUpdate` per discovered flow settlement:
 
 - `cause=deposit_and_redemption`;
 - `quantity = deposited - redeemed` in the reserve stablecoin; and
