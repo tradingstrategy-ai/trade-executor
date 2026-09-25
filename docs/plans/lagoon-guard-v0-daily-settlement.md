@@ -154,10 +154,11 @@ The production path and the Anvil path must both send only this transaction at
 this stage. Do not pre-sign the settlement transaction because the decision is
 made against the post-NAV on-chain state.
 
-`min_nav_change_update` and `check_nav_update_and_settle_needed()` can no longer
-gate NAV posting. Keep the constructor argument temporarily if removing it
-would create unrelated caller churn, but document it as compatibility-only and
-do not let it suppress a requested post-valuation update.
+This rule was superseded for empty queues by
+[`lagoon-empty-queue-nav-settlement.md`](lagoon-empty-queue-nav-settlement.md):
+`min_nav_change_update` now gates an empty-queue NAV update against settled
+onchain `totalAssets()`. A nonempty investor queue still bypasses the tolerance
+and posts a fresh NAV before settlement.
 
 Calls with `post_valuation=False` remain read/sync-only and do not broadcast.
 The frozen-position safety remains intentionally stronger than “always”: when

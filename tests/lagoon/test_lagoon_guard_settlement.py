@@ -163,8 +163,7 @@ def test_lagoon_guard_automatically_settles_flow_within_settlement_window_budget
     events = sync_model.sync_treasury(
         native_datetime_utc_now(), state, post_valuation=True
     )
-    assert len(events) == 1
-    assert events[0].quantity == 0
+    assert events == []
     assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 2
     assert vault.fetch_total_assets(web3.eth.block_number) == Decimal(11)
     assert base_usdc_token.fetch_balance_of(vault.safe_address) == safe_balance
@@ -176,7 +175,7 @@ def test_lagoon_guard_automatically_settles_flow_within_settlement_window_budget
     )
     assert state.sync.treasury.share_count > previous_share_count
 
-    # 7. A further NAV gain is due, but disabled broadcasting sends no transaction.
+    # 7. Disable broadcasts and verify it suppresses a due NAV update.
     sync_model.calculate_valuation_func = lambda _state, *, block_number=None: 12.0
     sync_model.disable_broadcast = True
     nonce_before = web3.eth.get_transaction_count(asset_manager.address)

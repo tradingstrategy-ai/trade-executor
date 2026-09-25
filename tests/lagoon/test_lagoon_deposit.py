@@ -250,7 +250,7 @@ def test_lagoon_sync_treasury_marks_noop_startup_sync(
 
     1. Create a Lagoon state and settle an initial deposit
     2. Change NAV by less than 0.5% and verify no transactions are sent.
-    3. Change NAV by more than 0.5% and verify it is settled.
+    3. Change NAV by more than 0.5% and verify it is settled without investor flow.
     """
 
     vault = automated_lagoon_vault.vault
@@ -286,9 +286,10 @@ def test_lagoon_sync_treasury_marks_noop_startup_sync(
     treasury = state.sync.treasury
     previous_block = treasury.last_block_scanned
     previous_ref_count = len(treasury.balance_update_refs)
+    next_event_id = state.portfolio.next_balance_update_id
     nonce_before = web3.eth.get_transaction_count(asset_manager.address)
 
-    # 2. A 0.04 USDC gain is inside the 0.5% tolerance of the settled 9 USDC.
+    # 2. Change NAV by less than 0.5% and verify no transactions are sent.
     sync_model.calculate_valuation_func = lambda _state, *, block_number=None: 9.04
     second_cycle = native_datetime_utc_now()
     events = sync_model.sync_treasury(second_cycle, state, post_valuation=True)
@@ -300,16 +301,49 @@ def test_lagoon_sync_treasury_marks_noop_startup_sync(
     assert treasury.last_block_scanned >= previous_block
     assert len(treasury.balance_update_refs) == previous_ref_count
 
-    # 3. A 0.05 USDC gain crosses the 0.5% threshold.
+    # 3. Change NAV by more than 0.5% and verify it is settled without investor flow.
     sync_model.calculate_valuation_func = lambda _state, *, block_number=None: 9.05
     nonce_before = web3.eth.get_transaction_count(asset_manager.address)
     events = sync_model.sync_treasury(
         native_datetime_utc_now(), state, post_valuation=True
     )
-    assert len(events) == 1
-    assert events[0].quantity == 0
+    assert events == []
     assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before + 2
     assert vault.fetch_total_assets(web3.eth.block_number) == Decimal("9.05")
+    assert len(treasury.balance_update_refs) == previous_ref_count
+    assert state.portfolio.next_balance_update_id == next_event_id
+
+
+def test_lagoon_empty_zero_nav_does_not_broadcast(
+    web3: Web3,
+    automated_lagoon_vault: LagoonAutomatedDeployment,
+    vault_strategy_universe: TradingStrategyUniverse,
+    asset_manager: HotWallet,
+) -> None:
+    """Avoid repeated zero-NAV transactions before a vault receives capital.
+
+    1. Initialise treasury state for an unfunded Lagoon vault.
+    2. Sync its empty investor queue and unchanged zero NAV.
+    """
+    vault = automated_lagoon_vault.vault
+    sync_model = LagoonVaultSyncModel(vault=vault, hot_wallet=asset_manager)
+    state = State()
+
+    # 1. Initialise treasury state for an unfunded Lagoon vault.
+    sync_model.sync_initial(
+        state,
+        reserve_asset=vault_strategy_universe.get_reserve_asset(),
+        reserve_token_price=1.0,
+    )
+
+    # 2. Sync its empty investor queue and unchanged zero NAV.
+    nonce_before = web3.eth.get_transaction_count(asset_manager.address)
+    cycle = native_datetime_utc_now()
+    events = sync_model.sync_treasury(cycle, state, post_valuation=True)
+    assert events == []
+    assert web3.eth.get_transaction_count(asset_manager.address) == nonce_before
+    assert vault.fetch_total_assets(web3.eth.block_number) == Decimal(0)
+    assert state.sync.treasury.last_cycle_at == cycle
 
 
 def test_lagoon_sync_treasury_aborts_when_frozen_positions_exist(

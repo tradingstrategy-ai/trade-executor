@@ -14,6 +14,8 @@ settled onchain `totalAssets()` by at least the configured tolerance (0.5% by
 default). A nonempty investor queue bypasses this tolerance. Frozen positions,
 insufficient redemption liquidity and disabled broadcasting can still stop a
 transaction before it is sent.
+The empty-queue check also reads the latest Silo balances so a request newer
+than the reorganisation-buffered accounting block is not skipped.
 
 Settlement is a separate `settleDeposit(uint256)` transaction through
 the TradingStrategyModuleV0. Stock Lagoon v0.5 can settle both queued deposits
@@ -52,7 +54,8 @@ support from a version string or failed feature probe.
 |---|---|
 | No queue, positive settled NAV and change below the configured tolerance | Update treasury metadata without sending transactions |
 | No queue, NAV change at least the configured tolerance | Post NAV and settle the valuation after a successful simulation |
-| No queue, settled NAV is zero | Post NAV and settle; there is no positive baseline for a percentage comparison |
+| No queue, settled NAV and calculated NAV both zero | Update treasury metadata without sending transactions |
+| No queue, settled NAV zero but calculated NAV positive | Post NAV and settle; there is no positive baseline for a percentage comparison |
 | Guard policy disabled, queue present | Post NAV and automatically settle queued flow |
 | Queue within remaining window budget | Post NAV and automatically settle |
 | Queue over remaining window budget | Post NAV, leave queue pending; wait for the window reset or use Safe governance |
@@ -66,9 +69,11 @@ If an empty-queue simulation fails on an unlimited module, the executor logs
 that the posted NAV has not reached `totalAssets()` and does not broadcast
 settlement.
 An empty settlement has no investor cash flow, but may mint fee shares; the
-executor refreshes the vault share count from the settled block. The executor
-analyses its receipt immediately; the later investor-flow scanner sees only
-`SettleDeposit` and `SettleRedeem` events, which an empty settlement lacks.
+executor refreshes the vault share count from the settled block. It does not
+create a funding `BalanceUpdate` for a settlement with no investor events. The
+executor analyses the receipt immediately; the later investor-flow scanner
+sees only `SettleDeposit` and `SettleRedeem` events, which an empty settlement
+lacks.
 
 ## Manual settlement alert
 

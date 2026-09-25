@@ -239,8 +239,7 @@ def test_lighter_lagoon_nav_uses_safe_balance_and_total_equity(
     assert position.get_value() == pytest.approx(LIGHTER_TOTAL_EQUITY)
     assert state.portfolio.get_vault_settlement_pending_value() == pytest.approx(0)
     assert usdc.fetch_balance_of(deployment.safe_address) == pytest.approx(SAFE_USDC)
-    assert len(events) == 1
-    assert events[0].quantity == 0
+    assert events == []
 
     # An empty-queue settlement accepts the posted NAV without investor flow.
     # The deployed v0.5 ABI does not expose a newTotalAssets getter, so read

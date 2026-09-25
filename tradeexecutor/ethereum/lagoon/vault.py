@@ -987,7 +987,9 @@ class LagoonVaultSyncModel(AddressSyncModel):
             # Provider envelopes are not uniform. Recover the raw custom-error
             # payload before classifying expected GuardV0 and legacy deferrals.
             revert_data = extract_revert_data(e)
-            if revert_data is None and not (empty_queue and not guarded):
+            # A transport failure is not evidence that the module rejects an
+            # empty settlement. Keep that failure visible to the caller.
+            if revert_data is None and not isinstance(e, ContractLogicError):
                 raise
 
             selector = revert_data[:4] if revert_data is not None else None
@@ -1236,28 +1238,40 @@ class LagoonVaultSyncModel(AddressSyncModel):
             )
             return recovered_events
 
+        valuation_decimal = Decimal(valuation)
+
         # An empty queue needs a new onchain valuation only when NAV has moved
         # enough from the last settled totalAssets(). Queued investor flows
         # always require a fresh NAV regardless of this threshold.
         pending_redemption_shares = vault.get_flow_manager().fetch_pending_redemption(
             safe_sync_block
         )
-        if pending_deposits == 0 and pending_redemption_shares == 0:
+        queue_is_empty = pending_deposits == 0 and pending_redemption_shares == 0
+        if queue_is_empty:
+            flow_manager = vault.get_flow_manager()
+            queue_is_empty = (
+                flow_manager.fetch_pending_deposit("latest") == 0
+                and flow_manager.fetch_pending_redemption("latest") == 0
+            )
+        if queue_is_empty:
             settled_nav = vault.fetch_total_assets(safe_sync_block)
-            if settled_nav > 0:
-                nav_change = abs(Decimal(str(valuation)) - settled_nav) / settled_nav
-                if nav_change < Decimal(str(self.min_nav_change_update)):
-                    logger.info(
-                        "Skipping Lagoon NAV post: %.4f%% change is below %.4f%% threshold and investor queue is empty",
-                        float(nav_change * 100),
-                        self.min_nav_change_update * 100,
-                    )
-                    return recovered_events
+            nav_change = abs(valuation_decimal - settled_nav)
+            below_tolerance = nav_change == 0 or (
+                settled_nav > 0
+                and nav_change < settled_nav * Decimal(str(self.min_nav_change_update))
+            )
+            if below_tolerance:
+                logger.info(
+                    "Skipping Lagoon NAV post: calculated=%s, settled=%s, queue empty, tolerance=%.4f%%",
+                    valuation_decimal,
+                    settled_nav,
+                    self.min_nav_change_update * 100,
+                )
+                return recovered_events
 
         assert self.hot_wallet, "asset_manager HotWallet needed to post Lagoon NAV"
         old_balance = reserve_position.quantity
         logger.info("Posting new Lagoon valuation: %f USD", valuation)
-        valuation_decimal = Decimal(valuation)
         valuation_func = vault.post_new_valuation(valuation_decimal)
 
         if self.anvil or self.unit_testing:
@@ -1392,44 +1406,53 @@ class LagoonVaultSyncModel(AddressSyncModel):
             )
 
         delta = analysis.get_underlying_diff()
-        event_id = portfolio.next_balance_update_id
-        portfolio.next_balance_update_id += 1
-
-        valuation_with_deposits = valuation + float(delta)
+        valuation_after_flows = valuation + float(delta)
         share_count = vault.fetch_total_supply(analysis.block_number)
-        pending_deposits, pending_redemptions = self._fetch_lagoon_queue_amounts(analysis.block_number)
-        evt = self._create_lagoon_settlement_event(
-            event_id=event_id,
-            reserve_position=reserve_position,
-            reserve_asset=reserve_asset,
-            analysis=analysis,
-            old_balance=old_balance,
-            origin="executor_broadcast",
+        pending_deposits, pending_redemptions = self._fetch_lagoon_queue_amounts(
+            analysis.block_number
         )
-        assert evt.other_data is not None
-        evt.other_data["valuation"] = valuation
-        evt.other_data["valuation_with_deposits"] = valuation_with_deposits
-        evt.other_data["share_count"] = share_count
+        evt = None
+        if analysis.deposit_events or analysis.redeem_events:
+            evt = self._create_lagoon_settlement_event(
+                event_id=portfolio.next_balance_update_id,
+                reserve_position=reserve_position,
+                reserve_asset=reserve_asset,
+                analysis=analysis,
+                old_balance=old_balance,
+                origin="executor_broadcast",
+            )
+            portfolio.next_balance_update_id += 1
+            assert evt.other_data is not None
+            evt.other_data["valuation"] = valuation
+            # Keep the stored key for compatibility; the value includes redemptions too.
+            evt.other_data["valuation_with_deposits"] = valuation_after_flows
+            evt.other_data["share_count"] = share_count
 
         # Update reserve position mutable value
-        reserve_position.reserve_token_price = float(1)
+        reserve_position.reserve_token_price = 1.0
         reserve_position.last_pricing_at = analysis.timestamp
         reserve_position.last_sync_at = analysis.timestamp
         reserve_position.quantity = analysis.underlying_balance
-        reserve_position.add_balance_update_event(evt)
+        if evt is not None:
+            reserve_position.add_balance_update_event(evt)
+            treasury_sync.balance_update_refs.append(
+                BalanceEventRef.from_balance_update_event(evt)
+            )
+            treasury_sync.balance_update_refs.sort(
+                key=lambda item: (
+                    item.strategy_cycle_included_at or datetime.datetime.min,
+                    item.balance_event_id,
+                )
+            )
 
-        # Add in the event cross reference list
-        ref = BalanceEventRef.from_balance_update_event(evt)
-        treasury_sync.balance_update_refs.append(ref)
-        treasury_sync.balance_update_refs.sort(
-            key=lambda item: (item.strategy_cycle_included_at or datetime.datetime.min, item.balance_event_id)
+        self._mark_treasury_sync_completed(
+            treasury_sync=treasury_sync,
+            strategy_cycle_ts=strategy_cycle_ts,
+            block_number=analysis.block_number,
+            pending_deposits=pending_deposits,
+            pending_redemptions=pending_redemptions,
+            share_count=share_count,
         )
-        treasury_sync.last_block_scanned = analysis.block_number
-        treasury_sync.last_updated_at = native_datetime_utc_now()
-        treasury_sync.last_cycle_at = strategy_cycle_ts
-        treasury_sync.pending_deposits = float(pending_deposits)
-        treasury_sync.pending_redemptions = float(pending_redemptions)
-        treasury_sync.share_count = share_count
         treasury_sync.last_lagoon_settlement_block_scanned = max(
             treasury_sync.last_lagoon_settlement_block_scanned or analysis.block_number,
             analysis.block_number,
@@ -1438,10 +1461,10 @@ class LagoonVaultSyncModel(AddressSyncModel):
         logger.info(
             f"Lagoon settlements done, the last block is now {treasury_sync.last_block_scanned:,}\n"
             f"Safe address: {vault.safe_address}, vault address: {vault.vault_address}, silo address: {vault.silo_address}\n"
-            f"Settled {analysis.get_underlying_diff()} USD\n"
-            f"Non-deposit valuation is {valuation:,.2f} USD, with-deposit valuation is {valuation_with_deposits:,.2f} USD\n"
+            f"Settled {delta} USD\n"
+            f"NAV before investor flows is {valuation:,.2f} USD, after flows is {valuation_after_flows:,.2f} USD\n"
             f"Pending deposits {pending_deposits} USD\n"
             f"Pending redemptions {pending_redemptions} USD\n"
             f"Share count {share_count} {vault.share_token.symbol}"
         )
-        return recovered_events + [evt]
+        return recovered_events + ([evt] if evt is not None else [])
