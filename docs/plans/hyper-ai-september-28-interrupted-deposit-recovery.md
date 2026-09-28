@@ -127,6 +127,10 @@ the still-unrecorded Safe reserve credit, terminalise the trade, clear the
 marker, and consume the slot once before saving. Only a subsequent rerun of
 the saved, resolved state must make no further credit or slot change.
 
+If execution stops between the perp-to-spot and spot-to-EVM legs, the material
+spot balance is intentionally rejected on rerun and requires operator review
+and manual completion before account correction can continue.
+
 The current `preflight_state_for_account_correction()` permits #1728 only by
 accident: it rejects started trades without transactions but misses started
 trades **with** transactions. Make the exception for this controlled

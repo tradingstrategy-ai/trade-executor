@@ -317,6 +317,10 @@ in the Safe, and consumes the already partially executed two-day slot. It is
 not a generic deposit retry. The unchanged original state and pinned-fork
 test are described in `docs/plans/hyper-ai-september-28-interrupted-deposit-recovery.md`.
 
+If execution stops after perp-to-spot but before spot-to-EVM, the next run
+refuses the material spot balance. Review custody and complete the return
+manually; this command does not automatically resume a half-finished transfer.
+
 ### Close single position (for single-pair strategies)
 
 ```python

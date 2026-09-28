@@ -355,6 +355,10 @@ recognises the Safe surplus and does not send a second transfer. Run the
 full-snapshot test described in `docs/hypercore-data-availability.md` before
 any production operation.
 
+If the process stops between the perp-to-spot and spot-to-EVM legs, the next
+run refuses the material spot balance; an operator must review custody and
+complete that leg manually before retrying account correction.
+
 For #1486, the default dry run above plans exactly
 `perp_to_spot 48.884068` followed by `spot_to_evm 48.884068`: no incident
 option is necessary. The recovery is on by default for every eligible

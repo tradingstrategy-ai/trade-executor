@@ -184,7 +184,7 @@ def _inspect_interrupted_hypercore_deposit(
     )
     already_returned = (
         snapshot.perp_withdrawable <= HYPERCORE_TRANSIT_RECOVERY_DUST_USDC + BALANCE_TOLERANCE
-        and amount - Decimal("0.50") <= safe_surplus <= amount + BALANCE_TOLERANCE
+        and amount - HYPERCORE_TRANSIT_RECOVERY_DUST_USDC <= safe_surplus <= amount + BALANCE_TOLERANCE
     )
     if not (stranded or already_returned):
         raise RuntimeError(
@@ -680,25 +680,7 @@ def correct_accounts(
     else:
         store, state = backup_state(state_file, unit_testing=unit_testing)
 
-    reconciled_transfers = reconcile_verified_lighter_transfers(
-        state,
-        web3,
-        mutate=not dry_run,
-    )
-    if reconciled_transfers:
-        if not dry_run:
-            store.sync(state)
-        logger.info(
-            "%s %d verified Lighter transfer(s)",
-            "Found" if dry_run else "Reconciled",
-            len(reconciled_transfers),
-        )
-
-    # This must precede universe construction, vault synchronisation, and the
-    # HyperCore transit hook below.  The hook can broadcast real Safe actions;
-    # discovering an unfinished trade afterwards reproduces the #1486 incident
-    # where funds were recovered but the command could not complete its state
-    # reconciliation.
+    # Check the incident flag before unrelated Lighter reconciliation can save state.
     at_risk_trades = [
         trade for trade in state.portfolio.get_all_trades()
         if has_unresolved_hypercore_accounting(trade)
@@ -710,6 +692,23 @@ def correct_accounts(
         )
     if at_risk_trades and (skip_save or process_redemption):
         raise RuntimeError("Interrupted HyperCore deposit reconciliation requires an atomic state save and no redemption processing")
+    if not at_risk_trades:
+        reconciled_transfers = reconcile_verified_lighter_transfers(
+            state,
+            web3,
+            mutate=not dry_run,
+        )
+        if reconciled_transfers:
+            if not dry_run:
+                store.sync(state)
+            logger.info(
+                "%s %d verified Lighter transfer(s)",
+                "Found" if dry_run else "Reconciled",
+                len(reconciled_transfers),
+            )
+
+    # The transit hook can broadcast Safe actions, so validate unfinished
+    # trades before building a universe or entering that hook.
     preflight_state_for_account_correction(state, allow_at_risk_hypercore_deposit=bool(at_risk_trades))
     incident = _inspect_interrupted_hypercore_deposit(state, sync_model, web3) if at_risk_trades else None
     if incident:
