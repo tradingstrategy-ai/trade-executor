@@ -67,6 +67,23 @@ For the upstream protocol and guard-side background, cross-link to eth_defi:
 
 ## Data structures in trade-executor
 
+### Lagoon guard coverage
+
+An open Hyperliquid vault is not necessarily executable through a Lagoon
+Safe: a restricted guard also checks the destination vault address on the
+final ``vaultTransfer``. Run
+``trade-executor lagoon-hypercore-vault-whitelist-status --vault-record-file
+deploy/hyper-ai-v2-new-guard-vault-info.json`` for Hyper-AI, or supply another
+Lagoon deployment record, to compare the recorded permissions with current
+HyperCore vault metadata. The report orders missing addresses by current TVL
+and shows three-month CAGR and Sharpe; it does not test on-chain guard state or
+apply a strategy's risk screens. Hyper-AI loads its configured deployment
+record before constructing the trading universe, and fails if the file is
+absent or, in live mode with ``VAULT_ADAPTER_ADDRESS`` set, does not match that
+module. Neither path reads on-chain
+permissions; update the record after guard governance changes before treating
+either result as current.
+
 The driver lives in `tradeexecutor/ethereum/vault/hypercore_routing.py`.
 
 | Type | Role |
