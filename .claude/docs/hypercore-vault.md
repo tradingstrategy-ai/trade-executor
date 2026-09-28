@@ -73,10 +73,11 @@ final `vaultTransfer`. Run
 `trade-executor lagoon-hypercore-vault-whitelist-status --vault-record-file deploy/hyper-ai-v2-new-guard-vault-info.json`
 for Hyper-AI, or supply another Lagoon deployment record, to compare the recorded permissions with current
 HyperCore vault metadata. The report orders missing addresses by current TVL
-and shows three-month CAGR and Sharpe; it does not test on-chain guard state or
+and shows three-month gross CAGR and Sharpe; it does not test on-chain guard state or
 apply a strategy's risk screens. Hyper-AI validates its configured deployment
-record when constructing the universe, but keeps the discovered vaults available
-for indicators and valuation. During `decide_trades()`,
+record when constructing the universe, but does not use guard permissions to
+remove vault data; curator and optional manifest screens still apply. During
+`decide_trades()`,
 `PositionManager.is_whitelisted_vault()` rejects new allocations missing from
 the record, logs a warning, and stores a per-vault admission observation in the
 live decision recorder. The recorder also stores the full recorded allow-list

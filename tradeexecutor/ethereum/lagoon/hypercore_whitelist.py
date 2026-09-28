@@ -55,11 +55,18 @@ def load_hypercore_vault_whitelist(
     :param expected_module_address: Configured Lagoon guard module, when known.
     :return: Hyperliquid guard module identity and vault-transfer permissions.
     """
-    deployment = json.loads(record_file.read_text())["deployments"]["hyperliquid"]
-    config = deployment["config"]
+    try:
+        deployment = json.loads(record_file.read_text(encoding="utf-8"))["deployments"]["hyperliquid"]
+        config = deployment["config"]
+        module_address = deployment["module_address"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(
+            f"Lagoon deployment record {record_file} must contain deployments.hyperliquid with config and module_address"
+        ) from exc
+    if not isinstance(config, dict):
+        raise ValueError(f"Invalid Hyperliquid guard config in {record_file}")
     if "hypercore_vaults" not in config or "any_hypercore_vault" not in config:
         raise ValueError(f"Lagoon deployment record {record_file} has no HyperCore vault permissions; use a current guard record")
-    module_address = deployment["module_address"]
     if not is_address(module_address):
         raise ValueError(f"Invalid Hyperliquid guard module address in {record_file}: {module_address}")
 

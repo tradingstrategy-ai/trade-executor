@@ -316,10 +316,11 @@ class PositionManager:
         """Check whether a HyperCore vault may receive a new allocation.
 
         Strategies call this before selecting a new entrant or topping up a
-        held position. The Lagoon record is loaded once per decision; a
-        rejected allocation is warned and recorded once for that cycle, linked
-        to the recorder's cycle and decision timestamp. The method does not
-        remove held vaults from the data universe used for valuation and exits.
+        held position. The Lagoon record is loaded when this manager is created;
+        a rejected address is warned and recorded once per manager. In a
+        decorated strategy decision, that observation is linked to the cycle
+        and decision timestamp. The method does not remove held vaults from
+        the data universe used for valuation and exits.
 
         :param pair: HyperCore vault trading pair under consideration.
         :return: Whether the configured guard record permits the vault.

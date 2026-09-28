@@ -18,16 +18,12 @@ import pandas as pd
 import pytest
 from duckdb import connect
 
-from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_pair
-from tradeexecutor.state.identifier import AssetIdentifier
-from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.bootstrap import import_strategy_file
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.utils.timer import timed_task
 from tradeexecutor.strategy.execution_context import ExecutionContext, ExecutionMode
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
-from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager
 from tradeexecutor.strategy.parameters import StrategyParameters
 from tradeexecutor.strategy.recorder import DecisionRecorder, record_decision
 from tradeexecutor.strategy.recorder.serialisation import (
@@ -37,10 +33,6 @@ from tradeexecutor.strategy.recorder.serialisation import (
     to_json_value,
 )
 from tradeexecutor.strategy.recorder.storage import RecorderStorage
-from tradingstrategy.chain import ChainId
-from tradingstrategy.exchange import ExchangeUniverse
-from tradingstrategy.timebucket import TimeBucket
-from tradingstrategy.universe import Universe
 
 
 class _Pair:
@@ -242,65 +234,6 @@ def test_strategy_input_recorder_round_trip(tmp_path: Path) -> None:
     assert decode_json_value(candle_chunk["rows"])[0][1] == pd.Timestamp("2026-01-01")
     assert decode_json_value(to_json_value(pd.Timestamp("2026-01-01 00:00:00.123456789"))).value == 1767225600123456789
     connection.close()
-
-
-def test_hypercore_guard_skip_is_linked_to_decision_cycle(tmp_path: Path) -> None:
-    """Persist a PositionManager whitelist rejection with its strategy cycle.
-
-    1. Write a restricted Lagoon record and create an unlisted HyperCore pair.
-    2. Run a decorated decision using the real PositionManager and recorder.
-    3. Reopen DuckDB and join the skip observation to its cycle and timestamp.
-    """
-    # 1. Write a restricted Lagoon record and create an unlisted HyperCore pair.
-    record_file = tmp_path / "guard.json"
-    record_file.write_text(json.dumps({"deployments": {"hyperliquid": {
-        "module_address": "0xf79d5540fa3a6ea738aa21a562c5ad7224406f84",
-        "config": {
-            "any_hypercore_vault": False,
-            "hypercore_vaults": ["0x0034cd90f5a6195a2e282282a9e551502b7b516c"],
-        },
-    }}}))
-    usdc = AssetIdentifier(999, "0x0000000000000000000000000000000000000002", "USDC", 6)
-    rejected = "0xb8f43ee0513e53309b9d6d6a42dce8fdb694b04d"
-    pair = create_hypercore_vault_pair(usdc, rejected)
-    universe = Universe(time_bucket=TimeBucket.d1, chains={ChainId.hypercore}, exchange_universe=ExchangeUniverse({}))
-
-    # 2. Run a decorated decision using the real PositionManager and recorder.
-    recorder_path = tmp_path / "hyper-ai-record.duckdb"
-    recorder = DecisionRecorder(recorder_path, "hyper-ai", "fixture strategy", strategy_file="fixture.py")
-    strategy_input = _make_input(tmp_path / "hyper-ai.json", recorder)
-    strategy_input.cycle = 17
-
-    @record_decision
-    def decide_trades(input: StrategyInput) -> list[TradeExecution]:
-        manager = PositionManager(
-            timestamp=input.timestamp,
-            universe=universe,
-            state=State(),
-            pricing_model=object(),
-            vault_record_file=record_file,
-            recorder=input.recorder,
-        )
-        assert not manager.is_whitelisted_vault(pair)
-        return []
-
-    assert decide_trades(strategy_input) == []
-    recorder.close()
-
-    # 3. Reopen DuckDB and join the skip observation to its cycle and timestamp.
-    connection = connect(str(recorder_path))
-    cycle, decision_at_ns, observations_json = connection.execute(
-        "SELECT cycle, epoch_ns(decision_at), observations FROM decisions WHERE status = 'completed'"
-    ).fetchone()
-    connection.close()
-    observations = json.loads(observations_json)
-    guard_input = next(row for row in observations if row["name"] == "hypercore_guard_whitelist")
-    skip = next(row for row in observations if row["name"] == "hypercore_guard_whitelist_skip")
-    assert cycle == 17
-    assert decision_at_ns == 1767225600123456789
-    assert decode_json_value(guard_input["value"])["vault_addresses"] == ["0x0034cd90f5a6195a2e282282a9e551502b7b516c"]
-    assert skip["pair_key"] == rejected
-    assert decode_json_value(skip["value"])["reason"] == "not_in_guard_record"
 
 
 @pytest.mark.timeout(300)

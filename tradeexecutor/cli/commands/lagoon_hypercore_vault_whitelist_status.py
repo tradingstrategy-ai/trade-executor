@@ -52,7 +52,7 @@ def get_unwhitelisted_hypercore_vaults(
 
 
 def _three_month_metrics(vault: dict) -> tuple[float | None, float | None]:
-    """Read the current dataset's 3M CAGR and Sharpe for one report row.
+    """Read the current dataset's 3M gross CAGR and Sharpe for one report row.
 
     :param vault: Raw vault metadata entry.
     :return: Annualised CAGR as a ratio and Sharpe, or ``None`` if unavailable.
@@ -77,12 +77,8 @@ def lagoon_hypercore_vault_whitelist_status(
     Run from a deployment directory with ``--vault-record-file`` pointing to
     its current guard record. This downloads current vault metadata and prints
     every missing vault, sorted by TVL, including its address for governance.
-    No transaction or state mutation is performed.
-
-    :param vault_record_file: Deployment JSON written by ``lagoon-deploy-vault``.
-    :param vault_pro_api_key: Licence key for the vault metadata dataset.
-    :param cache_path: Dataset cache root; defaults to the command's own cache.
-    :param log_level: CLI logging level.
+    No transaction or executor state mutation is performed. The fresh metadata
+    download updates the local dataset cache.
     """
     logger = setup_logging(log_level)
     whitelist = load_hypercore_vault_whitelist(vault_record_file)
@@ -117,4 +113,4 @@ def lagoon_hypercore_vault_whitelist_status(
         len(missing),
         sum(vault.get("chain_id") == 9999 for vault in vaults),
     )
-    print(tabulate(rows, headers=("Name", "TVL", "CAGR 3M", "Sharpe 3M", "Address"), tablefmt="simple"))
+    print(tabulate(rows, headers=("Name", "TVL", "Gross CAGR 3M", "Sharpe 3M", "Address"), tablefmt="simple"))
