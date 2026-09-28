@@ -506,6 +506,10 @@ def repair_trade(portfolio: Portfolio, t: TradeExecution) -> TradeExecution:
         raise RepairAborted(
             "External-account transfers require protocol-specific verification before accounting repair",
         )
+    if has_unresolved_hypercore_accounting(t):
+        raise RepairAborted(
+            f"HyperCore trade #{t.trade_id} has capital at risk; reconcile its live custody before changing reserves",
+        )
 
     p = portfolio.get_position_by_id(t.position_id)
 
@@ -998,6 +1002,10 @@ def repair_tx_not_generated(state: State, interactive=True):
             # Already repaired
             continue
 
+        if has_unresolved_hypercore_accounting(t):
+            logger.warning("Deferring no-transaction repair for at-risk HyperCore trade #%s", t.trade_id)
+            continue
+
         if not t.blockchain_transactions and t.get_status() in (TradeStatus.planned, TradeStatus.started):
             tx_missing_trades.add(t)
         elif not t.blockchain_transactions:
@@ -1050,19 +1058,30 @@ def repair_tx_not_generated(state: State, interactive=True):
     return repair_trades_generated
 
 
-def repair_zero_quantity(state: State, interactive=True):
-    """Scan for positions that failed to open and need to be cleaned up."""
+def repair_zero_quantity(state: State, interactive: bool = True) -> list[TradeExecution]:
+    """Close empty positions after their never-broadcast opening trades are repaired.
+
+    A zero quantity is not evidence that a HyperCore deposit never moved cash:
+    its capital can already be in perp even when the vault position is empty.
+
+    :param state: Portfolio to inspect and modify.
+    :param interactive: Ask for confirmation before closing eligible positions.
+    :return: Synthetic closing trades for positions with successful openings.
+    """
     zero_quantity_positions = [
         p for p in state.portfolio.get_open_positions()
         if p.get_quantity() == 0
-        # Async vault positions (Ostium V1.5, ERC-7540) have quantity 0 while
-        # awaiting settlement — they are NOT broken and must not be repaired.
-        # Settlement retry will resolve them on the next tick.
+        # Async vaults can have zero quantity until settlement completes.
         and not any(t.get_status() == TradeStatus.vault_settlement_pending for t in p.trades.values())
+        and not any(
+            has_unresolved_hypercore_accounting(t)
+            or (t.blockchain_transactions and t.get_status() in (TradeStatus.started, TradeStatus.broadcasted))
+            for t in p.trades.values()
+        )
     ]
     if not zero_quantity_positions:
         print("No zero quantity positions found")
-        return
+        return []
 
     print("Positions with zero quantity that need to be fixed")
     for p in zero_quantity_positions:
@@ -1076,14 +1095,17 @@ def repair_zero_quantity(state: State, interactive=True):
     portfolio = state.portfolio
     repair_trades_generated = []
     for p in zero_quantity_positions:
-        # The position has gone to zero
         if p.can_be_closed():
-            # In a lot of places we assume that a position with 1 trade cannot be closed
-            # Make a 0-sized trade so that we know the position is closed
-            t = close_position_with_empty_trade(portfolio, p)
-            logger.info("Position %s closed with a trade %s", p, t)
-            assert p.is_closed()
-
-            repair_trades_generated.append(t)
+            if p.get_first_trade().is_success():
+                t = close_position_with_empty_trade(portfolio, p)
+                repair_trades_generated.append(t)
+                logger.info("Position %s closed with a trade %s", p, t)
+            elif any(t.get_status() == TradeStatus.repaired for t in p.trades.values()) and all(
+                t.get_status() in (TradeStatus.repaired, TradeStatus.success, TradeStatus.expired)
+                for t in p.trades.values()
+            ):
+                p.add_notes_message("Closed after repairing a never-broadcast opening trade")
+                portfolio.close_position(p, native_datetime_utc_now())
+                logger.info("Closed never-filled position %s without inventing a successful opening trade", p)
 
     return repair_trades_generated

@@ -72,13 +72,17 @@ already created trades must be reconciled instead of replayed. Completion and
 clearing the pending slot are persisted together after a successful tick.
 There is still a crash window between trade persistence and that completion
 write. If a pending slot contains completed trades, restart refuses it, even
-after ordinary transaction repair. There is
-currently no supported command to mark such a slot completed. Do not blindly
-clear the flag or automatically infer completion: some intended trades may
-never have executed. A reviewed explicit recovery procedure is needed.
-
-The completed-trade recovery gap remains an unresolved deployment blocker for
-this trigger, not a guarantee provided by this runbook.
+after ordinary transaction repair. For the specific 28 September Hyper-AI
+interrupted deposit, `repair` fixes never-broadcast sibling trades but exits
+incomplete while the deposit's capital-at-risk marker remains. The operator
+must verify the failed vault-deposit receipt and current Safe, HyperCore
+perp/spot and target-vault balances. `correct-accounts --dry-run` shows the
+recovery plan without changing state or funds. Only after that review should
+the operator run `correct-accounts --consume-partial-hypercore-slot`; it
+verifies returned Safe cash, corrects reserves once, and saves the failed
+deposit and consumed slot together. Other trade-bearing pending slots are not
+automatically consumed; never clear the flag by hand or replay a slot with
+successful trades.
 
 There is no long start-up polling wait to interrupt. An in-flight HTTP request
 still relies on its network timeout. Process-private price files are removed
@@ -105,4 +109,9 @@ the production endpoint is deployed or that its receipts are fresh.
 Coverage is in `tests/strategy/test_hypercore_data_availability.py` (polling,
 deadlines, restart selection, trade replay protection and publication races)
 and `test_hypercore_manifest_contract.py` (actual producer/consumer and sparse
-data). Full manifest-triggered `start` lifecycle coverage is still missing.
+data). The pinned-fork incident CLI test is
+`tests/mainnet_fork/test_hyper_ai_interrupted_deposit.py`; it uses the
+checked-in HyperEVM RPC cache seed at block 47,080,105 and a reduced incident
+state. Pass `HYPER_AI_INCIDENT_STATE` to run it against the untouched full
+snapshot before any production correction. Full manifest-triggered `start`
+lifecycle coverage is still missing.

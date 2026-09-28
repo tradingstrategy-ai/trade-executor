@@ -11,10 +11,9 @@ from eth_defi.compat import native_datetime_utc_now
 
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeStatus
+from tradeexecutor.state.trade import TradeExecution, TradeStatus, has_unresolved_hypercore_accounting
 from tradeexecutor.strategy.execution_model import ExecutionModel
 from tradeexecutor.strategy.routing import RoutingModel, RoutingState
-from eth_defi.compat import native_datetime_utc_now
 
 
 logger = logging.getLogger(__name__)
@@ -44,6 +43,9 @@ def rebroadcast_all(
     all_trades = list(state.portfolio.get_all_trades())
 
     for t in all_trades:
+        if has_unresolved_hypercore_accounting(t):
+            logger.warning("Deferring rebroadcast of HyperCore trade #%s pending live custody reconciliation", t.trade_id)
+            continue
         # only rebroadcast trades that are not failed and unfinished
         # Skip CCTP in-transit trades: they have a dedicated retry path
         if t.get_status() == TradeStatus.cctp_in_transit:

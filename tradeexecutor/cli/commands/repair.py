@@ -3,12 +3,13 @@ import datetime
 from pathlib import Path
 from typing import Optional
 from typer import Option
+import typer
 
 from eth_defi.compat import native_datetime_utc_now
 
 from . import shared_options
 from .app import app
-from ..bootstrap import prepare_executor_id, create_state_store, create_execution_and_sync_model, resolve_deployment_file, prepare_cache, create_web3_config, create_client, configure_default_chain
+from ..bootstrap import prepare_executor_id, create_execution_and_sync_model, resolve_deployment_file, prepare_cache, create_web3_config, create_client, configure_default_chain, backup_state
 from ..log import setup_logging
 from ...ethereum.rebroadcast import rebroadcast_all
 from ...ethereum.velvet.execution import VelvetExecution
@@ -16,6 +17,7 @@ from ...ethereum.velvet.vault import VelvetVaultSyncModel
 from ...ethereum.velvet.velvet_enso_routing import VelvetEnsoRouting
 from ...ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
 from ...state.repair import repair_trades, repair_tx_not_generated, repair_zero_quantity
+from ...state.trade import has_unresolved_hypercore_accounting
 from ...strategy.approval import UncheckedApprovalModel
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.description import StrategyExecutionDescription
@@ -69,12 +71,16 @@ def repair(
     - If a trade failed and blockchain tx has been marked as reverted,
       undo this trade in the internal accounting
 
-    - If a tranaction has been broadcasted, and can be now confirmed,
+    - If a transaction has been broadcast and can now be confirmed,
       confirm this trade
 
-    - If a transaction has not been broadcasted, try to redo the trade
-      by recreating the blockchain transaction objects with a new nonce
-      and broadcast them
+    - For an unfinished broadcast trade without a HyperCore capital-at-risk
+      marker, inspect its recorded transactions before attempting rebroadcast
+
+    A zero-quantity HyperCore position can still have USDC in transit. Such a
+    trade is not refunded or rebroadcast. Repairs for unrelated never-broadcast
+    trades are saved, but the command exits non-zero while marked capital is
+    unresolved. Review ``correct-accounts --dry-run`` before any live recovery.
 
     See also check-accounts and correct-accounts commands.
     """
@@ -142,10 +148,7 @@ def repair(
     if not state_file:
         state_file = f"state/{id}.json"
 
-    store = create_state_store(Path(state_file))
-
-    assert not store.is_pristine(), f"Cannot repair prisnite strategy: {state_file}"
-    state = store.load()
+    store, state = backup_state(state_file, unit_testing=unit_testing)
     reconciled_transfers = reconcile_verified_lighter_transfers(
         state,
         web3,
@@ -199,16 +202,11 @@ def repair(
         assert isinstance(runner.routing_model, VelvetEnsoRouting), f"Got: {runner.routing_model}"
         assert routing_model is None, f"Got: {routing_model}"
 
-    #
-    # First trades that have txs missing
-    #
+    # Persist no-transaction repairs before examining broadcast trades: a
+    # later custody error must not discard the safe partial progress.
     repair_tx_not_generated(state, interactive=(not auto_approve))
+    store.sync(state)
 
-    #
-    # Second fix txs that have unresolved state
-    #
-
-    # Get the latest nonce from the chain
     sync_model.resync_nonce()
 
     trades, txs = rebroadcast_all(
@@ -226,18 +224,10 @@ def repair(
 
     store.sync(state)
 
-    #
-    # Repair positions that failed to open, have 0 quanttiy
-    #
     repair_zero_quantity(
         state,
         interactive=(not auto_approve),
     )
-
-    #
-    # Then resolve trade status based whether
-    # its txs have succeeded or not
-    #
 
     report = repair_trades(
         state,
@@ -248,3 +238,14 @@ def repair(
     store.sync(state)
 
     logger.info(f"Repair report:\n{report}")
+    unresolved = [
+        trade.trade_id
+        for trade in state.portfolio.get_all_trades()
+        if has_unresolved_hypercore_accounting(trade)
+    ]
+    if unresolved:
+        logger.error(
+            "Repair incomplete: HyperCore trade(s) %s still require live custody reconciliation; run correct-accounts --dry-run",
+            unresolved,
+        )
+        raise typer.Exit(code=1)

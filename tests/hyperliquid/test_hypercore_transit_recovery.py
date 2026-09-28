@@ -472,6 +472,7 @@ def test_correct_accounts_dry_run_plans_transit_recovery_without_signer(monkeypa
                 )
             },
             get_open_and_frozen_positions=lambda: [],
+            get_all_trades=lambda: [],
         )
     )
     monkeypatch.setattr(

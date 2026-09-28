@@ -1257,10 +1257,10 @@ def backup_state(
     # Make a backup
     # https://stackoverflow.com/a/47528275/315168
     backup_file = None
-    backup_attempts = (
-        1 if unit_testing else 99
-    )  # Don't pollute folders when unit testing
-    for i in range(1, backup_attempts):  # Try 99 different iterateive backup filenames
+    # Several maintenance commands may run against the same copied test state.
+    # Never treat an existing backup as permission to mutate without a new one.
+    backup_attempts = 10 if unit_testing else 99
+    for i in range(1, backup_attempts + 1):
         backup_file = state_file.with_suffix(f".{backup_suffix}-{i}.json")
         if os.path.exists(backup_file):
             continue
@@ -1268,8 +1268,7 @@ def backup_state(
         shutil.copy(state_file, backup_file)
         break
     else:
-        if not unit_testing:
-            raise RuntimeError(f"Could not create backup {backup_file}")
+        raise RuntimeError(f"Could not create backup {backup_file}")
 
     logger.info("Old state backed up as %s", backup_file)
 
