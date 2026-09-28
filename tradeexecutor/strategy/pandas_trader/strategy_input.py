@@ -954,8 +954,21 @@ class StrategyInput:
     #: executor state remains the sole state serialisation authority.
     state_path: Path | None = None
 
-    def get_position_manager(self) -> PositionManager:
-        """Create a position manager instance to open/close trading positions in this decision cycle."""
+    def get_position_manager(
+        self,
+        vault_record_file: Path | None = None,
+        expected_vault_guard_module_address: str | None = None,
+    ) -> PositionManager:
+        """Create the decision's position manager, optionally with Lagoon guard checks.
+
+        HyperCore strategies pass their Lagoon deployment record so candidate
+        rejections can be logged and attached to this cycle's recorder. Other
+        strategies keep the ordinary unrestricted position manager.
+
+        :param vault_record_file: Lagoon deployment JSON for HyperCore vaults.
+        :param expected_vault_guard_module_address: Deployed guard module address.
+        :return: Position manager for this strategy cycle.
+        """
         return PositionManager(
             self.timestamp,
             self.strategy_universe,
@@ -964,6 +977,9 @@ class StrategyInput:
             default_slippage_tolerance=self.parameters.get("slippage_tolerance") or DEFAULT_SLIPPAGE_TOLERANCE,
             routing_model=self.routing_model,
             routing_state=self.routing_state,
+            vault_record_file=vault_record_file,
+            expected_vault_guard_module_address=expected_vault_guard_module_address,
+            recorder=self.recorder,
         )
 
     def get_default_pair(self) -> TradingPairIdentifier:

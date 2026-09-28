@@ -5,6 +5,7 @@ import warnings
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from io import StringIO
+from pathlib import Path
 from typing import List, Optional, Union, Set, Literal
 import logging
 
@@ -13,6 +14,8 @@ import pandas as pd
 
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.token_analysis.blacklist import is_blacklisted_address
+from tradeexecutor.ethereum.lagoon.hypercore_whitelist import HypercoreVaultWhitelist, load_hypercore_vault_whitelist
+from tradeexecutor.strategy.recorder.recorder import DecisionRecorder
 from tradeexecutor.strategy.routing import PositionAvailabilityResponse, RoutingModel, RoutingState
 from tradingstrategy.candle import CandleSampleUnavailable
 from tradingstrategy.pair import DEXPair, HumanReadableTradingPairDescription
@@ -35,7 +38,6 @@ from tradeexecutor.strategy.dust import (
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.trading_strategy_universe import translate_trading_pair, TradingStrategyUniverse
 from tradeexecutor.utils.leverage_calculations import LeverageEstimate
-from eth_defi.compat import native_datetime_utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +198,9 @@ class PositionManager:
         trading_pair_cache=DEFAULT_TRADING_PAIR_CACHE,
         routing_model: RoutingModel = None,
         routing_state: RoutingState = None,
+        vault_record_file: Path | None = None,
+        expected_vault_guard_module_address: str | None = None,
+        recorder: DecisionRecorder | None = None,
     ):
 
         """Create a new PositionManager instance.
@@ -236,6 +241,13 @@ class PositionManager:
             Needed for position enter checks.
 
             See :py:meth:`check_enter_position`.
+        :param vault_record_file:
+            Lagoon deployment record for HyperCore vault entry checks. If absent,
+            no guard-record restriction is applied.
+        :param expected_vault_guard_module_address:
+            Reject a record for a different deployed Lagoon guard module.
+        :param recorder:
+            Active live decision recorder for guard input and rejection observations.
         """
 
         assert pricing_model, "pricing_model is needed in order to know buy/sell price of new positions"
@@ -281,6 +293,68 @@ class PositionManager:
         self.trading_pair_cache = trading_pair_cache
         self.routing_model = routing_model
         self.routing_state = routing_state
+        self.vault_record_file = vault_record_file
+        self.vault_whitelist: HypercoreVaultWhitelist | None = (
+            load_hypercore_vault_whitelist(vault_record_file, expected_vault_guard_module_address)
+            if vault_record_file is not None else None
+        )
+        self.recorder = recorder
+        self._reported_unwhitelisted_vaults: set[str] = set()
+        if recorder is not None and self.vault_whitelist is not None:
+            recorder.record(
+                "input",
+                "hypercore_guard_whitelist",
+                {
+                    "record_file": str(vault_record_file),
+                    "module_address": self.vault_whitelist.module_address,
+                    "any_hypercore_vault": self.vault_whitelist.any_hypercore_vault,
+                    "vault_addresses": sorted(self.vault_whitelist.vault_addresses),
+                },
+            )
+
+    def is_whitelisted_vault(self, pair: TradingPairIdentifier) -> bool:
+        """Check whether a HyperCore vault may receive a new allocation.
+
+        Strategies call this before selecting a new entrant or topping up a
+        held position. The Lagoon record is loaded when this manager is created;
+        a rejected address is warned and recorded once per manager. In a
+        decorated strategy decision, that observation is linked to the cycle
+        and decision timestamp. The method does not remove held vaults from
+        the data universe used for valuation and exits.
+
+        :param pair: HyperCore vault trading pair under consideration.
+        :return: Whether the configured guard record permits the vault.
+        :raises ValueError: If the pair is not a HyperCore vault.
+        """
+        if not pair.is_hyperliquid_vault():
+            raise ValueError(f"is_whitelisted_vault() requires a HyperCore vault pair: {pair}")
+        if self.vault_whitelist is None:
+            return True
+
+        address = pair.pool_address.lower()
+        allowed = self.vault_whitelist.allows(address)
+        if not allowed and address not in self._reported_unwhitelisted_vaults:
+            logger.warning(
+                "Skipping new allocation to HyperCore vault %s (%s) at strategy cycle %s: not in Lagoon guard record %s",
+                pair.get_vault_name() or pair.get_ticker(),
+                address,
+                self.timestamp,
+                self.vault_record_file,
+            )
+            if self.recorder is not None:
+                self.recorder.record(
+                    "admission",
+                    "hypercore_guard_whitelist_skip",
+                    {
+                        "allowed": False,
+                        "reason": "not_in_guard_record",
+                        "vault_address": address,
+                        "module_address": self.vault_whitelist.module_address,
+                    },
+                    pair_key=address,
+                )
+            self._reported_unwhitelisted_vaults.add(address)
+        return allowed
 
     def is_any_open(self) -> bool:
         """Do we have any positions open.

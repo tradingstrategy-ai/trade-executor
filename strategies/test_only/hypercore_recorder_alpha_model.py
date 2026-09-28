@@ -8,8 +8,9 @@ and the smaller set that the strategy selects from it.
 The strategy exercises the live Hyper-AI data-loading functions. It asks the curator
 for real HyperCore vaults, resolves their Trading Strategy metadata, downloads
 their daily price and TVL history, calculates the same TVL and age-ramp inputs
-used by ``hyper-ai-test.py``, and feeds eligible vaults to ``AlphaModel``. It
-stops before position sizing and trade generation because this integration test
+used by ``hyper-ai-test.py``, checks the temporary Lagoon guard record that the
+CLI test places beside its state file, and feeds eligible vaults to ``AlphaModel``.
+It stops before position sizing and trade generation because this integration test
 is about decision inputs, not moving assets from the test hot wallet. The
 12-vault subset, 120-day age history and three slots keep this example small;
 they are not production Hyper-AI settings. Deposit availability is captured
@@ -270,13 +271,14 @@ def _pair_key(pair: TradingPairIdentifier) -> str:
 
 @record_decision
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
-    """Rank live vault candidates and record why AlphaModel selected them.
+    """Check guard admission, then rank and record live vault candidates.
 
     ``PandasTraderRunner.on_clock()`` invokes this for each one-second test
     cycle. The callback mirrors the candidate screening and top-signal steps in
     ``hyper-ai-test.py``. Returning no trades deliberately stops after the
     selection boundary, allowing a real hot wallet with no funds to run the
-    black-box test safely.
+    black-box test safely. ``PositionManager`` owns the warning and recorder
+    observation when a candidate is absent from the guard record.
 
     :param input:
         Complete live strategy input assembled by ``PandasTraderRunner``.
@@ -286,6 +288,10 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     parameters = input.parameters
     candidates: list[dict[str, object]] = []
     alpha_model = AlphaModel(input.timestamp)
+    assert input.state_path is not None, "Live recorder test needs its state-adjacent guard record"
+    position_manager = input.get_position_manager(
+        vault_record_file=input.state_path.with_name("hypercore-guard.json"),
+    )
 
     # Walk the exact pair objects placed in the constructed universe. The
     # recorder has already captured this universe at decorator entry, so pair
@@ -295,11 +301,15 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         current_tvl = input.indicators.get_indicator_value("tvl", pair=pair)
         age_signal = input.indicators.get_indicator_value("age_ramp_weight", pair=pair)
 
-        # Apply TVL, signal availability, blacklist and quarantine checks before
-        # a signal enters AlphaModel. Keep a reason for every excluded vault so the
-        # recording explains absence as well as presence.
+        # Check the Lagoon guard first so every discovered vault has an explicit
+        # admission result. A denied vault stays in the recorded universe but
+        # cannot become an AlphaModel signal. The manager writes the warning and
+        # cycle-linked skip observation; the strategy only decides whether to
+        # pass the candidate on to AlphaModel.
         rejection_reason = None
-        if current_tvl is None or current_tvl != current_tvl:
+        if not position_manager.is_whitelisted_vault(pair):
+            rejection_reason = "not_whitelisted"
+        elif current_tvl is None or current_tvl != current_tvl:
             rejection_reason = "missing_tvl"
         elif float(current_tvl) < float(parameters.min_tvl):
             rejection_reason = "below_min_tvl"
