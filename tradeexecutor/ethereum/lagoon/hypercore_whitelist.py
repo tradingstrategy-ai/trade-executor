@@ -51,6 +51,8 @@ def load_hypercore_vault_whitelist(record_file: Path) -> HypercoreVaultWhitelist
     """
     deployment = json.loads(record_file.read_text())["deployments"]["hyperliquid"]
     config = deployment["config"]
+    if "hypercore_vaults" not in config or "any_hypercore_vault" not in config:
+        raise ValueError(f"Lagoon deployment record {record_file} has no HyperCore vault permissions; use a current guard record")
     module_address = deployment["module_address"]
     if not is_address(module_address):
         raise ValueError(f"Invalid Hyperliquid guard module address in {record_file}: {module_address}")

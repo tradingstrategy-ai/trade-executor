@@ -48,6 +48,7 @@ def test_hypercore_guard_record_fails_closed_on_empty_allowlist(tmp_path: Path):
     1. Write a restricted deployment record without permitted vaults.
     2. Confirm loading raises before a strategy could build its universe.
     3. Confirm contradictory configured and recorded permissions also raise.
+    4. Confirm an older record without HyperCore fields gives an actionable error.
     """
     # 1. Write a restricted deployment record without permitted vaults.
     record = tmp_path / "deployment.json"
@@ -67,4 +68,12 @@ def test_hypercore_guard_record_fails_closed_on_empty_allowlist(tmp_path: Path):
         "whitelisted_items": [],
     }}}))
     with pytest.raises(ValueError, match="allowlists disagree"):
+        load_hypercore_vault_whitelist(record)
+
+    # 4. Confirm an older record without HyperCore fields gives an actionable error.
+    record.write_text(json.dumps({"deployments": {"hyperliquid": {
+        "module_address": "0xf79d5540fA3a6ea738Aa21A562c5AD7224406F84",
+        "config": {},
+    }}}))
+    with pytest.raises(ValueError, match="has no HyperCore vault permissions"):
         load_hypercore_vault_whitelist(record)
