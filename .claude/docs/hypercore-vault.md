@@ -303,10 +303,11 @@ poetry run trade-executor correct-accounts --dry-run
 ```
 
 Dry-run now executes the same live snapshot and transit-action planner, and
-prints each proposed recovery action, but does not require the Safe signer,
-sign or broadcast a transaction, alter state, or create a state backup. It is
-therefore the safe way to inspect a normal dust-preserving sweep before running
-the live command.
+prints each proposed recovery action, but does not sign or broadcast a
+transaction, alter state, or create a state backup. The CLI still requires a
+configured private key to construct its live execution model; dry-run does
+not use that key to sign. It is therefore a read-only way to inspect a normal
+dust-preserving sweep before running the live command.
 
 Before either a live recovery or this dry-run planner, `correct-accounts`
 checks that no open or frozen position has a planned trade or a started trade
@@ -319,14 +320,16 @@ pass. A preflight failure now proves that no Safe action was broadcast.
 When the preflight names an unfinished trade, use `repair` first. Repair treats
 an `expired` no-transaction trade as valid terminal history, rather than trying
 to repair it: expiry happens before a transaction is created. It repairs only
-planned/started no-transaction trades. If it also finds a failed HyperCore
+planned/started no-transaction trades. If it also finds an unfinished HyperCore
 deposit with an at-risk or stranded-USDC marker, it logs the trade and leaves
-that position frozen; it does not create a counter-trade or refund an unknown
-HyperCore balance. This partial repair is deliberate: it clears unrelated
-coherence blockers so that the next `correct-accounts --dry-run` can inspect
+that position open or frozen without a counter-trade or reserve refund. It
+closes zero-quantity positions whose never-broadcast openings it did repair,
+then warns while any at-risk trade remains. This partial repair
+clears unrelated coherence blockers so that the next `correct-accounts --dry-run` can inspect
 the live transit balance safely. If every candidate is protected, repair makes
-no state change and does not show an interactive confirmation prompt: there is
-nothing safe for it to repair.
+no trade repair and does not show an interactive confirmation prompt: there is
+nothing safe for it to repair. Each maintenance command takes its own backup
+before writing a copied or live state file.
 
 The safe operator sequence is therefore:
 
@@ -336,6 +339,25 @@ The safe operator sequence is therefore:
    proposed `perp → spot → EVM` actions without broadcasting them.
 3. Run `correct-accounts` only after reviewing that plan. It reconciles the
    recovered Safe balance through the normal accounting path.
+
+For the 28 September 2026 Fadorador incident, the pending two-day slot already
+contains three successful sibling trades and must never be replayed. Verify
+the known phase-3 revert on HyperEVM, the
+Safe's current ERC-20 balance, HyperCore spot/perp cash, and zero Fadorador
+equity. Run the dry run against the stopped state and check that it proposes
+`perp_to_spot 3023.626339` and `spot_to_evm 3023.624536` USDC (or recognises
+that the cash already returned). Only then run `correct-accounts`. For this
+verified incident shape, it marks the partially executed decision consumed
+after final account checks; it is not a general automatic retry or a licence
+to move funds without current custody evidence. A failed save after the return
+can be retried: the command recognises the Safe surplus and does not send a
+second transfer. Run the
+full-snapshot test described in `docs/hypercore-data-availability.md` before
+any production operation.
+
+If the process stops between the perp-to-spot and spot-to-EVM legs, the next
+run refuses the material spot balance; an operator must review custody and
+complete that leg manually before retrying account correction.
 
 For #1486, the default dry run above plans exactly
 `perp_to_spot 48.884068` followed by `spot_to_evm 48.884068`: no incident

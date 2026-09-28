@@ -246,7 +246,9 @@ planned/started trade with no transaction. Run it first when
 `correct-accounts` preflight reports an unfinished trade; then inspect the
 marked HyperCore trade with `correct-accounts --dry-run`. If every repair
 candidate is protected, `repair` deliberately makes no state change and shows
-no confirmation prompt.
+no confirmation prompt. It warns while capital remains at risk, even when it
+has saved repairs for unrelated never-broadcast trades. Live startup remains
+blocked until `correct-accounts` reconciles that capital.
 
 1. Run `check-hypercore-user.py` for the Safe and inspect Safe EVM USDC, EVM
    escrow, spot USDC, perp withdrawable USDC and vault equity.
@@ -269,7 +271,7 @@ combined HyperCore request moved 48.884068 USDC only from spot to perp. A
 generic ERC-20 correction cannot see that perp balance and must not restore it
 as Safe cash.
 
-First inspect the recovery plan without a private key or any transaction:
+First inspect the recovery plan without sending a transaction:
 
 ```shell
 poetry run trade-executor correct-accounts --dry-run
@@ -278,8 +280,10 @@ poetry run trade-executor correct-accounts --dry-run
 The dry run fetches the Safe's EVM, spot and perp balances and prints any
 `perp_to_spot` and `spot_to_evm` actions. It refuses recovery if the Safe has
 an active HyperCore perp position. It does not sign, broadcast, save or back up
-state. The live command verifies the spot increase after the first action and
-the EVM USDC increase after the second before proceeding to normal accounting.
+state. The CLI still needs a configured private key to construct its execution
+model, but dry-run does not use it to sign. The live command verifies the spot
+increase after the first action and the EVM USDC increase after the second
+before proceeding to normal accounting.
 
 The normal recovery is enabled by default for eligible HyperCore vault
 strategies. For the live #1486 balances, the ordinary dry run plans exactly
@@ -302,6 +306,20 @@ trade. After recovery, explicitly expire or reconcile stale planned trades
 before restarting the executor. `repair` cannot determine the destination of
 an ambiguous HyperCore deposit and intentionally preserves that evidence for
 the account-correction planner.
+
+The 28 September 2026 Fadorador opening deposit has a narrower path. After
+verifying the failed phase-3 receipt and current custody, use `repair` to
+resolve the never-broadcast sibling buys, review `correct-accounts --dry-run`,
+then run `correct-accounts`. It fails closed unless there is one started,
+zero-fill HyperCore opening trade, no active perp position or target-vault
+equity, and a matching Safe cash return. It marks that trade failed, credits
+only the cash actually back in the Safe, and consumes the already partially
+executed two-day slot. It is not a generic deposit retry. The unchanged original state and pinned-fork
+test are described in `docs/plans/hyper-ai-september-28-interrupted-deposit-recovery.md`.
+
+If execution stops after perp-to-spot but before spot-to-EVM, the next run
+refuses the material spot balance. Review custody and complete the return
+manually; this command does not automatically resume a half-finished transfer.
 
 ### Close single position (for single-pair strategies)
 

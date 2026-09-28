@@ -45,16 +45,22 @@ HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY = "hypercore_accounting_reconci
 
 
 def has_unresolved_hypercore_accounting(trade: "TradeExecution") -> bool:
-    """Check whether generic repair must defer to live HyperCore reconciliation."""
+    """Check whether a trade still needs live HyperCore custody reconciliation.
+
+    Old repaired trades retain ``hypercore_stranded_usdc`` as historical audit
+    metadata. That key alone must not block a future start-up; an explicit
+    capital-at-risk or reconciliation-required marker remains blocking even on
+    a terminal trade, so moving its position to closed cannot hide it.
+
+    :param trade: Trade whose persisted HyperCore markers are inspected.
+    :return: Whether live custody needs reconciliation before normal trading.
+    """
     metadata = trade.other_data or {}
-    return any(
-        metadata.get(key) is not None
-        for key in (
-            HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY,
-            HYPERCORE_STRANDED_USDC_KEY,
-            HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY,
-        )
-    )
+    if metadata.get(HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY) is not None:
+        return True
+    if metadata.get(HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY) is not None:
+        return True
+    return metadata.get(HYPERCORE_STRANDED_USDC_KEY) is not None and trade.get_status() != TradeStatus.repaired
 
 
 class TradeType(enum.Enum):

@@ -15,6 +15,7 @@ The current repair blocks are:
 - Base: `27664435`, `30814817`, `32040184`, `32092657`
 - Ethereum: `20377193`, `20409979`, `20438662`
 - Polygon: `60719175`, `60855854`, `62255643`
+- HyperEVM: `47080105` (Hyper-AI's interrupted 28 September deposit)
 
 The legacy Polygon broadcast repair at `49132512` also carries an isolated
 warm-RPC marker, but requires a dedicated signing key and is normally skipped.

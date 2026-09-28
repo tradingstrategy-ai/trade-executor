@@ -1609,13 +1609,40 @@ def check_state_internal_coherence(state: State):
         )
 
 
-def preflight_state_for_account_correction(state: State) -> None:
+def preflight_state_for_account_correction(
+    state: State,
+    *,
+    allow_at_risk_hypercore_deposit: bool = False,
+) -> None:
     """Refuse account correction before an unexecuted trade can cause a partial run.
 
     Account correction may include external side effects such as protocol-specific
     balance recovery.  Validate the internal state before those effects so a
     caller either receives a complete reconciliation or makes no balance move.
+
+    :param state: State whose unfinished trades could make correction unsafe.
+    :param allow_at_risk_hypercore_deposit: Permit only the single started
+        HyperCore opening buy handled by the explicit incident correction path.
     """
+    at_risk_trades = [
+        trade for trade in state.portfolio.get_all_trades()
+        if has_unresolved_hypercore_accounting(trade)
+    ]
+    if at_risk_trades:
+        eligible = (
+            allow_at_risk_hypercore_deposit
+            and len(at_risk_trades) == 1
+            and at_risk_trades[0].pair.is_hyperliquid_vault()
+            and at_risk_trades[0].is_buy()
+            and at_risk_trades[0].get_status() == TradeStatus.started
+            and bool(at_risk_trades[0].blockchain_transactions)
+        )
+        if not eligible:
+            raise AssertionError(
+                "Unresolved HyperCore capital requires a single started vault deposit "
+                "and explicit correct-accounts reconciliation; refusing other state changes"
+            )
+
     has_pending_external_transfer = any(
         trade.is_external_account_transfer_pending()
         for position in state.portfolio.get_open_and_frozen_positions()

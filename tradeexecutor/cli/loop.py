@@ -37,6 +37,7 @@ from tradeexecutor.state.types import Percent
 from tradeexecutor.statistics.in_memory_statistics import refresh_run_state
 from tradeexecutor.statistics.statistics_table import serialise_long_short_stats_as_json_table
 from tradeexecutor.strategy.account_correction import UnexpectedAccountingCorrectionIssue
+from tradeexecutor.state.trade import has_unresolved_hypercore_accounting
 from tradeexecutor.strategy.dummy import DummyExecutionModel
 from tradeexecutor.strategy.generic.generic_pricing_model import GenericPricing
 from tradeexecutor.strategy.pandas_trader.decision_trigger import wait_for_universe_data_availability_jsonl
@@ -1398,6 +1399,15 @@ class ExecutionLoop:
         # snapshot. It need not be ready for the pending decision slot: that
         # slot must still pass the manifest gate and rebuild its universe.
         if self.strategy_cycle_trigger == StrategyCycleTrigger.hypercore_data_available:
+            unresolved = [
+                trade.trade_id for trade in state.portfolio.get_all_trades()
+                if has_unresolved_hypercore_accounting(trade)
+            ]
+            if unresolved:
+                raise RuntimeError(
+                    f"HyperCore trade(s) {unresolved} still have unresolved capital; "
+                    "run correct-accounts --dry-run before restarting"
+                )
             if self.trade_immediately:
                 raise RuntimeError("trade_immediately cannot bypass hypercore_data_available readiness")
             if self.client is None:

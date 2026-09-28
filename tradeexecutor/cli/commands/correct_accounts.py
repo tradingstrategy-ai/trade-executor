@@ -5,7 +5,8 @@ import datetime
 import logging
 import sys
 import time
-from _decimal import Decimal
+from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
@@ -21,7 +22,14 @@ from eth_defi.hyperliquid.session import (
     create_hyperliquid_session,
 )
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
+from web3 import Web3
 
+from tradeexecutor.ethereum.vault import hypercore_transit_recovery, hypercore_vault
+from tradeexecutor.ethereum.vault.hypercore_transit_recovery import (
+    BALANCE_TOLERANCE,
+    HYPERCORE_TRANSIT_RECOVERY_DUST_USDC,
+    HypercoreTransitBalanceSnapshot,
+)
 from tradeexecutor.exchange_account.derive import DeriveNetwork
 from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
 from tradeexecutor.ethereum.lighter.transfer_verification import reconcile_verified_lighter_transfers
@@ -49,8 +57,17 @@ from ...ethereum.vault.hypercore_small_position_cleanup import (
     run_hypercore_small_position_cleanup,
 )
 from ...state.repair import close_hypercore_dust_positions
-from ...state.state import UncleanState
-from ...state.trade import TradeType
+from ...state.position import TradingPosition
+from ...state.state import State, UncleanState
+from ...state.trade import (
+    HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY,
+    HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY,
+    HYPERCORE_STRANDED_USDC_KEY,
+    TradeExecution,
+    TradeStatus,
+    TradeType,
+    has_unresolved_hypercore_accounting,
+)
 from ...strategy.bootstrap import make_factory_from_strategy_mod
 from ...strategy.account_correction import calculate_account_corrections
 from ...strategy.description import StrategyExecutionDescription
@@ -66,6 +83,118 @@ from ...utils.blockchain import get_block_timestamp
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(slots=True)
+class InterruptedHypercoreDeposit:
+    """Observed custody for one interrupted opening deposit, before any transfer.
+
+    ``correct_accounts()`` uses this to reject ambiguous custody rather than
+    assuming that a successful phase-1 EVM receipt proves vault settlement.
+
+    :param trade: Started buy whose reserve remains allocated at risk.
+    :param position: Empty target vault position to close only after recovery.
+    :param snapshot: Current Safe and HyperCore spot/perp balances.
+    :param vault_equity: Current target-vault equity, required to be zero.
+    :param already_returned: Whether cash reached the Safe before this run.
+    """
+
+    trade: TradeExecution
+    position: TradingPosition
+    snapshot: HypercoreTransitBalanceSnapshot
+    vault_equity: Decimal
+    already_returned: bool
+
+
+def _inspect_interrupted_hypercore_deposit(
+    state: State,
+    sync_model: LagoonVaultSyncModel,
+    web3: Web3,
+) -> InterruptedHypercoreDeposit | None:
+    """Classify the single at-risk HyperCore opening buy against live custody.
+
+    Called after ``repair`` has cleared unrelated no-transaction trades and
+    before ``correct-accounts`` can run small-position cleanup or broadcast a
+    transit transfer. The phase-3 revert is not in the state file; an operator
+    must verify that receipt separately before authorising the real run.
+
+    :param state: Persisted executor state, after no-transaction repair.
+    :param sync_model: Lagoon Safe whose balances are being corrected.
+    :param web3: HyperEVM connection used to verify recorded phase-1 receipts.
+    :return: Verified incident custody, or ``None`` without an at-risk trade.
+    """
+    trades = [trade for trade in state.portfolio.get_all_trades() if has_unresolved_hypercore_accounting(trade)]
+    if not trades:
+        return None
+    if len(trades) != 1:
+        raise RuntimeError(f"Expected one at-risk HyperCore trade, found {[trade.trade_id for trade in trades]}")
+    trade = trades[0]
+    position = state.portfolio.get_position_by_id(trade.position_id)
+    if not (
+        isinstance(sync_model, LagoonVaultSyncModel)
+        and trade.pair.is_hyperliquid_vault()
+        and trade.is_buy()
+        and trade.get_status() == TradeStatus.started
+        and trade.blockchain_transactions
+        and position.position_id in state.portfolio.open_positions
+        and position.get_quantity() == 0
+    ):
+        raise RuntimeError(f"HyperCore trade #{trade.trade_id} is not a zero-fill started Lagoon vault deposit")
+
+    for tx in trade.blockchain_transactions:
+        receipt = web3.eth.get_transaction_receipt(tx.tx_hash)
+        if receipt["status"] != 1:
+            raise RuntimeError(f"Stored phase-1 transaction {tx.tx_hash} did not succeed; stop for operator review")
+
+    safe_address = sync_model.get_token_storage_address()
+    marker = trade.other_data.get(HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY)
+    if not isinstance(marker, dict) or trade.reserve_currency_allocated is None:
+        raise RuntimeError(f"HyperCore trade #{trade.trade_id} lacks the saved deposit amount needed for reconciliation")
+    if marker.get("safe_address", "").lower() != safe_address.lower():
+        raise RuntimeError(f"HyperCore trade #{trade.trade_id} marker belongs to a different Safe")
+    amount = Decimal(marker["amount_human"])
+    if abs(amount - trade.reserve_currency_allocated) > BALANCE_TOLERANCE:
+        raise RuntimeError(f"HyperCore trade #{trade.trade_id} reserve allocation disagrees with its at-risk marker")
+
+    api_url = HYPERLIQUID_TESTNET_API_URL if web3.eth.chain_id == 998 else HYPERLIQUID_API_URL
+    session = create_hyperliquid_session(api_url=api_url)
+    snapshot = hypercore_transit_recovery.fetch_hypercore_transit_balances(
+        session=session,
+        safe_address=safe_address,
+        reserve_token=sync_model.vault.underlying_token,
+    )
+    vault_equity = hypercore_vault.create_hypercore_vault_value_func(
+        session=session,
+        safe_address=safe_address,
+        bypass_cache=True,
+    )(trade.pair)
+    if snapshot.perp_position_count or vault_equity != 0:
+        raise RuntimeError(
+            f"HyperCore trade #{trade.trade_id} has active perp positions or target vault equity {vault_equity}; "
+            "automatic transit recovery would be unsafe"
+        )
+    if snapshot.spot_total_usdc > HYPERCORE_TRANSIT_RECOVERY_DUST_USDC + BALANCE_TOLERANCE:
+        raise RuntimeError(f"Safe {safe_address} also has material HyperCore spot USDC; stop for operator review")
+
+    saved_safe = state.portfolio.get_default_reserve_position().quantity
+    safe_surplus = snapshot.evm_usdc_balance - saved_safe
+    stranded = (
+        abs(safe_surplus) <= BALANCE_TOLERANCE
+        and abs(snapshot.perp_withdrawable - amount) <= HYPERCORE_TRANSIT_RECOVERY_DUST_USDC
+    )
+    already_returned = (
+        snapshot.perp_withdrawable <= HYPERCORE_TRANSIT_RECOVERY_DUST_USDC + BALANCE_TOLERANCE
+        and amount - HYPERCORE_TRANSIT_RECOVERY_DUST_USDC <= safe_surplus <= amount + BALANCE_TOLERANCE
+    )
+    if not (stranded or already_returned):
+        raise RuntimeError(
+            f"HyperCore trade #{trade.trade_id} custody is ambiguous: saved Safe {saved_safe}, "
+            f"live Safe {snapshot.evm_usdc_balance}, perp {snapshot.perp_withdrawable}, "
+            f"spot {snapshot.spot_free_usdc}, vault {vault_equity}; stop for operator review"
+        )
+    if stranded and not hypercore_transit_recovery.plan_hypercore_transit_recovery_actions(snapshot):
+        raise RuntimeError(f"HyperCore trade #{trade.trade_id} has no transferable recovery path")
+    return InterruptedHypercoreDeposit(trade, position, snapshot, vault_equity, already_returned)
 
 
 def _sync_hypercore_vault_positions(
@@ -100,7 +229,6 @@ def _sync_hypercore_vault_positions(
     safe_address = sync_model.get_token_storage_address()
     chain_id = web3.eth.chain_id
 
-    from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_value_func
     from tradeexecutor.strategy.account_correction import create_missing_vault_positions
     from tradeexecutor.state.valuation import ValuationUpdate
 
@@ -108,7 +236,7 @@ def _sync_hypercore_vault_positions(
     api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
     hl_session = create_hyperliquid_session(api_url=api_url)
 
-    vault_value_func = create_hypercore_vault_value_func(
+    vault_value_func = hypercore_vault.create_hypercore_vault_value_func(
         session=hl_session,
         safe_address=safe_address,
         is_testnet=is_testnet,
@@ -340,17 +468,6 @@ def _recover_hypercore_transit_balances(
             f"is only implemented for Lagoon vaults. Got sync model {type(sync_model)}."
         )
 
-    from eth_defi.hyperliquid.session import (
-        HYPERLIQUID_API_URL,
-        HYPERLIQUID_TESTNET_API_URL,
-        create_hyperliquid_session,
-    )
-    from tradeexecutor.ethereum.vault.hypercore_transit_recovery import (
-        execute_hypercore_transit_recovery_actions,
-        fetch_hypercore_transit_balances,
-        plan_hypercore_transit_recovery_actions,
-    )
-
     is_testnet = web3.eth.chain_id == 998
     api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
     session = create_hyperliquid_session(api_url=api_url)
@@ -361,12 +478,12 @@ def _recover_hypercore_transit_balances(
         "HyperCore vault positions detected; checking Safe-level HyperCore transit balances for %s",
         safe_address,
     )
-    snapshot = fetch_hypercore_transit_balances(
+    snapshot = hypercore_transit_recovery.fetch_hypercore_transit_balances(
         session=session,
         safe_address=safe_address,
         reserve_token=reserve_token,
     )
-    actions = plan_hypercore_transit_recovery_actions(snapshot)
+    actions = hypercore_transit_recovery.plan_hypercore_transit_recovery_actions(snapshot)
     if not actions:
         logger.info("No HyperCore spot/perp transit balances need recovery")
         return []
@@ -398,7 +515,7 @@ def _recover_hypercore_transit_balances(
         )
 
     hot_wallet.sync_nonce(web3)
-    executed_action_kinds = execute_hypercore_transit_recovery_actions(
+    executed_action_kinds = hypercore_transit_recovery.execute_hypercore_transit_recovery_actions(
         web3=web3,
         hot_wallet=hot_wallet,
         lagoon_vault=sync_model.vault,
@@ -486,6 +603,14 @@ def correct_accounts(
     generic correction changes state. Dry-run never writes or backs up the
     state file.
 
+    For the interrupted 28 September Hyper-AI deposit, first verify the known
+    failed vault-deposit receipt and current custody. ``repair`` fixes its
+    never-broadcast sibling trades but leaves the at-risk deposit untouched.
+    After reviewing this command's dry-run, run ``correct-accounts``. If the
+    interrupted deposit matches the verified custody and partial-slot checks,
+    it saves the failed deposit, actual Safe reserve correction and consumed
+    two-day slot together. It does not retry the rejected vault deposit.
+
     An old state file is automatically backed up.
     """
 
@@ -534,7 +659,7 @@ def correct_accounts(
 
     # Check balances
     logger.info("Balance details")
-    logger.info("  Hot wallet is %s", hot_wallet.address)
+    logger.info("  Hot wallet is %s", hot_wallet.address if hot_wallet else "not configured")
 
     vault_address =  sync_model.get_key_address()
     if vault_address:
@@ -554,26 +679,59 @@ def correct_accounts(
     else:
         store, state = backup_state(state_file, unit_testing=unit_testing)
 
-    reconciled_transfers = reconcile_verified_lighter_transfers(
-        state,
-        web3,
-        mutate=not dry_run,
-    )
-    if reconciled_transfers:
-        if not dry_run:
-            store.sync(state)
-        logger.info(
-            "%s %d verified Lighter transfer(s)",
-            "Found" if dry_run else "Reconciled",
-            len(reconciled_transfers),
+    # Check the incident flag before unrelated Lighter reconciliation can save state.
+    at_risk_trades = [
+        trade for trade in state.portfolio.get_all_trades()
+        if has_unresolved_hypercore_accounting(trade)
+    ]
+    if at_risk_trades and (skip_save or process_redemption):
+        raise RuntimeError("Interrupted HyperCore deposit reconciliation requires an atomic state save and no redemption processing")
+    if not at_risk_trades:
+        reconciled_transfers = reconcile_verified_lighter_transfers(
+            state,
+            web3,
+            mutate=not dry_run,
         )
+        if reconciled_transfers:
+            if not dry_run:
+                store.sync(state)
+            logger.info(
+                "%s %d verified Lighter transfer(s)",
+                "Found" if dry_run else "Reconciled",
+                len(reconciled_transfers),
+            )
 
-    # This must precede universe construction, vault synchronisation, and the
-    # HyperCore transit hook below.  The hook can broadcast real Safe actions;
-    # discovering an unfinished trade afterwards reproduces the #1486 incident
-    # where funds were recovered but the command could not complete its state
-    # reconciliation.
-    preflight_state_for_account_correction(state)
+    # The transit hook can broadcast Safe actions, so validate unfinished
+    # trades before building a universe or entering that hook.
+    preflight_state_for_account_correction(state, allow_at_risk_hypercore_deposit=bool(at_risk_trades))
+    incident = _inspect_interrupted_hypercore_deposit(state, sync_model, web3) if at_risk_trades else None
+    if incident:
+        slot = state.pending_data_availability_slot
+        if slot is None or incident.trade.opened_at != slot:
+            raise RuntimeError("At-risk HyperCore deposit is not tied to the pending decision slot")
+        sibling_trades = [
+            trade for trade in state.portfolio.get_all_trades()
+            if trade.opened_at == slot and trade.trade_id != incident.trade.trade_id
+        ]
+        if not any(trade.trade_type == TradeType.rebalance and trade.is_success() for trade in sibling_trades):
+            raise RuntimeError("Pending HyperCore slot has no successful sibling trade to preserve")
+        if any(
+            trade.get_status() not in (TradeStatus.success, TradeStatus.failed, TradeStatus.repaired, TradeStatus.expired)
+            for trade in sibling_trades
+        ):
+            raise RuntimeError("Pending HyperCore slot still has unfinished sibling trades; run repair first")
+        logger.warning(
+            "Interrupted HyperCore deposit #%d, position #%d: Safe %s, perp %s, spot %s, "
+            "vault equity %s, slot %s; %s. Not safe to restart yet.",
+            incident.trade.trade_id,
+            incident.position.position_id,
+            incident.snapshot.evm_usdc_balance,
+            incident.snapshot.perp_withdrawable,
+            incident.snapshot.spot_free_usdc,
+            incident.vault_equity,
+            slot,
+            "funds already returned to Safe" if incident.already_returned else "transit recovery required",
+        )
 
     slippage_tolerance = 0.013
     if mod:
@@ -796,15 +954,19 @@ def correct_accounts(
             for evt in exchange_events:
                 logger.info("  Position %d: %s (change: %s)", evt.position_id, evt.notes, evt.quantity)
 
-    closed_phantom_positions = _sync_hypercore_vault_positions(
-        asset_management_mode=asset_management_mode,
-        universe=universe,
-        sync_model=sync_model,
-        web3=web3,
-        state=state,
-    )
+    closed_phantom_positions = False
+    if not incident:
+        closed_phantom_positions = _sync_hypercore_vault_positions(
+            asset_management_mode=asset_management_mode,
+            universe=universe,
+            sync_model=sync_model,
+            web3=web3,
+            state=state,
+        )
 
-    if cleanup_hypercore_small_positions and asset_management_mode.is_vault():
+    if incident:
+        logger.info("Skipping unrelated HyperCore vault synchronisation and small-position cleanup during deposit recovery")
+    if not incident and cleanup_hypercore_small_positions and asset_management_mode.is_vault():
         minimum_allocation = get_hypercore_minimum_allocation(mod.parameters)
         if minimum_allocation is None:
             logger.info(
@@ -859,7 +1021,7 @@ def correct_accounts(
                         "HyperCore small-position cleanup skipped: routing is unavailable for this strategy"
                     )
 
-    closed_dust_trades = close_hypercore_dust_positions(state.portfolio)
+    closed_dust_trades = [] if incident else close_hypercore_dust_positions(state.portfolio)
     if closed_dust_trades:
         logger.info(
             "Auto-closed %d Hypercore dust position(s) before duplicate and accounting checks",
@@ -871,17 +1033,38 @@ def correct_accounts(
     # any position-discovery or cleanup step above introducing an unfinished
     # trade. This preserves the #1486 invariant: a transit recovery is never
     # the first irreversible action after a coherence failure.
-    preflight_state_for_account_correction(state)
+    preflight_state_for_account_correction(state, allow_at_risk_hypercore_deposit=incident is not None)
 
-    _recover_hypercore_transit_balances(
-        asset_management_mode=asset_management_mode,
-        sync_model=sync_model,
-        web3=web3,
-        hot_wallet=hot_wallet,
-        state=state,
-        skip_hypercore_transit_recovery=skip_hypercore_transit_recovery,
-        dry_run=dry_run,
-    )
+    if incident and incident.already_returned:
+        logger.info("HyperCore transit funds are already back in the Safe; skipping transfer legs")
+    else:
+        if incident and skip_hypercore_transit_recovery:
+            raise RuntimeError("Cannot skip transit recovery for an at-risk HyperCore deposit")
+        _recover_hypercore_transit_balances(
+            asset_management_mode=asset_management_mode,
+            sync_model=sync_model,
+            web3=web3,
+            hot_wallet=hot_wallet,
+            state=state,
+            skip_hypercore_transit_recovery=skip_hypercore_transit_recovery,
+            dry_run=dry_run,
+        )
+
+    if incident and not dry_run:
+        returned = _inspect_interrupted_hypercore_deposit(state, sync_model, web3)
+        if returned is None or not returned.already_returned:
+            raise RuntimeError("HyperCore deposit recovery did not return the expected USDC to the Safe")
+        recovered = returned.snapshot.evm_usdc_balance - incident.snapshot.evm_usdc_balance
+        incident.trade.mark_failed(native_datetime_utc_now())
+        incident.trade.add_note(
+            f"correct-accounts: phase-3 vault deposit rejected; phase-1 receipts "
+            f"{[tx.tx_hash for tx in incident.trade.blockchain_transactions]}; "
+            f"Safe USDC {incident.snapshot.evm_usdc_balance} -> {returned.snapshot.evm_usdc_balance}, "
+            f"recovered {recovered}, remaining perp {returned.snapshot.perp_withdrawable}, "
+            f"spot {returned.snapshot.spot_free_usdc}, vault equity {returned.vault_equity}. "
+            "Phase-3 revert verified separately by operator."
+        )
+        incident.position.add_notes_message("Opening HyperCore deposit failed before vault settlement; no vault equity acquired")
 
     if process_redemption and not dry_run:
         timestamp = native_datetime_utc_now()
@@ -956,12 +1139,18 @@ def correct_accounts(
 
     if len(corrections) == 0:
         logger.info("No account corrections found")
+    if incident and not dry_run:
+        reserve_corrections = [correction for correction in corrections if correction.reserve_asset]
+        if len(corrections) != 1 or len(reserve_corrections) != 1 or reserve_corrections[0].actual_amount <= reserve_corrections[0].expected_amount:
+            raise RuntimeError("Interrupted deposit requires exactly one positive Safe reserve correction; refusing unrelated changes")
 
     if dry_run:
         logger.info("Dry run found %d accounting correction(s)", len(corrections))
         for correction in corrections:
             logger.info("  Would apply: %s", correction)
         logger.info("Dry run complete: no transactions broadcast and no state written")
+        if incident:
+            logger.warning("Interrupted HyperCore deposit #%d is not safe to restart; slot %s remains pending", incident.trade.trade_id, state.pending_data_availability_slot)
         web3config.close()
         return
 
@@ -1000,20 +1189,21 @@ def correct_accounts(
     balance_updates = list(balance_updates)  # Side effect: this will force execution of all actions stuck in the iterator
     logger.info(f"We did {len(corrections)} accounting corrections, of which {len(balance_updates)} internal state balance updates, new block height is {block_number:,} at {block_timestamp}")
 
-    closed_dust_trades = close_hypercore_dust_positions(state.portfolio)
+    closed_dust_trades = [] if incident else close_hypercore_dust_positions(state.portfolio)
     if closed_dust_trades:
         logger.info(
             "Auto-closed %d Hypercore dust position(s) after accounting corrections",
             len(closed_dust_trades),
         )
 
-    if not skip_save:
+    if not skip_save and not incident:
         logger.info("Saving state to %s", store.path)
         store.sync(state)
     else:
         logger.info("Saving the fixed state skipped")
 
-    web3config.close()
+    if not incident:
+        web3config.close()
 
     # Shortcut here
     if unit_testing:
@@ -1044,6 +1234,46 @@ def correct_accounts(
         block_identifier=block_number,
         exchange_account_value_func=exchange_account_value_func,
     )
+
+    if incident:
+        if not clean:
+            raise UncleanState("Final account check failed; at-risk marker and pending slot remain on disk")
+        trade = incident.trade
+        position = incident.position
+        if position.get_quantity() != 0 or position.position_id not in state.portfolio.open_positions:
+            raise UncleanState("Interrupted vault position is no longer an empty open position")
+        state.portfolio.close_position(position, native_datetime_utc_now())
+        trade.reserve_currency_allocated = Decimal(0)
+        for key in (
+            HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY,
+            HYPERCORE_STRANDED_USDC_KEY,
+            HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY,
+            "retain_reserve_allocation_on_failure",
+        ):
+            trade.other_data.pop(key, None)
+        slot = state.pending_data_availability_slot
+        if any(
+            t.get_status() not in (TradeStatus.success, TradeStatus.failed, TradeStatus.repaired, TradeStatus.expired)
+            for t in state.portfolio.get_all_trades() if t.opened_at == slot
+        ):
+            raise UncleanState("Cannot consume partial HyperCore slot while a same-slot trade remains unfinished")
+        state.last_cycle_at = slot
+        state.pending_data_availability_slot = None
+        state.cycle += 1
+        trade.add_note(f"Partially executed HyperCore decision slot {slot} consumed; do not replay successful sibling trades")
+        state.check_if_clean()
+        clean, df = check_accounts(
+            universe.data_universe.pairs,
+            universe.reserve_assets,
+            state,
+            sync_model,
+            block_identifier=get_almost_latest_block_number(web3),
+            exchange_account_value_func=exchange_account_value_func,
+        )
+        if not clean:
+            raise UncleanState("Post-resolution account check failed; state was not saved")
+        store.sync(state)
+        web3config.close()
 
     output = tabulate(
         df,
