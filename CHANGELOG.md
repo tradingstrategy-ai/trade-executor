@@ -2,7 +2,7 @@
 
 ## 0.2
 
-- Limit Hyper-AI's discovered HyperCore vaults to its recorded Lagoon guard whitelist and add a read-only command to report vaults missing from that record with current TVL and three-month metrics (2026-09-28).
+- Add a PositionManager HyperCore guard-whitelist admission check with per-cycle warning and recorder observations, and a read-only command reporting vaults missing from the Lagoon deployment record with current TVL and three-month metrics (2026-09-28).
 
 - Add manifest-gated HyperCore decision slots, private verified price snapshots, point-in-time deposit availability and skipped-entry diagnostics; support sparse four-hour observations and automatic skipping of expired unexecuted decisions on restart (2026-09-22).
 

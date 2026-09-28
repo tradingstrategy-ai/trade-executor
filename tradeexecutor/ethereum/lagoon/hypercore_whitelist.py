@@ -2,9 +2,9 @@
 
 HyperCore vault discovery is independent of the Lagoon guard. A vault can be
 open at Hyperliquid yet fail the guard's ``vaultTransfer`` check, after USDC has
-already reached the Safe's HyperCore perp account. Strategies use this record
-to exclude such vaults before ranking; the whitelist-status CLI uses the same
-interpretation when reporting candidates for a governance update.
+already reached the Safe's HyperCore perp account. PositionManager uses this
+record to reject new allocations during a strategy decision; the
+whitelist-status CLI uses the same interpretation for governance reporting.
 
 The deployment record is a configuration snapshot, not an on-chain query.
 Operators must update it when they change the deployed guard permissions.
@@ -31,7 +31,7 @@ class HypercoreVaultWhitelist:
     any_hypercore_vault: bool
 
     def allows(self, vault_address: str) -> bool:
-        """Apply the recorded guard policy during universe filtering and reporting.
+        """Apply the recorded guard policy during decision checks and reporting.
 
         :param vault_address: HyperCore vault address to check.
         :return: Whether a ``vaultTransfer`` to this vault is permitted.
@@ -39,14 +39,20 @@ class HypercoreVaultWhitelist:
         return self.any_hypercore_vault or vault_address.lower() in self.vault_addresses
 
 
-def load_hypercore_vault_whitelist(record_file: Path) -> HypercoreVaultWhitelist:
+def load_hypercore_vault_whitelist(
+    record_file: Path,
+    expected_module_address: str | None = None,
+) -> HypercoreVaultWhitelist:
     """Load the guard's HyperCore permissions from a Lagoon deployment JSON file.
 
-    Called at strategy universe construction and by
-    ``lagoon-hypercore-vault-whitelist-status``. A missing or malformed record
-    raises instead of silently admitting a vault the guard might reject.
+    Called at strategy universe construction for fail-fast validation, by
+    :class:`~tradeexecutor.strategy.pandas_trader.position_manager.PositionManager`
+    during decisions, and by ``lagoon-hypercore-vault-whitelist-status``. A
+    missing or malformed record raises instead of silently admitting a vault
+    the guard might reject.
 
     :param record_file: JSON record written by ``lagoon-deploy-vault``.
+    :param expected_module_address: Configured Lagoon guard module, when known.
     :return: Hyperliquid guard module identity and vault-transfer permissions.
     """
     deployment = json.loads(record_file.read_text())["deployments"]["hyperliquid"]
@@ -75,8 +81,14 @@ def load_hypercore_vault_whitelist(record_file: Path) -> HypercoreVaultWhitelist
     if not any_hypercore_vault and not addresses:
         raise ValueError(f"HyperCore vault allowlist is empty in {record_file}")
 
-    return HypercoreVaultWhitelist(
+    whitelist = HypercoreVaultWhitelist(
         module_address=module_address.lower(),
         vault_addresses=configured_addresses,
         any_hypercore_vault=any_hypercore_vault,
     )
+    if expected_module_address and whitelist.module_address != expected_module_address.lower():
+        raise ValueError(
+            f"HyperCore guard record {record_file} is for module {whitelist.module_address}, "
+            f"not configured module {expected_module_address}"
+        )
+    return whitelist

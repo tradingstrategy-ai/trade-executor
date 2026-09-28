@@ -5,10 +5,12 @@ bootstrap, live data loading, indicator calculation, scheduling, strategy
 execution, and shutdown run for multiple cycles. It then treats the recorder
 DuckDB as an external artefact and checks that an analyst can connect the
 constructed vault universe and TVL data to the AlphaModel candidate and
-selection observations.
+selection observations. A temporary guard record excludes real discovered
+vaults so the same run also checks warning-level and cycle-linked rejections.
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 from unittest import mock
@@ -21,6 +23,7 @@ from tradingstrategy.vault_data_client import VAULT_PRO_API_KEY_ENV_VAR
 
 from tradeexecutor.cli.commands import start as _start  # noqa: F401 - register the real start command
 from tradeexecutor.cli.commands.app import app
+from tradeexecutor.curator.hyperliquid_vault_universe import build_hyperliquid_vault_universe
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.recorder.serialisation import decode_json_value
 
@@ -73,16 +76,44 @@ def test_start_records_live_hypercore_universe_and_alpha_model_selection(
     tmp_path: Path,
     persistent_test_cache_path: str,
     hypercore_recorder_strategy_file: Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Record and inspect multiple live HyperCore AlphaModel decisions.
 
-    1. Run the real ``start`` command for two one-second cycles against live HyperCore data.
-    2. Confirm normal executor state and its adjacent recorder database were produced.
-    3. Resolve each recorded constructed universe and verify vault identity, metadata, and TVL frames.
-    4. Verify indicator fingerprints identify the TVL and age-ramp inputs used by the strategy.
-    5. Join recorded candidates to the universe and confirm AlphaModel selected an equal-weight subset.
+    1. Withhold three real curated vaults from a temporary Lagoon guard record.
+    2. Run the real ``start`` command for two one-second cycles against live HyperCore data.
+    3. Confirm normal executor state and its adjacent recorder database were produced.
+    4. Resolve each recorded constructed universe and verify vault identity, metadata, and TVL frames.
+    5. Verify indicator fingerprints identify the TVL and age-ramp inputs used by the strategy.
+    6. Join recorded candidates to the universe and confirm AlphaModel selected an equal-weight subset.
+    7. Confirm guard rejections were warned, excluded, and recorded on each decision.
+
+    The record is temporary, but vault discovery, market data, strategy input,
+    PositionManager, recorder and CLI scheduler are all the production paths.
     """
-    # 1. Run the real ``start`` command for two one-second cycles against live HyperCore data.
+    # 1. Withhold three real curated vaults from a temporary Lagoon guard record.
+    vaults = build_hyperliquid_vault_universe(
+        min_tvl=7_500,
+        top_n=12,
+        min_age=0.0,
+        include_closed_vaults=True,
+        printer=lambda _message: None,
+    )
+    assert len(vaults) >= 4
+    withheld_addresses = {address.lower() for _chain, address in vaults[:3]}
+    permitted_addresses = {address.lower() for _chain, address in vaults[3:]}
+    guard_file = tmp_path / "hypercore-guard.json"
+    guard_file.write_text(json.dumps({"deployments": {"hyperliquid": {
+        # Hot-wallet selection never calls an on-chain guard; this address
+        # only makes the deployment record structurally valid for the loader.
+        "module_address": "0x0000000000000000000000000000000000000001",
+        "config": {
+            "any_hypercore_vault": False,
+            "hypercore_vaults": sorted(permitted_addresses),
+        },
+    }}}), encoding="utf-8")
+
+    # 2. Run the real ``start`` command for two one-second cycles against live HyperCore data.
     executor_id = "hypercore-recorder-blackbox"
     state_file = tmp_path / "hypercore-recorder-state.json"
     record_file = tmp_path / f"{executor_id}-record.duckdb"
@@ -122,13 +153,16 @@ def test_start_records_live_hypercore_universe_and_alpha_model_selection(
 
     # This patch controls process configuration only. It does not replace any
     # CLI, client, runner, universe, indicator, AlphaModel, or recorder method.
-    with mock.patch.dict(os.environ, environment, clear=True):
+    with mock.patch.dict(os.environ, environment, clear=True), caplog.at_level(
+        logging.WARNING,
+        logger="tradeexecutor.strategy.pandas_trader.position_manager",
+    ):
         # Typer flattens a single-command app; other collected CLI tests can
         # register additional commands on the shared app.
         cli = get_command(app)
         cli.main(args=["start"] if isinstance(cli, Group) else [], standalone_mode=False)
 
-    # 2. Confirm normal executor state and its adjacent recorder database were produced.
+    # 3. Confirm normal executor state and its adjacent recorder database were produced.
     assert state_file.exists()
     assert record_file.exists()
     state = State.from_json(state_file.read_text(encoding="utf-8"))
@@ -146,7 +180,7 @@ def test_start_records_live_hypercore_universe_and_alpha_model_selection(
             manifest = json.loads(raw_manifest)
             observations = decode_json_value(json.loads(raw_observations))
 
-            # 3. Resolve each recorded constructed universe and verify vault
+            # 4. Resolve each recorded constructed universe and verify vault
             # identity, metadata, and TVL frames. This is the actual universe
             # passed into decide_trades(), not a fresh post-test API request.
             universe_kind, universe = _read_object(connection, manifest["universe"])
@@ -189,7 +223,7 @@ def test_start_records_live_hypercore_universe_and_alpha_model_selection(
                     continue
                 tvl_history_by_pair.setdefault(pair_id, []).append(float(close))
 
-            # 4. Verify indicator fingerprints identify the TVL and age-ramp
+            # 5. Verify indicator fingerprints identify the TVL and age-ramp
             # inputs used by this decision, including reproducibility metadata.
             indicator_payloads = [
                 _read_object(connection, reference)[1]
@@ -214,7 +248,7 @@ def test_start_records_live_hypercore_universe_and_alpha_model_selection(
                     for payload in indicator_payloads
                 )
 
-            # 5. Join candidates to the constructed universe and confirm the
+            # 6. Join candidates to the constructed universe and confirm the
             # AlphaModel selected a bounded equal-weight subset. TVL is asserted
             # on the candidate values actually consumed by the strategy.
             observations_by_name = {item["name"]: item for item in observations}
@@ -232,7 +266,7 @@ def test_start_records_live_hypercore_universe_and_alpha_model_selection(
             assert all(
                 candidate["rejection_reason"] == "missing_tvl"
                 for candidate in candidates
-                if candidate["tvl"] is None
+                if candidate["tvl"] is None and candidate["vault_address"] not in withheld_addresses
             )
             for candidate in candidates:
                 if candidate["tvl"] is not None:
@@ -251,5 +285,20 @@ def test_start_records_live_hypercore_universe_and_alpha_model_selection(
             assert all(candidate_by_address[item["vault_address"]]["tvl"] >= 7_500 for item in selected)
             assert [item["rank"] for item in selected] == list(range(1, len(selected) + 1))
             assert all(item["raw_weight"] == 1.0 for item in selected)
+
+            # 7. The strategy uses the real PositionManager to omit unlisted
+            # vaults from signals; the manager warns and records the skip.
+            guard_input = next(item for item in observations if item["name"] == "hypercore_guard_whitelist")
+            assert set(guard_input["value"]["vault_addresses"]) == permitted_addresses
+            guard_skips = [item for item in observations if item["name"] == "hypercore_guard_whitelist_skip"]
+            assert {item["pair_key"] for item in guard_skips} == withheld_addresses
+            assert all(item["value"]["reason"] == "not_in_guard_record" for item in guard_skips)
+            assert all(candidate_by_address[address]["rejection_reason"] == "not_whitelisted" for address in withheld_addresses)
+            assert not withheld_addresses.intersection(item["vault_address"] for item in selected)
     finally:
         connection.close()
+
+    assert sum(
+        record.levelno == logging.WARNING and "not in Lagoon guard record" in record.message
+        for record in caplog.records
+    ) == 2 * len(withheld_addresses)

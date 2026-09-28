@@ -74,11 +74,16 @@ final `vaultTransfer`. Run
 for Hyper-AI, or supply another Lagoon deployment record, to compare the recorded permissions with current
 HyperCore vault metadata. The report orders missing addresses by current TVL
 and shows three-month CAGR and Sharpe; it does not test on-chain guard state or
-apply a strategy's risk screens. Hyper-AI loads its configured deployment
-record before constructing the trading universe, and fails if the file is
-absent or, in live mode with `VAULT_ADAPTER_ADDRESS` set, does not match that
-module. Neither path reads on-chain permissions; update the record after guard
-governance changes before treating either result as current.
+apply a strategy's risk screens. Hyper-AI validates its configured deployment
+record when constructing the universe, but keeps the discovered vaults available
+for indicators and valuation. During `decide_trades()`,
+`PositionManager.is_whitelisted_vault()` rejects new allocations missing from
+the record, logs a warning, and stores a per-vault admission observation in the
+live decision recorder. The recorder also stores the full recorded allow-list
+for that cycle. A missing file or a module mismatch (when
+`VAULT_ADAPTER_ADDRESS` is set) raises. Neither path reads on-chain permissions;
+update the record after guard governance changes before treating either result
+as current.
 
 ## Data structures in trade-executor
 
