@@ -324,7 +324,7 @@ planned/started no-transaction trades. If it also finds an unfinished HyperCore
 deposit with an at-risk or stranded-USDC marker, it logs the trade and leaves
 that position open or frozen without a counter-trade or reserve refund. It
 closes zero-quantity positions whose never-broadcast openings it did repair,
-then exits non-zero while any at-risk trade remains. This partial repair
+then warns while any at-risk trade remains. This partial repair
 clears unrelated coherence blockers so that the next `correct-accounts --dry-run` can inspect
 the live transit balance safely. If every candidate is protected, repair makes
 no trade repair and does not show an interactive confirmation prompt: there is
@@ -340,18 +340,18 @@ The safe operator sequence is therefore:
 3. Run `correct-accounts` only after reviewing that plan. It reconciles the
    recovered Safe balance through the normal accounting path.
 
-For the 28 September 2026 Fadorador incident, ordinary step 3 is not enough:
-the pending two-day slot already contains three successful sibling trades and
-must never be replayed. Verify the known phase-3 revert on HyperEVM, the
+For the 28 September 2026 Fadorador incident, the pending two-day slot already
+contains three successful sibling trades and must never be replayed. Verify
+the known phase-3 revert on HyperEVM, the
 Safe's current ERC-20 balance, HyperCore spot/perp cash, and zero Fadorador
 equity. Run the dry run against the stopped state and check that it proposes
 `perp_to_spot 3023.626339` and `spot_to_evm 3023.624536` USDC (or recognises
-that the cash already returned). Only then run
-`correct-accounts --consume-partial-hypercore-slot`. This option marks the
-partially executed decision consumed after final account checks; it is not a
-general automatic retry or a licence to move funds without current custody
-evidence. A failed save after the return can be retried: the command
-recognises the Safe surplus and does not send a second transfer. Run the
+that the cash already returned). Only then run `correct-accounts`. For this
+verified incident shape, it marks the partially executed decision consumed
+after final account checks; it is not a general automatic retry or a licence
+to move funds without current custody evidence. A failed save after the return
+can be retried: the command recognises the Safe surplus and does not send a
+second transfer. Run the
 full-snapshot test described in `docs/hypercore-data-availability.md` before
 any production operation.
 

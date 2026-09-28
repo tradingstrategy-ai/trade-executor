@@ -68,8 +68,8 @@ never-filled position from a position whose capital location is unresolved:
   caller cannot accidentally use its unconditional planned-reserve refund.
 
 In `tradeexecutor/cli/commands/repair.py`, take a state backup before the first
-mutation, preserve and report safe partial progress, and finish with an
-explicit incomplete/non-zero result while any at-risk trade remains. Do not
+mutation, preserve and report safe partial progress, and warn while any
+at-risk trade remains. The live startup guard still rejects this state. Do not
 extend `rebroadcast_all()` to rebroadcast #1728: its persisted phase-1 hashes
 are already mined, and the later HyperCore outcome is not represented by the
 two persisted transaction objects. This command must not make a Safe transfer.
@@ -149,8 +149,8 @@ trading restart must not.
 ### 3. Consume, never replay, the partial decision
 
 The 28 September slot already has successful trades, so it is not safe to
-retry the whole decision. Add one explicit confirmation/option to the existing
-`correct-accounts` command to consume this pending HyperCore slot **after**
+retry the whole decision. Have the existing `correct-accounts` command consume
+this pending HyperCore slot only for the verified incident shape **after**
 all its trades are terminal, no material transit capital remains unresolved,
 and final account checks pass. Save the slot resolution atomically with
 `pending_data_availability_slot = None`, `last_cycle_at = 2026-09-28 00:00`
@@ -206,16 +206,16 @@ running either command.
 
 Assertions, in order:
 
-1. `repair` exits incomplete rather than crashing; #1729/#1731/#1732/#1733
-   are repaired, their empty positions close, #1728 remains at risk, and
+1. `repair` exits successfully with a warning rather than crashing;
+   #1729/#1731/#1732/#1733 are repaired, their empty positions close, #1728 remains at risk, and
    Safe cash and state reserve are not increased by #1728's planned amount.
 2. `correct-accounts --dry-run` explains the planned 3,023.626339 and
    3,023.624536 USDC legs and the pending slot; it leaves both the copied
    state bytes and fork balances unchanged.
 3. The real command credits only the verified Safe increase, marks #1728
    failed with zero fill, closes #532, clears the unresolved marker after
-   final verification, and consumes the partial slot by explicit option.
-   `check_accounts()` and `State.check_if_clean()` pass; slot calculation
+   final verification, and consumes the partial slot without another CLI option.
+   the `check-accounts` CLI and `State.check_if_clean()` pass; slot calculation
    returns 30 September, not a replay of 28 September.
 4. Exercise the crash boundary in a fresh copy: inject one exception at the
    **first state-file save after the recovery helper has changed mock HyperCore
@@ -237,9 +237,9 @@ authorisation to transfer live funds.
 
 Update `.claude/docs/hypercore-vault.md`, `docs/hypercore-data-availability.md`,
 and the two commands' help text: distinguish a dry-run plan from a clean
-post-transfer state, describe the explicit partial-slot consumption, and
-remove the current implication that ordinary `repair` plus `correct-accounts`
-already settles this crash window. No strategy ranking changes, backtest
+post-transfer state, describe the narrow automatic partial-slot consumption,
+and state that ordinary `repair` plus `correct-accounts` now settles this
+verified incident shape. No strategy ranking changes, backtest
 changes, new storage schema, generic recovery command, or automatic vault
 deposit retry are part of this fix.
 

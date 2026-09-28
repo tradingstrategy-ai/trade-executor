@@ -246,8 +246,9 @@ planned/started trade with no transaction. Run it first when
 `correct-accounts` preflight reports an unfinished trade; then inspect the
 marked HyperCore trade with `correct-accounts --dry-run`. If every repair
 candidate is protected, `repair` deliberately makes no state change and shows
-no confirmation prompt. It exits non-zero while capital remains at risk, even
-when it has saved repairs for unrelated never-broadcast trades.
+no confirmation prompt. It warns while capital remains at risk, even when it
+has saved repairs for unrelated never-broadcast trades. Live startup remains
+blocked until `correct-accounts` reconciles that capital.
 
 1. Run `check-hypercore-user.py` for the Safe and inspect Safe EVM USDC, EVM
    escrow, spot USDC, perp withdrawable USDC and vault equity.
@@ -309,12 +310,11 @@ the account-correction planner.
 The 28 September 2026 Fadorador opening deposit has a narrower path. After
 verifying the failed phase-3 receipt and current custody, use `repair` to
 resolve the never-broadcast sibling buys, review `correct-accounts --dry-run`,
-then pass `--consume-partial-hypercore-slot` on the real correction. That
-option fails closed unless there is one started, zero-fill HyperCore opening
-trade, no active perp position or target-vault equity, and a matching Safe
-cash return. It marks that trade failed, credits only the cash actually back
-in the Safe, and consumes the already partially executed two-day slot. It is
-not a generic deposit retry. The unchanged original state and pinned-fork
+then run `correct-accounts`. It fails closed unless there is one started,
+zero-fill HyperCore opening trade, no active perp position or target-vault
+equity, and a matching Safe cash return. It marks that trade failed, credits
+only the cash actually back in the Safe, and consumes the already partially
+executed two-day slot. It is not a generic deposit retry. The unchanged original state and pinned-fork
 test are described in `docs/plans/hyper-ai-september-28-interrupted-deposit-recovery.md`.
 
 If execution stops after perp-to-spot but before spot-to-EVM, the next run

@@ -571,7 +571,6 @@ def correct_accounts(
     skip_hypercore_transit_recovery: bool = Option(False, "--skip-hypercore-transit-recovery", envvar="SKIP_HYPERCORE_TRANSIT_RECOVERY", help="Skip Safe-level HyperCore spot/perp USDC recovery before account correction."),
     cleanup_hypercore_small_positions: bool = Option(True, "--cleanup-hypercore-small-positions/--no-cleanup-hypercore-small-positions", envvar="CLEANUP_HYPERCORE_SMALL_POSITIONS", help="Redeem open HyperCore vault positions below the strategy minimum allocation before correcting accounts."),
     dry_run: bool = Option(False, "--dry-run", envvar="DRY_RUN", help="Read live balances and print any Safe-level HyperCore perp->spot->EVM recovery plan without signing, broadcasting, persisting state, or applying accounting corrections."),
-    consume_partial_hypercore_slot: bool = Option(False, "--consume-partial-hypercore-slot", help="After verified recovery, mark an interrupted HyperCore decision with already-executed trades as consumed instead of replaying it."),
 
     # Derive exchange account options
     derive_owner_private_key: Optional[str] = Option(None, envvar="DERIVE_OWNER_PRIVATE_KEY", help="Derive owner wallet private key"),
@@ -607,10 +606,10 @@ def correct_accounts(
     For the interrupted 28 September Hyper-AI deposit, first verify the known
     failed vault-deposit receipt and current custody. ``repair`` fixes its
     never-broadcast sibling trades but leaves the at-risk deposit untouched.
-    After reviewing this command's dry-run, pass
-    ``--consume-partial-hypercore-slot`` on the real run to save the failed
-    deposit, actual Safe reserve correction and consumed two-day slot together.
-    This option does not retry the rejected vault deposit.
+    After reviewing this command's dry-run, run ``correct-accounts``. If the
+    interrupted deposit matches the verified custody and partial-slot checks,
+    it saves the failed deposit, actual Safe reserve correction and consumed
+    two-day slot together. It does not retry the rejected vault deposit.
 
     An old state file is automatically backed up.
     """
@@ -685,11 +684,6 @@ def correct_accounts(
         trade for trade in state.portfolio.get_all_trades()
         if has_unresolved_hypercore_accounting(trade)
     ]
-    if at_risk_trades and not dry_run and not consume_partial_hypercore_slot:
-        raise RuntimeError(
-            "An interrupted HyperCore deposit needs --consume-partial-hypercore-slot "
-            "after receipt and custody review; use --dry-run first"
-        )
     if at_risk_trades and (skip_save or process_redemption):
         raise RuntimeError("Interrupted HyperCore deposit reconciliation requires an atomic state save and no redemption processing")
     if not at_risk_trades:

@@ -73,12 +73,12 @@ clearing the pending slot are persisted together after a successful tick.
 There is still a crash window between trade persistence and that completion
 write. If a pending slot contains completed trades, restart refuses it, even
 after ordinary transaction repair. For the specific 28 September Hyper-AI
-interrupted deposit, `repair` fixes never-broadcast sibling trades but exits
-incomplete while the deposit's capital-at-risk marker remains. The operator
+interrupted deposit, `repair` fixes never-broadcast sibling trades and warns
+that the deposit's capital-at-risk marker remains. The operator
 must verify the failed vault-deposit receipt and current Safe, HyperCore
 perp/spot and target-vault balances. `correct-accounts --dry-run` shows the
 recovery plan without changing state or funds. Only after that review should
-the operator run `correct-accounts --consume-partial-hypercore-slot`; it
+the operator run `correct-accounts`; it
 verifies returned Safe cash, corrects reserves once, and saves the failed
 deposit and consumed slot together. Other trade-bearing pending slots are not
 automatically consumed; never clear the flag by hand or replay a slot with

@@ -84,8 +84,10 @@ def test_interrupted_hypercore_deposit_cli(
 
     1. Verify the pinned fork and actual incident receipts and Safe balance.
     2. Enter ``repair`` and ``correct-accounts --dry-run`` through Typer.
-    3. Simulate only the HyperCore cross-domain transfer, then run the real CLI.
-    4. Check cash, trade, position and next-slot state; rerun without double credit.
+    3. Simulate only the HyperCore cross-domain transfer, then enter plain
+       ``correct-accounts`` through Typer.
+    4. Check cash, trade, position, next-slot state and the independent
+       ``check-accounts`` CLI; rerun without double credit.
     5. Inject a crash after external recovery but before the state-file save,
        then verify that a rerun does not transfer or credit the cash twice.
     6. Reject non-zero target vault equity before any transfer or state repair.
@@ -179,7 +181,8 @@ def test_interrupted_hypercore_deposit_cli(
 
     # 2. Repair records safe partial progress, but leaves deposit #1728 at risk.
     repaired = runner.invoke(app, ["repair"], env=env)
-    assert repaired.exit_code == 1, repaired.output
+    assert repaired.exit_code == 0, repr(repaired.exception)
+    assert "deferred hypercore trade(s) [1728]" in repaired.output.lower()
     assert incident_state_file.with_suffix(".backup-1.json").is_file(), repr(repaired.exception)
     state = State.read_json_file(incident_state_file)
     assert state.portfolio.get_trade_by_id(1728).get_status() == TradeStatus.started
@@ -197,7 +200,7 @@ def test_interrupted_hypercore_deposit_cli(
 
     # 3. The real CLI may change state only after the mocked transfer has
     # changed HyperCore custody and the fork's real ERC-20 Safe balance.
-    corrected = runner.invoke(app, ["correct-accounts", "--consume-partial-hypercore-slot"], env=env)
+    corrected = runner.invoke(app, ["correct-accounts"], env=env)
     assert corrected.exit_code == 0, repr(corrected.exception)
     assert hypercore["transfers"] == 1
     assert token.fetch_balance_of(SAFE) == INITIAL_SAFE + Decimal("3023.624536")
@@ -212,9 +215,13 @@ def test_interrupted_hypercore_deposit_cli(
     assert state.cycle == 124
     assert state.last_cycle_at.isoformat() == "2026-09-28T00:00:00"
     saved_reserve = state.portfolio.get_default_reserve_position().quantity
+    assert saved_reserve == INITIAL_SAFE + Decimal("3023.624536")
     state.check_if_clean()
     assert calculate_hypercore_slot_schedule(state.last_cycle_at, CycleDuration.cycle_2d, state).isoformat() == "2026-09-30T00:00:00"
-    again = runner.invoke(app, ["correct-accounts", "--consume-partial-hypercore-slot"], env=env)
+    checked = runner.invoke(app, ["check-accounts"], env=env)
+    assert checked.exit_code == 0, repr(checked.exception)
+    assert "all accounts match" in checked.output.lower()
+    again = runner.invoke(app, ["correct-accounts"], env=env)
     assert again.exit_code == 0, again.output
     assert hypercore["transfers"] == 1
     after_rerun = State.read_json_file(incident_state_file)
@@ -232,7 +239,7 @@ def test_interrupted_hypercore_deposit_cli(
     crash_env = {**env, "STATE_FILE": str(crash_state_file)}
     hypercore.update(perp=INITIAL_PERP, spot=INITIAL_SPOT)
     fund_erc20_on_anvil(web3, USDC, SAFE, token.convert_to_raw(INITIAL_SAFE))
-    assert runner.invoke(app, ["repair"], env=crash_env).exit_code == 1
+    assert runner.invoke(app, ["repair"], env=crash_env).exit_code == 0
     before_crash = crash_state_file.read_bytes()
     original_sync = JSONFileStore.sync
     crashed = False
@@ -246,19 +253,19 @@ def test_interrupted_hypercore_deposit_cli(
         return original_sync(store, state, *args, **kwargs)
 
     monkeypatch.setattr(JSONFileStore, "sync", fail_after_recovery)
-    interrupted = runner.invoke(app, ["correct-accounts", "--consume-partial-hypercore-slot"], env=crash_env)
+    interrupted = runner.invoke(app, ["correct-accounts"], env=crash_env)
     assert interrupted.exit_code == 1
     assert crashed
     assert crash_state_file.read_bytes() == before_crash
     assert token.fetch_balance_of(SAFE) == INITIAL_SAFE + Decimal("3023.624536")
     monkeypatch.setattr(JSONFileStore, "sync", original_sync)
-    resumed = runner.invoke(app, ["correct-accounts", "--consume-partial-hypercore-slot"], env=crash_env)
+    resumed = runner.invoke(app, ["correct-accounts"], env=crash_env)
     assert resumed.exit_code == 0, repr(resumed.exception)
     assert hypercore["transfers"] == 2
     resumed_state = State.read_json_file(crash_state_file)
     assert resumed_state.cycle == 124
     assert resumed_state.portfolio.get_default_reserve_position().quantity == state.portfolio.get_default_reserve_position().quantity
-    assert runner.invoke(app, ["correct-accounts", "--consume-partial-hypercore-slot"], env=crash_env).exit_code == 0
+    assert runner.invoke(app, ["correct-accounts"], env=crash_env).exit_code == 0
     assert hypercore["transfers"] == 2
 
     # 6. Non-zero vault equity makes the location of the attempted deposit
@@ -268,10 +275,10 @@ def test_interrupted_hypercore_deposit_cli(
     negative_env = {**env, "STATE_FILE": str(negative_state_file)}
     hypercore.update(perp=INITIAL_PERP, spot=INITIAL_SPOT)
     fund_erc20_on_anvil(web3, USDC, SAFE, token.convert_to_raw(INITIAL_SAFE))
-    assert runner.invoke(app, ["repair"], env=negative_env).exit_code == 1
+    assert runner.invoke(app, ["repair"], env=negative_env).exit_code == 0
     before_negative = negative_state_file.read_bytes()
     expected_equity[trade.pair.pool_address.lower()] = Decimal(1)
-    rejected = runner.invoke(app, ["correct-accounts", "--consume-partial-hypercore-slot"], env=negative_env)
+    rejected = runner.invoke(app, ["correct-accounts"], env=negative_env)
     assert rejected.exit_code == 1
     assert "vault equity" in str(rejected.exception)
     assert negative_state_file.read_bytes() == before_negative

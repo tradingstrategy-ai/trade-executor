@@ -3,7 +3,6 @@ import datetime
 from pathlib import Path
 from typing import Optional
 from typer import Option
-import typer
 
 from eth_defi.compat import native_datetime_utc_now
 
@@ -79,8 +78,9 @@ def repair(
 
     A zero-quantity HyperCore position can still have USDC in transit. Such a
     trade is not refunded or rebroadcast. Repairs for unrelated never-broadcast
-    trades are saved, but the command exits non-zero while marked capital is
-    unresolved. Review ``correct-accounts --dry-run`` before any live recovery.
+    trades are saved. The command warns about unresolved capital, which must
+    be reconciled with ``correct-accounts`` before restarting the executor.
+    Review ``correct-accounts --dry-run`` before any live recovery.
 
     See also check-accounts and correct-accounts commands.
     """
@@ -244,8 +244,7 @@ def repair(
         if has_unresolved_hypercore_accounting(trade)
     ]
     if unresolved:
-        logger.error(
-            "Repair incomplete: HyperCore trade(s) %s still require live custody reconciliation; run correct-accounts --dry-run",
+        logger.warning(
+            "Repair deferred HyperCore trade(s) %s: live custody still requires reconciliation with correct-accounts; review correct-accounts --dry-run first",
             unresolved,
         )
-        raise typer.Exit(code=1)
