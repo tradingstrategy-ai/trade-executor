@@ -24,8 +24,7 @@ from eth_defi.hyperliquid.session import (
 from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from web3 import Web3
 
-from tradeexecutor.ethereum.vault import hypercore_transit_recovery
-from tradeexecutor.ethereum.vault.hypercore_vault import create_hypercore_vault_value_func
+from tradeexecutor.ethereum.vault import hypercore_transit_recovery, hypercore_vault
 from tradeexecutor.ethereum.vault.hypercore_transit_recovery import (
     BALANCE_TOLERANCE,
     HYPERCORE_TRANSIT_RECOVERY_DUST_USDC,
@@ -164,7 +163,7 @@ def _inspect_interrupted_hypercore_deposit(
         safe_address=safe_address,
         reserve_token=sync_model.vault.underlying_token,
     )
-    vault_equity = create_hypercore_vault_value_func(
+    vault_equity = hypercore_vault.create_hypercore_vault_value_func(
         session=session,
         safe_address=safe_address,
         bypass_cache=True,
@@ -237,7 +236,7 @@ def _sync_hypercore_vault_positions(
     api_url = HYPERLIQUID_TESTNET_API_URL if is_testnet else HYPERLIQUID_API_URL
     hl_session = create_hyperliquid_session(api_url=api_url)
 
-    vault_value_func = create_hypercore_vault_value_func(
+    vault_value_func = hypercore_vault.create_hypercore_vault_value_func(
         session=hl_session,
         safe_address=safe_address,
         is_testnet=is_testnet,
