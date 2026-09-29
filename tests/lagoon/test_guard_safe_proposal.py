@@ -3,6 +3,7 @@
 import json
 import logging
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,11 +18,45 @@ from web3 import Web3
 import tradeexecutor.cli.commands.lagoon_deploy_vault as deploy_command
 import tradeexecutor.ethereum.lagoon.guard_proposal as guard_proposal
 from tradeexecutor.cli.main import app
-from tradeexecutor.ethereum.lagoon.guard_proposal import GuardProposalContext, submit_guard_migration
+from tradeexecutor.ethereum.lagoon.guard_proposal import GuardProposalContext, prepare_guard_proposal, submit_guard_migration
 
 
 def _address(number: int) -> str:
     return Web3.to_checksum_address(f"0x{number:040x}")
+
+
+def test_prepare_guard_proposal_accepts_hyperevm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Allow HyperEVM before guard deployment despite the SDK's missing service mapping.
+
+    1. Set up a Safe with one governed module and an owner proposer.
+    2. Run the proposal preflight on chain 999.
+    3. Confirm it selects HyperEVM rather than rejecting the live service.
+    """
+    # 1. Set up a Safe with one governed module and an owner proposer.
+    owner = Account.create()
+    safe_address, old_guard, multisend_address = (_address(i) for i in range(1, 4))
+    safe = SimpleNamespace(
+        address=safe_address,
+        retrieve_version=lambda: "1.4.1+L2",
+        retrieve_modules=lambda: [old_guard],
+        retrieve_owners=lambda: [owner.address],
+        ethereum_client=object(),
+    )
+    web3 = SimpleNamespace(eth=SimpleNamespace(
+        chain_id=999,
+        contract=lambda **_kwargs: SimpleNamespace(functions=SimpleNamespace(
+            getGovernanceAddress=lambda: SimpleNamespace(call=lambda: safe_address),
+        )),
+        get_code=lambda _address: b"\x01",
+    ))
+    monkeypatch.setattr(guard_proposal, "fetch_safe_deployment", lambda *_args: safe)
+    monkeypatch.setattr(guard_proposal, "MultiSend", lambda *_args, **_kwargs: SimpleNamespace(address=multisend_address))
+
+    # 2. Run the proposal preflight on chain 999.
+    context = prepare_guard_proposal(web3, safe_address, owner.key.hex(), expected_old_guard_address=old_guard)
+
+    # 3. Confirm it selects HyperEVM rather than rejecting the live service.
+    assert context.network == guard_proposal.EthereumNetwork.HYPEREVM
 
 
 def test_guard_proposal_batches_module_replacement_and_detects_nonce_conflict(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -99,6 +134,15 @@ def test_guard_proposal_batches_module_replacement_and_detects_nonce_conflict(mo
     assert proposal["status"] == "submitted"
     assert proposal["nonce"] == 7
     assert proposal["url"].startswith(f"https://app.safe.global/transactions/tx?safe=base:{safe_address}")
+    # HyperEVM has a live Safe service, but its URL is absent from this
+    # safe-eth-py version's built-in network mapping.
+    hyper_proposal = submit_guard_migration(
+        replace(context, network=guard_proposal.EthereumNetwork.HYPEREVM),
+        new_guard,
+        owner.key.hex(),
+    )
+    assert captured["service"]["base_url"] == "https://api.safe.global/tx-service/hyper"
+    assert hyper_proposal["url"].startswith(f"https://app.safe.global/transactions/tx?safe=hyper-evm:{safe_address}")
     with pytest.raises(RuntimeError, match="nonce changed since deployment"):
         submit_guard_migration(context, new_guard, owner.key.hex(), expected_proposal={"nonce": 6})
 

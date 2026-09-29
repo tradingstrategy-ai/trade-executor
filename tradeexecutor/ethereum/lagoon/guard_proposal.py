@@ -22,6 +22,13 @@ GUARD_GOVERNANCE_ABI = [{
     "type": "function",
 }]
 
+# Safe serves HyperEVM at this endpoint, but the pinned safe-eth-py release
+# does not yet include chain 999 in TransactionServiceApi.NETWORK_SHORTNAME.
+# The wallet uses a different chain identifier from the service URL suffix.
+# https://docs.safe.global/core-api/transaction-service-reference/hyper-evm
+HYPEREVM_SAFE_SERVICE_URL = "https://api.safe.global/tx-service/hyper"
+HYPEREVM_SAFE_WALLET_CHAIN = "hyper-evm"
+
 
 @dataclass(frozen=True, slots=True)
 class GuardProposalContext:
@@ -60,7 +67,7 @@ def prepare_guard_proposal(
     if proposer.lower() not in {owner.lower() for owner in safe.retrieve_owners()}:
         raise ValueError(f"Deployer {proposer} is not an owner of Safe {safe.address}")
     network = EthereumNetwork(web3.eth.chain_id)
-    if network not in TransactionServiceApi.NETWORK_SHORTNAME:
+    if network not in TransactionServiceApi.NETWORK_SHORTNAME and network != EthereumNetwork.HYPEREVM:
         raise ValueError(f"No Safe Transaction Service for chain {web3.eth.chain_id}")
     multisend = MultiSend(safe.ethereum_client, call_only=True)
     if not web3.eth.get_code(multisend.address):
@@ -145,6 +152,7 @@ def submit_guard_migration(
     service = TransactionServiceApi(
         network=context.network,
         ethereum_client=context.safe.ethereum_client,
+        base_url=HYPEREVM_SAFE_SERVICE_URL if context.network == EthereumNetwork.HYPEREVM else None,
         api_key=safe_api_key,
     )
     pending = []
@@ -167,7 +175,11 @@ def submit_guard_migration(
             raise RuntimeError(f"Safe {context.safe.address} nonce {safe_tx.safe_nonce} already has a different pending proposal")
     if not pending:
         service.post_transaction(safe_tx)
-    short_name = TransactionServiceApi.NETWORK_SHORTNAME[context.network]
+    short_name = (
+        HYPEREVM_SAFE_WALLET_CHAIN
+        if context.network == EthereumNetwork.HYPEREVM
+        else TransactionServiceApi.NETWORK_SHORTNAME[context.network]
+    )
     safe_address = context.safe.address
     return {
         **_describe_transaction(context, safe_tx, status="submitted"),
