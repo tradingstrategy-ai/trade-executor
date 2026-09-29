@@ -86,6 +86,18 @@ for that cycle. A missing file or a module mismatch (when
 update the record after guard governance changes before treating either result
 as current.
 
+For a guard-only redeploy, use
+`lagoon-deploy-vault --preserve-hypercore-vaults-from <current-guard-record>`
+together with `--whitelist-known-hyperliquid-vaults`. The replacement guard then includes
+both newly discovered vaults and old permissions, including vaults that no
+longer pass today's strategy TVL screen. The CLI verifies that the old record
+matches the guard module, Safe and vault being replaced. A real guard-only
+redeploy submits a Safe proposal; Safe owners must execute it before changing
+the executor's guard address and record path.
+HyperEVM uses Safe's hosted `/hyper` Transaction Service and `hyper-evm` Safe
+UI prefix; the pinned `safe-eth-py` version does not yet include that service
+mapping, so the proposer supplies it explicitly.
+
 ## Data structures in trade-executor
 
 The driver lives in `tradeexecutor/ethereum/vault/hypercore_routing.py`.

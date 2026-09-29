@@ -23,6 +23,23 @@ GUARD_GOVERNANCE_ABI = [{
 }]
 
 
+def _safe_transaction_service_details(network: EthereumNetwork) -> tuple[str | None, str]:
+    """Resolve the service endpoint and Safe UI prefix for a guard proposal.
+
+    ``safe-eth-py`` 7.21 knows HyperEVM's chain ID and Safe contracts but not
+    its hosted Transaction Service. Safe's chain configuration at
+    https://safe-config.safe.global/api/v1/chains/999/ publishes the endpoint
+    as ``/hyper`` and its UI address prefix as ``hyper-evm``.
+    Other chains continue to use the library's maintained mapping.
+    """
+    if network == EthereumNetwork.HYPEREVM:
+        return "https://api.safe.global/tx-service/hyper", "hyper-evm"
+    short_name = TransactionServiceApi.NETWORK_SHORTNAME.get(network)
+    if not short_name:
+        raise ValueError(f"No Safe Transaction Service for chain {network.value}")
+    return None, short_name
+
+
 @dataclass(frozen=True, slots=True)
 class GuardProposalContext:
     """Validated chain-specific Safe and batch contract."""
@@ -60,8 +77,7 @@ def prepare_guard_proposal(
     if proposer.lower() not in {owner.lower() for owner in safe.retrieve_owners()}:
         raise ValueError(f"Deployer {proposer} is not an owner of Safe {safe.address}")
     network = EthereumNetwork(web3.eth.chain_id)
-    if network not in TransactionServiceApi.NETWORK_SHORTNAME:
-        raise ValueError(f"No Safe Transaction Service for chain {web3.eth.chain_id}")
+    _safe_transaction_service_details(network)
     multisend = MultiSend(safe.ethereum_client, call_only=True)
     if not web3.eth.get_code(multisend.address):
         raise ValueError(f"MultiSendCallOnly is not deployed at {multisend.address} on chain {web3.eth.chain_id}")
@@ -142,9 +158,11 @@ def submit_guard_migration(
                 raise RuntimeError(f"Safe proposal {field} changed since deployment; inspect the Safe before retrying")
     safe_tx.sign(private_key)
     tx_hash = Web3.to_hex(safe_tx.safe_tx_hash)
+    service_url, short_name = _safe_transaction_service_details(context.network)
     service = TransactionServiceApi(
         network=context.network,
         ethereum_client=context.safe.ethereum_client,
+        base_url=service_url,
         api_key=safe_api_key,
     )
     pending = []
@@ -167,7 +185,6 @@ def submit_guard_migration(
             raise RuntimeError(f"Safe {context.safe.address} nonce {safe_tx.safe_nonce} already has a different pending proposal")
     if not pending:
         service.post_transaction(safe_tx)
-    short_name = TransactionServiceApi.NETWORK_SHORTNAME[context.network]
     safe_address = context.safe.address
     return {
         **_describe_transaction(context, safe_tx, status="submitted"),

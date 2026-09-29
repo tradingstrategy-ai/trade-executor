@@ -55,6 +55,12 @@ To deploy a restrictive Hyperliquid guard from a strategy universe, pass
 ``--strategy-file`` and ``--whitelist-known-hyperliquid-vaults``. This keeps
 both ``anyAsset`` and ``anyHypercoreVault`` disabled while whitelisting each
 native vault known when the guard is deployed.
+For a guard-only replacement, ``--preserve-hypercore-vaults-from`` adds every
+address in the current guard record to the new universe-derived allow-list.
+This matters when a previously whitelisted vault has fallen below the
+strategy's current TVL screen but an existing position may still need to
+redeem from it. The option checks that the record belongs to the old module,
+vault and Safe before any replacement is deployed or proposed.
 
 To activate a Safe-owned Lighter account during a fresh Ethereum deployment,
 use ``--generate-lighter-api-key`` (optionally with
@@ -123,6 +129,7 @@ from tradeexecutor.ethereum.lagoon.deploy_report import (
     print_deployment_report,
 )
 from tradeexecutor.ethereum.lagoon.guard_proposal import describe_pending_guard_migration, prepare_guard_proposal, submit_guard_migration
+from tradeexecutor.ethereum.lagoon.hypercore_whitelist import load_hypercore_vault_whitelist
 from tradeexecutor.ethereum.lagoon.preflight_report import log_deployment_preflight_report
 from tradeexecutor.ethereum.lagoon.universe_config import (
     normalise_deployment_chain_id,
@@ -523,9 +530,9 @@ def resubmit_guard_migration(
     return results
 
 
-def _write_markdown_report(vault_record_file: Path | None, markdown_report: str, logger) -> None:
-    """Write deployment Markdown report next to other artifacts."""
-    if not vault_record_file:
+def _write_markdown_report(vault_record_file: Path | None, markdown_report: str, logger, *, simulate: bool) -> None:
+    """Write the Markdown report only when the deployment is real."""
+    if not vault_record_file or simulate:
         return
 
     md_path = vault_record_file.with_name("deployment-report.md")
@@ -1131,6 +1138,7 @@ def lagoon_deploy_vault(
     whitelisted_assets: str | None = Option(None, envvar="WHITELISTED_ASSETS", help="Space separarted list of ERC-20 addresses this vault can trade. Denomination asset does not need to be whitelisted separately."),
     any_asset: bool = Option(False, envvar="ANY_ASSET", help="Allow trading of any ERC-20 on Uniswap (unsecure)."),
     whitelist_known_hyperliquid_vaults: bool = Option(False, envvar="WHITELIST_KNOWN_HYPERLIQUID_VAULTS", help="Whitelist all Hyperliquid native vaults in the strategy universe. Requires --strategy-file; cannot be combined with --any-asset."),
+    preserve_hypercore_vaults_from: Path | None = Option(None, "--preserve-hypercore-vaults-from", help="For a guard-only redeploy, retain HyperCore vault permissions from the current guard record as well as newly discovered vaults."),
     lagoon_max_settlement_amount: str | None = Option(
         None,
         envvar="LAGOON_MAX_SETTLEMENT_AMOUNT",
@@ -1282,6 +1290,8 @@ def lagoon_deploy_vault(
         "Remove --denomination-asset to use the strategy-file deployment path."
     assert not whitelist_known_hyperliquid_vaults or strategy_file, "--whitelist-known-hyperliquid-vaults requires --strategy-file to construct the vault universe."
     assert not (whitelist_known_hyperliquid_vaults and any_asset), "--whitelist-known-hyperliquid-vaults cannot be combined with --any-asset."
+    if preserve_hypercore_vaults_from and not (guard_only and strategy_file and whitelist_known_hyperliquid_vaults):
+        raise ValueError("--preserve-hypercore-vaults-from requires --guard-only, --strategy-file and --whitelist-known-hyperliquid-vaults")
     assert max_settlement_amount is not None or lagoon_settlement_window == DEFAULT_LAGOON_SETTLEMENT_WINDOW, (
         "--lagoon-settlement-window requires --lagoon-max-settlement-amount."
     )
@@ -1306,6 +1316,7 @@ def lagoon_deploy_vault(
             logger=logger,
             any_asset=any_asset,
             whitelist_known_hyperliquid_vaults=whitelist_known_hyperliquid_vaults,
+            preserve_hypercore_vaults_from=preserve_hypercore_vaults_from,
             max_settlement_amount=max_settlement_amount,
             settlement_window=lagoon_settlement_window,
             trading_strategy_api_key=trading_strategy_api_key,
@@ -1684,7 +1695,7 @@ def lagoon_deploy_vault(
         public_lighter_metadata=_get_public_lighter_metadata(deploy_info),
     )
 
-    _write_markdown_report(vault_record_file, markdown_report, logger)
+    _write_markdown_report(vault_record_file, markdown_report, logger, simulate=simulate)
 
     web3config.close()
 
@@ -1776,6 +1787,41 @@ def _deploy_and_propose_guard_only_chains(
     return result, safe_proposals
 
 
+def _preserve_hypercore_vaults_from_record(
+    configs: dict[str, Any],
+    record_file: Path,
+    *,
+    expected_old_guard_address: str,
+    existing_vault_address: str,
+    existing_safe_address: str,
+) -> int:
+    """Keep previously permitted vaults when the current universe has shrunk.
+
+    Guard-only redeployment normally takes vaults from the strategy's current
+    universe. A vault below today's TVL threshold can disappear from that
+    universe while an existing position still needs permission to redeem it.
+    Called before deployment and Safe proposal preflight; the record must
+    belong to the module, vault and Safe being replaced.
+
+    :return: Number of old vault addresses added to the new guard config.
+    """
+    previous = json.loads(record_file.read_text(encoding="utf-8"))["deployments"]["hyperliquid"]
+    for field, expected in (("vault_address", existing_vault_address), ("safe_address", existing_safe_address)):
+        if previous[field].lower() != expected.lower():
+            raise ValueError(f"Previous guard record {record_file} has {field}={previous[field]}, expected {expected}")
+    whitelist = load_hypercore_vault_whitelist(record_file, expected_module_address=expected_old_guard_address)
+    if whitelist.any_hypercore_vault:
+        raise ValueError(f"Previous guard record {record_file} permits every HyperCore vault; cannot preserve a finite list")
+    config = configs.get("hyperliquid")
+    if config is None:
+        raise ValueError("--preserve-hypercore-vaults-from requires a Hyperliquid deployment config")
+    current = list(config.hypercore_vaults or [])
+    seen = {address.lower() for address in current}
+    missing = whitelist.vault_addresses - seen
+    config.hypercore_vaults = current + [Web3.to_checksum_address(address) for address in sorted(missing)]
+    return len(missing)
+
+
 def _deploy_multichain(
     web3config,
     hot_wallet: HotWallet,
@@ -1791,6 +1837,7 @@ def _deploy_multichain(
     logger,
     any_asset: bool = False,
     whitelist_known_hyperliquid_vaults: bool = False,
+    preserve_hypercore_vaults_from: Path | None = None,
     max_settlement_amount: Decimal | None = None,
     settlement_window: int = DEFAULT_LAGOON_SETTLEMENT_WINDOW,
     trading_strategy_api_key: str | None = None,
@@ -1917,6 +1964,18 @@ def _deploy_multichain(
         performance_fee=performance_fee,
         management_fee=management_fee,
     )
+
+    if preserve_hypercore_vaults_from:
+        if not (guard_only and whitelist_known_hyperliquid_vaults and existing_vault_address and existing_safe_address and expected_old_guard_address):
+            raise ValueError("Preserving a previous HyperCore allow-list requires a guard-only redeploy with the old vault, Safe and module addresses")
+        added = _preserve_hypercore_vaults_from_record(
+            configs,
+            preserve_hypercore_vaults_from,
+            expected_old_guard_address=expected_old_guard_address,
+            existing_vault_address=existing_vault_address,
+            existing_safe_address=existing_safe_address,
+        )
+        logger.info("Retained %d previously whitelisted HyperCore vaults outside today's strategy universe", added)
 
     proposal_contexts = {}
     if guard_only and not simulate and not manual_safe_migration:
@@ -2103,7 +2162,7 @@ def _deploy_multichain(
     # The helper derives the executor id from strategy_file on this legacy path.
     _write_state_sibling_deployment_artifact(strategy_file, json_payload, simulate=simulate, logger=logger)
 
-    _write_markdown_report(vault_record_file, markdown_report, logger)
+    _write_markdown_report(vault_record_file, markdown_report, logger, simulate=simulate)
 
 
 SAFE_ABI_STR = """

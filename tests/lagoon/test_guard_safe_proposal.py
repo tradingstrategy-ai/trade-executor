@@ -9,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 from eth_account import Account
 from hexbytes import HexBytes
+from safe_eth.safe.api.transaction_service_api.transaction_service_api import TransactionServiceApi
 from safe_eth.safe.multi_send import MultiSendOperation
 from tradingstrategy.chain import ChainId
 from typer.main import get_command
@@ -24,6 +25,27 @@ def _address(number: int) -> str:
     return Web3.to_checksum_address(f"0x{number:040x}")
 
 
+def test_hyperevm_guard_proposal_uses_hosted_safe_service() -> None:
+    """Avoid rejecting HyperEVM before guard deployment because safe-eth-py lacks its service mapping.
+
+    1. Resolve the HyperEVM service URL and Safe UI address prefix.
+    2. Construct the real Safe service client using that explicit URL.
+    3. Confirm the pinned library's missing default mapping cannot mask the override.
+    """
+    # 1. Resolve the HyperEVM service URL and Safe UI address prefix.
+    network = guard_proposal.EthereumNetwork.HYPEREVM
+    url, short_name = guard_proposal._safe_transaction_service_details(network)
+    assert url == "https://api.safe.global/tx-service/hyper"
+    assert short_name == "hyper-evm"
+
+    # 2. Construct the real Safe service client using that explicit URL.
+    service = TransactionServiceApi(network=network, base_url=url)
+    assert service.base_url == url
+
+    # 3. Confirm the pinned library's missing default mapping cannot mask the override.
+    assert network not in TransactionServiceApi.NETWORK_SHORTNAME
+
+
 def test_guard_proposal_batches_module_replacement_and_detects_nonce_conflict(monkeypatch: pytest.MonkeyPatch) -> None:
     """Build one signed batch and reject a competing proposal at its Safe nonce.
 
@@ -31,6 +53,7 @@ def test_guard_proposal_batches_module_replacement_and_detects_nonce_conflict(mo
     2. Submit the signed migration through a mocked Transaction Service.
     3. Check the ordered zero-value calls, DelegateCall wrapper and returned URL.
     4. Retry against the same hash and then a conflicting pending hash.
+    5. Confirm HyperEVM uses its explicit hosted endpoint and Safe UI prefix.
     """
     captured: dict = {}
     old_guard, new_guard, safe_address, batch_address = (_address(i) for i in range(1, 5))
@@ -108,6 +131,13 @@ def test_guard_proposal_batches_module_replacement_and_detects_nonce_conflict(mo
     pending.append({"safeTxHash": "0x" + "cd" * 32})
     with pytest.raises(RuntimeError, match="different pending proposal"):
         submit_guard_migration(context, new_guard, owner.key.hex())
+
+    # 5. Confirm HyperEVM uses its explicit hosted endpoint and Safe UI prefix.
+    pending.clear()
+    hyperevm_context = GuardProposalContext(web3, safe, multisend, old_guard, guard_proposal.EthereumNetwork.HYPEREVM)
+    hyperevm_proposal = submit_guard_migration(hyperevm_context, new_guard, owner.key.hex())
+    assert captured["service"]["base_url"] == "https://api.safe.global/tx-service/hyper"
+    assert hyperevm_proposal["url"].startswith(f"https://app.safe.global/transactions/tx?safe=hyper-evm:{safe_address}")
 
 
 def test_resubmit_guard_migration_updates_only_pending_chain(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
