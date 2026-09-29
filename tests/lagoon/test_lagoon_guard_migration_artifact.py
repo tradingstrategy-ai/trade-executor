@@ -8,6 +8,13 @@ def _addr(value: int) -> str:
 
 
 def test_guard_only_artifacts_include_safe_migration_instructions():
+    """Keep manual calls and record the Safe proposal for a guard redeploy.
+
+    1. Arrange a replacement guard and its existing Safe module.
+    2. Build the single-chain deployment artefacts with a submitted proposal.
+    3. Verify the manual fallback and proposal status are both present.
+    """
+    # 1. Arrange a replacement guard and its existing Safe module.
     safe_address = _addr(1)
     old_guard_address = _addr(2)
     new_guard_address = _addr(3)
@@ -23,13 +30,17 @@ def test_guard_only_artifacts_include_safe_migration_instructions():
         vault=SimpleNamespace(address=vault_address),
     )
 
+    # 2. Build the single-chain deployment artefacts with a submitted proposal.
     text_payload, json_payload = _augment_guard_only_artifacts(
         deploy_info,
         text_payload="Deployment summary",
         json_payload={"Trading strategy module": new_guard_address},
+        safe_proposal={"status": "submitted", "safe_tx_hash": "0x" + "ab" * 32, "url": "https://safe.invalid/tx"},
     )
 
+    # 3. Verify the manual fallback and proposal status are both present.
     assert "Guard migration instructions" in text_payload
+    assert "Safe proposal status: submitted" in text_payload
     assert f"{safe_address}.disableModule(0x0000000000000000000000000000000000000001, {old_guard_address})" in text_payload
     assert f"{safe_address}.enableModule({new_guard_address})" in text_payload
 
@@ -41,3 +52,4 @@ def test_guard_only_artifacts_include_safe_migration_instructions():
     assert instructions["enabled_modules_at_deployment"] == [old_guard_address]
     assert instructions["proposed_safe_transactions"][0]["function"] == "disableModule"
     assert instructions["proposed_safe_transactions"][1]["function"] == "enableModule"
+    assert instructions["safe_proposal"]["safe_tx_hash"] == "0x" + "ab" * 32

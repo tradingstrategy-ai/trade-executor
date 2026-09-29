@@ -90,7 +90,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.config import \
     get_lagoon_chain_config
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
     DEFAULT_LAGOON_SETTLEMENT_WINDOW, DEFAULT_MANAGEMENT_RATE, DEFAULT_PERFORMANCE_RATE,
-    LIGHTER_BOOTSTRAP_SUBSCRIPTION, LagoonDeploymentParameters, deploy_automated_lagoon_vault,
+    LIGHTER_BOOTSTRAP_SUBSCRIPTION, LagoonDeploymentParameters, LagoonMultichainDeployment, deploy_automated_lagoon_vault,
     deploy_multichain_lagoon_vault)
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
@@ -121,6 +121,7 @@ from tradeexecutor.ethereum.lagoon.deploy_report import (
     generate_multichain_deployment_report,
     print_deployment_report,
 )
+from tradeexecutor.ethereum.lagoon.guard_proposal import describe_pending_guard_migration, prepare_guard_proposal, submit_guard_migration
 from tradeexecutor.ethereum.lagoon.preflight_report import log_deployment_preflight_report
 from tradeexecutor.ethereum.lagoon.universe_config import (
     normalise_deployment_chain_id,
@@ -791,6 +792,7 @@ def _build_multichain_artifact_payload(
     safe_salt_nonce: int | None,
     chain_configs: dict[str, Any],
     guard_report: str,
+    safe_proposals: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Build the human-readable and JSON deployment payloads for multichain deploys."""
     guard_only = all(config.guard_only for config in chain_configs.values())
@@ -826,6 +828,8 @@ def _build_multichain_artifact_payload(
             guard_migration = _build_guard_migration_instructions(
                 dep,
             )
+            if safe_proposals is not None:
+                guard_migration["safe_proposal"] = safe_proposals.get(slug, {"status": "pending"})
         deployment_data["deployments"][slug] = {
             "vault_address": dep.vault.address if hasattr(dep.vault, "address") else None,
             "safe_address": dep.safe_address,
@@ -856,9 +860,14 @@ def _build_multichain_artifact_payload(
             lines.append(f"    Safe address: {guard_migration['safe_address']}")
             lines.append(f"    Vault address: {guard_migration['vault_address']}")
             lines.append(f"    Enabled Safe modules at deployment: {guard_migration['enabled_modules_at_deployment']}")
-            lines.append("    Proposed Safe transactions:")
+            lines.append("    Ordered Safe migration calls:")
             for tx in guard_migration["proposed_safe_transactions"]:
                 lines.append(f"    {tx['step']}. {tx['call']}")
+            if "safe_proposal" in guard_migration:
+                proposal = guard_migration["safe_proposal"]
+                lines.append(f"    Safe proposal status: {proposal['status']}")
+                if proposal.get("url"):
+                    lines.append(f"    Safe transaction: {proposal['url']}")
             lines.append("    Safe ABI needed:")
             lines.extend(f"    {line}" for line in guard_migration["safe_abi"].strip().splitlines())
             lines.append("")
@@ -874,6 +883,7 @@ def _build_guard_migration_instructions(deploy_info) -> dict[str, Any]:
     assert len(mods) == 1, f"Expected only one module enabled, got: {mods}"
 
     old_guard_address = deploy_info.old_trading_strategy_module.address if deploy_info.old_trading_strategy_module else mods[0]
+    assert old_guard_address.lower() == mods[0].lower(), f"Expected old guard {old_guard_address}, but Safe has {mods[0]}"
     safe_address = deploy_info.safe.address
 
     transactions = [
@@ -913,11 +923,17 @@ def _format_guard_migration_instructions(instructions: dict[str, Any]) -> str:
         f"  Safe address: {instructions['safe_address']}",
         f"  Vault address: {instructions['vault_address']}",
         f"  Enabled Safe modules at deployment: {instructions['enabled_modules_at_deployment']}",
-        "  Proposed Safe transactions:",
+        "  Ordered Safe migration calls:",
     ]
 
     for tx in instructions["proposed_safe_transactions"]:
         lines.append(f"  {tx['step']}. {tx['call']}")
+
+    if "safe_proposal" in instructions:
+        proposal = instructions["safe_proposal"]
+        lines.append(f"  Safe proposal status: {proposal['status']}")
+        if proposal.get("url"):
+            lines.append(f"  Safe transaction: {proposal['url']}")
 
     lines.append("  Safe ABI needed:")
     lines.append(instructions["safe_abi"])
@@ -929,9 +945,12 @@ def _augment_guard_only_artifacts(
     *,
     text_payload: str,
     json_payload: dict[str, Any],
+    safe_proposal: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """Attach Safe migration instructions to guard-only deploy artefacts."""
     instructions = _build_guard_migration_instructions(deploy_info)
+    if safe_proposal is not None:
+        instructions["safe_proposal"] = safe_proposal
     augmented_json = dict(json_payload)
     augmented_json["Guard migration"] = instructions
     augmented_text = text_payload.rstrip() + "\n\n" + _format_guard_migration_instructions(instructions) + "\n"
@@ -955,7 +974,7 @@ def _log_guard_only_details(deploy_info, logger) -> None:
     logger.info("Safe address: %s", instructions["safe_address"])
     logger.info("Vault address: %s", instructions["vault_address"])
     logger.info("Enabled Safe modules at deployment: %s", instructions["enabled_modules_at_deployment"])
-    logger.info("Proposed Safe transactions:")
+    logger.info("Ordered Safe migration calls:")
     for tx in instructions["proposed_safe_transactions"]:
         logger.info("%d. %s", tx["step"], tx["call"])
     logger.info("Safe ABI needed: %s", instructions["safe_abi"])
@@ -1044,9 +1063,11 @@ def lagoon_deploy_vault(
     verbose: bool = Option(False, envvar="VERBOSE", help="Extra verbosity with deploy commands"),
     performance_fee: int = Option(DEFAULT_PERFORMANCE_RATE, envvar="PERFORMANCE_FEE", help="Performance fee in BPS"),
     management_fee: int = Option(DEFAULT_MANAGEMENT_RATE, envvar="MANAGEMENT_FEE", help="Management fee in BPS"),
-    guard_only: bool = Option(False, envvar="GUARD_ONLY", help="Deploys a new TradingStrategyModuleV0 guard with new settings. Lagoon multisig owners must then perform the transaction to enable this guard."),
+    guard_only: bool = Option(False, envvar="GUARD_ONLY", help="Deploy a replacement guard and submit its Safe migration for owner execution."),
+    manual_safe_migration: bool = Option(False, "--manual-safe-migration", help="Deploy a replacement guard with manual Safe migration instructions and no hosted proposal."),
     existing_vault_address: str | None = Option(None, envvar="EXISTING_VAULT_ADDRESS", help="When deploying a guard only, get the existing vault address."),
     existing_safe_address: str | None = Option(None, envvar="EXISTING_SAFE_ADDRESS", help="When deploying a guard only, get the existing safe address."),
+    safe_transaction_service_api_key: str | None = Option(None, envvar="SAFE_TRANSACTION_SERVICE_API_KEY", help="Optional Safe Transaction Service API key for reliable guard proposal submission."),
     vault_adapter_address: str = shared_options.vault_adapter_address,
     cache_path: Path | None = shared_options.cache_path,
     strategy_file: Path | None = Option(None, envvar="STRATEGY_FILE", help="Strategy module for multichain deployment. When provided, uses translate_trading_universe_to_lagoon_config() to generate per-chain configs."),
@@ -1074,6 +1095,10 @@ def lagoon_deploy_vault(
     # Reject this before create_web3_config() can launch a managed Anvil.
     if generate_lighter_api_key and simulate:
         raise ValueError("Lighter API-key generation cannot be used with --simulate")
+    if generate_lighter_api_key and guard_only:
+        raise ValueError("Lighter API-key generation cannot be combined with --guard-only")
+    if manual_safe_migration and not guard_only:
+        raise ValueError("--manual-safe-migration requires --guard-only")
 
     private_json_path = _validate_private_record_path(vault_record_file) if generate_lighter_api_key else None
     # The slot option is deliberately inert for ordinary Lagoon deployments.
@@ -1166,6 +1191,7 @@ def lagoon_deploy_vault(
             verifier=verifier,
             verifier_url=verifier_url,
             guard_only=guard_only,
+            manual_safe_migration=manual_safe_migration,
             existing_vault_address=existing_vault_address,
             existing_safe_address=existing_safe_address,
             performance_fee=performance_fee,
@@ -1174,6 +1200,9 @@ def lagoon_deploy_vault(
             generate_lighter_api_key=generate_lighter_api_key,
             lighter_api_key_index=effective_lighter_api_key_index,
             private_json_path=private_json_path,
+            private_key=private_key,
+            expected_old_guard_address=vault_adapter_address,
+            safe_api_key=safe_transaction_service_api_key,
         )
         web3config.close()
         logger.info("All ok.")
@@ -1236,6 +1265,16 @@ def lagoon_deploy_vault(
         existing_safe_address=existing_safe_address,
         logger=logger,
     )
+    proposal_context = None
+    if guard_only and not simulate and not manual_safe_migration:
+        if not existing_safe_address:
+            raise ValueError("--guard-only requires --existing-safe-address to propose the Safe migration")
+        proposal_context = prepare_guard_proposal(
+            web3,
+            existing_safe_address,
+            private_key,
+            expected_old_guard_address=vault_adapter_address,
+        )
     log_deployment_preflight_report(
         hot_wallet=hot_wallet,
         chain_web3={chain_slug: web3},
@@ -1414,10 +1453,37 @@ def lagoon_deploy_vault(
         guard_only=guard_only,
     )
     if guard_only:
+        base_text_payload = text_payload
+        pending_proposal = None
+        if proposal_context is not None:
+            try:
+                pending_proposal = describe_pending_guard_migration(
+                    proposal_context, deploy_info.trading_strategy_module.address,
+                )
+            except Exception as exc:
+                # The guard exists already; keep its address and manual calls for recovery.
+                text_payload, public_json_payload = _augment_guard_only_artifacts(
+                    deploy_info,
+                    text_payload=base_text_payload,
+                    json_payload=public_json_payload,
+                    safe_proposal={"status": "pending"},
+                )
+                _write_deployment_artifacts(
+                    vault_record_file,
+                    text_payload=text_payload,
+                    public_json_payload=public_json_payload,
+                    simulate=False,
+                    logger=logger,
+                )
+                raise RuntimeError(
+                    f"Guard {deploy_info.trading_strategy_module.address} was deployed, but its Safe proposal could not be built. "
+                    f"Retry with lagoon-propose-guard-migration --deployment-file {vault_record_file}: {exc}"
+                ) from exc
         text_payload, public_json_payload = _augment_guard_only_artifacts(
             deploy_info,
             text_payload=text_payload,
             json_payload=public_json_payload,
+            safe_proposal=pending_proposal,
         )
 
     _write_deployment_artifacts(
@@ -1428,6 +1494,37 @@ def lagoon_deploy_vault(
         logger=logger,
         write_json=not generate_lighter_api_key,
     )
+
+    if proposal_context is not None:
+        try:
+            proposal = submit_guard_migration(
+                proposal_context,
+                deploy_info.trading_strategy_module.address,
+                private_key,
+                safe_api_key=safe_transaction_service_api_key,
+                expected_proposal=pending_proposal,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"Guard {deploy_info.trading_strategy_module.address} was deployed, but its Safe proposal failed. "
+                f"The migration is pending; retry with lagoon-propose-guard-migration --deployment-file {vault_record_file}: {exc}"
+            ) from exc
+        text_payload, public_json_payload = _augment_guard_only_artifacts(
+            deploy_info,
+            text_payload=base_text_payload,
+            json_payload=public_json_payload,
+            safe_proposal=proposal,
+        )
+        text_payload += "Owner execution is still required.\n"
+        _write_deployment_artifacts(
+            vault_record_file,
+            text_payload=text_payload,
+            public_json_payload=public_json_payload,
+            simulate=False,
+            logger=logger,
+            write_json=not generate_lighter_api_key,
+        )
+        logger.info("Safe proposal submitted: %s; owner execution is still required: %s", proposal["safe_tx_hash"], proposal["url"])
 
     # The operator-facing vault record may live at any --vault-record-file path,
     # but vault-test-trade deliberately discovers deployments through the normal
@@ -1471,6 +1568,91 @@ def lagoon_deploy_vault(
     logger.info("All ok.")
 
 
+def _deploy_and_propose_guard_only_chains(
+    *,
+    chain_web3: dict[str, Web3],
+    configs: dict[str, Any],
+    deployer,
+    proposal_contexts: dict[str, Any],
+    private_key: str,
+    safe_api_key: str | None,
+    vault_record_file: Path,
+    safe_salt_nonce: int | None,
+    logger,
+) -> tuple[LagoonMultichainDeployment, dict[str, dict[str, Any]]]:
+    """Deploy and checkpoint each guard before its external Safe API call."""
+    deployments = {}
+    safe_proposals: dict[str, dict[str, Any]] = {}
+    for slug, web3 in chain_web3.items():
+        try:
+            one_chain = deploy_multichain_lagoon_vault(
+                chain_web3={slug: web3},
+                deployer=deployer,
+                chain_configs={slug: configs[slug]},
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"Guard deployment failed on {slug}. Earlier completed chains are recorded in {vault_record_file}: {exc}"
+            ) from exc
+        dep = one_chain.deployments[slug]
+        deployments[slug] = dep
+        safe_proposals[slug] = {"status": "pending"}
+        partial_result = LagoonMultichainDeployment(
+            safe_address=dep.safe_address,
+            deployments=dict(deployments),
+            safe_salt_nonce=safe_salt_nonce,
+        )
+
+        def save_progress() -> None:
+            progress_text, progress_json = _build_multichain_artifact_payload(
+                partial_result, safe_salt_nonce, configs, "", safe_proposals=safe_proposals,
+            )
+            progress_json["partial"] = len(deployments) < len(configs)
+            _write_deployment_artifacts(
+                vault_record_file,
+                text_payload=progress_text,
+                public_json_payload=progress_json,
+                simulate=False,
+                logger=logger,
+            )
+
+        if any(existing.safe_address.lower() != dep.safe_address.lower() for existing in deployments.values()):
+            save_progress()
+            raise RuntimeError(f"Safe address on {slug} differs from earlier guard redeployments; inspect {vault_record_file}")
+        try:
+            safe_proposals[slug] = describe_pending_guard_migration(
+                proposal_contexts[slug], dep.trading_strategy_module.address,
+            )
+        except Exception as exc:
+            save_progress()
+            raise RuntimeError(
+                f"Guard {dep.trading_strategy_module.address} was deployed on {slug}, but its Safe proposal could not be built. "
+                f"Retry with lagoon-propose-guard-migration --deployment-file {vault_record_file} --chain {slug}: {exc}"
+            ) from exc
+        save_progress()
+        try:
+            safe_proposals[slug] = submit_guard_migration(
+                proposal_contexts[slug],
+                dep.trading_strategy_module.address,
+                private_key,
+                safe_api_key=safe_api_key,
+                expected_proposal=safe_proposals[slug],
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"Guard {dep.trading_strategy_module.address} was deployed on {slug}, but its Safe proposal failed. "
+                f"The migration is pending; retry with lagoon-propose-guard-migration --deployment-file {vault_record_file} --chain {slug}: {exc}"
+            ) from exc
+        save_progress()
+        logger.info("Safe proposal submitted on %s: %s; owner execution is still required: %s", slug, safe_proposals[slug]["safe_tx_hash"], safe_proposals[slug]["url"])
+    result = LagoonMultichainDeployment(
+        safe_address=next(iter(deployments.values())).safe_address,
+        deployments=deployments,
+        safe_salt_nonce=safe_salt_nonce,
+    )
+    return result, safe_proposals
+
+
 def _deploy_multichain(
     web3config,
     hot_wallet: HotWallet,
@@ -1494,6 +1676,7 @@ def _deploy_multichain(
     verifier: str = "etherscan",
     verifier_url: str | None = None,
     guard_only: bool = False,
+    manual_safe_migration: bool = False,
     existing_vault_address: str | None = None,
     existing_safe_address: str | None = None,
     performance_fee: int = DEFAULT_PERFORMANCE_RATE,
@@ -1502,6 +1685,9 @@ def _deploy_multichain(
     generate_lighter_api_key: bool = False,
     lighter_api_key_index: int = MIN_API_KEY_INDEX,
     private_json_path: Path | None = None,
+    private_key: str | None = None,
+    expected_old_guard_address: str | None = None,
+    safe_api_key: str | None = None,
 ):
     """Deploy multichain Lagoon vault from a strategy file.
 
@@ -1609,6 +1795,18 @@ def _deploy_multichain(
         management_fee=management_fee,
     )
 
+    proposal_contexts = {}
+    if guard_only and not simulate and not manual_safe_migration:
+        if not existing_safe_address or not private_key:
+            raise ValueError("Guard-only redeployment requires EXISTING_SAFE_ADDRESS and PRIVATE_KEY for Safe proposals")
+        for slug, config in configs.items():
+            proposal_contexts[slug] = prepare_guard_proposal(
+                chain_web3[slug],
+                config.existing_safe_address,
+                private_key,
+                expected_old_guard_address=(expected_old_guard_address if slug == source_chain_slug else None),
+            )
+
     # Lighter activation is an opt-in source-chain ceremony.  Keep the
     # general universe translator protocol-agnostic and leave satellites
     # disabled.
@@ -1682,12 +1880,25 @@ def _deploy_multichain(
     # Capture block before deployment so the report can find guard config events
     pre_deploy_blocks = {slug: w3.eth.block_number for slug, w3 in chain_web3.items()}
 
-    # Deploy across all chains
-    result = deploy_multichain_lagoon_vault(
-        chain_web3=chain_web3,
-        deployer=hot_wallet.account,
-        chain_configs=configs,
-    )
+    safe_proposals: dict[str, dict[str, Any]] = {}
+    if proposal_contexts:
+        result, safe_proposals = _deploy_and_propose_guard_only_chains(
+            chain_web3=chain_web3,
+            configs=configs,
+            deployer=hot_wallet.account,
+            proposal_contexts=proposal_contexts,
+            private_key=private_key,
+            safe_api_key=safe_api_key,
+            vault_record_file=vault_record_file,
+            safe_salt_nonce=safe_salt_nonce,
+            logger=logger,
+        )
+    else:
+        result = deploy_multichain_lagoon_vault(
+            chain_web3=chain_web3,
+            deployer=hot_wallet.account,
+            chain_configs=configs,
+        )
 
     if generate_lighter_api_key:
         lighter_setup = result.deployments[source_chain_slug].lighter_account_setup
@@ -1750,6 +1961,7 @@ def _deploy_multichain(
         safe_salt_nonce,
         configs,
         unicode_report,
+        safe_proposals=safe_proposals if proposal_contexts else None,
     )
     for slug, start_block in pre_deploy_blocks.items():
         json_payload["deployments"][slug]["initial_lagoon_settlement_scan_block"] = start_block
