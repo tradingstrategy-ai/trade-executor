@@ -111,11 +111,12 @@ def test_guard_proposal_batches_module_replacement_and_detects_nonce_conflict(mo
 
 
 def test_resubmit_guard_migration_updates_only_pending_chain(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Recover a partial multichain deployment from its saved JSON record.
+    """Recover pending proposals and select one RPC for a single-chain record.
 
     1. Save one submitted chain and one pending chain in a deployment artefact.
     2. Retry with mocked chain validation and Transaction Service submission.
     3. Verify only the pending chain is submitted and persisted.
+    4. Select one chain from several RPC connections for a single-chain record.
     """
     safe_address, old_guard, new_guard = (_address(i) for i in range(1, 4))
     existing = {"status": "submitted", "safe_tx_hash": "0x" + "ab" * 32, "url": "https://safe.invalid/existing"}
@@ -151,6 +152,21 @@ def test_resubmit_guard_migration_updates_only_pending_chain(monkeypatch: pytest
     assert "Chain: base\n    Safe proposal status: submitted" in updated_text
     assert "Chain: arbitrum\n    Safe proposal status: submitted\n    Safe transaction: https://safe.invalid/tx" in updated_text
     assert "Safe proposal status: pending" not in updated_text
+
+    # 4. Select one chain from several RPC connections for a single-chain record.
+    deployment_file.write_text(json.dumps({
+        "Guard migration": {**migration, "safe_proposal": {"status": "pending"}},
+    }))
+    with pytest.raises(ValueError, match="use --chain-name"):
+        deploy_command.resubmit_guard_migration(deployment_file, {"base": object(), "arbitrum": object()}, "private-key")
+    selected = deploy_command.resubmit_guard_migration(
+        deployment_file,
+        {"base": object(), "arbitrum": object()},
+        "private-key",
+        chain="base",
+    )
+    assert set(selected) == {"base"}
+    assert len(calls) == 2
 
 
 def test_retry_rejects_records_without_a_usable_guard_proposal(tmp_path: Path) -> None:

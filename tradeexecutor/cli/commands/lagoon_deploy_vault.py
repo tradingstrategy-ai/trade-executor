@@ -466,10 +466,17 @@ def resubmit_guard_migration(
             if dep.get("guard_migration")
         }
     else:
-        if len(chain_web3) != 1:
-            raise ValueError("A single-chain deployment record requires one JSON-RPC connection; use --chain-name to select it")
         migration = record.get("Guard migration")
-        migrations = {next(iter(chain_web3)): migration} if migration else {}
+        if not migration:
+            migrations = {}
+        elif chain:
+            if chain not in chain_web3:
+                raise ValueError(f"No JSON-RPC connection configured for chain {chain}")
+            migrations = {chain: migration}
+        elif len(chain_web3) == 1:
+            migrations = {next(iter(chain_web3)): migration}
+        else:
+            raise ValueError("A single-chain deployment record requires one JSON-RPC connection; use --chain-name to select it")
     if not migrations:
         raise ValueError(f"No guard migration found in {json_path}")
     if chain:
