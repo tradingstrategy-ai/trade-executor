@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Submit atomic Safe proposals when redeploying Lagoon guards, save per-chain recovery records, and add a retry option to `lagoon-deploy-vault` for failed submissions. Retain manual Safe migration through an explicit option for unsupported chains; guard redeployments cannot generate a fresh Lighter API key (2026-09-29).
+
 - Add a PositionManager HyperCore guard-whitelist admission check with per-cycle warning and recorder observations, and a read-only command reporting vaults missing from the Lagoon deployment record with current TVL and three-month metrics (2026-09-28).
 
 - Add manifest-gated HyperCore decision slots, private verified price snapshots, point-in-time deposit availability and skipped-entry diagnostics; support sparse four-hour observations and automatic skipping of expired unexecuted decisions on restart (2026-09-22).

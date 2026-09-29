@@ -20,6 +20,13 @@ def _contract(address: str) -> SimpleNamespace:
 
 
 def test_build_multichain_artifact_payload_contains_guard_report_and_config_snapshot():
+    """Keep public deployment configuration and the guard report in the artefact.
+
+    1. Arrange a multichain Lagoon configuration and deployment result.
+    2. Build the deployment artefacts.
+    3. Check the report and redacted configuration snapshot.
+    """
+    # 1. Arrange a multichain Lagoon configuration and deployment result.
     primary_asset_manager = _addr(10)
     secondary_asset_manager = _addr(11)
     safe_address = _addr(100)
@@ -114,6 +121,7 @@ def test_build_multichain_artifact_payload_contains_guard_report_and_config_snap
         deployments={"arbitrum": deployment},
     )
 
+    # 2. Build the deployment artefacts.
     text_payload, json_payload = _build_multichain_artifact_payload(
         result=result,
         safe_salt_nonce=42,
@@ -121,6 +129,7 @@ def test_build_multichain_artifact_payload_contains_guard_report_and_config_snap
         guard_report="Guard tree output",
     )
 
+    # 3. Check the report and redacted configuration snapshot.
     assert "Chain: arbitrum" in text_payload
     assert "Lagoon config" in text_payload
     assert "Any asset: True" in text_payload
@@ -142,6 +151,13 @@ def test_build_multichain_artifact_payload_contains_guard_report_and_config_snap
 
 
 def test_build_multichain_artifact_payload_omits_safe_salt_nonce_when_reusing_existing_safe():
+    """Record a proposed guard migration on a reused multichain Safe.
+
+    1. Arrange a guard-only deployment that reuses an existing Safe.
+    2. Build its per-chain artefact with the submitted Safe proposal.
+    3. Verify the proposal and manual calls remain attached to the chain.
+    """
+    # 1. Arrange a guard-only deployment that reuses an existing Safe.
     safe_address = _addr(200)
     old_guard_address = _addr(201)
     module_address = _addr(203)
@@ -193,19 +209,24 @@ def test_build_multichain_artifact_payload_omits_safe_salt_nonce_when_reusing_ex
         deployments={"arbitrum": deployment},
     )
 
+    # 2. Build its per-chain artefact with the submitted Safe proposal.
     text_payload, json_payload = _build_multichain_artifact_payload(
         result=result,
         safe_salt_nonce=None,
         chain_configs={"arbitrum": config},
         guard_report="Guard configuration",
+        safe_proposals={"arbitrum": {"status": "submitted", "safe_tx_hash": "0x" + "ab" * 32, "url": "https://safe.invalid/tx"}},
     )
 
+    # 3. Verify the proposal and manual calls remain attached to the chain.
     assert "Deployment mode: guard redeploy" in text_payload
     assert "Multichain Lagoon deployment\nDeployment mode: guard redeploy\nShared Safe:" in text_payload
     assert "Guard migration instructions" in text_payload
+    assert "Safe proposal status: submitted" in text_payload
     assert f"{safe_address}.disableModule(0x0000000000000000000000000000000000000001, {old_guard_address})" in text_payload
     assert f"{safe_address}.enableModule({module_address})" in text_payload
     assert json_payload["deployment_mode"] == "guard redeploy"
     assert json_payload["safe_salt_nonce"] is None
     assert json_payload["deployments"]["arbitrum"]["deployment_mode"] == "guard redeploy"
     assert json_payload["deployments"]["arbitrum"]["guard_migration"]["old_guard_address"] == old_guard_address
+    assert json_payload["deployments"]["arbitrum"]["guard_migration"]["safe_proposal"]["safe_tx_hash"] == "0x" + "ab" * 32
