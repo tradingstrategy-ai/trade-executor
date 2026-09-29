@@ -428,7 +428,7 @@ def translate_trading_universe_to_lagoon_config(
             vault_addrs = hypercore_vaults_per_chain.get(chain_id, [])
             if vault_addrs:
                 config.hypercore_vaults = vault_addrs
-                logger.info("Hypercore vaults configured for %s: %s", slug, vault_addrs)
+                logger.info("Hypercore vaults configured for %s: %d vault(s) %s", slug, len(vault_addrs), vault_addrs)
 
         # Resolve ERC-4626 vault pairs into vault instances for guard whitelisting.
         # This must happen regardless of any_asset because anyAsset only bypasses
