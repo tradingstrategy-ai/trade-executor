@@ -467,7 +467,7 @@ def resubmit_guard_migration(
         }
     else:
         if len(chain_web3) != 1:
-            raise ValueError("A single-chain deployment record requires exactly one configured JSON-RPC connection")
+            raise ValueError("A single-chain deployment record requires one JSON-RPC connection; use --chain-name to select it")
         migration = record.get("Guard migration")
         migrations = {next(iter(chain_web3)): migration} if migration else {}
     if not migrations:
