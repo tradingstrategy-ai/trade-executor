@@ -177,10 +177,11 @@ def test_registered_deploy_command_retries_without_deploying(monkeypatch: pytest
 
     1. Arrange a saved record, one chain connection and mocked recovery boundary.
     2. Invoke the registered deployment command with the retry option.
-    3. Check the record and chain reach recovery without preparing a deployment cache.
+    3. Check the record and chain reach recovery without deployment setup.
     """
     # 1. Arrange a saved record, one chain connection and mocked recovery boundary.
     record_file = tmp_path / "vault.json"
+    record_file.write_text("{}")
     captured = {}
     web3config = SimpleNamespace(
         connections={ChainId.base: object()},
@@ -205,7 +206,7 @@ def test_registered_deploy_command_retries_without_deploying(monkeypatch: pytest
     )
 
     monkeypatch.setenv("SIMULATE", "false")
-    monkeypatch.setenv("GENERATE_LIGHTER_API_KEY", "false")
+    monkeypatch.setenv("GENERATE_LIGHTER_API_KEY", "true")
 
     # 2. Invoke the registered deployment command with the retry option.
     get_command(app).main(
@@ -221,7 +222,7 @@ def test_registered_deploy_command_retries_without_deploying(monkeypatch: pytest
         standalone_mode=False,
     )
 
-    # 3. Check the record and chain reach recovery without preparing a deployment cache.
+    # 3. Check the record and chain reach recovery without deployment setup.
     assert captured["record"] == record_file
     assert set(captured["chains"]) == {"base"}
     assert captured["key"] == "0x123"

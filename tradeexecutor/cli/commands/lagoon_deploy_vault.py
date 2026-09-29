@@ -1184,31 +1184,13 @@ def lagoon_deploy_vault(
     """
 
     assert private_key, "PRIVATE_KEY not set"
-
-    # A fork cannot make the new Lighter account visible to its public API.
-    # Reject this before create_web3_config() can launch a managed Anvil.
-    if generate_lighter_api_key and simulate:
-        raise ValueError("Lighter API-key generation cannot be used with --simulate")
-    if generate_lighter_api_key and guard_only:
-        raise ValueError("Lighter API-key generation cannot be combined with --guard-only")
-    if manual_safe_migration and not guard_only:
-        raise ValueError("--manual-safe-migration requires --guard-only")
-    if retry_guard_proposal and simulate:
-        raise ValueError("--retry-guard-proposal cannot be combined with --simulate")
-    if retry_guard_proposal and manual_safe_migration:
-        raise ValueError("--retry-guard-proposal cannot be combined with --manual-safe-migration")
-
-    private_json_path = _validate_private_record_path(vault_record_file) if generate_lighter_api_key else None
-    # The slot option is deliberately inert for ordinary Lagoon deployments.
-    # Normalising it here prevents an unrelated environment value from being
-    # forwarded into the upstream deployment API when activation is disabled.
-    effective_lighter_api_key_index = (
-        lighter_api_key_index if generate_lighter_api_key else MIN_API_KEY_INDEX
-    )
-
     logger = setup_logging(log_level)
 
     if retry_guard_proposal:
+        if simulate:
+            raise ValueError("--retry-guard-proposal cannot be combined with --simulate")
+        if manual_safe_migration:
+            raise ValueError("--retry-guard-proposal cannot be combined with --manual-safe-migration")
         web3config = create_web3_config(**rpc_kwargs, mev_endpoint_disabled=True)
         try:
             if not web3config.has_any_connection():
@@ -1226,6 +1208,23 @@ def lagoon_deploy_vault(
         finally:
             web3config.close()
         return
+
+    # A fork cannot make the new Lighter account visible to its public API.
+    # Reject this before create_web3_config() can launch a managed Anvil.
+    if generate_lighter_api_key and simulate:
+        raise ValueError("Lighter API-key generation cannot be used with --simulate")
+    if generate_lighter_api_key and guard_only:
+        raise ValueError("Lighter API-key generation cannot be combined with --guard-only")
+    if manual_safe_migration and not guard_only:
+        raise ValueError("--manual-safe-migration requires --guard-only")
+
+    private_json_path = _validate_private_record_path(vault_record_file) if generate_lighter_api_key else None
+    # The slot option is deliberately inert for ordinary Lagoon deployments.
+    # Normalising it here prevents an unrelated environment value from being
+    # forwarded into the upstream deployment API when activation is disabled.
+    effective_lighter_api_key_index = (
+        lighter_api_key_index if generate_lighter_api_key else MIN_API_KEY_INDEX
+    )
 
     # Prepare cache for token metadata storage
     # Use a fixed executor ID for this deployment command
