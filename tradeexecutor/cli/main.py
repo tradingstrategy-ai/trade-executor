@@ -21,7 +21,6 @@ from .commands.lagoon_lighter_test_trade import lagoon_lighter_test_trade
 from .commands.lagoon_hypercore_vault_whitelist_status import lagoon_hypercore_vault_whitelist_status
 from .commands.lighter_move_funds import lighter_move_funds
 from .commands.lagoon_manual_settle import lagoon_manual_settle
-from .commands.lagoon_propose_guard_migration import lagoon_propose_guard_migration
 from .commands.reclaim_satellites import lagoon_reclaim_satellites
 from .commands.reset import reset
 from .commands.reset_deposits import reset_deposits
@@ -57,7 +56,7 @@ __all__ = [
     app, backtest, blacklist, check_accounts, claim_hypercore_vault_dust, check_position_triggers,
     check_universe, check_wallet, close_all, close_position, console,
     correct_accounts, correct_history, deploy_guard, distribute_gas_funds, enzyme_asset_list, enzyme_deploy_vault,
-    export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_hypercore_vault_whitelist_status, lagoon_lighter_test_trade, lagoon_manual_settle, lagoon_propose_guard_migration, lagoon_reclaim_satellites, lagoon_redeem, lagoon_settle, lighter_move_funds, perform_test_trade, prepare_report, prune_state,
+    export, hello, init, lagoon_deploy_vault, lagoon_first_deposit, lagoon_hypercore_vault_whitelist_status, lagoon_lighter_test_trade, lagoon_manual_settle, lagoon_reclaim_satellites, lagoon_redeem, lagoon_settle, lighter_move_funds, perform_test_trade, prepare_report, prune_state,
     repair, repair_hypercore_dust, reset, reset_deposits, retry, send_log_message, show_hypercore_rebalance_costs, show_positions,
     show_valuation, start, token_cache, trade_ui, trading_pair, vault_test_trade,
     version, visualise, webapi,

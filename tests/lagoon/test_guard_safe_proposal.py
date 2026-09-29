@@ -1,6 +1,7 @@
 """Safe Transaction Service proposals for Lagoon guard replacements."""
 
 import json
+import logging
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,11 +10,13 @@ import pytest
 from eth_account import Account
 from hexbytes import HexBytes
 from safe_eth.safe.multi_send import MultiSendOperation
+from tradingstrategy.chain import ChainId
+from typer.main import get_command
 from web3 import Web3
 
-import tradeexecutor.cli.commands.lagoon_propose_guard_migration as retry_command
 import tradeexecutor.cli.commands.lagoon_deploy_vault as deploy_command
 import tradeexecutor.ethereum.lagoon.guard_proposal as guard_proposal
+from tradeexecutor.cli.main import app
 from tradeexecutor.ethereum.lagoon.guard_proposal import GuardProposalContext, submit_guard_migration
 
 
@@ -126,12 +129,12 @@ def test_resubmit_guard_migration_updates_only_pending_chain(monkeypatch: pytest
     text_file = deployment_file.with_suffix(".txt")
     text_file.write_text("Chain: base\n    Safe proposal status: submitted\nChain: arbitrum\n    Safe proposal status: pending\nGuard report\n")
     calls = []
-    monkeypatch.setattr(retry_command, "prepare_guard_proposal", lambda *args, **kwargs: calls.append((args, kwargs)) or "context")
-    monkeypatch.setattr(retry_command, "submit_guard_migration", lambda *_args, **_kwargs: {"status": "submitted", "safe_tx_hash": "0x" + "cd" * 32, "url": "https://safe.invalid/tx"})
+    monkeypatch.setattr(deploy_command, "prepare_guard_proposal", lambda *args, **kwargs: calls.append((args, kwargs)) or "context")
+    monkeypatch.setattr(deploy_command, "submit_guard_migration", lambda *_args, **_kwargs: {"status": "submitted", "safe_tx_hash": "0x" + "cd" * 32, "url": "https://safe.invalid/tx"})
 
     # 1. Save one submitted chain and one pending chain in a deployment artefact.
     # 2. Retry with mocked chain validation and Transaction Service submission.
-    results = retry_command.resubmit_guard_migration(
+    results = deploy_command.resubmit_guard_migration(
         deployment_file,
         {"base": object(), "arbitrum": object()},
         "private-key",
@@ -161,12 +164,69 @@ def test_retry_rejects_records_without_a_usable_guard_proposal(tmp_path: Path) -
     # 1. Save a fresh-vault record with no guard migration and reject retry.
     deployment_file.write_text(json.dumps({"deployment_mode": "fresh deployment"}))
     with pytest.raises(ValueError, match="No guard migration"):
-        retry_command.resubmit_guard_migration(deployment_file, {"base": object()}, "key")
+        deploy_command.resubmit_guard_migration(deployment_file, {"base": object()}, "key")
 
     # 2. Save an incomplete submitted proposal and reject its misleading status.
     deployment_file.write_text(json.dumps({"Guard migration": {"safe_proposal": {"status": "submitted"}}}))
     with pytest.raises(RuntimeError, match="missing its hash or URL"):
-        retry_command.resubmit_guard_migration(deployment_file, {"base": object()}, "key")
+        deploy_command.resubmit_guard_migration(deployment_file, {"base": object()}, "key")
+
+
+def test_registered_deploy_command_retries_without_deploying(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Route recovery through lagoon-deploy-vault without starting a new deployment.
+
+    1. Arrange a saved record, one chain connection and mocked recovery boundary.
+    2. Invoke the registered deployment command with the retry option.
+    3. Check the record and chain reach recovery without preparing a deployment cache.
+    """
+    # 1. Arrange a saved record, one chain connection and mocked recovery boundary.
+    record_file = tmp_path / "vault.json"
+    captured = {}
+    web3config = SimpleNamespace(
+        connections={ChainId.base: object()},
+        has_any_connection=lambda: True,
+        close=lambda: captured.setdefault("closed", True),
+    )
+
+    # Mock RPC setup and recovery because this test checks CLI routing; the
+    # batch and saved-record behaviour are exercised in the other tests.
+    monkeypatch.setattr(deploy_command, "setup_logging", lambda _level: logging.getLogger("guard-retry-test"))
+    monkeypatch.setattr(deploy_command, "create_web3_config", lambda **_kwargs: web3config)
+    monkeypatch.setattr(deploy_command, "prepare_cache", lambda *_args, **_kwargs: pytest.fail("retry must not prepare deployment cache"))
+    monkeypatch.setattr(
+        deploy_command,
+        "resubmit_guard_migration",
+        lambda deployment_file, chain_web3, private_key, **kwargs: captured.update(
+            record=deployment_file,
+            chains=chain_web3,
+            key=private_key,
+            options=kwargs,
+        ) or {"base": {"safe_tx_hash": "0x" + "ab" * 32, "url": "https://safe.invalid/tx"}},
+    )
+
+    monkeypatch.setenv("SIMULATE", "false")
+    monkeypatch.setenv("GENERATE_LIGHTER_API_KEY", "false")
+
+    # 2. Invoke the registered deployment command with the retry option.
+    get_command(app).main(
+        args=[
+            "lagoon-deploy-vault",
+            "--retry-guard-proposal",
+            "--vault-record-file", str(record_file),
+            "--chain-name", "base",
+            "--private-key", "0x123",
+            "--json-rpc-base", "http://unused",
+            "--log-level", "disabled",
+        ],
+        standalone_mode=False,
+    )
+
+    # 3. Check the record and chain reach recovery without preparing a deployment cache.
+    assert captured["record"] == record_file
+    assert set(captured["chains"]) == {"base"}
+    assert captured["key"] == "0x123"
+    assert captured["options"]["chain"] == "base"
+    assert captured["closed"] is True
 
 
 def test_multichain_guard_deployment_keeps_first_proposal_after_second_chain_failure(
@@ -281,9 +341,9 @@ def test_failed_submission_can_retry_from_saved_guard_record(
     assert pending == {"status": "pending", "nonce": 5, "data": "0x1234"}
 
     # 3. Retry from that record without invoking the deployer again.
-    monkeypatch.setattr(retry_command, "prepare_guard_proposal", lambda *_args, **_kwargs: "context")
-    monkeypatch.setattr(retry_command, "submit_guard_migration", lambda *_args, **_kwargs: {"status": "submitted", "nonce": 5, "safe_tx_hash": "0x" + "ab" * 32, "url": "https://safe.invalid/tx"})
-    retry_command.resubmit_guard_migration(record_file, {"base": object()}, "key")
+    monkeypatch.setattr(deploy_command, "prepare_guard_proposal", lambda *_args, **_kwargs: "context")
+    monkeypatch.setattr(deploy_command, "submit_guard_migration", lambda *_args, **_kwargs: {"status": "submitted", "nonce": 5, "safe_tx_hash": "0x" + "ab" * 32, "url": "https://safe.invalid/tx"})
+    deploy_command.resubmit_guard_migration(record_file, {"base": object()}, "key")
 
     # 4. Verify the accepted proposal is saved to the same record.
     saved = json.loads(record_file.read_text())

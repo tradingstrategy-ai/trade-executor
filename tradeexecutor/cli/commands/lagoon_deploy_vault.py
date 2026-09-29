@@ -73,6 +73,7 @@ import json
 import logging
 import os
 import random
+import re
 import sys
 from dataclasses import fields, is_dataclass
 from decimal import Decimal, InvalidOperation
@@ -421,6 +422,98 @@ def _write_deployment_artifacts(
             exclusive=include_private_key,
         )
     logger.info("Wrote deployment record to %s", os.path.abspath(text_path))
+
+
+def _update_text_proposal(path: Path, slug: str, proposal: dict, *, multichain: bool) -> None:
+    """Keep the human record's current proposal status in step with its JSON."""
+    text = path.read_text()
+    start = text.find(f"Chain: {slug}\n") if multichain else 0
+    if start < 0:
+        path.write_text(text.rstrip() + f"\nSafe proposal for {slug}: submitted\nSafe transaction: {proposal['url']}\n")
+        return
+    next_chain = text.find("\nChain: ", start + 1) if multichain else -1
+    report = text.find("\nGuard report\n", start + 1) if multichain else -1
+    end = min((position for position in (next_chain, report) if position >= 0), default=len(text))
+    section = text[start:end]
+    section, count = re.subn(
+        r"(?m)^([ \t]*)Safe proposal status: pending$",
+        lambda match: f"{match.group(1)}Safe proposal status: submitted\n{match.group(1)}Safe transaction: {proposal['url']}",
+        section,
+        count=1,
+    )
+    if not count:
+        indent = "    " if multichain else "  "
+        section = section.rstrip() + f"\n{indent}Safe proposal status: submitted\n{indent}Safe transaction: {proposal['url']}\n"
+    path.write_text(text[:start] + section + text[end:])
+
+
+def resubmit_guard_migration(
+    deployment_file: Path,
+    chain_web3: dict[str, Web3],
+    private_key: str,
+    *,
+    chain: str | None = None,
+    safe_api_key: str | None = None,
+) -> dict[str, dict]:
+    """Submit pending proposals from a guard deployment record without redeploying."""
+    text_path, json_path = _resolve_deployment_artifact_paths(deployment_file)
+    assert json_path is not None
+    record = json.loads(json_path.read_text())
+    if record.get("multichain"):
+        migrations = {
+            slug: dep["guard_migration"]
+            for slug, dep in record["deployments"].items()
+            if dep.get("guard_migration")
+        }
+    else:
+        if len(chain_web3) != 1:
+            raise ValueError("A single-chain deployment record requires exactly one configured JSON-RPC connection")
+        migration = record.get("Guard migration")
+        migrations = {next(iter(chain_web3)): migration} if migration else {}
+    if not migrations:
+        raise ValueError(f"No guard migration found in {json_path}")
+    if chain:
+        if chain not in migrations:
+            raise ValueError(f"No guard migration for chain {chain} in {json_path}")
+        migrations = {chain: migrations[chain]}
+    results = {}
+    errors = []
+    for slug, migration in migrations.items():
+        proposal = migration.get("safe_proposal") or {}
+        if proposal.get("status") == "submitted":
+            if not proposal.get("safe_tx_hash") or not proposal.get("url"):
+                errors.append(f"{slug}: submitted proposal is missing its hash or URL in the deployment record")
+                continue
+            results[slug] = proposal
+            continue
+        if slug not in chain_web3:
+            errors.append(f"{slug}: no JSON-RPC connection configured")
+            continue
+        try:
+            context = prepare_guard_proposal(
+                chain_web3[slug],
+                migration["safe_address"],
+                private_key,
+                expected_old_guard_address=migration["old_guard_address"],
+            )
+            result = submit_guard_migration(
+                context,
+                migration["new_guard_address"],
+                private_key,
+                safe_api_key=safe_api_key,
+                expected_proposal=proposal,
+            )
+        except Exception as exc:
+            errors.append(f"{slug}: {exc}")
+            continue
+        migration["safe_proposal"] = result
+        _write_private_json_file(json_path, record, indent=2, exclusive=False)
+        if text_path and text_path.exists():
+            _update_text_proposal(text_path, slug, result, multichain=bool(record.get("multichain")))
+        results[slug] = result
+    if errors:
+        raise RuntimeError("Guard proposal submission incomplete: " + "; ".join(errors) + f". Deployment record: {json_path}")
+    return results
 
 
 def _write_markdown_report(vault_record_file: Path | None, markdown_report: str, logger) -> None:
@@ -1064,6 +1157,7 @@ def lagoon_deploy_vault(
     performance_fee: int = Option(DEFAULT_PERFORMANCE_RATE, envvar="PERFORMANCE_FEE", help="Performance fee in BPS"),
     management_fee: int = Option(DEFAULT_MANAGEMENT_RATE, envvar="MANAGEMENT_FEE", help="Management fee in BPS"),
     guard_only: bool = Option(False, envvar="GUARD_ONLY", help="Deploy a replacement guard and submit its Safe migration for owner execution."),
+    retry_guard_proposal: bool = Option(False, "--retry-guard-proposal", help="Retry pending Safe proposals from --vault-record-file without deploying another guard; use --chain-name for one chain."),
     manual_safe_migration: bool = Option(False, "--manual-safe-migration", help="Deploy a replacement guard with manual Safe migration instructions and no hosted proposal."),
     existing_vault_address: str | None = Option(None, envvar="EXISTING_VAULT_ADDRESS", help="When deploying a guard only, get the existing vault address."),
     existing_safe_address: str | None = Option(None, envvar="EXISTING_SAFE_ADDRESS", help="When deploying a guard only, get the existing safe address."),
@@ -1099,6 +1193,10 @@ def lagoon_deploy_vault(
         raise ValueError("Lighter API-key generation cannot be combined with --guard-only")
     if manual_safe_migration and not guard_only:
         raise ValueError("--manual-safe-migration requires --guard-only")
+    if retry_guard_proposal and simulate:
+        raise ValueError("--retry-guard-proposal cannot be combined with --simulate")
+    if retry_guard_proposal and manual_safe_migration:
+        raise ValueError("--retry-guard-proposal cannot be combined with --manual-safe-migration")
 
     private_json_path = _validate_private_record_path(vault_record_file) if generate_lighter_api_key else None
     # The slot option is deliberately inert for ordinary Lagoon deployments.
@@ -1109,6 +1207,25 @@ def lagoon_deploy_vault(
     )
 
     logger = setup_logging(log_level)
+
+    if retry_guard_proposal:
+        web3config = create_web3_config(**rpc_kwargs, mev_endpoint_disabled=True)
+        try:
+            if not web3config.has_any_connection():
+                raise ValueError("Pass a JSON-RPC connection for the guard migration chain")
+            chain_web3 = {chain_id.get_slug(): web3 for chain_id, web3 in web3config.connections.items()}
+            results = resubmit_guard_migration(
+                vault_record_file,
+                chain_web3,
+                private_key,
+                chain=chain_name,
+                safe_api_key=safe_transaction_service_api_key,
+            )
+            for slug, proposal in results.items():
+                logger.info("%s: Safe proposal %s; owner execution is still required: %s", slug, proposal["safe_tx_hash"], proposal["url"])
+        finally:
+            web3config.close()
+        return
 
     # Prepare cache for token metadata storage
     # Use a fixed executor ID for this deployment command
@@ -1477,7 +1594,7 @@ def lagoon_deploy_vault(
                 )
                 raise RuntimeError(
                     f"Guard {deploy_info.trading_strategy_module.address} was deployed, but its Safe proposal could not be built. "
-                    f"Retry with lagoon-propose-guard-migration --deployment-file {vault_record_file}: {exc}"
+                    f"Retry with lagoon-deploy-vault --retry-guard-proposal --vault-record-file {vault_record_file}: {exc}"
                 ) from exc
         text_payload, public_json_payload = _augment_guard_only_artifacts(
             deploy_info,
@@ -1507,7 +1624,7 @@ def lagoon_deploy_vault(
         except Exception as exc:
             raise RuntimeError(
                 f"Guard {deploy_info.trading_strategy_module.address} was deployed, but its Safe proposal failed. "
-                f"The migration is pending; retry with lagoon-propose-guard-migration --deployment-file {vault_record_file}: {exc}"
+                f"The migration is pending; retry with lagoon-deploy-vault --retry-guard-proposal --vault-record-file {vault_record_file}: {exc}"
             ) from exc
         text_payload, public_json_payload = _augment_guard_only_artifacts(
             deploy_info,
@@ -1627,7 +1744,7 @@ def _deploy_and_propose_guard_only_chains(
             save_progress()
             raise RuntimeError(
                 f"Guard {dep.trading_strategy_module.address} was deployed on {slug}, but its Safe proposal could not be built. "
-                f"Retry with lagoon-propose-guard-migration --deployment-file {vault_record_file} --chain {slug}: {exc}"
+                f"Retry with lagoon-deploy-vault --retry-guard-proposal --vault-record-file {vault_record_file} --chain-name {slug}: {exc}"
             ) from exc
         save_progress()
         try:
@@ -1641,7 +1758,7 @@ def _deploy_and_propose_guard_only_chains(
         except Exception as exc:
             raise RuntimeError(
                 f"Guard {dep.trading_strategy_module.address} was deployed on {slug}, but its Safe proposal failed. "
-                f"The migration is pending; retry with lagoon-propose-guard-migration --deployment-file {vault_record_file} --chain {slug}: {exc}"
+                f"The migration is pending; retry with lagoon-deploy-vault --retry-guard-proposal --vault-record-file {vault_record_file} --chain-name {slug}: {exc}"
             ) from exc
         save_progress()
         logger.info("Safe proposal submitted on %s: %s; owner execution is still required: %s", slug, safe_proposals[slug]["safe_tx_hash"], safe_proposals[slug]["url"])
