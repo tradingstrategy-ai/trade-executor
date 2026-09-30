@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Use a 16-block Lagoon treasury accounting buffer on every chain except Ethereum mainnet, retaining any larger RPC provider delay so fast-chain block-tip differences do not stop a live valuation refresh (2026-09-30).
+
 - Submit atomic Safe proposals when redeploying Lagoon guards, save per-chain recovery records, and add a retry option to `lagoon-deploy-vault` for failed submissions. Retain manual Safe migration through an explicit option for unsupported chains; guard redeployments cannot generate a fresh Lighter API key (2026-09-29).
 
 - Add a PositionManager HyperCore guard-whitelist admission check with per-cycle warning and recorder observations, and a read-only command reporting vaults missing from the Lagoon deployment record with current TVL and three-month metrics (2026-09-28).

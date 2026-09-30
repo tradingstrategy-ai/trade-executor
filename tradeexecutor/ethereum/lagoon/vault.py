@@ -24,8 +24,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.vault import (
     DEFAULT_LAGOON_POST_VALUATION_GAS, DEFAULT_LAGOON_SETTLE_GAS, LagoonVault)
 from eth_defi.hotwallet import HotWallet
 from eth_defi.provider.anvil import is_anvil
-from eth_defi.provider.broken_provider import get_almost_latest_block_number
-from eth_defi.provider.mev_blocker import MEVBlockerProvider
+from eth_defi.provider.broken_provider import get_almost_latest_block_number, get_block_tip_latency
 from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.revert_reason import extract_revert_data
 from eth_defi.token import fetch_erc20_details
@@ -55,6 +54,11 @@ logger = logging.getLogger(__name__)
 
 class LagoonUnconfirmedSettlement(UnconfirmedTreasurySync):
     """Lagoon settlement state cannot be synchronised safely."""
+
+
+def is_fast_chain(chain_id: int) -> bool:
+    """Use a deeper Lagoon accounting block buffer outside Ethereum mainnet."""
+    return chain_id != ChainId.ethereum.value
 
 
 def _normalise_tx_hash(tx_hash: str | HexBytes) -> str:
@@ -488,9 +492,15 @@ class LagoonVaultSyncModel(AddressSyncModel):
             # On Anvil tests, we need to always follow the latest block
             # Set self.unit_testing when using Tenderly
             return self.web3.eth.block_number
-        else:
-            # Leave room for minor reorg of 1-2 blocks
-            return get_almost_latest_block_number(self.web3)
+
+        if is_fast_chain(self.web3.eth.chain_id):
+            # Fast chains can advance several blocks between reads from different
+            # RPC backends. Keep Lagoon settlement and Safe balance reads at least
+            # 16 blocks behind the tip without reducing a larger provider buffer.
+            block_delay = max(16, get_block_tip_latency(self.web3))
+            return max(1, self.web3.eth.block_number - block_delay)
+
+        return get_almost_latest_block_number(self.web3)
 
     def create_transaction_builder(self) -> LagoonTransactionBuilder:
         return LagoonTransactionBuilder(self.vault, self.hot_wallet, self.extra_gnosis_gas)
