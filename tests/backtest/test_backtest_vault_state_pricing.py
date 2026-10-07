@@ -21,6 +21,7 @@ from eth_defi.erc_4626.core import ERC4626Feature
 from tradeexecutor.backtest.backtest_pricing import BacktestPricing
 from tradeexecutor.backtest.vault_windows import VaultWindowSchedule
 from tradeexecutor.strategy.redemption import DepositBlockReason, DepositCheckStage
+from tradingstrategy.alternative_data.vault import convert_vault_prices_to_vault_state
 from tradingstrategy.candle import GroupedCandleUniverse
 
 
@@ -378,3 +379,112 @@ def test_get_max_redemption_reports_historical_cap(pricing):
     # Faithful accessor: returns the recorded cap, or None when unknown (NA).
     assert pricing.get_max_redemption(pd.Timestamp("2026-03-07"), _FakePair(2)) == Decimal("1234.0")
     assert pricing.get_max_redemption(pd.Timestamp("2026-03-05"), _FakePair(2)) is None
+
+
+@pytest.mark.parametrize("unit", ["us", "ns"])
+def test_hypercore_original_permission_and_capacity_age(unit: str) -> None:
+    """Expire independent clocks exactly despite repeated and rounded price rows.
+
+    1. Convert prices carrying a genuine receipt and an independently older cap.
+    2. Query before, at and one nanosecond after the original two-day expiry.
+    3. Verify stale capacity cannot close Open permission and stale permission blocks.
+    """
+    # 1. Repeated prices and October writes must not authenticate fresh state.
+    clock = pd.Timestamp("2026-09-17 12:00:00.123456")
+    address = "0xcae0d1558b70b92ee9fd0acb20cb639c8c28ae69"
+    prices = pd.DataFrame([{
+        "chain": 9999, "address": address, "timestamp": pd.Timestamp(day),
+        "deposits_open": True, "max_deposit": 0.0,
+        "permission_observed_at": clock, "permission_provenance": "observed",
+        "permission_observation_id": "one-receipt",
+        "capacity_observed_at": clock - pd.Timedelta(days=1),
+        "written_at": pd.Timestamp("2026-10-05"),
+    } for day in ("2026-09-18", "2026-09-19", "2026-09-20")])
+    for name in ("timestamp", "permission_observed_at", "capacity_observed_at"):
+        prices[name] = prices[name].astype(f"datetime64[{unit}]")
+    state = convert_vault_prices_to_vault_state(prices)
+    pair = _FakePair(int(state.iloc[0]["pair_id"]), hypercore=True)
+    model = BacktestPricing(_candle_universe(), None, vault_state=state)
+
+    # 2. Fresh cap is restrictive, but expires on its own original clock.
+    assert model.can_deposit(pd.Timestamp("2026-09-18"), pair) is False
+    assert model.get_max_deposit(pd.Timestamp("2026-09-18"), pair) == Decimal(0)
+    expiry = clock + pd.Timedelta(days=2)
+    assert model.can_deposit(expiry, pair) is True
+    assert model.get_max_deposit(expiry, pair) is None
+
+    # 3. Preserve nanosecond precision; ceiling cannot extend receipt freshness.
+    result = model.check_deposit(expiry + pd.Timedelta(nanoseconds=1), pair)
+    assert result.can_deposit is False
+    assert result.reason_code == DepositBlockReason.unknown
+    assert model.can_deposit(pd.Timestamp("2026-09-20"), pair) is False
+    assert model.can_deposit(pd.Timestamp("2026-04-10"), pair) is True
+
+
+def test_hypercore_sidecar_unknown_blocks_after_newest_price() -> None:
+    """Use independent unknown responses without falling back to inferred Open.
+
+    1. Create an inferred Open price and a later sidecar response with missing flags.
+    2. Convert the history and construct backtest pricing.
+    3. Verify Open before the response, then Unknown after its availability bucket.
+    """
+    # 1. This successful response has no flags and no authentic capacity.
+    address = "0xcae0d1558b70b92ee9fd0acb20cb639c8c28ae69"
+    prices = pd.DataFrame([{
+        "chain": 9999, "address": address, "timestamp": pd.Timestamp("2026-09-17"),
+        "deposits_open": True,
+    }])
+    receipts = pd.DataFrame([{
+        "vault_address": address, "record_kind": "observation",
+        "observation_id": "successful-unknown", "provenance": "observed_unknown",
+        "permission_observed_at": pd.Timestamp("2026-09-17 12:00"),
+        "is_closed": None, "allow_deposits": None, "capacity_observed_at": pd.NaT,
+        "leader_fraction": None, "relationship_type": None,
+    }])
+
+    # 2. The state-only event needs no additional price row.
+    state = convert_vault_prices_to_vault_state(prices, permission_history_df=receipts)
+    model = BacktestPricing(_candle_universe(), None, vault_state=state)
+    pair = _FakePair(int(state.iloc[0]["pair_id"]), hypercore=True)
+
+    # 3. Both admission APIs share the historical unknown-state gate.
+    assert model.can_deposit(pd.Timestamp("2026-09-17"), pair) is True
+    assert model.can_deposit(pd.Timestamp("2026-09-18"), pair) is False
+    result = model.check_deposit(pd.Timestamp("2026-09-18"), pair)
+    assert result.reason_code == DepositBlockReason.unknown
+    assert len(prices) == 1
+
+
+def test_hypercore_archive_closure_preserves_deny_reason() -> None:
+    """Use deny-only archive availability without fabricating a permission clock.
+
+    1. Build a bounded archive closure with no measured permission or capacity.
+    2. Query both deposit APIs and the preserved diagnostic metadata.
+    3. Verify the two-day bound expires to Unknown without permitting deposits.
+    """
+    # 1. The archive bound proves denial from this time, not an API observation.
+    bound = pd.Timestamp("2026-09-17 12:00")
+    state = pd.DataFrame([{
+        "pair_id": 1, "timestamp": pd.Timestamp("2026-09-18"),
+        "deposits_open": False, "deposit_closed_reason": "Vault deposits disabled by leader",
+        "permission_observed_at": pd.NaT, "permission_provenance": "legacy_closure_bounded",
+        "permission_observation_id": "bound", "evidence_available_at": bound,
+        "capacity_observed_at": pd.NaT, "max_deposit": float("nan"),
+    }])
+    model = BacktestPricing(_candle_universe(), None, vault_state=state)
+    pair = _FakePair(1, hypercore=True)
+
+    # 2. Both APIs deny; diagnostics retain the actual bound and absent receipt.
+    assert model.can_deposit(pd.Timestamp("2026-09-18"), pair) is False
+    result = model.check_deposit(pd.Timestamp("2026-09-18"), pair)
+    assert result.message == "Vault deposits disabled by leader"
+    assert result.reason_code != DepositBlockReason.unknown
+    selected = model._lookup_vault_state(pd.Timestamp("2026-09-18"), pair)
+    assert pd.isna(selected["permission_observed_at"])
+    assert pd.Timestamp(selected["evidence_available_at"]) == bound
+    assert model.get_max_deposit(pd.Timestamp("2026-09-18"), pair) is None
+
+    # 3. Expired deny evidence is Unknown, which still blocks post-cutoff admission.
+    expired = model.check_deposit(bound + pd.Timedelta(days=2, nanoseconds=1), pair)
+    assert expired.can_deposit is False
+    assert expired.reason_code == DepositBlockReason.unknown

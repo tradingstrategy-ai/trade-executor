@@ -1,0 +1,71 @@
+{
+  "vault": "0xcae0d1558b70b92ee9fd0acb20cb639c8c28ae69",
+  "as_of": "2026-10-06 00:00:00",
+  "calendar_rows": 365,
+  "evaluated_days": 279,
+  "projection_state_mismatches": 1,
+  "sidecar_state_mismatches": 1,
+  "admission_mismatches": 0,
+  "documented_state_difference": {
+    "day": "2026-04-03",
+    "reference": "Open",
+    "fixed": "Unknown",
+    "boundary": "2026-04-02 22:20:00.054",
+    "admission": "Assumed open"
+  },
+  "genuine_permission_receipts": 0,
+  "permission_records": 1455,
+  "permission_provenance_counts": {
+    "legacy_price_timestamp": 1027,
+    "legacy_closure_bounded": 426,
+    "corrupted_unknown": 2
+  },
+  "first_retained_closed_price": "2026-09-21 11:48:00.756000",
+  "first_retained_closed_write": "2026-09-21 11:48:02.468780",
+  "first_retained_closed_parquet_write": "2026-09-21 11:48:02.468000",
+  "first_fixed_closed_midnight": "2026-09-22 00:00:00",
+  "client_commit": "16b9e7050b8aeb895aa89c12faf07ad4f91abd70",
+  "executor_base_commit": "a30764475169d97040d25b1c2d98046cd37c0d51",
+  "executor_changes": "",
+  "implementation_sha256": {
+    "tradeexecutor/backtest/backtest_pricing.py": "bd703469c7180c3f325620501d7c44c6388345a3e0cfef716005acdd45eae111",
+    "tradeexecutor/strategy/trading_strategy_universe.py": "c925f72b088a5f52ea2d90d79eba7336fd96cd3a1c25cda18b3a9563d43d7b33",
+    "deps/trading-strategy/tradingstrategy/alternative_data/vault.py": "b674cb0d43d54ff1fbba7ac64b09c14db0a4aa61b018fc238c050d88d25f4080",
+    "deps/trading-strategy/tradingstrategy/vault_permission.py": "2d57842f66a7f4f5ca9ced62a98c757820c980e3024c31331a06fdfba360bb01"
+  },
+  "sources": {
+    "earlier": {
+      "path": "/home/mikko/hypercore-recovery-1628/r2-originals/2026-10-05/vault-prices-1h.parquet",
+      "bytes": 341177900,
+      "sha256": "0bfca8f9c0313dbe169657f7b30f73b66ec19694dde0a5177621d1fce4da615b",
+      "vault_rows": 3305
+    },
+    "corrupted": {
+      "path": "/home/mikko/hypercore-recovery-1628/current-local-originals/vault-prices-1h.parquet",
+      "bytes": 333158013,
+      "sha256": "8330db4318a4660b6ad6702fa1e8c05a11df04de34a7227281bf72c622b4fcb3",
+      "vault_rows": 2987
+    },
+    "repaired": {
+      "path": "/home/mikko/hypercore-recovery-1628/local-rehearsal/vault-prices-1h-price-clock.parquet",
+      "bytes": 354399280,
+      "sha256": "b6f149267c2c35555b6273aa580c0c5a920e50dde7cb003ee22ea02a779357cf",
+      "vault_rows": 3316
+    },
+    "cleaned": {
+      "path": "/home/mikko/hypercore-recovery-1628/doezoe-analysis/doezoe-fixed-cleaned.parquet",
+      "bytes": 233671,
+      "sha256": "1ee578e57afc1cff77565961db8d568b7eac5f92b905cbad6934563a92dc0fce"
+    },
+    "permissions": {
+      "path": "/home/mikko/hypercore-recovery-1628/local-rehearsal/hypercore-vault-permissions.parquet",
+      "bytes": 333770866,
+      "sha256": "a7653cd32cdcf22fb9ae92ca16562e159786129a14f4c019b0220d8c32dad85c"
+    },
+    "reference": {
+      "path": "/home/mikko/hypercore-recovery-1628/doezoe-analysis/doezoe-deposit-status-2026-recovered.csv",
+      "bytes": 162448,
+      "sha256": "a2db92ed1d8af1882e5d24cd54014531db1d42bc5c47ceaba7c78546ab1f178b"
+    }
+  }
+}

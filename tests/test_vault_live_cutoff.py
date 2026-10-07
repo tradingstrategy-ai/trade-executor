@@ -279,12 +279,13 @@ def test_load_partial_data_fast_vault_history_path_filters_parquet(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Verify website vault history uses the filtered parquet reader when transport exposes it.
+    """Keep filtered price loading and independent permission history separate.
 
-    1. Create a local vault history parquet with matching, non-matching and after-cutoff rows.
-    2. Run live ``load_partial_data()`` through a transport-level parquet fetch stub.
-    3. Assert the fast path gives candle conversion only selected rows and pruned columns.
+    1. Create local prices and a permission response after the newest price.
+    2. Run live loading with a download stub to avoid network access.
+    3. Check price filtering, independent state and its cache fingerprint.
     """
+    # 1. Create local prices and a permission response after the newest price.
     fixed_now = datetime.datetime(2026, 4, 11, 17, 9, 41)
     captured: dict[str, pd.DataFrame] = {}
     parquet_path = tmp_path / "vault-price-history.parquet"
@@ -325,6 +326,19 @@ def test_load_partial_data_fast_vault_history_path_filters_parquet(
         ]
     ).to_parquet(parquet_path)
 
+    permission_path = tmp_path / "hypercore-vault-permissions.parquet"
+    pd.DataFrame([{
+        "vault_address": "0xabc", "record_kind": "observation", "provenance": "observed",
+        "observation_id": "open", "permission_observed_at": pd.Timestamp("2026-04-10 12:00"),
+        "is_closed": False, "allow_deposits": True, "leader_fraction": 0.1,
+        "relationship_type": "normal", "capacity_observed_at": pd.Timestamp("2026-04-10 12:00"),
+    }, {
+        "vault_address": "0xabc", "record_kind": "observation", "provenance": "observed_unknown",
+        "observation_id": "unknown", "permission_observed_at": pd.Timestamp("2026-04-11 12:00"),
+        "is_closed": None, "allow_deposits": None, "leader_fraction": None,
+        "relationship_type": None, "capacity_observed_at": pd.NaT,
+    }]).to_parquet(permission_path, index=False)
+
     transport = SimpleNamespace(
         requests=None,
         get_cached_file_path=lambda filename, cache_path=None: parquet_path,
@@ -332,7 +346,6 @@ def test_load_partial_data_fast_vault_history_path_filters_parquet(
     client = Client(None, transport)
     client.fetch_exchange_universe = lambda: ExchangeUniverse({})
 
-    # 1. Create a local vault history parquet with matching, non-matching and after-cutoff rows.
     monkeypatch.setattr(
         trading_strategy_universe,
         "create_vault_data_client",
@@ -368,7 +381,7 @@ def test_load_partial_data_fast_vault_history_path_filters_parquet(
     monkeypatch.setattr(vault_checks, "log_vault_history_diagnostics", lambda *args, **kwargs: None)
     monkeypatch.setattr(vault_checks, "log_stale_vault_candle_data", lambda *args, **kwargs: None)
 
-    # 2. Run live ``load_partial_data()`` through a transport-level parquet fetch stub.
+    # 2. The existing download stub avoids network access during live loading.
     dataset = load_partial_data(
         client=client,
         execution_context=ExecutionContext(ExecutionMode.unit_testing_trading),
@@ -378,9 +391,10 @@ def test_load_partial_data_fast_vault_history_path_filters_parquet(
         liquidity=False,
         vaults=object(),
         vault_history_source="trading-strategy-website",
+        vault_permission_history_path=permission_path,
     )
 
-    # 3. Assert the fast path gives candle conversion only selected rows and pruned columns.
+    # 3. Check price filtering, independent state and its cache fingerprint.
     filtered_df = captured["df"]
     assert dataset.end_at == datetime.datetime(2026, 4, 11, 0, 0, 0)
     assert filtered_df["timestamp"].tolist() == [
@@ -390,3 +404,9 @@ def test_load_partial_data_fast_vault_history_path_filters_parquet(
     assert filtered_df["chain"].tolist() == [9999, 9999]
     assert filtered_df["address"].tolist() == ["0xabc", "0xabc"]
     assert "unused_column" not in filtered_df.columns
+
+    states = dataset.vault_state.set_index("timestamp")
+    assert bool(states.loc[pd.Timestamp("2026-04-11"), "deposits_open"])
+    assert pd.isna(states.loc[pd.Timestamp("2026-04-12"), "deposits_open"])
+    assert states.loc[pd.Timestamp("2026-04-12"), "permission_observation_id"] == "unknown"
+    assert "vault-permissions" in dataset.indicator_cache_fingerprint

@@ -237,7 +237,7 @@ class BacktestPricing(PricingModel):
         #
         # Booleans are stored as compact int8 sentinels: -1 unknown, 0 closed, 1 open. Caps are
         # float arrays (NaN = unknown). Reasons are kept as object arrays for diagnostics.
-        # Each entry: pair_id → {"ts": int64 seconds, "deposits_open": int8, ...}
+        # Each entry: pair_id → {"ts": int64 nanoseconds, "deposits_open": int8, ...}
         self.vault_state = vault_state
         self._vault_state_arrays: dict[int, dict[str, np.ndarray]] = {}
         self._vault_settlement_events: dict[int, np.ndarray] = {}
@@ -245,7 +245,7 @@ class BacktestPricing(PricingModel):
             for pair_id, group in vault_state.groupby("pair_id", sort=False):
                 group = group.sort_values("timestamp")
                 entry: dict[str, np.ndarray] = {
-                    "ts": group["timestamp"].values.astype("datetime64[s]").astype("int64"),
+                    "ts": group["timestamp"].values.astype("datetime64[ns]").astype("int64"),
                 }
                 for col in ("deposits_open", "redemption_open"):
                     if col in group.columns:
@@ -254,6 +254,12 @@ class BacktestPricing(PricingModel):
                     if col in group.columns:
                         entry[col] = group[col].to_numpy(dtype=float)
                 for col in ("deposit_closed_reason", "redemption_closed_reason"):
+                    if col in group.columns:
+                        entry[col] = group[col].to_numpy(dtype=object)
+                for col in ("permission_observed_at", "capacity_observed_at", "evidence_available_at"):
+                    if col in group.columns:
+                        entry[col] = pd.to_datetime(group[col]).to_numpy(dtype="datetime64[ns]")
+                for col in ("permission_provenance", "permission_observation_id", "source_order"):
                     if col in group.columns:
                         entry[col] = group[col].to_numpy(dtype=object)
                 if "vault_settlement_at" in group.columns:
@@ -595,11 +601,12 @@ class BacktestPricing(PricingModel):
     ) -> dict | None:
         """Return the in-tolerance vault availability sample at or before ``timestamp``.
 
-        Returns ``None`` when there is no vault-state data, no pair/timestamp, no sample at or
-        before the timestamp (pre-history), or the nearest sample is older than
-        ``data_delay_tolerance``. Deposit callers decide whether unavailable state is allowed
-        for the protocol and timestamp; redemption and cap accessors retain their existing
-        unknown-state behaviour.
+        HyperCore permission and capacity expire independently against their original,
+        unrounded clocks. An expired permission becomes unknown while its clock and
+        provenance remain available for diagnostics. Other protocols return ``None``
+        when their state bucket exceeds ``data_delay_tolerance``. Missing data or a
+        decision before the first state bucket also returns ``None``. Callers apply
+        the protocol's historical unknown-state admission policy.
 
         Uses the sample at or before the decision timestamp (``searchsorted`` right - 1), never a
         later same-bucket sample, so it introduces no look-ahead beyond the TVL/price candles.
@@ -609,10 +616,29 @@ class BacktestPricing(PricingModel):
         entry = self._vault_state_arrays.get(pair.internal_id)
         if entry is None:
             return None
-        idx = self._backfill_index(entry["ts"], timestamp)
+        query_ns = pd.Timestamp(timestamp).value
+        idx = int(np.searchsorted(entry["ts"], query_ns, side="right") - 1)
         if idx < 0:
             return None
-        return {key: arr[idx] for key, arr in entry.items() if key != "ts"}
+        state = {key: arr[idx] for key, arr in entry.items() if key != "ts"}
+        tolerance_ns = pd.Timedelta(self.data_delay_tolerance).value
+        provenance = state.get("permission_provenance")
+        has_permission_clock = pd.notna(provenance) or pd.notna(state.get("permission_observed_at"))
+        if not has_permission_clock:
+            return state if query_ns - int(entry["ts"][idx]) <= tolerance_ns else None
+
+        observed = state.get("permission_observed_at")
+        # A deny-only archive bound authenticates closure from its availability
+        # time, without pretending to be an independently measured permission.
+        if pd.notna(provenance) and provenance == "legacy_closure_bounded":
+            observed = state.get("evidence_available_at")
+        if pd.isna(observed) or not 0 <= query_ns - pd.Timestamp(observed).value <= tolerance_ns:
+            state["deposits_open"] = -1
+            state["deposit_closed_reason"] = None
+        capacity = state.get("capacity_observed_at")
+        if pd.isna(capacity) or not 0 <= query_ns - pd.Timestamp(capacity).value <= tolerance_ns:
+            state["max_deposit"] = float("nan")
+        return state
 
     @staticmethod
     def _state_cap(state: dict, key: str) -> Decimal | None:
