@@ -488,3 +488,71 @@ def test_hypercore_archive_closure_preserves_deny_reason() -> None:
     expired = model.check_deposit(bound + pd.Timedelta(days=2, nanoseconds=1), pair)
     assert expired.can_deposit is False
     assert expired.reason_code == DepositBlockReason.unknown
+
+
+@pytest.mark.parametrize("frequency", ["1d", "1h"])
+def test_hypercore_legacy_zero_cap_blocks_until_new_snapshot(frequency: str) -> None:
+    """Honour archived Gucky policy without requiring a newly introduced clock.
+
+    1. Convert an Open legacy zero cap and repeated prices carrying its original clock.
+    2. Verify both admission APIs block by capacity without claiming venue closure.
+    3. Supply newer sufficient-share and unknown responses and verify coherent clearing.
+    """
+    # 1. Synthetic local inputs reproduce issue #254 without paid network data.
+    clock = pd.Timestamp("2026-04-11 04:22:05.613")
+    address = "0x3a6747c8e913085e243a2c22d188dafa8c6a612a"
+    fraction = 0.05000280943338046
+    prices = pd.DataFrame([{
+        "chain": 9999, "address": address, "timestamp": pd.Timestamp(at),
+        "deposits_open": True, "leader_fraction": fraction, "max_deposit": 0.0,
+        "permission_observed_at": clock, "permission_provenance": "legacy_price_timestamp",
+        "permission_observation_id": "gucky", "capacity_observed_at": pd.NaT,
+        "written_at": pd.Timestamp("2026-10-07"),
+    } for at in (str(clock), "2026-04-12 12:00", "2026-04-14 12:00")])
+    state = convert_vault_prices_to_vault_state(prices, frequency)
+    pair = _FakePair(int(state.iloc[0]["pair_id"]), hypercore=True)
+    model = BacktestPricing(_candle_universe(), None, vault_state=state)
+
+    # 2. A recorded zero remains a policy block, separate from Open permission.
+    for at in (clock.ceil(frequency), pd.Timestamp("2026-04-12 12:00").ceil(frequency)):
+        result = model.check_deposit(at, pair)
+        assert model.can_deposit(at, pair) is False
+        assert result.can_deposit is False
+        assert result.reason_code == DepositBlockReason.vault_max_deposit_zero
+        assert result.max_deposit == pytest.approx(0.0)
+        assert model.get_max_deposit(at, pair) == Decimal(0)
+        selected = model._lookup_vault_state(at, pair)
+        assert selected["deposits_open"] == 1
+        assert selected["leader_fraction"] == fraction
+        assert pd.Timestamp(selected["permission_observed_at"]) == clock
+        assert pd.isna(selected["capacity_observed_at"])
+    expired = clock + pd.Timedelta(days=2, nanoseconds=1)
+    assert model.check_deposit(expired, pair).reason_code == DepositBlockReason.unknown
+    assert model.get_max_deposit(expired, pair) == Decimal(0)
+
+    # 3. No per-field carry crosses a genuine higher-share or unknown response.
+    receipts = pd.DataFrame([{
+        "vault_address": address, "record_kind": "observation",
+        "observation_id": "sufficient", "provenance": "observed",
+        "permission_observed_at": pd.Timestamp("2026-04-15 04:22"),
+        "is_closed": False, "allow_deposits": True, "leader_fraction": 0.1,
+        "relationship_type": "normal", "capacity_observed_at": pd.NaT, "max_deposit": None,
+    }, {
+        "vault_address": address, "record_kind": "observation",
+        "observation_id": "unknown", "provenance": "observed_unknown",
+        "permission_observed_at": pd.Timestamp("2026-04-16 04:22"),
+        "is_closed": None, "allow_deposits": None, "leader_fraction": None,
+        "relationship_type": None, "capacity_observed_at": pd.NaT, "max_deposit": None,
+    }])
+    state = convert_vault_prices_to_vault_state(prices, frequency, receipts)
+    model = BacktestPricing(_candle_universe(), None, vault_state=state)
+    sufficient = receipts.iloc[0].permission_observed_at.ceil(frequency)
+    unknown = receipts.iloc[1].permission_observed_at.ceil(frequency)
+    assert model.can_deposit(sufficient, pair) is True
+    assert model.check_deposit(sufficient, pair).can_deposit is True
+    assert model.get_max_deposit(sufficient, pair) is None
+    assert model._lookup_vault_state(sufficient, pair)["leader_fraction"] == pytest.approx(0.1)
+    assert model.can_deposit(unknown, pair) is False
+    assert model.check_deposit(unknown, pair).reason_code == DepositBlockReason.unknown
+    assert model.get_max_deposit(unknown, pair) is None
+    assert pd.isna(model._lookup_vault_state(unknown, pair)["leader_fraction"])
