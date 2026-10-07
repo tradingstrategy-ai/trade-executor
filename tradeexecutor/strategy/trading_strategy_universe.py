@@ -42,7 +42,7 @@ from tradingstrategy.utils.groupeduniverse import filter_for_pairs, NoDataAvaila
 from tradingstrategy.utils.token_extra_data import load_extra_metadata
 from tradingstrategy.utils.token_filter import add_base_quote_address_columns
 from tradingstrategy.vault import VaultMetadata, VaultUniverse
-from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, convert_vault_prices_to_vault_state, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history, read_vault_price_history_parquet, VAULT_STATE_COLUMNS
+from tradingstrategy.alternative_data.vault import load_multiple_vaults, load_vault_price_data, convert_vault_prices_to_candles, convert_vault_prices_to_vault_state, DEFAULT_VAULT_PRICE_BUNDLE, filter_vault_price_history, read_vault_price_history_parquet, VAULT_STATE_COLUMNS, VAULT_STATE_METADATA_COLUMNS, read_vault_permission_history_parquet
 from tradingstrategy.vault_data_client import VaultDataAccessDenied, VaultDataClient, VaultDataset
 
 from tradeexecutor.strategy.execution_context import ExecutionMode, ExecutionContext
@@ -135,8 +135,9 @@ class Dataset:
     #: Tidy DataFrame produced by
     #: :py:func:`tradingstrategy.alternative_data.vault.convert_vault_prices_to_vault_state`
     #: (columns ``pair_id``, ``address``, ``timestamp`` plus available
-    #: ``VAULT_STATE_COLUMNS``). ``None`` when the vault price source carries no availability
-    #: columns. Used by the backtest pricing model to skip impossible rebalances.
+    #: ``VAULT_STATE_COLUMNS`` and original HyperCore observation metadata). ``None``
+    #: when neither prices nor an explicit permission history carry availability.
+    #: Used by the backtest pricing model to skip impossible rebalances.
     vault_state: Optional[pd.DataFrame] = None
 
     #: Extra fingerprint that should invalidate indicator caches.
@@ -2618,6 +2619,7 @@ def load_partial_data(
     vault_bundled_price_data: bool | Path=False,
     round_start_end: bool = True,
     check_all_vaults_found: bool = True,
+    vault_permission_history_path: Path | None = None,
 ) -> Dataset:
     """Load pair data for given trading pairs.
 
@@ -2781,6 +2783,11 @@ def load_partial_data(
     :param vault_history_download_root:
         Override the root directory used for Trading Strategy website vault history downloads.
         Useful in tests to redirect downloads under ``tmp_path``.
+
+    :param vault_permission_history_path:
+        Explicit local HyperCore permission history matching the price generation.
+        Keeps pre-window receipts and observations after the newest price. Manifest
+        v1 authenticates only prices; automatic sidecar loading remains disabled.
 
     :param vault_bundled_price_data:
         For vaults, also load bundled static price data.
@@ -3070,9 +3077,14 @@ def load_partial_data(
 
         # Per-(vault, timestamp) deposit/redemption availability state, populated from whichever
         # vault history source carries the availability columns. Stays None for sources that do
-        # not (e.g. the daily price bundle), in which case backtests treat every vault as open.
+        # not (e.g. the daily price bundle). Unknown state follows the protocol's
+        # historical admission policy; HyperCore blocks deposits after its cutoff.
         vault_state_df = None
         indicator_cache_fingerprint = None
+        permission_history_df = (
+            read_vault_permission_history_parquet(vault_permission_history_path, vault_pairs_df)
+            if vault_permission_history_path is not None else None
+        )
 
         if effective_vault_history_source == "bundled":
             assert vaults, "Vaults must be given to load bundled price data"
@@ -3096,7 +3108,7 @@ def load_partial_data(
             candles_df = _concat_optional_dataframe(candles_df, vault_candle_df)
             if liquidity_df is not None:
                 liquidity_df = _concat_optional_dataframe(liquidity_df, vault_liquidity_df)
-            vault_state_df = convert_vault_prices_to_vault_state(vault_prices_df, freq_string)
+            vault_state_df = convert_vault_prices_to_vault_state(vault_prices_df, freq_string, permission_history_df)
         elif effective_vault_history_source == "trading-strategy-website":
             assert vaults, "Vaults must be given to load Trading Strategy website vault price history"
             assert vault_pairs_df is not None, "Vault pairs must be materialised before loading Trading Strategy website vault history"
@@ -3122,7 +3134,7 @@ def load_partial_data(
                     # Optional deposit/redemption availability and observation-time columns;
                     # silently dropped by read_vault_price_history_parquet for older sources.
                     *VAULT_STATE_COLUMNS,
-                    "written_at",
+                    *VAULT_STATE_METADATA_COLUMNS,
                 ],
             )
 
@@ -3131,7 +3143,7 @@ def load_partial_data(
             # Build the availability state frame BEFORE candle conversion, which mutates OHLC
             # columns on the source frame in place (the state columns are untouched, but this
             # keeps the dependency explicit).
-            vault_state_df = convert_vault_prices_to_vault_state(filtered_website_vault_prices_df, freq_string)
+            vault_state_df = convert_vault_prices_to_vault_state(filtered_website_vault_prices_df, freq_string, permission_history_df)
             vault_candle_df, vault_liquidity_df = convert_vault_prices_to_candles(filtered_website_vault_prices_df, freq_string)
             candles_df = _concat_optional_dataframe(candles_df, vault_candle_df)
             if liquidity_df is not None:
@@ -3164,6 +3176,10 @@ def load_partial_data(
                     vault_pairs_df=vault_pairs_df,
                     source_vault_price_df=filtered_website_vault_prices_df,
                 )
+
+        if vault_permission_history_path is not None:
+            permission_fingerprint = _file_indicator_cache_fingerprint(vault_permission_history_path, "vault-permissions")
+            indicator_cache_fingerprint = f"{indicator_cache_fingerprint}:{permission_fingerprint}"
 
         # Collect some debug data for the first 5 pairs
         # to diagnose data loding problems

@@ -88,6 +88,12 @@ as current.
 
 ## Data structures in trade-executor
 
+For historical deposit availability, original permission/capacity clocks and
+recovered legacy flags, see [HyperCore permission clocks](../../docs/hypercore-permission-clocks.md).
+Price-scan readiness does not establish historical deposit permission. Unknown
+permission blocks new deposits from 11 April 2026; earlier backtests use the
+explicit assumed-open policy.
+
 The driver lives in `tradeexecutor/ethereum/vault/hypercore_routing.py`.
 
 | Type | Role |

@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Fix HyperCore historical deposit availability to retain original permission and capacity clocks, recovery provenance and explicit unknown responses. Support an explicitly supplied permission-history file without refreshing state from price or publication timestamps (2026-10-07).
+
 - Use a 16-block Lagoon treasury accounting buffer on every chain except Ethereum mainnet, retaining any larger RPC provider delay so fast-chain block-tip differences do not stop a live valuation refresh (2026-09-30).
 
 - Submit atomic Safe proposals when redeploying Lagoon guards, save per-chain recovery records, and add a retry option to `lagoon-deploy-vault` for failed submissions. Retain manual Safe migration through an explicit option for unsupported chains; guard redeployments cannot generate a fresh Lighter API key (2026-09-29).
