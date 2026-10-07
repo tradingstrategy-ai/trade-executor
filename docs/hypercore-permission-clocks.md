@@ -55,8 +55,8 @@ publish, deploy or migrate production data.
 
 The [2026 DOEZOE report](reports/doezoe-deposit-status-2026-after-client-fix.md)
 checks the repaired projection and explicit sidecar through the actual client
-converter and executor deposit APIs. Midnight status is Open through
-21 September and Closed from 22 September through the snapshot's 6 October
+converter and executor deposit APIs. Midnight status is Open on
+13–21 September and Closed from 22 September through the snapshot's 6 October
 cutoff. All 279 evaluated daily admission decisions agree with the archived
 producer reference. On 3 April, an intervening corrupted-data boundary makes
 the updated state Unknown instead of carrying inferred Open forwards; admission

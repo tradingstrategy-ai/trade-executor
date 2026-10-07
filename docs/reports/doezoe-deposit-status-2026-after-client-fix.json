@@ -24,14 +24,14 @@
   "first_retained_closed_write": "2026-09-21 11:48:02.468780",
   "first_retained_closed_parquet_write": "2026-09-21 11:48:02.468000",
   "first_fixed_closed_midnight": "2026-09-22 00:00:00",
-  "client_commit": "76d81e61cf4b3430e6a8058f6a5f60574d7dfa1d",
-  "executor_base_commit": "2299e7c448ba0a8c29469bebcf256fd4a3756672",
-  "executor_changes": "tradeexecutor/backtest/backtest_pricing.py         | 44 +++++++++++++++++-----\n .../strategy/trading_strategy_universe.py          | 30 +++++++++++----\n 2 files changed, 58 insertions(+), 16 deletions(-)",
+  "client_commit": "16b9e7050b8aeb895aa89c12faf07ad4f91abd70",
+  "executor_base_commit": "a30764475169d97040d25b1c2d98046cd37c0d51",
+  "executor_changes": "",
   "implementation_sha256": {
     "tradeexecutor/backtest/backtest_pricing.py": "bd703469c7180c3f325620501d7c44c6388345a3e0cfef716005acdd45eae111",
     "tradeexecutor/strategy/trading_strategy_universe.py": "c925f72b088a5f52ea2d90d79eba7336fd96cd3a1c25cda18b3a9563d43d7b33",
-    "deps/trading-strategy/tradingstrategy/alternative_data/vault.py": "47be5175af93c74ba0e657c3148d99696cf2992db2a26f7b6a6c6dffb84d72cb",
-    "deps/trading-strategy/tradingstrategy/vault_permission.py": "bf34e9e3f308247807d63418ec30ab48b6fc6963c7b9eaefa110c6b520557a78"
+    "deps/trading-strategy/tradingstrategy/alternative_data/vault.py": "b674cb0d43d54ff1fbba7ac64b09c14db0a4aa61b018fc238c050d88d25f4080",
+    "deps/trading-strategy/tradingstrategy/vault_permission.py": "2d57842f66a7f4f5ca9ced62a98c757820c980e3024c31331a06fdfba360bb01"
   },
   "sources": {
     "earlier": {

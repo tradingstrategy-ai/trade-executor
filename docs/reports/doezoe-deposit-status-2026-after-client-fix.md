@@ -1,6 +1,6 @@
 # DOEZOE deposit status after the client fix — 2026
 
-The fixed client and executor resolve **Open through 21 September and Closed
+The fixed client and executor resolve **Open on 13–21 September and Closed
 from 22 September through 6 October**, at midnight UTC. Both the repaired price
 projection and the separate permission-history file agree with the archived
 producer reference on **deposit admission for all 279 evaluated days**. State
@@ -13,8 +13,8 @@ not independently corroborate venue history: this sidecar is derived from the
 same recovered flags and contains **zero genuine permission receipts**.
 
 Vault: `0xcae0d1558b70b92ee9fd0acb20cb639c8c28ae69`. This checks the retained local recovery snapshots as of
-6 October 2026 using client commit `76d81e61cf4b3430e6a8058f6a5f60574d7dfa1d` and the local
-executor changes. It does not inspect or change production. All clocks are UTC,
+6 October 2026 using client commit `16b9e7050b8aeb895aa89c12faf07ad4f91abd70` and the executor
+implementation identified by the audit JSON. It does not inspect or change production. All clocks are UTC,
 represented as naive timestamps. Decisions are at 00:00; dates after 6 October
 are **Not evaluated** because the recovery snapshot ends on 5 October.
 
