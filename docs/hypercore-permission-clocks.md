@@ -22,8 +22,28 @@ this denial against its archive availability bound.
 
 Backtest pricing checks freshness against the original, unrounded clock using
 its data-delay tolerance (two days by default). Capacity has its own
-`capacity_observed_at`; an inferred permission does not authenticate a carried
-leader share or capacity cap. HyperCore Unknown blocks new deposits from the
+`capacity_observed_at` when the source recorded it, and measured capacity keeps
+its independent freshness check. Missing capacity timing does not invalidate
+recorded `leader_fraction` or `max_deposit`. Legacy snapshots use the retained
+source clock, or the original price-row timestamp when no other clock exists,
+without inventing an independent receipt. Repeated price rows and later write,
+migration or publication times do not refresh a retained source clock. Carried
+legacy values with unrecoverable measurement age remain readable without an
+additional capacity-age eligibility gate.
+Daily portfolio date keys are not independently measured receipt times; the
+legacy fallback remains explicitly inferred. A matching sidecar can retain the
+finer scanner's source clock and select a newer coherent snapshot.
+
+An explicit `max_deposit=0` blocks new deposits while `deposits_open` can remain
+True. For an open normal HyperCore vault, the low-share zero cap is our
+conservative trading policy below 5.5% leader share, not a venue-reported dollar
+limit or confirmed closure. NULL means no recorded cap, not zero or unlimited
+capacity; missing shares also remain NULL. The reader retains nullable caps
+from repaired sidecars and derives the older policy only when the sidecar
+schema has no cap column. Whole newer responses clear prior shares/caps rather
+than per-field filling across an explicit unknown or a sufficient-share response.
+
+HyperCore Unknown blocks new deposits from the
 existing 11 April 2026 cutoff onwards. Before that boundary the established
 assumed-open policy remains in effect. Other chains keep their existing
 historical availability policy.
@@ -40,6 +60,15 @@ retaining earlier receipts rather than applying price-window predicates.
 Pass a local sidecar matching the price generation to
 `load_partial_data(vault_permission_history_path=...)`. Its state is converted
 separately from prices and included in the indicator cache fingerprint.
+Read the republished repaired prices and their matching sidecar together.
+Refresh both downloaded files after producer repair using
+`VaultDataClient.download(VaultDataset.vault_prices, force_refresh=True)` and
+`download(VaultDataset.hypercore_vault_permissions, force_refresh=True)`; the ordinary download
+cache can otherwise retain earlier files for twelve hours. An ETag-verified
+price snapshot bypasses that cache. Replacing either local input changes the
+combined indicator fingerprint, so indicators are recomputed for the repaired
+inputs. Matching sidecar generations are still operator-selected, not certified
+by manifest v1.
 Observations after the latest price can change availability without creating
 price or TVL candles. Website loading uses the current licence-authenticated
 `VaultDataClient`, including any verified price snapshot passed by the live
@@ -72,3 +101,5 @@ the reproducible command are saved alongside the full daily table.
 
 See [Trading Strategy issue 252](https://github.com/tradingstrategy-ai/trading-strategy/issues/252)
 for the recovery policy and regression contract.
+See [issue 254](https://github.com/tradingstrategy-ai/trading-strategy/issues/254)
+for the recorded share/cap contract and Gucky's original zero-cap example.

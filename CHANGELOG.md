@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Honour recorded HyperCore low-share deposit caps when legacy snapshots have no separate capacity clock, preserving NULL versus zero and clearing old policy inputs on newer coherent responses (2026-10-07).
+
 - Fix HyperCore historical deposit availability to retain original permission and capacity clocks, recovery provenance and explicit unknown responses. Support an explicitly supplied permission-history file without refreshing state from price or publication timestamps (2026-10-07).
 
 - Use a 16-block Lagoon treasury accounting buffer on every chain except Ethereum mainnet, retaining any larger RPC provider delay so fast-chain block-tip differences do not stop a live valuation refresh (2026-09-30).

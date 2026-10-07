@@ -284,6 +284,7 @@ def test_load_partial_data_fast_vault_history_path_filters_parquet(
     1. Create local prices and a permission response after the newest price.
     2. Run live loading with a download stub to avoid network access.
     3. Check price filtering, independent state and its cache fingerprint.
+    4. Replace the repaired inputs and verify policy metadata and cache invalidation.
     """
     # 1. Create local prices and a permission response after the newest price.
     fixed_now = datetime.datetime(2026, 4, 11, 17, 9, 41)
@@ -330,13 +331,13 @@ def test_load_partial_data_fast_vault_history_path_filters_parquet(
     pd.DataFrame([{
         "vault_address": "0xabc", "record_kind": "observation", "provenance": "observed",
         "observation_id": "open", "permission_observed_at": pd.Timestamp("2026-04-10 12:00"),
-        "is_closed": False, "allow_deposits": True, "leader_fraction": 0.1,
-        "relationship_type": "normal", "capacity_observed_at": pd.Timestamp("2026-04-10 12:00"),
+        "is_closed": False, "allow_deposits": True, "leader_fraction": 0.05000280943338046,
+        "relationship_type": "normal", "capacity_observed_at": pd.NaT, "max_deposit": 0.0,
     }, {
         "vault_address": "0xabc", "record_kind": "observation", "provenance": "observed_unknown",
         "observation_id": "unknown", "permission_observed_at": pd.Timestamp("2026-04-11 12:00"),
         "is_closed": None, "allow_deposits": None, "leader_fraction": None,
-        "relationship_type": None, "capacity_observed_at": pd.NaT,
+        "relationship_type": None, "capacity_observed_at": pd.NaT, "max_deposit": None,
     }]).to_parquet(permission_path, index=False)
 
     transport = SimpleNamespace(
@@ -382,7 +383,7 @@ def test_load_partial_data_fast_vault_history_path_filters_parquet(
     monkeypatch.setattr(vault_checks, "log_stale_vault_candle_data", lambda *args, **kwargs: None)
 
     # 2. The existing download stub avoids network access during live loading.
-    dataset = load_partial_data(
+    load_options = dict(
         client=client,
         execution_context=ExecutionContext(ExecutionMode.unit_testing_trading),
         time_bucket=TimeBucket.d1,
@@ -393,6 +394,7 @@ def test_load_partial_data_fast_vault_history_path_filters_parquet(
         vault_history_source="trading-strategy-website",
         vault_permission_history_path=permission_path,
     )
+    dataset = load_partial_data(**load_options)
 
     # 3. Check price filtering, independent state and its cache fingerprint.
     filtered_df = captured["df"]
@@ -410,3 +412,25 @@ def test_load_partial_data_fast_vault_history_path_filters_parquet(
     assert pd.isna(states.loc[pd.Timestamp("2026-04-12"), "deposits_open"])
     assert states.loc[pd.Timestamp("2026-04-12"), "permission_observation_id"] == "unknown"
     assert "vault-permissions" in dataset.indicator_cache_fingerprint
+    assert states.loc[pd.Timestamp("2026-04-11"), "max_deposit"] == pytest.approx(0.0)
+    assert states.loc[pd.Timestamp("2026-04-11"), "leader_fraction"] == 0.05000280943338046
+    assert pd.isna(states.loc[pd.Timestamp("2026-04-11"), "capacity_observed_at"])
+    assert pd.isna(states.loc[pd.Timestamp("2026-04-12"), "max_deposit"])
+    assert pd.isna(states.loc[pd.Timestamp("2026-04-12"), "leader_fraction"])
+
+    # 4. Replacing either input invalidates indicators without changing economic prices.
+    history = pd.read_parquet(permission_path)
+    history.loc[0, "max_deposit"] = 123.0
+    history.loc[0, "leader_fraction"] = 0.1
+    history.to_parquet(permission_path, index=False)
+    repaired = load_partial_data(**load_options)
+    assert repaired.indicator_cache_fingerprint != dataset.indicator_cache_fingerprint
+    assert repaired.vault_state.iloc[0].max_deposit == pytest.approx(123.0)
+    pd.testing.assert_frame_equal(captured["df"], filtered_df)
+    prices = pd.read_parquet(parquet_path)
+    prices["leader_fraction"] = 0.1
+    prices["max_deposit"] = float("nan")
+    prices.to_parquet(parquet_path)
+    republished = load_partial_data(**load_options)
+    assert republished.indicator_cache_fingerprint != repaired.indicator_cache_fingerprint
+    pd.testing.assert_frame_equal(captured["df"][filtered_df.columns], filtered_df)

@@ -250,7 +250,7 @@ class BacktestPricing(PricingModel):
                 for col in ("deposits_open", "redemption_open"):
                     if col in group.columns:
                         entry[col] = _bool_series_to_sentinel(group[col])
-                for col in ("max_deposit", "max_redeem"):
+                for col in ("max_deposit", "max_redeem", "leader_fraction"):
                     if col in group.columns:
                         entry[col] = group[col].to_numpy(dtype=float)
                 for col in ("deposit_closed_reason", "redemption_closed_reason"):
@@ -602,7 +602,9 @@ class BacktestPricing(PricingModel):
         """Return the in-tolerance vault availability sample at or before ``timestamp``.
 
         HyperCore permission and capacity expire independently against their original,
-        unrounded clocks. An expired permission becomes unknown while its clock and
+        unrounded clocks when recorded. Missing capacity timing does not discard
+        an archived cap; its snapshot uses the original permission/price clock.
+        An expired permission becomes unknown while its clock and
         provenance remain available for diagnostics. Other protocols return ``None``
         when their state bucket exceeds ``data_delay_tolerance``. Missing data or a
         decision before the first state bucket also returns ``None``. Callers apply
@@ -636,7 +638,7 @@ class BacktestPricing(PricingModel):
             state["deposits_open"] = -1
             state["deposit_closed_reason"] = None
         capacity = state.get("capacity_observed_at")
-        if pd.isna(capacity) or not 0 <= query_ns - pd.Timestamp(capacity).value <= tolerance_ns:
+        if pd.notna(capacity) and not 0 <= query_ns - pd.Timestamp(capacity).value <= tolerance_ns:
             state["max_deposit"] = float("nan")
         return state
 
