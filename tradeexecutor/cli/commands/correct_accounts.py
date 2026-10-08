@@ -1,6 +1,7 @@
 """Correct accounting errors in the internal state.
 
 """
+import calendar
 import datetime
 import logging
 import sys
@@ -104,6 +105,88 @@ class InterruptedHypercoreDeposit:
     snapshot: HypercoreTransitBalanceSnapshot
     vault_equity: Decimal
     already_returned: bool
+
+
+def _reconcile_completed_hypercore_top_up(
+    state: State,
+    sync_model: LagoonVaultSyncModel,
+    web3: Web3,
+) -> TradeExecution | None:
+    """Book a uniquely confirmed top-up whose settlement was not saved.
+
+    The October incident left only phase-1 transactions on disk, although
+    HyperCore had credited the vault. Existing equity cannot distinguish this
+    from stranded cash: market losses can hide a successful deposit. Read the
+    Safe's ledger once and require an exact vault/amount match after this trade
+    started. Failed opening deposits retain the existing transit-recovery path.
+    Changes remain in memory until the command's final account check and save,
+    including in dry-run, which never persists this proposed settlement.
+    """
+    trades = [t for t in state.portfolio.get_all_trades() if has_unresolved_hypercore_accounting(t)]
+    if len(trades) != 1 or not isinstance(sync_model, LagoonVaultSyncModel):
+        return None
+    trade = trades[0]
+    position = state.portfolio.get_position_by_id(trade.position_id)
+    if not trade.pair.is_hyperliquid_vault() or not trade.is_buy() or position.get_quantity() <= 0:
+        return None
+    if trade.get_status() != TradeStatus.started or not trade.blockchain_transactions:
+        raise RuntimeError(f"HyperCore top-up #{trade.trade_id} lacks a started deposit with saved transactions")
+    marker = trade.other_data.get(HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY)
+    safe = sync_model.get_token_storage_address()
+    if not isinstance(marker, dict) or marker.get("safe_address", "").lower() != safe.lower():
+        raise RuntimeError(f"HyperCore top-up #{trade.trade_id} lacks a capital-at-risk marker for this Safe")
+    amount = trade.reserve_currency.convert_to_decimal(int(marker["amount_raw"]))
+    # Top-ups have no account-activation charge. Reject a different allocation
+    # rather than silently inventing fee or capped-fill accounting here.
+    allocated = trade.reserve_currency_allocated
+    if amount <= 0 or allocated is None or trade.reserve_currency.convert_to_raw_amount(allocated) != marker["amount_raw"]:
+        raise RuntimeError(f"HyperCore top-up #{trade.trade_id} reserve allocation disagrees with its saved deposit")
+    for tx in trade.blockchain_transactions:
+        if web3.eth.get_transaction_receipt(tx.tx_hash)["status"] != 1:
+            raise RuntimeError(f"HyperCore top-up #{trade.trade_id} has a reverted saved transaction")
+
+    # Naive UTC must not inherit the operator machine's local timezone when
+    # converted to the API's millisecond timestamps.
+    start_ms = calendar.timegm(trade.started_at.utctimetuple()) * 1000
+    end_ms = calendar.timegm(native_datetime_utc_now().utctimetuple()) * 1000
+    api_url = HYPERLIQUID_TESTNET_API_URL if web3.eth.chain_id == 998 else HYPERLIQUID_API_URL
+    session = create_hyperliquid_session(api_url=api_url)
+    try:
+        response = session.post_info({
+            "type": "userNonFundingLedgerUpdates", "user": safe,
+            "startTime": start_ms, "endTime": end_ms,
+        }, timeout=30)
+        response.raise_for_status()
+        updates = response.json()
+    finally:
+        session.close()
+    if not isinstance(updates, list) or len(updates) >= 2000:
+        raise RuntimeError(f"HyperCore top-up #{trade.trade_id} needs a complete ledger response before reconciliation")
+    matches = [
+        event for event in updates
+        if start_ms <= event["time"] <= end_ms
+        and event["delta"].get("type") == "vaultDeposit"
+        and event["delta"].get("vault", "").lower() == trade.pair.pool_address.lower()
+        and Decimal(event["delta"]["usdc"]) == amount
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(f"HyperCore top-up #{trade.trade_id}: expected one matching HyperCore deposit, found {len(matches)}; no funds moved")
+    event = matches[0]
+    if not event.get("hash"):
+        raise RuntimeError(f"HyperCore top-up #{trade.trade_id} deposit evidence has no ledger hash")
+    executed_at = datetime.datetime.fromtimestamp(event["time"] / 1000, datetime.UTC).replace(tzinfo=None)
+    state.mark_trade_success(
+        executed_at, trade, executed_price=float(allocated / amount),
+        executed_amount=amount, executed_reserve=allocated, lp_fees=0.0,
+        native_token_price=trade.native_token_price or 0.0, force=True,
+    )
+    trade.other_data["hypercore_reconciled_deposit_hash"] = event["hash"]
+    for key in (HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY, HYPERCORE_STRANDED_USDC_KEY,
+                HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY, "retain_reserve_allocation_on_failure"):
+        trade.other_data.pop(key, None)
+    trade.add_note(f"correct-accounts: confirmed HyperCore top-up {amount} USDC from ledger {event['hash']}; no transfer resent")
+    logger.info("Confirmed completed HyperCore top-up #%d: %s USDC, ledger %s", trade.trade_id, amount, event["hash"])
+    return trade
 
 
 def _inspect_interrupted_hypercore_deposit(
@@ -611,6 +694,12 @@ def correct_accounts(
     it saves the failed deposit, actual Safe reserve correction and consumed
     two-day slot together. It does not retry the rejected vault deposit.
 
+    Completed HyperCore top-ups use an exact Safe-ledger deposit match instead
+    of the failed-opening recovery. This books already deposited principal even
+    when market losses hide its equity increase, without resending or sweeping
+    funds. The settlement and consumed decision slot are saved together only
+    after final account checks; dry-run previews the same in-memory result.
+
     An old state file is automatically backed up.
     """
 
@@ -704,7 +793,18 @@ def correct_accounts(
     # The transit hook can broadcast Safe actions, so validate unfinished
     # trades before building a universe or entering that hook.
     preflight_state_for_account_correction(state, allow_at_risk_hypercore_deposit=bool(at_risk_trades))
-    incident = _inspect_interrupted_hypercore_deposit(state, sync_model, web3) if at_risk_trades else None
+    completed_top_up = _reconcile_completed_hypercore_top_up(state, sync_model, web3) if at_risk_trades else None
+    incident = _inspect_interrupted_hypercore_deposit(state, sync_model, web3) if at_risk_trades and completed_top_up is None else None
+    if completed_top_up and state.pending_data_availability_slot is not None:
+        # Validate before generic correction can transfer unknown tokens. The
+        # legacy is_unfinished() predicate covers only broadcasted trades, so
+        # it cannot certify that every sibling has reached a terminal result.
+        slot = state.pending_data_availability_slot
+        if completed_top_up.opened_at != slot or any(
+            t.get_status() not in (TradeStatus.success, TradeStatus.failed, TradeStatus.repaired, TradeStatus.expired)
+            for t in state.portfolio.get_all_trades() if t.opened_at == slot
+        ):
+            raise UncleanState("Completed top-up slot still has non-terminal sibling trades; run repair first")
     if incident:
         slot = state.pending_data_availability_slot
         if slot is None or incident.trade.opened_at != slot:
@@ -966,7 +1066,7 @@ def correct_accounts(
 
     if incident:
         logger.info("Skipping unrelated HyperCore vault synchronisation and small-position cleanup during deposit recovery")
-    if not incident and cleanup_hypercore_small_positions and asset_management_mode.is_vault():
+    if not incident and not completed_top_up and cleanup_hypercore_small_positions and asset_management_mode.is_vault():
         minimum_allocation = get_hypercore_minimum_allocation(mod.parameters)
         if minimum_allocation is None:
             logger.info(
@@ -1035,7 +1135,11 @@ def correct_accounts(
     # the first irreversible action after a coherence failure.
     preflight_state_for_account_correction(state, allow_at_risk_hypercore_deposit=incident is not None)
 
-    if incident and incident.already_returned:
+    if completed_top_up:
+        # Ledger evidence proves this principal is in the vault. Sweeping
+        # unrelated Safe-level cash is not part of completing its accounting.
+        logger.info("Completed top-up: skipping HyperCore transit transfers")
+    elif incident and incident.already_returned:
         logger.info("HyperCore transit funds are already back in the Safe; skipping transfer legs")
     else:
         if incident and skip_hypercore_transit_recovery:
@@ -1196,13 +1300,13 @@ def correct_accounts(
             len(closed_dust_trades),
         )
 
-    if not skip_save and not incident:
+    if not skip_save and not incident and not completed_top_up:
         logger.info("Saving state to %s", store.path)
         store.sync(state)
     else:
         logger.info("Saving the fixed state skipped")
 
-    if not incident:
+    if not incident and not completed_top_up:
         web3config.close()
 
     # Shortcut here
@@ -1234,6 +1338,26 @@ def correct_accounts(
         block_identifier=block_number,
         exchange_account_value_func=exchange_account_value_func,
     )
+
+    if completed_top_up:
+        if not clean:
+            raise UncleanState("Completed top-up account check failed; original state was not saved")
+        # Consume the partially executed decision only when every sibling has
+        # a terminal result. Re-running it could repeat already executed sells.
+        slot = state.pending_data_availability_slot
+        if slot is not None:
+            if completed_top_up.opened_at != slot or any(
+                t.get_status() not in (TradeStatus.success, TradeStatus.failed, TradeStatus.repaired, TradeStatus.expired)
+                for t in state.portfolio.get_all_trades() if t.opened_at == slot
+            ):
+                raise UncleanState("Cannot consume the completed top-up's slot while sibling trades remain unfinished")
+            state.last_cycle_at = slot
+            state.pending_data_availability_slot = None
+            state.cycle += 1
+            completed_top_up.add_note(f"Partially executed HyperCore decision slot {slot} consumed; do not replay sibling trades")
+        state.check_if_clean()
+        store.sync(state)
+        web3config.close()
 
     if incident:
         if not clean:
