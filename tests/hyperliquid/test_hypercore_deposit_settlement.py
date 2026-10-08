@@ -76,18 +76,18 @@ def _make_equity(value: Decimal) -> UserVaultEquity:
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_evm_escrow_clear")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_vault_deposit_confirmation")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
-def test_deposit_confirmation_timeout_keeps_capital_at_risk_in_perp_or_vault(
+def test_deposit_confirmation_timeout_accepts_submitted_amount_with_warning(
     mock_fetch_equity: MagicMock,
     mock_wait_confirmation: MagicMock,
     mock_wait_escrow: MagicMock,
     mock_block_timestamp: MagicMock,
     mock_report_failure: MagicMock,
 ) -> None:
-    """The complete #1486 sequence must fail closed after a silent final-leg no-op.
+    """A final no-op is deliberately accepted under the advisory-read policy.
 
     1. Simulate the real spot→perp movement from trade #1486 using stateful Info API balances.
     2. Return an EVM-success receipt for perp→vault while deliberately leaving vault equity unchanged.
-    3. Verify the router detects the no-op, halts success accounting and retains the allocation.
+    3. Verify submitted-amount accounting continues with a persistent warning.
 
     The mocks represent the two independent protocol layers that no testnet can
     reproduce: a CoreWriter receipt can be successful while the subsequent
@@ -171,17 +171,22 @@ def test_deposit_confirmation_timeout_keeps_capital_at_risk_in_perp_or_vault(
     ):
         routing._settle_deposit(routing.web3, state, trade, receipts, stop_on_execution_failure=False)
 
-    # 3. The successful phase-3 receipt cannot create a successful trade or a
-    # reserve refund when its asynchronous vault action failed to settle.
+    # 3. Unlike earlier bridge failures, missing final equity confirmation is
+    # an explicitly accepted accounting assumption. Preserve this former
+    # fail-closed regression to document the risk of that policy change.
     assert action_order == ["phase1_spot_arrival", "spot_to_perp", "perp_to_vault", "vault_confirmation"]
     assert spot_usdc == Decimal("0.217882")
     assert perp_usdc == Decimal("49.384068")
     assert vault_equity == Decimal("9326.891623")
-    assert trade.other_data["retain_reserve_allocation_on_failure"] is True
-    assert trade.other_data["hypercore_stranded_usdc"]["location"] == "hypercore_perp_or_vault"
+    assert "retain_reserve_allocation_on_failure" not in trade.other_data
+    assert "hypercore_deposit_capital_at_risk" not in trade.other_data
+    assert "hypercore_stranded_usdc" not in trade.other_data
     assert len(trade.blockchain_transactions) == 3
-    state.mark_trade_success.assert_not_called()
-    mock_report_failure.assert_called_once()
+    state.mark_trade_success.assert_called_once()
+    assert state.mark_trade_success.call_args.kwargs["executed_amount"] == requested_usdc
+    trade.add_note.assert_called_once()
+    assert "UNVERIFIED HyperCore deposit" in trade.add_note.call_args.args[0]
+    mock_report_failure.assert_not_called()
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")

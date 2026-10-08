@@ -11,6 +11,11 @@ Hypercore vault deposits/withdrawals use a multi-phase flow:
 3. Phase 2: ``transferUsdClass`` — move USDC from spot to perp and verify it
 4. Phase 3: ``vaultTransfer`` — deposit the verified perp USDC into the vault
 
+After the phase-3 EVM receipt succeeds, observe vault equity for at most
+60 seconds. Equity includes trading PnL, so an unavailable observation is
+accepted with a warning and the submitted principal is booked. A successful
+EVM receipt alone does not prove that HyperCore credited the vault.
+
 If the Safe is already activated, step 0 is skipped.
 
 **Withdrawal (sell)**:
@@ -75,7 +80,6 @@ from eth_defi.hotwallet import HotWallet, SignedTransactionWithNonce
 from eth_defi.provider.fallback import get_fallback_provider
 from eth_defi.revert_reason import fetch_transaction_revert_reason
 from eth_defi.hyperliquid.api import (
-    HypercoreDepositVerificationError,
     fetch_perp_clearinghouse_state,
     fetch_spot_clearinghouse_state,
     fetch_user_abstraction_mode,
@@ -2904,20 +2908,26 @@ class HypercoreVaultRouting(RoutingModel):
         spot->perp settled, perp->vault did not, and old generic failure
         accounting briefly treated the still-stranded USDC as Safe cash.
 
-        This method establishes a durable, verified state machine:
+        Earlier phases still require evidence that the requested funds moved;
+        the final equity observation has a different accounting purpose:
 
         1. Verifies the phase 1 receipt.
         2. Waits for EVM escrow to clear.
         3. Snapshots spot, perp and vault-equity baselines.
         4. Broadcasts only spot->perp and proves both Info API balance changes.
         5. Broadcasts perp->vault only after the phase-2 proof succeeds.
-        6. Queries vault equity and marks trade success only after the final
-           deposit confirmation.
+        6. Observes vault equity for at most 60 seconds, then books the amount
+           submitted to the vault even if the equity check could not confirm it.
 
-        Any uncertainty after phase 1 records stranded metadata and freezes the
-        trade with its allocation retained. This deliberately halts sequential
-        execution rather than allowing the next buy to spend capital whose
-        physical location is not yet known.
+        Uncertainty in the bridge or spot-to-perp leg retains the allocation
+        and stops execution. After the successful vault-transfer receipt, the
+        equity check is advisory: PnL on a large existing position can mask a
+        small successful top-up, as happened in Hyper-AI trade #1765. Waiting
+        for equity to recover would hold the rest of the basket hostage to
+        market prices. An unverified acceptance is logged and written to the
+        trade's notes, while ordinary valuation remains responsible for market
+        value. This policy deliberately also accepts the risk of a silent
+        HyperCore rejection after an EVM-success receipt.
 
         Activation (if needed) was already handled in :py:meth:`setup_trades`.
         """
@@ -2946,7 +2956,8 @@ class HypercoreVaultRouting(RoutingModel):
 
         if trade.other_data.get(HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY):
             # Receipt success only proves inclusion. Keep the allocation locked
-            # until every later HyperCore balance proof has succeeded.
+            # until bridge and internal-transfer proofs permit the final vault
+            # action. Its later equity check cannot undo the bridge movement.
             trade.other_data[HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY]["phase"] = "phase1_confirmed"
 
         vault_address = self._get_vault_address(trade)
@@ -3033,11 +3044,11 @@ class HypercoreVaultRouting(RoutingModel):
 
         logger.info("Escrow cleared. Building and broadcasting deposit settlement legs...")
 
-        # Snapshot existing vault equity before phase 2 so we can detect
-        # the increase after deposit.  If the snapshot fails, abort: without
-        # a baseline the verification step cannot distinguish pre-existing
-        # equity from a fresh deposit and would falsely mark a silent
-        # HyperCore rejection as success.
+        # The later advisory observation needs a baseline to measure change
+        # rather than treating the whole existing holding as the top-up.
+        # A failed read here precedes the internal transfer, so retain the
+        # existing stop-and-record policy with funds still in HyperCore spot.
+        # Only the final observation after a vault-transfer receipt is advisory.
         existing_equity: Decimal | None = None
         try:
             eq_before = fetch_user_vault_equity(
@@ -3166,23 +3177,33 @@ class HypercoreVaultRouting(RoutingModel):
             return
 
         ts = get_block_timestamp(web3, phase3_receipt["blockNumber"])
-        logger.info("Hypercore deposit perp-to-vault succeeded (tx %s)", phase3_tx.tx_hash)
+        logger.info("Hypercore deposit perp-to-vault EVM receipt succeeded (tx %s)", phase3_tx.tx_hash)
 
-        # --- Verify deposit on HyperCore via poll loop ---
-        # CoreWriter actions are NOT atomic: the EVM tx can succeed but the
-        # deposit may be silently rejected by HyperCore.  We poll the API
-        # until vault equity appears/increases, or fail the trade.
+        # --- Best-effort final equity observation ---
+        # Equity combines deposited capital with trading PnL. For #1765,
+        # movement on an existing ~11,145 USDC holding hid a 28.18 USDC
+        # deposit that HyperCore had already credited. A bounded observation
+        # is useful for diagnostics, but must not become a market-price gate
+        # for this trade or the remaining sequential basket.
         # If the deposit was capped, executed_reserve is the capped deposit
         # plus activation cost (the total USDC that left the Safe for this
         # trade).  Otherwise use the full planned_reserve.
-        if hasattr(trade, "other_data") and trade.other_data and "hypercore_capped_deposit_raw" in trade.other_data:
+        if "hypercore_capped_deposit_raw" in trade.other_data:
             executed_reserve = raw_to_usdc(deposit_raw + activation_cost)
         else:
             executed_reserve = planned_reserve
         actual_deposit_human = raw_to_usdc(deposit_raw)
+        # The fill is the submitted principal, after caps and activation cost,
+        # rather than total equity or its noisy change during confirmation.
+        # Keeping this outside the try also preserves exactly the same reserve
+        # accounting when verification is accepted with a warning.
+        executed_amount = actual_deposit_human
+        verification_started = time.monotonic()
+        observed_eq = None
+        verification_error = None
 
         try:
-            confirmed_eq = wait_for_vault_deposit_confirmation(
+            observed_eq = wait_for_vault_deposit_confirmation(
                 session,
                 user=self.safe_address,
                 vault_address=vault_address,
@@ -3191,39 +3212,34 @@ class HypercoreVaultRouting(RoutingModel):
                 timeout=60.0,
                 poll_interval=2.0,
             )
-            # Use the deposited amount (delta) as executed_amount, NOT the
-            # total vault equity. Position quantity tracks cumulative USDC
-            # deposited; the valuation model then computes per-unit price
-            # as equity/quantity so that value = equity.
-            #
-            # For the first HyperCore deposit, the activation fee is deducted
-            # from deposit_raw above. This means the first position absorbs
-            # the activation fee through a smaller executed_amount and thus a
-            # higher executed_price (executed_reserve / executed_amount),
-            # instead of treating the fee as a separate neutral transfer.
-            executed_amount = actual_deposit_human
+        except Exception as error:
+            # Catch only this read-only observation, including malformed API
+            # responses. Sending transactions and marking settlement success
+            # stay outside the catch: their failures must still propagate.
+            # KeyboardInterrupt/SystemExit are intentionally not swallowed.
+            verification_error = error
+
+        if observed_eq is not None:
             logger.info(
-                "Vault equity after deposit: %s (deposited %s USDC, activation cost %s USDC)",
-                confirmed_eq.equity,
+                "Vault equity observation after submitted deposit: %s (submitted %s USDC, activation cost %s USDC)",
+                observed_eq.equity,
                 actual_deposit_human,
                 raw_to_usdc(activation_cost),
             )
-        except HypercoreDepositVerificationError as e:
-            logger.error(
-                "Vault deposit verification failed for trade %s: %s",
-                trade.trade_id, e,
+        else:
+            warning = (
+                f"UNVERIFIED HyperCore deposit: trade #{trade.trade_id}, "
+                f"Safe {self.safe_address}, vault {vault_address}, tx {phase3_tx.tx_hash}; "
+                f"accepting submitted {actual_deposit_human} USDC without HyperCore equity confirmation "
+                f"after {time.monotonic() - verification_started:.2f}s. "
+                f"Baseline equity: {existing_equity}; "
+                f"verification details (last equity unknown unless reported): {verification_error or 'no equity result'}"
             )
-            # The vault action may still settle after the timeout. The #1486
-            # snapshot showed the money in perp, but the timeout alone cannot
-            # prove a late vault credit will not occur. Require a fresh
-            # perp/vault inspection before any manual recovery action.
-            self._mark_stranded_usdc(trade, deposit_raw, "hypercore_perp_or_vault")
-            self.diagnose_hyperliquid_vault_redemption_failure(
-                trade, vault_address, "deposit_verification",
-                str(e),
-            )
-            report_failure(ts, state, trade, stop_on_execution_failure)
-            return
+            logger.warning("%s", warning)
+            # Reuse the persisted note rather than introducing another trade
+            # status or an operator confirmation step. Do not resend funds:
+            # absence of an equity increase is not evidence of non-execution.
+            trade.add_note(warning)
 
         price = float(executed_reserve / executed_amount) if executed_amount else 1.0
 
@@ -3237,7 +3253,11 @@ class HypercoreVaultRouting(RoutingModel):
         trade.bridge_fee_usd = 0.0
 
         gas_cost = self._get_trade_gas_cost(trade)
-        hype_usd_price = self._fetch_hype_usd_price()
+        # Once the advisory read has failed, optional price telemetry must not
+        # replace it with another long Info API retry window. Gas units remain
+        # recorded; leaving the USD conversion unknown is preferable to making
+        # the warning-and-continue path wait again before success is persisted.
+        hype_usd_price = self._fetch_hype_usd_price() if observed_eq is not None else None
         trade.hypercore_cost_data_complete = (
             gas_cost is not None
             and hype_usd_price is not None
@@ -3256,7 +3276,8 @@ class HypercoreVaultRouting(RoutingModel):
             cost_of_gas=gas_cost,
         )
 
-        # The final vault-equity proof makes phase-1 uncertainty obsolete.
+        # The final vault-transfer receipt ends the phase-1 allocation policy,
+        # including when its equity observation was accepted with a warning.
         # Remove the retained-allocation marker before later account checks so
         # a normal, successfully settled deposit is never treated as transit
         # capital from the #1486 failure class.
@@ -3290,7 +3311,7 @@ class HypercoreVaultRouting(RoutingModel):
                 )
 
         logger.info(
-            "Hypercore vault deposit settled: %s USDC deposited, equity %s",
+            "Hypercore vault deposit settled: %s USDC spent, submitted vault principal %s USDC",
             executed_reserve,
             executed_amount,
         )

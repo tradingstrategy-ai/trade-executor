@@ -1,7 +1,8 @@
-"""Test Hypercore vault deposit verification (P1 fix).
+"""Test the strict HyperCore vault-equity observation helper.
 
-Tests that the deposit poll loop correctly detects when a CoreWriter
-deposit is silently rejected by HyperCore, preventing phantom positions.
+Tests the strict equity-observation helper's threshold and deadline. Live
+settlement now deliberately accepts its failures with a warning: equity
+includes trading PnL and cannot prove rejection of an existing-position top-up.
 """
 
 import datetime
@@ -82,13 +83,20 @@ def test_deposit_verification_succeeds_existing_position(mock_fetch, mock_sleep)
 
 
 @patch("eth_defi.hyperliquid.api.time.sleep")
-@patch("eth_defi.hyperliquid.api.time.time")
+@patch("eth_defi.hyperliquid.api.time.monotonic")
 @patch("eth_defi.hyperliquid.api.fetch_user_vault_equity")
 def test_deposit_verification_timeout_raises_error(mock_fetch, mock_time, mock_sleep):
     """Deposit never appears: raises HypercoreDepositVerificationError."""
     mock_fetch.return_value = None
-    # Simulate time passing: start, initial_sleep, then checks
-    mock_time.side_effect = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    # Only waiting consumes the fake budget; reading the timer must not
+    # accidentally bypass the polling branch this regression exercises.
+    mock_time.return_value = 0.0
+
+    def advance_clock(seconds: float) -> None:
+        """Allow repeated missing-equity polls before the observation expires."""
+        mock_time.return_value += seconds
+
+    mock_sleep.side_effect = advance_clock
 
     session = MagicMock()
     with pytest.raises(HypercoreDepositVerificationError) as exc_info:
@@ -131,13 +139,20 @@ def test_deposit_verification_tolerates_small_difference(mock_fetch, mock_sleep)
 
 
 @patch("eth_defi.hyperliquid.api.time.sleep")
-@patch("eth_defi.hyperliquid.api.time.time")
+@patch("eth_defi.hyperliquid.api.time.monotonic")
 @patch("eth_defi.hyperliquid.api.fetch_user_vault_equity")
 def test_deposit_verification_existing_no_increase_times_out(mock_fetch, mock_time, mock_sleep):
     """Existing position with no equity increase times out."""
-    # Equity stays at 100 (deposit silently rejected)
+    # Flat equity can mean rejection or PnL masking a top-up. The helper only
+    # reports that its threshold was not reached, without choosing a cause.
     mock_fetch.return_value = _make_equity(Decimal("100.0"))
-    mock_time.side_effect = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    mock_time.return_value = 0.0
+
+    def advance_clock(seconds: float) -> None:
+        """Evaluate the flat-equity reading while the observation is still live."""
+        mock_time.return_value += seconds
+
+    mock_sleep.side_effect = advance_clock
 
     session = MagicMock()
     with pytest.raises(HypercoreDepositVerificationError) as exc_info:
@@ -152,7 +167,8 @@ def test_deposit_verification_existing_no_increase_times_out(mock_fetch, mock_ti
         )
 
     err_msg = str(exc_info.value)
-    assert "silently rejected" in err_msg
+    assert "does not prove whether the deposit was accepted" in err_msg
+    assert mock_fetch.call_count == 2
 
 
 @patch("eth_defi.hyperliquid.api.time.sleep")
@@ -178,14 +194,20 @@ def test_deposit_verification_tolerates_relative_existing_position_drift(
 
 
 @patch("eth_defi.hyperliquid.api.time.sleep")
-@patch("eth_defi.hyperliquid.api.time.time")
+@patch("eth_defi.hyperliquid.api.time.monotonic")
 @patch("eth_defi.hyperliquid.api.fetch_user_vault_equity")
 def test_deposit_verification_rejects_large_existing_position_shortfall(
     mock_fetch, mock_time, mock_sleep,
 ):
     """Existing-vault deposit still fails when the shortfall exceeds relative tolerance."""
     mock_fetch.return_value = _make_equity(Decimal("590.0"))
-    mock_time.side_effect = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    mock_time.return_value = 0.0
+
+    def advance_clock(seconds: float) -> None:
+        """Let the shortfall reach the comparison instead of skipping a late read."""
+        mock_time.return_value += seconds
+
+    mock_sleep.side_effect = advance_clock
 
     session = MagicMock()
     with pytest.raises(HypercoreDepositVerificationError) as exc_info:
@@ -201,3 +223,4 @@ def test_deposit_verification_rejects_large_existing_position_shortfall(
 
     err_msg = str(exc_info.value)
     assert "could not be verified" in err_msg
+    assert mock_fetch.call_count == 2

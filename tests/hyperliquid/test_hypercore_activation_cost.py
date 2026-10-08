@@ -1117,6 +1117,7 @@ def test_deposit_capped_with_activation_cost():
     assert trade.other_data["hypercore_capped_deposit_raw"] == 95_000_000
 
 
+@pytest.mark.parametrize("confirmation_succeeds", [True, False])
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_evm_escrow_clear")
@@ -1124,7 +1125,7 @@ def test_deposit_capped_with_activation_cost():
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
 def test_settlement_uses_capped_deposit_and_refunds_reserve(
     mock_fetch_equity, mock_wait_confirm, mock_escrow, mock_block_ts,
-    mock_report_failure,
+    mock_report_failure, confirmation_succeeds: bool,
 ):
     """Settlement uses the capped deposit amount and refunds unused reserve.
 
@@ -1176,6 +1177,8 @@ def test_settlement_uses_capped_deposit_and_refunds_reserve(
         locked_until=datetime.datetime(2030, 1, 1),
     )
     mock_wait_confirm.return_value = confirmed_eq
+    # The same capped principal and refund must survive advisory failure.
+    mock_wait_confirm.side_effect = None if confirmation_succeeds else TimeoutError("equity confirmation deadline reached")
 
     mock_spot_to_perp = MagicMock(return_value=(phase2_tx, phase2_receipt))
     mock_perp_to_vault = MagicMock(return_value=(phase3_tx, phase3_receipt))
@@ -1211,6 +1214,7 @@ def test_settlement_uses_capped_deposit_and_refunds_reserve(
     mock_report_failure.assert_not_called()
 
 
+@pytest.mark.parametrize("confirmation_succeeds", [True, False])
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_evm_escrow_clear")
@@ -1218,7 +1222,7 @@ def test_settlement_uses_capped_deposit_and_refunds_reserve(
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
 def test_settlement_capped_deposit_with_activation_cost(
     mock_fetch_equity, mock_wait_confirm, mock_escrow, mock_block_ts,
-    mock_report_failure,
+    mock_report_failure, confirmation_succeeds: bool,
 ):
     """Capped deposit with activation: executed_reserve includes activation cost.
 
@@ -1271,6 +1275,8 @@ def test_settlement_capped_deposit_with_activation_cost(
         locked_until=datetime.datetime(2030, 1, 1),
     )
     mock_wait_confirm.return_value = confirmed_eq
+    # The same capped principal and refund must survive advisory failure.
+    mock_wait_confirm.side_effect = None if confirmation_succeeds else TimeoutError("equity confirmation deadline reached")
 
     mock_spot_to_perp = MagicMock(return_value=(phase2_tx, phase2_receipt))
     mock_perp_to_vault = MagicMock(return_value=(phase3_tx, phase3_receipt))
@@ -1308,6 +1314,7 @@ def test_settlement_capped_deposit_with_activation_cost(
     mock_report_failure.assert_not_called()
 
 
+@pytest.mark.parametrize("confirmation_succeeds", [True, False])
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.wait_for_evm_escrow_clear")
@@ -1315,7 +1322,7 @@ def test_settlement_capped_deposit_with_activation_cost(
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
 def test_settlement_capped_deposit_refunds_bridge_not_reserves(
     mock_fetch_equity, mock_wait_confirm, mock_escrow, mock_block_ts,
-    mock_report_failure,
+    mock_report_failure, confirmation_succeeds: bool,
 ):
     """Bridge-funded capped deposit refunds the bridge position, not reserves.
 
@@ -1364,6 +1371,8 @@ def test_settlement_capped_deposit_refunds_bridge_not_reserves(
         locked_until=datetime.datetime(2030, 1, 1),
     )
     mock_wait_confirm.return_value = confirmed_eq
+    # The same capped principal and refund must survive advisory failure.
+    mock_wait_confirm.side_effect = None if confirmation_succeeds else TimeoutError("equity confirmation deadline reached")
 
     # 2. Run settlement.
     mock_spot_to_perp = MagicMock(return_value=(phase2_tx, phase2_receipt))
