@@ -23,7 +23,7 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.curator import curator as curator_module
 from tradeexecutor.curator import vault_universe_creation as vault_universe_creation_module
 from tradeexecutor.curator.curator import EXCLUDED_PROTOCOLS, EXCLUDED_VAULTS, MUST_INCLUDE
-from tradingstrategy.vault_data_client import VaultDataset
+from tradingstrategy.vault_data_client import VaultDataClient, VaultDataset
 
 from tradeexecutor.curator.vault_universe_creation import (
     fetch_vaults,
@@ -182,6 +182,7 @@ def build_lighter_vault_universe(
     include_closed_vaults: bool = False,
     exclude_leveraged_beta: bool = False,
     printer: Callable[[str], None] = print,
+    vault_data_client: VaultDataClient | None = None,
 ) -> list[tuple[ChainId, str]]:
     """Build a filtered Lighter vault universe, cached by parameters.
 
@@ -199,6 +200,15 @@ def build_lighter_vault_universe(
         Output callback used for cache and selection diagnostics.
         Defaults to :py:func:`print` so notebook calls surface the
         fingerprint and vault count in cell output.
+
+    :param vault_data_client:
+        Client used to download the vault metadata.
+
+        Pass the strategy's client, see
+        :py:func:`tradeexecutor.strategy.trading_strategy_universe.create_vault_data_client`,
+        so the download lands in the strategy's persistent cache. The default
+        client caches under the home directory, which containers do not keep,
+        and then shares no download with the later vault universe load.
     """
     cache_key = _make_cache_key(min_tvl, top_n, min_age, sort_period, include_closed_vaults, exclude_leveraged_beta)
     fingerprint = _curator_fingerprint()
@@ -212,7 +222,7 @@ def build_lighter_vault_universe(
     if top_n is not None:
         chain_config[LIGHTER_CHAIN_ID] = {**chain_config[LIGHTER_CHAIN_ID], "top_n": top_n}
 
-    raw_vaults = fetch_vaults()
+    raw_vaults = fetch_vaults(vault_data_client)
 
     parsed = []
     for rv in raw_vaults:

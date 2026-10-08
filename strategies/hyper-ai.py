@@ -95,7 +95,7 @@ from tradeexecutor.strategy.redemption import (
 )
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.strategy.trading_strategy_universe import (
-    TradingStrategyUniverse, load_partial_data,
+    TradingStrategyUniverse, create_vault_data_client, load_partial_data,
     load_vault_universe_with_metadata)
 from tradeexecutor.strategy.tvl_size_risk import USDTVLSizeRiskModel
 from tradeexecutor.strategy.universe_model import UniverseOptions
@@ -286,6 +286,8 @@ def create_trading_universe(
     source_vaults = build_hyperliquid_vault_universe(
         min_tvl=parameters.min_tvl_usd,
         min_age=0.0,
+        # Share the metadata download with load_vault_universe_with_metadata() below
+        vault_data_client=create_vault_data_client(client),
     )
     vault_universe = load_vault_universe_with_metadata(
         client,

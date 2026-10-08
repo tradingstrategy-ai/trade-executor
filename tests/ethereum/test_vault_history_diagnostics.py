@@ -2,6 +2,7 @@
 
 import datetime
 import os
+from concurrent.futures import Future
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -15,6 +16,7 @@ from tradeexecutor.ethereum.vault.checks import (
     build_vault_history_diagnostics,
     log_stale_vault_candle_data,
     log_vault_history_diagnostics,
+    start_remote_vault_history_size_fetch,
 )
 from tradingstrategy.alternative_data.vault import convert_vault_prices_to_candles
 
@@ -592,3 +594,65 @@ def test_build_vault_history_diagnostics_names_a_rejected_licence_key() -> None:
     assert diagnostics.remote_content_length is None
     assert "403" in diagnostics.remote_head_error
     assert VAULT_PRO_API_KEY_ENV_VAR in diagnostics.remote_head_error
+
+
+def test_build_vault_history_diagnostics_uses_background_remote_size() -> None:
+    """Check diagnostics reuse a HEAD request started before vault history conversion, with a bounded wait.
+
+    The vault dataset API takes seconds to answer the HEAD request, so live
+    universe construction starts it early and overlaps it with candle
+    conversion. The diagnostics must report its result without a second
+    request, and must not stall a live cycle on a request that never finishes.
+
+    The sessions are mocked because the real vault dataset API needs a licence
+    key and network access, and because a failing second session proves the
+    diagnostics did not repeat the request. An unresolved future stands in for
+    a hung request.
+
+    1. Start the HEAD request in the background with a mocked session.
+    2. Build diagnostics with a client whose session fails if used again.
+    3. Verify the background request supplied the remote size.
+    4. Build diagnostics for a request that never finishes, with a short wait.
+    5. Verify the timeout is reported as a HEAD error.
+    """
+    raw_df = _build_vault_price_history_df(
+        "0xdead000000000000000000000000000000000000",
+        [datetime.datetime(2026, 4, 8, 12, 0, 0)],
+    )
+
+    # 1. Start the HEAD request in the background with a mocked session.
+    remote_size = start_remote_vault_history_size_fetch(
+        _make_vault_data_client(_MockSession(response=_MockResponse({"Content-Length": "12345"}))),
+    )
+
+    # 2. Build diagnostics with a client whose session fails if used again.
+    failing_client = _make_vault_data_client(_MockSession(error=requests.ConnectionError("second request")))
+    diagnostics = build_vault_history_diagnostics(
+        raw_vault_price_df=raw_df,
+        filtered_vault_price_df=raw_df,
+        resampled_vault_candle_df=None,
+        cache_path=None,
+        vault_data_client=failing_client,
+        now=datetime.datetime(2026, 4, 8, 13, 0, 0),
+        remote_vault_history_size=remote_size,
+    )
+
+    # 3. Verify the background request supplied the remote size.
+    assert diagnostics.remote_content_length == 12345
+    assert diagnostics.remote_head_error is None
+
+    # 4. Build diagnostics for a request that never finishes, with a short wait.
+    hung_diagnostics = build_vault_history_diagnostics(
+        raw_vault_price_df=raw_df,
+        filtered_vault_price_df=raw_df,
+        resampled_vault_candle_df=None,
+        cache_path=None,
+        vault_data_client=failing_client,
+        now=datetime.datetime(2026, 4, 8, 13, 0, 0),
+        remote_vault_history_size=Future(),
+        remote_vault_history_size_timeout=datetime.timedelta(milliseconds=10),
+    )
+
+    # 5. Verify the timeout is reported as a HEAD error.
+    assert hung_diagnostics.remote_content_length is None
+    assert "did not finish" in hung_diagnostics.remote_head_error

@@ -23,6 +23,8 @@ dashboards and strategy chart registries.
 
 import datetime
 import logging
+import threading
+from concurrent.futures import Future
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -40,6 +42,12 @@ logger = logging.getLogger(__name__)
 
 
 DEFAULT_VAULT_HISTORY_STALE_TOLERANCE = datetime.timedelta(hours=24)
+
+#: How long the freshness diagnostics wait for a HEAD request started in the background.
+#:
+#: The request's own timeout bounds each socket read, not its total duration,
+#: so a slow or trickling response could otherwise stall a live cycle.
+REMOTE_VAULT_HISTORY_SIZE_WAIT = datetime.timedelta(seconds=60)
 
 
 class StaleVaultData(Exception):
@@ -161,7 +169,13 @@ def _calculate_expected_daily_flooring_reason(
 def _fetch_remote_vault_history_size(
     vault_data_client: VaultDataClient | None,
 ) -> tuple[int | None, str | None]:
-    """Fetch the size of the remote vault dataset with a lightweight HEAD request.
+    """Fetch the size of the remote vault dataset with a HEAD request.
+
+    The request transfers no body, but the vault dataset API takes 6 - 7 seconds
+    to answer it. Live universe construction therefore starts it in the
+    background, see :py:func:`start_remote_vault_history_size_fetch`.
+
+    The ``timeout`` below bounds each socket read, not the total request time.
 
     :return:
         Size in bytes and an error description, either of which may be ``None``.
@@ -204,6 +218,57 @@ def _fetch_remote_vault_history_size(
     return content_length, None
 
 
+def start_remote_vault_history_size_fetch(
+    vault_data_client: VaultDataClient | None,
+) -> Future[tuple[int | None, str | None]]:
+    """Start the remote vault dataset HEAD request in a background thread.
+
+    The vault dataset API takes 6 - 7 seconds to answer the HEAD request, which
+    the freshness diagnostics make once per live universe construction. Starting
+    it before the vault history is converted to candles overlaps the network
+    wait with that CPU bound work, instead of adding it to every cycle.
+
+    The request uses the client's HTTP session. Avoid other requests on the
+    same session until the result has been collected, as requests sessions are
+    not documented to be thread safe.
+
+    The request runs in a daemon thread. If the caller fails before collecting
+    the result, e.g. on a vault history conversion error, the abandoned request
+    finishes in the background and never keeps the process alive at exit.
+
+    :return:
+        Future resolving to the same ``(size, error)`` tuple as the synchronous request.
+        Pass it to :py:func:`build_vault_history_diagnostics`, which bounds the wait.
+    """
+    future: Future[tuple[int | None, str | None]] = Future()
+
+    def fetch() -> None:
+        # Hand any unexpected failure to the waiting caller instead of losing it in the thread
+        try:
+            future.set_result(_fetch_remote_vault_history_size(vault_data_client))
+        except BaseException as exc:
+            future.set_exception(exc)
+
+    threading.Thread(target=fetch, name="vault-history-head", daemon=True).start()
+    return future
+
+
+def _collect_remote_vault_history_size(
+    remote_vault_history_size: Future[tuple[int | None, str | None]],
+    timeout: datetime.timedelta,
+) -> tuple[int | None, str | None]:
+    """Wait for a background HEAD request, reporting a failure or timeout as a diagnostic error.
+
+    Freshness diagnostics must never abort a live strategy that has already loaded its vault data.
+    """
+    try:
+        return remote_vault_history_size.result(timeout=timeout.total_seconds())
+    except TimeoutError:
+        return None, f"HEAD request did not finish within {timeout}"
+    except Exception as exc:
+        return None, f"{exc.__class__.__name__}: {exc}"
+
+
 def build_vault_history_diagnostics(
     raw_vault_price_df: pd.DataFrame,
     filtered_vault_price_df: pd.DataFrame,
@@ -212,6 +277,8 @@ def build_vault_history_diagnostics(
     vault_data_client: VaultDataClient | None = None,
     vault_history_filter_end_at: datetime.datetime | None = None,
     now: datetime.datetime | None = None,
+    remote_vault_history_size: Future[tuple[int | None, str | None]] | None = None,
+    remote_vault_history_size_timeout: datetime.timedelta = REMOTE_VAULT_HISTORY_SIZE_WAIT,
 ) -> VaultHistoryDiagnostics:
     """Build startup diagnostics for vault history freshness.
 
@@ -221,6 +288,14 @@ def build_vault_history_diagnostics(
         The vault price dataset sits behind a licence gated API, so the request
         needs the client's URL, session and key. Diagnostics degrade to
         local-only information when no client is given.
+
+    :param remote_vault_history_size:
+        HEAD request already started with :py:func:`start_remote_vault_history_size_fetch`.
+
+        When given, wait for its result instead of making a new request.
+
+    :param remote_vault_history_size_timeout:
+        How long to wait for ``remote_vault_history_size`` before reporting a HEAD error.
     """
     reference_now = now or native_datetime_utc_now()
 
@@ -230,7 +305,13 @@ def build_vault_history_diagnostics(
         local_cache_mtime = native_datetime_utc_fromtimestamp(cache_path.stat().st_mtime)
         local_cache_age = reference_now - local_cache_mtime
 
-    remote_content_length, remote_head_error = _fetch_remote_vault_history_size(vault_data_client)
+    if remote_vault_history_size is not None:
+        remote_content_length, remote_head_error = _collect_remote_vault_history_size(
+            remote_vault_history_size,
+            remote_vault_history_size_timeout,
+        )
+    else:
+        remote_content_length, remote_head_error = _fetch_remote_vault_history_size(vault_data_client)
 
     parquet_max_timestamp = _get_max_timestamp(raw_vault_price_df)
     filtered_max_timestamp = _get_max_timestamp(filtered_vault_price_df)
@@ -434,7 +515,10 @@ def log_stale_vault_candle_data(
         and "pair_id" in vault_pairs_df.columns
         and "address" in vault_pairs_df.columns
     ):
-        source_with_pairs = source_vault_price_df.copy()
+        # Copy only the identity and clock columns this check reads. Copying the
+        # whole 1.5M+ row history with all its state columns cost about a second.
+        source_columns = [c for c in ("chain", "address", "timestamp", "pair_id") if c in source_vault_price_df.columns]
+        source_with_pairs = source_vault_price_df[source_columns].copy()
         source_with_pairs["address"] = source_with_pairs["address"].astype(str).str.lower()
         source_with_pairs["timestamp"] = pd.to_datetime(source_with_pairs["timestamp"])
 
@@ -469,13 +553,12 @@ def log_stale_vault_candle_data(
                 source_with_pairs.groupby(pair_id_column)["timestamp"].max().to_dict()
             )
 
-    for pair_id in vault_candle_df["pair_id"].unique():
-        pair_candles = vault_candle_df[vault_candle_df["pair_id"] == pair_id]
-        if len(pair_candles) == 0:
-            continue
-
+    # One grouped pass instead of a boolean mask over the whole candle frame per vault,
+    # which scanned 190k candle rows 500+ times. Iterates vaults in first appearance
+    # order, as unique() did.
+    last_candle_by_pair_id = vault_candle_df.groupby("pair_id", sort=False)["timestamp"].max()
+    for pair_id, last_ts in last_candle_by_pair_id.items():
         checked_vault_count += 1
-        last_ts = pair_candles["timestamp"].max()
         last_source_ts = source_max_timestamp_by_pair_id.get(pair_id)
         reference_ts = last_source_ts if last_source_ts is not None else last_ts
         age = reference_now - reference_ts

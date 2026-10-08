@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Speed up live vault universe construction from about five minutes to under 30 seconds for Hyper AI: vectorised trading-strategy vault history conversion and grouped candle forward fill, the vault dataset HEAD request overlapped with conversion, a lighter stale candle check, and curator vault metadata downloads routed through the strategy cache. Synthetic vault exchange ids and non-hex vault pair ids are now identical in every process (2026-10-08).
+
 - Reconcile confirmed HyperCore top-ups in `correct-accounts` when older state omitted final settlement, preserving principal and consuming the partial decision without resending funds (2026-10-08).
 
 - Honour recorded HyperCore low-share deposit caps when legacy snapshots have no separate capacity clock, preserving NULL versus zero and clearing old policy inputs on newer coherent responses (2026-10-07).
