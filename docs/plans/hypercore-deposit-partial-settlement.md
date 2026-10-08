@@ -1,5 +1,13 @@
 # Fix plan: recovery-safe HyperCore vault deposits
 
+Historical plan for the 2026-07-30 incident. Its strict final equity gate has
+been superseded: live settlement now accepts the submitted principal after a
+successful vault-transfer EVM receipt, with a warning if a final equity
+observation cannot complete within 60 seconds. Equity growth cannot prove a
+top-up because it includes PnL on the entire holding. Earlier bridge and
+spot-to-perp proofs retain this plan's failure handling. See the current
+[HyperCore execution guide](../../.claude/docs/hypercore-vault.md#deposit-verification-tolerance-and-nav-drift).
+
 ## Goal
 
 Make a HyperCore vault buy safe when HyperCore accepts only part of a

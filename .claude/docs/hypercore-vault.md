@@ -50,8 +50,10 @@ Key properties that shape our execution:
   `vaultTransfer` has no "withdraw all" mode and silently no-ops if a
   redemption asks for more than current equity.
 - **Silent failures.** Bridge and transfer actions can have a successful EVM
-  receipt while HyperCore moves nothing. Every phase must therefore be
-  *verified* against HyperCore state, not trusted on receipt status.
+  receipt while HyperCore moves nothing. Bridge and internal-transfer phases
+  require HyperCore balance proofs. Final deposit equity verification is
+  advisory and bounded, as described below, because trading PnL can conceal
+  deposited capital.
 
 For the upstream protocol and guard-side background, cross-link to eth_defi:
 
@@ -216,7 +218,9 @@ Once the buy passes this check, execution proceeds through these phases:
 3. **Phase 2**: `transferUsdClass(spot→perp)` then prove both the spot
    decrease and the perp increase.
 4. **Phase 3**: `vaultTransfer(perp→vault)` after the perp arrival is visible;
-   `wait_for_vault_deposit_confirmation` verifies vault equity rose.
+   `wait_for_vault_deposit_confirmation` observes whether vault equity rose
+   for at most 60 seconds. Accept the submitted principal after a successful
+   vault-transfer receipt, with a warning if that observation fails.
 
 ```mermaid
 sequenceDiagram
@@ -241,21 +245,21 @@ sequenceDiagram
     R->>HC: wait_for_vault_deposit_confirmation (equity rose?)
     alt confirmed
         R->>EX: mark_trade_success (executed = net deposited)
-    else timeout / silent no-op
-        R->>EX: report_failure (diagnostics + stranded USDC note)
+    else timeout / unavailable observation
+        Note over R,EX: UNVERIFIED warning persisted in trade notes
+        R->>EX: mark_trade_success (executed = submitted principal)
     end
 ```
 
 ### Deposit verification tolerance and NAV drift
 
-`wait_for_vault_deposit_confirmation` confirms a deposit into an *existing*
-vault position by checking that our USD equity increased by roughly the
-deposited amount, accepting a shortfall of
+`wait_for_vault_deposit_confirmation` observes whether an existing holding's
+USD equity increased by roughly the submitted amount, allowing a shortfall of
 `max(tolerance, expected_deposit * relative_tolerance)` — see
 `DEFAULT_VAULT_DEPOSIT_RELATIVE_TOLERANCE` in `eth_defi.hyperliquid.api`.
 
 The subtle part: the "increase" is measured against a **baseline equity
-snapshotted minutes earlier** (before phase 1). Live perp-trading vaults (e.g.
+snapshotted before the final deposit legs**. Live perp-trading vaults (e.g.
 copy-trading leader vaults) mark-to-market every block, so the vault's
 *existing* holdings drift in value during the confirmation window. That drift
 is subtracted from the apparent deposit, so a fully-credited deposit can look
@@ -269,9 +273,41 @@ apparent increase against the stale baseline was only ~7.85 USDC, short of the
 old 1% (0.08 USDC) band, so verification timed out, raised
 `HypercoreDepositVerificationError`, and crashed the whole live loop even though
 the funds were safely in the vault. The relative tolerance was raised to **5%**
-to absorb normal perp-vault volatility over the window while still catching
-genuinely rejected deposits (which show ~0% increase, not a few-percent
-shortfall).
+to allow more PnL movement. It is **5% of the deposit**, not 5% of the existing
+holding, so it cannot reliably distinguish rejection from a successful top-up
+concealed by market losses. Market gains can also satisfy the threshold
+without a deposit. This threshold now only ends the observation early; it is
+neither a receipt nor a requirement for accepting a live deposit.
+
+**Production incident (Hyper-AI trade #1765, Buyback Spread Engine vault,
+2026-10-08).**
+A confirmed 28.175784 USDC deposit was hidden by market movement on an
+existing approximately 11,145 USDC holding. The 5% allowance on the small
+deposit could not absorb movement on the much larger holding. Live settlement
+now waits at most 60 seconds for the final equity observation, including the
+complete HTTP response. This budget starts after the phase-3 receipt succeeds;
+it does not bound the earlier bridge, internal transfer or receipt waits.
+A timeout, missing result or API error produces one
+`UNVERIFIED HyperCore deposit` warning and an equivalent persisted trade note;
+settlement continues with the submitted amount. It does not resend funds or
+freeze the position merely because equity did not grow. Earlier phase failures
+still stop execution.
+
+The bounded public read uses the executor image's existing `curl` executable:
+its total transfer timeout and a subprocess timeout bound DNS, connection and
+slow-body waits without leaving a background reader running. Ordinary Info
+readers retain their existing rate limiting, proxy rotation and outage retries.
+The advisory reader makes no hidden retry, and polls every two seconds. Each
+request has a maximum ten-second transfer budget, further shortened by the
+remaining observation time. A read error can end the observation early; there
+is no requirement to spend the full minute. On
+unverified acceptance it skips optional HYPE/USD price telemetry so another
+Info retry window cannot postpone accounting; gas units are still recorded.
+
+This policy also accepts the possibility of a silent final vault-transfer
+rejection. In that case the submitted fill can differ from actual holdings.
+Normal valuation and account checks retain their existing behaviour; the
+warning is an audit record of the accepted assumption, not proof of execution.
 
 ### Deposit failures, recovery and crashes
 
@@ -285,7 +321,8 @@ deposit action automatically.
 |---|---|---|
 | Escrow wait times out | `hypercore_evm_escrow_or_spot` | Inspect before acting. |
 | Spot→perp broadcast/poll is indeterminate | `hypercore_spot_or_perp` | Do not send a vault transfer. |
-| Perp→vault broadcast/confirmation is indeterminate | `hypercore_perp_or_vault` | Recheck both perp and vault equity before repeating anything. |
+| Perp→vault broadcast/receipt is indeterminate | `hypercore_perp_or_vault` | Recheck both perp and vault equity before repeating anything. |
+| Final equity check fails after a successful vault-transfer receipt | Successful trade with `UNVERIFIED` note | Submitted amount is accepted; no automatic repeat transfer. |
 | Receipt definitely reverts | Previous account (spot or perp) | The attempted action did not move funds. |
 
 `hypercore_deposit_capital_at_risk` is written during phase-1 preparation, and
@@ -295,7 +332,8 @@ a broadcast is ambiguous. Both automatic unconfirmed-trade repair and
 state-only `repair` refuse to release that allocation: inspect the Safe, EVM
 escrow, spot, perp and vault first with `check-hypercore-user.py`. A confirmed
 phase-1 revert clears the marker for ordinary failed-buy accounting; a fully
-confirmed vault deposit clears it as successful, non-transit capital.
+accepted vault deposit clears it as successful, non-transit capital, including
+an acceptance with the advisory warning.
 
 For recovery, USDC in perp must move **perp → spot** before `spotSend` can
 bridge it back to the HyperEVM Safe. Never run a recovery action from a timeout
@@ -815,6 +853,13 @@ When mocking, patch in the module namespace
 patching `time.time` with a fixed list is fragile because Python's logging
 also calls it — use a monotonic counter (`_monotonic_time()`), not a finite
 `side_effect` list.
+
+For final deposit observations, mock `time.monotonic` rather than `time.time`:
+the deadline must survive wall-clock adjustments. The real accounting and
+sequential-continuation regression is in `test_hypercore_advisory_deposit.py`.
+The dependency's `test_deposit_confirmation_deadline.py` separately exercises
+real stalled and trickling HTTP responses; mocked clocks do not prove a socket
+operation is bounded.
 
 **2. Live-loop settlement tests.** Drive the whole execution model
 (`setup_trades` → `settle_trade`) for a deposit/withdrawal cycle with the
