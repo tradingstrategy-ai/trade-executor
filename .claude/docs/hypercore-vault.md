@@ -405,6 +405,29 @@ The safe operator sequence is therefore:
 3. Run `correct-accounts` only after reviewing that plan. It reconciles the
    recovered Safe balance through the normal accounting path.
 
+For a completed **top-up** like trade #1765 on 8 October, `correct-accounts`
+instead reads the Safe's non-funding ledger and requires one exact deposit
+matching the target vault, saved raw amount and trade start window. This handles
+an older state that saved only phase-1 transactions although HyperCore already
+credited the vault. Positive or increasing total equity is not deposit evidence:
+the existing holding can lose value while new principal arrives.
+
+Preview with `correct-accounts --dry-run` first. The command records the
+confirmed principal through normal trade settlement, refreshes valuation,
+skips transit transfers and small-position redemptions for that invocation,
+and saves only after final account checks. It preserves existing principal and
+does not refund the allocated reserve. A partial decision slot is consumed
+once all its trades are terminal, so successful siblings are never replayed.
+No match or multiple matching deposits abort without saving the proposed fix.
+The existing zero-equity failed-opening recovery remains a separate path.
+
+The black-box CLI regression is
+`tests/mainnet_fork/test_hyper_ai_completed_top_up.py`. Its reduced fixture
+retains the six held positions and their accounting from the production snapshot;
+set `HYPER_AI_TOP_UP_STATE` to an untouched private snapshot to repeat the test
+against full history. HyperEVM receipts are read on an Anvil fork and only
+HyperCore responses are mocked. Never commit the full downloaded state.
+
 For the 28 September 2026 Fadorador incident, the pending two-day slot already
 contains three successful sibling trades and must never be replayed. Verify
 the known phase-3 revert on HyperEVM, the

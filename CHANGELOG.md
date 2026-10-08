@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Reconcile confirmed HyperCore top-ups in `correct-accounts` when older state omitted final settlement, preserving principal and consuming the partial decision without resending funds (2026-10-08).
+
 - Honour recorded HyperCore low-share deposit caps when legacy snapshots have no separate capacity clock, preserving NULL versus zero and clearing old policy inputs on newer coherent responses (2026-10-07).
 
 - Fix HyperCore historical deposit availability to retain original permission and capacity clocks, recovery provenance and explicit unknown responses. Support an explicitly supplied permission-history file without refreshing state from price or publication timestamps (2026-10-07).
