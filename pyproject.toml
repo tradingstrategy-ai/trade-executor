@@ -171,6 +171,9 @@ demeter = [
 ccxt = ["ccxt"]
 
 [tool.poetry.group.dev.dependencies]
+# Tests import eth-defi's vault scan manifest publisher, which imports its R2/S3 upload client.
+# Only the publisher side needs it, so keep it out of the release image's runtime dependencies.
+boto3 = "^1.41.0"
 flaky = "^3.7.0"
 ipdb = "^0.13.9"
 pytest = "^8.2"
