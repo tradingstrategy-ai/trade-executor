@@ -27,6 +27,9 @@ ft-pandas-ta = "^0.3.15"
 numpy = "<3"
 tqdm-loggable = "^0.4"
 
+# Vault metadata loading imports eth-defi's metrics classes from the data extra.
+# Refresh the lock after a submodule upgrade: extras can gain runtime dependencies
+# even when the executor's own requirements and the dependency version stay unchanged.
 web3-ethereum-defi = {path = "deps/web3-ethereum-defi", develop = true, extras = ["data", "test", "hypersync", "ccxt"]}
 
 # Lighter order signing and secure withdrawals. Pin this fork revision
