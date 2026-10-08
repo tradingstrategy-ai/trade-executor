@@ -3119,6 +3119,27 @@ def load_partial_data(
             vault_history_parquet_path = universe_options.vault_price_snapshot
             if vault_history_parquet_path is None:
                 vault_history_parquet_path = vault_data_client.download(VaultDataset.vault_prices)
+
+            live_trading = execution_context.mode.is_live_trading()
+            remote_vault_history_size = None
+            if live_trading:
+                # Function local import to avoid a circular import, as checks imports this module
+                from tradeexecutor.ethereum.vault.checks import (
+                    build_vault_history_diagnostics,
+                    log_stale_vault_candle_data,
+                    log_vault_history_diagnostics,
+                    start_remote_vault_history_size_fetch,
+                )
+
+                # The freshness diagnostics below need the remote file size. The
+                # vault dataset API takes 6 - 7 seconds to answer this HEAD request,
+                # so start it now and let it overlap the CPU bound history
+                # conversion, instead of adding the wait to every live cycle.
+                # Nothing else uses the client's HTTP session until the diagnostics
+                # collect the result, as the download above has already finished.
+                # The diagnostics bound the wait, and a failure before then leaves
+                # only a harmless daemon thread finishing the request.
+                remote_vault_history_size = start_remote_vault_history_size_fetch(vault_data_client)
             indicator_cache_fingerprint = _file_indicator_cache_fingerprint(vault_history_parquet_path, "vault-history")
             filtered_website_vault_prices_df = read_vault_price_history_parquet(
                 vault_history_parquet_path,
@@ -3140,22 +3161,16 @@ def load_partial_data(
 
             offset = time_bucket.to_frequency()
             freq_string = f"{offset.n}{offset.name.lower()}"
-            # Build the availability state frame BEFORE candle conversion, which mutates OHLC
-            # columns on the source frame in place (the state columns are untouched, but this
-            # keeps the dependency explicit).
+            # Build the availability state frame from the source frame as read. Candle
+            # conversion afterwards adds a pair_id column to it in place, which the
+            # stale vault data check below reads.
             vault_state_df = convert_vault_prices_to_vault_state(filtered_website_vault_prices_df, freq_string, permission_history_df)
             vault_candle_df, vault_liquidity_df = convert_vault_prices_to_candles(filtered_website_vault_prices_df, freq_string)
             candles_df = _concat_optional_dataframe(candles_df, vault_candle_df)
             if liquidity_df is not None:
                 liquidity_df = _concat_optional_dataframe(liquidity_df, vault_liquidity_df)
 
-            if execution_context.mode.is_live_trading():
-                from tradeexecutor.ethereum.vault.checks import (
-                    build_vault_history_diagnostics,
-                    log_stale_vault_candle_data,
-                    log_vault_history_diagnostics,
-                )
-
+            if live_trading:
                 vault_history_cache_path = vault_history_parquet_path
                 raw_website_vault_prices_df = read_vault_price_history_parquet(
                     vault_history_parquet_path,
@@ -3169,6 +3184,8 @@ def load_partial_data(
                     vault_data_client=vault_data_client,
                     vault_history_filter_end_at=vault_history_filter_end_at,
                     now=native_datetime_utc_now(),
+                    # Collect the HEAD request started before the conversion
+                    remote_vault_history_size=remote_vault_history_size,
                 )
                 log_vault_history_diagnostics(vault_history_diagnostics)
                 log_stale_vault_candle_data(
