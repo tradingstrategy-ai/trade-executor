@@ -27,6 +27,9 @@ jobs:
           test -f deps/web3-ethereum-defi/contracts/guard/lib/openzeppelin-contracts/contracts/access/Ownable.sol
 
       - name: Set up Python 3.14
+        # The id exposes the resolved patch version to the venv cache key below,
+        # so a runner Python upgrade cannot restore a venv with a dangling interpreter.
+        id: setup-python
         uses: actions/setup-python@v6
         with:
           python-version: '3.14'
