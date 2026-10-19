@@ -36,7 +36,7 @@ from tradeexecutor.strategy.generic.generic_router import GenericRouting
 from tradeexecutor.strategy.generic.generic_valuation import GenericValuation
 from tradeexecutor.strategy.pandas_trader.indicator import CreateIndicatorsProtocol
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInputIndicators
-from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.parameters import StrategyParameters, get_slippage_tolerance
 from tradeexecutor.strategy.sync_model import SyncModel, UnconfirmedTreasurySync
 from tradeexecutor.strategy.run_state import RunState
 from tradeexecutor.strategy.output import output_positions, DISCORD_BREAK_CHAR, output_trades
@@ -1187,7 +1187,7 @@ class StrategyRunner(abc.ABC):
                 universe,
                 state,
                 stop_loss_pricing_model,
-                default_slippage_tolerance=self.parameters.get("slippage_tolerance") if self.parameters else None,
+                default_slippage_tolerance=get_slippage_tolerance(self.parameters),
             )
 
             triggered_trades = check_position_triggers(position_manager, self.execution_context)

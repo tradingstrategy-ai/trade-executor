@@ -3,6 +3,7 @@
 import logging
 
 from eth_defi.confirmation import logger
+from tradeexecutor.strategy.parameters import get_slippage_tolerance
 from tradeexecutor.strategy.strategy_module import StrategyModuleInformation
 
 
@@ -31,11 +32,7 @@ def configure_max_slippage_tolerance(
         # Read max slippage from the strategy parameters if available
         parameters = mod.parameters
         if parameters:
-            # Accept both the legacy and the newer parameter name so
-            # existing strategies do not silently fall back to defaults.
-            slippage_tolerance = parameters.get("slippage_tolerance")
-            if slippage_tolerance is None:
-                slippage_tolerance = parameters.get("slippage_tolerance_pct")
+            slippage_tolerance = get_slippage_tolerance(parameters)
 
             if slippage_tolerance is not None:
                 assert type(slippage_tolerance) == float
