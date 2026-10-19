@@ -18,7 +18,7 @@ from tradeexecutor.state.types import USDollarPrice
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorResultMap, IndicatorSet, IndicatorKey, IndicatorNotFound, InvalidForMultipairStrategy
 from tradeexecutor.strategy.pandas_trader.position_manager import PositionManager, DEFAULT_SLIPPAGE_TOLERANCE
-from tradeexecutor.strategy.parameters import StrategyParameters
+from tradeexecutor.strategy.parameters import StrategyParameters, get_slippage_tolerance
 from tradeexecutor.strategy.pricing_model import PricingModel
 from tradeexecutor.strategy.routing import RoutingState, RoutingModel
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
@@ -974,7 +974,7 @@ class StrategyInput:
             self.strategy_universe,
             self.state,
             self.pricing_model,
-            default_slippage_tolerance=self.parameters.get("slippage_tolerance") or DEFAULT_SLIPPAGE_TOLERANCE,
+            default_slippage_tolerance=get_slippage_tolerance(self.parameters) or DEFAULT_SLIPPAGE_TOLERANCE,
             routing_model=self.routing_model,
             routing_state=self.routing_state,
             vault_record_file=vault_record_file,
