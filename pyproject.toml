@@ -119,8 +119,12 @@ tqdm = "^4.64.1"
 # TODO: Disabled. Install wiht pip until dependency version incompatibilies are solved.
 zelos-demeter = {version = "^0.7.4", optional = true}
 
-# https://github.com/arynyklas/telegram_bot_logger/pull/1
-brotli = "^1.1.0"
+# Compress saved state for the webhook API; 1.2.1 fixes CVE-2026-111497
+# in the decoder also used automatically by our HTTP clients.
+brotli = "^1.2.1"
+# yfinance (via quantstats) uses a separate, bundled native Brotli decoder.
+# Pin the security release explicitly until a patched stable release is available.
+curl-cffi = "0.17.0rc1"
 openapi-core = "0.19.1"
 sentry-sdk = {version = "^2.29.1", optional = true}
 telegram-bot-logger = {git = "https://github.com/tradingstrategy-ai/telegram_bot_logger.git", branch = "main", optional = true}

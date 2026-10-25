@@ -58,6 +58,8 @@ jobs:
         with:
           context: .
           target: tradeexecutor
+          # Refresh the base image so security updates reach release builds.
+          pull: true
           # platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}

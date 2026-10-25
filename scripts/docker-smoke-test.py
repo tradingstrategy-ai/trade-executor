@@ -1,6 +1,10 @@
 """Smoke test the Docker image runtime dependency set."""
 
 import importlib
+import re
+
+import brotli
+from curl_cffi import Curl
 
 
 RUNTIME_IMPORTS = [
@@ -41,8 +45,12 @@ def import_runtime_modules() -> None:
             missing.append((module_name, e))
 
     if missing:
-        lines = [f"{module_name}: {type(e).__name__}: {e}" for module_name, e in missing]
-        raise RuntimeError("Docker runtime import smoke test failed:\n" + "\n".join(lines))
+        lines = [
+            f"{module_name}: {type(e).__name__}: {e}" for module_name, e in missing
+        ]
+        raise RuntimeError(
+            "Docker runtime import smoke test failed:\n" + "\n".join(lines)
+        )
 
 
 def parse_vault_metadata() -> None:
@@ -85,8 +93,37 @@ def parse_vault_metadata() -> None:
     assert vaults[0].metadata.period_results is not None
 
 
+def check_brotli_decoders() -> None:
+    """Reject release images with either vulnerable Python Brotli decoder."""
+    python_version = tuple(int(part) for part in brotli.__version__.split("."))
+    assert python_version >= (1, 2, 1), (
+        f"Vulnerable Python Brotli: {brotli.__version__}"
+    )
+
+    # curl-cffi bundles its own decoder, unaffected by upgrading Python Brotli.
+    curl = Curl()
+    try:
+        native_version = curl.version().decode("ascii")
+    finally:
+        curl.close()
+
+    match = re.search(r"\bbrotli/(\d+)\.(\d+)\.(\d+)\b", native_version)
+    assert match is not None, (
+        f"Cannot verify curl-cffi Brotli decoder: {native_version}"
+    )
+    curl_brotli_version = tuple(int(part) for part in match.groups())
+    assert curl_brotli_version >= (1, 2, 1), (
+        f"Vulnerable curl-cffi Brotli: {native_version}"
+    )
+
+    # State persistence writes compressed JSON that the webhook API serves.
+    payload = b'{"state": "Docker smoke test"}'
+    assert brotli.decompress(brotli.compress(payload, quality=4)) == payload
+
+
 def main() -> None:
     """Run all Docker smoke checks."""
+    check_brotli_decoders()
     import_runtime_modules()
     parse_vault_metadata()
 
