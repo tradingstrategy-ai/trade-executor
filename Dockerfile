@@ -7,7 +7,7 @@
 # To test building the image: docker build .
 #
 #
-FROM python:3.14 AS runtime-base
+FROM python:3.14-trixie AS runtime-base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
@@ -17,7 +17,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # node.js and g++ libssl1.0.0 libssl-dev needed for enzyme below - remove when enzyme dep has been factored out
 # https://github.com/nodejs/node-gyp/issues/1195#issuecomment-371954099
 # https://stackoverflow.com/questions/40075271/gmpy2-not-installing-mpir-h-not-found
-RUN apt-get update && apt-get install -y --no-install-recommends curl jq chromium ca-certificates gnupg libmpfr-dev libmpc-dev libxml2-dev libxslt-dev iputils-ping \
+# Explicitly upgrade system Brotli as well as the separately bundled Python
+# decoders. Reject images missing Debian's CVE-2026-111497 security backport.
+RUN apt-get update && apt-get install -y --no-install-recommends curl jq chromium ca-certificates gnupg libmpfr-dev libmpc-dev libxml2-dev libxslt-dev iputils-ping libbrotli1 \
+  && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libbrotli1)" ge 1.1.0-2+deb13u1 \
   && rm -rf /var/lib/apt/lists/*
 
 # Install Python Poetry - pinned version
