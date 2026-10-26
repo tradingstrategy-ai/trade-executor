@@ -145,7 +145,9 @@ also carries the Safe module address, so it loads as an operator record.
 ### Strategy setup for sub-accounts
 
 A strategy declares the sub-strategies it runs as `SubAccount` values in
-`Parameters`: a stable id, a name and, later, a weight. No Lighter account
+`Parameters`: a stable id, a name and the account's target weight. See
+[strategy parameters](../../docs/strategy-parameters.md) for what belongs
+in `Parameters` and what does not. No Lighter account
 index appears in the strategy. The id is the key the strategy moves funds
 with; once a deployment has created the account for an id, keep the id
 unchanged in the strategy and in the state.

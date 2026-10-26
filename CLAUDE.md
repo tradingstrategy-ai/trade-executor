@@ -14,6 +14,7 @@ working on that area:
 | `.claude/docs/lagoon-treasury-settlement.md` | Lagoon treasury NAV posting, GuardV0 settlement limits, cooldowns and Safe-governance recovery |
 | `.claude/docs/hypercore-vault.md` | HyperCore native vault execution — properties, data structures, deposit/withdrawal phases, HyperEVM interactions, modules and diagrams |
 | `.claude/docs/phase-aware-alpha-model.md` | Phase-aware alpha model — parking window-gated vault deposits in a yield-bearing queue vault, park/promote event log, correctness invariants, backtest window modelling, diagnostics charts |
+| `docs/strategy-parameters.md` | **Read before writing or editing a strategy module**: the one module-level variable, which `Parameters` the engine reads, and what must not go in `Parameters` (deployment output, protocol constants, test knobs, environment variables) |
 
 ## Agent review workflows
 

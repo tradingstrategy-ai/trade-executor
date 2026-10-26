@@ -25,17 +25,10 @@ from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.pandas_trader.indicator import IndicatorSet
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
-from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
-from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
 
 trading_strategy_engine_version = "0.5"
-trading_strategy_type = StrategyType.managed_positions
-trading_strategy_cycle = CycleDuration.cycle_1d
-trade_routing = TradeRouting.default
-reserve_currency = ReserveCurrency.usdc
-
 
 class Parameters:
     """Parameters for the Lighter sub-account cash-management strategy."""
