@@ -1490,6 +1490,9 @@ def expand_timeline(
             remarks += "BAD"
 
         duration = position.get_duration()
+        # Closed bridge positions can contain only returns from a satellite
+        # chain, with no opposing trade from which to calculate realised PnL.
+        realised_profit_usd = position.get_realised_profit_usd() if position.is_closed() else None
 
         r = {
             # "timestamp": timestamp,
@@ -1502,7 +1505,7 @@ def expand_timeline(
             "Base asset": pair_info.base_token_symbol,
             "Quote asset": pair_info.quote_token_symbol,
             "Position max value": format_value(position.get_max_size()),
-            "PnL USD": format_value(position.get_realised_profit_usd()) if position.is_closed() else np.nan,
+            "PnL USD": format_value(realised_profit_usd) if realised_profit_usd is not None else np.nan,
             "PnL %": format_percent_2_decimals(position.get_realised_profit_percent()) if position.is_closed() else np.nan,
             "PnL % raw": position.get_realised_profit_percent() if position.is_closed() else 0,
             "Open mid price USD": format_price(position.get_opening_price()),
