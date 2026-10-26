@@ -486,14 +486,27 @@ def initialise_state(tutorial: Tutorial) -> None:
 
 
 def subscribe(tutorial: Tutorial) -> None:
-    """Subscribe to Lagoon; ``start`` settles it and deposits idle Safe cash to the master."""
+    """Subscribe to Lagoon; ``start`` settles it and deposits idle Safe cash to the master.
+
+    The deposit request is recorded in ``progress.json`` and checked onchain
+    first, so a resumed run settles and claims the earlier request instead of
+    subscribing twice.
+    """
     vault = get_vault(tutorial)
+    deployer = tutorial.deployer.address
     amount = tutorial.config.subscription_usdc
-    assert tutorial.usdc.fetch_balance_of(tutorial.deployer.address) >= amount, "Deployer lacks USDC"
-    broadcast_and_wait(tutorial, tutorial.usdc.approve(vault.address, amount))
-    broadcast_and_wait(tutorial, vault.request_deposit(tutorial.deployer.address, tutorial.usdc.convert_to_raw(amount)))
-    run_start(tutorial)
-    broadcast_and_wait(tutorial, vault.finalise_deposit(tutorial.deployer.address))
+    pending_raw = vault.vault_contract.functions.pendingDepositRequest(0, deployer).call()
+    if not tutorial.progress.get("subscription_requested") and pending_raw == 0:
+        assert tutorial.usdc.fetch_balance_of(deployer) >= amount, "Deployer lacks USDC"
+        broadcast_and_wait(tutorial, tutorial.usdc.approve(vault.address, amount))
+        broadcast_and_wait(tutorial, vault.request_deposit(deployer, tutorial.usdc.convert_to_raw(amount)))
+        pending_raw = tutorial.usdc.convert_to_raw(amount)
+    tutorial.progress["subscription_requested"] = True
+    tutorial.write_progress()
+    if pending_raw > 0:
+        run_start(tutorial)
+    if vault.vault_contract.functions.maxDeposit(deployer).call() > 0:
+        broadcast_and_wait(tutorial, vault.finalise_deposit(deployer))
     assert tutorial.usdc.fetch_balance_of(tutorial.progress["safe_address"]) == SAFE_BUFFER_USDC
 
 
@@ -510,7 +523,14 @@ async def submit_trader_transfer(tutorial: Tutorial, handover: dict[str, Any], t
     try:
         auth = create_lighter_auth_token_manager(client, api_key_index)
         tx_hash = tutorial.progress.get("trader_transfer_tx_hash")
+        if tx_hash is None and tutorial.progress.get("trader_transfer_submitting"):
+            raise RuntimeError(
+                f"A transfer from sub-account {from_account_index} may have been submitted without a recorded hash; "
+                f"check its transfer history before rerunning"
+            )
         if tx_hash is None:
+            tutorial.progress["trader_transfer_submitting"] = True
+            tutorial.write_progress()
             fee = await fetch_lighter_transfer_fee(client, auth, to_account_index=to_account_index)
             logger.info("Lighter quotes a %s USDC fee from sub-account %d to sub-account %d", fee, from_account_index, to_account_index)
             tx_hash = await request_lighter_transfer(client, to_account_index=to_account_index, amount=TRADER_TRANSFER_USDC, fee=fee, api_key_index=api_key_index)

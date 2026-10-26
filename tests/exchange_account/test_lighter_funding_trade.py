@@ -112,14 +112,18 @@ def test_lighter_funding_trade_moves_capital_between_accounts() -> None:
 
 
 def test_lighter_funding_trade_recovery(mocker: MockerFixture) -> None:
-    """Keep an unconfirmed funding blocking until history proves it, and release a definitive rejection.
+    """Keep an unconfirmed funding blocking until history proves it, and release transfers that moved no funds.
 
     A timeout does not prove that no funds moved, so the executor must stop
     until transfer history settles the transfer, and must apply it only once.
+    A funding the cycle never reached moved nothing and must not block restart,
+    but one whose submission started without a recorded hash may have moved
+    funds, so it must stay pending.
 
     1. Mark a rejected submission and check it no longer blocks the executor.
     2. Leave a timed-out transfer pending when reconciliation has no operator record.
     3. Reconcile it from transfer history with the operator record and check it is applied once.
+    4. Release a never-submitted funding and keep one with a lost submission response pending.
     """
     state, usdc, master, sub = _create_state()
 
@@ -143,5 +147,17 @@ def test_lighter_funding_trade_recovery(mocker: MockerFixture) -> None:
     assert reconcile_verified_lighter_transfers(state, web3=None, mutate=True, operator_record=operator) == [trade]
     assert reconcile_verified_lighter_transfers(state, web3=None, mutate=True, operator_record=operator) == []
     assert fetch.call_count == 1
+
     assert (master.get_quantity(), sub.get_quantity()) == (MASTER_USDC - 40, Decimal(40))
     state.check_if_clean()
+
+    # 4. Release a never-submitted funding and keep one with a lost submission response pending.
+    unsubmitted = create_exchange_account_funding(state=state, source_position=master, destination_position=sub, strategy_cycle_at=native_datetime_utc_now(), reserve_currency=usdc, amount=Decimal(5), notes="Never reached")
+    lost_response = create_exchange_account_funding(state=state, source_position=master, destination_position=sub, strategy_cycle_at=native_datetime_utc_now(), reserve_currency=usdc, amount=Decimal(5), notes="Response lost")
+    state.start_execution(native_datetime_utc_now(), lost_response)
+    lost_response.other_data["lighter_transfer_submitting"] = True
+    assert reconcile_verified_lighter_transfers(state, web3=None, mutate=True) == [unsubmitted]
+    assert unsubmitted.get_status() == TradeStatus.expired
+    assert not unsubmitted.is_internal_account_transfer_pending()
+    assert lost_response.is_internal_account_transfer_pending()
+    assert sub.get_quantity() == Decimal(40)

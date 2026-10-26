@@ -18,7 +18,7 @@ from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
 from tradeexecutor.exchange_account.lighter_operator import USDC_PRECISION, LighterOperatorRecord, fetch_lighter_funding_transfer
 from tradeexecutor.exchange_account.state import complete_exchange_account_funding, complete_exchange_account_transfer
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution
+from tradeexecutor.state.trade import TradeExecution, TradeStatus
 
 logger = logging.getLogger(__name__)
 
@@ -232,12 +232,27 @@ def reconcile_verified_lighter_transfers(
     ]
 
     verified_trades = []
+
+    # Sequential execution starts each trade just before submitting it, so a
+    # transfer still planned after a halted cycle was never submitted and
+    # holds no reserve. Expire it so it does not block the executor.
+    never_started = [trade for trade in [*pending_funding, *(trade for _, trade in pending_transfers)] if trade.get_status() == TradeStatus.planned]
+    for trade in never_started:
+        verified_trades.append(trade)
+        if mutate:
+            trade.mark_expired(native_datetime_utc_now())
+    pending_funding = [trade for trade in pending_funding if trade not in never_started]
+    pending_transfers = [(position, trade) for position, trade in pending_transfers if trade not in never_started]
+
     for trade in pending_funding:
         record = None
         tx_hash = trade.other_data.get("lighter_transfer_tx_hash")
         if "lighter_transfer_amount_usdc" not in trade.other_data:
             if not tx_hash:
-                logger.warning("Lighter funding trade #%d was not submitted; it needs manual review", trade.trade_id)
+                logger.warning(
+                    "Lighter funding trade #%d was submitted but its hash was not recorded; check the master's transfer history manually",
+                    trade.trade_id,
+                )
                 continue
             if operator_record is None:
                 logger.warning(

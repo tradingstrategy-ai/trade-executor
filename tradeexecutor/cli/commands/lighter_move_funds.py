@@ -334,20 +334,25 @@ def _mark_transfer_broadcasted(
 
 
 def _get_transfer_amount(trade: TradeExecution) -> Decimal:
-    """Read and validate a pending transfer amount from public metadata."""
+    """Read and validate a pending transfer amount.
+
+    A manual transfer records ``requested_amount``. A transfer planned by
+    ``decide_trades()`` carries the amount as its planned quantity.
+    """
     metadata = trade.other_data or {}
-    try:
-        return _parse_usdc_amount(str(metadata["requested_amount"]))
-    except KeyError as error:
-        raise LighterMoveFundsError("Unfinished Lighter transfer has no requested amount") from error
+    return _parse_usdc_amount(str(metadata.get("requested_amount", abs(trade.planned_quantity))))
 
 
 def _get_transfer_requested_at(trade: TradeExecution) -> int:
-    """Read the public request time used to locate the Lighter history row."""
+    """Read the public request time used to locate the Lighter history row.
+
+    Manual transfers record ``requested_at``; automatic ones record
+    ``lighter_withdrawal_requested_at``.
+    """
     metadata = trade.other_data or {}
     try:
-        return int(metadata["requested_at"])
-    except (KeyError, TypeError, ValueError) as error:
+        return int(metadata.get("requested_at", metadata.get("lighter_withdrawal_requested_at")))
+    except (TypeError, ValueError) as error:
         raise LighterMoveFundsError("Unfinished Lighter transfer has no request time") from error
 
 
@@ -419,8 +424,10 @@ def _resume_withdrawal(
         raise LighterMoveFundsError("Only a pending Lighter withdrawal can be resumed")
     account_index = int(position.pair.get_exchange_account_id())
     amount = _get_transfer_amount(trade)
+    # Manual transfers record safe_balance_before; automatic ones record the
+    # Safe balance before the claim, which is the same baseline.
     try:
-        safe_before = Decimal(str(metadata["safe_balance_before"]))
+        safe_before = Decimal(str(metadata.get("safe_balance_before", metadata["lighter_safe_balance_before_claim"])))
     except (KeyError, InvalidOperation, ValueError) as error:
         raise LighterMoveFundsError("Unfinished Lighter transfer has no Safe balance baseline") from error
     safe_now = usdc.fetch_balance_of(vault.safe_address)

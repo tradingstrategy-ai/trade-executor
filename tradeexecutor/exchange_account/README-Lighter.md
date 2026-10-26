@@ -169,12 +169,24 @@ sub-account transfer to appear in Lighter's transfer history.
 ### Recovery
 
 An interrupted transfer makes the state unclean, and `start` refuses to run.
-Inspect it with `check-accounts`. A master to sub-account transfer is
-reconciled from Lighter's transfer history by `correct-accounts` or
-`repair`; pass `LIGHTER_OPERATOR_RECORD_FILE` so they can read it. A timeout
-alone never releases a transfer, because it does not prove that no funds
-moved. A sub-account withdrawal is reconciled like a master withdrawal, from
-its Safe claim.
+Inspect it with `check-accounts`, then:
+
+- **Master to sub-account transfer:** `correct-accounts` or `repair`
+  reconciles it from Lighter's transfer history; pass
+  `LIGHTER_OPERATOR_RECORD_FILE` so they can read it. A timeout alone never
+  releases a transfer, because it does not prove that no funds moved. If the
+  submission started but no transfer hash was saved, check the master's
+  transfer history manually.
+- **Withdrawal waiting to become claimable:** run `lighter-move-funds
+  --lighter-account-index <index>` for the account. It resumes the saved
+  request, waits for it, claims it into the Safe and completes the
+  accounting, for automatic and manual withdrawals alike, without sending a
+  second request.
+- **Withdrawal whose Safe claim was broadcast:** `correct-accounts` or
+  `repair` reconciles it from the claim receipt.
+- **Transfer the halted cycle never started:** `correct-accounts` or
+  `repair` expires it. Execution starts each transfer just before submitting
+  it, so a still-planned transfer moved no funds.
 
 `lighter-move-funds --lighter-account-index <index>` withdraws from a
 sub-account with the key-free L1 path. Deposits always go to the master.

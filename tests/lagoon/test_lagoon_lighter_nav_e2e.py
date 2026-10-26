@@ -19,6 +19,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
 )
 from eth_defi.erc_4626.vault_protocol.lagoon.funding import fund_lagoon_vault
 from eth_defi.hotwallet import HotWallet
+from eth_defi.lighter.api import LighterAccounts
 from eth_defi.provider.anvil import AnvilLaunch
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.testing.anvil_fork_pool import AnvilForkPool
@@ -206,6 +207,12 @@ def test_lighter_lagoon_nav_uses_safe_balance_and_total_equity(
     reader = mocker.patch(
         "tradeexecutor.exchange_account.lighter.fetch_lighter_total_equity",
         return_value=equity,
+    )
+    # Mocked for the same reason: the forked Safe owns no live Lighter account,
+    # and the NAV refuses owned accounts outside the strategy universe.
+    mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts",
+        return_value=LighterAccounts(master_index=LIGHTER_ACCOUNT_INDEX, sub_account_indices=()),
     )
     session = object()
     account_value_func = create_lighter_account_value_func(session)

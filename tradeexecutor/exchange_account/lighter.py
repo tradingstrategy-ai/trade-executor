@@ -574,6 +574,16 @@ def create_lighter_vault_valuation_func(
     )
 
     def read_lighter_equity() -> Decimal:
+        # Fail closed: an owned account without a position would be left out
+        # of the posted NAV and understate the share price.
+        accounts = fetch_lighter_accounts(lighter_session, safe_address)
+        if accounts is not None:
+            unconfigured = set(accounts.get_all_indices()) - set(indices)
+            if unconfigured:
+                raise ValueError(
+                    f"Lighter accounts {sorted(unconfigured)} owned by {safe_address} are not in the strategy universe, "
+                    f"so the NAV would omit them"
+                )
         if len(indices) == 1:
             return account_value_func(pair)
         snapshot = fetch_lighter_accounts_equity(lighter_session, safe_address)

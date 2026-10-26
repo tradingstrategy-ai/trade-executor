@@ -21,6 +21,7 @@ from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
 )
 from eth_defi.erc_4626.vault_protocol.lagoon.funding import fund_lagoon_vault
 from eth_defi.hotwallet import HotWallet
+from eth_defi.lighter.api import LighterAccounts
 from eth_defi.lighter.valuation import LighterEquity
 from eth_defi.provider.anvil import AnvilLaunch
 from eth_defi.provider.multi_provider import create_multi_provider_web3
@@ -303,6 +304,11 @@ def test_cli_lagoon_lighter_test_trade_resumes_after_lighter_failure(
     mocker.patch(
         "tradeexecutor.exchange_account.lighter.fetch_lighter_total_equity",
         side_effect=fetch_equity,
+    )
+    # The NAV checks the Safe's Lighter account set, which the fake vault does not have on Lighter.
+    mocker.patch(
+        "tradeexecutor.exchange_account.lighter.fetch_lighter_accounts",
+        return_value=LighterAccounts(master_index=LIGHTER_ACCOUNT_INDEX, sub_account_indices=()),
     )
     environment = {
         "PATH": os.environ["PATH"],

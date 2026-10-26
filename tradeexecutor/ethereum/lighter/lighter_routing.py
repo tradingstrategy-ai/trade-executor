@@ -364,7 +364,9 @@ class LighterRouting(RoutingModel):
         and is reconciled from transfer history instead of being resubmitted.
         A definitive Lighter rejection moves no funds: the trade is marked
         failed with ``outcome == "transfer_rejected"`` so it does not block
-        the executor.
+        the executor. The submission intent is checkpointed first, so
+        reconciliation can tell a lost submission response from a transfer
+        that was never sent.
 
         :param state:
             Strategy state owning the trade.
@@ -380,6 +382,8 @@ class LighterRouting(RoutingModel):
         amount = trade.planned_quantity
         tx_hash = trade.other_data.get("lighter_transfer_tx_hash")
         if not tx_hash:
+            trade.other_data["lighter_transfer_submitting"] = True
+            self.checkpoint_state()
             try:
                 request = asyncio.run(request_lighter_funding_transfer(operator, destination, amount))
             except LighterTransferError:

@@ -1,7 +1,7 @@
 """Pure cash allocation policy for external exchange accounts."""
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 
 
 class ExchangeCashManagementError(ValueError):
@@ -131,6 +131,15 @@ class SubAccountBalance:
     free: Decimal
 
 
+#: Smallest USDC unit Lighter and Ethereum USDC can move.
+USDC_QUANTUM = Decimal("0.000001")
+
+
+def _round_down_to_usdc(amount: Decimal) -> Decimal:
+    """Round a weighted amount down to whole USDC units, so it can be submitted exactly."""
+    return amount.quantize(USDC_QUANTUM, rounding=ROUND_DOWN)
+
+
 def plan_sub_account_rebalance(
     *,
     master_free_usdc: Decimal,
@@ -198,7 +207,7 @@ def plan_sub_account_rebalance(
     for index, balance in sub_accounts.items():
         excess = balance.equity - targets[index]
         if excess > rebalance_band_usdc:
-            amount = min(excess, balance.free)
+            amount = _round_down_to_usdc(min(excess, balance.free))
             if amount >= minimum_transfer_usdc and amount > 0:
                 withdrawals.append((index, -amount))
     if withdrawals:
@@ -212,7 +221,7 @@ def plan_sub_account_rebalance(
         deficit = deficits[index]
         if deficit <= rebalance_band_usdc:
             continue
-        amount = min(deficit, budget - transfer_fee_usdc)
+        amount = _round_down_to_usdc(min(deficit, budget - transfer_fee_usdc))
         if amount < minimum_transfer_usdc or amount <= 0:
             continue
         fundings.append((index, amount))
