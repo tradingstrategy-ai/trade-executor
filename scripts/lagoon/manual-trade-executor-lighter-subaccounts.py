@@ -10,16 +10,23 @@ lifecycle with real money:
 4. Fund both sub-accounts from the master with ``start``
 5. Rebalance: withdraw sub-account 2 to the Safe with the key-free L1
    ``withdraw`` path, redeposit, and fund sub-account 1
-6. Request a full redemption, let ``start`` drain every account to the Safe,
+6. Act as the external trader: transfer USDC directly from sub-account 1 to
+   sub-account 2 with sub-account 1's own API key, and check that the next
+   ``start`` cycle revalues both positions with the NAV unchanged
+7. Request a full redemption, let ``start`` drain every account to the Safe,
    and settle it
-7. Redeem all shares with ``lagoon-redeem``
-8. Sweep the remaining Safe USDC and ETH back to the deployer and print a
+8. Redeem all shares with ``lagoon-redeem``
+9. Sweep the remaining Safe USDC and ETH back to the deployer and print a
    reconciliation table
 
-Every custody movement runs through the real ``start`` command and the
-``decide_trades()`` helper used in production, with
+Every executor custody movement runs through the real ``start`` command and
+the ``decide_trades()`` helper used in production, with
 ``strategies/test_only/lighter_multi_subaccount_strategy.py``. No orders are
-placed: the external trader's role is left empty.
+placed. The only trader action is one direct sub-account to sub-account
+transfer, which Lighter does not charge for between accounts of the same
+owner. The executor holds only the master key, so it cannot make such a
+transfer itself; it books the trader's transfer as a balance change on each
+sub-account position.
 
 Lighter's sequencer and withdrawal proofs cannot be simulated by Anvil, so
 this script supports Ethereum mainnet only. Each secure withdrawal takes
@@ -28,11 +35,12 @@ about 20 minutes. Use a funded test account and small values.
 Funding: the defaults are Lighter's minimums. The deployer needs 5 USDC plus
 mainnet gas ETH: deployment subscribes 1 USDC and moves it to the master
 account, and the tutorial subscribes 4 USDC more. Lighter's transfer, secure
-withdrawal and direct deposit minimums are 1 USDC, and each master to
-sub-account transfer costs a 1 USDC fee on top. The tutorial makes three such
-transfers of 1 USDC each, so 3 USDC goes to fees and 2 USDC returns to the
-deployer. The strategy keeps no Safe cash buffer, so all capital moves to
-Lighter.
+withdrawal and direct deposit minimums are 1 USDC. The strategy budgets a
+1 USDC fee on top of each master to sub-account transfer, the fee Lighter's
+public endpoint quotes, and sizes every movement so it still reaches the
+minimum. Lighter charged no fee for transfers between accounts of the same
+owner in the 2026-10-26 run, so all 5 USDC returned to the deployer. The
+strategy keeps no Safe cash buffer, so all capital moves to Lighter.
 
 Secrets: the master API key stays in the mode-0600 operator record written
 by deployment. The sub-account keys stay in their mode-0600 hand-over files.
@@ -76,6 +84,7 @@ Optional environment variables
     Maximum seconds to wait for a secure withdrawal and a sub-account transfer.
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -95,6 +104,8 @@ from eth_defi.lighter.api import fetch_lighter_accounts
 from eth_defi.lighter.api_key import LighterApiKey
 from eth_defi.lighter.constants import LIGHTER_ETHEREUM_DEPLOYMENT_CHAIN_ID, LIGHTER_USDC_ETHEREUM
 from eth_defi.lighter.pubkey import MIN_API_KEY_INDEX
+from eth_defi.lighter.sdk import create_lighter_signer_client
+from eth_defi.lighter.transfer import create_lighter_auth_token_manager, fetch_lighter_transfer_fee, request_lighter_transfer, wait_for_lighter_transfer
 from eth_defi.lighter.session import create_lighter_session
 from eth_defi.lighter.valuation import fetch_lighter_accounts_equity
 from eth_defi.provider.broken_provider import _latest_delayed_block_number_cache
@@ -118,8 +129,9 @@ logger = logging.getLogger(__name__)
 SUB_ACCOUNT_COUNT = 2
 #: USDC the strategy keeps in the Safe; none, so every movement uses the minimum capital.
 SAFE_BUFFER_USDC = Decimal(0)
-#: Fee budgeted on top of each master to sub-account transfer. Lighter's
-#: ``transferFeeInfo`` endpoint returned 1 USDC on 2026-10-26.
+#: Fee budgeted on top of each master to sub-account transfer. Lighter's public
+#: ``transferFeeInfo`` endpoint quoted 1 USDC on 2026-10-26, although the
+#: authenticated quote and the charged fee between same-owner accounts were 0.
 TRANSFER_FEE_USDC = Decimal(1)
 #: Smallest subscription for which every movement reaches Lighter's 1 USDC
 #: minimum. With the 1 USDC bootstrap, the master holds 5 USDC: two 1 USDC
@@ -130,6 +142,8 @@ MIN_SUBSCRIPTION_USDC = Decimal(4)
 FUNDING_WEIGHTS = "0.2,0.2"
 #: Rebalance step weights: drain sub-account 2 and move its capital to sub-account 1.
 REBALANCE_WEIGHTS = "1,0"
+#: USDC the trader moves from sub-account 1 to sub-account 2, Lighter's transfer minimum.
+TRADER_TRANSFER_USDC = Decimal(1)
 #: Lagoon cannot return sub-unit rounding residue; tolerate two raw units.
 MAX_UNEXPLAINED_RAW = 2
 
@@ -191,6 +205,10 @@ class Tutorial:
     def save_progress(self, phase: int) -> None:
         """Record a completed phase."""
         self.progress["phase"] = phase
+        self.write_progress()
+
+    def write_progress(self) -> None:
+        """Persist progress, including state saved within a phase."""
         self.progress_file.write_text(json.dumps(self.progress, indent=2))
 
     def is_done(self, phase: int) -> bool:
@@ -490,6 +508,71 @@ def subscribe(tutorial: Tutorial) -> None:
     assert tutorial.usdc.fetch_balance_of(tutorial.progress["safe_address"]) == SAFE_BUFFER_USDC
 
 
+async def submit_trader_transfer(tutorial: Tutorial, handover: dict[str, Any], to_account_index: int) -> None:
+    """Sign a sub-account to sub-account transfer with the sending sub-account's own key.
+
+    The transfer hash is saved to ``progress.json`` before waiting, because a
+    submission is not idempotent: a resumed run confirms the saved hash
+    instead of sending the transfer again.
+    """
+    from_account_index = int(handover["account_index"])
+    api_key_index = int(handover["api_key_index"])
+    client = create_lighter_signer_client(from_account_index, api_key_index, handover["private_key"])
+    try:
+        auth = create_lighter_auth_token_manager(client, api_key_index)
+        tx_hash = tutorial.progress.get("trader_transfer_tx_hash")
+        if tx_hash is None:
+            fee = await fetch_lighter_transfer_fee(client, auth, to_account_index=to_account_index)
+            logger.info("Lighter quotes a %s USDC fee from sub-account %d to sub-account %d", fee, from_account_index, to_account_index)
+            tx_hash = await request_lighter_transfer(client, to_account_index=to_account_index, amount=TRADER_TRANSFER_USDC, fee=fee, api_key_index=api_key_index)
+            tutorial.progress["trader_transfer_tx_hash"] = tx_hash
+            tutorial.write_progress()
+        record = await wait_for_lighter_transfer(client, auth, account_index=from_account_index, tx_hash=tx_hash, timeout=tutorial.config.transfer_timeout)
+    finally:
+        await client.close()
+    assert (record.from_account_index, record.to_account_index, record.amount) == (from_account_index, to_account_index, TRADER_TRANSFER_USDC), f"Unexpected transfer record {record}"
+    tutorial.progress["trader_transfer_fee_usdc"] = str(record.fee)
+    logger.info("Trader transfer %s executed: %s USDC, fee %s USDC", tx_hash, record.amount, record.fee)
+
+
+def transfer_between_sub_accounts(tutorial: Tutorial) -> None:
+    """Move USDC from sub-account 1 to sub-account 2 as the external trader would.
+
+    The executor did not make this transfer, so its positions are stale until
+    the next ``start`` cycle revalues each account from Lighter. The cycle runs
+    without target weights, so it only revalues and moves no capital.
+    """
+    _master_index, sub_1, sub_2 = tutorial.progress["account_indices"]
+    handover_file = tutorial.record_file.with_name(f"{tutorial.record_file.stem}.nautilus.{sub_1}.json")
+    # The key is read into memory only and never logged.
+    handover = json.loads(handover_file.read_text())
+    assert int(handover["account_index"]) == sub_1, f"{handover_file} is not sub-account {sub_1}'s hand-over file"
+
+    # Save the balances before submitting, so a resumed run compares against them.
+    if "trader_transfer_before" not in tutorial.progress:
+        tutorial.progress["trader_transfer_before"] = {str(index): str(value) for index, value in fetch_lighter_balances(tutorial).items()}
+        tutorial.write_progress()
+    before = {int(index): Decimal(value) for index, value in tutorial.progress["trader_transfer_before"].items()}
+    total_before = sum(before.values(), Decimal(0))
+    asyncio.run(submit_trader_transfer(tutorial, handover, sub_2))
+
+    run_start(tutorial)
+    after = fetch_lighter_balances(tutorial)
+    fee = Decimal(tutorial.progress["trader_transfer_fee_usdc"])
+    assert after[sub_2] == before[sub_2] + TRADER_TRANSFER_USDC, f"Sub-account {sub_2} did not receive the transfer"
+    assert sum(after.values(), Decimal(0)) == total_before - fee, "The transfer changed total Lighter equity by more than its fee"
+
+    # The executor must now track each account at its Lighter equity.
+    state = State.read_json_file(tutorial.state_file)
+    tracked = {
+        int(position.pair.get_exchange_account_id()): Decimal(str(position.get_quantity()))
+        for position in state.portfolio.open_positions.values()
+        if position.is_exchange_account()
+    }
+    for index, value in after.items():
+        assert tracked[index] == value, f"Executor tracks account {index} at {tracked[index]}, Lighter reports {value}"
+
+
 def redeem_everything(tutorial: Tutorial) -> None:
     """Drain every account for a full redemption, then redeem with ``lagoon-redeem``."""
     vault = get_vault(tutorial)
@@ -518,6 +601,7 @@ def refund(tutorial: Tutorial) -> None:
 
     state = State.read_json_file(tutorial.state_file)
     fees = sum((Decimal(trade.other_data.get("funding_fee_usdc", "0")) for trade in state.portfolio.get_all_trades() if TradeFlag.internal_account_transfer in (trade.flags or set())), Decimal(0))
+    fees += Decimal(tutorial.progress.get("trader_transfer_fee_usdc", "0"))
     lighter_dust = sum(fetch_lighter_balances(tutorial).values(), Decimal(0))
     start_usdc = Decimal(tutorial.progress["start_usdc"])
     end_usdc = tutorial.usdc.fetch_balance_of(tutorial.deployer.address)
@@ -548,8 +632,9 @@ def main() -> None:
         (5, "Withdraw sub-account 2 to the Safe with the key-free L1 path", lambda t: run_start(t, LIGHTER_SUB_ACCOUNT_WEIGHTS=REBALANCE_WEIGHTS)),
         (6, "Redeposit the withdrawal to the master", lambda t: run_start(t, LIGHTER_SUB_ACCOUNT_WEIGHTS=REBALANCE_WEIGHTS)),
         (7, "Fund sub-account 1 from the master", lambda t: run_start(t, LIGHTER_SUB_ACCOUNT_WEIGHTS=REBALANCE_WEIGHTS)),
-        (8, "Drain every account and redeem all shares", redeem_everything),
-        (9, "Sweep the Safe and reconcile the deployer's balances", refund),
+        (8, "Transfer from sub-account 1 to sub-account 2 as the external trader", transfer_between_sub_accounts),
+        (9, "Drain every account and redeem all shares", redeem_everything),
+        (10, "Sweep the Safe and reconcile the deployer's balances", refund),
     ]
     for number, title, phase in phases:
         if tutorial.is_done(number):
