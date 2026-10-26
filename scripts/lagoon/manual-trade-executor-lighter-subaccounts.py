@@ -8,8 +8,8 @@ lifecycle with real money:
 2. Initialise executor state with one position per Lighter account
 3. Subscribe to the vault and let ``start`` deposit the idle Safe cash to the master
 4. Fund both sub-accounts from the master with ``start``
-5. Rebalance: withdraw a sub-account to the Safe with the key-free L1
-   ``withdraw`` path, redeposit, and fund the other sub-account
+5. Rebalance: withdraw sub-account 2 to the Safe with the key-free L1
+   ``withdraw`` path, redeposit, and fund sub-account 1
 6. Request a full redemption, let ``start`` drain every account to the Safe,
    and settle it
 7. Redeem all shares with ``lagoon-redeem``
@@ -24,6 +24,15 @@ placed: the external trader's role is left empty.
 Lighter's sequencer and withdrawal proofs cannot be simulated by Anvil, so
 this script supports Ethereum mainnet only. Each secure withdrawal takes
 about 20 minutes. Use a funded test account and small values.
+
+Funding: the defaults are Lighter's minimums. The deployer needs 5 USDC plus
+mainnet gas ETH: deployment subscribes 1 USDC and moves it to the master
+account, and the tutorial subscribes 4 USDC more. Lighter's transfer, secure
+withdrawal and direct deposit minimums are 1 USDC, and each master to
+sub-account transfer costs a 1 USDC fee on top. The tutorial makes three such
+transfers of 1 USDC each, so 3 USDC goes to fees and 2 USDC returns to the
+deployer. The strategy keeps no Safe cash buffer, so all capital moves to
+Lighter.
 
 Secrets: the master API key stays in the mode-0600 operator record written
 by deployment. The sub-account keys stay in their mode-0600 hand-over files.
@@ -50,7 +59,7 @@ Optional environment variables
 ------------------------------
 
 ``LIGHTER_SUBSCRIPTION_USDC``
-    USDC subscribed after deployment. Defaults to 40.
+    USDC subscribed after deployment. Defaults to and must be at least 4.
 
 ``LIGHTER_API_KEY_INDEX``
     API-key slot for the master and the sub-account keys. Defaults to 4.
@@ -72,6 +81,7 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from eth_defi.erc_4626.vault_protocol.lagoon.deployment import LIGHTER_BOOTSTRAP_SUBSCRIPTION
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lighter.api import fetch_lighter_accounts
@@ -98,8 +108,20 @@ logger = logging.getLogger(__name__)
 
 #: Number of sub-accounts the tutorial creates.
 SUB_ACCOUNT_COUNT = 2
-#: USDC the strategy keeps in the Safe until the final redemption.
-SAFE_BUFFER_USDC = Decimal(20)
+#: USDC the strategy keeps in the Safe; none, so every movement uses the minimum capital.
+SAFE_BUFFER_USDC = Decimal(0)
+#: Fee budgeted on top of each master to sub-account transfer. Lighter's
+#: ``transferFeeInfo`` endpoint returned 1 USDC on 2026-10-26.
+TRANSFER_FEE_USDC = Decimal(1)
+#: Smallest subscription for which every movement reaches Lighter's 1 USDC
+#: minimum. With the 1 USDC bootstrap, the master holds 5 USDC: two 1 USDC
+#: fundings and their fees leave 1 USDC, the redeposited 1 USDC withdrawal
+#: makes 2 USDC, and the last funding moves 1 USDC plus its 1 USDC fee.
+MIN_SUBSCRIPTION_USDC = Decimal(4)
+#: Funding step weights: a fifth of the capital, 1 USDC at the minimum, per sub-account.
+FUNDING_WEIGHTS = "0.2,0.2"
+#: Rebalance step weights: drain sub-account 2 and move its capital to sub-account 1.
+REBALANCE_WEIGHTS = "1,0"
 #: Lagoon cannot return sub-unit rounding residue; tolerate two raw units.
 MAX_UNEXPLAINED_RAW = 2
 
@@ -200,7 +222,7 @@ def load_config() -> TutorialConfig:
         rpc_url=require_env("JSON_RPC_ETHEREUM"),
         deployer_private_key=require_env("LIGHTER_TEST_PRIVATE_KEY", "PRIVATE_KEY"),
         run_dir=run_dir,
-        subscription_usdc=Decimal(os.environ.get("LIGHTER_SUBSCRIPTION_USDC", "40")),
+        subscription_usdc=Decimal(os.environ.get("LIGHTER_SUBSCRIPTION_USDC", str(MIN_SUBSCRIPTION_USDC))),
         api_key_index=int(os.environ.get("LIGHTER_API_KEY_INDEX", str(MIN_API_KEY_INDEX))),
         withdraw_timeout=int(os.environ.get("LIGHTER_WITHDRAW_TIMEOUT", "3600")),
         transfer_timeout=int(os.environ.get("LIGHTER_TRANSFER_TIMEOUT", "300")),
@@ -216,9 +238,15 @@ def prepare_tutorial(config: TutorialConfig) -> Tutorial:
     config.run_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     progress_file = config.run_dir / "progress.json"
     progress = json.loads(progress_file.read_text()) if progress_file.exists() else {}
+    if config.subscription_usdc < MIN_SUBSCRIPTION_USDC:
+        raise RuntimeError(f"LIGHTER_SUBSCRIPTION_USDC must be at least {MIN_SUBSCRIPTION_USDC} for every movement to reach Lighter's 1 USDC minimum")
     if not progress:
+        start_usdc = usdc.fetch_balance_of(deployer.address)
+        required_usdc = LIGHTER_BOOTSTRAP_SUBSCRIPTION + config.subscription_usdc
+        if start_usdc < required_usdc:
+            raise RuntimeError(f"Deployer {deployer.address} has {start_usdc} USDC but the tutorial needs {required_usdc} USDC")
         progress = {
-            "start_usdc": str(usdc.fetch_balance_of(deployer.address)),
+            "start_usdc": str(start_usdc),
             "start_eth_wei": web3.eth.get_balance(deployer.address),
         }
     logger.info("Deployer: %s", deployer.address)
@@ -285,6 +313,7 @@ def get_cli_environment(tutorial: Tutorial, **overrides: str) -> dict[str, str]:
         "LIGHTER_TRANSFER_TIMEOUT": str(tutorial.config.transfer_timeout),
         "LIGHTER_SUB_ACCOUNT_WEIGHTS": "",
         "LIGHTER_SAFE_CASH_BUFFER_USD": str(SAFE_BUFFER_USDC),
+        "LIGHTER_TRANSFER_FEE_USD": str(TRANSFER_FEE_USDC),
         "RUN_SINGLE_CYCLE": "true",
         "UNIT_TESTING": "true",
         "CACHE_PATH": str(tutorial.config.run_dir / "cache"),
@@ -400,9 +429,9 @@ def redeem_everything(tutorial: Tutorial) -> None:
     vault = get_vault(tutorial)
     shares = vault.share_token.fetch_raw_balance_of(tutorial.deployer.address)
     broadcast_and_wait(tutorial, vault.request_redeem(tutorial.deployer.address, shares))
-    # The redemption needs every account's capital, so the buffer is released too.
-    run_start(tutorial, LIGHTER_SAFE_CASH_BUFFER_USD="0")
-    run_start(tutorial, LIGHTER_SAFE_CASH_BUFFER_USD="0")
+    # Draining every account and settling the redemption can span two cycles.
+    run_start(tutorial)
+    run_start(tutorial)
     run_cli(["lagoon-redeem"], get_cli_environment(tutorial))
     assert vault.share_token.fetch_raw_balance_of(tutorial.deployer.address) == 0
 
@@ -449,10 +478,10 @@ def main() -> None:
         (1, "Deploy the vault with two Lighter sub-accounts", deploy),
         (2, "Initialise executor state with one position per account", initialise_state),
         (3, "Subscribe and deposit idle Safe cash to the master", subscribe),
-        (4, "Fund both sub-accounts from the master", lambda t: run_start(t, LIGHTER_SUB_ACCOUNT_WEIGHTS="0.5,0.5")),
-        (5, "Withdraw sub-account 2 to the Safe with the key-free L1 path", lambda t: run_start(t, LIGHTER_SUB_ACCOUNT_WEIGHTS="0.75,0.25")),
-        (6, "Redeposit the withdrawal to the master", lambda t: run_start(t, LIGHTER_SUB_ACCOUNT_WEIGHTS="0.75,0.25")),
-        (7, "Fund sub-account 1 from the master", lambda t: run_start(t, LIGHTER_SUB_ACCOUNT_WEIGHTS="0.75,0.25")),
+        (4, "Fund both sub-accounts from the master", lambda t: run_start(t, LIGHTER_SUB_ACCOUNT_WEIGHTS=FUNDING_WEIGHTS)),
+        (5, "Withdraw sub-account 2 to the Safe with the key-free L1 path", lambda t: run_start(t, LIGHTER_SUB_ACCOUNT_WEIGHTS=REBALANCE_WEIGHTS)),
+        (6, "Redeposit the withdrawal to the master", lambda t: run_start(t, LIGHTER_SUB_ACCOUNT_WEIGHTS=REBALANCE_WEIGHTS)),
+        (7, "Fund sub-account 1 from the master", lambda t: run_start(t, LIGHTER_SUB_ACCOUNT_WEIGHTS=REBALANCE_WEIGHTS)),
         (8, "Drain every account and redeem all shares", redeem_everything),
         (9, "Sweep the Safe and reconcile the deployer's balances", refund),
     ]

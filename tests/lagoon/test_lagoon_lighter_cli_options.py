@@ -39,7 +39,7 @@ def test_lighter_initial_capital_preflight_rejects_insufficient_usdc() -> None:
 
     # 2. Run the pre-flight capital validation.
     # 3. Verify the error states the complete required subscription.
-    with pytest.raises(ValueError, match="at least 20 USDC"):
+    with pytest.raises(ValueError, match="at least 1 USDC"):
         _validate_lighter_initial_capital(token, hot_wallet, web3)
 
 
@@ -99,14 +99,14 @@ def test_lighter_preflight_report_shows_complete_initial_allocation(caplog: LogC
             lighter_deployment_address="0x0000000000000000000000000000000000000002",
             lighter_usdc_address="0x0000000000000000000000000000000000000003",
             lighter_activation_amount=Decimal(1),
-            lighter_expected_safe_reserve=Decimal(19),
-            lighter_deployer_usdc_balance=Decimal(20),
+            lighter_expected_safe_reserve=Decimal(0),
+            lighter_deployer_usdc_balance=Decimal(1),
         )
 
     # 3. Verify the subscription, activation transfer and Safe reserve are shown.
-    assert "Lighter initial Lagoon subscription: 20 USDC" in caplog.text
+    assert "Lighter initial Lagoon subscription: 1 USDC" in caplog.text
     assert "Lighter Safe-to-Lighter activation transfer: 1 USDC" in caplog.text
-    assert "Lighter expected initial Safe reserve: 19 USDC" in caplog.text
+    assert "Lighter expected initial Safe reserve: 0 USDC" in caplog.text
 
 
 def test_lighter_cli_options_reach_strategy_deployment(

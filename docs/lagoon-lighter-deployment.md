@@ -13,7 +13,7 @@ deployment:
 | Asset | Amount | Purpose |
 |-------|--------|---------|
 | ETH | Non-zero and sufficient for current mainnet gas | Lagoon/Safe deployment and Lighter activation transactions; gas varies. |
-| Native Ethereum USDC | **20 USDC** for initial capital | Deployment subscribes 20 USDC, transfers 1 USDC to Lighter and leaves 19 USDC in the Safe. |
+| Native Ethereum USDC | **1 USDC** for activation | Deployment subscribes 1 USDC and transfers all of it to Lighter, the direct Ethereum deposit minimum. The Safe holds no USDC afterwards. |
 
 Use native Ethereum USDC at
 `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48`; bridged USDC is not suitable.
@@ -44,12 +44,13 @@ export LAGOON_SETTLEMENT_WINDOW="86400"
 ```
 
 This is a cumulative gross budget across the fixed 24-hour window, not a
-one-settlement-per-day cooldown. The 20 USDC Lighter bootstrap subscription
-therefore consumes 20 USDC of the first window, leaving 4,980 USDC available
+one-settlement-per-day cooldown. The 1 USDC Lighter bootstrap subscription
+therefore consumes 1 USDC of the first window, leaving 4,999 USDC available
 for normal automated settlement.
 
-The activation makes a Lagoon-accounted 20 USDC subscription, transfers its
-fixed 1 USDC Lighter deposit and leaves 19 USDC in the Safe. It waits for
+The activation makes a Lagoon-accounted 1 USDC subscription and transfers all
+of it to Lighter as the fixed 1 USDC activation deposit, leaving the Safe
+empty. Add operating capital with a normal Lagoon subscription afterwards. It waits for
 Lighter public state before executing `changePubKey`. It is Ethereum-only and
 cannot be simulated on a private Anvil fork. Enabling it therefore spends real
 gas and USDC.
@@ -169,14 +170,16 @@ and synchronise Lagoon NAV throughout.
 
 The operational sequence is:
 
-1. Deploy with `GENERATE_LIGHTER_API_KEY=true`. The deployment subscribes 20
-   USDC to Lagoon, transfers 1 USDC from the Safe to Lighter and leaves 19 USDC
-   in the Safe. The vault is no longer eligible for `lagoon-first-deposit`.
+1. Deploy with `GENERATE_LIGHTER_API_KEY=true`. The deployment subscribes 1
+   USDC to Lagoon and transfers all of it from the Safe to Lighter, leaving the
+   Safe empty. The vault is no longer eligible for `lagoon-first-deposit`.
 2. Run `init`, then `correct-accounts --process-redemption`. The runtime
    deployment artefact supplies the original vault block, so the command records
-   the 20 USDC Lagoon investor flow and the public 1 USDC Lighter exchange
+   the 1 USDC Lagoon investor flow and the public 1 USDC Lighter exchange
    account without a repair or transfer script.
-3. Run `lagoon-lighter-test-trade --lighter-test-deposit-usdc 19` to make the bounded Lighter deposit, ETH/USD
+3. Run `scripts/lagoon/deposit-and-settle.py 19` to subscribe 19 USDC of test
+   capital through Lagoon and settle it into the Safe.
+4. Run `lagoon-lighter-test-trade --lighter-test-deposit-usdc 19` to make the bounded Lighter deposit, ETH/USD
    round trip and secure withdrawal back to the Safe.
 
 For automated Safe cash management, a secure withdrawal writes its public
@@ -207,6 +210,7 @@ export LIGHTER_TEST_DEPOSIT_USDC="19"
 
 trade-executor init
 trade-executor correct-accounts --process-redemption
+poetry run python scripts/lagoon/deposit-and-settle.py 19
 trade-executor lagoon-lighter-test-trade --lighter-test-deposit-usdc 19
 ```
 
@@ -218,7 +222,8 @@ both 0.005 ETH and 10 USDC of notional; 0.005 ETH was about 12 USDC at the time.
 Thus 20 USDC clears the zk deposit minimum and leaves modest collateral
 headroom for the automatically sized ETH perpetual order. Market limits are
 fetched at runtime and may change. The Safe must hold at least the selected
-deposit amount.
+deposit amount, so a fresh deployment first subscribes it with
+`deposit-and-settle.py`.
 
 To add further capital to an existing vault, stop the executor and run the
 reusable Lagoon subscription script. From a source checkout use:
@@ -248,12 +253,12 @@ or claimable deposit; it refuses a different amount. `lagoon-settle` settles
 the vault's eligible investor queue, so do not run this operator script while
 another investor's request needs separate handling.
 
-A Lighter-enabled deployment subscribes 20 USDC to Lagoon, transfers 1 USDC
-to activate the Safe-owned Lighter account and leaves 19 USDC in the Safe.
-Thus a correctly deployed vault has an executor reserve before its first
-normal trade. `lagoon-first-deposit` remains reserved for a vault with no NAV
-or shares. The deposit-and-settle script also accepts a zero-Safe baseline only
-to recover a legacy one-USDC Lighter activation deployment.
+A Lighter-enabled deployment subscribes 1 USDC to Lagoon and transfers all
+of it to activate the Safe-owned Lighter account, leaving the Safe empty. Use
+this script for the first operating capital; it accepts the zero-Safe
+baseline. Until that subscription settles, the Safe holds no cash to pay a
+Lagoon redemption. `lagoon-first-deposit` remains reserved for a vault with no
+NAV or shares.
 
 The Lighter AI Yubi deployment convention maps `~/secrets/lighter` to
 `/secure-lighter` inside the manual-command container. Its mode-`0600`

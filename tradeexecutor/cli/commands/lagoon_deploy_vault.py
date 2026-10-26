@@ -58,8 +58,8 @@ native vault known when the guard is deployed.
 
 To activate a Safe-owned Lighter account during a fresh Ethereum deployment,
 use ``--generate-lighter-api-key`` (optionally with
-``--lighter-api-key-index``). This subscribes 20 USDC through Lagoon, deposits
-1 USDC to activate Lighter and registers the public key before the Safe
+``--lighter-api-key-index``). This subscribes 1 USDC through Lagoon, deposits
+all of it to activate Lighter and registers the public key before the Safe
 ownership ceremony is finished. The human text record, Markdown report and runtime state artefact
 contain public account metadata only. The paired JSON record is the sole
 secret-bearing output; back it up in a secret store immediately, never paste
