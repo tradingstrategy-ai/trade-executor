@@ -74,30 +74,26 @@ class Parameters:
     required_history_period = datetime.timedelta(days=1)
     backtest_start = None
     backtest_end = None
+    #: Lighter sub-account index to label, from the deployment report; empty for a single-account vault.
+    lighter_sub_accounts: dict[int, str] = {}
 
 
-def _read_lighter_account_indices() -> list[int]:
-    """Read the master and sub-account indices from the deployment report values.
+def _read_lighter_master_account_index() -> int:
+    """Read the master account index from the deployment report value.
 
-    ``LIGHTER_ACCOUNT_INDEXES`` lists the master account followed by its
-    sub-accounts. ``LIGHTER_ACCOUNT_INDEX`` remains supported for a vault
-    without sub-accounts. Never fall back to a test index: these values
-    determine the posted NAV.
+    ``LIGHTER_ACCOUNT_INDEX`` is set per deployment. Never fall back to a
+    test index: this value determines the posted NAV.
     """
-    raw = os.environ.get("LIGHTER_ACCOUNT_INDEXES", "").strip() or os.environ.get("LIGHTER_ACCOUNT_INDEX", "")
-    account_indices = parse_lighter_account_indices(raw)
-    if not account_indices:
-        raise ValueError(
-            "Set LIGHTER_ACCOUNT_INDEXES to the master and sub-account indices, or "
-            "LIGHTER_ACCOUNT_INDEX to the master account index, from the Lighter deployment report"
-        )
-    return account_indices
+    raw = os.environ.get("LIGHTER_ACCOUNT_INDEX", "")
+    if not raw:
+        raise ValueError("Set LIGHTER_ACCOUNT_INDEX to the master account index from the Lighter deployment report")
+    return parse_lighter_account_indices(raw)[0]
 
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:
     """Create one Ethereum Lighter exchange-account pair per account."""
     # Read at universe creation so metadata can be loaded before deployment.
-    account_indices = _read_lighter_account_indices()
+    master_account_index = _read_lighter_master_account_index()
     usdc = AssetIdentifier(
         chain_id=CHAIN_ID.value,
         address=USDC_NATIVE_TOKEN[CHAIN_ID.value],
@@ -106,8 +102,8 @@ def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrateg
     )
     lighter_pairs = create_lighter_exchange_account_pairs(
         usdc,
-        master_account_index=account_indices[0],
-        sub_account_indices=account_indices[1:],
+        master_account_index=master_account_index,
+        sub_account_indices=Parameters.lighter_sub_accounts,
     )
     pair_universe = create_pair_universe_from_code(CHAIN_ID, lighter_pairs)
     exchange = Exchange(

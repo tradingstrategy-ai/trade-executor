@@ -1,34 +1,34 @@
-"""Strategy running a fixed script of Lighter custody transfers.
+"""Example strategy moving funds in, out and between Lighter sub-accounts.
 
-Used by the Lighter transfer-accounting tutorial and its simulated test. Each
-``decide_trades()`` cycle emits the next step of
-:py:func:`tradeexecutor.testing.lighter_scripted_transfers.build_lighter_transfer_schedule`:
-deposit the Safe cash to the master, fund both sub-accounts, move capital
-from one sub-account to the other, move it back to the master, then withdraw
-everything. Every movement is its own trade moving value between two
-positions.
+A Lagoon vault's Safe owns a Lighter master account and sub-accounts. The
+strategy declares them in :py:class:`Parameters`: the master account index
+and each sub-account's index with the label the strategy moves funds with.
+Every account becomes its own trading position when funds first move into
+it, and every movement is one trade:
 
-Transfers sent from a sub-account are signed with that sub-account's key, so
-``start`` needs ``LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`` as well as the
-master operator record.
+- ``position_manager.deposit_to_lighter()`` moves Safe cash to the master.
+- ``position_manager.transfer_lighter_funds(source, destination, amount)``
+  moves USDC between two accounts, signed with the source account's key.
+- ``position_manager.withdraw_from_lighter(account)`` moves an account's
+  free collateral back to the Safe.
 
-The module is loaded fresh by every Typer command and reads:
+``decide_trades()`` runs a fixed script, one step per cycle, so the
+transfer-accounting tutorial and its black-box test can check the resulting
+state. Transfers sent from a sub-account need that sub-account's key, given
+to ``start`` with ``LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES``.
 
-``LIGHTER_ACCOUNT_INDEXES``
-    Comma-separated master account index followed by sub-account indices,
-    from the public deployment report. Required.
-
-``LIGHTER_SCRIPTED_UNIT_USDC``
-    Base amount of the fixed movements. Defaults to 1, Lighter's minimum.
+The declared account indices are those the fake sequencer assigns in a
+simulated run. Lighter assigns real indices at deployment, so a live tutorial
+passes the deployed ones in ``LIGHTER_ACCOUNT_INDEXES``, master first; see
+:py:func:`tradeexecutor.testing.lighter_scripted_transfers.get_test_lighter_accounts`.
+A production strategy declares its deployed indices directly.
 """
 
 import datetime
-import os
 from decimal import Decimal
 
 from tradingstrategy.chain import ChainId
 
-from tradeexecutor.exchange_account.lighter import parse_lighter_account_indices
 from tradeexecutor.exchange_account.lighter_strategy import create_lighter_account_universe
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -41,7 +41,7 @@ from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.testing.lighter_scripted_transfers import build_lighter_transfer_schedule, decide_lighter_scripted_transfers
+from tradeexecutor.testing.lighter_scripted_transfers import get_next_scripted_step, get_test_lighter_accounts, tag_scripted_trades
 
 trading_strategy_engine_version = "0.5"
 trading_strategy_type = StrategyType.managed_positions
@@ -49,9 +49,12 @@ trading_strategy_cycle = CycleDuration.cycle_1d
 trade_routing = TradeRouting.default
 reserve_currency = ReserveCurrency.usdc
 
+#: Steps in the script, one per cycle.
+SCHEDULE_STEPS = 5
+
 
 class Parameters:
-    """Parameters for the scripted Lighter transfer strategy."""
+    """Parameters of the scripted Lighter transfer strategy."""
 
     chain_id = ChainId.ethereum
     initial_cash = 100_000
@@ -62,21 +65,24 @@ class Parameters:
     backtest_end = None
     #: Enables Lighter custody routing in ``start``.
     lighter_cash_management = True
-    #: Lighter's transfer, withdrawal and deposit minimum.
-    lighter_min_transfer_usd = Decimal("1")
-    lighter_scripted_unit_usd = Decimal(os.environ.get("LIGHTER_SCRIPTED_UNIT_USDC", "1"))
+    #: Safe-owned Lighter master account from the deployment report.
+    lighter_account_index = 127
+    #: Sub-account index to the label the strategy moves funds with.
+    lighter_sub_accounts = {281474976709656: "trend", 281474976709655: "arb"}
+    #: Base amount of the scripted movements; the script needs five units of capital.
+    lighter_transfer_unit_usd = Decimal(2)
 
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:
-    """Create one exchange-account pair per Lighter account.
+    """Create one exchange-account pair per declared Lighter account.
 
     :param input:
-        Unused strategy-universe construction input.
+        Strategy parameters declaring the accounts.
     :return:
         Static universe with the master account, the sub-accounts and the USDC reserve.
     """
-    del input
-    return create_lighter_account_universe(parse_lighter_account_indices(os.environ.get("LIGHTER_ACCOUNT_INDEXES", "")))
+    master, sub_accounts = get_test_lighter_accounts(input.parameters)
+    return create_lighter_account_universe(master, sub_accounts)
 
 
 def create_indicators(
@@ -100,13 +106,42 @@ def create_indicators(
 
 
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
-    """Return the next scripted step's custody trades.
+    """Run the next step of the transfer script.
 
     :param input:
         Current strategy state, parameters and treasury-synchronised reserve.
     :return:
-        Trades of one schedule step, or none.
+        The step's custody trades, or none while a transfer is in flight or
+        the script is complete.
     """
-    parameters = input.parameters
-    schedule = build_lighter_transfer_schedule(Decimal(str(parameters.lighter_scripted_unit_usd)))
-    return decide_lighter_scripted_transfers(input, schedule, Decimal(str(parameters.lighter_min_transfer_usd)))
+    if input.execution_context.mode.is_backtesting():
+        return []
+    position_manager = input.get_position_manager()
+    if position_manager.is_lighter_transfer_pending():
+        return []
+    step = get_next_scripted_step(input.state, SCHEDULE_STEPS)
+    if step is None:
+        return []
+
+    unit = Decimal(str(input.parameters.lighter_transfer_unit_usd))
+    trend, arb = input.parameters.lighter_sub_accounts.values()
+    match step:
+        case 1:
+            # Move in: all idle Safe cash goes to the master account.
+            trades = [position_manager.deposit_to_lighter()]
+        case 2:
+            # Fund both sub-accounts from the master.
+            trades = [
+                position_manager.transfer_lighter_funds("master", trend, 2 * unit),
+                position_manager.transfer_lighter_funds("master", arb, 2 * unit),
+            ]
+        case 3:
+            # Move between sub-accounts, signed with the sending sub-account's key.
+            trades = [position_manager.transfer_lighter_funds(trend, arb, unit)]
+        case 4:
+            # Move from a sub-account back to the master.
+            trades = [position_manager.transfer_lighter_funds(arb, "master", unit)]
+        case _:
+            # Move out: every account's free collateral returns to the Safe.
+            trades = [position_manager.withdraw_from_lighter(account) for account in (trend, arb, "master")]
+    return tag_scripted_trades(trades, step)

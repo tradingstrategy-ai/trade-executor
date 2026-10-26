@@ -22,6 +22,7 @@ from eth_defi.testing.evm_snapshot_fixture import evm_snapshot_revert
 from eth_defi.testing.fork_blocks import ETHEREUM_MIDNIGHT_BLOCK
 from eth_defi.token import USDC_WHALE
 
+from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_LABEL
 from tradeexecutor.state.state import State
 from tradeexecutor.testing.lighter_scripted_transfers import build_lighter_transfer_schedule, verify_lighter_scripted_transfers
 
@@ -41,8 +42,10 @@ pytestmark = [
 
 #: Tutorial under test.
 TUTORIAL = Path(__file__).resolve().parents[2] / "scripts" / "lagoon" / "manual-trade-executor-lighter-transfers.py"
-#: Base amount of the scripted movements.
-UNIT_USDC = Decimal(8)
+#: Base amount of the scripted movements, declared by the strategy.
+UNIT_USDC = Decimal(2)
+#: Sub-account labels declared by the strategy, in order.
+SUB_LABELS = ["trend", "arb"]
 #: Fee the fake sequencer charges per transfer, exercising the fee accounting.
 TRANSFER_FEE_USDC = Decimal("0.5")
 
@@ -85,7 +88,6 @@ def test_lighter_transfer_tutorial_simulated(anvil_ethereum: AnvilLaunch, tmp_pa
         "SIMULATE": "true",
         "LIGHTER_SIMULATE_RPC_URL": anvil_ethereum.json_rpc_url,
         "LIGHTER_RUN_DIR": str(run_dir),
-        "LIGHTER_SCRIPTED_UNIT_USDC": str(UNIT_USDC),
         "LIGHTER_SIMULATED_TRANSFER_FEE_USDC": str(TRANSFER_FEE_USDC),
     }
     result = subprocess.run([sys.executable, str(TUTORIAL)], env=environment, capture_output=True, text=True, timeout=800)
@@ -106,17 +108,19 @@ def test_lighter_transfer_tutorial_simulated(anvil_ethereum: AnvilLaunch, tmp_pa
 
     # 3. Verify the saved state independently and check the eight movements and their fees.
     state = State.read_json_file(run_dir / "state.json")
-    rows = verify_lighter_scripted_transfers(state, build_lighter_transfer_schedule(UNIT_USDC), progress["account_indices"])
+    accounts = {LIGHTER_MASTER_LABEL: progress["account_indices"][0], **dict(zip(SUB_LABELS, progress["account_indices"][1:]))}
+    rows = verify_lighter_scripted_transfers(state, build_lighter_transfer_schedule(UNIT_USDC, SUB_LABELS), accounts)
     assert [(row["kind"], row["source"], row["destination"]) for row in rows] == [
         ("deposit", "safe", "master"),
-        ("funding", "master", "sub_1"),
-        ("funding", "master", "sub_2"),
-        ("funding", "sub_1", "sub_2"),
-        ("funding", "sub_2", "master"),
-        ("withdrawal", "sub_1", "safe"),
-        ("withdrawal", "sub_2", "safe"),
+        ("funding", "master", "trend"),
+        ("funding", "master", "arb"),
+        ("funding", "trend", "arb"),
+        ("funding", "arb", "master"),
+        ("withdrawal", "trend", "safe"),
+        ("withdrawal", "arb", "safe"),
         ("withdrawal", "master", "safe"),
     ]
+    assert {position.pair.get_ticker() for position in state.portfolio.get_all_positions() if position.is_exchange_account()} == {"LIGHTER-ACCOUNT-USDC", "LIGHTER-trend-USDC", "LIGHTER-arb-USDC"}
     assert [row["fee"] for row in rows if row["kind"] == "funding"] == [TRANSFER_FEE_USDC] * 4
     assert rows[0]["amount"] == 5 * UNIT_USDC - 1
     assert sum((row["amount"] for row in rows if row["kind"] == "withdrawal"), Decimal(0)) == 5 * UNIT_USDC - 4 * TRANSFER_FEE_USDC

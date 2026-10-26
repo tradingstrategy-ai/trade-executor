@@ -14,9 +14,10 @@ amounts, fees and balance updates.
    sub-accounts, each with its own API key
 2. Initialise executor state with one position per Lighter account
 3. Subscribe to the vault
-4. Run ``start`` cycles with ``lighter_scripted_transfers_strategy.py``:
+4. Run ``start`` cycles with ``lighter_scripted_transfers_strategy.py``,
+   whose ``decide_trades()`` uses the ``PositionManager`` custody methods:
    deposit the Safe cash to the master, fund both sub-accounts, move capital
-   from sub-account 1 to sub-account 2 and from sub-account 2 to the master,
+   from one sub-account to the other and from a sub-account to the master,
    then withdraw everything to the Safe
 5. Redeem all shares with ``lagoon-redeem``
 6. Sweep the Safe back to the deployer and reconcile the deployer's balances
@@ -39,8 +40,10 @@ fake charges a transfer fee, so the fee accounting is checked too. A
 simulated run always deploys a fresh vault.
 
 Without ``SIMULATE`` the tutorial runs on Ethereum mainnet and Lighter, like
-``manual-trade-executor-lighter-subaccounts.py``. It needs a deployer with
-5 USDC plus gas at the default unit, and each withdrawal takes 20 to 30
+``manual-trade-executor-lighter-subaccounts.py``. The strategy's
+``lighter_transfer_unit_usd`` sets the amounts: the subscription is five
+units minus the 1 USDC activation deposit, 9 USDC at the default unit of 2,
+so the deployer needs 10 USDC plus gas. Each withdrawal takes 20 to 30
 minutes. It resumes from ``progress.json`` in its run directory.
 
 Example
@@ -61,10 +64,6 @@ Example
 Optional environment variables
 ------------------------------
 
-``LIGHTER_SCRIPTED_UNIT_USDC``
-    Base amount of the fixed movements; the subscription is five units minus
-    the 1 USDC activation deposit. Defaults to 1 live and 8 simulated.
-
 ``LIGHTER_SIMULATED_TRANSFER_FEE_USDC``
     Fee the fake sequencer charges per transfer. Defaults to 0.5.
 
@@ -77,12 +76,13 @@ Optional environment variables
 """
 
 import logging
-import os
 from decimal import Decimal
 
 from tabulate import tabulate
 
+from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_LABEL
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.testing.lighter_report import print_trade_summary
 from tradeexecutor.testing.lighter_scripted_transfers import build_lighter_transfer_schedule, get_scripted_progress, verify_lighter_scripted_transfers
 from tradeexecutor.testing.lighter_tutorial import (
@@ -92,7 +92,6 @@ from tradeexecutor.testing.lighter_tutorial import (
     deploy,
     get_cli_environment,
     initialise_state,
-    is_simulate_requested,
     load_tutorial_config,
     prepare_tutorial,
     redeem_all_shares,
@@ -108,22 +107,30 @@ logger = logging.getLogger(__name__)
 #: Executor id and artefact prefix of this tutorial.
 EXECUTOR_ID = "lighter-transfers"
 
-#: Number of sub-accounts the schedule uses.
-SUB_ACCOUNT_COUNT = 2
+#: The example strategy run by every ``start`` cycle.
+STRATEGY_FILE = STRATEGY_DIR / "lighter_scripted_transfers_strategy.py"
+
+#: The strategy's declared parameters: the transfer unit and the sub-account labels.
+STRATEGY_PARAMETERS = read_strategy_module(STRATEGY_FILE).parameters
 
 #: Schedule steps, each one ``start`` cycle.
 SCHEDULE_STEPS = 5
 
 
 def get_unit() -> Decimal:
-    """Return the base amount of the scripted movements."""
-    return Decimal(os.environ.get("LIGHTER_SCRIPTED_UNIT_USDC", "8" if is_simulate_requested() else "1"))
+    """Return the base amount of the scripted movements declared by the strategy."""
+    return Decimal(str(STRATEGY_PARAMETERS["lighter_transfer_unit_usd"]))
+
+
+def get_accounts(tutorial: Tutorial) -> dict[str, int]:
+    """Map the strategy's account labels to the deployed Lighter account indices."""
+    labels = list(STRATEGY_PARAMETERS["lighter_sub_accounts"].values())
+    return {LIGHTER_MASTER_LABEL: tutorial.account_indices[0], **dict(zip(labels, tutorial.account_indices[1:]))}
 
 
 def get_strategy_environment(tutorial: Tutorial) -> dict[str, str]:
-    """Return the ``start`` environment: the scripted unit and every account's signer."""
+    """Return the ``start`` environment: every sub-account's signer."""
     return {
-        "LIGHTER_SCRIPTED_UNIT_USDC": str(get_unit()),
         "LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES": ",".join(str(tutorial.get_handover_file(index)) for index in tutorial.account_indices[1:]),
     }
 
@@ -146,7 +153,8 @@ def verify_state(tutorial: Tutorial) -> None:
     """Check every scripted transfer in the final executor state and print them."""
     run_cli(["check-accounts"], get_cli_environment(tutorial, **get_strategy_environment(tutorial)))
     state = State.read_json_file(tutorial.state_file)
-    rows = verify_lighter_scripted_transfers(state, build_lighter_transfer_schedule(get_unit()), tutorial.account_indices)
+    accounts = get_accounts(tutorial)
+    rows = verify_lighter_scripted_transfers(state, build_lighter_transfer_schedule(get_unit(), list(accounts)[1:]), accounts)
     print(tabulate(rows, headers="keys", tablefmt="simple"))
     logger.info("All %d scripted transfers were booked correctly", len(rows))
     print_trade_summary(state)
@@ -157,9 +165,9 @@ def main() -> None:
     configure_logging()
     config = load_tutorial_config(
         executor_id=EXECUTOR_ID,
-        strategy_file=STRATEGY_DIR / "lighter_scripted_transfers_strategy.py",
+        strategy_file=STRATEGY_FILE,
         subscription_usdc=SCHEDULE_STEPS * get_unit() - Decimal(1),
-        sub_account_count=SUB_ACCOUNT_COUNT,
+        sub_account_count=len(STRATEGY_PARAMETERS["lighter_sub_accounts"]),
     )
     tutorial = prepare_tutorial(config)
     try:

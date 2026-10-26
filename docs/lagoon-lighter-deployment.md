@@ -86,9 +86,12 @@ The executor funds sub-accounts from the master with same-owner L2
 transfers, which Lighter did not charge for on 2026-10-26, and withdraws
 them to the Safe with the key-free L1 `withdraw(subIndex)`, which took about
 29 minutes on mainnet. A trader may transfer between sub-accounts with its
-own key; the executor only revalues the positions. Multi-account strategies,
-including `strategies/lighter-ai.py`, read the master and sub-account
-indices from `LIGHTER_ACCOUNT_INDEXES`.
+own key; the executor only revalues the positions, unless it is given that
+key with `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`. A strategy declares
+its sub-accounts in `Parameters.lighter_sub_accounts` as account index to
+label and moves funds between them with the `PositionManager` custody
+methods, see
+[README-Lighter.md](../tradeexecutor/exchange_account/README-Lighter.md#strategy-setup-for-sub-accounts).
 
 The live tutorial
 [`manual-trade-executor-lighter-subaccounts.py`](../scripts/lagoon/manual-trade-executor-lighter-subaccounts.py)

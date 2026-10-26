@@ -124,8 +124,8 @@ key, followed by a `start` cycle that revalues both positions.
   Instead, the writers that use the portfolio counter skip past the
   position's existing ids, which removes the collision without changing the
   valuator's interface.
-- `lagoon-redeem` reads the accounts from `LIGHTER_ACCOUNT_INDEXES` rather
-  than from state, matching how strategies are configured.
+- `lagoon-redeem` reads the accounts from the strategy's `Parameters`, or
+  from `LIGHTER_ACCOUNT_INDEXES` when given, rather than from state.
 - Accounts are classified by Lighter's required `account_type` field (0
   master, 1 sub-account, 2 and above pools), observed on mainnet, not by
   index range.
@@ -405,7 +405,7 @@ master keeps `lighter_free_collateral_buffer_usd` as its own minimum.
 |----------|---------|---------|
 | `LIGHTER_SUB_ACCOUNT_COUNT` | `lagoon-deploy-vault` | Number of sub-accounts to create, default 0 |
 | `LIGHTER_SUB_ACCOUNT_API_KEY_INDEX` | `lagoon-deploy-vault` | Nautilus key slot, default 4 |
-| `LIGHTER_ACCOUNT_INDEXES` | strategies | Comma-separated master then sub-account indices from the public deployment report; replaces `LIGHTER_ACCOUNT_INDEX` for multi-account strategies |
+| `LIGHTER_ACCOUNT_INDEXES` | test-only strategies and tutorials | Superseded: strategies declare `Parameters.lighter_account_index` and `lighter_sub_accounts` (index to label). Only the test-only strategies accept this override, so a live tutorial can pass the indices Lighter assigned at deployment |
 | `LIGHTER_SUB_ACCOUNT_WEIGHTS` | test strategy | Comma-separated weights in sub-account order |
 | `LIGHTER_SAFE_CASH_BUFFER_USD`, `LIGHTER_TRANSFER_FEE_USD` | test strategy | Safe buffer and the fee budget per funding transfer |
 | `LIGHTER_TRANSFER_TIMEOUT` | `start` | Seconds to wait for an L2 funding transfer, default 300 |

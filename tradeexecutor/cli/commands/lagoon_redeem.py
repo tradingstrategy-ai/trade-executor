@@ -261,14 +261,17 @@ def lagoon_redeem(
     assert vault_address, "VAULT_ADDRESS is required"
     assert vault_adapter_address, "VAULT_ADAPTER_ADDRESS is required"
 
+    mod = read_strategy_module(strategy_file)
+    parameters = mod.parameters or {}
     if lighter_account_indexes:
         lighter_account_indices = parse_lighter_account_indices(lighter_account_indexes)
     elif lighter_account_index is not None:
         lighter_account_indices = [lighter_account_index]
+    elif parameters.get("lighter_account_index") is not None:
+        # The strategy declares its accounts in Parameters.
+        lighter_account_indices = [int(parameters["lighter_account_index"]), *parameters.get("lighter_sub_accounts", {})]
     else:
         lighter_account_indices = None
-
-    mod = read_strategy_module(strategy_file)
 
     cache_path, token_cache = prepare_cache_and_token_cache(
         id,

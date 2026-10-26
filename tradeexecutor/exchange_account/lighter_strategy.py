@@ -25,7 +25,7 @@ See ``tradeexecutor/exchange_account/README-Lighter.md``.
 """
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from decimal import Decimal
 
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
@@ -44,6 +44,7 @@ from tradeexecutor.exchange_account.cash_manager import (
 from tradeexecutor.exchange_account.lighter import (
     LIGHTER_PROTOCOL,
     create_lighter_exchange_account_pairs,
+    find_lighter_account_pair,
     get_lighter_master_pair,
     is_lighter_sub_account_pair,
 )
@@ -61,25 +62,29 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 logger = logging.getLogger(__name__)
 
 
-def create_lighter_account_universe(account_indices: Sequence[int]) -> TradingStrategyUniverse:
+def create_lighter_account_universe(master_account_index: int, sub_accounts: Mapping[int, str] | Iterable[int] = ()) -> TradingStrategyUniverse:
     """Create a static universe with one exchange-account pair per Lighter account.
 
-    :param account_indices:
-        Master account index followed by the sub-account indices, in
-        deployment order.
+    A strategy module declares its accounts in ``Parameters``:
+    ``lighter_account_index`` is the Safe-owned master account and
+    ``lighter_sub_accounts`` maps each sub-account index to the label the
+    strategy moves funds with, for example ``{281474976450804: "trend"}``.
+
+    :param master_account_index:
+        Safe-owned master account from the deployment report.
+    :param sub_accounts:
+        Sub-account index to label, or plain indices.
     :return:
         Universe with the master account, the sub-accounts and the native
         Ethereum USDC reserve.
     """
-    if not account_indices:
-        raise ValueError("Set LIGHTER_ACCOUNT_INDEXES to the master and sub-account indices from the deployment report")
     usdc = AssetIdentifier(
         chain_id=ChainId.ethereum.value,
         address=USDC_NATIVE_TOKEN[ChainId.ethereum.value],
         token_symbol="USDC",
         decimals=6,
     )
-    pairs = create_lighter_exchange_account_pairs(usdc, master_account_index=account_indices[0], sub_account_indices=account_indices[1:])
+    pairs = create_lighter_exchange_account_pairs(usdc, master_account_index=master_account_index, sub_account_indices=sub_accounts)
     exchange = Exchange(
         chain_id=ChainId.ethereum,
         chain_slug="ethereum",
@@ -155,7 +160,8 @@ def _resolve_weights(weights: object, sub_pairs: list[TradingPairIdentifier]) ->
     """Map strategy weight parameters to sub-account indices.
 
     :param weights:
-        A mapping keyed by account index, or a sequence in sub-account order.
+        A mapping keyed by sub-account label or index, or a sequence in
+        sub-account order.
     :param sub_pairs:
         Sub-account pairs in universe order.
     :return:
@@ -164,7 +170,7 @@ def _resolve_weights(weights: object, sub_pairs: list[TradingPairIdentifier]) ->
     if not weights:
         return {}
     if isinstance(weights, dict):
-        return {int(index): Decimal(str(weight)) for index, weight in weights.items()}
+        return {int(find_lighter_account_pair(sub_pairs, account).get_exchange_account_id()): Decimal(str(weight)) for account, weight in weights.items()}
     weights = tuple(weights)
     if len(weights) != len(sub_pairs):
         raise ValueError(f"Got {len(weights)} Lighter sub-account weights for {len(sub_pairs)} sub-accounts")

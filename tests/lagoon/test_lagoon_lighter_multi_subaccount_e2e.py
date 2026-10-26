@@ -266,7 +266,7 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     assert len({master.pair.get_identifier(), sub_1_position.pair.get_identifier(), sub_2_position.pair.get_identifier()}) == 3
     assert len({master.pair.internal_id, sub_1_position.pair.internal_id, sub_2_position.pair.internal_id}) == 3
     assert master.pair.get_ticker() == "LIGHTER-ACCOUNT-USDC"
-    assert sub_1_position.pair.get_ticker() == f"LIGHTER-{sub_1}-USDC"
+    assert (sub_1_position.pair.get_ticker(), sub_2_position.pair.get_ticker()) == ("LIGHTER-trend-USDC", "LIGHTER-arb-USDC")
     assert (master.get_quantity(), sub_1_position.get_quantity(), sub_2_position.get_quantity()) == (LIGHTER_MIN_MAINNET_USDC, 0, 0)
     assert state.portfolio.get_default_reserve_position().quantity == LIGHTER_BOOTSTRAP_SUBSCRIPTION - LIGHTER_MIN_MAINNET_USDC
     _run(cli, "check-accounts")
