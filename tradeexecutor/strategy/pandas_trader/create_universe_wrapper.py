@@ -20,6 +20,7 @@ def call_create_trading_universe(
     execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
     strategy_parameters: StrategyParameters | None = None,
     timestamp: pd.Timestamp | None = None,
+    state: "tradeexecutor.state.state.State | None" = None,
 ) -> "tradeexecutor.strategy.TradingStrategyUniverse":
     """Call the create_trading_universe function to preload data."""
 
@@ -51,5 +52,6 @@ def call_create_trading_universe(
                 execution_context=execution_context,
                 execution_model=execution_model,
                 universe_options=universe_options,
+                state=state,
             )
             return create_trading_universe(input)

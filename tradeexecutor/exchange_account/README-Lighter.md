@@ -95,8 +95,8 @@ Add the sub-account count to the normal API-key deployment:
 ```shell
 export GENERATE_LIGHTER_API_KEY=true
 export LIGHTER_API_KEY_INDEX=4
-export LIGHTER_SUB_ACCOUNT_COUNT=2
 export LIGHTER_SUB_ACCOUNT_API_KEY_INDEX=4
+export STRATEGY_FILE=strategies/my-lighter-strategy.py  # declares the sub-accounts
 
 trade-executor lagoon-deploy-vault
 ```
@@ -144,25 +144,44 @@ also carries the Safe module address, so it loads as an operator record.
 
 ### Strategy setup for sub-accounts
 
-A strategy declares its Lighter accounts in `Parameters`: the master account
-index and each sub-account's index with the label the strategy moves funds
-with. Both come from the deployment report. The universe gets one
-exchange-account pair per account, and each account becomes its own trading
-position when funds first move into it:
+A strategy declares the sub-strategies it runs as `SubAccount` values in
+`Parameters`: a stable id, a name and, later, a weight. No Lighter account
+index appears in the strategy. The id is the key the strategy moves funds
+with; once a deployment has created the account for an id, keep the id
+unchanged in the strategy and in the state.
 
 ```python
 from tradeexecutor.exchange_account.lighter_strategy import create_lighter_account_universe
+from tradeexecutor.exchange_account.sub_account import SubAccount
 
 class Parameters:
     lighter_cash_management = True
-    lighter_account_index = 748071
-    lighter_sub_accounts = {281474976450804: "trend", 281474976450805: "arb"}
+    lighter_sub_accounts = [
+        SubAccount(id="trend", name="Trend following"),
+        SubAccount(id="arb", name="Funding-rate arbitrage"),
+    ]
 
 def create_trading_universe(input):
-    return create_lighter_account_universe(input.parameters.lighter_account_index, input.parameters.lighter_sub_accounts)
+    return create_lighter_account_universe(input, Parameters.lighter_sub_accounts)
 ```
 
-`decide_trades()` moves funds with the `PositionManager` custody methods.
+The resolution of ids to Lighter accounts lives in the state, not in the
+strategy. `lagoon-deploy-vault` reads the declared sub-accounts from the
+strategy module, creates one Lighter sub-account per declaration, names each
+hand-over key file after its id and records the id in the deployment
+artefact. `init` copies the master and sub-account indices into
+`state.sync.deployment.lighter_accounts`, and an id's index never changes
+afterwards. Universe construction receives the state and builds one
+exchange-account pair per account with the real indices; without a state,
+at deployment or in a universe check, it uses placeholders. Each account
+becomes its own trading position when funds first move into it, and
+`tradeexecutor.exchange_account.sub_account` maps positions to ids and ids
+to positions through the state. A vault initialised before the state
+recorded its accounts keeps working by passing its master index explicitly,
+as `strategies/lighter-ai.py` does from `LIGHTER_ACCOUNT_INDEX`.
+
+`decide_trades()` moves funds between the accounts by id with the
+`PositionManager` custody methods.
 Each call creates one trade that `start` executes: a Safe deposit is a buy
 on the master position, a withdrawal is a sell on the account's position,
 and a transfer between accounts is a buy on the destination with the amount
@@ -197,8 +216,7 @@ from tradeexecutor.exchange_account.lighter_strategy import decide_lighter_cash_
 
 class Parameters:
     lighter_cash_management = True
-    lighter_account_index = 748071
-    lighter_sub_accounts = {281474976450804: "trend", 281474976450805: "arb"}
+    lighter_sub_accounts = [SubAccount(id="trend", name="Trend following"), SubAccount(id="arb", name="Funding-rate arbitrage")]
     lighter_safe_cash_buffer_usd = Decimal(20)
     lighter_free_collateral_buffer_usd = Decimal(0)
     lighter_min_transfer_usd = Decimal(1)
@@ -264,8 +282,8 @@ from `progress.json` in their run directory.
 [`scripts/lagoon/manual-trade-executor-lighter-transfers.py`](../../scripts/lagoon/manual-trade-executor-lighter-transfers.py)
 is the executable specification of the transfer accounting. Its strategy,
 [`strategies/test_only/lighter_scripted_transfers_strategy.py`](../../strategies/test_only/lighter_scripted_transfers_strategy.py),
-declares its accounts in `Parameters` and emits one fixed step per `start`
-cycle with the `PositionManager` custody methods: deposit the Safe cash to
+declares its sub-accounts in `Parameters` and emits one fixed step per
+`start` cycle with the `PositionManager` custody methods: deposit the Safe cash to
 the master, fund both sub-accounts, move capital from one sub-account to the
 other and from a sub-account to the master with the sub-account keys, then
 withdraw everything. After winding the vault up it verifies the state with
@@ -277,9 +295,8 @@ USDC, and inflows, revaluations, outflows and fees add up. With
 minutes and with a transfer fee, so the fee accounting is checked;
 `tests/lagoon/test_lagoon_lighter_scripted_transfers_e2e.py` runs it that way
 in CI. Without it, it runs live for 10 USDC plus gas; the live run has not
-been done yet. Lighter assigns the account indices at deployment, so the
-live tutorial passes them to the test strategy in `LIGHTER_ACCOUNT_INDEXES`;
-a production strategy declares its deployed indices directly.
+been done yet. The same strategy module deploys and runs on a fork or on
+mainnet, because the account indices come from the state.
 
 [`scripts/lagoon/manual-trade-executor-lighter-subaccounts.py`](../../scripts/lagoon/manual-trade-executor-lighter-subaccounts.py)
 is live only. It deploys a vault with two sub-accounts, funds, rebalances
@@ -903,9 +920,9 @@ For sub-accounts, see the [sub-account tutorials](#tutorials).
 ### `check-accounts` reports a Lighter mismatch
 
 Confirm that `LIGHTER_ACCOUNT_INDEX` points to the Safe-owned account, or that
-the strategy's `Parameters.lighter_account_index` and `lighter_sub_accounts`
-list the master and every sub-account, and that no deposit, withdrawal or
-order settlement is still in flight. If Lighter
+`state.sync.deployment.lighter_accounts` records the master and every
+sub-account the strategy declares, and that no deposit, withdrawal or order
+settlement is still in flight. If Lighter
 equity differs, run `correct-accounts` only after the public account view is
 stable. If the Safe reserve differs by a completed deposit or withdrawal
 amount, first establish that no transfer is still pending, then run

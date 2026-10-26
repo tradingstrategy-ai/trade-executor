@@ -74,11 +74,13 @@ the account needs a new key through a Safe `changePubKey`.
 
 ### Sub-accounts
 
-To give external traders their own Lighter sub-accounts, add
-`LIGHTER_SUB_ACCOUNT_COUNT` (and optionally
-`LIGHTER_SUB_ACCOUNT_API_KEY_INDEX`, default 4) to the deployment. Deployment
-creates the sub-accounts with the master key and registers one key on each
-through the Safe. Each sub-account's API key is written to its own mode-0600
+To give external traders their own Lighter sub-accounts, declare them in the
+strategy's `Parameters.lighter_sub_accounts` as `SubAccount` values and pass
+the strategy with `STRATEGY_FILE` (optionally with
+`LIGHTER_SUB_ACCOUNT_API_KEY_INDEX`, default 4). Deployment creates one
+sub-account per declaration with the master key, registers one key on each
+through the Safe and records each sub-account's id in the deployment
+artefact; `init` then records the account indices in the state. Each sub-account's API key is written to its own mode-0600
 `vault-record.nautilus.<index>.json` hand-over file; the executor record keeps
 only the master key. Sub-accounts start empty.
 
@@ -88,9 +90,9 @@ them to the Safe with the key-free L1 `withdraw(subIndex)`, which took about
 29 minutes on mainnet. A trader may transfer between sub-accounts with its
 own key; the executor only revalues the positions, unless it is given that
 key with `LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`. A strategy declares
-its sub-accounts in `Parameters.lighter_sub_accounts` as account index to
-label and moves funds between them with the `PositionManager` custody
-methods, see
+its sub-accounts in `Parameters.lighter_sub_accounts` as `SubAccount` values
+with stable ids, never Lighter account indices, and moves funds between them
+by id with the `PositionManager` custody methods, see
 [README-Lighter.md](../tradeexecutor/exchange_account/README-Lighter.md#strategy-setup-for-sub-accounts).
 
 The live tutorial

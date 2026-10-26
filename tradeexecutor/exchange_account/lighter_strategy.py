@@ -25,7 +25,7 @@ See ``tradeexecutor/exchange_account/README-Lighter.md``.
 """
 
 import logging
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Sequence
 from decimal import Decimal
 
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
@@ -53,38 +53,79 @@ from tradeexecutor.exchange_account.state import (
     create_exchange_account_transfer,
     open_exchange_account_position,
 )
+from tradeexecutor.exchange_account.sub_account import MASTER_ACCOUNT_ID, SubAccount, get_lighter_account_resolution, get_sub_account_ids
 from tradeexecutor.state.identifier import AssetIdentifier, TradingPairIdentifier
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
+from tradeexecutor.strategy.pandas_trader.trading_universe_input import CreateTradingUniverseInput
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse, create_pair_universe_from_code
 
 logger = logging.getLogger(__name__)
 
 
-def create_lighter_account_universe(master_account_index: int, sub_accounts: Mapping[int, str] | Iterable[int] = ()) -> TradingStrategyUniverse:
-    """Create a static universe with one exchange-account pair per Lighter account.
+def resolve_lighter_accounts(input: CreateTradingUniverseInput, sub_accounts: Iterable[SubAccount] | None, master_account_index: int | None = None) -> tuple[int, dict[int, str]]:
+    """Map the strategy's declared sub-accounts to the Lighter accounts recorded in the state.
 
-    A strategy module declares its accounts in ``Parameters``:
-    ``lighter_account_index`` is the Safe-owned master account and
-    ``lighter_sub_accounts`` maps each sub-account index to the label the
-    strategy moves funds with, for example ``{281474976450804: "trend"}``.
+    The strategy declares ``Parameters.lighter_sub_accounts`` as
+    :py:class:`~tradeexecutor.exchange_account.sub_account.SubAccount` values.
+    ``init`` records which Lighter account each id maps to in the state, so a
+    running deployment resolves from ``input.state``. Without a state, at
+    deployment or in a universe check, placeholder indices are used; they are
+    never persisted. A vault deployed before sub-accounts existed passes its
+    master index explicitly, as ``strategies/lighter-ai.py`` does.
 
-    :param master_account_index:
-        Safe-owned master account from the deployment report.
+    :param input:
+        Universe construction input carrying the state.
     :param sub_accounts:
-        Sub-account index to label, or plain indices.
+        ``Parameters.lighter_sub_accounts`` of the strategy module; passed
+        explicitly because not every command gives the input the parameters.
+    :param master_account_index:
+        Master account for a deployment whose state has no resolution.
+    :return:
+        Master account index and sub-account index to id.
+    :raise ValueError:
+        If a running deployment has not resolved every declared sub-account.
+    """
+    sub_account_ids = get_sub_account_ids(sub_accounts)
+    resolution = get_lighter_account_resolution(input.state) if input.state is not None else {}
+    if MASTER_ACCOUNT_ID in resolution:
+        missing = [account_id for account_id in sub_account_ids if account_id not in resolution]
+        if missing:
+            raise ValueError(f"Sub-accounts {missing} are declared in Parameters but not resolved in the state; deploy them and run init")
+        return resolution[MASTER_ACCOUNT_ID], {resolution[account_id]: account_id for account_id in sub_account_ids}
+    if master_account_index is not None and not sub_account_ids:
+        return master_account_index, {}
+    if input.state is not None:
+        raise ValueError("The state does not record the Lighter accounts of this deployment; run init with the deployment artefact")
+    # No state: placeholders keep the universe constructible for deployment and checks.
+    return 0, {number: account_id for number, account_id in enumerate(sub_account_ids, 1)}
+
+
+def create_lighter_account_universe(input: CreateTradingUniverseInput, sub_accounts: Iterable[SubAccount] | None, master_account_index: int | None = None) -> TradingStrategyUniverse:
+    """Create a static universe with one exchange-account pair per declared Lighter account.
+
+    See :py:func:`resolve_lighter_accounts` for how the declared sub-accounts
+    map to Lighter accounts.
+
+    :param input:
+        Universe construction input carrying the state.
+    :param sub_accounts:
+        ``Parameters.lighter_sub_accounts`` of the strategy module.
+    :param master_account_index:
+        Master account for a deployment whose state has no resolution.
     :return:
         Universe with the master account, the sub-accounts and the native
         Ethereum USDC reserve.
     """
+    master, resolved = resolve_lighter_accounts(input, sub_accounts, master_account_index)
     usdc = AssetIdentifier(
         chain_id=ChainId.ethereum.value,
         address=USDC_NATIVE_TOKEN[ChainId.ethereum.value],
         token_symbol="USDC",
         decimals=6,
     )
-    pairs = create_lighter_exchange_account_pairs(usdc, master_account_index=master_account_index, sub_account_indices=sub_accounts)
+    pairs = create_lighter_exchange_account_pairs(usdc, master_account_index=master, sub_account_indices=resolved)
     exchange = Exchange(
         chain_id=ChainId.ethereum,
         chain_slug="ethereum",
@@ -160,7 +201,7 @@ def _resolve_weights(weights: object, sub_pairs: list[TradingPairIdentifier]) ->
     """Map strategy weight parameters to sub-account indices.
 
     :param weights:
-        A mapping keyed by sub-account label or index, or a sequence in
+        A mapping keyed by sub-account id or index, or a sequence in
         sub-account order.
     :param sub_pairs:
         Sub-account pairs in universe order.
@@ -186,7 +227,7 @@ def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]
     - ``lighter_free_collateral_buffer_usd``: free collateral kept on the master
     - ``lighter_min_transfer_usd``: smallest movement, at least Lighter's 1 USDC minimum
     - ``lighter_sub_account_weights``: target share per sub-account, a mapping
-      keyed by account index or a sequence in sub-account order
+      keyed by sub-account id or a sequence in sub-account order
     - ``lighter_rebalance_band_usd``: tolerated distance from a target, default zero
     - ``lighter_transfer_fee_usd``: fee budgeted per funding transfer, default
       zero, as Lighter charges nothing for same-owner transfers

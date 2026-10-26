@@ -6,11 +6,10 @@ sub-account is traded by an external process; this strategy only moves
 custody capital between the Safe, the master and the sub-accounts, see
 :py:func:`tradeexecutor.exchange_account.lighter_strategy.decide_lighter_cash_management`.
 
-The accounts are declared in :py:class:`Parameters`. The declared indices are
-those the fake sequencer assigns in a simulated run; a live tutorial passes
-the deployed ones in ``LIGHTER_ACCOUNT_INDEXES``, master first. The module
-is loaded fresh by every Typer command, so the black-box test and the
-tutorial can also change the policy between ``start`` runs:
+The sub-accounts are declared in :py:class:`Parameters`; ``init`` records
+which Lighter account each id maps to in the state. The module is loaded
+fresh by every Typer command, so the black-box test and the tutorial can
+change the policy between ``start`` runs:
 
 ``LIGHTER_SUB_ACCOUNT_WEIGHTS``
     Comma-separated target weights in sub-account order, for example
@@ -35,7 +34,7 @@ from tradeexecutor.exchange_account.lighter_strategy import (
     decide_lighter_cash_management,
     parse_lighter_sub_account_weights,
 )
-from tradeexecutor.testing.lighter_scripted_transfers import get_test_lighter_accounts
+from tradeexecutor.exchange_account.sub_account import SubAccount
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -66,10 +65,11 @@ class Parameters:
     backtest_start = None
     backtest_end = None
     lighter_cash_management = True
-    #: Safe-owned Lighter master account from the deployment report.
-    lighter_account_index = 127
-    #: Sub-account index to label.
-    lighter_sub_accounts = {281474976709656: "trend", 281474976709655: "arb"}
+    #: Sub-strategies run in their own Lighter sub-accounts.
+    lighter_sub_accounts = [
+        SubAccount(id="trend", name="Trend following"),
+        SubAccount(id="arb", name="Funding-rate arbitrage"),
+    ]
     lighter_safe_cash_buffer_usd = Decimal(os.environ.get("LIGHTER_SAFE_CASH_BUFFER_USD", "20"))
     lighter_free_collateral_buffer_usd = Decimal("0")
     lighter_min_transfer_usd = Decimal("1")
@@ -82,12 +82,11 @@ def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrateg
     """Create one exchange-account pair per declared Lighter account.
 
     :param input:
-        Strategy parameters declaring the accounts.
+        Strategy parameters declaring the sub-accounts and the state resolving them.
     :return:
         Static universe with the master account, the sub-accounts and the USDC reserve.
     """
-    master, sub_accounts = get_test_lighter_accounts(input.parameters)
-    return create_lighter_account_universe(master, sub_accounts)
+    return create_lighter_account_universe(input, Parameters.lighter_sub_accounts)
 
 
 def create_indicators(

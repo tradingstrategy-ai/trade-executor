@@ -434,7 +434,7 @@ class PositionManager:
         """Return the pair of a Lighter account declared in the strategy parameters.
 
         :param account:
-            ``master``, a sub-account label from ``Parameters.lighter_sub_accounts``, or an account index.
+            ``master``, a sub-account id from ``Parameters.lighter_sub_accounts``, or an account index.
         :return:
             The account's exchange-account pair.
         """
@@ -486,7 +486,7 @@ class PositionManager:
         withdrawal. Either takes about half an hour to become claimable.
 
         :param account:
-            ``master`` or a sub-account label.
+            ``master`` or a sub-account id.
         :param amount:
             USDC to withdraw, or ``None`` for the account's free collateral.
         :param notes:
@@ -516,9 +516,9 @@ class PositionManager:
         buy on the destination position and balance updates on the source.
 
         :param source:
-            ``master`` or a sub-account label.
+            ``master`` or a sub-account id.
         :param destination:
-            ``master`` or a sub-account label.
+            ``master`` or a sub-account id.
         :param amount:
             USDC credited to the destination; Lighter's fee, if any, is charged on top.
         :param notes:

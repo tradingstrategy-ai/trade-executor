@@ -119,7 +119,7 @@ def test_cli_lighter_sub_account_balance_corrections(tutorial: Tutorial, caplog:
     # 1. Deploy a vault with two sub-accounts, initialise state, subscribe and fund both sub-accounts with the scripted strategy.
     deploy(tutorial, "Lighter corrections", "LCT")
     initialise_state(tutorial)
-    signers = {"LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES": ",".join(str(tutorial.get_handover_file(index)) for index in tutorial.account_indices[1:])}
+    signers = {"LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES": ",".join(str(tutorial.get_handover_file(account_id)) for account_id in tutorial.sub_account_ids)}
     subscribe(tutorial, **signers)
     run_start(tutorial, **signers)
     master, trend, arb = tutorial.account_indices

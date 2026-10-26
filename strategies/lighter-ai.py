@@ -34,6 +34,8 @@ from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
 from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pairs, parse_lighter_account_indices
+from tradeexecutor.exchange_account.lighter_strategy import resolve_lighter_accounts
+from tradeexecutor.exchange_account.sub_account import SubAccount
 from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -74,8 +76,8 @@ class Parameters:
     required_history_period = datetime.timedelta(days=1)
     backtest_start = None
     backtest_end = None
-    #: Lighter sub-account index to label, from the deployment report; empty for a single-account vault.
-    lighter_sub_accounts: dict[int, str] = {}
+    #: Sub-strategies run in their own Lighter sub-accounts; none for this single-account vault.
+    lighter_sub_accounts: list[SubAccount] = []
 
 
 def _read_lighter_master_account_index() -> int:
@@ -92,8 +94,9 @@ def _read_lighter_master_account_index() -> int:
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:
     """Create one Ethereum Lighter exchange-account pair per account."""
-    # Read at universe creation so metadata can be loaded before deployment.
-    master_account_index = _read_lighter_master_account_index()
+    # The master index comes from the deployment environment for vaults
+    # initialised before the state recorded the Lighter accounts.
+    master_account_index, sub_accounts = resolve_lighter_accounts(input, Parameters.lighter_sub_accounts, _read_lighter_master_account_index())
     usdc = AssetIdentifier(
         chain_id=CHAIN_ID.value,
         address=USDC_NATIVE_TOKEN[CHAIN_ID.value],
@@ -103,7 +106,7 @@ def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrateg
     lighter_pairs = create_lighter_exchange_account_pairs(
         usdc,
         master_account_index=master_account_index,
-        sub_account_indices=Parameters.lighter_sub_accounts,
+        sub_account_indices=sub_accounts,
     )
     pair_universe = create_pair_universe_from_code(CHAIN_ID, lighter_pairs)
     exchange = Exchange(

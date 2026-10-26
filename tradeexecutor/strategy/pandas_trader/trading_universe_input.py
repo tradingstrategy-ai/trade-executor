@@ -2,11 +2,14 @@
 import datetime
 import inspect
 from dataclasses import dataclass
-from typing import Callable, Protocol, Optional
+from typing import TYPE_CHECKING, Callable, Protocol, Optional
 
 from tradeexecutor.strategy.execution_context import ExecutionContext
 from tradeexecutor.strategy.universe_model import UniverseOptions
 from tradingstrategy.client import Client
+
+if TYPE_CHECKING:
+    from tradeexecutor.state.state import State
 
 
 @dataclass
@@ -70,6 +73,13 @@ class CreateTradingUniverseInput:
 
     #: Universe options
     universe_options: "tradeexecutor.strategy.universe_model.UniverseOptions"
+
+    #: Executor state, when the universe is built for a running deployment.
+    #:
+    #: Lets a strategy resolve deployment-time facts recorded in the state,
+    #: such as which exchange account each declared sub-account maps to.
+    #: ``None`` in backtests, deployment and universe checks.
+    state: Optional["State"] = None
 
 
 class CreateTradingUniverseProtocol(Protocol):

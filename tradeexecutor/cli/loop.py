@@ -581,6 +581,7 @@ class ExecutionLoop:
                     options=self.universe_options,
                     execution_model=self.execution_model,
                     strategy_parameters=self.parameters,
+                    state=state,
                 )
 
                 # Check if our data is stagnated and we cannot execute the strategy
@@ -952,10 +953,14 @@ class ExecutionLoop:
         logger.info("Warming up backesting, universe options are %s", self.universe_options)
         return self.universe_model.preload_universe(self.universe_options, self.execution_context)
 
-    def warm_up_live_trading(self) -> TradingStrategyUniverse:
+    def warm_up_live_trading(self, state: State | None = None) -> TradingStrategyUniverse:
         """Load live trading universe.
 
         Display progress bars for data downloads.
+
+        :param state:
+            Executor state, so the universe can resolve deployment facts
+            recorded in it, such as exchange sub-accounts.
         """
 
         assert self.execution_context.mode.is_live_trading()
@@ -968,6 +973,7 @@ class ExecutionLoop:
             self.execution_context,
             execution_model=self.execution_model,
             strategy_parameters=self.parameters,
+            state=state,
         )
         universe = cast(TradingStrategyUniverse, universe)
 
@@ -1010,7 +1016,7 @@ class ExecutionLoop:
                 "the live loop loads a verified start-up snapshot instead"
             )
 
-        universe = self.warm_up_live_trading()
+        universe = self.warm_up_live_trading(state)
         self.preloaded_live_universe = universe
 
         populate_webhook_run_state(
@@ -1448,7 +1454,7 @@ class ExecutionLoop:
 
         assert execution_context, "ExecutionContext missing"
 
-        universe = self.warm_up_live_trading()
+        universe = self.warm_up_live_trading(state)
         if (
             self.strategy_cycle_trigger == StrategyCycleTrigger.hypercore_data_available
             and native_datetime_utc_now() >= initial_hypercore_slot + HYPERCORE_READINESS_WINDOW

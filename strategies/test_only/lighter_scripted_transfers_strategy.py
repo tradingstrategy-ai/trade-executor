@@ -1,10 +1,12 @@
 """Example strategy moving funds in, out and between Lighter sub-accounts.
 
 A Lagoon vault's Safe owns a Lighter master account and sub-accounts. The
-strategy declares them in :py:class:`Parameters`: the master account index
-and each sub-account's index with the label the strategy moves funds with.
-Every account becomes its own trading position when funds first move into
-it, and every movement is one trade:
+strategy declares its sub-accounts in :py:class:`Parameters` as
+:py:class:`~tradeexecutor.exchange_account.sub_account.SubAccount` values:
+the sub-strategies it runs, each under a stable id. Deployment creates one
+Lighter account per declared sub-account and ``init`` records which account
+each id maps to in the state. Every account becomes its own trading position
+when funds first move into it, and every movement is one trade:
 
 - ``position_manager.deposit_to_lighter()`` moves Safe cash to the master.
 - ``position_manager.transfer_lighter_funds(source, destination, amount)``
@@ -17,11 +19,8 @@ transfer-accounting tutorial and its black-box test can check the resulting
 state. Transfers sent from a sub-account need that sub-account's key, given
 to ``start`` with ``LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES``.
 
-The declared account indices are those the fake sequencer assigns in a
-simulated run. Lighter assigns real indices at deployment, so a live tutorial
-passes the deployed ones in ``LIGHTER_ACCOUNT_INDEXES``, master first; see
-:py:func:`tradeexecutor.testing.lighter_scripted_transfers.get_test_lighter_accounts`.
-A production strategy declares its deployed indices directly.
+No Lighter account index appears in the strategy: the same module deploys
+and runs on a fork or on mainnet.
 """
 
 import datetime
@@ -30,6 +29,7 @@ from decimal import Decimal
 from tradingstrategy.chain import ChainId
 
 from tradeexecutor.exchange_account.lighter_strategy import create_lighter_account_universe
+from tradeexecutor.exchange_account.sub_account import SubAccount
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
 from tradeexecutor.strategy.default_routing_options import TradeRouting
@@ -41,7 +41,7 @@ from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.testing.lighter_scripted_transfers import get_next_scripted_step, get_test_lighter_accounts, tag_scripted_trades
+from tradeexecutor.testing.lighter_scripted_transfers import get_next_scripted_step, tag_scripted_trades
 
 trading_strategy_engine_version = "0.5"
 trading_strategy_type = StrategyType.managed_positions
@@ -65,10 +65,11 @@ class Parameters:
     backtest_end = None
     #: Enables Lighter custody routing in ``start``.
     lighter_cash_management = True
-    #: Safe-owned Lighter master account from the deployment report.
-    lighter_account_index = 127
-    #: Sub-account index to the label the strategy moves funds with.
-    lighter_sub_accounts = {281474976709656: "trend", 281474976709655: "arb"}
+    #: Sub-strategies run in their own Lighter sub-accounts; the id is the stable key the strategy moves funds with.
+    lighter_sub_accounts = [
+        SubAccount(id="trend", name="Trend following"),
+        SubAccount(id="arb", name="Funding-rate arbitrage"),
+    ]
     #: Base amount of the scripted movements; the script needs five units of capital.
     lighter_transfer_unit_usd = Decimal(2)
 
@@ -77,12 +78,11 @@ def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrateg
     """Create one exchange-account pair per declared Lighter account.
 
     :param input:
-        Strategy parameters declaring the accounts.
+        Strategy parameters declaring the sub-accounts and the state resolving them.
     :return:
         Static universe with the master account, the sub-accounts and the USDC reserve.
     """
-    master, sub_accounts = get_test_lighter_accounts(input.parameters)
-    return create_lighter_account_universe(master, sub_accounts)
+    return create_lighter_account_universe(input, Parameters.lighter_sub_accounts)
 
 
 def create_indicators(
@@ -124,7 +124,7 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
         return []
 
     unit = Decimal(str(input.parameters.lighter_transfer_unit_usd))
-    trend, arb = input.parameters.lighter_sub_accounts.values()
+    trend, arb = (sub_account.id for sub_account in input.parameters.lighter_sub_accounts)
     match step:
         case 1:
             # Move in: all idle Safe cash goes to the master account.

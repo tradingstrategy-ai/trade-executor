@@ -59,7 +59,7 @@ def test_lighter_accounts_are_separate_positions() -> None:
     assert len({master.get_identifier(), sub_1.get_identifier(), sub_2.get_identifier()}) == 3
     assert len({master.internal_id, sub_1.internal_id, sub_2.internal_id}) == 3
     assert [pair.get_ticker() for pair in (master, sub_1, sub_2)] == ["LIGHTER-ACCOUNT-USDC", "LIGHTER-trend-USDC", f"LIGHTER-{SUB_INDICES[1]}-USDC"]
-    assert sub_1.other_data["lighter_strategy_label"] == "trend"
+    assert sub_1.other_data["lighter_sub_account_id"] == "trend"
     assert [is_lighter_sub_account_pair(pair) for pair in (master, sub_1, sub_2)] == [False, True, True]
     assert validate_lighter_exchange_account_pairs([master, sub_1, sub_2]) == [master, sub_1, sub_2]
     assert get_lighter_master_pair([sub_2, master, sub_1]) == master

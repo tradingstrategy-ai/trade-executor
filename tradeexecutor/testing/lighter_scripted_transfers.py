@@ -3,9 +3,8 @@
 The example strategy ``strategies/test_only/lighter_scripted_transfers_strategy.py``
 moves funds in, out and between its Lighter accounts with the
 ``PositionManager`` custody methods, one schedule step per cycle. This module
-provides what the tutorial and the black-box test need around it: the
-account override for live runs, the step bookkeeping, the expected schedule
-and a verifier that checks every movement was booked as its own trade
+provides what the tutorial and the black-box test need around it: the step
+bookkeeping, the expected schedule and a verifier that checks every movement was booked as its own trade
 between two positions.
 
 Progress lives in the trades themselves: each scripted trade records its
@@ -14,13 +13,12 @@ trades and a failed step stops the script.
 """
 
 import logging
-import os
 from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_LABEL, parse_lighter_account_indices
+from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_LABEL
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeFlag
@@ -50,31 +48,6 @@ class ScriptedTransfer:
     def is_funding(self) -> bool:
         """Return whether this is a transfer between two Lighter accounts."""
         return ROLE_SAFE not in (self.source, self.destination)
-
-
-def get_test_lighter_accounts(parameters: Any) -> tuple[int, dict[int, str]]:
-    """Return a test strategy's Lighter accounts, with the live tutorial's override applied.
-
-    A strategy declares its accounts in ``Parameters``. Lighter assigns the
-    indices at deployment, so a live tutorial cannot know them in advance and
-    passes the deployed ones in ``LIGHTER_ACCOUNT_INDEXES``, master first; the
-    declared labels are kept in order. Production strategies have no override.
-
-    :param parameters:
-        Strategy parameters with ``lighter_account_index`` and ``lighter_sub_accounts``.
-    :return:
-        Master account index and sub-account index to label.
-    """
-    master = int(parameters.lighter_account_index)
-    sub_accounts = dict(parameters.lighter_sub_accounts)
-    override = os.environ.get("LIGHTER_ACCOUNT_INDEXES", "")
-    if override:
-        indices = parse_lighter_account_indices(override)
-        if len(indices) != 1 + len(sub_accounts):
-            raise ValueError(f"LIGHTER_ACCOUNT_INDEXES lists {len(indices)} accounts, the strategy declares {1 + len(sub_accounts)}")
-        master = indices[0]
-        sub_accounts = dict(zip(indices[1:], sub_accounts.values()))
-    return master, sub_accounts
 
 
 def build_lighter_transfer_schedule(unit: Decimal, sub_labels: list[str]) -> list[list[ScriptedTransfer]]:

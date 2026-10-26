@@ -23,6 +23,7 @@ from eth_defi.testing.fork_blocks import ETHEREUM_MIDNIGHT_BLOCK
 from eth_defi.token import USDC_WHALE
 
 from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_LABEL
+from tradeexecutor.exchange_account.sub_account import get_lighter_account_resolution, get_sub_account_id_for_position
 from tradeexecutor.state.state import State
 from tradeexecutor.testing.lighter_scripted_transfers import build_lighter_transfer_schedule, verify_lighter_scripted_transfers
 
@@ -79,7 +80,7 @@ def test_lighter_transfer_tutorial_simulated(anvil_ethereum: AnvilLaunch, tmp_pa
 
     1. Run the tutorial as a subprocess against the shared fork, in simulate mode with a transfer fee.
     2. Check it completed every phase and left no secrets in its output.
-    3. Verify the saved state independently and check the eight movements and their fees.
+    3. Verify the saved state independently, check the state maps ids to accounts and positions, and check the eight movements and their fees.
     """
     # 1. Run the tutorial as a subprocess against the shared fork, in simulate mode with a transfer fee.
     run_dir = tmp_path / "run"
@@ -100,15 +101,17 @@ def test_lighter_transfer_tutorial_simulated(anvil_ethereum: AnvilLaunch, tmp_pa
     master_key = operator_record["deployments"]["ethereum"]["lighter_account_setup"]["private_key"]
     output = result.stdout + result.stderr
     assert master_key not in output
-    for index in progress["account_indices"][1:]:
-        handover = json.loads((run_dir / f"vault-record.nautilus.{index}.json").read_text())
+    for account_id, index in zip(SUB_LABELS, progress["account_indices"][1:]):
+        handover = json.loads((run_dir / f"vault-record.nautilus.{account_id}.json").read_text())
         assert handover["private_key"] not in output
-        assert handover["module_address"] == progress["module_address"]
+        assert (handover["account_index"], handover["label"], handover["module_address"]) == (index, account_id, progress["module_address"])
     assert "All 8 scripted transfers were booked correctly" in output
 
-    # 3. Verify the saved state independently and check the eight movements and their fees.
+    # 3. Verify the saved state independently, check the state maps ids to accounts and positions, and check the eight movements and their fees.
     state = State.read_json_file(run_dir / "state.json")
-    accounts = {LIGHTER_MASTER_LABEL: progress["account_indices"][0], **dict(zip(SUB_LABELS, progress["account_indices"][1:]))}
+    accounts = get_lighter_account_resolution(state)
+    assert accounts == {LIGHTER_MASTER_LABEL: progress["account_indices"][0], **dict(zip(SUB_LABELS, progress["account_indices"][1:]))}
+    assert get_sub_account_id_for_position(state, next(position for position in state.portfolio.get_all_positions() if position.pair.get_ticker() == "LIGHTER-arb-USDC")) == "arb"
     rows = verify_lighter_scripted_transfers(state, build_lighter_transfer_schedule(UNIT_USDC, SUB_LABELS), accounts)
     assert [(row["kind"], row["source"], row["destination"]) for row in rows] == [
         ("deposit", "safe", "master"),

@@ -931,6 +931,7 @@ def correct_accounts(
         UniverseOptions(history_period=mod.get_live_trading_history_period()),
         execution_model=run_description.runner.execution_model,
         strategy_parameters=mod.parameters,
+        state=state,
     )
 
     runner = run_description.runner

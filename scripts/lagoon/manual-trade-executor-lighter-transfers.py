@@ -24,9 +24,11 @@ amounts, fees and balance updates.
 7. Verify every scripted transfer in the executor state and print every
    trade with its description, status and transaction hashes
 
-The transfers sent from a sub-account are signed with that sub-account's
-key, which this tutorial passes to ``start`` from the hand-over files
-deployment wrote. In production those keys belong to the external traders;
+The strategy declares its sub-accounts as ``SubAccount`` values; deployment
+creates one Lighter account per declaration and ``init`` records which
+account each id maps to in the state. The transfers sent from a sub-account
+are signed with that sub-account's key, which this tutorial passes to
+``start`` from the hand-over files deployment wrote. In production those keys belong to the external traders;
 giving them to the executor is optional.
 
 Modes
@@ -80,7 +82,6 @@ from decimal import Decimal
 
 from tabulate import tabulate
 
-from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_LABEL
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.testing.lighter_report import print_trade_summary
@@ -122,16 +123,10 @@ def get_unit() -> Decimal:
     return Decimal(str(STRATEGY_PARAMETERS["lighter_transfer_unit_usd"]))
 
 
-def get_accounts(tutorial: Tutorial) -> dict[str, int]:
-    """Map the strategy's account labels to the deployed Lighter account indices."""
-    labels = list(STRATEGY_PARAMETERS["lighter_sub_accounts"].values())
-    return {LIGHTER_MASTER_LABEL: tutorial.account_indices[0], **dict(zip(labels, tutorial.account_indices[1:]))}
-
-
 def get_strategy_environment(tutorial: Tutorial) -> dict[str, str]:
     """Return the ``start`` environment: every sub-account's signer."""
     return {
-        "LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES": ",".join(str(tutorial.get_handover_file(index)) for index in tutorial.account_indices[1:]),
+        "LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES": ",".join(str(tutorial.get_handover_file(account_id)) for account_id in tutorial.sub_account_ids),
     }
 
 
@@ -153,8 +148,8 @@ def verify_state(tutorial: Tutorial) -> None:
     """Check every scripted transfer in the final executor state and print them."""
     run_cli(["check-accounts"], get_cli_environment(tutorial, **get_strategy_environment(tutorial)))
     state = State.read_json_file(tutorial.state_file)
-    accounts = get_accounts(tutorial)
-    rows = verify_lighter_scripted_transfers(state, build_lighter_transfer_schedule(get_unit(), list(accounts)[1:]), accounts)
+    accounts = tutorial.get_accounts()
+    rows = verify_lighter_scripted_transfers(state, build_lighter_transfer_schedule(get_unit(), tutorial.sub_account_ids), accounts)
     print(tabulate(rows, headers="keys", tablefmt="simple"))
     logger.info("All %d scripted transfers were booked correctly", len(rows))
     print_trade_summary(state)

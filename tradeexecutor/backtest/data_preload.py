@@ -26,6 +26,7 @@ def preload_data(
     execution_context: ExecutionContext | None = None,
     execution_model: ExecutionModel | None = None,
     strategy_parameters: StrategyParameters | None = None,
+    state: "tradeexecutor.state.state.State | None" = None,
 ) -> TradingStrategyUniverse:
     """Call the strategy's universe builder before backtesting or live scheduling.
 
@@ -61,4 +62,5 @@ def preload_data(
         execution_context=execution_context,
         execution_model=execution_model,
         strategy_parameters=strategy_parameters,
+        state=state,
     )

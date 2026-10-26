@@ -192,6 +192,7 @@ def repair(
         universe_options,
         execution_model=run_description.runner.execution_model,
         strategy_parameters=mod.parameters,
+        state=state,
     )
 
     runner = run_description.runner

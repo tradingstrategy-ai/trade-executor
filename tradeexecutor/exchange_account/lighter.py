@@ -36,7 +36,7 @@ LIGHTER_PROTOCOL = "lighter"
 #: Only Lighter deployment supported by the initial integration.
 LIGHTER_DEPLOYMENT = "ethereum"
 #: ``other_data`` role of the Safe-owned master account pair.
-#: Label a strategy uses for the Safe-owned master account.
+#: Id a strategy uses for the Safe-owned master account.
 LIGHTER_MASTER_LABEL = "master"
 
 LIGHTER_ROLE_MASTER = "master"
@@ -69,6 +69,7 @@ LIGHTER_PUBLIC_SUB_ACCOUNT_FIELDS = (
     "api_key_index",
     "public_key",
     "change_pubkey_tx_hash",
+    "label",
 )
 
 
@@ -219,7 +220,7 @@ def create_lighter_exchange_account_pair(
         "lighter_master_account_index": master_account_index,
     }
     if strategy_label:
-        other_data["lighter_strategy_label"] = strategy_label
+        other_data["lighter_sub_account_id"] = strategy_label
 
     if role == LIGHTER_ROLE_MASTER:
         # Lighter's L1 contract is the stable, canonical identity for the
@@ -268,7 +269,7 @@ def create_lighter_exchange_account_pairs(
         Sub-accounts in creation order, either as indices or as a mapping of
         index to label, which is how a strategy's ``Parameters`` declares them.
     :param strategy_labels:
-        Optional label per sub-account index when ``sub_account_indices`` is a plain sequence.
+        Optional sub-account id per index when ``sub_account_indices`` is a plain sequence.
     :return:
         Master pair followed by one pair per sub-account.
     """
@@ -278,7 +279,7 @@ def create_lighter_exchange_account_pairs(
     else:
         labels = dict(strategy_labels or {})
     if len(set(labels.values())) != len(labels) or LIGHTER_MASTER_LABEL in labels.values():
-        raise ValueError(f"Lighter sub-account labels must be unique and not {LIGHTER_MASTER_LABEL!r}: {labels}")
+        raise ValueError(f"Lighter sub-account ids must be unique and not {LIGHTER_MASTER_LABEL!r}: {labels}")
     pairs = [create_lighter_exchange_account_pair(quote, master_account_index)]
     pairs += [
         create_lighter_exchange_account_pair(
@@ -293,27 +294,27 @@ def create_lighter_exchange_account_pairs(
     return pairs
 
 
-def get_lighter_account_label(pair: TradingPairIdentifier) -> str:
-    """Return the label a strategy uses for a Lighter account pair.
+def get_lighter_account_id(pair: TradingPairIdentifier) -> str:
+    """Return the id a strategy uses for a Lighter account pair.
 
     :param pair:
         Lighter exchange-account pair.
     :return:
-        ``master`` for the master account, otherwise the sub-account's label
-        or its index when it has no label.
+        ``master`` for the master account, otherwise the sub-account's id or
+        its index when it has no id.
     """
     if get_lighter_account_role(pair) == LIGHTER_ROLE_MASTER:
         return LIGHTER_MASTER_LABEL
-    return str((pair.other_data or {}).get("lighter_strategy_label") or pair.get_exchange_account_id())
+    return str((pair.other_data or {}).get("lighter_sub_account_id") or pair.get_exchange_account_id())
 
 
 def find_lighter_account_pair(pairs: Iterable[TradingPairIdentifier], account: str | int) -> TradingPairIdentifier:
-    """Return the Lighter pair a strategy refers to by label or index.
+    """Return the Lighter pair a strategy refers to by id or index.
 
     :param pairs:
         Pairs of a strategy universe.
     :param account:
-        ``master``, a sub-account label, or an account index.
+        ``master``, a sub-account id, or an account index.
     :return:
         The matching pair.
     :raise ValueError:
@@ -322,7 +323,7 @@ def find_lighter_account_pair(pairs: Iterable[TradingPairIdentifier], account: s
     for pair in pairs:
         if not is_lighter_exchange_account_pair(pair):
             continue
-        if get_lighter_account_label(pair) == str(account) or str(pair.get_exchange_account_id()) == str(account):
+        if get_lighter_account_id(pair) == str(account) or str(pair.get_exchange_account_id()) == str(account):
             return pair
     raise ValueError(f"No Lighter account {account!r} in the strategy universe; declare it in Parameters.lighter_sub_accounts")
 

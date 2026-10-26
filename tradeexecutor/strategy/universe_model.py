@@ -174,6 +174,8 @@ class UniverseModel(abc.ABC):
         execution_context: ExecutionContext | None = None,
         strategy_parameters: StrategyParameters | None = None,
         execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
+    
+        state: "tradeexecutor.state.state.State | None" = None,
     ):
         """Build a universe before backtesting or the live scheduler starts.
 
@@ -193,6 +195,7 @@ class UniverseModel(abc.ABC):
         options: UniverseOptions,
         strategy_parameters: "tradeexecutor.strategy.parameters.StrategyParameters | None" = None,
         execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None"= None,
+        state: "tradeexecutor.state.state.State | None" = None,
     ) -> StrategyExecutionUniverse:
         """On each strategy tick, refresh/recreate the trading universe for the strategy.
 
@@ -228,6 +231,7 @@ class StaticUniverseModel(UniverseModel):
         options: UniverseOptions,
         strategy_parameters: "tradeexecutor.strategy.parameters.StrategyParameters | None" = None,
         execution_model: "tradeexecutor.strategy.execution_model.ExecutionModel | None" = None,
+        state: "tradeexecutor.state.state.State | None" = None,
     ) -> StrategyExecutionUniverse:
         """Always return the same universe copy - there is no refresh."""
         return self.universe

@@ -185,8 +185,7 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
         "PATH": os.environ["PATH"],
         "EXECUTOR_ID": "lighter-multi",
         "NAME": "lighter-multi",
-        "STRATEGY_FILE": (strategies / "minimal_lighter_strategy.py").as_posix(),
-        "LIGHTER_ACCOUNT_INDEX": str(MASTER_INDEX),
+        "STRATEGY_FILE": (strategies / "lighter_multi_subaccount_strategy.py").as_posix(),
         "JSON_RPC_ETHEREUM": anvil_ethereum.json_rpc_url,
         "STATE_FILE": state_file.as_posix(),
         "ASSET_MANAGEMENT_MODE": "lagoon",
@@ -203,7 +202,6 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
         "MANAGEMENT_FEE": "0",
         "GENERATE_LIGHTER_API_KEY": "true",
         "LIGHTER_API_KEY_INDEX": str(MIN_API_KEY_INDEX),
-        "LIGHTER_SUB_ACCOUNT_COUNT": "2",
         "SAFE_SALT_NONCE": "43",
         "TRADING_STRATEGY_API_KEY": TRADING_STRATEGY_API_KEY,
         "CACHE_PATH": (tmp_path / "cache").as_posix(),
@@ -223,14 +221,15 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     assert setup["account_index"] == MASTER_INDEX
     assert [sub["account_index"] for sub in setup["sub_accounts"]] == [sub_1, sub_2]
     assert all("private_key" not in sub for sub in setup["sub_accounts"])
+    assert [sub["label"] for sub in setup["sub_accounts"]] == ["trend", "arb"]
     handover = {
-        index: json.loads(operator_record_file.with_name(f"{operator_record_file.stem}.nautilus.{index}.json").read_text())
-        for index in (sub_1, sub_2)
+        index: json.loads(operator_record_file.with_name(f"{operator_record_file.stem}.nautilus.{account_id}.json").read_text())
+        for account_id, index in (("trend", sub_1), ("arb", sub_2))
     }
-    for index, record in handover.items():
-        path = operator_record_file.with_name(f"{operator_record_file.stem}.nautilus.{index}.json")
+    for (account_id, index), record in zip((("trend", sub_1), ("arb", sub_2)), handover.values()):
+        path = operator_record_file.with_name(f"{operator_record_file.stem}.nautilus.{account_id}.json")
         assert stat.S_IMODE(path.stat().st_mode) == PRIVATE_RECORD_MODE
-        assert record["account_index"] == index
+        assert record["account_index"] == index and record["label"] == account_id
         assert record["safe_address"] == deployment["safe_address"]
         assert fake_lighter_core.get_account(index).api_keys[MIN_API_KEY_INDEX] == record["public_key"]
         assert record["private_key"] not in operator_record_file.read_text()
@@ -247,8 +246,6 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
 
     # 2. Initialise state and account for the bootstrap subscription with one position per account; flag an untracked sub-account.
     os.environ.update({
-        "STRATEGY_FILE": (strategies / "lighter_multi_subaccount_strategy.py").as_posix(),
-        "LIGHTER_ACCOUNT_INDEXES": f"{MASTER_INDEX},{sub_1},{sub_2}",
         "LIGHTER_SUB_ACCOUNT_WEIGHTS": "",
         "LIGHTER_TRANSFER_FEE_USD": "0",
         "LIGHTER_OPERATOR_RECORD_FILE": operator_record_file.as_posix(),

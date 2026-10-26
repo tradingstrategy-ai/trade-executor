@@ -55,6 +55,7 @@ from web3.contract.contract import ContractFunction
 
 from tradeexecutor.cli.main import app
 from tradeexecutor.exchange_account import lighter as lighter_reads
+from tradeexecutor.exchange_account.sub_account import get_lighter_account_resolution
 from tradeexecutor.state.state import State
 from tradeexecutor.testing.lighter_report import get_lighter_funding_fees
 from tradeexecutor.testing.lighter_simulation import ANVIL_DEPLOYER_PRIVATE_KEY, SimulatedLighter, launch_simulated_lighter
@@ -152,9 +153,18 @@ class Tutorial:
         """Return the master index followed by the sub-account indices."""
         return [int(index) for index in self.progress["account_indices"]]
 
-    def get_handover_file(self, account_index: int) -> Path:
+    @property
+    def sub_account_ids(self) -> list[str]:
+        """Return the deployed sub-account ids in creation order."""
+        return [str(account_id) for account_id in self.progress["sub_account_ids"]]
+
+    def get_accounts(self) -> dict[str, int]:
+        """Return the Lighter account index of the master and of each sub-account id, as recorded in the state."""
+        return get_lighter_account_resolution(State.read_json_file(self.state_file))
+
+    def get_handover_file(self, account_id: str) -> Path:
         """Return the mode-0600 hand-over file holding one sub-account's key."""
-        return self.record_file.with_name(f"{self.record_file.stem}.nautilus.{account_index}.json")
+        return self.record_file.with_name(f"{self.record_file.stem}.nautilus.{account_id}.json")
 
     def write_progress(self) -> None:
         """Persist progress, including values saved within a phase."""
@@ -325,7 +335,7 @@ def get_vault(tutorial: Tutorial) -> LagoonVault:
 def get_cli_environment(tutorial: Tutorial, **overrides: str) -> dict[str, str]:
     """Return the executor environment used for every post-deployment command."""
     environment = {
-        "ID": tutorial.config.executor_id,
+        "EXECUTOR_ID": tutorial.config.executor_id,
         "NAME": f"{tutorial.config.executor_id} tutorial",
         "STRATEGY_FILE": str(tutorial.config.strategy_file),
         "STATE_FILE": str(tutorial.state_file),
@@ -334,7 +344,6 @@ def get_cli_environment(tutorial: Tutorial, **overrides: str) -> dict[str, str]:
         "ASSET_MANAGEMENT_MODE": "lagoon",
         "VAULT_ADDRESS": tutorial.progress["vault_address"],
         "VAULT_ADAPTER_ADDRESS": tutorial.progress["module_address"],
-        "LIGHTER_ACCOUNT_INDEXES": ",".join(str(index) for index in tutorial.account_indices),
         "LIGHTER_OPERATOR_RECORD_FILE": str(tutorial.operator_record_file),
         "LIGHTER_WITHDRAWAL_TIMEOUT": str(tutorial.config.withdraw_timeout),
         "LIGHTER_TRANSFER_TIMEOUT": str(tutorial.config.transfer_timeout),
@@ -432,8 +441,7 @@ def deploy(tutorial: Tutorial, fund_name: str, fund_symbol: str) -> None:
     """Deploy the vault with keyed sub-accounts and record its public details."""
     environment = {
         "EXECUTOR_ID": tutorial.config.executor_id,
-        "STRATEGY_FILE": str(STRATEGY_DIR / "minimal_lighter_strategy.py"),
-        "LIGHTER_ACCOUNT_INDEX": "0",
+        "STRATEGY_FILE": str(tutorial.config.strategy_file),
         "STATE_FILE": str(tutorial.state_file),
         "PRIVATE_KEY": tutorial.config.deployer_private_key,
         "JSON_RPC_ETHEREUM": tutorial.rpc_url,
@@ -447,7 +455,6 @@ def deploy(tutorial: Tutorial, fund_name: str, fund_symbol: str) -> None:
         "UNIT_TESTING": "true",
         "GENERATE_LIGHTER_API_KEY": "true",
         "LIGHTER_API_KEY_INDEX": str(tutorial.config.api_key_index),
-        "LIGHTER_SUB_ACCOUNT_COUNT": str(tutorial.config.sub_account_count),
         "LIGHTER_SUB_ACCOUNT_API_KEY_INDEX": str(tutorial.config.api_key_index),
         "LOG_LEVEL": "warning",
     }
@@ -462,8 +469,9 @@ def record_deployment(tutorial: Tutorial) -> None:
     public = json.loads(tutorial.state_file.with_name(f"{tutorial.config.executor_id}.deployment.json").read_text())["deployments"]["ethereum"]
     setup = public["lighter_account_setup"]
     sub_indices = [int(sub["account_index"]) for sub in setup["sub_accounts"]]
+    sub_ids = [str(sub["label"]) for sub in setup["sub_accounts"]]
     assert len(sub_indices) == tutorial.config.sub_account_count
-    tutorial.progress.update({"vault_address": public["vault_address"], "module_address": public["module_address"]})
+    tutorial.progress.update({"vault_address": public["vault_address"], "module_address": public["module_address"], "sub_account_ids": sub_ids})
     safe_address = get_vault(tutorial).safe_address
     session = create_lighter_session()
     try:
@@ -472,14 +480,14 @@ def record_deployment(tutorial: Tutorial) -> None:
         session.close()
     assert accounts is not None and accounts.master_index == int(setup["account_index"])
     assert set(sub_indices) <= set(accounts.sub_account_indices), "Lighter does not list the created sub-accounts"
-    for index in sub_indices:
-        handover = tutorial.get_handover_file(index)
+    for account_id in sub_ids:
+        handover = tutorial.get_handover_file(account_id)
         assert handover.exists() and handover.stat().st_mode & 0o077 == 0, f"Missing or unsafe hand-over file {handover}"
     tutorial.progress.update({
         "safe_address": safe_address,
         "account_indices": [accounts.master_index, *sub_indices],
     })
-    logger.info("Master account %d, sub-accounts %s", accounts.master_index, sub_indices)
+    logger.info("Master account %d, sub-accounts %s", accounts.master_index, dict(zip(sub_ids, sub_indices)))
 
 
 def initialise_state(tutorial: Tutorial) -> None:
@@ -491,6 +499,7 @@ def initialise_state(tutorial: Tutorial) -> None:
     state = State.read_json_file(tutorial.state_file)
     lighter_positions = [position for position in state.portfolio.open_positions.values() if position.is_exchange_account()]
     assert len(lighter_positions) == 1 + tutorial.config.sub_account_count, "Expected one position per Lighter account"
+    assert list(get_lighter_account_resolution(state).values()) == tutorial.account_indices, "init did not record the Lighter accounts in the state"
 
 
 def subscribe(tutorial: Tutorial, **start_overrides: str) -> None:
