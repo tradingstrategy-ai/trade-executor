@@ -787,6 +787,38 @@ def test_backtest_async_vault_ends_with_pending():
     assert weights.xs(final_timestamp).sum() == pytest.approx(INITIAL_DEPOSIT, abs=1.0)
 
 
+def test_backtest_atoma_withdrawal_fee_and_delayed_redemption():
+    """Atoma deposits settle immediately while fee-bearing withdrawals wait an epoch.
+
+    1. Build an Atoma vault with a flat share price and a 0.5% withdrawal fee.
+    2. Deposit, hold and redeem without a settlement override.
+    3. Check immediate deposits, seven-day redemption settlement and net cash.
+    """
+    # 1. Build an Atoma vault with a flat share price and a 0.5% withdrawal fee.
+    universe, pairs = _make_multi_vault_universe([
+        ("ATOMA", VAULT_ADDRESS, {ERC4626Feature.atoma_like}),
+    ])
+    pair = pairs["ATOMA"]
+    translated_pair = universe.get_pair_by_id(pair.internal_id)
+    translated_pair.base.other_data["sell_tax"] = 0.005
+    assert not translated_pair.is_async_vault()
+    assert translated_pair.has_delayed_vault_redemption()
+
+    # 2. Deposit, hold and redeem without a settlement override.
+    result = _run(universe, delay_overrides={})
+    trades = list(result.state.portfolio.get_all_trades())
+    buy = next(trade for trade in trades if trade.is_buy())
+    sell = next(trade for trade in trades if trade.is_sell())
+
+    # 3. Check immediate deposits, seven-day redemption settlement and net cash.
+    assert len(trades) == 2
+    assert buy.executed_at == buy.opened_at
+    assert sell.executed_at - sell.opened_at == datetime.timedelta(days=7)
+    assert sell.executed_price == pytest.approx(FIXED_PRICE * 0.995)
+    assert result.state.portfolio.get_cash() == pytest.approx(INITIAL_DEPOSIT - 25)
+    assert not result.state.portfolio.open_positions
+
+
 @pytest.mark.timeout(300)
 def test_backtest_async_vault_settlement_due_defaults():
     """Settlement due-time defaults and precedence for async vault backtesting.

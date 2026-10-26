@@ -23,8 +23,12 @@ from decimal import Decimal
 from unittest.mock import MagicMock
 
 import pytest
+import pandas as pd
+
+from tradingstrategy.chain import ChainId
 
 from tradeexecutor.analysis.cctp import analyse_idle_bridge_capital
+from tradeexecutor.analysis.trade_analyser import expand_timeline
 from tradeexecutor.backtest.backtest_execution import BacktestExecution
 from tradeexecutor.backtest.backtest_routing import BacktestRoutingIgnoredModel, BacktestRoutingState
 from tradeexecutor.backtest.simulated_wallet import SimulatedWallet
@@ -36,6 +40,7 @@ from tradeexecutor.state.identifier import (
 )
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeType
+from tradeexecutor.strategy.trading_strategy_universe import create_pair_universe_from_code
 
 USDC_ARBITRUM_ADDRESS = "0xaf88d065e77c8cc2239327c5edb3a432268e5831"
 USDC_BASE_ADDRESS = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
@@ -127,6 +132,52 @@ def _establish_idle_satellite_capital(state, execution, wallet, cctp_pair, usdc_
     )
     _execute(state, execution, wallet, usdc_arbitrum, [bridge_out])
     assert bridge_out.is_success()
+
+
+def test_bridge_timeline_without_realised_profit(
+    usdc_arbitrum: AssetIdentifier,
+    cctp_pair: TradingPairIdentifier,
+):
+    """Report closed bridge positions even when they have no opposing trades.
+
+    1. Execute a bridge round trip and render its zero realised profit.
+    2. Retain only the return leg, matching satellite-only recovery positions.
+    3. Verify the realised profit remains unavailable and HTML export works.
+    """
+    # 1. Execute a bridge round trip and render its zero realised profit.
+    wallet = SimulatedWallet()
+    wallet.set_balance(usdc_arbitrum, Decimal(100_000))
+    state = _make_state(usdc_arbitrum, Decimal(100_000))
+    execution = BacktestExecution(wallet=wallet)
+    _establish_idle_satellite_capital(state, execution, wallet, cctp_pair, usdc_arbitrum, Decimal(40_000))
+    position = state.portfolio.get_bridge_position_for_chain(SATELLITE_CHAIN_ID)
+    _, bridge_back, _ = state.create_trade(
+        strategy_cycle_at=TS,
+        pair=cctp_pair,
+        quantity=-position.get_quantity(),
+        reserve=None,
+        assumed_price=1.0,
+        trade_type=TradeType.rebalance,
+        reserve_currency=usdc_arbitrum,
+        reserve_currency_price=1.0,
+    )
+    _execute(state, execution, wallet, usdc_arbitrum, [bridge_back])
+    assert position.is_closed()
+    cctp_pair.internal_exchange_id = 1
+    pair_universe = create_pair_universe_from_code(ChainId.arbitrum, [cctp_pair])
+    timeline = pd.DataFrame([{"position": position}])
+    expanded, _ = expand_timeline(set(), pair_universe, timeline)
+    assert expanded.iloc[0]["PnL USD"] == "$0.00"
+
+    # 2. Retain only the return leg, matching satellite-only recovery positions.
+    position.trades = {bridge_back.trade_id: bridge_back}
+    assert position.get_realised_profit_usd() is None
+
+    # 3. Verify the realised profit remains unavailable and HTML export works.
+    expanded, apply_styles = expand_timeline(set(), pair_universe, timeline)
+    assert pd.isna(expanded.iloc[0]["PnL USD"])
+    assert expanded.iloc[0]["PnL %"] == "0.00%"
+    assert "<table" in apply_styles(expanded).to_html()
 
 
 @pytest.mark.timeout(300)

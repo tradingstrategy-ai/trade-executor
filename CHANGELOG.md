@@ -2,6 +2,8 @@
 
 ## 0.2
 
+- Add the xchain3 `master-vault-v3` strategy with private-vault exclusions, downside gates and a yield-bearing queue, including Atoma withdrawal-fee and delayed-redemption modelling and CCTP backtest report export support (2026-10-26).
+
 - Fix vault metadata loading on machines without a findable native libcairo: eth_defi imports CairoSVG only for table sparkline rendering, and trading-strategy no longer silently drops every vault when an environment error occurs while parsing vault metadata (2026-10-14)
 - Speed up live vault universe construction from about five minutes to under 30 seconds for Hyper AI: vectorised trading-strategy vault history conversion and grouped candle forward fill, the vault dataset HEAD request overlapped with conversion, a lighter stale candle check, and curator vault metadata downloads routed through the strategy cache. Synthetic vault exchange ids and non-hex vault pair ids are now identical in every process (2026-10-08).
 
