@@ -4,6 +4,7 @@
 import calendar
 import datetime
 import logging
+import json
 import sys
 import time
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ from eth_defi.provider.broken_provider import get_almost_latest_block_number
 from web3 import Web3
 
 from tradeexecutor.ethereum.vault import hypercore_transit_recovery, hypercore_vault
+from tradeexecutor.ethereum.vault.hypercore_withdrawal_recovery import inspect_partial_withdrawal, recover_partial_withdrawal
 from tradeexecutor.ethereum.vault.hypercore_transit_recovery import (
     BALANCE_TOLERANCE,
     HYPERCORE_TRANSIT_RECOVERY_DUST_USDC,
@@ -653,7 +655,9 @@ def correct_accounts(
     raise_on_unclean: bool = typer.Option(False, is_flag=True, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
     skip_hypercore_transit_recovery: bool = Option(False, "--skip-hypercore-transit-recovery", envvar="SKIP_HYPERCORE_TRANSIT_RECOVERY", help="Skip Safe-level HyperCore spot/perp USDC recovery before account correction."),
     cleanup_hypercore_small_positions: bool = Option(True, "--cleanup-hypercore-small-positions/--no-cleanup-hypercore-small-positions", envvar="CLEANUP_HYPERCORE_SMALL_POSITIONS", help="Redeem open HyperCore vault positions below the strategy minimum allocation before correcting accounts."),
-    dry_run: bool = Option(False, "--dry-run", envvar="DRY_RUN", help="Read live balances and print any Safe-level HyperCore perp->spot->EVM recovery plan without signing, broadcasting, persisting state, or applying accounting corrections."),
+    dry_run: bool = Option(False, "--dry-run", envvar="DRY_RUN", help="Read live balances and preview recovery without broadcasting or saving state. Disable small-position cleanup to avoid constructing/signing its transactions."),
+
+    hypercore_withdrawal_evidence: Path | None = Option(None, "--hypercore-withdrawal-evidence", help="JSON with trade_id and verified first_execution_hash/second_execution_hash for partial withdrawal recovery."),
 
     # Derive exchange account options
     derive_owner_private_key: Optional[str] = Option(None, envvar="DERIVE_OWNER_PRIVATE_KEY", help="Derive owner wallet private key"),
@@ -682,9 +686,14 @@ def correct_accounts(
     Use ``--dry-run`` for a read-only rehearsal. It includes the live
     Safe-level HyperCore transit-recovery planner: this reads spot/perp/EVM
     balances and prints any ``perp -> spot -> EVM`` actions, but never signs or
-    broadcasts them. This makes a partial CoreWriter settlement visible before
-    generic correction changes state. Dry-run never writes or backs up the
-    state file.
+    broadcasts them. Optional small-position cleanup can construct and sign a
+    transaction during its rehearsal; use --no-cleanup-hypercore-small-positions
+    for a no-signing custody preview. Dry-run never writes or backs up state.
+
+    A rejected optional withdrawal uses --hypercore-withdrawal-evidence with
+    explicit HyperCore execution hashes. Run repair first to clear untouched
+    siblings, then preview with small-position cleanup disabled. See
+    docs/hyper-ai-withdrawal-recovery.md for eligibility and interruption limits.
 
     For the interrupted 28 September Hyper-AI deposit, first verify the known
     failed vault-deposit receipt and current custody. ``repair`` fixes its
@@ -774,7 +783,17 @@ def correct_accounts(
         if has_unresolved_hypercore_accounting(trade)
     ]
     if at_risk_trades and (skip_save or process_redemption):
-        raise RuntimeError("Interrupted HyperCore deposit reconciliation requires an atomic state save and no redemption processing")
+        raise RuntimeError("Interrupted HyperCore reconciliation requires an atomic state save and no redemption processing")
+    if any(trade.is_sell() for trade in at_risk_trades) and hypercore_withdrawal_evidence is None:
+        raise RuntimeError("Interrupted HyperCore withdrawal requires --hypercore-withdrawal-evidence; see docs/hyper-ai-withdrawal-recovery.md")
+    if hypercore_withdrawal_evidence is not None and not at_risk_trades:
+        evidence = json.loads(hypercore_withdrawal_evidence.read_text())
+        trade = state.portfolio.get_trade_by_id(evidence["trade_id"])
+        if trade is not None and trade.is_success() and trade.other_data.get("hypercore_second_stage_status") == "reconciled":
+            logger.info("Withdrawal #%s already reconciled; no changes made. Run check-accounts for current balances.", trade.trade_id)
+            web3config.close()
+            return
+        raise RuntimeError("Withdrawal evidence does not identify an unresolved withdrawal")
     if not at_risk_trades:
         reconciled_transfers = reconcile_verified_lighter_transfers(
             state,
@@ -790,11 +809,20 @@ def correct_accounts(
                 len(reconciled_transfers),
             )
 
+    withdrawal = None
+    if hypercore_withdrawal_evidence is not None and at_risk_trades:
+        if skip_hypercore_transit_recovery or cleanup_hypercore_small_positions or skip_save or process_redemption or transfer_away:
+            raise RuntimeError("Withdrawal recovery requires saved accounting, transit recovery and --no-cleanup-hypercore-small-positions")
+        if not isinstance(sync_model, LagoonVaultSyncModel):
+            raise RuntimeError("Withdrawal recovery requires a Lagoon Safe")
+        preflight_state_for_account_correction(state, allow_at_risk_hypercore_withdrawal=True)
+        withdrawal = inspect_partial_withdrawal(state, sync_model, web3, json.loads(hypercore_withdrawal_evidence.read_text()))
+
     # The transit hook can broadcast Safe actions, so validate unfinished
     # trades before building a universe or entering that hook.
-    preflight_state_for_account_correction(state, allow_at_risk_hypercore_deposit=bool(at_risk_trades))
-    completed_top_up = _reconcile_completed_hypercore_top_up(state, sync_model, web3) if at_risk_trades else None
-    incident = _inspect_interrupted_hypercore_deposit(state, sync_model, web3) if at_risk_trades and completed_top_up is None else None
+    preflight_state_for_account_correction(state, allow_at_risk_hypercore_deposit=bool(at_risk_trades), allow_at_risk_hypercore_withdrawal=withdrawal is not None)
+    completed_top_up = _reconcile_completed_hypercore_top_up(state, sync_model, web3) if at_risk_trades and withdrawal is None else None
+    incident = _inspect_interrupted_hypercore_deposit(state, sync_model, web3) if at_risk_trades and completed_top_up is None and withdrawal is None else None
     if completed_top_up and state.pending_data_availability_slot is not None:
         # Validate before generic correction can transfer unknown tokens. The
         # legacy is_unfinished() predicate covers only broadcasted trades, so
@@ -1055,7 +1083,7 @@ def correct_accounts(
                 logger.info("  Position %d: %s (change: %s)", evt.position_id, evt.notes, evt.quantity)
 
     closed_phantom_positions = False
-    if not incident:
+    if not incident and not withdrawal:
         closed_phantom_positions = _sync_hypercore_vault_positions(
             asset_management_mode=asset_management_mode,
             universe=universe,
@@ -1066,7 +1094,7 @@ def correct_accounts(
 
     if incident:
         logger.info("Skipping unrelated HyperCore vault synchronisation and small-position cleanup during deposit recovery")
-    if not incident and not completed_top_up and cleanup_hypercore_small_positions and asset_management_mode.is_vault():
+    if not incident and not withdrawal and not completed_top_up and cleanup_hypercore_small_positions and asset_management_mode.is_vault():
         minimum_allocation = get_hypercore_minimum_allocation(mod.parameters)
         if minimum_allocation is None:
             logger.info(
@@ -1121,7 +1149,7 @@ def correct_accounts(
                         "HyperCore small-position cleanup skipped: routing is unavailable for this strategy"
                     )
 
-    closed_dust_trades = [] if incident else close_hypercore_dust_positions(state.portfolio)
+    closed_dust_trades = [] if incident or withdrawal else close_hypercore_dust_positions(state.portfolio)
     if closed_dust_trades:
         logger.info(
             "Auto-closed %d Hypercore dust position(s) before duplicate and accounting checks",
@@ -1133,9 +1161,14 @@ def correct_accounts(
     # any position-discovery or cleanup step above introducing an unfinished
     # trade. This preserves the #1486 invariant: a transit recovery is never
     # the first irreversible action after a coherence failure.
-    preflight_state_for_account_correction(state, allow_at_risk_hypercore_deposit=incident is not None)
+    preflight_state_for_account_correction(state, allow_at_risk_hypercore_deposit=incident is not None, allow_at_risk_hypercore_withdrawal=withdrawal is not None)
 
-    if completed_top_up:
+    if withdrawal:
+        recover_partial_withdrawal(withdrawal, state, store, sync_model, web3, hot_wallet, dry_run)
+        if dry_run:
+            web3config.close()
+            return
+    elif completed_top_up:
         # Ledger evidence proves this principal is in the vault. Sweeping
         # unrelated Safe-level cash is not part of completing its accounting.
         logger.info("Completed top-up: skipping HyperCore transit transfers")
@@ -1237,9 +1270,18 @@ def correct_accounts(
             universe.reserve_assets,
             state,
             sync_model,
+            # The proven pre-existing transit cash must be booked even when
+            # small relative to the Safe reserve after the sale credit.
+            relative_epsilon=0.0 if withdrawal else None,
             block_identifier=block_number,
         )
         corrections = list(corrections)
+
+    if withdrawal:
+        baseline = Decimal(withdrawal.trade.other_data["hypercore_phase1_perp_baseline_usdc"])
+        reserve_delta = sum((c.actual_amount - c.expected_amount for c in corrections), Decimal(0))
+        if any(not c.reserve_asset for c in corrections) or abs(reserve_delta - baseline) > BALANCE_TOLERANCE:
+            raise RuntimeError(f"Withdrawal reconciliation refuses corrections beyond the verified pre-existing transit cash: expected {baseline}, found {reserve_delta}")
 
     if len(corrections) == 0:
         logger.info("No account corrections found")
@@ -1293,20 +1335,20 @@ def correct_accounts(
     balance_updates = list(balance_updates)  # Side effect: this will force execution of all actions stuck in the iterator
     logger.info(f"We did {len(corrections)} accounting corrections, of which {len(balance_updates)} internal state balance updates, new block height is {block_number:,} at {block_timestamp}")
 
-    closed_dust_trades = [] if incident else close_hypercore_dust_positions(state.portfolio)
+    closed_dust_trades = [] if incident or withdrawal else close_hypercore_dust_positions(state.portfolio)
     if closed_dust_trades:
         logger.info(
             "Auto-closed %d Hypercore dust position(s) after accounting corrections",
             len(closed_dust_trades),
         )
 
-    if not skip_save and not incident and not completed_top_up:
+    if not skip_save and not incident and not withdrawal and not completed_top_up:
         logger.info("Saving state to %s", store.path)
         store.sync(state)
     else:
         logger.info("Saving the fixed state skipped")
 
-    if not incident and not completed_top_up:
+    if not incident and not withdrawal and not completed_top_up:
         web3config.close()
 
     # Shortcut here
@@ -1338,6 +1380,20 @@ def correct_accounts(
         block_identifier=block_number,
         exchange_account_value_func=exchange_account_value_func,
     )
+
+    if withdrawal:
+        if not clean:
+            raise UncleanState("Withdrawal final account check failed; unresolved checkpoint retained")
+        slot = state.pending_data_availability_slot
+        if slot != withdrawal.trade.opened_at:
+            raise UncleanState("Withdrawal decision slot changed during recovery")
+        state.last_cycle_at = slot
+        state.pending_data_availability_slot = None
+        state.cycle += 1
+        withdrawal.trade.add_note(f"Partially executed decision slot {slot} consumed without replay")
+        state.check_if_clean()
+        store.sync(state)
+        web3config.close()
 
     if completed_top_up:
         if not clean:

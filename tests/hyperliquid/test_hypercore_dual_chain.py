@@ -160,14 +160,14 @@ def test_simulated_full_close_does_not_require_live_residual(mock_block_ts) -> N
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
-def test_residual_planner_skips_accepted_or_unreachable_residual(
+def test_residual_planner_skips_accepted_or_unvalidated_residual(
     mock_fetch_equity,
 ) -> None:
-    """Spend no second-stage gas when it is unnecessary or cannot reach 5 USD.
+    """Spend no second-stage gas while optional withdrawals are disabled.
 
     1. Return a 4.99 USD residual and verify it is accepted without another request.
     2. Return a 28 USD residual with only 20 USD of fresh capacity.
-    3. Verify the protected capacity would leave too much equity and is skipped.
+    3. Verify the optional request is skipped pending protocol validation.
 
     HyperCore API reads are mocked to make both eligibility branches deterministic.
     """
@@ -195,10 +195,10 @@ def test_residual_planner_skips_accepted_or_unreachable_residual(
             VAULT_ADDR,
         )
 
-    # 3. Verify the protected capacity would leave too much equity and is skipped.
+    # 3. Verify the optional request is skipped pending protocol validation.
     assert residual == Decimal("28")
     assert request_raw is None
-    assert trade.other_data["hypercore_second_stage_status"] == "skipped_insufficient_capacity"
+    assert trade.other_data["hypercore_second_stage_status"] == "skipped_pending_protocol_validation"
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
@@ -1187,15 +1187,15 @@ def test_withdrawal_caps_gross_quantity_to_planned_sell_value(
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.get_block_timestamp")
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.fetch_user_vault_equity")
-def test_full_close_redeems_residual_in_second_same_cycle_transaction(
+def test_full_close_retains_residual_without_optional_retry(
     mock_fetch_equity,
     mock_block_ts,
 ) -> None:
-    """Close a protected first-stage residual with one additional vault transaction.
+    """Settle first-leg proceeds without risking an optional residual withdrawal.
 
     1. Start a flagged 100 USDC full close whose protected first withdrawal leaves 28 USDC.
-    2. Verify a second protected withdrawal reduces the residual to 1.50 USDC before the downstream sweep.
-    3. Verify one trade aggregates both vault transactions and closes its full planned quantity.
+    2. Verify no optional withdrawal is sent before the downstream sweep.
+    3. Verify the first-leg partial fill retains the remaining shares.
 
     HyperCore balance polling and transaction broadcasts are mocked to model asynchronous settlement deterministically.
     """
@@ -1219,8 +1219,8 @@ def test_full_close_redeems_residual_in_second_same_cycle_transaction(
     mock_block_ts.return_value = datetime.datetime(2026, 8, 27)
     mock_fetch_equity.side_effect = [
         _make_unlocked_equity(Decimal("28")),
-        _make_unlocked_equity(Decimal("1.5")),
-        _make_unlocked_equity(Decimal("1.5")),
+        _make_unlocked_equity(Decimal("28")),
+        _make_unlocked_equity(Decimal("28")),
     ]
     receipts = {HexBytes("0xabc"): {"status": 1, "blockNumber": 100}}
     vault_info = MagicMock(max_withdrawable=Decimal("28"))
@@ -1262,18 +1262,18 @@ def test_full_close_redeems_residual_in_second_same_cycle_transaction(
             return_value={"status": 1, "blockNumber": 101},
         ),
         patch.object(routing, "_broadcast_withdrawal_phase2", side_effect=capture_phase2),
-        patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=Decimal("98.5")),
+        patch.object(routing, "_wait_for_spot_free_usdc_balance", return_value=Decimal("72")),
         patch.object(
             routing,
             "_broadcast_withdrawal_phase3",
             return_value=(phase3_tx, {"status": 1, "blockNumber": 103}),
         ),
-        patch.object(routing, "_wait_for_usdc_arrival", return_value=98_490_000),
+        patch.object(routing, "_wait_for_usdc_arrival", return_value=71_990_000),
         patch.object(routing, "_fetch_hype_usd_price", return_value=None),
     ):
         vault_class.return_value.fetch_info.return_value = vault_info
 
-        # 2. Verify a second protected withdrawal reduces the residual to 1.50 USDC before the downstream sweep.
+        # 2. Verify no optional withdrawal is sent before the downstream sweep.
         routing._settle_withdrawal(
             routing.web3,
             state,
@@ -1282,22 +1282,15 @@ def test_full_close_redeems_residual_in_second_same_cycle_transaction(
             stop_on_execution_failure=False,
         )
 
-    # 3. Verify one trade aggregates both vault transactions and closes its full planned quantity.
-    assert trade.other_data["hypercore_second_stage_requested_raw"] == 26_500_000
-    assert trade.other_data["hypercore_second_stage_status"] == "verified"
-    assert trade.other_data["hypercore_second_stage_residual_usd"] == "1.5"
-    assert checkpoint_statuses[0] == "broadcast_pending"
-    assert captured_phase2_raw == [98_500_000]
-    assert len(trade.blockchain_transactions) == 4
-    assert trade.blockchain_transactions[1:] == [
-        second_stage_tx,
-        phase2_tx,
-        phase3_tx,
-    ]
+    # 3. Verify the first-leg partial fill retains the remaining shares.
+    assert "hypercore_second_stage_requested_raw" not in trade.other_data
+    assert trade.other_data["hypercore_second_stage_status"] == "skipped_pending_protocol_validation"
+    assert captured_phase2_raw == [72_000_000]
+    assert len(trade.blockchain_transactions) == 3
+    assert trade.blockchain_transactions[1:] == [phase2_tx, phase3_tx]
     success_kwargs = state.mark_trade_success.call_args.kwargs
-    assert success_kwargs["executed_amount"] == Decimal("-100")
-    assert success_kwargs["executed_reserve"] == Decimal("98.49")
-    assert position.other_data["hypercore_close_residual_status"] == HYPERCORE_CLOSE_RESIDUAL_STATUS_ACCEPTED
+    assert success_kwargs["executed_amount"] == Decimal("-72")
+    assert success_kwargs["executed_reserve"] == Decimal("71.99")
 
 
 @patch("tradeexecutor.ethereum.vault.hypercore_routing.report_failure")
@@ -1335,7 +1328,10 @@ def test_full_close_fails_closed_when_second_stage_is_ambiguous(
     second_stage_tx = MagicMock(tx_hash="0xsecond")
 
     # 1. Verify the first withdrawal and plan a second transaction for its 28 USDC residual.
+    # Exercise the legacy second-stage failure path explicitly: new planning
+    # disables these requests, but persisted ambiguous trades still need protection.
     with (
+        patch.object(routing, "_plan_same_cycle_residual_withdrawal", return_value=(Decimal("28"), 26_500_000)),
         patch("tradeexecutor.ethereum.vault.hypercore_routing.HyperliquidVault") as vault_class,
         patch.object(routing, "_fetch_safe_evm_usdc_balance", return_value=100_000_000),
         patch.object(routing, "_fetch_safe_perp_withdrawable_balance", return_value=Decimal("0")),

@@ -56,6 +56,13 @@ def has_unresolved_hypercore_accounting(trade: "TradeExecution") -> bool:
     :return: Whether live custody needs reconciliation before normal trading.
     """
     metadata = trade.other_data or {}
+    # A crash can precede the final stranded-capital checkpoint. These saved
+    # settlement phases already prove that external effects need reconciliation.
+    if metadata.get("hypercore_second_stage_status") in {
+        "broadcast_pending", "broadcast_ambiguous", "receipt_confirmed",
+        "verification_ambiguous",
+    }:
+        return True
     if metadata.get(HYPERCORE_DEPOSIT_CAPITAL_AT_RISK_KEY) is not None:
         return True
     if metadata.get(HYPERCORE_ACCOUNTING_RECONCILIATION_REQUIRED_KEY) is not None:

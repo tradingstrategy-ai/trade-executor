@@ -7,6 +7,7 @@ withdraws live vault equity. Untracked vault dust remains the responsibility of
 
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -366,12 +367,13 @@ def execute_hypercore_transit_recovery_actions(
     session: HyperliquidSession,
     reserve_token: TokenDetails,
     actions: list[HypercoreTransitRecoveryAction],
+    on_completed: Callable[[str, str], None] | None = None,
 ) -> list[str]:
     """Execute Safe-side HyperCore transit recovery actions in order."""
     executed: list[str] = []
     for action in actions:
         if action.action_kind == "perp_to_spot":
-            execute_perp_to_spot(
+            tx_hash = execute_perp_to_spot(
                 web3=web3,
                 hot_wallet=hot_wallet,
                 lagoon_vault=lagoon_vault,
@@ -380,7 +382,7 @@ def execute_hypercore_transit_recovery_actions(
                 amount=action.amount,
             )
         elif action.action_kind == "spot_to_evm":
-            execute_spot_to_evm(
+            tx_hash = execute_spot_to_evm(
                 web3=web3,
                 hot_wallet=hot_wallet,
                 lagoon_vault=lagoon_vault,
@@ -392,5 +394,7 @@ def execute_hypercore_transit_recovery_actions(
             raise NotImplementedError(
                 f"Unsupported HyperCore transit recovery action: {action.action_kind}"
             )
+        if on_completed is not None:
+            on_completed(action.action_kind, tx_hash)
         executed.append(action.action_kind)
     return executed

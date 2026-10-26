@@ -128,7 +128,7 @@ the contract between `setup_trades()` and `settle_trade()`:
 | `hypercore_first_stage_conservative_reserve_usd` / `hypercore_first_stage_conservative_raw` | alpha generation / withdrawal preflight | Maximum first-stage proceeds allowed to fund same-cycle buys when a full close is cap-bound. |
 | `hypercore_first_stage_requested_raw` | withdrawal preflight | Actual protected first-stage request after live and conservative caps. |
 | `hypercore_first_stage_residual_usd` | after the first verified vault withdrawal | Fresh residual used to decide whether a second protected withdrawal is eligible. |
-| `hypercore_second_stage_status` / `_requested_raw` / `_requested_usd` / `_expected_residual_usd` / `_tx_hash` / `_residual_usd` / `_error` / `_failure_phase` | optional same-cycle residual withdrawal | Durable planning, broadcast, verification, failure, and final-residual diagnostics. |
+| `hypercore_second_stage_status` / `_requested_raw` / `_requested_usd` / `_expected_residual_usd` / `_tx_hash` / `_residual_usd` / `_error` / `_failure_phase` | historical optional same-cycle residual withdrawal | Saved planning/broadcast/verification diagnostics; new requests are currently disabled. |
 | `hypercore_total_requested_gross_usd` / `hypercore_total_observed_perp_increase_usd` | two-stage close settlement | Aggregate gross requests and verified net perp proceeds before the shared downstream sweep. |
 | `hypercore_accounting_reconciliation_required` | failed withdrawal after proceeds reached the Safe | Prevents generic repair from assuming no assets moved when final quantity or residual verification is unavailable. |
 | `hypercore_accepted_residual_writeoff_usd` / `_at` / `_reason` | verified close or local dust cleanup | Audit record for equity intentionally removed from local tracking. |
@@ -465,10 +465,10 @@ HyperCore legs, each verified against a balance poll:
 1. **Phase 1**: `vaultTransfer(vault→perp)` — redeem the protected first amount.
 2. **Perp wait**: poll `clearinghouseState` until withdrawable USDC appears
    (`_wait_for_perp_withdrawable_balance`).
-3. **Optional residual phase**: for `TradeFlag.close`, refresh vault equity and
-   capacity. If one more protected `vaultTransfer(vault→perp)` can leave at
-   most 5 USDC, checkpoint, broadcast, and verify it before continuing.
-4. **Phase 2**: `transferUsdClass(perp→spot)` for the combined observed perp increase.
+3. **Residual check**: for `TradeFlag.close`, refresh vault equity. Optional
+   second withdrawals are disabled pending protocol validation; retain material
+   residual shares and continue returning verified first-leg proceeds.
+4. **Phase 2**: `transferUsdClass(perp→spot)` for the observed perp increase.
 5. **Spot wait**: poll `spotClearinghouseState` until free USDC appears.
 6. **Phase 3**: `sendAsset(spot→HyperEVM)` — bridge back; then verify the Safe's
    EVM USDC balance increased (`_wait_for_usdc_arrival`).
@@ -487,11 +487,8 @@ sequenceDiagram
     EX->>R: settle_trade(sell)
     R->>HC: perp wait — withdrawable reached gross − fee tolerance?
     Note over R,HC: net arrival reduced by leader performance fee
-    opt flagged close has eligible residual above 5 USDC
-        R->>HC: refresh residual + max withdrawable
-        R->>Safe: checkpoint then vaultTransfer(residual vault→perp)
-        R->>HC: verify second perp increase + vault-equity decrease
-    end
+    R->>HC: refresh first-stage residual for flagged close
+    Note over R,HC: optional second withdrawal disabled; material residual retained
     R->>Safe: phase 2 — transferUsdClass(perp→spot)
     R->>HC: spot wait — free USDC appeared?
     R->>Safe: phase 3 — sendAsset(spot→HyperEVM) (minus reserved headroom)
@@ -528,11 +525,10 @@ represent the latest marked vault value. Full-close planning therefore uses
 the position's latest API-derived share price, while settlement derives the
 executed price from the USDC actually received.
 
-The optional residual withdrawal uses the same per-vault performance-fee
-tolerance and the same `max(0.5% × amount, 1.50 USDC)` NAV-drift margin as the
-first request. It is attempted only when fresh capacity can leave at most
-5 USDC; with a 0.5% margin, a residual above 1,000 USDC cannot reach that
-threshold in one more protected leg. A status-1 receipt without both the
+Optional residual withdrawals are disabled after the October rejection. Their
+broadcast/verification implementation is retained but unreachable from current
+planning. It does not resume or diagnose saved transactions.
+A status-1 receipt without both the
 expected perp increase and a matching vault-equity decrease is ambiguous and
 halts sequential execution before shared perp USDC can be swept or attributed
 to another trade. Its combined first- and second-leg exposure is recorded as
@@ -546,12 +542,8 @@ flowchart TD
     A[phase 1 vaultTransfer EVM tx] --> B{EVM receipt ok?}
     B -- no --> F[report_failure]
     B -- yes --> C[perp wait: gross − max-fee tolerance]
-    C -- reached --> RC{flagged close residual<br/>eligible above 5 USD?}
-    RC -- no --> P2[phase 2 transferUsdClass]
-    RC -- yes --> R2[checkpoint + second vaultTransfer]
-    R2 --> V2{perp increase + equity decrease verified?}
-    V2 -- yes --> P2
-    V2 -- no / ambiguous --> F
+    C -- reached --> RC[read residual; retain material shares]
+    RC --> P2[phase 2 transferUsdClass]
     C -- timeout --> D{equity decrease ≈ request<br/>within fee tolerance?}
     D -- yes --> P2
     D -- no --> E{fresh equity < request?<br/>silent no-op pattern}
@@ -805,25 +797,25 @@ after a full close; this is distinct from the 2 USDC transaction-dust rule and
 never widens the close threshold for a fresh position. `correct-accounts`
 ignores untracked HyperCore equity at or below 5 USDC, since it cannot safely
 distinguish a retained account-scoped residual from an external micro-deposit.
-Larger residuals first receive one eligible same-cycle protected withdrawal.
-If fresh capacity cannot reach 5 USDC, or the second transaction definitely
-reverts, they remain tracked for another normal close attempt. Ambiguous
-second-stage broadcasts fail closed before the shared perp balance is swept.
-An explicit full close also fails closed when its final uncached vault-equity
-read is unavailable; an EVM receipt or USDC arrival does not prove that the
-physical residual is within the accepted boundary.
-These guards are intentionally independent: changing the margin cannot make incomplete
-trade state safe to repair, and the state guard cannot prevent stale live
-withdrawal caps.
+Optional same-cycle second withdrawals are disabled pending protocol validation.
+The first verified proceeds settle as a partial fill and the residual shares
+remain valued. First-stage sizing and cleanup margins are unchanged. A successful
+EVM receipt does not prove a HyperCore action succeeded; the October rejection
+alone does not establish a universal $5 withdrawal remainder floor.
+
+The [withdrawal recovery runbook](../../docs/hyper-ai-withdrawal-recovery.md)
+documents the evidence file, repair/correction sequence and interruption limits.
+An explicit full close still fails closed when its final uncached equity read
+is unavailable; an EVM receipt alone does not establish the residual value.
 
 Cleanup uses an adaptive initial margin of at most 0.10 USDC instead of the
 normal relative/floor full-close margin, because withholding 1.50 USDC would
 strand a material share of a 3–5 USDC position. The redeem path retries a phase-1
 silent no-op with progressively larger 0.25, 0.50, and 1.00 USDC safety
 margins, but only while the resulting redemption remains above the 0.20 USDC
-follow-up phase verification tolerance. The deposit constant is deliberately
-not reused in the withdrawal path; normal settlement verification detects a
-backend no-op. A position with
+follow-up phase verification tolerance. These historical adaptive margins do not establish protocol eligibility.
+Small-position exits have not been validated against the October rejection;
+keep small-position cleanup disabled during incident recovery. A position with
 0.30 USDC or less cannot produce enough balance movement to verify every
 follow-up phase after the initial margin, so it is locally closed as protocol
 dust without broadcasting. A still-open residual above 0.30 USDC remains
