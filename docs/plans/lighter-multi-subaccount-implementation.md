@@ -242,24 +242,67 @@ class FakeLighterCore:
     def credit_pending_balance_on_anvil(self, web3, safe_address, amount)
 ```
 
-A pytest fixture `fake_lighter_core(mocker)` patches every seam listed in the
-two test files below and returns the object. Seams are the module-level names
-already imported by `tradeexecutor.exchange_account.lighter`,
-`tradeexecutor.ethereum.lighter.lighter_routing`,
-`tradeexecutor.ethereum.lighter.transfer_verification`,
-`tradeexecutor.exchange_account.lighter_operator`, and the eth_defi
-deployment module for `wait_for_lighter_account`, `wait_for_lighter_collateral`,
-`wait_for_lighter_api_key`, `create_lighter_sub_accounts`,
-`wait_for_lighter_sub_accounts` and `request_lighter_transfer`.
+A pytest fixture `fake_lighter_core(mocker)` in `tests/lagoon/conftest.py`
+patches every seam and returns the object. The seams are the module-level
+names each module imports, which is how every existing Lighter test mocks
+today (there is no HTTP-level fake and no fake `SignerClient` in
+trade-executor):
 
-What stays real on the Anvil fork: Lagoon, Safe, guard and module deployment,
-USDC funding and Lagoon subscription, Safe `approve` and `deposit` calls,
-every `changePubKey` Safe transaction (with the master registered by
-`register_lighter_account_on_anvil()`), the `withdrawPendingBalance` claim
-calldata validated against the forked guard with `eth_call`, state writes,
-NAV events, and every Typer command. The claim's L1 effect is mirrored with
-`fund_erc20_on_anvil()` exactly as the existing tests do, because a static
-fork cannot produce a proof-backed pending balance.
+| Module | Names patched |
+|--------|---------------|
+| `eth_defi.erc_4626.vault_protocol.lagoon.deployment` | `create_lighter_session`, `wait_for_lighter_account`, `wait_for_lighter_collateral`, `wait_for_lighter_api_key`, new `create_lighter_sub_accounts`, `wait_for_lighter_sub_accounts`, `request_lighter_transfer` |
+| `tradeexecutor.exchange_account.lighter` | `fetch_lighter_total_equity`, new `fetch_lighter_accounts_equity`, `fetch_lighter_accounts` |
+| `tradeexecutor.ethereum.lighter.lighter_routing` | `fetch_lighter_total_equity`, `request_lighter_withdrawal`, `wait_for_lighter_withdrawal_claimable`, new `request_lighter_transfer`, `wait_for_lighter_transfer`, `fetch_lighter_transfer_fee` |
+| `tradeexecutor.ethereum.lighter.transfer_verification` | `fetch_lighter_total_equity`, `wait_for_lighter_collateral`, new `fetch_lighter_transfer_history` |
+| `tradeexecutor.cli.commands.lighter_move_funds`, `lagoon_redeem`, `correct_accounts` | The same readers and request wrappers they import |
+
+The two duplicate withdrawal wrappers (`lighter_operator.py` and
+`lagoon_lighter_test_trade.py`) are consolidated first so there is one set of
+names to patch.
+
+What stays real on the Anvil fork: Lagoon, Safe, guard and module deployment
+through `deploy_automated_lagoon_vault(..., use_forge=True)`, USDC funding
+and Lagoon subscription with `fund_lagoon_vault()`, Safe `approve` and
+`deposit` calls through the guard, every `changePubKey` Safe transaction, the
+`withdrawPendingBalance` claim calldata validated against the forked guard
+with `eth_call`, state writes, NAV events, and every Typer command.
+
+Only the master needs `register_lighter_account_on_anvil()`, because the L1
+`changePubKey` and `withdraw` calls validate `msg.sender`'s master mapping
+only; sub-account indices are checked by the sequencer, which the fake core
+stands in for. The claim's L1 effect is mirrored by a USDC whale transfer to
+the Safe, exactly as `test_lighter_move_funds.py` and
+`test_lagoon_lighter_test_trade.py` do, because a static fork cannot produce a
+proof-backed pending balance. The test uses the session `anvil_fork_pool`
+fixture at `ETHEREUM_MIDNIGHT_BLOCK` with `evm_snapshot_revert`, and carries
+the `warm_rpc_test_group` and `xdist_group("fork:ethereum:midnight")` markers
+that `tests/conftest.py` enforces.
+
+Operator record shape written by the deployment and read by `start`:
+
+```json
+{
+  "deployments": {
+    "ethereum": {
+      "vault_address": "0x...",
+      "safe_address": "0x...",
+      "module_address": "0x...",
+      "lighter_account_setup": {
+        "account_index": 748071,
+        "api_key_index": 4,
+        "private_key": "...",
+        "sub_accounts": [
+          {"account_index": 281474976710600, "executor_api_key_index": 5, "executor_private_key": "...", "nautilus_api_key_index": 4},
+          {"account_index": 281474976710599, "executor_api_key_index": 5, "executor_private_key": "...", "nautilus_api_key_index": 4}
+        ]
+      }
+    }
+  }
+}
+```
+
+The Nautilus private keys are not in this file. They are only in the
+per-sub-account hand-over files.
 
 ## Tests
 
@@ -326,8 +369,9 @@ Steps:
    complete it in the fake core, run `correct-accounts`, and assert the trade
    is reconciled.
 9. `lagoon-redeem` with all accounts near empty. Assert zero deployer shares,
-   bounded Safe dust, and the multi-account NAV used for the redemption
-   settlement.
+   bounded Safe dust, and that the redemption NAV ignores on-exchange equity
+   below the existing 5 USDC threshold summed across all accounts rather than
+   per account.
 
 The test is marked slow and runs under `pytest -n auto` in CI with the other
 Lagoon fork tests.
@@ -379,12 +423,17 @@ Phases:
 10. `lagoon-redeem`: zero deployer shares, Safe dust bounded.
 11. Refund the deployer. The deployer is the sole Safe owner, so the script
     executes direct Safe transactions (not through the guard) that send any
-    remaining USDC and any ETH held by the Safe to the deployer, and sends any
-    ETH held by the vault contract if its interface allows. It then prints a
-    reconciliation table: starting USDC and ETH, ending USDC and ETH, gas
-    spent, Lighter transfer fees paid, and Lighter dust left on-exchange
-    (below the 1 USDC withdrawal minimum per account). The run passes only if
-    every unexplained difference is zero.
+    remaining USDC and any ETH held by the Safe to the deployer. This
+    promotes `_sweep_safe_usdc_to_operator()` from eth_defi's
+    `scripts/hyperliquid/manual-test-lagoon-account-mode-roundtrip.py` into a
+    reusable `sweep_safe_to_owner(vault, owner, tokens, include_eth=True)`
+    helper in `eth_defi/erc_4626/vault_protocol/lagoon/`. The Lagoon vault
+    contract itself never holds assets after full redemption, so no vault
+    sweep is needed; the script asserts its USDC and ETH balances are zero.
+    It then prints a reconciliation table: starting USDC and ETH, ending USDC
+    and ETH, gas spent, Lighter transfer fees paid, and Lighter dust left
+    on-exchange (below the 1 USDC withdrawal minimum per account). The run
+    passes only if every unexplained difference is zero.
 12. Clear all private keys from memory and print the public artefact path.
 
 Note on dust: Lighter enforces a 1 USDC minimum per secure withdrawal and per
@@ -392,6 +441,22 @@ transfer, and charges a transfer fee. The tutorial sweeps sub-accounts to the
 master with transfers of everything above 1 USDC, then withdraws the master.
 Up to about 1 USDC per account can remain on Lighter and is reported, not
 hidden.
+
+### Focused verification
+
+```shell
+source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest tests/exchange_account/test_lighter_sub_account_allocator.py --timeout=300
+source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest tests/exchange_account/test_lighter_internal_transfer_state.py --timeout=300
+source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest tests/lagoon/test_lagoon_lighter_multi_subaccount_e2e.py --timeout=900
+source .local-test.env && PYTHONPATH="$(pwd):$PYTHONPATH" poetry run pytest tests/lagoon/test_lagoon_lighter_deploy_e2e.py tests/lagoon/test_lagoon_lighter_cash_management.py tests/lagoon/test_lighter_move_funds.py -n auto --timeout=900
+```
+
+In eth_defi:
+
+```shell
+poetry run pytest tests/lighter/test_lighter_activation_api.py tests/lighter/test_lighter_transfer.py tests/lighter/test_lighter_sub_account.py --timeout=300
+poetry run pytest tests/guard/test_guard_lighter_lagoon.py tests/lighter/test_lighter_change_pubkey.py --timeout=600
+```
 
 ## Implementation sequence
 
