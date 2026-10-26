@@ -9,18 +9,22 @@ from decimal import Decimal
 from eth_defi.abi import get_deployed_contract
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.erc_4626.vault_protocol.lagoon.vault import LagoonVault
-from eth_defi.lighter.api import LIGHTER_STATE_POLL_SECONDS
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
-from eth_defi.lighter.lagoon import LIGHTER_L1_WITHDRAW_GAS_LIMIT, LIGHTER_ROUTE_PERP, fetch_lighter_pending_balance
+from eth_defi.lighter.lagoon import (
+    LIGHTER_L1_WITHDRAW_GAS_LIMIT,
+    LIGHTER_ROUTE_PERP,
+    fetch_lighter_pending_balance,
+    wait_for_lighter_pending_balance,
+)
 from eth_defi.lighter.session import LighterSession, create_lighter_session
 from eth_defi.lighter.transfer import LighterTransferError
 from eth_defi.lighter.valuation import fetch_lighter_total_equity
 from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
-from eth_defi.token import fetch_erc20_details
+from eth_defi.token import TokenDetails, fetch_erc20_details
 from hexbytes import HexBytes
 from web3 import Web3
 
-from tradeexecutor.exchange_account.lighter import is_lighter_sub_account_pair
+from tradeexecutor.exchange_account.lighter import get_lighter_master_account_index, is_lighter_sub_account_pair
 from tradeexecutor.exchange_account.lighter_operator import (
     LighterOperatorRecord,
     request_lighter_funding_transfer,
@@ -34,6 +38,7 @@ from tradeexecutor.exchange_account.state import (
 )
 from tradeexecutor.ethereum.lighter.transfer_verification import (
     LighterTransferVerificationError,
+    get_lighter_funding_evidence,
     verify_lighter_funding,
     verify_lighter_transfer,
 )
@@ -53,8 +58,10 @@ LIGHTER_APPROVAL_GAS_LIMIT = 500_000
 LIGHTER_DEPOSIT_GAS_LIMIT = 1_000_000
 #: Gas limit for a Lighter pending withdrawal claim wrapped by Lagoon.
 LIGHTER_WITHDRAWAL_CLAIM_GAS_LIMIT = 1_000_000
-#: Default maximum wait for a secure Lighter withdrawal.
-DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS = 30 * 60
+#: Default maximum wait for a secure or L1 Lighter withdrawal to become claimable.
+#:
+#: A live sub-account L1 withdrawal took about 29 minutes, so leave margin.
+DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS = 60 * 60
 #: Public Lighter deposit observation timeout.
 DEFAULT_LIGHTER_DEPOSIT_TIMEOUT_SECONDS = 15 * 60
 #: Default maximum wait for a master to sub-account transfer to appear in history.
@@ -63,18 +70,12 @@ DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS = 5 * 60
 
 @dataclass(frozen=True, slots=True)
 class LighterRoutingConfig:
-    """Private settings parsed by the CLI for automatic Lighter transfers.
+    """Private settings parsed by the CLI for automatic Lighter transfers."""
 
-    :param operator_record:
-        Owner-only delegated API signer for secure Lighter withdrawals.
-    :param withdrawal_timeout:
-        Maximum wait for Lighter to make a secure withdrawal claimable.
-    """
-
-    #: Owner-only delegated API signer for secure Lighter withdrawals.
+    #: Owner-only master API signer for secure withdrawals and master to sub-account transfers.
     operator_record: LighterOperatorRecord | None = None
 
-    #: Maximum wait for Lighter to make a secure withdrawal claimable.
+    #: Maximum wait for Lighter to make a secure or L1 withdrawal claimable.
     withdrawal_timeout: int = DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS
 
     #: Maximum wait for a master to sub-account transfer to appear in history.
@@ -178,13 +179,13 @@ class LighterRouting(RoutingModel):
         """
         for trade in trades:
             assert trade.pair.is_exchange_account()
-            if TradeFlag.internal_account_transfer in (trade.flags or set()):
+            if trade.is_internal_account_transfer():
                 self._execute_funding(state, trade)
                 continue
             assert TradeFlag.external_account_transfer in (trade.flags or set())
+            if trade.blockchain_transactions:
+                continue
             if trade.is_buy():
-                if trade.blockchain_transactions:
-                    continue
                 if is_lighter_sub_account_pair(trade.pair):
                     raise RuntimeError(
                         "An L1 deposit always credits the Lighter master account; "
@@ -194,8 +195,6 @@ class LighterRouting(RoutingModel):
                     self._prepare_deposit(routing_state, trade)
                 )
             else:
-                if trade.blockchain_transactions:
-                    continue
                 if is_lighter_sub_account_pair(trade.pair):
                     self._prepare_sub_account_withdrawal(routing_state, trade)
                 else:
@@ -222,7 +221,7 @@ class LighterRouting(RoutingModel):
         :param stop_on_execution_failure:
             Propagate a failed transaction according to the execution policy.
         """
-        if TradeFlag.internal_account_transfer in (trade.flags or set()):
+        if trade.is_internal_account_transfer():
             # Off-chain transfer: setup_trades() stored the transfer-history
             # evidence. There are no Ethereum receipts.
             funding = verify_lighter_funding(trade)
@@ -301,12 +300,7 @@ class LighterRouting(RoutingModel):
     ) -> list[BlockchainTransaction]:
         """Prepare the approval and deposit calls before broadcast."""
         web3 = routing_state.tx_builder.web3
-        usdc = fetch_erc20_details(
-            web3,
-            trade.reserve_currency.address,
-            cache=routing_state.token_cache,
-            chain_id=trade.reserve_currency.chain_id,
-        )
+        usdc = self._fetch_reserve_token(routing_state, trade)
         zk = get_deployed_contract(web3, "lighter/ZkLighter.json", self.lighter_contract)
         amount_raw = usdc.convert_to_raw(trade.planned_reserve)
         asset_index = zk.functions.USDC_ASSET_INDEX().call()
@@ -354,7 +348,7 @@ class LighterRouting(RoutingModel):
             raise RuntimeError(
                 "Automatic Lighter transfers require an operator record passed by the CLI"
             )
-        master_index = int((trade.pair.other_data or {}).get("lighter_master_account_index", trade.pair.get_exchange_account_id()))
+        master_index = get_lighter_master_account_index(trade.pair)
         if operator.account_index != master_index:
             raise RuntimeError(
                 f"Lighter operator record signs for account {operator.account_index}, "
@@ -403,12 +397,7 @@ class LighterRouting(RoutingModel):
         record = asyncio.run(
             wait_for_lighter_funding_transfer(operator, str(tx_hash), self.config.transfer_timeout)
         )
-        trade.other_data.update({
-            "lighter_transfer_from_account": record.from_account_index,
-            "lighter_transfer_to_account": record.to_account_index,
-            "lighter_transfer_amount_usdc": str(record.amount),
-            "lighter_transfer_fee_usdc": str(record.fee),
-        })
+        trade.other_data.update(get_lighter_funding_evidence(record))
 
     def _prepare_sub_account_withdrawal(
         self,
@@ -432,15 +421,9 @@ class LighterRouting(RoutingModel):
         :param trade:
             Withdrawal trade on a sub-account position.
         """
-        self._require_master_operator(trade)
         vault = self._get_lagoon_vault(routing_state)
         web3 = routing_state.tx_builder.web3
-        usdc = fetch_erc20_details(
-            web3,
-            trade.reserve_currency.address,
-            cache=routing_state.token_cache,
-            chain_id=trade.reserve_currency.chain_id,
-        )
+        usdc = self._fetch_reserve_token(routing_state, trade)
         amount = abs(trade.planned_quantity)
         zk = get_deployed_contract(web3, "lighter/ZkLighter.json", self.lighter_contract)
         if not trade.other_data.get("lighter_withdrawal_request_id"):
@@ -473,20 +456,14 @@ class LighterRouting(RoutingModel):
                 raise RuntimeError(f"Lighter L1 withdrawal request {request_tx.tx_hash} reverted")
             logger.info("Lighter L1 withdrawal request for account %s mined: %s", trade.pair.get_exchange_account_id(), request_tx.tx_hash)
 
-        pending_before = Decimal(trade.other_data["lighter_pending_balance_before_usdc"])
-        deadline = time.monotonic() + self.config.withdrawal_timeout
-        while True:
-            pending = fetch_lighter_pending_balance(web3, owner=vault.safe_address, usdc=usdc, zk_lighter=self.lighter_contract)
-            if pending - pending_before >= amount:
-                break
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError(
-                    f"Lighter L1 withdrawal {trade.other_data['lighter_withdrawal_request_id']} "
-                    f"did not become claimable within {self.config.withdrawal_timeout} seconds"
-                )
-            logger.info("Waiting for Lighter pending balance %s / %s USDC, %.0f seconds remaining", pending - pending_before, amount, remaining)
-            time.sleep(min(LIGHTER_STATE_POLL_SECONDS, remaining))
+        wait_for_lighter_pending_balance(
+            web3,
+            owner=vault.safe_address,
+            usdc=usdc,
+            minimum=Decimal(trade.other_data["lighter_pending_balance_before_usdc"]) + amount,
+            timeout=self.config.withdrawal_timeout,
+            zk_lighter=self.lighter_contract,
+        )
 
         trade.other_data["lighter_claimable_usdc"] = str(amount)
         trade.set_blockchain_transactions([self._prepare_claim(routing_state, trade, amount)])
@@ -541,12 +518,7 @@ class LighterRouting(RoutingModel):
     ) -> BlockchainTransaction:
         """Prepare a Safe-wrapped Lighter pending withdrawal claim."""
         web3 = routing_state.tx_builder.web3
-        usdc = fetch_erc20_details(
-            web3,
-            trade.reserve_currency.address,
-            cache=routing_state.token_cache,
-            chain_id=trade.reserve_currency.chain_id,
-        )
+        usdc = self._fetch_reserve_token(routing_state, trade)
         zk = get_deployed_contract(web3, "lighter/ZkLighter.json", self.lighter_contract)
         amount_raw = usdc.convert_to_raw(claimable)
         vault = self._get_lagoon_vault(routing_state)
@@ -576,14 +548,19 @@ class LighterRouting(RoutingModel):
         :return:
             Current Safe reserve balance in human-readable USDC.
         """
-        usdc = fetch_erc20_details(
+        usdc = self._fetch_reserve_token(routing_state, trade)
+        vault = self._get_lagoon_vault(routing_state)
+        return Decimal(str(usdc.fetch_balance_of(vault.safe_address)))
+
+    @staticmethod
+    def _fetch_reserve_token(routing_state: LighterRoutingState, trade: TradeExecution) -> TokenDetails:
+        """Return the USDC reserve token moved by a Lighter transfer."""
+        return fetch_erc20_details(
             routing_state.tx_builder.web3,
             trade.reserve_currency.address,
             cache=routing_state.token_cache,
             chain_id=trade.reserve_currency.chain_id,
         )
-        vault = self._get_lagoon_vault(routing_state)
-        return Decimal(str(usdc.fetch_balance_of(vault.safe_address)))
 
     @staticmethod
     def _get_lagoon_vault(routing_state: LighterRoutingState) -> LagoonVault:

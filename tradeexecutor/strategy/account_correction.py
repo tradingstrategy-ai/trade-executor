@@ -30,6 +30,7 @@ from eth_typing import HexAddress
 
 from eth_defi.tx import AssetDelta
 from tradeexecutor.ethereum.tx import TransactionBuilder
+from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
 from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.state.generic_position import GenericPosition
 from tradeexecutor.state.portfolio import Portfolio
@@ -1030,7 +1031,7 @@ def create_missing_exchange_account_positions(
         # Lighter positions open at zero, as the Lighter strategies do: a
         # vault with several sub-accounts would otherwise move one placeholder
         # dollar out of reserves per account. Sync sets the real equity.
-        placeholder = Decimal(0) if pair.get_exchange_account_protocol() == "lighter" else Decimal(1)
+        placeholder = Decimal(0) if pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL else Decimal(1)
         trades = open_exchange_account_position(
             state=state,
             strategy_cycle_at=strategy_cycle_at,

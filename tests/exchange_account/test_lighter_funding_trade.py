@@ -67,6 +67,10 @@ def _start_funding(state: State, usdc: AssetIdentifier, master: TradingPosition,
 def test_lighter_funding_trade_moves_capital_between_accounts() -> None:
     """Complete a funding trade without touching reserves or reporting the principal as a loss.
 
+    Moving capital between two accounts of one vault must not change the
+    reserves or show as a loss on the source account, otherwise the
+    per-position profit and the posted NAV would be wrong.
+
     1. Create and start a funding trade and check it reserves no Safe cash and blocks a restart.
     2. Verify it from transfer-history evidence while equity is unchanged, and complete it with a fee.
     3. Check positions, reserves, balance updates and share prices.
@@ -109,6 +113,9 @@ def test_lighter_funding_trade_moves_capital_between_accounts() -> None:
 
 def test_lighter_funding_trade_recovery(mocker: MockerFixture) -> None:
     """Keep an unconfirmed funding blocking until history proves it, and release a definitive rejection.
+
+    A timeout does not prove that no funds moved, so the executor must stop
+    until transfer history settles the transfer, and must apply it only once.
 
     1. Mark a rejected submission and check it no longer blocks the executor.
     2. Leave a timed-out transfer pending when reconciliation has no operator record.

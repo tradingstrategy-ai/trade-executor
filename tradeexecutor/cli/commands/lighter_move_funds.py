@@ -69,6 +69,7 @@ from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.exchange_account.lighter import (
     LIGHTER_PROTOCOL,
     get_lighter_master_account_index,
+    is_lighter_exchange_account_pair,
     is_lighter_sub_account_pair,
 )
 from tradeexecutor.exchange_account.state import (
@@ -155,8 +156,7 @@ def _get_lighter_position(state: State, account_index: int, master_index: int) -
     positions = [
         position
         for position in state.portfolio.get_open_and_frozen_positions()
-        if position.is_exchange_account()
-        and position.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
+        if is_lighter_exchange_account_pair(position.pair)
         and int(position.pair.get_exchange_account_id()) == account_index
     ]
     if len(positions) != 1:
@@ -263,7 +263,7 @@ def _sync_lighter_position(
     tracked = {
         int(position.pair.get_exchange_account_id()): position.get_quantity()
         for position in state.portfolio.get_open_positions()
-        if position.is_exchange_account() and position.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
+        if is_lighter_exchange_account_pair(position.pair)
     }
 
     def get_account_value(pair, **_kwargs) -> Decimal:

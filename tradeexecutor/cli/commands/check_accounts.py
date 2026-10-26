@@ -64,7 +64,7 @@ def check_accounts(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
     raise_on_unclean: bool = typer.Option(False, is_flag=False, envvar="RAISE_ON_UNCLEAN", help="Raise an exception if unclean. Unit test option."),
-    lighter_operator_record_file: Optional[Path] = typer.Option(None, envvar="LIGHTER_OPERATOR_RECORD_FILE", help="Owner-only Lighter operator record used to read transfer history for an interrupted sub-account funding"),
+    lighter_operator_record_file: Path | None = typer.Option(None, envvar="LIGHTER_OPERATOR_RECORD_FILE", help="Owner-only Lighter operator record used to read transfer history for an interrupted sub-account funding"),
 ):
     """Check that the state ledger matches onchain and external balances.
 

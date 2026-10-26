@@ -670,7 +670,7 @@ def correct_accounts(
     ccxt_exchange_id: Optional[str] = Option(None, envvar="CCXT_EXCHANGE_ID", help="CCXT exchange identifier (e.g. aster, binance, bybit)"),
     ccxt_options: Optional[str] = Option(None, envvar="CCXT_OPTIONS", help="CCXT exchange constructor options as JSON string"),
     ccxt_sandbox: bool = Option(False, envvar="CCXT_SANDBOX", help="Use CCXT exchange sandbox/testnet mode"),
-    lighter_operator_record_file: Optional[Path] = Option(None, envvar="LIGHTER_OPERATOR_RECORD_FILE", help="Owner-only Lighter operator record used to read transfer history for an interrupted sub-account funding"),
+    lighter_operator_record_file: Path | None = Option(None, envvar="LIGHTER_OPERATOR_RECORD_FILE", help="Owner-only Lighter operator record used to read transfer history for an interrupted sub-account funding"),
 ):
     """Correct accounting errors in the internal ledger of the trade executor.
 

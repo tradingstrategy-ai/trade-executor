@@ -91,8 +91,8 @@ from eth_defi.erc_4626.vault_protocol.lagoon.config import \
     get_lagoon_chain_config
 from eth_defi.erc_4626.vault_protocol.lagoon.deployment import (
     DEFAULT_LAGOON_SETTLEMENT_WINDOW, DEFAULT_MANAGEMENT_RATE, DEFAULT_PERFORMANCE_RATE,
-    LIGHTER_BOOTSTRAP_SUBSCRIPTION, LagoonDeploymentParameters, LagoonMultichainDeployment, deploy_automated_lagoon_vault,
-    deploy_multichain_lagoon_vault)
+    LIGHTER_BOOTSTRAP_SUBSCRIPTION, LagoonDeploymentParameters, LagoonMultichainDeployment, LighterAccountSetup,
+    deploy_automated_lagoon_vault, deploy_multichain_lagoon_vault)
 from eth_defi.hotwallet import HotWallet
 from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT, LIGHTER_USDC_ETHEREUM
@@ -153,8 +153,9 @@ def _validate_lighter_initial_capital(
 ) -> Decimal:
     """Verify that the deployer can fund a Lighter-enabled Lagoon vault.
 
-    Lighter activation creates an account with one USDC, but deployment first
-    subscribes the complete initial Lagoon capital so the Safe has a reserve.
+    Deployment subscribes :data:`LIGHTER_BOOTSTRAP_SUBSCRIPTION` (1 USDC)
+    through Lagoon and deposits all of it to activate the Lighter account, so
+    a fresh vault starts with an empty Safe.
 
     :param denomination_token:
         Canonical Ethereum USDC used as the Lagoon denomination asset.
@@ -380,7 +381,7 @@ def _write_lighter_private_record(
     logger.info("Saved private Lighter deployment data to %s (mode 0600)", os.path.abspath(json_path))
 
 
-def _get_lighter_private_setup(lighter_setup: Any) -> dict[str, Any]:
+def _get_lighter_private_setup(lighter_setup: LighterAccountSetup) -> dict[str, Any]:
     """Build the executor's private Lighter record from a deployment setup.
 
     The executor record holds only the master API key. Sub-account keys
@@ -388,7 +389,7 @@ def _get_lighter_private_setup(lighter_setup: Any) -> dict[str, Any]:
     files by :py:func:`_write_lighter_handover_records`.
 
     :param lighter_setup:
-        ``LighterAccountSetup`` returned by the eth-defi deployment.
+        Setup returned by the eth-defi deployment.
     :return:
         JSON-friendly master setup with public sub-account metadata.
     """
@@ -397,13 +398,13 @@ def _get_lighter_private_setup(lighter_setup: Any) -> dict[str, Any]:
         for field in fields(lighter_setup)
         if field.name != "sub_accounts"
     }
-    payload["sub_accounts"] = [sub.as_public_dict() for sub in getattr(lighter_setup, "sub_accounts", ())]
+    payload["sub_accounts"] = [sub.as_public_dict() for sub in lighter_setup.sub_accounts]
     return payload
 
 
 def _write_lighter_handover_records(
     vault_record_file: Path,
-    lighter_setup: Any,
+    lighter_setup: LighterAccountSetup,
     *,
     safe_address: str,
     vault_address: str | None,
@@ -419,7 +420,7 @@ def _write_lighter_handover_records(
     :param vault_record_file:
         ``VAULT_RECORD_FILE`` path chosen by the operator.
     :param lighter_setup:
-        ``LighterAccountSetup`` returned by the eth-defi deployment.
+        Setup returned by the eth-defi deployment.
     :param safe_address:
         Safe owning the Lighter accounts.
     :param vault_address:
@@ -432,7 +433,7 @@ def _write_lighter_handover_records(
     _text_path, json_path = _resolve_deployment_artifact_paths(vault_record_file)
     assert json_path is not None
     paths = []
-    for sub in getattr(lighter_setup, "sub_accounts", ()):
+    for sub in lighter_setup.sub_accounts:
         path = json_path.with_name(f"{json_path.stem}.nautilus.{sub.account_index}.json")
         _write_private_json_file(
             path,

@@ -303,7 +303,7 @@ def complete_exchange_account_funding(
     :return:
         The completed trade.
     """
-    if TradeFlag.internal_account_transfer not in (trade.flags or set()):
+    if not trade.is_internal_account_transfer():
         raise ExchangeAccountTransferError("Expected an exchange-account funding trade")
     if executed_amount <= 0 or fee < 0:
         raise ExchangeAccountTransferError("Funding amounts must be positive and the fee non-negative")

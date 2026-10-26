@@ -40,7 +40,7 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.exchange_account.lighter import is_lighter_sub_account_pair
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State, UncleanState
-from tradeexecutor.state.trade import TradeFlag
+from tradeexecutor.state.trade import TradeExecution, TradeFlag
 from tradeexecutor.testing.lighter_core import FakeLighterCore
 
 #: Optional upstream RPC used to enable the fixed-block Ethereum fork.
@@ -66,6 +66,9 @@ SUBSCRIPTION_USDC = Decimal(200)
 #: USDC kept in the Safe by the strategy.
 SAFE_BUFFER_USDC = Decimal(20)
 #: Fee charged by the fake sequencer on each funding transfer in the first rebalance.
+#:
+#: Lighter charges nothing for transfers between accounts of one owner; a
+#: non-zero fee exercises the fee accounting path.
 FUNDING_FEE_USDC = Decimal("0.5")
 #: Owner-only mode required for private records.
 PRIVATE_RECORD_MODE = 0o600
@@ -132,7 +135,7 @@ def _positions(state: State) -> tuple[TradingPosition, TradingPosition, TradingP
     return master, subs[0], subs[1]
 
 
-def _transfer_trades(state: State, flag: TradeFlag) -> list:
+def _transfer_trades(state: State, flag: TradeFlag) -> list[TradeExecution]:
     """Return all custody trades with ``flag``."""
     return [trade for trade in state.portfolio.get_all_trades() if flag in (trade.flags or set())]
 
@@ -242,7 +245,7 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     safe_address = deployment["safe_address"]
     assert usdc.fetch_balance_of(safe_address) == LIGHTER_BOOTSTRAP_SUBSCRIPTION - LIGHTER_MIN_MAINNET_USDC
 
-    # 2. Initialise state and account for the bootstrap subscription with one position per account.
+    # 2. Initialise state and account for the bootstrap subscription with one position per account; flag an untracked sub-account.
     os.environ.update({
         "STRATEGY_FILE": (strategies / "lighter_multi_subaccount_strategy.py").as_posix(),
         "LIGHTER_ACCOUNT_INDEXES": f"{MASTER_INDEX},{sub_1},{sub_2}",
@@ -333,7 +336,7 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     assert (master.get_quantity(), sub_1_position.get_quantity(), sub_2_position.get_quantity()) == (0, investable * 3 / 4, investable / 4)
     _run(cli, "check-accounts")
 
-    # 7. Lock margin on sub-account 1 and check a withdrawal is capped to its free collateral.
+    # 7. Lock margin on sub-account 1 and check a withdrawal is capped to its free collateral; withdraw from sub-account 2 with lighter-move-funds.
     free_collateral = Decimal(5)
     fake_lighter_core.get_account(sub_1).margin_in_use = investable * 3 / 4 - free_collateral
     os.environ["LIGHTER_SUB_ACCOUNT_WEIGHTS"] = "0.25,0.75"

@@ -16,7 +16,8 @@ Every movement is sized from balances observed at decision time, never from
 the expected result of another movement in the same cycle, so the plan stays
 correct however the runner orders the trades. Rebalancing converges over
 cycles: moving capital from one sub-account to another takes a Safe round
-trip.
+trip, because a sub-account to sub-account transfer must be signed with the
+sending sub-account's API key and the executor holds only the master key.
 
 See ``tradeexecutor/exchange_account/README-Lighter.md``.
 """
@@ -70,9 +71,7 @@ def get_lighter_account_pairs(pairs: Sequence[TradingPairIdentifier]) -> tuple[T
     :return:
         Master pair and sub-account pairs in universe order.
     """
-    lighter_pairs = [pair for pair in pairs if pair.is_exchange_account() and pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL]
-    master = get_lighter_master_pair(lighter_pairs)
-    return master, [pair for pair in lighter_pairs if is_lighter_sub_account_pair(pair)]
+    return get_lighter_master_pair(pairs), [pair for pair in pairs if is_lighter_sub_account_pair(pair)]
 
 
 def _resolve_weights(weights: object, sub_pairs: list[TradingPairIdentifier]) -> dict[int, Decimal]:
@@ -106,7 +105,8 @@ def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]
     - ``lighter_sub_account_weights``: target share per sub-account, a mapping
       keyed by account index or a sequence in sub-account order
     - ``lighter_rebalance_band_usd``: tolerated distance from a target, default zero
-    - ``lighter_transfer_fee_usd``: fee budgeted per funding transfer, default zero
+    - ``lighter_transfer_fee_usd``: fee budgeted per funding transfer, default
+      zero, as Lighter charges nothing for same-owner transfers
 
     :param input:
         Strategy cycle input.
@@ -199,7 +199,7 @@ def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]
         return [transfer(master_position, decision.amount_usdc, deposit=True, reason="idle_safe_cash")]
 
     # 3. and 4. Sub-account target weights.
-    weights = _resolve_weights(getattr(parameters, "lighter_sub_account_weights", None), sub_pairs)
+    weights = _resolve_weights(parameters.get("lighter_sub_account_weights"), sub_pairs)
     if not sub_pairs or not weights:
         return []
     movements = plan_sub_account_rebalance(
@@ -207,8 +207,8 @@ def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]
         sub_accounts=sub_balances,
         target_weights=weights,
         minimum_transfer_usdc=minimum,
-        rebalance_band_usdc=Decimal(str(getattr(parameters, "lighter_rebalance_band_usd", 0) or 0)),
-        transfer_fee_usdc=Decimal(str(getattr(parameters, "lighter_transfer_fee_usd", 0) or 0)),
+        rebalance_band_usdc=Decimal(str(parameters.get("lighter_rebalance_band_usd") or 0)),
+        transfer_fee_usdc=Decimal(str(parameters.get("lighter_transfer_fee_usd") or 0)),
     )
     trades = []
     for index, amount in movements:

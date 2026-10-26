@@ -93,9 +93,9 @@ def check_lighter_account_set(
     """Compare the Lighter accounts a Safe owns with the tracked positions.
 
     An owned account that has no position is left out of the posted NAV, so
-    a positive mismatch is an accounting error. When Lighter does not list
-    the Safe at all, or cannot be read, the check cannot conclude and passes
-    with a warning message.
+    a mismatch is an accounting error. When Lighter does not list the Safe
+    at all, or cannot be read, the check cannot conclude and passes with a
+    message saying so.
 
     :param safe_address:
         Safe owning the Lighter accounts.
@@ -283,6 +283,27 @@ def create_lighter_exchange_account_pairs(
     return pairs
 
 
+def parse_lighter_account_indices(raw: str) -> list[int]:
+    """Parse comma-separated Lighter account indices, the master account first.
+
+    :param raw:
+        For example ``"700,281474976709656"``; an empty string means no accounts.
+    :return:
+        Account indices in the given order.
+    :raise ValueError:
+        If a part is not a non-negative integer.
+    """
+    parts = [part.strip() for part in raw.split(",") if part.strip()]
+    if not all(part.isascii() and part.isdecimal() for part in parts):
+        raise ValueError(f"Lighter account indices must be comma-separated non-negative integers: {raw!r}")
+    return [int(part) for part in parts]
+
+
+def is_lighter_exchange_account_pair(pair: TradingPairIdentifier) -> bool:
+    """Check whether a pair is a Lighter master or sub-account."""
+    return pair.is_exchange_account() and pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
+
+
 def get_lighter_account_role(pair: TradingPairIdentifier) -> str:
     """Return the role of a Lighter exchange-account pair.
 
@@ -299,11 +320,7 @@ def get_lighter_account_role(pair: TradingPairIdentifier) -> str:
 
 def is_lighter_sub_account_pair(pair: TradingPairIdentifier) -> bool:
     """Check whether a pair is a Lighter sub-account."""
-    return (
-        pair.is_exchange_account()
-        and pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
-        and get_lighter_account_role(pair) == LIGHTER_ROLE_SUB_ACCOUNT
-    )
+    return is_lighter_exchange_account_pair(pair) and get_lighter_account_role(pair) == LIGHTER_ROLE_SUB_ACCOUNT
 
 
 def get_lighter_master_account_index(pair: TradingPairIdentifier) -> int:
@@ -331,13 +348,7 @@ def get_lighter_master_pair(pairs: Iterable[TradingPairIdentifier]) -> TradingPa
     :return:
         The Lighter master account pair.
     """
-    masters = [
-        pair
-        for pair in pairs
-        if pair.is_exchange_account()
-        and pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
-        and get_lighter_account_role(pair) == LIGHTER_ROLE_MASTER
-    ]
+    masters = [pair for pair in pairs if is_lighter_exchange_account_pair(pair) and get_lighter_account_role(pair) == LIGHTER_ROLE_MASTER]
     if len(masters) != 1:
         raise ValueError(f"Expected one Lighter master account pair, found {len(masters)}")
     return masters[0]
@@ -348,11 +359,7 @@ def has_lighter_exchange_account_pairs(strategy_universe: Any) -> bool:
     iterate_pairs = getattr(strategy_universe, "iterate_pairs", None)
     if iterate_pairs is None:
         return False
-    return any(
-        pair.is_exchange_account()
-        and pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
-        for pair in iterate_pairs()
-    )
+    return any(is_lighter_exchange_account_pair(pair) for pair in iterate_pairs())
 
 
 def validate_lighter_exchange_account_pairs(
@@ -396,12 +403,24 @@ def validate_lighter_account_value(
     value: Decimal,
 ) -> Decimal:
     """Enforce the non-negative Lighter equity invariant."""
-    if not pair.is_exchange_account() or pair.get_exchange_account_protocol() != LIGHTER_PROTOCOL:
+    if not is_lighter_exchange_account_pair(pair):
         raise ValueError("Expected a Lighter exchange-account pair")
     account_index = pair.get_exchange_account_id()
     if account_index is None:
         raise ValueError("Lighter exchange account pair has no account index")
-    account_index = int(account_index)
+    return validate_lighter_equity(int(account_index), value)
+
+
+def validate_lighter_equity(account_index: int, value: Decimal) -> Decimal:
+    """Enforce the non-negative, finite Lighter equity invariant for one account.
+
+    :param account_index:
+        Lighter account the value belongs to, used in error messages.
+    :param value:
+        Equity reported by the public Lighter API.
+    :return:
+        The validated value as a ``Decimal``.
+    """
     try:
         if not isinstance(value, Decimal):
             value = Decimal(str(value))
@@ -490,7 +509,7 @@ def create_lighter_available_balance_func(
     ) -> Decimal:
         """Read validated Lighter free collateral for one account pair."""
         del block_identifier, kwargs
-        if not pair.is_exchange_account() or pair.get_exchange_account_protocol() != LIGHTER_PROTOCOL:
+        if not is_lighter_exchange_account_pair(pair):
             raise ValueError("Expected a Lighter exchange-account pair")
         account_index = pair.get_exchange_account_id()
         if account_index is None:
@@ -562,13 +581,7 @@ def create_lighter_vault_valuation_func(
         if missing:
             # Fail closed: a missing account would understate the posted NAV.
             raise ValueError(f"Lighter equity snapshot is missing accounts {missing}")
-        total = Decimal(0)
-        for index in indices:
-            value = snapshot[index].get_total()
-            if not value.is_finite() or value < 0:
-                raise LighterEquityInvariantError(f"Invalid equity for Lighter account {index}")
-            total += value
-        return total
+        return sum((validate_lighter_equity(index, snapshot[index].get_total()) for index in indices), Decimal(0))
 
     def calculate_nav(state: Any, *, block_number: int | None = None) -> float:
         del state

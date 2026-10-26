@@ -21,6 +21,9 @@ SUB_1, SUB_2 = 2**48 - 1000, 2**48 - 1001
 def test_plan_sub_account_rebalance_converges() -> None:
     """Fund, withdraw, cap and converge towards sub-account target weights.
 
+    The planner decides every sub-account movement, so it must size each one
+    from observed balances, respect margin in use and stop once converged.
+
     1. Fund two empty sub-accounts from the master with the fee budgeted on top of each transfer.
     2. Withdraw an overweight sub-account instead of funding the other one in the same plan.
     3. Cap a withdrawal to free collateral when margin is in use.
@@ -49,6 +52,8 @@ def test_plan_sub_account_rebalance_converges() -> None:
 
 def test_plan_sub_account_rebalance_rejects_invalid_weights() -> None:
     """Refuse weights that would allocate more than the investable capital.
+
+    Invalid weights would plan transfers the accounts cannot cover.
 
     1. Reject weights summing above one.
     2. Reject a weight for an unknown sub-account.

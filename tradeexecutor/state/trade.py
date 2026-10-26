@@ -931,7 +931,7 @@ class TradeExecution:
             if self.is_buy():
                 return "Deposit to external account"
             return "Withdraw from external account"
-        elif TradeFlag.internal_account_transfer in (self.flags or set()):
+        elif self.is_internal_account_transfer():
             return "Transfer between external accounts"
         elif self.pair.is_cctp_bridge():
             if self.is_buy():
@@ -1148,7 +1148,7 @@ class TradeExecution:
         if self.other_data.get("outcome") == "transfer_rejected":
             return False
         return (
-            TradeFlag.internal_account_transfer in (self.flags or set())
+            self.is_internal_account_transfer()
             and self.get_status() in (
                 TradeStatus.planned,
                 TradeStatus.started,
@@ -1167,9 +1167,13 @@ class TradeExecution:
         """
         return self.is_external_account_transfer_pending() or self.is_internal_account_transfer_pending()
 
+    def is_internal_account_transfer(self) -> bool:
+        """Is this a transfer between two exchange accounts of one owner."""
+        return TradeFlag.internal_account_transfer in (self.flags or set())
+
     def is_exchange_account_transfer(self) -> bool:
         """Is this a custody movement to, from or between exchange accounts."""
-        return bool({TradeFlag.external_account_transfer, TradeFlag.internal_account_transfer} & (self.flags or set()))
+        return self.is_internal_account_transfer() or TradeFlag.external_account_transfer in (self.flags or set())
 
     def is_repaired(self) -> bool:
         """The automatic execution failed and this was later repaired.
@@ -1569,7 +1573,7 @@ class TradeExecution:
         exchange_withdrawal_order_bump = 60_000_000
         exchange_deposit_order_bump = 10_000_000
         exchange_internal_funding_order_bump = 20_000_000
-        if TradeFlag.internal_account_transfer in (self.flags or set()):
+        if self.is_internal_account_transfer():
             # Fund destination accounts after reserve deposits have reached
             # the source account in the same cycle.
             return self.trade_id + exchange_internal_funding_order_bump

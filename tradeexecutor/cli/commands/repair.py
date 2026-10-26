@@ -61,7 +61,7 @@ def repair(
     test_evm_uniswap_v2_init_code_hash: Optional[str] = shared_options.test_evm_uniswap_v2_init_code_hash,
     unit_testing: bool = shared_options.unit_testing,
     auto_approve: bool = Option(False, envvar="AUTO_APPROVE", help="Approve the repair trade without asking for confirmation"),
-    lighter_operator_record_file: Optional[Path] = Option(None, envvar="LIGHTER_OPERATOR_RECORD_FILE", help="Owner-only Lighter operator record used to read transfer history for an interrupted sub-account funding"),
+    lighter_operator_record_file: Path | None = Option(None, envvar="LIGHTER_OPERATOR_RECORD_FILE", help="Owner-only Lighter operator record used to read transfer history for an interrupted sub-account funding"),
 ):
     """Repair broken state.
 

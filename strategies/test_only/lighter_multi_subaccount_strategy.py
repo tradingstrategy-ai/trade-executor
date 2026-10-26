@@ -21,8 +21,8 @@ test can change these environment variables between ``start`` runs:
     USDC kept in the Safe. Defaults to 20.
 
 ``LIGHTER_TRANSFER_FEE_USD``
-    Fee budgeted on top of each master to sub-account transfer. Defaults to 0;
-    Lighter documents these transfers as free.
+    Fee budgeted on top of each master to sub-account transfer. Defaults to 0,
+    as Lighter charges nothing for transfers between accounts of one owner.
 """
 
 import datetime
@@ -36,7 +36,7 @@ from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pairs
+from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pairs, parse_lighter_account_indices
 from tradeexecutor.exchange_account.lighter_strategy import (
     decide_lighter_cash_management,
     parse_lighter_sub_account_weights,
@@ -92,8 +92,7 @@ def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrateg
         Static universe with the master account, the sub-accounts and the USDC reserve.
     """
     del input
-    raw = os.environ.get("LIGHTER_ACCOUNT_INDEXES", "")
-    indices = [int(part) for part in raw.split(",") if part.strip()]
+    indices = parse_lighter_account_indices(os.environ.get("LIGHTER_ACCOUNT_INDEXES", ""))
     if not indices:
         raise ValueError("Set LIGHTER_ACCOUNT_INDEXES to the master and sub-account indices from the deployment report")
     usdc = AssetIdentifier(

@@ -6,6 +6,8 @@ import logging
 import os
 import stat
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -240,6 +242,36 @@ class LighterFundingRequest:
     fee: Decimal
 
 
+@asynccontextmanager
+async def _open_master_transfer_client(
+    operator: LighterOperatorRecord,
+    operation: str,
+) -> AsyncIterator[tuple[object, LighterAuthTokenManager]]:
+    """Open a master-key signer and auth-token manager for transfer calls.
+
+    Lighter transfer and timeout errors pass through; any other SDK error is
+    replaced by a secret-free :py:class:`RuntimeError`.
+
+    :param operator:
+        Master account signer.
+    :param operation:
+        Operation name for the public error message.
+    :return:
+        Signer client and its auth-token manager.
+    """
+    client = None
+    try:
+        client = create_lighter_signer_client(operator.account_index, operator.api_key_index, operator.api_private_key)
+        yield client, create_lighter_auth_token_manager(client, operator.api_key_index)
+    except (LighterTransferError, TimeoutError):
+        raise
+    except Exception as error:  # noqa: BLE001 - SDK exception types vary by release
+        raise _public_sdk_error(operation, error) from None
+    finally:
+        if client is not None:
+            await client.close()
+
+
 async def request_lighter_funding_transfer(
     operator: LighterOperatorRecord,
     to_account_index: int,
@@ -247,8 +279,9 @@ async def request_lighter_funding_transfer(
 ) -> LighterFundingRequest:
     """Fund a sub-account from the master account with the master API key.
 
-    The submission is not idempotent. Persist the returned hash before
-    waiting for confirmation.
+    The fee comes from Lighter's authenticated quote, which is zero for
+    transfers between accounts of one owner. The submission is not
+    idempotent: persist the returned hash before waiting for confirmation.
 
     :param operator:
         Master account signer.
@@ -259,10 +292,7 @@ async def request_lighter_funding_transfer(
     :return:
         Transaction hash and the fee charged on top of the amount.
     """
-    client = None
-    try:
-        client = create_lighter_signer_client(operator.account_index, operator.api_key_index, operator.api_private_key)
-        auth = create_lighter_auth_token_manager(client, operator.api_key_index)
+    async with _open_master_transfer_client(operator, "account transfer") as (client, auth):
         fee = await fetch_lighter_transfer_fee(client, auth, to_account_index=to_account_index)
         tx_hash = await request_lighter_transfer(
             client,
@@ -272,13 +302,6 @@ async def request_lighter_funding_transfer(
             api_key_index=operator.api_key_index,
         )
         return LighterFundingRequest(tx_hash=tx_hash, fee=fee)
-    except LighterTransferError:
-        raise
-    except Exception as error:  # noqa: BLE001 - SDK exception types vary by release
-        raise _public_sdk_error("account transfer", error) from None
-    finally:
-        if client is not None:
-            await client.close()
 
 
 async def wait_for_lighter_funding_transfer(
@@ -297,18 +320,8 @@ async def wait_for_lighter_funding_transfer(
     :return:
         Executed transfer record.
     """
-    client = None
-    try:
-        client = create_lighter_signer_client(operator.account_index, operator.api_key_index, operator.api_private_key)
-        auth = create_lighter_auth_token_manager(client, operator.api_key_index)
+    async with _open_master_transfer_client(operator, "transfer history") as (client, auth):
         return await wait_for_lighter_transfer(client, auth, account_index=operator.account_index, tx_hash=tx_hash, timeout=timeout)
-    except (LighterTransferError, TimeoutError):
-        raise
-    except Exception as error:  # noqa: BLE001 - SDK exception types vary by release
-        raise _public_sdk_error("transfer history", error) from None
-    finally:
-        if client is not None:
-            await client.close()
 
 
 async def fetch_lighter_funding_transfer(
@@ -326,15 +339,5 @@ async def fetch_lighter_funding_transfer(
     :return:
         Executed transfer, or ``None`` if it is not in history.
     """
-    client = None
-    try:
-        client = create_lighter_signer_client(operator.account_index, operator.api_key_index, operator.api_private_key)
-        auth = create_lighter_auth_token_manager(client, operator.api_key_index)
+    async with _open_master_transfer_client(operator, "transfer history") as (client, auth):
         return await fetch_lighter_transfer_record(client, auth, account_index=operator.account_index, tx_hash=tx_hash)
-    except LighterTransferError:
-        raise
-    except Exception as error:  # noqa: BLE001 - SDK exception types vary by release
-        raise _public_sdk_error("transfer history", error) from None
-    finally:
-        if client is not None:
-            await client.close()

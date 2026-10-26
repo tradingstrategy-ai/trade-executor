@@ -34,7 +34,7 @@ from tradingstrategy.chain import ChainId
 from tradeexecutor.ethereum.tx import TransactionBuilder
 from tradeexecutor.ethereum.swap import report_failure
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeFlag, TradeStatus, has_unresolved_hypercore_accounting
+from tradeexecutor.state.trade import TradeExecution, TradeStatus, has_unresolved_hypercore_accounting
 from tradeexecutor.state.blockhain_transaction import BlockchainTransaction
 from tradeexecutor.state.freeze import freeze_position_on_failed_trade
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -777,7 +777,7 @@ class EthereumExecution(ExecutionModel):
             # uncertainty marker, not refund possibly moved Safe capital.
             self.sync_state_before_broadcast()
 
-            if TradeFlag.internal_account_transfer in (trade.flags or set()):
+            if trade.is_internal_account_transfer():
                 # A transfer between exchange accounts is executed off-chain by
                 # setup_trades() and has no Ethereum transaction to broadcast or
                 # receipt to read. Settle it directly from exchange evidence.

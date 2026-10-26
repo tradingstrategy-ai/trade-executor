@@ -31,6 +31,7 @@ from tradeexecutor.cli.commands.lagoon_utils import (
     sync_reserve_balance_to_state,
 )
 from tradeexecutor.cli.log import setup_logging
+from tradeexecutor.exchange_account.lighter import parse_lighter_account_indices
 from tradeexecutor.strategy.strategy_module import read_strategy_module
 
 logger = logging.getLogger(__name__)
@@ -261,7 +262,7 @@ def lagoon_redeem(
     assert vault_adapter_address, "VAULT_ADAPTER_ADDRESS is required"
 
     if lighter_account_indexes:
-        lighter_account_indices = [int(part) for part in lighter_account_indexes.split(",") if part.strip()]
+        lighter_account_indices = parse_lighter_account_indices(lighter_account_indexes)
     elif lighter_account_index is not None:
         lighter_account_indices = [lighter_account_index]
     else:

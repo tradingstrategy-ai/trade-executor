@@ -33,7 +33,7 @@ from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pairs
+from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pairs, parse_lighter_account_indices
 from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -84,14 +84,14 @@ def _read_lighter_account_indices() -> list[int]:
     without sub-accounts. Never fall back to a test index: these values
     determine the posted NAV.
     """
-    raw = os.environ.get("LIGHTER_ACCOUNT_INDEXES", "").strip() or os.environ.get("LIGHTER_ACCOUNT_INDEX", "").strip()
-    parts = [part.strip() for part in raw.split(",")]
-    if not raw or not all(part.isascii() and part.isdecimal() for part in parts):
+    raw = os.environ.get("LIGHTER_ACCOUNT_INDEXES", "").strip() or os.environ.get("LIGHTER_ACCOUNT_INDEX", "")
+    account_indices = parse_lighter_account_indices(raw)
+    if not account_indices:
         raise ValueError(
             "Set LIGHTER_ACCOUNT_INDEXES to the master and sub-account indices, or "
             "LIGHTER_ACCOUNT_INDEX to the master account index, from the Lighter deployment report"
         )
-    return [int(part) for part in parts]
+    return account_indices
 
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:

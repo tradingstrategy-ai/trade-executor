@@ -70,7 +70,7 @@ def _create_lighter_routing_config(
     strategy_parameters: dict[str, object],
     operator_record_file: Path | None,
     withdrawal_timeout: int,
-    transfer_timeout: int = DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS,
+    transfer_timeout: int,
 ) -> LighterRoutingConfig | None:
     """Build automatic Lighter transfer settings from parsed CLI inputs.
 
@@ -158,12 +158,12 @@ def start(
     lighter_operator_record_file: Optional[Path] = typer.Option(
         None,
         envvar="LIGHTER_OPERATOR_RECORD_FILE",
-        help="Owner-only Lighter operator record used for automatic Safe withdrawals",
+        help="Owner-only Lighter operator record used for automatic master withdrawals and master to sub-account transfers",
     ),
     lighter_withdrawal_timeout: int = typer.Option(
         DEFAULT_LIGHTER_WITHDRAWAL_TIMEOUT_SECONDS,
         envvar="LIGHTER_WITHDRAWAL_TIMEOUT",
-        help="Maximum seconds to wait for a secure Lighter withdrawal",
+        help="Maximum seconds to wait for a Lighter master secure withdrawal or sub-account L1 withdrawal to become claimable. Default 3600; a live sub-account withdrawal took about 29 minutes.",
     ),
     lighter_transfer_timeout: int = typer.Option(
         DEFAULT_LIGHTER_TRANSFER_TIMEOUT_SECONDS,

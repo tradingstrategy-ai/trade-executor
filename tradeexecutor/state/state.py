@@ -790,7 +790,7 @@ class State:
 
         # Allocate reserve capital for this trade.
         # Reserve capital cannot be double spent until the trades are executed.
-        if TradeFlag.internal_account_transfer in (trade.flags or set()):
+        if trade.is_internal_account_transfer():
             # Funded from another exchange account, not from reserves.
             pass
         elif TradeFlag.external_account_transfer in (trade.flags or set()):
@@ -937,15 +937,11 @@ class State:
         )
         # Funding between exchange accounts moves no reserve cash; the source
         # account decrease is booked by the protocol settlement helper.
-        is_internal_exchange_transfer = (
-            trade.pair.is_exchange_account()
-            and TradeFlag.internal_account_transfer in (trade.flags or set())
-        )
+        is_internal_exchange_transfer = trade.is_internal_account_transfer()
         if is_internal_exchange_transfer:
             assert trade.is_buy(), f"Internal exchange-account transfers fund the destination position: {trade}"
-            assert executed_amount and executed_amount > 0, f"Executed amount was {executed_amount}"
 
-        if trade.is_spot() or is_exchange_transfer:
+        if trade.is_spot() or is_exchange_transfer or is_internal_exchange_transfer:
             if trade.is_buy():
                 assert executed_amount and executed_amount > 0, f"Executed amount was {executed_amount}"
             else:
@@ -1146,7 +1142,7 @@ class State:
         caller—including startup repair—preserves the no-double-spend invariant.
         """
         trade.mark_failed(failed_at)
-        if TradeFlag.internal_account_transfer in (trade.flags or set()):
+        if trade.is_internal_account_transfer():
             # No reserve was allocated, so there is nothing to return. The
             # transfer stays pending until reconciled from exchange evidence.
             return

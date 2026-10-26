@@ -63,9 +63,9 @@ from tradeexecutor.cli.commands.lagoon_utils import (
 from tradeexecutor.cli.log import setup_logging
 from tradeexecutor.ethereum.lagoon.vault import LagoonVaultSyncModel
 from tradeexecutor.exchange_account.lighter import (
-    LIGHTER_PROTOCOL,
     create_lighter_exchange_account_pair,
     create_lighter_vault_valuation_func,
+    is_lighter_exchange_account_pair,
     is_lighter_sub_account_pair,
 )
 from tradeexecutor.exchange_account.pricing import ExchangeAccountPricingModel
@@ -558,8 +558,7 @@ def _get_lighter_positions(state: State) -> list[TradingPosition]:
     return [
         position
         for position in state.portfolio.get_open_and_frozen_positions()
-        if position.is_exchange_account()
-        and position.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
+        if is_lighter_exchange_account_pair(position.pair)
     ]
 
 
@@ -872,8 +871,9 @@ def lagoon_lighter_test_trade(
                 sync_model.sync_initial(state, reserve_asset=reserve_asset, reserve_token_price=1.0)
             else:
                 state = store.load()
-            lighter_positions = [position for position in _get_lighter_positions(state) if not is_lighter_sub_account_pair(position.pair)]
-            sub_account_indices = [int(position.pair.get_exchange_account_id()) for position in _get_lighter_positions(state) if is_lighter_sub_account_pair(position.pair)]
+            all_lighter_positions = _get_lighter_positions(state)
+            lighter_positions = [position for position in all_lighter_positions if not is_lighter_sub_account_pair(position.pair)]
+            sub_account_indices = [int(position.pair.get_exchange_account_id()) for position in all_lighter_positions if is_lighter_sub_account_pair(position.pair)]
             if sub_account_indices:
                 # Post NAV over every Lighter account the vault owns, not only the traded master.
                 sync_model.calculate_valuation_func = create_lighter_vault_valuation_func(

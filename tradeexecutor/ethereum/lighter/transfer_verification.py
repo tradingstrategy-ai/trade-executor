@@ -8,21 +8,19 @@ from decimal import Decimal
 from eth_defi.compat import native_datetime_utc_now
 from eth_defi.lighter.api import wait_for_lighter_collateral
 from eth_defi.lighter.session import LighterSession, create_lighter_session
+from eth_defi.lighter.transfer import LighterTransferRecord
 from eth_defi.lighter.valuation import fetch_lighter_total_equity
 from eth_defi.token import fetch_erc20_details
 from web3 import Web3
 from web3.exceptions import TransactionNotFound
 
 from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
-from tradeexecutor.exchange_account.lighter_operator import LighterOperatorRecord, fetch_lighter_funding_transfer
+from tradeexecutor.exchange_account.lighter_operator import USDC_PRECISION, LighterOperatorRecord, fetch_lighter_funding_transfer
 from tradeexecutor.exchange_account.state import complete_exchange_account_funding, complete_exchange_account_transfer
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeFlag
+from tradeexecutor.state.trade import TradeExecution
 
 logger = logging.getLogger(__name__)
-
-#: Lighter USDC precision used when comparing transfer amounts.
-USDC_PRECISION = Decimal("0.000001")
 
 
 class LighterTransferVerificationError(RuntimeError):
@@ -144,9 +142,25 @@ class LighterFundingVerification:
     fee: Decimal
 
 
+def get_lighter_funding_evidence(record: LighterTransferRecord) -> dict[str, int | str]:
+    """Convert a transfer-history row to the evidence stored on a funding trade.
+
+    :param record:
+        Executed transfer read from the master's transfer history.
+    :return:
+        Public ``other_data`` fields read by :py:func:`verify_lighter_funding`.
+    """
+    return {
+        "lighter_transfer_from_account": record.from_account_index,
+        "lighter_transfer_to_account": record.to_account_index,
+        "lighter_transfer_amount_usdc": str(record.amount),
+        "lighter_transfer_fee_usdc": str(record.fee),
+    }
+
+
 def verify_lighter_funding(
     trade: TradeExecution,
-    record: object | None = None,
+    record: LighterTransferRecord | None = None,
 ) -> LighterFundingVerification | None:
     """Verify a funding transfer from its transfer-history evidence.
 
@@ -156,26 +170,19 @@ def verify_lighter_funding(
     :param trade:
         Funding trade on the destination sub-account position.
     :param record:
-        Optional :py:class:`eth_defi.lighter.transfer.LighterTransferRecord`
-        fetched during reconciliation; otherwise the evidence stored on the
-        trade is used.
+        History row fetched during reconciliation; otherwise the evidence
+        stored on the trade is used.
     :return:
         Verified amounts, or ``None`` while there is no history evidence.
     """
-    metadata = trade.other_data or {}
-    if record is not None:
-        from_account = record.from_account_index
-        to_account = record.to_account_index
-        amount = record.amount
-        fee = record.fee
-    elif "lighter_transfer_amount_usdc" in metadata:
-        from_account = int(metadata["lighter_transfer_from_account"])
-        to_account = int(metadata["lighter_transfer_to_account"])
-        amount = Decimal(str(metadata["lighter_transfer_amount_usdc"]))
-        fee = Decimal(str(metadata["lighter_transfer_fee_usdc"]))
-    else:
+    evidence = get_lighter_funding_evidence(record) if record is not None else trade.other_data
+    if "lighter_transfer_amount_usdc" not in evidence:
         return None
-    if from_account != int(metadata["funding_source_account_id"]) or to_account != int(trade.pair.get_exchange_account_id()):
+    from_account = int(evidence["lighter_transfer_from_account"])
+    to_account = int(evidence["lighter_transfer_to_account"])
+    amount = Decimal(str(evidence["lighter_transfer_amount_usdc"]))
+    fee = Decimal(str(evidence["lighter_transfer_fee_usdc"]))
+    if from_account != int(trade.other_data["funding_source_account_id"]) or to_account != int(trade.pair.get_exchange_account_id()):
         raise LighterTransferVerificationError("Lighter transfer history accounts differ from the funding trade")
     if abs(amount - trade.planned_quantity) > USDC_PRECISION:
         raise LighterTransferVerificationError("Lighter transfer history amount differs from the funding trade")
@@ -223,14 +230,12 @@ def reconcile_verified_lighter_transfers(
         if trade.is_internal_account_transfer_pending()
         and trade.pair.get_exchange_account_protocol() == LIGHTER_PROTOCOL
     ]
-    if not pending_transfers and not pending_funding:
-        return []
 
     verified_trades = []
     for trade in pending_funding:
         record = None
-        tx_hash = (trade.other_data or {}).get("lighter_transfer_tx_hash")
-        if "lighter_transfer_amount_usdc" not in (trade.other_data or {}):
+        tx_hash = trade.other_data.get("lighter_transfer_tx_hash")
+        if "lighter_transfer_amount_usdc" not in trade.other_data:
             if not tx_hash:
                 logger.warning("Lighter funding trade #%d was not submitted; it needs manual review", trade.trade_id)
                 continue
@@ -249,12 +254,7 @@ def reconcile_verified_lighter_transfers(
         verified_trades.append(trade)
         if mutate:
             if record is not None:
-                trade.other_data.update({
-                    "lighter_transfer_from_account": record.from_account_index,
-                    "lighter_transfer_to_account": record.to_account_index,
-                    "lighter_transfer_amount_usdc": str(record.amount),
-                    "lighter_transfer_fee_usdc": str(record.fee),
-                })
+                trade.other_data.update(get_lighter_funding_evidence(record))
             complete_exchange_account_funding(
                 state=state,
                 trade=trade,
