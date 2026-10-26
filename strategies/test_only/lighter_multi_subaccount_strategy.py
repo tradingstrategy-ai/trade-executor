@@ -3,37 +3,20 @@
 Used by the fixed-fork black-box test and the mainnet sub-account tutorial.
 The Safe-owned Lighter master account is the treasury hub and each
 sub-account is traded by an external process; this strategy only moves
-custody capital between the Safe, the master and the sub-accounts, see
+custody capital between the Safe, the master and the sub-accounts with the
+production policy,
 :py:func:`tradeexecutor.exchange_account.lighter_strategy.decide_lighter_cash_management`.
-
-The sub-accounts are declared in :py:class:`Parameters`; ``init`` records
-which Lighter account each id maps to in the state. The module is loaded
-fresh by every Typer command, so the black-box test and the tutorial can
-change the policy between ``start`` runs:
-
-``LIGHTER_SUB_ACCOUNT_WEIGHTS``
-    Comma-separated target weights in sub-account order, for example
-    ``0.5,0.5``. Empty means no sub-account rebalancing.
-
-``LIGHTER_SAFE_CASH_BUFFER_USD``
-    USDC kept in the Safe. Defaults to 20.
-
-``LIGHTER_TRANSFER_FEE_USD``
-    Fee budgeted on top of each master to sub-account transfer. Defaults to 0,
-    as Lighter charges nothing for transfers between accounts of one owner.
+The sub-accounts, their target weights and the policy buffers are declared
+in :py:class:`Parameters`; the test and the tutorial drive the policy by
+changing balances, as traders would, not by changing the strategy.
 """
 
 import datetime
-import os
 from decimal import Decimal
 
 from tradingstrategy.chain import ChainId
 
-from tradeexecutor.exchange_account.lighter_strategy import (
-    create_lighter_account_universe,
-    decide_lighter_cash_management,
-    parse_lighter_sub_account_weights,
-)
+from tradeexecutor.exchange_account.lighter_strategy import create_lighter_account_universe, decide_lighter_cash_management
 from tradeexecutor.exchange_account.sub_account import SubAccount
 from tradeexecutor.state.trade import TradeExecution
 from tradeexecutor.strategy.cycle import CycleDuration
@@ -65,17 +48,14 @@ class Parameters:
     backtest_start = None
     backtest_end = None
     lighter_cash_management = True
-    #: Sub-strategies run in their own Lighter sub-accounts.
+    #: Sub-strategies run in their own Lighter sub-accounts, each with its target share of the capital.
     lighter_sub_accounts = [
-        SubAccount(id="trend", name="Trend following"),
-        SubAccount(id="arb", name="Funding-rate arbitrage"),
+        SubAccount(id="trend", name="Trend following", weight=0.5),
+        SubAccount(id="arb", name="Funding-rate arbitrage", weight=0.5),
     ]
-    lighter_safe_cash_buffer_usd = Decimal(os.environ.get("LIGHTER_SAFE_CASH_BUFFER_USD", "20"))
-    lighter_free_collateral_buffer_usd = Decimal("0")
-    lighter_min_transfer_usd = Decimal("1")
-    lighter_sub_account_weights = parse_lighter_sub_account_weights(os.environ.get("LIGHTER_SUB_ACCOUNT_WEIGHTS", ""))
-    lighter_rebalance_band_usd = Decimal("0")
-    lighter_transfer_fee_usd = Decimal(os.environ.get("LIGHTER_TRANSFER_FEE_USD", "0"))
+    #: Nothing stays in the Safe: all capital goes to Lighter and the tutorial runs at Lighter's minimums.
+    lighter_safe_cash_buffer_usd = Decimal(0)
+    lighter_free_collateral_buffer_usd = Decimal(0)
 
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:

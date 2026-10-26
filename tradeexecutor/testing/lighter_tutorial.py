@@ -57,6 +57,7 @@ from tradeexecutor.cli.main import app
 from tradeexecutor.exchange_account import lighter as lighter_reads
 from tradeexecutor.exchange_account.sub_account import get_lighter_account_resolution
 from tradeexecutor.state.state import State
+from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.testing.lighter_report import get_lighter_funding_fees
 from tradeexecutor.testing.lighter_simulation import ANVIL_DEPLOYER_PRIVATE_KEY, SimulatedLighter, launch_simulated_lighter
 
@@ -67,6 +68,18 @@ STRATEGY_DIR = Path(__file__).resolve().parents[2] / "strategies" / "test_only"
 
 #: Lagoon cannot return sub-unit rounding residue; tolerate two raw units.
 MAX_UNEXPLAINED_RAW = 2
+
+#: API-key slot registered on the master and on every sub-account.
+API_KEY_INDEX = MIN_API_KEY_INDEX
+
+#: Maximum wait for a withdrawal to become claimable: a live sub-account withdrawal took about 29 minutes.
+WITHDRAW_TIMEOUT_SECONDS = {True: 60, False: 3600}
+
+#: Maximum wait for a transfer between accounts to appear in history.
+TRANSFER_TIMEOUT_SECONDS = {True: 5, False: 300}
+
+#: Fee the fake sequencer charges per transfer, so simulated runs exercise the fee accounting.
+SIMULATED_TRANSFER_FEE_USDC = Decimal("0.5")
 
 #: Phase callables take the tutorial runtime.
 Phase = Callable[["Tutorial"], None]
@@ -88,20 +101,22 @@ class TutorialConfig:
     strategy_file: Path
     #: USDC subscribed after deployment.
     subscription_usdc: Decimal
-    #: API-key slot for the master and sub-account keys.
-    api_key_index: int
-    #: Maximum wait for a withdrawal to become claimable.
-    withdraw_timeout: int
-    #: Maximum wait for a sub-account transfer to appear in history.
-    transfer_timeout: int
-    #: Number of sub-accounts created at deployment.
-    sub_account_count: int = 2
+    #: Number of sub-accounts the strategy declares and deployment creates.
+    sub_account_count: int
     #: Run against an Anvil fork and a fake Lighter sequencer.
     simulate: bool = False
-    #: Existing Anvil fork to reuse in simulate mode, instead of launching one.
+    #: Existing Anvil fork to reuse in simulate mode, so a test can share its fork.
     simulate_rpc_url: str | None = field(default=None, repr=False)
-    #: Fee the fake sequencer charges per transfer in simulate mode.
-    simulated_transfer_fee_usdc: Decimal = Decimal(0)
+
+    @property
+    def withdraw_timeout(self) -> int:
+        """Return the maximum wait for a withdrawal to become claimable."""
+        return WITHDRAW_TIMEOUT_SECONDS[self.simulate]
+
+    @property
+    def transfer_timeout(self) -> int:
+        """Return the maximum wait for a transfer between accounts to appear in history."""
+        return TRANSFER_TIMEOUT_SECONDS[self.simulate]
 
 
 @dataclass(slots=True)
@@ -210,31 +225,27 @@ def get_default_run_dir(executor_id: str, simulate: bool) -> Path:
     return Path("~/.tradingstrategy/examples").expanduser() / f"{executor_id}-{int(time.time())}"
 
 
-def load_tutorial_config(
-    *,
-    executor_id: str,
-    strategy_file: Path,
-    subscription_usdc: Decimal,
-    sub_account_count: int = 2,
-) -> TutorialConfig:
-    """Read the shared environment variables of a tutorial.
+def load_tutorial_config(*, executor_id: str, strategy_file: Path, subscription_usdc: Decimal) -> TutorialConfig:
+    """Read a tutorial's environment: the RPC, the deployer key, the mode and the run directory.
 
     ``JSON_RPC_ETHEREUM`` is required in both modes: simulate mode forks it.
     The deployer key, ``LIGHTER_TEST_PRIVATE_KEY`` or ``PRIVATE_KEY``, is
     required only live; simulate mode uses a public Anvil test key.
+    ``SIMULATE`` selects the mode, ``LIGHTER_RUN_DIR`` the run directory to
+    resume, and ``LIGHTER_SIMULATE_RPC_URL`` lets a test share its fork.
 
     :param executor_id:
         Executor id of the tutorial.
     :param strategy_file:
-        Strategy module driving the ``start`` cycles.
+        Strategy module driving the ``start`` cycles; its declared
+        sub-accounts are created at deployment.
     :param subscription_usdc:
         USDC subscribed after deployment.
-    :param sub_account_count:
-        Sub-accounts created at deployment.
     :return:
         Validated configuration.
     """
     simulate = is_simulate_requested()
+    sub_accounts = read_strategy_module(strategy_file).parameters.get("lighter_sub_accounts") or []
     return TutorialConfig(
         rpc_url=require_env("JSON_RPC_ETHEREUM"),
         deployer_private_key=ANVIL_DEPLOYER_PRIVATE_KEY if simulate else require_env("LIGHTER_TEST_PRIVATE_KEY", "PRIVATE_KEY"),
@@ -242,13 +253,9 @@ def load_tutorial_config(
         executor_id=executor_id,
         strategy_file=strategy_file,
         subscription_usdc=subscription_usdc,
-        api_key_index=int(os.environ.get("LIGHTER_API_KEY_INDEX", str(MIN_API_KEY_INDEX))),
-        withdraw_timeout=int(os.environ.get("LIGHTER_WITHDRAW_TIMEOUT", "60" if simulate else "3600")),
-        transfer_timeout=int(os.environ.get("LIGHTER_TRANSFER_TIMEOUT", "5" if simulate else "300")),
-        sub_account_count=sub_account_count,
+        sub_account_count=len(sub_accounts),
         simulate=simulate,
         simulate_rpc_url=os.environ.get("LIGHTER_SIMULATE_RPC_URL"),
-        simulated_transfer_fee_usdc=Decimal(os.environ.get("LIGHTER_SIMULATED_TRANSFER_FEE_USDC", "0.5")),
     )
 
 
@@ -265,7 +272,7 @@ def prepare_tutorial(config: TutorialConfig) -> Tutorial:
             config.rpc_url,
             deployer_usdc=required_usdc,
             existing_rpc_url=config.simulate_rpc_url,
-            transfer_fee_usdc=config.simulated_transfer_fee_usdc,
+            transfer_fee_usdc=SIMULATED_TRANSFER_FEE_USDC,
         )
         web3, rpc_url, deployer, usdc = simulation.web3, simulation.rpc_url, simulation.deployer, simulation.usdc
         (config.run_dir / "progress.json").unlink(missing_ok=True)
@@ -454,8 +461,8 @@ def deploy(tutorial: Tutorial, fund_name: str, fund_symbol: str) -> None:
         "MANAGEMENT_FEE": "0",
         "UNIT_TESTING": "true",
         "GENERATE_LIGHTER_API_KEY": "true",
-        "LIGHTER_API_KEY_INDEX": str(tutorial.config.api_key_index),
-        "LIGHTER_SUB_ACCOUNT_API_KEY_INDEX": str(tutorial.config.api_key_index),
+        "LIGHTER_API_KEY_INDEX": str(API_KEY_INDEX),
+        "LIGHTER_SUB_ACCOUNT_API_KEY_INDEX": str(API_KEY_INDEX),
         "LOG_LEVEL": "warning",
     }
     with backup_generated_keys(tutorial.deployer.address):

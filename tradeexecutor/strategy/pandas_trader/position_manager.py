@@ -430,22 +430,22 @@ class PositionManager:
 
     # ----- Lighter custody: move funds between the Safe, the master and sub-accounts -----
 
-    def get_lighter_account_pair(self, account: str | int = LIGHTER_MASTER_LABEL) -> TradingPairIdentifier:
+    def get_lighter_account_pair(self, account: str = LIGHTER_MASTER_LABEL) -> TradingPairIdentifier:
         """Return the pair of a Lighter account declared in the strategy parameters.
 
         :param account:
-            ``master``, a sub-account id from ``Parameters.lighter_sub_accounts``, or an account index.
+            ``master`` or a sub-account id from ``Parameters.lighter_sub_accounts``.
         :return:
             The account's exchange-account pair.
         """
         return find_lighter_account_pair(self.strategy_universe.iterate_pairs(), account)
 
-    def get_lighter_balance(self, account: str | int = LIGHTER_MASTER_LABEL) -> Decimal:
+    def get_lighter_balance(self, account: str = LIGHTER_MASTER_LABEL) -> Decimal:
         """Return the equity the executor tracks for a Lighter account, zero before any funds moved in."""
         position = self.state.portfolio.get_open_position_for_pair(self.get_lighter_account_pair(account))
         return Decimal(0) if position is None else position.get_quantity()
 
-    def get_lighter_free_collateral(self, account: str | int = LIGHTER_MASTER_LABEL) -> Decimal:
+    def get_lighter_free_collateral(self, account: str = LIGHTER_MASTER_LABEL) -> Decimal:
         """Return the collateral a Lighter account can move out now, read from Lighter."""
         return self.get_exchange_account_available_balance(self.get_lighter_account_pair(account))
 
@@ -479,7 +479,7 @@ class PositionManager:
             metadata={"direction": "deposit", "protocol": LIGHTER_PROTOCOL},
         )
 
-    def withdraw_from_lighter(self, account: str | int = LIGHTER_MASTER_LABEL, amount: Decimal | None = None, notes: str | None = None) -> TradeExecution:
+    def withdraw_from_lighter(self, account: str = LIGHTER_MASTER_LABEL, amount: Decimal | None = None, notes: str | None = None) -> TradeExecution:
         """Move USDC from a Lighter account to the Safe.
 
         The master uses its API key; a sub-account uses the key-free L1
@@ -507,7 +507,7 @@ class PositionManager:
             metadata={"direction": "withdraw", "protocol": LIGHTER_PROTOCOL},
         )
 
-    def transfer_lighter_funds(self, source: str | int, destination: str | int, amount: Decimal, notes: str | None = None) -> TradeExecution:
+    def transfer_lighter_funds(self, source: str, destination: str, amount: Decimal, notes: str | None = None) -> TradeExecution:
         """Move USDC between two Lighter accounts of the vault.
 
         The transfer is signed with the source account's key: the master key
@@ -539,7 +539,7 @@ class PositionManager:
             metadata={"protocol": LIGHTER_PROTOCOL},
         )
 
-    def _get_or_open_lighter_position(self, account: str | int) -> TradingPosition:
+    def _get_or_open_lighter_position(self, account: str) -> TradingPosition:
         """Return a Lighter account's position, opening an empty one when funds first move."""
         pair = self.get_lighter_account_pair(account)
         position = self.state.portfolio.get_open_position_for_pair(pair)

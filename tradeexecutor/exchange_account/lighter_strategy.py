@@ -28,6 +28,7 @@ import logging
 from collections.abc import Iterable, Sequence
 from decimal import Decimal
 
+from eth_defi.lighter.api import LIGHTER_MIN_MAINNET_USDC
 from eth_defi.lighter.constants import LIGHTER_L1_CONTRACT
 from eth_defi.token import USDC_NATIVE_TOKEN
 from tradingstrategy.chain import ChainId
@@ -44,7 +45,7 @@ from tradeexecutor.exchange_account.cash_manager import (
 from tradeexecutor.exchange_account.lighter import (
     LIGHTER_PROTOCOL,
     create_lighter_exchange_account_pairs,
-    find_lighter_account_pair,
+    get_lighter_account_id,
     get_lighter_master_pair,
     is_lighter_sub_account_pair,
 )
@@ -125,7 +126,7 @@ def create_lighter_account_universe(input: CreateTradingUniverseInput, sub_accou
         token_symbol="USDC",
         decimals=6,
     )
-    pairs = create_lighter_exchange_account_pairs(usdc, master_account_index=master, sub_account_indices=resolved)
+    pairs = create_lighter_exchange_account_pairs(usdc, master, resolved)
     exchange = Exchange(
         chain_id=ChainId.ethereum,
         chain_slug="ethereum",
@@ -173,19 +174,6 @@ def ensure_lighter_positions(input: StrategyInput) -> bool:
     return not missing and not input.execution_context.mode.is_backtesting()
 
 
-def parse_lighter_sub_account_weights(raw: str) -> tuple[Decimal, ...]:
-    """Parse comma-separated sub-account target weights.
-
-    :param raw:
-        For example ``"0.5,0.5"``; an empty string means no weights.
-    :return:
-        Weights in sub-account creation order.
-    """
-    if not raw.strip():
-        return ()
-    return tuple(Decimal(part.strip()) for part in raw.split(","))
-
-
 def get_lighter_account_pairs(pairs: Sequence[TradingPairIdentifier]) -> tuple[TradingPairIdentifier, list[TradingPairIdentifier]]:
     """Split a universe's Lighter pairs into the master and its sub-accounts.
 
@@ -197,25 +185,26 @@ def get_lighter_account_pairs(pairs: Sequence[TradingPairIdentifier]) -> tuple[T
     return get_lighter_master_pair(pairs), [pair for pair in pairs if is_lighter_sub_account_pair(pair)]
 
 
-def _resolve_weights(weights: object, sub_pairs: list[TradingPairIdentifier]) -> dict[int, Decimal]:
-    """Map strategy weight parameters to sub-account indices.
+def get_sub_account_weights(sub_accounts: Iterable[SubAccount] | None, sub_pairs: Sequence[TradingPairIdentifier]) -> dict[int, Decimal]:
+    """Map the declared sub-account weights to Lighter account indices.
 
-    :param weights:
-        A mapping keyed by sub-account id or index, or a sequence in
-        sub-account order.
+    :param sub_accounts:
+        ``Parameters.lighter_sub_accounts``.
     :param sub_pairs:
-        Sub-account pairs in universe order.
+        Sub-account pairs of the universe.
     :return:
-        Weight per sub-account index.
+        Target weight per sub-account index, for the sub-accounts that declare one.
     """
-    if not weights:
-        return {}
-    if isinstance(weights, dict):
-        return {int(find_lighter_account_pair(sub_pairs, account).get_exchange_account_id()): Decimal(str(weight)) for account, weight in weights.items()}
-    weights = tuple(weights)
-    if len(weights) != len(sub_pairs):
-        raise ValueError(f"Got {len(weights)} Lighter sub-account weights for {len(sub_pairs)} sub-accounts")
-    return {int(pair.get_exchange_account_id()): Decimal(str(weight)) for pair, weight in zip(sub_pairs, weights)}
+    pairs_by_id = {get_lighter_account_id(pair): pair for pair in sub_pairs}
+    weights = {}
+    for sub_account in sub_accounts or ():
+        if sub_account.weight is None:
+            continue
+        pair = pairs_by_id.get(sub_account.id)
+        if pair is None:
+            raise ValueError(f"Sub-account {sub_account.id!r} is not in the strategy universe")
+        weights[int(pair.get_exchange_account_id())] = Decimal(str(sub_account.weight))
+    return weights
 
 
 def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]:
@@ -225,9 +214,9 @@ def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]
 
     - ``lighter_safe_cash_buffer_usd``: USDC kept in the Safe
     - ``lighter_free_collateral_buffer_usd``: free collateral kept on the master
-    - ``lighter_min_transfer_usd``: smallest movement, at least Lighter's 1 USDC minimum
-    - ``lighter_sub_account_weights``: target share per sub-account, a mapping
-      keyed by sub-account id or a sequence in sub-account order
+    - ``lighter_min_transfer_usd``: smallest movement; defaults to Lighter's 1 USDC minimum
+    - ``lighter_sub_accounts``: the declared sub-accounts; those with a
+      ``weight`` get that share of the investable capital
     - ``lighter_rebalance_band_usd``: tolerated distance from a target, default zero
     - ``lighter_transfer_fee_usd``: fee budgeted per funding transfer, default
       zero, as Lighter charges nothing for same-owner transfers
@@ -250,7 +239,7 @@ def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]
         return []
 
     parameters = input.parameters
-    minimum = Decimal(str(parameters.lighter_min_transfer_usd))
+    minimum = Decimal(str(parameters.get("lighter_min_transfer_usd") or LIGHTER_MIN_MAINNET_USDC))
     master_buffer = Decimal(str(parameters.lighter_free_collateral_buffer_usd))
     position_manager = input.get_position_manager()
     master_position = portfolio.get_open_position_for_pair(master_pair)
@@ -311,7 +300,7 @@ def decide_lighter_cash_management(input: StrategyInput) -> list[TradeExecution]
         return [transfer(master_position, decision.amount_usdc, deposit=True, reason="idle_safe_cash")]
 
     # 3. and 4. Sub-account target weights.
-    weights = _resolve_weights(parameters.get("lighter_sub_account_weights"), sub_pairs)
+    weights = get_sub_account_weights(parameters.get("lighter_sub_accounts"), sub_pairs)
     if not sub_pairs or not weights:
         return []
     movements = plan_sub_account_rebalance(

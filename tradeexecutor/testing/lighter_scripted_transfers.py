@@ -31,6 +31,12 @@ ROLE_SAFE = "safe"
 #: ``other_data`` key holding the schedule step of a scripted trade.
 SCRIPTED_STEP_KEY = "lighter_scripted_step"
 
+#: Base amount of the scripted movements: twice Lighter's 1 USDC minimum, so a 0.5 USDC fee leaves every movement above it.
+SCRIPTED_TRANSFER_UNIT_USDC = Decimal(2)
+
+#: Steps in the script, one per cycle.
+SCRIPTED_TRANSFER_STEPS = 5
+
 
 @dataclass(frozen=True, slots=True)
 class ScriptedTransfer:
@@ -50,7 +56,7 @@ class ScriptedTransfer:
         return ROLE_SAFE not in (self.source, self.destination)
 
 
-def build_lighter_transfer_schedule(unit: Decimal, sub_labels: list[str]) -> list[list[ScriptedTransfer]]:
+def build_lighter_transfer_schedule(sub_labels: list[str], unit: Decimal = SCRIPTED_TRANSFER_UNIT_USDC) -> list[list[ScriptedTransfer]]:
     """Return the movements the example strategy makes, one list per cycle.
 
     With the 1 USDC activation deposit and a ``5 * unit - 1`` USDC
@@ -64,10 +70,10 @@ def build_lighter_transfer_schedule(unit: Decimal, sub_labels: list[str]) -> lis
     4. Move ``unit`` from the second sub-account back to the master, signed by the second.
     5. Withdraw everything from both sub-accounts and the master to the Safe.
 
-    :param unit:
-        Base amount of the fixed movements.
     :param sub_labels:
         The two sub-account labels in declaration order.
+    :param unit:
+        Base amount of the fixed movements.
     :return:
         Schedule steps in execution order.
     """

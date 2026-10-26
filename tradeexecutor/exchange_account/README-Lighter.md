@@ -207,26 +207,27 @@ read an account's tracked equity and its free collateral on Lighter.
 is the complete example; the transfer-accounting tutorial and its black-box
 test run it.
 
-For automatic cash management, use `decide_lighter_cash_management()` from
-`tradeexecutor.exchange_account.lighter_strategy` with weights keyed by
-label:
+For automatic cash management, give each `SubAccount` its target share of
+the capital and use `decide_lighter_cash_management()` from
+`tradeexecutor.exchange_account.lighter_strategy`:
 
 ```python
 from tradeexecutor.exchange_account.lighter_strategy import decide_lighter_cash_management
 
 class Parameters:
     lighter_cash_management = True
-    lighter_sub_accounts = [SubAccount(id="trend", name="Trend following"), SubAccount(id="arb", name="Funding-rate arbitrage")]
+    lighter_sub_accounts = [SubAccount(id="trend", name="Trend following", weight=0.5), SubAccount(id="arb", name="Funding-rate arbitrage", weight=0.5)]
     lighter_safe_cash_buffer_usd = Decimal(20)
     lighter_free_collateral_buffer_usd = Decimal(0)
-    lighter_min_transfer_usd = Decimal(1)
-    lighter_sub_account_weights = {"trend": Decimal("0.5"), "arb": Decimal("0.5")}
-    lighter_rebalance_band_usd = Decimal(0)
-    lighter_transfer_fee_usd = Decimal(0)
 
 def decide_trades(input):
     return decide_lighter_cash_management(input)
 ```
+
+Optional parameters: `lighter_min_transfer_usd` (defaults to Lighter's 1 USDC
+minimum), `lighter_rebalance_band_usd` (default 0) and
+`lighter_transfer_fee_usd` (default 0, as Lighter charges nothing for
+transfers between accounts of one owner).
 
 Each cycle moves one kind of capital, sized from observed balances: first
 Safe liquidity for pending redemptions (master first, then the sub-accounts
@@ -299,11 +300,11 @@ been done yet. The same strategy module deploys and runs on a fork or on
 mainnet, because the account indices come from the state.
 
 [`scripts/lagoon/manual-trade-executor-lighter-subaccounts.py`](../../scripts/lagoon/manual-trade-executor-lighter-subaccounts.py)
-is live only. It deploys a vault with two sub-accounts, funds, rebalances
-and drains them with the production cash policy, acts as the trader for one
-sub-account to sub-account transfer, redeems and sweeps everything back to
-the deployer. It needs 5 USDC plus gas: the 1 USDC bootstrap and a 4 USDC
-subscription.
+is live only. It deploys a vault with two sub-accounts and funds them with
+the production cash policy at 50/50 weights, acts as the trader for one
+sub-account to sub-account transfer, lets the policy rebalance through the
+Safe, then drains, redeems and sweeps everything back to the deployer. It
+needs 5 USDC plus gas: the 1 USDC bootstrap and a 4 USDC subscription.
 
 The 2026-10-26 run verified sub-account creation with the master key,
 sub-account `changePubKey` through the Safe, master to sub-account transfer,

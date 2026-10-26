@@ -22,8 +22,9 @@ from pytest import CaptureFixture, LogCaptureFixture, MonkeyPatch
 from tradeexecutor.state.balance_update import BalanceUpdateCause
 from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
-from tradeexecutor.testing.lighter_scripted_transfers import SCRIPTED_STEP_KEY
+from tradeexecutor.testing.lighter_scripted_transfers import SCRIPTED_STEP_KEY, SCRIPTED_TRANSFER_UNIT_USDC
 from tradeexecutor.testing.lighter_tutorial import (
+    SIMULATED_TRANSFER_FEE_USDC,
     STRATEGY_DIR,
     Tutorial,
     deploy,
@@ -50,8 +51,10 @@ pytestmark = [
     pytest.mark.xdist_group("fork:ethereum:midnight"),
 ]
 
-#: Subscription of the scripted strategy: five units of 2 USDC minus the 1 USDC activation deposit.
-SUBSCRIPTION_USDC = Decimal(9)
+#: Base amount of the scripted movements.
+UNIT_USDC = SCRIPTED_TRANSFER_UNIT_USDC
+#: Subscription of the scripted strategy: five units minus the 1 USDC activation deposit.
+SUBSCRIPTION_USDC = 5 * UNIT_USDC - Decimal(1)
 #: Trader profit credited to the first sub-account outside the executor.
 TREND_PROFIT_USDC = Decimal(3)
 #: Trader loss debited from the second sub-account outside the executor.
@@ -79,16 +82,11 @@ def anvil_ethereum(anvil_fork_pool: AnvilForkPool) -> AnvilLaunch:
 
 @pytest.fixture()
 def tutorial(anvil_ethereum: AnvilLaunch, tmp_path: Path, monkeypatch: MonkeyPatch) -> Tutorial:
-    """Prepare the transfer tutorial in simulate mode on the shared fork, without a transfer fee."""
+    """Prepare the transfer tutorial in simulate mode on the shared fork."""
     monkeypatch.setenv("SIMULATE", "true")
     monkeypatch.setenv("LIGHTER_SIMULATE_RPC_URL", anvil_ethereum.json_rpc_url)
     monkeypatch.setenv("LIGHTER_RUN_DIR", str(tmp_path / "run"))
-    monkeypatch.setenv("LIGHTER_SIMULATED_TRANSFER_FEE_USDC", "0")
-    config = load_tutorial_config(
-        executor_id="lighter-corrections",
-        strategy_file=STRATEGY_DIR / "lighter_scripted_transfers_strategy.py",
-        subscription_usdc=SUBSCRIPTION_USDC,
-    )
+    config = load_tutorial_config(executor_id="lighter-corrections", strategy_file=STRATEGY_DIR / "lighter_scripted_transfers_strategy.py", subscription_usdc=SUBSCRIPTION_USDC)
     tutorial = prepare_tutorial(config)
     try:
         yield tutorial
@@ -125,7 +123,8 @@ def test_cli_lighter_sub_account_balance_corrections(tutorial: Tutorial, caplog:
     master, trend, arb = tutorial.account_indices
     # The fake sequencer stands in for Lighter's L2, which Anvil cannot run; its balances are the "real" ones here.
     fake = tutorial.simulation.fake_core
-    assert [fake.get_account(index).collateral for index in (master, trend, arb)] == [Decimal(2), Decimal(4), Decimal(4)]
+    fee = SIMULATED_TRANSFER_FEE_USDC
+    assert [fake.get_account(index).collateral for index in (master, trend, arb)] == [UNIT_USDC - 2 * fee, 2 * UNIT_USDC, 2 * UNIT_USDC]
     state = State.read_json_file(tutorial.state_file)
     positions = _positions_by_account(state)
     updates_before = {index: set(position.balance_updates) for index, position in positions.items()}
@@ -173,7 +172,7 @@ def test_cli_lighter_sub_account_balance_corrections(tutorial: Tutorial, caplog:
     positions = _positions_by_account(state)
     step_3 = [trade for trade in state.portfolio.get_all_trades() if (trade.other_data or {}).get(SCRIPTED_STEP_KEY) == 3]
     assert len(step_3) == 1 and step_3[0].is_success()
-    assert positions[trend].get_quantity() == Decimal(4) + trend_change - Decimal(2)
-    assert positions[arb].get_quantity() == Decimal(4) + arb_change + Decimal(2)
+    assert positions[trend].get_quantity() == 2 * UNIT_USDC + trend_change - UNIT_USDC - fee
+    assert positions[arb].get_quantity() == 2 * UNIT_USDC + arb_change + UNIT_USDC
     assert {index: position.get_quantity() for index, position in positions.items()} == {index: fake.get_account(index).collateral for index in (master, trend, arb)}
     state.check_if_clean()

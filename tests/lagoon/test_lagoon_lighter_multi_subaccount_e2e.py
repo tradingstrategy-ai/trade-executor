@@ -63,13 +63,10 @@ DEPLOYER_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d
 MASTER_INDEX = 127
 #: Lagoon subscription made after deployment.
 SUBSCRIPTION_USDC = Decimal(200)
-#: USDC kept in the Safe by the strategy.
-SAFE_BUFFER_USDC = Decimal(20)
-#: Fee charged by the fake sequencer on each funding transfer in the first rebalance.
-#:
-#: Lighter charges nothing for transfers between accounts of one owner; a
-#: non-zero fee exercises the fee accounting path.
-FUNDING_FEE_USDC = Decimal("0.5")
+#: Trader profit credited to sub-account 2 outside the executor, making it overweight.
+SUB_2_PROFIT_USDC = Decimal(40)
+#: Trader profit credited to sub-account 1 outside the executor, making it overweight.
+SUB_1_PROFIT_USDC = Decimal(30)
 #: Owner-only mode required for private records.
 PRIVATE_RECORD_MODE = 0o600
 
@@ -161,10 +158,10 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     1. Deploy with ``lagoon-deploy-vault`` and two sub-accounts; check keys, hand-over files and secrets.
     2. Initialise state and account for the bootstrap subscription with one position per account; flag an untracked sub-account.
     3. Subscribe 200 USDC and run ``start``: Lagoon settles it and the idle Safe cash is deposited to the master.
-    4. Run ``start`` with 50/50 weights and a transfer fee: the master funds both sub-accounts.
-    5. Run ``start`` with 75/25 weights: sub-account 2 is withdrawn to the Safe with the key-free L1 path, then redeposited.
+    4. Run ``start``: the master funds both sub-accounts to their declared 50/50 weights.
+    5. Credit sub-account 2 with trader profit and run ``start``: its excess is withdrawn to the Safe with the key-free L1 path, then redeposited.
     6. Interrupt the next funding transfer, check ``start`` refuses to continue, and reconcile it with ``correct-accounts``.
-    7. Lock margin on sub-account 1 and check a withdrawal is capped to its free collateral; withdraw from sub-account 2 with ``lighter-move-funds``.
+    7. Credit sub-account 1 with profit, lock its margin and check its withdrawal is capped to free collateral; withdraw from sub-account 2 with ``lighter-move-funds``.
     8. Request a redemption larger than the Safe while the master is empty and check it is funded from a sub-account.
     9. Drain every account for a full redemption, including a master API withdrawal, and redeem with ``lagoon-redeem``.
     10. Sweep stray USDC and ETH from the emptied Safe back to the deployer, as the mainnet tutorial does.
@@ -246,8 +243,6 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
 
     # 2. Initialise state and account for the bootstrap subscription with one position per account; flag an untracked sub-account.
     os.environ.update({
-        "LIGHTER_SUB_ACCOUNT_WEIGHTS": "",
-        "LIGHTER_TRANSFER_FEE_USD": "0",
         "LIGHTER_OPERATOR_RECORD_FILE": operator_record_file.as_posix(),
         "LIGHTER_TRANSFER_TIMEOUT": "5",
         "LIGHTER_WITHDRAWAL_TIMEOUT": "30",
@@ -279,38 +274,33 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     assert_transaction_success_with_explanation(web3_ethereum, vault.request_deposit(deployer.address, usdc.convert_to_raw(SUBSCRIPTION_USDC)).transact({"from": deployer.address}))
     _run(cli, "start")
     assert_transaction_success_with_explanation(web3_ethereum, vault.finalise_deposit(deployer.address).transact({"from": deployer.address}))
-    deposited = LIGHTER_BOOTSTRAP_SUBSCRIPTION - LIGHTER_MIN_MAINNET_USDC + SUBSCRIPTION_USDC - SAFE_BUFFER_USDC
+    deposited = LIGHTER_BOOTSTRAP_SUBSCRIPTION - LIGHTER_MIN_MAINNET_USDC + SUBSCRIPTION_USDC
     master_equity = LIGHTER_MIN_MAINNET_USDC + deposited
     assert fake_lighter_core.get_account(MASTER_INDEX).collateral == master_equity
-    assert usdc.fetch_balance_of(safe_address) == SAFE_BUFFER_USDC
+    assert usdc.fetch_balance_of(safe_address) == 0
     state = State.read_json_file(state_file)
     assert _positions(state)[0].get_quantity() == master_equity
     assert len(_transfer_trades(state, TradeFlag.external_account_transfer)) == 1
 
-    # 4. Run start with 50/50 weights and a transfer fee: the master funds both sub-accounts.
-    fake_lighter_core.transfer_fee = FUNDING_FEE_USDC
-    os.environ.update({"LIGHTER_SUB_ACCOUNT_WEIGHTS": "0.5,0.5", "LIGHTER_TRANSFER_FEE_USD": str(FUNDING_FEE_USDC)})
+    # 4. Run start: the master funds both sub-accounts to their declared 50/50 weights.
     _run(cli, "start")
-    first_funding = master_equity / 2
-    second_funding = master_equity - first_funding - 2 * FUNDING_FEE_USDC
-    assert [fake_lighter_core.get_account(index).collateral for index in (MASTER_INDEX, sub_1, sub_2)] == [0, first_funding, second_funding]
+    funding = master_equity / 2
+    assert [fake_lighter_core.get_account(index).collateral for index in (MASTER_INDEX, sub_1, sub_2)] == [0, funding, funding]
     state = State.read_json_file(state_file)
     master, sub_1_position, sub_2_position = _positions(state)
-    assert (master.get_quantity(), sub_1_position.get_quantity(), sub_2_position.get_quantity()) == (0, first_funding, second_funding)
+    assert (master.get_quantity(), sub_1_position.get_quantity(), sub_2_position.get_quantity()) == (0, funding, funding)
     fundings = _transfer_trades(state, TradeFlag.internal_account_transfer)
     assert len(fundings) == 2 and all(trade.is_success() for trade in fundings)
-    assert all(trade.other_data["funding_fee_usdc"] == str(FUNDING_FEE_USDC) for trade in fundings)
-    assert state.portfolio.get_net_asset_value() == pytest.approx(float(SAFE_BUFFER_USDC + first_funding + second_funding))
+    assert state.portfolio.get_net_asset_value() == pytest.approx(float(2 * funding))
     _run(cli, "check-accounts")
 
-    # 5. Run start with 75/25 weights: sub-account 2 is withdrawn to the Safe with the key-free L1 path, then redeposited.
-    fake_lighter_core.transfer_fee = Decimal(0)
-    os.environ.update({"LIGHTER_SUB_ACCOUNT_WEIGHTS": "0.75,0.25", "LIGHTER_TRANSFER_FEE_USD": "0"})
-    investable = first_funding + second_funding
-    excess = second_funding - investable / 4
+    # 5. Credit sub-account 2 with trader profit and run start: its excess is withdrawn to the Safe with the key-free L1 path, then redeposited.
+    # The profit is applied to the fake sequencer because it stands in for the trader's activity on Lighter.
+    fake_lighter_core.get_account(sub_2).collateral += SUB_2_PROFIT_USDC
+    excess = SUB_2_PROFIT_USDC / 2
     _run(cli, "start")
     assert fake_lighter_core.withdrawals[-1] == ("l1_withdraw", sub_2, excess)
-    assert usdc.fetch_balance_of(safe_address) == SAFE_BUFFER_USDC + excess
+    assert usdc.fetch_balance_of(safe_address) == excess
     _run(cli, "start")
     assert fake_lighter_core.get_account(MASTER_INDEX).collateral == excess
 
@@ -330,13 +320,14 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     state = State.read_json_file(state_file)
     master, sub_1_position, sub_2_position = _positions(state)
     assert not any(trade.is_exchange_account_transfer_pending() for trade in state.portfolio.get_all_trades())
-    assert (master.get_quantity(), sub_1_position.get_quantity(), sub_2_position.get_quantity()) == (0, investable * 3 / 4, investable / 4)
+    target = funding + excess
+    assert (master.get_quantity(), sub_1_position.get_quantity(), sub_2_position.get_quantity()) == (0, target, target)
     _run(cli, "check-accounts")
 
-    # 7. Lock margin on sub-account 1 and check a withdrawal is capped to its free collateral; withdraw from sub-account 2 with lighter-move-funds.
+    # 7. Credit sub-account 1 with profit, lock its margin and check its withdrawal is capped to free collateral; withdraw from sub-account 2 with lighter-move-funds.
     free_collateral = Decimal(5)
-    fake_lighter_core.get_account(sub_1).margin_in_use = investable * 3 / 4 - free_collateral
-    os.environ["LIGHTER_SUB_ACCOUNT_WEIGHTS"] = "0.25,0.75"
+    fake_lighter_core.get_account(sub_1).collateral += SUB_1_PROFIT_USDC
+    fake_lighter_core.get_account(sub_1).margin_in_use = target + SUB_1_PROFIT_USDC - free_collateral
     _run(cli, "start")
     assert fake_lighter_core.withdrawals[-1] == ("l1_withdraw", sub_1, free_collateral)
     fake_lighter_core.get_account(sub_1).margin_in_use = Decimal(0)
@@ -350,7 +341,6 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     _run(cli, "check-accounts")
 
     # 8. Request a redemption larger than the Safe while the master is empty and check it is funded from a sub-account.
-    os.environ["LIGHTER_SUB_ACCOUNT_WEIGHTS"] = ""
     safe_before = usdc.fetch_balance_of(safe_address)
     shares = vault.share_token.fetch_raw_balance_of(deployer.address)
     assert_transaction_success_with_explanation(web3_ethereum, vault.request_redeem(deployer.address, shares // 2).transact({"from": deployer.address}))
@@ -366,11 +356,11 @@ def test_cli_lagoon_lighter_multi_subaccount_lifecycle(
     assert vault.fetch_nav() == pytest.approx(nav_before_settlement / 2, abs=Decimal("0.000002"))
 
     # 9. Drain every account for a full redemption, including a master API withdrawal, and redeem with lagoon-redeem.
-    os.environ["LIGHTER_SAFE_CASH_BUFFER_USD"] = "0"
     assert_transaction_success_with_explanation(web3_ethereum, vault.finalise_redeem(deployer.address).transact({"from": deployer.address}))
     safe_cash = usdc.fetch_balance_of(safe_address)
+    master_before = fake_lighter_core.get_account(MASTER_INDEX).collateral
     _run(cli, "start")
-    assert fake_lighter_core.get_account(MASTER_INDEX).collateral == safe_cash
+    assert fake_lighter_core.get_account(MASTER_INDEX).collateral == master_before + safe_cash
     sub_balances = {index: fake_lighter_core.get_account(index).collateral for index in (sub_1, sub_2)}
     assert_transaction_success_with_explanation(web3_ethereum, vault.request_redeem(deployer.address, vault.share_token.fetch_raw_balance_of(deployer.address)).transact({"from": deployer.address}))
     _run(cli, "start")

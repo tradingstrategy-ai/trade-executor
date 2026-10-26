@@ -48,7 +48,7 @@ def _create_state() -> tuple[State, AssetIdentifier, TradingPosition, TradingPos
     state = State()
     state.portfolio.initialise_reserves(usdc, reserve_token_price=1.0)
     state.portfolio.get_reserve_position(usdc).quantity = SAFE_USDC + MASTER_USDC
-    master_pair, sub_pair = create_lighter_exchange_account_pairs(usdc, MASTER_INDEX, [SUB_INDEX])
+    master_pair, sub_pair = create_lighter_exchange_account_pairs(usdc, MASTER_INDEX, {SUB_INDEX: "trend"})
     open_exchange_account_position(state=state, strategy_cycle_at=native_datetime_utc_now(), pair=master_pair, reserve_currency=usdc, reserve_amount=MASTER_USDC)
     open_exchange_account_position(state=state, strategy_cycle_at=native_datetime_utc_now(), pair=sub_pair, reserve_currency=usdc, reserve_amount=Decimal(0))
     master, sub = state.portfolio.open_positions.values()

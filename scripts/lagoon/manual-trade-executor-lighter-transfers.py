@@ -38,13 +38,12 @@ Modes
 replaces Lighter's sequencer with the fake used by the end-to-end tests.
 Every Safe, guard, Lagoon and ZkLighter transaction still runs, so the
 accounting is exercised end to end in a few minutes with no real money. The
-fake charges a transfer fee, so the fee accounting is checked too. A
-simulated run always deploys a fresh vault.
+fake charges a 0.5 USDC transfer fee, so the fee accounting is checked too.
+A simulated run always deploys a fresh vault.
 
 Without ``SIMULATE`` the tutorial runs on Ethereum mainnet and Lighter, like
-``manual-trade-executor-lighter-subaccounts.py``. The strategy's
-``lighter_transfer_unit_usd`` sets the amounts: the subscription is five
-units minus the 1 USDC activation deposit, 9 USDC at the default unit of 2,
+``manual-trade-executor-lighter-subaccounts.py``. The script moves units of
+2 USDC: the subscription is five units minus the 1 USDC activation deposit,
 so the deployer needs 10 USDC plus gas. Each withdrawal takes 20 to 30
 minutes. It resumes from ``progress.json`` in its run directory.
 
@@ -66,15 +65,9 @@ Example
 Optional environment variables
 ------------------------------
 
-``LIGHTER_SIMULATED_TRANSFER_FEE_USDC``
-    Fee the fake sequencer charges per transfer. Defaults to 0.5.
-
 ``LIGHTER_RUN_DIR``
-    Private working directory. Defaults below ``~/.tradingstrategy/examples``,
-    or the temporary directory when simulating.
-
-``LIGHTER_API_KEY_INDEX``, ``LIGHTER_WITHDRAW_TIMEOUT``, ``LIGHTER_TRANSFER_TIMEOUT``
-    As in the sub-account tutorial.
+    Private working directory to resume from. Defaults below
+    ``~/.tradingstrategy/examples``, or the temporary directory when simulating.
 """
 
 import logging
@@ -83,9 +76,14 @@ from decimal import Decimal
 from tabulate import tabulate
 
 from tradeexecutor.state.state import State
-from tradeexecutor.strategy.strategy_module import read_strategy_module
 from tradeexecutor.testing.lighter_report import print_trade_summary
-from tradeexecutor.testing.lighter_scripted_transfers import build_lighter_transfer_schedule, get_scripted_progress, verify_lighter_scripted_transfers
+from tradeexecutor.testing.lighter_scripted_transfers import (
+    SCRIPTED_TRANSFER_STEPS,
+    SCRIPTED_TRANSFER_UNIT_USDC,
+    build_lighter_transfer_schedule,
+    get_scripted_progress,
+    verify_lighter_scripted_transfers,
+)
 from tradeexecutor.testing.lighter_tutorial import (
     STRATEGY_DIR,
     Tutorial,
@@ -111,16 +109,8 @@ EXECUTOR_ID = "lighter-transfers"
 #: The example strategy run by every ``start`` cycle.
 STRATEGY_FILE = STRATEGY_DIR / "lighter_scripted_transfers_strategy.py"
 
-#: The strategy's declared parameters: the transfer unit and the sub-account labels.
-STRATEGY_PARAMETERS = read_strategy_module(STRATEGY_FILE).parameters
-
-#: Schedule steps, each one ``start`` cycle.
-SCHEDULE_STEPS = 5
-
-
-def get_unit() -> Decimal:
-    """Return the base amount of the scripted movements declared by the strategy."""
-    return Decimal(str(STRATEGY_PARAMETERS["lighter_transfer_unit_usd"]))
+#: Lagoon subscription after the 1 USDC activation deposit: five units of capital in total.
+SUBSCRIPTION_USDC = SCRIPTED_TRANSFER_STEPS * SCRIPTED_TRANSFER_UNIT_USDC - Decimal(1)
 
 
 def get_strategy_environment(tutorial: Tutorial) -> dict[str, str]:
@@ -132,16 +122,16 @@ def get_strategy_environment(tutorial: Tutorial) -> dict[str, str]:
 
 def run_scripted_cycles(tutorial: Tutorial) -> None:
     """Run ``start`` until the strategy has completed every schedule step."""
-    for cycle in range(1, SCHEDULE_STEPS + 2):
-        completed, problem = get_scripted_progress(State.read_json_file(tutorial.state_file), SCHEDULE_STEPS)
+    for cycle in range(1, SCRIPTED_TRANSFER_STEPS + 2):
+        completed, problem = get_scripted_progress(State.read_json_file(tutorial.state_file), SCRIPTED_TRANSFER_STEPS)
         if problem is not None:
             raise RuntimeError(f"Scripted transfers stopped: {problem}")
-        if completed >= SCHEDULE_STEPS:
+        if completed >= SCRIPTED_TRANSFER_STEPS:
             return
-        logger.info("Cycle %d: %d of %d schedule steps completed", cycle, completed, SCHEDULE_STEPS)
+        logger.info("Cycle %d: %d of %d schedule steps completed", cycle, completed, SCRIPTED_TRANSFER_STEPS)
         run_start(tutorial, **get_strategy_environment(tutorial))
-    completed, problem = get_scripted_progress(State.read_json_file(tutorial.state_file), SCHEDULE_STEPS)
-    assert completed >= SCHEDULE_STEPS and problem is None, f"Schedule incomplete after {SCHEDULE_STEPS + 1} cycles: {completed} steps done, {problem}"
+    completed, problem = get_scripted_progress(State.read_json_file(tutorial.state_file), SCRIPTED_TRANSFER_STEPS)
+    assert completed >= SCRIPTED_TRANSFER_STEPS and problem is None, f"Schedule incomplete after {SCRIPTED_TRANSFER_STEPS + 1} cycles: {completed} steps done, {problem}"
 
 
 def verify_state(tutorial: Tutorial) -> None:
@@ -149,7 +139,7 @@ def verify_state(tutorial: Tutorial) -> None:
     run_cli(["check-accounts"], get_cli_environment(tutorial, **get_strategy_environment(tutorial)))
     state = State.read_json_file(tutorial.state_file)
     accounts = tutorial.get_accounts()
-    rows = verify_lighter_scripted_transfers(state, build_lighter_transfer_schedule(get_unit(), tutorial.sub_account_ids), accounts)
+    rows = verify_lighter_scripted_transfers(state, build_lighter_transfer_schedule(tutorial.sub_account_ids), accounts)
     print(tabulate(rows, headers="keys", tablefmt="simple"))
     logger.info("All %d scripted transfers were booked correctly", len(rows))
     print_trade_summary(state)
@@ -158,12 +148,7 @@ def verify_state(tutorial: Tutorial) -> None:
 def main() -> None:
     """Run the tutorial phases, skipping those completed in an earlier run."""
     configure_logging()
-    config = load_tutorial_config(
-        executor_id=EXECUTOR_ID,
-        strategy_file=STRATEGY_FILE,
-        subscription_usdc=SCHEDULE_STEPS * get_unit() - Decimal(1),
-        sub_account_count=len(STRATEGY_PARAMETERS["lighter_sub_accounts"]),
-    )
+    config = load_tutorial_config(executor_id=EXECUTOR_ID, strategy_file=STRATEGY_FILE, subscription_usdc=SUBSCRIPTION_USDC)
     tutorial = prepare_tutorial(config)
     try:
         run_phases(tutorial, [

@@ -103,11 +103,7 @@ def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrateg
         token_symbol="USDC",
         decimals=6,
     )
-    lighter_pairs = create_lighter_exchange_account_pairs(
-        usdc,
-        master_account_index=master_account_index,
-        sub_account_indices=sub_accounts,
-    )
+    lighter_pairs = create_lighter_exchange_account_pairs(usdc, master_account_index, sub_accounts)
     pair_universe = create_pair_universe_from_code(CHAIN_ID, lighter_pairs)
     exchange = Exchange(
         chain_id=CHAIN_ID,

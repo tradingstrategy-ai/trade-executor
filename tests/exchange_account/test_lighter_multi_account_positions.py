@@ -49,7 +49,7 @@ def test_lighter_accounts_are_separate_positions() -> None:
     usdc = _usdc()
 
     # 1. Create the master and two sub-account pairs.
-    master, sub_1, sub_2 = create_lighter_exchange_account_pairs(usdc, MASTER_INDEX, SUB_INDICES, strategy_labels={SUB_INDICES[0]: "trend"})
+    master, sub_1, sub_2 = create_lighter_exchange_account_pairs(usdc, MASTER_INDEX, {SUB_INDICES[0]: "trend", SUB_INDICES[1]: None})
 
     # 2. Check the pairs are distinct by equality, hash, identifier, internal id and ticker, and the master is unchanged.
     assert master == create_lighter_exchange_account_pair(usdc, MASTER_INDEX)

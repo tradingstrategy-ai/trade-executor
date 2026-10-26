@@ -24,7 +24,6 @@ and runs on a fork or on mainnet.
 """
 
 import datetime
-from decimal import Decimal
 
 from tradingstrategy.chain import ChainId
 
@@ -41,16 +40,13 @@ from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
 from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniverse
-from tradeexecutor.testing.lighter_scripted_transfers import get_next_scripted_step, tag_scripted_trades
+from tradeexecutor.testing.lighter_scripted_transfers import SCRIPTED_TRANSFER_STEPS, SCRIPTED_TRANSFER_UNIT_USDC, get_next_scripted_step, tag_scripted_trades
 
 trading_strategy_engine_version = "0.5"
 trading_strategy_type = StrategyType.managed_positions
 trading_strategy_cycle = CycleDuration.cycle_1d
 trade_routing = TradeRouting.default
 reserve_currency = ReserveCurrency.usdc
-
-#: Steps in the script, one per cycle.
-SCHEDULE_STEPS = 5
 
 
 class Parameters:
@@ -70,8 +66,6 @@ class Parameters:
         SubAccount(id="trend", name="Trend following"),
         SubAccount(id="arb", name="Funding-rate arbitrage"),
     ]
-    #: Base amount of the scripted movements; the script needs five units of capital.
-    lighter_transfer_unit_usd = Decimal(2)
 
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:
@@ -119,11 +113,11 @@ def decide_trades(input: StrategyInput) -> list[TradeExecution]:
     position_manager = input.get_position_manager()
     if position_manager.is_lighter_transfer_pending():
         return []
-    step = get_next_scripted_step(input.state, SCHEDULE_STEPS)
+    step = get_next_scripted_step(input.state, SCRIPTED_TRANSFER_STEPS)
     if step is None:
         return []
 
-    unit = Decimal(str(input.parameters.lighter_transfer_unit_usd))
+    unit = SCRIPTED_TRANSFER_UNIT_USDC
     trend, arb = (sub_account.id for sub_account in input.parameters.lighter_sub_accounts)
     match step:
         case 1:

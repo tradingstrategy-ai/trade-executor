@@ -256,8 +256,7 @@ def create_lighter_exchange_account_pair(
 def create_lighter_exchange_account_pairs(
     quote: AssetIdentifier,
     master_account_index: int,
-    sub_account_indices: Mapping[int, str] | Iterable[int] = (),
-    strategy_labels: Mapping[int, str] | None = None,
+    sub_accounts: Mapping[int, str | None] | None = None,
 ) -> list[TradingPairIdentifier]:
     """Create pairs for a master account and its sub-accounts.
 
@@ -265,21 +264,15 @@ def create_lighter_exchange_account_pairs(
         Reserve/quote asset (normally Ethereum USDC).
     :param master_account_index:
         Safe-owned master account.
-    :param sub_account_indices:
-        Sub-accounts in creation order, either as indices or as a mapping of
-        index to label, which is how a strategy's ``Parameters`` declares them.
-    :param strategy_labels:
-        Optional sub-account id per index when ``sub_account_indices`` is a plain sequence.
+    :param sub_accounts:
+        Sub-account index to the id the strategy declared for it, in creation order.
     :return:
         Master pair followed by one pair per sub-account.
     """
-    if isinstance(sub_account_indices, Mapping):
-        labels = dict(sub_account_indices)
-        sub_account_indices = list(labels)
-    else:
-        labels = dict(strategy_labels or {})
-    if len(set(labels.values())) != len(labels) or LIGHTER_MASTER_LABEL in labels.values():
-        raise ValueError(f"Lighter sub-account ids must be unique and not {LIGHTER_MASTER_LABEL!r}: {labels}")
+    sub_accounts = dict(sub_accounts or {})
+    ids = [account_id for account_id in sub_accounts.values() if account_id]
+    if len(set(ids)) != len(ids) or LIGHTER_MASTER_LABEL in ids:
+        raise ValueError(f"Lighter sub-account ids must be unique and not {LIGHTER_MASTER_LABEL!r}: {sub_accounts}")
     pairs = [create_lighter_exchange_account_pair(quote, master_account_index)]
     pairs += [
         create_lighter_exchange_account_pair(
@@ -287,9 +280,9 @@ def create_lighter_exchange_account_pairs(
             index,
             role=LIGHTER_ROLE_SUB_ACCOUNT,
             master_account_index=master_account_index,
-            strategy_label=labels.get(index),
+            strategy_label=account_id,
         )
-        for index in sub_account_indices
+        for index, account_id in sub_accounts.items()
     ]
     return pairs
 
@@ -308,22 +301,20 @@ def get_lighter_account_id(pair: TradingPairIdentifier) -> str:
     return str((pair.other_data or {}).get("lighter_sub_account_id") or pair.get_exchange_account_id())
 
 
-def find_lighter_account_pair(pairs: Iterable[TradingPairIdentifier], account: str | int) -> TradingPairIdentifier:
-    """Return the Lighter pair a strategy refers to by id or index.
+def find_lighter_account_pair(pairs: Iterable[TradingPairIdentifier], account: str) -> TradingPairIdentifier:
+    """Return the Lighter pair a strategy refers to by id.
 
     :param pairs:
         Pairs of a strategy universe.
     :param account:
-        ``master``, a sub-account id, or an account index.
+        ``master`` or a sub-account id.
     :return:
         The matching pair.
     :raise ValueError:
         If no Lighter pair matches.
     """
     for pair in pairs:
-        if not is_lighter_exchange_account_pair(pair):
-            continue
-        if get_lighter_account_id(pair) == str(account) or str(pair.get_exchange_account_id()) == str(account):
+        if is_lighter_exchange_account_pair(pair) and get_lighter_account_id(pair) == account:
             return pair
     raise ValueError(f"No Lighter account {account!r} in the strategy universe; declare it in Parameters.lighter_sub_accounts")
 

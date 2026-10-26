@@ -31,7 +31,6 @@ from tradeexecutor.cli.commands.lagoon_utils import (
     sync_reserve_balance_to_state,
 )
 from tradeexecutor.cli.log import setup_logging
-from tradeexecutor.exchange_account.lighter import parse_lighter_account_indices
 from tradeexecutor.exchange_account.sub_account import get_lighter_account_resolution
 from tradeexecutor.state.state import State
 from tradeexecutor.strategy.strategy_module import read_strategy_module
@@ -238,11 +237,6 @@ def lagoon_redeem(
         envvar="LIGHTER_ACCOUNT_INDEX",
         help="Lighter account index: exclude equity below 5 USDC from a full redemption settlement.",
     ),
-    lighter_account_indexes: str | None = Option(
-        None,
-        envvar="LIGHTER_ACCOUNT_INDEXES",
-        help="Comma-separated Lighter master and sub-account indices: exclude combined equity below 5 USDC from a full redemption settlement. Overrides --lighter-account-index and the accounts recorded in the state.",
-    ),
 
     unit_testing: bool = shared_options.unit_testing,
     simulate: bool = shared_options.simulate,
@@ -264,9 +258,7 @@ def lagoon_redeem(
     assert vault_adapter_address, "VAULT_ADAPTER_ADDRESS is required"
 
     mod = read_strategy_module(strategy_file)
-    if lighter_account_indexes:
-        lighter_account_indices = parse_lighter_account_indices(lighter_account_indexes)
-    elif lighter_account_index is not None:
+    if lighter_account_index is not None:
         lighter_account_indices = [lighter_account_index]
     elif state_file and Path(state_file).exists():
         # The state records which Lighter accounts the deployment owns.

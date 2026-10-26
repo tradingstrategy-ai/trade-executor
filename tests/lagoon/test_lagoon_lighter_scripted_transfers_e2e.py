@@ -25,7 +25,8 @@ from eth_defi.token import USDC_WHALE
 from tradeexecutor.exchange_account.lighter import LIGHTER_MASTER_LABEL
 from tradeexecutor.exchange_account.sub_account import get_lighter_account_resolution, get_sub_account_id_for_position
 from tradeexecutor.state.state import State
-from tradeexecutor.testing.lighter_scripted_transfers import build_lighter_transfer_schedule, verify_lighter_scripted_transfers
+from tradeexecutor.testing.lighter_scripted_transfers import SCRIPTED_TRANSFER_UNIT_USDC, build_lighter_transfer_schedule, verify_lighter_scripted_transfers
+from tradeexecutor.testing.lighter_tutorial import SIMULATED_TRANSFER_FEE_USDC
 
 #: Optional upstream RPC used to enable the fixed-block Ethereum fork.
 JSON_RPC_ETHEREUM = os.environ.get("JSON_RPC_ETHEREUM")
@@ -43,12 +44,12 @@ pytestmark = [
 
 #: Tutorial under test.
 TUTORIAL = Path(__file__).resolve().parents[2] / "scripts" / "lagoon" / "manual-trade-executor-lighter-transfers.py"
-#: Base amount of the scripted movements, declared by the strategy.
-UNIT_USDC = Decimal(2)
+#: Base amount of the scripted movements.
+UNIT_USDC = SCRIPTED_TRANSFER_UNIT_USDC
 #: Sub-account labels declared by the strategy, in order.
 SUB_LABELS = ["trend", "arb"]
 #: Fee the fake sequencer charges per transfer, exercising the fee accounting.
-TRANSFER_FEE_USDC = Decimal("0.5")
+TRANSFER_FEE_USDC = SIMULATED_TRANSFER_FEE_USDC
 
 
 @pytest.fixture()
@@ -89,7 +90,6 @@ def test_lighter_transfer_tutorial_simulated(anvil_ethereum: AnvilLaunch, tmp_pa
         "SIMULATE": "true",
         "LIGHTER_SIMULATE_RPC_URL": anvil_ethereum.json_rpc_url,
         "LIGHTER_RUN_DIR": str(run_dir),
-        "LIGHTER_SIMULATED_TRANSFER_FEE_USDC": str(TRANSFER_FEE_USDC),
     }
     result = subprocess.run([sys.executable, str(TUTORIAL)], env=environment, capture_output=True, text=True, timeout=800)
     assert result.returncode == 0, f"Tutorial failed:\n{result.stdout[-4000:]}\n{result.stderr[-4000:]}"
@@ -112,7 +112,7 @@ def test_lighter_transfer_tutorial_simulated(anvil_ethereum: AnvilLaunch, tmp_pa
     accounts = get_lighter_account_resolution(state)
     assert accounts == {LIGHTER_MASTER_LABEL: progress["account_indices"][0], **dict(zip(SUB_LABELS, progress["account_indices"][1:]))}
     assert get_sub_account_id_for_position(state, next(position for position in state.portfolio.get_all_positions() if position.pair.get_ticker() == "LIGHTER-arb-USDC")) == "arb"
-    rows = verify_lighter_scripted_transfers(state, build_lighter_transfer_schedule(UNIT_USDC, SUB_LABELS), accounts)
+    rows = verify_lighter_scripted_transfers(state, build_lighter_transfer_schedule(SUB_LABELS, UNIT_USDC), accounts)
     assert [(row["kind"], row["source"], row["destination"]) for row in rows] == [
         ("deposit", "safe", "master"),
         ("funding", "master", "trend"),
