@@ -426,6 +426,81 @@ def test_vault_history_logging_keeps_summary_before_per_vault_stale_entries(
     assert "MirVault" in relevant_records[1].message
 
 
+def test_stale_history_warns_for_held_eligible_and_unknown_vaults(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Suppress only demonstrably irrelevant stale histories.
+
+    1. Build stale histories spanning archived, held, eligible and unknown TVL.
+    2. Supply the strategy floor and current custody addresses.
+    3. Keep actionable warnings and summarise only unheld sub-floor histories.
+    """
+    # 1. Metadata is local so the test can isolate the warning policy.
+    names = ["archived", "held", "eligible", "boundary", "unknown", "nan_tvl"]
+    addresses = [f"0x{i:040x}" for i in range(1, 7)]
+    candles = pd.DataFrame({"pair_id": range(1, 7), "timestamp": pd.Timestamp("2026-10-01")})
+    pairs = pd.DataFrame({
+        "pair_id": range(1, 7),
+        "address": addresses,
+        "exchange_name": names,
+        "token_metadata": [SimpleNamespace(tvl=value) for value in (100, 100, 10000, 7500, None, float("nan"))],
+    })
+    source = candles.assign(address=addresses, total_assets=100)
+
+    # 2. Address case cannot hide a held low-TVL vault.
+    with caplog.at_level("INFO"):
+        log_stale_vault_candle_data(
+            candles, pairs, now=datetime.datetime(2026, 10, 15),
+            source_vault_price_df=source,
+            min_tvl=7500, held_vault_addresses=frozenset({addresses[1].upper()}),
+        )
+
+    # 3. Archival data remains available, but is absent from the warning table.
+    warning = next(record.message for record in caplog.records if record.levelname == "WARNING")
+    assert "for 5 vault(s); 0 vault(s) are up to date" in warning
+    assert "archived" not in warning
+    assert all(name in warning for name in names[1:])
+    assert "Stale history retained for 1 unheld vault(s)" in caplog.text
+    assert len(candles) == 6
+
+
+def test_archival_stale_history_is_quiet_only_with_complete_context(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Do not downgrade stale-data warnings when strategy context is unknown.
+
+    1. Build a stale, unheld sub-floor vault history.
+    2. Check complete and incomplete strategy context.
+    3. Warn conservatively unless both the floor and current holdings are known.
+    """
+    # 1. Zero-TVL closed archives are expected to stop receiving prices.
+    candles = pd.DataFrame({"pair_id": [1], "timestamp": [pd.Timestamp("2026-10-01")]})
+    pairs = pd.DataFrame({
+        "pair_id": [1], "address": ["0xabc"], "exchange_name": ["archive"],
+        "token_metadata": [SimpleNamespace(tvl=0)],
+    })
+
+    # 2. Missing holdings and missing eligibility are independently conservative.
+    for floor, holdings, historical_tvl, address in (
+        (7500, frozenset(), 0, "0xabc"), (7500, None, 0, "0xabc"), (None, frozenset(), 0, "0xabc"),
+        (7500, frozenset(), 10000, "0xabc"), (7500, frozenset(), None, "0xabc"),
+        (7500, frozenset(), 0, None),
+    ):
+        caplog.clear()
+        pairs["address"] = address
+        source = candles.assign(address=address, total_assets=historical_tvl)
+        with caplog.at_level("INFO"):
+            log_stale_vault_candle_data(
+                candles, pairs, now=datetime.datetime(2026, 10, 15),
+                source_vault_price_df=source,
+                min_tvl=floor, held_vault_addresses=holdings,
+            )
+
+        # 3. Complete context emits no warning; unknown context retains one.
+        warnings = [record for record in caplog.records if record.levelname == "WARNING"]
+        assert len(warnings) == (0 if floor is not None and holdings is not None and historical_tvl == 0 and address is not None else 1)
+
+
 def test_log_stale_vault_candle_data_ignores_daily_floor_when_source_is_fresh(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

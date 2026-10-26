@@ -151,7 +151,7 @@ def redraw_visualisations(
             refresh_live_strategy_images(run_state, execution_context, small_figure_combined, large_figure_combined)
 
         else:
-            logger.warning("Charts not yet available for this strategy type. Pair count: %d", pair_count)
+            logger.info("Skipping legacy technical images for %d pairs; this renderer supports at most 5 pairs", pair_count)
 
     except Exception as e:
         # Don't take trade executor down if visualisations fail

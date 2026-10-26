@@ -117,6 +117,15 @@ class UniverseOptions:
     #: or repairing the ordinary shared dataset cache. Owned by the live loop.
     vault_price_snapshot: Path | None = None
 
+    #: Live diagnostic context: vaults below this strategy TVL floor may have
+    #: archival history. Unknown thresholds keep the conservative warning behaviour.
+    vault_history_min_tvl: float | None = None
+
+    #: Current open, frozen and pending vault addresses, supplied by the live loop
+    #: before each universe build. A held vault always warrants a freshness warning;
+    #: None means holdings are unknown, so low-TVL warnings must not be suppressed.
+    vault_history_held_addresses: frozenset[str] | None = None
+
     def get_range_description(self) -> str:
         """Get the human description of the time range for these universe load options."""
         if self.start_at and self.end_at:
