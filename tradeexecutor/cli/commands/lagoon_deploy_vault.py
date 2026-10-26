@@ -386,7 +386,9 @@ def _get_lighter_private_setup(lighter_setup: LighterAccountSetup) -> dict[str, 
 
     The executor record holds only the master API key. Sub-account keys
     belong to the external traders and are written to separate hand-over
-    files by :py:func:`_write_lighter_handover_records`.
+    files by :py:func:`_write_lighter_handover_records`; an operator may
+    also pass those files to the executor with
+    ``LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES``.
 
     :param lighter_setup:
         Setup returned by the eth-defi deployment.

@@ -83,6 +83,7 @@ from decimal import Decimal
 from tabulate import tabulate
 
 from tradeexecutor.state.state import State
+from tradeexecutor.testing.lighter_report import print_trade_summary
 from tradeexecutor.testing.lighter_scripted_transfers import build_lighter_transfer_schedule, get_scripted_progress, verify_lighter_scripted_transfers
 from tradeexecutor.testing.lighter_tutorial import (
     STRATEGY_DIR,
@@ -91,7 +92,6 @@ from tradeexecutor.testing.lighter_tutorial import (
     deploy,
     get_cli_environment,
     initialise_state,
-    print_trade_summary,
     is_simulate_requested,
     load_tutorial_config,
     prepare_tutorial,

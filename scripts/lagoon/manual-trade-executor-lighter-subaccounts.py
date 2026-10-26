@@ -88,6 +88,7 @@ from eth_defi.lighter.sdk import create_lighter_signer_client
 from eth_defi.lighter.transfer import create_lighter_auth_token_manager, fetch_lighter_transfer_fee, request_lighter_transfer, wait_for_lighter_transfer
 
 from tradeexecutor.state.state import State
+from tradeexecutor.testing.lighter_report import print_trade_summary
 from tradeexecutor.testing.lighter_tutorial import (
     STRATEGY_DIR,
     Tutorial,
@@ -97,7 +98,6 @@ from tradeexecutor.testing.lighter_tutorial import (
     initialise_state,
     load_tutorial_config,
     prepare_tutorial,
-    print_trade_summary,
     redeem_all_shares,
     refund,
     run_phases,
@@ -192,7 +192,7 @@ def transfer_between_sub_accounts(tutorial: Tutorial) -> None:
     revalues each account from Lighter. That cycle has no target weights, so
     it moves no capital.
     """
-    _master_index, sub_1, sub_2 = tutorial.account_indices
+    _master, sub_1, sub_2 = tutorial.account_indices
     # The key is read into memory only and never logged.
     handover = json.loads(tutorial.get_handover_file(sub_1).read_text())
     assert int(handover["account_index"]) == sub_1, f"Hand-over file is not for sub-account {sub_1}"

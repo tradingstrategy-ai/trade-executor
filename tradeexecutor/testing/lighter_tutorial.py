@@ -11,11 +11,9 @@ Two modes exist:
 
 - **Live**: Ethereum mainnet and Lighter's real sequencer. Needs a funded
   deployer key. Lighter withdrawals take 20 to 30 minutes each.
-- **Simulate** (``SIMULATE=true``): a fixed-block Anvil fork of Ethereum
-  with :py:class:`~tradeexecutor.testing.lighter_core.FakeLighterCore`
-  standing in for the sequencer. Every Safe, guard, Lagoon and ZkLighter
-  transaction still runs, so the executor's accounting is exercised end to
-  end in minutes with no real money.
+- **Simulate** (``SIMULATE=true``): the fork and fake sequencer of
+  :py:mod:`tradeexecutor.testing.lighter_simulation`, so the executor's
+  accounting is exercised end to end in minutes with no real money.
 
 Secrets: the master API key stays in the mode-0600 operator record written
 by deployment and each sub-account key in its mode-0600 hand-over file.
@@ -27,7 +25,8 @@ import logging
 import os
 import tempfile
 import time
-from contextlib import ExitStack
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
@@ -43,14 +42,11 @@ from eth_defi.lighter.api_key import LighterApiKey
 from eth_defi.lighter.constants import LIGHTER_ETHEREUM_DEPLOYMENT_CHAIN_ID, LIGHTER_USDC_ETHEREUM
 from eth_defi.lighter.pubkey import MIN_API_KEY_INDEX
 from eth_defi.lighter.session import create_lighter_session
-from eth_defi.provider.anvil import AnvilLaunch, fork_network_anvil
 from eth_defi.provider.broken_provider import _latest_delayed_block_number_cache
 from eth_defi.provider.multi_provider import create_multi_provider_web3
 from eth_defi.provider.receipt import wait_for_transaction_receipt_robust
 from eth_defi.safe.sweep import sweep_safe_to_owner
-from eth_defi.testing.fork_blocks import ETHEREUM_MIDNIGHT_BLOCK
-from eth_defi.token import USDC_WHALE, TokenDetails, fetch_erc20_details
-from eth_defi.trace import assert_transaction_success_with_explanation
+from eth_defi.token import TokenDetails, fetch_erc20_details
 from eth_defi.utils import setup_console_logging
 from eth_defi.vault.base import VaultSpec
 from tabulate import tabulate
@@ -60,8 +56,8 @@ from web3.contract.contract import ContractFunction
 from tradeexecutor.cli.main import app
 from tradeexecutor.exchange_account import lighter as lighter_reads
 from tradeexecutor.state.state import State
-from tradeexecutor.state.trade import TradeExecution, TradeFlag
-from tradeexecutor.testing.lighter_core import FakeLighterCore
+from tradeexecutor.testing.lighter_report import get_lighter_funding_fees
+from tradeexecutor.testing.lighter_simulation import ANVIL_DEPLOYER_PRIVATE_KEY, SimulatedLighter, launch_simulated_lighter
 
 logger = logging.getLogger(__name__)
 
@@ -71,11 +67,8 @@ STRATEGY_DIR = Path(__file__).resolve().parents[2] / "strategies" / "test_only"
 #: Lagoon cannot return sub-unit rounding residue; tolerate two raw units.
 MAX_UNEXPLAINED_RAW = 2
 
-#: Public deterministic Anvil account zero key used as the simulated deployer; never a production secret.
-ANVIL_DEPLOYER_PRIVATE_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-
-#: Master account index the fake sequencer assigns in simulate mode.
-SIMULATED_MASTER_INDEX = 127
+#: Phase callables take the tutorial runtime.
+Phase = Callable[["Tutorial"], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,12 +119,8 @@ class Tutorial:
     usdc: TokenDetails
     #: Public progress persisted in ``progress.json``.
     progress: dict[str, Any]
-    #: Fake sequencer in simulate mode.
-    fake_core: FakeLighterCore | None = None
-    #: Anvil fork launched for simulate mode.
-    anvil: AnvilLaunch | None = None
-    #: Installed fake sequencer patches and other resources to release.
-    resources: ExitStack = field(default_factory=ExitStack)
+    #: Fork and fake sequencer in simulate mode.
+    simulation: SimulatedLighter | None = None
 
     @property
     def progress_file(self) -> Path:
@@ -154,6 +143,11 @@ class Tutorial:
         return self.record_file.with_suffix(".json")
 
     @property
+    def safe_address(self) -> str:
+        """Return the deployed vault's Safe."""
+        return self.progress["safe_address"]
+
+    @property
     def account_indices(self) -> list[int]:
         """Return the master index followed by the sub-account indices."""
         return [int(index) for index in self.progress["account_indices"]]
@@ -171,11 +165,10 @@ class Tutorial:
         return self.progress.get("phase", 0) >= phase
 
     def close(self) -> None:
-        """Release the fake sequencer patches and any launched fork."""
-        self.resources.close()
-        if self.anvil is not None:
-            self.anvil.close()
-            self.anvil = None
+        """Release the simulated environment, if any."""
+        if self.simulation is not None:
+            self.simulation.close()
+            self.simulation = None
 
 
 def configure_logging() -> None:
@@ -198,6 +191,13 @@ def require_env(name: str, *fallback_names: str) -> str:
 def is_simulate_requested() -> bool:
     """Return whether ``SIMULATE`` asks for the Anvil and fake sequencer mode."""
     return os.environ.get("SIMULATE", "").lower() in {"1", "true", "yes"}
+
+
+def get_default_run_dir(executor_id: str, simulate: bool) -> Path:
+    """Return a fresh run directory: temporary when simulating, otherwise under the user's examples."""
+    if simulate:
+        return Path(tempfile.gettempdir()) / f"{executor_id}-simulate-{int(time.time())}"
+    return Path("~/.tradingstrategy/examples").expanduser() / f"{executor_id}-{int(time.time())}"
 
 
 def load_tutorial_config(
@@ -225,11 +225,10 @@ def load_tutorial_config(
         Validated configuration.
     """
     simulate = is_simulate_requested()
-    default_run_dir = Path(tempfile.gettempdir()) / f"{executor_id}-simulate-{int(time.time())}" if simulate else Path("~/.tradingstrategy/examples").expanduser() / f"{executor_id}-{int(time.time())}"
     return TutorialConfig(
         rpc_url=require_env("JSON_RPC_ETHEREUM"),
         deployer_private_key=ANVIL_DEPLOYER_PRIVATE_KEY if simulate else require_env("LIGHTER_TEST_PRIVATE_KEY", "PRIVATE_KEY"),
-        run_dir=Path(os.environ.get("LIGHTER_RUN_DIR", str(default_run_dir))),
+        run_dir=Path(os.environ.get("LIGHTER_RUN_DIR", str(get_default_run_dir(executor_id, simulate)))),
         executor_id=executor_id,
         strategy_file=strategy_file,
         subscription_usdc=subscription_usdc,
@@ -244,34 +243,22 @@ def load_tutorial_config(
 
 
 def prepare_tutorial(config: TutorialConfig) -> Tutorial:
-    """Connect to Ethereum, load earlier progress or check the deployer's funds.
+    """Connect to Ethereum, then load earlier progress or check the deployer's funds.
 
-    Simulate mode forks Ethereum at a fixed block, funds the Anvil deployer
-    with ETH and USDC from a whale, and installs the fake sequencer. It never
-    resumes: every simulated run deploys a fresh vault.
+    Simulate mode never resumes: every simulated run deploys a fresh vault.
     """
     config.run_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    anvil = None
-    fake_core = None
-    resources = ExitStack()
+    required_usdc = LIGHTER_BOOTSTRAP_SUBSCRIPTION + config.subscription_usdc
+    simulation = None
     if config.simulate:
-        if config.simulate_rpc_url:
-            rpc_url = config.simulate_rpc_url
-        else:
-            logger.info("SIMULATE=true: forking Ethereum at block %d", ETHEREUM_MIDNIGHT_BLOCK)
-            anvil = fork_network_anvil(config.rpc_url, fork_block_number=ETHEREUM_MIDNIGHT_BLOCK, unlocked_addresses=[USDC_WHALE[1]])
-            rpc_url = anvil.json_rpc_url
-        web3 = create_multi_provider_web3(rpc_url, default_http_timeout=(3.0, 250.0))
-        deployer = HotWallet.from_private_key(config.deployer_private_key)
-        usdc = fetch_erc20_details(web3, LIGHTER_USDC_ETHEREUM)
-        web3.provider.make_request("anvil_setBalance", [deployer.address, hex(10 * 10**18)])
-        funding = usdc.contract.functions.transfer(deployer.address, usdc.convert_to_raw(LIGHTER_BOOTSTRAP_SUBSCRIPTION + config.subscription_usdc)).transact({"from": USDC_WHALE[1]})
-        assert_transaction_success_with_explanation(web3, funding)
-        fake_core = FakeLighterCore(web3, SIMULATED_MASTER_INDEX, transfer_fee=config.simulated_transfer_fee_usdc)
-        for target, replacement in fake_core.get_patches():
-            resources.enter_context(mock.patch(target, new=replacement))
-        if (config.run_dir / "progress.json").exists():
-            (config.run_dir / "progress.json").unlink()
+        simulation = launch_simulated_lighter(
+            config.rpc_url,
+            deployer_usdc=required_usdc,
+            existing_rpc_url=config.simulate_rpc_url,
+            transfer_fee_usdc=config.simulated_transfer_fee_usdc,
+        )
+        web3, rpc_url, deployer, usdc = simulation.web3, simulation.rpc_url, simulation.deployer, simulation.usdc
+        (config.run_dir / "progress.json").unlink(missing_ok=True)
     else:
         rpc_url = config.rpc_url
         web3 = create_multi_provider_web3(rpc_url, default_http_timeout=(3.0, 180.0))
@@ -279,12 +266,11 @@ def prepare_tutorial(config: TutorialConfig) -> Tutorial:
         usdc = fetch_erc20_details(web3, LIGHTER_USDC_ETHEREUM)
     assert web3.eth.chain_id == LIGHTER_ETHEREUM_DEPLOYMENT_CHAIN_ID, "Ethereum mainnet RPC required"
 
-    tutorial = Tutorial(config=config, rpc_url=rpc_url, web3=web3, deployer=deployer, usdc=usdc, progress={}, fake_core=fake_core, anvil=anvil, resources=resources)
+    tutorial = Tutorial(config=config, rpc_url=rpc_url, web3=web3, deployer=deployer, usdc=usdc, progress={}, simulation=simulation)
     if tutorial.progress_file.exists():
         tutorial.progress = json.loads(tutorial.progress_file.read_text())
     else:
         start_usdc = usdc.fetch_balance_of(deployer.address)
-        required_usdc = LIGHTER_BOOTSTRAP_SUBSCRIPTION + config.subscription_usdc
         if start_usdc < required_usdc:
             raise RuntimeError(f"Deployer {deployer.address} has {start_usdc} USDC but the tutorial needs {required_usdc} USDC")
         tutorial.progress = {
@@ -368,7 +354,7 @@ def fetch_lighter_balances(tutorial: Tutorial) -> dict[int, Decimal]:
     """Read every Safe-owned Lighter account's equity from one public snapshot."""
     session = create_lighter_session()
     try:
-        equity = lighter_reads.fetch_lighter_accounts_equity(session, tutorial.progress["safe_address"])
+        equity = lighter_reads.fetch_lighter_accounts_equity(session, tutorial.safe_address)
     finally:
         session.close()
     return {index: equity[index].get_total() for index in tutorial.account_indices}
@@ -377,7 +363,7 @@ def fetch_lighter_balances(tutorial: Tutorial) -> dict[int, Decimal]:
 def run_start(tutorial: Tutorial, **overrides: str) -> None:
     """Run one ``start`` cycle and log the resulting Safe and Lighter balances."""
     run_cli(["start"], get_cli_environment(tutorial, **overrides))
-    logger.info("Safe USDC: %s", tutorial.usdc.fetch_balance_of(tutorial.progress["safe_address"]))
+    logger.info("Safe USDC: %s", tutorial.usdc.fetch_balance_of(tutorial.safe_address))
     for index, value in fetch_lighter_balances(tutorial).items():
         logger.info("Lighter account %d equity: %s", index, value)
 
@@ -412,22 +398,38 @@ def save_generated_key(key: LighterApiKey, number: int, deployer: str) -> Path:
     return Path(name)
 
 
-def deploy(tutorial: Tutorial, fund_name: str, fund_symbol: str) -> None:
-    """Deploy the vault with keyed sub-accounts, backing up each key as it is generated.
+@contextmanager
+def backup_generated_keys(deployer: str) -> Iterator[list[Path]]:
+    """Save every API key the deployment generates to a private temporary file.
 
-    Deployment writes its records only when it completes, so each generated
-    key is first saved to its own mode-0600 temporary file. A failed
-    deployment keeps those files for recovery; a successful one deletes them.
+    Deployment writes its records only when it completes, so a failure after
+    key registration would lose the keys. Inside this context each key is
+    saved as soon as it is generated; the files are deleted when the context
+    exits normally and kept for recovery when it raises.
+
+    :param deployer:
+        Deployer address recorded in each file.
+    :return:
+        The saved file paths, filled in as keys are generated.
     """
     generate_key = lagoon_deployment.generate_lighter_api_key_pair
     saved_keys: list[Path] = []
 
     def generate_and_save_key(api_key_index: int) -> LighterApiKey:
         key = generate_key(api_key_index)
-        saved_keys.append(save_generated_key(key, len(saved_keys) + 1, tutorial.deployer.address))
+        saved_keys.append(save_generated_key(key, len(saved_keys) + 1, deployer))
         logger.warning("Saved generated Lighter API key %d to %s until deployment completes", len(saved_keys), saved_keys[-1])
         return key
 
+    with mock.patch.object(lagoon_deployment, "generate_lighter_api_key_pair", generate_and_save_key):
+        yield saved_keys
+    for path in saved_keys:
+        path.unlink()
+    logger.info("Deployment complete; deleted %d temporary key files", len(saved_keys))
+
+
+def deploy(tutorial: Tutorial, fund_name: str, fund_symbol: str) -> None:
+    """Deploy the vault with keyed sub-accounts and record its public details."""
     environment = {
         "EXECUTOR_ID": tutorial.config.executor_id,
         "STRATEGY_FILE": str(STRATEGY_DIR / "minimal_lighter_strategy.py"),
@@ -449,13 +451,8 @@ def deploy(tutorial: Tutorial, fund_name: str, fund_symbol: str) -> None:
         "LIGHTER_SUB_ACCOUNT_API_KEY_INDEX": str(tutorial.config.api_key_index),
         "LOG_LEVEL": "warning",
     }
-    with mock.patch.object(lagoon_deployment, "generate_lighter_api_key_pair", generate_and_save_key):
+    with backup_generated_keys(tutorial.deployer.address):
         run_cli(["lagoon-deploy-vault"], environment)
-
-    # The operator record and hand-over files now hold every key.
-    for path in saved_keys:
-        path.unlink()
-    logger.info("Deployment complete; deleted %d temporary key files", len(saved_keys))
     record_deployment(tutorial)
 
 
@@ -531,7 +528,8 @@ def redeem_all_shares(tutorial: Tutorial, drain_cycles: int, **start_overrides: 
     """
     vault = get_vault(tutorial)
     deployer = tutorial.deployer.address
-    if not tutorial.progress.get("redemption_requested") and vault.vault_contract.functions.pendingRedeemRequest(0, deployer).call() == 0 and vault.vault_contract.functions.maxRedeem(deployer).call() == 0:
+    requested = tutorial.progress.get("redemption_requested") or vault.vault_contract.functions.pendingRedeemRequest(0, deployer).call() > 0 or vault.vault_contract.functions.maxRedeem(deployer).call() > 0
+    if not requested:
         shares = vault.share_token.fetch_raw_balance_of(deployer)
         assert shares > 0, "The deployer holds no shares to redeem"
         broadcast_and_wait(tutorial, vault.request_redeem(deployer, shares))
@@ -545,27 +543,32 @@ def redeem_all_shares(tutorial: Tutorial, drain_cycles: int, **start_overrides: 
     assert vault.share_token.fetch_raw_balance_of(deployer) == 0, "Shares remain after lagoon-redeem"
 
 
-def refund(tutorial: Tutorial, extra_fees_usdc: Decimal = Decimal(0)) -> None:
-    """Check nothing backs investor claims, sweep the Safe and reconcile balances.
+def sweep_safe(tutorial: Tutorial) -> None:
+    """Check nothing backs investor claims, then move the Safe's USDC and ETH to the deployer."""
+    vault = get_vault(tutorial)
+    deployer = tutorial.deployer.address
+    assert vault.share_token.fetch_raw_balance_of(deployer) == 0
+    assert vault.vault_contract.functions.totalSupply().call() == 0, "Vault shares are outstanding; do not sweep"
+    assert vault.vault_contract.functions.maxRedeem(deployer).call() == 0, "Claimable redemption left"
+    assert vault.vault_contract.functions.maxDeposit(deployer).call() == 0, "Claimable deposit left"
+    for label, address in (("vault", vault.address), ("silo", vault.silo_address)):
+        logger.info("%s USDC balance: %s", label, tutorial.usdc.fetch_balance_of(address))
+    for transfer in sweep_safe_to_owner(tutorial.web3, tutorial.safe_address, tutorial.deployer, [tutorial.usdc]):
+        logger.info("Swept %s %s to the deployer: %s", transfer.amount, transfer.symbol, transfer.tx_hash)
+
+
+def reconcile_deployer_balances(tutorial: Tutorial, extra_fees_usdc: Decimal = Decimal(0)) -> list[tuple[str, Decimal]]:
+    """Explain the deployer's USDC and ETH change over the run, failing on an unexplained difference.
 
     :param tutorial:
         Tutorial runtime.
     :param extra_fees_usdc:
         Fees paid outside the executor's trades, for example by a trader-made transfer.
+    :return:
+        The reconciliation rows.
     """
-    vault = get_vault(tutorial)
-    assert vault.share_token.fetch_raw_balance_of(tutorial.deployer.address) == 0
-    assert vault.vault_contract.functions.totalSupply().call() == 0, "Vault shares are outstanding; do not sweep"
-    assert vault.vault_contract.functions.maxRedeem(tutorial.deployer.address).call() == 0, "Claimable redemption left"
-    assert vault.vault_contract.functions.maxDeposit(tutorial.deployer.address).call() == 0, "Claimable deposit left"
-    for label, address in (("vault", vault.address), ("silo", vault.silo_address)):
-        logger.info("%s USDC balance: %s", label, tutorial.usdc.fetch_balance_of(address))
-    for transfer in sweep_safe_to_owner(tutorial.web3, tutorial.progress["safe_address"], tutorial.deployer, [tutorial.usdc]):
-        logger.info("Swept %s %s to the deployer: %s", transfer.amount, transfer.symbol, transfer.tx_hash)
-
     state = State.read_json_file(tutorial.state_file)
-    fees = sum((Decimal(trade.other_data.get("funding_fee_usdc", "0")) for trade in state.portfolio.get_all_trades() if trade.is_internal_account_transfer()), Decimal(0))
-    fees += extra_fees_usdc
+    fees = get_lighter_funding_fees(state) + extra_fees_usdc
     lighter_dust = sum(fetch_lighter_balances(tutorial).values(), Decimal(0))
     start_usdc = Decimal(tutorial.progress["start_usdc"])
     end_usdc = tutorial.usdc.fetch_balance_of(tutorial.deployer.address)
@@ -581,82 +584,22 @@ def refund(tutorial: Tutorial, extra_fees_usdc: Decimal = Decimal(0)) -> None:
     ]
     print(tabulate(rows, headers=["Item", "Amount"], tablefmt="simple"))
     assert abs(unexplained) <= tutorial.usdc.convert_to_decimals(MAX_UNEXPLAINED_RAW), f"Unexplained USDC difference {unexplained}"
-
-
-def describe_lighter_trade(trade: TradeExecution) -> str:
-    """Return a one-line human description of a Lighter custody trade.
-
-    :param trade:
-        Any trade on an exchange-account position.
-    :return:
-        What moved, how much and between which accounts.
-    """
-    account = trade.pair.get_exchange_account_id()
-    amount = abs(trade.executed_quantity if trade.is_success() else trade.planned_quantity)
-    if trade.is_internal_account_transfer():
-        source = trade.other_data.get("funding_source_account_id")
-        return f"Transfer {amount} USDC from Lighter account {source} to account {account}"
-    if TradeFlag.external_account_transfer in (trade.flags or set()):
-        if trade.is_buy():
-            return f"Deposit {amount} USDC from the Safe to Lighter account {account}"
-        return f"Withdraw {amount} USDC from Lighter account {account} to the Safe"
-    if amount == 0:
-        return f"Open the position of Lighter account {account}"
-    return trade.get_human_description()
-
-
-def get_lighter_trade_hashes(trade: TradeExecution) -> list[str]:
-    """Return the Ethereum transaction hashes and Lighter identifiers of a trade.
-
-    :param trade:
-        Any trade on an exchange-account position.
-    :return:
-        ``label: hash`` lines, Ethereum transactions first.
-    """
-    lines = [f"ethereum: {tx.tx_hash}" for tx in trade.blockchain_transactions if tx.tx_hash]
-    other_data = trade.other_data or {}
-    for key, label in (
-        ("lighter_deposit_tx_hash", "ethereum deposit"),
-        ("lighter_withdrawal_request_id", "withdrawal request"),
-        ("lighter_claim_tx_hash", "ethereum claim"),
-        ("lighter_transfer_tx_hash", "lighter transfer"),
-    ):
-        if other_data.get(key):
-            lines.append(f"{label}: {other_data[key]}")
-    return lines
-
-
-def print_trade_summary(state: State) -> list[dict[str, Any]]:
-    """Print every exchange-account trade with its description, status and hashes.
-
-    :param state:
-        Executor state at the end of a tutorial.
-    :return:
-        The printed rows, in trade id order.
-    """
-    rows = []
-    for trade in sorted(state.portfolio.get_all_trades(), key=lambda trade: trade.trade_id):
-        if not trade.pair.is_exchange_account():
-            continue
-        rows.append({
-            "trade": trade.trade_id,
-            "position": trade.pair.get_ticker(),
-            "description": describe_lighter_trade(trade),
-            "status": trade.get_status().value,
-            "notes": trade.notes or "",
-            "hashes": "\n".join(get_lighter_trade_hashes(trade)) or "-",
-        })
-    print(tabulate(rows, headers="keys", tablefmt="grid"))
     return rows
 
 
-def run_phases(tutorial: Tutorial, phases: list[tuple[int, str, Any]]) -> None:
+def refund(tutorial: Tutorial, extra_fees_usdc: Decimal = Decimal(0)) -> None:
+    """Sweep the Safe back to the deployer and reconcile the deployer's balances."""
+    sweep_safe(tutorial)
+    reconcile_deployer_balances(tutorial, extra_fees_usdc)
+
+
+def run_phases(tutorial: Tutorial, phases: list[tuple[int, str, Phase]]) -> None:
     """Run numbered phases, skipping those an earlier run completed.
 
     :param tutorial:
         Tutorial runtime.
     :param phases:
-        ``(number, title, callable)`` in order; each callable takes the tutorial.
+        ``(number, title, callable)`` in order.
     """
     for number, title, phase in phases:
         if tutorial.is_done(number):

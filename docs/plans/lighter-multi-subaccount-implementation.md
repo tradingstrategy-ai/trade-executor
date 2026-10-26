@@ -36,6 +36,22 @@ Implemented on 2026-10-26 on branch `lighter-multi-subaccount` in both
 repositories. The sections after this one are the original plan; this
 section records where the implementation differs.
 
+### Sub-account signers and the transfer-accounting tutorial
+
+The plan kept the executor master-key only. The implementation adds an
+option: `start`, `check-accounts`, `correct-accounts` and `repair` accept
+`LIGHTER_SUB_ACCOUNT_OPERATOR_RECORD_FILES`, the sub-account hand-over files,
+and the executor then signs transfers from those sub-accounts directly and
+reads their transfer history. Without it, behaviour is as planned.
+
+`scripts/lagoon/manual-trade-executor-lighter-transfers.py` runs a scripted
+strategy that books every deposit, transfer between accounts and withdrawal
+as its own trade, including sub-account to sub-account and sub-account to
+master transfers, and verifies the state afterwards. With `SIMULATE=true` it
+runs on an Anvil fork with the fake sequencer; it passed that way on
+2026-10-26 and is run by `tests/lagoon/test_lagoon_lighter_scripted_transfers_e2e.py`.
+It has not run live.
+
 ### Mainnet run
 
 The tutorial `scripts/lagoon/manual-trade-executor-lighter-subaccounts.py`

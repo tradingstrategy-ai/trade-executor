@@ -17,7 +17,9 @@ the expected result of another movement in the same cycle, so the plan stays
 correct however the runner orders the trades. Rebalancing converges over
 cycles: moving capital from one sub-account to another takes a Safe round
 trip, because a sub-account to sub-account transfer must be signed with the
-sending sub-account's API key and the executor holds only the master key.
+sending sub-account's API key, which by default only the external trader
+holds. An executor given a sub-account's record can transfer from it
+directly with :py:func:`tradeexecutor.exchange_account.state.create_exchange_account_funding`.
 
 See ``tradeexecutor/exchange_account/README-Lighter.md``.
 """

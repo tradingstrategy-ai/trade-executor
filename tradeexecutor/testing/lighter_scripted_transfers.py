@@ -35,6 +35,7 @@ from tradeexecutor.exchange_account.lighter import LIGHTER_PROTOCOL
 from tradeexecutor.exchange_account.lighter_strategy import ensure_lighter_positions, get_lighter_account_pairs
 from tradeexecutor.exchange_account.state import create_exchange_account_funding, create_exchange_account_transfer
 from tradeexecutor.state.identifier import TradingPairIdentifier
+from tradeexecutor.state.position import TradingPosition
 from tradeexecutor.state.state import State
 from tradeexecutor.state.trade import TradeExecution, TradeFlag
 from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
@@ -198,36 +199,43 @@ def decide_lighter_scripted_transfers(
         return []
 
     step = completed + 1
-    role_pairs = get_role_pairs(list(input.strategy_universe.iterate_pairs()))
-    positions = {role: portfolio.get_open_position_for_pair(pair) for role, pair in role_pairs.items()}
-    position_manager = input.get_position_manager()
-    reserve_asset = input.strategy_universe.get_reserve_asset()
-    timestamp = input.timestamp.to_pydatetime()
-
-    trades = []
-    for transfer in schedule[step - 1]:
-        metadata: dict[str, str | int] = {
-            "protocol": LIGHTER_PROTOCOL,
-            SCRIPTED_STEP_KEY: step,
-            SCRIPTED_SOURCE_KEY: transfer.source,
-            SCRIPTED_DESTINATION_KEY: transfer.destination,
-        }
-        notes = f"Scripted Lighter transfer step {step}: {transfer.source} to {transfer.destination}"
-        if transfer.source == ROLE_SAFE:
-            amount = transfer.amount if transfer.amount is not None else Decimal(str(position_manager.get_current_cash()))
-            amount = _check_amount(amount, minimum, transfer)
-            trades.append(create_exchange_account_transfer(state=state, position=positions[transfer.destination], strategy_cycle_at=timestamp, reserve_currency=reserve_asset, amount=amount, deposit=True, notes=notes, metadata={**metadata, "direction": "deposit"}))
-        elif transfer.destination == ROLE_SAFE:
-            amount = transfer.amount if transfer.amount is not None else Decimal(str(position_manager.get_exchange_account_available_balance(role_pairs[transfer.source])))
-            amount = _check_amount(amount, minimum, transfer)
-            trades.append(create_exchange_account_transfer(state=state, position=positions[transfer.source], strategy_cycle_at=timestamp, reserve_currency=reserve_asset, amount=amount, deposit=False, notes=notes, metadata={**metadata, "direction": "withdraw"}))
-        else:
-            if transfer.amount is None:
-                raise ValueError(f"A transfer between accounts needs a fixed amount: {transfer}")
-            amount = _check_amount(transfer.amount, minimum, transfer)
-            trades.append(create_exchange_account_funding(state=state, source_position=positions[transfer.source], destination_position=positions[transfer.destination], strategy_cycle_at=timestamp, reserve_currency=reserve_asset, amount=amount, notes=notes, metadata=metadata))
+    trades = [_create_scripted_trade(input, step, transfer, minimum) for transfer in schedule[step - 1]]
     logger.info("Lighter scripted transfers step %d of %d: %d trade(s)", step, len(schedule), len(trades))
     return trades
+
+
+def _create_scripted_trade(input: StrategyInput, step: int, transfer: ScriptedTransfer, minimum: Decimal) -> TradeExecution:
+    """Create the deposit, withdrawal or funding trade of one scheduled movement.
+
+    An open-ended amount moves the Safe's cash for a deposit and the source
+    account's free collateral for a withdrawal; a transfer between accounts
+    needs a fixed amount.
+    """
+    state = input.state
+    role_pairs = get_role_pairs(list(input.strategy_universe.iterate_pairs()))
+    positions = {role: state.portfolio.get_open_position_for_pair(pair) for role, pair in role_pairs.items()}
+    position_manager = input.get_position_manager()
+    common = {
+        "state": state,
+        "strategy_cycle_at": input.timestamp.to_pydatetime(),
+        "reserve_currency": input.strategy_universe.get_reserve_asset(),
+        "notes": f"Scripted Lighter transfer step {step}: {transfer.source} to {transfer.destination}",
+    }
+    metadata: dict[str, str | int] = {
+        "protocol": LIGHTER_PROTOCOL,
+        SCRIPTED_STEP_KEY: step,
+        SCRIPTED_SOURCE_KEY: transfer.source,
+        SCRIPTED_DESTINATION_KEY: transfer.destination,
+    }
+    if transfer.source == ROLE_SAFE:
+        amount = transfer.amount if transfer.amount is not None else Decimal(str(position_manager.get_current_cash()))
+        return create_exchange_account_transfer(position=positions[transfer.destination], amount=_check_amount(amount, minimum, transfer), deposit=True, metadata={**metadata, "direction": "deposit"}, **common)
+    if transfer.destination == ROLE_SAFE:
+        amount = transfer.amount if transfer.amount is not None else Decimal(str(position_manager.get_exchange_account_available_balance(role_pairs[transfer.source])))
+        return create_exchange_account_transfer(position=positions[transfer.source], amount=_check_amount(amount, minimum, transfer), deposit=False, metadata={**metadata, "direction": "withdraw"}, **common)
+    if transfer.amount is None:
+        raise ValueError(f"A transfer between accounts needs a fixed amount: {transfer}")
+    return create_exchange_account_funding(source_position=positions[transfer.source], destination_position=positions[transfer.destination], amount=_check_amount(transfer.amount, minimum, transfer), metadata=metadata, **common)
 
 
 def _check_amount(amount: Decimal, minimum: Decimal, transfer: ScriptedTransfer) -> Decimal:
@@ -291,11 +299,22 @@ def verify_lighter_scripted_transfers(
     for position in positions:
         if position.get_quantity() != 0:
             problems.append(f"Lighter account {position.pair.get_exchange_account_id()} position #{position.position_id} still holds {position.get_quantity()} USDC")
+    _check_conservation(positions, problems)
 
-    # Lighter inflows and outflows: deposits add, withdrawals and transfer fees
-    # remove, and transfers between accounts net to zero. Balance updates not
-    # booked by a funding trade are revaluations from Lighter, such as the
-    # activation deposit made before the executor existed.
+    if problems:
+        raise AssertionError("Scripted Lighter transfers were not booked correctly:\n" + "\n".join(problems))
+    state.check_if_clean()
+    return rows
+
+
+def _check_conservation(positions: list[TradingPosition], problems: list[str]) -> None:
+    """Check that Lighter inflows, revaluations, outflows and fees explain what remains.
+
+    Deposits add, withdrawals and transfer fees remove, and transfers between
+    accounts net to zero. Balance updates not booked by a funding trade are
+    revaluations from Lighter, such as the activation deposit made before the
+    executor existed.
+    """
     inflow = outflow = fees = revalued = Decimal(0)
     funding_update_ids: set[tuple[int, int]] = set()
     for position in positions:
@@ -317,11 +336,6 @@ def verify_lighter_scripted_transfers(
     remaining = sum((position.get_quantity() for position in positions), Decimal(0))
     if inflow + revalued - outflow - fees != remaining:
         problems.append(f"Lighter inflow {inflow} plus revaluations {revalued} minus outflow {outflow} and fees {fees} is not the remaining {remaining}")
-
-    if problems:
-        raise AssertionError("Scripted Lighter transfers were not booked correctly:\n" + "\n".join(problems))
-    state.check_if_clean()
-    return rows
 
 
 def _verify_transfer(

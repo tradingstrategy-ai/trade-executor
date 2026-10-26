@@ -211,7 +211,12 @@ Both tutorials share
 [`tradeexecutor/testing/lighter_tutorial.py`](../testing/lighter_tutorial.py):
 deployment with key backups, state initialisation, subscription,
 redemption, the final sweep and a reconciliation table of the deployer's
-balances. Both resume from `progress.json` in their run directory.
+balances. The fork and fake sequencer live in
+[`lighter_simulation.py`](../testing/lighter_simulation.py), and both
+tutorials end with the trade table of
+[`lighter_report.py`](../testing/lighter_report.py): every trade with its
+description, status, notes and Ethereum and Lighter hashes. Both resume
+from `progress.json` in their run directory.
 
 [`scripts/lagoon/manual-trade-executor-lighter-transfers.py`](../../scripts/lagoon/manual-trade-executor-lighter-transfers.py)
 is the executable specification of the transfer accounting. Its strategy,
