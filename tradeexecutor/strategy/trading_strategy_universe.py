@@ -2231,7 +2231,9 @@ def create_pair_universe_from_code(chain_id: ChainId, pairs: List[TradingPairIde
             else:
                 dex_type = ExchangeType.erc_4626_vault
         elif p.is_exchange_account():
-            dex_type = ExchangeType.derive
+            # Each external-account protocol with its own exchange type keeps it; others are typed as Derive.
+            protocol = p.get_exchange_account_protocol()
+            dex_type = ExchangeType(protocol) if protocol in {member.value for member in ExchangeType} else ExchangeType.derive
         else:
             dex_type = ExchangeType.uniswap_v2
 

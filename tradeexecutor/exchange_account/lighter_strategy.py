@@ -65,7 +65,7 @@ from tradeexecutor.strategy.trading_strategy_universe import TradingStrategyUniv
 logger = logging.getLogger(__name__)
 
 
-def resolve_lighter_accounts(input: CreateTradingUniverseInput, sub_accounts: Iterable[SubAccount] | None, master_account_index: int | None = None) -> tuple[int, dict[int, str]]:
+def resolve_lighter_accounts(input: CreateTradingUniverseInput, sub_accounts: Iterable[SubAccount] | None) -> tuple[int, dict[int, str]]:
     """Map the strategy's declared sub-accounts to the Lighter accounts recorded in the state.
 
     The strategy declares ``Parameters.lighter_sub_accounts`` as
@@ -73,16 +73,13 @@ def resolve_lighter_accounts(input: CreateTradingUniverseInput, sub_accounts: It
     ``init`` records which Lighter account each id maps to in the state, so a
     running deployment resolves from ``input.state``. Without a state, at
     deployment or in a universe check, placeholder indices are used; they are
-    never persisted. A vault deployed before sub-accounts existed passes its
-    master index explicitly, as ``strategies/lighter-ai.py`` does.
+    never persisted.
 
     :param input:
         Universe construction input carrying the state.
     :param sub_accounts:
         ``Parameters.lighter_sub_accounts`` of the strategy module; passed
         explicitly because not every command gives the input the parameters.
-    :param master_account_index:
-        Master account for a deployment whose state has no resolution.
     :return:
         Master account index and sub-account index to id.
     :raise ValueError:
@@ -95,15 +92,13 @@ def resolve_lighter_accounts(input: CreateTradingUniverseInput, sub_accounts: It
         if missing:
             raise ValueError(f"Sub-accounts {missing} are declared in Parameters but not resolved in the state; deploy them and run init")
         return resolution[MASTER_ACCOUNT_ID], {resolution[account_id]: account_id for account_id in sub_account_ids}
-    if master_account_index is not None and not sub_account_ids:
-        return master_account_index, {}
     if input.state is not None:
         raise ValueError("The state does not record the Lighter accounts of this deployment; run init with the deployment artefact")
     # No state: placeholders keep the universe constructible for deployment and checks.
     return 0, {number: account_id for number, account_id in enumerate(sub_account_ids, 1)}
 
 
-def create_lighter_account_universe(input: CreateTradingUniverseInput, sub_accounts: Iterable[SubAccount] | None, master_account_index: int | None = None) -> TradingStrategyUniverse:
+def create_lighter_account_universe(input: CreateTradingUniverseInput, sub_accounts: Iterable[SubAccount] | None) -> TradingStrategyUniverse:
     """Create a static universe with one exchange-account pair per declared Lighter account.
 
     See :py:func:`resolve_lighter_accounts` for how the declared sub-accounts
@@ -113,13 +108,11 @@ def create_lighter_account_universe(input: CreateTradingUniverseInput, sub_accou
         Universe construction input carrying the state.
     :param sub_accounts:
         ``Parameters.lighter_sub_accounts`` of the strategy module.
-    :param master_account_index:
-        Master account for a deployment whose state has no resolution.
     :return:
         Universe with the master account, the sub-accounts and the native
         Ethereum USDC reserve.
     """
-    master, resolved = resolve_lighter_accounts(input, sub_accounts, master_account_index)
+    master, resolved = resolve_lighter_accounts(input, sub_accounts)
     usdc = AssetIdentifier(
         chain_id=ChainId.ethereum.value,
         address=USDC_NATIVE_TOKEN[ChainId.ethereum.value],
@@ -133,7 +126,7 @@ def create_lighter_account_universe(input: CreateTradingUniverseInput, sub_accou
         exchange_id=1,
         exchange_slug="lighter",
         address=LIGHTER_L1_CONTRACT,
-        exchange_type=ExchangeType.derive,
+        exchange_type=ExchangeType.lighter,
         pair_count=len(pairs),
     )
     universe = Universe(

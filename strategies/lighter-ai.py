@@ -10,9 +10,8 @@ confirmation for long and short positions across liquid Lighter perpetuals.
 Risk management uses diversification across uncorrelated strategies, adaptive
 stop losses, and continuous liquidity and momentum screening.
 
-This module tracks the Safe-owned Lighter accounts for an Ethereum Lagoon vault:
-the master account and any sub-accounts created at deployment. It creates one
-exchange-account position per account and leaves public equity valuation and
+This module tracks the Safe-owned Lighter account for an Ethereum Lagoon vault.
+It creates one exchange-account position and leaves public equity valuation and
 NAV posting to the executor. A separate automated trading process runs the
 sub-strategies and submits orders; this module holds no Lighter API key.
 
@@ -33,9 +32,7 @@ from tradingstrategy.exchange import Exchange, ExchangeType
 from tradingstrategy.timebucket import TimeBucket
 from tradingstrategy.universe import Universe
 
-from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pairs, parse_lighter_account_indices
-from tradeexecutor.exchange_account.lighter_strategy import resolve_lighter_accounts
-from tradeexecutor.exchange_account.sub_account import SubAccount
+from tradeexecutor.exchange_account.lighter import create_lighter_exchange_account_pair
 from tradeexecutor.exchange_account.state import open_exchange_account_position
 from tradeexecutor.strategy.tag import StrategyTag
 from tradeexecutor.state.identifier import AssetIdentifier
@@ -48,13 +45,19 @@ from tradeexecutor.strategy.pandas_trader.strategy_input import StrategyInput
 from tradeexecutor.strategy.pandas_trader.trading_universe_input import (
     CreateTradingUniverseInput,
 )
+from tradeexecutor.strategy.reserve_currency import ReserveCurrency
 from tradeexecutor.strategy.strategy_module import StrategyParameters
+from tradeexecutor.strategy.strategy_type import StrategyType
 from tradeexecutor.strategy.trading_strategy_universe import (
     TradingStrategyUniverse,
     create_pair_universe_from_code,
 )
 
 trading_strategy_engine_version = "0.5"
+trading_strategy_type = StrategyType.managed_positions
+trading_strategy_cycle = CycleDuration.cycle_15m
+trade_routing = TradeRouting.default
+reserve_currency = ReserveCurrency.usdc
 
 #: Lighter custody and the Lagoon vault both reside on Ethereum mainnet.
 CHAIN_ID = ChainId.ethereum
@@ -70,44 +73,38 @@ class Parameters:
     required_history_period = datetime.timedelta(days=1)
     backtest_start = None
     backtest_end = None
-    #: Sub-strategies run in their own Lighter sub-accounts; none for this single-account vault.
-    lighter_sub_accounts: list[SubAccount] = []
-
-
-def _read_lighter_master_account_index() -> int:
-    """Read the master account index from the deployment report value.
-
-    ``LIGHTER_ACCOUNT_INDEX`` is set per deployment. Never fall back to a
-    test index: this value determines the posted NAV.
-    """
-    raw = os.environ.get("LIGHTER_ACCOUNT_INDEX", "")
-    if not raw:
-        raise ValueError("Set LIGHTER_ACCOUNT_INDEX to the master account index from the Lighter deployment report")
-    return parse_lighter_account_indices(raw)[0]
 
 
 def create_trading_universe(input: CreateTradingUniverseInput) -> TradingStrategyUniverse:
-    """Create one Ethereum Lighter exchange-account pair per account."""
-    # The master index comes from the deployment environment for vaults
-    # initialised before the state recorded the Lighter accounts.
-    master_account_index, sub_accounts = resolve_lighter_accounts(input, Parameters.lighter_sub_accounts, _read_lighter_master_account_index())
+    """Create a single Ethereum Lighter exchange-account pair."""
+    # Read at universe creation so metadata can be loaded before deployment.
+    # Never fall back to a test index: this value determines the posted NAV.
+    raw_account_index = os.environ.get("LIGHTER_ACCOUNT_INDEX", "").strip()
+    if not raw_account_index.isascii() or not raw_account_index.isdecimal():
+        raise ValueError(
+            "Set LIGHTER_ACCOUNT_INDEX to the non-negative integer account index "
+            "from the Lighter deployment report"
+        )
+    account_index = int(raw_account_index)
     usdc = AssetIdentifier(
         chain_id=CHAIN_ID.value,
         address=USDC_NATIVE_TOKEN[CHAIN_ID.value],
         token_symbol="USDC",
         decimals=6,
     )
-    lighter_pairs = create_lighter_exchange_account_pairs(usdc, master_account_index, sub_accounts)
-    pair_universe = create_pair_universe_from_code(CHAIN_ID, lighter_pairs)
+    lighter_pair = create_lighter_exchange_account_pair(
+        quote=usdc,
+        account_index=account_index,
+    )
+    pair_universe = create_pair_universe_from_code(CHAIN_ID, [lighter_pair])
     exchange = Exchange(
         chain_id=CHAIN_ID,
         chain_slug="ethereum",
         exchange_id=1,
         exchange_slug="lighter",
         address=LIGHTER_L1_CONTRACT,
-        # Shared external-account exchange type, as in the upstream template.
-        exchange_type=ExchangeType.derive,
-        pair_count=len(lighter_pairs),
+        exchange_type=ExchangeType.lighter,
+        pair_count=1,
     )
     universe = Universe(
         time_bucket=TimeBucket.d1,
@@ -130,20 +127,23 @@ def create_indicators(
     execution_context: ExecutionContext,
 ) -> None:
     """No indicators are needed for deployment or account monitoring."""
+    del parameters, indicators, strategy_universe, execution_context
+
+
 def decide_trades(input: StrategyInput) -> list[TradeExecution]:
-    """Open one position per Lighter account once; sync handles subsequent equity updates."""
-    portfolio = input.state.portfolio
-    for pair in input.strategy_universe.iterate_pairs():
-        if portfolio.get_open_position_for_pair(pair) is not None:
-            continue
-        open_exchange_account_position(
-            state=input.state,
-            strategy_cycle_at=input.timestamp.to_pydatetime(),
-            pair=pair,
-            reserve_currency=input.strategy_universe.reserve_assets[0],
-            reserve_amount=Decimal(0),
-            notes=f"Lighter account {pair.get_exchange_account_id()} position",
-        )
+    """Open the account position once; sync handles subsequent equity updates."""
+    if any(pos.is_exchange_account() for pos in input.state.portfolio.open_positions.values()):
+        return []
+
+    pair = next(input.strategy_universe.iterate_pairs())
+    open_exchange_account_position(
+        state=input.state,
+        strategy_cycle_at=input.timestamp.to_pydatetime(),
+        pair=pair,
+        reserve_currency=input.strategy_universe.reserve_assets[0],
+        reserve_amount=Decimal(0),
+        notes="Lighter exchange account position",
+    )
     # The helper records a synthetic trade directly; never send it to execution.
     return []
 

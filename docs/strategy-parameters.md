@@ -21,7 +21,8 @@ variables are redundant for `0.5` and should not be declared:
 | `trading_strategy_type` | Defaults to `managed_positions`, the only supported type |
 | `reserve_currency` | Live strategies name their reserve asset in `create_trading_universe()`; only the backtest runner reads this variable |
 
-`strategies/xchain-master-vault.py` is the reference for this layout.
+`strategies/xchain-master-vault.py` is the reference for this layout. The
+production `strategies/lighter-ai.py` predates it and is left as it is.
 
 ## The `Parameters` class
 

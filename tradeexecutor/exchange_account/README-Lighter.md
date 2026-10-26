@@ -178,9 +178,9 @@ exchange-account pair per account with the real indices; without a state,
 at deployment or in a universe check, it uses placeholders. Each account
 becomes its own trading position when funds first move into it, and
 `tradeexecutor.exchange_account.sub_account` maps positions to ids and ids
-to positions through the state. A vault initialised before the state
-recorded its accounts keeps working by passing its master index explicitly,
-as `strategies/lighter-ai.py` does from `LIGHTER_ACCOUNT_INDEX`.
+to positions through the state. The single-account `strategies/lighter-ai.py`
+predates this and builds its one pair from `LIGHTER_ACCOUNT_INDEX`; it is
+unchanged.
 
 `decide_trades()` moves funds between the accounts by id with the
 `PositionManager` custody methods.
